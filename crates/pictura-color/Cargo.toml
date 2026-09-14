@@ -1,0 +1,10 @@
+[package]
+name = "pictura-color"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+lcms2 = "6"
