@@ -223,6 +223,10 @@ int main(int argc, char* argv[])
     filterCombo->addItem(QStringLiteral("Shear"), QStringLiteral("shear"));
     filterCombo->addItem(QStringLiteral("ZigZag"), QStringLiteral("zigzag"));
     filterCombo->addItem(QStringLiteral("Ocean Ripple"), QStringLiteral("ocean-ripple"));
+    filterCombo->addItem(QStringLiteral("Clouds"), QStringLiteral("clouds"));
+    filterCombo->addItem(QStringLiteral("Difference Clouds"), QStringLiteral("difference-clouds"));
+    filterCombo->addItem(QStringLiteral("Fibers"), QStringLiteral("fibers"));
+    filterCombo->addItem(QStringLiteral("Lens Flare"), QStringLiteral("lens-flare"));
     panelLayout->addWidget(filterCombo);
 
     auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);
@@ -802,6 +806,56 @@ int main(int argc, char* argv[])
             if (!redoInvalidated || !openReset || boundaryUndone) {
                 std::fprintf(stderr, "pictura self-test: FAIL: history invalidation wrong\n");
                 return 23;
+            }
+
+            // M15: render filters. The topmost pixel layer is the blue
+            // quadrant, so a full-frame apply must change pixels only inside
+            // the blue rect (4,4)-(8,8); the fixed seed must make a re-apply
+            // bit-identical.
+            const QImage preClouds = view.image();
+            const bool clouded = view.apply_filter(QStringLiteral("clouds"));
+            const QImage cloudedImg = view.image();
+            int cloudsInside = 0;
+            int cloudsOutside = 0;
+            for (int y = 0; y < cloudedImg.height(); ++y) {
+                for (int x = 0; x < cloudedImg.width(); ++x) {
+                    if (cloudedImg.pixel(x, y) == preClouds.pixel(x, y)) {
+                        continue;
+                    }
+                    if (x >= 4 && x < 8 && y >= 4 && y < 8) {
+                        ++cloudsInside;
+                    } else {
+                        ++cloudsOutside;
+                    }
+                }
+            }
+            const bool reapplied = view.apply_filter(QStringLiteral("clouds"));
+            const bool reapplyIdentical = reapplied && view.image() == cloudedImg;
+            const bool flared = view.apply_filter(QStringLiteral("lens-flare"));
+            const QImage flaredImg = view.image();
+            int flareOutsideChanged = 0;
+            for (int y = 0; y < flaredImg.height(); ++y) {
+                for (int x = 0; x < flaredImg.width(); ++x) {
+                    if (!(x >= 4 && x < 8 && y >= 4 && y < 8)
+                        && flaredImg.pixel(x, y) != cloudedImg.pixel(x, y)) {
+                        ++flareOutsideChanged;
+                    }
+                }
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: clouds=%d confined=%d inside=%d "
+                         "reapply_ident=%d flare=%d\n",
+                         clouded ? 1 : 0,
+                         cloudsOutside == 0 && flareOutsideChanged == 0 ? 1 : 0,
+                         cloudsInside,
+                         reapplyIdentical ? 1 : 0,
+                         flared && flaredImg != cloudedImg ? 1 : 0);
+            std::fflush(stderr);
+            if (!clouded || cloudedImg == preClouds || cloudsInside == 0
+                || cloudsOutside != 0 || !reapplyIdentical || !flared
+                || flaredImg == cloudedImg || flareOutsideChanged != 0) {
+                std::fprintf(stderr, "pictura self-test: FAIL: clouds/flare wrong\n");
+                return 24;
             }
         }
         const QPointF center(window->width() / 2.0, window->height() / 2.0);

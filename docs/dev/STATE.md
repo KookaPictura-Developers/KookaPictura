@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **388 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M14 archived; canonical specs are
-  in `openspec/specs/` (34 capabilities, `validate --all --strict`
+- Test suite: **401 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M15 archived; canonical specs are
+  in `openspec/specs/` (35 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 
 ## Commands
@@ -35,7 +35,7 @@ openspec validate --all --strict
 | `pictura-codec` | PSD/PSB read/write: composite, layers, masks, adjustment keys, document channels |
 | `pictura-color` | ICC profiles (sRGB/AdobeRGB/ProPhoto), convert/assign, intents, BPC |
 | `pictura-adjust` | 15 destructive adjustments (`apply`) |
-| `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort filters (`Filter` + `apply`); seeded filters |
+| `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation; re-exports `Anchor`/`Resample`) |
@@ -117,6 +117,14 @@ openspec validate --all --strict
   `history_depth`; dock buttons + Ctrl+Z/Ctrl+Y; self-test proves bit-exact
   undo/redo, redo invalidation, open reset (exit codes 22/23).
   OpenSpec change `m14-undo-history` (capability `edit-history`), archived.
+- **M15** — Render filters: `Clouds`, `DifferenceClouds`, `Fibers`,
+  `LensFlare` in `pictura-filters/src/render.rs` (seeded lattice value noise,
+  Difference blend, x-elongated fibers, additive lens flare with
+  `LensType`); all four classified no-equivalent (closed Adobe models) and
+  verified by 13 property tests. App kinds + combo + self-test confinement
+  check (exit 24). Lighting Effects and Scripted Patterns remain future.
+  OpenSpec change `m15-render-filters` (capability `render-filters`),
+  archived.
 
 ## Spec workflow (OpenSpec)
 
@@ -139,18 +147,18 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M15 (propose via OpenSpec first)
+## Next: M16 (propose via OpenSpec first)
 
-M14 is archived; its `edit-history` delta lives in `openspec/specs/`.
+M15 is archived; its `render-filters` delta lives in `openspec/specs/`.
 Candidate next areas: image modes/bit-depth, the remaining filter families
-(Render, Liquify, Blur Gallery, Camera Raw), a different spec area
-(`docs/07-color-painting`, `docs/03-tools`, `docs/09-automation`), or app
-polish (full Image Size dialog with percent scaling/preview, History palette
-with labeled states).
+(Lighting Effects, Scripted Patterns, Liquify, Blur Gallery, Camera Raw), a
+different spec area (`docs/07-color-painting`, `docs/03-tools`,
+`docs/09-automation`), or app polish (full Image Size dialog with percent
+scaling/preview, History palette with labeled states).
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M14 are archived; their deltas now live in `openspec/specs/`.
+M6 through M15 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 

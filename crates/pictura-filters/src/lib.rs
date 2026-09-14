@@ -18,8 +18,11 @@ pub mod luma;
 pub mod noise;
 pub mod other;
 pub mod pixelate;
+pub mod render;
 pub mod sharpen;
 pub mod stylize;
+
+pub use render::LensType;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FilterError {
@@ -233,6 +236,30 @@ pub enum Filter {
         magnitude: u32,
         seed: u64,
     },
+    Clouds {
+        color_a: [u8; 3],
+        color_b: [u8; 3],
+        starker: bool,
+        seed: u64,
+    },
+    DifferenceClouds {
+        color_a: [u8; 3],
+        color_b: [u8; 3],
+        starker: bool,
+        seed: u64,
+    },
+    Fibers {
+        variance: f64,
+        strength: f64,
+        color_a: [u8; 3],
+        color_b: [u8; 3],
+        seed: u64,
+    },
+    LensFlare {
+        brightness: f64,
+        center: (f64, f64),
+        lens: LensType,
+    },
 }
 
 /// Apply `filter` in place (planar 8-bit; channels 3 or 4; alpha untouched).
@@ -335,6 +362,30 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             magnitude,
             seed,
         } => distort::ocean_ripple(buf, *size, *magnitude, *seed),
+        Filter::Clouds {
+            color_a,
+            color_b,
+            starker,
+            seed,
+        } => render::clouds(buf, *color_a, *color_b, *starker, *seed),
+        Filter::DifferenceClouds {
+            color_a,
+            color_b,
+            starker,
+            seed,
+        } => render::difference_clouds(buf, *color_a, *color_b, *starker, *seed),
+        Filter::Fibers {
+            variance,
+            strength,
+            color_a,
+            color_b,
+            seed,
+        } => render::fibers(buf, *variance, *strength, *color_a, *color_b, *seed),
+        Filter::LensFlare {
+            brightness,
+            center,
+            lens,
+        } => render::lens_flare(buf, *brightness, *center, *lens),
     }
 }
 
