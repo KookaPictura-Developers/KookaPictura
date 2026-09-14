@@ -12,6 +12,7 @@
 use pictura_core::PixelBuffer;
 
 pub mod blur;
+pub mod distort;
 pub mod kernel;
 pub mod luma;
 pub mod noise;
@@ -59,6 +60,27 @@ pub enum MezzotintType {
     ShortStrokes,
     MediumStrokes,
     LongStrokes,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpherizeMode {
+    Normal,
+    HorizontalOnly,
+    VerticalOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RippleSize {
+    Small,
+    Medium,
+    Large,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaveType {
+    Sine,
+    Triangle,
+    Square,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +174,29 @@ pub enum Filter {
         max_radius: u32,
         angles: [f64; 4],
     },
+    Twirl {
+        angle: f64,
+    },
+    Pinch {
+        amount: f64,
+    },
+    Spherize {
+        amount: f64,
+        mode: SpherizeMode,
+    },
+    Ripple {
+        amount: f64,
+        size: RippleSize,
+    },
+    Wave {
+        generators: u32,
+        wavelength: (f64, f64),
+        amplitude: (f64, f64),
+        kind: WaveType,
+        scale: (f64, f64),
+        seed: u64,
+        repeat_edge: bool,
+    },
 }
 
 /// Apply `filter` in place (planar 8-bit; channels 3 or 4; alpha untouched).
@@ -220,6 +265,28 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
         Filter::ColorHalftone { max_radius, angles } => {
             pixelate::color_halftone(buf, *max_radius, *angles)
         }
+        Filter::Twirl { angle } => distort::twirl(buf, *angle),
+        Filter::Pinch { amount } => distort::pinch(buf, *amount),
+        Filter::Spherize { amount, mode } => distort::spherize(buf, *amount, *mode),
+        Filter::Ripple { amount, size } => distort::ripple(buf, *amount, *size),
+        Filter::Wave {
+            generators,
+            wavelength,
+            amplitude,
+            kind,
+            scale,
+            seed,
+            repeat_edge,
+        } => distort::wave(
+            buf,
+            *generators,
+            *wavelength,
+            *amplitude,
+            *kind,
+            *scale,
+            *seed,
+            *repeat_edge,
+        ),
     }
 }
 
