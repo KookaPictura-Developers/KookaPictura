@@ -7,6 +7,7 @@ Documentation-first project reimplementing **Adobe Photoshop CS6** (v13) in
 
 ```
 docs/            specification corpus (source of truth for behavior)
+openspec/        OpenSpec change proposals + capability specs
 crates/
   pictura-core/     document/pixel types
   pictura-codec/     image codecs (PSD/PSB first)
@@ -23,10 +24,35 @@ cargo test --workspace
 cargo nextest run --workspace          # preferred when available
 cargo deny check                       # licenses/advisories/bans
 cmake -S . -B build && cmake --build build   # Qt app (M0+)
+openspec validate --all --strict       # validate change proposals + specs
 ```
 
 Toolchain is pinned by `rust-toolchain.toml` (1.98). Qt is the system Qt 6
 (`qmake6 -query QT_VERSION`).
+
+## Spec workflow (OpenSpec)
+
+This project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) to turn work
+into reviewable change proposals before code. `docs/` remains the long-form
+contract; OpenSpec carries the per-change *requirements* and their task list.
+
+- A change lives in `openspec/changes/<kebab-name>/`:
+  `proposal.md` (why / what / capabilities), `design.md` (how),
+  `specs/<capability>/spec.md` (ADDED / MODIFIED / REMOVED requirement deltas),
+  `tasks.md` (implementation checklist).
+- Capabilities are kebab-case names; each becomes `openspec/specs/<capability>/spec.md`
+  once the change is archived. Prefer new capability names over `MODIFIED` unless the
+  requirement itself changes.
+- Commands: `/opsx-explore`, `/opsx-propose`, `/opsx-apply`, `/opsx-archive`
+  (skills in `.opencode/skills/openspec-*`). Artifacts are generated from
+  `openspec instructions <artifact> --change <name> --json`; validate before
+  committing with `openspec validate --all --strict`.
+- Format is strict: `### Requirement:` then `#### Scenario:` (exactly four `#`),
+  normative SHALL/MUST wording, at least one scenario per requirement.
+- Archive a completed change with `openspec archive <name>` to merge its deltas
+  into `openspec/specs/`.
+- The M0–M5 work was built before this workflow was adopted; it is documented
+  retroactively as the `openspec/changes/m0-*` … `m5-*` proposals.
 
 ## Rules
 

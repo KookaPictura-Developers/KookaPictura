@@ -1,0 +1,119 @@
+## ADDED Requirements
+
+### Requirement: Magic Wand
+
+`magic_wand(image, x, y, tolerance, contiguous)` SHALL build a selection from
+the colour at the seed point. A pixel MUST be selected when its per-channel
+maximum absolute difference (Chebyshev distance) from the reference colour is
+less than or equal to `tolerance`. When `contiguous` is true, only pixels
+four-connected to the seed MUST be selected; when false, every matching pixel in
+the image MUST be selected. A seed outside the image, or an empty image, MUST
+return an error.
+
+#### Scenario: Contiguous flood stops at a colour boundary
+
+- **WHEN** the wand is seeded in a red region touching a blue region with a tolerance that excludes blue
+- **THEN** only the connected red pixels are selected
+
+#### Scenario: Global mode selects disconnected matches
+
+- **WHEN** the wand runs non-contiguous on an image with two disconnected identical-coloured patches
+- **THEN** pixels in both patches are selected
+
+#### Scenario: Tolerance rejects distant colours
+
+- **WHEN** a neighbouring pixel differs from the reference colour by more than `tolerance`
+- **THEN** that pixel is not selected
+
+#### Scenario: Out-of-bounds seed errors
+
+- **WHEN** the seed coordinates fall outside the image
+- **THEN** the wand returns an error instead of panicking
+
+### Requirement: Grow
+
+`grow(selection, image, tolerance)` SHALL add pixels adjacent to the current
+selection whose colour is within `tolerance` of the colour of the selected pixel
+they touch, expanding the selection contiguously and never adding disconnected
+regions. The selection and image dimensions MUST match, and a mismatch MUST
+return an error.
+
+#### Scenario: Grow expands within a patch
+
+- **WHEN** a single selected pixel lies inside a uniform patch next to a differently coloured region
+- **THEN** the whole patch becomes selected and the different-coloured region does not
+
+#### Scenario: Grow does not jump globally
+
+- **WHEN** two same-coloured patches are separated by a different colour
+- **THEN** growing from one patch does not select the other
+
+#### Scenario: Size mismatch errors
+
+- **WHEN** the selection and image dimensions differ
+- **THEN** `grow` returns an error
+
+### Requirement: Similar
+
+`similar(selection, image, tolerance)` SHALL add every pixel in the image whose
+colour is within `tolerance` of the colour of any currently selected pixel,
+regardless of adjacency. Selection and image dimensions MUST match, and a
+mismatch MUST return an error.
+
+#### Scenario: Similar reaches disconnected patches
+
+- **WHEN** two same-coloured patches are separated by a different colour and one is selected
+- **THEN** similar selects the other patch as well
+
+#### Scenario: Similar rejects other colours
+
+- **WHEN** a pixel's colour is farther than `tolerance` from every selected colour
+- **THEN** it is not selected
+
+#### Scenario: Size mismatch errors
+
+- **WHEN** the selection and image dimensions differ
+- **THEN** `similar` returns an error
+
+### Requirement: Color Range
+
+`color_range(image, target, fuzziness)` SHALL produce soft coverage from a
+colour and a fuzziness value. For a pixel at Chebyshev distance `d` from
+`target`, coverage MUST be 255 when `d` is 0, 0 when `d` is greater than or
+equal to `fuzziness`, and otherwise `round((1 - d / fuzziness) * 255)`. A
+fuzziness of 0 MUST select exact colour matches only. Increasing fuzziness MUST
+never shrink the selected set.
+
+#### Scenario: Exact match at zero fuzziness
+
+- **WHEN** `fuzziness` is 0
+- **THEN** only pixels equal to the target colour receive non-zero coverage
+
+#### Scenario: Wider fuzziness never shrinks the set
+
+- **WHEN** fuzziness increases across a series of values
+- **THEN** the count of non-zero pixels is non-decreasing
+
+#### Scenario: Soft ramp at intermediate distances
+
+- **WHEN** a pixel lies closer to the target than the fuzziness value but does not match it exactly
+- **THEN** its coverage is strictly between 0 and 255
+
+### Requirement: Save and load to an alpha channel
+
+The system SHALL convert a selection to an 8-bit grayscale alpha `Channel`
+(`to_channel(id)`) by copying the coverage bytes, and SHALL reconstruct a
+selection from a channel (`from_channel(channel, width, height)`) when the
+channel length equals `width * height`. A save followed by a load MUST round-trip
+byte for byte and MUST preserve the channel id. A channel whose length does not
+match MUST return an error.
+
+#### Scenario: Round trip is exact
+
+- **WHEN** a selection is saved to a channel and loaded back at the same dimensions
+- **THEN** the reloaded selection equals the original byte for byte and the channel id is preserved
+
+#### Scenario: Wrong-length channel errors
+
+- **WHEN** the channel byte count is not `width * height`
+- **THEN** loading returns an error
