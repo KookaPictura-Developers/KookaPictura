@@ -814,6 +814,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pictura-ops"
+version = "0.0.0"
+dependencies = [
+ "pictura-core",
+ "pictura-testkit",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "pictura-render"
 version = "0.0.0"
 dependencies = [
