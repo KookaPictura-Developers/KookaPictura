@@ -718,6 +718,13 @@ name = "pictura-core"
 version = "0.0.0"
 
 [[package]]
+name = "pictura-render"
+version = "0.0.0"
+dependencies = [
+ "pictura-core",
+]
+
+[[package]]
 name = "pictura-testkit"
 version = "0.0.0"
 
