@@ -77,23 +77,29 @@ The system SHALL extend `scripts/ops_oracle.py` with an ImageMagick `-extent
 <W>x<H> -gravity <gravity>` operator and diff `resize_canvas` against it in
 `crates/pictura-ops/tests/oracle.rs`. The mapping SHALL map each `Anchor` to its
 ImageMagick gravity (`Center`, `NorthWest`, `North`, `NorthEast`, `West`, `East`,
-`SouthWest`, `South`, `SouthEast`), and the measured maximum and mean per-sample
-delta SHALL be recorded. Growth SHALL be diffed with the matching background
-color; shrinkage SHALL be diffed as the gravity-aligned crop. Because
-ImageMagick fills transparent area differently, the differential test SHALL use
-the tolerance justified by the measured delta and classify any unmatchable case
-as no-equivalent with the observed delta recorded. The tests SHALL skip with a
-message when `magick` is absent and MUST NOT be marked `#[ignore]`.
+`SouthWest`, `South`, `SouthEast`). The differential SHALL use only 3-channel
+buffers, where the mapping is exact (measured max delta 0) for every anchor on
+both grow and shrink; growth SHALL be diffed with the matching background color
+and shrinkage as the gravity-aligned crop. A 4-channel buffer SHALL NOT be part
+of the differential because ImageMagick's `-extent` composites and rounds the
+background alpha differently (measured deltas 17–189); the alpha fill contract
+shall instead be covered by the `src/canvas.rs` unit tests. The tests SHALL skip
+with a message when `magick` is absent and MUST NOT be marked `#[ignore]`.
 
 #### Scenario: Anchor maps to an ImageMagick gravity row
 
 - **WHEN** the oracle mapping table is checked
 - **THEN** all nine `Anchor` variants have a row naming the matching gravity and a tolerance justified by the measured delta
 
-#### Scenario: A centered growth matches the oracle
+#### Scenario: A centered 3-channel growth matches the oracle
 
-- **WHEN** a buffer is grown with `Anchor::Center` and ImageMagick extends the same image with `-gravity center`
-- **THEN** no sample differs by more than the recorded tolerance
+- **WHEN** a 3-channel buffer is grown with `Anchor::Center` and ImageMagick extends the same image with `-gravity center`
+- **THEN** no sample differs by more than the recorded tolerance (measured max delta 0)
+
+#### Scenario: Alpha fill is covered by unit tests, not the differential
+
+- **WHEN** the oracle mapping is checked for 4-channel buffers
+- **THEN** the differential is documented as 3-channel-only because ImageMagick composites and rounds the background alpha differently, and the alpha fill is asserted by the `canvas.rs` unit tests
 
 #### Scenario: Missing ImageMagick skips cleanly
 

@@ -53,11 +53,16 @@ The system SHALL provide `pictura_ops::resize(buf: &PixelBuffer, width: u32, hei
 The system SHALL ship `scripts/ops_oracle.py`, which applies an ImageMagick
 resize operator to a raw 8-bit image, and `crates/pictura-ops/tests/oracle.rs`,
 which diffs `resize` against it. The mapping SHALL map `Resample::Nearest` to
-ImageMagick point sampling, `Resample::Bilinear` to triangle filtering, and
-`Resample::Bicubic` to Catmull-Rom filtering, and SHALL record the measured
-maximum and mean per-sample delta for each. Because ImageMagick's edge and phase
-handling need not match Adobe's closed kernels, the differential test SHALL use
-the tolerance justified by the measured delta, and any method that cannot be
+ImageMagick `-filter point`, `Resample::Bilinear` to `-filter triangle`, and
+`Resample::Bicubic` to `-filter catrom`, and SHALL record the measured maximum
+and mean per-sample delta for each. Nearest SHALL match `-filter point` exactly;
+Bilinear SHALL match `-filter triangle` exactly on upscale, while downscale is
+no-equivalent because ImageMagick widens the filter support (anti-aliases) and
+Pictura samples a fixed footprint. Bicubic SHALL use tolerance 1 against
+`-filter catrom`; ImageMagick's `-filter cubic` is a B-spline that diverges, so
+it is not the faithful operator. Because ImageMagick's edge and phase handling
+need not match Adobe's closed kernels, the differential test SHALL use the
+tolerance justified by the measured delta, and any method or scale that cannot be
 matched SHALL be classified no-equivalent with the observed delta recorded. The
 differential tests SHALL skip with a message when `magick` is not on `PATH` and
 MUST NOT be marked `#[ignore]`.
@@ -66,6 +71,16 @@ MUST NOT be marked `#[ignore]`.
 
 - **WHEN** the oracle mapping table is checked
 - **THEN** `Nearest`, `Bilinear`, and `Bicubic` each have a row naming the ImageMagick operator, a tolerance justified by the measured delta, and a non-empty note
+
+#### Scenario: Bicubic maps to Catmull-Rom, not cubic
+
+- **WHEN** the Bicubic mapping row is checked
+- **THEN** it names `-filter catrom` with tolerance 1 and notes that `-filter cubic` is a B-spline that diverges (measured max delta 48)
+
+#### Scenario: Downscaled Bilinear is classified no-equivalent
+
+- **WHEN** `Resample::Bilinear` is compared with `-filter triangle` at a scale below 1
+- **THEN** the observed delta is recorded as no-equivalent rather than asserted equal, because ImageMagick anti-aliases by widening the kernel
 
 #### Scenario: Missing ImageMagick skips cleanly
 

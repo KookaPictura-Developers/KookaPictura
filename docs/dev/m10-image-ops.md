@@ -76,12 +76,26 @@ Semantics (planar 8-bit, per-channel, clamp-to-edge, no panics):
 
 ImageMagick, on CPU, fixed inputs; measure and record which operator maps to
 which variant:
-- `-filter point -resize WxH` and `-filter triangle -resize WxH` and
-  `-filter cubic -resize WxH` — classify against Nearest / Bilinear / Bicubic.
-- `-background <c> -gravity <anchor> -extent WxH` — canvas grow/shrink.
-- `-rotate 90` / `-rotate 180` / `-rotate 270` — exact; must be bit-identical.
-- `-flop` / `-flip` — exact; must be bit-identical.
-- `-rotate <angle>` — arbitrary; differential tolerance measured, kernel TBD.
+- `-filter point -resize WxH!` ↔ `Resample::Nearest` — exact (max delta 0 on the
+  16→32 upscale).
+- `-filter triangle -resize WxH!` ↔ `Resample::Bilinear` — exact on upscale;
+  downscale is no-equivalent because ImageMagick widens the kernel to anti-alias
+  (16→8 measures 37).
+- `-filter catrom -resize WxH!` ↔ `Resample::Bicubic` — tolerance 1; ImageMagick
+  `-filter cubic` is a B-spline and measures 48, so `catrom` is the faithful
+  operator.
+- `-background 'rgba(r,g,b,a)' -gravity <anchor> -extent WxH` ↔ `resize_canvas`
+  — exact for all nine anchors on 3-channel buffers (grow and shrink, max delta
+  0). A 4-channel buffer diverges (ImageMagick composites/rounds the background
+  alpha differently, 17–189), so the differential is 3-channel-only and alpha is
+  covered by the `src/canvas.rs` unit tests.
+- `-rotate 90` / `-rotate 270` / `-rotate 180` ↔ `rotate90_cw` / `rotate90_ccw` /
+  `rotate180` — exact (max delta 0), as are `-flop` / `-flip` for the flips.
+- `-filter triangle -rotate <angle> -background <color>` ↔ `rotate_arbitrary` —
+  matched only on the central region (max 8, mean 0.6 at 30°): ImageMagick pads
+  the bounding box by one row/column per side and its bbox parity shifts the
+  centre by half a pixel. At some angles (45°, max 132) there is no faithful
+  alignment, recorded as no-equivalent.
 
 No faithful operator for a case ⇒ record the observed delta as no-equivalent.
 

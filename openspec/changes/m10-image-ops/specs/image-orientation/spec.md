@@ -66,25 +66,30 @@ The system SHALL provide `pictura_ops::rotate_arbitrary(buf: &PixelBuffer, angle
 
 ### Requirement: Orientation oracle: exact for right angles, measured for arbitrary
 
-The system SHALL validate the exact remaps bit-for-bit against independently
-computed index remaps in `crates/pictura-ops/tests/oracle.rs` and SHALL diff
-`rotate_arbitrary` against ImageMagick `-rotate <angle> -background <color>`
-using `scripts/ops_oracle.py`. Right-angle rotations and the flips SHALL be
-required to match exactly (zero-tolerance, bit-identical), while `rotate_arbitrary`
-SHALL use the tolerance justified by the measured maximum and mean per-sample
-delta, which SHALL be recorded. An unmatchable arbitrary-rotation case SHALL be
-classified no-equivalent with the observed delta recorded. The tests SHALL skip
-with a message when `magick` is absent and MUST NOT be marked `#[ignore]`.
+The system SHALL diff the exact remaps against ImageMagick in
+`crates/pictura-ops/tests/oracle.rs`: `rotate90_cw`/`rotate90_ccw` against
+`-rotate 90`/`-rotate 270`, `rotate180` against `-rotate 180`, and
+`flip_horizontal`/`flip_vertical` against `-flop`/`-flip`, all required to match
+exactly (zero-tolerance, bit-identical). The `rotate_arbitrary` case SHALL be
+diffed against ImageMagick `-filter triangle -rotate <angle> -background <color>`
+using `scripts/ops_oracle.py` on the **central region only**, because
+ImageMagick pads the rotated bounding box by one row/column per side and its
+bounding-box parity shifts the centre by half a pixel; the tolerance SHALL be
+justified by the measured maximum and mean per-sample delta, which SHALL be
+recorded. An angle whose alignment diverges beyond the recorded tolerance SHALL
+be classified no-equivalent with the observed delta recorded (45° measures max
+132 and has no faithful alignment). The tests SHALL skip with a message when
+`magick` is absent and MUST NOT be marked `#[ignore]`.
 
-#### Scenario: Right-angle remaps match exactly
+#### Scenario: Right-angle rotations and flips match ImageMagick exactly
 
-- **WHEN** the exact remaps are compared with hand-computed index remaps
+- **WHEN** `rotate90_cw`/`rotate90_ccw` are compared with `-rotate 90`/`-rotate 270`, `rotate180` with `-rotate 180`, and `flip_horizontal`/`flip_vertical` with `-flop`/`-flip`
 - **THEN** no sample differs (zero tolerance)
 
-#### Scenario: Arbitrary rotation records a measured delta
+#### Scenario: Arbitrary rotation is compared on the central region
 
-- **WHEN** `rotate_arbitrary` is diffed against ImageMagick `-rotate` at the same angle and background
-- **THEN** the result is within the recorded measured tolerance, or the case is classified no-equivalent with the observed delta recorded
+- **WHEN** `rotate_arbitrary` at 30° is diffed against ImageMagick `-rotate 30` on the central 12×12 region
+- **THEN** the result is within the recorded measured tolerance (max 8, mean 0.6), while an angle like 45° is classified no-equivalent with its observed delta recorded
 
 #### Scenario: Missing ImageMagick skips cleanly
 
