@@ -83,6 +83,25 @@ pub enum WaveType {
     Square,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PolarKind {
+    RectangularToPolar,
+    PolarToRectangular,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShearFill {
+    WrapAround,
+    RepeatEdgePixels,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZigZagStyle {
+    AroundCenter,
+    OutFromCenter,
+    PondRipples,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Filter {
     GaussianBlur {
@@ -197,6 +216,23 @@ pub enum Filter {
         seed: u64,
         repeat_edge: bool,
     },
+    PolarCoordinates {
+        kind: PolarKind,
+    },
+    Shear {
+        curve: Vec<(f64, f64)>,
+        fill: ShearFill,
+    },
+    ZigZag {
+        amount: f64,
+        ridges: u32,
+        style: ZigZagStyle,
+    },
+    OceanRipple {
+        size: u32,
+        magnitude: u32,
+        seed: u64,
+    },
 }
 
 /// Apply `filter` in place (planar 8-bit; channels 3 or 4; alpha untouched).
@@ -287,6 +323,18 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             *seed,
             *repeat_edge,
         ),
+        Filter::PolarCoordinates { kind } => distort::polar_coordinates(buf, *kind),
+        Filter::Shear { curve, fill } => distort::shear(buf, curve, *fill),
+        Filter::ZigZag {
+            amount,
+            ridges,
+            style,
+        } => distort::zigzag(buf, *amount, *ridges, *style),
+        Filter::OceanRipple {
+            size,
+            magnitude,
+            seed,
+        } => distort::ocean_ripple(buf, *size, *magnitude, *seed),
     }
 }
 
