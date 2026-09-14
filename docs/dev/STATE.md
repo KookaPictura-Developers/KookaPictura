@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **382 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M13 archived; canonical specs are
-  in `openspec/specs/` (33 capabilities, `validate --all --strict`
+- Test suite: **388 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M14 archived; canonical specs are
+  in `openspec/specs/` (34 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 
 ## Commands
@@ -110,6 +110,13 @@ openspec validate --all --strict
   (exact remap + rejection + selection-clear assertions, exit codes 19–21).
   `pictura-render` re-exports `Anchor`/`Resample`. OpenSpec change
   `m13-image-ops-ui` (capability `image-ops-app-ui`), archived.
+- **M14** — Undo/Redo: snapshot history in `crates/pictura-app/src/history.rs`
+  (two-stack, depth 20 = CS6 default, doc+selection clones); capture wired
+  into all eleven mutating commands (pre-state clone on success only);
+  `open()` resets. `PictureView::undo`/`redo`/`can_undo`/`can_redo`/
+  `history_depth`; dock buttons + Ctrl+Z/Ctrl+Y; self-test proves bit-exact
+  undo/redo, redo invalidation, open reset (exit codes 22/23).
+  OpenSpec change `m14-undo-history` (capability `edit-history`), archived.
 
 ## Spec workflow (OpenSpec)
 
@@ -132,19 +139,18 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M14 (propose via OpenSpec first)
+## Next: M15 (propose via OpenSpec first)
 
-M13 is archived; its `image-ops-app-ui` delta lives in `openspec/specs/`.
-Candidate next areas: undo/history, image modes/bit-depth, the remaining
-filter families (Render, Liquify, Blur Gallery, Camera Raw), or a different
-spec area (`docs/07-color-painting`, `docs/03-tools`, `docs/09-automation`).
-The M13 app commands are dialog-less dock controls; a full Image Size dialog
-(percent scaling, preview) is a candidate app polish item.
+M14 is archived; its `edit-history` delta lives in `openspec/specs/`.
+Candidate next areas: image modes/bit-depth, the remaining filter families
+(Render, Liquify, Blur Gallery, Camera Raw), a different spec area
+(`docs/07-color-painting`, `docs/03-tools`, `docs/09-automation`), or app
+polish (full Image Size dialog with percent scaling/preview, History palette
+with labeled states).
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6/M6-C/M7/M8/M9/M10/M11/M12 are archived; their deltas now live in
-`openspec/specs/`.
+M6 through M14 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 

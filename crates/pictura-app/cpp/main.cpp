@@ -4,8 +4,10 @@
 #include <QtCore/QSet>
 #include <QtCore/QTimer>
 #include <QtGui/QImage>
+#include <QtGui/QKeySequence>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
+#include <QtGui/QShortcut>
 #include <QtGui/QWheelEvent>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
@@ -301,6 +303,14 @@ int main(int argc, char* argv[])
     orientationRow->addWidget(flipVerticalButton);
     panelLayout->addLayout(orientationRow);
 
+    // History: undo/redo step through the states captured by mutating ops.
+    auto* undoButton = new QPushButton(QStringLiteral("Undo"), panel);
+    auto* redoButton = new QPushButton(QStringLiteral("Redo"), panel);
+    auto* historyRow = new QHBoxLayout();
+    historyRow->addWidget(undoButton);
+    historyRow->addWidget(redoButton);
+    panelLayout->addLayout(historyRow);
+
     dock->setWidget(panel);
     mainWindow.addDockWidget(Qt::RightDockWidgetArea, dock);
 
@@ -319,6 +329,8 @@ int main(int argc, char* argv[])
         window->setImage(view.image());
         selectionLabel->setText(
             QStringLiteral("Selection: %1 px").arg(view.selection_count()));
+        undoButton->setEnabled(view.can_undo());
+        redoButton->setEnabled(view.can_redo());
     };
 
     QObject::connect(layerList, &QListWidget::itemChanged, &mainWindow, [&](QListWidgetItem* item) {
@@ -390,6 +402,22 @@ int main(int argc, char* argv[])
             refresh();
         }
     });
+    const auto doUndo = [&]() {
+        if (view.undo()) {
+            refresh();
+        }
+    };
+    const auto doRedo = [&]() {
+        if (view.redo()) {
+            refresh();
+        }
+    };
+    QObject::connect(undoButton, &QPushButton::clicked, &mainWindow, doUndo);
+    QObject::connect(redoButton, &QPushButton::clicked, &mainWindow, doRedo);
+    auto* undoShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Z), &mainWindow);
+    QObject::connect(undoShortcut, &QShortcut::activated, &mainWindow, doUndo);
+    auto* redoShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Y), &mainWindow);
+    QObject::connect(redoShortcut, &QShortcut::activated, &mainWindow, doRedo);
     QObject::connect(&view, &pictura::PictureView::changed, &mainWindow, [&]() { refresh(); });
 
     refresh();
@@ -722,6 +750,58 @@ int main(int argc, char* argv[])
                 || qAlpha(grownImg.pixel(0, 0)) != 0 || qAlpha(grownImg.pixel(1, 1)) != 0) {
                 std::fprintf(stderr, "pictura self-test: FAIL: canvas growth wrong\n");
                 return 21;
+            }
+
+            // M14: mutating ops capture history; undo/redo must round-trip the
+            // pixels bit-exactly.
+            const QImage preUndo = view.image();
+            const int depthBefore = view.history_depth();
+            const bool historyRotated = view.rotate_doc(1);
+            const int depthAfterRotate = view.history_depth();
+            const bool rotatedCanUndo = view.can_undo();
+            const QImage postRotate = view.image();
+            const bool undone = view.undo();
+            const bool undoIdentical = view.image() == preUndo;
+            const bool redone = view.redo();
+            const bool redoIdentical = view.image() == postRotate;
+            std::fprintf(stderr,
+                         "pictura self-test: history rotate=%d depth=%d undo=%d "
+                         "undo_ident=%d redo=%d redo_ident=%d\n",
+                         historyRotated ? 1 : 0,
+                         depthAfterRotate,
+                         undone ? 1 : 0,
+                         undoIdentical ? 1 : 0,
+                         redone ? 1 : 0,
+                         redoIdentical ? 1 : 0);
+            std::fflush(stderr);
+            if (!historyRotated || depthAfterRotate != depthBefore + 1
+                || !rotatedCanUndo || postRotate.width() != 12
+                || postRotate.height() != 10 || !undone || !undoIdentical
+                || !redone || !redoIdentical) {
+                std::fprintf(stderr, "pictura self-test: FAIL: undo/redo round-trip wrong\n");
+                return 22;
+            }
+
+            // M14: a fresh op invalidates redo; reopening the fixture resets
+            // history and an empty-stack undo fails without touching pixels.
+            const bool flipped = view.flip_doc(true);
+            const bool redoInvalidated = flipped && !view.can_redo();
+            const bool reopened = view.open(psdPath);
+            const QImage reopenedImg = view.image();
+            const bool noUndoAfterOpen = !view.can_undo();
+            const bool boundaryUndone = view.undo();
+            const bool boundaryIdentical = view.image() == reopenedImg;
+            const bool openReset = reopened && noUndoAfterOpen && boundaryIdentical;
+            std::fprintf(stderr,
+                         "pictura self-test: history redo_invalid=%d open_reset=%d "
+                         "boundary_undo=%d\n",
+                         redoInvalidated ? 1 : 0,
+                         openReset ? 1 : 0,
+                         boundaryUndone ? 1 : 0);
+            std::fflush(stderr);
+            if (!redoInvalidated || !openReset || boundaryUndone) {
+                std::fprintf(stderr, "pictura self-test: FAIL: history invalidation wrong\n");
+                return 23;
             }
         }
         const QPointF center(window->width() / 2.0, window->height() / 2.0);
