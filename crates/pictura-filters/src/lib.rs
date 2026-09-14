@@ -15,7 +15,9 @@ pub mod blur;
 pub mod kernel;
 pub mod luma;
 pub mod noise;
+pub mod other;
 pub mod sharpen;
+pub mod stylize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FilterError {
@@ -86,6 +88,33 @@ pub enum Filter {
         radius: u32,
     },
     Despeckle,
+    Maximum {
+        radius: u32,
+    },
+    Minimum {
+        radius: u32,
+    },
+    Offset {
+        horizontal: i32,
+        vertical: i32,
+        wrap: bool,
+        background: [u8; 3],
+    },
+    HighPass {
+        radius: f64,
+    },
+    Custom {
+        kernel: [[f64; 5]; 5],
+        scale: f64,
+        offset: f64,
+    },
+    Emboss {
+        angle: f64,
+        height: f64,
+        amount: f64,
+    },
+    FindEdges,
+    Solarize,
 }
 
 /// Apply `filter` in place (planar 8-bit; channels 3 or 4; alpha untouched).
@@ -120,6 +149,27 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
         } => noise::add(buf, *amount, *distribution, *monochromatic, *seed),
         Filter::Median { radius } => noise::median(buf, *radius),
         Filter::Despeckle => noise::despeckle(buf),
+        Filter::Maximum { radius } => other::maximum(buf, *radius),
+        Filter::Minimum { radius } => other::minimum(buf, *radius),
+        Filter::Offset {
+            horizontal,
+            vertical,
+            wrap,
+            background,
+        } => other::offset(buf, *horizontal, *vertical, *wrap, *background),
+        Filter::HighPass { radius } => other::high_pass(buf, *radius),
+        Filter::Custom {
+            kernel,
+            scale,
+            offset,
+        } => other::custom(buf, kernel, *scale, *offset),
+        Filter::Emboss {
+            angle,
+            height,
+            amount,
+        } => stylize::emboss(buf, *angle, *height, *amount),
+        Filter::FindEdges => stylize::find_edges(buf),
+        Filter::Solarize => stylize::solarize(buf),
     }
 }
 
