@@ -33,6 +33,9 @@ use pictura_core::{AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelB
 pub mod gpu;
 pub use gpu::{composite_gpu, composite_gpu_or_cpu, GpuError};
 
+mod filter;
+pub use filter::apply_filter;
+
 /// Composite the document's layer stack.
 ///
 /// Returns a 4-channel (R,G,B,A) planar, straight-alpha, 8-bit buffer at
@@ -446,7 +449,7 @@ fn blend_into(canvas: &mut Canvas, layer: &Layer, x: usize, y: usize, cs: [f32; 
     };
 }
 
-fn channel(layer: &Layer, id: i16) -> Option<&[u8]> {
+pub(crate) fn channel(layer: &Layer, id: i16) -> Option<&[u8]> {
     layer
         .channels
         .iter()

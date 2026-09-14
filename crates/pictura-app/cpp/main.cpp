@@ -187,6 +187,21 @@ int main(int argc, char* argv[])
     panelLayout->addWidget(addButton);
     panelLayout->addWidget(removeButton);
 
+    auto* filterCombo = new QComboBox(panel);
+    filterCombo->addItem(QStringLiteral("Gaussian Blur"), QStringLiteral("gaussian-blur"));
+    filterCombo->addItem(QStringLiteral("Box Blur"), QStringLiteral("box-blur"));
+    filterCombo->addItem(QStringLiteral("Motion Blur"), QStringLiteral("motion-blur"));
+    filterCombo->addItem(QStringLiteral("Median"), QStringLiteral("median"));
+    filterCombo->addItem(QStringLiteral("Despeckle"), QStringLiteral("despeckle"));
+    filterCombo->addItem(QStringLiteral("Sharpen"), QStringLiteral("sharpen"));
+    filterCombo->addItem(QStringLiteral("Sharpen More"), QStringLiteral("sharpen-more"));
+    filterCombo->addItem(QStringLiteral("Unsharp Mask"), QStringLiteral("unsharp-mask"));
+    filterCombo->addItem(QStringLiteral("Add Noise"), QStringLiteral("add-noise"));
+    panelLayout->addWidget(filterCombo);
+
+    auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);
+    panelLayout->addWidget(applyFilterButton);
+
     // Selection controls: the active selection masks any adjustment added next.
     auto* selectAllButton = new QPushButton(QStringLiteral("Select all"), panel);
     auto* wandButton = new QPushButton(QStringLiteral("Magic wand (center)"), panel);
@@ -231,6 +246,11 @@ int main(int argc, char* argv[])
     QObject::connect(removeButton, &QPushButton::clicked, &mainWindow, [&]() {
         view.remove_layer(layerList->currentRow());
         refresh();
+    });
+    QObject::connect(applyFilterButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.apply_filter(filterCombo->currentData().toString())) {
+            refresh();
+        }
     });
     QObject::connect(selectAllButton, &QPushButton::clicked, &mainWindow, [&]() {
         view.select_all();
@@ -449,6 +469,55 @@ int main(int argc, char* argv[])
                              "pictura self-test: FAIL: visibility toggle did not change output\n");
                 return 13;
             }
+
+            // M6-C: a filter must confine its change to the active selection.
+            // The topmost pixel layer is the bottom-right blue quadrant; wand
+            // that quadrant, apply the fixed-seed Add Noise, and require the
+            // selected quadrant to change while the rest is bit-identical.
+            view.deselect();
+            const bool filterWand = view.magic_wand(6, 6, 10);
+            const bool filterSelected = view.has_selection();
+            const int filterSelectedPx = view.selection_count();
+            std::fprintf(stderr,
+                         "pictura self-test: filter_wand=%d selected_px=%d\n",
+                         filterWand ? 1 : 0,
+                         filterSelectedPx);
+            std::fflush(stderr);
+            if (!filterWand || !filterSelected || filterSelectedPx <= 0
+                || filterSelectedPx >= view.image().width() * view.image().height()) {
+                std::fprintf(stderr, "pictura self-test: FAIL: filter selection wrong\n");
+                return 17;
+            }
+            const QImage filterBefore = view.image();
+            const bool filtered = view.apply_filter(QStringLiteral("add-noise"));
+            const QImage filterAfter = view.image();
+            int insideChanged = 0;
+            int outsideChanged = 0;
+            for (int y = 0; y < filterAfter.height(); ++y) {
+                for (int x = 0; x < filterAfter.width(); ++x) {
+                    const bool inside = x >= 4 && x < 8 && y >= 4 && y < 8;
+                    if (filterAfter.pixel(x, y) == filterBefore.pixel(x, y)) {
+                        continue;
+                    }
+                    if (inside) {
+                        ++insideChanged;
+                    } else {
+                        ++outsideChanged;
+                    }
+                }
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: filter_change=%d changed_inside=%d "
+                         "changed_outside=%d\n",
+                         filtered ? 1 : 0,
+                         insideChanged,
+                         outsideChanged);
+            std::fflush(stderr);
+            if (!filtered || insideChanged == 0 || outsideChanged != 0) {
+                std::fprintf(stderr, "pictura self-test: FAIL: filter not confined\n");
+                return 18;
+            }
+            view.deselect();
         }
         const QPointF center(window->width() / 2.0, window->height() / 2.0);
         window->zoomAt(center, 120);

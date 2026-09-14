@@ -86,6 +86,13 @@ pub mod qobject {
         #[qinvokable]
         fn add_adjustment(self: Pin<&mut Self>, kind: &QString) -> bool;
 
+        /// Apply a destructive filter `kind` to the topmost pixel layer,
+        /// confined by the active selection, then recomposite and emit
+        /// [`changed`]. Returns false without a document, for an unknown kind,
+        /// or when there is no pixel layer.
+        #[qinvokable]
+        fn apply_filter(self: Pin<&mut Self>, kind: &QString) -> bool;
+
         /// Remove layer `i`, recomposite, and emit [`changed`].
         #[qinvokable]
         fn remove_layer(self: Pin<&mut Self>, i: i32);
@@ -274,6 +281,35 @@ impl qobject::PictureView {
         pushed
     }
 
+    pub fn apply_filter(mut self: Pin<&mut Self>, kind: &QString) -> bool {
+        let Some(filter) = filter_from_kind(&kind.to_string()) else {
+            return false;
+        };
+        let mask = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            rust.selection
+                .as_ref()
+                .map(|selection| selection_to_mask(selection, doc))
+        };
+        let applied = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            let Some(layer) = topmost_pixel_layer(doc) else {
+                return false;
+            };
+            pictura_render::apply_filter(layer, &filter, mask.as_ref()).is_ok()
+        };
+        if applied {
+            self.recomposite();
+        }
+        applied
+    }
+
     pub fn remove_layer(mut self: Pin<&mut Self>, i: i32) {
         let removed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
             let idx = i as usize;
@@ -407,6 +443,48 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
         children: Vec::new(),
         is_group: false,
     })
+}
+
+/// Map a filter `kind` to its [`pictura_filters::Filter`], or `None` unknown.
+///
+/// Defaults are chosen so a fresh apply visibly changes a non-trivial image;
+/// filter dialogs are out of scope for M6-C.
+fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
+    use pictura_filters::{Filter, NoiseDistribution};
+
+    Some(match kind {
+        "gaussian-blur" => Filter::GaussianBlur { radius: 5.0 },
+        "box-blur" => Filter::BoxBlur { radius: 3 },
+        "motion-blur" => Filter::MotionBlur {
+            angle: 0.0,
+            distance: 15,
+        },
+        "median" => Filter::Median { radius: 2 },
+        "despeckle" => Filter::Despeckle,
+        "sharpen" => Filter::Sharpen,
+        "sharpen-more" => Filter::SharpenMore,
+        "unsharp-mask" => Filter::UnsharpMask {
+            amount: 150.0,
+            radius: 1.0,
+            threshold: 0,
+        },
+        "add-noise" => Filter::AddNoise {
+            amount: 25.0,
+            distribution: NoiseDistribution::Uniform,
+            monochromatic: false,
+            seed: 1,
+        },
+        _ => return None,
+    })
+}
+
+/// The topmost pixel layer: the last layer (bottom-first order) that is
+/// neither a group nor an adjustment.
+fn topmost_pixel_layer(doc: &mut Document) -> Option<&mut Layer> {
+    doc.layers
+        .iter_mut()
+        .rev()
+        .find(|l| l.adjustment.is_none() && !l.is_group)
 }
 
 /// A full-frame raster mask whose coverage is the selection.
@@ -688,5 +766,92 @@ mod tests {
     #[test]
     fn test_image_is_not_null() {
         assert!(!test_image().is_null());
+    }
+
+    #[test]
+    fn filter_from_kind_maps_known_and_rejects_unknown() {
+        use pictura_filters::{Filter, NoiseDistribution};
+
+        assert_eq!(
+            filter_from_kind("gaussian-blur"),
+            Some(Filter::GaussianBlur { radius: 5.0 })
+        );
+        assert_eq!(
+            filter_from_kind("box-blur"),
+            Some(Filter::BoxBlur { radius: 3 })
+        );
+        assert_eq!(
+            filter_from_kind("motion-blur"),
+            Some(Filter::MotionBlur {
+                angle: 0.0,
+                distance: 15,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("median"),
+            Some(Filter::Median { radius: 2 })
+        );
+        assert_eq!(filter_from_kind("despeckle"), Some(Filter::Despeckle));
+        assert_eq!(filter_from_kind("sharpen"), Some(Filter::Sharpen));
+        assert_eq!(filter_from_kind("sharpen-more"), Some(Filter::SharpenMore));
+        assert_eq!(
+            filter_from_kind("unsharp-mask"),
+            Some(Filter::UnsharpMask {
+                amount: 150.0,
+                radius: 1.0,
+                threshold: 0,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("add-noise"),
+            Some(Filter::AddNoise {
+                amount: 25.0,
+                distribution: NoiseDistribution::Uniform,
+                monochromatic: false,
+                seed: 1,
+            })
+        );
+        assert_eq!(filter_from_kind("bogus"), None);
+    }
+
+    #[test]
+    fn filter_confines_to_selection_and_skips_adjustment_layer() {
+        let mut doc = Document::new(8, 1, ColorMode::Rgb, BitDepth::Eight);
+        let mut base = pixel_layer("base", 8, 1, (40, 40, 40));
+        for ch in base.channels.iter_mut().filter(|c| c.id >= 0) {
+            ch.data = (0..8).map(|x| if x < 4 { 40u8 } else { 200 }).collect();
+        }
+        // A topmost adjustment must be skipped in favour of the pixel layer.
+        doc.layers = vec![base, adjustment_layer("invert", None).expect("known kind")];
+
+        let selection = Selection {
+            width: 8,
+            height: 1,
+            data: vec![255, 255, 255, 0, 0, 0, 0, 0],
+        };
+        let mask = selection_to_mask(&selection, &doc);
+        let layer = topmost_pixel_layer(&mut doc).expect("pixel layer");
+        assert_eq!(layer.name, "base");
+        let before = layer
+            .channels
+            .iter()
+            .find(|c| c.id == 0)
+            .expect("red channel")
+            .data
+            .clone();
+
+        pictura_render::apply_filter(
+            layer,
+            &filter_from_kind("gaussian-blur").expect("known kind"),
+            Some(&mask),
+        )
+        .expect("filter applies");
+
+        let after = &layer.channels.iter().find(|c| c.id == 0).unwrap().data;
+        assert!(
+            after[..4].iter().zip(&before[..4]).any(|(a, b)| a != b),
+            "selected pixels should change"
+        );
+        assert_eq!(&after[4..], &before[4..], "unselected pixels changed");
     }
 }

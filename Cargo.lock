@@ -819,6 +819,7 @@ version = "0.0.0"
 dependencies = [
  "pictura-adjust",
  "pictura-core",
+ "pictura-filters",
  "pictura-testkit",
  "pollster",
  "wgpu",
@@ -847,6 +848,7 @@ dependencies = [
  "cxx-qt-lib",
  "pictura-codec",
  "pictura-core",
+ "pictura-filters",
  "pictura-render",
  "pictura-select",
  "pollster",
