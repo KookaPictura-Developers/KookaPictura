@@ -30,7 +30,7 @@ For 4-channel buffers, every noise filter SHALL leave channel 4 bit-identical. O
 
 ### Requirement: Add Noise
 
-The system SHALL implement `Filter::AddNoise { amount: f64, distribution: NoiseDistribution, monochromatic: bool, seed: u64 }`. For `NoiseDistribution::Uniform` it SHALL add a delta drawn uniformly from `[−amount, +amount]`; for `NoiseDistribution::Gaussian` it SHALL add a zero-mean Gaussian `N(0, σ)` delta with σ proportional to `amount`. `amount` SHALL span `0.1..=400.0` percent and values outside that range SHALL be rejected with `FilterError::InvalidParams`; `amount == 0` SHALL be a no-op. When `monochromatic` is true it SHALL draw one delta per pixel and apply it to all three color channels, preserving hue; otherwise it SHALL draw a delta per channel, producing colored speckle. The deltas SHALL come from a seeded RNG driven by `seed`. Oracle expectation: no faithful ImageMagick equivalent exists (RNG streams differ), so statistical tests cover the distribution shape and same-seed tests cover reproducibility, and the divergence is documented.
+The system SHALL implement `Filter::AddNoise { amount: f64, distribution: NoiseDistribution, monochromatic: bool, seed: u64 }`. For `NoiseDistribution::Uniform` it SHALL add a delta drawn uniformly from `[−amount, +amount]`; for `NoiseDistribution::Gaussian` it SHALL add a zero-mean Gaussian `N(0, σ)` delta with σ proportional to `amount`. `amount` SHALL be a finite percentage in `0..=400`; `amount == 0` SHALL be a no-op, and negative, non-finite, or `> 400` values SHALL be rejected with `FilterError::InvalidParams`. When `monochromatic` is true it SHALL draw one delta per pixel and apply it to all three color channels, preserving hue; otherwise it SHALL draw a delta per channel, producing colored speckle. The deltas SHALL come from a seeded RNG driven by `seed`. Oracle expectation: no faithful ImageMagick equivalent exists (RNG streams differ), so statistical tests cover the distribution shape and same-seed tests cover reproducibility, and the divergence is documented.
 
 #### Scenario: Uniform noise is zero-mean
 
@@ -59,7 +59,7 @@ The system SHALL implement `Filter::AddNoise { amount: f64, distribution: NoiseD
 
 ### Requirement: Median filter
 
-The system SHALL implement `Filter::Median { radius: u32 }` as a per-channel rank filter that replaces each pixel with the median of the channel values in its `(2r+1)²` window, sampled with clamp-to-edge. `radius` SHALL span `1..=100`; `radius == 0` SHALL be a no-op and an out-of-range radius SHALL be rejected with `FilterError::InvalidParams`. Oracle expectation: differential against ImageMagick `-median R` within an absolute tolerance of 1 per sample.
+The system SHALL implement `Filter::Median { radius: u32 }` as a per-channel rank filter that replaces each pixel with the median of the channel values in its `(2r+1)²` window, sampled with clamp-to-edge. `radius` SHALL span `0..=100`; `radius == 0` SHALL be a no-op and a radius above 100 SHALL be rejected with `FilterError::InvalidParams`. Oracle expectation: differential against ImageMagick `-median R` within an absolute tolerance of 1 per sample.
 
 #### Scenario: Salt-and-pepper noise is removed
 

@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **~177 tests, 0 ignored** (one pre-existing app `#[ignore]`).
+- Test suite: **234 tests, 0 ignored** (one pre-existing app `#[ignore]`).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M5 documented retroactively as
   ten changes in `openspec/changes/` (17 capability specs, all `validate --strict` green).
 
@@ -34,6 +34,7 @@ openspec validate --all --strict
 | `pictura-codec` | PSD/PSB read/write: composite, layers, masks, adjustment keys, document channels |
 | `pictura-color` | ICC profiles (sRGB/AdobeRGB/ProPhoto), convert/assign, intents, BPC |
 | `pictura-adjust` | 15 destructive adjustments (`apply`) |
+| `pictura-filters` | blur/sharpen/noise filters (`Filter` + `apply`); seeded Add Noise |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
@@ -52,6 +53,11 @@ openspec validate --all --strict
   `thrs`,`brit`,`levl`,`hue2`; others preserved-only); app adjustment UI.
 - **M5 (A/B/C)** — selection math (+ IM morphology oracle); selection↔PSD
   channels; selection-masked adjustments in the app.
+- **M6** — `pictura-filters`: blur (Gaussian/Box/Motion/Radial/Average/
+  Blur(+More)/Surface), sharpen (Sharpen(+More)/Edges/Unsharp Mask), noise
+  (Add Noise seeded/Median/Despeckle). ImageMagick oracle: Gaussian/Box/Median
+  exact, USM ±6; Motion classified no-equivalent (IM kernel is one-sided). 47
+  filter tests. OpenSpec change `m6-filters`, tasks checked.
 
 ## Spec workflow (OpenSpec)
 
@@ -73,16 +79,18 @@ OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M6 — filters
+## Next: M6-C (filter integration) or M7
 
-Plan: blur / sharpen / noise families as pure functions over `PixelBuffer`
-(planar 8-bit), then compositor/app integration. Oracle: ImageMagick
-(`-blur`/`-gaussian-blur`/`-sharpen`/`-median`/`-noise`) where semantics match;
-W3C/standard kernels for the rest. Spec: `docs/06-filters/*.md`.
+M6 delivered the filter **math** + oracle only. Remaining M6 integration:
+expose `pictura-filters` through the render/app pipeline (apply a filter to a
+document/layer, gated by selection/mask) — mirror how M4 wired adjustments.
+Then propose the next area through OpenSpec (e.g. `docs/06-filters/*` beyond
+blur/sharpen/noise: Distort/Stylize/Render, Liquify, Blur Gallery).
 
-Process: propose M6 through OpenSpec first (`openspec/changes/m6-*`, new
-capabilities such as `blur-filters`/`sharpen-filters`/`noise-filters`), validate,
-then implement. Do not skip the proposal like M0–M5 did.
+Process: every new milestone is proposed through OpenSpec first
+(`openspec/changes/<name>`, new capabilities), validated, then implemented.
+`openspec/changes/m6-filters` is not archived yet — `openspec archive` promotes
+its deltas into `openspec/specs/`.
 
 ## Known risks / open items
 

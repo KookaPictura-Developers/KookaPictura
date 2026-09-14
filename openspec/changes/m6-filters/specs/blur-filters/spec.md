@@ -97,7 +97,7 @@ The system SHALL implement `Filter::MotionBlur { angle: f64, distance: u32 }` as
 
 ### Requirement: Radial blur
 
-The system SHALL implement `Filter::RadialBlur { method: RadialMethod, amount: f64, quality: Quality }`. For `RadialMethod::Spin` it SHALL take a moving average along the polar angle over the rotation amount; for `RadialMethod::Zoom` it SHALL take a moving average along the radial direction, with `amount` spanning `1..=100`. `Quality` (`Draft`, `Good`, `Best`) SHALL select the sampling density, with `Draft` visibly grainier than `Best` at equal amount. `amount == 0` SHALL be a no-op. Out-of-range or non-finite amounts SHALL be rejected with `FilterError::InvalidParams`. Oracle expectation: no faithful ImageMagick equivalent exists (ImageMagick `-radial-blur` semantics differ), so property and known-value tests cover the behavior and the divergence is documented.
+The system SHALL implement `Filter::RadialBlur { method: RadialMethod, amount: f64, quality: Quality }`. For `RadialMethod::Spin` it SHALL take a moving average along the polar angle over the rotation amount; for `RadialMethod::Zoom` it SHALL take a moving average along the radial direction. `amount` SHALL be finite and non-negative; for `RadialMethod::Zoom` it SHALL span `0..=100`. `Quality` (`Draft`, `Good`, `Best`) SHALL select the sampling density, with `Draft` visibly grainier than `Best` at equal amount. `amount == 0` SHALL be a no-op. Negative, non-finite, or (`Zoom`) out-of-range amounts SHALL be rejected with `FilterError::InvalidParams`. Oracle expectation: no faithful ImageMagick equivalent exists (ImageMagick `-radial-blur` semantics differ), so property and known-value tests cover the behavior and the divergence is documented.
 
 #### Scenario: Spin smears rotationally
 
@@ -191,7 +191,7 @@ Blur filters SHALL be deterministic. The same filter applied to equal input buff
 
 ### Requirement: Blur ImageMagick oracle and no-equivalent classification
 
-The system SHALL ship `scripts/filter_oracle.py`, which applies an ImageMagick operator to a raw 8-bit image, and `crates/pictura-filters/tests/oracle.rs`, which diffs `apply` against it. The mapping table SHALL have exactly one row per `Filter` variant. Gaussian, Box, and Motion SHALL be diffed (`-gaussian-blur 0xσ`, `-statistic mean NxN`, `-motion-blur 0xN+angle`) within their stated tolerances. Average, Radial, Surface, Blur, and BlurMore SHALL be classified as having no faithful ImageMagick operator and SHALL use tolerance 0 with property or known-value tests. The differential tests SHALL skip with a message when `magick` is not on `PATH` and MUST NOT be marked `#[ignore]`.
+The system SHALL ship `scripts/filter_oracle.py`, which applies an ImageMagick operator to a raw 8-bit image, and `crates/pictura-filters/tests/oracle.rs`, which diffs `apply` against it. The mapping table SHALL have exactly one row per `Filter` variant. Gaussian and Box SHALL be diffed (`-gaussian-blur 0xσ`, `-statistic mean NxN`) within their stated tolerances. Motion, Average, Radial, Surface, Blur, and BlurMore SHALL be classified as having no faithful ImageMagick operator and SHALL use tolerance 0 with property or known-value tests — for Motion because ImageMagick's `-motion-blur` is a one-sided Gaussian line kernel, not a symmetric uniform streak. The differential tests SHALL skip with a message when `magick` is not on `PATH` and MUST NOT be marked `#[ignore]`.
 
 #### Scenario: Mapping table covers every blur variant
 

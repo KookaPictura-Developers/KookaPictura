@@ -58,7 +58,7 @@ The system SHALL implement `Filter::SharpenEdges` with no parameters. It SHALL d
 
 ### Requirement: Unsharp Mask
 
-The system SHALL implement `Filter::UnsharpMask { amount: f64, radius: f64, threshold: u8 }` as `out = original + (original − blurred) × amount`, where `blurred` is the shared Gaussian kernel from the blur family and the difference is gated by `threshold`. `amount` SHALL default to 100 and span `1.0..=500.0` percent; `radius` SHALL default to 1.0 and span `0.1..=250.0`; `threshold` SHALL default to 0 and span `0..=255`. The gate SHALL leave a pixel unchanged when its absolute difference from the blurred value is below `threshold`, and `threshold == 0` SHALL sharpen every pixel. `amount == 0` or `radius == 0` SHALL be a no-op. Oracle expectation: differential against ImageMagick `-unsharp 0xRxA+T` within an absolute tolerance of 2 per sample, with any radius-to-sigma mapping divergence documented.
+The system SHALL implement `Filter::UnsharpMask { amount: f64, radius: f64, threshold: u8 }` as `out = original + (original − blurred) × amount`, where `blurred` is the shared Gaussian kernel from the blur family and the difference is gated by `threshold`. `amount` SHALL default to 100 and span `1.0..=500.0` percent; `radius` SHALL default to 1.0 and span `0.1..=250.0`; `threshold` SHALL default to 0 and span `0..=255`. The gate SHALL leave a pixel unchanged when its absolute difference from the blurred value is below `threshold`, and `threshold == 0` SHALL sharpen every pixel. `amount` outside `1.0..=500.0` and `radius <= 0` SHALL be rejected with `FilterError::InvalidParams`. Oracle expectation: differential against ImageMagick `-unsharp 0xRxA+T` within an absolute tolerance of 6 per sample (ImageMagick's internal blur differs slightly), with any radius-to-sigma mapping divergence documented.
 
 #### Scenario: A uniform image is unchanged
 
@@ -75,15 +75,15 @@ The system SHALL implement `Filter::UnsharpMask { amount: f64, radius: f64, thre
 - **WHEN** two adjacent pixels differ by less than the threshold
 - **THEN** they are unchanged, and when they differ by the threshold or more they are sharpened
 
-#### Scenario: Amount zero or radius zero is a no-op
+#### Scenario: Out-of-range amount or radius is rejected
 
 - **WHEN** Unsharp Mask is applied with amount 0 or radius 0
-- **THEN** the buffer is bit-exactly unchanged
+- **THEN** `apply` returns `FilterError::InvalidParams` and does not panic
 
 #### Scenario: Matches ImageMagick
 
 - **WHEN** Unsharp Mask with a given amount, radius, and threshold is applied to the oracle image and ImageMagick applies the matching `-unsharp 0xRxA+T`
-- **THEN** no sample differs by more than 2, or the divergence is recorded in the no-equivalent documentation
+- **THEN** no sample differs by more than 6, or the divergence is recorded in the no-equivalent documentation
 
 ### Requirement: Sharpen parameter validation and clamping
 

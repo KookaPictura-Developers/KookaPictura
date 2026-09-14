@@ -11,7 +11,12 @@ use crate::{validate, FilterError, Quality, RadialMethod};
 
 pub fn gaussian(buf: &mut PixelBuffer, radius: f64) -> Result<(), FilterError> {
     validate(buf)?;
-    if radius <= 0.0 {
+    if !radius.is_finite() || radius < 0.0 {
+        return Err(FilterError::InvalidParams(format!(
+            "gaussian radius {radius} must be finite and non-negative"
+        )));
+    }
+    if radius == 0.0 {
         return Ok(());
     }
     gaussian_blur_planes(buf, sigma_from_radius(radius));
@@ -29,7 +34,17 @@ pub fn r#box(buf: &mut PixelBuffer, radius: u32) -> Result<(), FilterError> {
 
 pub fn motion(buf: &mut PixelBuffer, angle_deg: f64, distance: u32) -> Result<(), FilterError> {
     validate(buf)?;
-    if distance <= 1 {
+    if !angle_deg.is_finite() || !(-360.0..=360.0).contains(&angle_deg) {
+        return Err(FilterError::InvalidParams(format!(
+            "motion angle {angle_deg} is outside -360..=360"
+        )));
+    }
+    if !(1..=999).contains(&distance) {
+        return Err(FilterError::InvalidParams(format!(
+            "motion distance {distance} is outside 1..=999"
+        )));
+    }
+    if distance == 1 {
         return Ok(());
     }
     let w = buf.width as usize;
@@ -67,8 +82,18 @@ pub fn radial(
     quality: Quality,
 ) -> Result<(), FilterError> {
     validate(buf)?;
-    if amount <= 0.0 {
+    if !amount.is_finite() || amount < 0.0 {
+        return Err(FilterError::InvalidParams(format!(
+            "radial amount {amount} must be finite and non-negative"
+        )));
+    }
+    if amount == 0.0 {
         return Ok(());
+    }
+    if matches!(method, RadialMethod::Zoom) && amount > 100.0 {
+        return Err(FilterError::InvalidParams(format!(
+            "radial zoom amount {amount} is outside 1..=100"
+        )));
     }
     let w = buf.width as usize;
     let h = buf.height as usize;
@@ -145,8 +170,15 @@ pub fn simple(buf: &mut PixelBuffer, more: bool) -> Result<(), FilterError> {
 
 pub fn surface(buf: &mut PixelBuffer, radius: u32, threshold: u8) -> Result<(), FilterError> {
     validate(buf)?;
-    if radius == 0 {
-        return Ok(());
+    if !(1..=100).contains(&radius) {
+        return Err(FilterError::InvalidParams(format!(
+            "surface radius {radius} is outside 1..=100"
+        )));
+    }
+    if threshold == 0 {
+        return Err(FilterError::InvalidParams(
+            "surface threshold must be 1..=255".into(),
+        ));
     }
     let w = buf.width as usize;
     let h = buf.height as usize;
@@ -157,7 +189,6 @@ pub fn surface(buf: &mut PixelBuffer, radius: u32, threshold: u8) -> Result<(), 
     let two_sig_sq = 2.0 * sigma * sigma;
     let thr = threshold as f64;
     let two_thr_sq = 2.0 * thr * thr;
-    let has_thr = threshold > 0;
     // ponytail: direct O(n·r²) bilateral. Upgrade to a guided filter (or a
     // separable box-range approximation) only if large-radius cost bites.
     let src: Vec<Vec<f64>> = (0..planes)
@@ -183,14 +214,7 @@ pub fn surface(buf: &mut PixelBuffer, radius: u32, threshold: u8) -> Result<(), 
                     let si = sy * w + sx;
                     let mut wgt = (-(((kx * kx) as f64) + dy2) / two_sig_sq).exp();
                     let dl = (lum[si] - center_luma).abs();
-                    let range = if has_thr {
-                        (-(dl * dl) / two_thr_sq).exp()
-                    } else if dl == 0.0 {
-                        1.0
-                    } else {
-                        0.0
-                    };
-                    wgt *= range;
+                    wgt *= (-(dl * dl) / two_thr_sq).exp();
                     weight_sum += wgt;
                     acc[0] += wgt * src[0][si];
                     acc[1] += wgt * src[1][si];
@@ -532,6 +556,24 @@ mod tests {
         let mut b7 = base.clone();
         surface(&mut b7, 2, 30).unwrap();
         check(&b7);
+    }
+
+    #[test]
+    fn blur_parameter_ranges_are_validated() {
+        let mut b = PixelBuffer::new(4, 4, 3);
+        assert!(gaussian(&mut b, -1.0).is_err());
+        assert!(gaussian(&mut b, f64::NAN).is_err());
+        assert!(motion(&mut b, 400.0, 3).is_err());
+        assert!(motion(&mut b, 0.0, 0).is_err());
+        assert!(motion(&mut b, 0.0, 1000).is_err());
+        assert!(radial(&mut b, RadialMethod::Zoom, 101.0, Quality::Good).is_err());
+        assert!(radial(&mut b, RadialMethod::Spin, f64::NAN, Quality::Good).is_err());
+        assert!(surface(&mut b, 0, 10).is_err());
+        assert!(surface(&mut b, 101, 10).is_err());
+        assert!(surface(&mut b, 2, 0).is_err());
+        assert!(gaussian(&mut b, 0.0).is_ok());
+        assert!(motion(&mut b, 0.0, 1).is_ok());
+        assert!(radial(&mut b, RadialMethod::Spin, 0.0, Quality::Good).is_ok());
     }
 
     #[test]

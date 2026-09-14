@@ -43,7 +43,7 @@ pub fn add(
     }
     if !(0.0..=400.0).contains(&amount) {
         return Err(FilterError::InvalidParams(format!(
-            "add noise amount {amount} out of range 0.1..=400"
+            "add noise amount {amount} out of range 0..=400"
         )));
     }
     let scale = FULL_SCALE * amount / 100.0;
@@ -74,6 +74,11 @@ pub fn median(buf: &mut PixelBuffer, radius: u32) -> Result<(), FilterError> {
     let n = validate(buf)?;
     if radius == 0 {
         return Ok(());
+    }
+    if radius > 100 {
+        return Err(FilterError::InvalidParams(format!(
+            "median radius {radius} is outside 0..=100"
+        )));
     }
     let w = buf.width as usize;
     let h = buf.height as usize;
