@@ -5,3 +5,4 @@
 //! image from the Rust object, and shows it in a zoom/pan widget.
 
 pub mod cxxqt_object;
+pub mod gpu;

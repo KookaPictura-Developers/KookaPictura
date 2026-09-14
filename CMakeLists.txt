@@ -31,6 +31,13 @@ if(NOT QMAKE_EXECUTABLE)
     message(FATAL_ERROR "qmake not found — install qt6-base-dev")
 endif()
 
+# The RHI headers live under the versioned QtGui include dir, which the plain
+# Qt6::Gui target does not export on Debian (no Qt6::GuiPrivate package).
+execute_process(COMMAND "${QMAKE_EXECUTABLE}" -query QT_INSTALL_HEADERS
+    OUTPUT_VARIABLE QT_HEADERS_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND "${QMAKE_EXECUTABLE}" -query QT_VERSION
+    OUTPUT_VARIABLE QT_VERSION_STR OUTPUT_STRIP_TRAILING_WHITESPACE)
+
 cxx_qt_import_crate(
     MANIFEST_PATH crates/pictura-app/Cargo.toml
     CRATES pictura_app
@@ -38,5 +45,12 @@ cxx_qt_import_crate(
     QMAKE "${QMAKE_EXECUTABLE}"
 )
 
-add_executable(pictura crates/pictura-app/cpp/main.cpp)
+add_executable(pictura
+    crates/pictura-app/cpp/main.cpp
+    crates/pictura-app/cpp/interop.cpp
+)
+target_include_directories(pictura PRIVATE
+    crates/pictura-app/cpp
+    "${QT_HEADERS_DIR}/QtGui/${QT_VERSION_STR}/QtGui"
+)
 target_link_libraries(pictura PRIVATE pictura_app)

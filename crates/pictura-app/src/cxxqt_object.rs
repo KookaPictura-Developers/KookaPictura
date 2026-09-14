@@ -29,6 +29,34 @@ pub mod qobject {
         /// The image to display. Never null.
         #[qinvokable]
         fn image(&self) -> QImage;
+
+        /// M0.5 offscreen GPU spike. Renders a gradient on Vulkan and replaces
+        /// the image on success. Returns 0 = no GPU (CPU fallback kept),
+        /// 1 = rendered non-blank, 2 = rendered blank.
+        #[qinvokable]
+        fn render_gpu(self: Pin<&mut Self>) -> i32;
+
+        /// Create a Vulkan device for the zero-copy interop probe and keep it
+        /// alive. Returns false when no device is available.
+        #[qinvokable]
+        fn gpu_interop_prepare(self: Pin<&mut Self>) -> bool;
+
+        /// Raw handles from `gpu_interop_prepare`; 0 when unavailable.
+        #[qinvokable]
+        fn gpu_vk_instance(&self) -> u64;
+        #[qinvokable]
+        fn gpu_vk_physical_device(&self) -> u64;
+        #[qinvokable]
+        fn gpu_vk_device(&self) -> u64;
+        #[qinvokable]
+        fn gpu_vk_queue_family(&self) -> u32;
+        /// Raw VkImage of the wgpu offscreen texture; 0 when unavailable.
+        #[qinvokable]
+        fn gpu_vk_image(&self) -> u64;
+        #[qinvokable]
+        fn gpu_image_width(&self) -> u32;
+        #[qinvokable]
+        fn gpu_image_height(&self) -> u32;
     }
 }
 
@@ -36,6 +64,7 @@ pub mod qobject {
 #[derive(Default)]
 pub struct PictureViewRust {
     image: QImage,
+    interop: Option<crate::gpu::InteropState>,
 }
 
 impl qobject::PictureView {
@@ -52,6 +81,70 @@ impl qobject::PictureView {
 
     pub fn image(&self) -> QImage {
         self.rust().image.clone()
+    }
+
+    pub fn render_gpu(self: Pin<&mut Self>) -> i32 {
+        let (width, height) = (512u32, 512u32);
+        match crate::gpu::render_gradient(width, height) {
+            crate::gpu::GpuRender::Unavailable => 0,
+            crate::gpu::GpuRender::Rendered {
+                width: w,
+                height: h,
+                rgba,
+                distinct,
+            } => {
+                self.rust_mut().image = rgba_image(rgba, w as i32, h as i32);
+                if distinct >= 2 {
+                    1
+                } else {
+                    2
+                }
+            }
+        }
+    }
+
+    pub fn gpu_interop_prepare(self: Pin<&mut Self>) -> bool {
+        let state = crate::gpu::create_interop_state();
+        let ok = state.is_some();
+        self.rust_mut().interop = state;
+        ok
+    }
+
+    pub fn gpu_vk_instance(&self) -> u64 {
+        self.rust()
+            .interop
+            .as_ref()
+            .map_or(0, |s| s.handles.instance)
+    }
+
+    pub fn gpu_vk_physical_device(&self) -> u64 {
+        self.rust()
+            .interop
+            .as_ref()
+            .map_or(0, |s| s.handles.physical_device)
+    }
+
+    pub fn gpu_vk_device(&self) -> u64 {
+        self.rust().interop.as_ref().map_or(0, |s| s.handles.device)
+    }
+
+    pub fn gpu_vk_queue_family(&self) -> u32 {
+        self.rust()
+            .interop
+            .as_ref()
+            .map_or(0, |s| s.handles.queue_family)
+    }
+
+    pub fn gpu_vk_image(&self) -> u64 {
+        self.rust().interop.as_ref().map_or(0, |s| s.image)
+    }
+
+    pub fn gpu_image_width(&self) -> u32 {
+        self.rust().interop.as_ref().map_or(0, |s| s.width)
+    }
+
+    pub fn gpu_image_height(&self) -> u32 {
+        self.rust().interop.as_ref().map_or(0, |s| s.height)
     }
 }
 
@@ -85,6 +178,12 @@ fn document_to_image(doc: &Document) -> QImage {
     unsafe { QImage::from_raw_bytes(rgba, width, height, QImageFormat::Format_RGBA8888) }
 }
 
+/// Wrap packed RGBA8888 bytes as a `QImage`.
+fn rgba_image(rgba: Vec<u8>, width: i32, height: i32) -> QImage {
+    // SAFETY: `rgba` is exactly width*height RGBA8888 bytes.
+    unsafe { QImage::from_raw_bytes(rgba, width, height, QImageFormat::Format_RGBA8888) }
+}
+
 /// Deterministic gradient so the window always has something to show.
 fn test_image() -> QImage {
     let (width, height) = (512i32, 512i32);
@@ -99,8 +198,7 @@ fn test_image() -> QImage {
         }
     }
 
-    // SAFETY: `rgba` is exactly width*height RGBA8888 bytes.
-    unsafe { QImage::from_raw_bytes(rgba, width, height, QImageFormat::Format_RGBA8888) }
+    rgba_image(rgba, width, height)
 }
 
 #[cfg(test)]
