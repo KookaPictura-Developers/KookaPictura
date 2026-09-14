@@ -10,7 +10,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use pictura_core::PixelBuffer;
+use pictura_core::{Channel, PixelBuffer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SelectError {
@@ -57,6 +57,33 @@ impl Selection {
             height,
             data: vec![255; width as usize * height as usize],
         }
+    }
+
+    /// Export this selection as a document-level channel (8-bit grayscale
+    /// coverage, one byte per pixel).
+    pub fn to_channel(&self, id: i16) -> Channel {
+        Channel {
+            id,
+            data: self.data.clone(),
+        }
+    }
+
+    /// Interpret a document-level channel as a selection. `width`/`height` are
+    /// the document dimensions the channel must match.
+    pub fn from_channel(ch: &Channel, width: u32, height: u32) -> Result<Selection, SelectError> {
+        let expected = width as usize * height as usize;
+        if ch.data.len() != expected {
+            return Err(SelectError::SizeMismatch(format!(
+                "channel {} has {} bytes, expected {expected} for {width}x{height}",
+                ch.id,
+                ch.data.len()
+            )));
+        }
+        Ok(Selection {
+            width,
+            height,
+            data: ch.data.clone(),
+        })
     }
 
     /// Combine `other` into `self` with `op` (same dimensions required).
@@ -556,6 +583,24 @@ mod tests {
         let mut a = Selection::none(4, 4);
         let b = Selection::none(5, 4);
         assert!(a.combine(&b, SelectOp::Add).is_err());
+    }
+
+    #[test]
+    fn channel_round_trips_a_selection() {
+        let sel = rect(5, 3, 1, 1, 4, 2);
+        let ch = sel.to_channel(-4);
+        assert_eq!(ch.id, -4);
+        assert_eq!(ch.data, sel.data);
+        assert_eq!(Selection::from_channel(&ch, 5, 3).unwrap(), sel);
+    }
+
+    #[test]
+    fn from_channel_wrong_length_errors() {
+        let ch = Channel {
+            id: 0,
+            data: vec![0; 5],
+        };
+        assert!(Selection::from_channel(&ch, 4, 4).is_err());
     }
 
     #[test]

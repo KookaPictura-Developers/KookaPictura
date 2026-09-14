@@ -4,7 +4,8 @@ use core::pin::Pin;
 
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QImageFormat, QString};
-use pictura_core::{AdjustmentData, BlendMode, Document, Layer, PixelBuffer, PsdRect};
+use pictura_core::{AdjustmentData, BlendMode, Document, Layer, LayerMask, PixelBuffer, PsdRect};
+use pictura_select::Selection;
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -55,9 +56,33 @@ pub mod qobject {
         #[qinvokable]
         fn set_layer_visible(self: Pin<&mut Self>, i: i32, visible: bool);
 
+        /// Select the whole document, recomposite, and emit [`changed`].
+        #[qinvokable]
+        fn select_all(self: Pin<&mut Self>);
+
+        /// Clear the active selection, recomposite, and emit [`changed`].
+        #[qinvokable]
+        fn deselect(self: Pin<&mut Self>);
+
+        /// Flood-select the region around `(x, y)` within `tolerance` (0-255),
+        /// recomposite, and emit [`changed`]. Returns false without a document
+        /// or when the point is out of bounds.
+        #[qinvokable]
+        fn magic_wand(self: Pin<&mut Self>, x: i32, y: i32, tolerance: i32) -> bool;
+
+        /// Whether a selection is currently active.
+        #[qinvokable]
+        fn has_selection(&self) -> bool;
+
+        /// Number of pixels with non-zero selection coverage (0 when none).
+        #[qinvokable]
+        fn selection_count(&self) -> i32;
+
         /// Append an adjustment layer for `kind` (invert, posterize, threshold,
         /// brightness-contrast, hue-saturation), recomposite, and emit
-        /// [`changed`]. Returns false for an unknown kind or no document.
+        /// [`changed`]. When a selection is active the layer gets a raster mask
+        /// from its coverage, so only selected pixels change. Returns false for
+        /// an unknown kind or no document.
         #[qinvokable]
         fn add_adjustment(self: Pin<&mut Self>, kind: &QString) -> bool;
 
@@ -100,6 +125,7 @@ pub mod qobject {
 pub struct PictureViewRust {
     image: QImage,
     doc: Option<Document>,
+    selection: Option<Selection>,
     interop: Option<crate::gpu::InteropState>,
 }
 
@@ -117,6 +143,7 @@ impl qobject::PictureView {
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = loaded;
+        view.selection = None;
         ok
     }
 
@@ -167,8 +194,71 @@ impl qobject::PictureView {
         }
     }
 
+    pub fn select_all(mut self: Pin<&mut Self>) {
+        let dims = self.rust().doc.as_ref().map(|d| (d.width, d.height));
+        if let Some((w, h)) = dims {
+            self.as_mut().rust_mut().selection = Some(Selection::all(w, h));
+            self.changed();
+        }
+    }
+
+    pub fn deselect(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().selection = None;
+        self.changed();
+    }
+
+    pub fn magic_wand(mut self: Pin<&mut Self>, x: i32, y: i32, tolerance: i32) -> bool {
+        let picked = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            if x < 0 || y < 0 {
+                None
+            } else {
+                let tolerance = tolerance.clamp(0, 255) as u8;
+                pictura_select::magic_wand(
+                    &current_buffer(doc),
+                    x as u32,
+                    y as u32,
+                    tolerance,
+                    true,
+                )
+                .ok()
+            }
+        };
+        match picked {
+            Some(selection) => {
+                self.as_mut().rust_mut().selection = Some(selection);
+                self.changed();
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.rust().selection.is_some()
+    }
+
+    pub fn selection_count(&self) -> i32 {
+        self.rust()
+            .selection
+            .as_ref()
+            .map_or(0, |s| s.data.iter().filter(|&&v| v > 0).count() as i32)
+    }
+
     pub fn add_adjustment(mut self: Pin<&mut Self>, kind: &QString) -> bool {
-        let Some(layer) = adjustment_layer(&kind.to_string()) else {
+        let mask = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            rust.selection
+                .as_ref()
+                .map(|selection| selection_to_mask(selection, doc))
+        };
+        let Some(layer) = adjustment_layer(&kind.to_string(), mask) else {
             return false;
         };
         let pushed = match self.as_mut().rust_mut().doc.as_mut() {
@@ -282,8 +372,9 @@ impl qobject::PictureView {
 /// Build an adjustment layer for `kind`, or `None` for an unknown kind.
 ///
 /// Defaults are chosen so a freshly added layer visibly changes the composite;
-/// editing parameters is out of scope for M4-C.
-fn adjustment_layer(kind: &str) -> Option<Layer> {
+/// editing parameters is out of scope for M4-C. `mask` confines the effect to a
+/// selection when one is active.
+fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
     use pictura_render::{
         encode_brightness_contrast, encode_hue_saturation, encode_invert, encode_posterize,
         encode_threshold,
@@ -310,7 +401,7 @@ fn adjustment_layer(kind: &str) -> Option<Layer> {
         opacity: 255,
         clipping: false,
         visible: true,
-        mask: None,
+        mask,
         adjustment: Some(data),
         channels: Vec::new(),
         children: Vec::new(),
@@ -318,14 +409,35 @@ fn adjustment_layer(kind: &str) -> Option<Layer> {
     })
 }
 
-/// Convert the document to a packed RGBA `QImage`: the composited layer stack
-/// when it has layers, otherwise the embedded PSD composite.
-fn document_to_image(doc: &Document) -> QImage {
-    if doc.layers.is_empty() {
-        buffer_to_image(&doc.composite)
-    } else {
-        buffer_to_image(&pictura_render::composite_rgba(doc))
+/// A full-frame raster mask whose coverage is the selection.
+fn selection_to_mask(selection: &Selection, doc: &Document) -> LayerMask {
+    LayerMask {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: doc.height as i32,
+            right: doc.width as i32,
+        },
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: Some(selection.data.clone()),
     }
+}
+
+/// The buffer a wand samples: the composited layer stack when present,
+/// otherwise the embedded PSD composite.
+fn current_buffer(doc: &Document) -> PixelBuffer {
+    if doc.layers.is_empty() {
+        doc.composite.clone()
+    } else {
+        pictura_render::composite_rgba(doc)
+    }
+}
+
+/// Convert the document to a packed RGBA `QImage`.
+fn document_to_image(doc: &Document) -> QImage {
+    buffer_to_image(&current_buffer(doc))
 }
 
 /// Convert a planar 8-bit buffer (1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA)
@@ -495,7 +607,7 @@ mod tests {
         assert_eq!(before.pixel_color(0, 0).red(), 255);
 
         doc.layers
-            .push(adjustment_layer("invert").expect("known kind"));
+            .push(adjustment_layer("invert", None).expect("known kind"));
         let after = document_to_image(&doc);
         assert_eq!(after.pixel_color(0, 0).red(), 0);
         assert_eq!(after.pixel_color(0, 0).green(), 255);
@@ -505,7 +617,72 @@ mod tests {
         let hidden = document_to_image(&doc);
         assert_eq!(hidden.pixel_color(0, 0).alpha(), 0);
 
-        assert!(adjustment_layer("bogus").is_none());
+        assert!(adjustment_layer("bogus", None).is_none());
+    }
+
+    fn pixel_layer(name: &str, w: u32, h: u32, rgb: (u8, u8, u8)) -> Layer {
+        let n = (w * h) as usize;
+        Layer {
+            name: name.into(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: h as i32,
+                right: w as i32,
+            },
+            blend: BlendMode::Normal,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels: vec![
+                Channel {
+                    id: 0,
+                    data: vec![rgb.0; n],
+                },
+                Channel {
+                    id: 1,
+                    data: vec![rgb.1; n],
+                },
+                Channel {
+                    id: 2,
+                    data: vec![rgb.2; n],
+                },
+                Channel {
+                    id: -1,
+                    data: vec![255; n],
+                },
+            ],
+            children: Vec::new(),
+            is_group: false,
+        }
+    }
+
+    #[test]
+    fn selection_becomes_full_frame_mask_that_confines_adjustment() {
+        let mut doc = Document::new(4, 1, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![pixel_layer("base", 4, 1, (255, 0, 0))];
+
+        let selection = Selection {
+            width: 4,
+            height: 1,
+            data: vec![255, 255, 0, 0],
+        };
+        let mask = selection_to_mask(&selection, &doc);
+        assert_eq!(mask.rect.right, 4);
+        assert_eq!(mask.rect.bottom, 1);
+        assert_eq!(mask.data.as_deref(), Some(&[255u8, 255, 0, 0][..]));
+
+        doc.layers
+            .push(adjustment_layer("invert", Some(mask)).expect("known kind"));
+        let image = document_to_image(&doc);
+        // Selected half inverts red -> cyan; unselected half is untouched.
+        assert_eq!(image.pixel_color(0, 0).red(), 0);
+        assert_eq!(image.pixel_color(0, 0).green(), 255);
+        assert_eq!(image.pixel_color(0, 0).blue(), 255);
+        assert_eq!(image.pixel_color(3, 0).red(), 255);
+        assert_eq!(image.pixel_color(3, 0).blue(), 0);
     }
 
     #[test]

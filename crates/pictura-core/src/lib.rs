@@ -17,6 +17,21 @@ pub enum ColorMode {
     Lab,
 }
 
+impl ColorMode {
+    /// Number of color channels the composite carries in PSD.
+    ///
+    /// Extra alpha/spot/selection channels are additional; Multichannel has no
+    /// color channels at all (its count is header-authoritative).
+    pub fn color_channels(self) -> u8 {
+        match self {
+            ColorMode::Bitmap | ColorMode::Grayscale | ColorMode::Indexed | ColorMode::Duotone => 1,
+            ColorMode::Rgb | ColorMode::Lab => 3,
+            ColorMode::Cmyk => 4,
+            ColorMode::Multichannel => 0,
+        }
+    }
+}
+
 /// Bits per channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BitDepth {
@@ -71,10 +86,7 @@ pub struct Document {
 
 impl Document {
     pub fn new(width: u32, height: u32, mode: ColorMode, depth: BitDepth) -> Self {
-        let channels = match mode {
-            ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone => 1,
-            _ => 3,
-        };
+        let channels = mode.color_channels();
         Self {
             width,
             height,

@@ -179,31 +179,66 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     // Layer and mask information section: 4-byte length (8 in PSB).
     let layers = read_layer_section(&mut r, is_psb)?;
 
-    // Image data section: 2-byte compression method, then channel data.
+    // Image data section: 2-byte compression method, then one plane per header
+    // channel (color channels first, then alpha/spot/selection channels).
     let compression = r.u16()?;
-    let channels = channels as usize;
+    let header_channels = channels as usize;
     let width = width as usize;
     let height = height as usize;
     let data = match compression {
-        0 => r.take(planar_len(channels, width, height)?)?.to_vec(),
-        1 => read_rle(&mut r, channels, width, height, is_psb)?,
+        0 => r
+            .take(planar_len(header_channels, width, height)?)?
+            .to_vec(),
+        1 => read_rle(&mut r, header_channels, width, height, is_psb)?,
         c => return Err(PsdError::Unsupported(format!("compression {c}"))),
     };
+    let (composite, channels) = split_planes(data, mode, width, height, header_channels)?;
 
     Ok(Document {
         width: width as u32,
         height: height as u32,
         mode,
         depth: BitDepth::Eight,
-        composite: PixelBuffer {
+        composite,
+        layers,
+        channels,
+    })
+}
+
+/// Split the planar image-data section into the mode's color planes (the
+/// composite) and the trailing extra channels (saved selections / alpha).
+fn split_planes(
+    mut data: Vec<u8>,
+    mode: ColorMode,
+    width: usize,
+    height: usize,
+    header_channels: usize,
+) -> Result<(PixelBuffer, Vec<Channel>), PsdError> {
+    let color_channels = mode.color_channels() as usize;
+    if header_channels < color_channels {
+        return Err(PsdError::Invalid(format!(
+            "header has {header_channels} channels for a {color_channels}-channel mode"
+        )));
+    }
+    let plane = width * height;
+    let extra = data.split_off(color_channels * plane);
+    let channels = extra
+        .chunks_exact(plane)
+        .enumerate()
+        .map(|(i, plane)| Channel {
+            id: i as i16,
+            data: plane.to_vec(),
+        })
+        .collect();
+    Ok((
+        PixelBuffer {
             width: width as u32,
             height: height as u32,
-            channels: channels as u8,
+            channels: color_channels as u8,
             data,
         },
-        layers,
-        channels: Vec::new(),
-    })
+        channels,
+    ))
 }
 
 fn planar_len(channels: usize, width: usize, height: usize) -> Result<usize, PsdError> {
@@ -902,8 +937,9 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
         ColorMode::Rgb => MODE_RGB,
         m => return Err(PsdError::Unsupported(format!("write color mode {m:?}"))),
     };
-    let channels = doc.composite.channels;
-    if channels == 0 || channels > MAX_CHANNELS as u8 {
+    let color_channels = doc.composite.channels as usize;
+    let channels = color_channels + doc.channels.len();
+    if channels == 0 || channels > MAX_CHANNELS as usize {
         return Err(PsdError::Invalid(format!("channel count {channels}")));
     }
     if doc.width == 0 || doc.height == 0 || doc.width > MAX_DIM_PSD || doc.height > MAX_DIM_PSD {
@@ -917,10 +953,17 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
             "composite size does not match document".into(),
         ));
     }
-    if doc.composite.data.len()
-        != planar_len(channels as usize, doc.width as usize, doc.height as usize)?
-    {
+    let plane = doc.width as usize * doc.height as usize;
+    if doc.composite.data.len() != color_channels * plane {
         return Err(PsdError::Invalid("composite data length mismatch".into()));
+    }
+    for channel in &doc.channels {
+        if channel.data.len() != plane {
+            return Err(PsdError::Invalid(format!(
+                "document channel {} data length mismatch",
+                channel.id
+            )));
+        }
     }
 
     let mut out = Vec::with_capacity(26 + 12 + 2 + doc.composite.data.len());
@@ -948,6 +991,9 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
 
     out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
     out.extend_from_slice(&doc.composite.data);
+    for channel in &doc.channels {
+        out.extend_from_slice(&channel.data);
+    }
     Ok(out)
 }
 
@@ -1009,6 +1055,62 @@ mod tests {
             let bytes = write_psd(&doc).unwrap();
             assert_eq!(read_psd(&bytes).unwrap(), doc);
         }
+    }
+
+    #[test]
+    fn extra_selection_channel_round_trips() {
+        let mut doc = Document::new(4, 3, ColorMode::Rgb, BitDepth::Eight);
+        for (i, b) in doc.composite.data.iter_mut().enumerate() {
+            *b = (i * 3) as u8;
+        }
+        doc.channels = vec![Channel {
+            id: 0,
+            data: (0..12).map(|i| 255 - (i * 5) as u8).collect(),
+        }];
+
+        let bytes = write_psd(&doc).unwrap();
+        assert_eq!(u16::from_be_bytes(bytes[12..14].try_into().unwrap()), 4);
+
+        let back = read_psd(&bytes).unwrap();
+        assert_eq!(
+            back.composite.channels, 3,
+            "composite keeps only color planes"
+        );
+        assert_eq!(back.channels, doc.channels);
+        assert_eq!(back, doc);
+    }
+
+    #[test]
+    fn multiple_extra_channels_round_trip() {
+        let mut doc = Document::new(2, 2, ColorMode::Grayscale, BitDepth::Eight);
+        doc.composite.data.copy_from_slice(&[1, 2, 3, 4]);
+        doc.channels = vec![
+            Channel {
+                id: 0,
+                data: vec![10, 20, 30, 40],
+            },
+            Channel {
+                id: 1,
+                data: vec![50, 60, 70, 80],
+            },
+        ];
+
+        let bytes = write_psd(&doc).unwrap();
+        assert_eq!(u16::from_be_bytes(bytes[12..14].try_into().unwrap()), 3);
+
+        let back = read_psd(&bytes).unwrap();
+        assert_eq!(back.composite.channels, 1);
+        assert_eq!(back, doc);
+    }
+
+    #[test]
+    fn extra_channel_length_mismatch_is_rejected() {
+        let mut doc = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
+        doc.channels = vec![Channel {
+            id: 0,
+            data: vec![0; 3],
+        }];
+        assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
     }
 
     #[test]

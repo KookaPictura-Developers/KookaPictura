@@ -14,6 +14,7 @@ crate-type = ["staticlib", "rlib"]
 pictura-core = { path = "../pictura-core" }
 pictura-codec = { path = "../pictura-codec" }
 pictura-render = { path = "../pictura-render" }
+pictura-select = { path = "../pictura-select" }
 # cxx is the FFI layer the `#[cxx_qt::bridge]` macro expands to.
 cxx = "1.0"
 cxx-qt = "0.10"

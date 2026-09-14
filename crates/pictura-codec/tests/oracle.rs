@@ -8,9 +8,11 @@
 //! Regenerate the fixtures with `python3 scripts/generate-fixtures.py`.
 
 use std::path::PathBuf;
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use pictura_codec::{read_psd, write_psd};
-use pictura_core::{BlendMode, ColorMode};
+use pictura_core::{BitDepth, BlendMode, Channel, ColorMode, Document};
 
 const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("two_layers.psd", 8, 8, ColorMode::Rgb),
@@ -163,4 +165,87 @@ fn adjustment_layers_preserve_key_and_bytes() {
     // Round-trip through pictura-codec: whole document, including adjustments.
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back, doc);
+}
+
+/// Extra/alpha channels: a PSD written by `pictura-codec` with one extra plane
+/// is read by `psd-tools`, which must report the bumped header channel count and
+/// expose our plane as the composite alpha. Independent of our own reader, this
+/// proves the alternate-channel layout matches a second PSD implementation.
+#[test]
+fn psd_tools_sees_written_extra_channel() {
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+
+    let mut doc = Document::new(4, 2, ColorMode::Rgb, BitDepth::Eight);
+    for (i, b) in doc.composite.data.iter_mut().enumerate() {
+        *b = (i * 9 + 1) as u8;
+    }
+    let alpha: Vec<u8> = (0..8).map(|i| 200 + i as u8).collect();
+    doc.channels = vec![Channel {
+        id: 0,
+        data: alpha.clone(),
+    }];
+
+    let dir = scratch_dir("psd-alpha");
+    let path = dir.join("extra_channel.psd");
+    std::fs::write(&path, write_psd(&doc).unwrap()).unwrap();
+
+    let script = r#"
+import sys
+from psd_tools import PSDImage
+psd = PSDImage.open(sys.argv[1])
+print(psd.channels)
+print(psd.composite().getchannel("A").tobytes().hex())
+"#;
+    let out = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        out.status.success(),
+        "psd-tools failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let mut lines = stdout.lines();
+    let channels: u32 = lines
+        .next()
+        .expect("channel count line")
+        .trim()
+        .parse()
+        .unwrap();
+    let alpha_hex = lines.next().expect("alpha hex line").trim();
+    let expected: String = alpha.iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(channels, 4, "psd-tools sees color + extra channels");
+    assert_eq!(
+        alpha_hex, expected,
+        "psd-tools alpha equals the extra plane"
+    );
+}
+
+fn psd_tools_available() -> bool {
+    Command::new("python3")
+        .args(["-c", "import psd_tools"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Unique scratch directory per call so tests can run in parallel.
+fn scratch_dir(tag: &str) -> PathBuf {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "pictura-codec-oracle-{}-{tag}-{n}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }

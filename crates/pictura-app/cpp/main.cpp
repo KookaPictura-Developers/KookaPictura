@@ -10,6 +10,8 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDockWidget>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPushButton>
@@ -185,6 +187,18 @@ int main(int argc, char* argv[])
     panelLayout->addWidget(addButton);
     panelLayout->addWidget(removeButton);
 
+    // Selection controls: the active selection masks any adjustment added next.
+    auto* selectAllButton = new QPushButton(QStringLiteral("Select all"), panel);
+    auto* wandButton = new QPushButton(QStringLiteral("Magic wand (center)"), panel);
+    auto* deselectButton = new QPushButton(QStringLiteral("Deselect"), panel);
+    auto* selectionRow = new QHBoxLayout();
+    selectionRow->addWidget(selectAllButton);
+    selectionRow->addWidget(wandButton);
+    selectionRow->addWidget(deselectButton);
+    panelLayout->addLayout(selectionRow);
+    auto* selectionLabel = new QLabel(panel);
+    panelLayout->addWidget(selectionLabel);
+
     dock->setWidget(panel);
     mainWindow.addDockWidget(Qt::RightDockWidgetArea, dock);
 
@@ -201,6 +215,8 @@ int main(int argc, char* argv[])
             layerList->addItem(item);
         }
         window->setImage(view.image());
+        selectionLabel->setText(
+            QStringLiteral("Selection: %1 px").arg(view.selection_count()));
     };
 
     QObject::connect(layerList, &QListWidget::itemChanged, &mainWindow, [&](QListWidgetItem* item) {
@@ -215,6 +231,18 @@ int main(int argc, char* argv[])
     QObject::connect(removeButton, &QPushButton::clicked, &mainWindow, [&]() {
         view.remove_layer(layerList->currentRow());
         refresh();
+    });
+    QObject::connect(selectAllButton, &QPushButton::clicked, &mainWindow, [&]() {
+        view.select_all();
+    });
+    QObject::connect(wandButton, &QPushButton::clicked, &mainWindow, [&]() {
+        const QImage current = view.image();
+        if (!current.isNull()) {
+            view.magic_wand(current.width() / 2, current.height() / 2, 32);
+        }
+    });
+    QObject::connect(deselectButton, &QPushButton::clicked, &mainWindow, [&]() {
+        view.deselect();
     });
     QObject::connect(&view, &pictura::PictureView::changed, &mainWindow, [&]() { refresh(); });
 
@@ -305,6 +333,54 @@ int main(int argc, char* argv[])
                     std::fprintf(stderr, "pictura self-test: FAIL: layer stack not composited\n");
                     return 8;
                 }
+            }
+
+            // M5-C2: a wand selection must confine an adjustment to the
+            // selected quadrant. Wand the red top-left, Invert it, and require
+            // the blue bottom-right to be untouched. Clean up afterwards so the
+            // full-frame checks below see the original stack.
+            const bool wand = view.magic_wand(2, 2, 10);
+            const bool hasSelection = view.has_selection();
+            const int selectedPx = view.selection_count();
+            std::fprintf(stderr,
+                         "pictura self-test: magic_wand=%d has_selection=%d selected_px=%d\n",
+                         wand ? 1 : 0,
+                         hasSelection ? 1 : 0,
+                         selectedPx);
+            std::fflush(stderr);
+            if (!wand || !hasSelection || selectedPx <= 0
+                || selectedPx >= image.width() * image.height()) {
+                std::fprintf(stderr, "pictura self-test: FAIL: wand selection wrong\n");
+                return 14;
+            }
+            const bool maskedAdded = view.add_adjustment(QStringLiteral("invert"));
+            const QImage masked = view.image();
+            const QRgb mtl = masked.pixel(2, 2);
+            const QRgb mbr = masked.pixel(6, 6);
+            std::fprintf(stderr,
+                         "pictura self-test: masked_adjustment=%d tl=(%d,%d,%d,a%d) "
+                         "br=(%d,%d,%d,a%d)\n",
+                         maskedAdded ? 1 : 0,
+                         qRed(mtl),
+                         qGreen(mtl),
+                         qBlue(mtl),
+                         qAlpha(mtl),
+                         qRed(mbr),
+                         qGreen(mbr),
+                         qBlue(mbr),
+                         qAlpha(mbr));
+            std::fflush(stderr);
+            const bool maskedCyan = qRed(mtl) < 60 && qGreen(mtl) > 200 && qBlue(mtl) > 200;
+            const bool maskedBlue = qBlue(mbr) > 200 && qRed(mbr) < 60 && qGreen(mbr) < 60;
+            if (!maskedAdded || !maskedCyan || !maskedBlue) {
+                std::fprintf(stderr, "pictura self-test: FAIL: masked adjustment not confined\n");
+                return 15;
+            }
+            view.remove_layer(view.layer_count() - 1);
+            view.deselect();
+            if (view.has_selection() || view.selection_count() != 0) {
+                std::fprintf(stderr, "pictura self-test: FAIL: deselect left a selection\n");
+                return 16;
             }
 
             // M4-C: add an Invert adjustment layer over the stack and verify the
