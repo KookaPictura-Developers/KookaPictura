@@ -46,14 +46,14 @@ refresh the cached composite.
 **Document ops live in `pictura-render`, not `pictura-ops`.** `pictura-ops` is
 the buffer math and depends only on `pictura-core`; it must not learn the layer
 tree. `pictura-render` owns the tree traversal, masks, groups, and the composite
-cache, so the document ops belong there as a new `src/document.rs`. Alternative
+cache, so the document ops belong there as a new `src/document_ops/`. Alternative
 rejected: putting them in `pictura-ops` or `pictura-core`, which would duplicate
 or invert the compositor dependency.
 
 **`pictura-render` gains a `pictura-ops` dependency.** Every document op
-delegates its per-plane work to the M10 functions: `resize` for resampling,
-`resize_canvas` for the document-channel re-extension, and the exact remaps for
-orientation. This keeps the kernels, the `Anchor` enum, the `Resample` enum, and
+delegates its per-plane work to the M10 functions: `resize` for resampling, an
+anchored zero-fill re-extension for the document channels, and the exact remaps
+for orientation. This keeps the kernels, the `Anchor` enum, the `Resample` enum, and
 `OpsError` shared, and keeps the M10 ImageMagick oracle the single source of
 truth for pixel behavior. The dependency is a normal (non-dev) one because the
 shipped functions call into it. Alternative rejected: copying the kernels into
@@ -85,23 +85,23 @@ equal to its rotated rect. Alternative rejected: scaling rect `width`/`height`
 independently of `left`/`top`, which can produce inconsistent `right`/`bottom`
 edges.
 
-**Canvas growth is transparent; `background` is reserved.** The
-`resize_canvas_document` signature carries `background: [u8; 4]` for parity with
-`pictura_ops::resize_canvas`, but a document composite is rebuilt from layers
-that only translate, so the newly exposed canvas is transparent and the
-document-level channels are re-extended with a zero fill. Introducing the
-extension color now would require the Background-layer gate that
-`docs/04-image-ops/canvas-size.md` leaves open, so this change pins the added
-region to transparent and records the parameter as reserved. Alternative
-rejected: filling the added region with `background`, which contradicts the
-transparent-background behavior of the CS6 command.
+**Canvas growth is transparent; no background parameter.** A document composite
+is rebuilt from layers that only translate, so the newly exposed canvas is
+transparent and the document-level channels are re-extended with a zero fill.
+The layer-stack model has no background layer, so `resize_canvas_document`
+exposes no `background`/extension-color argument and the added region is always
+transparent. Introducing the extension color would require the Background-layer
+gate that `docs/04-image-ops/canvas-size.md` leaves open. Alternative rejected:
+carrying a `background` parameter for parity with `pictura_ops::resize_canvas`,
+which the document-level API does not use and which could mislead callers into
+expecting a tint.
 
 **Oracle: structural round-trip plus composite equality.** The document ops are
 verified without ImageMagick (which has no layer-tree equivalent): build a
 layered fixture, run the op, assert `doc.composite == composite_rgba(&doc)` in
 `pictura-render`, then write the result with `pictura_codec::write_psd`, re-read
 it, and open it with the independent `psd-tools` library to confirm the document
-dimensions and layer bounds. This needs `pictura-codec` and `pictura-testkit` as
+dimensions and layer count. This needs `pictura-codec` and `pictura-testkit` as
 dev-dependencies (not normal ones) and reuses `scripts/validate_output.py`. The
 oracle skips cleanly when `psd-tools` is missing and is never `#[ignore]`d.
 
@@ -120,10 +120,11 @@ oracle skips cleanly when `psd-tools` is missing and is never `#[ignore]`d.
   when only bounds moved. Mitigation: correctness first; the invariant
   `doc.composite == composite_rgba(doc)` is what the oracle checks, and an
   incremental composite cache can be added later without a contract change.
-- **Reserved `background` parameter.** Carrying a parameter the change does not
-  use can mislead callers. Mitigation: the spec states the added canvas is always
-  transparent and `background` MUST NOT tint it; the design records it as
-  reserved for the Background-layer extension color that `IMG-002` leaves open.
+- **No background/extension color.** `IMG-002` leaves the Background-layer
+  extension color open, and this change does not implement it; the added canvas
+  is always transparent. Mitigation: the spec states the transparency and the
+  signature exposes no `background` argument that would mislead callers; the
+  extension color is a later change once the Background-layer model exists.
 - **Orientation of non-square layer bounds.** The half-open rect remap is the
   part most likely to be off by one. Mitigation: the identity requirements (four
   quarter turns, doubled flip, CW then CCW) fail loudly on an off-by-one, and the

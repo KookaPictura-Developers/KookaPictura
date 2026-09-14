@@ -2,7 +2,7 @@
 
 ### Requirement: Document canvas resize entry point and error contract
 
-The system SHALL provide `pictura_render::resize_canvas_document(doc: &mut Document, width: u32, height: u32, anchor: Anchor, background: [u8; 4]) -> Result<(), OpsError>`. On success it SHALL set `doc.width` to `width` and `doc.height` to `height` and return `Ok(())`, performing all validation before mutating `doc`. A `width` or `height` below 1 SHALL be rejected with `OpsError::InvalidParams`, and a malformed pixel-layer channel or decoded mask SHALL likewise be rejected before mutation. On any error `doc` MUST be left bit-identical to its state before the call. The function MUST NOT panic for any input, including 1×1 documents and empty layer stacks.
+The system SHALL provide `pictura_render::resize_canvas_document(doc: &mut Document, width: u32, height: u32, anchor: Anchor) -> Result<(), OpsError>`. On success it SHALL set `doc.width` to `width` and `doc.height` to `height` and return `Ok(())`, performing all validation before mutating `doc`. A `width` or `height` below 1 SHALL be rejected with `OpsError::InvalidParams`, and a malformed pixel-layer channel or decoded mask SHALL likewise be rejected before mutation. On any error `doc` MUST be left bit-identical to its state before the call. The function MUST NOT panic for any input, including 1×1 documents and empty layer stacks.
 
 #### Scenario: A successful canvas resize sets the document dimensions
 
@@ -55,23 +55,21 @@ Every layer's `name`, `blend`, `opacity`, `clipping`, `visible`, and
 ### Requirement: Document channel re-extension and transparent added canvas
 
 `resize_canvas_document` SHALL re-extend or crop every entry of `doc.channels` to
-the new document size through `pictura_ops::resize_canvas` with the same
-`anchor` and an all-zero fill, preserving each channel's `id`. Because layer
-content only translates and no layer data covers the grown region, the added
-canvas area MUST be transparent (alpha 0) in the recomputed composite. The
-`background` argument mirrors the buffer-level API; in this change the added
-canvas and the re-extended document channels are always transparent, so a
-non-zero `background` MUST NOT introduce color into the added region.
+the new document size with an all-zero fill, preserving each channel's `id`.
+Because layer content only translates and no layer data covers the grown region,
+the added canvas area MUST be transparent (alpha 0) in the recomputed composite:
+the added document-channel samples are extended with 0 and no added pixel carries
+any fill color.
 
 #### Scenario: Document channels are re-extended and cropped
 
 - **WHEN** a document carrying a document-level channel is grown and then shrunk
 - **THEN** the channel `data.len()` tracks the new document size, its `id` is unchanged, and the added samples are 0
 
-#### Scenario: A non-zero background leaves the added canvas transparent
+#### Scenario: The added canvas is transparent
 
-- **WHEN** `resize_canvas_document` is called with a non-zero `background` and the canvas is grown
-- **THEN** the recomputed composite has alpha 0 in every added pixel and no added pixel carries the background color
+- **WHEN** the canvas is grown
+- **THEN** the recomputed composite has alpha 0 in every added pixel
 
 #### Scenario: Grown and cropped content matches the anchor offset
 
@@ -97,7 +95,7 @@ The system SHALL ship an oracle for `resize_canvas_document` in
 document with `pictura_codec::write_psd`, re-reads it with
 `pictura_codec::read_psd`, and confirms the structural round-trip, (b) opens the
 written file with the independent `psd-tools` library and confirms the reported
-document dimensions and each layer's bounds and sizes match the
+document dimensions and layer count match the
 anchor-translated document, and (c) asserts `doc.composite ==
 composite_rgba(&doc)`. The oracle SHALL skip with a message when `psd-tools` is
 not importable and MUST NOT be marked `#[ignore]`.
@@ -110,7 +108,7 @@ not importable and MUST NOT be marked `#[ignore]`.
 #### Scenario: psd-tools sees the canvas-resized document
 
 - **WHEN** the written PSD is opened with `psd-tools`
-- **THEN** psd-tools reports the new document dimensions and the translated layer bounds
+- **THEN** psd-tools reports the new document dimensions and layer count
 
 #### Scenario: Missing psd-tools skips cleanly
 

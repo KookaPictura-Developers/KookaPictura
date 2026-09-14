@@ -827,6 +827,7 @@ name = "pictura-render"
 version = "0.0.0"
 dependencies = [
  "pictura-adjust",
+ "pictura-codec",
  "pictura-core",
  "pictura-filters",
  "pictura-ops",

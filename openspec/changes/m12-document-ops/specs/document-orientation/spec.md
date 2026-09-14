@@ -2,7 +2,7 @@
 
 ### Requirement: Document rotation entry point and validation
 
-The system SHALL provide `pictura_render::rotate_document(doc: &mut Document, quarter_turns: u32) -> Result<(), OpsError>`. `quarter_turns` 1 SHALL rotate the document 90° clockwise, 2 SHALL rotate it 180°, and 3 SHALL rotate it 90° counter-clockwise. Any other value, including 0 and values of 4 or greater, SHALL be rejected with `OpsError::InvalidParams` before any mutation, leaving `doc` bit-identical to its state before the call. The function MUST NOT panic for any input, including 1×1 documents and empty layer stacks.
+The system SHALL provide `pictura_render::rotate_document(doc: &mut Document, quarter_turns: u8) -> Result<(), OpsError>`. `quarter_turns` 1 SHALL rotate the document 90° clockwise, 2 SHALL rotate it 180°, and 3 SHALL rotate it 90° counter-clockwise. Any other value, including 0 and values of 4 or greater, SHALL be rejected with `OpsError::InvalidParams` before any mutation, leaving `doc` bit-identical to its state before the call. The function MUST NOT panic for any input, including 1×1 documents and empty layer stacks.
 
 #### Scenario: Quarter turns one, two, and three are accepted
 
@@ -21,12 +21,12 @@ The system SHALL provide `pictura_render::rotate_document(doc: &mut Document, qu
 
 ### Requirement: Document flip entry point
 
-The system SHALL provide `pictura_render::flip_document(doc: &mut Document, horizontal: bool) -> Result<(), OpsError>`. When `horizontal` is `true` it SHALL mirror the document along the vertical axis (the `pictura_ops::flip_horizontal` mapping); when `horizontal` is `false` it SHALL mirror along the horizontal axis (the `pictura_ops::flip_vertical` mapping). It SHALL return `Ok(())` and MUST NOT panic for any input, including 1×1 documents and empty layer stacks.
+The system SHALL provide `pictura_render::flip_document(doc: &mut Document, horizontal: bool)`. When `horizontal` is `true` it SHALL mirror the document along the vertical axis (the `pictura_ops::flip_horizontal` mapping); when `horizontal` is `false` it SHALL mirror along the horizontal axis (the `pictura_ops::flip_vertical` mapping). It MUST NOT panic for any input, including 1×1 documents and empty layer stacks.
 
 #### Scenario: Horizontal and vertical flips are selectable
 
 - **WHEN** `flip_document` is called with `horizontal` true and with `horizontal` false
-- **THEN** the first mirrors pixels about the vertical axis and the second about the horizontal axis, and both return `Ok(())`
+- **THEN** the first mirrors pixels about the vertical axis and the second about the horizontal axis
 
 ### Requirement: Exact recursive orientation remap
 
@@ -112,7 +112,7 @@ The system SHALL ship an oracle for `rotate_document` and `flip_document` in
 flipped document with `pictura_codec::write_psd`, re-reads it with
 `pictura_codec::read_psd`, and confirms the structural round-trip, (b) opens the
 written file with the independent `psd-tools` library and confirms the reported
-document dimensions and layer bounds match the remapped document, and (c)
+document dimensions and layer count match the remapped document, and (c)
 asserts `doc.composite == composite_rgba(&doc)`. The oracle SHALL skip with a
 message when `psd-tools` is not importable and MUST NOT be marked `#[ignore]`.
 
@@ -124,7 +124,7 @@ message when `psd-tools` is not importable and MUST NOT be marked `#[ignore]`.
 #### Scenario: psd-tools sees the rotated and flipped document
 
 - **WHEN** the written PSD is opened with `psd-tools`
-- **THEN** psd-tools reports the remapped document dimensions and layer bounds
+- **THEN** psd-tools reports the remapped document dimensions and layer count
 
 #### Scenario: Missing psd-tools skips cleanly
 

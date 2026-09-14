@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **350 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- Test suite: **379 tests, 1 ignored** (one pre-existing app `#[ignore]`).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M10 archived; canonical specs are
   in `openspec/specs/` (29 capabilities, 207 requirements, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
@@ -38,7 +38,7 @@ openspec validate --all --strict
 | `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort filters (`Filter` + `apply`); seeded filters |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
-| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) |
+| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
 | `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell (layer/adjustment dock, zoom/pan, GPU demo) |
 
@@ -99,6 +99,10 @@ openspec validate --all --strict
   Shear's curve range check (`x`/`y` in `-1..=1`) added. App filter kinds added.
   OpenSpec change `m11-distort2` MODIFIED the canonical `distort-filters` spec
   (7 MODIFIED + 4 ADDED); tasks checked.
+- **M12** — Document operations: document-level resize/canvas/rotate/flip in
+  `pictura-render`; reuses `pictura-ops`; structural oracle via psd-tools +
+  composite consistency + exactness identities; app integration deferred.
+  OpenSpec change `m12-document-ops`, tasks checked.
 
 ## Spec workflow (OpenSpec)
 
@@ -121,15 +125,15 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M12 (propose via OpenSpec first)
+## Next: M13 (propose via OpenSpec first)
 
-M11 (Distort part 2: Polar Coordinates, Shear, ZigZag, Ocean Ripple) is
-implemented and validated but **unarchived** until `openspec archive
-m11-distort2` merges its deltas into `openspec/specs/`. Candidate next areas:
-document/layer-level image-ops integration (`docs/04-image-ops`) and image
+M11 (Distort part 2) and M12 (document operations) are implemented and validated
+but **unarchived** until `openspec archive m11-distort2` and `openspec archive
+m12-document-ops` merge their deltas into `openspec/specs/`. Candidate next
+areas: app/document UI integration for image ops, undo/history, image
 modes/bit-depth, the remaining filter families (Render, Liquify, Blur Gallery,
-Camera Raw), or a different spec area (`docs/07-color-painting` brush/paint
-engine, `docs/03-tools` painting tools, `docs/09-automation`).
+Camera Raw), or a different spec area (`docs/07-color-painting`,
+`docs/03-tools`, `docs/09-automation`).
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.

@@ -19,10 +19,10 @@ reviewable target.
   `rect`, sets the document size, and recomputes the composite. It recurses
   through groups; adjustment layers carry no color channels.
 - Add a **`document-canvas`** capability:
-  `pictura_render::resize_canvas_document(doc, width, height, anchor,
-  background)` translates layer and mask `rect`s by the nine-anchor offset,
-  re-extends or crops the document-level channels with a zero fill, sets the
-  document size, and recomputes the composite. Added canvas is transparent.
+  `pictura_render::resize_canvas_document(doc, width, height, anchor)`
+  translates layer and mask `rect`s by the nine-anchor offset, re-extends or
+  crops the document-level channels with a zero fill, sets the document size,
+  and recomputes the composite. Added canvas is transparent.
 - Add a **`document-orientation`** capability:
   `pictura_render::rotate_document(doc, quarter_turns)` (1 = CW, 2 = 180,
   3 = CCW; any other value is `OpsError::InvalidParams`) and
@@ -35,13 +35,13 @@ reviewable target.
   bit-identical, and a malformed pixel-layer channel or mask is rejected before
   any mutation.
 - `pictura-render` gains a normal dependency on `pictura-ops` (reusing
-  `resize`, `resize_canvas`, `rotate90_cw`/`rotate90_ccw`, `rotate180`,
+  `resize`, `rotate90_cw`/`rotate90_ccw`, `rotate180`,
   `flip_horizontal`/`flip_vertical`, `Resample`, `Anchor`, and `OpsError`) and
   dev-dependencies on `pictura-codec` and `pictura-testkit` for the oracle.
 - Oracle: a `crates/pictura-render/tests/document_oracle.rs` that writes the
   transformed document with `pictura_codec::write_psd`, re-reads it for the
   structural round-trip, opens it with the independent `psd-tools` library to
-  confirm document dimensions and layer bounds, and asserts `doc.composite ==
+  confirm document dimensions and layer count, and asserts `doc.composite ==
   composite_rgba(&doc)`. It skips cleanly when `psd-tools` is absent and is not
   marked `#[ignore]`.
 - Out of scope (later): arbitrary-angle document rotation, the Bicubic Smoother
@@ -67,7 +67,7 @@ reviewable target.
 
 ## Impact
 
-- `crates/pictura-render/src/document.rs` (new): `resize_document`,
+- `crates/pictura-render/src/document_ops/` (new): `resize_document`,
   `resize_canvas_document`, `rotate_document`, `flip_document`, and the shared
   layer-tree traversal/rect-remap helpers.
 - `crates/pictura-render/src/lib.rs`: re-export the four document operations.

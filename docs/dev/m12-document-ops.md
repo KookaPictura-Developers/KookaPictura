@@ -6,9 +6,8 @@ landed in M10 (`pictura-ops`). New `pictura-render::document_ops` module. Specs:
 `docs/04-image-ops/image-size.md` (`IMG-001`), `canvas-size.md` (`IMG-002`),
 `image-rotation-and-flip.md` (`IMG-003`).
 
-This change is the scaffold: the module split, the public contract, and the
-stubs are landed here. The document-tree math and the oracle follow in
-M12-A / M12-B.
+This change landed the module split, the public contract, the document-tree
+math, and the structural oracle (`crates/pictura-render/tests/document_oracle.rs`).
 
 ## Scope
 
@@ -17,7 +16,8 @@ In:
   resample its channel planes (color + alpha) and mask from the old rect size to
   the new; update `doc.width` / `doc.height`.
 - `resize_canvas_document` — translate every rect by the anchor offset and
-  re-extend the document into the new canvas; added area is fill 0.
+  re-extend the document into the new canvas; the added canvas area is
+  transparent (fill 0).
 - `rotate_document` — exact 90/180/270 index remaps of every channel plane and
   mask, transforming each layer's rect; 90/270 swap the document dimensions.
 - `flip_document` — exact horizontal/vertical index remap of every channel plane
@@ -62,7 +62,7 @@ pub fn resize_document(doc: &mut pictura_core::Document, width: u32, height: u32
 
 // crates/pictura-render/src/document_ops/canvas.rs
 pub fn resize_canvas_document(doc: &mut pictura_core::Document, width: u32,
-    height: u32, anchor: pictura_ops::Anchor, background: [u8; 4])
+    height: u32, anchor: pictura_ops::Anchor)
     -> Result<(), pictura_ops::OpsError>;
 
 // crates/pictura-render/src/document_ops/orient.rs
@@ -82,8 +82,9 @@ than `Result`. Unknown / undecodable adjustment payloads stay no-ops as in
   expected size and layers.
 - **Composite consistency** — `doc.composite` equals `composite_rgba(doc)` after
   every op.
-- **Exactness** — four 90° turns = identity; flip twice = identity; canvas
-  grow-then-shrink with opposite anchors = identity.
+- **Exactness** — four 90° turns = identity; flip twice = identity; centered
+  canvas grow-then-shrink = identity (opposite anchors restore dimensions only,
+  since they shift the content).
 
 ## Task DAG
 

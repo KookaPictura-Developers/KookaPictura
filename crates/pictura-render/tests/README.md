@@ -93,3 +93,62 @@ keeps the alpha semantics correct.
 The scenes are pure functions of pixel coordinates, so generation is
 deterministic; `check` is exercised by `imagemagick_fixtures_reproduce` in
 `oracle.rs`.
+
+# M12-B — structural document-ops oracle
+
+`tests/document_oracle.rs` covers the M12 document operations
+(`resize_document`, `resize_canvas_document`, `rotate_document`,
+`flip_document`). It is a **structural** oracle, not a pixel-parity one: it
+checks that an operation leaves a document that still round-trips and stays
+self-consistent, not that any particular pixel landed where Photoshop would put
+it. Pixel behavior of the underlying kernels is owned by `pictura-ops`' own
+oracle.
+
+## What is checked
+
+| Class | Check | Tolerance |
+|---|---|---|
+| Structural | After each op, `write_psd` → `read_psd` preserves `doc.width`/`doc.height` and the top-level layer count. | Exact |
+| Structural | Depth-first `(name, rect)` list is identical before write and after read (groups and children included). | Exact |
+| Consistency | `doc.composite == composite_rgba(&doc)` after every op. | Exact (`PartialEq` on the `PixelBuffer`) |
+| Exactness | Four `rotate_document(1)` calls equal the original document. | Exact |
+| Exactness | `flip_document` twice (each axis) equals the original document. | Exact |
+| Exactness | Canvas grow centered, then shrink centered back to the original size, equals the original document. | Exact |
+| Exactness | Canvas grow anchored `TopLeft`, then shrink anchored `BottomRight` back to the original size restores `doc.width`/`doc.height`. | Exact |
+| External | `psd-tools` (via `scripts/validate_output.py`) opens a resized and a rotated PSD and reports the expected width, height, and layer count. | Exact |
+
+The exactness checks compare whole `Document`s, so the original must be
+canonical: `sample_doc()` sets `doc.composite = composite_rgba(&doc)` before the
+test, matching what every op recomputes.
+
+"Opposite anchor restores dimensions" is dimensions only. Opposite anchors move
+the content (a `TopLeft` grow followed by a `BottomRight` shrink shifts the
+stack), so the content-preserving case is the centered grow/shrink, which is the
+one asserted for document equality.
+
+## Structural vs pixel tolerances
+
+Dimensions, layer counts, names, and rects are integers with no tolerance. The
+composite check has no tolerance either: both sides come from
+`composite_rgba` over the same layer stack, so they must be byte-identical. The
+resample kernels themselves are not compared against an external image, so a
+resize that is wrong-but-structurally-valid still passes here by design; that
+gap is covered by the `pictura-ops` oracle.
+
+## External `psd-tools` check
+
+`psd_tools_sees_resized_document` and `psd_tools_sees_rotated_document` write a
+plain two-layer document to a scratch PSD and run
+`python3 scripts/validate_output.py <path>`, parsing the header line
+`<path>: <W>x<H> mode=<MODE> depth=<N> layers=<K>`. When `python3` or
+`psd_tools` is missing, the test prints a skip message and returns without
+failing. Requires `psd-tools` 1.x (verified with 1.19.0); no `magick` needed.
+
+`dimension_check_bites` proves the dimension check itself has teeth: it round-
+trips a resized document and asserts `check_dims` accepts the right size and
+rejects a deliberately corrupted width or height.
+
+```bash
+cargo test -p pictura-render --test document_oracle
+```
+
