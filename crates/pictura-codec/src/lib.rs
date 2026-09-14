@@ -411,7 +411,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     }
     let mut key = [0u8; 4];
     key.copy_from_slice(r.take(4)?);
-    let blend = BlendMode::from_psd_key(key)
+    let mut blend = BlendMode::from_psd_key(key)
         .ok_or_else(|| PsdError::Unsupported(format!("blend mode {:?}", key)))?;
 
     let opacity = r.u8()?;
@@ -481,6 +481,16 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             }
             b"lsct" if data.len() >= 4 => {
                 section = Some(u32::from_be_bytes(data[0..4].try_into().unwrap()));
+                // Photoshop/psd-tools store a group's blend key inside 'lsct'
+                // (after the '8BIM' signature); the folder record's own key is
+                // usually 'norm'. Prefer the 'lsct' key so pass-through groups
+                // load as PassThrough.
+                if data.len() >= 12 && &data[4..8] == b"8BIM" {
+                    let lsct_key: [u8; 4] = data[8..12].try_into().unwrap();
+                    if let Some(m) = BlendMode::from_psd_key(lsct_key) {
+                        blend = m;
+                    }
+                }
             }
             b"lsct" => {}
             _ => {}
@@ -807,7 +817,14 @@ fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
     write_pascal(out, name);
     write_tag(out, b"luni", &luni_data(name));
     if section != 0 {
-        write_tag(out, b"lsct", &section.to_be_bytes());
+        // Section-divider setting: kind + '8BIM' + blend key. Photoshop and
+        // psd-tools read a group's blend mode from here, so `pass` must ride
+        // along with the section marker.
+        let mut lsct = Vec::with_capacity(12);
+        lsct.extend_from_slice(&section.to_be_bytes());
+        lsct.extend_from_slice(b"8BIM");
+        lsct.extend_from_slice(&layer.blend.to_psd_key());
+        write_tag(out, b"lsct", &lsct);
     }
     if out.len() % 2 == 1 {
         out.push(0);
@@ -1136,6 +1153,30 @@ mod tests {
         assert_eq!(mask.data.as_deref(), Some(&[7u8; 16][..]));
 
         // The strongest check: the whole document is equal.
+        assert_eq!(back, doc);
+    }
+
+    #[test]
+    fn pass_through_group_round_trips() {
+        let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        let child = pixel("Child", rect(0, 0, 4, 4), 3, BlendMode::Multiply, 255);
+        doc.layers = vec![Layer {
+            name: "Pass Group".to_string(),
+            rect: rect(0, 0, 0, 0),
+            blend: BlendMode::PassThrough,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            channels: Vec::new(),
+            children: vec![child],
+            is_group: true,
+        }];
+
+        let bytes = write_psd(&doc).unwrap();
+        let back = read_psd(&bytes).unwrap();
+        assert!(back.layers[0].is_group());
+        assert_eq!(back.layers[0].blend, BlendMode::PassThrough);
         assert_eq!(back, doc);
     }
 

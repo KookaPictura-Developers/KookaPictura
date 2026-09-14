@@ -84,6 +84,9 @@ fn group_tree() {
     let group = &doc.layers[0];
     assert!(group.is_group());
     assert_eq!(group.name, "Group A");
+    // psd-tools authors groups with the default Pass Through blend, stored in
+    // the 'lsct' block (the folder record's own key is 'norm').
+    assert_eq!(group.blend, BlendMode::PassThrough);
     assert_eq!(group.children.len(), 2);
     // Children (bottom-first): "Inner Green", "Inner Yellow".
     assert_eq!(group.children[0].name, "Inner Green");

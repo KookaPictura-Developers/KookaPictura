@@ -83,9 +83,10 @@ impl Document {
     }
 }
 
-/// A layer blend mode. The 27 modes Photoshop CS6 exposes for a layer; the
-/// group-only `'pass'` (Pass Through) option is intentionally absent — it is a
-/// grouping flag, not a layer blend mode. See `MODEL.md` for the key table.
+/// A layer blend mode. The 27 modes Photoshop CS6 exposes for a layer, plus the
+/// group-only `'pass'` (Pass Through) option. Pass Through is not a layer mode:
+/// it is not part of [`BlendMode::LAYER_MODES`] and must only be used on groups.
+/// See `MODEL.md` for the key table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlendMode {
     Normal,
@@ -115,11 +116,14 @@ pub enum BlendMode {
     Saturation,
     Color,
     Luminosity,
+    /// Group-only: children blend directly against the parent backdrop.
+    PassThrough,
 }
 
 impl BlendMode {
-    /// Every mode, in PSD-spec table order (same order as the key list below).
-    pub const ALL: [BlendMode; 27] = [
+    /// The 27 layer modes, in PSD-spec table order (same order as the key list
+    /// below). [`BlendMode::PassThrough`] is deliberately excluded.
+    pub const LAYER_MODES: [BlendMode; 27] = [
         BlendMode::Normal,
         BlendMode::Dissolve,
         BlendMode::Darken,
@@ -179,12 +183,18 @@ impl BlendMode {
             BlendMode::Saturation => *b"sat ",
             BlendMode::Color => *b"colr",
             BlendMode::Luminosity => *b"lum ",
+            BlendMode::PassThrough => *b"pass",
         }
     }
 
-    /// Parse a 4-byte PSD key; `None` for unknown keys (including `'pass'`).
+    /// Parse a 4-byte PSD key; `None` for unknown keys.
     pub fn from_psd_key(key: [u8; 4]) -> Option<BlendMode> {
-        Self::ALL.into_iter().find(|m| m.to_psd_key() == key)
+        if key == *b"pass" {
+            return Some(BlendMode::PassThrough);
+        }
+        Self::LAYER_MODES
+            .into_iter()
+            .find(|m| m.to_psd_key() == key)
     }
 }
 
@@ -256,9 +266,9 @@ mod tests {
 
     #[test]
     fn all_27_blend_keys_round_trip() {
-        assert_eq!(BlendMode::ALL.len(), 27);
+        assert_eq!(BlendMode::LAYER_MODES.len(), 27);
         let mut keys: Vec<[u8; 4]> = Vec::new();
-        for mode in BlendMode::ALL {
+        for mode in BlendMode::LAYER_MODES {
             let key = mode.to_psd_key();
             assert_eq!(BlendMode::from_psd_key(key), Some(mode), "{mode:?}");
             keys.push(key);
@@ -266,6 +276,19 @@ mod tests {
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), 27, "blend keys must be unique");
+        assert!(
+            !BlendMode::LAYER_MODES.contains(&BlendMode::PassThrough),
+            "Pass Through is group-only, not a 28th layer mode"
+        );
+    }
+
+    #[test]
+    fn pass_through_maps_to_and_from_pass() {
+        assert_eq!(BlendMode::PassThrough.to_psd_key(), *b"pass");
+        assert_eq!(
+            BlendMode::from_psd_key(*b"pass"),
+            Some(BlendMode::PassThrough)
+        );
     }
 
     #[test]
@@ -280,9 +303,9 @@ mod tests {
 
     #[test]
     fn unknown_blend_key_is_none() {
-        assert_eq!(BlendMode::from_psd_key(*b"pass"), None);
         assert_eq!(BlendMode::from_psd_key(*b"zzzz"), None);
         assert_eq!(BlendMode::from_psd_key(*b"nrml"), None);
+        assert_eq!(BlendMode::from_psd_key(*b"pas "), None);
     }
 
     #[test]

@@ -722,6 +722,7 @@ name = "pictura-render"
 version = "0.0.0"
 dependencies = [
  "pictura-core",
+ "pictura-testkit",
 ]
 
 [[package]]

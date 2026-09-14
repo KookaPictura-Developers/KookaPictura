@@ -7,14 +7,14 @@ canvas. Nothing here does blend math — M1 only round-trips the mode enum.
 ## Types
 
 ### `BlendMode`
-The 27 layer blend modes Photoshop CS6 exposes. `'pass'` (Pass Through) is
-deliberately **not** represented: it is a group-only grouping option, not a
-layer mode, and `from_psd_key(*b"pass")` returns `None`.
+The 27 layer blend modes Photoshop CS6 exposes, plus the group-only `'pass'`
+(Pass Through) option. Pass Through is **not** a layer mode: it is excluded from
+`LAYER_MODES` and must only be set on a `Layer` with `is_group == true`.
 
 ```rust
 BlendMode::to_psd_key(&self) -> [u8; 4]
 BlendMode::from_psd_key([u8; 4]) -> Option<BlendMode>   // None = unknown
-BlendMode::ALL: [BlendMode; 27]                         // spec table order
+BlendMode::LAYER_MODES: [BlendMode; 27]                 // spec table order, no Pass Through
 ```
 
 | # | Variant | PSD key | Photoshop name |
@@ -46,6 +46,13 @@ BlendMode::ALL: [BlendMode; 27]                         // spec table order
 | 25 | `Saturation` | `sat ` | Saturation |
 | 26 | `Color` | `colr` | Color |
 | 27 | `Luminosity` | `lum ` | Luminosity |
+| — | `PassThrough` | `pass` | Pass Through (groups only) |
+
+In PSD, a group's blend key may appear in **two** places: the folder record's
+`blend mode key` (as for any layer) and the `'lsct'` section-divider tagged
+block (`kind`, then optional `'8BIM'` + 4-byte key). psd-tools/Photoshop put
+`pass` in the `'lsct'` block and `norm` in the folder record; the codec reads
+both and prefers the `'lsct'` key when present.
 
 Keys are exactly 4 bytes, space-padded where the name is short (`mul `,
 `div `, `hue `, `sat `, `lum `). The key is stored in the layer record's
