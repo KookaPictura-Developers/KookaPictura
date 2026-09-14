@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ImageMagick differential oracle for Kooka Pictura tasks M6-E / M7-C.
+"""ImageMagick differential oracle for Kooka Pictura tasks M6-E / M7-C / M8-B.
 
 ImageMagick is an independent implementation of several `Filter > Blur /
 Sharpen / Noise / Other / Stylize` operators. This script applies one of them
@@ -29,6 +29,12 @@ filter -> ImageMagick mapping and the measured/tolerated divergence live in
     Offset        -roll {+h}{+v}                    (wrap == true only)
     Custom        -convolve {kernel} (+ convolve:scale, -evaluate add)
     Emboss        -emboss {radius}x{sigma}          (measured, no equivalent)
+    Mosaic        -filter box -resize W/n x H/n ! + -filter point -resize WxH !
+
+`Mosaic` is only an exact block average when the cell divides both image
+dimensions; IM's resize window is offset from Pictura's top-left blocks
+otherwise. The remaining M8 filters (Crystallize, Facet, Fragment, Mezzotint,
+Pointillize, Color Halftone) have no faithful operator and are not diffed.
 
 `Maximum`/`Minimum` note: ImageMagick's `Square:N` parameter is a *radius*, so
 the footprint is `(2N+1)²`; pass Pictura's `radius`, not `2*radius+1`.
@@ -55,6 +61,8 @@ Usage:
         --kernel-scale 4 --kernel-offset 8 IN.rgb OUT.rgb
     python3 scripts/filter_oracle.py apply --size 16x16 --planar \
         --im-args="-motion-blur 0x5+45" IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+        --op mosaic --cell 4 IN.rgb OUT.rgb
 
 `--im-args` must be attached with `=` (`--im-args="-median 1"`) or argparse
 mistakes the leading `-` for another option.
@@ -147,6 +155,14 @@ def build_im_args(args: argparse.Namespace) -> list[str]:
         return ["-solarize", f"{args.threshold_percent}%"]
     if op == "emboss":
         return ["-emboss", f"{args.emboss_radius}x{args.emboss_sigma}"]
+    if op == "mosaic":
+        w, h = (int(part) for part in args.size.split("x"))
+        small_w = max(1, w // args.cell)
+        small_h = max(1, h // args.cell)
+        return [
+            "-filter", "box", "-resize", f"{small_w}x{small_h}!",
+            "-filter", "point", "-resize", f"{w}x{h}!",
+        ]
     if op == "convolve":
         return convolve_args(args)
     raise SystemExit(f"unknown --op {op!r}")
@@ -232,7 +248,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="ImageMagick filter oracle for M6-E / M7-C")
+    parser = argparse.ArgumentParser(description="ImageMagick filter oracle for M6-E / M7-C / M8-B")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_version = sub.add_parser("version", help="print `magick -version`")
@@ -245,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
                          help="read/write channel planes instead of interleaved")
     p_apply.add_argument("--op", choices=(
         "gaussian", "box", "motion", "median", "unsharp",
-        "maximum", "minimum", "roll", "solarize", "emboss", "convolve",
+        "maximum", "minimum", "roll", "solarize", "emboss", "mosaic", "convolve",
     ), help="named operator; builds the Magick args below")
     p_apply.add_argument("--im-args", default="",
                          help="verbatim Magick operator arguments (when --op is omitted)")
@@ -253,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="Gaussian sigma")
     p_apply.add_argument("--radius", type=int, default=1,
                          help="box radius (N = 2r+1), median radius, or morphology radius")
+    p_apply.add_argument("--cell", type=int, default=4,
+                         help="Mosaic cell size in pixels (must divide the image)")
     p_apply.add_argument("--distance", type=int, default=5,
                          help="motion blur distance")
     p_apply.add_argument("--angle", type=float, default=0.0,

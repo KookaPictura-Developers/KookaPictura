@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **270 tests, 0 ignored** (one pre-existing app `#[ignore]`).
+- Test suite: **285 tests, 0 ignored** (one pre-existing app `#[ignore]`).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M5 documented retroactively as
   ten changes in `openspec/changes/` (17 capability specs, all `validate --strict` green).
 
@@ -34,7 +34,7 @@ openspec validate --all --strict
 | `pictura-codec` | PSD/PSB read/write: composite, layers, masks, adjustment keys, document channels |
 | `pictura-color` | ICC profiles (sRGB/AdobeRGB/ProPhoto), convert/assign, intents, BPC |
 | `pictura-adjust` | 15 destructive adjustments (`apply`) |
-| `pictura-filters` | blur/sharpen/noise + stylize/other filters (`Filter` + `apply`); seeded Add Noise |
+| `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate filters (`Filter` + `apply`); seeded filters |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
@@ -68,6 +68,11 @@ openspec validate --all --strict
   oracle exact (Δ0) for Maximum/Minimum/Offset-wrap/Custom/Solarize; Emboss,
   Find Edges, High Pass, Offset-fill classified no-equivalent. App filter kinds
   added. OpenSpec change `m7-stylize-other`, tasks checked.
+- **M8** — Pixelate filters: `Mosaic`, `Crystallize`, `Facet`, `Fragment`,
+  `Mezzotint`, `Pointillize`, `Color Halftone`. Oracle: Mosaic exact (block
+  average when the cell divides the dimensions); the other six no-equivalent
+  with recorded deltas; seeded filters reproducible. App filter kinds added.
+  OpenSpec change `m8-pixelate`, tasks checked.
 
 ## Spec workflow (OpenSpec)
 
@@ -89,17 +94,18 @@ OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M8 (propose via OpenSpec first)
+## Next: M9 (propose via OpenSpec first)
 
-M7 (Stylize + Other filters) is complete. Candidate next areas: the remaining
-filter families (Distort, Pixelate, Render, Liquify, Blur Gallery, Camera Raw,
-Lens Correction) or a different spec area (`docs/07-color-painting` brush/paint
-engine, `docs/03-tools` painting tools, `docs/09-automation`).
+M8 (Pixelate filters) is complete. Candidate next areas: remaining filter
+families (Distort, Render, Liquify, Blur Gallery, Camera Raw, Lens Correction)
+or a different spec area (`docs/07-color-painting` brush/paint engine,
+`docs/03-tools` painting tools, `docs/04-image-ops` resize/canvas/rotate,
+`docs/09-automation`).
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-The M6/M6-C/M7 changes are not archived yet — `openspec archive <name>` promotes
-their deltas into `openspec/specs/`.
+The M6/M6-C/M7/M8 changes are not archived yet — `openspec archive <name>`
+promotes their deltas into `openspec/specs/`.
 
 ## Known risks / open items
 

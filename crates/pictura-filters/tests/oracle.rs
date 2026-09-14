@@ -1,20 +1,20 @@
 //! ImageMagick differential oracle for `pictura_filters::apply` (tasks M6-E,
-//! M7-C).
+//! M7-C, M8-B).
 //!
 //! ImageMagick implements a handful of the same Blur / Sharpen / Noise / Other
-//! / Stylize filters. This is a *sanity* oracle, not a parity oracle: Adobe's
-//! exact integer math and convolution kernels are closed, and the ImageMagick
-//! operators only approximate several Photoshop paths. Each filter with a
-//! faithful operator is diffed against the ImageMagick result with
-//! `pictura_testkit::compare`; the tolerance and the reason for it are in the
-//! table below and in `tests/README.md`.
+//! / Stylize / Pixelate filters. This is a *sanity* oracle, not a parity
+//! oracle: Adobe's exact integer math and convolution kernels are closed, and
+//! the ImageMagick operators only approximate several Photoshop paths. Each
+//! filter with a faithful operator is diffed against the ImageMagick result
+//! with `pictura_testkit::compare`; the tolerance and the reason for it are in
+//! the table below and in `tests/README.md`.
 //!
 //! Filters with a faithful ImageMagick operator are run differentially
 //! (`GaussianBlur`, `BoxBlur`, `Median`, `UnsharpMask`, `Maximum`, `Minimum`,
-//! `Offset` with `wrap = true`, `Custom`, `Solarize`). The rest are covered by
-//! ImageMagick-independent property/known-value tests here and in the module
-//! unit tests; the divergences that ruled out a differential test are recorded
-//! in the table below and in `tests/README.md`.
+//! `Offset` with `wrap = true`, `Custom`, `Solarize`, `Mosaic`). The rest are
+//! covered by ImageMagick-independent property/known-value tests here and in
+//! the module unit tests; the divergences that ruled out a differential test
+//! are recorded in the table below and in `tests/README.md`.
 //!
 //! Regenerate/inspect a result manually with `scripts/filter_oracle.py`; see
 //! `tests/README.md`.
@@ -24,7 +24,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use pictura_core::PixelBuffer;
-use pictura_filters::{apply, Filter, NoiseDistribution, Quality, RadialMethod};
+use pictura_filters::{apply, Filter, MezzotintType, NoiseDistribution, Quality, RadialMethod};
 use pictura_testkit::{compare, Diff};
 
 /// Side length of the raw planar RGB8 test image.
@@ -205,10 +205,63 @@ const MAPPING: &[Mapping] = &[
         tolerance: 0,
         note: "same fixed 50% inversion curve (v >= 128 -> 255 - v); measured max delta 0",
     },
+    Mapping {
+        filter: "Mosaic",
+        im: Some("-filter box -resize {W/n}x{H/n}! -filter point -resize WxH!  (n = cell_size)"),
+        tolerance: 0,
+        note: "exact top-left block mean when the cell divides both dimensions; measured max delta 0 \
+               at cell 4 on 16x16. For non-divisor cells IM's resize window is offset from Pictura's \
+               blocks (observed max delta 80..136 at cell 3/5/6/7), so the differential uses cell 4",
+    },
+    Mapping {
+        filter: "Crystallize",
+        im: None,
+        tolerance: 0,
+        note: "seeded Voronoi cells have no ImageMagick operator; closest approximations -kuwahara 4 \
+               (observed max delta 118) and -paint 4 (157). Guarded by seed determinism and the \
+               flat-field identity property",
+    },
+    Mapping {
+        filter: "Facet",
+        im: None,
+        tolerance: 0,
+        note: "similar-neighbor banded 3x3 mean; IM -statistic mean 3x3 is the closest (observed max \
+               delta 76; -kuwahara 1 gives 144). Guarded by flat-field identity and gradient flattening",
+    },
+    Mapping {
+        filter: "Fragment",
+        im: None,
+        tolerance: 0,
+        note: "clamp-anchored sliding 2x2 mean; -statistic mean 2x2 uses a different window/edge rule \
+               (observed max delta 85; -kuwahara 1 gives 59). Guarded by the 4-tap known-value test",
+    },
+    Mapping {
+        filter: "Mezzotint",
+        im: None,
+        tolerance: 0,
+        note: "seeded procedural dot/line pattern; IM -threshold 50% and -ordered-dither are different \
+               screens (observed max delta 255). Guarded by seed determinism, binarity and achromatic \
+               output",
+    },
+    Mapping {
+        filter: "Pointillize",
+        im: None,
+        tolerance: 0,
+        note: "seeded local-color dots over background; IM -spread 2 displaces pixels instead of \
+               drawing dots (observed max delta 240; -kuwahara 2 gives 232). Guarded by seed \
+               determinism and the source/background color set",
+    },
+    Mapping {
+        filter: "ColorHalftone",
+        im: None,
+        tolerance: 0,
+        note: "per-channel rotated screen has no ImageMagick operator; -ordered-dither o8x8 / h4x4a are \
+               fixed orthogonal screens (observed max delta 255). Guarded by determinism and binarity",
+    },
 ];
 
 /// Filters the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 14] = [
+const NO_EQUIVALENT: [&str; 20] = [
     "MotionBlur",
     "RadialBlur",
     "Average",
@@ -223,6 +276,12 @@ const NO_EQUIVALENT: [&str; 14] = [
     "HighPass",
     "Emboss",
     "FindEdges",
+    "Crystallize",
+    "Facet",
+    "Fragment",
+    "Mezzotint",
+    "Pointillize",
+    "ColorHalftone",
 ];
 
 fn script() -> PathBuf {
@@ -433,7 +492,7 @@ fn oracle_negate_matches_expected_bytes() {
 
 #[test]
 fn mapping_marks_no_equivalent_operators() {
-    assert_eq!(MAPPING.len(), 23, "one mapping row per Filter variant");
+    assert_eq!(MAPPING.len(), 30, "one mapping row per Filter variant");
     let none: Vec<&str> = MAPPING
         .iter()
         .filter(|m| m.im.is_none())
@@ -587,6 +646,19 @@ fn solarize_matches_imagemagick() {
         &["--op", "solarize", "--threshold-percent", "50"],
         0,
         "Solarize 50%",
+    );
+}
+
+/// M8: `Mosaic` with a cell that divides the image is an exact top-left block
+/// mean, which `-filter box -resize` down + `-filter point -resize` up matches
+/// bit-exactly (measured max delta 0).
+#[test]
+fn mosaic_matches_imagemagick() {
+    differential(
+        &Filter::Mosaic { cell_size: 4 },
+        &["--op", "mosaic", "--cell", "4"],
+        0,
+        "Mosaic cell 4",
     );
 }
 
@@ -847,4 +919,303 @@ fn add_noise_same_seed_is_deterministic() {
             assert_ne!(a.data, c.data, "{filter:?} must vary with the seed");
         }
     }
+}
+
+/// M8 no-equivalent rows: ImageMagick has no faithful operator, so guard the
+/// contracts directly. The measured deltas against the closest operators are in
+/// the table above. See also the module unit tests for the same filters.
+#[test]
+fn m8_no_equivalent_filters_properties() {
+    let original = test_image_buffer();
+
+    // Crystallize: seed-deterministic and piecewise constant; a flat field is
+    // unchanged (the Voronoi mean of a constant is that constant).
+    let mut a = original.clone();
+    let mut b = original.clone();
+    let mut c = original.clone();
+    apply(
+        &Filter::Crystallize {
+            cell_size: 4,
+            seed: 7,
+        },
+        &mut a,
+    )
+    .expect("apply");
+    apply(
+        &Filter::Crystallize {
+            cell_size: 4,
+            seed: 7,
+        },
+        &mut b,
+    )
+    .expect("apply");
+    apply(
+        &Filter::Crystallize {
+            cell_size: 4,
+            seed: 8,
+        },
+        &mut c,
+    )
+    .expect("apply");
+    assert_eq!(a.data, b.data, "Crystallize must be seed-deterministic");
+    assert_ne!(a.data, c.data, "Crystallize must vary with the seed");
+    let mut flat = PixelBuffer::new(12, 12, 3);
+    for v in flat.data.iter_mut() {
+        *v = 90;
+    }
+    let before = flat.clone();
+    apply(
+        &Filter::Crystallize {
+            cell_size: 4,
+            seed: 1,
+        },
+        &mut flat,
+    )
+    .expect("apply");
+    assert_eq!(
+        flat.data, before.data,
+        "Crystallize of a flat field is identity"
+    );
+
+    // Facet: a flat field is a bit-exact no-op; a gradient loses distinct values.
+    let mut facet_flat = before.clone();
+    apply(&Filter::Facet, &mut facet_flat).expect("apply");
+    assert_eq!(
+        facet_flat.data, before.data,
+        "Facet flat field must be a no-op"
+    );
+    let n = original.pixel_count();
+    let mut grad = PixelBuffer::new(64, 1, 3);
+    for x in 0..64usize {
+        let v = (255.0 * x as f64 / 63.0).round() as u8;
+        grad.data[x] = v;
+    }
+    let distinct_before = grad.data[..64]
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    apply(&Filter::Facet, &mut grad).expect("apply");
+    let distinct_after = grad.data[..64]
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    assert!(
+        distinct_after < distinct_before,
+        "Facet must flatten a gradient ({distinct_before} -> {distinct_after})"
+    );
+
+    // Fragment: a flat field is a bit-exact no-op; the output is the rounded
+    // mean of the four source taps (known value on a 4x4 ramp).
+    let mut frag_flat = before.clone();
+    apply(&Filter::Fragment, &mut frag_flat).expect("apply");
+    assert_eq!(
+        frag_flat.data, before.data,
+        "Fragment flat field must be a no-op"
+    );
+    let w = 4usize;
+    let mut ramp = PixelBuffer::new(w as u32, w as u32, 3);
+    for y in 0..w {
+        for x in 0..w {
+            let v = (x * 10 + y) as u8;
+            for c in 0..3 {
+                ramp.data[c * 16 + y * w + x] = v;
+            }
+        }
+    }
+    let src = ramp.data.clone();
+    apply(&Filter::Fragment, &mut ramp).expect("apply");
+    for y in 0..w {
+        for x in 0..w {
+            let sum: u32 = [(0usize, 0usize), (1, 0), (0, 1), (1, 1)]
+                .iter()
+                .map(|&(ox, oy)| {
+                    let sx = (x + ox).min(w - 1);
+                    let sy = (y + oy).min(w - 1);
+                    src[sy * w + sx] as u32
+                })
+                .sum();
+            assert_eq!(
+                ramp.data[y * w + x],
+                ((sum + 2) / 4) as u8,
+                "Fragment at ({x},{y})"
+            );
+        }
+    }
+
+    // Mezzotint: seed-deterministic, binary, and achromatic.
+    let mut mz_a = original.clone();
+    let mut mz_b = original.clone();
+    let mut mz_c = original.clone();
+    apply(
+        &Filter::Mezzotint {
+            kind: MezzotintType::FineDots,
+            seed: 3,
+        },
+        &mut mz_a,
+    )
+    .expect("apply");
+    apply(
+        &Filter::Mezzotint {
+            kind: MezzotintType::FineDots,
+            seed: 3,
+        },
+        &mut mz_b,
+    )
+    .expect("apply");
+    apply(
+        &Filter::Mezzotint {
+            kind: MezzotintType::CoarseDots,
+            seed: 3,
+        },
+        &mut mz_c,
+    )
+    .expect("apply");
+    assert_eq!(mz_a.data, mz_b.data, "Mezzotint must be seed-deterministic");
+    assert_ne!(mz_a.data, mz_c.data, "Mezzotint must vary with the kind");
+    assert!(
+        mz_a.data.iter().all(|&v| v == 0 || v == 255),
+        "Mezzotint must be black/white"
+    );
+    for p in 0..n {
+        assert_eq!(mz_a.data[p], mz_a.data[n + p], "Mezzotint R != G");
+        assert_eq!(mz_a.data[p], mz_a.data[2 * n + p], "Mezzotint R != B");
+    }
+
+    // Pointillize: seed-deterministic; a red source over a blue background
+    // leaves only those two colors.
+    let red = {
+        let mut b = PixelBuffer::new(16, 16, 3);
+        let m = b.pixel_count();
+        for v in b.data[..m].iter_mut() {
+            *v = 255;
+        }
+        b
+    };
+    let mut pt_a = red.clone();
+    let mut pt_b = red.clone();
+    let mut pt_c = red.clone();
+    apply(
+        &Filter::Pointillize {
+            cell_size: 3,
+            background: [0, 0, 255],
+            seed: 9,
+        },
+        &mut pt_a,
+    )
+    .expect("apply");
+    apply(
+        &Filter::Pointillize {
+            cell_size: 3,
+            background: [0, 0, 255],
+            seed: 9,
+        },
+        &mut pt_b,
+    )
+    .expect("apply");
+    apply(
+        &Filter::Pointillize {
+            cell_size: 3,
+            background: [0, 0, 255],
+            seed: 10,
+        },
+        &mut pt_c,
+    )
+    .expect("apply");
+    assert_eq!(
+        pt_a.data, pt_b.data,
+        "Pointillize must be seed-deterministic"
+    );
+    assert_ne!(pt_a.data, pt_c.data, "Pointillize must vary with the seed");
+    let mut saw_source = false;
+    let mut saw_background = false;
+    for p in 0..pt_a.pixel_count() {
+        let px = [pt_a.data[p], pt_a.data[n + p], pt_a.data[2 * n + p]];
+        match px {
+            [255, 0, 0] => saw_source = true,
+            [0, 0, 255] => saw_background = true,
+            _ => panic!("Pointillize produced an unexpected color {px:?}"),
+        }
+    }
+    assert!(
+        saw_source && saw_background,
+        "expected dots over background"
+    );
+
+    // Color Halftone: deterministic and black/white.
+    let gray = {
+        let mut b = PixelBuffer::new(32, 32, 3);
+        for v in b.data.iter_mut() {
+            *v = 128;
+        }
+        b
+    };
+    let mut ch_a = gray.clone();
+    let mut ch_b = gray.clone();
+    apply(
+        &Filter::ColorHalftone {
+            max_radius: 5,
+            angles: [15.0, 75.0, 0.0, 45.0],
+        },
+        &mut ch_a,
+    )
+    .expect("apply");
+    apply(
+        &Filter::ColorHalftone {
+            max_radius: 5,
+            angles: [15.0, 75.0, 0.0, 45.0],
+        },
+        &mut ch_b,
+    )
+    .expect("apply");
+    assert_eq!(ch_a.data, ch_b.data, "ColorHalftone must be deterministic");
+    assert!(
+        ch_a.data.iter().all(|&v| v == 0 || v == 255),
+        "ColorHalftone must be black/white"
+    );
+}
+
+/// The differential harness must actually catch a wrong filter output. Apply a
+/// faithful filter, check it matches, then perturb a scratch copy and check the
+/// comparison fails; revert and confirm it matches again.
+#[test]
+fn differential_harness_detects_perturbation() {
+    if !magick_available() {
+        eprintln!("skipping: `magick` not on PATH");
+        return;
+    }
+    let original = test_image_planar();
+    let reference = oracle(
+        &["--op", "solarize", "--threshold-percent", "50"],
+        &original,
+    );
+    let mut buf = PixelBuffer {
+        width: SIZE,
+        height: SIZE,
+        channels: CHANNELS,
+        data: original,
+    };
+    apply(&Filter::Solarize, &mut buf).expect("apply");
+    assert!(
+        compare(&buf.data, &reference, 0)
+            .expect("lengths")
+            .is_empty(),
+        "sanity: Solarize must match the oracle before perturbation"
+    );
+
+    let mut perturbed = buf.clone();
+    perturbed.data[0] = perturbed.data[0].wrapping_add(37);
+    assert!(
+        !compare(&perturbed.data, &reference, 0)
+            .expect("lengths")
+            .is_empty(),
+        "a perturbed filter output must not compare equal"
+    );
+
+    perturbed.data[0] = perturbed.data[0].wrapping_sub(37);
+    assert!(
+        compare(&perturbed.data, &reference, 0)
+            .expect("lengths")
+            .is_empty(),
+        "reverting the scratch copy must restore the match"
+    );
 }

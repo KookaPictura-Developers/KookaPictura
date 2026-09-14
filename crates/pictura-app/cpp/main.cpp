@@ -204,6 +204,13 @@ int main(int argc, char* argv[])
     filterCombo->addItem(QStringLiteral("Emboss"), QStringLiteral("emboss"));
     filterCombo->addItem(QStringLiteral("Find Edges"), QStringLiteral("find-edges"));
     filterCombo->addItem(QStringLiteral("Solarize"), QStringLiteral("solarize"));
+    filterCombo->addItem(QStringLiteral("Mosaic"), QStringLiteral("mosaic"));
+    filterCombo->addItem(QStringLiteral("Crystallize"), QStringLiteral("crystallize"));
+    filterCombo->addItem(QStringLiteral("Facet"), QStringLiteral("facet"));
+    filterCombo->addItem(QStringLiteral("Fragment"), QStringLiteral("fragment"));
+    filterCombo->addItem(QStringLiteral("Mezzotint"), QStringLiteral("mezzotint"));
+    filterCombo->addItem(QStringLiteral("Pointillize"), QStringLiteral("pointillize"));
+    filterCombo->addItem(QStringLiteral("Color Halftone"), QStringLiteral("color-halftone"));
     panelLayout->addWidget(filterCombo);
 
     auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);

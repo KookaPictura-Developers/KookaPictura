@@ -1,11 +1,11 @@
-# M6-E / M7-C — ImageMagick filter oracle
+# M6-E / M7-C / M8-B — ImageMagick filter oracle
 
 These tests diff `pictura_filters::apply` against **ImageMagick** for the
-Blur / Sharpen / Noise / Other / Stylize filters that have a usable equivalent.
-This is a *sanity* oracle, not a parity oracle: Adobe's exact integer math and
-convolution kernels are closed, and the ImageMagick operators only approximate
-several Photoshop paths. The mapping table, the IM flags, the tolerances and the
-known divergences are below.
+Blur / Sharpen / Noise / Other / Stylize / Pixelate filters that have a usable
+equivalent. This is a *sanity* oracle, not a parity oracle: Adobe's exact
+integer math and convolution kernels are closed, and the ImageMagick operators
+only approximate several Photoshop paths. The mapping table, the IM flags, the
+tolerances and the known divergences are below.
 
 - Oracle script: `scripts/filter_oracle.py`
 - Tests: `crates/pictura-filters/tests/oracle.rs`
@@ -13,7 +13,7 @@ known divergences are below.
 
 Only filters with a faithful ImageMagick operator are diffed (`GaussianBlur`,
 `BoxBlur`, `Median`, `UnsharpMask`, `Maximum`, `Minimum`, `Offset` with
-`wrap = true`, `Custom`, `Solarize`). The rest are covered by
+`wrap = true`, `Custom`, `Solarize`, `Mosaic`). The rest are covered by
 ImageMagick-independent property/known-value tests (here and in the module unit
 tests); the measured divergences that ruled out a differential test are recorded
 below. No test is `#[ignore]`d.
@@ -49,6 +49,13 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `Emboss` | — | **no** | — | IM `-emboss` is per-channel with a fixed diagonal kernel and no angle/height/amount; Pictura is an angle-directed second difference on **luma** with an achromatic output. No angle/radius/σ matches: observed max delta 210 (angle 135 vs `-emboss 0x1`; best case 186 on the axis-aligned angles). |
 | `FindEdges` | — | **no** | — | IM `-edge` is a different detector and renders edges **bright on dark**; Pictura's Sobel magnitude is inverted (dark on light). Observed max delta 255 vs `-edge 1`. |
 | `Solarize` | `-solarize 50%` | yes | 0 | Same fixed 50 % inversion curve (`v ≥ 128 → 255 − v`); measured max delta 0. |
+| `Mosaic` | `-filter box -resize {W/n}x{H/n}! -filter point -resize WxH!` (`n = cell_size`) | yes | 0 | Exact top-left block mean when the cell divides both dimensions; measured max delta 0 (cell 4 on 16×16). For non-divisor cells IM's resize window is offset from Pictura's top-left blocks (observed max delta 80–136 at cell 3/5/6/7), so the differential uses cell 4. |
+| `Crystallize` | — | **no** | — | Seeded Voronoi cells; no IM operator. Closest approximations `-kuwahara 4` (observed max delta 118) and `-paint 4` (157). Guarded by seed determinism + flat-field identity. |
+| `Facet` | — | **no** | — | Similar-neighbor banded 3×3 mean; IM `-statistic mean 3x3` is closest (observed max delta 76; `-kuwahara 1` gives 144). Guarded by flat-field identity and gradient flattening. |
+| `Fragment` | — | **no** | — | Clamp-anchored sliding 2×2 mean; `-statistic mean 2x2` uses a different window/edge rule (observed max delta 85; `-kuwahara 1` gives 59). Guarded by the 4-tap known-value test. |
+| `Mezzotint` | — | **no** | — | Seeded procedural dot/line pattern; IM `-threshold 50%` and `-ordered-dither` are different screens (observed max delta 255). Guarded by seed determinism, binarity and achromatic output. |
+| `Pointillize` | — | **no** | — | Seeded local-color dots over background; `-spread 2` displaces pixels instead of drawing dots (observed max delta 240; `-kuwahara 2` gives 232). Guarded by seed determinism and the source/background color set. |
+| `ColorHalftone` | — | **no** | — | Per-channel rotated screen; `-ordered-dither o8x8` / `h4x4a` are fixed orthogonal screens (observed max delta 255). Guarded by determinism and binarity. |
 
 ### Why `MotionBlur` is not diffed
 
@@ -123,6 +130,7 @@ play.
 | Offset (`wrap = true`) | `-roll {+h}{+v}` |
 | Custom | `-define convolve:scale={ΣK/scale} -convolve {kernel} [-evaluate add {offset/255}%]` |
 | Solarize | `-solarize 50%` |
+| Mosaic | `-filter box -resize {W/n}x{H/n}! -filter point -resize {W}x{H}!`, `n = cell_size` (cell must divide both dimensions) |
 | Emboss | `-emboss {radius}x{sigma}` (measured, **not** used by a differential test) |
 
 ### Unsharp Mask scaling
@@ -139,6 +147,41 @@ Empirically (16×16 test image, `pictura_filters` with σ = radius/3 against
   blur than its standalone `-gaussian-blur`; it shrinks to 1 at larger radii
   (Pictura radius 6.0 → σ 2.0). The differential uses radius 3.0 / amount 150 /
   threshold 0 with tolerance 6.
+
+### Mosaic: an exact block mean via two resizes
+
+Pictura's `Mosaic` averages each top-left `n×n` block and writes the rounded mean
+back to the block. ImageMagick's box filter computes the same block mean when the
+cell divides both dimensions, and a point resize replicates it:
+`-filter box -resize {W/n}x{H/n}!` then `-filter point -resize {W}x{H}!`. On the
+16×16 test image with cell 4 the result is bit-identical (measured max delta 0).
+When the cell does not divide the image, IM's resize window is centred on the
+destination samples rather than anchored top-left, so the blocks drift: measured
+max delta 80 (cell 6/7), 113 (cell 3) and 136 (cell 5). The differential test
+therefore uses cell 4; the module unit test covers the top-left rounding contract
+directly.
+
+`Mosaic` is the only M8 filter with a faithful operator. The rest are measured
+against the closest plausible ImageMagick operator and classified no-equivalent:
+
+| `Filter` | Tried | Observed max delta |
+|---|---|---|
+| `Crystallize` | `-kuwahara 4` / `-paint 4` | 118 / 157 |
+| `Facet` | `-statistic mean 3x3` / `-kuwahara 1` | 76 / 144 |
+| `Fragment` | `-statistic mean 2x2` / `-kuwahara 1` | 85 / 59 |
+| `Mezzotint` | `-threshold 50%` / `-ordered-dither o8x8` | 255 / 255 |
+| `Pointillize` | `-spread 2` / `-kuwahara 2` | 240 / 232 |
+| `ColorHalftone` | `-ordered-dither o8x8` / `h4x4a` | 255 / 255 |
+
+The reasons they cannot match: Crystallize's Voronoi seeds are seeded and
+jittered; Facet's banded 3×3 mean is a closed heuristic; Fragment is an
+anchored (not centred) sliding 2×2 mean; Mezzotint's screen is a seeded
+procedural threshold, not a fixed dither matrix; Pointillize draws a seeded dot
+per cell over a background instead of displacing pixels; Color Halftone rotates
+a separate screen per channel. Each is guarded by property tests in
+`oracle.rs` (`m8_no_equivalent_filters_properties`): seed determinism, flat-field
+identity or no-op, binarity/achromatic output, and the source/background color
+set.
 
 ## Known divergences (IM vs Photoshop / Pictura)
 
@@ -179,6 +222,10 @@ Empirically (16×16 test image, `pictura_filters` with σ = radius/3 against
   dark-edge property tests.
 - **Offset** with `wrap = false` fills with `background`; IM `-roll` wraps.
   Observed max delta 240. Guarded by the background-fill property test.
+- **M8 Pixelate.** `Mosaic` is exact only for cells that divide the image (see
+  above). Crystallize, Facet, Fragment, Mezzotint, Pointillize and Color Halftone
+  have no faithful IM operator; the closest candidates and measured deltas are in
+  the M8 table above.
 - **16/32-bit, CMYK/Lab, selection/mask/gpu wiring.** Out of M6/M7 scope.
 
 Tolerances apply only to the differential rows. They are absolute per-8-bit-sample
@@ -215,6 +262,8 @@ python3 scripts/filter_oracle.py apply --size 16x16 --op convolve \
 python3 scripts/filter_oracle.py apply --size 16x16 --op solarize \
     --threshold-percent 50 IN.rgb OUT.rgb
 python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+    --op mosaic --cell 4 IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --planar \
     --im-args="-motion-blur 0x5+45" IN.rgb OUT.rgb
 ```
 
@@ -239,6 +288,9 @@ with `=` so argparse does not read the leading `-` as another option.
   Add Noise, the Sharpen family, High Pass, Emboss, Find Edges, and `Offset`
   with `wrap = false`: no faithful ImageMagick equivalent (see the table);
   covered by property/known-value tests instead.
+- Crystallize, Facet, Fragment, Mezzotint, Pointillize and Color Halftone: no
+  faithful ImageMagick equivalent (M8; see the M8 table); covered by
+  property/known-value tests instead.
 - Alpha-channel behaviour: the tests use 3-channel buffers, and `apply` is
   specified never to modify channel 4 (guarded by the module unit tests).
-- 16/32-bit filter math (M6/M7 are 8-bit only).
+- 16/32-bit filter math (M6–M8 are 8-bit only).

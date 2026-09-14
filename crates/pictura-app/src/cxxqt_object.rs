@@ -450,7 +450,7 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
 /// Defaults are chosen so a fresh apply visibly changes a non-trivial image;
 /// filter dialogs are out of scope for M6-C.
 fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
-    use pictura_filters::{Filter, NoiseDistribution};
+    use pictura_filters::{Filter, MezzotintType, NoiseDistribution};
 
     Some(match kind {
         "gaussian-blur" => Filter::GaussianBlur { radius: 5.0 },
@@ -490,6 +490,26 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
         },
         "find-edges" => Filter::FindEdges,
         "solarize" => Filter::Solarize,
+        "mosaic" => Filter::Mosaic { cell_size: 10 },
+        "crystallize" => Filter::Crystallize {
+            cell_size: 10,
+            seed: 1,
+        },
+        "facet" => Filter::Facet,
+        "fragment" => Filter::Fragment,
+        "mezzotint" => Filter::Mezzotint {
+            kind: MezzotintType::FineDots,
+            seed: 1,
+        },
+        "pointillize" => Filter::Pointillize {
+            cell_size: 5,
+            background: [0, 0, 0],
+            seed: 1,
+        },
+        "color-halftone" => Filter::ColorHalftone {
+            max_radius: 5,
+            angles: [108.0, 162.0, 90.0, 45.0],
+        },
         // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
         // default exists; it stays out of the dock and is left unmapped.
         _ => return None,
@@ -788,7 +808,7 @@ mod tests {
 
     #[test]
     fn filter_from_kind_maps_known_and_rejects_unknown() {
-        use pictura_filters::{Filter, NoiseDistribution};
+        use pictura_filters::{Filter, MezzotintType, NoiseDistribution};
 
         assert_eq!(
             filter_from_kind("gaussian-blur"),
@@ -860,6 +880,41 @@ mod tests {
         );
         assert_eq!(filter_from_kind("find-edges"), Some(Filter::FindEdges));
         assert_eq!(filter_from_kind("solarize"), Some(Filter::Solarize));
+        assert_eq!(
+            filter_from_kind("mosaic"),
+            Some(Filter::Mosaic { cell_size: 10 })
+        );
+        assert_eq!(
+            filter_from_kind("crystallize"),
+            Some(Filter::Crystallize {
+                cell_size: 10,
+                seed: 1,
+            })
+        );
+        assert_eq!(filter_from_kind("facet"), Some(Filter::Facet));
+        assert_eq!(filter_from_kind("fragment"), Some(Filter::Fragment));
+        assert_eq!(
+            filter_from_kind("mezzotint"),
+            Some(Filter::Mezzotint {
+                kind: MezzotintType::FineDots,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("pointillize"),
+            Some(Filter::Pointillize {
+                cell_size: 5,
+                background: [0, 0, 0],
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("color-halftone"),
+            Some(Filter::ColorHalftone {
+                max_radius: 5,
+                angles: [108.0, 162.0, 90.0, 45.0],
+            })
+        );
         assert_eq!(filter_from_kind("bogus"), None);
     }
 
