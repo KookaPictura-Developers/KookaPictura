@@ -110,6 +110,7 @@ fn layer(name: &str, blend: BlendMode, interleaved: &[u8], with_alpha: bool) -> 
         clipping: false,
         visible: true,
         mask: None,
+        adjustment: None,
         channels,
         children: Vec::new(),
         is_group: false,

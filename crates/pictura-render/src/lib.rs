@@ -27,7 +27,8 @@
 //! is not implemented. Exact pass-through parity is limited to the 255/no-mask
 //! case (see the test below).
 
-use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
+use pictura_adjust::{Adjustment, BrightnessContrastParams, HueSaturationParams, LevelsParams};
+use pictura_core::{AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelBuffer};
 
 pub mod gpu;
 pub use gpu::{composite_gpu, composite_gpu_or_cpu, GpuError};
@@ -111,6 +112,13 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             composite_layer(&mut inner, child, doc);
         }
         composite_canvas(canvas, layer, &inner);
+    } else if let Some(data) = &layer.adjustment {
+        // An adjustment layer owns no pixels: it transforms the backdrop it is
+        // composited over. Unknown/undecodable keys are a no-op (preserved on
+        // save, not applied), never an error.
+        if let Some(adjustment) = decode_adjustment(data) {
+            composite_adjustment(canvas, layer, &adjustment);
+        }
     } else {
         composite_pixels(canvas, layer, doc);
     }
@@ -173,6 +181,146 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
             if p.a > 0.0 {
                 blend_into(canvas, layer, x, y, [p.r, p.g, p.b], p.a);
             }
+        }
+    }
+}
+
+/// Decode a raw PSD adjustment block into a destructive [`Adjustment`] for the
+/// encodings this crate supports. `None` means "not understood": the caller
+/// leaves the backdrop unchanged (no-op), never errors.
+///
+/// Supported keys: `nvrt`/`invr` (Invert, no payload), `post` (Posterize),
+/// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
+/// record) and `hue2`/`hue ` (Hue/Saturation). Descriptor/custom payloads
+/// (`curv`, `expA`, `vibA`, `blwh`, `phfl`, `mixr`, `gdrm`, `selc`, `clrL`) are
+/// preserved on disk but not decoded here.
+pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
+    match &data.key {
+        b"nvrt" | b"invr" => Some(Adjustment::Invert),
+        b"post" => be_u16(&data.data, 0)
+            .filter(|v| (2..=255).contains(v))
+            .map(|v| Adjustment::Posterize(v as u8)),
+        b"thrs" => be_u16(&data.data, 0)
+            .filter(|v| (1..=255).contains(v))
+            .map(|v| Adjustment::Threshold(v as u8)),
+        b"brit" => decode_brightness_contrast(&data.data),
+        b"levl" => decode_levels(&data.data),
+        b"hue2" | b"hue " => decode_hue_saturation(&data.data),
+        _ => None,
+    }
+}
+
+fn be_u16(d: &[u8], at: usize) -> Option<u16> {
+    let s = d.get(at..at + 2)?;
+    Some(u16::from_be_bytes([s[0], s[1]]))
+}
+
+fn be_i16(d: &[u8], at: usize) -> Option<i16> {
+    Some(be_u16(d, at)? as i16)
+}
+
+/// `brit`: brightness (i16), contrast (i16), mean (i16), lab_only (u8), pad.
+///
+/// Photoshop's `brit` block carries no explicit "Use Legacy" flag; CS6 defaults
+/// new adjustment layers to the modern curve, so decode with `use_legacy:false`.
+/// ponytail: legacy-vs-modern detection is not encoded here; revisit if a CS6
+/// baseline for legacy `brit` files appears.
+fn decode_brightness_contrast(d: &[u8]) -> Option<Adjustment> {
+    let brightness = be_i16(d, 0)?;
+    let contrast = be_i16(d, 2)?;
+    if !(-150..=150).contains(&brightness) || !(-50..=100).contains(&contrast) {
+        return None;
+    }
+    Some(Adjustment::BrightnessContrast(BrightnessContrastParams {
+        brightness,
+        contrast,
+        use_legacy: false,
+    }))
+}
+
+/// `levl`: `u16 version` (2) then 29 five-`u16` records. Record 0 is the
+/// composite channel; this decoder applies it uniformly to R/G/B.
+fn decode_levels(d: &[u8]) -> Option<Adjustment> {
+    if be_u16(d, 0)? != 2 {
+        return None;
+    }
+    let input_black = be_u16(d, 2)?;
+    let input_white = be_u16(d, 4)?;
+    let output_black = be_u16(d, 6)?;
+    let output_white = be_u16(d, 8)?;
+    let gamma = be_u16(d, 10)?;
+    if input_black >= input_white || gamma == 0 {
+        return None;
+    }
+    if [input_black, input_white, output_black, output_white]
+        .into_iter()
+        .any(|v| v > 255)
+    {
+        return None;
+    }
+    Some(Adjustment::Levels(LevelsParams {
+        input_black: input_black as u8,
+        input_white: input_white as u8,
+        gamma: gamma as f64 / 100.0,
+        output_black: output_black as u8,
+        output_white: output_white as u8,
+    }))
+}
+
+/// `hue2` (and legacy `hue `): version `u16`, enable `u8`, pad, colorization
+/// (3×i16), then the master Hue/Saturation/Lightness triplet (3×i16).
+fn decode_hue_saturation(d: &[u8]) -> Option<Adjustment> {
+    if be_u16(d, 0)? != 2 {
+        return None;
+    }
+    let hue = be_i16(d, 10)?;
+    let saturation = be_i16(d, 12)?;
+    let lightness = be_i16(d, 14)?;
+    if !(-180..=180).contains(&hue)
+        || !(-100..=100).contains(&saturation)
+        || !(-100..=100).contains(&lightness)
+    {
+        return None;
+    }
+    Some(Adjustment::HueSaturation(HueSaturationParams {
+        hue,
+        saturation,
+        lightness,
+    }))
+}
+
+/// Apply a decoded adjustment to the running backdrop, then gate the result by
+/// the layer's mask/opacity/blend (Photoshop applies the adjustment to the
+/// backdrop and blends the adjusted result back).
+fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustment) {
+    let n = canvas.w * canvas.h;
+    if n == 0 {
+        return;
+    }
+    let mut buf = PixelBuffer::new(canvas.w as u32, canvas.h as u32, 3);
+    for (i, p) in canvas.px.iter().enumerate() {
+        buf.data[i] = to_u8(p.r);
+        buf.data[n + i] = to_u8(p.g);
+        buf.data[2 * n + i] = to_u8(p.b);
+    }
+    if pictura_adjust::apply(adjustment, &mut buf).is_err() {
+        return; // invalid/unsupported parameters: no-op, never an error
+    }
+    for y in 0..canvas.h {
+        for x in 0..canvas.w {
+            let i = y * canvas.w + x;
+            // Source coverage is the backdrop's own alpha: an adjustment adds no
+            // content where the backdrop is transparent.
+            let backdrop_alpha = canvas.px[i].a;
+            if backdrop_alpha <= 0.0 {
+                continue;
+            }
+            let cs = [
+                buf.data[i] as f32 / 255.0,
+                buf.data[n + i] as f32 / 255.0,
+                buf.data[2 * n + i] as f32 / 255.0,
+            ];
+            blend_into(canvas, layer, x, y, cs, backdrop_alpha);
         }
     }
 }
@@ -510,6 +658,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: vec![
                 Channel {
                     id: 0,
@@ -548,6 +697,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask,
+            adjustment: None,
             channels: Vec::new(),
             children,
             is_group: true,
@@ -1097,6 +1247,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: vec![Channel {
                 id: 0,
                 data: vec![120],
@@ -1105,5 +1256,208 @@ mod tests {
             is_group: false,
         }];
         assert_eq!(px(&composite_rgba(&d), 0, 0), [120, 120, 120, 255]);
+    }
+
+    // --- M4-B: adjustment layers ------------------------------------------
+
+    fn adjdata(key: [u8; 4], data: Vec<u8>) -> AdjustmentData {
+        AdjustmentData { key, data }
+    }
+
+    fn adjustment_layer(
+        name: &str,
+        key: [u8; 4],
+        data: Vec<u8>,
+        opacity: u8,
+        mask: Option<LayerMask>,
+    ) -> Layer {
+        Layer {
+            name: name.into(),
+            rect: rect(0, 0, 0, 0),
+            blend: BlendMode::Normal,
+            opacity,
+            clipping: false,
+            visible: true,
+            mask,
+            adjustment: Some(adjdata(key, data)),
+            channels: Vec::new(),
+            children: Vec::new(),
+            is_group: false,
+        }
+    }
+
+    fn rgb(buf: &PixelBuffer, x: u32, y: u32) -> [u8; 3] {
+        let p = px(buf, x, y);
+        [p[0], p[1], p[2]]
+    }
+
+    #[test]
+    fn decode_adjustment_subset_and_unknown() {
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"nvrt", vec![])),
+            Some(Adjustment::Invert)
+        );
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"invr", vec![])),
+            Some(Adjustment::Invert)
+        );
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"post", vec![0, 4, 0, 0])),
+            Some(Adjustment::Posterize(4))
+        );
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"thrs", vec![0, 128, 0, 0])),
+            Some(Adjustment::Threshold(128))
+        );
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"brit", vec![0, 10, 0, 20, 0, 0, 0, 0])),
+            Some(Adjustment::BrightnessContrast(BrightnessContrastParams {
+                brightness: 10,
+                contrast: 20,
+                use_legacy: false,
+            }))
+        );
+
+        let mut levels = vec![0, 2];
+        for v in [5u16, 250, 10, 240, 120] {
+            levels.extend_from_slice(&v.to_be_bytes());
+        }
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"levl", levels)),
+            Some(Adjustment::Levels(LevelsParams {
+                input_black: 5,
+                input_white: 250,
+                gamma: 1.2,
+                output_black: 10,
+                output_white: 240,
+            }))
+        );
+
+        let hue = vec![0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 20, 0, 30];
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"hue2", hue)),
+            Some(Adjustment::HueSaturation(HueSaturationParams {
+                hue: 10,
+                saturation: 20,
+                lightness: 30,
+            }))
+        );
+
+        // Unknown key and undecodable payloads are a no-op, never an error.
+        assert_eq!(decode_adjustment(&adjdata(*b"zzzz", vec![1, 2, 3])), None);
+        assert_eq!(decode_adjustment(&adjdata(*b"clrL", vec![1, 2, 3])), None);
+        assert_eq!(decode_adjustment(&adjdata(*b"post", vec![0, 0])), None);
+        assert_eq!(decode_adjustment(&adjdata(*b"levl", vec![0, 3])), None);
+    }
+
+    #[test]
+    fn invert_adjustment_layer_matches_flattened() {
+        // Varied RGB backdrop so Invert is not a uniform all-zero/all-one case.
+        let base = solid(
+            "base",
+            full(4, 2),
+            (30, 90, 210),
+            255,
+            BlendMode::Normal,
+            255,
+        );
+        let with_adj = doc(
+            4,
+            2,
+            vec![
+                base.clone(),
+                adjustment_layer("invert", *b"nvrt", Vec::new(), 255, None),
+            ],
+        );
+        let out = composite_rgba(&with_adj);
+        // Expected: apply the destructive Adjustment to the flattened composite.
+        let mut flat = composite_rgba(&doc(4, 2, vec![base]));
+        pictura_adjust::apply(&Adjustment::Invert, &mut flat).unwrap();
+        for y in 0..2 {
+            for x in 0..4 {
+                let want = rgb(&flat, x, y);
+                let got = rgb(&out, x, y);
+                for c in 0..3 {
+                    let d = got[c] as i16 - want[c] as i16;
+                    assert!(d.abs() <= 1, "at {x},{y}.{c}: got {got:?} want {want:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn adjustment_layer_mask_and_opacity_gate() {
+        // 2x1: mask fully reveals x=0, hides x=1.
+        let base = solid(
+            "base",
+            full(2, 1),
+            (100, 100, 100),
+            255,
+            BlendMode::Normal,
+            255,
+        );
+        let mut masked = adjustment_layer("invert", *b"nvrt", Vec::new(), 255, None);
+        masked.mask = Some(LayerMask {
+            rect: full(2, 1),
+            default_color: 0,
+            disabled: false,
+            flags: 0,
+            data: Some(vec![255, 0]),
+        });
+        let out = composite_rgba(&doc(2, 1, vec![base, masked]));
+        assert_eq!(rgb(&out, 0, 0), [155, 155, 155], "unmasked pixel inverts");
+        assert_eq!(
+            rgb(&out, 1, 0),
+            [100, 100, 100],
+            "masked-out pixel unchanged"
+        );
+
+        // Opacity 128 lerps about halfway to the inverted value.
+        let base = solid(
+            "base",
+            full(1, 1),
+            (100, 100, 100),
+            255,
+            BlendMode::Normal,
+            255,
+        );
+        let out = composite_rgba(&doc(
+            1,
+            1,
+            vec![
+                base,
+                adjustment_layer("invert", *b"nvrt", Vec::new(), 128, None),
+            ],
+        ));
+        let got = rgb(&out, 0, 0)[0] as i16;
+        assert!(
+            (got - 128).abs() <= 1,
+            "50% opacity should land near 128, got {got}"
+        );
+    }
+
+    #[test]
+    fn unknown_adjustment_key_is_noop() {
+        let base = solid(
+            "base",
+            full(2, 2),
+            (10, 200, 60),
+            255,
+            BlendMode::Normal,
+            255,
+        );
+        let plain = composite_rgba(&doc(2, 2, vec![base.clone()]));
+        let with_unknown = composite_rgba(&doc(
+            2,
+            2,
+            vec![
+                base,
+                adjustment_layer("lookup", *b"clrL", vec![1, 2, 3], 255, None),
+            ],
+        ));
+        assert_eq!(
+            with_unknown.data, plain.data,
+            "undecodable key must be a no-op"
+        );
     }
 }

@@ -252,6 +252,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: vec![
                 Channel {
                     id: 0,

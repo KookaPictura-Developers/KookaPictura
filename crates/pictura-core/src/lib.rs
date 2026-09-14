@@ -228,6 +228,17 @@ pub struct Channel {
     pub data: Vec<u8>,
 }
 
+/// The raw additional-layer-info block of an adjustment layer.
+///
+/// `key` is the 4-byte PSD adjustment key (e.g. `nvrt`, `brit`, `levl`) and
+/// `data` is its payload, stored verbatim. `pictura-core` does not interpret
+/// the payload; `pictura-render` decodes the subset it understands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdjustmentData {
+    pub key: [u8; 4],
+    pub data: Vec<u8>,
+}
+
 /// A raster layer mask. `data` is `None` until the channel image is decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayerMask {
@@ -240,6 +251,9 @@ pub struct LayerMask {
 
 /// A pixel layer or a group (`is_group`). Groups carry `children`, bottom-first
 /// like everything else. `rect` is the layer bounds; for groups it may be empty.
+///
+/// An adjustment layer carries `adjustment` and, in PSD, no color channels (its
+/// mask still uses channel `-2`). `adjustment` is opaque to this crate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Layer {
     pub name: String,
@@ -249,6 +263,7 @@ pub struct Layer {
     pub clipping: bool,
     pub visible: bool,
     pub mask: Option<LayerMask>,
+    pub adjustment: Option<AdjustmentData>,
     pub channels: Vec<Channel>,
     pub children: Vec<Layer>,
     pub is_group: bool,
@@ -324,6 +339,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: vec![Channel {
                 id: 0,
                 data: vec![0; 16],
@@ -342,6 +358,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: Vec::new(),
             children: vec![pixel],
             is_group: true,
@@ -366,6 +383,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: Vec::new(),
             children: Vec::new(),
             is_group: false,
@@ -430,6 +448,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: Vec::new(),
             children: Vec::new(),
             is_group: true,

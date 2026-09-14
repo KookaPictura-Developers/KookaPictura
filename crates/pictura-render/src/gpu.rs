@@ -43,6 +43,8 @@ pub enum GpuError {
     Readback,
     /// A mode with no GPU implementation is present in the stack.
     UnsupportedMode(BlendMode),
+    /// An adjustment layer is present; only the CPU compositor applies those.
+    UnsupportedAdjustment,
 }
 
 impl fmt::Display for GpuError {
@@ -52,6 +54,7 @@ impl fmt::Display for GpuError {
             GpuError::TooLarge => write!(f, "document exceeds GPU buffer limits"),
             GpuError::Readback => write!(f, "GPU readback failed"),
             GpuError::UnsupportedMode(m) => write!(f, "blend mode {m:?} is CPU-only"),
+            GpuError::UnsupportedAdjustment => write!(f, "adjustment layers are CPU-only"),
         }
     }
 }
@@ -98,6 +101,9 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
     fn walk(layer: &Layer) -> Result<(), GpuError> {
         if !layer.visible {
             return Ok(());
+        }
+        if layer.adjustment.is_some() {
+            return Err(GpuError::UnsupportedAdjustment);
         }
         if is_cpu_only(layer.blend) {
             return Err(GpuError::UnsupportedMode(layer.blend));

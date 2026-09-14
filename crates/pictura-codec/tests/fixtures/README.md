@@ -24,6 +24,44 @@ not hand-edit these files.
 | `group.psd` | RGB | 8x8 | group `Group A` containing `Inner Green`, `Inner Yellow` |
 | `masked.psd` | RGB | 8x8 | `Masked` with a raster layer mask |
 | `gray.psd` | Grayscale | 8x8 | `Gray` |
+| `adjustment.psd` | RGB | 8x8 | `Base` pixel layer + adjustment layers `Invert`, `Posterize`, `Threshold`, `BrightnessContrast`, `Levels` |
+
+`adjustment.psd` is also authored by `psd-tools`. psd-tools has no high-level
+adjustment-layer constructor, so each adjustment layer is a pixel layer with its
+channels stripped and an `8BIM` adjustment tagged block (`nvrt`, `post`, `thrs`,
+`brit`, `levl`) set on the layer record:
+
+```python
+from PIL import Image
+from psd_tools import PSDImage
+from psd_tools.psd.tagged_blocks import TaggedBlock
+from psd_tools.psd.base import EmptyElement, ShortIntegerElement
+from psd_tools.psd.layer_and_mask import ChannelDataList
+from psd_tools.constants import Tag
+from psd_tools.psd.adjustments import BrightnessContrast, Levels, LevelRecord
+
+def adj(psd, key, name, data):
+    layer = psd.create_pixel_layer(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), name=name)
+    rec = layer._record
+    layer._channels = ChannelDataList([])
+    rec.channel_info = []
+    rec.bottom = rec.top
+    rec.right = rec.left
+    rec.mask_data = None
+    rec.tagged_blocks[Tag(key)] = TaggedBlock(key=Tag(key), data=data)
+
+psd = PSDImage.new("RGB", (8, 8), color=(200, 100, 50))
+psd.create_pixel_layer(Image.new("RGBA", (8, 8), (200, 100, 50, 255)), name="Base")
+adj(psd, Tag.INVERT, "Invert", EmptyElement())
+adj(psd, Tag.POSTERIZE, "Posterize", ShortIntegerElement(4))
+adj(psd, Tag.THRESHOLD, "Threshold", ShortIntegerElement(128))
+adj(psd, Tag.BRIGHTNESS_AND_CONTRAST, "BrightnessContrast",
+    BrightnessContrast(brightness=10, contrast=20, mean=0, lab_only=0))
+recs = [LevelRecord(5, 250, 10, 240, 120)] * 29
+adj(psd, Tag.LEVELS, "Levels", Levels(version=2, extra_version=None, items=recs))
+psd.save("adjustment.psd")
+```
+
 
 ## Validate codec output
 

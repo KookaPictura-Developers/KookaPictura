@@ -78,6 +78,7 @@ fn layer(name: &str, blend: BlendMode, sample: impl Fn(u32, u32) -> (u8, u8, u8,
         clipping: false,
         visible: true,
         mask: None,
+        adjustment: None,
         channels: vec![
             Channel { id: 0, data: r },
             Channel { id: 1, data: g },

@@ -13,7 +13,8 @@
 //!   never a panic.
 
 use pictura_core::{
-    BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask, PixelBuffer, PsdRect,
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
+    PixelBuffer, PsdRect,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -47,6 +48,20 @@ const COMPRESSION_RAW: u16 = 0;
 const COMPRESSION_RLE: u16 = 1;
 
 const DIVIDER_NAME: &str = "</Layer group>";
+
+/// Additional-layer-info keys that carry an adjustment.
+///
+/// The brief's list plus the spellings Photoshop actually writes: Invert is
+/// `nvrt` (not `invr`) and the legacy Hue/Saturation key is `hue ` alongside
+/// `hue2`. Both spellings are accepted on read.
+const ADJUSTMENT_KEYS: [[u8; 4]; 17] = [
+    *b"levl", *b"curv", *b"brit", *b"expA", *b"vibA", *b"hue2", *b"hue ", *b"blwh", *b"phfl",
+    *b"mixr", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc", *b"clrL",
+];
+
+fn is_adjustment_key(key: &[u8; 4]) -> bool {
+    ADJUSTMENT_KEYS.contains(key)
+}
 
 /// Cursor over the file bytes. Every read is bounds-checked, so malformed input
 /// yields [`PsdError::Truncated`] instead of an index panic.
@@ -457,8 +472,10 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     let pad = (4 - ((name_len + 1) % 4)) % 4;
     er.skip(pad)?;
 
-    // Additional layer information: 'luni' (Unicode name), 'lsct' (group marker).
+    // Additional layer information: 'luni' (Unicode name), 'lsct' (group marker),
+    // and the adjustment block for adjustment layers (stored verbatim).
     let mut section = None;
+    let mut adjustment = None;
     while er.remaining() >= 12 {
         let mut tag_sig = [0u8; 4];
         tag_sig.copy_from_slice(er.take(4)?);
@@ -493,6 +510,12 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
                 }
             }
             b"lsct" => {}
+            k if is_adjustment_key(k) && adjustment.is_none() => {
+                adjustment = Some(AdjustmentData {
+                    key: tag_key,
+                    data: data.to_vec(),
+                });
+            }
             _ => {}
         }
     }
@@ -506,6 +529,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             clipping,
             visible: flags & 0x02 == 0,
             mask,
+            adjustment,
             channels: Vec::new(),
             children: Vec::new(),
             is_group: false,
@@ -791,6 +815,7 @@ fn empty_layer(name: &str) -> Layer {
         clipping: false,
         visible: true,
         mask: None,
+        adjustment: None,
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,
@@ -816,6 +841,10 @@ fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
     out.extend_from_slice(&0u32.to_be_bytes());
     write_pascal(out, name);
     write_tag(out, b"luni", &luni_data(name));
+    if let Some(adjustment) = &layer.adjustment {
+        // Adjustment payload is opaque here; write the key and bytes back as read.
+        write_tag(out, &adjustment.key, &adjustment.data);
+    }
     if section != 0 {
         // Section-divider setting: kind + '8BIM' + blend key. Photoshop and
         // psd-tools read a group's blend mode from here, so `pass` must ride
@@ -1093,6 +1122,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels,
             children: Vec::new(),
             is_group: false,
@@ -1117,6 +1147,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: Vec::new(),
             children: vec![green, blue],
             is_group: true,
@@ -1168,6 +1199,7 @@ mod tests {
             clipping: false,
             visible: true,
             mask: None,
+            adjustment: None,
             channels: Vec::new(),
             children: vec![child],
             is_group: true,
@@ -1186,6 +1218,57 @@ mod tests {
         doc.layers = vec![pixel("Gray", rect(0, 0, 8, 8), 1, BlendMode::Normal, 255)];
         let bytes = write_psd(&doc).unwrap();
         assert_eq!(read_psd(&bytes).unwrap(), doc);
+    }
+
+    #[test]
+    fn adjustment_layers_round_trip_key_and_bytes() {
+        let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        for (i, b) in doc.composite.data.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        let base = pixel("Base", rect(0, 0, 8, 8), 3, BlendMode::Normal, 255);
+
+        // Odd (`curv`) and even payloads, empty (Invert) and descriptor-ish.
+        let cases: &[([u8; 4], Vec<u8>)] = &[
+            (*b"nvrt", Vec::new()),
+            (*b"post", vec![0, 4, 0, 0]),
+            (*b"thrs", vec![0, 128, 0, 0]),
+            (*b"brit", vec![0, 10, 0, 20, 0, 0, 0, 0]),
+            (*b"hue2", vec![0; 16]),
+            (*b"curv", vec![1, 2, 3]),
+        ];
+
+        let mut layers = vec![base];
+        for (i, (key, data)) in cases.iter().enumerate() {
+            layers.push(Layer {
+                name: format!("adj{i}"),
+                rect: rect(0, 0, 0, 0),
+                blend: BlendMode::Normal,
+                opacity: 255,
+                clipping: false,
+                visible: true,
+                mask: None,
+                adjustment: Some(AdjustmentData {
+                    key: *key,
+                    data: data.clone(),
+                }),
+                channels: Vec::new(),
+                children: Vec::new(),
+                is_group: false,
+            });
+        }
+        doc.layers = layers;
+
+        let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+        assert_eq!(back, doc);
+        for (i, (key, data)) in cases.iter().enumerate() {
+            let adj = back.layers[i + 1]
+                .adjustment
+                .as_ref()
+                .expect("adjustment round-trips");
+            assert_eq!(&adj.key, key);
+            assert_eq!(&adj.data, data);
+        }
     }
 
     #[test]

@@ -795,6 +795,7 @@ version = "0.0.0"
 name = "pictura-render"
 version = "0.0.0"
 dependencies = [
+ "pictura-adjust",
  "pictura-core",
  "pictura-testkit",
  "pollster",

@@ -98,6 +98,17 @@ pub struct LayerMask {
 ```
 Maps to the `Layer mask / adjustment layer data` block plus its `-2` channel.
 
+### `AdjustmentData` (M4-B)
+```rust
+pub struct AdjustmentData {
+    pub key: [u8; 4],   // PSD adjustment key, e.g. nvrt, brit, levl
+    pub data: Vec<u8>,  // payload, verbatim
+}
+```
+The raw additional-layer-info block of an adjustment layer, carried **opaquely**:
+`pictura-core` never interprets `data` and does not depend on `pictura-adjust`.
+`pictura-render` decodes the subset it understands; unknown keys are a no-op.
+
 ### `Layer`
 ```rust
 pub struct Layer {
@@ -108,6 +119,7 @@ pub struct Layer {
     pub clipping: bool,
     pub visible: bool,
     pub mask: Option<LayerMask>,
+    pub adjustment: Option<AdjustmentData>, // M4-B: None for pixel/group layers
     pub channels: Vec<Channel>,
     pub children: Vec<Layer>, // groups only
     pub is_group: bool,
@@ -115,8 +127,10 @@ pub struct Layer {
 Layer::is_group() -> bool
 ```
 - Pixel layer: `is_group == false`, `children` empty, `channels` holds color
-  (`0..`) and transparency (`-1`).
+  (`0..`) and transparency (`-1`), `adjustment` is `None`.
 - Group: `is_group == true`, `children` non-empty, `channels` typically empty.
+- Adjustment layer: `adjustment` is `Some` and `channels` is empty (PSD stores
+  no color pixels for an adjustment); its mask still rides channel `-2`.
 - `visible` is `!(flags & 0x02)`; `clipping` comes from the layer record's
   **dedicated clipping byte** (read after opacity), not a flags bit. (psd-tools
   sets the `0x08` flag on ordinary layers, so treating `flags & 0x08` as clipping

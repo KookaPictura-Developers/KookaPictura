@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use pictura_codec::read_psd;
+use pictura_codec::{read_psd, write_psd};
 use pictura_core::{BlendMode, ColorMode};
 
 const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
@@ -17,6 +17,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("group.psd", 8, 8, ColorMode::Rgb),
     ("masked.psd", 8, 8, ColorMode::Rgb),
     ("gray.psd", 8, 8, ColorMode::Grayscale),
+    ("adjustment.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -120,4 +121,46 @@ fn gray_layer_tree() {
     let doc = load("gray.psd");
     assert_eq!(doc.layers.len(), 1);
     assert_eq!(doc.layers[0].name, "Gray");
+}
+
+/// Adjustment layers authored by psd-tools: keys and payload bytes must survive
+/// read, and the codec must write the same key+bytes back unchanged.
+#[test]
+fn adjustment_layers_preserve_key_and_bytes() {
+    let doc = load("adjustment.psd");
+    let names: Vec<&str> = doc.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Base",
+            "Invert",
+            "Posterize",
+            "Threshold",
+            "BrightnessContrast",
+            "Levels",
+        ]
+    );
+
+    let find = |n: &str| doc.layers.iter().find(|l| l.name == n).unwrap();
+    let invert = find("Invert").adjustment.as_ref().expect("invert block");
+    assert_eq!(invert.key, *b"nvrt");
+    assert!(invert.data.is_empty(), "Invert has no payload");
+    assert_eq!(
+        find("Posterize").adjustment.as_ref().unwrap().data,
+        [0, 4, 0, 0]
+    );
+    assert_eq!(
+        find("Threshold").adjustment.as_ref().unwrap().data,
+        [0, 128, 0, 0]
+    );
+    let brit = find("BrightnessContrast").adjustment.as_ref().unwrap();
+    assert_eq!(brit.key, *b"brit");
+    assert_eq!(brit.data, [0, 10, 0, 20, 0, 0, 0, 0]);
+    let levl = find("Levels").adjustment.as_ref().unwrap();
+    assert_eq!(levl.key, *b"levl");
+    assert_eq!(levl.data.len(), 292);
+
+    // Round-trip through pictura-codec: whole document, including adjustments.
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc);
 }
