@@ -202,6 +202,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             data,
         },
         layers,
+        channels: Vec::new(),
     })
 }
 

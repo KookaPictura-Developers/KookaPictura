@@ -64,6 +64,9 @@ pub struct Document {
     pub depth: BitDepth,
     pub composite: PixelBuffer,
     pub layers: Vec<Layer>,
+    /// Document-level extra channels (saved selections / spot channels), which
+    /// live after the color channels in the PSD image-data section.
+    pub channels: Vec<Channel>,
 }
 
 impl Document {
@@ -79,6 +82,7 @@ impl Document {
             depth,
             composite: PixelBuffer::new(width, height, channels),
             layers: Vec::new(),
+            channels: Vec::new(),
         }
     }
 }
