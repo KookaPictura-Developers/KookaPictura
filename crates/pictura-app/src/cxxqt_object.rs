@@ -93,6 +93,32 @@ pub mod qobject {
         #[qinvokable]
         fn apply_filter(self: Pin<&mut Self>, kind: &QString) -> bool;
 
+        /// Scale the document to `width`×`height` with resample `kind`
+        /// (nearest, bilinear, bicubic), clear the selection, recomposite, and
+        /// emit [`changed`]. Returns false without a document, for an unknown
+        /// kind, or when a dimension is below 1.
+        #[qinvokable]
+        fn resize_image(self: Pin<&mut Self>, kind: &QString, width: i32, height: i32) -> bool;
+
+        /// Place the document on a `width`×`height` canvas at `anchor`
+        /// (top-left, top-center, top-right, center-left, center, center-right,
+        /// bottom-left, bottom-center, bottom-right), clear the selection,
+        /// recomposite, and emit [`changed`]. Returns false without a document,
+        /// for an unknown anchor, or when a dimension is below 1.
+        #[qinvokable]
+        fn resize_canvas(self: Pin<&mut Self>, anchor: &QString, width: i32, height: i32) -> bool;
+
+        /// Rotate the document `quarter_turns` quarter turns clockwise (1-3),
+        /// clear the selection, recomposite, and emit [`changed`]. Returns
+        /// false without a document or for a value outside 1-3.
+        #[qinvokable]
+        fn rotate_doc(self: Pin<&mut Self>, quarter_turns: i32) -> bool;
+
+        /// Mirror the document horizontally or vertically, clear the selection,
+        /// recomposite, and emit [`changed`]. Returns false without a document.
+        #[qinvokable]
+        fn flip_doc(self: Pin<&mut Self>, horizontal: bool) -> bool;
+
         /// Remove layer `i`, recomposite, and emit [`changed`].
         #[qinvokable]
         fn remove_layer(self: Pin<&mut Self>, i: i32);
@@ -308,6 +334,82 @@ impl qobject::PictureView {
             self.recomposite();
         }
         applied
+    }
+
+    pub fn resize_image(mut self: Pin<&mut Self>, kind: &QString, width: i32, height: i32) -> bool {
+        let Some(resample) = parse_resample(&kind.to_string()) else {
+            return false;
+        };
+        if width < 1 || height < 1 {
+            return false;
+        }
+        let resized = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::resize_document(doc, width as u32, height as u32, resample).is_ok()
+        };
+        if resized {
+            self.as_mut().rust_mut().selection = None;
+            self.recomposite();
+        }
+        resized
+    }
+
+    pub fn resize_canvas(
+        mut self: Pin<&mut Self>,
+        anchor: &QString,
+        width: i32,
+        height: i32,
+    ) -> bool {
+        let Some(anchor) = parse_anchor(&anchor.to_string()) else {
+            return false;
+        };
+        if width < 1 || height < 1 {
+            return false;
+        }
+        let resized = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::resize_canvas_document(doc, width as u32, height as u32, anchor).is_ok()
+        };
+        if resized {
+            self.as_mut().rust_mut().selection = None;
+            self.recomposite();
+        }
+        resized
+    }
+
+    pub fn rotate_doc(mut self: Pin<&mut Self>, quarter_turns: i32) -> bool {
+        if !(1..=3).contains(&quarter_turns) {
+            return false;
+        }
+        let rotated = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::rotate_document(doc, quarter_turns as u8).is_ok()
+        };
+        if rotated {
+            self.as_mut().rust_mut().selection = None;
+            self.recomposite();
+        }
+        rotated
+    }
+
+    pub fn flip_doc(mut self: Pin<&mut Self>, horizontal: bool) -> bool {
+        let mut rust = self.as_mut().rust_mut();
+        let Some(doc) = rust.doc.as_mut() else {
+            return false;
+        };
+        pictura_render::flip_document(doc, horizontal);
+        rust.selection = None;
+        self.recomposite();
+        true
     }
 
     pub fn remove_layer(mut self: Pin<&mut Self>, i: i32) {
@@ -551,6 +653,37 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
         },
         // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
         // default exists; it stays out of the dock and is left unmapped.
+        _ => return None,
+    })
+}
+
+/// Map an image-size resample `kind` to [`pictura_render::Resample`], or
+/// `None` unknown.
+fn parse_resample(kind: &str) -> Option<pictura_render::Resample> {
+    use pictura_render::Resample;
+
+    Some(match kind {
+        "nearest" => Resample::Nearest,
+        "bilinear" => Resample::Bilinear,
+        "bicubic" => Resample::Bicubic,
+        _ => return None,
+    })
+}
+
+/// Map a canvas-size `anchor` to [`pictura_render::Anchor`], or `None` unknown.
+fn parse_anchor(anchor: &str) -> Option<pictura_render::Anchor> {
+    use pictura_render::Anchor;
+
+    Some(match anchor {
+        "top-left" => Anchor::TopLeft,
+        "top-center" => Anchor::TopCenter,
+        "top-right" => Anchor::TopRight,
+        "center-left" => Anchor::MiddleLeft,
+        "center" => Anchor::Center,
+        "center-right" => Anchor::MiddleRight,
+        "bottom-left" => Anchor::BottomLeft,
+        "bottom-center" => Anchor::BottomCenter,
+        "bottom-right" => Anchor::BottomRight,
         _ => return None,
     })
 }
@@ -1062,5 +1195,101 @@ mod tests {
             "selected pixels should change"
         );
         assert_eq!(&after[4..], &before[4..], "unselected pixels changed");
+    }
+
+    #[test]
+    fn parse_resample_maps_known_and_rejects_unknown() {
+        use pictura_render::Resample;
+
+        assert_eq!(parse_resample("nearest"), Some(Resample::Nearest));
+        assert_eq!(parse_resample("bilinear"), Some(Resample::Bilinear));
+        assert_eq!(parse_resample("bicubic"), Some(Resample::Bicubic));
+        assert_eq!(parse_resample("Bilinear"), None);
+        assert_eq!(parse_resample(""), None);
+        assert_eq!(parse_resample("gaussian"), None);
+    }
+
+    #[test]
+    fn parse_anchor_maps_known_and_rejects_unknown() {
+        use pictura_render::Anchor;
+
+        assert_eq!(parse_anchor("top-left"), Some(Anchor::TopLeft));
+        assert_eq!(parse_anchor("top-center"), Some(Anchor::TopCenter));
+        assert_eq!(parse_anchor("top-right"), Some(Anchor::TopRight));
+        assert_eq!(parse_anchor("center-left"), Some(Anchor::MiddleLeft));
+        assert_eq!(parse_anchor("center"), Some(Anchor::Center));
+        assert_eq!(parse_anchor("center-right"), Some(Anchor::MiddleRight));
+        assert_eq!(parse_anchor("bottom-left"), Some(Anchor::BottomLeft));
+        assert_eq!(parse_anchor("bottom-center"), Some(Anchor::BottomCenter));
+        assert_eq!(parse_anchor("bottom-right"), Some(Anchor::BottomRight));
+        assert_eq!(parse_anchor("top"), None);
+        assert_eq!(parse_anchor("middle"), None);
+        assert_eq!(parse_anchor(""), None);
+    }
+
+    #[test]
+    fn document_ops_wire_parsed_values_and_reject_invalid_params() {
+        let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![pixel_layer("base", 2, 1, (0, 0, 0))];
+        doc.layers[0].channels = vec![
+            Channel {
+                id: 0,
+                data: vec![255, 0],
+            },
+            Channel {
+                id: 1,
+                data: vec![0, 0],
+            },
+            Channel {
+                id: 2,
+                data: vec![0, 255],
+            },
+            Channel {
+                id: -1,
+                data: vec![255, 255],
+            },
+        ];
+
+        pictura_render::flip_document(&mut doc, true);
+        let plane = 2usize;
+        assert_eq!(
+            [
+                doc.composite.data[0],
+                doc.composite.data[plane],
+                doc.composite.data[2 * plane]
+            ],
+            [0, 0, 255],
+            "left pixel mirrors to the old right pixel"
+        );
+        assert_eq!(
+            [
+                doc.composite.data[1],
+                doc.composite.data[plane + 1],
+                doc.composite.data[2 * plane + 1]
+            ],
+            [255, 0, 0],
+            "right pixel mirrors to the old left pixel"
+        );
+
+        pictura_render::rotate_document(&mut doc, 1).expect("valid rotate");
+        assert_eq!((doc.width, doc.height), (1, 2));
+
+        pictura_render::resize_document(&mut doc, 4, 4, parse_resample("bicubic").unwrap())
+            .expect("valid resize");
+        assert_eq!((doc.width, doc.height), (4, 4));
+
+        let snapshot = doc.composite.data.clone();
+        assert!(pictura_render::resize_document(
+            &mut doc,
+            0,
+            4,
+            parse_resample("nearest").unwrap()
+        )
+        .is_err());
+        assert_eq!((doc.width, doc.height), (4, 4));
+        assert_eq!(
+            doc.composite.data, snapshot,
+            "failed resize must not mutate"
+        );
     }
 }

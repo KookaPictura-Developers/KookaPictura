@@ -15,6 +15,7 @@
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QWidget>
 
@@ -237,6 +238,69 @@ int main(int argc, char* argv[])
     auto* selectionLabel = new QLabel(panel);
     panelLayout->addWidget(selectionLabel);
 
+    // Image section: resample pixels, grow the canvas, rotate and flip.
+    auto* imageHeader = new QLabel(QStringLiteral("Image"), panel);
+    panelLayout->addWidget(imageHeader);
+
+    auto* imageWidthSpin = new QSpinBox(panel);
+    auto* imageHeightSpin = new QSpinBox(panel);
+    imageWidthSpin->setRange(1, 32767);
+    imageHeightSpin->setRange(1, 32767);
+    if (!image.isNull()) {
+        imageWidthSpin->setValue(image.width());
+        imageHeightSpin->setValue(image.height());
+    }
+    auto* resizeCombo = new QComboBox(panel);
+    resizeCombo->addItem(QStringLiteral("Nearest"), QStringLiteral("nearest"));
+    resizeCombo->addItem(QStringLiteral("Bilinear"), QStringLiteral("bilinear"));
+    resizeCombo->addItem(QStringLiteral("Bicubic"), QStringLiteral("bicubic"));
+    auto* imageSizeRow = new QHBoxLayout();
+    imageSizeRow->addWidget(imageWidthSpin);
+    imageSizeRow->addWidget(imageHeightSpin);
+    imageSizeRow->addWidget(resizeCombo);
+    panelLayout->addLayout(imageSizeRow);
+    auto* applyImageSizeButton = new QPushButton(QStringLiteral("Apply Image Size"), panel);
+    panelLayout->addWidget(applyImageSizeButton);
+
+    auto* canvasWidthSpin = new QSpinBox(panel);
+    auto* canvasHeightSpin = new QSpinBox(panel);
+    canvasWidthSpin->setRange(1, 32767);
+    canvasHeightSpin->setRange(1, 32767);
+    if (!image.isNull()) {
+        canvasWidthSpin->setValue(image.width());
+        canvasHeightSpin->setValue(image.height());
+    }
+    auto* anchorCombo = new QComboBox(panel);
+    anchorCombo->addItem(QStringLiteral("Top Left"), QStringLiteral("top-left"));
+    anchorCombo->addItem(QStringLiteral("Top Center"), QStringLiteral("top-center"));
+    anchorCombo->addItem(QStringLiteral("Top Right"), QStringLiteral("top-right"));
+    anchorCombo->addItem(QStringLiteral("Center Left"), QStringLiteral("center-left"));
+    anchorCombo->addItem(QStringLiteral("Center"), QStringLiteral("center"));
+    anchorCombo->addItem(QStringLiteral("Center Right"), QStringLiteral("center-right"));
+    anchorCombo->addItem(QStringLiteral("Bottom Left"), QStringLiteral("bottom-left"));
+    anchorCombo->addItem(QStringLiteral("Bottom Center"), QStringLiteral("bottom-center"));
+    anchorCombo->addItem(QStringLiteral("Bottom Right"), QStringLiteral("bottom-right"));
+    auto* canvasSizeRow = new QHBoxLayout();
+    canvasSizeRow->addWidget(canvasWidthSpin);
+    canvasSizeRow->addWidget(canvasHeightSpin);
+    canvasSizeRow->addWidget(anchorCombo);
+    panelLayout->addLayout(canvasSizeRow);
+    auto* applyCanvasSizeButton = new QPushButton(QStringLiteral("Apply Canvas Size"), panel);
+    panelLayout->addWidget(applyCanvasSizeButton);
+
+    auto* rotateCwButton = new QPushButton(QStringLiteral("Rotate 90° CW"), panel);
+    auto* rotateCcwButton = new QPushButton(QStringLiteral("Rotate 90° CCW"), panel);
+    auto* rotate180Button = new QPushButton(QStringLiteral("Rotate 180°"), panel);
+    auto* flipHorizontalButton = new QPushButton(QStringLiteral("Flip Horizontal"), panel);
+    auto* flipVerticalButton = new QPushButton(QStringLiteral("Flip Vertical"), panel);
+    auto* orientationRow = new QHBoxLayout();
+    orientationRow->addWidget(rotateCwButton);
+    orientationRow->addWidget(rotateCcwButton);
+    orientationRow->addWidget(rotate180Button);
+    orientationRow->addWidget(flipHorizontalButton);
+    orientationRow->addWidget(flipVerticalButton);
+    panelLayout->addLayout(orientationRow);
+
     dock->setWidget(panel);
     mainWindow.addDockWidget(Qt::RightDockWidgetArea, dock);
 
@@ -286,6 +350,45 @@ int main(int argc, char* argv[])
     });
     QObject::connect(deselectButton, &QPushButton::clicked, &mainWindow, [&]() {
         view.deselect();
+    });
+    QObject::connect(applyImageSizeButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.resize_image(resizeCombo->currentData().toString(),
+                              imageWidthSpin->value(),
+                              imageHeightSpin->value())) {
+            refresh();
+        }
+    });
+    QObject::connect(applyCanvasSizeButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.resize_canvas(anchorCombo->currentData().toString(),
+                               canvasWidthSpin->value(),
+                               canvasHeightSpin->value())) {
+            refresh();
+        }
+    });
+    QObject::connect(rotateCwButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.rotate_doc(1)) {
+            refresh();
+        }
+    });
+    QObject::connect(rotateCcwButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.rotate_doc(3)) {
+            refresh();
+        }
+    });
+    QObject::connect(rotate180Button, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.rotate_doc(2)) {
+            refresh();
+        }
+    });
+    QObject::connect(flipHorizontalButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.flip_doc(true)) {
+            refresh();
+        }
+    });
+    QObject::connect(flipVerticalButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.flip_doc(false)) {
+            refresh();
+        }
     });
     QObject::connect(&view, &pictura::PictureView::changed, &mainWindow, [&]() { refresh(); });
 
@@ -541,6 +644,85 @@ int main(int argc, char* argv[])
                 return 18;
             }
             view.deselect();
+
+            // M13: document ops. Earlier checks mutated the stack (hidden
+            // layer, active invert, noise), so assert the exact 90 deg CW
+            // remap (x,y) -> (7-y,x) on captured pixels, plus that a
+            // successful op clears the selection.
+            const QImage preRotate = view.image();
+            view.select_all();
+            const bool rotated = view.rotate_doc(1);
+            const QImage rotatedImg = view.image();
+            const QRgb rotTr = rotatedImg.pixel(5, 2);
+            const QRgb rotBl = rotatedImg.pixel(1, 6);
+            std::fprintf(stderr,
+                         "pictura self-test: rotate_cw=%d size=%dx%d "
+                         "map_tl=%d map_br=%d corner_a=%d sel=%d\n",
+                         rotated ? 1 : 0,
+                         rotatedImg.width(),
+                         rotatedImg.height(),
+                         rotTr == preRotate.pixel(2, 2) ? 1 : 0,
+                         rotBl == preRotate.pixel(6, 6) ? 1 : 0,
+                         qAlpha(rotatedImg.pixel(5, 6)),
+                         view.selection_count());
+            std::fflush(stderr);
+            if (!rotated || rotatedImg.width() != 8 || rotatedImg.height() != 8
+                || rotTr != preRotate.pixel(2, 2) || rotBl != preRotate.pixel(6, 6)
+                || qAlpha(rotatedImg.pixel(5, 6)) != 0 || view.has_selection()
+                || view.selection_count() != 0) {
+                std::fprintf(stderr, "pictura self-test: FAIL: rotate cw wrong\n");
+                return 19;
+            }
+
+            // M13: invalid document ops must be rejected and leave pixels put.
+            const bool badRotate = view.rotate_doc(0);
+            const bool badRotateClean = view.image() == rotatedImg;
+            const bool badResize = view.resize_image(QStringLiteral("bicubic"), 0, 8);
+            const bool badResizeClean = view.image() == rotatedImg;
+            const bool badCanvas = view.resize_canvas(QStringLiteral("nope"), 10, 10);
+            const bool badCanvasClean = view.image() == rotatedImg;
+            std::fprintf(stderr,
+                         "pictura self-test: reject rotate0=%d resize_w0=%d "
+                         "canvas_bad_anchor=%d unchanged=%d\n",
+                         badRotate ? 1 : 0,
+                         badResize ? 1 : 0,
+                         badCanvas ? 1 : 0,
+                         badRotateClean && badResizeClean && badCanvasClean ? 1 : 0);
+            std::fflush(stderr);
+            if (badRotate || badResize || badCanvas || !badRotateClean || !badResizeClean
+                || !badCanvasClean) {
+                std::fprintf(stderr, "pictura self-test: FAIL: invalid doc op accepted\n");
+                return 20;
+            }
+
+            // M13: CCW must undo CW bit-exactly, then growing the canvas to
+            // 10x12 with the bottom-right anchor maps old (x,y) to (x+2,y+4)
+            // and leaves the new top-left area transparent.
+            const bool restoredOk = view.rotate_doc(3);
+            const QImage restored = view.image();
+            if (!restoredOk || restored != preRotate) {
+                std::fprintf(stderr, "pictura self-test: FAIL: rotate ccw did not restore\n");
+                return 21;
+            }
+            const bool grown = view.resize_canvas(QStringLiteral("bottom-right"), 10, 12);
+            const QImage grownImg = view.image();
+            std::fprintf(stderr,
+                         "pictura self-test: canvas_grow=%d size=%dx%d "
+                         "map_tl=%d map_br=%d corner_a=%d\n",
+                         grown ? 1 : 0,
+                         grownImg.width(),
+                         grownImg.height(),
+                         grownImg.pixel(4, 6) == restored.pixel(2, 2) ? 1 : 0,
+                         grownImg.pixel(8, 10) == restored.pixel(6, 6) ? 1 : 0,
+                         qAlpha(grownImg.pixel(0, 0)));
+            std::fflush(stderr);
+            if (!grown || grownImg.width() != 10 || grownImg.height() != 12
+                || grownImg.pixel(4, 6) != restored.pixel(2, 2)
+                || grownImg.pixel(8, 10) != restored.pixel(6, 6)
+                || qAlpha(grownImg.pixel(0, 0)) != 0 || qAlpha(grownImg.pixel(1, 1)) != 0) {
+                std::fprintf(stderr, "pictura self-test: FAIL: canvas growth wrong\n");
+                return 21;
+            }
         }
         const QPointF center(window->width() / 2.0, window->height() / 2.0);
         window->zoomAt(center, 120);

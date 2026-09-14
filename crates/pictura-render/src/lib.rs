@@ -39,6 +39,8 @@ pub use filter::apply_filter;
 pub mod document_ops;
 pub use document_ops::{flip_document, resize_canvas_document, resize_document, rotate_document};
 
+pub use pictura_ops::{Anchor, Resample};
+
 /// Composite the document's layer stack.
 ///
 /// Returns a 4-channel (R,G,B,A) planar, straight-alpha, 8-bit buffer at
