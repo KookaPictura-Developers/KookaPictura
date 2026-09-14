@@ -9,6 +9,8 @@ rust-version.workspace = true
 pictura-core = { path = "../pictura-core" }
 # M4-B: decode adjustment-layer payloads into destructive Adjustment ops.
 pictura-adjust = { path = "../pictura-adjust" }
+# M12: document-wide resize/canvas/orientation wrappers.
+pictura-ops = { path = "../pictura-ops" }
 # M6-C: apply destructive filters to a layer's color channels.
 pictura-filters = { path = "../pictura-filters" }
 # wgpu/pollster versions track `pictura-app`, which already pulls wgpu 30.0.1.

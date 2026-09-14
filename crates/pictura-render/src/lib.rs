@@ -36,6 +36,9 @@ pub use gpu::{composite_gpu, composite_gpu_or_cpu, GpuError};
 mod filter;
 pub use filter::apply_filter;
 
+pub mod document_ops;
+pub use document_ops::{flip_document, resize_canvas_document, resize_document, rotate_document};
+
 /// Composite the document's layer stack.
 ///
 /// Returns a 4-channel (R,G,B,A) planar, straight-alpha, 8-bit buffer at
