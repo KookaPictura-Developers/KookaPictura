@@ -1,18 +1,20 @@
 //! Image codecs. M0 scope: minimal PSD/PSB read + write of a **single composite
-//! image** (no layers). The full format matrix is specified in
-//! `docs/01-architecture/file-formats.md`.
+//! image**. M1-B adds the **Layer and Mask Information** section: layer records,
+//! channel image data (raw + PackBits RLE), group/section markers, Unicode
+//! names, and raster layer masks, on top of the unchanged composite path.
 //!
-//! ## M0 contract
-//!
-//! - Read: file header, color mode data (skip), image resources (skip), skip the
-//!   layer/mask section if present, then the image data section. Supported:
-//!   8-bit, RGB or Grayscale, compression 0 (raw) or 1 (RLE/PackBits).
-//! - Write: emit a valid PSD with an empty layer/mask section and raw image
-//!   data, such that `read_psd(&write_psd(doc)?)` round-trips.
+//! - Read: file header, color mode data (skip), image resources (skip), the
+//!   layer/mask section (parsed when present), then the image data section.
+//!   Supported: 8-bit, RGB or Grayscale, composite compression 0 (raw) or 1
+//!   (RLE/PackBits); layer channel compression 0 or 1.
+//! - Write: emit a valid PSD whose layer section round-trips through
+//!   [`read_psd`], using raw channel data and `'luni'`/`'lsct'` tagged blocks.
 //! - Anything outside the supported subset returns [`PsdError::Unsupported`],
 //!   never a panic.
 
-use pictura_core::{BitDepth, ColorMode, Document, PixelBuffer};
+use pictura_core::{
+    BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask, PixelBuffer, PsdRect,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PsdError {
@@ -36,6 +38,15 @@ const MODE_RGB: u16 = 3;
 const MAX_CHANNELS: u16 = 56;
 const MAX_DIM_PSD: u32 = 30_000;
 const MAX_DIM_PSB: u32 = 300_000;
+
+const SECTION_DIVIDER: u32 = 3;
+const SECTION_OPEN_FOLDER: u32 = 1;
+const SECTION_CLOSED_FOLDER: u32 = 2;
+
+const COMPRESSION_RAW: u16 = 0;
+const COMPRESSION_RLE: u16 = 1;
+
+const DIVIDER_NAME: &str = "</Layer group>";
 
 /// Cursor over the file bytes. Every read is bounds-checked, so malformed input
 /// yields [`PsdError::Truncated`] instead of an index panic.
@@ -62,6 +73,10 @@ impl<'a> Reader<'a> {
         Ok(out)
     }
 
+    fn u8(&mut self) -> Result<u8, PsdError> {
+        Ok(self.take(1)?[0])
+    }
+
     fn u16(&mut self) -> Result<u16, PsdError> {
         let s = self.take(2)?;
         Ok(u16::from_be_bytes(
@@ -69,11 +84,19 @@ impl<'a> Reader<'a> {
         ))
     }
 
+    fn i16(&mut self) -> Result<i16, PsdError> {
+        Ok(self.u16()? as i16)
+    }
+
     fn u32(&mut self) -> Result<u32, PsdError> {
         let s = self.take(4)?;
         Ok(u32::from_be_bytes(
             s.try_into().map_err(|_| PsdError::Truncated)?,
         ))
+    }
+
+    fn i32(&mut self) -> Result<i32, PsdError> {
+        Ok(self.u32()? as i32)
     }
 
     fn u64(&mut self) -> Result<u64, PsdError> {
@@ -88,7 +111,8 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// Parse a PSD (or PSB) file into a [`Document`] holding the composite image.
+/// Parse a PSD (or PSB) file into a [`Document`] holding the composite image and
+/// the layer tree (bottom-first, matching PSD on-disk z-order).
 pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     let mut r = Reader::new(bytes);
     let sig = r.u32()?;
@@ -137,13 +161,8 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     // Image resources section: 4-byte length + opaque bytes (skipped).
     let resources_len = r.u32()? as usize;
     r.skip(resources_len)?;
-    // Layer and mask information section: 4-byte length (8 in PSB) + bytes.
-    let layer_mask_len = if is_psb {
-        r.u64()? as usize
-    } else {
-        r.u32()? as usize
-    };
-    r.skip(layer_mask_len)?;
+    // Layer and mask information section: 4-byte length (8 in PSB).
+    let layers = read_layer_section(&mut r, is_psb)?;
 
     // Image data section: 2-byte compression method, then channel data.
     let compression = r.u16()?;
@@ -167,6 +186,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             channels: channels as u8,
             data,
         },
+        layers,
     })
 }
 
@@ -190,11 +210,7 @@ fn read_rle(
     // Scanline byte-count table: 2-byte entries in PSD, 4-byte in PSB.
     let mut counts = Vec::with_capacity(rows);
     for _ in 0..rows {
-        counts.push(if is_psb {
-            r.u32()? as usize
-        } else {
-            r.u16()? as usize
-        });
+        counts.push(read_rle_count(r, is_psb)?);
     }
 
     let mut out = vec![0u8; planar_len(channels, width, height)?];
@@ -243,7 +259,593 @@ fn decode_packbits(src: &[u8], dst: &mut [u8]) -> Result<(), PsdError> {
     Ok(())
 }
 
-/// Serialize a [`Document`]'s composite image into a valid PSD file.
+// ---------------------------------------------------------------------------
+// Layer and mask information section — reading
+// ---------------------------------------------------------------------------
+
+/// One layer record before the tree is assembled. Channel info (id + declared
+/// data length) is kept separate so channel image data can be read in a second
+/// pass, after all records.
+struct RawLayer {
+    layer: Layer,
+    channel_ids: Vec<i16>,
+    channel_lens: Vec<usize>,
+    section: Option<u32>,
+}
+
+fn read_layer_section(r: &mut Reader, is_psb: bool) -> Result<Vec<Layer>, PsdError> {
+    let section_len = if is_psb {
+        r.u64()? as usize
+    } else {
+        r.u32()? as usize
+    };
+    if section_len == 0 {
+        return Ok(Vec::new());
+    }
+    let section_end = r
+        .pos
+        .checked_add(section_len)
+        .ok_or_else(|| PsdError::Invalid("layer section length overflow".into()))?;
+    if section_end > r.data.len() {
+        return Err(PsdError::Truncated);
+    }
+
+    let info_len = if is_psb {
+        r.u64()? as usize
+    } else {
+        r.u32()? as usize
+    };
+    let mut layers = Vec::new();
+    if info_len != 0 {
+        let info_end = r
+            .pos
+            .checked_add(info_len)
+            .ok_or_else(|| PsdError::Invalid("layer info length overflow".into()))?;
+        if info_end > section_end {
+            return Err(PsdError::Invalid("layer info exceeds layer section".into()));
+        }
+        layers = read_layer_info(r, is_psb, info_end)?;
+        r.pos = info_end;
+    }
+
+    // Global layer mask info: 4-byte length + opaque bytes (skipped).
+    let global_len = r.u32()? as usize;
+    r.skip(global_len)?;
+    if r.pos > section_end {
+        return Err(PsdError::Invalid(
+            "global layer mask exceeds section".into(),
+        ));
+    }
+    // Remaining bytes are additional layer information; not needed in M1.
+    r.pos = section_end;
+    Ok(layers)
+}
+
+fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<Layer>, PsdError> {
+    let count = r.i16()?;
+    let n = count.unsigned_abs() as usize;
+    let mut raws: Vec<RawLayer> = Vec::new();
+    for _ in 0..n {
+        raws.push(read_layer_record(r, is_psb)?);
+    }
+
+    for raw in raws.iter_mut() {
+        let layer_w = raw.layer.rect.width().max(0) as usize;
+        let layer_h = raw.layer.rect.height().max(0) as usize;
+        let mask_dims = raw.layer.mask.as_ref().map(|m| {
+            (
+                m.rect.width().max(0) as usize,
+                m.rect.height().max(0) as usize,
+            )
+        });
+
+        let mut channels = Vec::new();
+        let mut mask_data = None;
+        for (&id, &len) in raw.channel_ids.iter().zip(raw.channel_lens.iter()) {
+            // The user layer mask channel (-2) is sized by the mask rect, which
+            // may differ from the layer rect.
+            let (w, h) = if id == -2 {
+                mask_dims.unwrap_or((layer_w, layer_h))
+            } else {
+                (layer_w, layer_h)
+            };
+            let data = read_channel_data(r, len, w, h, is_psb)?;
+            match id {
+                -2 => mask_data = Some(data),
+                // Real user mask (-3) belongs to the vector/real mask path, out
+                // of M1 scope; its bytes are consumed but not modelled.
+                -3 => {}
+                _ => channels.push(Channel { id, data }),
+            }
+        }
+        raw.layer.channels = channels;
+        if let Some(data) = mask_data {
+            match raw.layer.mask.as_mut() {
+                Some(mask) => mask.data = Some(data),
+                None => {
+                    raw.layer.mask = Some(LayerMask {
+                        rect: raw.layer.rect,
+                        default_color: 0,
+                        disabled: false,
+                        flags: 0,
+                        data: Some(data),
+                    });
+                }
+            }
+        }
+    }
+
+    if r.pos > info_end {
+        return Err(PsdError::Invalid("layer records exceed layer info".into()));
+    }
+    r.pos = info_end;
+    Ok(build_tree(raws))
+}
+
+fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError> {
+    let rect = PsdRect {
+        top: r.i32()?,
+        left: r.i32()?,
+        bottom: r.i32()?,
+        right: r.i32()?,
+    };
+    let nch = r.u16()?;
+    if nch > MAX_CHANNELS {
+        return Err(PsdError::Invalid(format!("layer channel count {nch}")));
+    }
+    let mut channel_ids = Vec::with_capacity(nch as usize);
+    let mut channel_lens = Vec::with_capacity(nch as usize);
+    for _ in 0..nch {
+        channel_ids.push(r.i16()?);
+        channel_lens.push(if is_psb {
+            r.u64()? as usize
+        } else {
+            r.u32()? as usize
+        });
+    }
+
+    let mut signature = [0u8; 4];
+    signature.copy_from_slice(r.take(4)?);
+    if &signature != b"8BIM" {
+        return Err(PsdError::Invalid("bad layer blend signature".into()));
+    }
+    let mut key = [0u8; 4];
+    key.copy_from_slice(r.take(4)?);
+    let blend = BlendMode::from_psd_key(key)
+        .ok_or_else(|| PsdError::Unsupported(format!("blend mode {:?}", key)))?;
+
+    let opacity = r.u8()?;
+    let clipping = r.u8()? != 0;
+    let flags = r.u8()?;
+    let _filler = r.u8()?;
+
+    let extra_len = r.u32()? as usize;
+    let extra = r.take(extra_len)?;
+    let mut er = Reader::new(extra);
+
+    // Layer mask / adjustment layer data block.
+    let mask_len = er.u32()? as usize;
+    let mut mask = None;
+    if mask_len > 0 {
+        let bytes = er.take(mask_len)?;
+        let mut mr = Reader::new(bytes);
+        let mask_rect = PsdRect {
+            top: mr.i32()?,
+            left: mr.i32()?,
+            bottom: mr.i32()?,
+            right: mr.i32()?,
+        };
+        let default_color = mr.u8()?;
+        let mask_flags = mr.u8()?;
+        mask = Some(LayerMask {
+            rect: mask_rect,
+            default_color,
+            disabled: mask_flags & 0x02 != 0,
+            flags: mask_flags,
+            data: None,
+        });
+    }
+
+    // Layer blending ranges (opaque).
+    let ranges_len = er.u32()? as usize;
+    er.skip(ranges_len)?;
+
+    // Legacy Pascal name, padded so (length byte + chars) is a multiple of 4.
+    let name_len = er.u8()? as usize;
+    let name_bytes = er.take(name_len)?;
+    let mut name = String::from_utf8_lossy(name_bytes).into_owned();
+    let pad = (4 - ((name_len + 1) % 4)) % 4;
+    er.skip(pad)?;
+
+    // Additional layer information: 'luni' (Unicode name), 'lsct' (group marker).
+    let mut section = None;
+    while er.remaining() >= 12 {
+        let mut tag_sig = [0u8; 4];
+        tag_sig.copy_from_slice(er.take(4)?);
+        if &tag_sig != b"8BIM" {
+            return Err(PsdError::Invalid("bad tagged block signature".into()));
+        }
+        let mut tag_key = [0u8; 4];
+        tag_key.copy_from_slice(er.take(4)?);
+        let tag_len = er.u32()? as usize;
+        let data = er.take(tag_len)?;
+        if tag_len % 2 == 1 {
+            // Tagged block data is padded to an even length.
+            let _ = er.skip(1);
+        }
+        match &tag_key {
+            b"luni" => {
+                if let Some(unicode) = parse_luni(data) {
+                    name = unicode;
+                }
+            }
+            b"lsct" if data.len() >= 4 => {
+                section = Some(u32::from_be_bytes(data[0..4].try_into().unwrap()));
+            }
+            b"lsct" => {}
+            _ => {}
+        }
+    }
+
+    Ok(RawLayer {
+        layer: Layer {
+            name,
+            rect,
+            blend,
+            opacity,
+            clipping,
+            visible: flags & 0x02 == 0,
+            mask,
+            channels: Vec::new(),
+            children: Vec::new(),
+            is_group: false,
+        },
+        channel_ids,
+        channel_lens,
+        section,
+    })
+}
+
+/// Decode a `'luni'` tagged block: a `u32` UTF-16 code-unit count followed by
+/// that many big-endian `u16` units (a trailing null may follow).
+fn parse_luni(data: &[u8]) -> Option<String> {
+    if data.len() < 4 {
+        return None;
+    }
+    let count = u32::from_be_bytes(data[0..4].try_into().ok()?) as usize;
+    let bytes = count.checked_mul(2)?;
+    let end = (4 + bytes).min(data.len());
+    let (pairs, _) = data[4..end].as_chunks::<2>();
+    let units: Vec<u16> = pairs
+        .iter()
+        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+        .collect();
+    Some(
+        String::from_utf16_lossy(&units)
+            .trim_end_matches('\0')
+            .to_string(),
+    )
+}
+
+fn read_rle_count(r: &mut Reader, is_psb: bool) -> Result<usize, PsdError> {
+    Ok(if is_psb {
+        r.u32()? as usize
+    } else {
+        r.u16()? as usize
+    })
+}
+
+/// Read one layer channel's image data. `declared_len` comes from the channel
+/// info and **includes** the 2-byte compression header.
+fn read_channel_data(
+    r: &mut Reader,
+    declared_len: usize,
+    width: usize,
+    height: usize,
+    is_psb: bool,
+) -> Result<Vec<u8>, PsdError> {
+    let pixels = width
+        .checked_mul(height)
+        .ok_or_else(|| PsdError::Invalid("layer channel size overflow".into()))?;
+    if declared_len == 0 {
+        return Ok(Vec::new());
+    }
+    if declared_len < 2 {
+        return Err(PsdError::Invalid(format!(
+            "layer channel length {declared_len}"
+        )));
+    }
+    let compression = r.u16()?;
+    let payload = r.take(declared_len - 2)?;
+    match compression {
+        COMPRESSION_RAW => {
+            if payload.len() < pixels {
+                return Err(PsdError::Invalid("raw layer channel too short".into()));
+            }
+            Ok(payload[..pixels].to_vec())
+        }
+        COMPRESSION_RLE => decode_rle_channel(payload, width, height, is_psb),
+        2 | 3 => Err(PsdError::Unsupported(
+            "ZIP layer channel compression".into(),
+        )),
+        c => Err(PsdError::Unsupported(format!(
+            "layer channel compression {c}"
+        ))),
+    }
+}
+
+fn decode_rle_channel(
+    payload: &[u8],
+    width: usize,
+    height: usize,
+    is_psb: bool,
+) -> Result<Vec<u8>, PsdError> {
+    let mut pr = Reader::new(payload);
+    let mut counts = Vec::with_capacity(height);
+    for _ in 0..height {
+        counts.push(read_rle_count(&mut pr, is_psb)?);
+    }
+    let mut out = vec![0u8; width * height];
+    for (row, &count) in counts.iter().enumerate() {
+        let packed = pr.take(count)?;
+        decode_packbits(packed, &mut out[row * width..(row + 1) * width])?;
+    }
+    Ok(out)
+}
+
+/// Assemble the bottom-first layer tree from flat records. Section dividers
+/// (`'lsct'` type 3) open a group; folder records (types 1/2) close it.
+fn build_tree(raws: Vec<RawLayer>) -> Vec<Layer> {
+    let mut stack: Vec<Vec<Layer>> = vec![Vec::new()];
+    for raw in raws {
+        match raw.section {
+            Some(SECTION_DIVIDER) => stack.push(Vec::new()),
+            Some(SECTION_OPEN_FOLDER) | Some(SECTION_CLOSED_FOLDER) => {
+                let mut group = raw.layer;
+                group.is_group = true;
+                group.channels = Vec::new();
+                group.mask = None;
+                group.children = stack.pop().unwrap_or_default();
+                stack.last_mut().unwrap().push(group);
+            }
+            _ => stack.last_mut().unwrap().push(raw.layer),
+        }
+    }
+    // Unbalanced section dividers (bounding sections with no folder) are
+    // flattened into their parent rather than dropped.
+    while stack.len() > 1 {
+        let contents = stack.pop().unwrap();
+        stack.last_mut().unwrap().extend(contents);
+    }
+    stack.pop().unwrap()
+}
+
+// ---------------------------------------------------------------------------
+// Layer and mask information section — writing
+// ---------------------------------------------------------------------------
+
+/// A flat record in on-disk order, borrowing the model layer it came from.
+struct OutRecord<'a> {
+    layer: Option<&'a Layer>,
+    section: u32,
+    name: &'a str,
+}
+
+fn flatten(layers: &[Layer]) -> Vec<OutRecord<'_>> {
+    enum Frame<'a> {
+        Visit(&'a Layer),
+        Group(&'a Layer),
+    }
+    let mut out = Vec::new();
+    let mut stack: Vec<Frame> = layers.iter().rev().map(Frame::Visit).collect();
+    while let Some(frame) = stack.pop() {
+        match frame {
+            Frame::Visit(layer) if layer.is_group => {
+                out.push(OutRecord {
+                    layer: None,
+                    section: SECTION_DIVIDER,
+                    name: DIVIDER_NAME,
+                });
+                stack.push(Frame::Group(layer));
+                for child in layer.children.iter().rev() {
+                    stack.push(Frame::Visit(child));
+                }
+            }
+            Frame::Visit(layer) => out.push(OutRecord {
+                layer: Some(layer),
+                section: 0,
+                name: &layer.name,
+            }),
+            Frame::Group(layer) => out.push(OutRecord {
+                layer: Some(layer),
+                section: SECTION_OPEN_FOLDER,
+                name: &layer.name,
+            }),
+        }
+    }
+    out
+}
+
+fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
+    let records = flatten(&doc.layers);
+    if records.len() > i16::MAX as usize {
+        return Err(PsdError::Unsupported("too many layer records".into()));
+    }
+
+    let mut info = Vec::new();
+    info.extend_from_slice(&(records.len() as i16).to_be_bytes());
+
+    let mut channel_data: Vec<Vec<(i16, Vec<u8>)>> = Vec::with_capacity(records.len());
+    for record in &records {
+        let mut channels: Vec<(i16, Vec<u8>)> = Vec::new();
+        if let Some(layer) = record.layer {
+            for channel in &layer.channels {
+                channels.push((channel.id, channel.data.clone()));
+            }
+            if let Some(mask) = &layer.mask {
+                let width = mask.rect.width().max(0) as usize;
+                let height = mask.rect.height().max(0) as usize;
+                let pixels = width
+                    .checked_mul(height)
+                    .ok_or_else(|| PsdError::Invalid("layer mask size overflow".into()))?;
+                let data = match &mask.data {
+                    Some(data) => {
+                        if data.len() != pixels {
+                            return Err(PsdError::Invalid(
+                                "layer mask data length mismatch".into(),
+                            ));
+                        }
+                        data.clone()
+                    }
+                    None => vec![mask.default_color; pixels],
+                };
+                channels.push((-2, data));
+            }
+        }
+        write_record(&mut info, record, &channels);
+        channel_data.push(channels);
+    }
+
+    for channels in &channel_data {
+        for (_, data) in channels {
+            info.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
+            info.extend_from_slice(data);
+        }
+    }
+
+    while info.len() % 4 != 0 {
+        info.push(0);
+    }
+    Ok(info)
+}
+
+fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, Vec<u8>)]) {
+    match record.layer {
+        Some(layer) => {
+            out.extend_from_slice(&layer.rect.top.to_be_bytes());
+            out.extend_from_slice(&layer.rect.left.to_be_bytes());
+            out.extend_from_slice(&layer.rect.bottom.to_be_bytes());
+            out.extend_from_slice(&layer.rect.right.to_be_bytes());
+            out.extend_from_slice(&(channels.len() as u16).to_be_bytes());
+            for (id, data) in channels {
+                out.extend_from_slice(&id.to_be_bytes());
+                out.extend_from_slice(&((2 + data.len()) as u32).to_be_bytes());
+            }
+            out.extend_from_slice(b"8BIM");
+            out.extend_from_slice(&layer.blend.to_psd_key());
+            out.push(layer.opacity);
+            out.push(u8::from(layer.clipping));
+            out.push(if layer.visible { 0 } else { 0x02 });
+            out.push(0); // filler
+
+            let mut extra = Vec::new();
+            write_extra(&mut extra, layer, record.name, record.section);
+            out.extend_from_slice(&(extra.len() as u32).to_be_bytes());
+            out.extend_from_slice(&extra);
+        }
+        None => {
+            out.extend_from_slice(&[0u8; 16]); // empty rect
+            out.extend_from_slice(&0u16.to_be_bytes()); // no channels
+            out.extend_from_slice(b"8BIM");
+            out.extend_from_slice(&BlendMode::Normal.to_psd_key());
+            out.push(255);
+            out.push(0);
+            out.push(0);
+            out.push(0);
+
+            let mut extra = Vec::new();
+            write_extra(
+                &mut extra,
+                &empty_layer(record.name),
+                record.name,
+                record.section,
+            );
+            out.extend_from_slice(&(extra.len() as u32).to_be_bytes());
+            out.extend_from_slice(&extra);
+        }
+    }
+}
+
+/// Placeholder used to reuse [`write_extra`] for the (layer-less) divider record.
+fn empty_layer(name: &str) -> Layer {
+    Layer {
+        name: name.to_string(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 0,
+            right: 0,
+        },
+        blend: BlendMode::Normal,
+        opacity: 255,
+        clipping: false,
+        visible: true,
+        mask: None,
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: false,
+    }
+}
+
+fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
+    match &layer.mask {
+        Some(mask) => {
+            // Mask block: rect (4×i32) + default colour + flags.
+            out.extend_from_slice(&18u32.to_be_bytes());
+            out.extend_from_slice(&mask.rect.top.to_be_bytes());
+            out.extend_from_slice(&mask.rect.left.to_be_bytes());
+            out.extend_from_slice(&mask.rect.bottom.to_be_bytes());
+            out.extend_from_slice(&mask.rect.right.to_be_bytes());
+            out.push(mask.default_color);
+            let flags = (mask.flags & !0x02) | if mask.disabled { 0x02 } else { 0 };
+            out.push(flags);
+        }
+        None => out.extend_from_slice(&0u32.to_be_bytes()),
+    }
+    // Blending ranges: empty.
+    out.extend_from_slice(&0u32.to_be_bytes());
+    write_pascal(out, name);
+    write_tag(out, b"luni", &luni_data(name));
+    if section != 0 {
+        write_tag(out, b"lsct", &section.to_be_bytes());
+    }
+    if out.len() % 2 == 1 {
+        out.push(0);
+    }
+}
+
+fn write_pascal(out: &mut Vec<u8>, name: &str) {
+    let bytes = name.as_bytes();
+    let len = bytes.len().min(255);
+    out.push(len as u8);
+    out.extend_from_slice(&bytes[..len]);
+    let pad = (4 - ((len + 1) % 4)) % 4;
+    for _ in 0..pad {
+        out.push(0);
+    }
+}
+
+fn write_tag(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8]) {
+    out.extend_from_slice(b"8BIM");
+    out.extend_from_slice(key);
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    out.extend_from_slice(data);
+    if data.len() % 2 == 1 {
+        out.push(0);
+    }
+}
+
+fn luni_data(name: &str) -> Vec<u8> {
+    let units: Vec<u16> = name.encode_utf16().collect();
+    let mut data = Vec::with_capacity(4 + units.len() * 2);
+    data.extend_from_slice(&(units.len() as u32).to_be_bytes());
+    for unit in units {
+        data.extend_from_slice(&unit.to_be_bytes());
+    }
+    data
+}
+
+/// Serialize a [`Document`]'s composite image and layer tree into a valid PSD.
 pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
     if doc.depth != BitDepth::Eight {
         return Err(PsdError::Unsupported("write supports 8-bit only".into()));
@@ -285,8 +887,19 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&mode_code.to_be_bytes());
     out.extend_from_slice(&0u32.to_be_bytes()); // empty color mode data
     out.extend_from_slice(&0u32.to_be_bytes()); // empty image resources
-    out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
-    out.extend_from_slice(&0u16.to_be_bytes()); // raw compression
+
+    if doc.layers.is_empty() {
+        out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
+    } else {
+        let info = write_layer_info(doc)?;
+        let section_len = 4 + info.len() + 4; // layer info length + global mask length
+        out.extend_from_slice(&(section_len as u32).to_be_bytes());
+        out.extend_from_slice(&(info.len() as u32).to_be_bytes());
+        out.extend_from_slice(&info);
+        out.extend_from_slice(&0u32.to_be_bytes()); // empty global layer mask
+    }
+
+    out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
     out.extend_from_slice(&doc.composite.data);
     Ok(out)
 }
@@ -331,6 +944,7 @@ mod tests {
         assert_eq!(doc.mode, ColorMode::Rgb);
         assert_eq!(doc.depth, BitDepth::Eight);
         assert_eq!(doc.composite.channels, 3);
+        assert!(doc.layers.is_empty());
         assert_eq!(
             doc.composite.data,
             vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
@@ -428,5 +1042,141 @@ mod tests {
             let back = read_psd(&bytes).unwrap();
             assert_eq!(back, doc, "mismatch for {width}x{height} ch={channels}");
         }
+    }
+
+    // -- M1-B: layers ------------------------------------------------------
+
+    fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
+        PsdRect {
+            top,
+            left,
+            bottom,
+            right,
+        }
+    }
+
+    fn pixel(name: &str, r: PsdRect, color_channels: u8, blend: BlendMode, opacity: u8) -> Layer {
+        let width = r.width().max(0) as usize;
+        let height = r.height().max(0) as usize;
+        let channels = (0..color_channels)
+            .map(|c| Channel {
+                id: c as i16,
+                data: vec![c * 40 + 17; width * height],
+            })
+            .chain(std::iter::once(Channel {
+                id: -1,
+                data: vec![255; width * height],
+            }))
+            .collect();
+        Layer {
+            name: name.to_string(),
+            rect: r,
+            blend,
+            opacity,
+            clipping: false,
+            visible: true,
+            mask: None,
+            channels,
+            children: Vec::new(),
+            is_group: false,
+        }
+    }
+
+    #[test]
+    fn round_trip_layers_group_and_mask() {
+        let mut doc = Document::new(16, 16, ColorMode::Rgb, BitDepth::Eight);
+        for (i, b) in doc.composite.data.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+
+        let red = pixel("Red", rect(0, 0, 4, 4), 3, BlendMode::Multiply, 200);
+        let green = pixel("Green", rect(4, 4, 8, 8), 3, BlendMode::Screen, 255);
+        let blue = pixel("Blue", rect(8, 8, 12, 12), 3, BlendMode::Normal, 128);
+        let group = Layer {
+            name: "Group A".to_string(),
+            rect: rect(0, 0, 0, 0),
+            blend: BlendMode::Normal,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            channels: Vec::new(),
+            children: vec![green, blue],
+            is_group: true,
+        };
+
+        let mut masked = pixel("Masked", rect(2, 2, 6, 6), 3, BlendMode::Overlay, 255);
+        masked.mask = Some(LayerMask {
+            rect: rect(2, 2, 6, 6),
+            default_color: 0,
+            disabled: true,
+            flags: 0x02,
+            data: Some(vec![7u8; 16]),
+        });
+
+        doc.layers = vec![red, group, masked];
+
+        let bytes = write_psd(&doc).unwrap();
+        let back = read_psd(&bytes).unwrap();
+
+        assert_eq!(back.layers.len(), 3);
+        assert_eq!(back.layers[0].name, "Red");
+        assert_eq!(back.layers[0].blend, BlendMode::Multiply);
+        assert_eq!(back.layers[0].opacity, 200);
+        assert_eq!(back.layers[0].rect, rect(0, 0, 4, 4));
+        assert!(back.layers[1].is_group());
+        assert_eq!(back.layers[1].name, "Group A");
+        assert_eq!(back.layers[1].children.len(), 2);
+        assert_eq!(back.layers[1].children[0].name, "Green");
+        assert_eq!(back.layers[1].children[1].name, "Blue");
+        assert_eq!(back.layers[1].children[0].rect, rect(4, 4, 8, 8));
+        let mask = back.layers[2].mask.as_ref().expect("mask round-trips");
+        assert_eq!(mask.rect, rect(2, 2, 6, 6));
+        assert!(mask.disabled);
+        assert_eq!(mask.data.as_deref(), Some(&[7u8; 16][..]));
+
+        // The strongest check: the whole document is equal.
+        assert_eq!(back, doc);
+    }
+
+    #[test]
+    fn gray_layer_round_trips() {
+        let mut doc = Document::new(8, 8, ColorMode::Grayscale, BitDepth::Eight);
+        doc.layers = vec![pixel("Gray", rect(0, 0, 8, 8), 1, BlendMode::Normal, 255)];
+        let bytes = write_psd(&doc).unwrap();
+        assert_eq!(read_psd(&bytes).unwrap(), doc);
+    }
+
+    #[test]
+    fn malformed_layer_section_is_error_not_panic() {
+        let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![pixel("Only", rect(0, 0, 8, 8), 3, BlendMode::Normal, 255)];
+        let good = write_psd(&doc).unwrap();
+
+        // Truncated inside the layer/mask section.
+        assert!(read_psd(&good[..60]).is_err());
+
+        // Bogus layer count: claims 100 records but the section holds one.
+        let mut bogus = good.clone();
+        bogus[42..44].copy_from_slice(&100i16.to_be_bytes());
+        assert!(read_psd(&bogus).is_err());
+
+        // Bogus channel data length: first channel info length at offset 64
+        // (header 26 + section lengths 12 + count 2 + rect 16 + nch 2 + id 2).
+        let mut bad_len = good.clone();
+        bad_len[64..68].copy_from_slice(&u32::MAX.to_be_bytes());
+        assert!(read_psd(&bad_len).is_err());
+    }
+
+    #[test]
+    fn zip_layer_compression_is_unsupported() {
+        let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![pixel("Only", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255)];
+        let mut bytes = write_psd(&doc).unwrap();
+        // Layer channel data follows the first (and only) record's extra data.
+        let extra_len = u32::from_be_bytes(bytes[98..102].try_into().unwrap()) as usize;
+        let channel_data = 102 + extra_len;
+        bytes[channel_data + 1] = 2; // compression 2 = ZIP
+        assert!(matches!(read_psd(&bytes), Err(PsdError::Unsupported(_))));
     }
 }

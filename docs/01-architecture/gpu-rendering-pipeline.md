@@ -351,14 +351,22 @@ Not fetched or not usable in this pass:
 
 ## Open questions
 
-- **wgpu–QRhi device sharing feasibility.** Whether a wgpu-created Vulkan device
-  can be imported by QRhi via `importDevice`, and whether the queues, instance,
-  and extensions are compatible, is not verified. Symmetrically, whether Qt's
-  Vulkan instance/device can be adopted by wgpu is unverified. Resolve with a
-  prototype on Linux before committing to Stage 2.
-- **`QVulkanInstance` wrapping.** Whether Qt can wrap an externally created
-  `VkInstance` cleanly (and in which direction) must be confirmed against the
-  Qt Vulkan API.
+> **M0.5 finding (2026-09, Linux, Qt 6.11.1, wgpu 30.0.1):**
+> - Offscreen wgpu (Vulkan) render → readback → `QImage` **works** and is the
+>   M1 default; CPU fallback verified.
+> - **Device + texture sharing works**: QRhi `importDevice` adopted the
+>   wgpu-created `VkDevice`, and `QRhiTexture::createFrom` imported a wgpu-owned
+>   `VkImage`. So the first two questions below are answered *yes*.
+> - **On-screen present via `QRhiWidget` is blocked**: `QRhiWidget` owns its
+>   `QRhi` internally (no adopt/`setRhi` hook). On-screen zero-copy needs a manual
+>   `QRhi` + `QWindow` swapchain and `VK_KHR_swapchain` (absent from the wgpu
+>   device). Evidence: `crates/pictura-app/GPU-INTEROP-NOTES.md`.
+
+- **wgpu–QRhi device sharing feasibility.** ~~Unverified.~~ **Resolved (M0.5):**
+  QRhi's Vulkan backend imports the wgpu `VkDevice` and wraps a wgpu `VkImage`;
+  see the finding above.
+- **`QVulkanInstance` wrapping.** ~~Must be confirmed.~~ **Resolved (M0.5):**
+  `QVulkanInstance::setVkInstance` + `QRhi::create(..., importDevice)` works.
 - **Queue and layout ownership.** Which side owns the queue and who performs
   layout transitions when both engines touch the same image. `setNativeLayout()`
   is the documented hook but the full contract needs testing.
