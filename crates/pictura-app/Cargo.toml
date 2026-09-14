@@ -1,10 +1,23 @@
 [package]
-name = "pictura-app"
+name = "pictura_app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+# Cargo builds the Rust bridge as a static library; CMake links it into the
+# C++ executable. `rlib` keeps the crate usable from Rust tests.
+[lib]
+crate-type = ["staticlib", "rlib"]
+
 [dependencies]
 pictura-core = { path = "../pictura-core" }
 pictura-codec = { path = "../pictura-codec" }
+# cxx is the FFI layer the `#[cxx_qt::bridge]` macro expands to.
+cxx = "1.0"
+cxx-qt = "0.10"
+# qt_gui is only needed for QImage; Core (QString) is always available.
+cxx-qt-lib = { version = "0.10", features = ["qt_gui"] }
+
+[build-dependencies]
+cxx-qt-build = "0.10"

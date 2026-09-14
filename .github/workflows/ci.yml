@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads rust-toolchain.toml (channel 1.98) and installs it on the runner.
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Install cargo-deny
+        if: ${{ hashFiles('deny.toml') != '' }}
+        run: cargo install cargo-deny --locked
+
+      - name: Deny
+        if: ${{ hashFiles('deny.toml') != '' }}
+        run: cargo deny check
