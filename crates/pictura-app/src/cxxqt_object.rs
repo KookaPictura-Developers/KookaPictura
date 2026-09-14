@@ -4,7 +4,7 @@ use core::pin::Pin;
 
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QImageFormat, QString};
-use pictura_core::Document;
+use pictura_core::{Document, PixelBuffer};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -148,33 +148,50 @@ impl qobject::PictureView {
     }
 }
 
-/// Convert the planar composite in a [`Document`] to a packed RGBA `QImage`.
+/// Convert the document to a packed RGBA `QImage`: the composited layer stack
+/// when it has layers, otherwise the embedded PSD composite.
 fn document_to_image(doc: &Document) -> QImage {
-    let width = doc.width as i32;
-    let height = doc.height as i32;
-    let plane = doc.width as usize * doc.height as usize;
-    let channels = doc.composite.channels as usize;
+    if doc.layers.is_empty() {
+        buffer_to_image(&doc.composite)
+    } else {
+        buffer_to_image(&pictura_render::composite_rgba(doc))
+    }
+}
+
+/// Convert a planar 8-bit buffer (1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA)
+/// to interleaved RGBA8888. Gray replicates across RGB; RGB gets opaque alpha.
+fn buffer_to_image(buffer: &PixelBuffer) -> QImage {
+    let width = buffer.width as i32;
+    let height = buffer.height as i32;
+    let plane = buffer.width as usize * buffer.height as usize;
+    let channels = buffer.channels as usize;
 
     let mut rgba = vec![0u8; plane * 4];
     for i in 0..plane {
-        let (r, g, b) = if channels <= 1 {
-            let v = doc.composite.data[i];
-            (v, v, v)
+        let (r, g, b, a) = if channels <= 1 {
+            let v = buffer.data[i];
+            (v, v, v, 255)
+        } else if channels == 2 {
+            let v = buffer.data[i];
+            (v, v, v, buffer.data[plane + i])
         } else {
+            let a = if channels >= 4 {
+                buffer.data[3 * plane + i]
+            } else {
+                255
+            };
             (
-                doc.composite.data[i],
-                doc.composite.data[plane + i],
-                doc.composite.data[2 * plane + i],
+                buffer.data[i],
+                buffer.data[plane + i],
+                buffer.data[2 * plane + i],
+                a,
             )
         };
         let o = i * 4;
-        rgba[o] = r;
-        rgba[o + 1] = g;
-        rgba[o + 2] = b;
-        rgba[o + 3] = 255;
+        rgba[o..o + 4].copy_from_slice(&[r, g, b, a]);
     }
 
-    // SAFETY: `rgba` is exactly width*height RGBA8888 bytes.
+    // SAFETY: `rgba` is exactly width*height RGBA8888 bytes, tightly packed.
     unsafe { QImage::from_raw_bytes(rgba, width, height, QImageFormat::Format_RGBA8888) }
 }
 
@@ -204,7 +221,7 @@ fn test_image() -> QImage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::{BitDepth, ColorMode};
+    use pictura_core::{BitDepth, BlendMode, Channel, ColorMode, Layer, PsdRect};
 
     #[test]
     fn converts_planar_rgb_to_rgba() {
@@ -216,6 +233,52 @@ mod tests {
         assert_eq!(image.pixel_color(0, 0).red(), 10);
         assert_eq!(image.pixel_color(0, 0).green(), 30);
         assert_eq!(image.pixel_color(0, 0).blue(), 50);
+        assert_eq!(image.pixel_color(0, 0).alpha(), 255);
+    }
+
+    #[test]
+    fn layered_document_composites_with_source_alpha() {
+        let mut doc = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![Layer {
+            name: "red".into(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 1,
+                right: 1,
+            },
+            blend: BlendMode::Normal,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            channels: vec![
+                Channel {
+                    id: 0,
+                    data: vec![255],
+                },
+                Channel {
+                    id: 1,
+                    data: vec![0],
+                },
+                Channel {
+                    id: 2,
+                    data: vec![0],
+                },
+                Channel {
+                    id: -1,
+                    data: vec![255],
+                },
+            ],
+            children: Vec::new(),
+            is_group: false,
+        }];
+
+        let image = document_to_image(&doc);
+        assert_eq!(image.pixel_color(0, 0).red(), 255);
+        assert_eq!(image.pixel_color(0, 0).alpha(), 255);
+        // Uncovered canvas stays transparent, not the embedded composite.
+        assert_eq!(image.pixel_color(1, 1).alpha(), 0);
     }
 
     #[test]

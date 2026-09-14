@@ -7,6 +7,9 @@ rust-version.workspace = true
 
 [dependencies]
 pictura-core = { path = "../pictura-core" }
+# wgpu/pollster versions track `pictura-app`, which already pulls wgpu 30.0.1.
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "vulkan", "wgsl"] }
+pollster = "1"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }

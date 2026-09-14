@@ -141,10 +141,11 @@ int main(int argc, char* argv[])
     }
 
     const bool codecLoaded = view.open(psdPath);
-    // M0.5: prefer the offscreen GPU image whenever no document was loaded (or
-    // in self-test). 0 = no GPU, 1 = rendered non-blank, 2 = rendered blank.
+    // M0.5: fall back to the offscreen GPU demo only when no document loaded
+    // (a loaded PSD must keep its composited image). 0 = no GPU,
+    // 1 = rendered non-blank, 2 = rendered blank.
     int gpu = 0;
-    if (!codecLoaded || selfTest) {
+    if (!codecLoaded) {
         gpu = view.render_gpu();
     }
     const QImage image = view.image();
@@ -188,6 +189,56 @@ int main(int argc, char* argv[])
             if (seen.size() < 2) {
                 std::fprintf(stderr, "pictura self-test: FAIL: blank render\n");
                 return 5;
+            }
+        }
+        if (codecLoaded) {
+            // two_layers.psd is an 8x8 layer stack: a red top-left quadrant and
+            // a blue bottom-right quadrant; the other quadrants are uncovered.
+            QSet<QRgb> seen;
+            for (int y = 0; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    seen.insert(image.pixel(x, y));
+                }
+            }
+            std::fprintf(stderr, "pictura self-test: layered distinct=%d\n", seen.size());
+            std::fflush(stderr);
+            if (seen.size() < 2) {
+                std::fprintf(stderr, "pictura self-test: FAIL: blank composition\n");
+                return 6;
+            }
+            if (image.width() >= 8 && image.height() >= 8) {
+                const QRgb tl = image.pixel(2, 2);
+                const QRgb br = image.pixel(6, 6);
+                const QRgb tr = image.pixel(6, 2);
+                const QRgb bl = image.pixel(2, 6);
+                std::fprintf(stderr,
+                             "pictura self-test: tl=(%d,%d,%d,a%d) br=(%d,%d,%d,a%d) "
+                             "tr_a=%d bl_a=%d\n",
+                             qRed(tl),
+                             qGreen(tl),
+                             qBlue(tl),
+                             qAlpha(tl),
+                             qRed(br),
+                             qGreen(br),
+                             qBlue(br),
+                             qAlpha(br),
+                             qAlpha(tr),
+                             qAlpha(bl));
+                std::fflush(stderr);
+                const bool red = qRed(tl) > 200 && qGreen(tl) < 60 && qBlue(tl) < 60
+                                 && qAlpha(tl) == 255;
+                const bool blue = qBlue(br) > 200 && qRed(br) < 60 && qGreen(br) < 60
+                                  && qAlpha(br) == 255;
+                if (!red || !blue) {
+                    std::fprintf(stderr, "pictura self-test: FAIL: composited quadrants wrong\n");
+                    return 7;
+                }
+                // Uncovered quadrants must be transparent: this proves the layer
+                // stack was composited, not the opaque embedded PSD composite.
+                if (qAlpha(tr) != 0 || qAlpha(bl) != 0) {
+                    std::fprintf(stderr, "pictura self-test: FAIL: layer stack not composited\n");
+                    return 8;
+                }
             }
         }
         const QPointF center(window.width() / 2.0, window.height() / 2.0);

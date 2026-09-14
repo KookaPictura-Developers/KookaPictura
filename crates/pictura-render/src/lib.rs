@@ -29,6 +29,9 @@
 
 use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
 
+pub mod gpu;
+pub use gpu::{composite_gpu, composite_gpu_or_cpu, GpuError};
+
 /// Composite the document's layer stack.
 ///
 /// Returns a 4-channel (R,G,B,A) planar, straight-alpha, 8-bit buffer at
