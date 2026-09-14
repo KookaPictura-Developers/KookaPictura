@@ -1,5 +1,5 @@
 //! ImageMagick differential oracle for `pictura_filters::apply` (tasks M6-E,
-//! M7-C, M8-B).
+//! M7-C, M8-B, M9-B).
 //!
 //! ImageMagick implements a handful of the same Blur / Sharpen / Noise / Other
 //! / Stylize / Pixelate filters. This is a *sanity* oracle, not a parity
@@ -14,7 +14,10 @@
 //! `Offset` with `wrap = true`, `Custom`, `Solarize`, `Mosaic`). The rest are
 //! covered by ImageMagick-independent property/known-value tests here and in
 //! the module unit tests; the divergences that ruled out a differential test
-//! are recorded in the table below and in `tests/README.md`.
+//! are recorded in the table below and in `tests/README.md`. The M9 Distort
+//! filters (`Twirl`, `Pinch`, `Spherize`, `Ripple`, `Wave`) were measured
+//! against the closest ImageMagick operator (`-swirl` / `-implode` / `-wave`)
+//! and classified no-equivalent; see the table.
 //!
 //! Regenerate/inspect a result manually with `scripts/filter_oracle.py`; see
 //! `tests/README.md`.
@@ -24,7 +27,10 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use pictura_core::PixelBuffer;
-use pictura_filters::{apply, Filter, MezzotintType, NoiseDistribution, Quality, RadialMethod};
+use pictura_filters::{
+    apply, Filter, MezzotintType, NoiseDistribution, Quality, RadialMethod, RippleSize,
+    SpherizeMode, WaveType,
+};
 use pictura_testkit::{compare, Diff};
 
 /// Side length of the raw planar RGB8 test image.
@@ -258,10 +264,51 @@ const MAPPING: &[Mapping] = &[
         note: "per-channel rotated screen has no ImageMagick operator; -ordered-dither o8x8 / h4x4a are \
                fixed orthogonal screens (observed max delta 255). Guarded by determinism and binarity",
     },
+    Mapping {
+        filter: "Twirl",
+        im: None,
+        tolerance: 0,
+        note: "IM -swirl uses a smooth falloff and radius = min(w,h)/2; Pictura twirls with a linear \
+               falloff over max(cx,cy). Best measured max delta 124 (Twirl +45 vs -swirl 45, same \
+               sign); -90 vs -swirl 90 gives 170. Guarded by the zero no-op and rotation tests",
+    },
+    Mapping {
+        filter: "Pinch",
+        im: None,
+        tolerance: 0,
+        note: "IM -implode amount is a fraction (not a percent); positive implodes, negative explodes. \
+               Pictura's linear radial remap is not IM's implode falloff. Best measured max delta 61 \
+               (Pinch 50 vs -implode 0.5); Pinch -50 vs -implode -0.5 gives 84",
+    },
+    Mapping {
+        filter: "Spherize",
+        im: None,
+        tolerance: 0,
+        note: "closest is -implode {amount/100}; Pictura's arc-length sphere map (Normal / \
+               HorizontalOnly / VerticalOnly) is not IM's implode falloff. Best measured max delta 159 \
+               (Spherize 50 Normal vs -implode 0.5); -50 gives 128",
+    },
+    Mapping {
+        filter: "Ripple",
+        im: None,
+        tolerance: 0,
+        note: "IM -wave displaces one axis with a sine in x and pads the canvas (background fill), \
+               while Pictura ripple displaces both axes (dx ~ sin y, dy ~ sin x) with clamp-to-edge \
+               and a fixed period per size. Measured max delta 255 / mean 104 (Ripple 100 Medium vs \
+               -wave 10x16 cropped to 16x16)",
+    },
+    Mapping {
+        filter: "Wave",
+        im: None,
+        tolerance: 0,
+        note: "IM -wave is a single unseeded sine along one axis; Pictura sums seeded generators with \
+               random phase/period/amplitude and an axis-wise scale. Measured max delta 255 / mean 101 \
+               (1 generator sine, amp 20, wavelength 10, seed 42 vs -wave 20x10 cropped)",
+    },
 ];
 
 /// Filters the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 20] = [
+const NO_EQUIVALENT: [&str; 25] = [
     "MotionBlur",
     "RadialBlur",
     "Average",
@@ -282,6 +329,11 @@ const NO_EQUIVALENT: [&str; 20] = [
     "Mezzotint",
     "Pointillize",
     "ColorHalftone",
+    "Twirl",
+    "Pinch",
+    "Spherize",
+    "Ripple",
+    "Wave",
 ];
 
 fn script() -> PathBuf {
@@ -492,7 +544,7 @@ fn oracle_negate_matches_expected_bytes() {
 
 #[test]
 fn mapping_marks_no_equivalent_operators() {
-    assert_eq!(MAPPING.len(), 30, "one mapping row per Filter variant");
+    assert_eq!(MAPPING.len(), 35, "one mapping row per Filter variant");
     let none: Vec<&str> = MAPPING
         .iter()
         .filter(|m| m.im.is_none())
@@ -1218,4 +1270,79 @@ fn differential_harness_detects_perturbation() {
             .is_empty(),
         "reverting the scratch copy must restore the match"
     );
+}
+
+/// M9 no-equivalent rows: ImageMagick has no faithful Distort operator (the
+/// closest measured operators are in the table above), so guard the contracts
+/// directly at the `Filter::apply` level. The module unit tests cover the same
+/// filters in more detail.
+#[test]
+fn m9_no_equivalent_filters_properties() {
+    let original = test_image_buffer();
+
+    // Zero amount is a bit-exact no-op for every radial / ripple warp.
+    for filter in [
+        Filter::Twirl { angle: 0.0 },
+        Filter::Pinch { amount: 0.0 },
+        Filter::Spherize {
+            amount: 0.0,
+            mode: SpherizeMode::Normal,
+        },
+        Filter::Spherize {
+            amount: 0.0,
+            mode: SpherizeMode::HorizontalOnly,
+        },
+        Filter::Spherize {
+            amount: 0.0,
+            mode: SpherizeMode::VerticalOnly,
+        },
+        Filter::Ripple {
+            amount: 0.0,
+            size: RippleSize::Medium,
+        },
+    ] {
+        let mut out = original.clone();
+        apply(&filter, &mut out).expect("apply");
+        assert_eq!(out.data, original.data, "{filter:?} must be a no-op at 0");
+    }
+
+    // Non-zero warps move pixels.
+    for filter in [
+        Filter::Twirl { angle: 45.0 },
+        Filter::Pinch { amount: 50.0 },
+        Filter::Spherize {
+            amount: 50.0,
+            mode: SpherizeMode::Normal,
+        },
+        Filter::Ripple {
+            amount: 100.0,
+            size: RippleSize::Medium,
+        },
+    ] {
+        let mut out = original.clone();
+        apply(&filter, &mut out).expect("apply");
+        assert_ne!(out.data, original.data, "{filter:?} must move pixels");
+    }
+
+    // Wave is seed-deterministic and seed-sensitive.
+    let wave = |seed: u64| Filter::Wave {
+        generators: 3,
+        wavelength: (10.0, 40.0),
+        amplitude: (5.0, 15.0),
+        kind: WaveType::Sine,
+        scale: (100.0, 50.0),
+        seed,
+        repeat_edge: true,
+    };
+    let run = |filter: &Filter| {
+        let mut out = original.clone();
+        apply(filter, &mut out).expect("apply");
+        out.data
+    };
+    assert_eq!(
+        run(&wave(7)),
+        run(&wave(7)),
+        "Wave must be seed-deterministic"
+    );
+    assert_ne!(run(&wave(7)), run(&wave(8)), "Wave must vary with the seed");
 }

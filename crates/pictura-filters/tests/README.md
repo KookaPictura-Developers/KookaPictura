@@ -1,11 +1,11 @@
-# M6-E / M7-C / M8-B — ImageMagick filter oracle
+# M6-E / M7-C / M8-B / M9-B — ImageMagick filter oracle
 
 These tests diff `pictura_filters::apply` against **ImageMagick** for the
-Blur / Sharpen / Noise / Other / Stylize / Pixelate filters that have a usable
-equivalent. This is a *sanity* oracle, not a parity oracle: Adobe's exact
-integer math and convolution kernels are closed, and the ImageMagick operators
-only approximate several Photoshop paths. The mapping table, the IM flags, the
-tolerances and the known divergences are below.
+Blur / Sharpen / Noise / Other / Stylize / Pixelate / Distort filters that have
+a usable equivalent. This is a *sanity* oracle, not a parity oracle: Adobe's
+exact integer math and convolution kernels are closed, and the ImageMagick
+operators only approximate several Photoshop paths. The mapping table, the IM
+flags, the tolerances and the known divergences are below.
 
 - Oracle script: `scripts/filter_oracle.py`
 - Tests: `crates/pictura-filters/tests/oracle.rs`
@@ -56,6 +56,11 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `Mezzotint` | — | **no** | — | Seeded procedural dot/line pattern; IM `-threshold 50%` and `-ordered-dither` are different screens (observed max delta 255). Guarded by seed determinism, binarity and achromatic output. |
 | `Pointillize` | — | **no** | — | Seeded local-color dots over background; `-spread 2` displaces pixels instead of drawing dots (observed max delta 240; `-kuwahara 2` gives 232). Guarded by seed determinism and the source/background color set. |
 | `ColorHalftone` | — | **no** | — | Per-channel rotated screen; `-ordered-dither o8x8` / `h4x4a` are fixed orthogonal screens (observed max delta 255). Guarded by determinism and binarity. |
+| `Twirl` | — | **no** | — | IM `-swirl {angle}` uses a **smooth falloff** and radius `min(w,h)/2`; Pictura twirls with a **linear falloff** over `max(cx,cy)`. Best measured max delta 124 (Twirl +45 vs `-swirl 45`, same sign); −90 vs `-swirl 90` gives 170. Guarded by the zero no-op and rotation tests. |
+| `Pinch` | — | **no** | — | IM `-implode` amount is a **fraction** (`0.5` = 50 %, not `50`); positive implodes, negative explodes. Pictura's linear radial remap is not IM's implode falloff. Best measured max delta 61 (Pinch 50 vs `-implode 0.5`); Pinch −50 vs `-implode -0.5` gives 84. |
+| `Spherize` | — | **no** | — | Closest is `-implode {amount/100}`; Pictura's arc-length sphere map (Normal / HorizontalOnly / VerticalOnly) is not IM's implode falloff. Best measured max delta 159 (Spherize 50 Normal vs `-implode 0.5`); −50 gives 128. |
+| `Ripple` | — | **no** | — | IM `-wave {amp}x{period}` displaces **one axis** with a sine in x and pads the canvas (background fill); Pictura Ripple displaces **both axes** (`dx ∝ sin y`, `dy ∝ sin x`) with clamp-to-edge and a fixed period per size. Measured max delta 255 / mean 104 (Ripple 100 Medium vs `-wave 10x16`, cropped back to 16×16). |
+| `Wave` | — | **no** | — | IM `-wave {amp}x{wavelength}` is a single **unseeded** sine along one axis; Pictura sums seeded generators with random phase/period/amplitude and an axis-wise scale. Measured max delta 255 / mean 101 (1 generator sine, amp 20, wavelength 10, seed 42 vs `-wave 20x10`, cropped). |
 
 ### Why `MotionBlur` is not diffed
 
@@ -132,6 +137,11 @@ play.
 | Solarize | `-solarize 50%` |
 | Mosaic | `-filter box -resize {W/n}x{H/n}! -filter point -resize {W}x{H}!`, `n = cell_size` (cell must divide both dimensions) |
 | Emboss | `-emboss {radius}x{sigma}` (measured, **not** used by a differential test) |
+| Twirl | `-swirl {angle}` (measured, **not** used by a differential test) |
+| Pinch | `-implode {amount/100}` (measured, **not** used; negative = explode) |
+| Spherize | `-implode {amount/100}` (measured, **not** used) |
+| Ripple | `-wave {amount/10}x{period} -crop WxH+0+{amount/10} +repage` (measured, **not** used) |
+| Wave | `-wave {amp}x{wavelength} -crop WxH+0+{amp} +repage` (measured, **not** used) |
 
 ### Unsharp Mask scaling
 
@@ -182,6 +192,45 @@ a separate screen per channel. Each is guarded by property tests in
 `oracle.rs` (`m8_no_equivalent_filters_properties`): seed determinism, flat-field
 identity or no-op, binarity/achromatic output, and the source/background color
 set.
+
+### M9 Distort: measured, all no-equivalent
+
+The Distort filters are inverse-mapping warps that no ImageMagick operator
+reproduces. Each was measured against the closest plausible operator on the
+16×16 test image; the deltas are the evidence for the no-equivalent rows:
+
+| `Filter` | Tried | Observed max delta (mean) |
+|---|---|---|
+| `Twirl` | `-swirl {angle}` (same sign) | 124 (8.0) at +45; 170 (15.5) at +90 |
+| `Pinch` | `-implode {amount/100}` | 61 (3.2) at +50; 84 (5.2) at −50 |
+| `Spherize` | `-implode {amount/100}` (Normal) | 159 (19.7) at +50; 128 (16.8) at −50 |
+| `Ripple` | `-wave {amount/10}x{period}` + crop | 255 (104.4) (100 Medium) |
+| `Wave` | `-wave {amp}x{wavelength}` + crop | 255 (100.8) (1 sine, seed 42) |
+
+The mismatches are structural, not just numeric:
+
+- **Twirl** (`-swirl`). Pictura uses a **linear** angular falloff
+  `angle·(1 − r/rmax)` over `rmax = max(cx, cy)`; IM `-swirl` uses a smooth
+  (radius-squared-ish) falloff over `min(w,h)/2`. The rotation direction
+  matches at the same sign (`+angle` ↔ `-swirl +angle`); the best case is
+  124 at 45°.
+- **Pinch / Spherize** (`-implode`). IM's `-implode amount` is a **fraction**
+  (so Pictura 50 → `0.5`, not `50`), and positive implodes while negative
+  explodes. Pictura Pinch is a linear radial remap and Spherize an arc-length
+  sphere map; neither is IM's implode falloff. Spherize's `HorizontalOnly` /
+  `VerticalOnly` modes have no IM analogue at all.
+- **Ripple / Wave** (`-wave`). IM `-wave amplitude x wavelength` grows the
+  canvas by `2·amplitude` (background-filled) and displaces **one axis** with a
+  sine in x; the named `wave` op crops it back to the input size. Pictura
+  Ripple displaces **both** axes (`dx ∝ sin y`, `dy ∝ sin x`) with
+  clamp-to-edge, and Pictura Wave sums `generators` seeded sine/triangle/square
+  generators with random phase/period/amplitude and an axis-wise `scale`.
+
+Contracts are guarded at the `Filter::apply` level by
+`m9_no_equivalent_filters_properties` (zero is a bit-exact no-op; non-zero
+warps move pixels; Wave is seed-deterministic and seed-sensitive) and in more
+detail by the module unit tests in `src/distort/radial.rs` and
+`src/distort/undulate.rs`.
 
 ## Known divergences (IM vs Photoshop / Pictura)
 
@@ -265,6 +314,12 @@ python3 scripts/filter_oracle.py apply --size 16x16 --planar \
     --op mosaic --cell 4 IN.rgb OUT.rgb
 python3 scripts/filter_oracle.py apply --size 16x16 --planar \
     --im-args="-motion-blur 0x5+45" IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+    --op swirl --angle 45 IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+    --op implode --implode-amount 0.5 IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+    --op wave --wave-amplitude 10 --wave-wavelength 16 IN.rgb OUT.rgb
 ```
 
 ## Regeneration
@@ -291,6 +346,10 @@ with `=` so argparse does not read the leading `-` as another option.
 - Crystallize, Facet, Fragment, Mezzotint, Pointillize and Color Halftone: no
   faithful ImageMagick equivalent (M8; see the M8 table); covered by
   property/known-value tests instead.
+- Twirl, Pinch, Spherize, Ripple and Wave: no faithful ImageMagick equivalent
+  (M9; the closest `-swirl` / `-implode` / `-wave` operators were measured — see
+  the M9 section); covered by `m9_no_equivalent_filters_properties` and the
+  module unit tests instead.
 - Alpha-channel behaviour: the tests use 3-channel buffers, and `apply` is
   specified never to modify channel 4 (guarded by the module unit tests).
-- 16/32-bit filter math (M6–M8 are 8-bit only).
+- 16/32-bit filter math (M6–M9 are 8-bit only).

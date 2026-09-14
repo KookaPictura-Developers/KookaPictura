@@ -211,6 +211,11 @@ int main(int argc, char* argv[])
     filterCombo->addItem(QStringLiteral("Mezzotint"), QStringLiteral("mezzotint"));
     filterCombo->addItem(QStringLiteral("Pointillize"), QStringLiteral("pointillize"));
     filterCombo->addItem(QStringLiteral("Color Halftone"), QStringLiteral("color-halftone"));
+    filterCombo->addItem(QStringLiteral("Twirl"), QStringLiteral("twirl"));
+    filterCombo->addItem(QStringLiteral("Pinch"), QStringLiteral("pinch"));
+    filterCombo->addItem(QStringLiteral("Spherize"), QStringLiteral("spherize"));
+    filterCombo->addItem(QStringLiteral("Ripple"), QStringLiteral("ripple"));
+    filterCombo->addItem(QStringLiteral("Wave"), QStringLiteral("wave"));
     panelLayout->addWidget(filterCombo);
 
     auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);

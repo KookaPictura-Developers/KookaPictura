@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""ImageMagick differential oracle for Kooka Pictura tasks M6-E / M7-C / M8-B.
+"""ImageMagick differential oracle for Kooka Pictura tasks M6-E / M7-C / M8-B /
+M9-B.
 
 ImageMagick is an independent implementation of several `Filter > Blur /
 Sharpen / Noise / Other / Stylize` operators. This script applies one of them
@@ -30,11 +31,25 @@ filter -> ImageMagick mapping and the measured/tolerated divergence live in
     Custom        -convolve {kernel} (+ convolve:scale, -evaluate add)
     Emboss        -emboss {radius}x{sigma}          (measured, no equivalent)
     Mosaic        -filter box -resize W/n x H/n ! + -filter point -resize WxH !
+    Twirl         -swirl {angle}                    (measured, no equivalent)
+    Pinch         -implode {amount/100}             (measured, no equivalent)
+    Spherize      -implode {amount/100}             (measured, no equivalent)
+    Ripple        -wave {amp}x{period} + -crop      (measured, no equivalent)
+    Wave          -wave {amp}x{wavelength} + -crop  (measured, no equivalent)
 
 `Mosaic` is only an exact block average when the cell divides both image
 dimensions; IM's resize window is offset from Pictura's top-left blocks
 otherwise. The remaining M8 filters (Crystallize, Facet, Fragment, Mezzotint,
-Pointillize, Color Halftone) have no faithful operator and are not diffed.
+Pointillize, Color Halftone) have no faithful operator and are not diffed. The
+M9 Distort filters (Twirl, Pinch, Spherize, Ripple, Wave) were measured against
+the closest operator above and are likewise no-equivalent: IM's `-swirl` /
+`-implode` falloffs differ from Pictura's linear / arc-length maps, and IM
+`-wave` is an unseeded single-axis sine that pads the canvas, while Pictura
+Ripple / Wave displace both axes (Wave sums seeded generators).
+
+`-wave` grows the canvas by `2*amplitude` (background-filled); the named `wave`
+op crops back to the input size with the original content offset by `amplitude`
+rows, so the result stays comparable sample-for-sample.
 
 `Maximum`/`Minimum` note: ImageMagick's `Square:N` parameter is a *radius*, so
 the footprint is `(2N+1)²`; pass Pictura's `radius`, not `2*radius+1`.
@@ -63,6 +78,12 @@ Usage:
         --im-args="-motion-blur 0x5+45" IN.rgb OUT.rgb
     python3 scripts/filter_oracle.py apply --size 16x16 --planar \
         --op mosaic --cell 4 IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+        --op swirl --angle 45 IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+        --op implode --implode-amount 0.5 IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+        --op wave --wave-amplitude 10 --wave-wavelength 16 IN.rgb OUT.rgb
 
 `--im-args` must be attached with `=` (`--im-args="-median 1"`) or argparse
 mistakes the leading `-` for another option.
@@ -165,6 +186,20 @@ def build_im_args(args: argparse.Namespace) -> list[str]:
         ]
     if op == "convolve":
         return convolve_args(args)
+    if op == "swirl":
+        return ["-swirl", str(args.angle)]
+    if op == "implode":
+        return ["-implode", str(args.implode_amount)]
+    if op == "wave":
+        w, h = (int(part) for part in args.size.split("x"))
+        amplitude = args.wave_amplitude
+        return [
+            "-wave",
+            f"{amplitude:g}x{args.wave_wavelength:g}",
+            "-crop",
+            f"{w}x{h}+0+{int(amplitude)}",
+            "+repage",
+        ]
     raise SystemExit(f"unknown --op {op!r}")
 
 
@@ -262,6 +297,7 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--op", choices=(
         "gaussian", "box", "motion", "median", "unsharp",
         "maximum", "minimum", "roll", "solarize", "emboss", "mosaic", "convolve",
+        "swirl", "implode", "wave",
     ), help="named operator; builds the Magick args below")
     p_apply.add_argument("--im-args", default="",
                          help="verbatim Magick operator arguments (when --op is omitted)")
@@ -295,6 +331,12 @@ def main(argv: list[str] | None = None) -> int:
                          help="Custom divisor (Pictura scale)")
     p_apply.add_argument("--kernel-offset", type=float, default=0.0,
                          help="Custom additive bias (Pictura 8-bit offset)")
+    p_apply.add_argument("--implode-amount", type=float, default=0.5,
+                         help="IM -implode amount (fraction; negative = explode)")
+    p_apply.add_argument("--wave-amplitude", type=float, default=10.0,
+                         help="IM -wave amplitude (the wave op crops back to --size)")
+    p_apply.add_argument("--wave-wavelength", type=float, default=16.0,
+                         help="IM -wave wavelength")
     p_apply.add_argument("input", help="raw 8-bit input image")
     p_apply.add_argument("output", help="raw 8-bit output image")
     p_apply.set_defaults(func=cmd_apply)

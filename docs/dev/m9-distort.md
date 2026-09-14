@@ -89,13 +89,23 @@ Semantics (planar 8-bit, alpha untouched, clamp-to-edge, no panics):
 
 ## Oracle
 
-ImageMagick where semantics match; classify the rest no-equivalent with recorded
-deltas:
-- **Twirl** — `-swirl <angle>` (sign/scale fitted; measure tolerance).
-- **Wave** — single-generator sine vs `-wave` (partial: IM's generator/RNG model
-  differs; measure and record the divergence).
-- No faithful operator (property/known-value + determinism): **Pinch**,
-  **Spherize**, **Ripple** — measure the closest operator and record the delta.
+All five Distort filters were measured against the closest ImageMagick operator
+and classified **no-equivalent, tolerance 0**. Measured deltas (16×16 test
+image, same signs/clamps as the implementation):
+
+| Filter | Closest operator | Observed max delta (mean) |
+|---|---|---|
+| Twirl | `-swirl <angle>` (same sign) | 124 (8.0) at +45° |
+| Pinch | `-implode <amount/100>` | 61 (3.2) at +50 |
+| Spherize | `-implode <amount/100>` (Normal) | 159 (19.7) at +50 |
+| Ripple | `-wave <amount/10>x<period>` + crop | 255 (104.4) |
+| Wave | `-wave <amp>x<wavelength>` + crop | 255 (100.8) |
+
+The mismatches are structural, not numeric (falloff shape, axis/wrap semantics,
+seeded generators), so no differential test is used. Guards: the
+ImageMagick-independent property/known-value tests in
+`m9_no_equivalent_filters_properties` plus the `src/distort` module unit tests.
+Authoritative numbers and exact flags: `crates/pictura-filters/tests/README.md`.
 
 ## Task DAG
 

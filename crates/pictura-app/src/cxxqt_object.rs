@@ -450,7 +450,9 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
 /// Defaults are chosen so a fresh apply visibly changes a non-trivial image;
 /// filter dialogs are out of scope for M6-C.
 fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
-    use pictura_filters::{Filter, MezzotintType, NoiseDistribution};
+    use pictura_filters::{
+        Filter, MezzotintType, NoiseDistribution, RippleSize, SpherizeMode, WaveType,
+    };
 
     Some(match kind {
         "gaussian-blur" => Filter::GaussianBlur { radius: 5.0 },
@@ -509,6 +511,25 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
         "color-halftone" => Filter::ColorHalftone {
             max_radius: 5,
             angles: [108.0, 162.0, 90.0, 45.0],
+        },
+        "twirl" => Filter::Twirl { angle: 90.0 },
+        "pinch" => Filter::Pinch { amount: 50.0 },
+        "spherize" => Filter::Spherize {
+            amount: 100.0,
+            mode: SpherizeMode::Normal,
+        },
+        "ripple" => Filter::Ripple {
+            amount: 100.0,
+            size: RippleSize::Medium,
+        },
+        "wave" => Filter::Wave {
+            generators: 5,
+            wavelength: (10.0, 120.0),
+            amplitude: (5.0, 35.0),
+            kind: WaveType::Sine,
+            scale: (100.0, 100.0),
+            seed: 1,
+            repeat_edge: true,
         },
         // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
         // default exists; it stays out of the dock and is left unmapped.
@@ -808,7 +829,9 @@ mod tests {
 
     #[test]
     fn filter_from_kind_maps_known_and_rejects_unknown() {
-        use pictura_filters::{Filter, MezzotintType, NoiseDistribution};
+        use pictura_filters::{
+            Filter, MezzotintType, NoiseDistribution, RippleSize, SpherizeMode, WaveType,
+        };
 
         assert_eq!(
             filter_from_kind("gaussian-blur"),
@@ -913,6 +936,40 @@ mod tests {
             Some(Filter::ColorHalftone {
                 max_radius: 5,
                 angles: [108.0, 162.0, 90.0, 45.0],
+            })
+        );
+        assert_eq!(
+            filter_from_kind("twirl"),
+            Some(Filter::Twirl { angle: 90.0 })
+        );
+        assert_eq!(
+            filter_from_kind("pinch"),
+            Some(Filter::Pinch { amount: 50.0 })
+        );
+        assert_eq!(
+            filter_from_kind("spherize"),
+            Some(Filter::Spherize {
+                amount: 100.0,
+                mode: SpherizeMode::Normal,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("ripple"),
+            Some(Filter::Ripple {
+                amount: 100.0,
+                size: RippleSize::Medium,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("wave"),
+            Some(Filter::Wave {
+                generators: 5,
+                wavelength: (10.0, 120.0),
+                amplitude: (5.0, 35.0),
+                kind: WaveType::Sine,
+                scale: (100.0, 100.0),
+                seed: 1,
+                repeat_edge: true,
             })
         );
         assert_eq!(filter_from_kind("bogus"), None);
