@@ -4,6 +4,7 @@ members = [
     "crates/pictura-core",
     "crates/pictura-codec",
     "crates/pictura-color",
+    "crates/pictura-adjust",
     "crates/pictura-render",
     "crates/pictura-testkit",
     "crates/pictura-app",

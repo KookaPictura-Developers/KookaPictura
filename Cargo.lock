@@ -762,6 +762,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pictura-adjust"
+version = "0.0.0"
+dependencies = [
+ "pictura-core",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "pictura-codec"
 version = "0.0.0"
 dependencies = [
