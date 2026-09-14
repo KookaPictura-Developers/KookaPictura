@@ -16,6 +16,10 @@ node_modules/
 .sccache
 .cache
 
+# Python (oracle scripts)
+__pycache__/
+*.pyc
+
 # Packaging artifacts
 /dist
 *.AppImage
