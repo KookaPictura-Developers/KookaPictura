@@ -16,6 +16,7 @@ pub mod kernel;
 pub mod luma;
 pub mod noise;
 pub mod other;
+pub mod pixelate;
 pub mod sharpen;
 pub mod stylize;
 
@@ -44,6 +45,20 @@ pub enum Quality {
 pub enum NoiseDistribution {
     Uniform,
     Gaussian,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MezzotintType {
+    FineDots,
+    MediumDots,
+    GrainyDots,
+    CoarseDots,
+    ShortLines,
+    MediumLines,
+    LongLines,
+    ShortStrokes,
+    MediumStrokes,
+    LongStrokes,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,6 +130,28 @@ pub enum Filter {
     },
     FindEdges,
     Solarize,
+    Mosaic {
+        cell_size: u32,
+    },
+    Crystallize {
+        cell_size: u32,
+        seed: u64,
+    },
+    Facet,
+    Fragment,
+    Mezzotint {
+        kind: MezzotintType,
+        seed: u64,
+    },
+    Pointillize {
+        cell_size: u32,
+        background: [u8; 3],
+        seed: u64,
+    },
+    ColorHalftone {
+        max_radius: u32,
+        angles: [f64; 4],
+    },
 }
 
 /// Apply `filter` in place (planar 8-bit; channels 3 or 4; alpha untouched).
@@ -170,6 +207,19 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
         } => stylize::emboss(buf, *angle, *height, *amount),
         Filter::FindEdges => stylize::find_edges(buf),
         Filter::Solarize => stylize::solarize(buf),
+        Filter::Mosaic { cell_size } => pixelate::mosaic(buf, *cell_size),
+        Filter::Crystallize { cell_size, seed } => pixelate::crystallize(buf, *cell_size, *seed),
+        Filter::Facet => pixelate::facet(buf),
+        Filter::Fragment => pixelate::fragment(buf),
+        Filter::Mezzotint { kind, seed } => pixelate::mezzotint(buf, *kind, *seed),
+        Filter::Pointillize {
+            cell_size,
+            background,
+            seed,
+        } => pixelate::pointillize(buf, *cell_size, *background, *seed),
+        Filter::ColorHalftone { max_radius, angles } => {
+            pixelate::color_halftone(buf, *max_radius, *angles)
+        }
     }
 }
 
