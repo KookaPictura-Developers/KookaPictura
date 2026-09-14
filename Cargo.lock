@@ -803,6 +803,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pictura-select"
+version = "0.0.0"
+dependencies = [
+ "pictura-core",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "pictura-testkit"
 version = "0.0.0"
 
