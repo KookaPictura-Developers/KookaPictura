@@ -10,8 +10,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
 - Test suite: **337 tests, 0 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M5 documented retroactively as
-  ten changes in `openspec/changes/` (17 capability specs, all `validate --strict` green).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M10 archived; canonical specs are
+  in `openspec/specs/` (29 capabilities, 207 requirements, `validate --all --strict`
+  green), change history under `openspec/changes/archive/`.
 
 ## Commands
 
@@ -92,11 +93,12 @@ openspec validate --all --strict
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". Retrospective M0–M5 changes live in
-`openspec/changes/`; each has `proposal.md`, `design.md`, `tasks.md`, and
-`specs/<capability>/spec.md` deltas. They are **unarchived**: `openspec archive
-<name>` promotes deltas into `openspec/specs/<capability>/spec.md`. New work
-(e.g. M6) starts as a new change, not as code.
+"Spec workflow (OpenSpec)". M0–M10 are archived; `openspec/specs/` is now the
+canonical contract, with the per-change history under
+`openspec/changes/archive/`. New work starts as a new change under
+`openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
+and `specs/<capability>/spec.md` deltas, archived into `openspec/specs/` when
+complete.
 
 ## Conventions (keep doing)
 
@@ -119,8 +121,8 @@ engine, `docs/03-tools` painting tools, `docs/09-automation`).
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-The M6/M6-C/M7/M8/M9/M10 changes are not archived yet — `openspec archive <name>`
-promotes their deltas into `openspec/specs/`.
+M6/M6-C/M7/M8/M9/M10 are archived; their deltas now live in
+`openspec/specs/`.
 
 ## Known risks / open items
 
