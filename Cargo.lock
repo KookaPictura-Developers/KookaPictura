@@ -829,6 +829,7 @@ dependencies = [
  "pictura-adjust",
  "pictura-core",
  "pictura-filters",
+ "pictura-ops",
  "pictura-testkit",
  "pollster",
  "wgpu",

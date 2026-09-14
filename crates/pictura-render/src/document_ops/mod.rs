@@ -8,3 +8,49 @@ mod resize;
 pub use canvas::resize_canvas_document;
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;
+
+/// Reject a zero width or height with `InvalidParams`.
+pub(crate) fn valid_size(width: u32, height: u32) -> Result<(), pictura_ops::OpsError> {
+    if width == 0 || height == 0 {
+        return Err(pictura_ops::OpsError::InvalidParams(
+            "width and height must be >= 1".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Rebuild the document composite from its (already transformed) layer tree.
+pub(crate) fn recompute(doc: &mut pictura_core::Document) {
+    doc.composite = crate::composite_rgba(doc);
+}
+
+/// Visit each layer depth-first, groups before their children.
+pub(crate) fn for_each_layer(
+    layers: &mut [pictura_core::Layer],
+    f: &mut impl FnMut(&mut pictura_core::Layer),
+) {
+    for layer in layers.iter_mut() {
+        f(layer);
+        for_each_layer(&mut layer.children, f);
+    }
+}
+
+/// Resample one planar 8-bit channel from `sw×sh` to `dw×dh`.
+///
+/// The caller validates the sizes, so a rejected `resize` (which would mean a
+/// malformed plane) falls back to passing the input through untouched.
+pub(crate) fn resample_plane(
+    data: &[u8],
+    sw: u32,
+    sh: u32,
+    dw: u32,
+    dh: u32,
+    resample: pictura_ops::Resample,
+) -> Vec<u8> {
+    let mut plane = pictura_core::PixelBuffer::new(sw, sh, 1);
+    let n = plane.data.len().min(data.len());
+    plane.data[..n].copy_from_slice(&data[..n]);
+    pictura_ops::resize(&plane, dw, dh, resample)
+        .map(|b| b.data)
+        .unwrap_or_else(|_| data.to_vec())
+}
