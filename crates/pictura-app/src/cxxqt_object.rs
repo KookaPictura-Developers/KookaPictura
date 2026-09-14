@@ -451,7 +451,8 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
 /// filter dialogs are out of scope for M6-C.
 fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
     use pictura_filters::{
-        Filter, MezzotintType, NoiseDistribution, RippleSize, SpherizeMode, WaveType,
+        Filter, MezzotintType, NoiseDistribution, PolarKind, RippleSize, ShearFill, SpherizeMode,
+        WaveType, ZigZagStyle,
     };
 
     Some(match kind {
@@ -530,6 +531,23 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
             scale: (100.0, 100.0),
             seed: 1,
             repeat_edge: true,
+        },
+        "polar-coordinates" => Filter::PolarCoordinates {
+            kind: PolarKind::RectangularToPolar,
+        },
+        "shear" => Filter::Shear {
+            curve: vec![(-1.0, -0.5), (0.0, 0.0), (1.0, 0.5)],
+            fill: ShearFill::RepeatEdgePixels,
+        },
+        "zigzag" => Filter::ZigZag {
+            amount: 50.0,
+            ridges: 5,
+            style: ZigZagStyle::AroundCenter,
+        },
+        "ocean-ripple" => Filter::OceanRipple {
+            size: 9,
+            magnitude: 5,
+            seed: 1,
         },
         // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
         // default exists; it stays out of the dock and is left unmapped.
@@ -830,7 +848,8 @@ mod tests {
     #[test]
     fn filter_from_kind_maps_known_and_rejects_unknown() {
         use pictura_filters::{
-            Filter, MezzotintType, NoiseDistribution, RippleSize, SpherizeMode, WaveType,
+            Filter, MezzotintType, NoiseDistribution, PolarKind, RippleSize, ShearFill,
+            SpherizeMode, WaveType, ZigZagStyle,
         };
 
         assert_eq!(
@@ -970,6 +989,35 @@ mod tests {
                 scale: (100.0, 100.0),
                 seed: 1,
                 repeat_edge: true,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("polar-coordinates"),
+            Some(Filter::PolarCoordinates {
+                kind: PolarKind::RectangularToPolar,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("shear"),
+            Some(Filter::Shear {
+                curve: vec![(-1.0, -0.5), (0.0, 0.0), (1.0, 0.5)],
+                fill: ShearFill::RepeatEdgePixels,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("zigzag"),
+            Some(Filter::ZigZag {
+                amount: 50.0,
+                ridges: 5,
+                style: ZigZagStyle::AroundCenter,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("ocean-ripple"),
+            Some(Filter::OceanRipple {
+                size: 9,
+                magnitude: 5,
+                seed: 1,
             })
         );
         assert_eq!(filter_from_kind("bogus"), None);

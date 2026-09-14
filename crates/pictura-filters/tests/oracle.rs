@@ -1,5 +1,5 @@
 //! ImageMagick differential oracle for `pictura_filters::apply` (tasks M6-E,
-//! M7-C, M8-B, M9-B).
+//! M7-C, M8-B, M9-B, M11-B).
 //!
 //! ImageMagick implements a handful of the same Blur / Sharpen / Noise / Other
 //! / Stylize / Pixelate filters. This is a *sanity* oracle, not a parity
@@ -17,7 +17,10 @@
 //! are recorded in the table below and in `tests/README.md`. The M9 Distort
 //! filters (`Twirl`, `Pinch`, `Spherize`, `Ripple`, `Wave`) were measured
 //! against the closest ImageMagick operator (`-swirl` / `-implode` / `-wave`)
-//! and classified no-equivalent; see the table.
+//! and classified no-equivalent; see the table. The M11 Distort filters
+//! (`PolarCoordinates`, `Shear`, `ZigZag`, `OceanRipple`) were measured against
+//! `-distort Polar`/`DePolar`, `-shear`, `-swirl` and `-wave` and are likewise
+//! no-equivalent; see the table.
 //!
 //! Regenerate/inspect a result manually with `scripts/filter_oracle.py`; see
 //! `tests/README.md`.
@@ -28,8 +31,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use pictura_core::PixelBuffer;
 use pictura_filters::{
-    apply, Filter, MezzotintType, NoiseDistribution, Quality, RadialMethod, RippleSize,
-    SpherizeMode, WaveType,
+    apply, Filter, MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod, RippleSize,
+    ShearFill, SpherizeMode, WaveType, ZigZagStyle,
 };
 use pictura_testkit::{compare, Diff};
 
@@ -305,10 +308,49 @@ const MAPPING: &[Mapping] = &[
                random phase/period/amplitude and an axis-wise scale. Measured max delta 255 / mean 101 \
                (1 generator sine, amp 20, wavelength 10, seed 42 vs -wave 20x10 cropped)",
     },
+    Mapping {
+        filter: "PolarCoordinates",
+        im: None,
+        tolerance: 0,
+        note: "IM -distort Polar/DePolar use a different angle origin (180 deg off) and \
+               pixel-center/radius anchor plus IM's own resampling. Best measured: RectangularToPolar \
+               vs `-distort Polar 0` max delta 189 / mean 58.3; PolarToRectangular vs \
+               `-distort DePolar 0` max 194 / mean 58.9 (the crossed directions give max 240/241). Guarded \
+               by the remap/no-op property tests",
+    },
+    Mapping {
+        filter: "Shear",
+        im: None,
+        tolerance: 0,
+        note: "IM `-shear 0x{angle}` is a whole-canvas y-shear that background-fills the expanded \
+               canvas (default black), while Pictura shifts columns by a piecewise-linear curve with \
+               clamp/wrap and expands nothing. Straight curve [(-1,-0.5),(1,0.5)] = atan(0.5) = \
+               26.565 deg; best measured `-shear 0x26.565 -crop 16x16+0+4 +repage` vs \
+               RepeatEdgePixels max 255 / mean 18.4 (WrapAround mean 23.4). Guarded by the zero-curve \
+               no-op and fill property tests",
+    },
+    Mapping {
+        filter: "ZigZag",
+        im: None,
+        tolerance: 0,
+        note: "IM `-swirl` uses a smooth falloff about min(w,h)/2; Pictura's cosine radial profile is \
+               pinned to zero at the edge with `ridges` reversals. Best measured `-swirl 50` vs amount \
+               80 / ridges 5 / AroundCenter max 170 / mean 14.3 (`-swirl 80` mean 14.9, `-swirl -80` \
+               mean 18.8, `-implode 0.8` mean 18.6). Guarded by the zero no-op and style tests",
+    },
+    Mapping {
+        filter: "OceanRipple",
+        im: None,
+        tolerance: 0,
+        note: "IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura sums 8 seeded \
+               direction sinusoids with clamp-to-edge. Best measured `-wave 2x8 -crop 16x16+0+2 \
+               +repage` vs size 9 / magnitude 20 / seed 42 max 227 / mean 53.7. Guarded by seed \
+               determinism and the zero-magnitude no-op",
+    },
 ];
 
 /// Filters the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 25] = [
+const NO_EQUIVALENT: [&str; 29] = [
     "MotionBlur",
     "RadialBlur",
     "Average",
@@ -334,6 +376,10 @@ const NO_EQUIVALENT: [&str; 25] = [
     "Spherize",
     "Ripple",
     "Wave",
+    "PolarCoordinates",
+    "Shear",
+    "ZigZag",
+    "OceanRipple",
 ];
 
 fn script() -> PathBuf {
@@ -544,7 +590,55 @@ fn oracle_negate_matches_expected_bytes() {
 
 #[test]
 fn mapping_marks_no_equivalent_operators() {
-    assert_eq!(MAPPING.len(), 35, "one mapping row per Filter variant");
+    assert_eq!(MAPPING.len(), 39, "one mapping row per Filter variant");
+    // Exactly one row per `Filter` variant, no duplicates, full enum coverage.
+    let all: [&str; 39] = [
+        "GaussianBlur",
+        "BoxBlur",
+        "MotionBlur",
+        "RadialBlur",
+        "Average",
+        "Blur",
+        "BlurMore",
+        "SurfaceBlur",
+        "Sharpen",
+        "SharpenMore",
+        "SharpenEdges",
+        "UnsharpMask",
+        "AddNoise",
+        "Median",
+        "Despeckle",
+        "Maximum",
+        "Minimum",
+        "Offset",
+        "HighPass",
+        "Custom",
+        "Emboss",
+        "FindEdges",
+        "Solarize",
+        "Mosaic",
+        "Crystallize",
+        "Facet",
+        "Fragment",
+        "Mezzotint",
+        "Pointillize",
+        "ColorHalftone",
+        "Twirl",
+        "Pinch",
+        "Spherize",
+        "Ripple",
+        "Wave",
+        "PolarCoordinates",
+        "Shear",
+        "ZigZag",
+        "OceanRipple",
+    ];
+    let mut mapped: Vec<&str> = MAPPING.iter().map(|m| m.filter).collect();
+    mapped.sort_unstable();
+    let mut expected_all = all.to_vec();
+    expected_all.sort_unstable();
+    assert_eq!(mapped, expected_all, "every Filter variant needs one row");
+
     let none: Vec<&str> = MAPPING
         .iter()
         .filter(|m| m.im.is_none())
@@ -1345,4 +1439,99 @@ fn m9_no_equivalent_filters_properties() {
         "Wave must be seed-deterministic"
     );
     assert_ne!(run(&wave(7)), run(&wave(8)), "Wave must vary with the seed");
+}
+
+/// M11 no-equivalent rows: ImageMagick's closest Distort operators
+/// (`-distort Polar`/`DePolar`, `-shear`, `-swirl`, `-wave`) were measured and
+/// diverge structurally (see the table above); guard the contracts directly at
+/// the `Filter::apply` level. The module unit tests cover the same filters in
+/// more detail.
+#[test]
+fn m11_no_equivalent_filters_properties() {
+    let original = test_image_buffer();
+    let run = |filter: &Filter| {
+        let mut out = original.clone();
+        apply(filter, &mut out).expect("apply");
+        out.data
+    };
+
+    // Polar Coordinates: both directions are non-trivial and differ from each
+    // other; the two are not inverses bit-for-bit (resampling loses detail).
+    let r2p = run(&Filter::PolarCoordinates {
+        kind: PolarKind::RectangularToPolar,
+    });
+    let p2r = run(&Filter::PolarCoordinates {
+        kind: PolarKind::PolarToRectangular,
+    });
+    assert_ne!(r2p, original.data, "RectangularToPolar must remap");
+    assert_ne!(p2r, original.data, "PolarToRectangular must remap");
+    assert_ne!(r2p, p2r, "the two polar directions must differ");
+
+    // Shear: a flat (zero) curve is a bit-exact no-op; a sloped curve shifts
+    // columns, and the two fill modes differ.
+    let noop = run(&Filter::Shear {
+        curve: vec![(-1.0, 0.0), (1.0, 0.0)],
+        fill: ShearFill::RepeatEdgePixels,
+    });
+    assert_eq!(noop, original.data, "a zero shear curve must be a no-op");
+    let edge = run(&Filter::Shear {
+        curve: vec![(-1.0, -0.5), (1.0, 0.5)],
+        fill: ShearFill::RepeatEdgePixels,
+    });
+    let wrap = run(&Filter::Shear {
+        curve: vec![(-1.0, -0.5), (1.0, 0.5)],
+        fill: ShearFill::WrapAround,
+    });
+    assert_ne!(edge, original.data, "a sloped shear must move pixels");
+    assert_ne!(edge, wrap, "the shear fill modes must differ");
+
+    // ZigZag: amount 0 is a bit-exact no-op; the three styles differ.
+    let zz_noop = run(&Filter::ZigZag {
+        amount: 0.0,
+        ridges: 5,
+        style: ZigZagStyle::AroundCenter,
+    });
+    assert_eq!(zz_noop, original.data, "ZigZag amount 0 must be a no-op");
+    let styles = [
+        ZigZagStyle::AroundCenter,
+        ZigZagStyle::OutFromCenter,
+        ZigZagStyle::PondRipples,
+    ]
+    .map(|style| {
+        run(&Filter::ZigZag {
+            amount: 80.0,
+            ridges: 5,
+            style,
+        })
+    });
+    assert_ne!(styles[0], original.data, "ZigZag must displace pixels");
+    assert_ne!(styles[0], styles[1], "ZigZag styles must differ (a/b)");
+    assert_ne!(styles[0], styles[2], "ZigZag styles must differ (a/c)");
+    assert_ne!(styles[1], styles[2], "ZigZag styles must differ (b/c)");
+
+    // Ocean Ripple: magnitude 0 is a no-op; identical seeds match and different
+    // seeds differ.
+    let ocean = |seed: u64| {
+        run(&Filter::OceanRipple {
+            size: 9,
+            magnitude: 20,
+            seed,
+        })
+    };
+    let ocean_noop = run(&Filter::OceanRipple {
+        size: 9,
+        magnitude: 0,
+        seed: 1,
+    });
+    assert_eq!(
+        ocean_noop, original.data,
+        "OceanRipple magnitude 0 must be a no-op"
+    );
+    assert_eq!(
+        ocean(42),
+        ocean(42),
+        "OceanRipple must be seed-deterministic"
+    );
+    assert_ne!(ocean(42), ocean(43), "OceanRipple must vary with the seed");
+    assert_ne!(ocean(42), original.data, "OceanRipple must displace pixels");
 }

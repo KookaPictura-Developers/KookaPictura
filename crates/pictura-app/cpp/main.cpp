@@ -216,6 +216,10 @@ int main(int argc, char* argv[])
     filterCombo->addItem(QStringLiteral("Spherize"), QStringLiteral("spherize"));
     filterCombo->addItem(QStringLiteral("Ripple"), QStringLiteral("ripple"));
     filterCombo->addItem(QStringLiteral("Wave"), QStringLiteral("wave"));
+    filterCombo->addItem(QStringLiteral("Polar Coordinates"), QStringLiteral("polar-coordinates"));
+    filterCombo->addItem(QStringLiteral("Shear"), QStringLiteral("shear"));
+    filterCombo->addItem(QStringLiteral("ZigZag"), QStringLiteral("zigzag"));
+    filterCombo->addItem(QStringLiteral("Ocean Ripple"), QStringLiteral("ocean-ripple"));
     panelLayout->addWidget(filterCombo);
 
     auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);

@@ -107,6 +107,11 @@ fn validate_curve(curve: &[(f64, f64)]) -> Result<(), FilterError> {
         if !x.is_finite() || !y.is_finite() {
             return Err(invalid(format!("shear curve point {i} must be finite")));
         }
+        if !(-1.0..=1.0).contains(&x) || !(-1.0..=1.0).contains(&y) {
+            return Err(invalid(format!(
+                "shear curve point {i} must have x and y within -1.0..=1.0"
+            )));
+        }
         if i > 0 && x <= curve[i - 1].0 {
             return Err(invalid(format!(
                 "shear curve x must strictly increase at point {i}"
@@ -262,6 +267,8 @@ mod tests {
             &[(0.5, 0.0), (0.2, 1.0)],
             &[(0.0, 0.0), (f64::NAN, 1.0)],
             &[(0.0, 0.0), (1.0, f64::INFINITY)],
+            &[(-1.5, 0.0), (1.0, 0.0)],
+            &[(0.0, 0.0), (1.0, 1.5)],
         ];
         for c in cases {
             let mut b = base.clone();

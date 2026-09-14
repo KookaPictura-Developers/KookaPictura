@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ImageMagick differential oracle for Kooka Pictura tasks M6-E / M7-C / M8-B /
-M9-B.
+M9-B / M11-B.
 
 ImageMagick is an independent implementation of several `Filter > Blur /
 Sharpen / Noise / Other / Stylize` operators. This script applies one of them
@@ -36,6 +36,10 @@ filter -> ImageMagick mapping and the measured/tolerated divergence live in
     Spherize      -implode {amount/100}             (measured, no equivalent)
     Ripple        -wave {amp}x{period} + -crop      (measured, no equivalent)
     Wave          -wave {amp}x{wavelength} + -crop  (measured, no equivalent)
+    PolarCoordinates -distort DePolar / Polar 0      (measured, no equivalent)
+    Shear         -shear 0x{angle} + -crop           (measured, no equivalent)
+    ZigZag        -swirl {angle}                     (measured, no equivalent)
+    OceanRipple   -wave {amp}x{wavelength} + -crop   (measured, no equivalent)
 
 `Mosaic` is only an exact block average when the cell divides both image
 dimensions; IM's resize window is offset from Pictura's top-left blocks
@@ -46,6 +50,13 @@ the closest operator above and are likewise no-equivalent: IM's `-swirl` /
 `-implode` falloffs differ from Pictura's linear / arc-length maps, and IM
 `-wave` is an unseeded single-axis sine that pads the canvas, while Pictura
 Ripple / Wave displace both axes (Wave sums seeded generators).
+
+The M11 Distort filters (PolarCoordinates, Shear, ZigZag, OceanRipple) were
+measured the same way and are likewise no-equivalent: IM `-distort Polar` /
+`DePolar` use a different angle origin and radius anchor, `-shear` is a
+whole-canvas y-shear that background-fills the expanded canvas, and `-swirl` /
+`-wave` are different displacement models. The measured deltas and exact flags
+are in `crates/pictura-filters/tests/README.md`.
 
 `-wave` grows the canvas by `2*amplitude` (background-filled); the named `wave`
 op crops back to the input size with the original content offset by `amplitude`
@@ -84,6 +95,12 @@ Usage:
         --op implode --implode-amount 0.5 IN.rgb OUT.rgb
     python3 scripts/filter_oracle.py apply --size 16x16 --planar \
         --op wave --wave-amplitude 10 --wave-wavelength 16 IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+        --op depolar IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+        --op polar IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+        --op shear --shear-angle 26.565 IN.rgb OUT.rgb
 
 `--im-args` must be attached with `=` (`--im-args="-median 1"`) or argparse
 mistakes the leading `-` for another option.
@@ -92,6 +109,7 @@ mistakes the leading `-` for another option.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import shlex
 import shutil
@@ -200,6 +218,20 @@ def build_im_args(args: argparse.Namespace) -> list[str]:
             f"{w}x{h}+0+{int(amplitude)}",
             "+repage",
         ]
+    if op == "depolar":
+        return ["-distort", "DePolar", "0"]
+    if op == "polar":
+        return ["-distort", "Polar", "0"]
+    if op == "shear":
+        w, h = (int(part) for part in args.size.split("x"))
+        offset = round(w * math.tan(math.radians(args.shear_angle)) / 2.0)
+        return [
+            "-shear",
+            f"0x{args.shear_angle:g}",
+            "-crop",
+            f"{w}x{h}+0+{offset}",
+            "+repage",
+        ]
     raise SystemExit(f"unknown --op {op!r}")
 
 
@@ -297,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--op", choices=(
         "gaussian", "box", "motion", "median", "unsharp",
         "maximum", "minimum", "roll", "solarize", "emboss", "mosaic", "convolve",
-        "swirl", "implode", "wave",
+        "swirl", "implode", "wave", "depolar", "polar", "shear",
     ), help="named operator; builds the Magick args below")
     p_apply.add_argument("--im-args", default="",
                          help="verbatim Magick operator arguments (when --op is omitted)")
@@ -337,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="IM -wave amplitude (the wave op crops back to --size)")
     p_apply.add_argument("--wave-wavelength", type=float, default=16.0,
                          help="IM -wave wavelength")
+    p_apply.add_argument("--shear-angle", type=float, default=26.565,
+                         help="IM -shear y-axis angle in degrees (shear op crops back to --size)")
     p_apply.add_argument("input", help="raw 8-bit input image")
     p_apply.add_argument("output", help="raw 8-bit output image")
     p_apply.set_defaults(func=cmd_apply)

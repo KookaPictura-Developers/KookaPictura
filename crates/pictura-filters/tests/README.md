@@ -1,4 +1,4 @@
-# M6-E / M7-C / M8-B / M9-B — ImageMagick filter oracle
+# M6-E / M7-C / M8-B / M9-B / M11-B — ImageMagick filter oracle
 
 These tests diff `pictura_filters::apply` against **ImageMagick** for the
 Blur / Sharpen / Noise / Other / Stylize / Pixelate / Distort filters that have
@@ -61,6 +61,10 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `Spherize` | — | **no** | — | Closest is `-implode {amount/100}`; Pictura's arc-length sphere map (Normal / HorizontalOnly / VerticalOnly) is not IM's implode falloff. Best measured max delta 159 (Spherize 50 Normal vs `-implode 0.5`); −50 gives 128. |
 | `Ripple` | — | **no** | — | IM `-wave {amp}x{period}` displaces **one axis** with a sine in x and pads the canvas (background fill); Pictura Ripple displaces **both axes** (`dx ∝ sin y`, `dy ∝ sin x`) with clamp-to-edge and a fixed period per size. Measured max delta 255 / mean 104 (Ripple 100 Medium vs `-wave 10x16`, cropped back to 16×16). |
 | `Wave` | — | **no** | — | IM `-wave {amp}x{wavelength}` is a single **unseeded** sine along one axis; Pictura sums seeded generators with random phase/period/amplitude and an axis-wise scale. Measured max delta 255 / mean 101 (1 generator sine, amp 20, wavelength 10, seed 42 vs `-wave 20x10`, cropped). |
+| `PolarCoordinates` | — | **no** | — | Closest `-distort Polar 0` (RectangularToPolar) / `-distort DePolar 0` (PolarToRectangular); IM uses a different angle origin (≈180° off) and pixel-center/radius anchor plus its own resampling. Best measured max delta 189 (mean 58.3) and 194 (58.9); the crossed directions give max 240. Guarded by the remap/no-op property tests. |
+| `Shear` | — | **no** | — | IM `-shear 0x{angle}` is a whole-canvas y-shear that **background-fills** the expanded canvas; Pictura shifts columns by a piecewise-linear curve with clamp/wrap and expands nothing. Curve `[(-1,-0.5),(1,0.5)]` = 26.565°; best measured `-shear 0x26.565 -crop 16x16+0+4 +repage` max 255 / mean 18.4 (WrapAround 23.4). Guarded by the zero-curve no-op and fill-mode tests. |
+| `ZigZag` | — | **no** | — | IM `-swirl` uses a smooth falloff about `min(w,h)/2`; Pictura's cosine radial profile is pinned to zero at the edge with `ridges` reversals. Best measured `-swirl 50` (amount 80 / ridges 5 / AroundCenter) max 170 / mean 14.3. Guarded by the zero no-op and style tests. |
+| `OceanRipple` | — | **no** | — | IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura sums 8 seeded direction sinusoids with clamp-to-edge. Best measured `-wave 2x8 -crop 16x16+0+2 +repage` (size 9 / magnitude 20 / seed 42) max 227 / mean 53.7. Guarded by seed determinism and the zero-magnitude no-op. |
 
 ### Why `MotionBlur` is not diffed
 
@@ -142,6 +146,10 @@ play.
 | Spherize | `-implode {amount/100}` (measured, **not** used) |
 | Ripple | `-wave {amount/10}x{period} -crop WxH+0+{amount/10} +repage` (measured, **not** used) |
 | Wave | `-wave {amp}x{wavelength} -crop WxH+0+{amp} +repage` (measured, **not** used) |
+| Polar Coordinates | `-distort DePolar 0` / `-distort Polar 0` (measured, **not** used) |
+| Shear | `-shear 0x{angle} -crop WxH+0+{round(W·tan(angle)/2)} +repage` (measured, **not** used) |
+| ZigZag | `-swirl {angle}` (measured, **not** used) |
+| OceanRipple | `-wave {amp}x{wavelength} -crop WxH+0+{amp} +repage` (measured, **not** used) |
 
 ### Unsharp Mask scaling
 
@@ -232,6 +240,56 @@ warps move pixels; Wave is seed-deterministic and seed-sensitive) and in more
 detail by the module unit tests in `src/distort/radial.rs` and
 `src/distort/undulate.rs`.
 
+### M11 Distort: measured, all no-equivalent
+
+The second Distort batch (`PolarCoordinates`, `Shear`, `ZigZag`, `OceanRipple`)
+was measured the same way: each was run against its closest plausible
+ImageMagick operator on the 16×16 test image and the observed max/mean deltas
+are the evidence for the no-equivalent rows. Verified against ImageMagick
+**7.1.2-29 Q16-HDRI**.
+
+| `Filter` | Parameter | Tried | Observed max delta (mean) |
+|---|---|---|---|
+| `PolarCoordinates` | RectangularToPolar | `-distort Polar 0` | 189 (58.3) |
+| `PolarCoordinates` | PolarToRectangular | `-distort DePolar 0` | 194 (58.9) |
+| `PolarCoordinates` | crossed directions | `-distort DePolar 0` / `Polar 0` | 240–241 (82.7 / 90.1) |
+| `Shear` | `[(-1,-0.5),(1,0.5)]` = 26.565°, RepeatEdgePixels | `-shear 0x26.565 -crop 16x16+0+4 +repage` | 255 (18.4) |
+| `Shear` | same, WrapAround | `-shear 0x26.565 -crop 16x16+0+4 +repage` | 255 (23.4) |
+| `ZigZag` | amount 80, ridges 5, AroundCenter | `-swirl 50` | 170 (14.3) |
+| `ZigZag` | same | `-swirl -80` / `-implode 0.8` | 170 (18.8 / 18.6) |
+| `OceanRipple` | size 9, magnitude 20, seed 42 | `-wave 2x8 -crop 16x16+0+2 +repage` | 227 (53.7) |
+
+The mismatches are structural:
+
+- **Polar Coordinates** (`-distort Polar` / `-distort DePolar`). Both IM
+  operators are coordinate transforms, but IM's angle origin is about 180°
+  from Pictura's `atan2` and its pixel-center/radius anchor and resampling
+  differ. `RectangularToPolar` is closest to `-distort Polar` and
+  `PolarToRectangular` to `-distort DePolar` (the natural same-name pairing),
+  but neither is within a usable tolerance.
+- **Shear** (`-shear`). IM `-shear 0x{angle}` shears the whole canvas along y
+  and grows it by `W·tan(angle)`, filling the exposed strip with the background
+  colour (black by default); Pictura shifts each column by a piecewise-linear
+  curve, clamps or wraps undefined rows and never changes the canvas. The
+  straight curve `[(-1,-0.5),(1,0.5)]` is `atan(0.5) = 26.565°`; even after
+  cropping the grown canvas back (`+0+4`), the background-fill boundary alone
+  pins the max delta at 255.
+- **ZigZag** (`-swirl` / `-implode`). IM `-swirl` uses a smooth falloff over
+  `min(w,h)/2`; Pictura's cosine radial profile is pinned to zero at the edge
+  and reverses `ridges` times. `-implode` is a radial scale, not a ridge
+  displacement. No `-swirl` angle matches the profile (best mean 14.3).
+- **Ocean Ripple** (`-wave`). IM `-wave` displaces one axis with an unseeded
+  sine and pads the canvas; Pictura sums 8 seeded direction sinusoids (phase,
+  direction and wavelength all seeded) with clamp-to-edge, so it cannot be
+  reproduced by any single `-wave` invocation.
+
+Contracts are guarded at the `Filter::apply` level by
+`m11_no_equivalent_filters_properties` (polar directions differ; a zero shear
+curve is a bit-exact no-op and the fill modes differ; ZigZag amount 0 is a
+no-op and the three styles differ; Ocean Ripple magnitude 0 is a no-op and it
+is seed-deterministic and seed-sensitive) and in more detail by the module unit
+tests in `src/distort/coord.rs` and `src/distort/ripples.rs`.
+
 ## Known divergences (IM vs Photoshop / Pictura)
 
 - **Motion blur** is directional in IM and symmetric-uniform in Pictura; see
@@ -320,6 +378,12 @@ python3 scripts/filter_oracle.py apply --size 16x16 --planar \
     --op implode --implode-amount 0.5 IN.rgb OUT.rgb
 python3 scripts/filter_oracle.py apply --size 16x16 --planar \
     --op wave --wave-amplitude 10 --wave-wavelength 16 IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+    --op depolar IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+    --op polar IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --planar \
+    --op shear --shear-angle 26.565 IN.rgb OUT.rgb
 ```
 
 ## Regeneration
@@ -350,6 +414,10 @@ with `=` so argparse does not read the leading `-` as another option.
   (M9; the closest `-swirl` / `-implode` / `-wave` operators were measured — see
   the M9 section); covered by `m9_no_equivalent_filters_properties` and the
   module unit tests instead.
+- Polar Coordinates, Shear, ZigZag and Ocean Ripple: no faithful ImageMagick
+  equivalent (M11; the closest `-distort Polar`/`DePolar`, `-shear`, `-swirl`
+  and `-wave` operators were measured — see the M11 section); covered by
+  `m11_no_equivalent_filters_properties` and the module unit tests instead.
 - Alpha-channel behaviour: the tests use 3-channel buffers, and `apply` is
   specified never to modify channel 4 (guarded by the module unit tests).
 - 16/32-bit filter math (M6–M9 are 8-bit only).

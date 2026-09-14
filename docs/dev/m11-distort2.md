@@ -82,26 +82,30 @@ Semantics (planar 8-bit, alpha untouched, no panics):
 
 ## Oracle
 
-Planned measurement against ImageMagick (M11-B); M9 established the pattern that
-the geometric Distort family is behaviorally approximated, so most rows will be
-classified **no-equivalent, tolerance 0**.
+Measured against ImageMagick **7.1.2-29 Q16-HDRI** on the 16×16 oracle image.
+All four new filters are behaviorally approximated — no ImageMagick operator
+reproduces them — so each is classified **no-equivalent, tolerance 0** with the
+observed maximum/mean per-sample delta against its closest operator recorded.
 
-| Filter | Closest operator | Status |
-|---|---|---|
-| Polar Coordinates | `-distort DePolar` / `-distort Polar` | measure |
-| Shear | `-shear x<angle>` (+ crop/debackground) | measure |
-| ZigZag | `-swirl` / none faithful | no faithful operator |
-| Ocean Ripple | `-wave` (closest) | no faithful operator |
+| Filter | Closest operator | Status | Measured Δ (max / mean) |
+|---|---|---|---|
+| Polar Coordinates (Rect→Polar) | `-distort Polar 0` | no-equivalent | 189 / 58.3 |
+| Polar Coordinates (Polar→Rect) | `-distort DePolar 0` | no-equivalent | 194 / 58.9 |
+| Shear | `-shear 0x26.565` (+ crop) | no-equivalent | 255 / 18.4–23.4 |
+| ZigZag | `-swirl 50` | no-equivalent | 170 / 14.3 |
+| Ocean Ripple | `-wave 2x8` (+ crop) | no-equivalent | 227 / 53.7 |
 
-`-distort DePolar`/`Polar` and `-shear` may line up structurally; record the
-observed max delta. ZigZag and Ocean Ripple have no faithful operator, so the
-closest candidate is measured and the delta recorded, and the contracts are
-guarded by property/known-value tests instead. Authoritative numbers and exact
-flags: `crates/pictura-filters/tests/README.md`.
-
-The scaffold itself is guarded by the `src/distort/coord.rs` and
-`src/distort/ripples.rs` stub tests: every function reports
-`FilterError::Unsupported` until M11-A lands the math.
+The mismatches are structural: Polar Coordinates' IM angle origin is ≈180° from
+Pictura's `atan2` and its anchor/resampling differ; Shear's IM operator grows
+and background-fills the canvas while Pictura shifts columns in place with a
+piecewise-linear curve; ZigZag's cosine radial profile with `ridges` reversals
+has no `-swirl` falloff match; Ocean Ripple sums 8 seeded direction sinusoids
+that no single `-wave` invocation reproduces. The contracts are guarded by
+property/known-value tests (polar directions differ; a zero shear curve is a
+bit-exact no-op and the fill modes differ; ZigZag amount 0 is a no-op and the
+styles differ; Ocean Ripple magnitude 0 is a no-op and it is seed-deterministic
+and seed-sensitive). Authoritative numbers and exact flags:
+`crates/pictura-filters/tests/README.md`.
 
 ## Task DAG
 

@@ -106,12 +106,12 @@ Twirl, Pinch, Spherize, Ripple, Polar Coordinates, Shear, and ZigZag SHALL produ
 
 ### Requirement: Distort oracle classification
 
-The system SHALL extend `scripts/filter_oracle.py` and `crates/pictura-filters/tests/oracle.rs` so the mapping table has exactly one row per Distort `Filter` variant. Because Adobe's warp kernels and falloff curves are closed, Twirl, Pinch, Spherize, Ripple, and Wave SHALL each be classified as no-equivalent with tolerance 0, a property or known-value test, a non-empty note, and the observed delta against the closest ImageMagick operator (`-swirl`, `-implode` / `-explode`, or `-wave`) recorded. ZigZag and Ocean Ripple SHALL likewise be classified as no-equivalent with tolerance 0 and a property or known-value test, recording the observed delta against their closest operators (`-swirl` and `-wave`). Polar Coordinates and Shear SHALL be diffed against their closest operators (`-distort DePolar` / `-distort Polar`, and `-shear`); each tolerance SHALL be justified by the recorded measured maximum and mean per-sample delta, and any case that cannot be matched SHALL be classified no-equivalent with the observed delta recorded. The differential tests SHALL skip with a message when `magick` is not on `PATH` and MUST NOT be marked `#[ignore]`.
+The system SHALL extend `scripts/filter_oracle.py` and `crates/pictura-filters/tests/oracle.rs` so the mapping table has exactly one row per Distort `Filter` variant. Because Adobe's warp kernels and falloff curves are closed, Twirl, Pinch, Spherize, Ripple, and Wave SHALL each be classified as no-equivalent with tolerance 0, a property or known-value test, a non-empty note, and the observed delta against the closest ImageMagick operator (`-swirl`, `-implode` / `-explode`, or `-wave`) recorded. ZigZag and Ocean Ripple SHALL likewise be classified as no-equivalent with tolerance 0 and a property or known-value test, recording the observed delta against their closest operators (`-swirl` and `-wave`). Polar Coordinates and Shear SHALL likewise be classified as no-equivalent with tolerance 0 and a property or known-value test, recording the measured maximum and mean per-sample delta against their closest operators (`-distort Polar` / `-distort DePolar`, and `-shear`): Polar Coordinates max 189 / mean 58 for `-distort Polar` (RectangularToPolar) and max 194 / mean 59 for `-distort DePolar` (PolarToRectangular); Shear max 255 / mean 18–23 for `-shear`. The differential tests SHALL skip with a message when `magick` is not on `PATH` and MUST NOT be marked `#[ignore]`.
 
 #### Scenario: Mapping table covers every Distort variant
 
 - **WHEN** the oracle tests run
-- **THEN** every Distort variant has a table row with a property or known-value test and a recorded observed delta, the five M9 variants plus ZigZag and Ocean Ripple each carry tolerance 0 and a non-empty no-equivalent note, and Polar Coordinates and Shear each name `-distort DePolar` / `-distort Polar` or `-shear` with a tolerance justified by its measured delta or a no-equivalent note
+- **THEN** every Distort variant has a table row with a property or known-value test, tolerance 0, a non-empty no-equivalent note and a recorded observed delta, and Polar Coordinates and Shear each name `-distort DePolar` / `-distort Polar` or `-shear` with the measured maximum and mean per-sample delta recorded
 
 #### Scenario: Missing ImageMagick skips cleanly
 
@@ -122,7 +122,7 @@ The system SHALL extend `scripts/filter_oracle.py` and `crates/pictura-filters/t
 
 ### Requirement: Polar Coordinates
 
-The system SHALL implement `Filter::PolarCoordinates { kind: PolarKind }`. It SHALL apply a coordinate transform with bilinear resampling: `PolarKind::RectangularToPolar` SHALL reinterpret each destination pixel's rectangular coordinate as a polar coordinate, and `PolarKind::PolarToRectangular` SHALL reinterpret each destination pixel's polar coordinate as a rectangular coordinate, so the two directions form an invertible pair up to resampling error. `PolarKind` is a closed set that requires no range check. Oracle expectation: the closest ImageMagick operators are `-distort DePolar` (rectangular to polar) and `-distort Polar` (polar to rectangular); Polar Coordinates SHALL be diffed against them, its tolerance, if any, SHALL be justified by the recorded measured maximum and mean per-sample delta, and any case that cannot be matched SHALL be classified no-equivalent with the observed delta recorded.
+The system SHALL implement `Filter::PolarCoordinates { kind: PolarKind }`. It SHALL apply a coordinate transform with bilinear resampling: `PolarKind::RectangularToPolar` SHALL reinterpret each destination pixel's rectangular coordinate as a polar coordinate, and `PolarKind::PolarToRectangular` SHALL reinterpret each destination pixel's polar coordinate as a rectangular coordinate, so the two directions form an invertible pair up to resampling error. `PolarKind` is a closed set that requires no range check. Oracle expectation: the closest ImageMagick operators are `-distort DePolar` (rectangular to polar) and `-distort Polar` (polar to rectangular), but neither is faithful, so Polar Coordinates SHALL be classified as no-equivalent with tolerance 0 and a property or known-value test, recording the measured maximum and mean per-sample delta against them (max 189 / mean 58 for `-distort Polar`, max 194 / mean 59 for `-distort DePolar`).
 
 #### Scenario: Rectangular to polar changes the arrangement
 
@@ -142,11 +142,11 @@ The system SHALL implement `Filter::PolarCoordinates { kind: PolarKind }`. It SH
 #### Scenario: No faithful equivalent is asserted without measurement
 
 - **WHEN** the oracle mapping table is checked
-- **THEN** Polar Coordinates has a row naming `-distort DePolar` / `-distort Polar`, a tolerance justified by the recorded observed delta or a non-empty no-equivalent note, and a recorded observed delta
+- **THEN** Polar Coordinates has a row naming `-distort DePolar` / `-distort Polar`, tolerance 0, a non-empty no-equivalent note, and the recorded measured maximum and mean delta
 
 ### Requirement: Shear
 
-The system SHALL implement `Filter::Shear { curve: Vec<(f64, f64)>, fill: ShearFill }`. It SHALL shift each column vertically by the control-point `curve`: the piecewise-linear interpolation of the `(x, y)` points, with `x` and `y` in `-1.0..=1.0`, maps a column's normalized horizontal position to a vertical displacement, and the column SHALL be resampled bilinearly at the displaced source coordinate. `curve` SHALL contain at least two finite points with strictly increasing `x`; otherwise the system SHALL return `FilterError::InvalidParams`. A curve whose `y` values are uniformly `0.0` SHALL be a no-op. `ShearFill::WrapAround` SHALL wrap rows shifted off-canvas around to the opposite edge, and `ShearFill::RepeatEdgePixels` SHALL repeat the nearest edge sample; the two modes MUST be observably different where a column's displacement moves rows beyond the image bounds. `ShearFill` is a closed set that requires no range check. Oracle expectation: the closest ImageMagick operator is `-shear x<angle>` (plus a crop or background removal); Shear SHALL be diffed against it, its tolerance, if any, SHALL be justified by the recorded measured maximum and mean per-sample delta, and any case that cannot be matched SHALL be classified no-equivalent with the observed delta recorded.
+The system SHALL implement `Filter::Shear { curve: Vec<(f64, f64)>, fill: ShearFill }`. It SHALL shift each column vertically by the control-point `curve`: the piecewise-linear interpolation of the `(x, y)` points, with `x` and `y` in `-1.0..=1.0`, maps a column's normalized horizontal position to a vertical displacement, and the column SHALL be resampled bilinearly at the displaced source coordinate. `curve` SHALL contain at least two finite points with strictly increasing `x`; otherwise the system SHALL return `FilterError::InvalidParams`. A curve whose `y` values are uniformly `0.0` SHALL be a no-op. `ShearFill::WrapAround` SHALL wrap rows shifted off-canvas around to the opposite edge, and `ShearFill::RepeatEdgePixels` SHALL repeat the nearest edge sample; the two modes MUST be observably different where a column's displacement moves rows beyond the image bounds. `ShearFill` is a closed set that requires no range check. Oracle expectation: the closest ImageMagick operator is `-shear x<angle>` (plus a crop or background removal), but it is not faithful, so Shear SHALL be classified as no-equivalent with tolerance 0 and a property or known-value test, recording the measured maximum and mean per-sample delta against it (max 255 / mean 18–23).
 
 #### Scenario: A flat curve is a no-op
 
@@ -171,7 +171,7 @@ The system SHALL implement `Filter::Shear { curve: Vec<(f64, f64)>, fill: ShearF
 #### Scenario: No faithful equivalent is asserted without measurement
 
 - **WHEN** the oracle mapping table is checked
-- **THEN** Shear has a row naming `-shear`, a tolerance justified by the recorded observed delta or a non-empty no-equivalent note, and a recorded observed delta
+- **THEN** Shear has a row naming `-shear`, tolerance 0, a non-empty no-equivalent note, and the recorded measured maximum and mean delta
 
 ### Requirement: ZigZag
 

@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **337 tests, 0 ignored** (one pre-existing app `#[ignore]`).
+- Test suite: **350 tests, 1 ignored** (one pre-existing app `#[ignore]`).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M10 archived; canonical specs are
   in `openspec/specs/` (29 capabilities, 207 requirements, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
@@ -89,6 +89,16 @@ openspec validate --all --strict
   upscale but no-equivalent downscale; `rotate_arbitrary` measured on the central
   region (max 8 at 30°, 45° no-equivalent). OpenSpec change `m10-image-ops`,
   tasks checked; app/document integration deferred.
+- **M11** — Distort filters, part 2: `PolarCoordinates`, `Shear`, `ZigZag`,
+  `OceanRipple` (inverse-mapping warps with bilinear resampling; alpha
+  untouched; Shear `fill` selectable, Ocean Ripple seeded). All nine Distort
+  filters are now implemented, and all four new ones are classified
+  **no-equivalent** against their closest ImageMagick operators with measured
+  deltas (Polar Δ189/58 and 194/59 vs `-distort Polar`/`DePolar`; Shear Δ255/18
+  vs `-shear`; ZigZag Δ170/14 vs `-swirl`; Ocean Ripple Δ227/54 vs `-wave`).
+  Shear's curve range check (`x`/`y` in `-1..=1`) added. App filter kinds added.
+  OpenSpec change `m11-distort2` MODIFIED the canonical `distort-filters` spec
+  (7 MODIFIED + 4 ADDED); tasks checked.
 
 ## Spec workflow (OpenSpec)
 
@@ -111,12 +121,14 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M11 (propose via OpenSpec first)
+## Next: M12 (propose via OpenSpec first)
 
-M10 (image resize / canvas / orientation) is complete. Candidate next areas:
-remaining filter families (Render, Liquify, Blur Gallery, Camera Raw, plus the
-Distort leftovers) or a different spec area (`docs/04-image-ops` document/layer
-integration and image modes/bit-depth, `docs/07-color-painting` brush/paint
+M11 (Distort part 2: Polar Coordinates, Shear, ZigZag, Ocean Ripple) is
+implemented and validated but **unarchived** until `openspec archive
+m11-distort2` merges its deltas into `openspec/specs/`. Candidate next areas:
+document/layer-level image-ops integration (`docs/04-image-ops`) and image
+modes/bit-depth, the remaining filter families (Render, Liquify, Blur Gallery,
+Camera Raw), or a different spec area (`docs/07-color-painting` brush/paint
 engine, `docs/03-tools` painting tools, `docs/09-automation`).
 
 Process: every new milestone is proposed through OpenSpec first
