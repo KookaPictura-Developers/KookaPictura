@@ -1,4 +1,8 @@
 //! `Image > Image Size` resampling (`IMG-001`).
+//!
+//! Photoshop's exact Bicubic coefficients and edge handling are unpublished, so
+//! parity is behavioral only. All three kernels sample each plane independently
+//! and clamp to the edge at borders.
 
 use pictura_core::PixelBuffer;
 
@@ -11,12 +15,83 @@ pub enum Resample {
     Bicubic,
 }
 
-/// Resample every channel to `width × height`. Stub until M10-A1.
+/// Clamp an out-of-bounds sample axis to `0..n-1`.
+fn idx(i: i64, n: u32) -> usize {
+    i.clamp(0, n as i64 - 1) as usize
+}
+
+/// 2×2 tent weights for one axis at source coordinate `s`.
+fn bilevel(s: f64, n: u32) -> ([usize; 2], [f64; 2]) {
+    let x0 = s.floor();
+    let f = s - x0;
+    let x0 = x0 as i64;
+    ([idx(x0, n), idx(x0 + 1, n)], [1.0 - f, f])
+}
+
+/// Catmull-Rom cubic kernel (`a = -0.5`).
+fn cubic(t: f64) -> f64 {
+    let a = -0.5;
+    let x = t.abs();
+    if x <= 1.0 {
+        (a + 2.0) * x * x * x - (a + 3.0) * x * x + 1.0
+    } else if x < 2.0 {
+        a * x * x * x - 5.0 * a * x * x + 8.0 * a * x - 4.0 * a
+    } else {
+        0.0
+    }
+}
+
+/// 4×4 cubic weights for one axis at source coordinate `s`.
+fn cubics(s: f64, n: u32) -> ([usize; 4], [f64; 4]) {
+    let x0 = s.floor() as i64;
+    let at = |k: i64| x0 + k - 1;
+    let i: [usize; 4] = std::array::from_fn(|k| idx(at(k as i64), n));
+    let w: [f64; 4] = std::array::from_fn(|k| cubic(s - at(k as i64) as f64));
+    (i, w)
+}
+
+/// Sample one planar channel at source coordinate (`sx`, `sy`).
+fn sample(plane: &[u8], w: u32, h: u32, sx: f64, sy: f64, resample: Resample) -> f64 {
+    let stride = w as usize;
+    match resample {
+        Resample::Nearest => {
+            let x = idx(sx.round() as i64, w);
+            let y = idx(sy.round() as i64, h);
+            plane[y * stride + x] as f64
+        }
+        Resample::Bilinear => {
+            let (xi, xw) = bilevel(sx, w);
+            let (yi, yw) = bilevel(sy, h);
+            let (mut acc, mut ws) = (0.0, 0.0);
+            for (i, wx) in xi.iter().zip(xw) {
+                for (j, wy) in yi.iter().zip(yw) {
+                    acc += wx * wy * plane[j * stride + i] as f64;
+                    ws += wx * wy;
+                }
+            }
+            acc / ws
+        }
+        Resample::Bicubic => {
+            let (xi, xw) = cubics(sx, w);
+            let (yi, yw) = cubics(sy, h);
+            let (mut acc, mut ws) = (0.0, 0.0);
+            for (i, wx) in xi.iter().zip(xw) {
+                for (j, wy) in yi.iter().zip(yw) {
+                    acc += wx * wy * plane[j * stride + i] as f64;
+                    ws += wx * wy;
+                }
+            }
+            // Normalize so clamped edge duplicates do not bias the result.
+            acc / ws
+        }
+    }
+}
+
 pub fn resize(
     buf: &PixelBuffer,
     width: u32,
     height: u32,
-    _resample: Resample,
+    resample: Resample,
 ) -> Result<PixelBuffer, OpsError> {
     validate(buf)?;
     if width == 0 || height == 0 {
@@ -24,7 +99,183 @@ pub fn resize(
             "width and height must be >= 1".into(),
         ));
     }
-    Err(OpsError::Unsupported(
-        "resize kernel not implemented (M10-A1)".into(),
-    ))
+    if buf.width == width && buf.height == height {
+        return Ok(buf.clone());
+    }
+
+    let (sw, sh) = (buf.width, buf.height);
+    let planes = buf.pixel_count();
+    let channels = buf.channels as usize;
+    let xscale = sw as f64 / width as f64;
+    let yscale = sh as f64 / height as f64;
+    let dst_plane = width as usize * height as usize;
+
+    let mut out = PixelBuffer::new(width, height, buf.channels);
+    for y in 0..height {
+        let sy = (y as f64 + 0.5) * yscale - 0.5;
+        for x in 0..width {
+            let sx = (x as f64 + 0.5) * xscale - 0.5;
+            let d = y as usize * width as usize + x as usize;
+            for c in 0..channels {
+                let plane = &buf.data[c * planes..(c + 1) * planes];
+                out.data[c * dst_plane + d] = sample(plane, sw, sh, sx, sy, resample)
+                    .round()
+                    .clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build(w: u32, h: u32, ch: u8, f: impl Fn(u32, u32) -> [u8; 4]) -> PixelBuffer {
+        let mut b = PixelBuffer::new(w, h, ch);
+        let np = b.pixel_count();
+        for y in 0..h {
+            for x in 0..w {
+                let p = f(x, y);
+                for (c, &v) in p.iter().take(ch as usize).enumerate() {
+                    b.data[c * np + (y * w + x) as usize] = v;
+                }
+            }
+        }
+        b
+    }
+
+    fn buf3(w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 3]) -> PixelBuffer {
+        build(w, h, 3, |x, y| {
+            let p = f(x, y);
+            [p[0], p[1], p[2], 255]
+        })
+    }
+
+    fn buf4(w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 4]) -> PixelBuffer {
+        build(w, h, 4, f)
+    }
+
+    fn at(b: &PixelBuffer, x: u32, y: u32, c: usize) -> u8 {
+        b.data[c * b.pixel_count() + (y * b.width + x) as usize]
+    }
+
+    #[test]
+    fn identity_size_is_clone() {
+        let src = buf3(4, 3, |x, y| [x as u8 * 10, y as u8 * 10, 7]);
+        let out = resize(&src, 4, 3, Resample::Bicubic).unwrap();
+        assert_eq!(out, src);
+    }
+
+    #[test]
+    fn nearest_2x2_to_4x4_replicates() {
+        let src = buf3(2, 2, |x, y| [(y * 2 + x) as u8 * 50, 10, 20]);
+        let out = resize(&src, 4, 4, Resample::Nearest).unwrap();
+        for y in 0..4 {
+            for x in 0..4 {
+                let want = at(&src, x / 2, y / 2, 0);
+                assert_eq!(at(&out, x, y, 0), want, "at {x},{y}");
+            }
+        }
+    }
+
+    #[test]
+    fn solid_color_all_methods() {
+        for m in [Resample::Nearest, Resample::Bilinear, Resample::Bicubic] {
+            let out = resize(&buf3(5, 5, |_, _| [10, 20, 30]), 3, 2, m).unwrap();
+            for y in 0..2 {
+                for x in 0..3 {
+                    assert_eq!(at(&out, x, y, 0), 10, "{m:?} R");
+                    assert_eq!(at(&out, x, y, 1), 20, "{m:?} G");
+                    assert_eq!(at(&out, x, y, 2), 30, "{m:?} B");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bilinear_step_edge_is_intermediate() {
+        let src = buf3(2, 1, |x, _| [x as u8 * 200, 0, 0]);
+        let out = resize(&src, 4, 1, Resample::Bilinear).unwrap();
+        let mid = at(&out, 1, 0, 0);
+        assert!(mid > 0 && mid < 200, "expected intermediate, got {mid}");
+    }
+
+    #[test]
+    fn dimensions_and_channels_preserved() {
+        let src = buf3(5, 3, |_, _| [1, 2, 3]);
+        let out = resize(&src, 7, 2, Resample::Bicubic).unwrap();
+        assert_eq!((out.width, out.height, out.channels), (7, 2, 3));
+        assert_eq!(out.data.len(), 7 * 2 * 3);
+    }
+
+    #[test]
+    fn invalid_dimensions_error() {
+        let src = buf3(2, 2, |_, _| [0, 0, 0]);
+        assert!(matches!(
+            resize(&src, 0, 2, Resample::Nearest),
+            Err(OpsError::InvalidParams(_))
+        ));
+        assert!(matches!(
+            resize(&src, 2, 0, Resample::Nearest),
+            Err(OpsError::InvalidParams(_))
+        ));
+        let empty = PixelBuffer::new(0, 0, 3);
+        assert!(matches!(
+            resize(&empty, 2, 2, Resample::Nearest),
+            Err(OpsError::InvalidParams(_))
+        ));
+    }
+
+    #[test]
+    fn alpha_plane_resampled_and_preserved() {
+        let src = buf4(4, 1, |x, _| {
+            [
+                0,
+                0,
+                0,
+                match x {
+                    0 => 0,
+                    1 => 100,
+                    2 => 200,
+                    _ => 255,
+                },
+            ]
+        });
+        let out = resize(&src, 2, 1, Resample::Bilinear).unwrap();
+        assert_eq!(out.channels, 4);
+        assert_eq!([at(&out, 0, 0, 3), at(&out, 1, 0, 3)], [50, 228]);
+        assert_eq!(at(&out, 0, 0, 0), 0);
+    }
+
+    #[test]
+    fn downscale_then_upscale_ramp() {
+        let src = buf3(8, 1, |x, _| {
+            let v = x as u8 * 32;
+            [v, v, v]
+        });
+        let small = resize(&src, 2, 1, Resample::Bilinear).unwrap();
+        assert_eq!(small.width, 2);
+        let back = resize(&small, 8, 1, Resample::Nearest).unwrap();
+        assert_eq!(back.width, 8);
+        let v0 = at(&back, 0, 0, 0);
+        let v7 = at(&back, 7, 0, 0);
+        assert!(v7 > v0, "ramp must stay monotonic: {v0} -> {v7}");
+        for x in 0..4 {
+            assert_eq!(at(&back, x, 0, 0), v0);
+        }
+        for x in 4..8 {
+            assert_eq!(at(&back, x, 0, 0), v7);
+        }
+    }
+
+    #[test]
+    fn one_by_one_no_panic() {
+        let src = buf3(1, 1, |_, _| [7, 8, 9]);
+        for m in [Resample::Nearest, Resample::Bilinear, Resample::Bicubic] {
+            let out = resize(&src, 3, 3, m).unwrap();
+            assert_eq!(out.pixel_count(), 9);
+        }
+        assert_eq!(resize(&src, 1, 1, Resample::Nearest).unwrap(), src);
+    }
 }
