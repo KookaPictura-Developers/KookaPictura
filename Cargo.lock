@@ -774,6 +774,7 @@ name = "pictura-color"
 version = "0.0.0"
 dependencies = [
  "lcms2",
+ "pictura-testkit",
  "thiserror 2.0.20",
 ]
 
