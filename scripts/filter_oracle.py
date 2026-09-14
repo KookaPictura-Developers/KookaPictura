@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""ImageMagick differential oracle for Kooka Pictura task M6-E.
+"""ImageMagick differential oracle for Kooka Pictura tasks M6-E / M7-C.
 
 ImageMagick is an independent implementation of several `Filter > Blur /
-Sharpen / Noise` operators. This script applies one of them to a raw 8-bit
-image and emits the result so `crates/pictura-filters/tests/oracle.rs` can diff
-it against `pictura_filters::apply`. It is a *sanity* oracle, not a parity
-oracle: Adobe's exact integer math and kernels are closed, and ImageMagick's
-operators only approximate some of the Photoshop filters.
+Sharpen / Noise / Other / Stylize` operators. This script applies one of them
+to a raw 8-bit image and emits the result so
+`crates/pictura-filters/tests/oracle.rs` can diff it against
+`pictura_filters::apply`. It is a *sanity* oracle, not a parity oracle: Adobe's
+exact integer math and kernels are closed, and ImageMagick's operators only
+approximate some of the Photoshop filters.
 
 Layout: raw 8-bit samples, interleaved `rgb`/`rgba` by default. `--planar`
 reads/writes channel planes (`RRR…GGG…BBB…`, matching `PixelBuffer::data`).
@@ -23,10 +24,21 @@ filter -> ImageMagick mapping and the measured/tolerated divergence live in
     MotionBlur    -motion-blur 0x{distance}+{angle}
     Median        -median {radius}
     UnsharpMask   -unsharp {kr}x{sigma}+{amount}+{threshold}
+    Maximum       -morphology Dilate Square:{radius}
+    Minimum       -morphology Erode Square:{radius}
+    Offset        -roll {+h}{+v}                    (wrap == true only)
+    Custom        -convolve {kernel} (+ convolve:scale, -evaluate add)
+    Emboss        -emboss {radius}x{sigma}          (measured, no equivalent)
+
+`Maximum`/`Minimum` note: ImageMagick's `Square:N` parameter is a *radius*, so
+the footprint is `(2N+1)²`; pass Pictura's `radius`, not `2*radius+1`.
 
 `UnsharpMask` translates the Pictura parameters to ImageMagick units inside
 `unsharp_args` (see the constants there and `tests/README.md`); the amount is a
-percentage in Pictura and a fraction in ImageMagick.
+percentage in Pictura and a fraction in ImageMagick. `Custom` translates the
+Pictura divisor/bias inside `convolve_args`: ImageMagick normalizes by the
+kernel sum, so the scale is `sum(kernel) / pictura_scale`, and the offset is an
+`-evaluate add` of `offset / 255` as a percentage.
 
 Usage:
     python3 scripts/filter_oracle.py version
@@ -34,6 +46,13 @@ Usage:
         --op gaussian --sigma 1.0 IN.rgb OUT.rgb
     python3 scripts/filter_oracle.py apply --size 16x16 --op box --radius 3 \
         IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --op maximum --radius 2 \
+        IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --op roll \
+        --horizontal 3 --vertical 2 IN.rgb OUT.rgb
+    python3 scripts/filter_oracle.py apply --size 16x16 --op convolve \
+        --kernel "0,0,-1,0,0, 0,-1,4,-1,0, -1,4,20,4,-1, 0,-1,4,-1,0, 0,0,-1,0,0" \
+        --kernel-scale 4 --kernel-offset 8 IN.rgb OUT.rgb
     python3 scripts/filter_oracle.py apply --size 16x16 --planar \
         --im-args="-motion-blur 0x5+45" IN.rgb OUT.rgb
 
@@ -71,6 +90,36 @@ def unsharp_args(args: argparse.Namespace) -> list[str]:
     return ["-unsharp", f"0x{args.sigma}+{amount}+{threshold}"]
 
 
+def convolve_args(args: argparse.Namespace) -> list[str]:
+    """Translate a Pictura Custom 5x5 kernel to the ImageMagick operator.
+
+    Pictura computes `Σ kernel·neighbor / scale + offset`. ImageMagick
+    `-convolve` first normalizes by the kernel sum, so the matching
+    `convolve:scale` is `sum(kernel) / scale`; the additive offset is applied
+    afterwards as `-evaluate add` with a percentage of the quantum range
+    (`offset / 255`). The kernel is row-major, comma- or semicolon-separated.
+    """
+    values = [
+        float(v)
+        for v in args.kernel.replace(";", ",").split(",")
+        if v.strip()
+    ]
+    if len(values) != 25:
+        raise SystemExit(f"--kernel must have 25 values, got {len(values)}")
+    if args.kernel_scale == 0.0:
+        raise SystemExit("--kernel-scale must be non-zero")
+    im_scale = sum(values) / args.kernel_scale
+    out = [
+        "-define",
+        f"convolve:scale={im_scale}",
+        "-convolve",
+        ",".join(repr(v) for v in values),
+    ]
+    if args.kernel_offset != 0.0:
+        out += ["-evaluate", "add", f"{args.kernel_offset / 255.0 * 100.0}%"]
+    return out
+
+
 def build_im_args(args: argparse.Namespace) -> list[str]:
     """Translate a named --op plus flags into Magick operator arguments."""
     op = args.op
@@ -88,6 +137,18 @@ def build_im_args(args: argparse.Namespace) -> list[str]:
         return ["-median", str(args.radius)]
     if op == "unsharp":
         return unsharp_args(args)
+    if op == "maximum":
+        return ["-morphology", "Dilate", f"Square:{args.radius}"]
+    if op == "minimum":
+        return ["-morphology", "Erode", f"Square:{args.radius}"]
+    if op == "roll":
+        return ["-roll", f"{args.horizontal:+d}{args.vertical:+d}"]
+    if op == "solarize":
+        return ["-solarize", f"{args.threshold_percent}%"]
+    if op == "emboss":
+        return ["-emboss", f"{args.emboss_radius}x{args.emboss_sigma}"]
+    if op == "convolve":
+        return convolve_args(args)
     raise SystemExit(f"unknown --op {op!r}")
 
 
@@ -171,7 +232,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="ImageMagick filter oracle for M6-E")
+    parser = argparse.ArgumentParser(description="ImageMagick filter oracle for M6-E / M7-C")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_version = sub.add_parser("version", help="print `magick -version`")
@@ -184,13 +245,14 @@ def main(argv: list[str] | None = None) -> int:
                          help="read/write channel planes instead of interleaved")
     p_apply.add_argument("--op", choices=(
         "gaussian", "box", "motion", "median", "unsharp",
+        "maximum", "minimum", "roll", "solarize", "emboss", "convolve",
     ), help="named operator; builds the Magick args below")
     p_apply.add_argument("--im-args", default="",
                          help="verbatim Magick operator arguments (when --op is omitted)")
     p_apply.add_argument("--sigma", type=float, default=1.0,
                          help="Gaussian sigma")
     p_apply.add_argument("--radius", type=int, default=1,
-                         help="box radius (N = 2r+1) or median radius")
+                         help="box radius (N = 2r+1), median radius, or morphology radius")
     p_apply.add_argument("--distance", type=int, default=5,
                          help="motion blur distance")
     p_apply.add_argument("--angle", type=float, default=0.0,
@@ -199,6 +261,22 @@ def main(argv: list[str] | None = None) -> int:
                          help="unsharp amount as a Pictura percentage")
     p_apply.add_argument("--threshold", type=float, default=0.0,
                          help="unsharp threshold as a Pictura 8-bit level")
+    p_apply.add_argument("--horizontal", type=int, default=0,
+                         help="roll horizontal shift (positive = right)")
+    p_apply.add_argument("--vertical", type=int, default=0,
+                         help="roll vertical shift (positive = down)")
+    p_apply.add_argument("--threshold-percent", type=float, default=50.0,
+                         help="solarize threshold as a percentage of quantum range")
+    p_apply.add_argument("--emboss-radius", type=float, default=0.0,
+                         help="emboss Gaussian radius (IM)")
+    p_apply.add_argument("--emboss-sigma", type=float, default=1.0,
+                         help="emboss Gaussian sigma (IM)")
+    p_apply.add_argument("--kernel", default="",
+                         help="Custom 5x5 kernel, row-major, comma/semicolon separated")
+    p_apply.add_argument("--kernel-scale", type=float, default=1.0,
+                         help="Custom divisor (Pictura scale)")
+    p_apply.add_argument("--kernel-offset", type=float, default=0.0,
+                         help="Custom additive bias (Pictura 8-bit offset)")
     p_apply.add_argument("input", help="raw 8-bit input image")
     p_apply.add_argument("output", help="raw 8-bit output image")
     p_apply.set_defaults(func=cmd_apply)

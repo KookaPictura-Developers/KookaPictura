@@ -197,6 +197,13 @@ int main(int argc, char* argv[])
     filterCombo->addItem(QStringLiteral("Sharpen More"), QStringLiteral("sharpen-more"));
     filterCombo->addItem(QStringLiteral("Unsharp Mask"), QStringLiteral("unsharp-mask"));
     filterCombo->addItem(QStringLiteral("Add Noise"), QStringLiteral("add-noise"));
+    filterCombo->addItem(QStringLiteral("Maximum"), QStringLiteral("maximum"));
+    filterCombo->addItem(QStringLiteral("Minimum"), QStringLiteral("minimum"));
+    filterCombo->addItem(QStringLiteral("Offset"), QStringLiteral("offset"));
+    filterCombo->addItem(QStringLiteral("High Pass"), QStringLiteral("high-pass"));
+    filterCombo->addItem(QStringLiteral("Emboss"), QStringLiteral("emboss"));
+    filterCombo->addItem(QStringLiteral("Find Edges"), QStringLiteral("find-edges"));
+    filterCombo->addItem(QStringLiteral("Solarize"), QStringLiteral("solarize"));
     panelLayout->addWidget(filterCombo);
 
     auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);

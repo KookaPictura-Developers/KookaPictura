@@ -1,18 +1,19 @@
-# M6-E — ImageMagick filter oracle
+# M6-E / M7-C — ImageMagick filter oracle
 
 These tests diff `pictura_filters::apply` against **ImageMagick** for the
-Blur / Sharpen / Noise filters that have a usable equivalent. This is a *sanity*
-oracle, not a parity oracle: Adobe's exact integer math and convolution kernels
-are closed, and the ImageMagick operators only approximate several Photoshop
-paths. The mapping table, the IM flags, the tolerances and the known divergences
-are below.
+Blur / Sharpen / Noise / Other / Stylize filters that have a usable equivalent.
+This is a *sanity* oracle, not a parity oracle: Adobe's exact integer math and
+convolution kernels are closed, and the ImageMagick operators only approximate
+several Photoshop paths. The mapping table, the IM flags, the tolerances and the
+known divergences are below.
 
 - Oracle script: `scripts/filter_oracle.py`
 - Tests: `crates/pictura-filters/tests/oracle.rs`
 - Verified against: ImageMagick **7.1.2-29 Q16-HDRI** (2026-07-27).
 
 Only filters with a faithful ImageMagick operator are diffed (`GaussianBlur`,
-`BoxBlur`, `Median`, `UnsharpMask`). The rest are covered by
+`BoxBlur`, `Median`, `UnsharpMask`, `Maximum`, `Minimum`, `Offset` with
+`wrap = true`, `Custom`, `Solarize`). The rest are covered by
 ImageMagick-independent property/known-value tests (here and in the module unit
 tests); the measured divergences that ruled out a differential test are recorded
 below. No test is `#[ignore]`d.
@@ -40,6 +41,14 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `SharpenEdges` | — | **no** | — | Edge-gated high-pass with a fixed gate; observed max delta 17 (`-sharpen 0x1`). |
 | `AddNoise` | — | **no** | — | RNG streams differ; the contract is same-seed determinism. Observed max delta 79 (`-attenuate 0.1 +noise Gaussian`). |
 | `Despeckle` | — | **no** | — | IM `-despeckle` uses a different rank detector. Observed max delta 13 (`-despeckle`). |
+| `Maximum` | `-morphology Dilate Square:{radius}` | yes | 0 | Same separable `(2r+1)²` square grayscale dilate, clamp-to-edge; measured max delta 0 (radius 2). **`Square:N` takes a radius** (kernel diameter `2N+1`), so pass `Square:{radius}`; the M7 plan's `N = 2·radius+1` would dilate over a `(4r+3)²` footprint. |
+| `Minimum` | `-morphology Erode Square:{radius}` | yes | 0 | Same separable `(2r+1)²` square grayscale erode, clamp-to-edge; measured max delta 0 (radius 2). Same `Square:N` radius note as `Maximum`. |
+| `Offset` | `-roll {+h}{+v}` (`wrap = true`) | yes | 0 | `wrap = true` is an exact integer roll (positive = right/down); measured max delta 0 at `(3,2)` and `(2,3)`. `wrap = false` fills the exposed area with `background`, which `-roll` cannot do; observed max delta 240 vs `-roll +3+2`, guarded by the background-fill property test. |
+| `HighPass` | — | **no** | — | No single IM operator. A hand-built `\( +clone -gaussian-blur 0x{σ} \) -compose Mathematics -define compose:args=0,-1,1,0.5 -composite` re-implements the formula and is within measured max delta 1 (radius 3.0, σ 1.0), but it is not an independent operator; guarded by the flat-field mid-gray test. |
+| `Custom` | `-convolve {kernel}` with `convolve:scale` + `-evaluate add` | yes | 0 | Same f64 5×5 convolution, clamp-to-edge. IM normalizes by the kernel sum, so the matching scale is `sum(kernel)/scale` and the offset is `-evaluate add ({offset}/255)`. Measured max delta 0 (edge kernel: scale 4/offset 8 and scale 9/offset −10). |
+| `Emboss` | — | **no** | — | IM `-emboss` is per-channel with a fixed diagonal kernel and no angle/height/amount; Pictura is an angle-directed second difference on **luma** with an achromatic output. No angle/radius/σ matches: observed max delta 210 (angle 135 vs `-emboss 0x1`; best case 186 on the axis-aligned angles). |
+| `FindEdges` | — | **no** | — | IM `-edge` is a different detector and renders edges **bright on dark**; Pictura's Sobel magnitude is inverted (dark on light). Observed max delta 255 vs `-edge 1`. |
+| `Solarize` | `-solarize 50%` | yes | 0 | Same fixed 50 % inversion curve (`v ≥ 128 → 255 − v`); measured max delta 0. |
 
 ### Why `MotionBlur` is not diffed
 
@@ -58,6 +67,35 @@ invocation reproduces that, and `-convolve` with the same kernel would just
 re-implement it, so no faithful operator exists. The observed delta against the
 suggested invocation is recorded above; the tap geometry is guarded by
 `motion_blur_known_values`.
+
+### `Maximum` / `Minimum`: `Square:N` is a radius, not a diameter
+
+The M7 plan suggested `N = 2·radius + 1` for `-morphology Dilate/Erode Square:N`.
+That is wrong: ImageMagick's `Square:N` parameter is a **radius**, so the kernel
+is `(2N+1)×(2N+1)`. `-morphology Dilate Square:3` prints a `7x7` kernel. The
+faithful flag is therefore `Square:{radius}`, and a 3×3 footprint is
+`Square:1`. Measured against `pictura_filters` radius 2 (5×5 square,
+clamp-to-edge): max delta 0 with `Square:2`, non-zero with `Square:5` (the plan's
+suggested value). The separable dilate/erode commutes, so the integer result is
+bit-exact.
+
+### `Custom`: mapping the divisor and the bias onto `-convolve`
+
+Pictura computes `Σ kernel·neighbor / scale + offset` with f64 accumulation and
+clamp-to-edge. ImageMagick's `-convolve` first normalizes by the kernel sum
+(`ΣK`), then multiplies by `-define convolve:scale=...`. The equivalent scale is
+therefore `ΣK / scale`, and the additive bias is applied afterwards as
+`-evaluate add ({offset}/255)%` (IM `-evaluate add` takes a fraction of the
+quantum range). With the shared 5×5 edge kernel (`ΣK = 29`), scale 4 / offset 8
+and scale 9 / offset −10 both measured max delta 0.
+
+### `Offset`: `wrap` decides the equivalent
+
+`wrap = true` is a whole-pixel cyclic shift, exactly `-roll +h+v` (positive =
+right/down); measured max delta 0 at `(3,2)` and `(2,3)`. `wrap = false` fills
+the exposed strip with `background`, which no IM operator does without a mask
+(`-roll` always wraps); observed max delta 240. The background fill is guarded
+by a property test instead.
 
 ## Exact ImageMagick flags
 
@@ -80,6 +118,12 @@ play.
 | Motion Blur | `-motion-blur 0x{distance}+{angle}` (documented, **not** used by a differential test) |
 | Median | `-median {radius}` |
 | Unsharp Mask | `-unsharp 0x{sigma}+{amount/100}+{threshold/255}` |
+| Maximum | `-morphology Dilate Square:{radius}` (IM `Square:N` is a radius) |
+| Minimum | `-morphology Erode Square:{radius}` |
+| Offset (`wrap = true`) | `-roll {+h}{+v}` |
+| Custom | `-define convolve:scale={ΣK/scale} -convolve {kernel} [-evaluate add {offset/255}%]` |
+| Solarize | `-solarize 50%` |
+| Emboss | `-emboss {radius}x{sigma}` (measured, **not** used by a differential test) |
 
 ### Unsharp Mask scaling
 
@@ -119,13 +163,28 @@ Empirically (16×16 test image, `pictura_filters` with σ = radius/3 against
 - **Add Noise** is randomized; IM's RNG stream is different and not reproducible
   (observed max delta 79). Guarded by the same-seed determinism test at the
   `Filter::apply` level.
-- **16/32-bit, CMYK/Lab, selection/mask/gpu wiring.** Out of M6 scope.
+- **High Pass** has no single IM operator. A hand-built `-compose Mathematics`
+  difference (source = blur, dest = orig, `compose:args=0,-1,1,0.5`) reproduces
+  Pictura's formula and is within measured max delta 1 (radius 3.0, σ 1.0), but
+  it re-implements the pipeline rather than being an independent operator, so it
+  is classified no-equivalent and guarded by the flat-field mid-gray property
+  test.
+- **Emboss** is per-channel in IM with a fixed diagonal kernel; Pictura is an
+  angle-directed second difference on luma with an achromatic output. Observed
+  max delta 210 (angle 135 vs `-emboss 0x1`; best case 186 on the axis-aligned
+  angles). Guarded by the flat-field neutral-gray and achromatic-output tests.
+- **Find Edges.** IM `-edge` is a different detector with opposite polarity
+  (bright edges on dark); Pictura inverts the Sobel magnitude (dark on light).
+  Observed max delta 255 vs `-edge 1`. Guarded by the flat-field-light and
+  dark-edge property tests.
+- **Offset** with `wrap = false` fills with `background`; IM `-roll` wraps.
+  Observed max delta 240. Guarded by the background-fill property test.
+- **16/32-bit, CMYK/Lab, selection/mask/gpu wiring.** Out of M6/M7 scope.
 
-Tolerances apply only to the four differential rows. They are absolute
-per-8-bit-sample allowances for `pictura_testkit::compare`: 0 where the formula
-is identical and integer arithmetic agrees exactly, 6 for Unsharp Mask where
-IM's internal blur can differ. Rows marked **no** keep tolerance 0 — they are
-not compared to IM.
+Tolerances apply only to the differential rows. They are absolute per-8-bit-sample
+allowances for `pictura_testkit::compare`: 0 where the formula is identical and
+integer arithmetic agrees exactly, 6 for Unsharp Mask where IM's internal blur
+can differ. Rows marked **no** keep tolerance 0 — they are not compared to IM.
 
 ## Running
 
@@ -146,6 +205,15 @@ python3 scripts/filter_oracle.py apply --size 16x16 --planar \
     --op gaussian --sigma 1.0 IN.rgb OUT.rgb
 python3 scripts/filter_oracle.py apply --size 16x16 --op box --radius 3 \
     IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --op maximum --radius 2 \
+    IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --op roll \
+    --horizontal 3 --vertical 2 IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --op convolve \
+    --kernel "0,0,-1,0,0, 0,-1,4,-1,0, -1,4,20,4,-1, 0,-1,4,-1,0, 0,0,-1,0,0" \
+    --kernel-scale 4 --kernel-offset 8 IN.rgb OUT.rgb
+python3 scripts/filter_oracle.py apply --size 16x16 --op solarize \
+    --threshold-percent 50 IN.rgb OUT.rgb
 python3 scripts/filter_oracle.py apply --size 16x16 --planar \
     --im-args="-motion-blur 0x5+45" IN.rgb OUT.rgb
 ```
@@ -168,8 +236,9 @@ with `=` so argparse does not read the leading `-` as another option.
 ## Not expressed by this oracle
 
 - Motion Blur, Radial Blur, Average, Blur / Blur More, Surface Blur, Despeckle,
-  Add Noise, and the Sharpen family: no faithful ImageMagick equivalent (see the
-  table); covered by property/known-value tests instead.
+  Add Noise, the Sharpen family, High Pass, Emboss, Find Edges, and `Offset`
+  with `wrap = false`: no faithful ImageMagick equivalent (see the table);
+  covered by property/known-value tests instead.
 - Alpha-channel behaviour: the tests use 3-channel buffers, and `apply` is
   specified never to modify channel 4 (guarded by the module unit tests).
-- 16/32-bit filter math (M6 is 8-bit only).
+- 16/32-bit filter math (M6/M7 are 8-bit only).

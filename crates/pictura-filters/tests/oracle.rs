@@ -1,15 +1,17 @@
-//! ImageMagick differential oracle for `pictura_filters::apply` (task M6-E).
+//! ImageMagick differential oracle for `pictura_filters::apply` (tasks M6-E,
+//! M7-C).
 //!
-//! ImageMagick implements a handful of the same Blur / Sharpen / Noise filters.
-//! This is a *sanity* oracle, not a parity oracle: Adobe's exact integer math
-//! and convolution kernels are closed, and the ImageMagick operators only
-//! approximate several Photoshop paths. Each filter with a faithful operator is
-//! diffed against the ImageMagick result with `pictura_testkit::compare`; the
-//! tolerance and the reason for it are in the table below and in
-//! `tests/README.md`.
+//! ImageMagick implements a handful of the same Blur / Sharpen / Noise / Other
+//! / Stylize filters. This is a *sanity* oracle, not a parity oracle: Adobe's
+//! exact integer math and convolution kernels are closed, and the ImageMagick
+//! operators only approximate several Photoshop paths. Each filter with a
+//! faithful operator is diffed against the ImageMagick result with
+//! `pictura_testkit::compare`; the tolerance and the reason for it are in the
+//! table below and in `tests/README.md`.
 //!
-//! Only filters with a faithful ImageMagick operator are run differentially
-//! (`GaussianBlur`, `BoxBlur`, `Median`, `UnsharpMask`). The rest are covered by
+//! Filters with a faithful ImageMagick operator are run differentially
+//! (`GaussianBlur`, `BoxBlur`, `Median`, `UnsharpMask`, `Maximum`, `Minimum`,
+//! `Offset` with `wrap = true`, `Custom`, `Solarize`). The rest are covered by
 //! ImageMagick-independent property/known-value tests here and in the module
 //! unit tests; the divergences that ruled out a differential test are recorded
 //! in the table below and in `tests/README.md`.
@@ -140,10 +142,73 @@ const MAPPING: &[Mapping] = &[
         note: "IM -despeckle uses a different rank detector; observed max delta 13 (vs \
                -despeckle)",
     },
+    Mapping {
+        filter: "Maximum",
+        im: Some("-morphology Dilate Square:{radius}"),
+        tolerance: 0,
+        note: "same (2r+1)^2 square grayscale dilate, clamp-to-edge; measured max delta 0 \
+               (radius 2). NB: IM `Square:N` takes a *radius* (kernel diameter 2N+1), so the \
+               faithful flag is `Square:{radius}`; the M7 plan's `N = 2*radius+1` would dilate \
+               over a (4r+3)^2 footprint",
+    },
+    Mapping {
+        filter: "Minimum",
+        im: Some("-morphology Erode Square:{radius}"),
+        tolerance: 0,
+        note: "same (2r+1)^2 square grayscale erode, clamp-to-edge; measured max delta 0 \
+               (radius 2). Same `Square:N` radius-vs-diameter note as Maximum",
+    },
+    Mapping {
+        filter: "Offset",
+        im: Some("-roll {+horizontal}{+vertical}  (wrap = true)"),
+        tolerance: 0,
+        note: "wrap = true is an exact integer roll; measured max delta 0 at (3,2) and (2,3). \
+               wrap = false fills the exposed area with `background`, which -roll cannot do (it \
+               always wraps); observed max delta 240 vs -roll",
+    },
+    Mapping {
+        filter: "HighPass",
+        im: None,
+        tolerance: 0,
+        note: "no single IM operator. A hand-built `\\( +clone -gaussian-blur 0x{sigma} \\) \
+               -compose Mathematics -define compose:args=0,-1,1,0.5 -composite` re-implements \
+               Pictura's formula and is within measured max delta 1 (radius 3.0, sigma 1.0), but \
+               it is not an independent operator; guarded by the flat-field mid-gray test",
+    },
+    Mapping {
+        filter: "Custom",
+        im: Some("-convolve {kernel}, -define convolve:scale={sum(kernel)/scale}, -evaluate add {offset/255}%"),
+        tolerance: 0,
+        note: "same f64 5x5 convolution, clamp-to-edge. IM -convolve normalizes by the kernel \
+               sum, so the matching scale is sum(kernel)/scale; measured max delta 0 (edge \
+               kernel, scale 4 offset 8 and scale 9 offset -10)",
+    },
+    Mapping {
+        filter: "Emboss",
+        im: None,
+        tolerance: 0,
+        note: "IM -emboss is per-channel with a fixed diagonal kernel and no angle/height/amount; \
+               Pictura is an angle-directed second difference on luma with an achromatic output. \
+               No angle/radius/sigma matches: observed max delta 210 at angle 135 vs -emboss 0x1 \
+               (best case 186 on the axis-aligned angles)",
+    },
+    Mapping {
+        filter: "FindEdges",
+        im: None,
+        tolerance: 0,
+        note: "IM -edge is a different detector and renders edges bright on dark; Pictura's Sobel \
+               magnitude is inverted (dark on light). Observed max delta 255 vs -edge 1",
+    },
+    Mapping {
+        filter: "Solarize",
+        im: Some("-solarize 50%"),
+        tolerance: 0,
+        note: "same fixed 50% inversion curve (v >= 128 -> 255 - v); measured max delta 0",
+    },
 ];
 
 /// Filters the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 11] = [
+const NO_EQUIVALENT: [&str; 14] = [
     "MotionBlur",
     "RadialBlur",
     "Average",
@@ -155,6 +220,9 @@ const NO_EQUIVALENT: [&str; 11] = [
     "SharpenEdges",
     "AddNoise",
     "Despeckle",
+    "HighPass",
+    "Emboss",
+    "FindEdges",
 ];
 
 fn script() -> PathBuf {
@@ -365,7 +433,7 @@ fn oracle_negate_matches_expected_bytes() {
 
 #[test]
 fn mapping_marks_no_equivalent_operators() {
-    assert_eq!(MAPPING.len(), 15, "one mapping row per Filter variant");
+    assert_eq!(MAPPING.len(), 23, "one mapping row per Filter variant");
     let none: Vec<&str> = MAPPING
         .iter()
         .filter(|m| m.im.is_none())
@@ -441,6 +509,194 @@ fn unsharp_mask_matches_imagemagick() {
         6,
         "UnsharpMask radius 3.0 amount 150 threshold 0",
     );
+}
+
+/// `Filter::Custom` kernel used by the differential test: a 5x5 sharpening /
+/// edge kernel with a non-trivial sum, so both the divisor and the bias are
+/// exercised. Sum = 29.
+const CUSTOM_TEST_KERNEL: [[f64; 5]; 5] = [
+    [0.0, 0.0, -1.0, 0.0, 0.0],
+    [0.0, -1.0, 4.0, -1.0, 0.0],
+    [-1.0, 4.0, 20.0, 4.0, -1.0],
+    [0.0, -1.0, 4.0, -1.0, 0.0],
+    [0.0, 0.0, -1.0, 0.0, 0.0],
+];
+
+#[test]
+fn maximum_matches_imagemagick() {
+    differential(
+        &Filter::Maximum { radius: 2 },
+        &["--op", "maximum", "--radius", "2"],
+        0,
+        "Maximum radius 2",
+    );
+}
+
+#[test]
+fn minimum_matches_imagemagick() {
+    differential(
+        &Filter::Minimum { radius: 2 },
+        &["--op", "minimum", "--radius", "2"],
+        0,
+        "Minimum radius 2",
+    );
+}
+
+#[test]
+fn offset_wrap_matches_imagemagick() {
+    differential(
+        &Filter::Offset {
+            horizontal: 3,
+            vertical: 2,
+            wrap: true,
+            background: [0, 0, 0],
+        },
+        &["--op", "roll", "--horizontal", "3", "--vertical", "2"],
+        0,
+        "Offset wrap (3,2)",
+    );
+}
+
+#[test]
+fn custom_matches_imagemagick() {
+    differential(
+        &Filter::Custom {
+            kernel: CUSTOM_TEST_KERNEL,
+            scale: 4.0,
+            offset: 8.0,
+        },
+        &[
+            "--op",
+            "convolve",
+            "--kernel",
+            "0,0,-1,0,0,0,-1,4,-1,0,-1,4,20,4,-1,0,-1,4,-1,0,0,0,-1,0,0",
+            "--kernel-scale",
+            "4",
+            "--kernel-offset",
+            "8",
+        ],
+        0,
+        "Custom edge kernel scale 4 offset 8",
+    );
+}
+
+#[test]
+fn solarize_matches_imagemagick() {
+    differential(
+        &Filter::Solarize,
+        &["--op", "solarize", "--threshold-percent", "50"],
+        0,
+        "Solarize 50%",
+    );
+}
+
+/// M7 no-equivalent rows: guard the contracts directly because no ImageMagick
+/// operator is faithful. See the table above for the observed deltas.
+#[test]
+fn m7_no_equivalent_filters_properties() {
+    // A flat color field for the spatial filters.
+    let mut flat = PixelBuffer::new(6, 5, 3);
+    for v in flat.data.iter_mut() {
+        *v = 90;
+    }
+
+    // High Pass: a flat field collapses to mid-gray (128).
+    let mut hp = flat.clone();
+    apply(&Filter::HighPass { radius: 2.0 }, &mut hp).expect("apply");
+    assert!(
+        hp.data.iter().all(|&v| (v as i32 - 128).abs() <= 1),
+        "HighPass flat field must be mid-gray"
+    );
+
+    // Find Edges: a flat field is white (Sobel magnitude 0, inverted), and a
+    // step edge is dark.
+    let mut fe = flat.clone();
+    apply(&Filter::FindEdges, &mut fe).expect("apply");
+    assert!(
+        fe.data.iter().all(|&v| v == 255),
+        "FindEdges flat field must stay light"
+    );
+    let mut step = pixel_row(&[0, 0, 0, 0, 255, 255, 255, 255]);
+    apply(&Filter::FindEdges, &mut step).expect("apply");
+    assert!(
+        step.data[3] < 128 && step.data[4] < 128,
+        "FindEdges must darken a step edge"
+    );
+
+    // Emboss: flat field is neutral gray and the output is achromatic, even on
+    // colored input.
+    let mut emb = flat.clone();
+    apply(
+        &Filter::Emboss {
+            angle: 135.0,
+            height: 3.0,
+            amount: 100.0,
+        },
+        &mut emb,
+    )
+    .expect("apply");
+    assert!(
+        emb.data.iter().all(|&v| (v as i32 - 128).abs() <= 1),
+        "Emboss flat field must be neutral gray"
+    );
+    let colored = test_image_buffer();
+    let mut colored_emb = colored.clone();
+    apply(
+        &Filter::Emboss {
+            angle: 135.0,
+            height: 3.0,
+            amount: 100.0,
+        },
+        &mut colored_emb,
+    )
+    .expect("apply");
+    let n = colored.pixel_count();
+    for i in 0..n {
+        assert_eq!(
+            colored_emb.data[i],
+            colored_emb.data[n + i],
+            "Emboss R != G at {i}"
+        );
+        assert_eq!(
+            colored_emb.data[i],
+            colored_emb.data[2 * n + i],
+            "Emboss R != B at {i}"
+        );
+    }
+
+    // Offset wrap = false: the exposed area takes `background`, the shifted
+    // area copies the source.
+    let base = test_image_buffer();
+    let mut shifted = base.clone();
+    apply(
+        &Filter::Offset {
+            horizontal: 3,
+            vertical: 2,
+            wrap: false,
+            background: [10, 20, 30],
+        },
+        &mut shifted,
+    )
+    .expect("apply");
+    let at = |b: &PixelBuffer, x: usize, y: usize, c: usize| {
+        b.data[c * b.pixel_count() + y * b.width as usize + x]
+    };
+    assert_eq!(
+        [
+            at(&shifted, 0, 0, 0),
+            at(&shifted, 0, 0, 1),
+            at(&shifted, 0, 0, 2)
+        ],
+        [10, 20, 30],
+        "exposed pixel must take the background"
+    );
+    for c in 0..3 {
+        assert_eq!(
+            at(&base, 5, 5, c),
+            at(&shifted, 8, 7, c),
+            "shifted pixel must copy the source (channel {c})"
+        );
+    }
 }
 
 /// ImageMagick has no faithful MotionBlur equivalent: `-motion-blur` builds a

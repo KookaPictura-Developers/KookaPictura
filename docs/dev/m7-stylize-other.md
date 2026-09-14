@@ -68,7 +68,8 @@ Semantics (planar 8-bit, alpha untouched, clamp-to-edge, no panics):
 ## Oracle
 
 ImageMagick where semantics match (measure the tolerance; do not guess):
-`Maximum`/`Minimum` `-morphology Dilate/Erode Square:N`, `Offset` wrap `-roll`,
+`Maximum`/`Minimum` `-morphology Dilate/Erode Square:{radius}` (IM's `Square:N`
+takes the radius), `Offset` wrap `-roll`,
 `Custom` `-convolve`, `Emboss` `-emboss`, `Solarize` `-solarize 50%`,
 `Find Edges` `-edge` (document the PS dark-on-light inversion — likely
 no-equivalent), `High Pass` a `-compose mathematics` recipe (or no-equivalent).

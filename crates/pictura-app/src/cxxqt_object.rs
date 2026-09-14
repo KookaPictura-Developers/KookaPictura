@@ -474,6 +474,24 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
             monochromatic: false,
             seed: 1,
         },
+        "maximum" => Filter::Maximum { radius: 2 },
+        "minimum" => Filter::Minimum { radius: 2 },
+        "offset" => Filter::Offset {
+            horizontal: 4,
+            vertical: 4,
+            wrap: true,
+            background: [0, 0, 0],
+        },
+        "high-pass" => Filter::HighPass { radius: 4.0 },
+        "emboss" => Filter::Emboss {
+            angle: 135.0,
+            height: 2.0,
+            amount: 100.0,
+        },
+        "find-edges" => Filter::FindEdges,
+        "solarize" => Filter::Solarize,
+        // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
+        // default exists; it stays out of the dock and is left unmapped.
         _ => return None,
     })
 }
@@ -811,6 +829,37 @@ mod tests {
                 seed: 1,
             })
         );
+        assert_eq!(
+            filter_from_kind("maximum"),
+            Some(Filter::Maximum { radius: 2 })
+        );
+        assert_eq!(
+            filter_from_kind("minimum"),
+            Some(Filter::Minimum { radius: 2 })
+        );
+        assert_eq!(
+            filter_from_kind("offset"),
+            Some(Filter::Offset {
+                horizontal: 4,
+                vertical: 4,
+                wrap: true,
+                background: [0, 0, 0],
+            })
+        );
+        assert_eq!(
+            filter_from_kind("high-pass"),
+            Some(Filter::HighPass { radius: 4.0 })
+        );
+        assert_eq!(
+            filter_from_kind("emboss"),
+            Some(Filter::Emboss {
+                angle: 135.0,
+                height: 2.0,
+                amount: 100.0,
+            })
+        );
+        assert_eq!(filter_from_kind("find-edges"), Some(Filter::FindEdges));
+        assert_eq!(filter_from_kind("solarize"), Some(Filter::Solarize));
         assert_eq!(filter_from_kind("bogus"), None);
     }
 
