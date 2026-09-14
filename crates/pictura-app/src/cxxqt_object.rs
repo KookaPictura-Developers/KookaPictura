@@ -4,7 +4,7 @@ use core::pin::Pin;
 
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QImageFormat, QString};
-use pictura_core::{Document, PixelBuffer};
+use pictura_core::{AdjustmentData, BlendMode, Document, Layer, PixelBuffer, PsdRect};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -21,6 +21,10 @@ pub mod qobject {
         #[namespace = "pictura"]
         type PictureView = super::PictureViewRust;
 
+        /// Emitted whenever the layer stack changes and the image is refreshed.
+        #[qsignal]
+        fn changed(self: Pin<&mut Self>);
+
         /// Try to load a PSD through `pictura-codec`. Returns `false` and falls
         /// back to a generated test image when the file is missing or unsupported.
         #[qinvokable]
@@ -29,6 +33,37 @@ pub mod qobject {
         /// The image to display. Never null.
         #[qinvokable]
         fn image(&self) -> QImage;
+
+        /// Number of top-level layers in the loaded document (0 when none).
+        #[qinvokable]
+        fn layer_count(&self) -> i32;
+
+        /// Name of layer `i`, or empty when out of range.
+        #[qinvokable]
+        fn layer_name(&self, i: i32) -> QString;
+
+        /// `"pixel"`, `"group"`, or `"adjustment"` for layer `i`; empty when out
+        /// of range.
+        #[qinvokable]
+        fn layer_kind(&self, i: i32) -> QString;
+
+        /// Visibility flag of layer `i` (false when out of range).
+        #[qinvokable]
+        fn layer_visible(&self, i: i32) -> bool;
+
+        /// Set layer `i` visibility, recomposite, and emit [`changed`].
+        #[qinvokable]
+        fn set_layer_visible(self: Pin<&mut Self>, i: i32, visible: bool);
+
+        /// Append an adjustment layer for `kind` (invert, posterize, threshold,
+        /// brightness-contrast, hue-saturation), recomposite, and emit
+        /// [`changed`]. Returns false for an unknown kind or no document.
+        #[qinvokable]
+        fn add_adjustment(self: Pin<&mut Self>, kind: &QString) -> bool;
+
+        /// Remove layer `i`, recomposite, and emit [`changed`].
+        #[qinvokable]
+        fn remove_layer(self: Pin<&mut Self>, i: i32);
 
         /// M0.5 offscreen GPU spike. Renders a gradient on Vulkan and replaces
         /// the image on success. Returns 0 = no GPU (CPU fallback kept),
@@ -64,6 +99,7 @@ pub mod qobject {
 #[derive(Default)]
 pub struct PictureViewRust {
     image: QImage,
+    doc: Option<Document>,
     interop: Option<crate::gpu::InteropState>,
 }
 
@@ -71,16 +107,98 @@ impl qobject::PictureView {
     pub fn open(self: Pin<&mut Self>, path: &QString) -> bool {
         let loaded = std::fs::read(path.to_string())
             .ok()
-            .and_then(|bytes| pictura_codec::read_psd(&bytes).ok())
-            .map(|doc| document_to_image(&doc));
+            .and_then(|bytes| pictura_codec::read_psd(&bytes).ok());
 
         let ok = loaded.is_some();
-        self.rust_mut().image = loaded.unwrap_or_else(test_image);
+        let image = loaded
+            .as_ref()
+            .map(document_to_image)
+            .unwrap_or_else(test_image);
+        let mut view = self.rust_mut();
+        view.image = image;
+        view.doc = loaded;
         ok
     }
 
     pub fn image(&self) -> QImage {
         self.rust().image.clone()
+    }
+
+    pub fn layer_count(&self) -> i32 {
+        self.rust()
+            .doc
+            .as_ref()
+            .map_or(0, |d| d.layers.len() as i32)
+    }
+
+    pub fn layer_name(&self, i: i32) -> QString {
+        self.layer(i)
+            .map(|l| QString::from(l.name.as_str()))
+            .unwrap_or_default()
+    }
+
+    pub fn layer_kind(&self, i: i32) -> QString {
+        match self.layer(i) {
+            Some(l) if l.is_group => QString::from("group"),
+            Some(l) if l.adjustment.is_some() => QString::from("adjustment"),
+            Some(_) => QString::from("pixel"),
+            None => QString::default(),
+        }
+    }
+
+    pub fn layer_visible(&self, i: i32) -> bool {
+        self.layer(i).is_some_and(|l| l.visible)
+    }
+
+    pub fn set_layer_visible(mut self: Pin<&mut Self>, i: i32, visible: bool) {
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            match doc.layers.get_mut(i as usize) {
+                Some(layer) => {
+                    layer.visible = visible;
+                    true
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.recomposite();
+        }
+    }
+
+    pub fn add_adjustment(mut self: Pin<&mut Self>, kind: &QString) -> bool {
+        let Some(layer) = adjustment_layer(&kind.to_string()) else {
+            return false;
+        };
+        let pushed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => {
+                doc.layers.push(layer);
+                true
+            }
+            None => false,
+        };
+        if pushed {
+            self.recomposite();
+        }
+        pushed
+    }
+
+    pub fn remove_layer(mut self: Pin<&mut Self>, i: i32) {
+        let removed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            let idx = i as usize;
+            if idx < doc.layers.len() {
+                doc.layers.remove(idx);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if removed {
+            self.recomposite();
+        }
     }
 
     pub fn render_gpu(self: Pin<&mut Self>) -> i32 {
@@ -146,6 +264,58 @@ impl qobject::PictureView {
     pub fn gpu_image_height(&self) -> u32 {
         self.rust().interop.as_ref().map_or(0, |s| s.height)
     }
+
+    fn layer(&self, i: i32) -> Option<&Layer> {
+        self.rust().doc.as_ref()?.layers.get(i as usize)
+    }
+
+    /// Refresh `image` from the current document and emit [`changed`].
+    fn recomposite(mut self: Pin<&mut Self>) {
+        let image = self.rust().doc.as_ref().map(document_to_image);
+        if let Some(image) = image {
+            self.as_mut().rust_mut().image = image;
+        }
+        self.changed();
+    }
+}
+
+/// Build an adjustment layer for `kind`, or `None` for an unknown kind.
+///
+/// Defaults are chosen so a freshly added layer visibly changes the composite;
+/// editing parameters is out of scope for M4-C.
+fn adjustment_layer(kind: &str) -> Option<Layer> {
+    use pictura_render::{
+        encode_brightness_contrast, encode_hue_saturation, encode_invert, encode_posterize,
+        encode_threshold,
+    };
+
+    let (name, data): (&str, AdjustmentData) = match kind {
+        "invert" => ("Invert", encode_invert()),
+        "posterize" => ("Posterize", encode_posterize(4)),
+        "threshold" => ("Threshold", encode_threshold(128)),
+        "brightness-contrast" => ("Brightness/Contrast", encode_brightness_contrast(20, 0)),
+        "hue-saturation" => ("Hue/Saturation", encode_hue_saturation(30, 0, 0)),
+        _ => return None,
+    };
+
+    Some(Layer {
+        name: name.into(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 0,
+            right: 0,
+        },
+        blend: BlendMode::Normal,
+        opacity: 255,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: Some(data),
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: false,
+    })
 }
 
 /// Convert the document to a packed RGBA `QImage`: the composited layer stack
@@ -280,6 +450,62 @@ mod tests {
         assert_eq!(image.pixel_color(0, 0).alpha(), 255);
         // Uncovered canvas stays transparent, not the embedded composite.
         assert_eq!(image.pixel_color(1, 1).alpha(), 0);
+    }
+
+    #[test]
+    fn invert_and_visibility_change_composite() {
+        let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![Layer {
+            name: "red".into(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 1,
+                right: 1,
+            },
+            blend: BlendMode::Normal,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels: vec![
+                Channel {
+                    id: 0,
+                    data: vec![255],
+                },
+                Channel {
+                    id: 1,
+                    data: vec![0],
+                },
+                Channel {
+                    id: 2,
+                    data: vec![0],
+                },
+                Channel {
+                    id: -1,
+                    data: vec![255],
+                },
+            ],
+            children: Vec::new(),
+            is_group: false,
+        }];
+
+        let before = document_to_image(&doc);
+        assert_eq!(before.pixel_color(0, 0).red(), 255);
+
+        doc.layers
+            .push(adjustment_layer("invert").expect("known kind"));
+        let after = document_to_image(&doc);
+        assert_eq!(after.pixel_color(0, 0).red(), 0);
+        assert_eq!(after.pixel_color(0, 0).green(), 255);
+        assert_eq!(after.pixel_color(0, 0).blue(), 255);
+
+        doc.layers[0].visible = false;
+        let hidden = document_to_image(&doc);
+        assert_eq!(hidden.pixel_color(0, 0).alpha(), 0);
+
+        assert!(adjustment_layer("bogus").is_none());
     }
 
     #[test]

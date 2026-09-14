@@ -289,6 +289,82 @@ fn decode_hue_saturation(d: &[u8]) -> Option<Adjustment> {
     }))
 }
 
+// --- Encoders for the same subset ------------------------------------------
+//
+// These build the raw `AdjustmentData` the decoder above reads, so the app can
+// create adjustment layers in memory. Byte layouts mirror psd-tools' adjustment
+// structs (the independent oracle the codec fixtures come from); each is the
+// minimal block for the key, not a full re-implementation of Photoshop's writer.
+
+/// `nvrt`: Invert carries no payload.
+pub fn encode_invert() -> AdjustmentData {
+    AdjustmentData {
+        key: *b"nvrt",
+        data: Vec::new(),
+    }
+}
+
+/// `post`: a `u16` levels value (2..=255) plus 2 pad bytes (psd-tools
+/// `ShortIntegerElement`, `H2x`). Out-of-range input is clamped.
+pub fn encode_posterize(levels: u8) -> AdjustmentData {
+    encode_short(*b"post", levels.clamp(2, 255) as u16)
+}
+
+/// `thrs`: a `u16` level (1..=255) plus 2 pad bytes. Out-of-range input is clamped.
+pub fn encode_threshold(level: u8) -> AdjustmentData {
+    encode_short(*b"thrs", level.clamp(1, 255) as u16)
+}
+
+/// `brit`: brightness (i16), contrast (i16), mean (i16), lab_only (u8), pad
+/// (psd-tools `3HBx`). Inputs are clamped to the decoder's accepted ranges
+/// (brightness -150..=150, contrast -50..=100); `use_legacy` is not representable
+/// and the decoder always uses the modern curve.
+pub fn encode_brightness_contrast(brightness: i16, contrast: i16) -> AdjustmentData {
+    let b = brightness.clamp(-150, 150);
+    let c = contrast.clamp(-50, 100);
+    let mut data = Vec::with_capacity(8);
+    data.extend_from_slice(&b.to_be_bytes());
+    data.extend_from_slice(&c.to_be_bytes());
+    data.extend_from_slice(&0i16.to_be_bytes());
+    data.push(0);
+    data.push(0);
+    AdjustmentData {
+        key: *b"brit",
+        data,
+    }
+}
+
+/// `hue2`: version (2), enable (1), pad, colorization (3×i16), then the master
+/// Hue/Saturation/Lightness triplet (3×i16), followed by the six per-band range
+/// records (6 × 7 i16) that Photoshop stores. The decoder only reads the version
+/// and the master triplet; the trailing records are zeroed so the block matches
+/// the real 100-byte layout.
+pub fn encode_hue_saturation(hue: i16, saturation: i16, lightness: i16) -> AdjustmentData {
+    let hue = hue.clamp(-180, 180);
+    let saturation = saturation.clamp(-100, 100);
+    let lightness = lightness.clamp(-100, 100);
+    let mut data = Vec::with_capacity(100);
+    data.extend_from_slice(&2u16.to_be_bytes());
+    data.push(1);
+    data.push(0);
+    data.extend_from_slice(&[0u8; 6]);
+    data.extend_from_slice(&hue.to_be_bytes());
+    data.extend_from_slice(&saturation.to_be_bytes());
+    data.extend_from_slice(&lightness.to_be_bytes());
+    data.extend_from_slice(&[0u8; 84]);
+    AdjustmentData {
+        key: *b"hue2",
+        data,
+    }
+}
+
+/// `H2x` payload: a big-endian `u16` value plus two zero pad bytes.
+fn encode_short(key: [u8; 4], value: u16) -> AdjustmentData {
+    let mut data = value.to_be_bytes().to_vec();
+    data.extend_from_slice(&[0, 0]);
+    AdjustmentData { key, data }
+}
+
 /// Apply a decoded adjustment to the running backdrop, then gate the result by
 /// the layer's mask/opacity/blend (Photoshop applies the adjustment to the
 /// backdrop and blends the adjusted result back).
@@ -1348,6 +1424,68 @@ mod tests {
         assert_eq!(decode_adjustment(&adjdata(*b"clrL", vec![1, 2, 3])), None);
         assert_eq!(decode_adjustment(&adjdata(*b"post", vec![0, 0])), None);
         assert_eq!(decode_adjustment(&adjdata(*b"levl", vec![0, 3])), None);
+    }
+
+    #[test]
+    fn encode_decode_round_trips() {
+        assert_eq!(
+            decode_adjustment(&encode_invert()),
+            Some(Adjustment::Invert)
+        );
+        assert_eq!(
+            decode_adjustment(&encode_posterize(4)),
+            Some(Adjustment::Posterize(4))
+        );
+        assert_eq!(
+            decode_adjustment(&encode_threshold(128)),
+            Some(Adjustment::Threshold(128))
+        );
+        assert_eq!(
+            decode_adjustment(&encode_brightness_contrast(10, 20)),
+            Some(Adjustment::BrightnessContrast(BrightnessContrastParams {
+                brightness: 10,
+                contrast: 20,
+                use_legacy: false,
+            }))
+        );
+        assert_eq!(
+            decode_adjustment(&encode_hue_saturation(10, 20, 30)),
+            Some(Adjustment::HueSaturation(HueSaturationParams {
+                hue: 10,
+                saturation: 20,
+                lightness: 30,
+            }))
+        );
+
+        // Byte formats match the psd-tools fixtures (`H2x`, `3HBx`).
+        assert_eq!(encode_invert().key, *b"nvrt");
+        assert!(encode_invert().data.is_empty());
+        assert_eq!(encode_posterize(4).data, [0, 4, 0, 0]);
+        assert_eq!(encode_threshold(128).data, [0, 128, 0, 0]);
+        assert_eq!(
+            encode_brightness_contrast(10, 20).data,
+            [0, 10, 0, 20, 0, 0, 0, 0]
+        );
+        assert_eq!(encode_hue_saturation(10, 20, 30).data.len(), 100);
+        assert_eq!(encode_hue_saturation(10, 20, 30).data[0..2], [0, 2]);
+
+        // Out-of-range inputs are clamped to what the decoder accepts.
+        assert_eq!(
+            decode_adjustment(&encode_posterize(0)),
+            Some(Adjustment::Posterize(2))
+        );
+        assert_eq!(
+            decode_adjustment(&encode_threshold(0)),
+            Some(Adjustment::Threshold(1))
+        );
+        assert_eq!(
+            decode_adjustment(&encode_brightness_contrast(999, -999)),
+            Some(Adjustment::BrightnessContrast(BrightnessContrastParams {
+                brightness: 150,
+                contrast: -50,
+                use_legacy: false,
+            }))
+        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
+#include <QtCore/QSignalBlocker>
 #include <QtCore/QSet>
 #include <QtCore/QTimer>
 #include <QtGui/QImage>
@@ -7,6 +8,12 @@
 #include <QtGui/QPainter>
 #include <QtGui/QWheelEvent>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QDockWidget>
+#include <QtWidgets/QListWidget>
+#include <QtWidgets/QMainWindow>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QWidget>
 
 #include <cmath>
@@ -150,10 +157,69 @@ int main(int argc, char* argv[])
     }
     const QImage image = view.image();
 
-    ImageView window;
-    window.setImage(image);
-    window.resize(900, 650);
-    window.show();
+    QMainWindow mainWindow;
+    ImageView* window = new ImageView(&mainWindow);
+    window->setImage(image);
+    mainWindow.setCentralWidget(window);
+    mainWindow.resize(1100, 700);
+
+    // Layer dock: visibility checkboxes, adjustment add, remove.
+    auto* dock = new QDockWidget(QStringLiteral("Layers"), &mainWindow);
+    auto* panel = new QWidget(dock);
+    auto* panelLayout = new QVBoxLayout(panel);
+    auto* layerList = new QListWidget(panel);
+    layerList->setSelectionMode(QAbstractItemView::SingleSelection);
+    panelLayout->addWidget(layerList, 1);
+
+    auto* adjustmentCombo = new QComboBox(panel);
+    adjustmentCombo->addItem(QStringLiteral("Invert"), QStringLiteral("invert"));
+    adjustmentCombo->addItem(QStringLiteral("Posterize"), QStringLiteral("posterize"));
+    adjustmentCombo->addItem(QStringLiteral("Threshold"), QStringLiteral("threshold"));
+    adjustmentCombo->addItem(QStringLiteral("Brightness/Contrast"),
+                             QStringLiteral("brightness-contrast"));
+    adjustmentCombo->addItem(QStringLiteral("Hue/Saturation"), QStringLiteral("hue-saturation"));
+    panelLayout->addWidget(adjustmentCombo);
+
+    auto* addButton = new QPushButton(QStringLiteral("Add Adjustment"), panel);
+    auto* removeButton = new QPushButton(QStringLiteral("Remove Layer"), panel);
+    panelLayout->addWidget(addButton);
+    panelLayout->addWidget(removeButton);
+
+    dock->setWidget(panel);
+    mainWindow.addDockWidget(Qt::RightDockWidgetArea, dock);
+
+    // Rebuild the list and re-display the composite after any layer change.
+    auto refresh = [&]() {
+        QSignalBlocker blocker(layerList);
+        layerList->clear();
+        const int count = view.layer_count();
+        for (int i = 0; i < count; ++i) {
+            auto* item = new QListWidgetItem(QStringLiteral("%1  [%2]")
+                                                 .arg(view.layer_name(i), view.layer_kind(i)));
+            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+            item->setCheckState(view.layer_visible(i) ? Qt::Checked : Qt::Unchecked);
+            layerList->addItem(item);
+        }
+        window->setImage(view.image());
+    };
+
+    QObject::connect(layerList, &QListWidget::itemChanged, &mainWindow, [&](QListWidgetItem* item) {
+        view.set_layer_visible(layerList->row(item), item->checkState() == Qt::Checked);
+    });
+    QObject::connect(addButton, &QPushButton::clicked, &mainWindow, [&]() {
+        if (view.add_adjustment(adjustmentCombo->currentData().toString())) {
+            refresh();
+            layerList->setCurrentRow(layerList->count() - 1);
+        }
+    });
+    QObject::connect(removeButton, &QPushButton::clicked, &mainWindow, [&]() {
+        view.remove_layer(layerList->currentRow());
+        refresh();
+    });
+    QObject::connect(&view, &pictura::PictureView::changed, &mainWindow, [&]() { refresh(); });
+
+    refresh();
+    mainWindow.show();
 
     if (selfTest) {
         std::fprintf(stderr,
@@ -240,18 +306,85 @@ int main(int argc, char* argv[])
                     return 8;
                 }
             }
+
+            // M4-C: add an Invert adjustment layer over the stack and verify the
+            // composite changed as expected (red -> cyan, blue -> yellow).
+            const QImage beforeAdjust = view.image();
+            const bool added = view.add_adjustment(QStringLiteral("invert"));
+            const QImage adjusted = view.image();
+            const int layerCount = view.layer_count();
+            std::fprintf(stderr,
+                         "pictura self-test: add_adjustment(invert)=%d layers=%d last_kind=%s\n",
+                         added ? 1 : 0,
+                         layerCount,
+                         view.layer_kind(layerCount - 1).toLocal8Bit().constData());
+            std::fflush(stderr);
+            if (!added || layerCount != 3
+                || view.layer_kind(layerCount - 1) != QStringLiteral("adjustment")) {
+                std::fprintf(stderr, "pictura self-test: FAIL: invert adjustment not added\n");
+                return 9;
+            }
+            const QRgb atl = adjusted.pixel(2, 2);
+            const QRgb abr = adjusted.pixel(6, 6);
+            std::fprintf(stderr,
+                         "pictura self-test: adjusted tl=(%d,%d,%d,a%d) br=(%d,%d,%d,a%d)\n",
+                         qRed(atl),
+                         qGreen(atl),
+                         qBlue(atl),
+                         qAlpha(atl),
+                         qRed(abr),
+                         qGreen(abr),
+                         qBlue(abr),
+                         qAlpha(abr));
+            std::fflush(stderr);
+            const bool cyan = qRed(atl) < 60 && qGreen(atl) > 200 && qBlue(atl) > 200
+                              && qAlpha(atl) == 255;
+            const bool yellow = qRed(abr) > 200 && qGreen(abr) > 200 && qBlue(abr) < 60
+                                && qAlpha(abr) == 255;
+            if (!cyan || !yellow) {
+                std::fprintf(stderr, "pictura self-test: FAIL: invert composite wrong\n");
+                return 10;
+            }
+            if (beforeAdjust == adjusted) {
+                std::fprintf(stderr, "pictura self-test: FAIL: adjustment did not change image\n");
+                return 11;
+            }
+
+            // Toggle the bottom pixel layer's visibility: the output must change.
+            if (!view.layer_visible(0)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: base layer not visible\n");
+                return 12;
+            }
+            view.set_layer_visible(0, false);
+            const QImage hidden = view.image();
+            bool differs = false;
+            for (int y = 0; y < hidden.height() && !differs; ++y) {
+                for (int x = 0; x < hidden.width(); ++x) {
+                    if (hidden.pixel(x, y) != adjusted.pixel(x, y)) {
+                        differs = true;
+                        break;
+                    }
+                }
+            }
+            std::fprintf(stderr, "pictura self-test: visibility_change=%d\n", differs ? 1 : 0);
+            std::fflush(stderr);
+            if (!differs || view.layer_visible(0)) {
+                std::fprintf(stderr,
+                             "pictura self-test: FAIL: visibility toggle did not change output\n");
+                return 13;
+            }
         }
-        const QPointF center(window.width() / 2.0, window.height() / 2.0);
-        window.zoomAt(center, 120);
-        const QPointF afterZoom = window.offset();
-        window.panBy(QPointF(10.0, 5.0));
-        if (window.zoom() <= 1.0 || window.offset() != afterZoom + QPointF(10.0, 5.0)) {
+        const QPointF center(window->width() / 2.0, window->height() / 2.0);
+        window->zoomAt(center, 120);
+        const QPointF afterZoom = window->offset();
+        window->panBy(QPointF(10.0, 5.0));
+        if (window->zoom() <= 1.0 || window->offset() != afterZoom + QPointF(10.0, 5.0)) {
             std::fprintf(stderr, "pictura self-test: FAIL: zoom/pan transform wrong\n");
             return 3;
         }
         std::fprintf(stderr,
                      "pictura self-test: zoom=%.3f pan_ok=1\n",
-                     window.zoom());
+                     window->zoom());
         std::fflush(stderr);
         QTimer::singleShot(2000, &app, &QCoreApplication::quit);
     }
