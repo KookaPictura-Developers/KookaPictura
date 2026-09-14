@@ -1,0 +1,27 @@
+# Rust
+/target
+**/target
+
+# CMake / Qt build output
+/build
+/build-*
+/cmake-build-*
+*.user
+
+# Node (openspec tooling)
+node_modules/
+.opencode/node_modules/
+
+# Rust tooling caches
+.sccache
+.cache
+
+# Packaging artifacts
+/dist
+*.AppImage
+*.flatpak
+*.snap
+
+# OS / editor
+.DS_Store
+*.swp

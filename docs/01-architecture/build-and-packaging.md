@@ -13,6 +13,12 @@ obligations. Nothing here is implemented; this is a design specification.
 Tooling names are **design proposals** unless they are documented Qt/Flatpak
 mechanisms.
 
+> **Decision (2026-09):** distribution is **Flatpak (primary) + native
+> `.deb`/`.rpm` only**. Snap and AppImage are **dropped** from scope — Snap's
+> confinement fights GPU/scratch access, and AppImage's bundled/static Qt raises
+> LGPLv3 relinking obligations and has fragile Wayland support. The Snap/AppImage
+> material below is retained as rationale for the rejection, not as a target.
+
 ## CS6 behavior
 
 Not applicable: CS6 shipped as installer/updater bundles for Windows and macOS,
@@ -52,8 +58,8 @@ Build-time switches and runtime environment knobs the packaging must expose.
 | Sandbox socket | Flatpak manifest | `wayland` + `fallback-x11` | — | From Flatpak's documented Qt example. |
 | DRM device access | Flatpak manifest | `--device=dri` | — | Required for GPU rendering in the sandbox. |
 | IPC sharing | Flatpak manifest | `--share=ipc` | — | X11/shm performance. |
-| Scratch directory | Runtime pref | XDG data dir | any writable path | Must survive Flatpak/Snap sandboxing. |
-| Package format | Build target | `deb` | `deb`, `rpm`, `flatpak`, `appimage`, `snap` | CI matrix, not a user control. |
+| Scratch directory | Runtime pref | XDG data dir | any writable path | Must survive Flatpak sandboxing. |
+| Package format | Build target | `flatpak` | `flatpak`, `deb`, `rpm` | CI matrix, not a user control. Snap/AppImage dropped (decision above). |
 
 ## Algorithms & pipeline
 
@@ -90,13 +96,12 @@ as a third-party Qt6 fork for AppImage-style bundling but is not official.
 | Format | Mechanism (documented) | Strengths | Constraints |
 |---|---|---|---|
 | **Flatpak** | `org.kde.Platform` + `org.kde.Sdk` runtime; `buildsystem: cmake-ninja`; `finish-args: --share=ipc --socket=fallback-x11 --socket=wayland --device=dri` | Distro-agnostic, sandboxed, bundled Qt/KF | Sandbox limits scratch/file access; needs portals; Mesa/driver comes from host. |
-| **AppImage** | Bundle Qt libs + QPA plugins (`platforms/libqxcb.so`, `wayland`) into an AppDir; run via launcher script setting `LD_LIBRARY_PATH` or RPATH | Runs anywhere, no install | Bundled Qt/driver assumptions; Wayland support is fragile (needs `qt6-wayland` platform plugin and `QT_QPA_PLATFORM`). |
-| **Snap** | `snapcraft.yaml` with `qt6` plugin/base, `plugs` for `opengl`, `wayland`, `x11`, `home`, `removable-media` | Auto-updates, confinement | Strict confinement frequently fights GPU/scratch paths; classic confinement often needed. |
+| ~~**AppImage**~~ *(dropped)* | Bundle Qt libs + QPA plugins into an AppDir | Runs anywhere, no install | Bundled/static Qt raises LGPLv3 relinking obligations; Wayland support fragile. |
+| ~~**Snap**~~ *(dropped)* | `snapcraft.yaml` with `qt6` plugin/base | Auto-updates, confinement | Strict confinement fights GPU/scratch paths; classic confinement often needed. |
 | **Native `.deb` / `.rpm`** | CPack (`-G DEB`, `-G RPM`) or distro packaging; `Depends: qt6-*`, `lcms2`, driver libs | Smallest, best desktop integration | Must match distro Qt versions; too many distros to cover directly. |
 
-Recommended release set (proposal): **Flatpak** as the primary sandboxed build,
-**native `.deb`/`.rpm`** for mainstream distros, and **AppImage** as the portable
-fallback. Snap optional; its confinement burden may not be justified.
+Decided release set: **Flatpak** as the primary sandboxed build and **native
+`.deb`/`.rpm`** for mainstream distros. Snap and AppImage are out of scope.
 
 ### Display server support (X11 + Wayland)
 
@@ -109,8 +114,8 @@ Qt exposes both through QPA plugins: `-platform xcb` (X11) and
 - Wayland is stricter than X11 for legacy functionality (the Qt doc explicitly
   warns about this), so global-shortcut-style and screen-capture features need
   portal-based paths, not X11 hacks.
-- AppImage is the weakest for Wayland: verify the bundled `wayland` platform
-  plugin exists and document `QT_QPA_PLATFORM=wayland` as the opt-in.
+- AppImage is **out of scope** (see the decision at the top); its Wayland
+  fragility is part of why it was dropped.
 - Mixed-DPI multi-monitor is a known Wayland pain point; see Open questions.
 
 ### GPU driver assumptions
@@ -196,16 +201,14 @@ Compliance rules for the release team:
 
 None. Packaging does not change document state. It does constrain where state may
 live: preferences, scratch, and autosave must route through `QStandardPaths`/XDG
-so they remain writable inside Flatpak/Snap sandboxes.
+so they remain writable inside the Flatpak sandbox.
 
 ## Edge cases
 
 - **Flatpak scratch:** a sandboxed app cannot use an arbitrary host path; scratch
   must live under the app's granted directories or be exposed via portal.
-- **AppImage + Wayland:** missing `wayland` platform plugin or `QT_QPA_PLATFORM`
-  causes XWayland fallback or launch failure.
-- **Snap confinement:** GPU and removable-media access often require manual
-  interfaces; classic confinement is a common escape hatch and needs review.
+- **AppImage / Snap:** dropped targets (see the decision at the top); their
+  Wayland and confinement problems are the reasons, not open issues.
 - **No Vulkan ICD / broken driver:** first-run detection must fall back to
   OpenGL, then software, and report clearly.
 - **Distro Qt version skew:** native packages linked against an older Qt must
@@ -223,8 +226,8 @@ so they remain writable inside Flatpak/Snap sandboxes.
    a PSD, and uses the host GPU via `--device=dri`.
 2. Given a distro with Qt6 installed, the native `.deb` (or `.rpm`) installs,
    registers MIME handlers for PSD/PSB, and launches from the desktop menu.
-3. Given an AppImage on a Wayland session, the app launches with
-   `QT_QPA_PLATFORM=wayland` and renders; with `xcb` it runs under XWayland.
+3. Given a native or Flatpak build on a Wayland session, the app launches with
+   the `wayland` QPA plugin and renders; with `xcb` it runs under XWayland.
 4. Given a machine without Vulkan, the app selects OpenGL; with neither, it
    selects the software path and still opens a document.
 5. Given any package, `--version` reports build, Qt, GPU backend, and codec
@@ -249,10 +252,6 @@ so they remain writable inside Flatpak/Snap sandboxes.
 
 ## Open questions
 
-- **Qt licensing choice** (LGPLv3 dynamic vs. GPL static/commercial) is unresolved and blocks the AppImage/static decision. *Resolves with:* legal review recorded in `licensing-and-independent-creation.md`.
-- **Primary package format** is a product decision. *Resolves with:* a distribution-strategy decision; Flatpak is the working default.
-- **Snap viability** under GPU/scratch confinement is unknown. *Resolves with:* a confinement prototype.
-- **AppImage Wayland reliability** with a bundled Qt 6 is unverified. *Resolves with:* a Wayland CI smoke test on multiple desktops (GNOME/KDE/Hyprland).
+- **Qt licensing choice** (LGPLv3 dynamic vs. GPL static/commercial) is unresolved; it no longer blocks AppImage (dropped), but still governs Flatpak/native linking. *Resolves with:* legal review recorded in `licensing-and-independent-creation.md`.
 - **Minimum Vulkan/OpenGL versions** to support are not fixed. *Resolves with:* a hardware survey and a documented support matrix.
 - **Architecture coverage** (x86_64 only, or aarch64 too) is undecided. *Resolves with:* CI capacity and a target-user decision.
-- **Whether `linuxdeployqt-qt6` is needed at all** given the Qt ≥6.5 CMake deploy API. *Resolves with:* an AppImage spike using only CMake deployment.

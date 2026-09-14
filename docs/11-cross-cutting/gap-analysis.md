@@ -85,6 +85,7 @@ CS6 behavior without an `## Open questions` entry.
 - **Adobe plugin binaries (`.8bf`)** — wrong ABI and license-gated. (`AUTO-012`)
 - **Native print parity** — CUPS/Qt6 path proposed; some CS6 print features (DEVMODE/NSPrintInfo, 16-bit data) are explicit non-goals. (`WF-013`)
 - **Post-CS6 features that contaminated the brief** — Camera Raw filter, Shake Reduction, Face-Aware Liquify, Path/Spin Blur, Flame/Tree/Picture Frame, Color Themes panel, live-shape corner editing, linked SO, artboards. All documented as non-parity.
+- **Snap and AppImage packaging** — dropped in favour of **Flatpak + native `.deb`/`.rpm`** (confinement fights GPU/scratch paths; static Qt raises LGPLv3 relinking obligations). (`ARCH-014`)
 
 ## Risk register
 
