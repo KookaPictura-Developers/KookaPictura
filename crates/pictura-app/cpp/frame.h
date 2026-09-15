@@ -13,6 +13,7 @@ class QDockWidget;
 class QLabel;
 class QListWidget;
 class QTabWidget;
+class QTimer;
 
 namespace pictura {
 
@@ -118,6 +119,7 @@ private:
     void buildStatusBar();
     void registerHandlers();
     void retargetDock();
+    void refreshPanels();
     void updateStatus();
     void updateToolHint();
     void updateTabTitle(int index);
@@ -129,6 +131,7 @@ private:
 
     QList<DocEntry> docs_;
     QTabWidget* tabs_ = nullptr;
+    QTimer* panelRefreshTimer_ = nullptr;
     CommandRegistry* registry_ = nullptr;
     LayersPanel* layersPanel_ = nullptr;
     HistoryPanel* historyPanel_ = nullptr;

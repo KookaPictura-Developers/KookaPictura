@@ -222,6 +222,17 @@ pub mod qobject {
         #[qinvokable]
         fn translate_layer(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
 
+        /// Shift the topmost pixel layer by `(dx, dy)` for a live drag preview:
+        /// recomposite and emit [`changed`] but DO NOT add history or mark dirty.
+        /// Returns false without a raster layer or for a zero delta.
+        #[qinvokable]
+        fn move_preview(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
+
+        /// Commit an in-progress move: capture one "Move Layer" history state,
+        /// mark dirty, and recomposite. Returns false when the document is missing.
+        #[qinvokable]
+        fn commit_move(self: Pin<&mut Self>) -> bool;
+
         /// The composited pixel at `(x, y)` as `0xAARRGGBB`, or 0 when there is
         /// no document or the point is out of bounds.
         #[qinvokable]
@@ -941,6 +952,36 @@ impl qobject::PictureView {
             self.recomposite();
         }
         moved
+    }
+
+    pub fn move_preview(mut self: Pin<&mut Self>, dx: i32, dy: i32) -> bool {
+        if dx == 0 && dy == 0 {
+            return false;
+        }
+        let moved = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::translate_layer(doc, dx, dy)
+        };
+        if moved {
+            let image = self.rust().doc.as_ref().map(document_to_image);
+            if let Some(image) = image {
+                self.as_mut().rust_mut().image = image;
+            }
+            self.changed();
+        }
+        moved
+    }
+
+    pub fn commit_move(mut self: Pin<&mut Self>) -> bool {
+        if self.rust().doc.is_none() {
+            return false;
+        }
+        self.as_mut().record("Move Layer");
+        self.recomposite();
+        true
     }
 
     pub fn sample_argb(&self, x: i32, y: i32) -> u32 {

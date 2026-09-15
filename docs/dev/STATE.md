@@ -342,6 +342,34 @@ openspec validate --all --strict
   `openspec validate --all --strict` 53/53 pre-archive. OpenSpec change
   m24-panel-rail (capability panel-rail; MODIFIED application-shell), archived.
 
+## Canvas viewport & performance (post-M24 pass)
+
+Not an OpenSpec capability — a correctness/performance pass; the intended
+behaviour (move-tool behaviour, budget, suspected bottlenecks, acceptance
+checks) is written up in `docs/dev/canvas-view-spec.md`.
+
+- `image_view.{h,cpp}`: `setImage` now fits-and-centres (fit when the image
+  exceeds the viewport, else 100 % centred) and re-applies that initial view on
+  resize until the user pans/zooms; middle-button drag pans the canvas
+  regardless of the active tool; `fitOnScreen`/`actualPixels` re-arm the
+  initial view.
+- `frame.{h,cpp}`: `refresh()` keeps the canvas/status/menu updates synchronous
+  but defers the expensive panel refresh (`retargetDock`) behind a single-shot
+  120 ms `QTimer`, so a burst of `changed` signals no longer blocks the canvas
+  repaint; tab add/remove/switch force an immediate panel refresh.
+- `cxxqt_object.rs` + `tools.cpp`: the Move tool previews live —
+  `move_preview(dx, dy)` shifts the topmost pixel layer, recomposites and emits
+  `changed` without adding history; on release `commit_move()` records exactly
+  one "Move Layer" state, and undo restores the pre-drag pixels.
+
+Self-test exit codes 64–66, measured identically on fixture and no-argument
+runs: `m25_centre offset=(270.691, 5) zoom=1`; `m25_middle_pan delta=(30,15)`;
+`m25_move preview=1 hist=1 undo=1`. Gates green: `cmake --build build`; both
+self-tests exit 0; `cargo fmt/clippy/test` clean (no new Rust tests; the app
+crate stays green). The headless self-test cannot measure frame timing, so the
+interactive feel (pan/zoom/move latency on large documents) still needs a real
+GUI check.
+
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`

@@ -24,9 +24,38 @@ ImageView::ImageView(QWidget* parent)
 void ImageView::setImage(const QImage& image)
 {
     image_ = image;
-    zoom_ = 1.0;
-    offset_ = QPointF();
+    userAdjusted_ = false;
+    if (image_.isNull()) {
+        zoom_ = 1.0;
+        offset_ = QPointF();
+        update();
+        return;
+    }
+    applyInitialView();
+}
+
+void ImageView::applyInitialView()
+{
+    if (image_.isNull()) {
+        return;
+    }
+    if (image_.width() > width() || image_.height() > height()) {
+        const double fit = std::min(double(width()) / image_.width(),
+                                    double(height()) / image_.height())
+                           * 0.95;
+        zoom_ = std::clamp(fit, kMinZoom, kMaxZoom);
+    } else {
+        zoom_ = 1.0;
+    }
+    centreImage();
+    emit zoomChanged(zoom_);
     update();
+}
+
+void ImageView::centreImage()
+{
+    offset_ = QPointF((width() - image_.width() * zoom_) / 2.0,
+                      (height() - image_.height() * zoom_) / 2.0);
 }
 
 void ImageView::replaceImage(const QImage& image)
@@ -43,6 +72,7 @@ void ImageView::zoomAt(const QPointF& cursor, int angleDelta)
 
 void ImageView::panBy(const QPointF& delta)
 {
+    userAdjusted_ = true;
     offset_ += delta;
     update();
 }
@@ -59,6 +89,7 @@ void ImageView::zoomOut()
 
 void ImageView::fitOnScreen()
 {
+    userAdjusted_ = false;
     if (image_.isNull()) {
         return;
     }
@@ -74,6 +105,7 @@ void ImageView::fitOnScreen()
 
 void ImageView::actualPixels()
 {
+    userAdjusted_ = false;
     zoom_ = 1.0;
     offset_ = image_.isNull()
                   ? QPointF()
@@ -140,8 +172,14 @@ void ImageView::wheelEvent(QWheelEvent* event)
 
 void ImageView::mousePressEvent(QMouseEvent* event)
 {
-    if (panEnabled_ && event->button() == Qt::LeftButton) {
+    if (event->button() == Qt::MiddleButton) {
         panning_ = true;
+        userAdjusted_ = true;
+        last_ = event->position();
+        setCursor(Qt::ClosedHandCursor);
+    } else if (panEnabled_ && event->button() == Qt::LeftButton) {
+        panning_ = true;
+        userAdjusted_ = true;
         last_ = event->position();
     } else {
         emit mousePressed(widgetToImage(event->position()), event->button(),
@@ -152,7 +190,8 @@ void ImageView::mousePressEvent(QMouseEvent* event)
 
 void ImageView::mouseMoveEvent(QMouseEvent* event)
 {
-    if (panning_ && (event->buttons() & Qt::LeftButton)) {
+    const Qt::MouseButtons buttons = event->buttons();
+    if (panning_ && (buttons & (Qt::MiddleButton | Qt::LeftButton))) {
         panBy(event->position() - last_);
         last_ = event->position();
     } else {
@@ -163,13 +202,27 @@ void ImageView::mouseMoveEvent(QMouseEvent* event)
 
 void ImageView::mouseReleaseEvent(QMouseEvent* event)
 {
-    panning_ = false;
+    if (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton) {
+        panning_ = false;
+    }
+    if (event->button() == Qt::MiddleButton) {
+        unsetCursor();
+    }
     emit mouseReleased(widgetToImage(event->position()));
     QWidget::mouseReleaseEvent(event);
 }
 
+void ImageView::resizeEvent(QResizeEvent* event)
+{
+    if (!userAdjusted_ && !image_.isNull()) {
+        applyInitialView();
+    }
+    QWidget::resizeEvent(event);
+}
+
 void ImageView::setZoom(double zoom, const QPointF& anchor)
 {
+    userAdjusted_ = true;
     const double target = std::clamp(zoom, kMinZoom, kMaxZoom);
     const double factor = (zoom_ > 0.0) ? target / zoom_ : 1.0;
     offset_ = anchor - (anchor - offset_) * factor;

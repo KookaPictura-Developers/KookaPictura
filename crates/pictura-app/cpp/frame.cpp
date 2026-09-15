@@ -24,6 +24,7 @@
 
 #include <QtCore/QFileInfo>
 #include <QtCore/QSignalBlocker>
+#include <QtCore/QTimer>
 #include <QtGui/QAction>
 #include <QtGui/QActionGroup>
 #include <QtGui/QCloseEvent>
@@ -87,7 +88,18 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
         restoreState(state.layout);
     }
 
-    connect(tabs_, &QTabWidget::currentChanged, this, [this](int) { refresh(); });
+    // Expensive panel work (layer thumbnails, histogram) is coalesced off the
+    // paint-dab/commit path so the canvas can repaint first.
+    panelRefreshTimer_ = new QTimer(this);
+    panelRefreshTimer_->setSingleShot(true);
+    panelRefreshTimer_->setInterval(120);
+    connect(panelRefreshTimer_, &QTimer::timeout, this, &PicturaMainWindow::refreshPanels);
+
+    connect(tabs_, &QTabWidget::currentChanged, this, [this](int) {
+        refresh();
+        panelRefreshTimer_->stop();
+        refreshPanels();
+    });
     connect(tabs_, &QTabWidget::tabCloseRequested, this,
             [this](int index) { closeDocument(index, true); });
 
@@ -270,6 +282,8 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
         rememberRecent(path);
     }
     refresh();
+    panelRefreshTimer_->stop();
+    refreshPanels();
     return index;
 }
 
@@ -384,6 +398,8 @@ void PicturaMainWindow::removeDocument(int index)
     delete entry.canvas;
     delete entry.view;
     refresh();
+    panelRefreshTimer_->stop();
+    refreshPanels();
 }
 
 void PicturaMainWindow::showNewDocumentDialog()
@@ -552,6 +568,11 @@ void PicturaMainWindow::retargetDock()
     }
 }
 
+void PicturaMainWindow::refreshPanels()
+{
+    retargetDock();
+}
+
 void PicturaMainWindow::refresh()
 {
     const int index = activeDocumentIndex();
@@ -569,7 +590,7 @@ void PicturaMainWindow::refresh()
         tools_->bindCanvas(canvas);
     }
 
-    retargetDock();
+    panelRefreshTimer_->start();
     updateStatus();
     if (registry_) {
         registry_->refresh();

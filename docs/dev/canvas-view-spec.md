@@ -1,0 +1,367 @@
+# Canvas & View Behaviour Spec
+
+- **Status:** dev note (not a milestone proposal)
+- **Scope:** how the document canvas/view should behave, the Move-tool drag
+  contract, and the interactive performance budget. Written against the
+  implementation at `crates/pictura-app` (ImageView, ToolController, frame) and
+  `PictureView` (cxxqt_object.rs).
+- **Companion specs:** `03-tools/hand-and-zoom.md` (TOOL-042),
+  `03-tools/move-and-transform.md` (TOOL-001),
+  `02-ui-ux/panels/navigator-panel.md` (PAN-014),
+  `02-ui-ux/application-frame.md` (UI-001),
+  `01-architecture/performance-targets.md` (ARCH-013),
+  `01-architecture/gpu-rendering-pipeline.md` (ARCH-006).
+
+Facts below are marked **CS6** (stated in the archived CS6 Help PDF or a
+first-party Adobe page), **CS6-sec** (secondary/community but consistent), or
+**[ext]** (an Kooka Pictura extension that CS6 does *not* do by default).
+
+---
+
+## 1. Intended canvas behaviour
+
+### 1.1 Initial view on open/new
+
+- **CS6-sec:** an image opens **Fit-to-Screen** when it is larger than the
+  window, and centred; a document that already fits opens at 100%. Adobe
+  support and current-product docs describe Fit-on-Screen as the default open
+  view, and users ask how to *disable* it, which confirms it is the default.
+  The CS6 Help PDF documents `View > Fit On Screen` and `100%` but does **not**
+  print the open default, so the "fit when larger" rule is secondary-confirmed,
+  not PDF-confirmed.
+- **CS6:** zoom and scroll are **view state**, not document content; they are
+  not history states and must not appear in the History panel.
+- **Current code:** `ImageView::setImage` resets `zoom_ = 1.0` and
+  `offset_ = QPointF()` (`image_view.cpp:24`). `(0,0)` is the **top-left**, not
+  centre, so a document opens pinned top-left at 100%. `Frame::addDocument`
+  calls `setImage` (`frame.cpp:251`), and `fitOnScreen`/`actualPixels` are never
+  called on open.
+- **Required:** after a document is loaded, set the view to fit-and-centre when
+  the document exceeds the viewport, else 100% centred. Reuse
+  `ImageView::fitOnScreen` (it already computes `min(w/doc_w, h/doc_h) * 0.95`
+  and centres) rather than reimplementing the math. `setImage` should centre
+  even in the 100% case (its own doc comment already claims "centred"; the code
+  contradicts it).
+- **Scroll bars / overscroll** are part of CS6 Standard Screen Mode (UI-001);
+  out of scope for this note beyond "the view must be centre-able and pannable".
+
+### 1.2 Zoom
+
+| Action | Gesture | Status |
+|---|---|---|
+| Fit on screen | `Ctrl+0`, double-click Hand, options-bar Fit | **CS6** |
+| 100% (Actual Pixels) | `Ctrl+1`, `View > Actual Pixels` (CS6 label) | **CS6** |
+| Zoom In / Zoom Out | `Ctrl++` / `Ctrl+-`, next preset step | **CS6** |
+| Zoom tool click | next preset step, centred on click point | **CS6** |
+| Wheel zoom | `Zoom With Scroll Wheel` preference (default off in Photoshop) | **CS6**; this app's wheel zoom is always-on, i.e. a deviation to note |
+| Max / min | 3200% max, 1-pixel effective min; Zoom In/Out disable at bounds | **CS6** |
+
+- **CS6:** the zoom ladder is a **preset sequence**, not a fixed multiplier.
+  Only 25 / 33.3 / 50 / 66.7 / 100 are sourced; the full ladder
+  (1, 2, 3, 4, 6, 8, 12, 16, 25, 33.3, 50, 66.7, 100, 200, 300, 400, 600, 800,
+  1200, 1600, 2400, 3200 %) is inferred. Exact CS6 set remains unverified
+  (open question in TOOL-042).
+- **Current code:** `zoomIn`/`zoomOut` step by a fixed ×1.2/÷1.2, and the wheel
+  uses `pow(1.0015, angleDelta)` (`image_view.cpp:38-58`). Neither follows a
+  preset ladder. The spec requirement is the ladder; the exact fraction is a
+  follow-up decision (recommend matching the CS6-observed 25/33.3/50/66.7/100).
+- Zoom must not resample or reallocate the document; it is a view transform
+  (`ARCH-006` says the transform belongs to the view). Current paint already
+  does this: `paintEvent` scales the `QPainter` (`image_view.cpp:124-126`).
+
+### 1.3 Pan
+
+- **CS6:** Hand tool + drag pans. Holding `Space` with another tool temporarily
+  gives the Hand tool. Flick panning (OpenGL) is a release-momentum extension.
+- **CS6:** the Navigator panel's proxy box pans; the scroll bars pan.
+- **Current code:** panning is wired only when `panEnabled_` is true, and
+  `setPanEnabled(active_ == ToolId::Hand)` (`tools.cpp:194`, `image_view.cpp:143`).
+  So panning works with the Hand tool but **not** with Space (no key handling
+  exists), and middle-drag is not handled at all.
+- **Required:** middle-button drag pans the canvas **regardless of the active
+  tool**; the cursor should reflect a pan (open/closed hand). Middle-drag with
+  the left button also held may switch to the rotate/zoom-box form as CS6 does,
+  but that is optional here.
+- **[ext] Middle-mouse pan is an Kooka Pictura extension.** CS6 does **not** pan
+  on middle-drag by default; community threads and third-party AutoHotkey
+  scripts exist specifically to add it. Implement it deliberately as an
+  extension, documented as such.
+- **CS6-sec:** Space+drag is CS6 behaviour and should be added; it is currently
+  missing. It differs from middle-drag (which is the extension) and should be
+  implemented too.
+
+### 1.4 Status-bar zoom readout
+
+- **CS6:** the status bar is at the bottom of every document window and shows the
+  current **magnification** and file size; its triangle opens the view-option
+  menu (Document Sizes, Document Profile, Document Dimensions, Scratch Sizes,
+  Efficiency, Timing, Current Tool, …). The zoom field is editable.
+- **Current code:** `zoomLabel_` reads `canvas->zoom() * 100`
+  (`frame.cpp:1322-1343`), updated on `zoomChanged` and on frame refresh. This is
+  the right source of truth. Keep all zoom surfaces (status bar, Navigator,
+  View menu, Zoom tool) reading/writing the one `ImageView` zoom.
+
+### 1.5 Navigator relationship
+
+- **CS6:** the Navigator thumbnail shows the whole artwork; the proxy/view box
+  maps the viewport. Drag the box (or click the thumbnail) to pan, drag the
+  slider / type a value / use the mountain buttons to zoom, `Ctrl`/`Cmd`-drag
+  to set size+position at once. Panel zoom and the status-bar zoom are the same
+  value.
+- **Current code:** `NavigatorPanel` owns a slider and Fit / 100% buttons, fed
+  by `syncFromCanvas()` and `ImageView::zoomChanged` (`navigator_panel.cpp`).
+  It is a separate `QWidget` custom paint, not the GPU pyramid CS6 uses.
+- **Required:** Navigator stays in sync with the canvas transform, and its
+  repaint must be **coalesced/throttled** so it does not repaint the full
+  composite on every `changed` (see §4). The thumbnail should derive from the
+  existing display image, not trigger a new full composite.
+
+### 1.6 Behaviour summary
+
+| Behaviour | Source | Current code |
+|---|---|---|
+| Open fit-and-centre when larger than window | CS6-sec | missing (opens top-left, 100%) |
+| 100% centred on `Ctrl+1` | CS6 | `actualPixels` centres, but not bound to shortcut |
+| Fit on `Ctrl+0` | CS6 | `fitOnScreen` exists, binding status to verify |
+| Preset zoom ladder | CS6 (exact set inferred) | fixed ×1.2 |
+| Wheel zoom about cursor | CS6 pref; always-on here | present (`zoomAt`) |
+| Hand-tool drag pan | CS6 | present |
+| Space+drag pan | CS6 | missing |
+| Middle-drag pan | **[ext]** | missing |
+| Navigator pan/zoom, synced | CS6 | present, but unthrottled |
+| Status-bar zoom readout | CS6 | present |
+
+---
+
+## 2. Move tool behaviour
+
+- **CS6:** with the Move tool, dragging "drags any object onto one of the
+  selected layers; all objects on the layer move together." The layer content
+  visibly follows the pointer during the drag; the pointer does not wait for the
+  button to be released. Arrow keys nudge 1 px, `Shift`+arrow 10 px.
+- **CS6-sec:** a series of nudges counts as **one** history step; by extension a
+  single drag is one committed move. One history state per commit.
+- **CS6:** `Show Transform Controls` (formerly *Show Bounding Box*) draws a
+  bounding box + handles on the active layer/selection; the handles drive
+  scale/rotate without entering Free Transform. `View > Show > Layer Edges`
+  outlines the selected layer's content.
+- **Current code:** `ToolController::handleMoved` for `Move` only accumulates
+  `totalDelta_` and returns (`tools.cpp:301-305`); the document is not touched
+  until `handleReleased`, which calls `PictureView::translate_layer`
+  (`tools.cpp:350-357`). So there is no live preview: the layer jumps on
+  mouse-up. That is the reported 1–2 s delay (the drag duration plus the commit
+  cost).
+- **Required:**
+  - Preview the moved layer **live** during the drag. Cheapest correct form:
+    draw the composited image with an offset translation for the active layer
+    (or a simple visual offset of the whole composite while the drag is in
+    progress), rather than recompositing per mouse-move. A true per-layer live
+    composite is the eventual form (`ARCH-006` dirty-rect recompose), but the
+    minimum acceptable preview is "the pixels follow the cursor at frame rate".
+  - Show feedback while dragging: the moved layer's bounding-box outline (or
+    the `Show Transform Controls` box + handles when the option is on).
+  - Commit **once**, on mouse-up, with exactly **one** history state ("Move
+    Layer"). Nudges with the arrow keys should also collapse into a single
+    history state per burst.
+  - The live preview is transient and **not** undoable; `Ctrl+Z` after a move
+    reverts the whole move in one step.
+  - Out of scope here: Auto-Select, Align/Distribute, Free Transform handles,
+    `Alt`-drag duplicate. They belong to TOOL-001.
+
+---
+
+## 3. Performance budget
+
+### 3.1 Existing targets (ARCH-013)
+
+| Workload | Metric | Budget | Basis |
+|---|---|---|---|
+| Pan (drag) | Frame rate | 60 FPS sustained, 24 MP doc | Target |
+| Zoom (scrubby/continuous) | Frame rate | 60 FPS sustained, 24 MP doc | Target |
+| Rotate view | Frame rate | 60 FPS, 24 MP doc | Target |
+| Brush stroke | Input-to-first-pixel | ≤ 16 ms | Target |
+| Brush stroke | Sustained updates | 120 Hz sampling, ≥ 60 FPS redraw | Target |
+| Open document, 100 MB PSD | Time | ≤ 2 s | Target |
+| Cold start | Time to interactive | ≤ 3 s | Target |
+
+Frame decomposition for pan/zoom: 16.6 ms total; input ≤ 1 ms, core tile gather
+≤ 3 ms, GPU composite + present ≤ 8 ms, Qt scene-graph ≤ 2 ms, slack ≤ 2 ms. No
+more than 10 ms may be spent in the Rust core and GPU submit path. CPU fallback
+is allowed ≤ 2× the GPU target. Acceptance measures **p95 frame time ≤ 20 ms**
+over a 5-second gesture.
+
+### 3.2 Proposed interactive targets for this work
+
+These extend ARCH-013 to the canvas and Move tool. All are **Targets** to be
+validated on the reference machine.
+
+| Operation | Metric | Proposed budget |
+|---|---|---|
+| Pan / zoom / hand + middle drag | Present a frame within | 16.6 ms (p95 ≤ 20 ms) |
+| Any view gesture on GUI thread | Single input handler blocks GUI thread for | ≤ 8 ms |
+| Move drag preview | Frame while dragging | 16.6 ms; no full-document recomposite per mouse-move |
+| Move drag event handling | GUI-thread work per `mouseMoveEvent` | ≤ 2 ms (accumulate + repaint request only) |
+| Move commit (mouse-up) | GUI-thread time, 24 MP doc | ≤ 100 ms, once; may be O(document) |
+| Open / document op / global filter | — | may be O(canvas), bounded by ARCH-013 |
+| Brush dab | GUI-thread work per dab | ≤ 16 ms (already a Target) |
+
+### 3.3 What may be O(canvas) vs must be incremental
+
+**May be O(canvas)** (one-shot, not per frame):
+- open, save, import;
+- document-wide ops (crop, resize, rotate, flip, canvas resize, mode switch);
+- global filters and adjustments;
+- one **move/transform commit** (building the new composite once) and its
+  history snapshot.
+
+**Must be incremental / O(viewport) or O(changed region):**
+- pan and zoom (transform only; must not touch document pixels);
+- Move-tool drag preview (translate a cached layer/composite; no recomposite per
+  event);
+- brush dabs (only the dab's bbox, not the whole canvas);
+- layer thumbnails (only the layer that changed);
+- histogram and Navigator thumbnail (throttled, ideally decimated sampling
+  rather than every pixel on every change);
+- undo/redo of a move (restore the snapshot, no re-composite storm).
+
+---
+
+## 4. Likely hot spots to investigate
+
+Findings from reading the code; **no changes made**.
+
+1. **Double full composite per commit, GUI thread.**
+   `PictureView::translate_layer` calls `pictura_render::translate_layer`
+   (`crates/pictura-render/src/document_ops/crop.rs:51`), which itself calls
+   `recompute` (`composite_rgba`) — then `PictureView` calls `recomposite`
+   (`cxxqt_object.rs:931-944`), whose `document_to_image` → `current_buffer`
+   calls `composite_rgba` **again** because `doc.layers` is non-empty
+   (`cxxqt_object.rs:1829-1840`). Then `buffer_to_image` does a per-pixel
+   planar→RGBA loop (`cxxqt_object.rs:1904-1937`) and allocates a fresh
+   `QImage`. Two full composites + a full conversion per move/recomposite, on
+   the GUI thread. Confirm with a profiler before optimising; the fix direction
+   is to composite once with a dirty-rect/incremental path and cache the packed
+   image.
+
+2. **Deep document clone for history on every commit.** `record`
+   (`cxxqt_object.rs:1332-1338`) calls `snapshot`, which does `doc.clone()`
+   (`cxxqt_object.rs:1340-1347`) — a full copy of every layer's pixel buffers
+   plus the composite. For a large document this is the dominant commit cost
+   and doubles work on top of the double composite. Investigate a copy-on-write
+   or delta snapshot for moves.
+
+3. **`changed` fans out to every panel, whole-canvas work each time.**
+   `addDocument` connects `PictureView::changed` to `PicturaMainWindow::refresh`
+   (`frame.cpp:257`); `refresh` calls `retargetDock`, which calls
+   `LayersPanel::refresh`, `NavigatorPanel::refresh`, `InfoPanel::refresh`, and
+   `HistogramPanel::refresh` (`frame.cpp:555-579`). `LayersPanel::refresh`
+   scales a thumbnail per layer via `layer_image` + `SmoothTransformation`
+   (`layers_panel.cpp:354-389`); `HistogramPanel::recompute` does
+   `convertToFormat(RGB32)` plus an O(canvas) per-pixel scan on the composited
+   image (`histogram_panel.cpp:92-112`). This runs on every `changed`, including
+   after every move commit and (potentially) during live preview if wired to
+   `changed`. Investigate throttling/coalescing, per-panel change scoping, and
+   decimated histogram sampling.
+
+4. **No live preview in the Move tool.** `ToolController::handleMoved` for Move
+   accumulates delta only (`tools.cpp:301-305`); `translate_layer` runs on
+   release (`tools.cpp:350-357`). This is the direct cause of problem 1 and
+   means any per-event recomposite added naively would make it worse.
+
+5. **Pan gating and missing gestures.** `ImageView::mousePressEvent` starts a
+   pan only for `Qt::LeftButton` and only when `panEnabled_`
+   (`image_view.cpp:141-151`); `panEnabled_` is only true for the Hand tool.
+   Middle-button events fall through to the tool signal and are ignored
+   (`tools.cpp:198-202` returns for non-left). No Space key handling exists.
+   This is cause of problem 3, and Space+drag is a CS6 gap.
+
+6. **Open view reset.** `setImage` zeroes the offset (`image_view.cpp:24-30`),
+   producing the top-left placement in problem 2. `fitOnScreen` exists but is
+   not called on open/new. `Frame::refresh` also calls `setImage` whenever
+   `has_document()` is false (`frame.cpp:565`), so the reset can re-fire.
+
+---
+
+## 5. Acceptance checks
+
+These are runnable by hand or as a small test harness with no framework
+requirements.
+
+1. **Open placement.** Open a PNG/PSD larger than the viewport. The image is
+   fully visible and centred; the status-bar zoom is < 100%. Open a document
+   smaller than the viewport: it is shown at 100%, centred (not top-left).
+2. **Zoom commands.** `Ctrl+0` fits and centres; `Ctrl+1` shows 100% centred;
+   `Ctrl++`/`Ctrl+-` step the preset ladder and disable at 3200% / minimum.
+   Status bar, Navigator, and image stay in sync after each.
+3. **Live move.** With the Move tool, drag a layer on a ≥ 24 MP document. The
+   pixels follow the cursor continuously (no freeze until release). Release
+   produces **exactly one** new History entry labelled "Move Layer"; no
+   intermediate entries. `Ctrl+Z` reverts the whole move in one step.
+4. **Move feedback.** With `Show Transform Controls` on, the bounding box and
+   handles track the moving layer during the drag and match its final rect.
+5. **Middle-drag pan.** With any active tool (Move, Brush, Marquee), middle-drag
+   pans the canvas and the cursor shows a pan cursor. Document unchanged; no
+   history entry. *(This is the [ext] check; it is expected to fail CS6 parity
+   by design.)*
+6. **Space+drag pan.** With any active tool, hold `Space`, drag, release:
+   pans; releasing `Space` restores the previous tool; no document change and no
+   history entry.
+7. **Wheel zoom anchor.** Wheel-zoom over a document detail: the point under the
+   cursor stays under the cursor.
+8. **Frame budget.** Over a 5-second pan/zoom gesture on a 24 MP document,
+   measure p95 frame time ≤ 20 ms (ARCH-013 acceptance 1). On the CPU fallback,
+   ≤ 2× that.
+9. **Move drag does not block.** During a 24 MP Move drag, log GUI-thread time
+   per `mouseMoveEvent`; it stays ≤ 2 ms per event and no full-document
+   composite runs per event (verified by instrumentation or sampling profiler).
+10. **History integrity.** Pan, zoom, Navigator drag, and tool switches add no
+    History entries; only committed moves/edits do.
+
+---
+
+## 6. Sources
+
+Fetched or read for this note:
+
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` —
+  CS6 Help (local extract `/tmp/opencode/photoshop_reference.txt`). Used for:
+  Hand-tool/spacebar/Flick-panning (p. 113); Navigator proxy view area and
+  `Ctrl/Cmd`-drag (p. 114); Zoom tool "next preset percentage", 3200% max /
+  1-pixel min, `Zoom With Scroll Wheel`, `Zoom Resizes Windows`, Animated Zoom
+  (pp. 114–115); Fit On Screen and pixel grid (p. 116); status-bar magnification
+  and view options (p. 118); Move tool drag/nudge and `Show Transform Controls`
+  (pp. 163–164, 167).
+- `https://community.adobe.com/t5/photoshop-ecosystem-discussions/document-fit-on-screen-not-100/m-p/10874690`
+  — "Photoshop by default opens at Fit to Screen or Ctrl/Cmd 0."
+- `https://community.adobe.com/t5/photoshop-ecosystem-discussions/is-there-a-way-to-have-it-so-ps-does-not-open-with-the-default-fit-on-screen/td-p/14604011`
+  — users ask how to disable the default Fit-on-Screen open view.
+- `https://www.photoshopessentials.com/basics/how-to-use-the-navigator-panel-in-photoshop`
+  — Navigator preview, view box, drag-to-pan, slider, `Ctrl`-drag view box.
+- `https://helpx.adobe.com/photoshop/using/viewing-images.html` — Navigator
+  interactions (`Window > Navigator`, proxy drag, `Ctrl`/`Cmd`-drag).
+- `https://helpx.adobe.com/photoshop/using/tool-techniques/zoom-tool.html` —
+  next-preset zoom, options bar (Fit Screen, Fill Screen, Resize Windows to Fit,
+  Zoom All Windows, Scrubby Zoom).
+- `https://helpx.adobe.com/photoshop/using/image-information.html` — status bar
+  shows current magnification and file size.
+- `https://community.adobe.com/questions-712/panning-with-the-middle-mouse-button-1126579`
+  and `https://github.com/bigorados-bigo/PhotoshopMiddleMousePan` and
+  `https://www.reddit.com/r/photoshop/comments/ttzfv/...` — Photoshop does not
+  pan on middle-drag by default; users add it externally. Confirms the
+  middle-drag pan is an extension.
+- `http://www.photoshopforphotographers.com/CC_2013/Help_guide/tp/Move_tool.html`
+  — a series of Move nudges counts as a single history step; Move options bar /
+  Show Transform Controls.
+- `https://photoshoptrainingchannel.com/tips/view-actual-pixels-fit-on-screen`
+  — `Ctrl+1` = Actual Pixels, `Ctrl+0` = Fit on Screen.
+- `https://photoshoptrainingchannel.com/tips/show-transform-controls` and
+  `http://www.photoshopforphotographers.com/CC_2013/Help_guide/tp/Move_tool.html`
+  — Show Transform Controls draws the bounding box and changes the options bar
+  when a handle is grabbed.
+
+Repository spec inputs read: `docs/03-tools/hand-and-zoom.md`,
+`docs/03-tools/move-and-transform.md`, `docs/01-architecture/gpu-rendering-pipeline.md`,
+`docs/01-architecture/performance-targets.md`,
+`docs/01-architecture/threading-and-concurrency.md`,
+`docs/01-architecture/rust-qt-interop.md`, `docs/02-ui-ux/application-frame.md`,
+`docs/02-ui-ux/panels/navigator-panel.md`.

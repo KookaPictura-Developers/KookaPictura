@@ -8,6 +8,7 @@
 #include <QtGui/QAction>
 #include <QtGui/QIcon>
 #include <QtGui/QImage>
+#include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDockWidget>
@@ -15,6 +16,7 @@
 #include <QtWidgets/QToolBar>
 #include <QtWidgets/QToolButton>
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -1607,6 +1609,102 @@ int main(int argc, char* argv[])
         }
 
         pictura::ImageView* canvas = frame.imageView();
+        if (!canvas) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 no active canvas\n");
+            return 64;
+        }
+
+        // 64: a freshly set image is centred, not pinned to the top-left.
+        canvas->setImage(canvas->image());
+        const double m25Zoom = canvas->zoom();
+        const double m25Vw = canvas->width();
+        const double m25Vh = canvas->height();
+        const double m25Iw = canvas->image().width();
+        const double m25Ih = canvas->image().height();
+        const QPointF m25Expected((m25Vw - m25Iw * m25Zoom) / 2.0,
+                                  (m25Vh - m25Ih * m25Zoom) / 2.0);
+        const QPointF m25Actual = canvas->offset();
+        const bool m25Centred = std::abs(m25Actual.x() - m25Expected.x()) < 1e-6
+                                && std::abs(m25Actual.y() - m25Expected.y()) < 1e-6;
+        const bool m25Smaller = m25Iw < m25Vw && m25Ih < m25Vh;
+        const bool m25NotTopLeft = !m25Smaller || m25Actual != QPointF(0, 0);
+        std::fprintf(stderr,
+                     "pictura self-test: m25_centre offset=(%g,%g) zoom=%g\n",
+                     m25Actual.x(),
+                     m25Actual.y(),
+                     m25Zoom);
+        std::fflush(stderr);
+        if (!m25Centred || !m25NotTopLeft || m25Zoom <= 0.0) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 centre wrong\n");
+            return 64;
+        }
+
+        // 65: middle-button drag pans regardless of the active tool.
+        const QPointF m25Before = canvas->offset();
+        QMouseEvent m25Press(QEvent::MouseButtonPress,
+                             QPointF(200, 150),
+                             canvas->mapToGlobal(QPoint(200, 150)),
+                             Qt::MiddleButton,
+                             Qt::MiddleButton,
+                             Qt::NoModifier);
+        QApplication::sendEvent(canvas, &m25Press);
+        QMouseEvent m25Move(QEvent::MouseMove,
+                            QPointF(230, 165),
+                            canvas->mapToGlobal(QPoint(230, 165)),
+                            Qt::NoButton,
+                            Qt::MiddleButton,
+                            Qt::NoModifier);
+        QApplication::sendEvent(canvas, &m25Move);
+        QMouseEvent m25Release(QEvent::MouseButtonRelease,
+                               QPointF(230, 165),
+                               canvas->mapToGlobal(QPoint(230, 165)),
+                               Qt::MiddleButton,
+                               Qt::NoButton,
+                               Qt::NoModifier);
+        QApplication::sendEvent(canvas, &m25Release);
+        const QPointF m25Delta = canvas->offset() - m25Before;
+        const bool m25Panned = std::abs(m25Delta.x() - 30.0) < 1e-6
+                               && std::abs(m25Delta.y() - 15.0) < 1e-6;
+        std::fprintf(stderr,
+                     "pictura self-test: m25_middle_pan delta=(%g,%g)\n",
+                     m25Delta.x(),
+                     m25Delta.y());
+        std::fflush(stderr);
+        if (!m25Panned) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 middle pan wrong\n");
+            return 65;
+        }
+
+        // 66: a live move preview is transient; commit adds exactly one state.
+        pictura::PictureView* m25View = frame.activeView();
+        if (!m25View) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 move preview no document\n");
+            return 66;
+        }
+        const int m25HistBefore = m25View->history_count();
+        const QImage m25Pre = m25View->image();
+        const bool m25Previewed = m25View->move_preview(3, 2);
+        const bool m25PreviewChanged = m25View->image() != m25Pre;
+        const bool m25PreviewNoHistory = m25View->history_count() == m25HistBefore;
+        const bool m25Committed = m25View->commit_move();
+        const bool m25CommitHistory = m25View->history_count() == m25HistBefore + 1;
+        const bool m25Dirty = m25View->is_dirty();
+        m25View->undo();
+        const bool m25Undone = m25View->image() == m25Pre;
+        std::fprintf(stderr,
+                     "pictura self-test: m25_move preview=%d hist=%d undo=%d\n",
+                     m25Previewed ? 1 : 0,
+                     m25CommitHistory ? 1 : 0,
+                     m25Undone ? 1 : 0);
+        std::fflush(stderr);
+        if (!m25Previewed || !m25PreviewChanged || !m25PreviewNoHistory
+            || !m25Committed || !m25CommitHistory || !m25Dirty || !m25Undone) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 move preview wrong\n");
+            return 66;
+        }
+
+        // Re-acquire for the trailing transform check.
+        canvas = frame.imageView();
         if (!canvas) {
             std::fprintf(stderr, "pictura self-test: FAIL: no active canvas\n");
             return 38;

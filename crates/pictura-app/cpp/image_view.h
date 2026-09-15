@@ -8,6 +8,7 @@
 
 class QMouseEvent;
 class QPaintEvent;
+class QResizeEvent;
 class QWheelEvent;
 
 namespace pictura {
@@ -20,7 +21,8 @@ class ImageView : public QWidget {
 public:
     explicit ImageView(QWidget* parent = nullptr);
 
-    // Replace the image and reset the view (zoom 1.0, centred).
+    // Replace the image and reset the view: fit-and-centre when the image is
+    // larger than the viewport, otherwise 100% centred.
     void setImage(const QImage& image);
 
     // Replace the image but keep the current zoom and pan.
@@ -69,8 +71,12 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
+    void centreImage();
+    void applyInitialView();
+
     QImage image_;
     QColor canvasColor_{Qt::darkGray};
     double zoom_ = 1.0;
@@ -78,6 +84,7 @@ private:
     QPointF last_;
     bool panEnabled_ = true;
     bool panning_ = false;
+    bool userAdjusted_ = false;
     QPolygonF overlayPolygon_;
 };
 

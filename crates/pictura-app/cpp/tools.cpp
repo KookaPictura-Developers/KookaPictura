@@ -244,6 +244,14 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         return;
     }
     case ToolId::Move:
+        if (!v) {
+            return;
+        }
+        dragging_ = true;
+        dragCommitted_ = false;
+        anchor_ = last_ = imagePos;
+        totalDelta_ = QPointF();
+        return;
     case ToolId::Crop:
         if (!v) {
             return;
@@ -252,11 +260,9 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         dragCommitted_ = false;
         anchor_ = last_ = imagePos;
         totalDelta_ = QPointF();
-        if (active_ == ToolId::Crop) {
-            hasPendingCrop_ = false;
-            pendingCrop_ = QRect();
-            updateDragOverlay(imagePos);
-        }
+        hasPendingCrop_ = false;
+        pendingCrop_ = QRect();
+        updateDragOverlay(imagePos);
         return;
     case ToolId::Marquee:
         if (!v) {
@@ -299,10 +305,19 @@ void ToolController::handleMoved(const QPointF& imagePos)
     PictureView* v = view();
 
     switch (active_) {
-    case ToolId::Move:
-        totalDelta_ += imagePos - last_;
+    case ToolId::Move: {
+        const QPointF d = imagePos - last_;
         last_ = imagePos;
+        totalDelta_ += d;
+        if (v) {
+            const int dx = qRound(d.x());
+            const int dy = qRound(d.y());
+            if (dx != 0 || dy != 0) {
+                v->move_preview(dx, dy);
+            }
+        }
         return;
+    }
     case ToolId::Marquee:
     case ToolId::Crop:
         last_ = imagePos;
@@ -348,10 +363,8 @@ void ToolController::handleReleased(const QPointF& imagePos)
 
     switch (active_) {
     case ToolId::Move: {
-        const int dx = qRound(totalDelta_.x());
-        const int dy = qRound(totalDelta_.y());
-        if (v && (dx != 0 || dy != 0)) {
-            v->translate_layer(dx, dy);
+        if (v && (totalDelta_.x() != 0.0 || totalDelta_.y() != 0.0)) {
+            v->commit_move();
         }
         return;
     }
