@@ -40,6 +40,7 @@ SessionState loadSession()
     const QJsonObject obj = doc.object();
     state.schemaVersion = obj.value(QStringLiteral("schemaVersion")).toInt(1);
     state.brightnessLevel = obj.value(QStringLiteral("brightnessLevel")).toInt(1);
+    state.gpuCompute = obj.value(QStringLiteral("gpuCompute")).toBool(true);
     state.layout =
         QByteArray::fromBase64(obj.value(QStringLiteral("layout")).toString().toLatin1());
     const QJsonArray recent = obj.value(QStringLiteral("recent")).toArray();
@@ -61,6 +62,7 @@ bool saveSession(const SessionState& state)
     QJsonObject obj;
     obj.insert(QStringLiteral("schemaVersion"), state.schemaVersion);
     obj.insert(QStringLiteral("brightnessLevel"), state.brightnessLevel);
+    obj.insert(QStringLiteral("gpuCompute"), state.gpuCompute);
     obj.insert(QStringLiteral("layout"), QString::fromLatin1(state.layout.toBase64()));
     QJsonArray recent;
     for (const QString& path : state.recent) {

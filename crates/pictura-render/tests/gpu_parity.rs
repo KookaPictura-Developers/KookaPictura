@@ -8,13 +8,20 @@
 //! GPU-less CI stays green. On the target machine (RTX 3090, Vulkan) the
 //! parity path actually runs.
 
-use pictura_core::{BitDepth, BlendMode, Channel, ColorMode, Document, Layer, PsdRect};
-use pictura_render::{composite_gpu, composite_gpu_or_cpu, composite_rgba, GpuError};
+use std::time::Instant;
+
+use pictura_core::{
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, PsdRect,
+};
+use pictura_render::{
+    composite_active, composite_gpu, composite_gpu_or_cpu, composite_rgba, gpu_available, Backend,
+    GpuError,
+};
 
 const SIZE: u32 = 8;
 
-/// Normal + the separable modes the GPU implements, including the whole-RGB
-/// DarkerColor/LighterColor comparisons.
+/// Normal + every blend mode the GPU implements, including the whole-RGB
+/// DarkerColor/LighterColor comparisons and the four non-separable modes.
 const GPU_MODES: &[BlendMode] = &[
     BlendMode::Normal,
     BlendMode::Darken,
@@ -38,15 +45,13 @@ const GPU_MODES: &[BlendMode] = &[
     BlendMode::Exclusion,
     BlendMode::Subtract,
     BlendMode::Divide,
-];
-
-const CPU_ONLY: &[BlendMode] = &[
-    BlendMode::Dissolve,
     BlendMode::Hue,
     BlendMode::Saturation,
     BlendMode::Color,
     BlendMode::Luminosity,
 ];
+
+const CPU_ONLY: &[BlendMode] = &[BlendMode::Dissolve];
 
 fn layer(name: &str, blend: BlendMode, sample: impl Fn(u32, u32) -> (u8, u8, u8, u8)) -> Layer {
     let pixels = (SIZE * SIZE) as usize;
@@ -108,6 +113,79 @@ fn scene(mode: BlendMode) -> Document {
     doc
 }
 
+/// Opaque gradient base layer for the adjustment scenes.
+fn base_layer() -> Layer {
+    layer("base", BlendMode::Normal, |x, y| {
+        (
+            x as u8 * 30 + 5,
+            y as u8 * 30 + 5,
+            x as u8 * 16 + y as u8 * 8,
+            255,
+        )
+    })
+}
+
+/// An adjustment layer owns no pixels: an empty rect and no channels.
+fn adjustment_layer(name: &str, adjustment: AdjustmentData) -> Layer {
+    Layer {
+        name: name.into(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 0,
+            right: 0,
+        },
+        blend: BlendMode::Normal,
+        opacity: 255,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: Some(adjustment),
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: false,
+    }
+}
+
+/// A full-size pixel layer for the timing scene (the `layer` helper is fixed at
+/// `SIZE`). Seed 0 is the opaque backdrop; the rest are partially transparent.
+fn timing_layer(size: u32, seed: u32, blend: BlendMode) -> Layer {
+    let n = (size * size) as usize;
+    let (mut r, mut g, mut b, mut a) = (vec![0u8; n], vec![0u8; n], vec![0u8; n], vec![0u8; n]);
+    for y in 0..size {
+        for x in 0..size {
+            let i = (y * size + x) as usize;
+            r[i] = (x * 7 + seed * 31) as u8;
+            g[i] = (y * 5 + seed * 17) as u8;
+            b[i] = (x ^ y) as u8;
+            a[i] = if seed == 0 { 255 } else { 160 };
+        }
+    }
+    Layer {
+        name: format!("layer{seed}"),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: size as i32,
+            right: size as i32,
+        },
+        blend,
+        opacity: 255,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: None,
+        channels: vec![
+            Channel { id: 0, data: r },
+            Channel { id: 1, data: g },
+            Channel { id: 2, data: b },
+            Channel { id: -1, data: a },
+        ],
+        children: Vec::new(),
+        is_group: false,
+    }
+}
+
 fn is_gpu_gone(err: &GpuError) -> bool {
     matches!(
         err,
@@ -156,6 +234,192 @@ fn cpu_only_modes_error_without_panicking() {
 
 #[test]
 fn fallback_matches_cpu_for_cpu_only_mode() {
-    let doc = scene(BlendMode::Luminosity);
+    let doc = scene(BlendMode::Dissolve);
     assert_eq!(composite_gpu_or_cpu(&doc).data, composite_rgba(&doc).data);
+}
+
+#[test]
+fn dissolve_still_cpu_only() {
+    assert!(matches!(
+        composite_gpu(&scene(BlendMode::Dissolve)),
+        Err(GpuError::UnsupportedMode(BlendMode::Dissolve))
+    ));
+}
+
+#[test]
+fn non_separable_modes_match_cpu() {
+    let mut checked = 0;
+    let mut max_delta = 0i32;
+    for &mode in &[
+        BlendMode::Hue,
+        BlendMode::Saturation,
+        BlendMode::Color,
+        BlendMode::Luminosity,
+    ] {
+        let doc = scene(mode);
+        let cpu = composite_rgba(&doc);
+        let gpu = match composite_gpu(&doc) {
+            Ok(buf) => buf,
+            Err(e) if is_gpu_gone(&e) => {
+                eprintln!("no usable Vulkan GPU ({e}); skipping non-separable parity");
+                return;
+            }
+            Err(e) => panic!("{mode:?}: {e}"),
+        };
+        assert_eq!((gpu.width, gpu.height, gpu.channels), (SIZE, SIZE, 4));
+        for (i, (&a, &b)) in cpu.data.iter().zip(&gpu.data).enumerate() {
+            let delta = (a as i32 - b as i32).abs();
+            max_delta = max_delta.max(delta);
+            assert!(delta <= 1, "{mode:?} byte {i}: cpu {a} vs gpu {b}");
+        }
+        checked += 1;
+    }
+    eprintln!("non-separable parity: {checked} modes ok, max delta {max_delta} LSB");
+}
+
+#[test]
+fn adjustment_layers_match_cpu() {
+    use pictura_render::{
+        encode_brightness_contrast, encode_hue_saturation, encode_invert, encode_posterize,
+        encode_threshold,
+    };
+    let cases: &[(&str, AdjustmentData)] = &[
+        ("invert", encode_invert()),
+        ("posterize", encode_posterize(4)),
+        ("threshold", encode_threshold(128)),
+        ("brightness_contrast", encode_brightness_contrast(20, 0)),
+        ("hue_saturation", encode_hue_saturation(30, 0, 0)),
+    ];
+    let mut checked = 0;
+    let mut max_delta = 0i32;
+    for (name, data) in cases {
+        let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![base_layer(), adjustment_layer(name, data.clone())];
+        let cpu = composite_rgba(&doc);
+        let gpu = match composite_gpu(&doc) {
+            Ok(buf) => buf,
+            Err(e) if is_gpu_gone(&e) => {
+                eprintln!("no usable Vulkan GPU ({e}); skipping adjustment parity");
+                return;
+            }
+            Err(e) => panic!("{name}: {e}"),
+        };
+        assert_eq!((gpu.width, gpu.height, gpu.channels), (SIZE, SIZE, 4));
+        let mut case_delta = 0i32;
+        for (i, (&a, &b)) in cpu.data.iter().zip(&gpu.data).enumerate() {
+            let delta = (a as i32 - b as i32).abs();
+            case_delta = case_delta.max(delta);
+            max_delta = max_delta.max(delta);
+            assert!(delta <= 1, "{name} byte {i}: cpu {a} vs gpu {b}");
+        }
+        eprintln!("adjustment {name}: max delta {case_delta} LSB");
+        checked += 1;
+    }
+    eprintln!("adjustment parity: {checked} kinds ok, max delta {max_delta} LSB");
+}
+
+#[test]
+fn unsupported_adjustment_falls_back_or_errors() {
+    // A key the renderer does not decode, and one that decodes but the GPU has
+    // no kind for (Levels): both must error and fall back without panicking.
+    let mut levels = vec![0, 2];
+    for v in [5u16, 250, 10, 240, 120] {
+        levels.extend_from_slice(&v.to_be_bytes());
+    }
+    let cases = [
+        AdjustmentData {
+            key: *b"clrL",
+            data: vec![1, 2, 3],
+        },
+        AdjustmentData {
+            key: *b"levl",
+            data: levels,
+        },
+    ];
+    for data in cases {
+        let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![base_layer(), adjustment_layer("unsupported", data)];
+        assert!(
+            matches!(composite_gpu(&doc), Err(GpuError::UnsupportedAdjustment)),
+            "expected UnsupportedAdjustment"
+        );
+        assert_eq!(
+            composite_gpu_or_cpu(&doc).data,
+            composite_rgba(&doc).data,
+            "fallback must equal the CPU oracle"
+        );
+    }
+}
+
+#[test]
+fn disabled_gpu_returns_cpu_backend() {
+    let doc = scene(BlendMode::Normal);
+    let (buf, backend) = composite_active(&doc, false);
+    assert_eq!(backend, Backend::Cpu);
+    assert_eq!(buf.data, composite_rgba(&doc).data);
+}
+
+#[test]
+fn enabled_gpu_matches_availability() {
+    let doc = scene(BlendMode::Normal);
+    let cpu = composite_rgba(&doc);
+    let (buf, backend) = composite_active(&doc, true);
+    if gpu_available() {
+        assert_eq!(backend, Backend::Gpu);
+        assert_eq!((buf.width, buf.height, buf.channels), (SIZE, SIZE, 4));
+        for (i, (&a, &b)) in cpu.data.iter().zip(&buf.data).enumerate() {
+            assert!(
+                (a as i32 - b as i32).abs() <= 1,
+                "byte {i}: cpu {a} vs gpu {b}"
+            );
+        }
+    } else {
+        assert_eq!(backend, Backend::Cpu);
+        assert_eq!(buf.data, cpu.data);
+    }
+}
+
+/// Evidence only: no ratio is asserted (timings vary by machine and load). One
+/// warm-up call keeps one-time device/ pipeline setup out of the GPU number.
+#[test]
+fn gpu_vs_cpu_timing_1024() {
+    const N: u32 = 1024;
+    let modes = [
+        BlendMode::Normal,
+        BlendMode::Multiply,
+        BlendMode::Screen,
+        BlendMode::Overlay,
+    ];
+    let mut doc = Document::new(N, N, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = modes
+        .iter()
+        .enumerate()
+        .map(|(i, &blend)| timing_layer(N, i as u32, blend))
+        .collect();
+
+    let t = Instant::now();
+    let _ = composite_rgba(&doc);
+    let cpu_ms = t.elapsed().as_millis();
+
+    if !gpu_available() {
+        println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
+        return;
+    }
+    let warm = composite_gpu(&doc);
+    if let Err(e) = &warm {
+        if is_gpu_gone(e) {
+            println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
+            return;
+        }
+    }
+    drop(warm);
+
+    let t = Instant::now();
+    match composite_gpu(&doc) {
+        Ok(_) => {
+            let gpu_ms = t.elapsed().as_millis();
+            println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu {gpu_ms} ms");
+        }
+        Err(e) => println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a ({e})"),
+    }
 }

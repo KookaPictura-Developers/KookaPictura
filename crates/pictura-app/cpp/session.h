@@ -10,7 +10,8 @@ namespace pictura {
 struct SessionState {
     QByteArray layout;               // QMainWindow::saveState()
     int brightnessLevel = 1;         // Theme level
-    int schemaVersion = 1;
+    bool gpuCompute = true;          // GPU compositing preference
+    int schemaVersion = 2;
     QStringList recent;
 };
 

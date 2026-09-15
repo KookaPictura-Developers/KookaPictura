@@ -31,7 +31,9 @@ use pictura_adjust::{Adjustment, BrightnessContrastParams, HueSaturationParams, 
 use pictura_core::{AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelBuffer};
 
 pub mod gpu;
-pub use gpu::{composite_gpu, composite_gpu_or_cpu, GpuError};
+pub use gpu::{
+    composite_active, composite_gpu, composite_gpu_or_cpu, gpu_available, Backend, GpuError,
+};
 
 mod filter;
 pub use filter::apply_filter;

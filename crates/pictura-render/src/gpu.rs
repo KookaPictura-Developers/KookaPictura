@@ -1,4 +1,5 @@
-//! GPU (wgpu/Vulkan) compositor for the separable blend modes.
+//! GPU (wgpu/Vulkan) compositor for the separable and non-separable blend
+//! modes and the supported adjustment layers.
 //!
 //! `composite_gpu` mirrors the CPU oracle [`crate::composite_rgba`] pass for
 //! pass: the same per-layer loop, mask/opacity handling, pass-through/isolated
@@ -8,11 +9,19 @@
 //!
 //! # CPU-only modes
 //!
-//! Hue, Saturation, Color, Luminosity and Dissolve are **not** implemented on
-//! the GPU. [`composite_gpu`] returns [`GpuError::UnsupportedMode`] for any
-//! visible layer using one; [`composite_gpu_or_cpu`] then falls back to the CPU
-//! compositor. DarkerColor and LighterColor *are* handled (they are per-pixel
-//! whole-RGB comparisons, not triplet math), matching the CPU path exactly.
+//! Dissolve is the only CPU-only blend mode. [`composite_gpu`] returns
+//! [`GpuError::UnsupportedMode`] for a visible layer using it;
+//! [`composite_gpu_or_cpu`] then falls back to the CPU compositor. DarkerColor
+//! and LighterColor *are* handled (they are per-pixel whole-RGB comparisons, not
+//! triplet math), and the four non-separable modes (Hue, Saturation, Color,
+//! Luminosity) run the PDF/CSS triplet math on the GPU.
+//!
+//! # Adjustment layers
+//!
+//! Invert, Posterize, Threshold, Brightness/Contrast and Hue/Saturation
+//! adjustment layers are applied on the GPU at the layer's stack position. Any
+//! other adjustment (or an undecodable block) returns
+//! [`GpuError::UnsupportedAdjustment`]; the caller falls back to CPU.
 //!
 //! # Never panics on a missing GPU
 //!
@@ -28,9 +37,10 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::OnceLock;
 
+use pictura_adjust::Adjustment;
 use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
 
-use crate::{channel, mask_alpha, sample, to_u8};
+use crate::{channel, decode_adjustment, mask_alpha, sample, to_u8};
 
 /// Why the GPU compositor could not run. The caller falls back to CPU.
 #[derive(Debug)]
@@ -43,7 +53,7 @@ pub enum GpuError {
     Readback,
     /// A mode with no GPU implementation is present in the stack.
     UnsupportedMode(BlendMode),
-    /// An adjustment layer is present; only the CPU compositor applies those.
+    /// An adjustment layer with no GPU implementation is present in the stack.
     UnsupportedAdjustment,
 }
 
@@ -54,12 +64,21 @@ impl fmt::Display for GpuError {
             GpuError::TooLarge => write!(f, "document exceeds GPU buffer limits"),
             GpuError::Readback => write!(f, "GPU readback failed"),
             GpuError::UnsupportedMode(m) => write!(f, "blend mode {m:?} is CPU-only"),
-            GpuError::UnsupportedAdjustment => write!(f, "adjustment layers are CPU-only"),
+            GpuError::UnsupportedAdjustment => write!(f, "adjustment kind is CPU-only"),
         }
     }
 }
 
 impl std::error::Error for GpuError {}
+
+/// The compositing backend that produced a buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// The wgpu/Vulkan compute compositor.
+    Gpu,
+    /// The CPU oracle [`crate::composite_rgba`].
+    Cpu,
+}
 
 /// Composite `doc` on the GPU for Normal + every separable mode.
 ///
@@ -86,15 +105,54 @@ pub fn composite_gpu_or_cpu(doc: &Document) -> PixelBuffer {
     composite_gpu(doc).unwrap_or_else(|_| crate::composite_rgba(doc))
 }
 
+/// Whether a usable Vulkan adapter/device exists.
+///
+/// Cached behind `devices()`'s `OnceLock`; cheap to call repeatedly and never
+/// panics.
+pub fn gpu_available() -> bool {
+    devices().is_ok()
+}
+
+/// Composite `doc` on the GPU when `gpu_enabled && gpu_available()`, otherwise
+/// on the CPU, reporting which backend ran.
+///
+/// Never panics: any [`GpuError`] (unavailable device, oversize document,
+/// unsupported mode/adjustment, readback failure) falls back to the CPU
+/// composite for that call.
+pub fn composite_active(doc: &Document, gpu_enabled: bool) -> (PixelBuffer, Backend) {
+    if gpu_enabled && gpu_available() {
+        if let Ok(buf) = composite_gpu(doc) {
+            return (buf, Backend::Gpu);
+        }
+    }
+    (crate::composite_rgba(doc), Backend::Cpu)
+}
+
+/// No adjustment: the ordinary blend/source-over dispatch.
+const NO_ADJ: (u32, i32, i32, i32) = (0, 0, 0, 0);
+
 fn is_cpu_only(mode: BlendMode) -> bool {
-    matches!(
-        mode,
-        BlendMode::Dissolve
-            | BlendMode::Hue
-            | BlendMode::Saturation
-            | BlendMode::Color
-            | BlendMode::Luminosity
-    )
+    matches!(mode, BlendMode::Dissolve)
+}
+
+/// Map a decoded adjustment to the shader's kind id plus up to three integer
+/// params, or `None` when the GPU has no implementation for it.
+fn adjustment_params(adjustment: &Adjustment) -> Option<(u32, i32, i32, i32)> {
+    match adjustment {
+        Adjustment::Invert => Some((1, 0, 0, 0)),
+        Adjustment::Posterize(levels) => Some((2, i32::from(*levels), 0, 0)),
+        Adjustment::Threshold(level) => Some((3, i32::from(*level), 0, 0)),
+        Adjustment::BrightnessContrast(p) => {
+            Some((4, i32::from(p.brightness), i32::from(p.contrast), 0))
+        }
+        Adjustment::HueSaturation(p) => Some((
+            5,
+            i32::from(p.hue),
+            i32::from(p.saturation),
+            i32::from(p.lightness),
+        )),
+        _ => None,
+    }
 }
 
 fn check_supported(doc: &Document) -> Result<(), GpuError> {
@@ -102,8 +160,12 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         if !layer.visible {
             return Ok(());
         }
-        if layer.adjustment.is_some() {
-            return Err(GpuError::UnsupportedAdjustment);
+        if let Some(data) = &layer.adjustment {
+            let supported =
+                decode_adjustment(data).is_some_and(|adj| adjustment_params(&adj).is_some());
+            if !supported {
+                return Err(GpuError::UnsupportedAdjustment);
+            }
         }
         if is_cpu_only(layer.blend) {
             return Err(GpuError::UnsupportedMode(layer.blend));
@@ -146,12 +208,12 @@ fn mode_id(mode: BlendMode) -> u32 {
         BlendMode::Exclusion => 20,
         BlendMode::Subtract => 21,
         BlendMode::Divide => 22,
+        BlendMode::Hue => 23,
+        BlendMode::Saturation => 24,
+        BlendMode::Color => 25,
+        BlendMode::Luminosity => 26,
         // Rejected by `check_supported` before any dispatch.
-        BlendMode::Dissolve
-        | BlendMode::Hue
-        | BlendMode::Saturation
-        | BlendMode::Color
-        | BlendMode::Luminosity => 0,
+        BlendMode::Dissolve => 0,
     }
 }
 
@@ -160,6 +222,10 @@ struct Params {
     mode: u32,
     opacity: f32,
     count: u32,
+    adj_kind: u32,
+    p0: i32,
+    p1: i32,
+    p2: i32,
     pad: u32,
 };
 
@@ -236,6 +302,42 @@ fn sep(mode: u32, cb: f32, cs: f32) -> f32 {
     }
 }
 
+fn lum(c: vec3<f32>) -> f32 {
+    return 0.3 * c.x + 0.59 * c.y + 0.11 * c.z;
+}
+
+fn sat(c: vec3<f32>) -> f32 {
+    return max(c.x, max(c.y, c.z)) - min(c.x, min(c.y, c.z));
+}
+
+fn clip_color(c: vec3<f32>) -> vec3<f32> {
+    let l = lum(c);
+    let n = min(c.x, min(c.y, c.z));
+    let x = max(c.x, max(c.y, c.z));
+    var out = c;
+    if (n < 0.0) {
+        let d = l - n;
+        if (d != 0.0) { out = vec3<f32>(l) + (out - vec3<f32>(l)) * (l / d); }
+    }
+    if (x > 1.0) {
+        let d = x - l;
+        if (d != 0.0) { out = vec3<f32>(l) + (out - vec3<f32>(l)) * ((1.0 - l) / d); }
+    }
+    return out;
+}
+
+fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {
+    let d = l - lum(c);
+    return clip_color(c + vec3<f32>(d));
+}
+
+fn set_sat(c: vec3<f32>, s: f32) -> vec3<f32> {
+    let mx = max(c.x, max(c.y, c.z));
+    let mn = min(c.x, min(c.y, c.z));
+    if (mx <= mn) { return vec3<f32>(0.0); }
+    return (c - vec3<f32>(mn)) * s / (mx - mn);
+}
+
 fn blend(mode: u32, cb: vec3<f32>, cs: vec3<f32>) -> vec3<f32> {
     if (mode == 6u) {
         if (cb.x + cb.y + cb.z <= cs.x + cs.y + cs.z) { return cb; }
@@ -245,13 +347,148 @@ fn blend(mode: u32, cb: vec3<f32>, cs: vec3<f32>) -> vec3<f32> {
         if (cb.x + cb.y + cb.z >= cs.x + cs.y + cs.z) { return cb; }
         return cs;
     }
+    if (mode == 23u) { return set_lum(set_sat(cs, sat(cb)), lum(cb)); }
+    if (mode == 24u) { return set_lum(set_sat(cb, sat(cs)), lum(cb)); }
+    if (mode == 25u) { return set_lum(cs, lum(cb)); }
+    if (mode == 26u) { return set_lum(cb, lum(cs)); }
     return vec3<f32>(sep(mode, cb.x, cs.x), sep(mode, cb.y, cs.y), sep(mode, cb.z, cs.z));
+}
+
+// --- adjustment helpers -----------------------------------------------------
+
+fn rem_euclid(x: f32, m: f32) -> f32 {
+    return x - m * floor(x / m);
+}
+
+fn quant(v: f32) -> u32 {
+    return u32(round(clamp(v, 0.0, 1.0) * 255.0));
+}
+
+fn to_f(v: u32) -> f32 {
+    return f32(v) / 255.0;
+}
+
+fn adj_posterize(v: u32, levels: i32) -> u32 {
+    if (levels >= 255) { return v; }
+    let d = f32(levels - 1);
+    let q = round(f32(v) * d / 255.0);
+    return u32(round(q * 255.0 / d));
+}
+
+fn adj_threshold(v: vec3<u32>, level: i32) -> u32 {
+    let y = 0.299 * f32(v.x) + 0.587 * f32(v.y) + 0.114 * f32(v.z);
+    if (y > f32(level)) { return 255u; }
+    return 0u;
+}
+
+fn adj_bc(v: u32, brightness: i32, contrast: i32) -> u32 {
+    let c = f32(contrast) / 100.0;
+    let b = f32(brightness) / 150.0;
+    let gamma = pow(2.0, b);
+    let y = pow(f32(v) / 255.0, 1.0 / gamma);
+    var res = 0.0;
+    if (y <= 0.5) {
+        let t = 2.0 * y;
+        res = 0.5 * t + 0.5 * c * (t * t * t - t * t);
+    } else {
+        let t = 2.0 * y - 1.0;
+        res = 0.5 * (1.0 + t) + 0.5 * c * (t * t * t - 2.0 * t * t + t);
+    }
+    return u32(round(clamp(res, 0.0, 1.0) * 255.0));
+}
+
+fn hue2rgb(p: f32, q: f32, t_in: f32) -> f32 {
+    let t = rem_euclid(t_in, 1.0);
+    if (t < 1.0 / 6.0) { return p + (q - p) * 6.0 * t; }
+    if (t < 0.5) { return q; }
+    if (t < 2.0 / 3.0) { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+    return p;
+}
+
+fn adj_hs(rgb: vec3<f32>, hue: i32, saturation: i32, lightness: i32) -> vec3<f32> {
+    let ds = f32(saturation) / 100.0;
+    let dl = f32(lightness) / 100.0;
+    let mx = max(rgb.x, max(rgb.y, rgb.z));
+    let mn = min(rgb.x, min(rgb.y, rgb.z));
+    let l0 = (mx + mn) / 2.0;
+    var h = 0.0;
+    var s = 0.0;
+    if (abs(mx - mn) >= 1e-12) {
+        let d = mx - mn;
+        if (l0 > 0.5) { s = d / (2.0 - mx - mn); } else { s = d / (mx + mn); }
+        if (mx == rgb.x) { h = (rgb.y - rgb.z) / d; }
+        else if (mx == rgb.y) { h = (rgb.z - rgb.x) / d + 2.0; }
+        else { h = (rgb.x - rgb.y) / d + 4.0; }
+        h = h * 60.0;
+    }
+    h = rem_euclid(h + f32(hue), 360.0);
+    s = clamp(s * (1.0 + ds), 0.0, 1.0);
+    var l = l0;
+    if (dl >= 0.0) { l = l + dl * (1.0 - l); } else { l = l + dl * l; }
+    l = clamp(l, 0.0, 1.0);
+    if (s <= 0.0) { return vec3<f32>(l); }
+    var q = l * (1.0 + s);
+    if (l >= 0.5) { q = l + s - l * s; }
+    let p = 2.0 * l - q;
+    let hk = h / 360.0;
+    return vec3<f32>(
+        hue2rgb(p, q, hk + 1.0 / 3.0),
+        hue2rgb(p, q, hk),
+        hue2rgb(p, q, hk - 1.0 / 3.0),
+    );
+}
+
+fn adjust(kind: u32, rgb: vec3<f32>, p0: i32, p1: i32, p2: i32) -> vec3<f32> {
+    let q = vec3<u32>(quant(rgb.x), quant(rgb.y), quant(rgb.z));
+    if (kind == 1u) {
+        return vec3<f32>(to_f(255u - q.x), to_f(255u - q.y), to_f(255u - q.z));
+    }
+    if (kind == 2u) {
+        return vec3<f32>(
+            to_f(adj_posterize(q.x, p0)),
+            to_f(adj_posterize(q.y, p0)),
+            to_f(adj_posterize(q.z, p0)),
+        );
+    }
+    if (kind == 3u) {
+        let v = adj_threshold(q, p0);
+        return vec3<f32>(to_f(v));
+    }
+    if (kind == 4u) {
+        return vec3<f32>(
+            to_f(adj_bc(q.x, p0, p1)),
+            to_f(adj_bc(q.y, p0, p1)),
+            to_f(adj_bc(q.z, p0, p1)),
+        );
+    }
+    if (kind == 5u) {
+        return adj_hs(vec3<f32>(to_f(q.x), to_f(q.y), to_f(q.z)), p0, p1, p2);
+    }
+    return rgb;
 }
 
 @compute @workgroup_size(64)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     if (i >= params.count) { return; }
+
+    if (params.adj_kind != 0u) {
+        let cb = canvas[i];
+        let ab = cb.a;
+        if (ab <= 0.0) { return; }
+        let as_ = ab * params.opacity * mask[i];
+        if (as_ <= 0.0) { return; }
+        let cs = adjust(params.adj_kind, cb.rgb, params.p0, params.p1, params.p2);
+        let b = blend(params.mode, cb.rgb, cs);
+        let ao = as_ + ab * (1.0 - as_);
+        if (ao <= 0.0) {
+            canvas[i] = vec4<f32>(0.0);
+            return;
+        }
+        let co = ((1.0 - ab) * as_ * cs + as_ * ab * b + (1.0 - as_) * ab * cb.rgb) / ao;
+        canvas[i] = vec4<f32>(co, ao);
+        return;
+    }
 
     let s = src[i];
     if (s.a <= 0.0) { return; }
@@ -271,84 +508,17 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 "#;
 
-/// Keeps the wgpu objects that own the raw device alive for the process.
-struct Devices {
-    _instance: wgpu::Instance,
-    _adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-}
-
-async fn request_device() -> Option<Devices> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::VULKAN,
-        ..wgpu::InstanceDescriptor::new_without_display_handle()
-    });
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        })
-        .await
-        .ok()?;
-    if adapter.limits().max_storage_buffers_per_shader_stage < 3 {
-        return None;
-    }
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("pictura-render-gpu"),
-            required_features: wgpu::Features::empty(),
-            required_limits: adapter.limits(),
-            experimental_features: wgpu::ExperimentalFeatures::disabled(),
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: wgpu::Trace::Off,
-        })
-        .await
-        .ok()?;
-    Some(Devices {
-        _instance: instance,
-        _adapter: adapter,
-        device,
-        queue,
-    })
-}
-
-fn devices() -> Result<&'static Devices, GpuError> {
-    static DEVICES: OnceLock<Option<Devices>> = OnceLock::new();
-    DEVICES
-        .get_or_init(|| pollster::block_on(request_device()))
-        .as_ref()
-        .ok_or(GpuError::Unavailable)
-}
-
-struct Gpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+/// Bind-group layout and compute pipeline, both size-independent (buffer sizes
+/// travel as bindings), so created once per shared device instead of rebuilt on
+/// every composite. The params uniform lives on [`Gpu`] instead: it carries
+/// per-dispatch state, so sharing one across concurrent composites raced.
+struct ComputeResources {
     pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
-    params: wgpu::Buffer,
-    w: u32,
-    h: u32,
-    n: u32,
 }
 
-impl Gpu {
-    fn new(w: u32, h: u32) -> Result<Self, GpuError> {
-        let shared = devices()?;
-        let device = shared.device.clone();
-        let queue = shared.queue.clone();
-        let n = w * h;
-        let bytes = u64::from(n) * 16;
-        let limits = device.limits();
-        if bytes > limits.max_storage_buffer_binding_size || bytes > limits.max_buffer_size {
-            return Err(GpuError::TooLarge);
-        }
-        if n.div_ceil(64) > limits.max_compute_workgroups_per_dimension {
-            return Err(GpuError::TooLarge);
-        }
-
+impl ComputeResources {
+    fn new(device: &wgpu::Device) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("pictura-blend-layout"),
             entries: &[
@@ -384,17 +554,105 @@ impl Gpu {
             compilation_options: Default::default(),
             cache: None,
         });
+        Self { pipeline, layout }
+    }
+}
+
+/// Keeps the wgpu objects that own the raw device alive for the process.
+struct Devices {
+    _instance: wgpu::Instance,
+    _adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    resources: OnceLock<ComputeResources>,
+}
+
+impl Devices {
+    fn resources(&'static self) -> &'static ComputeResources {
+        self.resources
+            .get_or_init(|| ComputeResources::new(&self.device))
+    }
+}
+
+async fn request_device() -> Option<Devices> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::VULKAN,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+            apply_limit_buckets: false,
+        })
+        .await
+        .ok()?;
+    if adapter.limits().max_storage_buffers_per_shader_stage < 3 {
+        return None;
+    }
+    let (device, queue) = adapter
+        .request_device(&wgpu::DeviceDescriptor {
+            label: Some("pictura-render-gpu"),
+            required_features: wgpu::Features::empty(),
+            required_limits: adapter.limits(),
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            memory_hints: wgpu::MemoryHints::default(),
+            trace: wgpu::Trace::Off,
+        })
+        .await
+        .ok()?;
+    Some(Devices {
+        _instance: instance,
+        _adapter: adapter,
+        device,
+        queue,
+        resources: OnceLock::new(),
+    })
+}
+
+fn devices() -> Result<&'static Devices, GpuError> {
+    static DEVICES: OnceLock<Option<Devices>> = OnceLock::new();
+    DEVICES
+        .get_or_init(|| pollster::block_on(request_device()))
+        .as_ref()
+        .ok_or(GpuError::Unavailable)
+}
+
+struct Gpu {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    res: &'static ComputeResources,
+    params: wgpu::Buffer,
+    w: u32,
+    h: u32,
+    n: u32,
+}
+
+impl Gpu {
+    fn new(w: u32, h: u32) -> Result<Self, GpuError> {
+        let shared = devices()?;
+        let device = shared.device.clone();
+        let queue = shared.queue.clone();
+        let n = w * h;
+        let bytes = u64::from(n) * 16;
+        let limits = device.limits();
+        if bytes > limits.max_storage_buffer_binding_size || bytes > limits.max_buffer_size {
+            return Err(GpuError::TooLarge);
+        }
+        if n.div_ceil(64) > limits.max_compute_workgroups_per_dimension {
+            return Err(GpuError::TooLarge);
+        }
         let params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-blend-params"),
-            size: 16,
+            size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         Ok(Self {
             device,
             queue,
-            pipeline,
-            layout,
+            res: shared.resources(),
             params,
             w,
             h,
@@ -421,9 +679,21 @@ impl Gpu {
         buffer
     }
 
+    /// Full-size storage buffer with no upload: wgpu zero-initializes it and the
+    /// caller writes only the region it needs.
+    fn make_zeroed(&self, label: &str, usage: wgpu::BufferUsages, size: u64) -> wgpu::Buffer {
+        self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage: usage | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+
     /// Assemble the full-canvas source for one pixel layer, matching
     /// `composite_pixels`: zero outside the layer rect, otherwise the channel
-    /// samples (grayscale replicates channel 0) and straight alpha.
+    /// samples (grayscale replicates channel 0) and straight alpha. Only the
+    /// clamped rect rows are uploaded; the shader indexes by canvas pixel.
     fn build_source(&self, layer: &Layer, doc: &Document) -> Option<wgpu::Buffer> {
         let lw = layer.rect.width();
         let lh = layer.rect.height();
@@ -447,10 +717,17 @@ impl Gpu {
         let ch1 = channel(layer, 1).or(ch0);
         let ch2 = channel(layer, 2).or(ch0);
         let alpha = channel(layer, -1);
-        let mut data = vec![0f32; self.n as usize * 4];
+
+        let buffer = self.make_zeroed(
+            "pictura-src",
+            wgpu::BufferUsages::STORAGE,
+            u64::from(self.n) * 16,
+        );
+        let width = (x1 - x0) as usize;
         let stride = self.w as usize;
+        let mut row = vec![0u8; width * 16];
         for y in y0..y1 {
-            for x in x0..x1 {
+            for (col, x) in (x0..x1).enumerate() {
                 let li = (y - layer.rect.top) as usize * lw + (x - layer.rect.left) as usize;
                 let (r, g, b) = if gray {
                     let v = sample(ch0, li).unwrap_or(0);
@@ -463,34 +740,57 @@ impl Gpu {
                     )
                 };
                 let a = sample(alpha, li).unwrap_or(255);
-                let i = (y as usize * stride + x as usize) * 4;
-                data[i] = r as f32 / 255.0;
-                data[i + 1] = g as f32 / 255.0;
-                data[i + 2] = b as f32 / 255.0;
-                data[i + 3] = a as f32 / 255.0;
+                let i = col * 16;
+                row[i..i + 4].copy_from_slice(&(r as f32 / 255.0).to_le_bytes());
+                row[i + 4..i + 8].copy_from_slice(&(g as f32 / 255.0).to_le_bytes());
+                row[i + 8..i + 12].copy_from_slice(&(b as f32 / 255.0).to_le_bytes());
+                row[i + 12..i + 16].copy_from_slice(&(a as f32 / 255.0).to_le_bytes());
             }
+            let offset = ((y as usize * stride + x0 as usize) * 16) as u64;
+            self.queue.write_buffer(&buffer, offset, &row);
         }
-        Some(self.make_buffer(
-            "pictura-src",
-            wgpu::BufferUsages::STORAGE,
-            &f32_bytes(&data),
-        ))
+        Some(buffer)
     }
 
     /// Per-canvas-pixel mask coverage, reusing the CPU `mask_alpha`.
+    ///
+    /// A pixel layer's source is zero outside its clamped rect, so the shader
+    /// only reads the mask there and only that rect is uploaded. A group's inner
+    /// buffer and an adjustment layer both act across the whole canvas (their own
+    /// rect carries no content), so they keep the full-canvas write.
+    /// ponytail: group/adjustment masks stay full-canvas; bound them by the inner
+    /// buffer's content rect if a group-mask profile ever shows up.
     fn build_mask(&self, layer: &Layer) -> wgpu::Buffer {
-        let mut data = vec![0f32; self.n as usize];
-        let stride = self.w as usize;
-        for y in 0..self.h as usize {
-            for x in 0..self.w as usize {
-                data[y * stride + x] = mask_alpha(layer, x as i32, y as i32) as f32 / 255.0;
-            }
-        }
-        self.make_buffer(
+        let buffer = self.make_zeroed(
             "pictura-mask",
             wgpu::BufferUsages::STORAGE,
-            &f32_bytes(&data),
-        )
+            u64::from(self.n) * 4,
+        );
+        let (x0, y0, x1, y1) = if layer.is_group || layer.adjustment.is_some() {
+            (0, 0, self.w as i32, self.h as i32)
+        } else {
+            (
+                layer.rect.left.max(0),
+                layer.rect.top.max(0),
+                layer.rect.right.min(self.w as i32),
+                layer.rect.bottom.min(self.h as i32),
+            )
+        };
+        if x1 <= x0 || y1 <= y0 {
+            return buffer;
+        }
+        let width = (x1 - x0) as usize;
+        let stride = self.w as usize;
+        let mut row = vec![0u8; width * 4];
+        for y in y0..y1 {
+            for (col, x) in (x0..x1).enumerate() {
+                row[col * 4..col * 4 + 4]
+                    .copy_from_slice(&(mask_alpha(layer, x, y) as f32 / 255.0).to_le_bytes());
+            }
+            let offset = ((y as usize * stride + x0 as usize) * 4) as u64;
+            self.queue.write_buffer(&buffer, offset, &row);
+        }
+        buffer
     }
 
     fn composite_layer(&self, canvas: &wgpu::Buffer, layer: &Layer, doc: &Document) {
@@ -514,12 +814,24 @@ impl Gpu {
                 self.composite_layer(&inner, child, doc);
             }
             let mask = self.build_mask(layer);
-            self.dispatch(canvas, &inner, &mask, layer.blend, layer.opacity);
+            self.dispatch(canvas, &inner, &mask, layer.blend, layer.opacity, NO_ADJ);
+            return;
+        }
+        if let Some(data) = &layer.adjustment {
+            // `check_supported` already rejected every adjustment that has no GPU
+            // kind, so this only runs for the five supported kinds.
+            if let Some(adj) = decode_adjustment(data).and_then(|a| adjustment_params(&a)) {
+                let mask = self.build_mask(layer);
+                // The shader ignores `src` in the adjustment branch; the mask
+                // buffer stands in for it rather than aliasing the read-write
+                // canvas binding.
+                self.dispatch(canvas, &mask, &mask, layer.blend, layer.opacity, adj);
+            }
             return;
         }
         if let Some(src) = self.build_source(layer, doc) {
             let mask = self.build_mask(layer);
-            self.dispatch(canvas, &src, &mask, layer.blend, layer.opacity);
+            self.dispatch(canvas, &src, &mask, layer.blend, layer.opacity, NO_ADJ);
         }
     }
 
@@ -530,11 +842,16 @@ impl Gpu {
         mask: &wgpu::Buffer,
         mode: BlendMode,
         opacity: u8,
+        adj: (u32, i32, i32, i32),
     ) {
         let params = [
             mode_id(mode).to_le_bytes(),
             (opacity as f32 / 255.0).to_le_bytes(),
             self.n.to_le_bytes(),
+            adj.0.to_le_bytes(),
+            adj.1.to_le_bytes(),
+            adj.2.to_le_bytes(),
+            adj.3.to_le_bytes(),
             0u32.to_le_bytes(),
         ]
         .concat();
@@ -542,7 +859,7 @@ impl Gpu {
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("pictura-blend"),
-            layout: &self.layout,
+            layout: &self.res.layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -573,7 +890,7 @@ impl Gpu {
                 label: Some("pictura-blend"),
                 timestamp_writes: None,
             });
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(&self.res.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(self.n.div_ceil(64), 1, 1);
         }
@@ -641,12 +958,4 @@ fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
         },
         count: None,
     }
-}
-
-fn f32_bytes(values: &[f32]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(values.len() * 4);
-    for v in values {
-        out.extend_from_slice(&v.to_le_bytes());
-    }
-    out
 }

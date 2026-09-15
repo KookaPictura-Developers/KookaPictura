@@ -449,11 +449,26 @@ pub mod qobject {
         fn gpu_image_width(&self) -> u32;
         #[qinvokable]
         fn gpu_image_height(&self) -> u32;
+
+        /// Set the GPU-compute preference and recomposite on the new backend.
+        #[qinvokable]
+        fn set_gpu_compute(self: Pin<&mut Self>, enabled: bool);
+
+        /// The persisted GPU-compute preference (true by default).
+        #[qinvokable]
+        fn gpu_compute(&self) -> bool;
+
+        /// Whether a usable GPU adapter exists (cached capability probe).
+        #[qinvokable]
+        fn gpu_available(&self) -> bool;
+
+        /// Active backend label: `"GPU"`, `"CPU"`, or `"CPU (no GPU)"`.
+        #[qinvokable]
+        fn active_backend(&self) -> QString;
     }
 }
 
 /// Backing Rust state for [`qobject::PictureView`].
-#[derive(Default)]
 pub struct PictureViewRust {
     image: QImage,
     doc: Option<Document>,
@@ -471,6 +486,31 @@ pub struct PictureViewRust {
     move_x: i32,
     move_y: i32,
     move_opacity: i32,
+    gpu_compute: bool,
+}
+
+impl Default for PictureViewRust {
+    fn default() -> Self {
+        Self {
+            image: QImage::default(),
+            doc: None,
+            selection: None,
+            history: History::default(),
+            path: None,
+            dirty: false,
+            interop: None,
+            pending_lasso: Vec::new(),
+            pending_lasso_mode: String::new(),
+            stroke: None,
+            stroke_label: String::new(),
+            move_base: None,
+            move_layer: None,
+            move_x: 0,
+            move_y: 0,
+            move_opacity: 0,
+            gpu_compute: true,
+        }
+    }
 }
 
 impl qobject::PictureView {
@@ -481,9 +521,10 @@ impl qobject::PictureView {
             .and_then(|bytes| pictura_codec::read_psd(&bytes).ok());
 
         let ok = loaded.is_some();
+        let gpu_compute = self.rust().gpu_compute;
         let image = loaded
             .as_ref()
-            .map(document_to_image)
+            .map(|doc| document_to_image(doc, gpu_compute))
             .unwrap_or_else(test_image);
         let mut view = self.rust_mut();
         view.image = image;
@@ -564,7 +605,7 @@ impl qobject::PictureView {
             children: Vec::new(),
             is_group: false,
         });
-        let image = document_to_image(&doc);
+        let image = document_to_image(&doc, self.rust().gpu_compute);
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = Some(doc);
@@ -820,7 +861,7 @@ impl qobject::PictureView {
             } else {
                 let tolerance = tolerance.clamp(0, 255) as u8;
                 pictura_select::magic_wand(
-                    &current_buffer(doc),
+                    &current_buffer(doc, rust.gpu_compute),
                     x as u32,
                     y as u32,
                     tolerance,
@@ -961,7 +1002,7 @@ impl qobject::PictureView {
             }
             let tolerance = tolerance.clamp(0, 255) as u8;
             match pictura_select::magic_wand(
-                &current_buffer(doc),
+                &current_buffer(doc, rust.gpu_compute),
                 x as u32,
                 y as u32,
                 tolerance,
@@ -1025,7 +1066,12 @@ impl qobject::PictureView {
             pictura_render::translate_layer(doc, dx, dy)
         };
         if moved {
-            let image = self.rust().doc.as_ref().map(document_to_image);
+            let gpu_compute = self.rust().gpu_compute;
+            let image = self
+                .rust()
+                .doc
+                .as_ref()
+                .map(|doc| document_to_image(doc, gpu_compute));
             if let Some(image) = image {
                 self.as_mut().rust_mut().image = image;
             }
@@ -1049,10 +1095,11 @@ impl qobject::PictureView {
             return false;
         };
         let (x, y, opacity) = (layer.rect.left, layer.rect.top, layer.opacity as i32);
+        let gpu_compute = rust.gpu_compute;
         let base = {
             let mut hidden = doc.clone();
             hidden.layers[index].visible = false;
-            document_to_image(&hidden)
+            document_to_image(&hidden, gpu_compute)
         };
         rust.move_base = Some(base);
         rust.move_layer = Some(layer_image);
@@ -1142,7 +1189,7 @@ impl qobject::PictureView {
         if x < 0 || y < 0 || x as u32 >= doc.width || y as u32 >= doc.height {
             return 0;
         }
-        argb_at(&current_buffer(doc), x as u32, y as u32)
+        argb_at(&current_buffer(doc, rust.gpu_compute), x as u32, y as u32)
     }
 
     pub fn selection_bounds(&self) -> QString {
@@ -1292,11 +1339,12 @@ impl qobject::PictureView {
             }
         };
         if changed {
+            let gpu_compute = self.rust().gpu_compute;
             let image = self
                 .rust()
                 .stroke
                 .as_ref()
-                .map(|stroke| document_to_image(stroke.document()));
+                .map(|stroke| document_to_image(stroke.document(), gpu_compute));
             if let Some(image) = image {
                 self.as_mut().rust_mut().image = image;
             }
@@ -1619,13 +1667,41 @@ impl qobject::PictureView {
         self.rust().interop.as_ref().map_or(0, |s| s.height)
     }
 
+    pub fn set_gpu_compute(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().rust_mut().gpu_compute = enabled;
+        self.recomposite();
+    }
+
+    pub fn gpu_compute(&self) -> bool {
+        self.rust().gpu_compute
+    }
+
+    pub fn gpu_available(&self) -> bool {
+        pictura_render::gpu_available()
+    }
+
+    pub fn active_backend(&self) -> QString {
+        if !pictura_render::gpu_available() {
+            QString::from("CPU (no GPU)")
+        } else if self.rust().gpu_compute {
+            QString::from("GPU")
+        } else {
+            QString::from("CPU")
+        }
+    }
+
     fn layer(&self, i: i32) -> Option<&Layer> {
         self.rust().doc.as_ref()?.layers.get(i as usize)
     }
 
     /// Refresh `image` from the current document and emit [`changed`].
     fn recomposite(mut self: Pin<&mut Self>) {
-        let image = self.rust().doc.as_ref().map(document_to_image);
+        let gpu_compute = self.rust().gpu_compute;
+        let image = self
+            .rust()
+            .doc
+            .as_ref()
+            .map(|doc| document_to_image(doc, gpu_compute));
         if let Some(image) = image {
             self.as_mut().rust_mut().image = image;
         }
@@ -2197,17 +2273,17 @@ fn selection_to_mask(selection: &Selection, doc: &Document) -> LayerMask {
 
 /// The buffer a wand samples: the composited layer stack when present,
 /// otherwise the embedded PSD composite.
-fn current_buffer(doc: &Document) -> PixelBuffer {
+fn current_buffer(doc: &Document, gpu_compute: bool) -> PixelBuffer {
     if doc.layers.is_empty() {
         doc.composite.clone()
     } else {
-        pictura_render::composite_rgba(doc)
+        pictura_render::composite_active(doc, gpu_compute).0
     }
 }
 
 /// Convert the document to a packed RGBA `QImage`.
-fn document_to_image(doc: &Document) -> QImage {
-    buffer_to_image(&current_buffer(doc))
+fn document_to_image(doc: &Document, gpu_compute: bool) -> QImage {
+    buffer_to_image(&current_buffer(doc, gpu_compute))
 }
 
 /// The 4-byte PSD blend key as a `String` (e.g. `"mul "`).
@@ -2339,7 +2415,7 @@ mod tests {
     fn converts_planar_rgb_to_rgba() {
         let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
         doc.composite.data = vec![10, 20, 30, 40, 50, 60];
-        let image = document_to_image(&doc);
+        let image = document_to_image(&doc, false);
         assert_eq!(image.width(), 2);
         assert_eq!(image.height(), 1);
         assert_eq!(image.pixel_color(0, 0).red(), 10);
@@ -2387,7 +2463,7 @@ mod tests {
             is_group: false,
         }];
 
-        let image = document_to_image(&doc);
+        let image = document_to_image(&doc, false);
         assert_eq!(image.pixel_color(0, 0).red(), 255);
         assert_eq!(image.pixel_color(0, 0).alpha(), 255);
         // Uncovered canvas stays transparent, not the embedded composite.
@@ -2433,18 +2509,18 @@ mod tests {
             is_group: false,
         }];
 
-        let before = document_to_image(&doc);
+        let before = document_to_image(&doc, false);
         assert_eq!(before.pixel_color(0, 0).red(), 255);
 
         doc.layers
             .push(adjustment_layer("invert", None).expect("known kind"));
-        let after = document_to_image(&doc);
+        let after = document_to_image(&doc, false);
         assert_eq!(after.pixel_color(0, 0).red(), 0);
         assert_eq!(after.pixel_color(0, 0).green(), 255);
         assert_eq!(after.pixel_color(0, 0).blue(), 255);
 
         doc.layers[0].visible = false;
-        let hidden = document_to_image(&doc);
+        let hidden = document_to_image(&doc, false);
         assert_eq!(hidden.pixel_color(0, 0).alpha(), 0);
 
         assert!(adjustment_layer("bogus", None).is_none());
@@ -2506,7 +2582,7 @@ mod tests {
 
         doc.layers
             .push(adjustment_layer("invert", Some(mask)).expect("known kind"));
-        let image = document_to_image(&doc);
+        let image = document_to_image(&doc, false);
         // Selected half inverts red -> cyan; unselected half is untouched.
         assert_eq!(image.pixel_color(0, 0).red(), 0);
         assert_eq!(image.pixel_color(0, 0).green(), 255);

@@ -156,11 +156,14 @@ private:
     QLabel* zoomLabel_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
     QLabel* hintLabel_ = nullptr;
+    QLabel* backendLabel_ = nullptr;
     QColor foreground_;
     QSet<QString> panelNames_;
     QStringList recent_;
     int untitledCounter_ = 0;
     int brightnessLevel_ = 1;
+    bool gpuCompute_ = true;
+    bool gpuAvailable_ = true;
     ScreenMode screenMode_ = ScreenMode::Standard;
     int canvasColorIndex_ = 0;
     bool panelsHidden_ = false;

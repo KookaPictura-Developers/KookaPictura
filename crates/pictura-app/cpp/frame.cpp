@@ -76,6 +76,12 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
 
     const SessionState state = pictura::loadSession();
     recent_ = state.recent;
+    gpuCompute_ = state.gpuCompute;
+    // Probe the adapter once so the toggle can be offered without a document.
+    {
+        PictureView probe;
+        gpuAvailable_ = probe.gpu_available();
+    }
     rebuildRecentMenu();
 
     registerHandlers();
@@ -251,6 +257,11 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
     if (!view) {
         return -1;
     }
+    // Apply the persisted preference to every newly created/opened tab.
+    if (view->gpu_compute() != gpuCompute_) {
+        view->set_gpu_compute(gpuCompute_);
+    }
+    gpuAvailable_ = view->gpu_available();
     DocEntry entry;
     entry.view = view;
     if (path.isEmpty()) {
@@ -624,7 +635,8 @@ void PicturaMainWindow::saveSession()
     SessionState state;
     state.layout = saveState();
     state.brightnessLevel = brightnessLevel_;
-    state.schemaVersion = 1;
+    state.gpuCompute = gpuCompute_;
+    state.schemaVersion = 2;
     state.recent = recent_;
     pictura::saveSession(state);
 }
@@ -934,9 +946,11 @@ void PicturaMainWindow::buildStatusBar()
     QStatusBar* bar = statusBar();
     zoomLabel_ = new QLabel(QStringLiteral("100%"), bar);
     sizeLabel_ = new QLabel(QStringLiteral("—"), bar);
+    backendLabel_ = new QLabel(QStringLiteral("—"), bar);
     hintLabel_ = new QLabel(QStringLiteral("Ready"), bar);
     bar->addWidget(zoomLabel_);
     bar->addWidget(sizeLabel_);
+    bar->addWidget(backendLabel_);
     bar->addWidget(hintLabel_);
 
     auto* readout = new QAction(this);
@@ -1190,6 +1204,21 @@ void PicturaMainWindow::registerHandlers()
     registry_->setCheckedProvider(command_ids::ViewOptions,
                                   [this]() { return optionsBar_ && optionsBar_->isVisible(); });
 
+    registry_->setHandler(command_ids::ViewGpuCompute, [this]() {
+        const QAction* action = registry_->action(command_ids::ViewGpuCompute);
+        gpuCompute_ = action && action->isChecked();
+        for (const DocEntry& entry : docs_) {
+            if (entry.view) {
+                entry.view->set_gpu_compute(gpuCompute_);
+            }
+        }
+        saveSession();
+        registry_->refresh();
+        refresh();
+    });
+    registry_->setEnabledProvider(command_ids::ViewGpuCompute, [this]() { return gpuAvailable_; });
+    registry_->setCheckedProvider(command_ids::ViewGpuCompute, [this]() { return gpuCompute_; });
+
     registry_->setHandler(command_ids::WindowPanelsLayers, [this]() {
         QAction* action = registry_->action(command_ids::WindowPanelsLayers);
         if (layersPanel_ && action) {
@@ -1361,6 +1390,10 @@ void PicturaMainWindow::updateStatus()
             }
         }
         sizeLabel_->setText(text);
+    }
+    if (backendLabel_) {
+        PictureView* view = activeView();
+        backendLabel_->setText(view ? view->active_backend() : QStringLiteral("—"));
     }
 }
 

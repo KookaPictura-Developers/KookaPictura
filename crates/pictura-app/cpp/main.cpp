@@ -1533,6 +1533,59 @@ int main(int argc, char* argv[])
             return 69;
         }
 
+        // M26: GPU-compute default/toggle and its persisted preference.
+        // 70: default is on; the toggle flips to CPU and restores the backend.
+        pictura::PictureView* m26av = frame.activeView();
+        if (!m26av) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M26 no active view\n");
+            std::fflush(stderr);
+            return 70;
+        }
+        const bool m26Avail = m26av->gpu_available();
+        const bool m26DefaultOn = m26av->gpu_compute();
+        const QString m26OnBackend = m26av->active_backend();
+        const bool m26OnOk = m26Avail ? m26OnBackend == QStringLiteral("GPU")
+                                      : m26OnBackend == QStringLiteral("CPU (no GPU)");
+        m26av->set_gpu_compute(false);
+        const bool m26OffCpu = m26av->active_backend() == QStringLiteral("CPU");
+        m26av->set_gpu_compute(true);
+        const bool m26Restored = m26av->active_backend() == m26OnBackend;
+        std::fprintf(stderr,
+                     "pictura self-test: m26_gpu available=%d default_on=%d off_cpu=%d on_back=%d\n",
+                     m26Avail ? 1 : 0,
+                     m26DefaultOn ? 1 : 0,
+                     m26OffCpu ? 1 : 0,
+                     m26Restored ? 1 : 0);
+        std::fflush(stderr);
+        if (!m26DefaultOn || !m26OnOk || !m26OffCpu || !m26Restored) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M26 gpu backend wrong\n");
+            return 70;
+        }
+
+        // 71: the GPU preference round-trips through the session store, and a
+        // fresh SessionState defaults to on.
+        const bool m26FramePref = m26av->gpu_compute();
+        pictura::SessionState m26State = pictura::loadSession();
+        m26State.gpuCompute = false;
+        const bool m26SavedOff = pictura::saveSession(m26State);
+        const bool m26OffRound = !pictura::loadSession().gpuCompute;
+        m26State.gpuCompute = true;
+        const bool m26SavedOn = pictura::saveSession(m26State);
+        const bool m26OnRound = pictura::loadSession().gpuCompute;
+        const bool m26Default = pictura::SessionState{}.gpuCompute;
+        m26State.gpuCompute = m26FramePref;
+        pictura::saveSession(m26State);
+        std::fprintf(stderr,
+                     "pictura self-test: m26_session gpu_off=%d gpu_on=%d default=%d\n",
+                     (m26SavedOff && m26OffRound) ? 1 : 0,
+                     (m26SavedOn && m26OnRound) ? 1 : 0,
+                     m26Default ? 1 : 0);
+        std::fflush(stderr);
+        if (!m26SavedOff || !m26OffRound || !m26SavedOn || !m26OnRound || !m26Default) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M26 session persistence wrong\n");
+            return 71;
+        }
+
         // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
         int m23Levels = 0;
         for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {

@@ -42,6 +42,7 @@ inline constexpr char ViewZoomOut[] = "view.zoomOut";
 inline constexpr char ViewFitOnScreen[] = "view.fitOnScreen";
 inline constexpr char ViewActualPixels[] = "view.actualPixels";
 inline constexpr char ViewOptions[] = "view.options";
+inline constexpr char ViewGpuCompute[] = "view.gpuCompute";
 inline constexpr char ViewScreenModeStandard[] = "view.screenMode.standard";
 inline constexpr char ViewScreenModeFullWithMenuBar[] = "view.screenMode.fullWithMenuBar";
 inline constexpr char ViewScreenModeFull[] = "view.screenMode.full";

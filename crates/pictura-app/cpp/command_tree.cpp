@@ -673,6 +673,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"View"});
     registry.add(CommandSpec{command_ids::ViewOptions, {"View", "Options"},
                              QStringLiteral("Options"), QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::ViewGpuCompute, {"View", "Use GPU Compute"},
+                             QStringLiteral("Use GPU Compute"), QKeySequence(), true, true});
 
     // Window
     leaf(registry, {"Window", "Arrange", "Cascade"}, QStringLiteral("Cascade"));

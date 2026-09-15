@@ -1,8 +1,5 @@
-# gpu-compositing Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change m2-gpu-compositing. Update Purpose after archive.
-## Requirements
 ### Requirement: GPU compositor matches the CPU oracle within ±1 LSB
 
 `pictura_render::composite_gpu(doc)` SHALL composite the document's layer stack
@@ -79,31 +76,3 @@ dispatching it to the shader and without panicking.
 - **WHEN** `composite_gpu` is called on a document whose visible layer is an
   adjustment layer of any other kind
 - **THEN** it returns `Err(GpuError::UnsupportedAdjustment)`
-
-### Requirement: Graceful CPU fallback when no GPU is available
-
-The GPU path MUST NOT panic when no usable adapter exists. Adapter/device
-creation failure, documents exceeding device buffer or workgroup limits, and
-readback failure SHALL each produce a `GpuError` variant
-(`Unavailable`, `TooLarge`, `Readback`). `composite_gpu_or_cpu(doc)` MUST return
-the CPU compositor's result whenever `composite_gpu` returns any `GpuError`, and
-its output for a CPU-only stack MUST be byte-identical to
-`composite_rgba(doc)`.
-
-#### Scenario: No Vulkan adapter
-
-- **WHEN** `composite_gpu` runs on a machine with no usable Vulkan adapter
-- **THEN** it returns `Err(GpuError::Unavailable)` and does not panic, and
-  `composite_gpu_or_cpu` returns the CPU composite
-
-#### Scenario: Document exceeds device limits
-
-- **WHEN** the document's buffers or dispatch count exceed the device limits
-- **THEN** `composite_gpu` returns `Err(GpuError::TooLarge)` and does not panic
-
-#### Scenario: Fallback for a CPU-only stack
-
-- **WHEN** a document contains a color-luminosity or Dissolve layer and is passed
-  to `composite_gpu_or_cpu`
-- **THEN** the returned buffer equals `composite_rgba(doc)` byte for byte
-
