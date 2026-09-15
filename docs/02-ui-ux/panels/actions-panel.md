@@ -22,6 +22,8 @@ The **Actions panel** (`Window > Actions`, shortcut `F9` / `Option+F9`) records,
 
 Expand/collapse a set, action, or command with its triangle; `Alt`/`Option`-click the triangle expands/collapses all actions in a set or all commands in an action.
 
+**Default placement.** The Actions panel is not part of the default Essentials workspace; it is one of the panels supplied by the **Photography** workspace (with Histogram and Info), docked in the right-hand column (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
+
 **Button mode.** `Button Mode` from the panel menu renders each action as a clickable button (with an optional assigned **Color**). *"You can't view individual commands or sets in Button mode."* Clicking a button executes the entire action; previously excluded commands are not executed. Choose `Button Mode` again to return to list mode.
 
 **Selection.** Click an action name; `Shift`-click for contiguous multi-select; `Ctrl`/`Cmd`-click for discontiguous multi-select.
@@ -196,6 +198,7 @@ Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (downloaded, text-extracted). Established: `Window > Actions`; `F9`/`Option+F9`; the definitions of action/action set/droplet; the A–E panel anatomy (set, action, recorded commands, included command, modal control); expand/collapse and `Alt`-click; Button mode and its restrictions; recording guidelines and the recordable tool/panel list; ruler-unit/position caveat; Create New Action and Function Key exceptions (`F1`, `F4`/`F6`+`Ctrl` on Windows); Begin/Stop/Start Recording and `Esc`; **Allow Tool Recording** as a CS6 addition (with the "disable after use" note); Insert Stop/Allow Continue; Insert Path/multiple-path note; Insert Menu Item and the non-recordable list; modal controls and the red partial icon; exclude/include and the red parent check mark; Play flows (set/action/function key/part/single command); Playback Options (Accelerated/Step By Step/Pause For N Seconds); overwrite/add/rearrange/Record Again; duplicate/delete/Clear All; Action/Set Options; sets (new/move/rename/Save/Load/Replace/Reset) with `.atn` extension and `Presets/Actions` menu behavior; the `Ctrl+Alt`/`Cmd+Opt` text dump; Batch and droplet relationships; Image Processor `Run Action` set/action menus; the ambiguous "Conditional actions" section linking to Creative Cloud.
 - `https://searxng` query "Photoshop CS6 Actions panel record play stop modal control button mode" and "Photoshop CS6 Character Styles Paragraph Styles panel Type menu" — discovery snippets locating secondary pages; not used as assertions.
+- `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Essentials vs. Photography workspace panel sets; places Actions (with Histogram and Info) in the Photography workspace, not in default Essentials.
 
 Consulted as search-result snippets only (not individually fetched; community/current-version):
 
@@ -207,7 +210,7 @@ Not used in this pass:
 
 ## Open questions
 
-- **Conditional actions in shipped CS6.** The fetched CS6 Help has a "Conditional actions" section but links "Adding conditional actions | **Creative Cloud**" in the TOC and body. `AUTO-001` asserts they are a CS6 change; this panel spec does not. *Resolves with:* a shipped-CS6 build test and reconciliation with `AUTO-001`.
+- **Conditional actions in shipped CS6.** The fetched CS6 Help text contains a "Conditional actions" section, but its heading and cross-reference read "Adding conditional actions | **Creative Cloud**", and the described path is `Insert Conditional` on the Actions panel menu — a CC-era control. The CS6-era conditional feature documented in the same corpus is the narrower `File > Automate > Conditional Mode Change` (a recorded color-mode guard step). `AUTO-001` asserts conditional actions are a CS6 change; this panel spec does not. *Resolves with:* a shipped-CS6 build test and reconciliation with `AUTO-001`.
 - **Stepwise vs. batch conditional steps.** If conditional actions are out of CS6 scope, the panel's command tree has no conditional node, and `09-automation/actions.md` must state this.
 - **`.atn` binary format and version.** Not documented by the fetched text (owned by `09-automation/actions.md`). *Resolves with:* the file-format/SDK reference and CS6-saved `.atn` files.
 - **Exact default action sets and names** shipped with CS6 are not enumerated in the fetched text. *Resolves with:* a CS6 install listing.

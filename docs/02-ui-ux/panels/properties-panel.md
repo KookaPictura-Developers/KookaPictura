@@ -12,9 +12,11 @@
 
 In CS6  It is a dock (`Window > Properties`) that swaps its content to match the selected layer/element. It combines settings that lived in separate CS5 panels and dialogs into one place.
 
+**Default placement (CS6 Essentials workspace).** The panel sits in the **secondary (narrower) panel column to the left of the main one**, below the **History** panel, and opens in **icon view**. Double-clicking a layer opens the panel if it is hidden (Properties is not the default-active tab of any group). (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*; PFP book companion, *Properties panel*.)
+
 ### Adjustment settings
 
-For an **adjustment layer** (or a fill layer), the panel hosts the adjustment's parameter controls — the same controls CS5 showed in the Adjustments panel (`LAY-012`). It also carries the adjustment **Presets menu** for the seven preset-capable types (Levels, Curves, Exposure, Hue/Saturation, Black & White, Channel Mixer, Selective Color); clicking a preset applies it via an adjustment layer, and `Save Preset` adds user presets. The panel provides **Reset** (restore original settings), **Toggle Layer Visibility**, and **Delete This Adjustment Layer**, plus the **Clip to Layer** toggle (confine to the layer below; click again for all layers below). `Layer > Layer Content Options` and double-clicking the layer thumbnail both reopen the same controls. **Invert** adjustments have no editable settings.
+For an **adjustment layer** (or a fill layer), the panel hosts the adjustment's parameter controls — the same controls CS5 showed in the Adjustments panel (`LAY-012`). It also carries the adjustment **Presets menu** for the seven preset-capable types (Levels, Curves, Exposure, Hue/Saturation, Black & White, Channel Mixer, Selective Color); clicking a preset applies it via an adjustment layer, and `Save Preset` adds user presets. The panel provides **Reset** (restore original settings), **Toggle Layer Visibility**, and **Delete This Adjustment Layer**, plus the **Clip to Layer** toggle (confine to the layer below; click again for all layers below), a **Previous State / before-after** toggle (press-and-hold the button or the `\` key to preview the pre-edit image), and the `Layer > Layer Content Options` / double-click-thumbnail reopen path. When nothing is selected the panel header reads **No Properties**. **Invert** adjustments have no editable settings.
 
 The panel menu offers `Auto-Select Parameter` and `Auto-Select Targeted Adjustment Tool`, matching the CS6 Adjustments panel behavior (`PAN-005`).
 
@@ -23,11 +25,12 @@ The panel menu offers `Auto-Select Parameter` and `Auto-Select Targeted Adjustme
 The CS5 **Masks panel** controls were amalgamated into the Properties panel. With a layer mask selected, the panel exposes:
 
 - **Density** — mask opacity (100 % = fully blocking; lower reveals more).
-- **Feather** — softens mask edges.
+- **Feather** — softens mask edges (CS6-era reference: up to a 1000 px radius).
 - **Invert** — reverses masked/unmasked areas (also available in 32-bit in CS6).
 - **Mask Edge** — edge-refinement controls such as Smooth and Contract/Expand (`SEL-003`).
 - **Color Range** — build/refine the mask from sampled colors (`SEL-005`).
 - **Disable/Enable Mask** (eye icon on the mask) — toggles the mask without deleting it; a red X overlays the Layers-panel thumbnail when disabled.
+- **Load Selection from Mask** — reloads the mask's enclosed area as an active selection.
 - **Apply Mask** / **Delete** — permanently apply the mask to the layer or remove it without applying. Note: a layer mask cannot be permanently applied when deleting it on a Smart Object layer.
 - **Vector Mask** controls — `Add` / reveal-all / hide-all variants and Delete for vector masks (`LAY-005`), shared with the Paths panel.
 
@@ -39,12 +42,12 @@ When a 3D element is selected in the 3D panel (`TOOL-061`), the Properties panel
 
 ### Shape / live properties and type
 
-The panel's content is contextual, so shape and type layers likewise surface their relevant properties. The fetched CS6 Help reference PDF does not document a shape- or type-specific Properties-panel page; the following is **community/inferred** and flagged:
+The panel's content is contextual, so shape and type layers likewise surface their relevant properties. Two claims that were previously open are now resolved:
 
-- **Shape layers** carry a vector mask, and the panel exposes the vector-mask controls (`LAY-005`); the shape layer's path is also available in the Paths panel. Editable per-shape geometry (e.g. corner radius, width/height/position) is associated with "Live Shape" properties, but the per-corner radius editing and the broader Live Shape set are generally attributed to the **CC** era rather than CS6 — see Open questions.
-- **Type layers** in CS6 remain edited primarily through the **Character** and **Paragraph** panels and the options bar. Folding the full Character/Paragraph option sets into the Properties panel is a later **CC 2020** enhancement, not CS6 — see Open questions.
+- **Shape layers (CS6): no editable shape geometry in the panel.** A CS6 shape layer carries a vector mask and the panel can expose the vector-mask controls (`LAY-005`); the shape layer's path is also available in the Paths panel. The per-shape **Live Shape Properties** page (fill, stroke, stroke width, width/height/position, and per-corner rectangle radii) is a **CC 2013** feature, not CS6: the CS6-era Adobe community thread "Live Shape properties not showing in Photoshop cs6" confirms its absence, and the PFP book documents it under the CC 2013 guide. CS6's panel is therefore expected to show the mask/vector-mask page (or read-only state) for a shape layer rather than geometry fields.
+- **Type layers (CS6): edited via Character/Paragraph, not the panel.** In CS6 type is edited through the **Character** and **Paragraph** panels, the options bar and the `Type` menu; folding the full Character/Paragraph option sets into the Properties panel is a **CC 2020** enhancement, not CS6.
 
-Because these claims are not confirmed by the fetched CS6 Help PDF, they are design proposals pending a CS6 UI capture, not parity contracts.
+The shape/type page contents remain a design proposal pending a CS6 capture, but the *absence* of Live Shape geometry and full type controls in CS6 is now sourced.
 
 ### Relationship to the old Masking / Adjustments panels
 
@@ -61,9 +64,9 @@ Because these claims are not confirmed by the fetched CS6 Help PDF, they are des
 | Properties panel | Parameter controls | — | Contextual per selected node. |
 | Properties panel | Presets menu | — | Seven preset-capable adjustments (`LAY-012`). |
 | Properties panel | Clip to Layer | — | `LAY-012`; also `Ctrl/Cmd+Alt+G`. |
-| Properties panel | Reset / Toggle Visibility / Delete | — | Adjustment layer affordances. |
+| Properties panel | Reset / Toggle Visibility / Delete / Previous State | `\` | Adjustment layer affordances; `\` (hold) previews the pre-edit state. |
 | Properties panel | Density / Feather / Invert / Mask Edge / Color Range | — | Mask controls (`LAY-004`, `PAN-006`). |
-| Properties panel | Disable/Enable, Apply Mask, Delete Mask | — | Mask lifecycle. |
+| Properties panel | Disable/Enable, Load Selection, Apply Mask, Delete Mask | — | Mask lifecycle. |
 | Properties panel | Vector Mask buttons | — | Add reveal-all/hide-all; delete (`LAY-005`). |
 | Properties panel | 3D Environment/Scene/Camera/Mesh/Material/Light | `V` | Extended only; coordinates toggle (`TOOL-061`). |
 | Properties panel | Render | — | Commits the 3D scene. |
@@ -76,12 +79,14 @@ Because these claims are not confirmed by the fetched CS6 Help PDF, they are des
 |---|---|---|---|---|
 | Active page | enum | by selection | Layer content / Mask / 3D element | Contextual swap. |
 | Density | percent | 100 | 0–100 | Mask opacity (`LAY-004`). |
-| Feather | px | 0 | ≥ 0 | Mask edge softening. |
+| Feather | px | 0 | 0–1000 | Mask edge softening (CS6-era reference radius cap). |
 | Invert | bool | off | on / off | Reverses mask; CS6 also in 32-bit. |
 | Mask Edge | action | — | Smooth, Contract/Expand, … | `SEL-003`. |
 | Color Range | dialog | — | Fuzziness, Range, Localized Color Clusters | `SEL-005`. |
 | Enable/Disable mask | bool | on | on / off | Red X when disabled. |
+| Load Selection | action | — | — | Reload the mask as an active selection. |
 | Apply / Delete mask | action | — | — | Apply is refused for Smart Object layer masks. |
+| Previous State (`\`) | action | — | hold | Pre-edit preview. |
 | Clip to Layer | bool | off | on / off | Adjustment/fill layers. |
 | Adjustment preset | enum | none | per preset-capable type | Applies via an adjustment layer. |
 | Coordinates (3D) | bool | off | on / off | `V`; Extended only. |
@@ -171,6 +176,10 @@ Fetched for this document:
 - `https://jkost.com/blog/2012/06/the-properties-panel-in-photoshop-cs6.html` — Adobe's Julieanne Kost: CS6 Properties panel shows the selected layer's properties and a mask icon at the top; can be resized both ways.
 - `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Paths_palette.html` — used only for the CS6-era statement that a path can be a vector mask and be saved as a clipping path; vector-mask controls live in the Properties panel in CS6.
 - `https://www.photoshopessentials.com/basics/using-the-enhanced-properties-panel-in-photoshop` — the Properties panel is the contextual editor for the selected layer; type's full Character/Paragraph integration is explicitly a **CC 2020** enhancement (used to separate CS6 behavior from later versions).
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/propertiespanel.html` (fetched) — CS6-era book companion: the panel has an "adjustment controls" mode (default when an adjustment layer is created) and a "mask controls" mode; double-clicking a layer opens the panel if hidden; the mask mode exposes pixel/vector mask buttons, Density, Feather (up to 1000 px), Mask Edge, Color Range, Invert, and Load-Selection/Apply/Delete buttons; the adjustment mode exposes Presets, the parameter controls, Clip to Layer, a before/after **Previous State** toggle (`\`), Reset, Toggle Visibility and Delete; `Shift+Return` enters panel edit mode and `Esc` exits.
+- `https://www.apogeephoto.com/photoshop-cs6-cc-the-adjustments-panel-and-properties-panel` (fetched) — CS6/CC tutorial enumerating the adjustment-view functions (Toggle Layer Visibility, Reset to Default, Delete Layer, Clip to Layer, Previous State) and the mask-view functions (Mask Density, Mask Edge, Color Range, Feather Edge, Invert Selection, Delete Mask, Disable/Enable Mask, Load Selection from Mask).
+- `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` (fetched) — CS6 Essentials default workspace: Properties shares the narrow secondary column with History, below it.
+- `https://community.adobe.com/t5/photoshop-ecosystem-discussions/live-shape-properties-not-showing-in-photoshop-cs6/m-p/11035207` and `http://www.photoshopforphotographers.com/CC_2013/Help_guide/PDFs/LiveShapeProperties.pdf` — confirm that per-shape Live Shape Properties (corner radii, width/height, etc.) are a CC 2013 feature absent from CS6.
 
 Consulted as search-result snippets only (not individually fetched; community):
 
@@ -180,13 +189,12 @@ Consulted as search-result snippets only (not individually fetched; community):
 Not used in this pass:
 
 - `https://help.adobe.com` / `helpx.adobe.com` (403) — modern Properties-panel help inaccessible; the archived CS6 Help PDF was used instead.
-- `https://graphicdesign.stackexchange.com/questions/7197/...` and `https://www.agitraining.com/.../live-shape-properties-in-photoshop` (403/transport errors).
+- `https://graphicdesign.stackexchange.com/questions/7197/...` (403/transport errors).
 
 ## Open questions
 
-- **Shape / Live Shape parity for CS6.** Whether CS6's Properties panel exposes editable shape geometry (e.g. rectangle corner radius, width/height/position) and to what degree is not confirmed by the fetched CS6 Help. Per-corner radius editing is commonly attributed to **CC**. *Resolves with:* a CS6 shape-layer capture.
-- **Type properties in CS6.** The extent to which CS6's Properties panel surfaces Character/Paragraph options (vs sending users to the Character/Paragraph panels) is not documented in the CS6 Help; full integration is CC 2020. *Resolves with:* a CS6 type-layer capture.
 - **Multiple-selection behavior.** What the panel shows when several heterogeneous layers are selected is not stated. *Resolves with:* a CS6 test.
 - **Pixel-layer / Background pages.** CC added Transform, Align, and Quick Actions pages for these layers; whether CS6 had any (e.g. read-only document info) is not in the fetched text. *Resolves with:* a CS6 capture.
 - **Page set completeness.** The full list of CS6 `PropertiesTarget` variants (including layer styles, Smart Objects, artboards) is inferred from the contextual-panel concept rather than enumerated by the Help. *Resolves with:* a CS6 workspace capture.
+- **Exact shape-layer page in CS6.** That CS6 lacks Live Shape geometry is now sourced; whether a selected shape layer shows an empty/read-only page or the vector-mask page needs a CS6 capture.
 - **Whether the CS6 Adjustments panel retains any in-panel preset affordance** in addition to the Properties Presets menu — see `PAN-005`.

@@ -12,6 +12,8 @@
 
 `Window > Color` (shortcut `F6`) opens the **Color panel**. It "displays the color values for the current foreground and background colors," and lets the user "edit the foreground and background colors using different color models" or pick from 
 
+**Default placement (CS6 Essentials workspace).** The Color panel is at the **top of the right-hand main panel column**, grouped with the **Swatches** tab; Color is the default-active tab. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
+
 ### Anatomy
 
 From the CS6 Help figure labels (A–D):
@@ -23,7 +25,7 @@ From the CS6 Help figure labels (A–D):
 | C | Slider(s) — one per component of the active model |
 | D | Color ramp (spectrum) |
 
-The panel is **resizable in CS6** (`CLR-002`); earlier panels had a fixed size but could still be enlarged by dragging a panel side (see Open questions for the CS5/CS6 ambiguity).
+The panel is **resizable in CS6** — the CS6 JDI list explicitly adds a "Resizable Color panel". (The generic CS6 "Panels" help page still carries the older sentence that "the Color panel … cannot be resized by dragging"; the JDI entry is the CS6-specific statement. See Open questions for the minimum-size/reflow rules.)
 
 ### Alerts
 
@@ -32,9 +34,11 @@ The panel displays two warning glyphs **above the left side of the color ramp**:
 - An **exclamation point inside a triangle** when the chosen color "cannot be printed using CMYK inks" (out of the current CMYK working space; clicking substitutes the closest printable value, per `CLR-001`).
 - A **square** when the color "is not web-safe" (clicking snaps to the closest of the 216 web-safe colors).
 
+Per the Help, the gamut triangle is **not available while `Web Color Sliders` are selected** (the square remains).
+
 ### Slider model
 
-"Choose a **Sliders** option from the Color panel menu" to change the model the sliders edit. The CS6 Help names the model switch but does not enumerate every menu entry; the model set mirrors the picker (`CLR-001`): **RGB / CMYK / Grayscale / HSB / Lab / Web Color Sliders** *(list inferred)*.
+"Choose a **Sliders** option from the Color panel menu" to change the model the sliders edit. The CS6 Help names the model switch but does not enumerate the menu; the CS6/CC-era menu offers **Grayscale / RGB / HSB / CMYK / LAB / Web Color Sliders** (Julieanne Kost / teachucomp; the `Hue Cube` entry is a later CC addition). Editing CMYK sliders in a non-CMYK document is a conversion through the current CMYK working space (`ARCH-007`), and `Web Color Sliders` snap to web-safe values with tick marks (the per-model value ranges are `CLR-001`'s table).
 
 ### Spectrum (color ramp)
 
@@ -87,7 +91,7 @@ The panel edits the foreground/background `ColorValue`; the per-model numeric ra
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
 | Active color box | enum | Foreground | Foreground / Background | Active box outlined black |
-| Sliders model | enum | RGB *(inferred)* | RGB / CMYK / Grayscale / HSB / Lab / Web Color Sliders | Panel menu; list inferred |
+| Sliders model | enum | RGB *(inferred)* | Grayscale / RGB / HSB / CMYK / LAB / Web Color Sliders | Panel menu; list CS6/CC-sourced, first-run default inferred. |
 | Slider count | int | 3 (RGB) | 1 (Gray) – 4 (CMYK) | Follows model |
 | Spectrum | enum | RGB Spectrum *(inferred)* | RGB Spectrum / CMYK Spectrum / Grayscale Ramp / Current Colors / Make Ramp Web Safe | `Make Ramp Web Safe` is a toggle-style restriction |
 | Dynamic Color Sliders | bool (pref) | on | on / off | General preferences; live slider gradients |
@@ -174,8 +178,11 @@ Widgets, not QML: a small, always-docked numeric instrument, consistent with `AR
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded and text-extracted). Established: `Window > Color` and the panel's purpose; anatomy labels A–D (foreground, background, slider, color ramp); the gamut triangle and web-safe square above the ramp's left side; the **Sliders** menu for changing the color model; spectrum options (RGB Spectrum, CMYK Spectrum, Grayscale Ramp, Current Colors, Make Ramp Web Safe) and Shift-click ramp cycling; selecting a color (fg/bg box activation with black outline, background-active Eyedropper behavior, slider drag with **Dynamic Color Sliders** preference, value entry, picker via the color selection box, ramp eyedropper and Alt-click to the non-active box); "Keys for the Color panel" (Alt-click color bar = background, right/Control-click = Color Bar menu, Shift-click = cycle); `F6` for Show/Hide Color panel; "Resizable Color panel" under the CS6 JDI list.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded and text-extracted). Established: `Window > Color` and the panel's purpose; anatomy labels A–D (foreground, background, slider, color ramp); the gamut triangle and web-safe square above the ramp's left side; the **Sliders** menu for changing the color model; spectrum options (RGB Spectrum, CMYK Spectrum, Grayscale Ramp, Current Colors, Make Ramp Web Safe) and Shift-click ramp cycling; selecting a color (fg/bg box activation with black outline, background-active Eyedropper behavior, slider drag with **Dynamic Color Sliders** preference, value entry, picker via the color selection box, ramp eyedropper and Alt-click to the non-active box); the gamut triangle being unavailable with Web Color Sliders; "Keys for the Color panel" (Alt-click color bar = background, right/Control-click = Color Bar menu, Shift-click = cycle); `F6` for Show/Hide Color panel; "Resizable Color panel" under the CS6 JDI list.
 - `https://docs.merkulov.design/choose-colors-in-the-color-and-swatches-panels` — secondary mirror of the Photoshop help page, consulted to corroborate the panel anatomy, the two alerts, the Sliders/spectrum menu, and the Dynamic Color Sliders preference.
+- `https://jkost.com/blog/2017/05/tips-for-working-with-color-in-photoshop-cc.html` (fetched) — Adobe's Julieanne Kost naming the Color-panel slider menu set (Grayscale, RGB, HSB, CMYK, LAB, Web Color Sliders) and the `Hue Cube` CC-only entry.
+- `https://www.teachucomp.com/the-color-panel-in-photoshop` — corroborates the selectable "RGB Sliders / CMYK Sliders" models and the color-gamut display options.
+- `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` (fetched) — CS6 Essentials default workspace: Color is the top group of the right-hand main column, tabbed with Swatches.
 
 Not used in this pass:
 
@@ -183,10 +190,9 @@ Not used in this pass:
 
 ## Open questions
 
-- **Exact Sliders menu list.** The Help names only "a Sliders option"; the RGB/CMYK/Grayscale/HSB/Lab/Web Color set is *(inferred)* from the picker and community usage. *Resolves with:* a CS6 Color panel-menu capture.
 - **Default slider model and spectrum.** Assumed RGB and RGB Spectrum. *Resolves with:* a CS6 first-run capture.
 - **`Current Colors` interpolation space and steps.** Not documented. *Resolves with:* a CS6 ramp capture and sampling test.
-- **Panel resize behavior and minimum size.** "Resizable" is sourced from the JDI list, but the reflow/min-size rules are not. *Resolves with:* a CS6 capture.
-- **Whether the CMYK sliders are editable or a read-only projection** (the picker supports CMYK entry; the panel is ambiguous). *Resolves with:* a CS6 Color panel capture.
+- **Panel resize behavior and minimum size.** "Resizable" is sourced from the CS6 JDI list, but the reflow/min-size rules are not. *Resolves with:* a CS6 capture.
 - **Grayscale/Bitmap/Indexed panel restrictions.** *Resolves with:* a CS6 mode-specific capture.
 - **Exact alert click semantics when both alerts are present.** *Resolves with:* a CS6 experiment.
+- **Whether CMYK sliders remain editable in a non-CMYK document** (they appear to convert through the working space) — CS6-era sources imply yes but a capture is needed.

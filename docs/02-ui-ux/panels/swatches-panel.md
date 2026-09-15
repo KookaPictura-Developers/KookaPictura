@@ -12,12 +12,14 @@
 
 `Window > Swatches` opens the **Swatches panel**, which 
 
+**Default placement (CS6 Essentials workspace).** The panel is tabbed behind the **Color** panel at the **top of the right-hand main column**; Color is the default-active tab. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
+
 ### Applying
 
 - **Click** a swatch → sets the **foreground** color.
 - **`Ctrl`-click** (Windows) / **`Cmd`-click** (macOS) → sets the **background** color.
 
-Swatches are laid out as a **grid of colored cells**, expanding to the panel width; display style is changed from the panel menu (`CLR-003`).
+Swatches are laid out as a **grid of colored cells**, expanding to the panel width; display style is changed from the panel menu (`CLR-003`). The CS6-era default view is the thumbnail grid (a list/text view is available from the panel menu).
 
 ### Adding
 
@@ -80,7 +82,7 @@ There is **no** in-application Adobe Color Themes/Kuler panel and **no** built-i
 
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
-| Display mode | enum | Small Thumbnail *(inferred)* | Text Only / Small Thumbnail / Large Thumbnail / Small List / Large List | Panel menu and Preset Manager |
+| Display mode | enum | Thumbnail (small) | Text Only / Small Thumbnail / Large Thumbnail / Small List / Large List | Panel menu and Preset Manager (CS6 Help lists the five modes in the Preset Manager; the panel menu uses the same set). |
 | Grid columns | int (derived) | auto-fit | 1 … panel width | Cell size follows display mode |
 | Swatch name | string | generated | user text | Prompted on add; rename in Preset Manager |
 | Active swatch | index | — | 0 … n−1 | Single-select for delete/rename |
@@ -167,8 +169,10 @@ Widgets, not QML: dense docked grid with menu/keyboard management, consistent wi
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded and text-extracted). Established: `Window > Swatches` and the panel purpose; click = foreground and `Ctrl`/`Cmd`-click = background; add via New Swatch / panel-menu New Swatch / bottom-empty-row paint-bucket add with a name prompt; the preference-persistence caveat for new colors; delete via trash drag or `Alt`/`Option`-click scissors; display modes and the panel menu; the "Keys for the Swatches panel" table (empty-area create, `Control`/`Command`-click background, `Alt`/`Option`-click delete); the lower-part named color-system entries; the cross-application requirement that color settings be synchronized; the CS6 **Add swatches from HTML CSS and SVG** page being marked Creative Cloud; `Edit > Presets > Preset Manager` (CS6 path). Library file formats and Preset Manager operations are detailed in `CLR-003`.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded and text-extracted). Established: `Window > Swatches` and the panel purpose; click = foreground and `Ctrl`/`Cmd`-click = background; add via New Swatch / panel-menu New Swatch / bottom-empty-row paint-bucket add with a name prompt; the preference-persistence caveat for new colors; delete via trash drag or `Alt`/`Option`-click scissors; the panel menu display options and the Preset Manager's five display modes (Text Only / Small Thumbnail / Large Thumbnail / Small List / Large List); the "Keys for the Swatches panel" table (empty-area create, `Control`/`Command`-click background, `Alt`/`Option`-click delete); the lower-part named color-system entries; the cross-application requirement that color settings be synchronized; the CS6 **Add swatches from HTML CSS and SVG** page being marked Creative Cloud; `Edit > Presets > Preset Manager` (CS6 path). Library file formats and Preset Manager operations are detailed in `CLR-003`.
 - `https://docs.merkulov.design/choose-colors-in-the-color-and-swatches-panels` — secondary mirror: corroborates the Swatches panel purpose and the newer-version extensions (groups, legacy swatches) that are **not** CS6 and are therefore out of scope.
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Swatches_palette.html` (fetched) — CS6-era book companion: the default Swatches panel view is the thumbnail grid, with an alternative list view from the fly-out menu; add via the empty bottom area; `Alt`-click to erase; library load/replace; swatch reordering via Preset Manager.
+- `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` (fetched) — CS6 Essentials default workspace: Swatches is tabbed with Color at the top of the main column.
 
 Not used in this pass:
 
@@ -176,7 +180,6 @@ Not used in this pass:
 
 ## Open questions
 
-- **Exact default display mode** of the CS6 Swatches panel (Small Thumbnail assumed). *Resolves with:* a CS6 first-run capture.
 - **Rename affordance in the panel** — whether double-click renames in place or opens a dialog, versus only in Preset Manager. *Resolves with:* a CS6 panel capture.
 - **Panel add/delete undo** — CS6 documents none; whether to add a local undo is a product decision (non-parity). *Resolves with:* the panel UX decision.
 - **De-duplication on add** — CS6 does not document it (only the CC HTML/CSS/SVG path de-dups). *Resolves with:* a CS6 add-twice test.

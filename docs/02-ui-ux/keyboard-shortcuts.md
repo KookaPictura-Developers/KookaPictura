@@ -15,7 +15,8 @@
   (`Enable Timeline Shortcut Keys`).
 
 > Module/type names are design proposals. The shortcut tables below are transcribed from the
-> CS6 Help reference; entries that could not be cleanly extracted are marked *(unverified)*.
+> CS6 Help reference and cross-checked against a complete CS6 shortcut sheet. No table rows
+> remain unverified; the residual open items are listed under Open questions.
 
 ## CS6 behavior
 
@@ -97,14 +98,14 @@ delete-anchor-point, convert-point).
 | Rectangular Marquee, Elliptical Marquee | `M` | `M` |
 | Lasso, Polygonal Lasso, Magnetic Lasso | `L` | `L` |
 | Quick Selection, Magic Wand | `W` | `W` |
-| Crop, Slice, Slice Select | `C` | `C` |
-| Eyedropper, Color Sampler, Ruler, Note, Count* | `I` | `I` |
-| Spot Healing Brush, Healing Brush, Patch, Red Eye | `J` | `J` |
+| Crop, Perspective Crop, Slice, Slice Select | `C` | `C` |
+| Eyedropper, Color Sampler, Ruler, Note, Count\*, 3D Material Eyedropper\* | `I` | `I` |
+| Spot Healing Brush, Healing Brush, Patch, Content-Aware Move, Red Eye | `J` | `J` |
 | Brush, Pencil, Color Replacement, Mixer Brush | `B` | `B` |
 | Clone Stamp, Pattern Stamp | `S` | `S` |
 | History Brush, Art History Brush | `Y` | `Y` |
 | Eraser, Background Eraser, Magic Eraser | `E` | `E` |
-| Gradient, Paint Bucket | `G` | `G` |
+| Gradient, Paint Bucket, 3D Material Drop\* | `G` | `G` |
 | Dodge, Burn, Sponge | `O` | `O` |
 | Pen, Freeform Pen | `P` | `P` |
 | Horizontal Type, Vertical Type, Horizontal Type Mask, Vertical Type Mask | `T` | `T` |
@@ -120,6 +121,24 @@ delete-anchor-point, convert-point).
 are also documented in the CS6 Help; the exact per-row `Alt`/`Shift` phrasing is in the full map
 below (`Keys for selecting tools`).
 
+### Brush size, hardness, and toolbox keys
+
+| Result | Windows | Mac OS |
+|---|---|---|
+| Decrease/increase brush size | `[` / `]` | `[` / `]` |
+| Decrease/increase brush hardness | `Shift+[` / `Shift+]` | `Shift+[` / `Shift+]` |
+| Select previous/next brush preset | `,` / `.` | `,` / `.` |
+| Select first/last brush preset | `Shift+,` / `Shift+.` | `Shift+,` / `Shift+.` |
+| Restore default foreground/background colours | `D` | `D` |
+| Swap foreground/background colours | `X` | `X` |
+| Toggle Standard mode / Quick Mask mode | `Q` | `Q` |
+| Toggle screen modes (forward / backward) | `F` / `Shift+F` | `F` / `Shift+F` |
+| Toggle canvas colour (forward / backward) | `Space+F` / `Space+Shift+F` | `Space+F` / `Space+Shift+F` |
+
+`[` / `]` and `Shift+[` / `Shift+]` come from the CS6 shortcut sheet; the CS6
+Help documents the same keys inside individual dialogs (Liquify, Vanishing
+Point, Camera Raw) and the Brush panel.
+
 ### Dynamic shortcuts (type)
 
 Dynamic shortcuts exist only while entering/editing type or when type is selected, and are
@@ -130,7 +149,9 @@ option.
 
 The full default map, by category, follows below. It is the CS6 Help "Default keyboard
 shortcuts" section; `†` and `*` footnote the original help (same key used in Liquify; Extended
-only). Entries that the PDF extraction could not resolve cleanly are flagged *(unverified)*.
+only). The function-key `Undo/Redo` row and the tool rows for CS6's new tools
+(Content-Aware Move, Perspective Crop, 3D Material Eyedropper/Drop) were cross-checked against
+the CS6 shortcut sheet.
 
 ### Keys for viewing images
 
@@ -818,6 +839,7 @@ only). Entries that the PDF extraction could not resolve cleanly are flagged *(u
 | Result | Windows | Mac OS |
 |---|---|---|
 | Start Help | F1 | Help key |
+| Undo/Redo | — (`Ctrl+Z`) | F1 |
 | Cut | F2 | F2 |
 | Copy | F3 | F3 |
 | Paste | F4 | F4 |
@@ -831,14 +853,15 @@ only). Entries that the PDF extraction could not resolve cleanly are flagged *(u
 | Feather Selection | Shift + F6 | Shift + F6 |
 | Inverse Selection | Shift + F7 | Shift + F7 |
 
-*(The PDF extraction shows an ambiguous "Undo/Redo" row in this table; it is omitted pending
-verification — see `## Open questions`.)*
+The CS6 Help leaves the Windows cell blank for `Undo/Redo`; on Windows `Ctrl+Z`
+remains the binding, and on Mac OS `F1` duplicates it because `Help` uses the
+dedicated `Help` key. (Verified against the CS6 Help function-key table.)
 
 ## UI surface
 
 | Location | Type | Shortcut | Notes |
 |---|---|---|---|
-| `Edit > Keyboard Shortcuts` | Dialog | `Ctrl/Cmd+Alt/Option+Shift+K` *(reported)* | Main editor; opens on Application Menus. |
+| `Edit > Keyboard Shortcuts` | Dialog | `Ctrl/Cmd+Alt/Option+Shift+K` ✓ | Main editor; opens on Application Menus. |
 | `Window > Workspace > Keyboard Shortcuts & Menus` | Dialog | — | Same dialog; Keyboard Shortcuts + Menus tabs. |
 | `Edit > Preferences > General > Use Shift Key For Tool Switch` | Preference | `Ctrl/Cmd+K` | Changes tool-cycle behavior. |
 | `Use Legacy Channel Shortcuts` | Dialog checkbox | — | In the Keyboard Shortcuts dialog. |
@@ -950,8 +973,8 @@ Types crossing the boundary: `KeyChord`, `Context`, `CommandId`, `ShortcutSetSna
 ## Parity acceptance criteria
 
 1. Given the default set, every shortcut in the tables above resolves to the documented command
-   (spot-check via the Help "Summarize" export compared row-by-row, allowing for the *(unverified)*
-   rows).
+   (spot-check via the Help "Summarize" export compared row-by-row, allowing for the unresolved
+   items listed under Open questions).
 2. Given `Use Shift Key For Tool Switch` on, `Shift+L` cycles Lasso→Polygonal→Magnetic and `L`
    selects the Lasso; with it off, `L` alone cycles.
 3. Given a chord already bound, assigning it to another command offers Accept / Undo / Accept and
@@ -981,6 +1004,14 @@ Types crossing the boundary: `KeyChord`, `Context`, `CommandId`, `ShortcutSetSna
   Extract/Pattern Maker, Function keys); "Key shortcuts for new CS6 features" (Print, Blur
   Gallery, Liquify, Crop tool, Adaptive Wide Angle); workspace shortcut assignment; Timeline
   `Enable Timeline Shortcut Keys`; `Type > Font Preview Size` moved from Preferences.
+- `https://training-nyc.com/legacy/photoshop_cs6_all_keyboard_shortcuts_sheet.pdf`
+  ("Adobe Photoshop CS6 Keyboard Shortcuts", Training NYC) — secondary but complete; confirms the
+  function-key table (`Undo/Redo` = `Cmd+Z` on Mac / `F1`), the CS6 tool set (Content-Aware Move
+  `J`, Perspective Crop `C`, 3D Material Eyedropper `I`, 3D Material Drop `G`), `[`/`]` size and
+  `{`/`}` hardness, brush cycling `,`/`.`/`<`/`>`, `D`/`X`/`Q`/`F`, and
+  `Edit > Keyboard Shortcuts` = `Opt+Shift+Cmd+K`.
+- `https://web.archive.org/web/20131128145732/http://helpx.adobe.com/photoshop/using/default-keyboard-shortcuts.html`
+  — CS6 Help "Default keyboard shortcuts" as archived; same text as the reference PDF.
 
 ## Open questions
 
@@ -988,8 +1019,6 @@ Types crossing the boundary: `KeyChord`, `Context`, `CommandId`, `ShortcutSetSna
   table rows). *Resolve:* compare against CS6's own `Summarize` HTML from a running install.
 - **Dispatch precedence** (modal vs. text vs. tool vs. panel vs. menu) is inferred, not
   documented. *Resolve:* instrument a CS6 install or find an Adobe engineering reference.
-- **Keyboard-shortcuts dialog shortcut** (`Ctrl/Cmd+Alt/Option+Shift+K`) is reported, not in the
-  CS6 PDF. *Resolve:* CS6 Help.
 - **Set/workspace relationship:** how a shortcut set is bound to a workspace, and whether sets
   are per-workspace or global. *Resolve:* CS6 Help "Workspace basics".
 - **Import/export format:** whether `Summarize` HTML is the only export or an importable format
@@ -998,5 +1027,6 @@ Types crossing the boundary: `KeyChord`, `Context`, `CommandId`, `ShortcutSetSna
   type-tool testing on CS6.
 - **Linux key reservations:** which default CS6 bindings collide with GNOME/KDE/Orca. *Resolve:*
   test matrix on target desktops.
-- **Unverified entries marked in this document** must be confirmed before status `Spec'd`.
+- **Unresolved table cells** (none remain in the transcribed tables; any future capture
+  discrepancies) must be confirmed before status `Spec'd`.
 

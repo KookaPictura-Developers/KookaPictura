@@ -12,6 +12,8 @@
 
 The **Paths panel** (`Window > Paths`)  Panel anatomy: **A** saved path, **B** temporary work path, **C** vector-mask path (only listed while the owning shape layer is selected). Thumbnails can be turned off (`Panel Options > None`) to improve performance.
 
+**Default placement (CS6 Essentials workspace).** The panel is tabbed with **Layers** and **Channels** in the bottom-right group; Layers is the default-active tab. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
+
 A path is a resolution-independent mathematical outline that can be converted to a selection, filled, or stroked with colour; it can also be designated a **clipping path** used to make part of an image transparent when exporting to a page-layout or vector-editing application (EPS/TIFF; see `10-workflow-io/`). A **work path** is temporary: it is replaced when a new work path is started unless saved, and it is lost on deselect if unsaved.
 
 ### Selecting and managing
@@ -40,7 +42,12 @@ A shape layer's path appears as a **vector mask** in the Paths panel, but only w
 
 ### Clipping path
 
-A saved path can be designated a **clipping path** so that part of the image is transparent when exported to a page-layout/vector application. The fetched CS6 Help reference PDF defines the concept and cross-references "Create transparency using image clipping paths," but does not include that section's body in this extraction (it is a separate Help page); the Paths-panel menu is the documented entry point. The exact dialog fields (`Flatness`, output preview) are recorded in Open questions.
+A saved path can be designated a **clipping path** so that part of the image is transparent when exported to a page-layout/vector application. The `Clipping Path` dialog (Paths panel menu) exposes two fields:
+
+- **Path** — choose which saved path to designate.
+- **Flatness** — leave blank to use the printer's default; otherwise `0.2–100` (device pixels). Lower values approximate the curve with more, shorter line segments (more accurate). Adobe recommends `8–10` for high-resolution printing (1200–2400 dpi) and `1–3` for low-resolution printing (300–600 dpi).
+
+Because paths are vector outlines with hard edges, a clipping path cannot preserve the softness of a feathered edge (a shadow, for example). The file must be saved as Photoshop EPS, DCS or PDF for a PostScript printer, or TIFF for a non-PostScript workflow. The exact PSD/TIFF serialisation of the designation is documented in Adobe's file-format spec (`ARCH-008`).
 
 ## UI surface
 
@@ -64,7 +71,7 @@ A saved path can be designated a **clipping path** so that part of the image is 
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
 | Path thumbnail | enum | medium | None / small / medium / large | `Panel Options`. |
-| Make Work Path tolerance | px | *(Help says "use the default" but not its value)* | 0.5–10 | Higher = smoother, fewer anchors. Default unresolved. |
+| Make Work Path tolerance | px | 2.0 | 0.5–10 | Higher = smoother, fewer anchors. Default 2 px is community/CS6-era (Help says "use the default"). |
 | Fill Use | enum | Foreground Color | foreground / background / colour / pattern / history etc. | Mirrors `Edit > Fill`. |
 | Fill Opacity | percent | 100 | 0–100 | 100 = opaque. |
 | Fill Mode | enum | Normal | blend modes + `Clear` | `Clear` erases to transparency; needs a non-background layer. |
@@ -74,6 +81,7 @@ A saved path can be designated a **clipping path** so that part of the image is 
 | Make Selection Operation | enum | New Selection | New / Add / Subtract / Intersect | With an existing selection. |
 | Stroke tool | enum | current painting tool | any painting/editing tool + brush | `Simulate Pressure` optional. |
 | Clipping path | bool | off | — | Designates the selected saved path. |
+| Clipping Path flatness | px | blank (printer default) | 0.2–100 | 8–10 for 1200–2400 dpi; 1–3 for 300–600 dpi. |
 | Path area option | enum | Add | Add / Subtract / Intersect / Exclude | While drawing components. |
 
 ## Algorithms & pipeline
@@ -112,7 +120,7 @@ Widgets (consistent with `ARCH-003`).
 | `PathRowDelegate` | `QStyledItemDelegate` | Thumbnail, name, work-path marker, vector-mask marker, clipping indicator. |
 | `PathThumbnailCache` | `QPixmapCache`-backed helper | Stroke-preview generation/invalidation. |
 | `FillPathDialog` / `StrokePathDialog` / `MakeSelectionDialog` / `MakeWorkPathDialog` | `QDialog` | Option dialogs described above. |
-| `ClippingPathDialog` | `QDialog` | Choose path + flatness/output options (fields TBD). |
+| `ClippingPathDialog` | `QDialog` | Path selector + `Flatness` (blank / 0.2–100). |
 | `NewPathDialog` / `DuplicatePathDialog` | `QDialog` | Name entries. |
 | `PathsPanelMenu` | `QMenu` | Panel-menu actions, enabled per state (e.g. no fill on a vector-layer target). |
 
@@ -157,19 +165,21 @@ Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (downloaded, `pdftotext -layout`) — official CS6 Help. Sections used: "Paths panel overview" (`Window > Paths`; saved path / work path / vector-mask path with anatomy A–C; select/deselect; `Panel Options` thumbnail size/`None`; stacking order and the vector/work reorder restriction); "Create a new path in the Paths panel" (New Path button, `Alt`/`Option`-click naming); "Create a new work path" (shape/pen Path mode; Add/Subtract/Intersect/Exclude path area options; `Shift`/`Alt` modifiers); "Manage paths" (work-path temporariness; saving/renaming; deleting; vector masks linked to the parent layer); "Fill paths with color" (button/`Alt`-click/menu; Use, Opacity, Mode incl. `Clear`, Preserve Transparency, Feather Radius, Anti-aliased; active-layer restriction; `Fill Subpath`); "Stroke paths with color" (button/`Alt`-click/menu; tool choice; `Simulate Pressure`; `Stroke Subpath`); "Convert paths to selection borders" (thumbnail `Ctrl`-click; button; `Make Selection` dialog with Feather/Anti-aliased/Operations); "Convert a selection to a path" (`Make Work Path` button/dialog; Tolerance 0.5–10; feather discarded); "About pathsKeys for the Paths panel" (thumbnail combine modifiers; `Ctrl+Shift+H` hide; `Alt`-click fill/stroke/load/make-work-path/new-path buttons).
 - `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Paths_palette.html` — CS6-era book companion: work path is temporary and promoted via double-click or drag to New Path; path can become a vector mask or be saved as a clipping path in EPS/TIFF; Fill/Stroke buttons; Make Selection / Make Work Path.
+- `https://www.underwaterphotography.com/PhotoShop/PhotoShop/1_20_8_1.html` (fetched) — reproduces Adobe's "Using image clipping paths to create transparency": the `Clipping Path` dialog's `Path` and `Flatness` fields, flatness range 0.2–100, the 8–10 / 1–3 dpi guidance, the hard-edge/feather limitation, and the EPS/DCS/PDF/TIFF save requirements.
+- `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` (fetched) — CS6 Essentials default workspace: Paths is tabbed with Layers and Channels.
+- `https://frameandfocal.com/post-processing/how-to-use-the-pen-tool-in-photoshop` and `https://www.reddit.com/r/photoshop/comments/3168rn/make_work_path_tolerance_default` — CS6-era/community corroboration that the Make Work Path default tolerance is 2 px (the Help itself says only "use the default value").
 
-Consulted as search-result snippets only (not individually fetched; community): SearXNG query for "Photoshop CS6 Paths panel menu Clipping Path Save Path Panel Options" — confirmed the panel-menu `Clipping Path...` entry and `Save Path` flow in CS6-era guides.
+Consulted as search-result snippets only (not individually fetched; community): SearXNG queries for "Photoshop CS6 Paths panel menu Clipping Path Save Path Panel Options" and "Photoshop make work path tolerance default" — confirmed the panel-menu `Clipping Path…` entry, the `Save Path` flow, and the 2 px default.
 
 Not used in this pass:
 
 - `helpx.adobe.com` (HTTP 403) — modern `paths` / `editing-paths` pages inaccessible; the archived CS6 Help PDF was used instead.
-- `https://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/propertiespanel.html` and `https://graphicdesign.stackexchange.com/...` returned transport/403 errors.
+- `https://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/propertiespanel.html` (retrieved successfully but belongs to `PAN-006`) and `https://graphicdesign.stackexchange.com/...` returned transport/403 errors.
 
 ## Open questions
 
-- **Clipping Path dialog fields.** The CS6 Help reference PDF defines the clipping-path concept but omits the body of "Create transparency using image clipping paths"; the dialog's `Flatness` and output options are not sourced here. *Resolves with:* the archived CS6 Help web page or a CS6 capture.
-- **`Make Work Path` default tolerance** is not stated ("use the default value"). *Resolves with:* a CS6 capture or preference dump.
 - **Panel Options thumbnail default** on a fresh install is not stated. *Resolves with:* a preferences dump.
 - **Work-path replacement warning.** Whether CS6 prompts before discarding an unsaved work path is not stated. *Resolves with:* a CS6 test.
 - **Clipping-path PSD key/serialisation** is not asserted. *Resolves with:* `ARCH-008` / the Adobe file-format spec.
 - **`Make Selection` anti-alias default** with nonzero feather (Help implies anti-aliasing requires feather 0) needs a CS6 confirmation. *Resolves with:* a CS6 test.
+- **Make Work Path default tolerance** is now known to be 2 px from CS6-era/community sources but is not stated in the Help itself; a preference dump would make it normative.

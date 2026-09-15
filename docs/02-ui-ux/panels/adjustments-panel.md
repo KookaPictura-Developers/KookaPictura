@@ -12,6 +12,8 @@
 
 The **Adjustments panel** (`Window > Adjustments`) gathers the color and tonal adjustments.  The adjustments made through the panel are therefore **non-destructive** — they live on an adjustment layer and can be re-edited or discarded without changing underlying pixels (`LAY-012`).
 
+**Default placement (CS6 Essentials workspace).** The panel is in the **middle of the right-hand main panel column**, grouped with the **Styles** tab; Adjustments is the default-active tab. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
+
 In **CS5** the panel had a presets list and showed a separate icon screen; in **CS6**:
 
 - the **adjustment icons are always visible**, so the panel is a launch grid;
@@ -32,7 +34,7 @@ The panel menu also offers `Auto-Select Parameter` and `Auto-Select Targeted Adj
 
 The visible adjustments (16 types; PSD keys and parameters in `LAY-012`):
 
-`Brightness/Contrast`, `Levels`, `Curves`, `Exposure`, `Vibrance`, `Hue/Saturation`, `Color Balance`, `Black & White`, `Photo Filter`, `Channel Mixer`, `Color Lookup`, `Invert`, `Posterize`, `Threshold`, `Gradient Map`, `Selective Color` — plus the three **fill-layer** types `Solid Color`, `Gradient`, `Pattern` (`LAY-013`), which share the create flow but add content instead of transforming the backdrop.
+`Brightness/Contrast`, `Levels`, `Curves`, `Exposure`, `Vibrance`, `Hue/Saturation`, `Color Balance`, `Black & White`, `Photo Filter`, `Channel Mixer`, `Color Lookup`, `Invert`, `Posterize`, `Threshold`, `Gradient Map`, `Selective Color` — plus the three **fill-layer** types `Solid Color`, `Gradient`, `Pattern` (`LAY-013`), which share the create flow but add content instead of transforming the backdrop. The three fill-layer icons appear **first** in the grid (above the adjustment icons), mirroring their position at the top of the `Layer > New Fill Layer` submenu and the Layers-panel New Fill/Adjustment menu (community/observed; the Help does not enumerate the grid).
 
 **Color Lookup** is CS6-new (community-sourced; the fetched CS6 Help prose does not name it) and the PSD spec carries the `clrL` key. **Invert** has no editable settings; the Properties panel shows a read-only state for it. Availability is gated by document color mode and bit depth (`LAY-012`): bitmap/indexed disallow adjustment layers, and 32-bit adjustment layers are Extended-only.
 
@@ -42,7 +44,7 @@ The visible adjustments (16 types; PSD keys and parameters in `LAY-012`):
 |---|---|---|---|
 | `Window > Adjustments` | Menu → panel | — | Display the panel; icons always visible in CS6. |
 | Panel icon grid | Buttons | — | Click creates an adjustment layer and opens Properties. |
-| Panel menu | Menu | — | Choose adjustment; `Auto-Select Parameter`; `Auto-Select Targeted Adjustment Tool`; `Save Preset` (CS5 list; CS6 uses Properties Presets). |
+| Panel menu | Menu | — | Choose adjustment; `Add Mask by Default`; `Auto-Select Parameter`; `Auto-Select Targeted Adjustment Tool` (`Save Preset` moves to the Properties panel in CS6). |
 | Panel corner | Resize | drag | Widen the panel (CS6). |
 | Properties panel | Contextual controls | — | Parameter editor + Presets menu + Clip to Layer (`PAN-006`). |
 | Layers panel New Adjustment Layer button | Button/menu | — | Alternative create path (`PAN-001`, `LAY-002`). |
@@ -148,6 +150,11 @@ Fetched for this document:
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (downloaded, `pdftotext -layout`) — official CS6 Help. Sections used: "Adjustments panel overview" (icon click selects an adjustment and creates a layer; non-destructive adjustment layers; CS5 presets list vs CS6 Properties Presets menu for Levels/Curves/Exposure/Hue/Saturation/Black&White/Channel Mixer/Selective Color; icons always visible in CS6; panel widen by corner drag); "Apply a correction using the Adjustments panel" (icon/menu create; toggle visibility; Reset; Delete This Adjustment Layer; CS5 arrow vs CS6 always-visible icons); "Apply a correction to only the layer below" (Clip to Layer); "Save and apply adjustment presets" (CS5 vs CS6 preset menu; Save Preset); "Automatically select text fields or the targeted adjustment tool" (Auto-Select Parameter / Auto-Select Targeted Adjustment Tool; `Shift+Enter`); "Using adjustment layers" (adjustment layers auto-created; properties in Properties panel CS6); "Adjustment and fill layers" (create/edit/confine; Color Range masks; Invert has no editable settings — see `LAY-012` for the full list); "Color adjustment commands" (panel is the flexible adjustment-layer path); "Keys for adjustment layers" (`Delete`/`Backspace`); "Keys for the Channels panel" legacy-shortcuts note (Use Legacy Channel Shortcuts); "What's new in CS6" / JDI list (no panel-specific History change; Color Lookup is CS6-new per community).
 - `https://jkost.com/blog/2012/06/the-properties-panel-in-photoshop-cs6.html` — CS6 Properties panel shows the selected layer's properties and a mask icon; adjustment layers expose their controls there.
 - `https://www.photoshopessentials.com/basics/using-the-enhanced-properties-panel-in-photoshop` — confirms the Properties panel is the contextual editor and that adjustment layers are edited there (article is CC-2020-era; used only for the CS6-era contextual-panel concept, not for CS6 control lists).
+- `https://www.carrieacosta.com/class/shared/adjustment_layers_CS6.pdf` (**"Using Adjustment Layers", CS6 class handout**) — enumerates the CS6 Adjustment Layer buttons: Brightness/Contrast, Levels, Curves, Exposure, Vibrance, Hue/Saturation, Color Balance, Black & White, Photo Filters, Channel Mixer, Color Lookup, Invert, Posterize, Threshold, Selective Color and Gradient Map (16, including Color Lookup), and notes the panel-menu list.
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Adjustments_palette.html` (fetched) — CS6-era book companion: 
+- `https://www.apogeephoto.com/photoshop-cs6-cc-the-adjustments-panel-and-properties-panel` (fetched) — CS6/CC tutorial: pressing an Adjustments icon adds the adjustment layer and opens its controls in the Properties panel; tooltips name the icons.
+- `https://www.photoshopessentials.com/basics/layers/essential-layers-panel-preferences` (fetched) — the Layers-panel "New Fill or Adjustment Layer" list leads with the three Fill layers (Solid Color, Gradient, Pattern); the Adjustments panel menu carries `Add Mask by Default`.
+- `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` (fetched) — CS6 Essentials default workspace: Adjustments is the middle group of the main column, tabbed with Styles.
 
 Consulted as search-result snippets only (not individually fetched; community): SearXNG query for "Photoshop CS6 Properties panel shape layer live properties type contextual".
 
@@ -157,9 +164,9 @@ Not used in this pass:
 
 ## Open questions
 
-- **Color Lookup in the CS6 Help.** The fetched Help prose does not name Color Lookup in the Adjustments panel although it is CS6-new (community) and the PSD spec has `clrL`; whether the Help omission reflects the actual icon grid needs a capture. *Resolves with:* a CS6 Adjustments-panel screenshot.
-- **Exact icon order/count in CS6.** The Help does not enumerate the grid; the 16+3 list is assembled from `LAY-012` and community sources. *Resolves with:* a CS6 capture.
+- **Exact icon order/count in CS6.** The Help does not enumerate the grid; the 16+3 list is assembled from the CS6 class handout and community sources, and the fill-first ordering is observed rather than documented. *Resolves with:* a CS6 capture.
+- **Color Lookup in the CS6 Help.** The fetched Help prose does not name Color Lookup in the Adjustments panel although it is CS6-new (community) and the PSD spec has `clrL`. *Resolves with:* a CS6 Adjustments-panel screenshot.
 - **Properties panel vs Adjustments panel split for presets** is sourced for the named seven types; whether any adjustment also kept an in-panel preset affordance is not. *Resolves with:* a CS6 capture.
 - **Default `Auto-Select Parameter` / `Auto-Select Targeted Adjustment Tool` states** are not stated. *Resolves with:* a preferences dump.
-- **Fill-layer create path from this panel** (Solid/Gradient/Pattern have their own icons vs only the `Layer > New Fill Layer` menu) is not explicit in the fetched text. *Resolves with:* a CS6 capture and `LAY-013`.
+- **`Add Mask by Default` presence in CS6.** Sourced from CS6/CC-era references; a CS6 capture would confirm. *Resolves with:* a CS6 screenshot.
 - **32-bit availability per adjustment** is delegated to `LAY-012` / `04-image-ops/32-bit-hdr.md`.

@@ -12,10 +12,12 @@
 
 The **History panel** (`Window > History`, or its tab)  jumping the image to any recent state. Selecting a state reverts the image to how it looked when that change was first applied; the user can then work from that state. It also deletes states, creates a document from a state or snapshot, and selects the source for the History Brush.
 
+**Panel anatomy (CS6 Help figure).** A. Sets the source for the history brush; B. thumbnail of a snapshot; C. history state; D. history state slider. Snapshots are listed above the states; the bottom button strip holds **Create New Snapshot**, **Create a New Document From Current State**, and the **Delete** icon. **Default placement:** in the default Essentials workspace the History panel sits in the narrower secondary column, collapsed to its icon, above **Properties**; it is also part of the Painting workspace (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
+
 ### States
 
 - Each applied change adds a **state**, listed with the name of the tool or command used.
-- By default the panel lists the previous **20 states**; the number is changeable by preference (see Open questions on the exact preference page).
+- By default the panel lists the previous **20 states**; the number is set in `Edit > Preferences > Performance > History States` (`1`–`1,000`, default `20`, bounded by scratch space). Older states are automatically deleted to free memory; to keep a particular state for the whole session, make a snapshot of it.
 - States are added at the bottom: oldest at top, most recent at bottom.
 - Selecting a state dims the states below it, showing what would be discarded.
 - By default, changing the image after selecting a state eliminates (deletes) all states after it. That change can be undone with `Undo`, restoring the eliminated states.
@@ -66,7 +68,7 @@ Separately, `Edit > Preferences > General > History Log` records a textual edit 
 | `Step Forward` / `Step Backward` | Menu | `Ctrl+Shift+Z` / `Ctrl+Alt+Z` (`Cmd+Shift+Z`/`Cmd+Option+Z`) | Panel or `Edit` menu. |
 | Create New Snapshot button | Button | `Alt`/`Option`-click | Options dialog. |
 | Create New Document From Current State button | Button | — | New untitled document. |
-| Delete icon | Button | `Alt`/`Option`-click a state | Alt-click a state duplicates it (per panel keys). |
+| Delete icon | Button | `Alt`/`Option`-click a state | Deletes the selected state; `Alt`/`Option`-click an image state (not the current one) duplicates it (Help keys table). |
 | Panel menu | Menu | — | `Step Forward/Backward`, `New Snapshot`, `Delete`, `Clear History`, `New Document`, `History Options`. |
 | `Edit > Undo` / `Edit > Redo` | Menu | `Ctrl+Z` / `Ctrl+Shift+Z` (`Cmd+Z`/`Cmd+Shift+Z`) | Non-panel sibling commands. |
 | `Edit > Purge > Histories` | Menu | — | Purges all documents; not undoable. |
@@ -76,7 +78,7 @@ Separately, `Edit > Preferences > General > History Log` records a textual edit 
 
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
-| History states remembered | int | 20 | ≥ 1 (preference) | Older states auto-deleted to free memory. |
+| History states remembered | int | 20 | 1 … 1,000 (preference) | `Edit > Preferences > Performance > History States`; older states auto-deleted to free memory. |
 | Automatically Create First Snapshot | bool | on | on / off | Initial-state snapshot. |
 | Automatically Create New Snapshot When Saving | bool | off *(Help: option exists; default not stated)* | on / off | Snapshot on save. |
 | Allow Non-Linear History | bool | off | on / off | Changes append instead of truncating. |
@@ -171,12 +173,16 @@ Fetched for this document:
 
 Consulted as search-result snippets only (not individually fetched): none specific to this panel. `helpx.adobe.com` returns 403 and was not used.
 
+Fetched for this revision:
+
+- `https://web.archive.org/web/20180801214950/https://helpx.adobe.com/photoshop/using/performance-preferences.html` — archived Adobe Performance-preferences page (CC-era, used only for the long-standing preference semantics): ; cache levels default 4.
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/History_palette.html` — Martin Evening CS6 support page: ; default-panel dimming and `Allow Non-linear History`; the current-history-brush icon and `Edit > Purge > Histories`.
+- `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Essentials workspace: secondary icon column contains **History** (top) and **Properties**; History is also carried into the Painting workspace.
+
 ## Open questions
 
-- **Exact History States preference location.** The Help says the remembered-state count is set "by setting a preference" and elsewhere references reducing saved history states for batch performance, but does not name the page in the fetched extraction (community versions place it under `Edit > Preferences > Performance`). *Resolves with:* the archived CS6 Help "performance preferences" page.
-- **Defaults for `Automatically Create New Snapshot When Saving`, `Show New Snapshot Dialog By Default`.** The Help documents the options but not their initial values. *Resolves with:* a CS6 preferences dump/capture.
+- **Defaults for `Automatically Create New Snapshot When Saving` and `Show New Snapshot Dialog By Default`.** The Help documents the options but not their initial values. *Resolves with:* a CS6 preferences dump/capture.
 - **Non-linear deletion consistency.** How `ARCH-009` re-materialises states that depended on a deleted middle state is undefined here. *Resolves with:* an ADR in `01-architecture/undo-history.md`.
 - **New-document-from-state layer/mask fidelity** (does it carry masks, effects, smart objects?) is not stated. *Resolves with:* a CS6 test.
 - **Snapshot storage cost** (full raster vs references) and whether all three `From` modes are always offered in all color modes is not specified. *Resolves with:* `ARCH-009` design + CS6 test.
 - **History Log file path/persistence** belongs to `10-workflow-io/file-info-and-metadata.md`; the panel exposes only the state list.
-- **`Alt`-click a state = duplicate**: the panel keys table lists "Duplicate any image state, except the current state" on `Alt`-click, but the prose describes dragging to Delete; whether `Alt`-click duplicates (shipped behavior) or is a documentation artefact needs confirmation. *Resolves with:* a CS6 test.

@@ -12,6 +12,8 @@
 
 `Window > Navigator` opens the **Navigator panel**. 
 
+**Default placement.** The Navigator panel is not in the default Essentials workspace; it is supplied by the **Painting** workspace, where it replaces the Color panel in the top group of the main right-hand column (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
+
 ### Anatomy
 
 From the CS6 Help figure labels (A–G):
@@ -146,6 +148,11 @@ Fetched for this document:
 Not used in this pass:
 
 - `helpx.adobe.com` Navigator pages (HTTP 403 from this environment); the archived CS6 PDF was used instead.
+
+Fetched for this revision:
+
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Navigator_palette.html` — Martin Evening CS6/CS5 support page: the Navigator preview, dragging the colored rectangle to scroll, changing the rectangle color via the panel fly-out `Panel Options`, `Command`/`Control`-drag to define a zoom area, the slider and "little mountain"/"big mountain" incremental zoom buttons, clicking the thumbnail to jump to an area at the same magnification, and typing a zoom percentage (up to two decimal places). *(Page header is CS5; controls carry to CS6.)*
+- `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Painting workspace: Navigator replaces Color in the top group of the main column.
 
 ## Open questions
 

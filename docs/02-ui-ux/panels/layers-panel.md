@@ -12,11 +12,15 @@
 
 The Layers panel (`Window > Layers`, `F7`) is the dock that "lists all layers, layer groups, and layer effects in an image." It is the primary navigation surface for the layer stack: it shows/hides layers, creates layers and groups, and exposes the panel menu for the remaining commands. CS6 Help anatomy: **A** panel menu, **B** layer group, **C** layer, **D** expand/collapse layer effects, **E** layer effect, **F** layer thumbnail.
 
+**Default placement (CS6 Essentials workspace).** The panel sits at the **bottom of the right-hand main panel column**, grouped as a tab set with **Channels** and **Paths**; Layers is the default-active tab. It is not open by default in any other group. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
+
 This spec covers the widget: the header controls, the row delegate, the effects disclosure, the indicators, the filter row, the context menus, and the panel options. The command semantics behind every click live in `LAY-002` (create/duplicate/delete/rasterize/merge/select/link), `LAY-003` (groups), `LAY-010` (blend), `LAY-011` (effects), `LAY-012`/`LAY-013` (adjustment/fill content) and `LAY-032` (filtering).
 
 ### Header controls
 
-The panel header carries, left to right: the **blend-mode popup**, the **Opacity** control, the **Fill** control, the **lock strip** (Lock All + the partial-lock toggles), and — new in CS6 — the **filter/search row**. Blend mode, Opacity and Fill are editable only when the selection permits; `LAY-002` records the rules (a group exposes Opacity only; Background and locked layers expose neither; type/shape layers force certain locks).
+The panel header carries, left to right: the **blend-mode popup**, the **Opacity** control, the **Fill** control, and — new in CS6 — the **filter/search row**. Below these sit the **lock toggles** (see below); they are not part of the blend/opacity/fill strip. Blend mode, Opacity and Fill are editable only when the selection permits; `LAY-002` records the rules (a group exposes Opacity only; Background and locked layers expose neither; type/shape layers force certain locks).
+
+**Lock strip.** CS6 Help does not diagram the lock controls, but the CS6-era reference (Design Shack) places four lock icons at the **upper-left of the panel body**, in this left-to-right order: **Lock transparent pixels**, **Lock image pixels**, **Lock position**, **Lock all** (the `Lock All` toggle is bound to `/`). On a fresh CS6 Essentials install the panel opens with the blend-mode/opacity/fill strip at the top, the lock row beneath it (acting on the selected layer), the filter row, then the layer list and the bottom button strip.
 
 ### Row anatomy and indicators
 
@@ -37,12 +41,12 @@ The triangle left of the folder icon expands/collapses a group. The `fx` arrow e
 
 ### Filter / search row (CS6)
 
-A popup selects the **filter dimension** — name, kind, effect, mode, attribute, or color label — followed by a criterion editor, and a **toggle switch** turns filtering on/off. Filtering shows a subset of rows; it is a transient view and must not mutate the document or clear the underlying active layer. The full per-dimension criterion matrix is owned by `LAY-032`; this spec owns the bar's layout and the on/off state machine.
+A popup selects the **filter dimension** — name, kind, effect, mode, attribute, or color label — followed by a criterion editor, and a **toggle switch** turns filtering on/off. The default dimension is **Kind**, whose criterion editor is a row of layer-type icons (pixel, adjustment, type, shape, smart object); the `name` dimension shows a text field, and the remaining dimensions show value lists. Filtering shows a subset of rows; it is a transient view and must not mutate the document or clear the underlying active layer. The full per-dimension criterion matrix is owned by `LAY-032`; this spec owns the bar's layout and the on/off state machine.
 
 ### Panel menu, panel options, context menus
 
 - **Panel menu** (top-right triangle): `Panel Options`, `New Layer`/`New Group`, `Duplicate Layer`/`Duplicate Group`, `Delete Layer`/`Delete Group`, `Merge Down`/`Merge Visible`/`Flatten Image`, `Blending Options`, lock and select entries, mask/vector-mask/clipping entries, `Convert to Smart Object`, and the remaining `Layer`-menu commands.
-- **Panel Options**: thumbnail size; thumbnail contents (`Entire Document` / `Layer Bounds`); `Expand New Effects`.
+- **Panel Options**: thumbnail size (`None`/small/medium/large), thumbnail contents (`Entire Document` / `Layer Bounds`), `Expand New Effects`, `Add "copy" to Copied Layers and Groups`, and `Use Default Masks on Fill Layers`. CS6 Help names only the first three; the CS6-era sources show the copy-name and default-mask options in the same dialog (defaults: `Entire Document`, `Expand New Effects` on, `Add "copy"` on, `Use Default Masks` on).
 - **Row context menu**: CS6 color label, layer-type-specific actions, `Copy CSS`, group commands, and the merge/rasterize/clipping entries valid for the row. Right-clicking the eye is the solo/all visibility menu noted above.
 
 ### Multi-select behavior
@@ -71,10 +75,12 @@ Click selects; `Shift`-click extends contiguously; `Ctrl`/`Cmd`-click toggles no
 
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
-| Thumbnail size | enum | medium | None / small / medium / large | `Panel Options`; `None` improves performance. |
+| Thumbnail size | enum | medium *(inferred)* | None / small / medium / large | `Panel Options`; `None` improves performance. Exact CS6 first-run default not stated in Help. |
 | Thumbnail contents | enum | Entire Document | Entire Document / Layer Bounds | `Panel Options`. |
 | Expand New Effects | bool | on | on / off | `Panel Options`. |
-| Filter dimension | enum | none | name / kind / effect / mode / attribute / color label | CS6; criteria in `LAY-032`. |
+| Add "copy" to copied layers/groups | bool | on | on / off | `Panel Options`. |
+| Use Default Masks on Fill Layers | bool | on | on / off | `Panel Options`. |
+| Filter dimension | enum | kind | name / kind / effect / mode / attribute / color label | CS6; criteria in `LAY-032`. |
 | Filtering enabled | bool | off | on / off | Toggle in the filter row. |
 | Blend mode | enum | Normal | 27 layer modes + group `Pass Through` | `LAY-010`. |
 | Opacity | percent | 100 | 0–100 | Groups: available; Background/locked: not. |
@@ -83,7 +89,7 @@ Click selects; `Shift`-click extends contiguously; `Ctrl`/`Cmd`-click toggles no
 | Visibility | bool | on | — | Eye column. |
 | Color label | enum | none | preset palette | CS6 right-click. |
 
-Panel Options defaults (fresh install) are not stated in the fetched Help text — see Open questions.
+Panel Options defaults are those shown by the CS6-era Layers Panel Options dialog (`Entire Document`, `Expand New Effects` on, `Add "copy"` on, `Use Default Masks` on); the thumbnail size default is not stated in the fetched Help text.
 
 ## Algorithms & pipeline
 
@@ -165,6 +171,9 @@ Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (downloaded, `pdftotext -layout`) — official CS6 Help. Sections used: "Layers panel overview" (panel anatomy A–F; `Window > Layers`; `Panel Options` thumbnail size/contents; `Expand New Effects`); "Filter layers (CS6)" (six dimensions + toggle); "Show or hide a layer, group, or style" (eye, `Alt`-click solo, drag-through, right-click solo/all); "Layer opacity and blending" (Opacity vs Fill; group restriction; Background/locked restriction); "Moving, stacking, and locking layers" (lock icon solid/hollow/dimmed; type/shape forced locks); "Managing layers" (rename, color, delete, merge); "What's new in CS6 > Layers enhancements" (Properties panel edits selected layer components; JDI Layers list: color label via right-click, multi-select edits, `Rasterize Layer Style`, style order, Blend If badge, FX toggle, hidden-layer readout, `00`/`Shift+00`, `Ctrl/Cmd+J` group duplicate, `Tab`/`Shift+Tab`, tooltips, shape naming).
 - `https://jkost.com/blog/2012/06/the-properties-panel-in-photoshop-cs6.html` — Adobe's Julieanne Kost: CS6 Properties panel shows the selected layer's properties and a mask icon at the top.
+- `https://designshack.net/articles/software/the-master-guide-to-the-photoshop-layers-panel` (fetched) — CS6-era Layers-panel deep dive: the seven bottom buttons (link, layer styles, add layer mask, new fill/adjustment, new group, new layer, delete); the lock section (four locks, upper-left, listed transparent/image/position/all); `Panel Options` default state including `Add "copy" to Copied Layers and Groups`; search defaults to **Kind** with type-icon criteria and filters by name/kind/effect/mode/attribute/color-label; the `00` = 0 % opacity shortcut is CS6-only and `Shift` applies the number shortcuts to Fill.
+- `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` (fetched) — CS6 Essentials default workspace: the Layers panel is the bottom group of the right-hand main column, tabbed with Channels and Paths.
+- `https://www.photoshopessentials.com/basics/layers/essential-layers-panel-preferences` (fetched) — `Panel Options` thumbnail size / `Use Default Masks on Fill Layers` / `Add "copy"` controls.
 
 Consulted as search-result snippets only (not individually fetched; community/third-party):
 
@@ -176,8 +185,7 @@ Not used in this pass:
 
 ## Open questions
 
-- **Panel Options defaults** (thumbnail size/contents, `Expand New Effects`) on a fresh CS6 install are not stated in the fetched text. *Resolves with:* a default-preferences dump or CS6 capture.
-- **Exact filter-row widget per dimension.** The Help names the six dimensions and the toggle but not each criterion editor's form. *Resolves with:* a CS6 capture or the `LAY-032` panel-options detail.
+- **Panel Options thumbnail-size default** on a fresh CS6 install is still not stated in the fetched text (the other three defaults are now sourced). *Resolves with:* a default-preferences dump or CS6 capture.
 - **Blend If badge artwork/trigger.** The badge is sourced; its precise trigger threshold (any customisation vs only certain tabs) is not. *Resolves with:* a CS6 test.
-- **Where the lock strip physically lives** in CS6 (header vs a separate row) is inferred from the general panel model; the Help does not diagram it. *Resolves with:* a CS6 UI capture.
+- **Exact criterion editor per filter dimension** beyond `Kind` (type icons) and `name` (text field) — the Help names the dimensions and the toggle but not each editor's form. *Resolves with:* a CS6 capture or the `LAY-032` panel-options detail.
 - **Link-set persistence.** How linked-layer relationships serialise in PSD belongs to `LAY-002`/`ARCH-008`; the panel only renders it.

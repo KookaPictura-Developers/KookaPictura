@@ -3,13 +3,14 @@
 - **Spec ID:** `UI-001`
 - **Status:** `Draft`
 - **Parity tier:** `Core`
-- **New in CS6:** `Changed` — the CS6 **Application bar** was removed and the functions it held moved into the menu bar, the panel docks, and a screen-mode button at the bottom of the toolbar; the draggable title bar was reduced by over 30%; the interface gained four brightness levels and on-image displays.
+- **New in CS6:** `Changed` — the CS5 **Application bar** was removed; workspace switching/options moved to the **Options bar**, document layout to `Window > Arrange`, and screen-mode switching to a button at the bottom of the toolbar; the draggable title bar was reduced by **over 30%**; the interface gained **four color themes** (Black, Dark Gray, Medium Gray, Light Gray), on-image displays, and a per-screen-mode canvas colour chosen in the Interface preferences.
 - **Depends on:** `ARCH-003` qt6-ui-design, `UI-002` menus, `UI-003` workspace-and-docks, `UI-004` toolbox-and-options-bar, `ARCH-006` gpu-rendering-pipeline
 
-> All module and widget names below are **design proposals**. No code exists in
-> this repository. Facts confirmed by the fetched CS6 Help reference are stated
-> plainly; anything reconstructed from secondary sources or inference is marked
-> *(inferred)* or `(to verify)`.
+> All module and widget names below are **design proposals** (a minimal M16
+> shell now exists under `crates/pictura-app`; proposal names may differ from the
+> shipped ones). Facts confirmed by a fetched CS6 source are stated plainly;
+> anything reconstructed from secondary sources or inference is marked
+> *(secondary)*, *(inferred)* or `(to verify)`.
 
 ## CS6 behavior
 
@@ -19,19 +20,20 @@ Photoshop CS6 groups its workspace elements into an **application frame**: a
 single integrated window containing the menu bar, options bar, document
 windows, Tools panel, and docks. Moving or resizing the frame moves/resizes its
 contents together so panels do not overlap, and panels do not disappear when the
-user switches applications or clicks outside the application. On Windows the
-frame is always on; on Mac the traditional free-form interface is offered by
-some Creative Suite products, but Photoshop's Application bar behaviour on the
-Mac is only described generically in the CS6 Help *(inferred for Photoshop
-specifically)*.
+user switches applications or clicks outside the application. On **Windows the
+frame is always on**; on **Mac** the CS6 Help says the free-form interface can be
+turned off, and the CS6-for-Photographers guide confirms that for Photoshop the
+toggle is `Window > Application Frame` *(secondary)*.
 
 CS6 specifically **removed the Application bar** that CS5 had across the top.
 The CS6 Help "What's New" states that "functions formerly in the application bar
-have moved elsewhere" and that the draggable title bar was reduced by over 30%.
-The workspace switcher moved into the panel dock area, screen-mode switching
-moved to a button at the bottom of the toolbar, and application controls moved to
-the menu bar (Windows). `(to verify)` the exact CS5 → CS6 control-by-control
-relocation.
+have moved elsewhere" and that the draggable title bar was reduced by **over
+30%**. The CS6-for-Photographers guide resolves the control-by-control relocation
+for Photoshop: the Application bar is gone, **workspace options moved to the
+Options bar**, **document-layout options became available solely via
+`Window > Arrange`**, and the **screen-mode button moved to the bottom of the
+toolbar** (the "What's New" text also names the toolbar button) *(secondary; the
+generic workspace chapter still describes the pre-CS6 Application-bar layout)*.
 
 ### Menu bar (Windows) vs. application menu (Mac)
 
@@ -59,18 +61,24 @@ relocation.
   `Consolidate All to Tabs`, `Match Zoom`, `Match Location`, `Match All`, and
   `New Window For [file]`.
 - Documents can be grouped and docked; CS6 also supports **stacked/tiled
-  groups** of documents via drop zones along a window's top/bottom/sides, with a
-  Layout button on the (CS5) Application bar.
+  groups** of documents via drop zones along a window's top/bottom/sides. The
+  generic CS6 workspace chapter still describes a Layout button on the Application
+  bar, but Photoshop CS6 removed that bar and moved document-layout options to
+  `Window > Arrange` *(secondary)*.
 - New in CS6 on Windows: **New/Open document commands by context-clicking
   document tabs** (previously Mac-only).
+- Tabbed display is governed by the Interface preference **Open Documents As
+  Tabs** (default on); **Enable Floating Document Window** is a sibling Interface
+  preference *(secondary)*.
 
 ### Title bar
 
 - Every document window has a title bar showing the document name and, for the
   active layer, the active layer name ("The name of the active layer appears in
-  the title bar of the document").
-- CS6 reduced the draggable title bar height by over 30% to reclaim screen
-  space. Exact pixel metric is `(to verify)`; capture from a CS6 screenshot.
+  the title bar of the document"). A Digimarc-detected watermark adds a copyright
+  symbol to the title bar.
+- CS6 reduced the draggable title bar height by over 30% to reclaim screen space.
+  The exact pixel metric is not published; `(to verify)` from a CS6 screenshot.
 
 ### Status bar
 
@@ -88,35 +96,62 @@ relocation.
 
 ### Dark CS6 interface
 
-- CS6 introduced a darker UI than CS5. The Interface preferences offer **four
-  brightness levels** ("Select from four different brightness levels"). Exact
-  swatch values are `(to verify)`.
-- Quick brightness shortcuts: the CS6 "What's New" says **Shift+F1** decreases
-  and **Shift+F2** increases brightness (Mac laptops also press `Fn`). The
-  shared workspace chapter separately says **Shift+1 / Shift+2**; the two are
-  inconsistent in the same Help file. Treat Shift+F1/F2 as the CS6 Photoshop
-  binding *(inferred? see Open questions)*.
-- Other Interface-preference knobs relevant to the frame: `UI Font Size`
-  (panel/tool-tip text), `Show Tool Tips`, `Show Menu Colors`,
-  `Auto-Show Hidden Panels`, `Auto-Collapse Icon Panels`, `Restore Default
-  Workspaces`.
+- CS6 introduced a darker UI than CS5 and, for the first time, **four interface
+  color themes** ("Select from four different brightness levels"). CS6 shows them
+  as four gray swatches at the top of the Interface preferences; they are commonly
+  named **Black, Dark Gray, Medium Gray, Light Gray**, and the **default is the
+  second swatch (Dark Gray)** *(secondary)*. The swatches carry no printed names
+  and exact colour values are not published `(to verify)`.
+- Quick brightness shortcuts: Adobe's CS6 "What's New" says **Shift+F1 decreases**
+  (darker) and **Shift+F2 increases** (lighter) brightness (Mac laptop users also
+  press `Fn`). The generic workspace chapter separately prints "Shift + 1 /
+  Shift + 2"; this is a documentation error in the shared chapter, and one Mac
+  blog reverses the direction. The Photoshop binding is **Shift+F1 = darker,
+  Shift+F2 = lighter** *(primary What's New; corroborated by multiple secondary
+  sources)*.
+- The theme drives the initial **canvas/pasteboard colour**, and the default dark
+  theme's canvas is almost black; the canvas colour can then be overridden **per
+  screen mode** in the Interface preferences *(secondary)*.
+- Other Interface-preference knobs relevant to the frame: `UI Font Size` (Tiny /
+  Small / Medium / Large; **default Small**; restart required), `Show Menu Colors`
+  (default on), `Show Tool Tips` (default on), `Enable Text Drop Shadows` (CS6
+  only), `Auto-Collapse Iconic Panels`, `Auto-Show Hidden Panels`, `Restore
+  Default Workspaces`, and `Show Transformation Values` (default Top Right
+  *(secondary)*).
+- With `Auto-Show Hidden Panels` on, moving the pointer to the edge of the
+  application window (Windows) or monitor (Mac OS) reveals a strip containing the
+  hidden panels *(primary: CS6 Help, "Hide or show all panels")*.
 - On-image displays (HUDs for selection dimensions, transform angles) and their
   placement via `Show Transformation Values` are part of the CS6 look.
 
 ### Screen modes and full-screen
 
-CS6 has three screen modes, cycled with `F` (forward) and `Shift+F` (backward):
+CS6 has three screen modes, cycled with `F` (forward) and `Shift+F` (backward)
+*(primary: CS6 Help key table)*:
 
 | Mode | Chrome | Background |
 |---|---|---|
-| Standard Screen Mode | menu bar + title bar + scroll bars | normal |
-| Full Screen Mode With Menu Bar | menu bar only; no title bar, no scroll bars | 50% gray |
-| Full Screen Mode | no menu bar, title bar, or scroll bars | black |
+| Standard Screen Mode | menu bar, Options bar, document tab, scroll bars, status bar | the pasteboard/canvas colour |
+| Full Screen Mode With Menu Bar | menu bar, Options bar, Tools panel and panels; document tab, scroll bars, status bar and window buttons hidden; only the active document is shown | per-mode canvas colour, default ~50% gray |
+| Full Screen Mode | no menu bar, title bar, tab or scroll bars | per-mode canvas colour, default black |
 
-Also accessible via `View > Screen Mode > …` and a **Screen Mode button**.
-In CS6 the button lives at the bottom of the toolbar; in CS5 it was in the
-Application bar. Canvas colour can be cycled with `Space+F` (forward) and
-`Space+Shift+F` (backward) or via right-click on the canvas background.
+- Also reachable via `View > Screen Mode > …` and the **Screen Mode button**,
+  which in CS6 sits at the **bottom of the toolbar**. The CS6 Help's "Change the
+  screen mode" topic still says "in the Application bar" (leftover CS5 text); the
+  "What's New" wording names the toolbar button for CS6.
+- In the two full-screen modes the **other open documents are hidden** but remain
+  reachable from the `Window` menu, and the image can be scrolled beyond the
+  document bounds *(secondary)*.
+- `Esc` (or `F`) returns from Full Screen Mode to Standard Screen Mode
+  *(secondary)*.
+- `Tab` hides/shows the Tools panel, Options bar and panels; `Shift+Tab` hides/
+  shows panels only *(primary Help; secondary for CS6)*.
+- Canvas/pasteboard colour cycles with `Space+F` (forward) and `Space+Shift+F`
+  (backward) or by right-clicking the canvas background *(primary: CS6 Help key
+  table)*. The palette is Black, Dark Gray, Medium Gray, Light Gray and a Custom
+  colour (default light blue) *(secondary)*. The Interface preferences
+  additionally let each of the three screen modes use a different canvas colour
+  *(secondary)*.
 
 ### Floating vs. docked windows
 
@@ -140,8 +175,10 @@ Application bar. Canvas colour can be cycled with `Space+F` (forward) and
 | Canvas | Central widget | see `TOOL-042` | GPU-composited |
 | Title bar | Window chrome | n/a | Shows doc name + active layer name |
 | Status bar | Window bottom bar | click triangle | Magnification, file size, view options |
-| Scren Mode button | Toolbar bottom button | `F` / `Shift+F` | Cycles screen modes |
-| Brightness control | Preference | `Shift+F1`/`Shift+F2` `(to verify)` | Four brightness levels |
+| Screen Mode button | Toolbar bottom button | `F` / `Shift+F` | Cycles screen modes; `Esc` returns to Standard |
+| Hide/show panels | Keyboard | `Tab` / `Shift+Tab` | Panels + tools; hover edge reveals hidden panels when Auto-Show is on |
+| Brightness control | Preference | `Shift+F1` (darker) / `Shift+F2` (lighter) | Four Color Theme levels; Mac laptops add `Fn` |
+| Canvas colour | Preference + canvas | `Space+F` / `Space+Shift+F` | Right-click canvas for the palette; per-screen-mode colour in Interface prefs |
 | Place/Edit guides | Canvas overlay | `Ctrl+R`, drag rulers | `View > Rulers`, `View > New Guide` |
 | Window > Arrange | Menu | n/a | Tile/Cascade/Float/Match/New Window |
 
@@ -149,17 +186,19 @@ Application bar. Canvas colour can be cycled with `Space+F` (forward) and
 
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
-| Brightness level | enum | CS6 default (darkest?) | 4 levels | Exact values `(to verify)` |
-| UI font size | enum | Medium `(inferred)` | Small / Medium / Large? `(to verify)` | Interface preferences |
+| Color Theme / brightness level | enum | Dark Gray (2nd of 4 swatches) | Black / Dark Gray / Medium Gray / Light Gray | Swatches unlabeled in UI; names *(secondary)*; exact values `(to verify)` |
+| UI font size | enum | Small | Tiny / Small / Medium / Large | Restart required |
+| Enable Text Drop Shadows | bool | Off *(per guide screenshots; default unverified)* | on/off | Interface preferences; CS6 only |
 | Title bar height | px (DIP) | reduced in CS6 | `(to verify)` | >30% shorter than CS5 |
 | Document tab height | px (DIP) | `(to verify)` | — | Theme token |
-| Panel width | px (DIP) | theme default | 200–480 `(inferred)` | Per panel, persisted |
-| Screen mode | enum | Standard | Standard / Full Screen With Menu Bar / Full Screen | Cycles with `F` |
-| Full-screen background | colour | 50% gray / black | per mode | `Space+F` cycles canvas colour |
+| Panel width | px (DIP) | theme default | 200–480 *(secondary)* | Per panel, persisted |
+| Screen mode | enum | Standard | Standard / Full Screen With Menu Bar / Full Screen | Cycles with `F`; `Esc` back to Standard |
+| Canvas colour | enum/picker | theme-linked; ~50% gray / black in full-screen | Black / Dark Gray / Medium Gray / Light Gray / Custom | Per screen mode in Interface prefs; also cycles with `Space+F` |
 | Floating window geometry | screen rect | — | clamped to available geometry | Persist per workspace |
 | Status bar view | enum | Document Sizes? `(inferred)` | 10 options | Per-document/session |
-| Auto-Show Hidden Panels | bool | Off `(inferred)` | on/off | Interface preferences |
-| Auto-Collapse Icon Panels | bool | Off `(inferred)` | on/off | Interface preferences |
+| Show Transformation Values | enum | Top Right *(secondary)* | Never / Top Left / Top Right / Bottom Left / Bottom Right | Interface preferences |
+| Auto-Show Hidden Panels | bool | Off *(secondary)* | on/off | Interface preferences |
+| Auto-Collapse Iconic Panels | bool | Off *(secondary)* | on/off | Interface preferences |
 
 ## Algorithms & pipeline
 
@@ -255,9 +294,10 @@ centric and dock-heavy; QML's costs are not justified here.
 - Given no document is open, then opening one adds a tab; opening a second adds
   a second tab; `Window > Arrange > Float All In Windows` re-parents every tab
   into its own top-level window.
-- Given Standard mode, pressing `F` yields Full Screen With Menu Bar (menu bar
-  only, 50% gray), pressing `F` again yields Full Screen (black, no chrome), and
-  `Shift+F` reverses the sequence.
+- Given Standard mode, pressing `F` yields Full Screen With Menu Bar (menu bar,
+  Options bar, Tools panel and panels retained; document tab, scroll bars and
+  status bar hidden; ~50% gray canvas), pressing `F` again yields Full Screen
+  (black, no chrome), and `Shift+F` reverses the sequence.
 - Given Full Screen Mode, `Space+F` cycles the canvas background colour and
   `Space+Shift+F` reverses it.
 - Given a document with a Digimarc-detected watermark, the copyright symbol
@@ -267,8 +307,9 @@ centric and dock-heavy; QML's costs are not justified here.
 - Given the Interface preferences, selecting each of the four brightness levels
   changes the whole frame chrome and canvas surround consistently, and the
   choice survives restart.
-- Given `Shift+F1`/`Shift+F2` (or the verified CS6 binding), interface
-  brightness steps down/up and is reflected immediately.
+- Given `Shift+F1`/`Shift+F2`, interface brightness steps down/up one of the four
+  Color Theme levels and is reflected immediately; `Esc` from Full Screen Mode
+  returns to Standard, and `Tab`/`Shift+Tab` toggle the documented chrome.
 - Given a workspace is saved with floated panels, quit and relaunch restores
   tab order, float state, dock layout and screen mode within one pixel at the
   same scale factor.
@@ -282,47 +323,80 @@ centric and dock-heavy; QML's costs are not justified here.
 Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` —
-  official Photoshop CS6 Help reference (downloaded and text-extracted).
-  Establishes: application frame definition and behavior; Application bar
-  contains "menus (Windows only)"; tabbed document windows and
-  float-in/floats-all; `Window > Arrange` commands; title-bar shows active layer
-  name; status bar location/contents and its view-option list; screen modes and
-  `F`/`Shift+F`/`Space+F` cycling; the Screen Mode button; CS6 removal of the
-  app bar and >30% title-bar reduction; four brightness levels and
+  official Photoshop CS6 Help reference (downloaded and text-extracted; also
+  cached locally). Establishes: application frame definition and behavior; the
+  Application bar historically contained a workspace switcher, "menus (Windows
+  only)" and other controls; tabbed document windows and float-in/floats-all;
+  `Window > Arrange` commands; title bar shows the active layer name and adds a
+  copyright symbol on Digimarc detection; status bar location/contents and its
+  full view-option list; the three screen modes and `F`/`Shift+F` cycling; the
+  key table's `Space+F` / `Space+Shift+F` canvas-colour cycling; CS6 removal of
+  the app bar and >30% title-bar reduction; four brightness levels and
   `Shift+F1`/`Shift+F2`; Interface preference items (UI Font Size, Show Tool
   Tips, Show Menu Colors, Auto-Show Hidden Panels, Auto-Collapse Icon Panels,
-  Restore Default Workspaces); Windows-only New/Open on document-tab
-  context menu.
-- `https://itwiki.wpunj.edu/images/e/ee/Photoshop_CS6_Extended_-_Dacier.pdf` —
-  secondary student tutorial. Corroborates the window's named regions (Menu Bar,
-  Options Bar, Tools Palette, Document Window, collapsed palette bar, palette
-  dock, layer options bar). Secondary source.
-- `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces` —
-  secondary CS6 tutorial. Corroborates the panel columns, workspace switcher
-  location, and workspace reset behavior. Secondary source.
-- SearXNG meta-search queries used to locate secondary sources (workspace
-  presets; CS6 menu/window references). No facts taken from snippets alone.
+  Restore Default Workspaces, Show Transformation Values); the Auto-Show edge
+  strip; Windows-only New/Open on the document-tab context menu; Enable Flick
+  Panning and the zoom options; Additional Plug-ins Folder; Point/Pica; GPU
+  Settings/Enable OpenGL Drawing; File Handling Save In Background and the
+  10-minute Auto Save default; History Log options; Type options; 3D options.
+- `https://www.photoshopforphotographers.com/pscs6/downloads/Photoshop-interface.pdf`
+  — Martin Evening, *Adobe Photoshop CS6 for Photographers* (free sample
+  chapter). Establishes: the Application bar is gone and its workspace options
+  moved to the Options bar, with document layout solely under `Window > Arrange`;
+  the Mac `Window > Application Frame` toggle; the Interface preferences
+  (Figure 5) expose four themes, UI font size, **Enable Text Drop Shadows** and
+  **per-screen-mode canvas colour** (Standard Screen / Full Screen with Menus /
+  Full Screen); the canvas colour is linked to the theme and is almost black at
+  the dark default; interface/UI-font changes need a relaunch.
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Screen_display.html`
+  — same book, "Screen display modes". Establishes: Standard vs Full Screen With
+  Menu Bar vs Full Screen chrome and canvas behaviour; other documents hidden but
+  reachable via the Window menu; `Tab`, `F`, and `Ctrl+Tab`/`Ctrl+Shift+Tab`.
+- `https://www.photoshopessentials.com/basics/interface-cs6/` — secondary CS6
+  tutorial. Establishes: four Color Theme swatches with the **default second from
+  the left**, `Shift+F2` lighter / `Shift+F1` darker, and the pasteboard palette
+  (Black, Dark Gray, Medium Gray, Light Gray, Custom — default light blue).
+- `https://www.photoshopessentials.com/basics/photoshop-screen-modes-interface-tricks/`
+  — secondary (CC, stated CS6-compatible). Establishes: the three screen modes'
+  visible chrome, hiding of the tab/scroll bars/status bar in Full Screen With
+  Menu Bar, `Esc` to exit Full Screen, edge-hover to reveal tools/panels, and
+  `Tab`/`Shift+Tab`.
+- `https://www.howtogeek.com/724883/how-to-switch-between-light-and-dark-themes-in-photoshop/`
+  — secondary. Corroborates `Shift+F1` darker / `Shift+F2` lighter, four levels,
+  persisted across restarts.
+- `https://www.thegraphicmac.com/photoshop-cs6-interface-color-keyboard-shortcut/`
+  — secondary. Confirms four shades and Shift+F1/F2 exist; its darker/lighter
+  directions are reversed relative to Adobe and the other sources.
+- `https://osxdaily.com/2012/04/20/change-photoshop-cs6-dark-interface-color-scheme-to-light/`
+  — secondary. Names the range "darkest grey, dark grey, medium grey, light
+  gray" and gives `Shift+Fn+F2`/`Shift+Fn+F1`.
+- `https://www.properproof.com/photoshop/guides/Adobe%20Photoshop%20%20%20Default%20keyboard%20shortcuts.htm`
+  — reproduction of the CS6 default key list. Confirms `F`/`Shift+F`, `Space+F`/
+  `Space+Shift+F`, and that `Ctrl+1` is Magnify 100% (not a Preferences pane).
+- SearXNG meta-search queries used to locate the above. Search-result snippets
+  that could not be opened are noted as such below; no fact rests on a snippet
+  alone.
 
 Not parsed: `helpx.adobe.com` (HTTP 403 from this environment).
 
 ## Open questions
 
-- **CS6 brightness shortcut conflict.** The CS6 "What's New" says
-  `Shift+F1`/`Shift+F2`; the shared workspace chapter says `Shift+1`/`Shift+2`.
-  Resolve with a CS6 keybinding capture or Adobe release notes.
-- **Exact brightness palette values and metrics.** The four level colours, panel
-  background, border and text colours, title-bar and tab heights are not
-  specified. Resolve with a CS6 screenshot colour sample and pixel metrics.
-- **Mac application-menu behavior for Photoshop CS6.** Whether Photoshop CS6 had
-  a free-form (non-frame) mode on the Mac, and how its application menu was
-  populated, is only generically sourced. Resolve with the Mac-specific CS6 Help
-  or a capture.
+- **Exact theme palette values and metrics.** The four themes' names are sourced
+  (Black, Dark Gray, Medium Gray, Light Gray; default Dark Gray), but the actual
+  greys and the panel background, border, text, title-bar and tab heights are not
+  published. Resolve with a CS6 screenshot colour sample and pixel metrics.
+- **Mac application menu, beyond the frame.** `Window > Application Frame`
+  explains the Mac frame toggle, but how Photoshop CS6 populated its Mac
+  application menu (Photoshop > About/Preferences/Services/Hide/Quit) is only
+  generically sourced. Resolve with the Mac-specific CS6 Help or a capture.
 - **Taskbar behavior for floated documents on Windows.** Not documented. Resolve
   with a CS6-on-Windows capture; then define the Linux DE mapping.
 - **Screen mode vs. window manager on Linux.** Full-screen chrome hiding under
   X11 vs Wayland tiling compositors needs a decision. Resolve in `UI-003` /
   platform integration.
-- **`UI Font Size` option set.** The Help mentions the setting but not its
-  values. Resolve from the Interface preferences screenshot.
 - **Status-bar default view option.** Only the option list is sourced; the
   default field is inferred. Resolve with a first-run CS6 capture.
+- **Exact CS5 → CS6 title-bar pixel metric.** The "over 30%" reduction is
+  primary; the absolute height is not. Resolve from a CS6 screenshot at 100%.
+- **`Show Transformation Values` default.** Top Right is asserted by a secondary
+  source only. Resolve from a fresh CS6 Interface-pane capture.

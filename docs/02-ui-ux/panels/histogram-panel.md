@@ -12,6 +12,8 @@
 
 `Window > Histogram`, or clicking the **Histogram** tab, opens the panel.  A histogram ; shadows are on the left, midtones in the middle, highlights on the right.
 
+**Default placement.** The Histogram panel is not in the default Essentials workspace; it is supplied by the **Photography** workspace (with Info and Actions) in the right-hand column (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
+
 ### Views (panel menu)
 
 | View | Contents |
@@ -115,7 +117,7 @@ When a histogram is read from the cache, the **Cached Data Warning** icon appear
 | Show Statistics | bool | on (Expanded) | on / off | Statistics block visibility |
 | Show Channels In Color | bool | off | on / off | Per-channel/composite color drawing |
 | Cache Level | int (read-out) | 1 | 1 … max (2–8) | 1 = original; each level = 1/4 pixels |
-| Max cache level | int (pref) | 4 *(inferred)* | 2 … 8 | Performance preference |
+| Max cache level | int (pref) | 4 | 2 … 8 | Performance preference; 4 is the Photoshop default, 1 disables caching |
 | Hover level | int | — | 0 … (bins−1) | Statistics for the pointer bin |
 | Selected range | range | — | bin a … bin b | Drag selection for range statistics |
 | Bins | int (derived) | 256 (8-bit) | 256 / 65536 / display-mapped | Follows bit depth (`CLR-004`) |
@@ -206,12 +208,16 @@ Not used in this pass:
 
 - `helpx.adobe.com` histogram pages (HTTP 403 from this environment); the archived CS6 PDF and `CLR-004` were used instead.
 
+Fetched for this revision:
+
+- `https://web.archive.org/web/20180801214950/https://helpx.adobe.com/photoshop/using/performance-preferences.html` — archived Adobe Performance-preferences page: "specify cache levels manually; the default value is 4"; up to eight levels; "Setting Cache Levels to 1 disables image caching."
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Histogram_palette.html` — Martin Evening CS6/CS5 support page: default composite RGB/CMYK view, expanded color-coded channel view and Luminosity view; the cache-level warning triangle and double-click / warning-triangle / refresh-button uncached paths. *(Page header is CS5; controls carry to CS6.)*
+- `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Photography workspace supplies the Histogram panel (with Info and Actions).
+
 ## Open questions
 
 - **All Channels View default channel and layout on first open.** *Resolves with:* a CS6 capture.
-- **Exact default channel when first entering Expanded View** (Help says Colors for RGB/CMYK). *Resolves with:* a CS6 capture.
 - **32-bit histogram binning and exposure mapping** — how unbounded HDR floats map to bins (`CLR-004`). *Resolves with:* a CS6 32-bit comparison.
 - **Luminosity weights** (Rec.709 vs Adobe's display formula). *Resolves with:* a CS6 histogram comparison.
-- **Cache level default** (assumed 4) and its interaction with the scratch/memory budget. *Resolves with:* `ARCH-003` performance-targets and the Performance defaults.
 - **Range-selection statistics** — whether Percentile for a range is cumulative from the left even when the range starts mid-axis. *Resolves with:* a CS6 interaction test.
 - **Whether the histogram tab/dock has its own shortcut.** *Resolves with:* `02-ui-ux/keyboard-shortcuts.md`.

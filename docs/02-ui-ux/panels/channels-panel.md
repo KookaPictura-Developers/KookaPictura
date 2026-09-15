@@ -18,6 +18,8 @@ The **Channels panel** (`Window > Channels`)  A thumbnail of the channel content
 
 An image can have up to **56 channels**. All channels have the same pixel dimensions as the image. Channel data is compressed by some formats; alpha channels survive only in Photoshop, PDF, TIFF, PSB and raw, and DCS 2.0 preserves only spot channels (see `10-workflow-io/` and `ARCH-008`).
 
+**Default placement (CS6 Essentials workspace).** The panel is grouped in the **bottom-right Layers tab set**, tabbed with **Layers** and **Paths**; Layers is the default-active tab and Channels/Paths sit behind it. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
+
 ### Visibility and viewing
 
 Clicking the eye column shows/hides a channel; dragging through the eye column toggles multiple channels. Clicking the composite channel shows all default color channels, and the composite is displayed whenever all color channels are visible. Individual channels display in grayscale; in RGB/CMYK/Lab they can be shown in color (Lab: only a and b) via `Edit > Preferences > Interface > Show Channels in Color` (Mac: `Photoshop > Preferences > Interface`). If more than one channel is active, channels always appear in color.
@@ -28,14 +30,16 @@ One or more channels can be selected; selected/active names are highlighted. `Sh
 
 ### Channel options, alpha and spot channels
 
-`New Channel` is invoked from the panel bottom button or the panel menu; `Alt`/`Option`-clicking the button opens the options dialog. `Channel Options` (double-click the thumbnail, or the menu) exposes: **Name**, **Color Indicates** (`Masked Areas` / `Selected Areas`, with the Quick Mask button glyph changing accordingly), **Color** (a color field and opacity for the mask overlay — display-only, it does not change protection), and **Spot Color** (converts an alpha channel to a spot color channel; only for existing channels).
+`New Channel` is invoked from the panel bottom button or the panel menu; `Alt`/`Option`-clicking the button opens the options dialog. `Channel Options` (double-click the thumbnail, or the menu) exposes: **Name**, **Color Indicates** (`Masked Areas` / `Selected Areas`, with the Quick Mask button glyph changing accordingly), **Color** (a color field and opacity for the mask overlay — display-only, it does not change protection), and **Spot Color** (converts an alpha channel to a spot color channel; only for existing channels). A new channel's overlay **defaults to red at 50 % opacity** (community/CS6-era sources; the Help describes the options but not their defaults).
 
 A new alpha channel is the only visible channel until the composite eye is enabled, at which point the mask shows as a color overlay. Painting white removes masked areas, black adds them, and an opacity below 100% (options bar, or painting with a color) produces partial values.
+
+**Spot channels.** A spot channel is created with `Ctrl`/`Cmd`-click the New Channel button, or `New Spot Channel` from the panel menu. Its dialog adds **Solidity** (0–100 %), which simulates on-screen ink density (100 % = fully covering, e.g. metallic; 0 % = transparent, e.g. varnish); Solidity and the color choice affect only on-screen previews and composite prints, not printed separations. An existing alpha channel is converted to a spot channel via `Channel Options > Spot Color`. `Merge Spot Channel` (panel menu) merges a spot channel with the color channels, splitting the spot ink into its CMYK components.
 
 ### Selections ↔ channels
 
 - **Save a selection**: click the **Save Selection** button at the bottom of the panel (creates a new alpha channel named by sequence), or `Select > Save Selection` to choose Document, Channel, Name and combine mode (`Replace Channel`, `Add to Channel`, `Subtract From Channel`, `Intersect With Channel`). An existing alpha/spot channel can receive the selection (`SEL-012`).
-- **Load a selection**: `Ctrl`/`Cmd`-click the channel thumbnail; or select the channel and use the panel menu. Combine with the current selection using the channel-thumbnail modifier keys (`Control`/`Command` + `Shift`/`Alt`/both).
+- **Load a selection**: `Ctrl`/`Cmd`-click the channel thumbnail; or `Select > Load Selection` (Document, Channel, Invert, Operation). Combine with the current selection using the channel-thumbnail modifier keys (`Control`/`Command` + `Shift`/`Alt`/both).
 
 ### Duplicate, split, merge
 
@@ -52,7 +56,7 @@ Alpha and spot channels can be reordered by dragging; spot colors overprint top-
 | Location | Type | Shortcut (Win / Mac) | Notes |
 |---|---|---|---|
 | `Window > Channels` | Menu → panel | — | Display the panel. |
-| Panel menu | Menu | — | `New Channel`, `Duplicate Channel`, `Delete Channel`, `Split Channels`, `Merge Channels`, `Channel Options`, `Panel Options`, `Save/Load Selection`. |
+| Panel menu | Menu | — | `New Channel`, `Duplicate Channel`, `Delete Channel`, `New Spot Channel`, `Merge Spot Channel`, `Split Channels`, `Merge Channels`, `Channel Options`, `Panel Options`. (Save/Load Selection live on the bottom buttons and the `Select` menu, not here.) |
 | Composite channel row | Toggle | `Ctrl+2` / `Cmd+2` | Shows all color channels. |
 | Color channel rows | Select | `Ctrl+3/4/5` / `Cmd+3/4/5` | R/G/B; legacy `Ctrl+1/2/3` via Keyboard Shortcuts preference. |
 | Channel row → eye | Toggle | drag through eye column | Show/hide one or many. |
@@ -71,8 +75,9 @@ Alpha and spot channels can be reordered by dragging; spot colors overprint top-
 | Channel thumbnail | enum | medium | None / small / medium / large | `Panel Options`; `None` improves performance. |
 | Channel count | int | mode-dependent | up to 56 channels | Includes color + alpha + spot. |
 | `Color Indicates` | enum | Masked Areas | Masked Areas / Selected Areas | Affects Quick Mask glyph; display only. |
-| Mask overlay color | colour | red | any colour | Display-only; not the protection value. |
-| Mask overlay opacity | percent | 50 % (community) | 0–100 | Display-only. Default not in fetched text. |
+| Mask overlay color | colour | red (255,0,0) | any colour | Display-only; not the protection value. |
+| Mask overlay opacity | percent | 50 % | 0–100 | Display-only. CS6-era sources. |
+| Spot Solidity | percent | 100 *(inferred)* | 0–100 | On-screen preview only; no effect on separations. |
 | New channel name | string | `Alpha N` / sequence | — | `New Channel` dialog. |
 | Duplicate destination | enum | current document | any same-size open doc / New | Cross-image duplicate relaxes size rule. |
 | Split eligibility | bool | — | flattened / single-layer (CS6) | Otherwise disabled. |
@@ -159,18 +164,21 @@ Widgets (consistent with `ARCH-003`).
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (downloaded, `pdftotext -layout`) — official CS6 Help. Sections used: "About channels" (color/alpha/spot; 56-channel limit; same dimensions; format preservation — PSB/TIFF/PDF/raw, DCS 2.0 spot-only); "Channels panel overview" (`Window > Channels`; composite first; auto-updating thumbnail; `Panel Options` thumbnail size/`None`); "Show or hide a channel" (eye column, drag-through, composite); "Show color channels in color" (`Edit > Preferences > Interface > Show Channels in Color`); "Select and edit channels" (multi-select, `Shift`-click, paint one channel with white/gray/black); "Rearrange and rename alpha and spot channels" (Multichannel-only ordering, spot overprint order, double-click rename); "Delete a channel" (`Alt`-click, drag, menu; colour-channel flatten/multichannel consequence); "Create an alpha channel mask…" / "Channel options" (`Masked Areas`/`Selected Areas`, Color, Spot Color); "Paint on a channel to mask image areas"; "Save and load selections" (Save Selection button; `Select > Save Selection` Document/Channel/Name and Replace/Add/Subtract/Intersect); "Duplicate, split, and merge channels" (Duplicate Channel options; split flattened-only; merge grayscale/flattened/same-size; Multichannel fallback; spot cannot split/recombine); "Keys for the Channels panel" (`Ctrl+2`/`3/4/5`, load/combine shortcuts, `Alt`-click Save Selection, `Ctrl`-click New Channel ⇒ spot, `~` Quick Mask); "Productivity enhancements (JDI's) in CS6 > Channels" (Split Channels enabled for single-layer documents).
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (downloaded, `pdftotext -layout`) — official CS6 Help. Sections used: "About channels" (color/alpha/spot; 56-channel limit; same dimensions; format preservation — PSB/TIFF/PDF/raw, DCS 2.0 spot-only); "Channels panel overview" (`Window > Channels`; composite first; auto-updating thumbnail; `Panel Options` thumbnail size/`None`); "Show or hide a channel" (eye column, drag-through, composite); "Show color channels in color" (`Edit > Preferences > Interface > Show Channels in Color`); "Select and edit channels" (multi-select, `Shift`-click, paint one channel with white/gray/black); "Rearrange and rename alpha and spot channels" (Multichannel-only ordering, spot overprint order, double-click rename); "Delete a channel" (`Alt`-click, drag, menu; colour-channel flatten/multichannel consequence); "Create an alpha channel mask…" / "Channel options" (`Masked Areas`/`Selected Areas`, Color, Spot Color; exact option prose); "Paint on a channel to mask image areas"; "Save and load selections" (Save Selection button; `Select > Save Selection` Document/Channel/Name and Replace/Add/Subtract/Intersect); "Duplicate, split, and merge channels" (Duplicate Channel options; split flattened-only; merge grayscale/flattened/same-size; Multichannel fallback; spot cannot split/recombine); "Create a new spot channel" / "Merge spot channels" (Solidity 0–100 %; Color Libraries; `New Spot Channel` and `Merge Spot Channel` in the panel menu); "Keys for the Channels panel" (`Ctrl+2`/`3/4/5`, load/combine shortcuts, `Alt`-click Save Selection, `Ctrl`-click New Channel ⇒ spot, `~` Quick Mask); "Productivity enhancements (JDI's) in CS6 > Channels" (Split Channels enabled for single-layer documents).
 
 Consumer documentation (fetched):
 
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Channels_palette.html` — CS5/CS6-era book companion: the composite channel is always at the top, colour channels occupy slots 3–6, alpha channels added via Save Selection, up to 56 channels, and Command/Ctrl-click a channel to load it as a selection.
+- `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` — CS6 Essentials default workspace: Channels is tabbed with Layers and Paths in the bottom-right group.
 - `https://jkost.com/blog/2012/06/the-properties-panel-in-photoshop-cs6.html` — used only for the CS6-era assertion that the Properties panel (not this panel) now surfaces mask properties; see `PAN-006`.
+- `https://www.scribd.com/document/58918086/6-Masks-and-Channels` and `https://community.adobe.com/questions-712/how-to-show-red-overlay-for-layer-mask-in-photoshop-1115428` — CS6-era corroboration that the new-channel/mask overlay default is red at 50 % opacity.
 
 Consulted as search-result snippets only (not individually fetched): SearXNG query for "Photoshop CS6 Properties panel shape layer live properties type contextual". `helpx.adobe.com` returns 403 and was not used.
 
 ## Open questions
 
 - **Panel Options thumbnail default** on a fresh CS6 install is not stated. *Resolves with:* a preferences dump or CS6 capture.
-- **Default mask overlay colour/opacity** for new channels — the Help describes the Color option but not its defaults; the 50 %/red values are community lore. *Resolves with:* a CS6 `New Channel` capture.
+- **Spot Solidity default** — the Help describes the range but not the initial value (100 % assumed). *Resolves with:* a CS6 `New Spot Channel` capture.
 - **`Merge Channels` mode/channel-count mapping** beyond the 3→RGB, 4→CMYK examples (e.g. Lab, Duotone) is not enumerated. *Resolves with:* a CS6 test across image modes.
 - **Quick Mask channel rename/visibility persistence** is runtime-only per the Help; whether the temporary channel is listed with a stable name is not asserted. *Resolves with:* a CS6 capture.
 - **Spot channel colour library linkage** and its PSD serialisation belong to `CLR-003`/`ARCH-008`; the panel only presents the picker.

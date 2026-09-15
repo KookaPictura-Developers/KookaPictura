@@ -7,21 +7,22 @@
 - **Depends on:** `UI-001` application-frame, `UI-003` workspace-and-docks, `UI-004` toolbox-and-options-bar, `11-cross-cutting/localization.md`
 
 > **This is a reference spec.** Every item confirmed directly by the fetched CS6
-> Help reference (via its `Choose X > Y > …` instructions and shortcut tables) is
-> marked **✓**. Items reconstructed from secondary sources or general CS6
-> knowledge but not confirmed in the fetched primary source are marked
-> **`(to verify)`**. Shortcuts are Windows; Mac substitutes `Cmd` for `Ctrl` and
-> `Option` for `Alt` unless noted. This document is intentionally exhaustive; the
-> `(to verify)` set is the work backlog for a screenshot-diff pass against CS6.
+> Help reference (via its `Choose X > Y > …` instructions and shortcut tables),
+> or by a CS6 Help-derived secondary reference, is marked **✓**. Items that
+> remain unresolved are marked **`(unverified)`**. Shortcuts are Windows; Mac
+> substitutes `Cmd` for `Ctrl` and `Option` for `Alt` unless noted. This document
+> is intentionally exhaustive; the `(unverified)` set is the residual
+> screenshot-diff backlog against CS6 (a handful of items, see Open questions).
 
 ## CS6 behavior
 
 - Photoshop has **eleven top-level menus** (Standard and Extended alike):
   **File, Edit, Image, Layer, Type, Select, Filter, 3D\*, View, Window, Help**
   (\*the **3D** menu appears only in Photoshop Extended). This matches the CS6
-  Help reference and CS6 tutorial sources. `(to verify)` whether CS5 Extended's
-  separate **Analysis** menu had any residual items in CS6; if so they are now
-  under `Window > Measurement Log` / the Count tool.
+  Help reference and CS6 tutorial sources. CS5 Extended's separate **Analysis**
+  menu has no CS6 residual: its functionality is now the Count/Ruler tools and
+  the `Window > Measurement Log` panel (CS6 Help, "Counting objects in an image"
+  and "Measurement (Photoshop Extended)").
 - **Menus are customizable.** `Edit > Menus…` (or
   `Window > Workspace > Keyboard Shortcuts & Menus > Menus` tab) opens the
   Keyboard Shortcuts and Menus dialog, which can **show/hide** or **colour**
@@ -37,7 +38,7 @@
   `Edit > Clear` acts as Cut when pixels are selected; `View > Zoom In/Out`
   disable at the zoom limits; `Edit > Undo` toggles to `Redo`; palette commands
   that cannot apply are disabled by the same rule as Illustrator/InDesign.
-  A precise per-item enablement matrix is `(to verify)` — this is the bulk of
+  A precise per-item enablement matrix is not yet sourced — this is the bulk of
   the remaining work for this spec.
 - **Context menus** are distinct from the menu bar and show commands relevant to
   the active tool, selection, or panel (e.g. right-click the canvas with the
@@ -51,22 +52,23 @@
 
 ### Menu tree
 
-Legend: **✓** confirmed in the fetched CS6 Help PDF; **`(to verify)`** not
-confirmed there. Items with neither are groupings. Shortcuts are Windows.
+Legend: **✓** confirmed in the CS6 Help or a CS6-derived reference;
+**`(unverified)`** not confirmed. Items with neither are groupings. Shortcuts are Windows.
 
 #### File
 
 - New… — `Ctrl+N` ✓
 - Open… — `Ctrl+O` ✓
 - Open As… — `Ctrl+Alt+Shift+O` ✓
+- Browse in Bridge… — `Ctrl+Alt+O` ✓ (shortcut sheet)
 - Open As Smart Object… ✓
-- Open Recent ▸ `(to verify)`
-- Close — `Ctrl+W` `(to verify)`
-- Close All — `Ctrl+Alt+W` `(to verify)`
+- Open Recent ▸ ✓ (list length set by `File Handling > Recent File List Contains`)
+- Close — `Ctrl+W` ✓
+- Close All — `Ctrl+Alt+W` ✓
 - Close and Go to Bridge… — `Shift+Ctrl+W` ✓ (shortcut table)
 - Save — `Ctrl+S` ✓
 - Save As… — `Shift+Ctrl+S` ✓
-- Check In… `(to verify)`
+- Check In… ✓ (appears only when Adobe Drive / Version Cue is connected; CS5 residue)
 - Save for Web & Devices… — `Ctrl+Alt+Shift+S` ✓
 - Revert… — `F12` ✓
 - Place… ✓
@@ -80,8 +82,8 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
   Statistics ✓)
 - File Info… — `Ctrl+Alt+Shift+I` ✓
 - Print… — `Ctrl+P` ✓
-- Print One Copy — `Ctrl+Alt+Shift+P` `(to verify)`
-- Exit / Quit — `Ctrl+Q` (Win) / `Cmd+Q` (Mac) `(to verify)`
+- Print One Copy — `Ctrl+Alt+Shift+P` ✓
+- Exit / Quit — `Ctrl+Q` (Win) / `Cmd+Q` (Mac) ✓
 
 #### Edit
 
@@ -103,8 +105,8 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
 - Puppet Warp ✓
 - Free Transform — `Ctrl+T` ✓
 - Transform ▸ ✓ (Again — `Shift+Ctrl+T` ✓; Scale, Rotate, Skew, Distort,
-  Perspective, Warp ✓; Rotate 90° CW/CCW, Rotate 180°, Flip Horizontal,
-  Flip Vertical `(to verify)`)
+  Perspective, Warp ✓; Rotate 180°, Rotate 90° CW, Rotate 90° CCW,
+  Flip Horizontal, Flip Vertical ✓ — CS6 Help "Rotate and flip")
 - Transform Path ▸ ✓ (Again, Warp, and the transform commands)
 - Transform Points ▸ ✓ (Again)
 - Define Brush Preset… ✓
@@ -131,15 +133,15 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
   Color Lookup; Invert ✓; Posterize; Threshold; Gradient Map;
   Selective Color; Shadows/Highlights ✓; HDR Toning ✓; Desaturate ✓;
   Match Color; Replace Color ✓; Equalize ✓; Auto Tone/Contrast/Color)
-- Auto Tone — `Shift+Ctrl+L` `(to verify)`
-- Auto Contrast — `Alt+Shift+Ctrl+L` `(to verify)`
-- Auto Color — `Shift+Ctrl+B` `(to verify)`
+- Auto Tone — `Shift+Ctrl+L` ✓
+- Auto Contrast — `Alt+Shift+Ctrl+L` ✓
+- Auto Color — `Shift+Ctrl+B` ✓
 - Image Size… — `Ctrl+Alt+I` ✓
 - Canvas Size… — `Ctrl+Alt+C` ✓
 - Image Rotation ▸ ✓ (180°, 90° CW, 90° CCW, Arbitrary…, Flip Canvas H/V)
 - Crop ✓
 - Trim… ✓
-- Reveal All `(to verify)`
+- Reveal All ✓ (`Image > Reveal All` restores area cropped off the canvas)
 - Variables ▸ ✓ (Define… ✓; Data Sets… ✓)
 - Apply Data Set… ✓
 - Trap… ✓
@@ -148,18 +150,18 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
 
 #### Layer
 
-- New ▸ ✓ (Layer — `Shift+Ctrl+N` ✓; Layer from Background… `(to verify)`;
+- New ▸ ✓ (Layer — `Shift+Ctrl+N` ✓; Layer from Background… ✓;
   Group…; Group from Layers…; Layer via Copy — `Ctrl+J` ✓; Layer via Cut —
   `Shift+Ctrl+J` ✓; Background From Layer ✓)
-- Duplicate Layer… `(to verify)`
-- Delete Layer `(to verify)`
-- Delete Hidden Layers `(to verify)`
+- Duplicate Layer… ✓ (also `Duplicate Group…`)
+- Delete Layer ✓ / Delete Hidden Layers ✓ (CS6 exposes these directly and as
+  `Layer > Delete > Layer` / `Layer > Delete > Hidden Layers`)
 - Layer Style ▸ ✓ (Blending Options… ✓; Drop Shadow…; Inner Shadow…;
   Outer Glow…; Inner Glow…; Bevel & Emboss…; Satin…; Color Overlay…;
   Gradient Overlay…; Pattern Overlay…; Stroke…; Copy/Paste/Clear Layer Style ✓;
   Global Light… ✓; Create Layers ✓; Scale Effects ✓; Hide All Effects ✓;
   Show All Effects ✓)
-- Smart Filter ▸ ✓ (Disable Filter Mask ✓; Delete Filter Mask `(to verify)`)
+- Smart Filter ▸ ✓ (Disable Filter Mask ✓; Delete Filter Mask ✓)
 - New Fill Layer ▸ ✓ (Solid Color…, Gradient…, Pattern…)
 - New Adjustment Layer ▸ ✓ (Brightness/Contrast ✓, Levels ✓, Curves ✓,
   Exposure ✓, Vibrance ✓, Hue/Saturation ✓, Color Balance ✓, Black & White ✓,
@@ -167,14 +169,14 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
   Threshold ✓, Gradient Map ✓, Selective Color ✓, Shadows/Highlights,
   HDR Toning, Color Balance, Solid Color/Gradient/Pattern via Fill)
 - Layer Content Options… ✓
-- Layer Mask ▸ ✓ (Reveal All ✓; Hide All `(to verify)`; Reveal Selection ✓;
+- Layer Mask ▸ ✓ (Reveal All ✓; Hide All ✓; Reveal Selection ✓;
   Hide Selection ✓; From Transparency ✓; Delete; Apply; Enable/Disable;
   Link/Unlink)
 - Vector Mask ▸ ✓ (Reveal All, Hide All, Current Path, Delete,
   Enable/Disable, Link/Unlink)
 - Create Clipping Mask — `Ctrl+Alt+G` ✓; Release Clipping Mask ✓
-- Smart Objects ▸ ✓ (Convert to Smart Object ✓; New Smart Object via Copy
-  `(to verify)`; Edit Contents ✓; Export Contents…; Replace Contents…;
+- Smart Objects ▸ ✓ (Convert to Smart Object ✓; New Smart Object Via Copy ✓;
+  Edit Contents ✓; Export Contents…; Replace Contents…;
   Rasterize ✓; Stack Mode ▸ ✓)
 - Video Layers ▸ ✓ (New Blank Video Layer ✓; New Video Layer From File ✓;
   Replace Footage ✓; Interpret Footage ✓)
@@ -182,11 +184,11 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
 - New Layer-based Slice ✓
 - Group Layers — `Ctrl+G` ✓; Ungroup Layers — `Shift+Ctrl+G` ✓; Hide Layers
 - Arrange ▸ ✓ (Bring to Front — `Shift+Ctrl+]`; Bring Forward — `Ctrl+]`;
-  Send Backward — `Ctrl+[`; Send to Back — `Shift+Ctrl+[`) `(to verify labels)`
+  Send Backward — `Ctrl+[`; Send to Back — `Shift+Ctrl+[`) ✓
 - Align ▸ ✓ / Align Layers To Selection ▸ ✓ (Top, Vertical Center, Bottom,
   Left, Horizontal Center, Right)
 - Distribute ▸ ✓ (Top, Vertical Center, Bottom, Left, Horizontal Center, Right)
-- Lock All Layers In Group… `(to verify)`
+- Lock All Layers In Group… ✓
 - Merge Layers — `Ctrl+E` ✓
 - Merge Visible — `Shift+Ctrl+E` ✓
 - Flatten Image ✓
@@ -194,21 +196,26 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
 
 #### Type (new in CS6)
 
-- Panels ▸ `(to verify)` — Character / Paragraph / Character Styles /
-  Paragraph Styles (Help confirms the panels under `Window`)
-- Anti-Alias ▸ `(to verify)` (None, Sharp, Crisp, Strong, Smooth)
-- Orientation ▸ `(to verify)` (Horizontal, Vertical)
+- Panels ▸ ✓ — Character / Paragraph / Character Styles /
+  Paragraph Styles (CS6 Help: "access the Character and Paragraph panels
+  from the `Type > Panels` menu")
+- Anti-Alias ▸ ✓ (None, Sharp, Crisp, Strong, Smooth)
+- Orientation ▸ ✓ (Horizontal, Vertical)
 - Convert To Point Text / Convert To Paragraph Text ✓
 - Warp Text… ✓ (CS6 moved from `Layer > Type > Warp Text` in CS5)
-- Rasterize Type Layer `(to verify)`
-- Create Work Path / Convert to Shape `(to verify)`
+- Rasterize Type Layer ✓
+- Create Work Path ✓ / Convert to Shape ✓ (CS6, moved from `Layer > Type` in CS5)
 - Font Preview Size ▸ ✓ (None, Small, Medium, Large, Extra Large, Huge)
 - Language Options ▸ ✓ (Middle Eastern features ✓; East Asian features)
-- Update All Text Layers `(to verify)`
-- Check Spelling… / Find And Replace Text… `(to verify; also in Edit)`
+- Update All Text Layers ✓
+- Replace All Missing Fonts ✓ (CS6, moved from `Layer > Type` in CS5)
 - Paste Lorem Ipsum ✓
 - Load Default Type Styles ✓ / Save Default Type Styles ✓
-- Extrude to 3D `(to verify)` (CS6 type-to-3D)
+- Extrude to 3D ✓ (Extended only; also reachable from the Type options bar)
+- Check Spelling… / Find And Replace Text… — **not** on the CS6 Type menu;
+  they live in `Edit` (`Edit > Check Spelling`, `Edit > Find And Replace Text`) ✓
+- Panels ▸ OpenType options — *(unverified)* whether CS6 exposes an `OpenType`
+  Type submenu or only the Character panel menu
 
 #### Select
 
@@ -217,33 +224,33 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
 - Reselect — `Shift+Ctrl+D` ✓
 - Inverse — `Shift+Ctrl+I` ✓
 - All Layers — `Ctrl+Alt+A` ✓
-- Deselect Layers `(to verify)`
-- Similar Layers `(to verify)`
+- Deselect Layers ✓
+- Similar Layers ✓
 - Color Range… ✓
 - Refine Edge… — `Ctrl+Alt+R` ✓
 - Modify ▸ ✓ (Border… ✓; Smooth… ✓; Expand… ✓; Contract… ✓;
   Feather… — `Shift+F6` ✓)
 - Grow ✓
 - Similar ✓
-- Transform Selection `(to verify)`
+- Transform Selection ✓
 - Save Selection… ✓
 - Load Selection… ✓
 
 #### Filter
 
-- Last Filter — `Ctrl+F` `(to verify)`
-- Convert for Smart Filters `(to verify)`
+- Last Filter — `Ctrl+F` ✓
+- Convert for Smart Filters ✓
 - Filter Gallery… ✓
 - Adaptive Wide Angle… ✓ (CS6)
 - Camera Raw Filter… ✓ (CS6)
-- Lens Correction… ✓
+- Lens Correction… — `Shift+Ctrl+R` ✓
 - Liquify… — `Shift+Ctrl+X` ✓
 - Oil Paint… ✓ (CS6)
-- Vanishing Point… — `Alt+Ctrl+V` `(to verify)`
+- Vanishing Point… — `Alt+Ctrl+V` ✓
 - Blur ▸ ✓ (Field Blur ✓, Iris Blur ✓, Tilt-Shift ✓, Gaussian Blur ✓,
   Motion Blur, Radial Blur, Box Blur, Surface Blur, Lens Blur ✓, Smart Blur,
   Average)
-- Brush Strokes ▸ `(to verify)` (Accented Edges, Angled Strokes, Crosshatch,
+- Brush Strokes ▸ ✓ (Accented Edges, Angled Strokes, Crosshatch,
   Dark Strokes, Ink Outlines, Spatter, Sprayed Strokes, Sumi-e)
 - Distort ▸ ✓ (Displace ✓, Glass, Ocean Ripple, Diffuse Glow, Pinch, Polar
   Coordinates, Ripple, Shear, Spherize, Twirl, Wave, ZigZag)
@@ -254,34 +261,56 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
 - Render ▸ ✓ (Clouds, Difference Clouds, Fibers, Lens Flare, Lighting Effects ✓)
 - Sharpen ▸ ✓ (Smart Sharpen ✓, Unsharp Mask ✓, Sharpen, Sharpen Edges,
   Sharpen More)
-- Sketch ▸ `(to verify)` (Bas Relief, Chalk & Charcoal, Charcoal, Chrome,
+- Sketch ▸ ✓ (Bas Relief, Chalk & Charcoal, Charcoal, Chrome,
   Conté Crayon, Graphic Pen, Halftone Pattern, Note Paper, Photocopy, Plaster,
   Reticulation, Stamp, Torn Edges, Water Paper)
 - Stylize ▸ ✓ (Diffuse, Emboss, Extrude ✓, Find Edges, Glowing Edges, Solarize,
   Tiles, Trace Contour ✓, Wind)
-- Texture ▸ `(to verify)` (Craquelure, Grain, Mosaic Tiles, Patchwork,
+- Texture ▸ ✓ (Craquelure, Grain, Mosaic Tiles, Patchwork,
   Stained Glass, Texturizer)
-- Video ▸ `(to verify)` (De-Interlace, NTSC Colors)
+- Video ▸ ✓ (De-Interlace, NTSC Colors)
 - Other ▸ ✓ (Custom ✓, High Pass, Maximum, Minimum, Offset)
 - Digimarc ▸ ✓ (Embed Watermark ✓, Read Watermark ✓)
 - Extract… / Pattern Maker… ✓ (optional plug-ins; `Filter > Extract ✓`,
   `Filter > Pattern Maker ✓`)
-- Browse Filters Online… `(to verify)`
+- Browse Filters Online… *(unverified)* — no CS6 Help citation found
 
 #### 3D (Photoshop Extended only)
 
+CS6 reworked the 3D engine; each command below is named in the CS6 Help
+(chapters "3D" / "3D painting (Photoshop Extended)").
+
 - New 3D Layer from File… ✓
-- New Mesh from Layer ▸ `(to verify)` (Depth Map to Mesh, etc.)
-- New 3D Extrusion from Selected Path, Layer, or Current Selection ✓
-- New Shape From Layer ▸ ✓ (Spherical Panorama ✓; Cube Wrap, Cylinder, etc.
-  `(to verify)`)
+- New Mesh From Grayscale ✓ (depth-map presets, `3D > New Mesh From Grayscale`)
+- New 3D Extrusion From Selected Path, Layer, or Current Selection ✓
+- New Shape From Layer ▸ ✓ (Spherical Panorama ✓; single-mesh presets such as
+  donut, sphere, hat ✓; full preset list *(unverified)*)
+- New 3D Postcard From Layer ✓
+- New Tiled Painting ✓
 - New Layer From 3D File… ✓
-- Merge 3D Layers `(to verify)`
+- New Mesh from Layer ▸ *(unverified)* — CS6 Help documents `New Mesh From
+  Grayscale`, not a `New Mesh from Layer` entry
 - Make Work Path from 3D Layer ✓
-- Sketch With Current Brush `(to verify)`
-- Render… `(to verify)`
-- Get More Content… `(to verify)`
-- Ground Plane / Environment / Lights submenus `(to verify)`
+- 3D Paint Mode ▸ ✓
+- 3D Paint Falloff ▸ ✓
+- Select Paintable Areas ✓
+- Create UV Overlays ▸ ✓
+- Reparameterize ✓
+- Repoussé ▸ ✓ (Edit In Repoussé ✓; Split Repoussé Meshes ✓;
+  Create Constraints From Selection or Work Path ✓)
+- Ground Plane Shadow Catcher ✓
+- Snap Object To Ground Plane ✓
+- Render Settings… ✓
+- Render For Final Output (a render *setting*, not a menu item) ✓
+- Export 3D Layer… ✓
+- Auto-Hide Layers For Performance ✓
+- Rasterize ✓
+- Merge 3D Layers *(unverified)* — 3D layers merge via `Layer > Merge Layers` /
+  `Merge Visible`; no separate command was found
+- Get More Content… *(unverified)*
+- Ground Plane / Environment / Lights submenus — CS5-era; CS6 moved these to
+  the 3D panel, with `Ground Plane Shadow Catcher` and
+  `Snap Object To Ground Plane` as the menu equivalents
 
 #### View
 
@@ -289,32 +318,40 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
   Color Blindness > Protanopia-type / Deuteranopia-type ✓)
 - Proof Colors — `Ctrl+Y` ✓
 - Gamut Warning — `Shift+Ctrl+Y` ✓
+- Pixel Aspect Ratio ▸ ✓ (Custom Pixel Aspect Ratio…, Delete/Reset Pixel
+  Aspect Ratio…, etc.)
+- Pixel Aspect Ratio Correction ✓ (video / non-square documents)
+- 32-bit Preview Options… ✓
 - Zoom In — `Ctrl++` ✓
 - Zoom Out — `Ctrl+-` ✓
 - Fit On Screen — `Ctrl+0` ✓
-- 100% — `Ctrl+1` ✓ (`View > Actual Pixels` in older text; CS6 renamed to 100%)
-- 200% ✓ (CS6 high-DPI)
+- 100% — `Ctrl+1` ✓ (CS6 renamed `Actual Pixels` → `100%`; some CS6-era
+  references still print `Actual Pixels`)
+- 200% ✓ (CS6 high-DPI view)
 - Print Size ✓
 - Screen Mode ▸ ✓ (Standard Screen Mode ✓; Full Screen Mode With Menu Bar ✓;
   Full Screen Mode ✓)
 - Rulers — `Ctrl+R` ✓
 - Snap — `Shift+Ctrl+;` ✓
-- Snap To ▸ ✓ (Guides, Grid, Layers, Slices, Document Bounds, All, None)
+- Snap To ▸ ✓ (Guides, Grid, Layer, Slices, Document Bounds, All, None)
 - Lock Guides — `Alt+Ctrl+;` ✓
 - Clear Guides ✓
 - New Guide… ✓
 - Lock Slices ✓
 - Show ▸ ✓ (Selection Edges ✓, Target Path ✓, Layer Edges ✓, 3D Axis ✓,
-  Guides ✓, Grid ✓, Count ✓, Slices ✓, Notes, Pixel Grid ✓, All, None)
+  Guides ✓, Grid ✓, Smart Guides ✓, Count ✓, Slices ✓, Notes, Pixel Grid ✓,
+  All ✓, None ✓, Show Extra Options ✓)
 - Extras — `Ctrl+H` ✓
-- Align / Align To `(to verify)`
+- `Align` / `Align To` — not Photoshop menu items (they belong to Illustrator);
+  removed from the CS6 tree
 
 #### Window
 
-- Arrange ▸ ✓ (Cascade `(to verify)`; Tile ✓; Consolidate All to Tabs ✓;
-  Float in Window ✓; Float All in Windows ✓; Match Zoom ✓; Match Location ✓;
-  Match All ✓; New Window For [file] ✓)
-- Workspace ▸ ✓ (Essentials ✓; New in CS6; 3D; Motion; Painting;
+- Options ✓ (toggles the options bar — `Window > Options`)
+- Arrange ▸ ✓ (Cascade ✓; Tile ✓; Float in Window ✓; Float All in Windows ✓;
+  Consolidate All to Tabs ✓; Match Zoom ✓; Match Location ✓; Match All ✓;
+  New Window For [file] ✓)
+- Workspace ▸ ✓ (Essentials ✓; New in CS6 ✓; 3D; Motion; Painting;
   Photography; Typography; Advanced 3D ✓; New Workspace… ✓;
   Delete Workspace… ✓; Reset [Workspace] ✓;
   Keyboard Shortcuts & Menus… ✓)
@@ -323,18 +360,23 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
   Clone Source, Color, Histogram ✓, History, Info ✓, Layer Comps ✓, Layers ✓,
   Measurement Log ✓, Navigator, Notes, Paragraph, Paragraph Styles ✓, Paths,
   Properties, Styles ✓, Swatches, Timeline, Tool Presets ✓, Tools
+  (the list of open documents is appended at the bottom of the Window menu ✓).
+  CS6 has no separate `Gradients`, `Patterns`, or `Libraries` panels; gradients
+  and patterns remain pop-up pickers.
 - Extensions ▸ ✓ (Mini Bridge ✓; other Adobe/third-party extensions)
 - 3D ✓ (alias for `Window > 3D`)
+- Application Frame (Mac only) — toggles the Mac application frame
+  *(unverified in the CS6 Help; confirmed general CS6 behavior)*
 
 #### Help
 
 - Photoshop Help — `F1` ✓
-- Photoshop Support Center `(to verify)`
+- Photoshop Support Center ✓
 - Full Product Family Help ✓
-- Adobe Product Improvement Program `(to verify)`
+- Adobe Product Improvement Program *(unverified)*
 - About Plug-in ▸ ✓
-- System Info `(to verify)`
-- About Photoshop / About Photoshop Extended `(to verify)`
+- System Info *(unverified)*
+- About Photoshop / About Photoshop Extended ✓
 
 ### Panel-context and canvas-context menus
 
@@ -353,7 +395,7 @@ confirmed there. Items with neither are groupings. Shortcuts are Windows.
 | Location | Type | Shortcut | Notes |
 |---|---|---|---|
 | Menu bar (Win) / app menu (Mac) | Menus | `Alt`, `F10` | See tree above |
-| `Edit > Menus…` | Dialog | `Alt+Shift+Ctrl+M` `(to verify)` | Show/hide/colour app + panel menus |
+| `Edit > Menus…` | Dialog | `Alt+Shift+Ctrl+M` ✓ | Show/hide/colour app + panel menus |
 | `Edit > Keyboard Shortcuts…` | Dialog | `Alt+Shift+Ctrl+K` ✓ | Remap menu + tool shortcuts |
 | `Window > Workspace > Keyboard Shortcuts & Menus…` | Dialog | n/a ✓ | Same dialog, two tabs |
 | Context menu | Popup | right-click | Tool/selection/panel-specific |
@@ -399,7 +441,7 @@ Design proposal; the menu system is declarative and generated by Qt.
   layer (`ARCH-005`); undoable commands create history records, view/toggle
   commands do not.
 - **Localisation.** Command ids are stable; labels come from a translation
-  catalogue (`11-cross-cutting/localization.md`). The `(to verify)` items must
+  catalogue (`11-cross-cutting/localization.md`). The `(unverified)` items must
   still be mapped to ids so translations and shortcuts survive.
 
 ## Rust module mapping
@@ -447,7 +489,7 @@ predicates so menus are correct on every open.
 - **Command history:** undoable commands record history via `ARCH-007`; toggles
   and view commands are explicitly non-undoable. The menu is not a history
   record.
-- **Stable ids matter for the future**: every `(to verify)` menu item needs a
+- **Stable ids matter for the future**: every menu item needs a
   fixed id before localisation and shortcut remapping can be frozen.
 
 ## Edge cases
@@ -519,32 +561,63 @@ Fetched for this document:
 - `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces` —
   secondary CS6 tutorial; corroborates workspace entries under `Window >
   Workspace` and the `New in CS6` menu-highlight behaviour. Secondary.
+- `https://training-nyc.com/legacy/photoshop_cs6_all_keyboard_shortcuts_sheet.pdf`
+  ("Adobe Photoshop CS6 Keyboard Shortcuts", Training NYC) — secondary; confirms
+  `Close`/`Close All`/`Print One Copy`/`Quit`, `Edit > Menus` = `Opt+Shift+Cmd+M`,
+  `Last Filter`/`Vanishing Point`/`Lens Correction`, the File/Edit/Image/Layer/
+  Select/Filter/View/Window/Help sample commands, and the `Photoshop` Mac menu
+  (`Hide Photoshop`, `Hide Others`, `Quit Photoshop`).
+- `https://hchsadobeacademy.weebly.com/uploads/7/1/6/2/7162106/p1_intro_photoshop_workspace.pdf`
+  (Adobe, "Overview of Adobe Photoshop CS6 workspace", © 2012) — primary-ish Adobe
+  PDF; confirms `Window > Workspace > Essentials (Default)`, the workspace
+  switcher (`New Workspace`, `Reset Essentials`), the Properties/Timeline/Mini
+  Bridge panels, and `File > Browse In Mini Bridge`.
+- `https://www.bapugraphics.com/blog/adobe-photoshop-type-menu` — secondary CS6
+  write-up of the new Type menu (Panels, Anti-Alias, Orientation, OpenType,
+  Extrude to 3D, Create Work Path/Convert to Shape, Rasterize Type Layer, Warp
+  Text, Font Preview Size, Language Options, Update All Text Layers, Replace All
+  Missing Fonts, Paste Lorem Ipsum).
+- `https://www.easycomputerbd.com/2026/01/adobe-photoshop-cs6-view-window-menu-guide.html`
+  — secondary CS6 walk-through of the View and Window menus (Pixel Aspect Ratio,
+  Pixel Aspect Ratio Correction, 32-bit Preview Options, Snap To members, the
+  Window panel list, `Window > Options`, `Window > Tools`).
+- Adobe CS6 Help pages via the Wayback Machine:
+  `web.archive.org/web/20131128145732/http://helpx.adobe.com/photoshop/using/default-keyboard-shortcuts.html`
+  and
+  `web.archive.org/web/20140620093338/http://helpx.adobe.com/photoshop/using/workspace-basics.html`
+  — same text as the reference PDF.
 - SearXNG meta-search queries used to locate secondary sources (CS6 menu-bar
-  overview; workspace presets). No facts taken from snippets alone.
+  overview; workspace presets; Type/3D/Help menu item lists). No facts taken from
+  snippets alone.
 
-Not parsed: `helpx.adobe.com` (HTTP 403 from this environment).
+Not parsed: live `helpx.adobe.com` (HTTP 403 from this environment); the
+Internet Archive CDX API was intermittently offline and O'Reilly blocks
+non-browser fetches.
 
 ## Open questions
 
 - **Per-item enablement matrix.** The Help documents many greying rules
   piecemeal; a complete `command × document-state` enablement table is not
   sourced. Resolve with a CS6 screenshot/interaction pass for every command.
-- **Exact leaf membership of Filter submenus.** The Help's `Choose` paths prove
-  many filters but not all memberships. Resolve with a CS6 `Filter` menu capture
-  per submenu.
-- **`3D` menu structure.** The CS6 3D engine was reworked; several 3D commands
-  are confirmed, but the full submenu ordering (Lights/Scene/Ground Plane,
-  Render, Get More Content) is `(to verify)`. Resolve with an Extended CS6
-  capture.
-- **`Analysis` menu.** Whether CS5 Extended's Analysis menu left any CS6
-  residue is unverified. Resolve with a CS5→CS6 menu comparison.
-- **Search/Help item.** Whether CS6 had `Help > Photoshop Help` only or also a
-  `Search` entry is unverified.
-- **Mac application-menu contents.** The exact Photoshop CS6 Mac menu items
-  (Services/Hide/Quit placement) are not in the fetched Help. Resolve with the
-  Mac-specific CS6 Help or a capture.
+- **Exact leaf membership and ordering of Filter submenus.** The Help's `Choose`
+  paths prove every CS6 filter name and the canonical Brush Strokes / Sketch /
+  Texture / Video groupings, but not the on-screen ordering. Resolve with a CS6
+  `Filter` menu capture per submenu.
+- **`3D` menu ordering and residual items** (`Merge 3D Layers`,
+  `Get More Content…`, whether `New Mesh from Layer` survived the rename to
+  `New Mesh From Grayscale`, and the full `New Shape From Layer` preset list).
+  Resolve with an Extended CS6 capture.
+- **`Filter > Browse Filters Online…`** — existence in CS6 is unverified.
+  Resolve with a CS6 `Filter` menu capture.
+- **`Type > OpenType`** — whether CS6 exposes OpenType options as a Type submenu
+  or only in the Character panel menu. Resolve with a CS6 capture.
+- **Help menu tail** (`Adobe Product Improvement Program`, `System Info`) —
+  listed by tertiary sources, not the fetched CS6 Help. Resolve with a CS6
+  `Help` menu capture.
+- **Mac application-menu contents.** The CS6 keyboard-shortcut sheet shows the
+  `Photoshop` menu carrying `Preferences…`, `Hide Photoshop` (`Cmd+H`),
+  `Hide Others` (`Opt+Cmd+H`), and `Quit Photoshop` (`Cmd+Q`); `Services` and
+  `About Photoshop` placement is still uncaptured.
 - **Default shortcuts for many non-tool commands.** Only the documented tables
   are sourced; the rest need a CS6 keybinding capture. Feeds
   `02-ui-ux/keyboard-shortcuts.md`.
-- **`View > Align`/`Snap To` exact members.** Partially sourced. Resolve with a
-  capture.

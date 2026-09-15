@@ -8,7 +8,9 @@
   Background** options to File Handling, moves **History Log** under General, expands **GPU
   Settings** (Mercury Graphics Engine) under Performance, adds **Enable Flick Panning**,
   **Animated Zoom**, **Place Or Drag Raster Images As Smart Objects**, and the **3D**
-  preference pane (Extended). CS5 already had General, Interface, File Handling, Performance,
+  preference pane (Extended). The Interface pane gains the four **Color Theme** swatches,
+  **UI Font Size** options, **Enable Text Drop Shadows**, and a **canvas colour per screen
+  mode**. CS5 already had the same pane list: General, Interface, File Handling, Performance,
   Cursors, Transparency & Gamut, Units & Rulers, Guides/Grid & Slices, Plug-ins and Type.
 - **Depends on:** `01-architecture/qt6-ui-design.md`, `01-architecture/document-model.md`,
   `01-architecture/performance-targets.md`, `01-architecture/gpu-rendering-pipeline.md`,
@@ -34,8 +36,11 @@ side; the user can switch panes with the left-hand list, or with **Next** / **Pr
 
 ### Opening and resetting preferences
 
-- **Open a pane:** menu path above, or `Ctrl/Cmd+K` for General (reported for the other panes,
-  see `## Open questions`).
+- **Open a pane:** the menu path above, or `Ctrl/Cmd+K` for General. The CS6 Help documents
+  only `Ctrl/Cmd+K`; the `Ctrl/Cmd+2`…`Ctrl/Cmd+9` pane shortcuts sometimes reported are not
+  in the CS6 Help and collide with documented channel/zoom shortcuts (`Ctrl+1` = Magnify 100%,
+  `Ctrl+2`…`5` = composite/RGB channels), so treat them as unverified (see
+  `## Open questions`).
 - **Switch pane:** click a pane in the left column, or click **Next** / **Prev**.
 - **Reset all warning dialogs:** General pane → **Reset All Warning Dialogs** → OK.
 - **Restore to default:**
@@ -80,7 +85,7 @@ also stored in a preferences file, not the document.
 | Options: Snap Vector Tools And Transforms To Pixel Grid | checkbox | off | — |
 | Options: Place Or Drag Raster Images As Smart Objects | checkbox | on | When off, dragged/copied raster files become normal layers. |
 | Options: Enable Gestures (Mac only) | checkbox | on | Trackpad rotate/zoom gestures. |
-| History Log | toggle | off | Enables the edit history log. |
+| History Log | toggle | off *(see note)* | Enables the edit history log. The CS6 Help also says per-session history data is saved as file metadata "by default", so the exact first-run checkbox state is *unverified*. |
 | History Log: Save Log Items To | menu | Metadata | Metadata, Text File, Both (+ Choose… path). |
 | History Log: Edit Log Items | menu | Sessions Only | Sessions Only, Concise, Detailed. |
 | Reset All Warning Dialogs | button | — | Re-enables suppressed "Don't Show Again" messages. |
@@ -89,18 +94,20 @@ also stored in a preferences file, not the document.
 
 | Setting | Type | CS6 default | Notes |
 |---|---|---|---|
-| Color Theme | 4 swatches | 2nd (mid-dark) | Darkest → lightest shades; CS6 introduced the dark default. |
+| Color Theme | 4 swatches | 2nd from left (Dark Gray) | Black, Dark Gray, Medium Gray, Light Gray (swatches are unlabeled; names *(secondary)*). CS6 introduced the dark default. |
+| Enable Text Drop Shadows | checkbox | off *(unverified)* | CS6 only; adds a white edge to panel lettering, most effective on the two dark themes. |
+| Canvas colour: Standard Screen / Full Screen With Menus / Full Screen | menu ×3 | theme-linked (~50% gray / black in full-screen) | Black, Dark Gray, Medium Gray, Light Gray, Custom (default light blue); one setting per screen mode. |
 | Screen Mode | menu | Standard Screen Mode | — |
 | UI Font Size | menu | Small | Tiny, Small, Medium, Large; restart required. |
 | Show Menu Colors | checkbox | on | Tints menu items by workspace/label. |
-| Show Tool Tips | checkbox | on | (In CC this moved to a Tools pane.) |
-| Show Transformation Values | menu | Top Right | Never / Top Left / Top Right / Bottom Left / Bottom Right. |
-| Panels: Auto-Collapse Iconic Panels | checkbox | off | — |
-| Panels: Auto-Show Hidden Panels | checkbox | off | — |
+| Show Tool Tips | checkbox | on | In CS6 this lives in the Interface pane; in CC it moved to a Tools pane. |
+| Show Transformation Values | menu | Top Right *(secondary)* | Never / Top Left / Top Right / Bottom Left / Bottom Right. |
+| Panels: Auto-Collapse Iconic Panels | checkbox | off | CS6 Help calls it "Auto-Collapse Icon Panels". |
+| Panels: Auto-Show Hidden Panels | checkbox | off | Hover the window (Win) or monitor (Mac) edge to reveal the hidden-panel strip. |
 | Panels: Open Documents As Tabs | checkbox | on | Tabbed document windows. |
 | Panels: Enable Floating Document Window | checkbox | on | — |
 | Text: Show Font Names In English | menu | off (locale) | Also under Type pane in CS6. |
-| Presentation Mode settings | group | — | Black/other backdrop options for the full-screen presentation. |
+| Presentation Mode settings | group | — | Backdrop/screen options for the full-screen presentation *(secondary)*. |
 
 ### Pane: File Handling
 
@@ -110,8 +117,8 @@ also stored in a preferences file, not the document.
 | File Extension (Windows) | menu | Use Lower Case *(secondary)* | Use Upper Case / Lower Case. |
 | Append File Extension (Mac) | menu | Ask When Saving *(secondary)* | Never / Always / Ask When Saving + Use Lower Case. |
 | Save As To Original Folder | checkbox | on *(secondary)* | Default save location. |
-| Save In Background **(CS6)** | checkbox | on | Save without blocking the UI. |
-| Automatically Save Recovery Information **(CS6)** | checkbox + interval | on / 10 min *(secondary)* | Crash recovery; interval user-set. |
+| Save In Background **(CS6)** | checkbox | on | Save without blocking the UI; the CS6 Help says disable it for the most consistent performance on large files. |
+| Automatically Save Recovery Information **(CS6)** | checkbox + interval | 10 min | Crash recovery; the 10-minute default is primary ("Auto recover"), interval user-set. |
 | Maximize PSD And PSB File Compatibility | menu | Ask *(secondary)* | Never / Always / Ask. Asked when a document contains features PS cannot represent. |
 | Recent File List Contains | number | 20 *(secondary)* | `File > Open Recent` length; 0 disables. |
 | Camera Raw Preferences | button | — | Opens the Camera Raw host preferences. |
@@ -121,12 +128,12 @@ also stored in a preferences file, not the document.
 
 | Setting | Type | CS6 default | Notes |
 |---|---|---|---|
-| Memory Usage | slider (MB / %) | 70 % *(secondary)* | Range ~5–100 % of RAM; restart required. |
+| Memory Usage | slider (MB / %) | 70 % | Range ~5–100 % of RAM; restart required. |
 | Let Photoshop Use [n] MB | number | derived | Numeric mirror of the slider. |
-| History States | number | 20 *(secondary)* | 1–1000 *(secondary)*; more states cost RAM. |
-| Cache Levels | number | 6 *(secondary)* | 1–8 *(secondary)*; higher = faster screen redraw, slower on small edits. |
+| History States | number | 20 | 1–1000 *(secondary)*; more states cost RAM; restart required. |
+| Cache Levels | number | 6 *(CS6-era secondary; Adobe's current KB says 4)* | 1–8 *(secondary)*; higher = faster screen redraw, slower on small edits. |
 | Cache Tile Size | menu | 1024 K *(secondary)* | 128 K / 132 K / 1024 K. |
-| GPU Settings: Enable OpenGL Drawing **(CS6: Mercury Graphics Engine)** | checkbox | on when a qualifying GPU is present | Greyed out when the card/driver is unsupported. |
+| GPU Settings: Enable OpenGL Drawing **(CS6: Mercury Graphics Engine)** | checkbox | on when a qualifying GPU is present | Greyed out when the card/driver is unsupported; CS6 pre-qualifies detected GPUs before use. |
 | GPU Advanced Settings | sub-dialog | Normal *(secondary)* | Drawing Mode Basic / Normal / Advanced (+ vertical sync, anti-alias options) *(secondary)*. |
 | Scratch Disks | checkbox list + order | Startup disk | Up to 4 scratch disks; first is primary. |
 
@@ -194,7 +201,7 @@ Changing units on the Info panel automatically changes the ruler units. Columns 
 
 | Setting | Type | CS6 default | Notes |
 |---|---|---|---|
-| Additional Plug-ins Folder | folder picker | (none) | Second location scanned for compatible plug-ins. |
+| Additional Plug-ins Folder | folder picker | (none) | Second location scanned for compatible plug-ins; the CS6 Help notes a **restart** is required for the plug-ins to take effect. |
 | Filter Gallery plug-in / legacy filter controls | toggles | — | Controls legacy filter behaviour *(secondary)*. |
 | Extension panels: Allow Extensions To Connect To The Internet | checkbox | off *(secondary)* | CS6 Extension panel internet access. |
 | Enable Remote Connections | checkbox | off *(secondary)* | Debug/remote connection port. |
@@ -231,16 +238,17 @@ Note: `Type > Font Preview Size` moved out of Preferences into the Type menu in 
 | Location | Type | Shortcut | Notes |
 |---|---|---|---|
 | `Edit > Preferences > General` (Win) / `Photoshop > Preferences > General` (Mac) | Dialog pane | `Ctrl/Cmd+K` | Default pane; Reset All Warning Dialogs, History Log, zoom/interpolation options. |
-| `Edit > Preferences > Interface` | Dialog pane | `Ctrl/Cmd+2` *(reported)* | Theme, font size, panels, gestures. |
-| `Edit > Preferences > File Handling` | Dialog pane | `Ctrl/Cmd+3` *(reported)* | Save/extension/recovery. |
-| `Edit > Preferences > Performance` | Dialog pane | `Ctrl/Cmd+4` *(reported)* | Memory, history, cache, GPU, scratch disks. |
-| `Edit > Preferences > Cursors` | Dialog pane | `Ctrl/Cmd+5` *(reported)* | Pointer styles. |
-| `Edit > Preferences > Transparency & Gamut` | Dialog pane | `Ctrl/Cmd+6` *(reported)* | Checkerboard + gamut warning. |
-| `Edit > Preferences > Units & Rulers` | Dialog pane | `Ctrl/Cmd+7` *(reported)* | Units, point/pica, resolutions. |
-| `Edit > Preferences > Guides, Grid & Slices` | Dialog pane | `Ctrl/Cmd+8` *(reported)* | Guides/grid/slice colors. |
-| `Edit > Preferences > Plug-ins` | Dialog pane | `Ctrl/Cmd+9` *(reported)* | Additional plug-ins folder. |
-| `Edit > Preferences > Type` | Dialog pane | (none) | Text engines, glyph protection, smart quotes. |
-| `Edit > Preferences > 3D` | Dialog pane | (none) | Extended only. |
+| Preferences dialog, any pane | Dialog | `Next` / `Prev` buttons | Switch to the next/previous pane in the list (CS6 Help). |
+| `Edit > Preferences > Interface` | Dialog pane | (none documented) | Theme, text drop shadows, canvas colour, font size, panels, gestures. |
+| `Edit > Preferences > File Handling` | Dialog pane | (none documented) | Save/extension/recovery. |
+| `Edit > Preferences > Performance` | Dialog pane | (none documented) | Memory, history & cache, GPU, scratch disks. |
+| `Edit > Preferences > Cursors` | Dialog pane | (none documented) | Pointer styles. |
+| `Edit > Preferences > Transparency & Gamut` | Dialog pane | (none documented) | Checkerboard + gamut warning. |
+| `Edit > Preferences > Units & Rulers` | Dialog pane | (none documented) | Units, point/pica, resolutions. |
+| `Edit > Preferences > Guides, Grid & Slices` | Dialog pane | (none documented) | Guides/grid/slice colors. |
+| `Edit > Preferences > Plug-ins` | Dialog pane | (none documented) | Additional plug-ins folder. |
+| `Edit > Preferences > Type` | Dialog pane | (none documented) | Text engines, glyph protection, smart quotes. |
+| `Edit > Preferences > 3D` | Dialog pane | (none documented) | Extended only. |
 | `Edit > Keyboard Shortcuts` | Dialog | `Ctrl/Cmd+Alt/Option+Shift+K` *(reported)* | Shortcut sets (see `UI-011`). |
 | `Ctrl+Alt+Shift` (Win) / `Cmd+Option+Shift` (Mac) at launch | Startup gesture | — | Reset preferences. |
 | Right-click ruler | Context menu | — | Quick unit change (routes to Units & Rulers). |
@@ -253,18 +261,20 @@ against a running CS6 before the spec reaches `Spec'd`.
 
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
-| Color Theme | enum | 2nd dark swatch | 4 swatches | — |
+| Color Theme | enum | Dark Gray (2nd of 4) | Black/Dark Gray/Medium Gray/Light Gray | Swatches unlabeled; names *(secondary)*. |
 | UI Font Size | enum | Small | Tiny/Small/Medium/Large | Restart required. |
+| Enable Text Drop Shadows | bool | off | on/off | Interface pane; CS6 only. |
+| Canvas colour | enum/picker | theme-linked | Black/Dark Gray/Medium Gray/Light Gray/Custom | One per screen mode. |
 | Image Interpolation | enum | Bicubic | Nearest/Bilinear/Bicubic/Bicubic Smoother/Bicubic Sharper/(CS6: Automatic) | Shared with Image Size dialog. |
 | HUD Color Picker | enum | Strip | Hue Strip/Hue Wheel | OpenGL required. |
-| Show Transformation Values | enum | Top Right | 5 positions + Never | — |
-| Memory Usage | % of RAM | 70 *(secondary)* | ~5–100 *(secondary)* | Restart required. |
-| History States | int | 20 *(secondary)* | 1–1000 *(secondary)* | Affects undo depth + scratch usage. |
-| Cache Levels | int | 6 *(secondary)* | 1–8 *(secondary)* | — |
+| Show Transformation Values | enum | Top Right *(secondary)* | 5 positions + Never | — |
+| Memory Usage | % of RAM | 70 | ~5–100 *(secondary)* | Restart required. |
+| History States | int | 20 | 1–1000 *(secondary)* | Affects undo depth + scratch usage; restart. |
+| Cache Levels | int | 6 *(CS6-era; Adobe KB: 4)* | 1–8 *(secondary)* | Contested default. |
 | Cache Tile Size | enum | 1024 K *(secondary)* | 128 K/132 K/1024 K *(secondary)* | — |
 | Scratch Disks | ordered list | Startup | ≤4 disks *(secondary)* | First = primary. |
 | Recent File List Contains | int | 20 *(secondary)* | 0–100 *(secondary)* | 0 disables Open Recent. |
-| Auto Save interval | minutes | 10 *(secondary)* | 5/10/15/30/60 *(secondary)* | CS6 crash recovery. |
+| Auto Save interval | minutes | 10 | 5/10/15/30/60 *(secondary)* | CS6 crash recovery. |
 | Gridline Every | number+unit | 1 in / 25 % *(secondary)* | any + px/in/cm/mm/pt/pica/% | % = even division. |
 | Grid Subdivisions | int | 4 *(secondary)* | ≥1 | — |
 | Print Resolution | ppi | 300 *(secondary)* | ≥1 | Default print target. |
@@ -387,53 +397,82 @@ Types crossing the Rust↔Qt boundary: `GeneralPrefs`, `InterfacePrefs`, …, `P
 ## Sources
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (Adobe Photoshop CS6
-  Help and tutorials, Feb 2013) — primary. Establishes: Preferences overview and file behavior;
-  General (Beep When Done, History Log, zoom/interpolation/flick panning/Place Or Drag/Snap
-  Vector/shift-key-tool-switch); Interface (Color Theme, UI Font Size, Show Menu Colors, Show
-  Tool Tips, Auto-Collapse/Auto-Show, Show Transformation Values, Enable Gestures); File Handling
-  (Image Previews, File Extension, Save As To Original Folder, Save In Background, Automatically
-  Save Recovery Information, Maximize PSD/PSB, Recent File List); Performance (GPU Settings,
-  Enable OpenGL Drawing, Scratch Sizes, Efficiency); Cursors (painting/other cursor styles);
-  Transparency & Gamut (grid size/color, gamut warning); Units & Rulers (Point/Pica, Type units);
-  Guides/Grid/Slices (colors, Gridline Every, Subdivisions, Show Slice Numbers); Plug-ins
-  (Additional Plug-ins Folder); Type (Show Font Names In English, East Asian/Middle Eastern,
-  Missing Glyph Protection, Use Smart Quotes); 3D (Render Tile Size, Shadow Quality, High
-  Quality Threshold).
-- `https://www.photoshopessentials.com/basics/essential-photoshop-preferences-beginners` —
-  secondary, cross-version (CC/CS6): Export Clipboard, Color Theme (default), UI Font Size,
-  Show Tool Tips, Use Shift Key for Tool Switch, Auto Save (10 min default, CS6), Recent File List
-  (20 default), Memory Usage (70 % default, restart), History States (CS6 default 20), Scratch
-  Disks. Explicitly notes which options live in different panes in CS6 vs. CC.
-- `https://retouchingacademy.com/how-to-set-preferences-memory-usage-for-peak-performance-photoshop-cs6-cc`
+  Help and tutorials, Feb 2013) — primary, downloaded and text-extracted. Establishes: Preferences
+  overview and file behavior (the "About preferences" text still reads "Adobe Photoshop CS5
+  Prefs file"); General (Beep When Done, History Log with Sessions Only/Concise/Detailed, zoom/
+  interpolation/flick panning/Place Or Drag/Snap Vector/shift-key-tool-switch); Interface (Color
+  Theme swatch, UI Font Size, Show Menu Colors, Show Tool Tips, Auto-Collapse Icon Panels,
+  Auto-Show Hidden Panels, Restore Default Workspaces, Show Transformation Values); File Handling
+  (Save In Background, Automatically Save Recovery Information — "Auto recover" default **ten
+  minutes**, Maximize PSD/PSB, Recent File List); Performance (GPU Settings, Enable OpenGL
+  Drawing); Cursors; Transparency & Gamut (grid size/color, gamut warning); Units & Rulers
+  (Point/Pica, Type units); Guides/Grid/Slices (colors, Gridline Every, Subdivisions, Show Slice
+  Numbers); Plug-ins (Additional Plug-ins Folder, restart required); Type (Show Font Names In
+  English, East Asian (CS6) / Show Asian Text Options (CS5), Middle Eastern, Missing Glyph
+  Protection default on, Use Smart Quotes); 3D (Render Tile Size, Shadow Quality, High Quality
+  Threshold).
+- `https://www.photoshopforphotographers.com/pscs6/downloads/Photoshop-interface.pdf` — Martin
+  Evening, *Adobe Photoshop CS6 for Photographers* (sample chapter): the Interface preferences
+  hold four themes, UI font size (changes apply only after a relaunch), **Enable Text Drop
+  Shadows**, and a **canvas colour per screen mode** (Standard Screen / Full Screen with Menus /
+  Full Screen); the dark default's canvas is almost black; Mac keeps a `Window > Application
+  Frame` toggle.
+- `https://www.photoshopessentials.com/basics/essential-photoshop-preferences-beginners/` —
+  secondary, cross-version (CC/CS6): Export Clipboard (default on), Color Theme (default 2nd
+  swatch), UI Font Size (default Small; Tiny/Small/Medium/Large; restart), Show Tool Tips
+  (Interface in CS6, Tools in CC), Use Shift Key for Tool Switch (default on; General in CS6),
+  Auto Save (10-minute default, CS6), Recent File List (default 20, max 100), Memory Usage
+  (70 % default, restart), History States (CS6 default 20; CC 50), Scratch Disks.
+- `https://www.photoshopessentials.com/basics/interface-cs6/` — secondary: four Color Theme
+  swatches with the default second from the left, and the canvas/pasteboard palette.
+- `https://retouchingacademy.com/how-to-set-preferences-memory-usage-for-peak-performance-photoshop-cs6-cc/`
   — secondary, CS6/CC: Memory Usage guidance (PC 50–55 %, Mac 70–75 %), History States default
-  20, Cache Levels default 6, scratch-disk ordering guidance, Purge behavior.
+  20, **Cache Levels default 6**, scratch-disk ordering, Purge behavior, 32-bit memory cap.
+- `https://www.howtogeek.com/309022/how-to-extend-history-states-in-photoshop-and-ctrlaltz-forever`
+  — secondary: History States by default is 20.
+- `https://macperformanceguide.com/OptimizingPhotoshopCS6-configuring.html` — secondary, CS6:
+  Performance-pane screenshot; memory ~70–72 %; cache tile 1024 K; recommends disabling the GPU.
+- `https://photoshopguides.github.io/Performance` — secondary (CC): Cache Levels default **4**,
+  tile sizes 128 K / 132 K / 1024 K, and the three auto-optimize presets.
+- `https://www.properproof.com/photoshop/guides/Adobe%20Photoshop%20%20%20Default%20keyboard%20shortcuts.htm`
+  — reproduction of the CS6 default key list: `Ctrl+1` is Magnify 100 % and there are **no
+  documented Preferences-pane shortcuts** (relevant to the per-pane shortcut question).
 - `https://community.adobe.com/questions-712/how-to-reset-preferences-if-i-have-the-legacy-version-1140349`
   — Adobe Community (CS6 13.0 x64): Ctrl+Alt+Shift reset gesture and Windows preferences path
   `…\AppData\Roaming\Adobe\Adobe Photoshop CS6\Adobe Photoshop CS6 Settings`.
 - `https://community.adobe.com/t5/photoshop-ecosystem-discussions/how-do-i-save-preference-changes-in-ps6/m-p/8864474`
   — Adobe Community (search result; not directly fetched): macOS preferences path
   `~/Library/Preferences/Adobe Photoshop CS6 Settings`.
+- `https://www.oreilly.com/library/view/photoshop-cs6-visual/9780132983037/ch24.html` — search
+  result only (HTTP 403, not fetched): the CS6 Visual QuickStart Guide's chapter 24 lists the pane
+  order General, Interface, File Handling, Performance, Cursors, …. Used only to cross-check pane
+  order and naming, not as a fact source.
 - Qt 6 documentation `https://doc.qt.io/qt-6/accessible.html` and Context7 `/websites/doc_qt_io_qt-6_8`
   (`QAccessible`) — Qt6 widget/dialog and accessibility guidance used for the design proposals.
 
 ## Open questions
 
-- **Exact CS6 defaults** for Image Previews, Maximize Compatibility, Memory Usage %, History
-  States, Cache Levels/Tile Size, transparency grid, guide/grid colors, Recent File List and
-  Auto Save interval. *Resolve:* read a known-fresh CS6 profile or the CS6 "Preferences" help
-  pages (currently 403 on helpx; use the archived PDF or a VM install).
-- **Per-pane keyboard shortcuts** (`Ctrl+2`…`Ctrl+9`). The PDF documents `Ctrl/Cmd+K` for General
-  only. *Resolve:* CS6 Help "Customizing keyboard shortcuts" export or a CS6 session.
-- **Which settings require a restart in CS6.** Several Help pages say "restart" (Memory Usage,
-  History States, UI Font Size) but a definitive list is not published. *Resolve:* systematic
+- **Remaining CS6 defaults not yet pinned:** Image Previews, Maximize PSD/PSB compatibility,
+  transparency grid size/colour, and the guide/grid/slice colours. *Resolve:* read a known-fresh
+  CS6 profile or a VM install.
+- **Cache Levels default is contested:** CS6-era sources say **6**, Adobe's current KB says **4**.
+  *Resolve:* inspect a fresh CS6 Performance pane (a screenshot or VM).
+- **Per-pane keyboard shortcuts** (`Ctrl+2`…`Ctrl+9`) are **not documented** in the CS6 Help, and
+  `Ctrl+1`…`Ctrl+5` are already Magnify 100 % / channel shortcuts. Treat any "reported" pane
+  shortcut as unverified (likely non-existent). *Resolve:* a CS6 session or the exported CS6
+  shortcut list.
+- **Which settings require a restart in CS6.** The Help and secondary sources name Memory Usage,
+  History States and UI Font Size; a definitive list is not published. *Resolve:* systematic
   toggle-and-observe on CS6.
 - **GPU Advanced Settings** (Drawing Mode Basic/Normal/Advanced, vertical sync) exact options and
   defaults. *Resolve:* the CS6 GPU FAQ page (Adobe) or a machine with a supported GPU.
-- **History States / Cache Levels numeric ranges** are secondary-sourced. *Resolve:* inspect the
-  CS6 spinbox ranges.
+- **Cache Levels / History States numeric ranges** are secondary-sourced (1–8 and 1–1000).
+  *Resolve:* inspect the CS6 spinbox ranges.
+- **History Log first-run default.** The Help implies per-session logging to metadata is on by
+  default, but the checkbox default is commonly described as off. *Resolve:* a fresh CS6 profile.
 - **File Handling CS6-only additions** — whether `Save in Background` and
-  `Automatically Save Recovery Information` have additional sub-options. *Resolve:* CS6 Help
-  File Handling page.
+  `Automatically Save Recovery Information` have additional sub-options. *Resolve:* the CS6 Help
+  File Handling page or a capture.
 - **Persistence format and interop:** should Kooka Pictura offer any CS6 `.psp` import? Legal and
   independent-creation review needed (`00-overview/licensing-and-independent-creation.md`).
 - **Linux preference location:** confirm XDG (`$XDG_CONFIG_HOME`) vs. Qt `QSettings` native

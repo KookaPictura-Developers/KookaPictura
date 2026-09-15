@@ -12,6 +12,8 @@
 
 `Window > Info` (shortcut `F8`, which toggles show/hide) opens the **Info panel**. It  and 
 
+**Default placement.** The Info panel is not part of the default Essentials workspace; it is supplied by the **Photography** workspace (with Histogram and Actions) in the right-hand column (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
+
 ### Readout grid
 
 The panel is a compact two-column grid. Its contents are **contextual to the active tool/gesture** (full list in `CLR-004`):
@@ -83,8 +85,8 @@ Separate from the panel, the document window's **status bar** (`CLR-004`, `03-to
 
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
-| First Color Readout | enum | Actual Color *(inferred)* | Actual / Proof / a mode / Total Ink / Opacity | Panel Options + eyedropper icon |
-| Second Color Readout | enum | a color mode *(inferred)* | same set | Panel Options + eyedropper icon |
+| First Color Readout | enum | Actual Color | Actual / Proof / a mode / Total Ink / Opacity | Panel Options + eyedropper icon; Actual Color is the CS6 default |
+| Second Color Readout | enum | CMYK (RGB documents) | same set | Panel Options + eyedropper icon; CS6 default shows the current mode plus CMYK equivalents |
 | Color bit depth | enum | 8-bit *(inferred)* | 8-bit / 16-bit / 32-bit | Eyedropper icon pop-up |
 | Ruler Units | enum | pixels *(inferred)* | pixels / inches / cm / mm / points / picas / percent | Crosshair icon |
 | Status — Document Sizes | bool | on *(inferred)* | on / off | Panel Options |
@@ -187,10 +189,16 @@ Not used in this pass:
 
 - `helpx.adobe.com` Info-panel pages (HTTP 403 from this environment); the archived CS6 PDF and `CLR-004` were used instead.
 
+Fetched for this revision:
+
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Info_palette.html` — Martin Evening CS6/CS5 support page: ; the out-of-gamut exclamation beside the CMYK value; status checkboxes appear in the middle of the panel and `Show Tool Hints` below; sample readouts follow the Eyedropper's sample-area size; the 16-bit readout values range 0–32,768 (15 bits used).
+- `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Photography workspace supplies the Info panel (with Histogram and Actions), not the default Essentials workspace.
+
+Consulted as search-result snippets only (not individually fetched): `http://www.colormanagementinfo.com/Articles/Advanced_Photoshop_Color_Settings` ("The info palette's secondary readout is set to CMYK by default") and the Adobe community answers thread confirming the First readout defaults to Actual Color.
+
 ## Open questions
 
-- **Exact default readout modes, ruler units, and status toggles** (assumed Actual Color / pixels / Document Sizes). *Resolves with:* a CS6 first-run Info panel capture.
-- **Whether the second readout defaults to a color mode** and which one. *Resolves with:* a CS6 capture.
+- **Exact default Ruler Units and status toggles** (pixels assumed; Document Sizes shown by default). *Resolves with:* a CS6 first-run Info panel capture.
 - **Exact 16-bpc/32-bpc readout formats** and whether 32-bit shows more than three channels. *Resolves with:* a CS6 32-bpc capture.
 - **Whether sampler/readout changes are undoable** in CS6. *Resolves with:* a CS6 experiment.
 - **Sampler PSD serialization keys.** *Resolves with:* PSD inspection and `ARCH-011` file-formats.

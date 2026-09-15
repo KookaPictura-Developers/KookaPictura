@@ -6,11 +6,13 @@
 - **New in CS6:** `Changed` — the panel UI is carried from CS5, but the CS6 JDI list records **"Reorganized tool presets remain after restart"** and the CS6 SDK adds scripting access to the tool name associated with a tool preset. No new panel controls are documented in the fetched CS6 Help text.
 - **Depends on:** `BRU-006` `07-color-painting/brush-presets.md` (brush vs. tool preset boundary), `10-workflow-io/presets-manager.md` (Preset Manager / library I/O), `02-ui-ux/toolbox-and-options-bar.md` (options bar host), `01-architecture/qt6-ui-design.md` (`ARCH-003`, dock/model-view), `01-architecture/rust-core-design.md` (`ARCH-002`), `03-tools/type-tools.md` (`TOOL-050`, type tool presets).
 
-> All crate, module, widget, and type names below are **design proposals**. No code exists in this repository. Behavior is taken from the fetched CS6 Help PDF; anything inferred is marked *(inferred)*. The tool-preset **file format and extension are not documented by the fetched CS6 text** (see Open questions).
+> All crate, module, widget, and type names below are **design proposals**. No code exists in this repository. Behavior is taken from the fetched CS6 Help PDF; anything inferred is marked *(inferred)*. The tool-preset file extension is **`.tpl`** and the library folder is **`Presets/Tools`** (confirmed by CS6-era secondary sources; the CS6 Help PDF itself documents only the Save/Load commands).
 
 ## CS6 behavior
 
 A **tool preset** stores a tool plus its options-bar settings so the combination can be recalled without reconfiguring the tool. The CS6 Help definition: **
+
+**Default placement.** The Tool Presets panel is not in the default Essentials workspace; it is part of the **Painting** workspace, in the narrower secondary (icon) column alongside Brush, Clone Source, and History (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
 
 Three surfaces expose the same preset list:
 
@@ -24,7 +26,7 @@ Three surfaces expose the same preset list:
 
 **Current tool vs. all tools.** The pop-up panel menu offers **Show All Tool Presets**, **Sort By Tool**, and **Show Current Tool Presets**; the panel's bottom-left **Current Tool Only** checkbox is the same filter. Display modes are **Text Only**, **Small List**, and **Large List** in the pop-up panel (the Preset Manager adds thumbnail modes; see `10-workflow-io/presets-manager.md`).
 
-**Managing.** **Rename Tool Preset** and **Delete Tool Preset** are pop-up-panel menu commands; the Preset Manager can rename/delete/reorder items. Library commands are **Load Tool Presets** (append), **Replace Tool Presets**, **Reset Tool Presets** (replace or append the defaults), and **Save Tool Presets** (write the current list to a file). Placing a saved library in the default `Presets/Tools` folder makes it appear at the bottom of the panel menu after restart. *(The exact folder name follows the CS6 `Presets/` convention documented for brushes; the tool-specific subfolder name is inferred.)*
+**Managing.** **Rename Tool Preset** and **Delete Tool Preset** are pop-up-panel menu commands; the Preset Manager can rename/delete/reorder items. Library commands are **Load Tool Presets** (append), **Replace Tool Presets**, **Reset Tool Presets** (replace or append the defaults), and **Save Tool Presets** (write the current list to a file). Placing a saved `.tpl` library in the default `Presets/Tools` folder makes it appear at the bottom of the panel menu after restart (CS6 installs ship `Presets/Tools`).
 
 **Tool preset vs. brush preset.** Help distinguishes the two: save a **tool preset** ** Brush presets and their `.abr` libraries are a separate namespace (`BRU-006`); this panel owns the tool-plus-options bundle only. A tool preset can capture **type tool settings** (font, size, attributes, color) as well.
 
@@ -41,7 +43,7 @@ Three surfaces expose the same preset list:
 | Panel pop-up menu | Menu | — | New/Rename/Delete; Show All / Sort By Tool / Show Current Tool; Text Only / Small List / Large List; Load/Replace/Reset/Save Tool Presets |
 | Panel bottom-left | Create New Tool Preset button | — | Opens the name dialog |
 | Preset Manager | Dialog | `Edit > Presets > Preset Manager` | Preset Type = Tools; load/replace/rename/delete/reorder |
-| Filesystem | Files | — | `Presets/Tools/*` (extension not documented); panel-menu library entry after restart |
+| Filesystem | Files | — | `Presets/Tools/*.tpl`; a library here appears at the bottom of the panel menu after restart |
 
 ## Parameters & ranges
 
@@ -140,10 +142,15 @@ Not used in this pass:
 
 - `helpx.adobe.com` tool-preset pages (HTTP 403 / current-version only).
 
+Fetched for this revision:
+
+- `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Painting workspace: Tool Presets (with Brush and Clone Source) in the secondary icon column.
+
+Consulted as search-result snippets only for the `.tpl` extension and `Presets/Tools` folder (not individually fetched): `https://vimeo.com/68231285` (CS6 .tpl import), `https://community.adobe.com/t5/photoshop-ecosystem-discussions/how-do-i-find-a-favorite-tool-in-an-old-version-of-photoshop/m-p/11481193` (CS6 `presets/Tools`), `https://www.grutbrushes.com/install-photoshop-brush-toolsets-tpl-files`, and `https://psfiles.com/how-to-install-photoshop-brush-toolsets-tpl-files`.
+
 ## Open questions
 
-- **Tool-preset file format and extension.** The CS6 text documents **Save Tool Presets** but not the container; the `.tpl` extension is community lore and not confirmed here. *Resolves with:* a CS6-saved tool-preset file and the Preset Manager / file-format reference.
-- **Default `Presets` subfolder name for tools** is inferred from the brush convention (`Presets/Brushes`). *Resolves with:* a CS6 install listing.
+- **Internal `.tpl` binary layout and version.** The extension and "only a whole set/library is saved" behavior are documented, but the container format is not (owned by `10-workflow-io/presets-manager.md`). *Resolves with:* a CS6-saved `.tpl` and the file-format/SDK reference.
 - **Default display mode** (Small List vs. Small Thumbnail) on a fresh install is not stated. *Resolves with:* a CS6 UI capture.
 - **Which options are captured per tool** (the exact capture matrix) is only exemplified (brush, crop, type) in the fetched text. *Resolves with:* per-tool captures on CS6.
 - **Does selecting an all-presets list entry always switch tools** in CS6, and does it warn about discarding current tool edits? *Resolves with:* a CS6 test.
