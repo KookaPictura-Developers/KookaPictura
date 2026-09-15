@@ -23,6 +23,7 @@ enum class SelectionMode { New, Add, Subtract, Intersect };
 
 struct ToolInfo {
     ToolId id;
+    const char* name;
     const char* label;
     QChar shortcut;
     Qt::CursorShape cursor;
@@ -32,6 +33,10 @@ struct ToolInfo {
 const ToolInfo& toolInfo(ToolId id);
 const QList<ToolId>& allToolIds();
 QString selectionModeString(SelectionMode mode);
+
+// Asset base name for a tool ("move", "quickselection"), used for the
+// `tool.<name>` icon and cursor ids.
+QString toolIdName(ToolId id);
 
 // Routes canvas pointer events to the active tool. One switch, not one class per
 // tool (see design.md); painting tools with per-tool engines can split later.

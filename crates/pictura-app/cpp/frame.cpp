@@ -2,6 +2,7 @@
 
 #include "commands.h"
 #include "dialogs.h"
+#include "icons.h"
 #include "image_view.h"
 #include "new_document_dialog.h"
 #include "options_bar.h"
@@ -639,6 +640,47 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
 void PicturaMainWindow::buildMenus()
 {
     registry_->buildMenuBar(menuBar());
+
+    // Icon for every implemented command; ids without an asset are skipped.
+    static const char* const kIconCommands[] = {
+        command_ids::FileNew,
+        command_ids::FileOpen,
+        command_ids::FileSave,
+        command_ids::FileSaveAs,
+        command_ids::FileRevert,
+        command_ids::FileClose,
+        command_ids::FileCloseAll,
+        command_ids::FileExit,
+        command_ids::EditUndo,
+        command_ids::EditRedo,
+        command_ids::EditStepForward,
+        command_ids::EditStepBackward,
+        command_ids::ImageRotate90Cw,
+        command_ids::ImageRotate90Ccw,
+        command_ids::ImageRotate180,
+        command_ids::ImageFlipHorizontal,
+        command_ids::ImageFlipVertical,
+        command_ids::ImageCrop,
+        command_ids::SelectAll,
+        command_ids::SelectDeselect,
+        command_ids::ViewZoomIn,
+        command_ids::ViewZoomOut,
+        command_ids::ViewFitOnScreen,
+        command_ids::ViewActualPixels,
+        command_ids::ViewScreenModeStandard,
+        command_ids::ViewScreenModeFullWithMenuBar,
+        command_ids::ViewScreenModeFull,
+        command_ids::ViewOptions,
+        command_ids::WindowPanelsLayers,
+        command_ids::WindowPanelsTools,
+        command_ids::HelpAbout,
+    };
+    for (const char* id : kIconCommands) {
+        const QString commandId = QString::fromLatin1(id);
+        if (QAction* action = registry_->action(commandId)) {
+            action->setIcon(icon(commandId));
+        }
+    }
 }
 
 void PicturaMainWindow::buildPanels()

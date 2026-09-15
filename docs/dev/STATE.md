@@ -10,9 +10,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
 - Test suite: **411 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M18 archived; canonical specs are
-  in `openspec/specs/` (42 capabilities, `validate --all --strict`
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M19 archived; canonical specs are
+  in `openspec/specs/` (44 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
+- The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
+  modules; icons and cursors render through `QSvgRenderer`.
 
 ## Commands
 
@@ -186,11 +188,27 @@ openspec validate --all --strict
   tests), `openspec validate --all --strict` 40/40 pre-archive (42 after),
   `guard.sh` OK. OpenSpec change `m18-toolbox-tools` (capabilities
   `tool-framework`, `shape-selection-tools`, `canvas-tools`), archived.
+- **M19** — SVG icon set and cursors. New `assets/icons/` (40 original
+  independent-creation SVGs: `app`, eight `tool.*`, and 31 implemented-command icons named
+  by command id, e.g. `file.saveAs.svg`, `view.screenMode.full.svg`) and
+  `assets/cursors/` (eight `tool.*` SVG cursors; eye-dropper hotspot (2,22),
+  others (12,12)); `assets/pictura.qrc` bundles all 48. `icons.{h,cpp}` provides
+  `QIcon pictura::icon(id)` and `QCursor pictura::cursor(id)` (QSvgRenderer,
+  DPR-scaled render, existence-guarded so unknown ids are silent). Build gains
+  `Qt6::Svg`, `CMAKE_AUTORCC`, the `.qrc`, and the `Qt6::Svg` link. Wiring:
+  application/window icon, Tools-panel action icons, the 31 implemented
+  menu-action icons, and the active tool's SVG cursor. `main.cpp` self-test exit
+  codes 47–49: all 40 icons resolve + unknown is null, all 8 cursors resolve,
+  window icon set. Verified: build green, fixture and no-arg self-tests exit 0
+  with no Qt warnings, `cargo fmt/clippy` clean, 411 tests (0 failed, 1 ignored;
+  unchanged), `openspec validate --all --strict` 43/43 pre-archive (44 after),
+  `guard.sh` OK. OpenSpec change `m19-svg-icons` (capabilities `icon-assets`,
+  `svg-cursors`), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M18 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M19 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -208,20 +226,20 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M19 (propose via OpenSpec first)
+## Next: M20 (propose via OpenSpec first)
 
-M18 is archived; its `tool-framework`, `shape-selection-tools`, and
-`canvas-tools` deltas live in `openspec/specs/`. The toolbox, core tools, and
-options bar are in place. Next up:
+M19 is archived; its `icon-assets` and `svg-cursors` deltas live in
+`openspec/specs/`. Next up:
 
-- **M19 — Panel parity**: bring the panels to spec per `docs/02-ui-ux/panels/`
-  — the Layers panel, a History panel with labeled states and snapshots, the
-  Navigator, Color/Swatches, and Info/Histogram.
+- **M20 — Panel parity**: bring the panels to spec per `docs/02-ui-ux/panels/`
+  — the Layers panel (blend/opacity/locks/labels/thumbnails/reorder/context
+  menu), a History panel with labeled states and snapshots, the Navigator,
+  Color/Swatches, and Info/Histogram.
 - Then: the painting engine, remaining filter families, image modes/bit-depth.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M18 are archived; their deltas now live in `openspec/specs/`.
+M6 through M19 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -235,3 +253,6 @@ M6 through M18 are archived; their deltas now live in `openspec/specs/`.
   selection; crop is destructive (no crop region / no non-destructive re-crop);
   selection marching ants are not implemented — only a rubber band during drag
   and the committed bounds are shown.
+- Icon art is a first functional pass; a visual refinement pass can change SVG
+  paths without any code change.
+- Cursors render at a single DPR (no per-screen 2×/3× cursor variants yet).

@@ -1,10 +1,9 @@
 #include "tools.h"
 
+#include "icons.h"
 #include "image_view.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
-
-#include <QtGui/QCursor>
 
 #include <algorithm>
 
@@ -13,21 +12,21 @@ namespace pictura {
 namespace {
 
 const ToolInfo kToolTable[] = {
-    {ToolId::Move, "Move", QLatin1Char('V'), Qt::SizeAllCursor,
+    {ToolId::Move, "move", "Move", QLatin1Char('V'), Qt::SizeAllCursor,
      "Move: drag to move the active layer"},
-    {ToolId::Marquee, "Rectangular Marquee", QLatin1Char('M'), Qt::CrossCursor,
+    {ToolId::Marquee, "marquee", "Rectangular Marquee", QLatin1Char('M'), Qt::CrossCursor,
      "Marquee: drag to select a rectangle"},
-    {ToolId::Lasso, "Lasso", QLatin1Char('L'), Qt::CrossCursor,
+    {ToolId::Lasso, "lasso", "Lasso", QLatin1Char('L'), Qt::CrossCursor,
      "Lasso: drag around a region to select"},
-    {ToolId::QuickSelection, "Quick Selection", QLatin1Char('W'), Qt::CrossCursor,
+    {ToolId::QuickSelection, "quickselection", "Quick Selection", QLatin1Char('W'), Qt::CrossCursor,
      "Quick Selection: drag to grow a selection"},
-    {ToolId::Crop, "Crop", QLatin1Char('C'), Qt::CrossCursor,
+    {ToolId::Crop, "crop", "Crop", QLatin1Char('C'), Qt::CrossCursor,
      "Crop: drag a region, press Enter to commit"},
-    {ToolId::Eyedropper, "Eyedropper", QLatin1Char('I'), Qt::CrossCursor,
+    {ToolId::Eyedropper, "eyedropper", "Eyedropper", QLatin1Char('I'), Qt::CrossCursor,
      "Eyedropper: click to sample a colour"},
-    {ToolId::Hand, "Hand", QLatin1Char('H'), Qt::OpenHandCursor,
+    {ToolId::Hand, "hand", "Hand", QLatin1Char('H'), Qt::OpenHandCursor,
      "Hand: drag to pan the canvas"},
-    {ToolId::Zoom, "Zoom", QLatin1Char('Z'), Qt::CrossCursor,
+    {ToolId::Zoom, "zoom", "Zoom", QLatin1Char('Z'), Qt::CrossCursor,
      "Zoom: click to zoom in, Ctrl/Alt-click to zoom out"},
 };
 constexpr int kToolCount = int(sizeof(kToolTable) / sizeof(kToolTable[0]));
@@ -41,6 +40,13 @@ const ToolInfo& toolInfo(ToolId id)
 {
     const int index = toolIndex(id);
     return (index >= 0 && index < kToolCount) ? kToolTable[index] : kToolTable[0];
+}
+
+QString toolIdName(ToolId id)
+{
+    const int index = toolIndex(id);
+    return QString::fromLatin1(
+        (index >= 0 && index < kToolCount) ? kToolTable[index].name : kToolTable[0].name);
 }
 
 const QList<ToolId>& allToolIds()
@@ -137,7 +143,7 @@ void ToolController::applyToolPolicy()
         return;
     }
     canvas_->setPanEnabled(active_ == ToolId::Hand);
-    canvas_->setCursor(QCursor(toolInfo(active_).cursor));
+    canvas_->setCursor(cursor(QStringLiteral("tool.") + toolIdName(active_)));
 }
 
 void ToolController::handlePressed(const QPointF& imagePos, int button, int modifiers)

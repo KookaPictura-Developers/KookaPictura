@@ -5,6 +5,7 @@
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtGui/QAction>
+#include <QtGui/QIcon>
 #include <QtGui/QImage>
 #include <QtGui/QPalette>
 #include <QtWidgets/QApplication>
@@ -16,6 +17,7 @@
 #include "commands.h"
 #include "dialogs.h"
 #include "frame.h"
+#include "icons.h"
 #include "image_view.h"
 #include "session.h"
 
@@ -26,6 +28,7 @@
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    QApplication::setWindowIcon(pictura::icon(QStringLiteral("app")));
 
     // Surface Qt's own diagnostics (QRhi logs through qWarning) on stderr so
     // the interop probe can capture them under xvfb/offscreen.
@@ -957,6 +960,119 @@ int main(int argc, char* argv[])
                 return 46;
             }
         }
+
+        // M19: every documented asset id resolves from the Qt resource
+        // bundle; unknown ids must be inert rather than crash. Assets are
+        // document-independent, so these run with or without a loaded PSD.
+        const QStringList expectedIcons = {
+            QStringLiteral("app"),
+            QStringLiteral("tool.move"),
+            QStringLiteral("tool.marquee"),
+            QStringLiteral("tool.lasso"),
+            QStringLiteral("tool.quickselection"),
+            QStringLiteral("tool.crop"),
+            QStringLiteral("tool.eyedropper"),
+            QStringLiteral("tool.hand"),
+            QStringLiteral("tool.zoom"),
+            QStringLiteral("file.new"),
+            QStringLiteral("file.open"),
+            QStringLiteral("file.save"),
+            QStringLiteral("file.saveAs"),
+            QStringLiteral("file.revert"),
+            QStringLiteral("file.close"),
+            QStringLiteral("file.closeAll"),
+            QStringLiteral("file.exit"),
+            QStringLiteral("edit.undo"),
+            QStringLiteral("edit.redo"),
+            QStringLiteral("edit.stepForward"),
+            QStringLiteral("edit.stepBackward"),
+            QStringLiteral("image.rotate90cw"),
+            QStringLiteral("image.rotate90ccw"),
+            QStringLiteral("image.rotate180"),
+            QStringLiteral("image.flipHorizontal"),
+            QStringLiteral("image.flipVertical"),
+            QStringLiteral("image.crop"),
+            QStringLiteral("select.all"),
+            QStringLiteral("select.deselect"),
+            QStringLiteral("view.zoomIn"),
+            QStringLiteral("view.zoomOut"),
+            QStringLiteral("view.fitOnScreen"),
+            QStringLiteral("view.actualPixels"),
+            QStringLiteral("view.screenMode.standard"),
+            QStringLiteral("view.screenMode.fullWithMenuBar"),
+            QStringLiteral("view.screenMode.full"),
+            QStringLiteral("view.options"),
+            QStringLiteral("window.panels.layers"),
+            QStringLiteral("window.panels.tools"),
+            QStringLiteral("help.about"),
+        };
+        int iconsResolved = 0;
+        QString missingIcon;
+        for (const QString& id : expectedIcons) {
+            if (pictura::icon(id).isNull()) {
+                if (missingIcon.isEmpty()) {
+                    missingIcon = id;
+                }
+            } else {
+                ++iconsResolved;
+            }
+        }
+        const bool unknownIconNull = pictura::icon(QStringLiteral("no.such.icon")).isNull();
+        std::fprintf(stderr,
+                     "pictura self-test: icons=%d unknown_null=%d\n",
+                     iconsResolved,
+                     unknownIconNull ? 1 : 0);
+        std::fflush(stderr);
+        if (iconsResolved != expectedIcons.size() || !unknownIconNull) {
+            std::fprintf(stderr,
+                         "pictura self-test: FAIL: icon missing=%s unknown_null=%d\n",
+                         missingIcon.toLocal8Bit().constData(),
+                         unknownIconNull ? 1 : 0);
+            return 47;
+        }
+
+        // M19: the eight tool cursors must render; an unknown cursor id must
+        // collapse to the default cursor without crashing.
+        const QStringList expectedCursors = {
+            QStringLiteral("tool.move"),
+            QStringLiteral("tool.marquee"),
+            QStringLiteral("tool.lasso"),
+            QStringLiteral("tool.quickselection"),
+            QStringLiteral("tool.crop"),
+            QStringLiteral("tool.eyedropper"),
+            QStringLiteral("tool.hand"),
+            QStringLiteral("tool.zoom"),
+        };
+        int cursorsResolved = 0;
+        QString missingCursor;
+        for (const QString& id : expectedCursors) {
+            if (pictura::cursor(id).pixmap().isNull()) {
+                if (missingCursor.isEmpty()) {
+                    missingCursor = id;
+                }
+            } else {
+                ++cursorsResolved;
+            }
+        }
+        pictura::cursor(QStringLiteral("no.such.cursor"));
+        std::fprintf(stderr, "pictura self-test: cursors=%d\n", cursorsResolved);
+        std::fflush(stderr);
+        if (cursorsResolved != expectedCursors.size()) {
+            std::fprintf(stderr,
+                         "pictura self-test: FAIL: cursor missing=%s\n",
+                         missingCursor.toLocal8Bit().constData());
+            return 48;
+        }
+
+        // M19: the window icon must be set from the app asset.
+        const bool windowIconSet = !QApplication::windowIcon().isNull();
+        std::fprintf(stderr, "pictura self-test: window_icon=%d\n", windowIconSet ? 1 : 0);
+        std::fflush(stderr);
+        if (!windowIconSet) {
+            std::fprintf(stderr, "pictura self-test: FAIL: window icon not set\n");
+            return 49;
+        }
+
         pictura::ImageView* canvas = frame.imageView();
         if (!canvas) {
             std::fprintf(stderr, "pictura self-test: FAIL: no active canvas\n");

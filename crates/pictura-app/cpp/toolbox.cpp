@@ -1,5 +1,6 @@
 #include "toolbox.h"
 
+#include "icons.h"
 #include "tools.h"
 
 #include <QtGui/QAction>
@@ -24,6 +25,7 @@ Toolbox::Toolbox(ToolController* controller, QWidget* parent)
     for (ToolId id : allToolIds()) {
         const ToolInfo& info = toolInfo(id);
         auto* action = bar->addAction(QString::fromLatin1(info.label));
+        action->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));
         action->setCheckable(true);
         action->setChecked(controller && controller->activeTool() == id);
         action->setShortcut(QKeySequence(QString(info.shortcut)));

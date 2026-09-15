@@ -10,8 +10,9 @@ project(kooka_pictura LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg)
 
 find_package(CxxQt QUIET)
 if(NOT CxxQt_FOUND)
@@ -53,6 +54,7 @@ add_executable(pictura
     crates/pictura-app/cpp/theme.cpp
     crates/pictura-app/cpp/session.cpp
     crates/pictura-app/cpp/image_view.cpp
+    crates/pictura-app/cpp/icons.cpp
     crates/pictura-app/cpp/frame.cpp
     crates/pictura-app/cpp/tools.cpp
     crates/pictura-app/cpp/toolbox.cpp
@@ -63,15 +65,17 @@ add_executable(pictura
     crates/pictura-app/cpp/theme.h
     crates/pictura-app/cpp/session.h
     crates/pictura-app/cpp/image_view.h
+    crates/pictura-app/cpp/icons.h
     crates/pictura-app/cpp/frame.h
     crates/pictura-app/cpp/tools.h
     crates/pictura-app/cpp/toolbox.h
     crates/pictura-app/cpp/options_bar.h
     crates/pictura-app/cpp/new_document_dialog.h
     crates/pictura-app/cpp/dialogs.h
+    assets/pictura.qrc
 )
 target_include_directories(pictura PRIVATE
     crates/pictura-app/cpp
     "${QT_HEADERS_DIR}/QtGui/${QT_VERSION_STR}/QtGui"
 )
-target_link_libraries(pictura PRIVATE pictura_app)
+target_link_libraries(pictura PRIVATE pictura_app Qt6::Svg)
