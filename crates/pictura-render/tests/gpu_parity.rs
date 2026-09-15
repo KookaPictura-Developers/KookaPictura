@@ -11,11 +11,11 @@
 use std::time::Instant;
 
 use pictura_core::{
-    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, PsdRect,
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask, PsdRect,
 };
 use pictura_render::{
-    composite_active, composite_gpu, composite_gpu_or_cpu, composite_rgba, gpu_available, Backend,
-    GpuError,
+    composite_active, composite_gpu, composite_gpu_or_cpu, composite_rgba, encode_invert,
+    gpu_available, Backend, GpuError,
 };
 
 const SIZE: u32 = 8;
@@ -92,6 +92,28 @@ fn layer(name: &str, blend: BlendMode, sample: impl Fn(u32, u32) -> (u8, u8, u8,
         ],
         children: Vec::new(),
         is_group: false,
+    }
+}
+
+/// An empty-rect layer with children, for the group dispatch paths.
+fn group(name: &str, blend: BlendMode, opacity: u8, children: Vec<Layer>) -> Layer {
+    Layer {
+        name: name.into(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 0,
+            right: 0,
+        },
+        blend,
+        opacity,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: None,
+        channels: Vec::new(),
+        children,
+        is_group: true,
     }
 }
 
@@ -191,6 +213,96 @@ fn is_gpu_gone(err: &GpuError) -> bool {
         err,
         GpuError::Unavailable | GpuError::TooLarge | GpuError::Readback
     )
+}
+
+/// Assert one scene's GPU result matches the CPU oracle within ±1 LSB, or skip
+/// with a printed note when no adapter is usable.
+fn check_scene_parity(doc: &Document, max_delta: &mut i32) {
+    let cpu = composite_rgba(doc);
+    let gpu = match composite_gpu(doc) {
+        Ok(buf) => buf,
+        Err(e) if is_gpu_gone(&e) => {
+            eprintln!("no usable Vulkan GPU ({e}); skipping scene parity");
+            return;
+        }
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(
+        (gpu.width, gpu.height, gpu.channels),
+        (doc.width, doc.height, 4)
+    );
+    for (i, (&a, &b)) in cpu.data.iter().zip(&gpu.data).enumerate() {
+        let delta = (a as i32 - b as i32).abs();
+        *max_delta = (*max_delta).max(delta);
+        assert!(delta <= 1, "byte {i}: cpu {a} vs gpu {b}");
+    }
+}
+
+/// The data path's mask plane and packed-group source are exercised here; the
+/// blend/adjustment tests above never bind either.
+#[test]
+fn groups_and_masks_match_cpu() {
+    let mut max_delta = 0i32;
+
+    // Masked, reduced-opacity pixel layer over an opaque backdrop.
+    let mut masked = layer("masked", BlendMode::Multiply, |x, y| {
+        (x as u8 * 16 + 8, y as u8 * 16 + 8, 255 - x as u8 * 16, 200)
+    });
+    masked.opacity = 180;
+    masked.mask = Some(LayerMask {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: SIZE as i32,
+            right: SIZE as i32,
+        },
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: Some((0..SIZE * SIZE).map(|i| (i * 37 % 256) as u8).collect()),
+    });
+    let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![base_layer(), masked];
+    check_scene_parity(&doc, &mut max_delta);
+
+    // Isolated group (packed inner canvas source) over the backdrop.
+    let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        base_layer(),
+        group(
+            "iso",
+            BlendMode::Multiply,
+            200,
+            vec![layer("child", BlendMode::Normal, |x, y| {
+                (255 - x as u8 * 20, 40 + y as u8 * 20, x as u8 * 32, 255)
+            })],
+        ),
+    ];
+    check_scene_parity(&doc, &mut max_delta);
+
+    // Adjustment layer gated by a mask.
+    let mut adj = adjustment_layer("invert", encode_invert());
+    adj.mask = Some(LayerMask {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: SIZE as i32,
+            right: SIZE as i32,
+        },
+        default_color: 255,
+        disabled: false,
+        flags: 0,
+        data: Some(
+            (0..SIZE * SIZE)
+                .map(|i| (255 - i * 11 % 256) as u8)
+                .collect(),
+        ),
+    });
+    let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![base_layer(), adj];
+    check_scene_parity(&doc, &mut max_delta);
+
+    eprintln!("group/mask parity: max delta {max_delta} LSB");
 }
 
 #[test]
@@ -402,13 +514,13 @@ fn gpu_vs_cpu_timing_1024() {
     let cpu_ms = t.elapsed().as_millis();
 
     if !gpu_available() {
-        println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
+        println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
         return;
     }
     let warm = composite_gpu(&doc);
     if let Err(e) = &warm {
         if is_gpu_gone(e) {
-            println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
+            println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
             return;
         }
     }
@@ -418,8 +530,8 @@ fn gpu_vs_cpu_timing_1024() {
     match composite_gpu(&doc) {
         Ok(_) => {
             let gpu_ms = t.elapsed().as_millis();
-            println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu {gpu_ms} ms");
+            println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu {gpu_ms} ms");
         }
-        Err(e) => println!("m26 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a ({e})"),
+        Err(e) => println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a ({e})"),
     }
 }

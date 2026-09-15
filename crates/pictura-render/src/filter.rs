@@ -11,10 +11,15 @@ use crate::channel;
 /// Apply a destructive `filter` to a pixel layer's color channels (0,1,2),
 /// gated by an optional document-coordinate coverage `mask` (`None` = full
 /// frame). The transparency channel (`-1`) is never modified.
+///
+/// When `gpu_enabled` is set the filter runs through
+/// [`crate::gpu_filter::apply_filter_active`], which uses the GPU when a kernel
+/// exists and falls back to the CPU oracle otherwise.
 pub fn apply_filter(
     layer: &mut Layer,
     filter: &Filter,
     mask: Option<&LayerMask>,
+    gpu_enabled: bool,
 ) -> Result<(), FilterError> {
     let lw = layer.rect.width();
     let lh = layer.rect.height();
@@ -40,7 +45,7 @@ pub fn apply_filter(
     }
 
     let orig = buf.clone();
-    pictura_filters::apply(filter, &mut buf)?;
+    crate::gpu_filter::apply_filter_active(filter, &mut buf, gpu_enabled)?;
 
     let (left, top) = (layer.rect.left, layer.rect.top);
     for c in 0..3i16 {
@@ -152,7 +157,13 @@ mod tests {
         let alpha_before = chan(&layer, -1).to_vec();
         let before = chan(&layer, 0).to_vec();
 
-        apply_filter(&mut layer, &Filter::GaussianBlur { radius: 5.0 }, None).unwrap();
+        apply_filter(
+            &mut layer,
+            &Filter::GaussianBlur { radius: 5.0 },
+            None,
+            false,
+        )
+        .unwrap();
 
         assert_ne!(chan(&layer, 0), before.as_slice());
         let edge = 15usize * 32 + 16;
@@ -185,6 +196,7 @@ mod tests {
             &mut layer,
             &Filter::GaussianBlur { radius: 2.0 },
             Some(&mask),
+            false,
         )
         .unwrap();
 
@@ -209,7 +221,7 @@ mod tests {
     fn missing_color_channel_is_invalid_params() {
         let mut layer = step_layer(4, 4, 255);
         layer.channels.retain(|c| c.id != 2);
-        let err = apply_filter(&mut layer, &Filter::Sharpen, None).unwrap_err();
+        let err = apply_filter(&mut layer, &Filter::Sharpen, None, false).unwrap_err();
         assert!(matches!(err, FilterError::InvalidParams(_)), "{err:?}");
     }
 
@@ -221,7 +233,7 @@ mod tests {
                 c.data.truncate(3);
             }
         }
-        let err = apply_filter(&mut layer, &Filter::Sharpen, None).unwrap_err();
+        let err = apply_filter(&mut layer, &Filter::Sharpen, None, false).unwrap_err();
         assert!(matches!(err, FilterError::InvalidParams(_)), "{err:?}");
     }
 
@@ -229,15 +241,16 @@ mod tests {
     fn empty_layer_rect_is_noop() {
         let mut layer = step_layer(4, 4, 255);
         layer.rect = rect(0, 0, 4, 0);
-        assert!(apply_filter(&mut layer, &Filter::Median { radius: 200 }, None).is_ok());
+        assert!(apply_filter(&mut layer, &Filter::Median { radius: 200 }, None, false).is_ok());
         layer.rect = rect(0, 0, 0, 4);
-        assert!(apply_filter(&mut layer, &Filter::Median { radius: 200 }, None).is_ok());
+        assert!(apply_filter(&mut layer, &Filter::Median { radius: 200 }, None, false).is_ok());
     }
 
     #[test]
     fn filter_parameter_error_propagates() {
         let mut layer = step_layer(4, 4, 255);
-        let err = apply_filter(&mut layer, &Filter::Median { radius: 200 }, None).unwrap_err();
+        let err =
+            apply_filter(&mut layer, &Filter::Median { radius: 200 }, None, false).unwrap_err();
         assert!(matches!(err, FilterError::InvalidParams(_)), "{err:?}");
     }
 }

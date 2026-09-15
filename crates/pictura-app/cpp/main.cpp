@@ -1586,6 +1586,33 @@ int main(int argc, char* argv[])
             return 71;
         }
 
+        // M27: the GPU filter path. A supported filter must produce the same
+        // image through the GPU and CPU backends (the accelerated kernels are
+        // byte-exact), and the gpuCompute preference is restored afterwards.
+        // 72: gaussian-blur is byte-identical through both backends.
+        pictura::PictureView* m27av = frame.activeView();
+        if (!m27av) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M27 no active view\n");
+            std::fflush(stderr);
+            return 72;
+        }
+        m27av->set_gpu_compute(true);
+        m27av->apply_filter(QStringLiteral("gaussian-blur"));
+        const QImage m27Gpu = m27av->image();
+        m27av->undo();
+        m27av->set_gpu_compute(false);
+        m27av->apply_filter(QStringLiteral("gaussian-blur"));
+        const QImage m27Cpu = m27av->image();
+        m27av->set_gpu_compute(true);
+        const bool m27Identical = m27Gpu == m27Cpu;
+        std::fprintf(stderr, "pictura self-test: m27_filter byte_identical=%d\n",
+                     m27Identical ? 1 : 0);
+        std::fflush(stderr);
+        if (!m27Identical) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M27 filter byte-identity wrong\n");
+            return 72;
+        }
+
         // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
         int m23Levels = 0;
         for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {

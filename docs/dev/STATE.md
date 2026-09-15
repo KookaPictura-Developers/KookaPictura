@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **515 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M26 archived; canonical specs are
-  in `openspec/specs/` (58 capabilities, `validate --all --strict`
+- Test suite: **519 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M27 archived; canonical specs are
+  in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
@@ -40,7 +40,7 @@ openspec validate --all --strict
 | `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters; `artistic` module (15 CS6 Artistic filters with shared `reduce`/`noise`/`texture` helpers) + the four remaining families — Brush Strokes, Sketch, Texture, Oil Paint (29 filters, same shared helpers) |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range; `Selection::{rect,ellipse,polygon}` rasterizers + `CombineMode`/`combine_with` |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
-| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor (default backend: 26 GPU modes + 5 adjustment layers, `Backend`/`composite_active`) + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
+| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor (default backend: 26 GPU modes + 5 adjustment layers, `Backend`/`composite_active`; GPU-native 8-bit data path) + GPU filter path (`filter_gpu_available`/`apply_filter_active`, nine byte-exact convolution kernels) + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask, GPU-accelerated when `gpu_enabled`) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
 | `pictura-paint` | dab-splatting brush/pencil stroke engine — tip coverage, spacing, flow/opacity, paint modes; depends on `pictura-core` |
 | `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), real Layers/History/Navigator/Color/Swatches/Info/Histogram panel docks replacing the debug dock (backed by the document and history models, with a frame-owned `ColorState` fed by the Eyedropper), tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom/Brush/Pencil), paint bridge (`begin_paint`/`paint_dab`/`end_paint`/`cancel_paint`/`is_painting`) with a live paint options bar, zoom/pan, GPU demo |
@@ -417,6 +417,39 @@ openspec validate --all --strict
   blocks device adoption — see `crates/pictura-app/GPU-INTEROP-NOTES.md`),
   off-GUI-thread compositing, GPU filters and GPU painting (next change
   `m27-gpu-filter-acceleration`), and Dissolve on GPU.
+- **M27** — GPU-native acceleration. The compositor data path is now 8-bit end
+  to end: layer sources upload as raw planar 8-bit channel samples over the layer
+  rect, the mask uploads as an 8-bit plane, the working canvas is packed 8-bit
+  RGBA in a storage buffer, and output is read back as packed 8-bit — no
+  host-side full-canvas `f32` buffer and no `f32` readback (was the M26
+  bottleneck). Public API and ±1 LSB parity unchanged. Release timing,
+  1024×1024×4 pixel layers: **CPU 72 ms → GPU 19 ms (~3.8×; pre-M27 was ~1.2×)**.
+  Parity: separable 26 modes 0 LSB, non-separable 4 modes 0 LSB, five adjustment
+  layers 0 LSB except hue/saturation 1 LSB, group/mask scenes 0 LSB. **GPU filter
+  acceleration:** new `pictura-render` API `filter_gpu_available()` and
+  `apply_filter_active(filter, buf, gpu_enabled) -> Result<Backend, FilterError>`
+  (re-exported from the crate root); a wgpu compute shader (kernel / separable-H /
+  separable-V / motion / combine modes, weights from the CPU kernel builders)
+  accelerates nine filters **byte-exact (0 LSB vs the CPU oracle, alpha
+  bit-identical)** — Gaussian Blur, Box Blur, Motion Blur, Blur, BlurMore,
+  Sharpen, SharpenMore, Unsharp Mask, High Pass — while every other filter falls
+  back to the CPU `pictura_filters::apply` byte-identically (including the M22
+  Artistic and M25 Brush Strokes/Sketch/Texture families and Oil Paint).
+  `pictura_render::apply_filter` gained a `gpu_enabled` parameter and routes
+  through `apply_filter_active`; the app passes the M26 `gpuCompute` flag, so
+  filters are GPU-accelerated by default and CPU when disabled or no adapter
+  exists. `pictura_render::gpu::shared_device()` (crate-private) now serves both
+  the compositor and the filter path; the filter path no longer opens a second
+  Vulkan device. Self-test exit code **72**: `m27_filter byte_identical=1` — a
+  Gaussian Blur through the GPU path and the CPU path produces byte-identical
+  images, identical on fixture and no-argument runs. Verified: `cmake --build
+  build` OK; both self-tests exit 0; `cargo fmt/clippy` clean; **519 tests (0
+  failed, 1 ignored)** — up from 515; `openspec validate --all --strict` 59/59.
+  OpenSpec change `m27-gpu-acceleration` adds capability
+  `gpu-filter-acceleration` and MODIFIES `gpu-compositing` (→ **59** capabilities
+  after archive). Deferred: GPU kernels for the painterly/stochastic filter
+  families and Oil Paint; GPU painting/brush; on-screen zero-copy present;
+  off-GUI-thread compute; Dissolve on GPU.
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -475,7 +508,7 @@ documents) still needs a real GUI check.
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M26 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M27 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -493,33 +526,40 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: GPU filters (M27) + GPU painting, zero-copy present, then panel content and image modes (propose via OpenSpec first)
+## Next: GPU painterly/stochastic filters and GPU painting, then zero-copy present and off-thread compute, then panel content and image modes (propose via OpenSpec first)
 
-M26 makes the GPU compute backend the default compositor; the CPU compositor is
-still the oracle. Next in order:
+M27 makes the GPU compositor fast and adds the GPU filter path for the pointwise
+and separable-convolution family; the CPU compositor and `pictura_filters::apply`
+are still the oracles. Next in order:
 
-- **`m27-gpu-filter-acceleration`** — run the `pictura-filters` families as GPU
-  compute passes, and extend the same path to GPU painting (the dab loop).
+- **GPU painterly/stochastic filters and GPU painting** — the M22 Artistic and
+  M25 Brush Strokes/Sketch/Texture families and Oil Paint on the GPU, and the
+  paint dab loop (GPU painting). The stochastic kernels are random and not
+  bit-reproducible, so they are the hard extension.
 - On-screen **zero-copy present** — manual QRhi + `QWindow` swapchain;
   `QRhiWidget` blocks wgpu device adoption (`crates/pictura-app/GPU-INTEROP-NOTES.md`).
-- Off-GUI-thread compositing.
+- **Off-GUI-thread compute.**
 - Real content for the M24 placeholder panels (gradient/pattern presets,
   Properties binding, adjustment presets, libraries, channel/path lists, actions)
   and image modes / bit-depth (16/32-bit, CMYK/Lab gating for filters and
-  adjustments), plus Dissolve on GPU.
+  adjustments).
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M26 are archived; their deltas now live in `openspec/specs/`.
+M6 through M27 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
 - Core API is frozen only where noted; adding fields breaks struct literals.
 - PSD descriptor coverage is partial (adjustment layers, layer styles not yet).
-- GPU is the default compositor but the CPU compositor remains the oracle.
+- GPU is the default compositor and the default filter path, but the CPU
+  compositor and `pictura_filters::apply` remain the oracles.
 - A `Dissolve` layer or an unsupported adjustment forces a whole-document CPU
   fallback for that composite.
-- The GPU path is readback-bound until zero-copy present lands.
+- Only nine filter kernels (the blur/sharpen/High Pass family) are
+  GPU-accelerated; every other filter falls back to the CPU oracle byte-for-byte.
+- The GPU compositor and filter path are still readback-bound until zero-copy
+  present lands.
 - `pictura-app` has one `#[ignore]`d interop test.
 - The recent-files menu is rebuilt at startup, so a file opened in-session
   appears there only after restart.

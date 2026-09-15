@@ -1257,13 +1257,14 @@ impl qobject::PictureView {
         };
         let applied = {
             let mut rust = self.as_mut().rust_mut();
+            let gpu_compute = rust.gpu_compute;
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
             let Some(layer) = topmost_pixel_layer(doc) else {
                 return false;
             };
-            pictura_render::apply_filter(layer, &filter, mask.as_ref()).is_ok()
+            pictura_render::apply_filter(layer, &filter, mask.as_ref(), gpu_compute).is_ok()
         };
         if applied {
             self.as_mut().record("Filter");
@@ -3016,6 +3017,7 @@ mod tests {
             layer,
             &filter_from_kind("gaussian-blur").expect("known kind"),
             Some(&mask),
+            false,
         )
         .expect("filter applies");
 

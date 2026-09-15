@@ -30,8 +30,9 @@
 //! CPU path.
 //!
 //! ponytail: source samples and mask coverage are assembled on the CPU per
-//! layer and uploaded; the shader only does the blend + source-over. Move
-//! channel sampling into WGSL if upload bandwidth ever shows up in a profile.
+//! layer and uploaded as planar 8-bit bytes; the shader does the unpack, blend
+//! and source-over. Move channel sampling into WGSL if upload bandwidth ever
+//! shows up in a profile.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -40,7 +41,7 @@ use std::sync::OnceLock;
 use pictura_adjust::Adjustment;
 use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
 
-use crate::{channel, decode_adjustment, mask_alpha, sample, to_u8};
+use crate::{channel, decode_adjustment, mask_alpha, sample};
 
 /// Why the GPU compositor could not run. The caller falls back to CPU.
 #[derive(Debug)]
@@ -226,13 +227,42 @@ struct Params {
     p0: i32,
     p1: i32,
     p2: i32,
-    pad: u32,
+    flags: u32,
+    src_x0: u32,
+    src_y0: u32,
+    src_w: u32,
+    src_h: u32,
+    canvas_w: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 };
 
-@group(0) @binding(0) var<storage, read_write> canvas: array<vec4<f32>>;
-@group(0) @binding(1) var<storage, read> src: array<vec4<f32>>;
-@group(0) @binding(2) var<storage, read> mask: array<f32>;
+@group(0) @binding(0) var<storage, read_write> canvas: array<u32>;
+@group(0) @binding(1) var<storage, read> src: array<u32>;
+@group(0) @binding(2) var<storage, read> mask: array<u32>;
 @group(0) @binding(3) var<uniform> params: Params;
+
+// Both the packed canvas and a group's inner canvas are one u32 per pixel with
+// bytes laid out R,G,B,A (little-endian word). Planar pixel-layer sources and
+// the mask plane are packed four bytes per u32 and read through the byte
+// helpers, so a sample's byte offset needs no per-plane alignment.
+fn unpack_word(w: u32) -> vec4<f32> {
+    return vec4<f32>(
+        f32(w & 0xFFu),
+        f32((w >> 8u) & 0xFFu),
+        f32((w >> 16u) & 0xFFu),
+        f32((w >> 24u) & 0xFFu),
+    ) / 255.0;
+}
+
+fn src_byte(idx: u32) -> u32 {
+    return (src[idx / 4u] >> ((idx % 4u) * 8u)) & 0xFFu;
+}
+
+fn mask_byte(idx: u32) -> u32 {
+    return (mask[idx / 4u] >> ((idx % 4u) * 8u)) & 0xFFu;
+}
 
 fn color_burn(cb: f32, cs: f32) -> f32 {
     if (cb >= 1.0) { return 1.0; }
@@ -368,6 +398,39 @@ fn to_f(v: u32) -> f32 {
     return f32(v) / 255.0;
 }
 
+fn pack_word(c: vec3<f32>, a: f32) -> u32 {
+    return quant(c.x) | (quant(c.y) << 8u) | (quant(c.z) << 16u) | (quant(a) << 24u);
+}
+
+// Resolve one canvas pixel's source sample. A packed group source is a full
+// canvas word; a pixel layer is planar planes over its clamped rect, with the
+// grayscale colour replicated from plane 0 and alpha defaulted by the host.
+fn sample_src(i: u32) -> vec4<f32> {
+    if ((params.flags & 1u) != 0u) {
+        return unpack_word(src[i]);
+    }
+    let x = i % params.canvas_w;
+    let y = i / params.canvas_w;
+    if (x < params.src_x0 || x >= params.src_x0 + params.src_w
+        || y < params.src_y0 || y >= params.src_y0 + params.src_h) {
+        return vec4<f32>(0.0);
+    }
+    let li = (y - params.src_y0) * params.src_w + (x - params.src_x0);
+    let n = params.src_w * params.src_h;
+    var rgb = vec3<f32>(
+        f32(src_byte(li)), f32(src_byte(li)), f32(src_byte(li)),
+    ) / 255.0;
+    if ((params.flags & 2u) == 0u) {
+        rgb = vec3<f32>(
+            f32(src_byte(li)),
+            f32(src_byte(n + li)),
+            f32(src_byte(2u * n + li)),
+        ) / 255.0;
+    }
+    let a_plane = select(3u, 1u, (params.flags & 2u) != 0u);
+    return vec4<f32>(rgb, f32(src_byte(a_plane * n + li)) / 255.0);
+}
+
 fn adj_posterize(v: u32, levels: i32) -> u32 {
     if (levels >= 255) { return v; }
     let d = f32(levels - 1);
@@ -471,40 +534,41 @@ fn adjust(kind: u32, rgb: vec3<f32>, p0: i32, p1: i32, p2: i32) -> vec3<f32> {
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     if (i >= params.count) { return; }
+    let mask_a = f32(mask_byte(i)) / 255.0;
 
     if (params.adj_kind != 0u) {
-        let cb = canvas[i];
+        let cb = unpack_word(canvas[i]);
         let ab = cb.a;
         if (ab <= 0.0) { return; }
-        let as_ = ab * params.opacity * mask[i];
+        let as_ = ab * params.opacity * mask_a;
         if (as_ <= 0.0) { return; }
         let cs = adjust(params.adj_kind, cb.rgb, params.p0, params.p1, params.p2);
         let b = blend(params.mode, cb.rgb, cs);
         let ao = as_ + ab * (1.0 - as_);
         if (ao <= 0.0) {
-            canvas[i] = vec4<f32>(0.0);
+            canvas[i] = 0u;
             return;
         }
         let co = ((1.0 - ab) * as_ * cs + as_ * ab * b + (1.0 - as_) * ab * cb.rgb) / ao;
-        canvas[i] = vec4<f32>(co, ao);
+        canvas[i] = pack_word(co, ao);
         return;
     }
 
-    let s = src[i];
+    let s = sample_src(i);
     if (s.a <= 0.0) { return; }
-    let as_ = s.a * params.opacity * mask[i];
+    let as_ = s.a * params.opacity * mask_a;
     if (as_ <= 0.0) { return; }
 
-    let cb = canvas[i];
+    let cb = unpack_word(canvas[i]);
     let ab = cb.a;
     let b = blend(params.mode, cb.rgb, s.rgb);
     let ao = as_ + ab * (1.0 - as_);
     if (ao <= 0.0) {
-        canvas[i] = vec4<f32>(0.0);
+        canvas[i] = 0u;
         return;
     }
     let co = ((1.0 - ab) * as_ * s.rgb + as_ * ab * b + (1.0 - as_) * ab * cb.rgb) / ao;
-    canvas[i] = vec4<f32>(co, ao);
+    canvas[i] = pack_word(co, ao);
 }
 "#;
 
@@ -619,6 +683,13 @@ fn devices() -> Result<&'static Devices, GpuError> {
         .ok_or(GpuError::Unavailable)
 }
 
+/// The process-wide cached device and queue, shared by the compositor and the
+/// M27 filter kernels. `None` when no Vulkan adapter is usable. Cheap to call
+/// repeatedly and never panics.
+pub(crate) fn shared_device() -> Option<(&'static wgpu::Device, &'static wgpu::Queue)> {
+    devices().ok().map(|d| (&d.device, &d.queue))
+}
+
 struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -635,7 +706,7 @@ impl Gpu {
         let device = shared.device.clone();
         let queue = shared.queue.clone();
         let n = w * h;
-        let bytes = u64::from(n) * 16;
+        let bytes = u64::from(n) * 4;
         let limits = device.limits();
         if bytes > limits.max_storage_buffer_binding_size || bytes > limits.max_buffer_size {
             return Err(GpuError::TooLarge);
@@ -645,7 +716,7 @@ impl Gpu {
         }
         let params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-blend-params"),
-            size: 32,
+            size: 64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -664,7 +735,7 @@ impl Gpu {
         self.make_buffer(
             "pictura-canvas",
             wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            &vec![0u8; self.n as usize * 16],
+            &vec![0u8; self.n as usize * 4],
         )
     }
 
@@ -679,22 +750,12 @@ impl Gpu {
         buffer
     }
 
-    /// Full-size storage buffer with no upload: wgpu zero-initializes it and the
-    /// caller writes only the region it needs.
-    fn make_zeroed(&self, label: &str, usage: wgpu::BufferUsages, size: u64) -> wgpu::Buffer {
-        self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size,
-            usage: usage | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        })
-    }
-
-    /// Assemble the full-canvas source for one pixel layer, matching
-    /// `composite_pixels`: zero outside the layer rect, otherwise the channel
-    /// samples (grayscale replicates channel 0) and straight alpha. Only the
-    /// clamped rect rows are uploaded; the shader indexes by canvas pixel.
-    fn build_source(&self, layer: &Layer, doc: &Document) -> Option<wgpu::Buffer> {
+    /// Assemble the source for one pixel layer over its clamped canvas rect,
+    /// matching `composite_pixels`: planar 8-bit channel planes, grayscale
+    /// replicating channel 0 (one colour plane), and straight alpha defaulting
+    /// to 255 when absent. The shader samples by canvas pixel; outside the rect
+    /// the source alpha is 0.
+    fn build_source(&self, layer: &Layer, doc: &Document) -> Option<(wgpu::Buffer, SrcLayout)> {
         let lw = layer.rect.width();
         let lh = layer.rect.height();
         if lw <= 0 || lh <= 0 {
@@ -713,59 +774,58 @@ impl Gpu {
             ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone
         );
         let lw = lw as usize;
+        let cw = (x1 - x0) as usize;
+        let ch = (y1 - y0) as usize;
+        let n = cw * ch;
+        let planes = if gray { 2 } else { 4 };
         let ch0 = channel(layer, 0);
         let ch1 = channel(layer, 1).or(ch0);
         let ch2 = channel(layer, 2).or(ch0);
         let alpha = channel(layer, -1);
 
-        let buffer = self.make_zeroed(
-            "pictura-src",
-            wgpu::BufferUsages::STORAGE,
-            u64::from(self.n) * 16,
-        );
-        let width = (x1 - x0) as usize;
-        let stride = self.w as usize;
-        let mut row = vec![0u8; width * 16];
+        let mut data = vec![0u8; planes * n];
         for y in y0..y1 {
+            let row = (y - y0) as usize;
             for (col, x) in (x0..x1).enumerate() {
                 let li = (y - layer.rect.top) as usize * lw + (x - layer.rect.left) as usize;
-                let (r, g, b) = if gray {
-                    let v = sample(ch0, li).unwrap_or(0);
-                    (v, v, v)
-                } else {
-                    (
-                        sample(ch0, li).unwrap_or(0),
-                        sample(ch1, li).unwrap_or(0),
-                        sample(ch2, li).unwrap_or(0),
-                    )
-                };
+                let d = row * cw + col;
                 let a = sample(alpha, li).unwrap_or(255);
-                let i = col * 16;
-                row[i..i + 4].copy_from_slice(&(r as f32 / 255.0).to_le_bytes());
-                row[i + 4..i + 8].copy_from_slice(&(g as f32 / 255.0).to_le_bytes());
-                row[i + 8..i + 12].copy_from_slice(&(b as f32 / 255.0).to_le_bytes());
-                row[i + 12..i + 16].copy_from_slice(&(a as f32 / 255.0).to_le_bytes());
+                if gray {
+                    data[d] = sample(ch0, li).unwrap_or(0);
+                    data[n + d] = a;
+                } else {
+                    data[d] = sample(ch0, li).unwrap_or(0);
+                    data[n + d] = sample(ch1, li).unwrap_or(0);
+                    data[2 * n + d] = sample(ch2, li).unwrap_or(0);
+                    data[3 * n + d] = a;
+                }
             }
-            let offset = ((y as usize * stride + x0 as usize) * 16) as u64;
-            self.queue.write_buffer(&buffer, offset, &row);
         }
-        Some(buffer)
+        pad_to_4(&mut data);
+        let buffer = self.make_buffer("pictura-src", wgpu::BufferUsages::STORAGE, &data);
+        Some((
+            buffer,
+            SrcLayout {
+                x0: x0 as u32,
+                y0: y0 as u32,
+                w: cw as u32,
+                h: ch as u32,
+                gray,
+                packed: false,
+            },
+        ))
     }
 
-    /// Per-canvas-pixel mask coverage, reusing the CPU `mask_alpha`.
+    /// Per-canvas-pixel mask coverage as an 8-bit plane, reusing the CPU
+    /// `mask_alpha`. A group's inner buffer and an adjustment layer act across
+    /// the whole canvas; a pixel layer only over its clamped rect (outside it
+    /// the source alpha is 0, so the coverage is irrelevant).
     ///
-    /// A pixel layer's source is zero outside its clamped rect, so the shader
-    /// only reads the mask there and only that rect is uploaded. A group's inner
-    /// buffer and an adjustment layer both act across the whole canvas (their own
-    /// rect carries no content), so they keep the full-canvas write.
-    /// ponytail: group/adjustment masks stay full-canvas; bound them by the inner
-    /// buffer's content rect if a group-mask profile ever shows up.
+    /// ponytail: the plane is canvas-sized even for a rect-scoped layer; bound
+    /// it by the rect if a many-small-layers mask profile ever shows up.
     fn build_mask(&self, layer: &Layer) -> wgpu::Buffer {
-        let buffer = self.make_zeroed(
-            "pictura-mask",
-            wgpu::BufferUsages::STORAGE,
-            u64::from(self.n) * 4,
-        );
+        let n = self.n as usize;
+        let mut data = vec![0u8; n];
         let (x0, y0, x1, y1) = if layer.is_group || layer.adjustment.is_some() {
             (0, 0, self.w as i32, self.h as i32)
         } else {
@@ -776,21 +836,17 @@ impl Gpu {
                 layer.rect.bottom.min(self.h as i32),
             )
         };
-        if x1 <= x0 || y1 <= y0 {
-            return buffer;
-        }
-        let width = (x1 - x0) as usize;
-        let stride = self.w as usize;
-        let mut row = vec![0u8; width * 4];
-        for y in y0..y1 {
-            for (col, x) in (x0..x1).enumerate() {
-                row[col * 4..col * 4 + 4]
-                    .copy_from_slice(&(mask_alpha(layer, x, y) as f32 / 255.0).to_le_bytes());
+        if x1 > x0 && y1 > y0 {
+            let stride = self.w as usize;
+            for y in y0..y1 {
+                let row = y as usize * stride;
+                for x in x0..x1 {
+                    data[row + x as usize] = mask_alpha(layer, x, y);
+                }
             }
-            let offset = ((y as usize * stride + x0 as usize) * 4) as u64;
-            self.queue.write_buffer(&buffer, offset, &row);
         }
-        buffer
+        pad_to_4(&mut data);
+        self.make_buffer("pictura-mask", wgpu::BufferUsages::STORAGE, &data)
     }
 
     fn composite_layer(&self, canvas: &wgpu::Buffer, layer: &Layer, doc: &Document) {
@@ -814,7 +870,17 @@ impl Gpu {
                 self.composite_layer(&inner, child, doc);
             }
             let mask = self.build_mask(layer);
-            self.dispatch(canvas, &inner, &mask, layer.blend, layer.opacity, NO_ADJ);
+            // The inner canvas is already packed 8-bit RGBA: bind it directly
+            // as the source, no `f32` re-materialization.
+            self.dispatch(
+                canvas,
+                &inner,
+                &mask,
+                PACKED_SRC,
+                layer.blend,
+                layer.opacity,
+                NO_ADJ,
+            );
             return;
         }
         if let Some(data) = &layer.adjustment {
@@ -825,25 +891,44 @@ impl Gpu {
                 // The shader ignores `src` in the adjustment branch; the mask
                 // buffer stands in for it rather than aliasing the read-write
                 // canvas binding.
-                self.dispatch(canvas, &mask, &mask, layer.blend, layer.opacity, adj);
+                self.dispatch(
+                    canvas,
+                    &mask,
+                    &mask,
+                    PACKED_SRC,
+                    layer.blend,
+                    layer.opacity,
+                    adj,
+                );
             }
             return;
         }
-        if let Some(src) = self.build_source(layer, doc) {
+        if let Some((src, layout)) = self.build_source(layer, doc) {
             let mask = self.build_mask(layer);
-            self.dispatch(canvas, &src, &mask, layer.blend, layer.opacity, NO_ADJ);
+            self.dispatch(
+                canvas,
+                &src,
+                &mask,
+                layout,
+                layer.blend,
+                layer.opacity,
+                NO_ADJ,
+            );
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn dispatch(
         &self,
         canvas: &wgpu::Buffer,
         src: &wgpu::Buffer,
         mask: &wgpu::Buffer,
+        layout: SrcLayout,
         mode: BlendMode,
         opacity: u8,
         adj: (u32, i32, i32, i32),
     ) {
+        let flags = u32::from(layout.packed) | (u32::from(layout.gray) << 1);
         let params = [
             mode_id(mode).to_le_bytes(),
             (opacity as f32 / 255.0).to_le_bytes(),
@@ -852,6 +937,14 @@ impl Gpu {
             adj.1.to_le_bytes(),
             adj.2.to_le_bytes(),
             adj.3.to_le_bytes(),
+            flags.to_le_bytes(),
+            layout.x0.to_le_bytes(),
+            layout.y0.to_le_bytes(),
+            layout.w.to_le_bytes(),
+            layout.h.to_le_bytes(),
+            self.w.to_le_bytes(),
+            0u32.to_le_bytes(),
+            0u32.to_le_bytes(),
             0u32.to_le_bytes(),
         ]
         .concat();
@@ -897,8 +990,8 @@ impl Gpu {
         self.queue.submit(Some(encoder.finish()));
     }
 
-    fn read_canvas(&self, canvas: &wgpu::Buffer) -> Result<Vec<f32>, GpuError> {
-        let size = u64::from(self.n) * 16;
+    fn read_canvas(&self, canvas: &wgpu::Buffer) -> Result<Vec<u8>, GpuError> {
+        let size = u64::from(self.n) * 4;
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-readback"),
             size,
@@ -924,26 +1017,59 @@ impl Gpu {
             .map_err(|_| GpuError::Readback)?;
 
         let mapped = slice.get_mapped_range().map_err(|_| GpuError::Readback)?;
-        let mut out = vec![0f32; self.n as usize * 4];
-        for (i, chunk) in mapped.as_chunks::<4>().0.iter().enumerate() {
-            out[i] = f32::from_le_bytes(*chunk);
-        }
+        let out = mapped.to_vec();
         drop(mapped);
         staging.unmap();
         Ok(out)
     }
 
-    /// Planar RGBA8 output, identical in shape to `Canvas::into_pixel_buffer`.
-    fn to_pixel_buffer(&self, pixels: &[f32]) -> PixelBuffer {
+    /// De-interleave packed RGBA8 readback into the planar straight-alpha
+    /// `PixelBuffer`, identical in shape to `composite_rgba`.
+    fn to_pixel_buffer(&self, packed: &[u8]) -> PixelBuffer {
         let plane = self.n as usize;
         let mut out = PixelBuffer::new(self.w, self.h, 4);
         for i in 0..plane {
-            out.data[i] = to_u8(pixels[i * 4]);
-            out.data[plane + i] = to_u8(pixels[i * 4 + 1]);
-            out.data[2 * plane + i] = to_u8(pixels[i * 4 + 2]);
-            out.data[3 * plane + i] = to_u8(pixels[i * 4 + 3]);
+            let w = u32::from_le_bytes([
+                packed[i * 4],
+                packed[i * 4 + 1],
+                packed[i * 4 + 2],
+                packed[i * 4 + 3],
+            ]);
+            out.data[i] = (w & 0xFF) as u8;
+            out.data[plane + i] = ((w >> 8) & 0xFF) as u8;
+            out.data[2 * plane + i] = ((w >> 16) & 0xFF) as u8;
+            out.data[3 * plane + i] = ((w >> 24) & 0xFF) as u8;
         }
         out
+    }
+}
+
+/// How the shader should read the source binding for one dispatch.
+#[derive(Clone, Copy)]
+struct SrcLayout {
+    x0: u32,
+    y0: u32,
+    w: u32,
+    h: u32,
+    gray: bool,
+    packed: bool,
+}
+
+/// A group's inner canvas: one packed RGBA word per canvas pixel, full canvas.
+const PACKED_SRC: SrcLayout = SrcLayout {
+    x0: 0,
+    y0: 0,
+    w: 0,
+    h: 0,
+    gray: false,
+    packed: true,
+};
+
+/// A byte-packed `array<u32>` binding's size and every upload must be a
+/// multiple of 4; pad the tail rather than relying on the caller.
+fn pad_to_4(data: &mut Vec<u8>) {
+    while !data.len().is_multiple_of(4) {
+        data.push(0);
     }
 }
 

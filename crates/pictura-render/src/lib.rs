@@ -38,6 +38,9 @@ pub use gpu::{
 mod filter;
 pub use filter::apply_filter;
 
+mod gpu_filter;
+pub use gpu_filter::{apply_filter_active, filter_gpu_available};
+
 pub mod document_ops;
 pub use document_ops::{
     crop_document, flip_document, resize_canvas_document, resize_document, rotate_document,
