@@ -48,6 +48,17 @@ cxx_qt_import_crate(
 add_executable(pictura
     crates/pictura-app/cpp/main.cpp
     crates/pictura-app/cpp/interop.cpp
+    crates/pictura-app/cpp/commands.cpp
+    crates/pictura-app/cpp/command_tree.cpp
+    crates/pictura-app/cpp/theme.cpp
+    crates/pictura-app/cpp/session.cpp
+    crates/pictura-app/cpp/image_view.cpp
+    crates/pictura-app/cpp/frame.cpp
+    crates/pictura-app/cpp/commands.h
+    crates/pictura-app/cpp/theme.h
+    crates/pictura-app/cpp/session.h
+    crates/pictura-app/cpp/image_view.h
+    crates/pictura-app/cpp/frame.h
 )
 target_include_directories(pictura PRIVATE
     crates/pictura-app/cpp

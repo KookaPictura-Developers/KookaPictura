@@ -10,8 +10,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
 - Test suite: **401 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M15 archived; canonical specs are
-  in `openspec/specs/` (35 capabilities, `validate --all --strict`
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M16 archived; canonical specs are
+  in `openspec/specs/` (37 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 
 ## Commands
@@ -40,7 +40,7 @@ openspec validate --all --strict
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
-| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell (layer/adjustment dock, zoom/pan, GPU demo) |
+| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, canvas, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), layer/adjustment dock, zoom/pan, GPU demo |
 
 ## Milestones done
 
@@ -125,11 +125,27 @@ openspec validate --all --strict
   check (exit 24). Lighting Effects and Scripted Patterns remain future.
   OpenSpec change `m15-render-filters` (capability `render-filters`),
   archived.
+- **M16** — App shell foundation: replaced the M0 debug window with a
+  CS6-shaped frame. New `pictura-app` C++ units: `commands` (declarative
+  registry: stable id, path, label, shortcut, enablement, dispatch),
+  `command_tree` (full documented CS6 tree — 523 documented leaves plus 21
+  implemented commands and 47 separators; unimplemented leaves disabled), `frame`
+  (`PicturaMainWindow`: menu bar, central canvas, status bar with view-options
+  popup, dock registration with duplicate `objectName` rejection, screen modes
+  `F`/`Shift+F`, canvas colour `Space+F`, `Tab`/`Shift+Tab` hide-all),
+  `theme` (Fusion + dark palette, four brightness levels, `Shift+F1`/`F2`),
+  `session` (atomic `QSaveFile` XDG state, schema-versioned). Bridge gains
+  `has_document()` for enablement. `main.cpp` shrinks to startup + self-test;
+  new self-test checks (exit codes 25–32) cover menu order, dispatch/inertness,
+  no-document enablement, brightness, screen-mode cycle, session round-trip,
+  duplicate panel rejection, and hide-all. OpenSpec change `m16-app-shell`
+  (capabilities `command-registry`, `workspace-persistence`; MODIFIED
+  `application-shell`), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M10 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M16 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -141,24 +157,28 @@ complete.
 - Task briefs live in `docs/dev/m*-*.md`; docs changes need a commit message
   containing `TASK-ALLOWS-DOCS` or `TASK_ALLOWS_DOCS=1` for `guard.sh`.
 - Each milestone: freeze interfaces → dispatch 2–3 `general` sub-agents on
-  **disjoint crates** → orchestrator integrates, un-ignores oracle tests,
+  **disjoint files/crates** → orchestrator integrates, un-ignores oracle tests,
   verifies, commits. Never let an implementer verify its own work without an
-  independent oracle (psd-tools / ImageMagick).
+  independent oracle (psd-tools / ImageMagick / the app self-test).
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M16 (propose via OpenSpec first)
+## Next: M17 (propose via OpenSpec first)
 
-M15 is archived; its `render-filters` delta lives in `openspec/specs/`.
-Candidate next areas: image modes/bit-depth, the remaining filter families
-(Lighting Effects, Scripted Patterns, Liquify, Blur Gallery, Camera Raw), a
-different spec area (`docs/07-color-painting`, `docs/03-tools`,
-`docs/09-automation`), or app polish (full Image Size dialog with percent
-scaling/preview, History palette with labeled states).
+M16 is archived; its `command-registry` and `workspace-persistence` deltas live
+in `openspec/specs/`. The frame now gives every later feature a place to land.
+Next up:
+
+- **M17 — Document lifecycle & file IO**: multi-document tabs, New/Open dialogs
+  and recent files, wire the existing `write_psd` into Save/Save As, dirty state
+  and title, close/revert; the File menu leaves become live.
+- Then: History palette + state labels and a full Image Size dialog (panels),
+  the toolbox/options bar and core tools (M18), the painting engine, remaining
+  filter families, image modes/bit-depth.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M15 are archived; their deltas now live in `openspec/specs/`.
+M6 through M16 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 

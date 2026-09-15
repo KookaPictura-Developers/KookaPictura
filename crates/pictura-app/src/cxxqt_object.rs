@@ -36,6 +36,11 @@ pub mod qobject {
         #[qinvokable]
         fn image(&self) -> QImage;
 
+        /// Whether a document is loaded (false when only the fallback image is
+        /// shown). Drives command enablement in the shell.
+        #[qinvokable]
+        fn has_document(&self) -> bool;
+
         /// Number of top-level layers in the loaded document (0 when none).
         #[qinvokable]
         fn layer_count(&self) -> i32;
@@ -200,6 +205,10 @@ impl qobject::PictureView {
 
     pub fn image(&self) -> QImage {
         self.rust().image.clone()
+    }
+
+    pub fn has_document(&self) -> bool {
+        self.rust().doc.is_some()
     }
 
     pub fn layer_count(&self) -> i32 {

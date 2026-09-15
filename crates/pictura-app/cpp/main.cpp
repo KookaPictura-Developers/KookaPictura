@@ -1,111 +1,26 @@
 #include <QtCore/QCoreApplication>
-#include <QtCore/QDebug>
-#include <QtCore/QSignalBlocker>
+#include <QtCore/QDir>
+#include <QtCore/QProcessEnvironment>
 #include <QtCore/QSet>
+#include <QtCore/QStringList>
 #include <QtCore/QTimer>
+#include <QtGui/QAction>
 #include <QtGui/QImage>
-#include <QtGui/QKeySequence>
-#include <QtGui/QMouseEvent>
-#include <QtGui/QPainter>
-#include <QtGui/QShortcut>
-#include <QtGui/QWheelEvent>
+#include <QtGui/QPalette>
 #include <QtWidgets/QApplication>
-#include <QtWidgets/QComboBox>
 #include <QtWidgets/QDockWidget>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QListWidget>
-#include <QtWidgets/QMainWindow>
-#include <QtWidgets/QPushButton>
-#include <QtWidgets/QSpinBox>
-#include <QtWidgets/QVBoxLayout>
-#include <QtWidgets/QWidget>
 
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
+
+#include "commands.h"
+#include "frame.h"
+#include "image_view.h"
+#include "session.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include "interop.h"
-
-class ImageView : public QWidget
-{
-    Q_OBJECT
-
-public:
-    explicit ImageView(QWidget* parent = nullptr)
-        : QWidget(parent)
-    {
-        setWindowTitle(QStringLiteral("Kooka Pictura - M0 walking skeleton"));
-        setMinimumSize(640, 480);
-    }
-
-    void setImage(const QImage& image)
-    {
-        image_ = image;
-        zoom_ = 1.0;
-        offset_ = QPointF(0.0, 0.0);
-        update();
-    }
-
-    // Zoom about a cursor position so the point under the cursor stays put.
-    void zoomAt(const QPointF& cursor, int angleDelta)
-    {
-        const double factor = std::pow(1.0015, angleDelta);
-        offset_ = cursor - (cursor - offset_) * factor;
-        zoom_ *= factor;
-        update();
-    }
-
-    void panBy(const QPointF& delta)
-    {
-        offset_ += delta;
-        update();
-    }
-
-    double zoom() const { return zoom_; }
-    QPointF offset() const { return offset_; }
-
-protected:
-    void paintEvent(QPaintEvent*) override
-    {
-        QPainter painter(this);
-        painter.fillRect(rect(), Qt::darkGray);
-        if (image_.isNull()) {
-            return;
-        }
-        painter.translate(offset_);
-        painter.scale(zoom_, zoom_);
-        painter.drawImage(QPointF(0.0, 0.0), image_);
-    }
-
-    void wheelEvent(QWheelEvent* event) override
-    {
-        zoomAt(event->position(), event->angleDelta().y());
-    }
-
-    void mousePressEvent(QMouseEvent* event) override
-    {
-        if (event->button() == Qt::LeftButton) {
-            last_ = event->position();
-        }
-    }
-
-    void mouseMoveEvent(QMouseEvent* event) override
-    {
-        if (event->buttons() & Qt::LeftButton) {
-            panBy(event->position() - last_);
-            last_ = event->position();
-        }
-    }
-
-private:
-    QImage image_;
-    double zoom_ = 1.0;
-    QPointF offset_;
-    QPointF last_;
-};
 
 int main(int argc, char* argv[])
 {
@@ -162,270 +77,9 @@ int main(int argc, char* argv[])
     }
     const QImage image = view.image();
 
-    QMainWindow mainWindow;
-    ImageView* window = new ImageView(&mainWindow);
-    window->setImage(image);
-    mainWindow.setCentralWidget(window);
-    mainWindow.resize(1100, 700);
-
-    // Layer dock: visibility checkboxes, adjustment add, remove.
-    auto* dock = new QDockWidget(QStringLiteral("Layers"), &mainWindow);
-    auto* panel = new QWidget(dock);
-    auto* panelLayout = new QVBoxLayout(panel);
-    auto* layerList = new QListWidget(panel);
-    layerList->setSelectionMode(QAbstractItemView::SingleSelection);
-    panelLayout->addWidget(layerList, 1);
-
-    auto* adjustmentCombo = new QComboBox(panel);
-    adjustmentCombo->addItem(QStringLiteral("Invert"), QStringLiteral("invert"));
-    adjustmentCombo->addItem(QStringLiteral("Posterize"), QStringLiteral("posterize"));
-    adjustmentCombo->addItem(QStringLiteral("Threshold"), QStringLiteral("threshold"));
-    adjustmentCombo->addItem(QStringLiteral("Brightness/Contrast"),
-                             QStringLiteral("brightness-contrast"));
-    adjustmentCombo->addItem(QStringLiteral("Hue/Saturation"), QStringLiteral("hue-saturation"));
-    panelLayout->addWidget(adjustmentCombo);
-
-    auto* addButton = new QPushButton(QStringLiteral("Add Adjustment"), panel);
-    auto* removeButton = new QPushButton(QStringLiteral("Remove Layer"), panel);
-    panelLayout->addWidget(addButton);
-    panelLayout->addWidget(removeButton);
-
-    auto* filterCombo = new QComboBox(panel);
-    filterCombo->addItem(QStringLiteral("Gaussian Blur"), QStringLiteral("gaussian-blur"));
-    filterCombo->addItem(QStringLiteral("Box Blur"), QStringLiteral("box-blur"));
-    filterCombo->addItem(QStringLiteral("Motion Blur"), QStringLiteral("motion-blur"));
-    filterCombo->addItem(QStringLiteral("Median"), QStringLiteral("median"));
-    filterCombo->addItem(QStringLiteral("Despeckle"), QStringLiteral("despeckle"));
-    filterCombo->addItem(QStringLiteral("Sharpen"), QStringLiteral("sharpen"));
-    filterCombo->addItem(QStringLiteral("Sharpen More"), QStringLiteral("sharpen-more"));
-    filterCombo->addItem(QStringLiteral("Unsharp Mask"), QStringLiteral("unsharp-mask"));
-    filterCombo->addItem(QStringLiteral("Add Noise"), QStringLiteral("add-noise"));
-    filterCombo->addItem(QStringLiteral("Maximum"), QStringLiteral("maximum"));
-    filterCombo->addItem(QStringLiteral("Minimum"), QStringLiteral("minimum"));
-    filterCombo->addItem(QStringLiteral("Offset"), QStringLiteral("offset"));
-    filterCombo->addItem(QStringLiteral("High Pass"), QStringLiteral("high-pass"));
-    filterCombo->addItem(QStringLiteral("Emboss"), QStringLiteral("emboss"));
-    filterCombo->addItem(QStringLiteral("Find Edges"), QStringLiteral("find-edges"));
-    filterCombo->addItem(QStringLiteral("Solarize"), QStringLiteral("solarize"));
-    filterCombo->addItem(QStringLiteral("Mosaic"), QStringLiteral("mosaic"));
-    filterCombo->addItem(QStringLiteral("Crystallize"), QStringLiteral("crystallize"));
-    filterCombo->addItem(QStringLiteral("Facet"), QStringLiteral("facet"));
-    filterCombo->addItem(QStringLiteral("Fragment"), QStringLiteral("fragment"));
-    filterCombo->addItem(QStringLiteral("Mezzotint"), QStringLiteral("mezzotint"));
-    filterCombo->addItem(QStringLiteral("Pointillize"), QStringLiteral("pointillize"));
-    filterCombo->addItem(QStringLiteral("Color Halftone"), QStringLiteral("color-halftone"));
-    filterCombo->addItem(QStringLiteral("Twirl"), QStringLiteral("twirl"));
-    filterCombo->addItem(QStringLiteral("Pinch"), QStringLiteral("pinch"));
-    filterCombo->addItem(QStringLiteral("Spherize"), QStringLiteral("spherize"));
-    filterCombo->addItem(QStringLiteral("Ripple"), QStringLiteral("ripple"));
-    filterCombo->addItem(QStringLiteral("Wave"), QStringLiteral("wave"));
-    filterCombo->addItem(QStringLiteral("Polar Coordinates"), QStringLiteral("polar-coordinates"));
-    filterCombo->addItem(QStringLiteral("Shear"), QStringLiteral("shear"));
-    filterCombo->addItem(QStringLiteral("ZigZag"), QStringLiteral("zigzag"));
-    filterCombo->addItem(QStringLiteral("Ocean Ripple"), QStringLiteral("ocean-ripple"));
-    filterCombo->addItem(QStringLiteral("Clouds"), QStringLiteral("clouds"));
-    filterCombo->addItem(QStringLiteral("Difference Clouds"), QStringLiteral("difference-clouds"));
-    filterCombo->addItem(QStringLiteral("Fibers"), QStringLiteral("fibers"));
-    filterCombo->addItem(QStringLiteral("Lens Flare"), QStringLiteral("lens-flare"));
-    panelLayout->addWidget(filterCombo);
-
-    auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);
-    panelLayout->addWidget(applyFilterButton);
-
-    // Selection controls: the active selection masks any adjustment added next.
-    auto* selectAllButton = new QPushButton(QStringLiteral("Select all"), panel);
-    auto* wandButton = new QPushButton(QStringLiteral("Magic wand (center)"), panel);
-    auto* deselectButton = new QPushButton(QStringLiteral("Deselect"), panel);
-    auto* selectionRow = new QHBoxLayout();
-    selectionRow->addWidget(selectAllButton);
-    selectionRow->addWidget(wandButton);
-    selectionRow->addWidget(deselectButton);
-    panelLayout->addLayout(selectionRow);
-    auto* selectionLabel = new QLabel(panel);
-    panelLayout->addWidget(selectionLabel);
-
-    // Image section: resample pixels, grow the canvas, rotate and flip.
-    auto* imageHeader = new QLabel(QStringLiteral("Image"), panel);
-    panelLayout->addWidget(imageHeader);
-
-    auto* imageWidthSpin = new QSpinBox(panel);
-    auto* imageHeightSpin = new QSpinBox(panel);
-    imageWidthSpin->setRange(1, 32767);
-    imageHeightSpin->setRange(1, 32767);
-    if (!image.isNull()) {
-        imageWidthSpin->setValue(image.width());
-        imageHeightSpin->setValue(image.height());
-    }
-    auto* resizeCombo = new QComboBox(panel);
-    resizeCombo->addItem(QStringLiteral("Nearest"), QStringLiteral("nearest"));
-    resizeCombo->addItem(QStringLiteral("Bilinear"), QStringLiteral("bilinear"));
-    resizeCombo->addItem(QStringLiteral("Bicubic"), QStringLiteral("bicubic"));
-    auto* imageSizeRow = new QHBoxLayout();
-    imageSizeRow->addWidget(imageWidthSpin);
-    imageSizeRow->addWidget(imageHeightSpin);
-    imageSizeRow->addWidget(resizeCombo);
-    panelLayout->addLayout(imageSizeRow);
-    auto* applyImageSizeButton = new QPushButton(QStringLiteral("Apply Image Size"), panel);
-    panelLayout->addWidget(applyImageSizeButton);
-
-    auto* canvasWidthSpin = new QSpinBox(panel);
-    auto* canvasHeightSpin = new QSpinBox(panel);
-    canvasWidthSpin->setRange(1, 32767);
-    canvasHeightSpin->setRange(1, 32767);
-    if (!image.isNull()) {
-        canvasWidthSpin->setValue(image.width());
-        canvasHeightSpin->setValue(image.height());
-    }
-    auto* anchorCombo = new QComboBox(panel);
-    anchorCombo->addItem(QStringLiteral("Top Left"), QStringLiteral("top-left"));
-    anchorCombo->addItem(QStringLiteral("Top Center"), QStringLiteral("top-center"));
-    anchorCombo->addItem(QStringLiteral("Top Right"), QStringLiteral("top-right"));
-    anchorCombo->addItem(QStringLiteral("Center Left"), QStringLiteral("center-left"));
-    anchorCombo->addItem(QStringLiteral("Center"), QStringLiteral("center"));
-    anchorCombo->addItem(QStringLiteral("Center Right"), QStringLiteral("center-right"));
-    anchorCombo->addItem(QStringLiteral("Bottom Left"), QStringLiteral("bottom-left"));
-    anchorCombo->addItem(QStringLiteral("Bottom Center"), QStringLiteral("bottom-center"));
-    anchorCombo->addItem(QStringLiteral("Bottom Right"), QStringLiteral("bottom-right"));
-    auto* canvasSizeRow = new QHBoxLayout();
-    canvasSizeRow->addWidget(canvasWidthSpin);
-    canvasSizeRow->addWidget(canvasHeightSpin);
-    canvasSizeRow->addWidget(anchorCombo);
-    panelLayout->addLayout(canvasSizeRow);
-    auto* applyCanvasSizeButton = new QPushButton(QStringLiteral("Apply Canvas Size"), panel);
-    panelLayout->addWidget(applyCanvasSizeButton);
-
-    auto* rotateCwButton = new QPushButton(QStringLiteral("Rotate 90° CW"), panel);
-    auto* rotateCcwButton = new QPushButton(QStringLiteral("Rotate 90° CCW"), panel);
-    auto* rotate180Button = new QPushButton(QStringLiteral("Rotate 180°"), panel);
-    auto* flipHorizontalButton = new QPushButton(QStringLiteral("Flip Horizontal"), panel);
-    auto* flipVerticalButton = new QPushButton(QStringLiteral("Flip Vertical"), panel);
-    auto* orientationRow = new QHBoxLayout();
-    orientationRow->addWidget(rotateCwButton);
-    orientationRow->addWidget(rotateCcwButton);
-    orientationRow->addWidget(rotate180Button);
-    orientationRow->addWidget(flipHorizontalButton);
-    orientationRow->addWidget(flipVerticalButton);
-    panelLayout->addLayout(orientationRow);
-
-    // History: undo/redo step through the states captured by mutating ops.
-    auto* undoButton = new QPushButton(QStringLiteral("Undo"), panel);
-    auto* redoButton = new QPushButton(QStringLiteral("Redo"), panel);
-    auto* historyRow = new QHBoxLayout();
-    historyRow->addWidget(undoButton);
-    historyRow->addWidget(redoButton);
-    panelLayout->addLayout(historyRow);
-
-    dock->setWidget(panel);
-    mainWindow.addDockWidget(Qt::RightDockWidgetArea, dock);
-
-    // Rebuild the list and re-display the composite after any layer change.
-    auto refresh = [&]() {
-        QSignalBlocker blocker(layerList);
-        layerList->clear();
-        const int count = view.layer_count();
-        for (int i = 0; i < count; ++i) {
-            auto* item = new QListWidgetItem(QStringLiteral("%1  [%2]")
-                                                 .arg(view.layer_name(i), view.layer_kind(i)));
-            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-            item->setCheckState(view.layer_visible(i) ? Qt::Checked : Qt::Unchecked);
-            layerList->addItem(item);
-        }
-        window->setImage(view.image());
-        selectionLabel->setText(
-            QStringLiteral("Selection: %1 px").arg(view.selection_count()));
-        undoButton->setEnabled(view.can_undo());
-        redoButton->setEnabled(view.can_redo());
-    };
-
-    QObject::connect(layerList, &QListWidget::itemChanged, &mainWindow, [&](QListWidgetItem* item) {
-        view.set_layer_visible(layerList->row(item), item->checkState() == Qt::Checked);
-    });
-    QObject::connect(addButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.add_adjustment(adjustmentCombo->currentData().toString())) {
-            refresh();
-            layerList->setCurrentRow(layerList->count() - 1);
-        }
-    });
-    QObject::connect(removeButton, &QPushButton::clicked, &mainWindow, [&]() {
-        view.remove_layer(layerList->currentRow());
-        refresh();
-    });
-    QObject::connect(applyFilterButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.apply_filter(filterCombo->currentData().toString())) {
-            refresh();
-        }
-    });
-    QObject::connect(selectAllButton, &QPushButton::clicked, &mainWindow, [&]() {
-        view.select_all();
-    });
-    QObject::connect(wandButton, &QPushButton::clicked, &mainWindow, [&]() {
-        const QImage current = view.image();
-        if (!current.isNull()) {
-            view.magic_wand(current.width() / 2, current.height() / 2, 32);
-        }
-    });
-    QObject::connect(deselectButton, &QPushButton::clicked, &mainWindow, [&]() {
-        view.deselect();
-    });
-    QObject::connect(applyImageSizeButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.resize_image(resizeCombo->currentData().toString(),
-                              imageWidthSpin->value(),
-                              imageHeightSpin->value())) {
-            refresh();
-        }
-    });
-    QObject::connect(applyCanvasSizeButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.resize_canvas(anchorCombo->currentData().toString(),
-                               canvasWidthSpin->value(),
-                               canvasHeightSpin->value())) {
-            refresh();
-        }
-    });
-    QObject::connect(rotateCwButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.rotate_doc(1)) {
-            refresh();
-        }
-    });
-    QObject::connect(rotateCcwButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.rotate_doc(3)) {
-            refresh();
-        }
-    });
-    QObject::connect(rotate180Button, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.rotate_doc(2)) {
-            refresh();
-        }
-    });
-    QObject::connect(flipHorizontalButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.flip_doc(true)) {
-            refresh();
-        }
-    });
-    QObject::connect(flipVerticalButton, &QPushButton::clicked, &mainWindow, [&]() {
-        if (view.flip_doc(false)) {
-            refresh();
-        }
-    });
-    const auto doUndo = [&]() {
-        if (view.undo()) {
-            refresh();
-        }
-    };
-    const auto doRedo = [&]() {
-        if (view.redo()) {
-            refresh();
-        }
-    };
-    QObject::connect(undoButton, &QPushButton::clicked, &mainWindow, doUndo);
-    QObject::connect(redoButton, &QPushButton::clicked, &mainWindow, doRedo);
-    auto* undoShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Z), &mainWindow);
-    QObject::connect(undoShortcut, &QShortcut::activated, &mainWindow, doUndo);
-    auto* redoShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Y), &mainWindow);
-    QObject::connect(redoShortcut, &QShortcut::activated, &mainWindow, doRedo);
-    QObject::connect(&view, &pictura::PictureView::changed, &mainWindow, [&]() { refresh(); });
-
-    refresh();
-    mainWindow.show();
+    pictura::PicturaMainWindow frame(&view);
+    frame.resize(1100, 700);
+    frame.show();
 
     if (selfTest) {
         std::fprintf(stderr,
@@ -857,23 +511,173 @@ int main(int argc, char* argv[])
                 std::fprintf(stderr, "pictura self-test: FAIL: clouds/flare wrong\n");
                 return 24;
             }
+
+            // M16: the frame exposes the ten documented menus in order.
+            const QStringList expectedMenus = {QStringLiteral("File"),
+                                               QStringLiteral("Edit"),
+                                               QStringLiteral("Image"),
+                                               QStringLiteral("Layer"),
+                                               QStringLiteral("Type"),
+                                               QStringLiteral("Select"),
+                                               QStringLiteral("Filter"),
+                                               QStringLiteral("View"),
+                                               QStringLiteral("Window"),
+                                               QStringLiteral("Help")};
+            const QStringList actualMenus = frame.topLevelMenuTitles();
+            std::fprintf(stderr,
+                         "pictura self-test: menus=%d first=%s last=%s\n",
+                         actualMenus.size(),
+                         actualMenus.isEmpty() ? "-" : actualMenus.first().toLocal8Bit().constData(),
+                         actualMenus.isEmpty() ? "-" : actualMenus.last().toLocal8Bit().constData());
+            std::fflush(stderr);
+            if (actualMenus != expectedMenus) {
+                std::fprintf(stderr, "pictura self-test: FAIL: menu bar wrong\n");
+                return 25;
+            }
+
+            // M16: dispatch a registered command and prove an unknown id is inert.
+            pictura::CommandRegistry* registry = frame.registry();
+            const bool dispatched =
+                registry->dispatch(QString::fromLatin1(pictura::command_ids::SelectAll));
+            const bool selected = view.has_selection();
+            const bool unknownInert = !registry->dispatch(QStringLiteral("no.such.command"));
+            view.deselect();
+            std::fprintf(stderr,
+                         "pictura self-test: dispatch=%d selected=%d unknown_inert=%d\n",
+                         dispatched ? 1 : 0,
+                         selected ? 1 : 0,
+                         unknownInert ? 1 : 0);
+            std::fflush(stderr);
+            if (!dispatched || !selected || !unknownInert) {
+                std::fprintf(stderr, "pictura self-test: FAIL: command dispatch wrong\n");
+                return 26;
+            }
+
+            // M16: document-required commands disable with no document, while
+            // File > Open stays enabled.
+            view.open(QStringLiteral("/nonexistent-kooka-pictura.psd"));
+            registry->refresh();
+            QAction* rotateAction =
+                registry->action(QString::fromLatin1(pictura::command_ids::ImageRotate90Cw));
+            QAction* openAction =
+                registry->action(QString::fromLatin1(pictura::command_ids::FileOpen));
+            const bool docDisabled = rotateAction && !rotateAction->isEnabled();
+            const bool openEnabled = openAction && openAction->isEnabled();
+            view.open(psdPath);
+            registry->refresh();
+            std::fprintf(stderr,
+                         "pictura self-test: no_doc_disable=%d open_enable=%d\n",
+                         docDisabled ? 1 : 0,
+                         openEnabled ? 1 : 0);
+            std::fflush(stderr);
+            if (!docDisabled || !openEnabled) {
+                std::fprintf(stderr, "pictura self-test: FAIL: command enablement wrong\n");
+                return 27;
+            }
+
+            // M16: brightness levels apply and differ (theme is the source of truth).
+            frame.setBrightnessLevel(0);
+            const QColor darkWindow = qApp->palette().color(QPalette::Window);
+            frame.setBrightnessLevel(3);
+            const QColor lightWindow = qApp->palette().color(QPalette::Window);
+            const bool brightOk =
+                frame.brightnessLevel() == 3 && darkWindow != lightWindow;
+            frame.setBrightnessLevel(1);
+            std::fprintf(stderr,
+                         "pictura self-test: brightness ok=%d dark=%s light=%s\n",
+                         brightOk ? 1 : 0,
+                         darkWindow.name().toLocal8Bit().constData(),
+                         lightWindow.name().toLocal8Bit().constData());
+            std::fflush(stderr);
+            if (!brightOk) {
+                std::fprintf(stderr, "pictura self-test: FAIL: brightness wrong\n");
+                return 28;
+            }
+
+            // M16: screen modes cycle forward and backward.
+            using ScreenMode = pictura::PicturaMainWindow::ScreenMode;
+            frame.setScreenMode(ScreenMode::Standard);
+            frame.cycleScreenMode(true);
+            const ScreenMode mode1 = frame.screenMode();
+            frame.cycleScreenMode(true);
+            const ScreenMode mode2 = frame.screenMode();
+            frame.cycleScreenMode(false);
+            const ScreenMode mode3 = frame.screenMode();
+            const bool modesOk = mode1 == ScreenMode::FullWithMenuBar
+                                 && mode2 == ScreenMode::Full
+                                 && mode3 == ScreenMode::FullWithMenuBar;
+            frame.setScreenMode(ScreenMode::Standard);
+            std::fprintf(stderr, "pictura self-test: screen_modes=%d\n", modesOk ? 1 : 0);
+            std::fflush(stderr);
+            if (!modesOk) {
+                std::fprintf(stderr, "pictura self-test: FAIL: screen mode cycle wrong\n");
+                return 29;
+            }
+
+            // M16: layout + brightness persist atomically under a temp XDG state dir.
+            const QString tmpState = QDir::tempPath()
+                                     + QStringLiteral("/kooka-pictura-selftest-")
+                                     + QString::number(QCoreApplication::applicationPid());
+            qputenv("XDG_STATE_HOME", tmpState.toUtf8());
+            frame.setBrightnessLevel(2);
+            frame.saveSession();
+            const pictura::SessionState loaded = pictura::loadSession();
+            const bool sessionOk = loaded.brightnessLevel == 2
+                                   && loaded.layout == frame.saveState();
+            std::fprintf(stderr,
+                         "pictura self-test: session_ok=%d bytes=%d level=%d\n",
+                         sessionOk ? 1 : 0,
+                         loaded.layout.size(),
+                         loaded.brightnessLevel);
+            std::fflush(stderr);
+            if (!sessionOk) {
+                std::fprintf(stderr, "pictura self-test: FAIL: session round-trip wrong\n");
+                return 30;
+            }
+
+            // M16: duplicate panel objectNames are rejected.
+            auto* duplicate = new QDockWidget(QStringLiteral("Duplicate"), &frame);
+            duplicate->setObjectName(QStringLiteral("layersPanel"));
+            const bool duplicateRejected = !frame.registerPanel(duplicate, Qt::LeftDockWidgetArea);
+            delete duplicate;
+            std::fprintf(stderr, "pictura self-test: dup_panel_rejected=%d\n", duplicateRejected ? 1 : 0);
+            std::fflush(stderr);
+            if (!duplicateRejected) {
+                std::fprintf(stderr, "pictura self-test: FAIL: duplicate panel accepted\n");
+                return 31;
+            }
+
+            // M16: Tab hides and restores all panels.
+            auto* layersPanel = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+            frame.setPanelsHidden(true);
+            const bool panelsHidden = layersPanel && !layersPanel->isVisible();
+            frame.setPanelsHidden(false);
+            const bool panelsShown = layersPanel && layersPanel->isVisible();
+            std::fprintf(stderr,
+                         "pictura self-test: hide_all=%d restore=%d\n",
+                         panelsHidden ? 1 : 0,
+                         panelsShown ? 1 : 0);
+            std::fflush(stderr);
+            if (!panelsHidden || !panelsShown) {
+                std::fprintf(stderr, "pictura self-test: FAIL: hide-all wrong\n");
+                return 32;
+            }
         }
-        const QPointF center(window->width() / 2.0, window->height() / 2.0);
-        window->zoomAt(center, 120);
-        const QPointF afterZoom = window->offset();
-        window->panBy(QPointF(10.0, 5.0));
-        if (window->zoom() <= 1.0 || window->offset() != afterZoom + QPointF(10.0, 5.0)) {
+        pictura::ImageView* canvas = frame.imageView();
+        const QPointF center(canvas->width() / 2.0, canvas->height() / 2.0);
+        canvas->zoomAt(center, 120);
+        const QPointF afterZoom = canvas->offset();
+        canvas->panBy(QPointF(10.0, 5.0));
+        if (canvas->zoom() <= 1.0 || canvas->offset() != afterZoom + QPointF(10.0, 5.0)) {
             std::fprintf(stderr, "pictura self-test: FAIL: zoom/pan transform wrong\n");
             return 3;
         }
         std::fprintf(stderr,
                      "pictura self-test: zoom=%.3f pan_ok=1\n",
-                     window->zoom());
+                     canvas->zoom());
         std::fflush(stderr);
         QTimer::singleShot(2000, &app, &QCoreApplication::quit);
     }
 
     return app.exec();
 }
-
-#include "main.moc"

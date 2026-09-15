@@ -1,0 +1,21 @@
+#pragma once
+
+namespace pictura {
+
+// Single source of truth for the application theme. Applies the Fusion style
+// and a dark QPalette for one of four brightness levels (0 darkest .. 3
+// lightest). No widget may hard-code a frame colour.
+class Theme {
+public:
+    static constexpr int kLevelCount = 4;
+    static constexpr int kDefaultLevel = 1;
+
+    // Clamp a level into [0, kLevelCount).
+    static int clampLevel(int level);
+
+    // Apply the Fusion style and the palette for `level`. Call once after the
+    // QApplication exists, and again whenever the level changes.
+    static void apply(int level);
+};
+
+} // namespace pictura
