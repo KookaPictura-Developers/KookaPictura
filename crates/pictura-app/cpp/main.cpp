@@ -1370,6 +1370,70 @@ int main(int argc, char* argv[])
             return 56;
         }
 
+        // M22: the 15 Artistic filters. A fresh white document exercises each
+        // mapping end to end, and the seeded ones must reproduce bit-for-bit.
+        const bool artDoc = frame.newDocument(QStringLiteral("Art"), 24, 24,
+                                              QStringLiteral("rgb"), 8,
+                                              QStringLiteral("white"));
+        pictura::PictureView* av = frame.activeView();
+        if (!artDoc || !av) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M22 artistic document\n");
+            std::fflush(stderr);
+            return 57;
+        }
+
+        // 57: every Artistic kind maps, applies, and changes the image.
+        const QStringList artisticKinds = {
+            QStringLiteral("colored-pencil"),
+            QStringLiteral("cutout"),
+            QStringLiteral("dry-brush"),
+            QStringLiteral("film-grain"),
+            QStringLiteral("fresco"),
+            QStringLiteral("neon-glow"),
+            QStringLiteral("paint-daubs"),
+            QStringLiteral("palette-knife"),
+            QStringLiteral("plastic-wrap"),
+            QStringLiteral("poster-edges"),
+            QStringLiteral("rough-pastels"),
+            QStringLiteral("smudge-stick"),
+            QStringLiteral("sponge"),
+            QStringLiteral("underpainting"),
+            QStringLiteral("watercolor"),
+        };
+        int m22Applied = 0;
+        for (const QString& kind : artisticKinds) {
+            const QImage before = av->image();
+            const bool ok = av->apply_filter(kind);
+            if (ok && av->image() != before) {
+                ++m22Applied;
+            }
+        }
+        std::fprintf(stderr, "pictura self-test: m22_applied applied=%d/%d\n", m22Applied,
+                     static_cast<int>(artisticKinds.size()));
+        std::fflush(stderr);
+        if (m22Applied != artisticKinds.size()) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M22 artistic apply wrong\n");
+            return 57;
+        }
+
+        // 58: a fixed seed makes a stochastic Artistic filter deterministic
+        // across undo and reapply.
+        while (av->can_undo()) {
+            av->undo();
+        }
+        av->apply_filter(QStringLiteral("film-grain"));
+        const QImage m22First = av->image();
+        av->undo();
+        av->apply_filter(QStringLiteral("film-grain"));
+        const bool m22Deterministic = av->image() == m22First;
+        std::fprintf(stderr, "pictura self-test: m22_deterministic=%d\n",
+                     m22Deterministic ? 1 : 0);
+        std::fflush(stderr);
+        if (!m22Deterministic) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M22 artistic determinism wrong\n");
+            return 58;
+        }
+
         pictura::ImageView* canvas = frame.imageView();
         if (!canvas) {
             std::fprintf(stderr, "pictura self-test: FAIL: no active canvas\n");

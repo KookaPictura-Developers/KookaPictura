@@ -11,6 +11,7 @@
 
 use pictura_core::PixelBuffer;
 
+pub mod artistic;
 pub mod blur;
 pub mod distort;
 pub mod kernel;
@@ -103,6 +104,45 @@ pub enum ZigZagStyle {
     AroundCenter,
     OutFromCenter,
     PondRipples,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BrushType {
+    Simple,
+    LightRough,
+    DarkRough,
+    WideSharp,
+    WideBlurry,
+    Sparkle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureSurface {
+    Brick,
+    Burlap,
+    Canvas,
+    Sandstone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextureOptions {
+    pub surface: TextureSurface,
+    pub scaling: u8,
+    pub relief: u8,
+    pub light_direction: u8,
+    pub invert: bool,
+}
+
+impl Default for TextureOptions {
+    fn default() -> Self {
+        Self {
+            surface: TextureSurface::Canvas,
+            scaling: 100,
+            relief: 4,
+            light_direction: 0,
+            invert: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -260,6 +300,98 @@ pub enum Filter {
         center: (f64, f64),
         lens: LensType,
     },
+    Cutout {
+        levels: u8,
+        edge_simplicity: u8,
+        edge_fidelity: u8,
+    },
+    FilmGrain {
+        grain: u8,
+        highlight_area: u8,
+        intensity: u8,
+        seed: u64,
+    },
+    NeonGlow {
+        glow_size: i32,
+        glow_brightness: u8,
+        glow_color: [u8; 3],
+    },
+    PosterEdges {
+        edge_thickness: u8,
+        edge_intensity: u8,
+        posterization: u8,
+    },
+    PaintDaubs {
+        brush_size: u8,
+        sharpness: u8,
+        brush_type: BrushType,
+        seed: u64,
+    },
+    PaletteKnife {
+        stroke_size: u8,
+        stroke_detail: u8,
+        softness: u8,
+        seed: u64,
+    },
+    PlasticWrap {
+        highlight_strength: u8,
+        detail: u8,
+        smoothness: u8,
+    },
+    Sponge {
+        brush_size: u8,
+        definition: u8,
+        smoothness: u8,
+        seed: u64,
+    },
+    ColoredPencil {
+        pencil_width: u8,
+        stroke_pressure: u8,
+        paper_brightness: u8,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        seed: u64,
+    },
+    DryBrush {
+        brush_size: u8,
+        brush_detail: u8,
+        texture: u8,
+        seed: u64,
+    },
+    Fresco {
+        brush_size: u8,
+        brush_detail: u8,
+        texture: u8,
+        seed: u64,
+    },
+    RoughPastels {
+        stroke_length: u8,
+        stroke_detail: u8,
+        texture: TextureOptions,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        seed: u64,
+    },
+    SmudgeStick {
+        stroke_length: u8,
+        highlight_area: u8,
+        intensity: u8,
+        seed: u64,
+    },
+    Underpainting {
+        brush_size: u8,
+        texture_coverage: u8,
+        texture: TextureOptions,
+        seed: u64,
+    },
+    Watercolor {
+        brush_detail: u8,
+        shadow_intensity: u8,
+        texture: u8,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        seed: u64,
+    },
 }
 
 /// Apply `filter` in place (planar 8-bit; channels 3 or 4; alpha untouched).
@@ -386,6 +518,122 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             center,
             lens,
         } => render::lens_flare(buf, *brightness, *center, *lens),
+        Filter::Cutout {
+            levels,
+            edge_simplicity,
+            edge_fidelity,
+        } => artistic::cutout(buf, *levels, *edge_simplicity, *edge_fidelity),
+        Filter::FilmGrain {
+            grain,
+            highlight_area,
+            intensity,
+            seed,
+        } => artistic::film_grain(buf, *grain, *highlight_area, *intensity, *seed),
+        Filter::NeonGlow {
+            glow_size,
+            glow_brightness,
+            glow_color,
+        } => artistic::neon_glow(buf, *glow_size, *glow_brightness, *glow_color),
+        Filter::PosterEdges {
+            edge_thickness,
+            edge_intensity,
+            posterization,
+        } => artistic::poster_edges(buf, *edge_thickness, *edge_intensity, *posterization),
+        Filter::PaintDaubs {
+            brush_size,
+            sharpness,
+            brush_type,
+            seed,
+        } => artistic::paint_daubs(buf, *brush_size, *sharpness, *brush_type, *seed),
+        Filter::PaletteKnife {
+            stroke_size,
+            stroke_detail,
+            softness,
+            seed,
+        } => artistic::palette_knife(buf, *stroke_size, *stroke_detail, *softness, *seed),
+        Filter::PlasticWrap {
+            highlight_strength,
+            detail,
+            smoothness,
+        } => artistic::plastic_wrap(buf, *highlight_strength, *detail, *smoothness),
+        Filter::Sponge {
+            brush_size,
+            definition,
+            smoothness,
+            seed,
+        } => artistic::sponge(buf, *brush_size, *definition, *smoothness, *seed),
+        Filter::ColoredPencil {
+            pencil_width,
+            stroke_pressure,
+            paper_brightness,
+            foreground,
+            background,
+            seed,
+        } => artistic::colored_pencil(
+            buf,
+            *pencil_width,
+            *stroke_pressure,
+            *paper_brightness,
+            *foreground,
+            *background,
+            *seed,
+        ),
+        Filter::DryBrush {
+            brush_size,
+            brush_detail,
+            texture,
+            seed,
+        } => artistic::dry_brush(buf, *brush_size, *brush_detail, *texture, *seed),
+        Filter::Fresco {
+            brush_size,
+            brush_detail,
+            texture,
+            seed,
+        } => artistic::fresco(buf, *brush_size, *brush_detail, *texture, *seed),
+        Filter::RoughPastels {
+            stroke_length,
+            stroke_detail,
+            texture,
+            foreground,
+            background,
+            seed,
+        } => artistic::rough_pastels(
+            buf,
+            *stroke_length,
+            *stroke_detail,
+            *texture,
+            *foreground,
+            *background,
+            *seed,
+        ),
+        Filter::SmudgeStick {
+            stroke_length,
+            highlight_area,
+            intensity,
+            seed,
+        } => artistic::smudge_stick(buf, *stroke_length, *highlight_area, *intensity, *seed),
+        Filter::Underpainting {
+            brush_size,
+            texture_coverage,
+            texture,
+            seed,
+        } => artistic::underpainting(buf, *brush_size, *texture_coverage, *texture, *seed),
+        Filter::Watercolor {
+            brush_detail,
+            shadow_intensity,
+            texture,
+            foreground,
+            background,
+            seed,
+        } => artistic::watercolor(
+            buf,
+            *brush_detail,
+            *shadow_intensity,
+            *texture,
+            *foreground,
+            *background,
+            *seed,
+        ),
     }
 }
 

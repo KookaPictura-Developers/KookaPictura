@@ -1488,8 +1488,8 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
 /// filter dialogs are out of scope for M6-C.
 fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
     use pictura_filters::{
-        Filter, LensType, MezzotintType, NoiseDistribution, PolarKind, RippleSize, ShearFill,
-        SpherizeMode, WaveType, ZigZagStyle,
+        BrushType, Filter, LensType, MezzotintType, NoiseDistribution, PolarKind, RippleSize,
+        ShearFill, SpherizeMode, TextureOptions, WaveType, ZigZagStyle,
     };
 
     Some(match kind {
@@ -1609,6 +1609,98 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
             brightness: 100.0,
             center: (0.5, 0.5),
             lens: LensType::Zoom,
+        },
+        "colored-pencil" => Filter::ColoredPencil {
+            pencil_width: 6,
+            stroke_pressure: 8,
+            paper_brightness: 20,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+            seed: 1,
+        },
+        "cutout" => Filter::Cutout {
+            levels: 4,
+            edge_simplicity: 0,
+            edge_fidelity: 1,
+        },
+        "dry-brush" => Filter::DryBrush {
+            brush_size: 8,
+            brush_detail: 6,
+            texture: 2,
+            seed: 1,
+        },
+        "film-grain" => Filter::FilmGrain {
+            grain: 10,
+            highlight_area: 5,
+            intensity: 5,
+            seed: 1,
+        },
+        "fresco" => Filter::Fresco {
+            brush_size: 8,
+            brush_detail: 6,
+            texture: 2,
+            seed: 1,
+        },
+        "neon-glow" => Filter::NeonGlow {
+            glow_size: 8,
+            glow_brightness: 40,
+            glow_color: [0, 255, 255],
+        },
+        "paint-daubs" => Filter::PaintDaubs {
+            brush_size: 8,
+            sharpness: 20,
+            brush_type: BrushType::Simple,
+            seed: 1,
+        },
+        "palette-knife" => Filter::PaletteKnife {
+            stroke_size: 12,
+            stroke_detail: 2,
+            softness: 8,
+            seed: 1,
+        },
+        "plastic-wrap" => Filter::PlasticWrap {
+            highlight_strength: 0,
+            detail: 6,
+            smoothness: 3,
+        },
+        "poster-edges" => Filter::PosterEdges {
+            edge_thickness: 3,
+            edge_intensity: 10,
+            posterization: 4,
+        },
+        "rough-pastels" => Filter::RoughPastels {
+            stroke_length: 8,
+            stroke_detail: 6,
+            texture: TextureOptions::default(),
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+            seed: 1,
+        },
+        "smudge-stick" => Filter::SmudgeStick {
+            stroke_length: 4,
+            highlight_area: 8,
+            intensity: 6,
+            seed: 1,
+        },
+        "sponge" => Filter::Sponge {
+            brush_size: 6,
+            definition: 18,
+            smoothness: 4,
+            seed: 1,
+        },
+        "underpainting" => Filter::Underpainting {
+            brush_size: 10,
+            texture_coverage: 24,
+            texture: TextureOptions::default(),
+            seed: 1,
+        },
+        "watercolor" => Filter::Watercolor {
+            brush_detail: 8,
+            shadow_intensity: 6,
+            texture: 2,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+            seed: 1,
         },
         // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
         // default exists; it stays out of the dock and is left unmapped.
@@ -2060,8 +2152,8 @@ mod tests {
     #[test]
     fn filter_from_kind_maps_known_and_rejects_unknown() {
         use pictura_filters::{
-            Filter, LensType, MezzotintType, NoiseDistribution, PolarKind, RippleSize, ShearFill,
-            SpherizeMode, WaveType, ZigZagStyle,
+            BrushType, Filter, LensType, MezzotintType, NoiseDistribution, PolarKind, RippleSize,
+            ShearFill, SpherizeMode, TextureOptions, WaveType, ZigZagStyle,
         };
 
         assert_eq!(
@@ -2266,6 +2358,143 @@ mod tests {
                 brightness: 100.0,
                 center: (0.5, 0.5),
                 lens: LensType::Zoom,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("colored-pencil"),
+            Some(Filter::ColoredPencil {
+                pencil_width: 6,
+                stroke_pressure: 8,
+                paper_brightness: 20,
+                foreground: [0, 0, 0],
+                background: [255, 255, 255],
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("cutout"),
+            Some(Filter::Cutout {
+                levels: 4,
+                edge_simplicity: 0,
+                edge_fidelity: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("dry-brush"),
+            Some(Filter::DryBrush {
+                brush_size: 8,
+                brush_detail: 6,
+                texture: 2,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("film-grain"),
+            Some(Filter::FilmGrain {
+                grain: 10,
+                highlight_area: 5,
+                intensity: 5,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("fresco"),
+            Some(Filter::Fresco {
+                brush_size: 8,
+                brush_detail: 6,
+                texture: 2,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("neon-glow"),
+            Some(Filter::NeonGlow {
+                glow_size: 8,
+                glow_brightness: 40,
+                glow_color: [0, 255, 255],
+            })
+        );
+        assert_eq!(
+            filter_from_kind("paint-daubs"),
+            Some(Filter::PaintDaubs {
+                brush_size: 8,
+                sharpness: 20,
+                brush_type: BrushType::Simple,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("palette-knife"),
+            Some(Filter::PaletteKnife {
+                stroke_size: 12,
+                stroke_detail: 2,
+                softness: 8,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("plastic-wrap"),
+            Some(Filter::PlasticWrap {
+                highlight_strength: 0,
+                detail: 6,
+                smoothness: 3,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("poster-edges"),
+            Some(Filter::PosterEdges {
+                edge_thickness: 3,
+                edge_intensity: 10,
+                posterization: 4,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("rough-pastels"),
+            Some(Filter::RoughPastels {
+                stroke_length: 8,
+                stroke_detail: 6,
+                texture: TextureOptions::default(),
+                foreground: [0, 0, 0],
+                background: [255, 255, 255],
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("smudge-stick"),
+            Some(Filter::SmudgeStick {
+                stroke_length: 4,
+                highlight_area: 8,
+                intensity: 6,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("sponge"),
+            Some(Filter::Sponge {
+                brush_size: 6,
+                definition: 18,
+                smoothness: 4,
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("underpainting"),
+            Some(Filter::Underpainting {
+                brush_size: 10,
+                texture_coverage: 24,
+                texture: TextureOptions::default(),
+                seed: 1,
+            })
+        );
+        assert_eq!(
+            filter_from_kind("watercolor"),
+            Some(Filter::Watercolor {
+                brush_detail: 8,
+                shadow_intensity: 6,
+                texture: 2,
+                foreground: [0, 0, 0],
+                background: [255, 255, 255],
+                seed: 1,
             })
         );
         assert_eq!(filter_from_kind("bogus"), None);

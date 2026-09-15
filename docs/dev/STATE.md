@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **439 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M21 archived; canonical specs are
-  in `openspec/specs/` (51 capabilities, `validate --all --strict`
+- Test suite: **465 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M22 archived; canonical specs are
+  in `openspec/specs/` (52 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
@@ -37,7 +37,7 @@ openspec validate --all --strict
 | `pictura-codec` | PSD/PSB read/write: composite, layers, masks, adjustment keys, document channels |
 | `pictura-color` | ICC profiles (sRGB/AdobeRGB/ProPhoto), convert/assign, intents, BPC |
 | `pictura-adjust` | 15 destructive adjustments (`apply`) |
-| `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters |
+| `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters; `artistic` module (15 CS6 Artistic filters with shared `reduce`/`noise`/`texture` helpers) |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range; `Selection::{rect,ellipse,polygon}` rasterizers + `CombineMode`/`combine_with` |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
@@ -262,11 +262,35 @@ openspec validate --all --strict
   1 ignored; +25 `pictura-paint` tests), `openspec validate --all --strict`
   50/50 pre-archive. OpenSpec change m21-paint-engine (capabilities paint-engine,
   brush-tools; MODIFIED tool-framework), archived.
+- **M22** — Artistic filters. New `pictura-filters::artistic` module implements
+  the 15 CS6 Artistic filters — Colored Pencil, Cutout, Dry Brush, Film Grain,
+  Fresco, Neon Glow, Paint Daubs, Palette Knife, Plastic Wrap, Poster Edges,
+  Rough Pastels, Smudge Stick, Sponge, Underpainting, Watercolor — as
+  behavioural-parity models (Adobe's kernels are closed), each carrying a
+  `// ponytail:` ceiling note. Shared helpers: `artistic/reduce.rs`
+  (`posterize`, `edge_magnitude`), `artistic/noise.rs` (seeded value noise via
+  `ChaCha8Rng`), and `artistic/texture.rs` (`TextureSurface`
+  Brick/Burlap/Canvas/Sandstone, `emboss`, `TextureOptions { surface, scaling,
+  relief, light_direction, invert }`). All 15 are `Filter` variants with typed
+  parameters, in-range validation, alpha preservation, and seeded determinism for
+  the stochastic ones; new enums `BrushType`
+  (Simple/LightRough/DarkRough/WideSharp/WideBlurry/Sparkle) and
+  `TextureSurface`. App `filter_from_kind` maps the 15 kebab-case kinds with fixed
+  in-range defaults and `seed: 1`. Self-test exit codes 57–58
+  (`m22_applied applied=15/15`; `m22_deterministic=1`), measured on fixture and
+  no-arg runs. Deferred non-goals: Filter Gallery dialog and cumulative stack,
+  Smart Filter entries, `Edit > Fade`, 16/32-bit and CMYK/Lab gating, `Load
+  Texture` file I/O, and the remaining families (Brush Strokes, Sketch, Texture,
+  Oil Paint). Verified: `cmake --build build` OK; both self-tests exit 0 with no
+  FAILs; `cargo fmt --all --check` OK; `cargo clippy --workspace --all-targets --
+  -D warnings` OK; 465 tests (0 failed, 1 ignored; +26 filter tests); `openspec
+  validate --all --strict` 52/52 pre-archive. OpenSpec change m22-artistic-filters
+  (capability artistic-filters), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M21 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M22 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -284,17 +308,16 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: remaining filter families (propose via OpenSpec first)
+## Next: remaining filter families and image modes/bit-depth (propose via OpenSpec first)
 
-M21 is archived; its `paint-engine`, `brush-tools`, and MODIFIED
-`tool-framework` deltas live in `openspec/specs/`. Next up:
+M22 is archived; its `artistic-filters` delta lives in `openspec/specs/`. Next up:
 
-- The remaining filter families and image modes/bit-depth, then the deferred
-  brush tip families/dynamics.
+- The remaining filter families (Brush Strokes, Sketch, Texture, Oil Paint) and
+  image modes/bit-depth, then the deferred brush tip families/dynamics.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M21 are archived; their deltas now live in `openspec/specs/`.
+M6 through M22 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -320,3 +343,5 @@ M6 through M21 are archived; their deltas now live in `openspec/specs/`.
   a layer-sized buffer (sparse tiles deferred).
 - Only the Normal/Dissolve/Behind/Clear paint modes exist; there is no tablet
   pressure mapping or brush presets yet.
+- Artistic filters are behavioural-parity models without an Adobe oracle; the
+  Filter Gallery UI, Smart Filters, and depth/mode gating are not implemented.
