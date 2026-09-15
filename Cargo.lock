@@ -823,6 +823,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pictura-paint"
+version = "0.0.0"
+dependencies = [
+ "pictura-core",
+]
+
+[[package]]
 name = "pictura-render"
 version = "0.0.0"
 dependencies = [
@@ -860,6 +867,7 @@ dependencies = [
  "pictura-codec",
  "pictura-core",
  "pictura-filters",
+ "pictura-paint",
  "pictura-render",
  "pictura-select",
  "pollster",

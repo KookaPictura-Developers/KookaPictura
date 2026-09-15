@@ -1,4 +1,5 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
+#![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
 
 use core::pin::Pin;
 
@@ -6,9 +7,10 @@ use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{AspectRatioMode, QImage, QImageFormat, QString, TransformationMode};
 use pictura_core::{
-    AdjustmentData, BitDepth, BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer,
-    PsdRect,
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
+    PixelBuffer, PsdRect,
 };
+use pictura_paint::{spacing::SpacingMode, PaintMode, Rgba, Stroke, StrokeConfig, StrokeSample};
 use pictura_select::{CombineMode, Selection};
 
 #[cxx_qt::bridge]
@@ -245,6 +247,46 @@ pub mod qobject {
         #[qinvokable]
         fn apply_filter(self: Pin<&mut Self>, kind: &QString) -> bool;
 
+        /// Begin a paint stroke. Colours are 0xAARRGGBB. `mode` is
+        /// "normal" | "dissolve" | "behind" | "clear". Returns false without a
+        /// document or when there is no raster layer.
+        #[qinvokable]
+        fn begin_paint(
+            self: Pin<&mut Self>,
+            foreground: u32,
+            background: u32,
+            diameter: i32,
+            hardness: i32,
+            roundness: i32,
+            angle: i32,
+            opacity: i32,
+            flow: i32,
+            spacing: i32,
+            mode: &QString,
+            aliased: bool,
+            auto_erase: bool,
+        ) -> bool;
+
+        /// Add a pointer sample to the active stroke and refresh the live image.
+        /// Returns false when no stroke is active.
+        #[qinvokable]
+        fn paint_dab(self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool;
+
+        /// Commit the active stroke as one history state ("Brush" or "Pencil"),
+        /// mark dirty, and recomposite. Returns true when the stroke painted
+        /// anything and added history; a stroke that painted nothing leaves the
+        /// document unchanged and returns false.
+        #[qinvokable]
+        fn end_paint(self: Pin<&mut Self>) -> bool;
+
+        /// Drop the active stroke without committing; the document is unchanged.
+        #[qinvokable]
+        fn cancel_paint(self: Pin<&mut Self>);
+
+        /// Whether a paint stroke is currently active.
+        #[qinvokable]
+        fn is_painting(&self) -> bool;
+
         /// Scale the document to `width`×`height` with resample `kind`
         /// (nearest, bilinear, bicubic), clear the selection, recomposite, and
         /// emit [`changed`]. Returns false without a document, for an unknown
@@ -367,6 +409,8 @@ pub struct PictureViewRust {
     interop: Option<crate::gpu::InteropState>,
     pending_lasso: Vec<(i32, i32)>,
     pending_lasso_mode: String,
+    stroke: Option<Stroke>,
+    stroke_label: String,
 }
 
 impl qobject::PictureView {
@@ -386,6 +430,8 @@ impl qobject::PictureView {
         view.doc = loaded;
         view.selection = None;
         view.history = History::default();
+        view.stroke = None;
+        view.stroke_label.clear();
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -420,15 +466,47 @@ impl qobject::PictureView {
             _ => return false,
         };
         let mut doc = Document::new(width as u32, height as u32, mode, BitDepth::Eight);
+        let fill = if white { 255 } else { 0 };
         if white {
             doc.composite.data.fill(255);
         }
+        let pixels = width as usize * height as usize;
+        let mut channels: Vec<Channel> = (0..mode.color_channels())
+            .map(|id| Channel {
+                id: id as i16,
+                data: vec![fill; pixels],
+            })
+            .collect();
+        channels.push(Channel {
+            id: -1,
+            data: vec![fill; pixels],
+        });
+        doc.layers.push(Layer {
+            name: "Layer 0".to_string(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: height,
+                right: width,
+            },
+            blend: BlendMode::Normal,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels,
+            children: Vec::new(),
+            is_group: false,
+        });
         let image = document_to_image(&doc);
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = Some(doc);
         view.selection = None;
         view.history = History::default();
+        view.stroke = None;
+        view.stroke_label.clear();
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -956,6 +1034,115 @@ impl qobject::PictureView {
         applied
     }
 
+    pub fn begin_paint(
+        mut self: Pin<&mut Self>,
+        foreground: u32,
+        background: u32,
+        diameter: i32,
+        hardness: i32,
+        roundness: i32,
+        angle: i32,
+        opacity: i32,
+        flow: i32,
+        spacing: i32,
+        mode: &QString,
+        aliased: bool,
+        auto_erase: bool,
+    ) -> bool {
+        {
+            let rust = self.rust();
+            if rust.doc.is_none() || rust.stroke.is_some() {
+                return false;
+            }
+        }
+        let cfg = StrokeConfig {
+            color: rgba_from_argb(foreground),
+            background: rgba_from_argb(background),
+            diameter: diameter.max(0) as u32,
+            hardness: hardness.clamp(0, 100) as u8,
+            roundness: roundness.clamp(0, 100) as u8,
+            angle_deg: angle,
+            spacing: SpacingMode::Fixed(spacing.clamp(0, 1000) as u16),
+            opacity: opacity.clamp(0, 100) as u8,
+            flow: flow.clamp(0, 100) as u8,
+            mode: paint_mode_from(&mode.to_string()),
+            aliased,
+            auto_erase,
+            ..StrokeConfig::default()
+        };
+        let begun = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            Stroke::begin(doc, cfg)
+        };
+        match begun {
+            Ok(stroke) => {
+                let mut rust = self.as_mut().rust_mut();
+                rust.stroke = Some(stroke);
+                rust.stroke_label = if aliased { "Pencil" } else { "Brush" }.to_string();
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    pub fn paint_dab(mut self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool {
+        let changed = {
+            let mut rust = self.as_mut().rust_mut();
+            match rust.stroke.as_mut() {
+                Some(stroke) => stroke.sample(StrokeSample {
+                    x: x as f32,
+                    y: y as f32,
+                    pressure: pressure as f32,
+                }),
+                None => return false,
+            }
+        };
+        if changed {
+            let image = self
+                .rust()
+                .stroke
+                .as_ref()
+                .map(|stroke| document_to_image(stroke.document()));
+            if let Some(image) = image {
+                self.as_mut().rust_mut().image = image;
+            }
+            self.changed();
+        }
+        changed
+    }
+
+    pub fn end_paint(mut self: Pin<&mut Self>) -> bool {
+        let stroke = self.as_mut().rust_mut().stroke.take();
+        let label = self.rust().stroke_label.clone();
+        match stroke {
+            None => false,
+            Some(stroke) => match stroke.finish() {
+                None => {
+                    self.as_mut().recomposite();
+                    false
+                }
+                Some(outcome) => {
+                    self.as_mut().rust_mut().doc = Some(outcome.document);
+                    self.as_mut().record(&label);
+                    self.as_mut().recomposite();
+                    true
+                }
+            },
+        }
+    }
+
+    pub fn cancel_paint(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().stroke = None;
+        self.as_mut().recomposite();
+    }
+
+    pub fn is_painting(&self) -> bool {
+        self.rust().stroke.is_some()
+    }
+
     pub fn resize_image(mut self: Pin<&mut Self>, kind: &QString, width: i32, height: i32) -> bool {
         let Some(resample) = parse_resample(&kind.to_string()) else {
             return false;
@@ -1467,6 +1654,26 @@ fn combine_mode_from(mode: &str) -> CombineMode {
         "subtract" => CombineMode::Subtract,
         "intersect" => CombineMode::Intersect,
         _ => CombineMode::New,
+    }
+}
+
+/// Unpack a `0xAARRGGBB` colour.
+fn rgba_from_argb(argb: u32) -> Rgba {
+    Rgba {
+        r: (argb >> 16) as u8,
+        g: (argb >> 8) as u8,
+        b: argb as u8,
+        a: (argb >> 24) as u8,
+    }
+}
+
+/// Map a paint-mode string to [`PaintMode`]; unknown means `Normal`.
+fn paint_mode_from(mode: &str) -> PaintMode {
+    match mode {
+        "dissolve" => PaintMode::Dissolve,
+        "behind" => PaintMode::Behind,
+        "clear" => PaintMode::Clear,
+        _ => PaintMode::Normal,
     }
 }
 

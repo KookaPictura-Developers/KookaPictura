@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **414 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M20 archived; canonical specs are
-  in `openspec/specs/` (49 capabilities, `validate --all --strict`
+- Test suite: **439 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M21 archived; canonical specs are
+  in `openspec/specs/` (51 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
@@ -42,7 +42,8 @@ openspec validate --all --strict
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
-| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), real Layers/History/Navigator/Color/Swatches/Info/Histogram panel docks replacing the debug dock (backed by the document and history models, with a frame-owned `ColorState` fed by the Eyedropper), tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom), zoom/pan, GPU demo |
+| `pictura-paint` | dab-splatting brush/pencil stroke engine — tip coverage, spacing, flow/opacity, paint modes; depends on `pictura-core` |
+| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), real Layers/History/Navigator/Color/Swatches/Info/Histogram panel docks replacing the debug dock (backed by the document and history models, with a frame-owned `ColorState` fed by the Eyedropper), tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom/Brush/Pencil), paint bridge (`begin_paint`/`paint_dab`/`end_paint`/`cancel_paint`/`is_painting`) with a live paint options bar, zoom/pan, GPU demo |
 
 ## Milestones done
 
@@ -232,11 +233,40 @@ openspec validate --all --strict
   --strict` 45/45 pre-archive. OpenSpec change m20-panels (capabilities
   layers-panel, history-panel, navigator-panel, color-swatches-panel,
   info-histogram-panel), archived.
+- **M21** — Paint engine. New `pictura-paint` crate (depends on `pictura-core`
+  only): dab-splatting stroke engine with a procedural round/elliptical tip
+  (size 1..5000, hardness, roundness, angle, flip), anti-aliased Brush vs
+  aliased Pencil, fixed and velocity-driven spacing with residue carry-over,
+  per-pixel coverage accumulation with a flow/opacity model
+  (`acc = 1-(1-acc)(1-flow*tip)`, composited alpha `= opacity*acc`), and paint
+  modes Normal/Dissolve/Behind/Clear; 25 in-crate tests. Bridge `PictureView`
+  gains `begin_paint`/`paint_dab`/`end_paint`/`cancel_paint`/`is_painting`, a
+  pre-stroke base plus working document, live image refresh per dab, and one
+  labelled history state ("Brush"/"Pencil") per completed stroke. Qt:
+  `ToolId::Brush`/`Pencil` (values 8/9), `B`/`Shift+B` cycling, size and hardness
+  shortcuts (`[`/`]`, `Shift+[`/`Shift+]`), a paint options bar (size, hardness,
+  opacity, flow, mode, Pencil Auto Erase), and `ToolController` stroke routing.
+  Bug fixed: `PictureView::new_document` now creates one raster layer (opaque for
+  "white", transparent for "transparent"), matching
+  `docs/10-workflow-io/open-and-new.md`; previously a fresh document had no layer
+  and could not be painted. `main.cpp` self-test exit codes 53–56
+  (`m21_stroke ended=1 painted=196 dirty=1 hist=2`; `m21_opacity a1=84 a2=140`;
+  `m21_aliased pencil_ok=1 brush_aa=1`; `m21_undo changed=1 restored=1`), with
+  identical output on fixture and no-argument runs. Deferred non-goals:
+  sampled/bristle/erodible/airbrush tips, Shape Dynamics, Scattering, Texture,
+  Dual Brush, Color Dynamics, Transfer, Brush Pose, airbrush time build-up,
+  tablet pressure mapping, `.abr` presets, Brush/Brush Presets panels, HUD, the
+  remaining 23 paint modes, 16/32-bit and non-RGB painting, lock transparency,
+  and sparse tile scratch storage. Verified: `cmake --build build` OK, both
+  self-tests exit 0 with no FAILs, `cargo fmt/clippy` clean, 439 tests (0 failed,
+  1 ignored; +25 `pictura-paint` tests), `openspec validate --all --strict`
+  50/50 pre-archive. OpenSpec change m21-paint-engine (capabilities paint-engine,
+  brush-tools; MODIFIED tool-framework), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M20 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M21 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -254,18 +284,17 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: painting engine (propose via OpenSpec first)
+## Next: remaining filter families (propose via OpenSpec first)
 
-M20 is archived; its `layers-panel`, `history-panel`, `navigator-panel`,
-`color-swatches-panel`, and `info-histogram-panel` deltas live in
-`openspec/specs/`. Next up:
+M21 is archived; its `paint-engine`, `brush-tools`, and MODIFIED
+`tool-framework` deltas live in `openspec/specs/`. Next up:
 
-- The painting engine, then the remaining filter families and image
-  modes/bit-depth.
+- The remaining filter families and image modes/bit-depth, then the deferred
+  brush tip families/dynamics.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M20 are archived; their deltas now live in `openspec/specs/`.
+M6 through M21 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -287,3 +316,7 @@ M6 through M20 are archived; their deltas now live in `openspec/specs/`.
   filter/search row are not implemented.
 - Swatch library file I/O, Info color samplers, and Histogram source/cache
   states are not implemented.
+- Painting is limited to 8-bit RGB single raster layers; the coverage scratch is
+  a layer-sized buffer (sparse tiles deferred).
+- Only the Normal/Dissolve/Behind/Clear paint modes exist; there is no tablet
+  pressure mapping or brush presets yet.

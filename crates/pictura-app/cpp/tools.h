@@ -18,7 +18,18 @@ namespace pictura {
 class ImageView;
 class PictureView;
 
-enum class ToolId { Move, Marquee, Lasso, QuickSelection, Crop, Eyedropper, Hand, Zoom };
+enum class ToolId {
+    Move,
+    Marquee,
+    Lasso,
+    QuickSelection,
+    Crop,
+    Eyedropper,
+    Hand,
+    Zoom,
+    Brush,
+    Pencil
+};
 enum class SelectionMode { New, Add, Subtract, Intersect };
 
 struct ToolInfo {
@@ -55,6 +66,25 @@ public:
     int tolerance() const { return tolerance_; }
     void setTolerance(int tolerance);
 
+    int brushSize() const;
+    void setBrushSize(int size);
+    int brushHardness() const;
+    void setBrushHardness(int h);
+    int brushOpacity() const;
+    void setBrushOpacity(int o);
+    int brushFlow() const;
+    void setBrushFlow(int f);
+    QString brushMode() const;
+    void setBrushMode(const QString& mode);
+    bool autoErase() const;
+    void setAutoErase(bool on);
+    QColor foreground() const;
+    void setForeground(const QColor& color);
+    QColor background() const;
+    void setBackground(const QColor& color);
+    void adjustBrushSize(int delta);
+    void adjustBrushHardness(int delta);
+
     void bindCanvas(ImageView* canvas);
     void unbindCanvas();
     ImageView* canvas() const { return canvas_; }
@@ -84,6 +114,15 @@ private:
     ToolId active_ = ToolId::Move;
     SelectionMode mode_ = SelectionMode::New;
     int tolerance_ = 32;
+
+    int brushSize_ = 12;
+    int brushHardness_ = 100;
+    int brushOpacity_ = 100;
+    int brushFlow_ = 100;
+    QString brushMode_ = QStringLiteral("normal");
+    bool autoErase_ = false;
+    QColor foreground_{Qt::black};
+    QColor background_{Qt::white};
 
     bool dragging_ = false;
     bool dragCommitted_ = false;

@@ -1207,6 +1207,169 @@ int main(int argc, char* argv[])
             return 52;
         }
 
+        // M21: painting. A fresh transparent document keeps these checks
+        // independent of any loaded PSD; every behaviour is read from pixels.
+        const bool paintDoc = frame.newDocument(QStringLiteral("Paint"), 32, 32,
+                                                QStringLiteral("rgb"), 8,
+                                                QStringLiteral("transparent"));
+        pictura::PictureView* pv = frame.activeView();
+        if (!paintDoc || !pv) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M21 paint document\n");
+            std::fflush(stderr);
+            return 53;
+        }
+
+        // 53: a stroke marks pixels, dirties the document, and adds one state.
+        const int m21HistBefore = pv->history_count();
+        pv->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 8, 100, 100, 0, 100, 100, 25,
+                        QStringLiteral("normal"), false, false);
+        pv->paint_dab(6, 16, 1.0);
+        pv->paint_dab(12, 16, 1.0);
+        pv->paint_dab(18, 16, 1.0);
+        pv->paint_dab(24, 16, 1.0);
+        const bool m21Ended = pv->end_paint();
+        const QImage m21Stroke = pv->image();
+        int m21Painted = 0;
+        for (int y = 0; y < m21Stroke.height(); ++y) {
+            for (int x = 0; x < m21Stroke.width(); ++x) {
+                if (qAlpha(m21Stroke.pixel(x, y)) > 0) {
+                    ++m21Painted;
+                }
+            }
+        }
+        std::fprintf(stderr,
+                     "pictura self-test: m21_stroke ended=%d painted=%d dirty=%d hist=%d\n",
+                     m21Ended ? 1 : 0,
+                     m21Painted,
+                     pv->is_dirty() ? 1 : 0,
+                     pv->history_count());
+        std::fflush(stderr);
+        if (!m21Ended || !pv->is_dirty() || pv->history_count() != m21HistBefore + 1
+            || m21Painted < 20) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M21 stroke wrong\n");
+            return 53;
+        }
+
+        // 54: opacity caps one stroke and a second stroke adds coverage. A fresh
+        // transparent canvas keeps the sampled point clear of the 53 stroke.
+        const bool opacityDoc = frame.newDocument(QStringLiteral("PaintOpacity"), 32, 32,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("transparent"));
+        pv = frame.activeView();
+        if (!opacityDoc || !pv) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M21 opacity document\n");
+            return 54;
+        }
+        pv->begin_paint(0xFF00FF00u, 0xFFFFFFFFu, 12, 100, 100, 0, 33, 100, 0,
+                        QStringLiteral("normal"), false, false);
+        for (int i = 0; i < 40; ++i) {
+            pv->paint_dab(16, 16, 1.0);
+        }
+        pv->end_paint();
+        const int m21A1 = qAlpha(pv->sample_argb(16, 16));
+        pv->begin_paint(0xFF00FF00u, 0xFFFFFFFFu, 12, 100, 100, 0, 33, 100, 0,
+                        QStringLiteral("normal"), false, false);
+        for (int i = 0; i < 40; ++i) {
+            pv->paint_dab(16, 16, 1.0);
+        }
+        pv->end_paint();
+        const int m21A2 = qAlpha(pv->sample_argb(16, 16));
+        std::fprintf(stderr, "pictura self-test: m21_opacity a1=%d a2=%d\n", m21A1, m21A2);
+        std::fflush(stderr);
+        if (!(m21A1 >= 78 && m21A1 <= 92) || !(m21A2 > m21A1 && m21A2 < 255)) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M21 opacity wrong\n");
+            return 54;
+        }
+
+        // 55: Pencil edges are aliased; Brush edges are anti-aliased.
+        const bool pencilDoc = frame.newDocument(QStringLiteral("PaintPencil"), 32, 32,
+                                                 QStringLiteral("rgb"), 8,
+                                                 QStringLiteral("transparent"));
+        pictura::PictureView* pencilView = frame.activeView();
+        const bool pencilBegun =
+            pencilDoc && pencilView
+            && pencilView->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 10, 100, 100, 0, 100, 100, 25,
+                                       QStringLiteral("normal"), true, false);
+        if (pencilView) {
+            for (int x = 4; x <= 28; x += 2) {
+                pencilView->paint_dab(x, 16, 1.0);
+            }
+        }
+        const bool pencilEnded = pencilView && pencilView->end_paint();
+        const QImage pencilImg = pencilView ? pencilView->image() : QImage();
+        bool pencilBinary = !pencilImg.isNull();
+        int pencilCovered = 0;
+        for (int y = 0; y < pencilImg.height() && pencilBinary; ++y) {
+            for (int x = 0; x < pencilImg.width(); ++x) {
+                const int a = qAlpha(pencilImg.pixel(x, y));
+                if (a == 0) {
+                    continue;
+                }
+                ++pencilCovered;
+                if (a != 255) {
+                    pencilBinary = false;
+                    break;
+                }
+            }
+        }
+
+        const bool brushDoc = frame.newDocument(QStringLiteral("PaintBrush"), 32, 32,
+                                                QStringLiteral("rgb"), 8,
+                                                QStringLiteral("transparent"));
+        pictura::PictureView* brushView = frame.activeView();
+        const bool brushBegun =
+            brushDoc && brushView
+            && brushView->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 10, 100, 100, 0, 100, 100, 25,
+                                      QStringLiteral("normal"), false, false);
+        if (brushView) {
+            for (int x = 4; x <= 28; x += 2) {
+                brushView->paint_dab(x, 16, 1.0);
+            }
+        }
+        const bool brushEnded = brushView && brushView->end_paint();
+        const QImage brushImg = brushView ? brushView->image() : QImage();
+        bool brushSoft = false;
+        int brushCovered = 0;
+        for (int y = 0; y < brushImg.height() && !brushSoft; ++y) {
+            for (int x = 0; x < brushImg.width(); ++x) {
+                const int a = qAlpha(brushImg.pixel(x, y));
+                if (a > 0) {
+                    ++brushCovered;
+                    if (a < 255) {
+                        brushSoft = true;
+                        break;
+                    }
+                }
+            }
+        }
+        const bool pencilOk =
+            pencilBegun && pencilEnded && pencilBinary && pencilCovered > 0;
+        const bool brushOk = brushBegun && brushEnded && brushCovered > 0 && brushSoft;
+        std::fprintf(stderr, "pictura self-test: m21_aliased pencil_ok=%d brush_aa=%d\n",
+                     pencilOk ? 1 : 0, brushOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!pencilOk || !brushOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M21 aliasing wrong\n");
+            return 55;
+        }
+
+        // 56: undo restores the touched pixels of the brush document.
+        const QImage m21Pre = brushView->image();
+        brushView->begin_paint(0xFF0000FFu, 0xFFFFFFFFu, 10, 100, 100, 0, 100, 100, 25,
+                               QStringLiteral("normal"), false, false);
+        for (int x = 4; x <= 28; x += 2) {
+            brushView->paint_dab(x, 20, 1.0);
+        }
+        const bool m21Changed = brushView->end_paint() && brushView->image() != m21Pre;
+        const bool m21Restored = brushView->undo() && brushView->image() == m21Pre;
+        std::fprintf(stderr, "pictura self-test: m21_undo changed=%d restored=%d\n",
+                     m21Changed ? 1 : 0, m21Restored ? 1 : 0);
+        std::fflush(stderr);
+        if (!m21Changed || !m21Restored) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M21 undo wrong\n");
+            return 56;
+        }
+
         pictura::ImageView* canvas = frame.imageView();
         if (!canvas) {
             std::fprintf(stderr, "pictura self-test: FAIL: no active canvas\n");

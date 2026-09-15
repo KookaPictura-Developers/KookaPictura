@@ -7,6 +7,7 @@ members = [
     "crates/pictura-adjust",
     "crates/pictura-filters",
     "crates/pictura-ops",
+    "crates/pictura-paint",
     "crates/pictura-select",
     "crates/pictura-render",
     "crates/pictura-testkit",

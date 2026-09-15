@@ -27,6 +27,7 @@
 #include <QtGui/QCloseEvent>
 #include <QtGui/QColor>
 #include <QtGui/QKeyEvent>
+#include <QtGui/QKeySequence>
 #include <QtGui/QShortcut>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDockWidget>
@@ -729,6 +730,55 @@ void PicturaMainWindow::buildTools()
 {
     tools_ = new ToolController(this);
     tools_->setViewProvider([this]() { return activeView(); });
+
+    if (colorState_) {
+        tools_->setForeground(colorState_->foreground());
+        tools_->setBackground(colorState_->background());
+        connect(colorState_, &ColorState::foregroundChanged, tools_,
+                &ToolController::setForeground);
+        connect(colorState_, &ColorState::backgroundChanged, tools_,
+                &ToolController::setBackground);
+    }
+
+    auto cyclePaintTool = [this]() {
+        if (tools_) {
+            tools_->setActiveTool(tools_->activeTool() == ToolId::Brush ? ToolId::Pencil
+                                                                        : ToolId::Brush);
+        }
+    };
+    connect(new QShortcut(QKeySequence(Qt::Key_B), this), &QShortcut::activated, this,
+            cyclePaintTool);
+    connect(new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_B), this), &QShortcut::activated,
+            this, cyclePaintTool);
+
+    auto brushActive = [this]() {
+        return tools_ && (tools_->activeTool() == ToolId::Brush
+                          || tools_->activeTool() == ToolId::Pencil);
+    };
+    connect(new QShortcut(QKeySequence(Qt::Key_BracketLeft), this), &QShortcut::activated, this,
+            [this, brushActive]() {
+                if (brushActive()) {
+                    tools_->adjustBrushSize(-1);
+                }
+            });
+    connect(new QShortcut(QKeySequence(Qt::Key_BracketRight), this), &QShortcut::activated, this,
+            [this, brushActive]() {
+                if (brushActive()) {
+                    tools_->adjustBrushSize(+1);
+                }
+            });
+    connect(new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_BracketLeft), this),
+            &QShortcut::activated, this, [this, brushActive]() {
+                if (brushActive()) {
+                    tools_->adjustBrushHardness(-5);
+                }
+            });
+    connect(new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_BracketRight), this),
+            &QShortcut::activated, this, [this, brushActive]() {
+                if (brushActive()) {
+                    tools_->adjustBrushHardness(+5);
+                }
+            });
 
     toolsDock_ = new Toolbox(tools_, this);
     registerPanel(toolsDock_, Qt::LeftDockWidgetArea);

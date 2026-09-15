@@ -28,9 +28,13 @@ const ToolInfo kToolTable[] = {
      "Hand: drag to pan the canvas"},
     {ToolId::Zoom, "zoom", "Zoom", QLatin1Char('Z'), Qt::CrossCursor,
      "Zoom: click to zoom in, Ctrl/Alt-click to zoom out"},
+    {ToolId::Brush, "brush", "Brush", QLatin1Char('B'), Qt::CrossCursor,
+     "Brush: drag to paint the foreground colour"},
+    {ToolId::Pencil, "pencil", "Pencil", QLatin1Char('B'), Qt::CrossCursor,
+     "Pencil: drag to paint a hard aliased line"},
 };
 constexpr int kToolCount = int(sizeof(kToolTable) / sizeof(kToolTable[0]));
-static_assert(kToolCount == 8, "tool table must cover every ToolId");
+static_assert(kToolCount == 10, "tool table must cover every ToolId");
 
 int toolIndex(ToolId id) { return static_cast<int>(id); }
 
@@ -53,7 +57,8 @@ const QList<ToolId>& allToolIds()
 {
     static const QList<ToolId> ids = {ToolId::Move,      ToolId::Marquee, ToolId::Lasso,
                                       ToolId::QuickSelection, ToolId::Crop, ToolId::Eyedropper,
-                                      ToolId::Hand,      ToolId::Zoom};
+                                      ToolId::Hand,      ToolId::Zoom,    ToolId::Brush,
+                                      ToolId::Pencil};
     return ids;
 }
 
@@ -83,6 +88,10 @@ void ToolController::setActiveTool(ToolId id)
         return;
     }
     active_ = id;
+    PictureView* v = view();
+    if (v && v->is_painting()) {
+        v->cancel_paint();
+    }
     dragging_ = false;
     dragCommitted_ = false;
     if (canvas_) {
@@ -98,6 +107,42 @@ void ToolController::setTolerance(int tolerance)
 {
     tolerance_ = std::clamp(tolerance, 0, 255);
 }
+
+int ToolController::brushSize() const { return brushSize_; }
+
+void ToolController::setBrushSize(int size) { brushSize_ = std::clamp(size, 1, 5000); }
+
+int ToolController::brushHardness() const { return brushHardness_; }
+
+void ToolController::setBrushHardness(int h) { brushHardness_ = std::clamp(h, 0, 100); }
+
+int ToolController::brushOpacity() const { return brushOpacity_; }
+
+void ToolController::setBrushOpacity(int o) { brushOpacity_ = std::clamp(o, 0, 100); }
+
+int ToolController::brushFlow() const { return brushFlow_; }
+
+void ToolController::setBrushFlow(int f) { brushFlow_ = std::clamp(f, 0, 100); }
+
+QString ToolController::brushMode() const { return brushMode_; }
+
+void ToolController::setBrushMode(const QString& mode) { brushMode_ = mode; }
+
+bool ToolController::autoErase() const { return autoErase_; }
+
+void ToolController::setAutoErase(bool on) { autoErase_ = on; }
+
+QColor ToolController::foreground() const { return foreground_; }
+
+void ToolController::setForeground(const QColor& color) { foreground_ = color; }
+
+QColor ToolController::background() const { return background_; }
+
+void ToolController::setBackground(const QColor& color) { background_ = color; }
+
+void ToolController::adjustBrushSize(int delta) { setBrushSize(brushSize_ + delta); }
+
+void ToolController::adjustBrushHardness(int delta) { setBrushHardness(brushHardness_ + delta); }
 
 void ToolController::setViewProvider(std::function<PictureView*()> provider)
 {
@@ -133,6 +178,10 @@ void ToolController::unbindCanvas()
     disconnect(canvas_, nullptr, this, nullptr);
     canvas_->clearOverlay();
     canvas_ = nullptr;
+    PictureView* v = view();
+    if (v && v->is_painting()) {
+        v->cancel_paint();
+    }
     dragging_ = false;
     dragCommitted_ = false;
 }
@@ -176,6 +225,22 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         if (argb != 0) {
             emit foregroundSampled(QColor::fromRgb(argb));
         }
+        return;
+    }
+    case ToolId::Brush:
+    case ToolId::Pencil: {
+        if (!v) {
+            return;
+        }
+        const bool aliased = active_ == ToolId::Pencil;
+        if (!v->begin_paint(foreground_.rgba(), background_.rgba(), brushSize_, brushHardness_,
+                            100, 0, brushOpacity_, brushFlow_, 25, brushMode_, aliased,
+                            autoErase_)) {
+            return;
+        }
+        dragging_ = true;
+        dragCommitted_ = false;
+        v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
         return;
     }
     case ToolId::Move:
@@ -262,6 +327,12 @@ void ToolController::handleMoved(const QPointF& imagePos)
             dragCommitted_ = true;
         }
         return;
+    case ToolId::Brush:
+    case ToolId::Pencil:
+        if (v) {
+            v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
+        }
+        return;
     default:
         return;
     }
@@ -330,6 +401,12 @@ void ToolController::handleReleased(const QPointF& imagePos)
         }
         return;
     }
+    case ToolId::Brush:
+    case ToolId::Pencil:
+        if (v) {
+            v->end_paint();
+        }
+        return;
     default:
         return;
     }

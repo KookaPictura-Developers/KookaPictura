@@ -23,6 +23,7 @@ public:
 private:
     QWidget* buildPage(ToolId id);
     QWidget* buildCombinePage(ToolId id, bool withTolerance);
+    QWidget* buildPaintPage(ToolId id);
 
     ToolController* controller_ = nullptr;
     QStackedWidget* stack_ = nullptr;

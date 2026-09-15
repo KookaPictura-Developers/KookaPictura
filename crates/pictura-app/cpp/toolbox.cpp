@@ -28,7 +28,9 @@ Toolbox::Toolbox(ToolController* controller, QWidget* parent)
         action->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));
         action->setCheckable(true);
         action->setChecked(controller && controller->activeTool() == id);
-        action->setShortcut(QKeySequence(QString(info.shortcut)));
+        if (id != ToolId::Brush && id != ToolId::Pencil) {
+            action->setShortcut(QKeySequence(QString(info.shortcut)));
+        }
         action->setToolTip(QStringLiteral("%1 (%2) — %3")
                                .arg(QString::fromLatin1(info.label), QString(info.shortcut),
                                     QString::fromLatin1(info.hint)));
