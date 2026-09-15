@@ -3,6 +3,7 @@
 #include <QtCore/QProcessEnvironment>
 #include <QtCore/QSet>
 #include <QtCore/QStringList>
+#include <QtCore/QTemporaryDir>
 #include <QtCore/QTimer>
 #include <QtGui/QAction>
 #include <QtGui/QIcon>
@@ -10,9 +11,11 @@
 #include <QtGui/QPalette>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDockWidget>
+#include <QtWidgets/QToolButton>
 
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 
 #include "commands.h"
 #include "dialogs.h"
@@ -20,6 +23,8 @@
 #include "icons.h"
 #include "image_view.h"
 #include "session.h"
+#include "theme.h"
+#include "toolbox.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
@@ -48,6 +53,18 @@ int main(int argc, char* argv[])
             interopProbe = true;
         } else if (!args.at(i).startsWith(QLatin1Char('-'))) {
             psdPath = args.at(i);
+        }
+    }
+
+    // Self-test must not read the user's saved layout: isolate the session store
+    // (session.cpp only reads XDG_STATE_HOME) before the frame restores state.
+    std::optional<QTemporaryDir> selfTestStateDir;
+    if (selfTest) {
+        selfTestStateDir.emplace();
+        if (selfTestStateDir->isValid()) {
+            qputenv("XDG_STATE_HOME", selfTestStateDir->path().toUtf8());
+        } else {
+            selfTestStateDir.reset();
         }
     }
 
@@ -1432,6 +1449,67 @@ int main(int argc, char* argv[])
         if (!m22Deterministic) {
             std::fprintf(stderr, "pictura self-test: FAIL: M22 artistic determinism wrong\n");
             return 58;
+        }
+
+        // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
+        int m23Levels = 0;
+        for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {
+            if (!pictura::Theme::styleSheet(level).isEmpty()) {
+                ++m23Levels;
+            }
+        }
+        const bool m23Distinct =
+            pictura::Theme::styleSheet(0) != pictura::Theme::styleSheet(3);
+        std::fprintf(stderr,
+                     "pictura self-test: m23_stylesheet applied=%d levels=%d distinct=%d\n",
+                     qApp->styleSheet().isEmpty() ? 0 : 1,
+                     m23Levels,
+                     m23Distinct ? 1 : 0);
+        std::fflush(stderr);
+        if (qApp->styleSheet().isEmpty() || m23Levels != pictura::Theme::kLevelCount
+            || !m23Distinct) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M23 stylesheet wrong\n");
+            return 59;
+        }
+
+        QDockWidget* m23Tools = frame.findChild<QDockWidget*>(QStringLiteral("toolsPanel"));
+        const int m23Buttons =
+            m23Tools ? static_cast<int>(m23Tools->findChildren<QToolButton*>().size()) : 0;
+        const bool m23Fgbg = m23Tools
+            && m23Tools->findChild<pictura::ForegroundBackgroundWidget*>() != nullptr;
+        std::fprintf(stderr,
+                     "pictura self-test: m23_toolbox dock=%d buttons=%d fgbg=%d\n",
+                     m23Tools ? 1 : 0,
+                     m23Buttons,
+                     m23Fgbg ? 1 : 0);
+        std::fflush(stderr);
+        if (!m23Tools || m23Buttons < 10 || !m23Fgbg) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M23 toolbox wrong\n");
+            return 60;
+        }
+
+        QDockWidget* m23Color = frame.findChild<QDockWidget*>(QStringLiteral("colorPanel"));
+        QDockWidget* m23Swatch = frame.findChild<QDockWidget*>(QStringLiteral("swatchesPanel"));
+        QDockWidget* m23Layers = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+        QDockWidget* m23History = frame.findChild<QDockWidget*>(QStringLiteral("historyPanel"));
+        QDockWidget* m23Navigator = frame.findChild<QDockWidget*>(QStringLiteral("navigatorPanel"));
+        QDockWidget* m23Info = frame.findChild<QDockWidget*>(QStringLiteral("infoPanel"));
+        QDockWidget* m23Histogram = frame.findChild<QDockWidget*>(QStringLiteral("histogramPanel"));
+        const bool m23ColorGroup = m23Color && m23Swatch
+            && frame.tabifiedDockWidgets(m23Color).contains(m23Swatch);
+        const bool m23LayersGroup = m23Layers && m23History
+            && frame.tabifiedDockWidgets(m23Layers).contains(m23History);
+        const bool m23NavInfoGroup = m23Navigator && m23Info
+            && frame.tabifiedDockWidgets(m23Navigator).contains(m23Info);
+        const bool m23NavHistGroup = m23Navigator && m23Histogram
+            && frame.tabifiedDockWidgets(m23Navigator).contains(m23Histogram);
+        const int m23Groups = (m23ColorGroup ? 1 : 0) + (m23LayersGroup ? 1 : 0)
+            + (m23NavInfoGroup ? 1 : 0) + (m23NavHistGroup ? 1 : 0);
+        std::fprintf(stderr, "pictura self-test: m23_groups grouped=%d/4\n", m23Groups);
+        std::fflush(stderr);
+        if (m23Groups != 4) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M23 dock grouping wrong\n");
+            return 61;
         }
 
         pictura::ImageView* canvas = frame.imageView();

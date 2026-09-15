@@ -40,6 +40,15 @@ void ColorState::setBackground(const QColor& color)
     emit backgroundChanged(background_);
 }
 
+void ColorState::setForegroundActive(bool foreground)
+{
+    if (foregroundActive_ == foreground) {
+        return;
+    }
+    foregroundActive_ = foreground;
+    emit activeChanged(foregroundActive_);
+}
+
 HueSpectrum::HueSpectrum(QWidget* parent)
     : QWidget(parent)
 {
@@ -164,11 +173,15 @@ ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
         selectColor(QColor::fromHsv(hue, s, v));
     });
     connect(fgSwatch_, &QPushButton::clicked, this, [this] {
-        activeForeground_ = true;
+        if (state_) {
+            state_->setForegroundActive(true);
+        }
         syncControls();
     });
     connect(bgSwatch_, &QPushButton::clicked, this, [this] {
-        activeForeground_ = false;
+        if (state_) {
+            state_->setForegroundActive(false);
+        }
         syncControls();
     });
     if (state_) {
@@ -178,6 +191,7 @@ ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
         connect(state_, &ColorState::backgroundChanged, this, [this](const QColor&) {
             syncControls();
         });
+        connect(state_, &ColorState::activeChanged, this, [this](bool) { syncControls(); });
     }
 
     syncControls();
@@ -198,7 +212,7 @@ void ColorPanel::selectColor(const QColor& color)
     if (!state_ || !color.isValid()) {
         return;
     }
-    if (activeForeground_) {
+    if (state_->foregroundActive()) {
         state_->setForeground(color);
     } else {
         state_->setBackground(color);
@@ -210,7 +224,7 @@ QColor ColorPanel::activeColor() const
     if (!state_) {
         return QColor();
     }
-    return activeForeground_ ? state_->foreground() : state_->background();
+    return state_->foregroundActive() ? state_->foreground() : state_->background();
 }
 
 void ColorPanel::syncControls()
@@ -249,8 +263,8 @@ void ColorPanel::syncControls()
         const QSignalBlocker block(hex_);
         hex_->setText(color.name().toUpper());
     }
-    paintSwatch(fgSwatch_, state_->foreground(), activeForeground_);
-    paintSwatch(bgSwatch_, state_->background(), !activeForeground_);
+    paintSwatch(fgSwatch_, state_->foreground(), state_->foregroundActive());
+    paintSwatch(bgSwatch_, state_->background(), !state_->foregroundActive());
 }
 
 void ColorPanel::paintSwatch(QPushButton* button, const QColor& color, bool active)

@@ -27,13 +27,18 @@ public:
     void setForeground(const QColor& color);
     void setBackground(const QColor& color);
 
+    bool foregroundActive() const { return foregroundActive_; }
+    void setForegroundActive(bool foreground);
+
 signals:
     void foregroundChanged(QColor color);
     void backgroundChanged(QColor color);
+    void activeChanged(bool foreground);
 
 private:
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
+    bool foregroundActive_ = true;
 };
 
 // Horizontal hue spectrum; emits the hue under the pointer.

@@ -1,5 +1,6 @@
 #include "theme.h"
 
+#include <QtCore/QString>
 #include <QtGui/QColor>
 #include <QtGui/QPalette>
 #include <QtWidgets/QApplication>
@@ -104,6 +105,104 @@ QPalette paletteFor(int level)
     return pal;
 }
 
+struct ColorToken {
+    const char* key;
+    QColor color;
+};
+
+// ponytail: derived from the existing dark ramp; exact CS6 swatches are
+// unsourced (M23 open question), so the stylesheet only re-colours surfaces.
+QString styleSheetFor(const Ramp& ramp)
+{
+    const ColorToken tokens[] = {
+        {"${window}", ramp.window},
+        {"${windowText}", ramp.windowText},
+        {"${base}", ramp.base},
+        {"${alternateBase}", ramp.alternateBase},
+        {"${text}", ramp.text},
+        {"${button}", ramp.button},
+        {"${buttonText}", ramp.buttonText},
+        {"${highlight}", ramp.highlight},
+        {"${highlightedText}", ramp.highlightedText},
+        {"${toolTipBase}", ramp.toolTipBase},
+        {"${toolTipText}", ramp.toolTipText},
+        {"${link}", ramp.link},
+        {"${disabledText}", ramp.disabledText},
+        {"${border}", ramp.window.darker(135)},
+        {"${hover}", ramp.button.lighter(120)},
+        {"${pressed}", ramp.button.darker(120)},
+        {"${activeTab}", ramp.window.lighter(130)},
+    };
+
+    QString qss = QStringLiteral(R"(
+QMainWindow { background: ${window}; }
+QMainWindow::separator { background: ${border}; width: 3px; height: 3px; }
+
+QMenuBar { background: ${window}; color: ${windowText}; border-bottom: 1px solid ${border}; }
+QMenuBar::item { background: transparent; color: ${windowText}; padding: 4px 8px; }
+QMenuBar::item:selected { background: ${highlight}; color: ${highlightedText}; }
+QMenuBar::item:pressed { background: ${pressed}; color: ${buttonText}; }
+
+QMenu { background: ${base}; color: ${text}; border: 1px solid ${border}; }
+QMenu::item { background: transparent; padding: 4px 22px; }
+QMenu::item:selected { background: ${highlight}; color: ${highlightedText}; }
+QMenu::item:disabled { color: ${disabledText}; }
+QMenu::separator { background: ${border}; height: 1px; margin: 4px 6px; }
+
+QToolBar { background: ${window}; color: ${windowText}; border: 0; spacing: 2px; padding: 2px; }
+QToolBar::separator { background: ${border}; width: 1px; margin: 3px 2px; }
+QToolBar#optionsBar { border-bottom: 1px solid ${border}; }
+
+QToolButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 3px; }
+QToolButton:hover { background: ${hover}; border-color: ${highlight}; }
+QToolButton:pressed { background: ${pressed}; }
+QToolButton:checked { background: ${pressed}; border-color: ${highlight}; color: ${buttonText}; }
+QToolButton:disabled { color: ${disabledText}; }
+
+QDockWidget { color: ${windowText}; }
+QDockWidget::title { background: ${window}; color: ${windowText}; padding: 3px 6px; border-bottom: 1px solid ${border}; }
+QDockWidget::close-button, QDockWidget::float-button { background: transparent; border: 0; }
+
+QTabBar::tab { background: ${window}; color: ${windowText}; border: 1px solid ${border}; border-bottom: 0; padding: 4px 10px; margin-right: 1px; }
+QTabBar::tab:hover { background: ${hover}; }
+QTabBar::tab:selected { background: ${activeTab}; color: ${windowText}; }
+QTabBar::tab:disabled { color: ${disabledText}; }
+
+QTabWidget::pane { border: 1px solid ${border}; background: ${base}; }
+QTabWidget::tab-bar { alignment: left; }
+
+QStatusBar { background: ${window}; color: ${windowText}; border-top: 1px solid ${border}; }
+QStatusBar::item { border: 0; }
+
+QScrollBar:vertical { background: ${window}; width: 12px; border: 0; margin: 0; }
+QScrollBar::handle:vertical { background: ${button}; min-height: 24px; border-radius: 3px; margin: 2px; }
+QScrollBar::handle:vertical:hover { background: ${hover}; }
+QScrollBar:horizontal { background: ${window}; height: 12px; border: 0; margin: 0; }
+QScrollBar::handle:horizontal { background: ${button}; min-width: 24px; border-radius: 3px; margin: 2px; }
+QScrollBar::handle:horizontal:hover { background: ${hover}; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { background: transparent; border: 0; width: 0; height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+QToolTip { background: ${toolTipBase}; color: ${toolTipText}; border: 1px solid ${border}; padding: 2px; }
+
+QListView, QTreeView, QTableView { background: ${base}; color: ${text}; border: 1px solid ${border}; alternate-background-color: ${alternateBase}; selection-background-color: ${highlight}; selection-color: ${highlightedText}; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit { background: ${base}; color: ${text}; border: 1px solid ${border}; border-radius: 2px; padding: 1px 2px; }
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled, QPlainTextEdit:disabled { color: ${disabledText}; }
+QComboBox QAbstractItemView { background: ${base}; color: ${text}; border: 1px solid ${border}; selection-background-color: ${highlight}; selection-color: ${highlightedText}; }
+
+QPushButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 4px 10px; }
+QPushButton:hover { background: ${hover}; }
+QPushButton:pressed { background: ${pressed}; }
+QPushButton:disabled { color: ${disabledText}; }
+)");
+
+    for (const ColorToken& token : tokens) {
+        qss.replace(QLatin1String(token.key), token.color.name(QColor::HexRgb));
+    }
+    return qss;
+}
+
 } // namespace
 
 int Theme::clampLevel(int level)
@@ -117,12 +216,17 @@ int Theme::clampLevel(int level)
     return level;
 }
 
+QString Theme::styleSheet(int level)
+{
+    return styleSheetFor(kRamps[clampLevel(level)]);
+}
+
 void Theme::apply(int level)
 {
     const int clamped = clampLevel(level);
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
-    const QPalette pal = paletteFor(clamped);
-    qApp->setPalette(pal);
+    qApp->setPalette(paletteFor(clamped));
+    qApp->setStyleSheet(styleSheet(clamped));
 }
 
 } // namespace pictura

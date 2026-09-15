@@ -52,7 +52,7 @@ namespace {
 
 constexpr int kCanvasColorCount = 4;
 const QColor kCanvasColors[kCanvasColorCount] = {
-    QColor(Qt::darkGray), QColor(Qt::gray), QColor(Qt::black), QColor(Qt::white)};
+    QColor(37, 37, 37), QColor(82, 82, 82), QColor(0, 0, 0), QColor(255, 255, 255)};
 
 constexpr int kRecentLimit = 20;
 
@@ -719,11 +719,21 @@ void PicturaMainWindow::buildPanels()
 
     registerPanel(layersPanel_, Qt::RightDockWidgetArea);
     registerPanel(historyPanel_, Qt::RightDockWidgetArea);
-    registerPanel(navigatorPanel_, Qt::LeftDockWidgetArea);
+    registerPanel(navigatorPanel_, Qt::RightDockWidgetArea);
     registerPanel(colorPanel_, Qt::RightDockWidgetArea);
     registerPanel(swatchesPanel_, Qt::RightDockWidgetArea);
     registerPanel(infoPanel_, Qt::RightDockWidgetArea);
     registerPanel(histogramPanel_, Qt::RightDockWidgetArea);
+
+    tabifyDockWidget(colorPanel_, swatchesPanel_);
+    colorPanel_->raise();
+
+    tabifyDockWidget(layersPanel_, historyPanel_);
+    layersPanel_->raise();
+
+    tabifyDockWidget(navigatorPanel_, infoPanel_);
+    tabifyDockWidget(navigatorPanel_, histogramPanel_);
+    navigatorPanel_->raise();
 }
 
 void PicturaMainWindow::buildTools()
@@ -780,8 +790,11 @@ void PicturaMainWindow::buildTools()
                 }
             });
 
-    toolsDock_ = new Toolbox(tools_, this);
-    registerPanel(toolsDock_, Qt::LeftDockWidgetArea);
+    auto* toolbox = new Toolbox(tools_, colorState_, this);
+    toolsDock_ = toolbox;
+    registerPanel(toolbox, Qt::LeftDockWidgetArea);
+    connect(toolbox, &Toolbox::screenModeRequested, this,
+            [this]() { cycleScreenMode(true); });
 
     optionsBar_ = new OptionsBar(tools_, this);
     addToolBar(optionsBar_);

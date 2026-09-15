@@ -10,7 +10,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
 - Test suite: **465 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M22 archived; canonical specs are
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M23 archived; canonical specs are
   in `openspec/specs/` (52 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
@@ -286,11 +286,39 @@ openspec validate --all --strict
   -D warnings` OK; 465 tests (0 failed, 1 ignored; +26 filter tests); `openspec
   validate --all --strict` 52/52 pre-archive. OpenSpec change m22-artistic-filters
   (capability artistic-filters), archived.
+- **M23** — CS6 UI chrome. `theme.{h,cpp}` gains `Theme::styleSheet(int level)`,
+  a CS6-style QSS built from the four-level dark ramp (menu bar, options bar,
+  dock tabs/title bars, tool buttons, status bar, scrollbars, menus, tooltips,
+  panel content, push buttons); `Theme::apply` now sets the palette then the
+  stylesheet. `toolbox.{h,cpp}` is rebuilt as a two-column icon-button grid
+  (10 tools) replacing the single-column toolbar, plus a
+  `ForegroundBackgroundWidget` (overlapping fg/bg swatches, active target,
+  reset) and a screen-mode button emitting `screenModeRequested()`. `ColorState`
+  gains an active target (`foregroundActive()`/`setForegroundActive()`/
+  `activeChanged`) shared by the Color panel and the toolbox control.
+  `frame.cpp` tabifies the default docks into CS6 groups — Color+Swatches,
+  Layers+History, Navigator+Info+Histogram — and sets the canvas default colour
+  to the CS6 dark grey `QColor(37,37,37)` (the four-entry cycle is unchanged).
+  Reference screenshot: `docs/02-ui-ux/reference/cs6-workspace.png`. Self-test
+  hygiene: an isolated `XDG_STATE_HOME` (`QTemporaryDir`) is set before the frame
+  is constructed, so a user-saved layout cannot affect the checks. Self-test
+  exit codes 59–61, measured identically on fixture and no-argument runs:
+  `m23_stylesheet applied=1 levels=4 distinct=1`;
+  `m23_toolbox dock=1 buttons=11 fgbg=1`; `m23_groups grouped=4/4`. Deferred
+  non-goals: pixel-exact CS6 metrics and icon art, HUD/on-image displays, new
+  panels (Gradients/Patterns/Properties/Adjustments/Libraries/Channels/Paths/
+  Brush), workspace presets/switcher, icon-collapse docks, floating-panel drop
+  zones, and deeper Layers-panel internals beyond M20. Verified:
+  `cmake --build build` OK; both self-tests exit 0 with no FAILs; `cargo fmt
+  --all --check` OK; `cargo clippy --workspace --all-targets -- -D warnings`
+  OK; 465 tests (0 failed, 1 ignored; unchanged — no Rust changes); `openspec
+  validate --all --strict` 53/53 pre-archive. OpenSpec change
+  m23-cs6-ui-chrome (MODIFIED application-shell, tool-framework), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M22 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M23 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -310,14 +338,17 @@ complete.
 
 ## Next: remaining filter families and image modes/bit-depth (propose via OpenSpec first)
 
-M22 is archived; its `artistic-filters` delta lives in `openspec/specs/`. Next up:
+M23 is archived; its `application-shell` and `tool-framework` deltas live in
+`openspec/specs/`. The reference screenshot is at `docs/02-ui-ux/reference/`.
+Next up:
 
 - The remaining filter families (Brush Strokes, Sketch, Texture, Oil Paint) and
-  image modes/bit-depth, then the deferred brush tip families/dynamics.
+  image modes/bit-depth, then further CS6 panel/chrome fidelity and the deferred
+  brush tip families/dynamics.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M22 are archived; their deltas now live in `openspec/specs/`.
+M6 through M23 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -345,3 +376,7 @@ M6 through M22 are archived; their deltas now live in `openspec/specs/`.
   pressure mapping or brush presets yet.
 - Artistic filters are behavioural-parity models without an Adobe oracle; the
   Filter Gallery UI, Smart Filters, and depth/mode gating are not implemented.
+- The CS6 chrome is a defensible dark look, not a pixel-exact match (exact CS6
+  colours/metrics are unsourced).
+- Panel contents beyond M20 and workspace presets/icon-collapse docks are not
+  implemented.

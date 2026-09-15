@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QtCore/QString>
+
 namespace pictura {
 
 // Single source of truth for the application theme. Applies the Fusion style
@@ -12,6 +14,9 @@ public:
 
     // Clamp a level into [0, kLevelCount).
     static int clampLevel(int level);
+
+    // CS6-style chrome QSS for `level`.
+    static QString styleSheet(int level);
 
     // Apply the Fusion style and the palette for `level`. Call once after the
     // QApplication exists, and again whenever the level changes.
