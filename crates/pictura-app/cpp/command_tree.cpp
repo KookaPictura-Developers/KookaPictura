@@ -711,22 +711,28 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Window", "Panels", "Character"}, QStringLiteral("Character"));
     leaf(registry, {"Window", "Panels", "Character Styles"}, QStringLiteral("Character Styles"));
     leaf(registry, {"Window", "Panels", "Clone Source"}, QStringLiteral("Clone Source"));
-    leaf(registry, {"Window", "Panels", "Color"}, QStringLiteral("Color"));
-    leaf(registry, {"Window", "Panels", "Histogram"}, QStringLiteral("Histogram"));
-    leaf(registry, {"Window", "Panels", "History"}, QStringLiteral("History"));
-    leaf(registry, {"Window", "Panels", "Info"}, QStringLiteral("Info"));
+    registry.add(CommandSpec{command_ids::WindowPanelsColor, {"Window", "Panels", "Color"},
+                             QStringLiteral("Color"), QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::WindowPanelsHistogram, {"Window", "Panels", "Histogram"},
+                             QStringLiteral("Histogram"), QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::WindowPanelsHistory, {"Window", "Panels", "History"},
+                             QStringLiteral("History"), QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::WindowPanelsInfo, {"Window", "Panels", "Info"},
+                             QStringLiteral("Info"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Layer Comps"}, QStringLiteral("Layer Comps"));
     registry.add(CommandSpec{command_ids::WindowPanelsLayers, {"Window", "Panels", "Layers"},
                              QStringLiteral("Layers"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Measurement Log"}, QStringLiteral("Measurement Log"));
-    leaf(registry, {"Window", "Panels", "Navigator"}, QStringLiteral("Navigator"));
+    registry.add(CommandSpec{command_ids::WindowPanelsNavigator, {"Window", "Panels", "Navigator"},
+                             QStringLiteral("Navigator"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Notes"}, QStringLiteral("Notes"));
     leaf(registry, {"Window", "Panels", "Paragraph"}, QStringLiteral("Paragraph"));
     leaf(registry, {"Window", "Panels", "Paragraph Styles"}, QStringLiteral("Paragraph Styles"));
     leaf(registry, {"Window", "Panels", "Paths"}, QStringLiteral("Paths"));
     leaf(registry, {"Window", "Panels", "Properties"}, QStringLiteral("Properties"));
     leaf(registry, {"Window", "Panels", "Styles"}, QStringLiteral("Styles"));
-    leaf(registry, {"Window", "Panels", "Swatches"}, QStringLiteral("Swatches"));
+    registry.add(CommandSpec{command_ids::WindowPanelsSwatches, {"Window", "Panels", "Swatches"},
+                             QStringLiteral("Swatches"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Timeline"}, QStringLiteral("Timeline"));
     leaf(registry, {"Window", "Panels", "Tool Presets"}, QStringLiteral("Tool Presets"));
     registry.add(CommandSpec{command_ids::WindowPanelsTools, {"Window", "Panels", "Tools"},

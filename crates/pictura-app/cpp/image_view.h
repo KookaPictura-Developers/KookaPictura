@@ -37,6 +37,9 @@ public:
     void fitOnScreen();
     void actualPixels();
 
+    // Set an absolute zoom about a widget-space anchor (clamped to 0.01x..32x).
+    void setZoom(double zoom, const QPointF& anchor);
+
     double zoom() const { return zoom_; }
     QPointF offset() const { return offset_; }
 
@@ -68,8 +71,6 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
-    void setZoom(double zoom, const QPointF& anchor);
-
     QImage image_;
     QColor canvasColor_{Qt::darkGray};
     double zoom_ = 1.0;

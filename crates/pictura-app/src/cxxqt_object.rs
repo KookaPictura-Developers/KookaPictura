@@ -4,7 +4,7 @@ use core::pin::Pin;
 
 use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QImage, QImageFormat, QString};
+use cxx_qt_lib::{AspectRatioMode, QImage, QImageFormat, QString, TransformationMode};
 use pictura_core::{
     AdjustmentData, BitDepth, BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer,
     PsdRect,
@@ -91,6 +91,44 @@ pub mod qobject {
         /// Visibility flag of layer `i` (false when out of range).
         #[qinvokable]
         fn layer_visible(&self, i: i32) -> bool;
+
+        /// Blend mode of layer `i` as its 4-byte PSD key (e.g. `"mul "`), or
+        /// empty when out of range.
+        #[qinvokable]
+        fn layer_blend(&self, i: i32) -> QString;
+
+        /// Set layer `i`'s blend mode from a 4-byte PSD `key`. Captures history,
+        /// marks dirty, recomposites, and emits [`changed`]. Returns false for an
+        /// unknown key or when layer `i` is out of range, leaving state unchanged.
+        #[qinvokable]
+        fn set_layer_blend(self: Pin<&mut Self>, i: i32, key: &QString) -> bool;
+
+        /// Opacity of layer `i` in `0..=255`, or 0 when out of range.
+        #[qinvokable]
+        fn layer_opacity(&self, i: i32) -> i32;
+
+        /// Set layer `i`'s opacity, clamped to `0..=255`. Captures history, marks
+        /// dirty, recomposites, and emits [`changed`]. Returns false when layer
+        /// `i` is out of range, leaving state unchanged.
+        #[qinvokable]
+        fn set_layer_opacity(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
+
+        /// Rename layer `i`. Captures history, marks dirty, recomposites, and
+        /// emits [`changed`]. Returns false when layer `i` is out of range.
+        #[qinvokable]
+        fn set_layer_name(self: Pin<&mut Self>, i: i32, name: &QString) -> bool;
+
+        /// Swap layer `i` with the neighbour `delta` positions away in the
+        /// bottom-first list. Captures history, marks dirty, recomposites, and
+        /// emits [`changed`]. Returns false when either position is out of range.
+        #[qinvokable]
+        fn move_layer(self: Pin<&mut Self>, i: i32, delta: i32) -> bool;
+
+        /// The RGBA content of layer `i` scaled to fit `size`×`size`, keeping
+        /// the aspect ratio with smooth filtering. Null for group or adjustment
+        /// layers and when `i` or `size` is out of range.
+        #[qinvokable]
+        fn layer_thumbnail(&self, i: i32, size: i32) -> QImage;
 
         /// Set layer `i` visibility, recomposite, and emit [`changed`].
         #[qinvokable]
@@ -248,6 +286,41 @@ pub mod qobject {
         #[qinvokable]
         fn history_depth(&self) -> i32;
 
+        /// Number of labeled history states, including the current one.
+        #[qinvokable]
+        fn history_count(&self) -> i32;
+
+        /// Position of the current history state, in `0..history_count()`.
+        #[qinvokable]
+        fn history_index(&self) -> i32;
+
+        /// Label of history state `i`, or empty when out of range.
+        #[qinvokable]
+        fn history_label(&self, i: i32) -> QString;
+
+        /// Restore history state `i`, recomposite, and emit [`changed`]. Returns
+        /// false when `i` is out of range.
+        #[qinvokable]
+        fn history_jump(self: Pin<&mut Self>, i: i32) -> bool;
+
+        /// Capture the current state as a named restore point. Emits [`changed`]
+        /// so the History panel refreshes. Returns false without a document.
+        #[qinvokable]
+        fn history_add_snapshot(self: Pin<&mut Self>, label: &QString) -> bool;
+
+        /// Number of named restore points (capped at 10).
+        #[qinvokable]
+        fn history_snapshot_count(&self) -> i32;
+
+        /// Label of named restore point `i`, or empty when out of range.
+        #[qinvokable]
+        fn history_snapshot_label(&self, i: i32) -> QString;
+
+        /// Restore named restore point `i`, recomposite, and emit [`changed`].
+        /// Returns false when `i` is out of range.
+        #[qinvokable]
+        fn history_restore_snapshot(self: Pin<&mut Self>, i: i32) -> bool;
+
         /// Remove layer `i`, recomposite, and emit [`changed`].
         #[qinvokable]
         fn remove_layer(self: Pin<&mut Self>, i: i32);
@@ -313,6 +386,13 @@ impl qobject::PictureView {
         view.doc = loaded;
         view.selection = None;
         view.history = History::default();
+        let initial = view.doc.as_ref().map(|doc| Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        });
+        if let Some(snapshot) = initial {
+            view.history.capture(snapshot, "Open");
+        }
         view.path = if ok { Some(path) } else { None };
         view.dirty = false;
         ok
@@ -349,6 +429,13 @@ impl qobject::PictureView {
         view.doc = Some(doc);
         view.selection = None;
         view.history = History::default();
+        let initial = view.doc.as_ref().map(|doc| Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        });
+        if let Some(snapshot) = initial {
+            view.history.capture(snapshot, "New");
+        }
         view.path = None;
         view.dirty = false;
         true
@@ -424,7 +511,6 @@ impl qobject::PictureView {
     }
 
     pub fn set_layer_visible(mut self: Pin<&mut Self>, i: i32, visible: bool) {
-        let snapshot = self.snapshot();
         let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
             match doc.layers.get_mut(i as usize) {
                 Some(layer) => {
@@ -437,37 +523,141 @@ impl qobject::PictureView {
             false
         };
         if changed {
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
+            self.as_mut().record("Layer Visibility");
             self.recomposite();
         }
+    }
+
+    pub fn layer_blend(&self, i: i32) -> QString {
+        self.layer(i)
+            .map(|l| QString::from(blend_key(l.blend).as_str()))
+            .unwrap_or_default()
+    }
+
+    pub fn set_layer_blend(mut self: Pin<&mut Self>, i: i32, key: &QString) -> bool {
+        let key = key.to_string();
+        let bytes = key.as_bytes();
+        if bytes.len() != 4 {
+            return false;
+        }
+        let Some(mode) = BlendMode::from_psd_key([bytes[0], bytes[1], bytes[2], bytes[3]]) else {
+            return false;
+        };
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            match doc.layers.get_mut(i as usize) {
+                Some(layer) => {
+                    layer.blend = mode;
+                    true
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().record("Blend Mode");
+            self.recomposite();
+        }
+        changed
+    }
+
+    pub fn layer_opacity(&self, i: i32) -> i32 {
+        self.layer(i).map_or(0, |l| l.opacity as i32)
+    }
+
+    pub fn set_layer_opacity(mut self: Pin<&mut Self>, i: i32, value: i32) -> bool {
+        let value = value.clamp(0, 255) as u8;
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            match doc.layers.get_mut(i as usize) {
+                Some(layer) => {
+                    layer.opacity = value;
+                    true
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().record("Opacity");
+            self.recomposite();
+        }
+        changed
+    }
+
+    pub fn set_layer_name(mut self: Pin<&mut Self>, i: i32, name: &QString) -> bool {
+        let name = name.to_string();
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            match doc.layers.get_mut(i as usize) {
+                Some(layer) => {
+                    layer.name = name;
+                    true
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().record("Rename Layer");
+            self.recomposite();
+        }
+        changed
+    }
+
+    pub fn move_layer(mut self: Pin<&mut Self>, i: i32, delta: i32) -> bool {
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            let len = doc.layers.len() as i32;
+            let target = i + delta;
+            if i < 0 || i >= len || delta == 0 || target < 0 || target >= len {
+                false
+            } else {
+                doc.layers.swap(i as usize, target as usize);
+                true
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().record("Reorder Layer");
+            self.recomposite();
+        }
+        changed
+    }
+
+    pub fn layer_thumbnail(&self, i: i32, size: i32) -> QImage {
+        if size <= 0 {
+            return QImage::default();
+        }
+        let Some(layer) = self.layer(i) else {
+            return QImage::default();
+        };
+        if layer.is_group || layer.adjustment.is_some() {
+            return QImage::default();
+        }
+        let Some(image) = layer_image(layer) else {
+            return QImage::default();
+        };
+        image.scaled(
+            size,
+            size,
+            AspectRatioMode::KeepAspectRatio,
+            TransformationMode::SmoothTransformation,
+        )
     }
 
     pub fn select_all(mut self: Pin<&mut Self>) {
         let dims = self.rust().doc.as_ref().map(|d| (d.width, d.height));
         if let Some((w, h)) = dims {
-            let snapshot = self.snapshot();
             self.as_mut().rust_mut().selection = Some(Selection::all(w, h));
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
+            self.as_mut().record("Select All");
             self.changed();
         }
     }
 
     pub fn deselect(mut self: Pin<&mut Self>) {
-        let snapshot = self.snapshot();
         self.as_mut().rust_mut().selection = None;
-        if let Some(snapshot) = snapshot {
-            let mut rust = self.as_mut().rust_mut();
-            rust.history.capture(snapshot);
-            rust.dirty = true;
-        }
+        self.as_mut().record("Deselect");
         self.changed();
     }
 
@@ -493,13 +683,8 @@ impl qobject::PictureView {
         };
         match picked {
             Some(selection) => {
-                let snapshot = self.snapshot();
                 self.as_mut().rust_mut().selection = Some(selection);
-                if let Some(snapshot) = snapshot {
-                    let mut rust = self.as_mut().rust_mut();
-                    rust.history.capture(snapshot);
-                    rust.dirty = true;
-                }
+                self.as_mut().record("Magic Wand");
                 self.changed();
                 true
             }
@@ -521,7 +706,6 @@ impl qobject::PictureView {
     /// Merge a document-sized `shape` into the current selection with `mode`,
     /// capturing history and emitting [`changed`]. Returns false without a doc.
     fn apply_selection(mut self: Pin<&mut Self>, shape: Selection, mode: CombineMode) -> bool {
-        let snapshot = self.snapshot();
         {
             let mut rust = self.as_mut().rust_mut();
             if rust.doc.is_none() {
@@ -533,11 +717,8 @@ impl qobject::PictureView {
                 .unwrap_or_else(|| Selection::none(shape.width, shape.height));
             base.combine_with(&shape, mode);
             rust.selection = Some(base);
-            rust.dirty = true;
         }
-        if let Some(snapshot) = snapshot {
-            self.as_mut().rust_mut().history.capture(snapshot);
-        }
+        self.as_mut().record("Selection");
         self.recomposite();
         true
     }
@@ -650,7 +831,6 @@ impl qobject::PictureView {
         if w < 1 || h < 1 {
             return false;
         }
-        let snapshot = self.snapshot();
         let cropped = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -661,20 +841,16 @@ impl qobject::PictureView {
             }
             // Canvas dimensions changed, so the old selection no longer maps.
             rust.selection = None;
-            rust.dirty = true;
             true
         };
         if cropped {
-            if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
-            }
+            self.as_mut().record("Crop");
             self.recomposite();
         }
         cropped
     }
 
     pub fn translate_layer(mut self: Pin<&mut Self>, dx: i32, dy: i32) -> bool {
-        let snapshot = self.snapshot();
         let moved = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -683,10 +859,7 @@ impl qobject::PictureView {
             pictura_render::translate_layer(doc, dx, dy)
         };
         if moved {
-            self.as_mut().rust_mut().dirty = true;
-            if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
-            }
+            self.as_mut().record("Move Layer");
             self.recomposite();
         }
         moved
@@ -739,7 +912,6 @@ impl qobject::PictureView {
         let Some(layer) = adjustment_layer(&kind.to_string(), mask) else {
             return false;
         };
-        let snapshot = self.snapshot();
         let pushed = match self.as_mut().rust_mut().doc.as_mut() {
             Some(doc) => {
                 doc.layers.push(layer);
@@ -748,11 +920,7 @@ impl qobject::PictureView {
             None => false,
         };
         if pushed {
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
+            self.as_mut().record("Adjustment");
             self.recomposite();
         }
         pushed
@@ -771,7 +939,6 @@ impl qobject::PictureView {
                 .as_ref()
                 .map(|selection| selection_to_mask(selection, doc))
         };
-        let snapshot = self.snapshot();
         let applied = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -783,11 +950,7 @@ impl qobject::PictureView {
             pictura_render::apply_filter(layer, &filter, mask.as_ref()).is_ok()
         };
         if applied {
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
+            self.as_mut().record("Filter");
             self.recomposite();
         }
         applied
@@ -800,7 +963,6 @@ impl qobject::PictureView {
         if width < 1 || height < 1 {
             return false;
         }
-        let snapshot = self.snapshot();
         let resized = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -809,12 +971,8 @@ impl qobject::PictureView {
             pictura_render::resize_document(doc, width as u32, height as u32, resample).is_ok()
         };
         if resized {
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
             self.as_mut().rust_mut().selection = None;
+            self.as_mut().record("Image Size");
             self.recomposite();
         }
         resized
@@ -832,7 +990,6 @@ impl qobject::PictureView {
         if width < 1 || height < 1 {
             return false;
         }
-        let snapshot = self.snapshot();
         let resized = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -841,12 +998,8 @@ impl qobject::PictureView {
             pictura_render::resize_canvas_document(doc, width as u32, height as u32, anchor).is_ok()
         };
         if resized {
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
             self.as_mut().rust_mut().selection = None;
+            self.as_mut().record("Canvas Size");
             self.recomposite();
         }
         resized
@@ -856,7 +1009,6 @@ impl qobject::PictureView {
         if !(1..=3).contains(&quarter_turns) {
             return false;
         }
-        let snapshot = self.snapshot();
         let rotated = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -865,45 +1017,29 @@ impl qobject::PictureView {
             pictura_render::rotate_document(doc, quarter_turns as u8).is_ok()
         };
         if rotated {
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
             self.as_mut().rust_mut().selection = None;
+            self.as_mut().record("Rotate");
             self.recomposite();
         }
         rotated
     }
 
     pub fn flip_doc(mut self: Pin<&mut Self>, horizontal: bool) -> bool {
-        let snapshot = self.snapshot();
-        let mut rust = self.as_mut().rust_mut();
-        let Some(doc) = rust.doc.as_mut() else {
-            return false;
-        };
-        pictura_render::flip_document(doc, horizontal);
-        rust.selection = None;
-        rust.dirty = true;
-        if let Some(snapshot) = snapshot {
-            self.as_mut().rust_mut().history.capture(snapshot);
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::flip_document(doc, horizontal);
+            rust.selection = None;
         }
+        self.as_mut().record("Flip");
         self.recomposite();
         true
     }
 
     pub fn undo(mut self: Pin<&mut Self>) -> bool {
-        let current = {
-            let rust = self.rust();
-            let Some(doc) = rust.doc.clone() else {
-                return false;
-            };
-            Snapshot {
-                doc,
-                selection: rust.selection.clone(),
-            }
-        };
-        let restored = self.as_mut().rust_mut().history.undo(current);
+        let restored = self.as_mut().rust_mut().history.undo();
         let Some(snapshot) = restored else {
             return false;
         };
@@ -915,17 +1051,7 @@ impl qobject::PictureView {
     }
 
     pub fn redo(mut self: Pin<&mut Self>) -> bool {
-        let current = {
-            let rust = self.rust();
-            let Some(doc) = rust.doc.clone() else {
-                return false;
-            };
-            Snapshot {
-                doc,
-                selection: rust.selection.clone(),
-            }
-        };
-        let restored = self.as_mut().rust_mut().history.redo(current);
+        let restored = self.as_mut().rust_mut().history.redo();
         let Some(snapshot) = restored else {
             return false;
         };
@@ -948,6 +1074,82 @@ impl qobject::PictureView {
         self.rust().history.depth() as i32
     }
 
+    pub fn history_count(&self) -> i32 {
+        self.rust().history.count() as i32
+    }
+
+    pub fn history_index(&self) -> i32 {
+        self.rust().history.index() as i32
+    }
+
+    pub fn history_label(&self, i: i32) -> QString {
+        if i < 0 {
+            return QString::default();
+        }
+        QString::from(self.rust().history.label(i as usize))
+    }
+
+    pub fn history_jump(mut self: Pin<&mut Self>, i: i32) -> bool {
+        if i < 0 {
+            return false;
+        }
+        let restored = self.as_mut().rust_mut().history.jump(i as usize);
+        let Some(snapshot) = restored else {
+            return false;
+        };
+        let mut rust = self.as_mut().rust_mut();
+        rust.doc = Some(snapshot.doc);
+        rust.selection = snapshot.selection;
+        self.recomposite();
+        true
+    }
+
+    pub fn history_add_snapshot(mut self: Pin<&mut Self>, label: &QString) -> bool {
+        let Some(snapshot) = self.snapshot() else {
+            return false;
+        };
+        self.as_mut()
+            .rust_mut()
+            .history
+            .add_snapshot(&label.to_string(), snapshot);
+        self.changed();
+        true
+    }
+
+    pub fn history_snapshot_count(&self) -> i32 {
+        self.rust().history.snapshot_count() as i32
+    }
+
+    pub fn history_snapshot_label(&self, i: i32) -> QString {
+        if i < 0 {
+            return QString::default();
+        }
+        QString::from(self.rust().history.snapshot_label(i as usize))
+    }
+
+    pub fn history_restore_snapshot(mut self: Pin<&mut Self>, i: i32) -> bool {
+        if i < 0 {
+            return false;
+        }
+        let Some(snapshot) = self.rust().history.snapshot(i as usize) else {
+            return false;
+        };
+        let mut rust = self.as_mut().rust_mut();
+        rust.doc = Some(snapshot.doc);
+        rust.selection = snapshot.selection;
+        self.recomposite();
+        true
+    }
+
+    /// Snapshot the current state, capture it under `label`, and mark dirty.
+    fn record(mut self: Pin<&mut Self>, label: &str) {
+        if let Some(snapshot) = self.snapshot() {
+            let mut rust = self.as_mut().rust_mut();
+            rust.history.capture(snapshot, label);
+            rust.dirty = true;
+        }
+    }
+
     fn snapshot(&self) -> Option<Snapshot> {
         let rust = self.rust();
         let doc = rust.doc.clone()?;
@@ -958,7 +1160,6 @@ impl qobject::PictureView {
     }
 
     pub fn remove_layer(mut self: Pin<&mut Self>, i: i32) {
-        let snapshot = self.snapshot();
         let removed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
             let idx = i as usize;
             if idx < doc.layers.len() {
@@ -971,11 +1172,7 @@ impl qobject::PictureView {
             false
         };
         if removed {
-            if let Some(snapshot) = snapshot {
-                let mut rust = self.as_mut().rust_mut();
-                rust.history.capture(snapshot);
-                rust.dirty = true;
-            }
+            self.as_mut().record("Delete Layer");
             self.recomposite();
         }
     }
@@ -1341,6 +1538,66 @@ fn current_buffer(doc: &Document) -> PixelBuffer {
 /// Convert the document to a packed RGBA `QImage`.
 fn document_to_image(doc: &Document) -> QImage {
     buffer_to_image(&current_buffer(doc))
+}
+
+/// The 4-byte PSD blend key as a `String` (e.g. `"mul "`).
+fn blend_key(mode: BlendMode) -> String {
+    String::from_utf8_lossy(&mode.to_psd_key()).into_owned()
+}
+
+/// Convert a pixel layer's planar channels to an RGBA `QImage`, or `None` for an
+/// empty rect, a missing/wrong-sized color channel, or an alpha mismatch.
+fn layer_image(layer: &Layer) -> Option<QImage> {
+    let width = layer.rect.width();
+    let height = layer.rect.height();
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let (width, height) = (width as u32, height as u32);
+    let plane = (width * height) as usize;
+    let channel = |id: i16| layer.channels.iter().find(|c| c.id == id).map(|c| &c.data);
+
+    let alpha = channel(-1);
+    let buffer = if channel(1).is_none() && channel(2).is_none() {
+        let gray = channel(0)?;
+        if gray.len() != plane {
+            return None;
+        }
+        let mut data = vec![0u8; plane * 2];
+        data[..plane].copy_from_slice(gray);
+        match alpha {
+            Some(a) if a.len() == plane => data[plane..].copy_from_slice(a),
+            Some(_) => return None,
+            None => data[plane..].fill(255),
+        }
+        PixelBuffer {
+            width,
+            height,
+            channels: 2,
+            data,
+        }
+    } else {
+        let (r, g, b) = (channel(0)?, channel(1)?, channel(2)?);
+        if r.len() != plane || g.len() != plane || b.len() != plane {
+            return None;
+        }
+        let mut data = vec![0u8; plane * 4];
+        data[..plane].copy_from_slice(r);
+        data[plane..2 * plane].copy_from_slice(g);
+        data[2 * plane..3 * plane].copy_from_slice(b);
+        match alpha {
+            Some(a) if a.len() == plane => data[3 * plane..].copy_from_slice(a),
+            Some(_) => return None,
+            None => data[3 * plane..].fill(255),
+        }
+        PixelBuffer {
+            width,
+            height,
+            channels: 4,
+            data,
+        }
+    };
+    Some(buffer_to_image(&buffer))
 }
 
 /// Convert a planar 8-bit buffer (1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA)

@@ -56,6 +56,13 @@ add_executable(pictura
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/icons.cpp
     crates/pictura-app/cpp/frame.cpp
+    crates/pictura-app/cpp/panels/layers_panel.cpp
+    crates/pictura-app/cpp/panels/history_panel.cpp
+    crates/pictura-app/cpp/panels/navigator_panel.cpp
+    crates/pictura-app/cpp/panels/color_panel.cpp
+    crates/pictura-app/cpp/panels/swatches_panel.cpp
+    crates/pictura-app/cpp/panels/info_panel.cpp
+    crates/pictura-app/cpp/panels/histogram_panel.cpp
     crates/pictura-app/cpp/tools.cpp
     crates/pictura-app/cpp/toolbox.cpp
     crates/pictura-app/cpp/options_bar.cpp
@@ -67,6 +74,13 @@ add_executable(pictura
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/icons.h
     crates/pictura-app/cpp/frame.h
+    crates/pictura-app/cpp/panels/layers_panel.h
+    crates/pictura-app/cpp/panels/history_panel.h
+    crates/pictura-app/cpp/panels/navigator_panel.h
+    crates/pictura-app/cpp/panels/color_panel.h
+    crates/pictura-app/cpp/panels/swatches_panel.h
+    crates/pictura-app/cpp/panels/info_panel.h
+    crates/pictura-app/cpp/panels/histogram_panel.h
     crates/pictura-app/cpp/tools.h
     crates/pictura-app/cpp/toolbox.h
     crates/pictura-app/cpp/options_bar.h

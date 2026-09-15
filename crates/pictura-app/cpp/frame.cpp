@@ -6,6 +6,13 @@
 #include "image_view.h"
 #include "new_document_dialog.h"
 #include "options_bar.h"
+#include "panels/color_panel.h"
+#include "panels/histogram_panel.h"
+#include "panels/history_panel.h"
+#include "panels/info_panel.h"
+#include "panels/layers_panel.h"
+#include "panels/navigator_panel.h"
+#include "panels/swatches_panel.h"
 #include "session.h"
 #include "theme.h"
 #include "toolbox.h"
@@ -246,6 +253,11 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
 
     connect(view, &PictureView::changed, this, &PicturaMainWindow::refresh);
     connect(entry.canvas, &ImageView::zoomChanged, this, [this](double) { updateStatus(); });
+    connect(entry.canvas, &ImageView::mouseMoved, this, [this](const QPointF& p) {
+        if (infoPanel_) {
+            infoPanel_->setCursorPosition(p);
+        }
+    });
 
     docs_.append(entry);
     const int index = docs_.size() - 1;
@@ -513,31 +525,27 @@ void PicturaMainWindow::setPanelsHidden(bool hidden)
 void PicturaMainWindow::retargetDock()
 {
     PictureView* view = activeView();
+    ImageView* canvas = canvasAt(activeDocumentIndex());
 
-    if (layerList_) {
-        QSignalBlocker blocker(layerList_);
-        layerList_->clear();
-        if (view) {
-            const int count = view->layer_count();
-            for (int i = 0; i < count; ++i) {
-                auto* item = new QListWidgetItem(QStringLiteral("%1  [%2]")
-                                                     .arg(view->layer_name(i), view->layer_kind(i)));
-                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-                item->setCheckState(view->layer_visible(i) ? Qt::Checked : Qt::Unchecked);
-                layerList_->addItem(item);
-            }
-        }
+    if (layersPanel_) {
+        layersPanel_->setView(view);
+        layersPanel_->refresh();
     }
-
-    if (auto* selectionLabel = findChild<QLabel*>(QStringLiteral("selectionLabel"))) {
-        selectionLabel->setText(
-            QStringLiteral("Selection: %1 px").arg(view ? view->selection_count() : 0));
+    if (historyPanel_) {
+        historyPanel_->setView(view);
+        historyPanel_->refresh();
     }
-    if (auto* undo = findChild<QPushButton*>(QStringLiteral("dockUndo"))) {
-        undo->setEnabled(view && view->can_undo());
+    if (navigatorPanel_) {
+        navigatorPanel_->setCanvas(canvas);
+        navigatorPanel_->refresh();
     }
-    if (auto* redo = findChild<QPushButton*>(QStringLiteral("dockRedo"))) {
-        redo->setEnabled(view && view->can_redo());
+    if (infoPanel_) {
+        infoPanel_->setView(view);
+        infoPanel_->refresh();
+    }
+    if (histogramPanel_) {
+        histogramPanel_->setView(view);
+        histogramPanel_->refresh();
     }
 }
 
@@ -685,264 +693,36 @@ void PicturaMainWindow::buildMenus()
 
 void PicturaMainWindow::buildPanels()
 {
-    layersDock_ = new QDockWidget(QStringLiteral("Layers"), this);
-    layersDock_->setObjectName(QStringLiteral("layersPanel"));
+    colorState_ = new ColorState(this);
 
-    auto* panel = new QWidget(layersDock_);
-    auto* panelLayout = new QVBoxLayout(panel);
+    layersPanel_ = new LayersPanel(this);
+    layersPanel_->setObjectName(QStringLiteral("layersPanel"));
 
-    layerList_ = new QListWidget(panel);
-    layerList_->setSelectionMode(QAbstractItemView::SingleSelection);
-    panelLayout->addWidget(layerList_, 1);
+    historyPanel_ = new HistoryPanel(this);
+    historyPanel_->setObjectName(QStringLiteral("historyPanel"));
 
-    auto* adjustmentCombo = new QComboBox(panel);
-    adjustmentCombo->addItem(QStringLiteral("Invert"), QStringLiteral("invert"));
-    adjustmentCombo->addItem(QStringLiteral("Posterize"), QStringLiteral("posterize"));
-    adjustmentCombo->addItem(QStringLiteral("Threshold"), QStringLiteral("threshold"));
-    adjustmentCombo->addItem(QStringLiteral("Brightness/Contrast"),
-                             QStringLiteral("brightness-contrast"));
-    adjustmentCombo->addItem(QStringLiteral("Hue/Saturation"), QStringLiteral("hue-saturation"));
-    panelLayout->addWidget(adjustmentCombo);
+    navigatorPanel_ = new NavigatorPanel(this);
+    navigatorPanel_->setObjectName(QStringLiteral("navigatorPanel"));
 
-    auto* addButton = new QPushButton(QStringLiteral("Add Adjustment"), panel);
-    auto* removeButton = new QPushButton(QStringLiteral("Remove Layer"), panel);
-    panelLayout->addWidget(addButton);
-    panelLayout->addWidget(removeButton);
+    colorPanel_ = new ColorPanel(colorState_, this);
+    colorPanel_->setObjectName(QStringLiteral("colorPanel"));
 
-    auto* filterCombo = new QComboBox(panel);
-    filterCombo->addItem(QStringLiteral("Gaussian Blur"), QStringLiteral("gaussian-blur"));
-    filterCombo->addItem(QStringLiteral("Box Blur"), QStringLiteral("box-blur"));
-    filterCombo->addItem(QStringLiteral("Motion Blur"), QStringLiteral("motion-blur"));
-    filterCombo->addItem(QStringLiteral("Median"), QStringLiteral("median"));
-    filterCombo->addItem(QStringLiteral("Despeckle"), QStringLiteral("despeckle"));
-    filterCombo->addItem(QStringLiteral("Sharpen"), QStringLiteral("sharpen"));
-    filterCombo->addItem(QStringLiteral("Sharpen More"), QStringLiteral("sharpen-more"));
-    filterCombo->addItem(QStringLiteral("Unsharp Mask"), QStringLiteral("unsharp-mask"));
-    filterCombo->addItem(QStringLiteral("Add Noise"), QStringLiteral("add-noise"));
-    filterCombo->addItem(QStringLiteral("Maximum"), QStringLiteral("maximum"));
-    filterCombo->addItem(QStringLiteral("Minimum"), QStringLiteral("minimum"));
-    filterCombo->addItem(QStringLiteral("Offset"), QStringLiteral("offset"));
-    filterCombo->addItem(QStringLiteral("High Pass"), QStringLiteral("high-pass"));
-    filterCombo->addItem(QStringLiteral("Emboss"), QStringLiteral("emboss"));
-    filterCombo->addItem(QStringLiteral("Find Edges"), QStringLiteral("find-edges"));
-    filterCombo->addItem(QStringLiteral("Solarize"), QStringLiteral("solarize"));
-    filterCombo->addItem(QStringLiteral("Mosaic"), QStringLiteral("mosaic"));
-    filterCombo->addItem(QStringLiteral("Crystallize"), QStringLiteral("crystallize"));
-    filterCombo->addItem(QStringLiteral("Facet"), QStringLiteral("facet"));
-    filterCombo->addItem(QStringLiteral("Fragment"), QStringLiteral("fragment"));
-    filterCombo->addItem(QStringLiteral("Mezzotint"), QStringLiteral("mezzotint"));
-    filterCombo->addItem(QStringLiteral("Pointillize"), QStringLiteral("pointillize"));
-    filterCombo->addItem(QStringLiteral("Color Halftone"), QStringLiteral("color-halftone"));
-    filterCombo->addItem(QStringLiteral("Twirl"), QStringLiteral("twirl"));
-    filterCombo->addItem(QStringLiteral("Pinch"), QStringLiteral("pinch"));
-    filterCombo->addItem(QStringLiteral("Spherize"), QStringLiteral("spherize"));
-    filterCombo->addItem(QStringLiteral("Ripple"), QStringLiteral("ripple"));
-    filterCombo->addItem(QStringLiteral("Wave"), QStringLiteral("wave"));
-    filterCombo->addItem(QStringLiteral("Polar Coordinates"), QStringLiteral("polar-coordinates"));
-    filterCombo->addItem(QStringLiteral("Shear"), QStringLiteral("shear"));
-    filterCombo->addItem(QStringLiteral("ZigZag"), QStringLiteral("zigzag"));
-    filterCombo->addItem(QStringLiteral("Ocean Ripple"), QStringLiteral("ocean-ripple"));
-    filterCombo->addItem(QStringLiteral("Clouds"), QStringLiteral("clouds"));
-    filterCombo->addItem(QStringLiteral("Difference Clouds"), QStringLiteral("difference-clouds"));
-    filterCombo->addItem(QStringLiteral("Fibers"), QStringLiteral("fibers"));
-    filterCombo->addItem(QStringLiteral("Lens Flare"), QStringLiteral("lens-flare"));
-    panelLayout->addWidget(filterCombo);
+    swatchesPanel_ = new SwatchesPanel(colorState_, this);
+    swatchesPanel_->setObjectName(QStringLiteral("swatchesPanel"));
 
-    auto* applyFilterButton = new QPushButton(QStringLiteral("Apply Filter"), panel);
-    panelLayout->addWidget(applyFilterButton);
+    infoPanel_ = new InfoPanel(this);
+    infoPanel_->setObjectName(QStringLiteral("infoPanel"));
 
-    auto* selectAllButton = new QPushButton(QStringLiteral("Select all"), panel);
-    auto* wandButton = new QPushButton(QStringLiteral("Magic wand (center)"), panel);
-    auto* deselectButton = new QPushButton(QStringLiteral("Deselect"), panel);
-    auto* selectionRow = new QHBoxLayout();
-    selectionRow->addWidget(selectAllButton);
-    selectionRow->addWidget(wandButton);
-    selectionRow->addWidget(deselectButton);
-    panelLayout->addLayout(selectionRow);
-    auto* selectionLabel = new QLabel(panel);
-    selectionLabel->setObjectName(QStringLiteral("selectionLabel"));
-    panelLayout->addWidget(selectionLabel);
+    histogramPanel_ = new HistogramPanel(this);
+    histogramPanel_->setObjectName(QStringLiteral("histogramPanel"));
 
-    auto* imageHeader = new QLabel(QStringLiteral("Image"), panel);
-    panelLayout->addWidget(imageHeader);
-
-    const QImage image = activeView() ? activeView()->image() : QImage();
-    auto* imageWidthSpin = new QSpinBox(panel);
-    auto* imageHeightSpin = new QSpinBox(panel);
-    imageWidthSpin->setRange(1, 32767);
-    imageHeightSpin->setRange(1, 32767);
-    if (!image.isNull()) {
-        imageWidthSpin->setValue(image.width());
-        imageHeightSpin->setValue(image.height());
-    }
-    auto* resizeCombo = new QComboBox(panel);
-    resizeCombo->addItem(QStringLiteral("Nearest"), QStringLiteral("nearest"));
-    resizeCombo->addItem(QStringLiteral("Bilinear"), QStringLiteral("bilinear"));
-    resizeCombo->addItem(QStringLiteral("Bicubic"), QStringLiteral("bicubic"));
-    auto* imageSizeRow = new QHBoxLayout();
-    imageSizeRow->addWidget(imageWidthSpin);
-    imageSizeRow->addWidget(imageHeightSpin);
-    imageSizeRow->addWidget(resizeCombo);
-    panelLayout->addLayout(imageSizeRow);
-    auto* applyImageSizeButton = new QPushButton(QStringLiteral("Apply Image Size"), panel);
-    panelLayout->addWidget(applyImageSizeButton);
-
-    auto* canvasWidthSpin = new QSpinBox(panel);
-    auto* canvasHeightSpin = new QSpinBox(panel);
-    canvasWidthSpin->setRange(1, 32767);
-    canvasHeightSpin->setRange(1, 32767);
-    if (!image.isNull()) {
-        canvasWidthSpin->setValue(image.width());
-        canvasHeightSpin->setValue(image.height());
-    }
-    auto* anchorCombo = new QComboBox(panel);
-    anchorCombo->addItem(QStringLiteral("Top Left"), QStringLiteral("top-left"));
-    anchorCombo->addItem(QStringLiteral("Top Center"), QStringLiteral("top-center"));
-    anchorCombo->addItem(QStringLiteral("Top Right"), QStringLiteral("top-right"));
-    anchorCombo->addItem(QStringLiteral("Center Left"), QStringLiteral("center-left"));
-    anchorCombo->addItem(QStringLiteral("Center"), QStringLiteral("center"));
-    anchorCombo->addItem(QStringLiteral("Center Right"), QStringLiteral("center-right"));
-    anchorCombo->addItem(QStringLiteral("Bottom Left"), QStringLiteral("bottom-left"));
-    anchorCombo->addItem(QStringLiteral("Bottom Center"), QStringLiteral("bottom-center"));
-    anchorCombo->addItem(QStringLiteral("Bottom Right"), QStringLiteral("bottom-right"));
-    auto* canvasSizeRow = new QHBoxLayout();
-    canvasSizeRow->addWidget(canvasWidthSpin);
-    canvasSizeRow->addWidget(canvasHeightSpin);
-    canvasSizeRow->addWidget(anchorCombo);
-    panelLayout->addLayout(canvasSizeRow);
-    auto* applyCanvasSizeButton = new QPushButton(QStringLiteral("Apply Canvas Size"), panel);
-    panelLayout->addWidget(applyCanvasSizeButton);
-
-    auto* rotateCwButton = new QPushButton(QStringLiteral("Rotate 90° CW"), panel);
-    auto* rotateCcwButton = new QPushButton(QStringLiteral("Rotate 90° CCW"), panel);
-    auto* rotate180Button = new QPushButton(QStringLiteral("Rotate 180°"), panel);
-    auto* flipHorizontalButton = new QPushButton(QStringLiteral("Flip Horizontal"), panel);
-    auto* flipVerticalButton = new QPushButton(QStringLiteral("Flip Vertical"), panel);
-    auto* orientationRow = new QHBoxLayout();
-    orientationRow->addWidget(rotateCwButton);
-    orientationRow->addWidget(rotateCcwButton);
-    orientationRow->addWidget(rotate180Button);
-    orientationRow->addWidget(flipHorizontalButton);
-    orientationRow->addWidget(flipVerticalButton);
-    panelLayout->addLayout(orientationRow);
-
-    auto* undoButton = new QPushButton(QStringLiteral("Undo"), panel);
-    auto* redoButton = new QPushButton(QStringLiteral("Redo"), panel);
-    undoButton->setObjectName(QStringLiteral("dockUndo"));
-    redoButton->setObjectName(QStringLiteral("dockRedo"));
-    auto* historyRow = new QHBoxLayout();
-    historyRow->addWidget(undoButton);
-    historyRow->addWidget(redoButton);
-    panelLayout->addLayout(historyRow);
-
-    layersDock_->setWidget(panel);
-    registerPanel(layersDock_, Qt::RightDockWidgetArea);
-
-    connect(layerList_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) {
-        PictureView* view = activeView();
-        if (!view || !layerList_) {
-            return;
-        }
-        view->set_layer_visible(layerList_->row(item), item->checkState() == Qt::Checked);
-    });
-    connect(addButton, &QPushButton::clicked, this, [this, adjustmentCombo]() {
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        if (view->add_adjustment(adjustmentCombo->currentData().toString())) {
-            refresh();
-            if (layerList_) {
-                layerList_->setCurrentRow(layerList_->count() - 1);
-            }
-        }
-    });
-    connect(removeButton, &QPushButton::clicked, this, [this]() {
-        PictureView* view = activeView();
-        if (!view || !layerList_) {
-            return;
-        }
-        view->remove_layer(layerList_->currentRow());
-        refresh();
-    });
-    connect(applyFilterButton, &QPushButton::clicked, this, [this, filterCombo]() {
-        PictureView* view = activeView();
-        if (view && view->apply_filter(filterCombo->currentData().toString())) {
-            refresh();
-        }
-    });
-    connect(selectAllButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView()) {
-            view->select_all();
-        }
-    });
-    connect(wandButton, &QPushButton::clicked, this, [this]() {
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        const QImage current = view->image();
-        if (!current.isNull()) {
-            view->magic_wand(current.width() / 2, current.height() / 2, 32);
-        }
-    });
-    connect(deselectButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView()) {
-            view->deselect();
-        }
-    });
-    connect(applyImageSizeButton, &QPushButton::clicked, this,
-            [this, imageWidthSpin, imageHeightSpin, resizeCombo]() {
-                PictureView* view = activeView();
-                if (view && view->resize_image(resizeCombo->currentData().toString(),
-                                               imageWidthSpin->value(), imageHeightSpin->value())) {
-                    refresh();
-                }
-            });
-    connect(applyCanvasSizeButton, &QPushButton::clicked, this,
-            [this, canvasWidthSpin, canvasHeightSpin, anchorCombo]() {
-                PictureView* view = activeView();
-                if (view && view->resize_canvas(anchorCombo->currentData().toString(),
-                                                canvasWidthSpin->value(),
-                                                canvasHeightSpin->value())) {
-                    refresh();
-                }
-            });
-    connect(rotateCwButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView(); view && view->rotate_doc(1)) {
-            refresh();
-        }
-    });
-    connect(rotateCcwButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView(); view && view->rotate_doc(3)) {
-            refresh();
-        }
-    });
-    connect(rotate180Button, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView(); view && view->rotate_doc(2)) {
-            refresh();
-        }
-    });
-    connect(flipHorizontalButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView(); view && view->flip_doc(true)) {
-            refresh();
-        }
-    });
-    connect(flipVerticalButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView(); view && view->flip_doc(false)) {
-            refresh();
-        }
-    });
-    connect(undoButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView(); view && view->undo()) {
-            refresh();
-        }
-    });
-    connect(redoButton, &QPushButton::clicked, this, [this]() {
-        if (PictureView* view = activeView(); view && view->redo()) {
-            refresh();
-        }
-    });
+    registerPanel(layersPanel_, Qt::RightDockWidgetArea);
+    registerPanel(historyPanel_, Qt::RightDockWidgetArea);
+    registerPanel(navigatorPanel_, Qt::LeftDockWidgetArea);
+    registerPanel(colorPanel_, Qt::RightDockWidgetArea);
+    registerPanel(swatchesPanel_, Qt::RightDockWidgetArea);
+    registerPanel(infoPanel_, Qt::RightDockWidgetArea);
+    registerPanel(histogramPanel_, Qt::RightDockWidgetArea);
 }
 
 void PicturaMainWindow::buildTools()
@@ -964,6 +744,9 @@ void PicturaMainWindow::buildTools()
     });
     connect(tools_, &ToolController::foregroundSampled, this, [this](const QColor& color) {
         foreground_ = color;
+        if (colorState_) {
+            colorState_->setForeground(color);
+        }
         updateToolHint();
     });
 
@@ -1235,12 +1018,12 @@ void PicturaMainWindow::registerHandlers()
 
     registry_->setHandler(command_ids::WindowPanelsLayers, [this]() {
         QAction* action = registry_->action(command_ids::WindowPanelsLayers);
-        if (layersDock_ && action) {
-            layersDock_->setVisible(action->isChecked());
+        if (layersPanel_ && action) {
+            layersPanel_->setVisible(action->isChecked());
         }
     });
     registry_->setCheckedProvider(command_ids::WindowPanelsLayers,
-                                  [this]() { return layersDock_ && layersDock_->isVisible(); });
+                                  [this]() { return layersPanel_ && layersPanel_->isVisible(); });
 
     registry_->setHandler(command_ids::WindowPanelsTools, [this]() {
         QAction* action = registry_->action(command_ids::WindowPanelsTools);
@@ -1250,6 +1033,60 @@ void PicturaMainWindow::registerHandlers()
     });
     registry_->setCheckedProvider(command_ids::WindowPanelsTools,
                                   [this]() { return toolsDock_ && toolsDock_->isVisible(); });
+
+    registry_->setHandler(command_ids::WindowPanelsNavigator, [this]() {
+        QAction* action = registry_->action(command_ids::WindowPanelsNavigator);
+        if (navigatorPanel_ && action) {
+            navigatorPanel_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::WindowPanelsNavigator,
+                                  [this]() { return navigatorPanel_ && navigatorPanel_->isVisible(); });
+
+    registry_->setHandler(command_ids::WindowPanelsHistory, [this]() {
+        QAction* action = registry_->action(command_ids::WindowPanelsHistory);
+        if (historyPanel_ && action) {
+            historyPanel_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::WindowPanelsHistory,
+                                  [this]() { return historyPanel_ && historyPanel_->isVisible(); });
+
+    registry_->setHandler(command_ids::WindowPanelsColor, [this]() {
+        QAction* action = registry_->action(command_ids::WindowPanelsColor);
+        if (colorPanel_ && action) {
+            colorPanel_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::WindowPanelsColor,
+                                  [this]() { return colorPanel_ && colorPanel_->isVisible(); });
+
+    registry_->setHandler(command_ids::WindowPanelsSwatches, [this]() {
+        QAction* action = registry_->action(command_ids::WindowPanelsSwatches);
+        if (swatchesPanel_ && action) {
+            swatchesPanel_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::WindowPanelsSwatches,
+                                  [this]() { return swatchesPanel_ && swatchesPanel_->isVisible(); });
+
+    registry_->setHandler(command_ids::WindowPanelsInfo, [this]() {
+        QAction* action = registry_->action(command_ids::WindowPanelsInfo);
+        if (infoPanel_ && action) {
+            infoPanel_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::WindowPanelsInfo,
+                                  [this]() { return infoPanel_ && infoPanel_->isVisible(); });
+
+    registry_->setHandler(command_ids::WindowPanelsHistogram, [this]() {
+        QAction* action = registry_->action(command_ids::WindowPanelsHistogram);
+        if (histogramPanel_ && action) {
+            histogramPanel_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::WindowPanelsHistogram,
+                                  [this]() { return histogramPanel_ && histogramPanel_->isVisible(); });
 
     registry_->setHandler(command_ids::HelpAbout, [this]() {
         QMessageBox::about(this, tr("About Kooka Pictura"),

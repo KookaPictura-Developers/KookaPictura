@@ -47,6 +47,12 @@ inline constexpr char ViewScreenModeFullWithMenuBar[] = "view.screenMode.fullWit
 inline constexpr char ViewScreenModeFull[] = "view.screenMode.full";
 inline constexpr char WindowPanelsLayers[] = "window.panels.layers";
 inline constexpr char WindowPanelsTools[] = "window.panels.tools";
+inline constexpr char WindowPanelsNavigator[] = "window.panels.navigator";
+inline constexpr char WindowPanelsHistory[] = "window.panels.history";
+inline constexpr char WindowPanelsColor[] = "window.panels.color";
+inline constexpr char WindowPanelsSwatches[] = "window.panels.swatches";
+inline constexpr char WindowPanelsInfo[] = "window.panels.info";
+inline constexpr char WindowPanelsHistogram[] = "window.panels.histogram";
 inline constexpr char HelpAbout[] = "help.about";
 } // namespace command_ids
 

@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **411 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M19 archived; canonical specs are
-  in `openspec/specs/` (44 capabilities, `validate --all --strict`
+- Test suite: **414 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M20 archived; canonical specs are
+  in `openspec/specs/` (49 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
@@ -42,7 +42,7 @@ openspec validate --all --strict
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
-| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), layer/adjustment dock, tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom), zoom/pan, GPU demo |
+| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), real Layers/History/Navigator/Color/Swatches/Info/Histogram panel docks replacing the debug dock (backed by the document and history models, with a frame-owned `ColorState` fed by the Eyedropper), tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom), zoom/pan, GPU demo |
 
 ## Milestones done
 
@@ -204,11 +204,39 @@ openspec validate --all --strict
   unchanged), `openspec validate --all --strict` 43/43 pre-archive (44 after),
   `guard.sh` OK. OpenSpec change `m19-svg-icons` (capabilities `icon-assets`,
   `svg-cursors`), archived.
+- **M20** — Panel parity. `history.rs` becomes a labeled linear model (one
+  labeled state per undoable step, depth 20, plus up to 10 named snapshots);
+  `edit-history` undo/redo semantics are unchanged. Bridge gains
+  `layer_blend`/`set_layer_blend`, `layer_opacity`/`set_layer_opacity`,
+  `set_layer_name`, `move_layer`, and `layer_thumbnail`. Seven `QDockWidget`
+  panels in `crates/pictura-app/cpp/panels/` (`layers_panel`, `history_panel`,
+  `navigator_panel`, `color_panel` + `ColorState`, `swatches_panel`,
+  `info_panel`, `histogram_panel`; objectNames `layersPanel`, `historyPanel`,
+  `navigatorPanel`, `colorPanel`, `swatchesPanel`, `infoPanel`,
+  `histogramPanel`). `frame` registers the docks (replacing the debug dock),
+  rebinds them on active-document change, owns a `ColorState` fed by the
+  Eyedropper (`ToolController::foregroundSampled`), routes
+  `ImageView::mouseMoved` into the Info panel, and implements checkable
+  `Window > Panels` toggles for Navigator/History/Color/Swatches/Info/Histogram
+  in addition to Layers/Tools. `CMakeLists.txt` gains the panel sources.
+  `main.cpp` self-test exit codes 50–52 (`m20_layer count=2 name=1 blend=1
+  badblend=1 opacity=128 dirty=1`; `m20_history states=5 open_label=1 grew=1
+  jump=1 snapshot=1`; `m20_panels registered=7 toggled=7`), and the
+  headless-shutdown hang is fixed by disabling the interactive
+  unsaved-document prompt before the self-test quit timer. Deferred non-goals:
+  group-tree expansion, drag-reorder, layer lock flags, clipping/link/color
+  labels, filter/search row, swatch library file I/O, Info color samplers,
+  Histogram source/cache states, and history branching beyond the bounded
+  stack. Verified: build green, fixture and no-arg self-tests exit 0, `cargo
+  fmt/clippy` clean, 414 tests (0 failed, 1 ignored), `openspec validate --all
+  --strict` 45/45 pre-archive. OpenSpec change m20-panels (capabilities
+  layers-panel, history-panel, navigator-panel, color-swatches-panel,
+  info-histogram-panel), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M19 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M20 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -226,20 +254,18 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M20 (propose via OpenSpec first)
+## Next: painting engine (propose via OpenSpec first)
 
-M19 is archived; its `icon-assets` and `svg-cursors` deltas live in
+M20 is archived; its `layers-panel`, `history-panel`, `navigator-panel`,
+`color-swatches-panel`, and `info-histogram-panel` deltas live in
 `openspec/specs/`. Next up:
 
-- **M20 — Panel parity**: bring the panels to spec per `docs/02-ui-ux/panels/`
-  — the Layers panel (blend/opacity/locks/labels/thumbnails/reorder/context
-  menu), a History panel with labeled states and snapshots, the Navigator,
-  Color/Swatches, and Info/Histogram.
-- Then: the painting engine, remaining filter families, image modes/bit-depth.
+- The painting engine, then the remaining filter families and image
+  modes/bit-depth.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M19 are archived; their deltas now live in `openspec/specs/`.
+M6 through M20 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -256,3 +282,8 @@ M6 through M19 are archived; their deltas now live in `openspec/specs/`.
 - Icon art is a first functional pass; a visual refinement pass can change SVG
   paths without any code change.
 - Cursors render at a single DPR (no per-screen 2×/3× cursor variants yet).
+- The M20 Layers panel shows top-level rows only: group-tree expansion,
+  drag-reorder, layer lock flags, clipping/link/color labels, and a
+  filter/search row are not implemented.
+- Swatch library file I/O, Info color samplers, and Histogram source/cache
+  states are not implemented.

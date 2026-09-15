@@ -17,9 +17,17 @@ class QTabWidget;
 namespace pictura {
 
 class CommandRegistry;
+class ColorPanel;
+class ColorState;
+class HistogramPanel;
+class HistoryPanel;
 class ImageView;
+class InfoPanel;
+class LayersPanel;
+class NavigatorPanel;
 class OptionsBar;
 class PictureView;
+class SwatchesPanel;
 
 // The CS6-shaped application frame: menu bar, tabbed document area, status bar,
 // and dock areas. Owns the UI and the open documents; each document's state
@@ -120,8 +128,14 @@ private:
     QList<DocEntry> docs_;
     QTabWidget* tabs_ = nullptr;
     CommandRegistry* registry_ = nullptr;
-    QDockWidget* layersDock_ = nullptr;
-    QListWidget* layerList_ = nullptr;
+    LayersPanel* layersPanel_ = nullptr;
+    HistoryPanel* historyPanel_ = nullptr;
+    NavigatorPanel* navigatorPanel_ = nullptr;
+    ColorState* colorState_ = nullptr;
+    ColorPanel* colorPanel_ = nullptr;
+    SwatchesPanel* swatchesPanel_ = nullptr;
+    InfoPanel* infoPanel_ = nullptr;
+    HistogramPanel* histogramPanel_ = nullptr;
     ToolController* tools_ = nullptr;
     OptionsBar* optionsBar_ = nullptr;
     QDockWidget* toolsDock_ = nullptr;

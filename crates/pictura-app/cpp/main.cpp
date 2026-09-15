@@ -959,6 +959,81 @@ int main(int argc, char* argv[])
                 std::fprintf(stderr, "pictura self-test: FAIL: eyedropper wrong\n");
                 return 46;
             }
+
+            // M20: layer property getters/setters round-trip and mark dirty.
+            frame.openPath(psdPath);
+            pictura::PictureView* propView = frame.activeView();
+            const int m20Count = propView ? propView->layer_count() : -1;
+            const int m20BaseOpacity = propView ? propView->layer_opacity(0) : -1;
+            const bool renameOk =
+                propView && propView->set_layer_name(0, QStringLiteral("Renamed"));
+            const bool renamedOk =
+                propView && propView->layer_name(0) == QStringLiteral("Renamed");
+            const bool dirtyAfterRename = propView && propView->is_dirty();
+            const bool blendOk =
+                propView && propView->set_layer_blend(0, QStringLiteral("mul "));
+            const bool blendRoundTrip =
+                propView && propView->layer_blend(0) == QStringLiteral("mul ");
+            const bool badBlendRejected =
+                propView && !propView->set_layer_blend(0, QStringLiteral("zzzz"))
+                && propView->layer_blend(0) == QStringLiteral("mul ");
+            const bool opacityOk = propView && propView->set_layer_opacity(0, 128);
+            const int roundTripOpacity = propView ? propView->layer_opacity(0) : -1;
+            const bool clampOk = propView && propView->set_layer_opacity(0, 9999);
+            const int clampedOpacity = propView ? propView->layer_opacity(0) : -1;
+            std::fprintf(stderr,
+                         "pictura self-test: m20_layer count=%d name=%d blend=%d badblend=%d "
+                         "opacity=%d dirty=%d\n",
+                         m20Count,
+                         renameOk && renamedOk ? 1 : 0,
+                         blendOk && blendRoundTrip ? 1 : 0,
+                         badBlendRejected ? 1 : 0,
+                         roundTripOpacity,
+                         dirtyAfterRename ? 1 : 0);
+            std::fflush(stderr);
+            if (m20Count != 2 || !renameOk || !renamedOk || !dirtyAfterRename || !blendOk
+                || !blendRoundTrip || !badBlendRejected || !opacityOk || roundTripOpacity != 128
+                || !clampOk || clampedOpacity != 255) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M20 layer properties wrong\n");
+                return 50;
+            }
+
+            // M20: labeled history, jump restore, and named snapshots.
+            const int histBefore = propView ? propView->history_count() : -1;
+            const bool histOpenLabel =
+                propView && histBefore >= 1 && !propView->history_label(0).isEmpty();
+            const bool histMutated = propView && propView->set_layer_opacity(0, 64);
+            const int histAfter = propView ? propView->history_count() : -1;
+            const bool histGrew = histAfter == histBefore + 1;
+            const bool histTopLabel =
+                propView && histAfter >= 1 && !propView->history_label(histAfter - 1).isEmpty();
+            const bool histAtTop = propView && propView->history_index() == histAfter - 1;
+            const bool histJump = propView && propView->history_jump(0);
+            const bool histAtZero = propView && propView->history_index() == 0;
+            const int restoredOpacity = propView ? propView->layer_opacity(0) : -1;
+            const bool opacityRestored = restoredOpacity == m20BaseOpacity;
+            const bool histJumpBack = propView && propView->history_jump(histAfter - 1);
+            const bool snapAdded =
+                propView && propView->history_add_snapshot(QStringLiteral("Checkpoint"));
+            const int snapCount = propView ? propView->history_snapshot_count() : -1;
+            const bool snapLabelOk =
+                propView && propView->history_snapshot_label(0) == QStringLiteral("Checkpoint");
+            const bool snapRestored = propView && propView->history_restore_snapshot(0);
+            std::fprintf(stderr,
+                         "pictura self-test: m20_history states=%d open_label=%d grew=%d "
+                         "jump=%d snapshot=%d\n",
+                         histBefore,
+                         histOpenLabel ? 1 : 0,
+                         histGrew ? 1 : 0,
+                         histJump && histAtZero && opacityRestored && histJumpBack ? 1 : 0,
+                         snapAdded && snapCount >= 1 && snapLabelOk && snapRestored ? 1 : 0);
+            std::fflush(stderr);
+            if (!histOpenLabel || !histMutated || !histGrew || !histTopLabel || !histAtTop
+                || !histJump || !histAtZero || !opacityRestored || !histJumpBack || !snapAdded
+                || snapCount < 1 || !snapLabelOk || !snapRestored) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M20 history wrong\n");
+                return 51;
+            }
         }
 
         // M19: every documented asset id resolves from the Qt resource
@@ -1073,6 +1148,65 @@ int main(int argc, char* argv[])
             return 49;
         }
 
+        // M20: the seven panel docks are registered and their menu actions
+        // toggle them on and off.
+        const QStringList expectedPanelDocks = {
+            QStringLiteral("layersPanel"),
+            QStringLiteral("historyPanel"),
+            QStringLiteral("navigatorPanel"),
+            QStringLiteral("colorPanel"),
+            QStringLiteral("swatchesPanel"),
+            QStringLiteral("infoPanel"),
+            QStringLiteral("histogramPanel"),
+        };
+        const QSet<QString>& registeredPanels = frame.panelObjectNames();
+        int panelsRegistered = 0;
+        for (const QString& name : expectedPanelDocks) {
+            if (registeredPanels.contains(name)) {
+                ++panelsRegistered;
+            }
+        }
+
+        const QStringList panelCommands = {
+            QStringLiteral("window.panels.layers"),
+            QStringLiteral("window.panels.navigator"),
+            QStringLiteral("window.panels.history"),
+            QStringLiteral("window.panels.color"),
+            QStringLiteral("window.panels.swatches"),
+            QStringLiteral("window.panels.info"),
+            QStringLiteral("window.panels.histogram"),
+        };
+        int panelsToggled = 0;
+        for (const QString& id : panelCommands) {
+            QAction* action = frame.registry()->action(id);
+            const QString objectName =
+                id.section(QLatin1Char('.'), -1) + QStringLiteral("Panel");
+            QDockWidget* dock = frame.findChild<QDockWidget*>(objectName);
+            if (!action || !dock) {
+                continue;
+            }
+            const bool before = dock->isVisible();
+            action->setChecked(!before);
+            frame.registry()->dispatch(id);
+            const bool toggled = dock->isVisible() != before;
+            action->setChecked(!dock->isVisible());
+            frame.registry()->dispatch(id);
+            const bool restored = dock->isVisible() == before;
+            if (toggled && restored) {
+                ++panelsToggled;
+            }
+        }
+        std::fprintf(stderr,
+                     "pictura self-test: m20_panels registered=%d toggled=%d\n",
+                     panelsRegistered,
+                     panelsToggled);
+        std::fflush(stderr);
+        if (panelsRegistered != expectedPanelDocks.size()
+            || panelsToggled != panelCommands.size()) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M20 panels wrong\n");
+            return 52;
+        }
+
         pictura::ImageView* canvas = frame.imageView();
         if (!canvas) {
             std::fprintf(stderr, "pictura self-test: FAIL: no active canvas\n");
@@ -1090,6 +1224,10 @@ int main(int argc, char* argv[])
                      "pictura self-test: zoom=%.3f pan_ok=1\n",
                      canvas->zoom());
         std::fflush(stderr);
+        // The self-test leaves dirty documents behind; headless shutdown closes
+        // the window and must discard them without opening a modal prompt.
+        pictura::setUnsavedPromptInteractive(false);
+        pictura::setNonInteractiveUnsavedChoice(pictura::UnsavedChoice::Discard);
         QTimer::singleShot(2000, &app, &QCoreApplication::quit);
     }
 
