@@ -53,6 +53,14 @@ inline constexpr char WindowPanelsColor[] = "window.panels.color";
 inline constexpr char WindowPanelsSwatches[] = "window.panels.swatches";
 inline constexpr char WindowPanelsInfo[] = "window.panels.info";
 inline constexpr char WindowPanelsHistogram[] = "window.panels.histogram";
+inline constexpr char WindowPanelsGradients[] = "window.panels.gradients";
+inline constexpr char WindowPanelsPatterns[] = "window.panels.patterns";
+inline constexpr char WindowPanelsProperties[] = "window.panels.properties";
+inline constexpr char WindowPanelsAdjustments[] = "window.panels.adjustments";
+inline constexpr char WindowPanelsLibraries[] = "window.panels.libraries";
+inline constexpr char WindowPanelsChannels[] = "window.panels.channels";
+inline constexpr char WindowPanelsPaths[] = "window.panels.paths";
+inline constexpr char WindowPanelsActions[] = "window.panels.actions";
 inline constexpr char HelpAbout[] = "help.about";
 } // namespace command_ids
 

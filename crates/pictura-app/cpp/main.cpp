@@ -11,6 +11,8 @@
 #include <QtGui/QPalette>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDockWidget>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QToolBar>
 #include <QtWidgets/QToolButton>
 
 #include <cstdint>
@@ -1488,28 +1490,120 @@ int main(int argc, char* argv[])
             return 60;
         }
 
-        QDockWidget* m23Color = frame.findChild<QDockWidget*>(QStringLiteral("colorPanel"));
-        QDockWidget* m23Swatch = frame.findChild<QDockWidget*>(QStringLiteral("swatchesPanel"));
-        QDockWidget* m23Layers = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
-        QDockWidget* m23History = frame.findChild<QDockWidget*>(QStringLiteral("historyPanel"));
-        QDockWidget* m23Navigator = frame.findChild<QDockWidget*>(QStringLiteral("navigatorPanel"));
-        QDockWidget* m23Info = frame.findChild<QDockWidget*>(QStringLiteral("infoPanel"));
-        QDockWidget* m23Histogram = frame.findChild<QDockWidget*>(QStringLiteral("histogramPanel"));
-        const bool m23ColorGroup = m23Color && m23Swatch
-            && frame.tabifiedDockWidgets(m23Color).contains(m23Swatch);
-        const bool m23LayersGroup = m23Layers && m23History
-            && frame.tabifiedDockWidgets(m23Layers).contains(m23History);
-        const bool m23NavInfoGroup = m23Navigator && m23Info
-            && frame.tabifiedDockWidgets(m23Navigator).contains(m23Info);
-        const bool m23NavHistGroup = m23Navigator && m23Histogram
-            && frame.tabifiedDockWidgets(m23Navigator).contains(m23Histogram);
-        const int m23Groups = (m23ColorGroup ? 1 : 0) + (m23LayersGroup ? 1 : 0)
-            + (m23NavInfoGroup ? 1 : 0) + (m23NavHistGroup ? 1 : 0);
-        std::fprintf(stderr, "pictura self-test: m23_groups grouped=%d/4\n", m23Groups);
+        // M24: CS6 right side. 61 default dock groups, 62 the new panels,
+        // 63 the icon rail toggling a collapsed panel.
+        auto m24Dock = [&frame](const char* name) {
+            return frame.findChild<QDockWidget*>(QString::fromLatin1(name));
+        };
+        QDockWidget* m24Color = m24Dock("colorPanel");
+        QDockWidget* m24Swatch = m24Dock("swatchesPanel");
+        QDockWidget* m24Gradients = m24Dock("gradientsPanel");
+        QDockWidget* m24Patterns = m24Dock("patternsPanel");
+        QDockWidget* m24Properties = m24Dock("propertiesPanel");
+        QDockWidget* m24Adjustments = m24Dock("adjustmentsPanel");
+        QDockWidget* m24Libraries = m24Dock("librariesPanel");
+        QDockWidget* m24Layers = m24Dock("layersPanel");
+        QDockWidget* m24Channels = m24Dock("channelsPanel");
+        QDockWidget* m24Paths = m24Dock("pathsPanel");
+        auto m24Tabbed = [&frame](QDockWidget* base, QDockWidget* member) {
+            return base && member && frame.tabifiedDockWidgets(base).contains(member);
+        };
+        int m24Groups = 0;
+        m24Groups += m24Tabbed(m24Color, m24Swatch) ? 1 : 0;
+        m24Groups += m24Tabbed(m24Color, m24Gradients) ? 1 : 0;
+        m24Groups += m24Tabbed(m24Color, m24Patterns) ? 1 : 0;
+        m24Groups += (m24Color && frame.tabifiedDockWidgets(m24Color).size() == 3) ? 1 : 0;
+        m24Groups += m24Tabbed(m24Properties, m24Adjustments) ? 1 : 0;
+        m24Groups += m24Tabbed(m24Properties, m24Libraries) ? 1 : 0;
+        m24Groups += m24Tabbed(m24Layers, m24Channels) ? 1 : 0;
+        m24Groups += m24Tabbed(m24Layers, m24Paths) ? 1 : 0;
+        std::fprintf(stderr, "pictura self-test: m24_groups grouped=%d/8\n", m24Groups);
         std::fflush(stderr);
-        if (m23Groups != 4) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M23 dock grouping wrong\n");
+        if (m24Groups != 8) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M24 dock grouping wrong\n");
             return 61;
+        }
+
+        const QStringList m24PanelNames = {
+            QStringLiteral("gradientsPanel"),
+            QStringLiteral("patternsPanel"),
+            QStringLiteral("propertiesPanel"),
+            QStringLiteral("adjustmentsPanel"),
+            QStringLiteral("librariesPanel"),
+            QStringLiteral("channelsPanel"),
+            QStringLiteral("pathsPanel"),
+            QStringLiteral("actionsPanel"),
+        };
+        int m24Found = 0;
+        for (const QString& name : m24PanelNames) {
+            if (frame.findChild<QDockWidget*>(name)) {
+                ++m24Found;
+            }
+        }
+        int m24PropsEmpty = 0;
+        if (m24Properties) {
+            for (QLabel* label : m24Properties->findChildren<QLabel*>()) {
+                if (label->text().contains(QStringLiteral("No Properties"))) {
+                    m24PropsEmpty = 1;
+                    break;
+                }
+            }
+        }
+        std::fprintf(stderr,
+                     "pictura self-test: m24_panels found=%d/8 properties_empty=%d\n",
+                     m24Found,
+                     m24PropsEmpty);
+        std::fflush(stderr);
+        if (m24Found != 8 || m24PropsEmpty != 1) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M24 panels wrong\n");
+            return 62;
+        }
+
+        QToolBar* m24Rail = frame.findChild<QToolBar*>(QStringLiteral("panelRail"));
+        int m24RailActions = 0;
+        if (m24Rail) {
+            for (QAction* action : m24Rail->actions()) {
+                if (!action->isSeparator()) {
+                    ++m24RailActions;
+                }
+            }
+        }
+        QDockWidget* m24Actions = m24Dock("actionsPanel");
+        int m24Toggled = 0;
+        int m24Synced = 0;
+        if (m24Rail && m24Actions) {
+            m24Actions->hide();
+            const QString command = QStringLiteral("window.panels.actions");
+            QAction* railAction = nullptr;
+            for (QAction* action : m24Rail->actions()) {
+                if (action->data().toString() == command) {
+                    railAction = action;
+                    break;
+                }
+            }
+            QAction* commandAction = frame.registry()->action(command);
+            if (railAction && commandAction) {
+                commandAction->setChecked(true);
+                frame.registry()->dispatch(command);
+                const bool shown = m24Actions->isVisible();
+                const bool railShown = railAction->isChecked();
+                commandAction->setChecked(false);
+                frame.registry()->dispatch(command);
+                const bool hidden = !m24Actions->isVisible();
+                const bool railHidden = !railAction->isChecked();
+                m24Toggled = (shown && hidden) ? 1 : 0;
+                m24Synced = (railShown && railHidden) ? 1 : 0;
+            }
+        }
+        std::fprintf(stderr,
+                     "pictura self-test: m24_rail actions=%d toggled=%d synced=%d\n",
+                     m24RailActions,
+                     m24Toggled,
+                     m24Synced);
+        std::fflush(stderr);
+        if (!m24Rail || m24RailActions < 5 || m24Toggled != 1 || m24Synced != 1) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M24 rail wrong\n");
+            return 63;
         }
 
         pictura::ImageView* canvas = frame.imageView();

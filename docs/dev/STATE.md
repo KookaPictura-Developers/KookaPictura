@@ -10,8 +10,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
 - Test suite: **465 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M23 archived; canonical specs are
-  in `openspec/specs/` (52 capabilities, `validate --all --strict`
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M24 archived; canonical specs are
+  in `openspec/specs/` (53 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
@@ -314,11 +314,38 @@ openspec validate --all --strict
   OK; 465 tests (0 failed, 1 ignored; unchanged — no Rust changes); `openspec
   validate --all --strict` 53/53 pre-archive. OpenSpec change
   m23-cs6-ui-chrome (MODIFIED application-shell, tool-framework), archived.
+- **M24** — Panel rail and right-side placeholders. `panels/placeholder_panel.{h,cpp}`
+  adds one shared `pictura::PlaceholderPanel(title, message, parent)` dock with a
+  centred CS6 empty-state label; `panels/panel_rail.{h,cpp}` adds
+  `pictura::PanelRail`, a vertical icon-only `QToolBar` (objectName `panelRail`).
+  `frame` creates the eight new placeholder docks — objectNames `gradientsPanel`,
+  `patternsPanel`, `propertiesPanel`, `adjustmentsPanel`, `librariesPanel`,
+  `channelsPanel`, `pathsPanel`, `actionsPanel` (Properties shows "No Properties"),
+  structural only, no real functionality yet — and tabifies the right docks into
+  the three CS6 groups Color+Swatches+Gradients+Patterns,
+  Properties+Adjustments+Libraries, and Layers+Channels+Paths (tabify + raise the
+  first). The rail carries five glyph buttons for History, Actions, Info,
+  Navigator, Histogram; each button and its matching `Window > Panels` command
+  share one toggle path, and the button's checked state tracks the dock's
+  visibility. `commands.h`/`command_tree.cpp` gain ids and implemented, checkable
+  `Window > Panels` entries for the eight new panels; `CMakeLists.txt` gains the
+  two new sources. Self-test exit codes 61 (grouping, revised), 62 (panels), and
+  63 (rail), measured identically on fixture and no-argument runs:
+  `m24_groups grouped=8/8`; `m24_panels found=8/8 properties_empty=1`;
+  `m24_rail actions=5 toggled=1 synced=1`. Deferred non-goals: real content for the
+  placeholder panels (gradient/pattern presets, Properties binding, adjustment
+  presets, libraries, channel/path lists, actions), icon-collapse auto-collapse,
+  floating-panel drop zones, workspace presets/switcher, and panel-title-bar menus.
+  Verified: `cmake --build build` OK; both self-tests exit 0 with no FAILs;
+  `cargo fmt --all --check` OK; `cargo clippy --workspace --all-targets --
+  -D warnings` OK; 465 tests (0 failed, 1 ignored; unchanged — no Rust changes);
+  `openspec validate --all --strict` 53/53 pre-archive. OpenSpec change
+  m24-panel-rail (capability panel-rail; MODIFIED application-shell), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M23 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M24 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -336,19 +363,21 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: remaining filter families and image modes/bit-depth (propose via OpenSpec first)
+## Next: placeholder-panel content, then filter families and image modes/bit-depth (propose via OpenSpec first)
 
-M23 is archived; its `application-shell` and `tool-framework` deltas live in
-`openspec/specs/`. The reference screenshot is at `docs/02-ui-ux/reference/`.
+M24 is archived; its `panel-rail` capability and `application-shell` delta live
+in `openspec/specs/`. The reference screenshot is at `docs/02-ui-ux/reference/`.
 Next up:
 
-- The remaining filter families (Brush Strokes, Sketch, Texture, Oil Paint) and
-  image modes/bit-depth, then further CS6 panel/chrome fidelity and the deferred
-  brush tip families/dynamics.
+- Real content for the M24 placeholder panels (gradient/pattern presets,
+  Properties binding, adjustment presets, libraries, channel/path lists,
+  actions), then the remaining filter families (Brush Strokes, Sketch, Texture,
+  Oil Paint) and image modes/bit-depth, then further CS6 panel/chrome fidelity
+  and the deferred brush tip families/dynamics.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M23 are archived; their deltas now live in `openspec/specs/`.
+M6 through M24 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -379,4 +408,7 @@ M6 through M23 are archived; their deltas now live in `openspec/specs/`.
 - The CS6 chrome is a defensible dark look, not a pixel-exact match (exact CS6
   colours/metrics are unsourced).
 - Panel contents beyond M20 and workspace presets/icon-collapse docks are not
+  implemented.
+- The M24 panels are structural placeholders with empty states, not features;
+  icon-collapse, workspace presets, and panel-title-bar menus are not
   implemented.

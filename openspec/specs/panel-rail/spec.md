@@ -1,5 +1,8 @@
-## ADDED Requirements
+# panel-rail Specification
 
+## Purpose
+TBD - created by archiving change m24-panel-rail. Update Purpose after archive.
+## Requirements
 ### Requirement: Panel set
 
 The system SHALL provide dockable panels for Gradients, Patterns, Properties,
@@ -23,8 +26,8 @@ content.
 
 The system SHALL present a narrow vertical icon rail on the right edge of the
 frame with one button per collapsed panel (History, Actions, Info, Navigator,
-Histogram). Each button SHALL show the panel's icon and a tooltip and SHALL be a
-checkable toggle.
+Histogram). Each button SHALL show an identifying glyph (or icon) and a tooltip
+and SHALL be a checkable toggle.
 
 #### Scenario: Rail is present with its panels
 
@@ -52,3 +55,4 @@ and SHALL track visibility changes made from the menu.
 
 - **WHEN** `Window > Panels > Gradients` (or Patterns, Properties, Adjustments, Libraries, Channels, Paths, Actions) is invoked
 - **THEN** that panel is shown or hidden
+
