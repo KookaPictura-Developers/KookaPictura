@@ -33,7 +33,55 @@ fn accelerated_filters() -> Vec<Filter> {
             threshold: 0,
         },
         Filter::HighPass { radius: 3.0 },
+        Filter::SurfaceBlur {
+            radius: 2,
+            threshold: 20,
+        },
+        Filter::SurfaceBlur {
+            radius: 12,
+            threshold: 40,
+        },
+        Filter::Maximum { radius: 5 },
+        Filter::Maximum { radius: 11 },
+        Filter::Minimum { radius: 5 },
+        Filter::Minimum { radius: 11 },
+        Filter::Median { radius: 1 },
+        Filter::Median { radius: 4 },
+        Filter::OilPaint {
+            stylization: 4.0,
+            cleanliness: 5.0,
+            scale: 0.0,
+            bristle_detail: 4.0,
+            angular_direction: 135.0,
+            shine: 2.0,
+        },
+        Filter::OilPaint {
+            stylization: 8.0,
+            cleanliness: 5.0,
+            scale: 10.0,
+            bristle_detail: 10.0,
+            angular_direction: 85.0,
+            shine: 8.0,
+        },
+        custom_filter(),
     ]
+}
+
+/// Non-trivial 5×5 kernel: a centre-weighted blur with `scale != 1` and a
+/// non-zero `offset`, so the KERNEL path's normalize + offset + rounding are
+/// all exercised.
+fn custom_filter() -> Filter {
+    let mut kernel = [[1.0f64; 5]; 5];
+    for row in &mut kernel {
+        row[1] = 2.0;
+        row[2] = 4.0;
+        row[3] = 2.0;
+    }
+    Filter::Custom {
+        kernel,
+        scale: 50.0,
+        offset: 5.0,
+    }
 }
 
 /// A kernel-less filter (the painterly family stays CPU-only).
@@ -188,4 +236,130 @@ fn disabled_gpu_is_byte_identical() {
             assert_eq!(got.data, want.data, "{filter:?} disabled must match oracle");
         }
     }
+}
+
+/// Print-only performance evidence for the heaviest accelerated kernel. The CPU
+/// baseline (~7.1 s at radius 10 per `profile.rs`) dwarfs the GPU path.
+#[test]
+fn surface_blur_1024_gpu_beats_cpu() {
+    if !filter_gpu_available() {
+        println!("no usable Vulkan GPU; skipping Surface Blur speedup check");
+        return;
+    }
+    const BIG: u32 = 1024;
+    let n = (BIG * BIG) as usize;
+    let mut base = PixelBuffer::new(BIG, BIG, 3);
+    for y in 0..BIG {
+        for x in 0..BIG {
+            let i = (y * BIG + x) as usize;
+            base.data[i] = (x % 256) as u8;
+            base.data[n + i] = (y % 256) as u8;
+            base.data[2 * n + i] = ((x + y) % 256) as u8;
+        }
+    }
+    let filter = Filter::SurfaceBlur {
+        radius: 10,
+        threshold: 20,
+    };
+
+    let mut cpu = base.clone();
+    let t = std::time::Instant::now();
+    apply(&filter, &mut cpu).expect("valid parameters");
+    let cpu_ms = t.elapsed().as_secs_f64() * 1e3;
+
+    let mut gpu = base.clone();
+    let t = std::time::Instant::now();
+    let backend = apply_filter_active(&filter, &mut gpu, true).expect("valid parameters");
+    let gpu_ms = t.elapsed().as_secs_f64() * 1e3;
+
+    assert_eq!(backend, Backend::Gpu);
+    assert_parity(&gpu, &cpu, "surface-1024");
+    println!(
+        "SurfaceBlur 1024x1024 r=10 t=20: cpu {cpu_ms:.1} ms, gpu {gpu_ms:.1} ms, {:.1}x speedup",
+        cpu_ms / gpu_ms
+    );
+    assert!(gpu_ms < cpu_ms, "GPU should beat CPU for Surface Blur");
+}
+
+/// Print-only CPU-vs-GPU timing for Median at 1024×1024 (the CPU baseline is
+/// ~1.4 s). No speed assertion: the shader's selection cost is dominated by
+/// eight clamped window scans per byte, which may or may not beat the CPU sort.
+#[test]
+fn median_1024_parity_and_timing() {
+    if !filter_gpu_available() {
+        println!("no usable Vulkan GPU; skipping Median 1024 timing");
+        return;
+    }
+    const BIG: u32 = 1024;
+    let n = (BIG * BIG) as usize;
+    let mut base = PixelBuffer::new(BIG, BIG, 3);
+    for y in 0..BIG {
+        for x in 0..BIG {
+            let i = (y * BIG + x) as usize;
+            base.data[i] = (x % 256) as u8;
+            base.data[n + i] = (y % 256) as u8;
+            base.data[2 * n + i] = ((x * 3 + y) % 256) as u8;
+        }
+    }
+    let filter = Filter::Median { radius: 1 };
+
+    let mut cpu = base.clone();
+    let t = std::time::Instant::now();
+    apply(&filter, &mut cpu).expect("valid parameters");
+    let cpu_ms = t.elapsed().as_secs_f64() * 1e3;
+
+    let mut gpu = base.clone();
+    let t = std::time::Instant::now();
+    let backend = apply_filter_active(&filter, &mut gpu, true).expect("valid parameters");
+    let gpu_ms = t.elapsed().as_secs_f64() * 1e3;
+
+    assert_eq!(backend, Backend::Gpu);
+    assert_parity(&gpu, &cpu, "median-1024");
+    println!("Median 1024x1024 r=1: cpu {cpu_ms:.1} ms, gpu {gpu_ms:.1} ms");
+}
+
+/// Print-only CPU-vs-GPU timing for Oil Paint at 1024×1024 (the CPU baseline
+/// is ~1.4 s). No speed assertion: the multipass GPU path is reported, not
+/// gated on beating the CPU.
+#[test]
+fn oil_paint_1024_parity_and_timing() {
+    if !filter_gpu_available() {
+        println!("no usable Vulkan GPU; skipping Oil Paint 1024 timing");
+        return;
+    }
+    const BIG: u32 = 1024;
+    let n = (BIG * BIG) as usize;
+    let mut base = PixelBuffer::new(BIG, BIG, 3);
+    for y in 0..BIG {
+        for x in 0..BIG {
+            let i = (y * BIG + x) as usize;
+            base.data[i] = (x % 256) as u8;
+            base.data[n + i] = (y % 256) as u8;
+            base.data[2 * n + i] = ((x * 3 + y) % 256) as u8;
+        }
+    }
+    let filter = Filter::OilPaint {
+        stylization: 8.0,
+        cleanliness: 5.0,
+        scale: 8.0,
+        bristle_detail: 5.0,
+        angular_direction: 85.0,
+        shine: 5.0,
+    };
+
+    let mut cpu = base.clone();
+    let t = std::time::Instant::now();
+    apply(&filter, &mut cpu).expect("valid parameters");
+    let cpu_ms = t.elapsed().as_secs_f64() * 1e3;
+
+    let mut gpu = base.clone();
+    let t = std::time::Instant::now();
+    let backend = apply_filter_active(&filter, &mut gpu, true).expect("valid parameters");
+    let gpu_ms = t.elapsed().as_secs_f64() * 1e3;
+
+    assert_eq!(backend, Backend::Gpu);
+    assert_parity(&gpu, &cpu, "oil-paint-1024");
+    println!(
+        "OilPaint 1024x1024 s=8 c=5 sc=8 b=5 a=85 sh=5: cpu {cpu_ms:.1} ms, gpu {gpu_ms:.1} ms"
+    );
 }

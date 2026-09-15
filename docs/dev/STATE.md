@@ -9,8 +9,8 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **519 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M27 archived; canonical specs are
+- Test suite: **523 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M28 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
@@ -40,7 +40,7 @@ openspec validate --all --strict
 | `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters; `artistic` module (15 CS6 Artistic filters with shared `reduce`/`noise`/`texture` helpers) + the four remaining families — Brush Strokes, Sketch, Texture, Oil Paint (29 filters, same shared helpers) |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range; `Selection::{rect,ellipse,polygon}` rasterizers + `CombineMode`/`combine_with` |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
-| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor (default backend: 26 GPU modes + 5 adjustment layers, `Backend`/`composite_active`; GPU-native 8-bit data path) + GPU filter path (`filter_gpu_available`/`apply_filter_active`, nine byte-exact convolution kernels) + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask, GPU-accelerated when `gpu_enabled`) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
+| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor (default backend: 26 GPU modes + 5 adjustment layers, `Backend`/`composite_active`; GPU-native 8-bit data path) + GPU filter path (`filter_gpu_available`/`apply_filter_active`, byte-exact CPU-parity kernels — the nine convolution kernels plus the M28 heavy window/effect kernels Surface Blur, Maximum, Minimum, Median, Custom 5×5, Oil Paint) + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask, GPU-accelerated when `gpu_enabled`) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
 | `pictura-paint` | dab-splatting brush/pencil stroke engine — tip coverage, spacing, flow/opacity, paint modes; depends on `pictura-core` |
 | `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), real Layers/History/Navigator/Color/Swatches/Info/Histogram panel docks replacing the debug dock (backed by the document and history models, with a frame-owned `ColorState` fed by the Eyedropper), tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom/Brush/Pencil), paint bridge (`begin_paint`/`paint_dab`/`end_paint`/`cancel_paint`/`is_painting`) with a live paint options bar, zoom/pan, GPU demo |
@@ -450,6 +450,37 @@ openspec validate --all --strict
   after archive). Deferred: GPU kernels for the painterly/stochastic filter
   families and Oil Paint; GPU painting/brush; on-screen zero-copy present;
   off-GUI-thread compute; Dissolve on GPU.
+- **M28** — GPU heavy filters. `crates/pictura-filters/tests/profile.rs` profiles the
+  CPU filters at 1024² (release) and ranks them by cost; the heavy **deterministic**
+  kernels were then ported onto the M27 GPU filter path. Six new kernels —
+  **Surface Blur, Maximum, Minimum, Median, Custom (5×5), Oil Paint** — match the
+  CPU oracle within ±1 LSB (mostly 0) with alpha bit-identical. Surface Blur is a
+  bilateral `SURFACE` window (spatial Gaussian × luma-range Gaussian, `f32`
+  accumulation, `round_away` quantize); Median is an **exact order statistic**
+  (binary search over the byte value), not a separable approximation;
+  Maximum/Minimum use the morphology window; Custom adds the 5×5 `KERNEL` path.
+  **Oil Paint now runs on the GPU** (four passes: luma → edge-stopping directional
+  aggregation → height/bristle → Lambert/Blinn-Phong shading), resolving the M25
+  CPU-only deferral. The GPU filter path therefore accelerates the previously-named
+  nine kernels plus these six. Measured GPU speedups at 1024² (release, this box):
+  Surface Blur **7161 → 83 ms (~86×)**, Median **1273 → 6.2 ms (~205×)**, Oil Paint
+  **10063 → 15.3 ms (~658×; the brief's baseline was ~1446 ms)**, Custom
+  byte-exact. **Selection is profile-driven:** a filter is GPU-accelerated only if
+  it is high-cost (≥ ~150 ms at 1024²) *and* reaches ±1 LSB. The stochastic/seeded
+  filters stay on the CPU with a byte-identical fallback — `Crystallize`
+  (3114 ms), `Watercolor`, `Conté Crayon`, `Paint Daubs`, `Dry Brush`,
+  `Ocean Ripple`, `Spatter`, `Sponge`, `Palette Knife`, `Add Noise`,
+  `Colored Pencil` — because their RNG stream cannot be reproduced bit-exactly on
+  the GPU; the warps/distort and render filters are likewise deferred. Self-test
+  exit code **73**: `m28_heavy byte_identical=1` (Surface Blur and Median produce
+  identical images through the GPU and CPU paths), identical on fixture and
+  no-argument runs. Verified: `cmake --build build` OK; both self-tests exit 0;
+  `cargo fmt/clippy` clean; **523 tests (0 failed, 1 ignored)** — up from 519;
+  `openspec validate --all --strict` 60/60 pre-archive. OpenSpec change
+  `m28-gpu-heavy-filters` MODIFIES `gpu-filter-acceleration` (no new capability →
+  **59** capabilities after archive). Deferred: stochastic-family GPU kernels via
+  CPU-pre-generated RNG fields, GPU painting/brush, on-screen zero-copy present,
+  off-GUI-thread compute, Dissolve on GPU.
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -508,7 +539,7 @@ documents) still needs a real GUI check.
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M27 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M28 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -526,16 +557,18 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: GPU painterly/stochastic filters and GPU painting, then zero-copy present and off-thread compute, then panel content and image modes (propose via OpenSpec first)
+## Next: GPU painterly/stochastic filters via CPU-generated RNG fields and GPU painting, then zero-copy present and off-thread compute, then panel content and image modes (propose via OpenSpec first)
 
-M27 makes the GPU compositor fast and adds the GPU filter path for the pointwise
-and separable-convolution family; the CPU compositor and `pictura_filters::apply`
-are still the oracles. Next in order:
+M28 makes the GPU filter path cover the heavy deterministic kernels; the CPU
+compositor and `pictura_filters::apply` are still the oracles. Next in order:
 
-- **GPU painterly/stochastic filters and GPU painting** — the M22 Artistic and
-  M25 Brush Strokes/Sketch/Texture families and Oil Paint on the GPU, and the
-  paint dab loop (GPU painting). The stochastic kernels are random and not
-  bit-reproducible, so they are the hard extension.
+- **GPU painterly/stochastic filters and GPU painting** — the remaining M22
+  Artistic and M25 Brush Strokes/Sketch/Texture families (`Watercolor`,
+  `Conté Crayon`, `Paint Daubs`, `Dry Brush`, `Ocean Ripple`, `Spatter`,
+  `Sponge`, `Palette Knife`, `Add Noise`, `Colored Pencil`, `Crystallize`) on the
+  GPU by **pre-generating their seeded RNG fields on the CPU and running only the
+  spatial work on the GPU**, since the RNG stream cannot be reproduced
+  bit-exactly on the GPU, and the paint dab loop (GPU painting).
 - On-screen **zero-copy present** — manual QRhi + `QWindow` swapchain;
   `QRhiWidget` blocks wgpu device adoption (`crates/pictura-app/GPU-INTEROP-NOTES.md`).
 - **Off-GUI-thread compute.**
@@ -546,7 +579,7 @@ are still the oracles. Next in order:
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M27 are archived; their deltas now live in `openspec/specs/`.
+M6 through M28 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -556,8 +589,9 @@ M6 through M27 are archived; their deltas now live in `openspec/specs/`.
   compositor and `pictura_filters::apply` remain the oracles.
 - A `Dissolve` layer or an unsupported adjustment forces a whole-document CPU
   fallback for that composite.
-- Only nine filter kernels (the blur/sharpen/High Pass family) are
-  GPU-accelerated; every other filter falls back to the CPU oracle byte-for-byte.
+- Fifteen filter kernels are GPU-accelerated (the blur/sharpen/High Pass family
+  plus the M28 heavy window/effect set); the stochastic/seeded filters and the
+  warps/distort and render filters fall back to the CPU oracle byte-for-byte.
 - The GPU compositor and filter path are still readback-bound until zero-copy
   present lands.
 - `pictura-app` has one `#[ignore]`d interop test.

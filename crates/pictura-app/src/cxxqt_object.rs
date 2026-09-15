@@ -1764,6 +1764,10 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
     Some(match kind {
         "gaussian-blur" => Filter::GaussianBlur { radius: 5.0 },
         "box-blur" => Filter::BoxBlur { radius: 3 },
+        "surface-blur" => Filter::SurfaceBlur {
+            radius: 10,
+            threshold: 20,
+        },
         "motion-blur" => Filter::MotionBlur {
             angle: 0.0,
             distance: 15,
@@ -2611,6 +2615,13 @@ mod tests {
         assert_eq!(
             filter_from_kind("box-blur"),
             Some(Filter::BoxBlur { radius: 3 })
+        );
+        assert_eq!(
+            filter_from_kind("surface-blur"),
+            Some(Filter::SurfaceBlur {
+                radius: 10,
+                threshold: 20,
+            })
         );
         assert_eq!(
             filter_from_kind("motion-blur"),

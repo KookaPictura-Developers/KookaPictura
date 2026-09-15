@@ -1613,6 +1613,51 @@ int main(int argc, char* argv[])
             return 72;
         }
 
+        // M28: the heavy deterministic kernels. Surface Blur and Median must
+        // produce the same image through the GPU and CPU backends (the M28
+        // kernels are byte-exact, like the M27 set).
+        // 73: both kinds match across backends.
+        pictura::PictureView* m28av = frame.activeView();
+        if (!m28av) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M28 no active view\n");
+            std::fflush(stderr);
+            return 73;
+        }
+        const QStringList m28Kinds = {
+            QStringLiteral("surface-blur"),
+            QStringLiteral("median"),
+        };
+        m28av->set_gpu_compute(true);
+        QList<QImage> m28Gpu;
+        bool m28Heavy = true;
+        for (const QString& kind : m28Kinds) {
+            const QImage m28Before = m28av->image();
+            const bool m28Ok = m28av->apply_filter(kind);
+            const QImage m28After = m28av->image();
+            m28Heavy = m28Heavy && m28Ok && m28After != m28Before;
+            m28Gpu.append(m28After);
+            m28av->undo();
+        }
+        m28av->set_gpu_compute(false);
+        for (int i = 0; i < m28Kinds.size(); ++i) {
+            const bool m28Ok = m28av->apply_filter(m28Kinds.at(i));
+            const QImage m28After = m28av->image();
+            m28Heavy = m28Heavy && m28Ok && m28After == m28Gpu.at(i);
+            // Keep the last CPU result applied: a dangling redo state would
+            // shrink `canvas_move`'s history count.
+            if (i + 1 < m28Kinds.size()) {
+                m28av->undo();
+            }
+        }
+        m28av->set_gpu_compute(true);
+        std::fprintf(stderr, "pictura self-test: m28_heavy byte_identical=%d\n",
+                     m28Heavy ? 1 : 0);
+        std::fflush(stderr);
+        if (!m28Heavy) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M28 heavy byte-identity wrong\n");
+            return 73;
+        }
+
         // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
         int m23Levels = 0;
         for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {
