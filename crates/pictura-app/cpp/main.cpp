@@ -1703,6 +1703,27 @@ int main(int argc, char* argv[])
             return 66;
         }
 
+        // 67: the drag-start cache (base + layer) must not touch history.
+        const int m25CacheHist = m25View->history_count();
+        const bool m25Began = m25View->begin_move_preview();
+        const bool m25BaseOk = !m25View->move_preview_base().isNull();
+        const bool m25LayerOk = !m25View->move_preview_layer().isNull();
+        const bool m25CacheHistOk = m25View->history_count() == m25CacheHist;
+        m25View->end_move_preview();
+        const bool m25HistUnchanged = m25View->history_count() == m25CacheHist;
+        std::fprintf(stderr,
+                     "pictura self-test: m25_preview_cache began=%d base=%d layer=%d "
+                     "hist_unchanged=%d\n",
+                     m25Began ? 1 : 0,
+                     m25BaseOk ? 1 : 0,
+                     m25LayerOk ? 1 : 0,
+                     (m25CacheHistOk && m25HistUnchanged) ? 1 : 0);
+        std::fflush(stderr);
+        if (!m25Began || !m25BaseOk || !m25LayerOk || !m25CacheHistOk || !m25HistUnchanged) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 preview cache wrong\n");
+            return 67;
+        }
+
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {

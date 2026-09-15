@@ -56,6 +56,14 @@ public:
     void setOverlayPolygon(const QPolygonF& polygon);
     void clearOverlay();
 
+    // Move-tool live preview: draw a cached base plus the moved layer at a live
+    // image-space offset, so the drag never composites the document.
+    void beginMovePreview(const QImage& base, const QImage& layer, const QPointF& layerPos,
+                          double opacity);
+    void setMovePreviewDelta(const QPointF& delta);
+    void endMovePreview();
+    bool movePreviewActive() const { return movePreviewActive_; }
+
     // Map a widget-space point to document/image coordinates.
     QPointF widgetToImage(const QPointF& widgetPos) const;
 
@@ -86,6 +94,13 @@ private:
     bool panning_ = false;
     bool userAdjusted_ = false;
     QPolygonF overlayPolygon_;
+
+    bool movePreviewActive_ = false;
+    QImage moveBase_;
+    QImage moveLayer_;
+    QPointF moveLayerPos_;
+    QPointF moveDelta_;
+    double moveOpacity_ = 1.0;
 };
 
 } // namespace pictura

@@ -357,18 +357,42 @@ checks) is written up in `docs/dev/canvas-view-spec.md`.
   but defers the expensive panel refresh (`retargetDock`) behind a single-shot
   120 ms `QTimer`, so a burst of `changed` signals no longer blocks the canvas
   repaint; tab add/remove/switch force an immediate panel refresh.
-- `cxxqt_object.rs` + `tools.cpp`: the Move tool previews live —
-  `move_preview(dx, dy)` shifts the topmost pixel layer, recomposites and emits
-  `changed` without adding history; on release `commit_move()` records exactly
-  one "Move Layer" state, and undo restores the pre-drag pixels.
+- `cxxqt_object.rs` + `tools.cpp`: the Move tool previews live **without
+  compositing during the drag**. `begin_move_preview()` caches a base image (the
+  document composited with the moved topmost raster layer hidden), the layer's
+  own image, its document-space top-left, and its opacity; `move_preview_base/
+  layer/x/y/opacity` and `end_move_preview()` expose/clear it.
+  `ImageView::beginMovePreview(base, layer, layerPos, opacity)` +
+  `setMovePreviewDelta(delta)` + `endMovePreview()` draw the cached base then the
+  moved layer at the live Qt delta (source-over with `setOpacity`) in
+  `paintEvent`. `ToolController` Move press seeds the preview, move updates only
+  the delta, and release calls `end_move_preview` → `commit_move(dx, dy)` once
+  (a single composite, exactly one "Move Layer" history state) →
+  `endMovePreview`; switching tools or rebinding the canvas cancels it. The old
+  per-event `move_preview(dx, dy)` is retained only for the self-test
+  (`// ponytail: slow path`). One drag = one history state; undo restores the
+  pre-drag pixels.
+- Move-tool root cause, measured: each mouse-move previously ran `move_preview`
+  → `pictura_render::translate_layer` (full composite) plus `document_to_image`
+  (a **second** full composite) and a full planar→RGBA conversion. A single
+  1024×1024 two-layer `composite_rgba` measures ~**257 ms in the debug build**
+  (the old CMake default) and ~**39 ms in the optimized build** (~6.6×). The one
+  remaining cost is the single commit composite on mouse-up; the live preview is
+  source-over only (non-Normal blend modes, masks, and clipping are not
+  reproduced mid-drag, but the committed image is exact).
+- `CMakeLists.txt` now defaults `CMAKE_BUILD_TYPE` to `RelWithDebInfo` when
+  unset; Corrosion maps any non-Debug config to cargo `--release`, so the Rust
+  crate is built optimized too (verified: `build/libpictura_app.a` is the release
+  artifact).
 
-Self-test exit codes 64–66, measured identically on fixture and no-argument
+Self-test exit codes 64–67, measured identically on fixture and no-argument
 runs: `m25_centre offset=(270.691, 5) zoom=1`; `m25_middle_pan delta=(30,15)`;
-`m25_move preview=1 hist=1 undo=1`. Gates green: `cmake --build build`; both
-self-tests exit 0; `cargo fmt/clippy/test` clean (no new Rust tests; the app
-crate stays green). The headless self-test cannot measure frame timing, so the
-interactive feel (pan/zoom/move latency on large documents) still needs a real
-GUI check.
+`m25_move preview=1 hist=1 undo=1`;
+`m25_preview_cache began=1 base=1 layer=1 hist_unchanged=1`. Gates green:
+`cmake --build build`; both self-tests exit 0; `cargo fmt/clippy/test` clean
+(no new Rust tests; the app crate stays green). The headless self-test cannot
+measure frame timing, so the interactive feel (pan/zoom/move latency on large
+documents) still needs a real GUI check.
 
 ## Spec workflow (OpenSpec)
 

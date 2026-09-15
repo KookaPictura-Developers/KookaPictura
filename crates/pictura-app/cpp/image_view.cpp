@@ -141,6 +141,34 @@ void ImageView::clearOverlay()
     update();
 }
 
+void ImageView::beginMovePreview(const QImage& base, const QImage& layer, const QPointF& layerPos,
+                                 double opacity)
+{
+    moveBase_ = base;
+    moveLayer_ = layer;
+    moveLayerPos_ = layerPos;
+    moveDelta_ = QPointF();
+    moveOpacity_ = opacity;
+    movePreviewActive_ = true;
+    update();
+}
+
+void ImageView::setMovePreviewDelta(const QPointF& delta)
+{
+    moveDelta_ = delta;
+    update();
+}
+
+void ImageView::endMovePreview()
+{
+    movePreviewActive_ = false;
+    moveBase_ = QImage();
+    moveLayer_ = QImage();
+    moveDelta_ = QPointF();
+    moveOpacity_ = 1.0;
+    update();
+}
+
 QPointF ImageView::widgetToImage(const QPointF& widgetPos) const
 {
     return (widgetPos - offset_) / zoom_;
@@ -155,7 +183,14 @@ void ImageView::paintEvent(QPaintEvent*)
     }
     painter.translate(offset_);
     painter.scale(zoom_, zoom_);
-    painter.drawImage(QPointF(0.0, 0.0), image_);
+    if (movePreviewActive_ && !moveBase_.isNull()) {
+        painter.drawImage(QPointF(0.0, 0.0), moveBase_);
+        painter.setOpacity(moveOpacity_);
+        painter.drawImage(moveLayerPos_ + moveDelta_, moveLayer_);
+        painter.setOpacity(1.0);
+    } else {
+        painter.drawImage(QPointF(0.0, 0.0), image_);
+    }
 
     if (!overlayPolygon_.isEmpty()) {
         painter.setBrush(Qt::NoBrush);

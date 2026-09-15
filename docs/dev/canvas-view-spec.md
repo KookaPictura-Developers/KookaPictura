@@ -226,11 +226,13 @@ validated on the reference machine.
 
 ---
 
-## 4. Likely hot spots to investigate
+## 4. Hot spots — findings and resolution
 
-Findings from reading the code; **no changes made**.
+Findings from reading the code. Items 1 and 4 (the Move-tool per-event
+composite) are **resolved** in the post-M24 pass; items 2, 3, 5, and 6 remain
+open.
 
-1. **Double full composite per commit, GUI thread.**
+1. **Double full composite per commit, GUI thread — RESOLVED (Move tool).**
    `PictureView::translate_layer` calls `pictura_render::translate_layer`
    (`crates/pictura-render/src/document_ops/crop.rs:51`), which itself calls
    `recompute` (`composite_rgba`) — then `PictureView` calls `recomposite`
@@ -242,6 +244,35 @@ Findings from reading the code; **no changes made**.
    the GUI thread. Confirm with a profiler before optimising; the fix direction
    is to composite once with a dirty-rect/incremental path and cache the packed
    image.
+
+   **Measured (post-M24 pass):** a single 1024×1024 two-layer `composite_rgba`
+   costs ~**257 ms in the debug build** (the old CMake default) and ~**39 ms in
+   the optimized build** (~6.6×). Each Move mouse-move ran `move_preview` →
+   `pictura_render::translate_layer` (full composite) then `document_to_image`
+   (a second full composite) plus a full planar→RGBA conversion, so two
+   composites per pointer event made dragging unusable.
+
+   **Fix 1 — preview in Qt, zero compositing during the drag.** The bridge
+   caches a preview: `begin_move_preview()` stores a base image (the document
+   composited with the moved topmost raster layer hidden), the layer's own
+   image, its document-space top-left, and its opacity; `move_preview_base()`,
+   `move_preview_layer()`, `move_preview_x()`, `move_preview_y()`,
+   `move_preview_opacity()`, and `end_move_preview()` expose/clear it.
+   `commit_move(dx,dy)` applies the real move once (a single composite) and
+   records exactly one "Move Layer" state. The old per-event
+   `move_preview(dx,dy)` is retained only for the self-test (`// ponytail: slow
+   path`). `ImageView::beginMovePreview(base, layer, layerPos, opacity)` +
+   `setMovePreviewDelta(delta)` + `endMovePreview()` draw the cached base then
+   the moved layer at the live delta (source-over with `setOpacity`) in
+   `paintEvent`, so a drag composites nothing. `ToolController` Move press calls
+   `begin_move_preview` and seeds the canvas preview; move only updates the Qt
+   delta; release calls `end_move_preview`, then `commit_move(dx,dy)` once when
+   the delta is non-zero, then `endMovePreview`. Switching tools or rebinding
+   the canvas cancels the preview. The committed image is exact because
+   `commit_move` runs the real renderer. **Remaining known cost:** the single
+   ~39 ms commit composite on mouse-up (item 2's deep clone still applies to
+   it). **Limitation:** the live preview is source-over only — non-Normal blend
+   modes, layer masks, and clipping are not reproduced mid-drag.
 
 2. **Deep document clone for history on every commit.** `record`
    (`cxxqt_object.rs:1332-1338`) calls `snapshot`, which does `doc.clone()`
@@ -263,10 +294,13 @@ Findings from reading the code; **no changes made**.
    `changed`. Investigate throttling/coalescing, per-panel change scoping, and
    decimated histogram sampling.
 
-4. **No live preview in the Move tool.** `ToolController::handleMoved` for Move
-   accumulates delta only (`tools.cpp:301-305`); `translate_layer` runs on
-   release (`tools.cpp:350-357`). This is the direct cause of problem 1 and
-   means any per-event recomposite added naively would make it worse.
+4. **No live preview in the Move tool — RESOLVED.** Originally
+   `ToolController::handleMoved` for Move accumulated delta only
+   (`tools.cpp:301-305`) and `translate_layer` ran on release
+   (`tools.cpp:350-357`), so the layer jumped on mouse-up. Now the drag updates
+   only a Qt-side delta over the cached preview (fix 1 under item 1 above) and
+   `commit_move` runs the real renderer once on release; no per-event
+   recomposite is added.
 
 5. **Pan gating and missing gestures.** `ImageView::mousePressEvent` starts a
    pan only for `Qt::LeftButton` and only when `panEnabled_`
@@ -285,7 +319,9 @@ Findings from reading the code; **no changes made**.
 ## 5. Acceptance checks
 
 These are runnable by hand or as a small test harness with no framework
-requirements.
+requirements. The Move-tool preview and history checks now have an automated
+counterpart in the app self-test (exit codes 64–67; `m25_move preview=1 hist=1
+undo=1` and `m25_preview_cache began=1 base=1 layer=1 hist_unchanged=1`).
 
 1. **Open placement.** Open a PNG/PSD larger than the viewport. The image is
    fully visible and centred; the status-bar zoom is < 100%. Open a document
@@ -296,7 +332,10 @@ requirements.
 3. **Live move.** With the Move tool, drag a layer on a ≥ 24 MP document. The
    pixels follow the cursor continuously (no freeze until release). Release
    produces **exactly one** new History entry labelled "Move Layer"; no
-   intermediate entries. `Ctrl+Z` reverts the whole move in one step.
+   intermediate entries. `Ctrl+Z` reverts the whole move in one step. *(Resolved:
+   the drag composites nothing — it draws a cached base plus the moved layer at
+   the live delta; only mouse-up runs the real renderer once. Verified by
+   `m25_move`/`m25_preview_cache` above.)*
 4. **Move feedback.** With `Show Transform Controls` on, the bounding box and
    handles track the moving layer during the drag and match its final rect.
 5. **Middle-drag pan.** With any active tool (Move, Brush, Marquee), middle-drag
@@ -314,6 +353,9 @@ requirements.
 9. **Move drag does not block.** During a 24 MP Move drag, log GUI-thread time
    per `mouseMoveEvent`; it stays ≤ 2 ms per event and no full-document
    composite runs per event (verified by instrumentation or sampling profiler).
+   *(Resolved: a drag only updates the Qt delta over the cached preview; the
+   single composite runs once on mouse-up — ~39 ms optimized, ~257 ms debug for
+   a 1024×1024 two-layer document.)*
 10. **History integrity.** Pan, zoom, Navigator drag, and tool switches add no
     History entries; only committed moves/edits do.
 

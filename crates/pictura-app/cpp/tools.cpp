@@ -94,6 +94,12 @@ void ToolController::setActiveTool(ToolId id)
     }
     dragging_ = false;
     dragCommitted_ = false;
+    if (canvas_ && canvas_->movePreviewActive()) {
+        canvas_->endMovePreview();
+        if (v) {
+            v->end_move_preview();
+        }
+    }
     if (canvas_) {
         canvas_->clearOverlay();
     }
@@ -176,6 +182,13 @@ void ToolController::unbindCanvas()
         return;
     }
     disconnect(canvas_, nullptr, this, nullptr);
+    if (canvas_->movePreviewActive()) {
+        canvas_->endMovePreview();
+        PictureView* previewView = view();
+        if (previewView) {
+            previewView->end_move_preview();
+        }
+    }
     canvas_->clearOverlay();
     canvas_ = nullptr;
     PictureView* v = view();
@@ -244,13 +257,19 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         return;
     }
     case ToolId::Move:
-        if (!v) {
+        if (!v || !v->begin_move_preview()) {
             return;
         }
         dragging_ = true;
         dragCommitted_ = false;
         anchor_ = last_ = imagePos;
         totalDelta_ = QPointF();
+        if (canvas_) {
+            canvas_->beginMovePreview(
+                v->move_preview_base(), v->move_preview_layer(),
+                QPointF(v->move_preview_x(), v->move_preview_y()),
+                v->move_preview_opacity() / 255.0);
+        }
         return;
     case ToolId::Crop:
         if (!v) {
@@ -306,15 +325,10 @@ void ToolController::handleMoved(const QPointF& imagePos)
 
     switch (active_) {
     case ToolId::Move: {
-        const QPointF d = imagePos - last_;
+        totalDelta_ += imagePos - last_;
         last_ = imagePos;
-        totalDelta_ += d;
-        if (v) {
-            const int dx = qRound(d.x());
-            const int dy = qRound(d.y());
-            if (dx != 0 || dy != 0) {
-                v->move_preview(dx, dy);
-            }
+        if (canvas_) {
+            canvas_->setMovePreviewDelta(totalDelta_);
         }
         return;
     }
@@ -363,8 +377,16 @@ void ToolController::handleReleased(const QPointF& imagePos)
 
     switch (active_) {
     case ToolId::Move: {
-        if (v && (totalDelta_.x() != 0.0 || totalDelta_.y() != 0.0)) {
-            v->commit_move();
+        if (v) {
+            v->end_move_preview();
+            const int dx = qRound(totalDelta_.x());
+            const int dy = qRound(totalDelta_.y());
+            if (dx != 0 || dy != 0) {
+                v->commit_move(dx, dy);
+            }
+        }
+        if (canvas_) {
+            canvas_->endMovePreview();
         }
         return;
     }

@@ -225,13 +225,57 @@ pub mod qobject {
         /// Shift the topmost pixel layer by `(dx, dy)` for a live drag preview:
         /// recomposite and emit [`changed`] but DO NOT add history or mark dirty.
         /// Returns false without a raster layer or for a zero delta.
+        /// ponytail: slow path, retained for the self-test.
         #[qinvokable]
         fn move_preview(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
 
-        /// Commit an in-progress move: capture one "Move Layer" history state,
-        /// mark dirty, and recomposite. Returns false when the document is missing.
+        /// Enter move-preview mode: cache the document composited with the
+        /// topmost raster layer hidden, that layer's own image, its
+        /// document-space top-left, and its opacity (0..=255). Returns false
+        /// without a document or raster layer.
         #[qinvokable]
-        fn commit_move(self: Pin<&mut Self>) -> bool;
+        fn begin_move_preview(self: Pin<&mut Self>) -> bool;
+
+        /// The cached base image (layers with the moved layer hidden); null when
+        /// not previewing.
+        #[qinvokable]
+        fn move_preview_base(&self) -> QImage;
+
+        /// The moved layer's own image; null when not previewing or for a
+        /// non-raster layer.
+        #[qinvokable]
+        fn move_preview_layer(&self) -> QImage;
+
+        /// The moved layer's document-space left edge.
+        #[qinvokable]
+        fn move_preview_x(&self) -> i32;
+
+        /// The moved layer's document-space top edge.
+        #[qinvokable]
+        fn move_preview_y(&self) -> i32;
+
+        /// The moved layer's opacity in `0..=255`.
+        #[qinvokable]
+        fn move_preview_opacity(&self) -> i32;
+
+        /// Leave preview mode and drop the cached images (no document change).
+        #[qinvokable]
+        fn end_move_preview(self: Pin<&mut Self>);
+
+        /// Apply the real move once: shift the topmost raster layer by `(dx, dy)`,
+        /// capture one "Move Layer" history state, mark dirty, refresh the image,
+        /// and emit [`changed`]. Uses a single composite. Returns false when there
+        /// is no document/raster layer.
+        #[qinvokable]
+        fn commit_move(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
+
+        /// No-argument commit kept for the existing C++ tool and self-test, which
+        /// mutate the document through [`move_preview`] before recording. Records
+        /// the already-previewed state and recomposites. Returns false without a
+        /// document.
+        #[qinvokable]
+        #[cxx_name = "commit_move"]
+        fn commit_move_legacy(self: Pin<&mut Self>) -> bool;
 
         /// The composited pixel at `(x, y)` as `0xAARRGGBB`, or 0 when there is
         /// no document or the point is out of bounds.
@@ -422,6 +466,11 @@ pub struct PictureViewRust {
     pending_lasso_mode: String,
     stroke: Option<Stroke>,
     stroke_label: String,
+    move_base: Option<QImage>,
+    move_layer: Option<QImage>,
+    move_x: i32,
+    move_y: i32,
+    move_opacity: i32,
 }
 
 impl qobject::PictureView {
@@ -443,6 +492,11 @@ impl qobject::PictureView {
         view.history = History::default();
         view.stroke = None;
         view.stroke_label.clear();
+        view.move_base = None;
+        view.move_layer = None;
+        view.move_x = 0;
+        view.move_y = 0;
+        view.move_opacity = 0;
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -518,6 +572,11 @@ impl qobject::PictureView {
         view.history = History::default();
         view.stroke = None;
         view.stroke_label.clear();
+        view.move_base = None;
+        view.move_layer = None;
+        view.move_x = 0;
+        view.move_y = 0;
+        view.move_opacity = 0;
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -975,13 +1034,104 @@ impl qobject::PictureView {
         moved
     }
 
-    pub fn commit_move(mut self: Pin<&mut Self>) -> bool {
+    /// Cache the base composite (topmost raster layer hidden), the layer image,
+    /// its document-space origin, and opacity. One composite at drag start.
+    pub fn begin_move_preview(mut self: Pin<&mut Self>) -> bool {
+        let mut rust = self.as_mut().rust_mut();
+        let Some(doc) = rust.doc.as_ref() else {
+            return false;
+        };
+        let Some(index) = topmost_pixel_layer_index(doc) else {
+            return false;
+        };
+        let layer = &doc.layers[index];
+        let Some(layer_image) = layer_image(layer) else {
+            return false;
+        };
+        let (x, y, opacity) = (layer.rect.left, layer.rect.top, layer.opacity as i32);
+        let base = {
+            let mut hidden = doc.clone();
+            hidden.layers[index].visible = false;
+            document_to_image(&hidden)
+        };
+        rust.move_base = Some(base);
+        rust.move_layer = Some(layer_image);
+        rust.move_x = x;
+        rust.move_y = y;
+        rust.move_opacity = opacity;
+        true
+    }
+
+    pub fn move_preview_base(&self) -> QImage {
+        self.rust().move_base.clone().unwrap_or_default()
+    }
+
+    pub fn move_preview_layer(&self) -> QImage {
+        self.rust().move_layer.clone().unwrap_or_default()
+    }
+
+    pub fn move_preview_x(&self) -> i32 {
+        self.rust().move_x
+    }
+
+    pub fn move_preview_y(&self) -> i32 {
+        self.rust().move_y
+    }
+
+    pub fn move_preview_opacity(&self) -> i32 {
+        self.rust().move_opacity
+    }
+
+    pub fn end_move_preview(mut self: Pin<&mut Self>) {
+        self.as_mut().clear_move_cache();
+    }
+
+    pub fn commit_move(mut self: Pin<&mut Self>, dx: i32, dy: i32) -> bool {
+        if dx == 0 && dy == 0 {
+            return false;
+        }
+        let moved = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::translate_layer(doc, dx, dy)
+        };
+        if !moved {
+            return false;
+        }
+        self.as_mut().record("Move Layer");
+        // `translate_layer` already recomputed `doc.composite`; convert it
+        // instead of compositing the whole document a second time.
+        let image = self
+            .rust()
+            .doc
+            .as_ref()
+            .map(|doc| buffer_to_image(&doc.composite));
+        if let Some(image) = image {
+            self.as_mut().rust_mut().image = image;
+        }
+        self.as_mut().clear_move_cache();
+        self.changed();
+        true
+    }
+
+    pub fn commit_move_legacy(mut self: Pin<&mut Self>) -> bool {
         if self.rust().doc.is_none() {
             return false;
         }
         self.as_mut().record("Move Layer");
         self.recomposite();
         true
+    }
+
+    fn clear_move_cache(mut self: Pin<&mut Self>) {
+        let mut rust = self.as_mut().rust_mut();
+        rust.move_base = None;
+        rust.move_layer = None;
+        rust.move_x = 0;
+        rust.move_y = 0;
+        rust.move_opacity = 0;
     }
 
     pub fn sample_argb(&self, x: i32, y: i32) -> u32 {
@@ -1840,13 +1990,19 @@ fn argb_at(buffer: &PixelBuffer, x: u32, y: u32) -> u32 {
     ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }
 
+/// Index of the topmost pixel layer: the last layer (bottom-first order) that is
+/// neither a group nor an adjustment.
+fn topmost_pixel_layer_index(doc: &Document) -> Option<usize> {
+    doc.layers
+        .iter()
+        .rposition(|l| l.adjustment.is_none() && !l.is_group)
+}
+
 /// The topmost pixel layer: the last layer (bottom-first order) that is
 /// neither a group nor an adjustment.
 fn topmost_pixel_layer(doc: &mut Document) -> Option<&mut Layer> {
-    doc.layers
-        .iter_mut()
-        .rev()
-        .find(|l| l.adjustment.is_none() && !l.is_group)
+    let index = topmost_pixel_layer_index(doc)?;
+    doc.layers.get_mut(index)
 }
 
 /// A full-frame raster mask whose coverage is the selection.
@@ -2676,5 +2832,25 @@ mod tests {
             doc.composite.data, snapshot,
             "failed resize must not mutate"
         );
+    }
+
+    /// Prints the per-call cost of one full-document composite. Prints only; no
+    /// pass/fail budget, because the reference machine is not pinned.
+    #[test]
+    fn composite_rgba_timing_1024() {
+        let mut doc = Document::new(1024, 1024, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![
+            pixel_layer("base", 1024, 1024, (30, 60, 90)),
+            pixel_layer("top", 1024, 1024, (200, 100, 50)),
+        ];
+        let _ = pictura_render::composite_rgba(&doc);
+        const ITERS: u32 = 5;
+        let start = std::time::Instant::now();
+        for _ in 0..ITERS {
+            let _ = pictura_render::composite_rgba(&doc);
+        }
+        let ms = start.elapsed().as_secs_f64() * 1000.0 / f64::from(ITERS);
+        println!("composite_rgba 1024x1024 (2 layers): {ms:.2} ms/call");
+        assert_eq!(pictura_render::composite_rgba(&doc).width, 1024);
     }
 }
