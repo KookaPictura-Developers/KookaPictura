@@ -1,0 +1,31 @@
+#pragma once
+
+#include <QtWidgets/QToolBar>
+
+#include "tools.h"
+
+class QStackedWidget;
+
+namespace pictura {
+
+class ToolController;
+
+// Context-sensitive options bar: one stacked page per tool, switched by the
+// frame when the active tool changes.
+class OptionsBar : public QToolBar {
+    Q_OBJECT
+
+public:
+    explicit OptionsBar(ToolController* controller, QWidget* parent = nullptr);
+
+    void showTool(ToolId id);
+
+private:
+    QWidget* buildPage(ToolId id);
+    QWidget* buildCombinePage(ToolId id, bool withTolerance);
+
+    ToolController* controller_ = nullptr;
+    QStackedWidget* stack_ = nullptr;
+};
+
+} // namespace pictura

@@ -759,6 +759,203 @@ int main(int argc, char* argv[])
                 std::fprintf(stderr, "pictura self-test: FAIL: unsaved close prompt wrong\n");
                 return 37;
             }
+
+            // M18: the frame's active tool round-trips through the controller.
+            frame.setActiveTool(pictura::ToolId::Marquee);
+            const bool marqueeOn = frame.activeTool() == pictura::ToolId::Marquee;
+            frame.setActiveTool(pictura::ToolId::Lasso);
+            const bool lassoOn = frame.activeTool() == pictura::ToolId::Lasso;
+            frame.setActiveTool(pictura::ToolId::Eyedropper);
+            const bool eyedropOn = frame.activeTool() == pictura::ToolId::Eyedropper;
+            frame.setActiveTool(pictura::ToolId::Move);
+            const bool moveOn = frame.activeTool() == pictura::ToolId::Move;
+            std::fprintf(stderr,
+                         "pictura self-test: tool_switch marquee=%d lasso=%d eyedropper=%d "
+                         "move=%d active=%s\n",
+                         marqueeOn ? 1 : 0,
+                         lassoOn ? 1 : 0,
+                         eyedropOn ? 1 : 0,
+                         moveOn ? 1 : 0,
+                         pictura::toolInfo(frame.activeTool()).label);
+            std::fflush(stderr);
+            if (!marqueeOn || !lassoOn || !eyedropOn || !moveOn) {
+                std::fprintf(stderr, "pictura self-test: FAIL: tool switch wrong\n");
+                return 39;
+            }
+
+            // M18: marquee rect/ellipse counts and pixel membership. The 4x4
+            // ellipse rasterizes 12 px (pictura-select ellipse test).
+            frame.newDocument(QStringLiteral("ToolTest"), 8, 8, QStringLiteral("rgb"), 8,
+                              QStringLiteral("white"));
+            pictura::PictureView* toolView = frame.activeView();
+            const bool rectSel =
+                toolView && toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
+            const int rectPx = toolView ? toolView->selection_count() : -1;
+            const bool ellipseSel =
+                toolView && toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"));
+            const int ellipsePx = toolView ? toolView->selection_count() : -1;
+            if (toolView) {
+                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("add"));
+            }
+            const bool addIdempotent = toolView && toolView->selection_count() == ellipsePx;
+            if (toolView) {
+                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"));
+                toolView->select_rect(2, 2, 1, 1, QStringLiteral("intersect"));
+            }
+            const bool centreInside = toolView && toolView->selection_count() == 1;
+            if (toolView) {
+                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"));
+                toolView->select_rect(0, 0, 1, 1, QStringLiteral("intersect"));
+            }
+            const bool cornerOutside = toolView && toolView->selection_count() == 0;
+            std::fprintf(stderr,
+                         "pictura self-test: marquee rect=%d(%d) ellipse=%d(%d) add_same=%d "
+                         "centre=%d corner=%d\n",
+                         rectSel ? 1 : 0,
+                         rectPx,
+                         ellipseSel ? 1 : 0,
+                         ellipsePx,
+                         addIdempotent ? 1 : 0,
+                         centreInside ? 1 : 0,
+                         cornerOutside ? 1 : 0);
+            std::fflush(stderr);
+            if (!rectSel || rectPx != 16 || !ellipseSel || ellipsePx != 12 || !addIdempotent
+                || !centreInside || !cornerOutside) {
+                std::fprintf(stderr, "pictura self-test: FAIL: marquee selection wrong\n");
+                return 40;
+            }
+
+            // M18: combine modes union/subtract/intersect on the 8x8 canvas.
+            if (toolView) {
+                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
+            }
+            const int newPx = toolView ? toolView->selection_count() : -1;
+            if (toolView) {
+                toolView->select_rect(2, 2, 4, 4, QStringLiteral("add"));
+            }
+            const int addPx = toolView ? toolView->selection_count() : -1;
+            if (toolView) {
+                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
+                toolView->select_rect(1, 1, 2, 2, QStringLiteral("subtract"));
+            }
+            const int subPx = toolView ? toolView->selection_count() : -1;
+            if (toolView) {
+                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
+                toolView->select_rect(2, 2, 4, 4, QStringLiteral("intersect"));
+            }
+            const int interPx = toolView ? toolView->selection_count() : -1;
+            std::fprintf(stderr,
+                         "pictura self-test: combine new=%d add=%d subtract=%d intersect=%d\n",
+                         newPx,
+                         addPx,
+                         subPx,
+                         interPx);
+            std::fflush(stderr);
+            if (newPx != 16 || addPx != 28 || subPx != 12 || interPx != 4) {
+                std::fprintf(stderr, "pictura self-test: FAIL: combine modes wrong\n");
+                return 41;
+            }
+
+            // M18: lasso fills a 5x5 square, and a two-point path is rejected
+            // without disturbing the existing selection.
+            const bool lassoStarted =
+                toolView && toolView->begin_lasso(QStringLiteral("new"));
+            if (toolView) {
+                toolView->lasso_add_point(1, 1);
+                toolView->lasso_add_point(6, 1);
+                toolView->lasso_add_point(6, 6);
+                toolView->lasso_add_point(1, 6);
+            }
+            const bool lassoEnded = toolView && toolView->end_lasso();
+            const int lassoPx = toolView ? toolView->selection_count() : -1;
+            const bool shortStarted =
+                toolView && toolView->begin_lasso(QStringLiteral("new"));
+            if (toolView) {
+                toolView->lasso_add_point(1, 1);
+                toolView->lasso_add_point(6, 1);
+            }
+            const bool shortEnded = toolView && toolView->end_lasso();
+            const bool shortUnchanged = toolView && toolView->selection_count() == lassoPx;
+            std::fprintf(stderr,
+                         "pictura self-test: lasso start=%d end=%d px=%d short_end=%d "
+                         "unchanged=%d\n",
+                         lassoStarted ? 1 : 0,
+                         lassoEnded ? 1 : 0,
+                         lassoPx,
+                         shortEnded ? 1 : 0,
+                         shortUnchanged ? 1 : 0);
+            std::fflush(stderr);
+            if (!lassoStarted || !lassoEnded || lassoPx != 25 || !shortStarted || shortEnded
+                || !shortUnchanged) {
+                std::fprintf(stderr, "pictura self-test: FAIL: lasso selection wrong\n");
+                return 42;
+            }
+
+            // M18: quick selection wands a white region and leaves a selection.
+            if (toolView) {
+                toolView->deselect();
+            }
+            const bool quickOk =
+                toolView && toolView->quick_select(4, 4, 32, QStringLiteral("new"));
+            const bool quickSelected = toolView && toolView->has_selection();
+            const int quickPx = toolView ? toolView->selection_count() : -1;
+            std::fprintf(stderr, "pictura self-test: quick_select=%d has=%d px=%d\n",
+                         quickOk ? 1 : 0, quickSelected ? 1 : 0, quickPx);
+            std::fflush(stderr);
+            if (!quickOk || !quickSelected || quickPx <= 0) {
+                std::fprintf(stderr, "pictura self-test: FAIL: quick selection wrong\n");
+                return 43;
+            }
+
+            // M18: crop the fixture to its blue bottom-right quadrant.
+            frame.openPath(psdPath);
+            pictura::PictureView* cropView = frame.activeView();
+            const bool cropOk = cropView && cropView->crop(4, 4, 4, 4);
+            const QImage cropImg = cropView ? cropView->image() : QImage();
+            const QRgb cropPx = cropImg.isNull() ? 0 : cropImg.pixel(1, 1);
+            const bool cropBlue = qBlue(cropPx) > 200 && qRed(cropPx) < 60 && qGreen(cropPx) < 60;
+            std::fprintf(stderr, "pictura self-test: crop=%d size=%dx%d blue=%d\n",
+                         cropOk ? 1 : 0, cropImg.width(), cropImg.height(), cropBlue ? 1 : 0);
+            std::fflush(stderr);
+            if (!cropOk || cropImg.width() != 4 || cropImg.height() != 4 || !cropBlue) {
+                std::fprintf(stderr, "pictura self-test: FAIL: crop wrong\n");
+                return 44;
+            }
+
+            // M18: move the topmost (blue) layer over the red quadrant.
+            frame.openPath(psdPath);
+            pictura::PictureView* moveView = frame.activeView();
+            const bool moved = moveView && moveView->translate_layer(-4, -4);
+            const QImage moveImg = moveView ? moveView->image() : QImage();
+            const QRgb movePx = moveImg.isNull() ? 0 : moveImg.pixel(2, 2);
+            const bool moveBlue = qBlue(movePx) > 200 && qRed(movePx) < 60 && qGreen(movePx) < 60;
+            std::fprintf(stderr, "pictura self-test: translate=%d blue=%d\n",
+                         moved ? 1 : 0, moveBlue ? 1 : 0);
+            std::fflush(stderr);
+            if (!moved || !moveBlue) {
+                std::fprintf(stderr, "pictura self-test: FAIL: layer move wrong\n");
+                return 45;
+            }
+
+            // M18: eyedropper samples the composited red and rejects out-of-bounds.
+            frame.openPath(psdPath);
+            pictura::PictureView* eyeView = frame.activeView();
+            const quint32 redSample = eyeView ? eyeView->sample_argb(2, 2) : 0u;
+            const quint32 outSample = eyeView ? eyeView->sample_argb(-1, -1) : 1u;
+            if (eyeView) {
+                eyeView->deselect();
+            }
+            const bool eyeDeselected = eyeView && !eyeView->has_selection();
+            std::fprintf(stderr,
+                         "pictura self-test: eyedropper red=%08x out=%08x deselected=%d\n",
+                         static_cast<unsigned>(redSample),
+                         static_cast<unsigned>(outSample),
+                         eyeDeselected ? 1 : 0);
+            std::fflush(stderr);
+            if (redSample != 0xFFFF0000u || outSample != 0u || !eyeDeselected) {
+                std::fprintf(stderr, "pictura self-test: FAIL: eyedropper wrong\n");
+                return 46;
+            }
         }
         pictura::ImageView* canvas = frame.imageView();
         if (!canvas) {

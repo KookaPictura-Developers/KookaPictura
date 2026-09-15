@@ -37,6 +37,26 @@ pub enum SelectOp {
     Intersect,
 }
 
+/// Combine mode for rasterized shapes (`"new"` replaces, the rest are boolean).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CombineMode {
+    New,
+    Add,
+    Subtract,
+    Intersect,
+}
+
+impl From<CombineMode> for SelectOp {
+    fn from(mode: CombineMode) -> Self {
+        match mode {
+            CombineMode::New => SelectOp::Replace,
+            CombineMode::Add => SelectOp::Add,
+            CombineMode::Subtract => SelectOp::Subtract,
+            CombineMode::Intersect => SelectOp::Intersect,
+        }
+    }
+}
+
 const FEATHER_MAX: f64 = 250.0;
 const MORPH_MAX: u32 = 100;
 const BORDER_MAX: u32 = 200;
@@ -57,6 +77,83 @@ impl Selection {
             height,
             data: vec![255; width as usize * height as usize],
         }
+    }
+
+    /// A `w`×`h` rectangle at `(x, y)`; bounds are half-open and clipped to the
+    /// canvas. `w <= 0` or `h <= 0` yields an empty selection.
+    pub fn rect(width: u32, height: u32, x: i32, y: i32, w: i32, h: i32) -> Self {
+        let mut sel = Selection::none(width, height);
+        if w <= 0 || h <= 0 {
+            return sel;
+        }
+        for py in 0..height as i32 {
+            if py < y || py >= y + h {
+                continue;
+            }
+            for px in 0..width as i32 {
+                if px >= x && px < x + w {
+                    sel.data[py as usize * width as usize + px as usize] = 255;
+                }
+            }
+        }
+        sel
+    }
+
+    /// The ellipse inscribed in the `w`×`h` rectangle at `(x, y)`; a pixel is
+    /// inside when its centre is. Clipped to the canvas. `w <= 0` or `h <= 0`
+    /// yields an empty selection.
+    pub fn ellipse(width: u32, height: u32, x: i32, y: i32, w: i32, h: i32) -> Self {
+        let mut sel = Selection::none(width, height);
+        if w <= 0 || h <= 0 {
+            return sel;
+        }
+        let rx = w as f64 / 2.0;
+        let ry = h as f64 / 2.0;
+        let cx = x as f64 + rx;
+        let cy = y as f64 + ry;
+        for py in 0..height {
+            let dy = (py as f64 + 0.5 - cy) / ry;
+            for px in 0..width {
+                let dx = (px as f64 + 0.5 - cx) / rx;
+                if dx * dx + dy * dy <= 1.0 {
+                    sel.data[py as usize * width as usize + px as usize] = 255;
+                }
+            }
+        }
+        sel
+    }
+
+    /// Even-odd scanline fill of `points`, sampled at pixel centres and clipped
+    /// to the canvas. Fewer than three points yields an empty selection.
+    pub fn polygon(width: u32, height: u32, points: &[(i32, i32)]) -> Self {
+        let mut sel = Selection::none(width, height);
+        if points.len() < 3 {
+            return sel;
+        }
+        let n = points.len();
+        for py in 0..height {
+            let cy = py as f64 + 0.5;
+            for px in 0..width {
+                let cx = px as f64 + 0.5;
+                let mut inside = false;
+                let mut j = n - 1;
+                for i in 0..n {
+                    let (xi, yi) = (points[i].0 as f64, points[i].1 as f64);
+                    let (xj, yj) = (points[j].0 as f64, points[j].1 as f64);
+                    if (yi > cy) != (yj > cy) {
+                        let cross = xi + (cy - yi) / (yj - yi) * (xj - xi);
+                        if cx < cross {
+                            inside = !inside;
+                        }
+                    }
+                    j = i;
+                }
+                if inside {
+                    sel.data[py as usize * width as usize + px as usize] = 255;
+                }
+            }
+        }
+        sel
     }
 
     /// Export this selection as a document-level channel (8-bit grayscale
@@ -120,6 +217,22 @@ impl Selection {
             }
         }
         Ok(())
+    }
+
+    /// Combine `other` into `self` with `mode` and return the result.
+    ///
+    /// Same-size masks are merged in place; a mismatched `other` can only
+    /// replace (`New`), since the boolean ops have no shared canvas.
+    pub fn combine_with(&mut self, other: &Selection, mode: CombineMode) -> Selection {
+        if self.width == other.width
+            && self.height == other.height
+            && self.data.len() == other.data.len()
+        {
+            let _ = self.combine(other, mode.into());
+        } else if matches!(mode, CombineMode::New) {
+            *self = other.clone();
+        }
+        self.clone()
     }
 
     pub fn invert(&self) -> Selection {
@@ -583,6 +696,89 @@ mod tests {
         let mut a = Selection::none(4, 4);
         let b = Selection::none(5, 4);
         assert!(a.combine(&b, SelectOp::Add).is_err());
+    }
+
+    #[test]
+    fn rect_selects_half_open_and_clips() {
+        let s = Selection::rect(6, 5, 1, 1, 3, 2);
+        assert_eq!(s.data.iter().filter(|&&v| v > 0).count(), 6);
+        assert_eq!(s.data[7], 255);
+        assert_eq!(s.data[(2 * 6 + 3) as usize], 255);
+        assert_eq!(s.data[10], 0, "right edge is exclusive");
+        assert_eq!(s.data[1], 0, "above the rect");
+        assert_eq!(s.data[(3 * 6 + 1) as usize], 0, "below the rect");
+
+        assert_eq!(
+            Selection::rect(6, 5, 0, 0, 0, 2),
+            Selection::none(6, 5),
+            "zero width is empty"
+        );
+        let clipped = Selection::rect(6, 5, -2, -2, 4, 4);
+        assert_eq!(clipped.data.iter().filter(|&&v| v > 0).count(), 4);
+        assert_eq!(clipped.data[0], 255);
+        assert_eq!(clipped.data[7], 255);
+        assert_eq!(clipped.data[8], 0);
+    }
+
+    #[test]
+    fn ellipse_is_inscribed_and_clipped() {
+        let s = Selection::ellipse(4, 4, 0, 0, 4, 4);
+        assert_eq!(s.data.iter().filter(|&&v| v > 0).count(), 12);
+        assert_eq!(s.data[0], 0, "top-left corner is outside");
+        assert_eq!(s.data[(3 * 4 + 3) as usize], 0, "bottom-right corner out");
+        assert_eq!(s.data[5], 255, "centre is inside");
+        assert_eq!(s.data[1], 255, "top edge midpoint in");
+        assert_eq!(s.data[(3 * 4 + 2) as usize], 255, "bottom edge midpoint in");
+
+        assert_eq!(Selection::ellipse(4, 4, 0, 0, 0, 4), Selection::none(4, 4));
+    }
+
+    #[test]
+    fn polygon_even_odd_fill_and_degenerate() {
+        let square = Selection::polygon(4, 4, &[(0, 0), (4, 0), (4, 4), (0, 4)]);
+        assert_eq!(square.data.iter().filter(|&&v| v > 0).count(), 16);
+
+        let triangle = Selection::polygon(4, 4, &[(0, 0), (4, 0), (0, 4)]);
+        assert_eq!(triangle.data.iter().filter(|&&v| v > 0).count(), 6);
+        assert_eq!(triangle.data[0], 255);
+        assert_eq!(triangle.data[7], 0);
+        assert_eq!(triangle.data[(3 * 4 + 3) as usize], 0);
+
+        assert_eq!(
+            Selection::polygon(4, 4, &[(0, 0), (1, 1)]),
+            Selection::none(4, 4),
+            "fewer than three points is empty"
+        );
+
+        let over = Selection::polygon(4, 4, &[(-2, -2), (6, -2), (6, 6), (-2, 6)]);
+        assert_eq!(over.data.iter().filter(|&&v| v > 0).count(), 16);
+    }
+
+    #[test]
+    fn combine_with_each_mode() {
+        let a = Selection::rect(4, 4, 0, 0, 3, 3);
+        let b = Selection::rect(4, 4, 1, 1, 3, 3);
+        let count = |s: &Selection| s.data.iter().filter(|&&v| v > 0).count();
+
+        let mut new = a.clone();
+        let out = new.combine_with(&b, CombineMode::New);
+        assert_eq!(count(&out), 9, "New replaces");
+        assert_eq!(out, b);
+
+        let mut add = a.clone();
+        let out = add.combine_with(&b, CombineMode::Add);
+        assert_eq!(count(&out), 14, "Add is union");
+
+        let mut sub = a.clone();
+        let out = sub.combine_with(&b, CombineMode::Subtract);
+        assert_eq!(count(&out), 5, "Subtract removes the overlap");
+
+        let mut inter = a.clone();
+        let out = inter.combine_with(&b, CombineMode::Intersect);
+        assert_eq!(count(&out), 4, "Intersect is the overlap");
+        assert_eq!(out.data[5], 255);
+        assert_eq!(out.data[10], 255);
+        assert_eq!(out.data[0], 0);
     }
 
     #[test]

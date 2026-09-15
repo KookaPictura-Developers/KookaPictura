@@ -9,7 +9,7 @@ use pictura_core::{
     AdjustmentData, BitDepth, BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer,
     PsdRect,
 };
-use pictura_select::Selection;
+use pictura_select::{CombineMode, Selection};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -118,6 +118,80 @@ pub mod qobject {
         #[qinvokable]
         fn selection_count(&self) -> i32;
 
+        /// Replace/combine the selection with the `w`×`h` rectangle at `(x, y)`.
+        /// `mode` is `"new"`, `"add"`, `"subtract"`, or `"intersect"` (unknown
+        /// means `"new"`). Returns false without a document.
+        #[qinvokable]
+        fn select_rect(
+            self: Pin<&mut Self>,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+            mode: &QString,
+        ) -> bool;
+
+        /// Replace/combine the selection with the ellipse inscribed in the
+        /// `w`×`h` rectangle at `(x, y)`. `mode` as [`select_rect`]. Returns
+        /// false without a document.
+        #[qinvokable]
+        fn select_ellipse(
+            self: Pin<&mut Self>,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+            mode: &QString,
+        ) -> bool;
+
+        /// Start a lasso selection with `mode` as [`select_rect`], clearing any
+        /// pending points. Returns false without a document.
+        #[qinvokable]
+        fn begin_lasso(self: Pin<&mut Self>, mode: &QString) -> bool;
+
+        /// Append a point to the pending lasso path.
+        #[qinvokable]
+        fn lasso_add_point(self: Pin<&mut Self>, x: i32, y: i32);
+
+        /// Fill the pending lasso polygon and combine it with the current
+        /// selection. Returns false without a document or fewer than three
+        /// points, leaving the pending state untouched.
+        #[qinvokable]
+        fn end_lasso(self: Pin<&mut Self>) -> bool;
+
+        /// Flood-select around `(x, y)` within `tolerance` (0-255) and combine
+        /// it with the current selection using `mode` as [`select_rect`].
+        /// Returns false without a document or when the point is out of bounds.
+        #[qinvokable]
+        fn quick_select(
+            self: Pin<&mut Self>,
+            x: i32,
+            y: i32,
+            tolerance: i32,
+            mode: &QString,
+        ) -> bool;
+
+        /// Crop the document to the `w`×`h` rectangle at `(x, y)`, clearing the
+        /// selection, then recomposite and emit [`changed`]. Returns false
+        /// without a document or when the rect misses the canvas.
+        #[qinvokable]
+        fn crop(self: Pin<&mut Self>, x: i32, y: i32, w: i32, h: i32) -> bool;
+
+        /// Move the topmost pixel layer by `(dx, dy)`, recomposite, and emit
+        /// [`changed`]. Returns false without a pixel layer.
+        #[qinvokable]
+        fn translate_layer(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
+
+        /// The composited pixel at `(x, y)` as `0xAARRGGBB`, or 0 when there is
+        /// no document or the point is out of bounds.
+        #[qinvokable]
+        fn sample_argb(&self, x: i32, y: i32) -> u32;
+
+        /// The selected pixels' `"x y w h"` bounding box, or an empty string
+        /// when nothing is selected.
+        #[qinvokable]
+        fn selection_bounds(&self) -> QString;
+
         /// Append an adjustment layer for `kind` (invert, posterize, threshold,
         /// brightness-contrast, hue-saturation), recomposite, and emit
         /// [`changed`]. When a selection is active the layer gets a raster mask
@@ -218,6 +292,8 @@ pub struct PictureViewRust {
     path: Option<String>,
     dirty: bool,
     interop: Option<crate::gpu::InteropState>,
+    pending_lasso: Vec<(i32, i32)>,
+    pending_lasso_mode: String,
 }
 
 impl qobject::PictureView {
@@ -440,6 +516,214 @@ impl qobject::PictureView {
             .selection
             .as_ref()
             .map_or(0, |s| s.data.iter().filter(|&&v| v > 0).count() as i32)
+    }
+
+    /// Merge a document-sized `shape` into the current selection with `mode`,
+    /// capturing history and emitting [`changed`]. Returns false without a doc.
+    fn apply_selection(mut self: Pin<&mut Self>, shape: Selection, mode: CombineMode) -> bool {
+        let snapshot = self.snapshot();
+        {
+            let mut rust = self.as_mut().rust_mut();
+            if rust.doc.is_none() {
+                return false;
+            }
+            let mut base = rust
+                .selection
+                .take()
+                .unwrap_or_else(|| Selection::none(shape.width, shape.height));
+            base.combine_with(&shape, mode);
+            rust.selection = Some(base);
+            rust.dirty = true;
+        }
+        if let Some(snapshot) = snapshot {
+            self.as_mut().rust_mut().history.capture(snapshot);
+        }
+        self.recomposite();
+        true
+    }
+
+    pub fn select_rect(
+        mut self: Pin<&mut Self>,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        mode: &QString,
+    ) -> bool {
+        let shape = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            Selection::rect(doc.width, doc.height, x, y, w, h)
+        };
+        let mode = combine_mode_from(&mode.to_string());
+        self.as_mut().apply_selection(shape, mode)
+    }
+
+    pub fn select_ellipse(
+        mut self: Pin<&mut Self>,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        mode: &QString,
+    ) -> bool {
+        let shape = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            Selection::ellipse(doc.width, doc.height, x, y, w, h)
+        };
+        let mode = combine_mode_from(&mode.to_string());
+        self.as_mut().apply_selection(shape, mode)
+    }
+
+    pub fn begin_lasso(mut self: Pin<&mut Self>, mode: &QString) -> bool {
+        if self.rust().doc.is_none() {
+            return false;
+        }
+        let mut rust = self.as_mut().rust_mut();
+        rust.pending_lasso_mode = mode.to_string();
+        rust.pending_lasso.clear();
+        true
+    }
+
+    pub fn lasso_add_point(mut self: Pin<&mut Self>, x: i32, y: i32) {
+        self.as_mut().rust_mut().pending_lasso.push((x, y));
+    }
+
+    pub fn end_lasso(mut self: Pin<&mut Self>) -> bool {
+        let shape = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            if rust.pending_lasso.len() < 3 {
+                return false;
+            }
+            Selection::polygon(doc.width, doc.height, &rust.pending_lasso)
+        };
+        let mode = combine_mode_from(&self.rust().pending_lasso_mode);
+        if !self.as_mut().apply_selection(shape, mode) {
+            return false;
+        }
+        let mut rust = self.as_mut().rust_mut();
+        rust.pending_lasso.clear();
+        rust.pending_lasso_mode.clear();
+        true
+    }
+
+    pub fn quick_select(
+        mut self: Pin<&mut Self>,
+        x: i32,
+        y: i32,
+        tolerance: i32,
+        mode: &QString,
+    ) -> bool {
+        let shape = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            if x < 0 || y < 0 || x as u32 >= doc.width || y as u32 >= doc.height {
+                return false;
+            }
+            let tolerance = tolerance.clamp(0, 255) as u8;
+            match pictura_select::magic_wand(
+                &current_buffer(doc),
+                x as u32,
+                y as u32,
+                tolerance,
+                true,
+            ) {
+                Ok(selection) => selection,
+                Err(_) => return false,
+            }
+        };
+        let mode = combine_mode_from(&mode.to_string());
+        self.as_mut().apply_selection(shape, mode)
+    }
+
+    pub fn crop(mut self: Pin<&mut Self>, x: i32, y: i32, w: i32, h: i32) -> bool {
+        if w < 1 || h < 1 {
+            return false;
+        }
+        let snapshot = self.snapshot();
+        let cropped = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            if !pictura_render::crop_document(doc, x, y, w as u32, h as u32) {
+                return false;
+            }
+            // Canvas dimensions changed, so the old selection no longer maps.
+            rust.selection = None;
+            rust.dirty = true;
+            true
+        };
+        if cropped {
+            if let Some(snapshot) = snapshot {
+                self.as_mut().rust_mut().history.capture(snapshot);
+            }
+            self.recomposite();
+        }
+        cropped
+    }
+
+    pub fn translate_layer(mut self: Pin<&mut Self>, dx: i32, dy: i32) -> bool {
+        let snapshot = self.snapshot();
+        let moved = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::translate_layer(doc, dx, dy)
+        };
+        if moved {
+            self.as_mut().rust_mut().dirty = true;
+            if let Some(snapshot) = snapshot {
+                self.as_mut().rust_mut().history.capture(snapshot);
+            }
+            self.recomposite();
+        }
+        moved
+    }
+
+    pub fn sample_argb(&self, x: i32, y: i32) -> u32 {
+        let rust = self.rust();
+        let Some(doc) = rust.doc.as_ref() else {
+            return 0;
+        };
+        if x < 0 || y < 0 || x as u32 >= doc.width || y as u32 >= doc.height {
+            return 0;
+        }
+        argb_at(&current_buffer(doc), x as u32, y as u32)
+    }
+
+    pub fn selection_bounds(&self) -> QString {
+        let rust = self.rust();
+        let Some(sel) = rust.selection.as_ref() else {
+            return QString::default();
+        };
+        let mut bounds: Option<(u32, u32, u32, u32)> = None;
+        for (i, &v) in sel.data.iter().enumerate() {
+            if v == 0 {
+                continue;
+            }
+            let x = i as u32 % sel.width;
+            let y = i as u32 / sel.width;
+            bounds = Some(match bounds {
+                Some((x0, y0, x1, y1)) => (x0.min(x), y0.min(y), x1.max(x), y1.max(y)),
+                None => (x, y, x, y),
+            });
+        }
+        let Some((x0, y0, x1, y1)) = bounds else {
+            return QString::default();
+        };
+        QString::from(format!("{x0} {y0} {} {}", x1 - x0 + 1, y1 - y0 + 1))
     }
 
     pub fn add_adjustment(mut self: Pin<&mut Self>, kind: &QString) -> bool {
@@ -977,6 +1261,46 @@ fn parse_anchor(anchor: &str) -> Option<pictura_render::Anchor> {
         "bottom-right" => Anchor::BottomRight,
         _ => return None,
     })
+}
+
+/// Map a selection `mode` string to [`CombineMode`]; unknown means `New`.
+fn combine_mode_from(mode: &str) -> CombineMode {
+    match mode {
+        "add" => CombineMode::Add,
+        "subtract" => CombineMode::Subtract,
+        "intersect" => CombineMode::Intersect,
+        _ => CombineMode::New,
+    }
+}
+
+/// Pack one pixel of a planar 8-bit buffer as `0xAARRGGBB`.
+fn argb_at(buffer: &PixelBuffer, x: u32, y: u32) -> u32 {
+    let plane = buffer.width as usize * buffer.height as usize;
+    let i = y as usize * buffer.width as usize + x as usize;
+    let (r, g, b, a) = match buffer.channels {
+        0 => return 0,
+        1 => {
+            let v = buffer.data[i];
+            (v, v, v, 255)
+        }
+        2 => {
+            let v = buffer.data[i];
+            (v, v, v, buffer.data[plane + i])
+        }
+        3 => (
+            buffer.data[i],
+            buffer.data[plane + i],
+            buffer.data[2 * plane + i],
+            255,
+        ),
+        _ => (
+            buffer.data[i],
+            buffer.data[plane + i],
+            buffer.data[2 * plane + i],
+            buffer.data[3 * plane + i],
+        ),
+    };
+    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }
 
 /// The topmost pixel layer: the last layer (bottom-first order) that is

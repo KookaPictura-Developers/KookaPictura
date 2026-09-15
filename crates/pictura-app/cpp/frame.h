@@ -4,7 +4,10 @@
 #include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <QtGui/QColor>
 #include <QtWidgets/QMainWindow>
+
+#include "tools.h"
 
 class QDockWidget;
 class QLabel;
@@ -15,6 +18,7 @@ namespace pictura {
 
 class CommandRegistry;
 class ImageView;
+class OptionsBar;
 class PictureView;
 
 // The CS6-shaped application frame: menu bar, tabbed document area, status bar,
@@ -36,6 +40,13 @@ public:
     QStringList topLevelMenuTitles() const;
     bool registerPanel(QDockWidget* dock, Qt::DockWidgetArea area);
     const QSet<QString>& panelObjectNames() const { return panelNames_; }
+
+    // Tool test hooks.
+    ToolId activeTool() const;
+    void setActiveTool(ToolId id);
+    QColor foregroundColor() const { return foreground_; }
+    bool hasPendingCrop() const;
+    bool commitCrop();
 
     int brightnessLevel() const { return brightnessLevel_; }
     void setBrightnessLevel(int level);
@@ -93,10 +104,12 @@ private:
 
     void buildMenus();
     void buildPanels();
+    void buildTools();
     void buildStatusBar();
     void registerHandlers();
     void retargetDock();
     void updateStatus();
+    void updateToolHint();
     void updateTabTitle(int index);
     void updateWindowTitle();
     void removeDocument(int index);
@@ -109,9 +122,13 @@ private:
     CommandRegistry* registry_ = nullptr;
     QDockWidget* layersDock_ = nullptr;
     QListWidget* layerList_ = nullptr;
+    ToolController* tools_ = nullptr;
+    OptionsBar* optionsBar_ = nullptr;
+    QDockWidget* toolsDock_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
     QLabel* hintLabel_ = nullptr;
+    QColor foreground_;
     QSet<QString> panelNames_;
     QStringList recent_;
     int untitledCounter_ = 0;

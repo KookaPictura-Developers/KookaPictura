@@ -37,7 +37,10 @@ mod filter;
 pub use filter::apply_filter;
 
 pub mod document_ops;
-pub use document_ops::{flip_document, resize_canvas_document, resize_document, rotate_document};
+pub use document_ops::{
+    crop_document, flip_document, resize_canvas_document, resize_document, rotate_document,
+    translate_layer,
+};
 
 pub use pictura_ops::{Anchor, Resample};
 

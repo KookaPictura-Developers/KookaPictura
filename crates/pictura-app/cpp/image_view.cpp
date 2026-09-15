@@ -89,6 +89,31 @@ void ImageView::setCanvasColor(const QColor& color)
     update();
 }
 
+void ImageView::setPanEnabled(bool enabled)
+{
+    panEnabled_ = enabled;
+    if (!enabled) {
+        panning_ = false;
+    }
+}
+
+void ImageView::setOverlayPolygon(const QPolygonF& polygon)
+{
+    overlayPolygon_ = polygon;
+    update();
+}
+
+void ImageView::clearOverlay()
+{
+    overlayPolygon_.clear();
+    update();
+}
+
+QPointF ImageView::widgetToImage(const QPointF& widgetPos) const
+{
+    return (widgetPos - offset_) / zoom_;
+}
+
 void ImageView::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
@@ -99,6 +124,12 @@ void ImageView::paintEvent(QPaintEvent*)
     painter.translate(offset_);
     painter.scale(zoom_, zoom_);
     painter.drawImage(QPointF(0.0, 0.0), image_);
+
+    if (!overlayPolygon_.isEmpty()) {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(Qt::white, 0, Qt::DashLine));
+        painter.drawPolygon(overlayPolygon_);
+    }
 }
 
 void ImageView::wheelEvent(QWheelEvent* event)
@@ -109,19 +140,32 @@ void ImageView::wheelEvent(QWheelEvent* event)
 
 void ImageView::mousePressEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton) {
+    if (panEnabled_ && event->button() == Qt::LeftButton) {
+        panning_ = true;
         last_ = event->position();
+    } else {
+        emit mousePressed(widgetToImage(event->position()), event->button(),
+                          event->modifiers());
     }
     QWidget::mousePressEvent(event);
 }
 
 void ImageView::mouseMoveEvent(QMouseEvent* event)
 {
-    if (event->buttons() & Qt::LeftButton) {
+    if (panning_ && (event->buttons() & Qt::LeftButton)) {
         panBy(event->position() - last_);
         last_ = event->position();
+    } else {
+        emit mouseMoved(widgetToImage(event->position()));
     }
     QWidget::mouseMoveEvent(event);
+}
+
+void ImageView::mouseReleaseEvent(QMouseEvent* event)
+{
+    panning_ = false;
+    emit mouseReleased(widgetToImage(event->position()));
+    QWidget::mouseReleaseEvent(event);
 }
 
 void ImageView::setZoom(double zoom, const QPointF& anchor)

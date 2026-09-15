@@ -2,10 +2,12 @@
 //! (`IMG-001`, `IMG-002`, `IMG-003`). See `docs/dev/m12-document-ops.md`.
 
 mod canvas;
+mod crop;
 mod orient;
 mod resize;
 
 pub use canvas::resize_canvas_document;
+pub use crop::{crop_document, translate_layer};
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;
 

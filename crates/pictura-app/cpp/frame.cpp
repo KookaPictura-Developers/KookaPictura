@@ -4,8 +4,11 @@
 #include "dialogs.h"
 #include "image_view.h"
 #include "new_document_dialog.h"
+#include "options_bar.h"
 #include "session.h"
 #include "theme.h"
+#include "toolbox.h"
+#include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
@@ -66,6 +69,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     registerHandlers();
     buildMenus();
     buildPanels();
+    buildTools();
     buildStatusBar();
     applyBrightness(state.brightnessLevel);
     if (!state.layout.isEmpty()) {
@@ -99,6 +103,32 @@ PicturaMainWindow::~PicturaMainWindow() = default;
 QStringList PicturaMainWindow::topLevelMenuTitles() const
 {
     return registry_->topLevelTitles();
+}
+
+ToolId PicturaMainWindow::activeTool() const
+{
+    return tools_ ? tools_->activeTool() : ToolId::Move;
+}
+
+void PicturaMainWindow::setActiveTool(ToolId id)
+{
+    if (tools_) {
+        tools_->setActiveTool(id);
+    }
+}
+
+bool PicturaMainWindow::hasPendingCrop() const
+{
+    return tools_ && tools_->hasPendingCrop();
+}
+
+bool PicturaMainWindow::commitCrop()
+{
+    if (!tools_ || !tools_->commitCrop()) {
+        return false;
+    }
+    refresh();
+    return true;
 }
 
 bool PicturaMainWindow::registerPanel(QDockWidget* dock, Qt::DockWidgetArea area)
@@ -523,6 +553,9 @@ void PicturaMainWindow::refresh()
             canvas->setImage(view->image());
         }
     }
+    if (tools_) {
+        tools_->bindCanvas(canvas);
+    }
 
     retargetDock();
     updateStatus();
@@ -590,6 +623,12 @@ void PicturaMainWindow::closeEvent(QCloseEvent* event)
 
 void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
 {
+    if (!event->isAutoRepeat()
+        && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+        && tools_ && tools_->activeTool() == ToolId::Crop) {
+        commitCrop();
+        return;
+    }
     if (!event->isAutoRepeat() && event->key() == Qt::Key_F) {
         cycleScreenMode(!(event->modifiers() & Qt::ShiftModifier));
         return;
@@ -864,6 +903,33 @@ void PicturaMainWindow::buildPanels()
     });
 }
 
+void PicturaMainWindow::buildTools()
+{
+    tools_ = new ToolController(this);
+    tools_->setViewProvider([this]() { return activeView(); });
+
+    toolsDock_ = new Toolbox(tools_, this);
+    registerPanel(toolsDock_, Qt::LeftDockWidgetArea);
+
+    optionsBar_ = new OptionsBar(tools_, this);
+    addToolBar(optionsBar_);
+
+    connect(tools_, &ToolController::activeToolChanged, this, [this](ToolId id) {
+        if (optionsBar_) {
+            optionsBar_->showTool(id);
+        }
+        updateToolHint();
+    });
+    connect(tools_, &ToolController::foregroundSampled, this, [this](const QColor& color) {
+        foreground_ = color;
+        updateToolHint();
+    });
+
+    if (optionsBar_) {
+        optionsBar_->showTool(tools_->activeTool());
+    }
+}
+
 void PicturaMainWindow::buildStatusBar()
 {
     QStatusBar* bar = statusBar();
@@ -1041,6 +1107,31 @@ void PicturaMainWindow::registerHandlers()
                                       [this]() { return activeView() && activeView()->has_document(); });
     }
 
+    registry_->setHandler(command_ids::ImageCrop, [this]() {
+        if (tools_ && tools_->hasPendingCrop()) {
+            commitCrop();
+            return;
+        }
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        const QString bounds = view->selection_bounds();
+        if (bounds.isEmpty()) {
+            return;
+        }
+        const QStringList parts = bounds.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() != 4) {
+            return;
+        }
+        if (view->crop(parts.at(0).toInt(), parts.at(1).toInt(), parts.at(2).toInt(),
+                       parts.at(3).toInt())) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::ImageCrop,
+                                  [this]() { return activeView() && activeView()->has_document(); });
+
     registry_->setHandler(command_ids::SelectAll, [this]() {
         if (PictureView* view = activeView()) {
             view->select_all();
@@ -1091,6 +1182,15 @@ void PicturaMainWindow::registerHandlers()
     registry_->setCheckedProvider(command_ids::ViewScreenModeFull,
                                   [this]() { return screenMode_ == ScreenMode::Full; });
 
+    registry_->setHandler(command_ids::ViewOptions, [this]() {
+        QAction* action = registry_->action(command_ids::ViewOptions);
+        if (optionsBar_ && action) {
+            optionsBar_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::ViewOptions,
+                                  [this]() { return optionsBar_ && optionsBar_->isVisible(); });
+
     registry_->setHandler(command_ids::WindowPanelsLayers, [this]() {
         QAction* action = registry_->action(command_ids::WindowPanelsLayers);
         if (layersDock_ && action) {
@@ -1099,6 +1199,15 @@ void PicturaMainWindow::registerHandlers()
     });
     registry_->setCheckedProvider(command_ids::WindowPanelsLayers,
                                   [this]() { return layersDock_ && layersDock_->isVisible(); });
+
+    registry_->setHandler(command_ids::WindowPanelsTools, [this]() {
+        QAction* action = registry_->action(command_ids::WindowPanelsTools);
+        if (toolsDock_ && action) {
+            toolsDock_->setVisible(action->isChecked());
+        }
+    });
+    registry_->setCheckedProvider(command_ids::WindowPanelsTools,
+                                  [this]() { return toolsDock_ && toolsDock_->isVisible(); });
 
     registry_->setHandler(command_ids::HelpAbout, [this]() {
         QMessageBox::about(this, tr("About Kooka Pictura"),
@@ -1128,6 +1237,19 @@ void PicturaMainWindow::updateStatus()
         }
         sizeLabel_->setText(text);
     }
+}
+
+void PicturaMainWindow::updateToolHint()
+{
+    if (!hintLabel_) {
+        return;
+    }
+    QString text = tools_ ? QString::fromLatin1(toolInfo(tools_->activeTool()).hint)
+                          : QStringLiteral("Ready");
+    if (foreground_.isValid()) {
+        text += QStringLiteral("  ·  Foreground %1").arg(foreground_.name());
+    }
+    hintLabel_->setText(text);
 }
 
 void PicturaMainWindow::applyBrightness(int level)

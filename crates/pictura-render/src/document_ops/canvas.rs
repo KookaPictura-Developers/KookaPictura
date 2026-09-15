@@ -67,7 +67,7 @@ fn anchor_offset(
     (dx, dy)
 }
 
-fn offset_rect(rect: pictura_core::PsdRect, dx: i32, dy: i32) -> pictura_core::PsdRect {
+pub(crate) fn offset_rect(rect: pictura_core::PsdRect, dx: i32, dy: i32) -> pictura_core::PsdRect {
     pictura_core::PsdRect {
         top: rect.top + dy,
         bottom: rect.bottom + dy,
@@ -78,7 +78,7 @@ fn offset_rect(rect: pictura_core::PsdRect, dx: i32, dy: i32) -> pictura_core::P
 
 /// Extend one planar `old_w×old_h` channel into `width×height`, blitting the old
 /// data at `(dx, dy)` and zero-filling the added area.
-fn extend_channel(
+pub(crate) fn extend_channel(
     data: &[u8],
     old_w: u32,
     old_h: u32,

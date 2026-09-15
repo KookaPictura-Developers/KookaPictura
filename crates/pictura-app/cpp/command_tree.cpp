@@ -249,7 +249,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::ImageFlipVertical, {"Image", "Image Rotation", "Flip Canvas Vertical"},
                  QStringLiteral("Flip Canvas Vertical"), QKeySequence(), true);
     registry.addSeparator({"Image"});
-    leaf(registry, {"Image", "Crop"}, QStringLiteral("Crop"));
+    registry.add(command_ids::ImageCrop, {"Image", "Crop"}, QStringLiteral("Crop"),
+                 QKeySequence(), true);
     leaf(registry, {"Image", "Trim…"}, QStringLiteral("Trim…"));
     leaf(registry, {"Image", "Reveal All"}, QStringLiteral("Reveal All"));
     registry.addSeparator({"Image"});
@@ -669,6 +670,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"View"});
     leaf(registry, {"View", "Align"}, QStringLiteral("Align"));
     leaf(registry, {"View", "Align To"}, QStringLiteral("Align To"));
+    registry.addSeparator({"View"});
+    registry.add(CommandSpec{command_ids::ViewOptions, {"View", "Options"},
+                             QStringLiteral("Options"), QKeySequence(), true, true});
 
     // Window
     leaf(registry, {"Window", "Arrange", "Cascade"}, QStringLiteral("Cascade"));
@@ -725,7 +729,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Window", "Panels", "Swatches"}, QStringLiteral("Swatches"));
     leaf(registry, {"Window", "Panels", "Timeline"}, QStringLiteral("Timeline"));
     leaf(registry, {"Window", "Panels", "Tool Presets"}, QStringLiteral("Tool Presets"));
-    leaf(registry, {"Window", "Panels", "Tools"}, QStringLiteral("Tools"));
+    registry.add(CommandSpec{command_ids::WindowPanelsTools, {"Window", "Panels", "Tools"},
+                             QStringLiteral("Tools"), QKeySequence(), true, true});
     registry.addSeparator({"Window"});
     leaf(registry, {"Window", "Extensions", "Mini Bridge"}, QStringLiteral("Mini Bridge"));
     registry.addSeparator({"Window"});

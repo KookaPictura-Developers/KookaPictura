@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **401 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M17 archived; canonical specs are
-  in `openspec/specs/` (39 capabilities, `validate --all --strict`
+- Test suite: **411 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M18 archived; canonical specs are
+  in `openspec/specs/` (42 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 
 ## Commands
@@ -36,11 +36,11 @@ openspec validate --all --strict
 | `pictura-color` | ICC profiles (sRGB/AdobeRGB/ProPhoto), convert/assign, intents, BPC |
 | `pictura-adjust` | 15 destructive adjustments (`apply`) |
 | `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters |
-| `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range |
+| `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range; `Selection::{rect,ellipse,polygon}` rasterizers + `CombineMode`/`combine_with` |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
-| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation; re-exports `Anchor`/`Resample`) |
+| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
-| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), layer/adjustment dock, zoom/pan, GPU demo |
+| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), layer/adjustment dock, tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom), zoom/pan, GPU demo |
 
 ## Milestones done
 
@@ -162,11 +162,35 @@ openspec validate --all --strict
   self-tests exit 0, `guard.sh` OK. OpenSpec change `m17-document-lifecycle`
   (capabilities `document-lifecycle`, `document-tabs`; MODIFIED
   `application-shell`), archived.
+- **M18** — Toolbox and core tools. Engine: `pictura-select` gains
+  `Selection::{rect,ellipse,polygon}` coverage rasterizers and
+  `CombineMode {New,Add,Subtract,Intersect}` + `combine_with`; `pictura-render`
+  document ops gain `crop_document` (reuses the M12 canvas offset; clamps and
+  shifts layers/masks/channels) and `translate_layer` (shifts the topmost pixel
+  layer's rect). Rust bridge: `select_rect`/`select_ellipse`/`begin_lasso`/
+  `lasso_add_point`/`end_lasso`/`quick_select`/`crop`/`translate_layer`/
+  `sample_argb`/`selection_bounds`, with dirty/history capture on the new
+  mutating ops. C++ shell: `image_view.{h,cpp}` gains pointer signals
+  (`mousePressed/moved/released` in image coordinates), `setPanEnabled`, and an
+  overlay polygon; new `tools.{h,cpp}` (`ToolId {Move,Marquee,Lasso,
+  QuickSelection,Crop,Eyedropper,Hand,Zoom}`, `SelectionMode`, `ToolController`),
+  `toolbox.{h,cpp}` (Tools dock, letter shortcuts), `options_bar.{h,cpp}`
+  (context-sensitive options bar); `frame.{h,cpp}` hosts them, routes canvas
+  events, exposes `activeTool/setActiveTool/foregroundColor/hasPendingCrop/
+  commitCrop`. Commands `image.crop`, `view.options`, `window.panels.tools`.
+  `main.cpp` self-test (exit codes 39–46): tool switching, marquee rect (16 px)
+  + ellipse (12 px), combine modes (16/28/12/4), lasso (25 px) + short-lasso
+  rejection, quick selection, crop remap, layer move, eyedropper sample
+  (`ffff0000`/`00000000`). Verified: build green, fixture and no-arg self-tests
+  exit 0, `cargo fmt/clippy` clean, 411 tests (0 failed, 1 ignored; +10 engine
+  tests), `openspec validate --all --strict` 40/40 pre-archive (42 after),
+  `guard.sh` OK. OpenSpec change `m18-toolbox-tools` (capabilities
+  `tool-framework`, `shape-selection-tools`, `canvas-tools`), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M17 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M18 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -184,22 +208,20 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M18 (propose via OpenSpec first)
+## Next: M19 (propose via OpenSpec first)
 
-M17 is archived; its `document-lifecycle` and `document-tabs` deltas (plus the
-MODIFIED `application-shell`) live in `openspec/specs/`. Documents now have a
-lifecycle and the frame hosts several at once. Next up:
+M18 is archived; its `tool-framework`, `shape-selection-tools`, and
+`canvas-tools` deltas live in `openspec/specs/`. The toolbox, core tools, and
+options bar are in place. Next up:
 
-- **M18 — Toolbox and core tools**: the toolbox and options bar, tool state
-  (active tool, tool-specific options, cursor), and the core tools — Move,
-  Marquee, Lasso, Quick Selection, Crop, Eyedropper, Hand, Zoom — per
-  `docs/03-tools` and `docs/02-ui-ux/toolbox-and-options-bar.md`.
-- Then: History palette + state labels and a full Image Size dialog (panels),
-  the painting engine, remaining filter families, image modes/bit-depth.
+- **M19 — Panel parity**: bring the panels to spec per `docs/02-ui-ux/panels/`
+  — the Layers panel, a History panel with labeled states and snapshots, the
+  Navigator, Color/Swatches, and Info/Histogram.
+- Then: the painting engine, remaining filter families, image modes/bit-depth.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M17 are archived; their deltas now live in `openspec/specs/`.
+M6 through M18 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -209,3 +231,7 @@ M6 through M17 are archived; their deltas now live in `openspec/specs/`.
 - `pictura-app` has one `#[ignore]`d interop test.
 - The recent-files menu is rebuilt at startup, so a file opened in-session
   appears there only after restart.
+- Quick Selection is a wand-union approximation, not a true Photoshop quick
+  selection; crop is destructive (no crop region / no non-destructive re-crop);
+  selection marching ants are not implemented — only a rubber band during drag
+  and the committed bounds are shown.

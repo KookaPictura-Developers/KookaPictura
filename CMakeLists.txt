@@ -54,6 +54,9 @@ add_executable(pictura
     crates/pictura-app/cpp/session.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/frame.cpp
+    crates/pictura-app/cpp/tools.cpp
+    crates/pictura-app/cpp/toolbox.cpp
+    crates/pictura-app/cpp/options_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp
     crates/pictura-app/cpp/dialogs.cpp
     crates/pictura-app/cpp/commands.h
@@ -61,6 +64,9 @@ add_executable(pictura
     crates/pictura-app/cpp/session.h
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/frame.h
+    crates/pictura-app/cpp/tools.h
+    crates/pictura-app/cpp/toolbox.h
+    crates/pictura-app/cpp/options_bar.h
     crates/pictura-app/cpp/new_document_dialog.h
     crates/pictura-app/cpp/dialogs.h
 )

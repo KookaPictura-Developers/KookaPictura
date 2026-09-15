@@ -34,16 +34,19 @@ inline constexpr char ImageRotate90Ccw[] = "image.rotate90ccw";
 inline constexpr char ImageRotate180[] = "image.rotate180";
 inline constexpr char ImageFlipHorizontal[] = "image.flipHorizontal";
 inline constexpr char ImageFlipVertical[] = "image.flipVertical";
+inline constexpr char ImageCrop[] = "image.crop";
 inline constexpr char SelectAll[] = "select.all";
 inline constexpr char SelectDeselect[] = "select.deselect";
 inline constexpr char ViewZoomIn[] = "view.zoomIn";
 inline constexpr char ViewZoomOut[] = "view.zoomOut";
 inline constexpr char ViewFitOnScreen[] = "view.fitOnScreen";
 inline constexpr char ViewActualPixels[] = "view.actualPixels";
+inline constexpr char ViewOptions[] = "view.options";
 inline constexpr char ViewScreenModeStandard[] = "view.screenMode.standard";
 inline constexpr char ViewScreenModeFullWithMenuBar[] = "view.screenMode.fullWithMenuBar";
 inline constexpr char ViewScreenModeFull[] = "view.screenMode.full";
 inline constexpr char WindowPanelsLayers[] = "window.panels.layers";
+inline constexpr char WindowPanelsTools[] = "window.panels.tools";
 inline constexpr char HelpAbout[] = "help.about";
 } // namespace command_ids
 
