@@ -1679,8 +1679,9 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
 /// filter dialogs are out of scope for M6-C.
 fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
     use pictura_filters::{
-        BrushType, Filter, LensType, MezzotintType, NoiseDistribution, PolarKind, RippleSize,
-        ShearFill, SpherizeMode, TextureOptions, WaveType, ZigZagStyle,
+        BrushType, Filter, GrainType, HalftoneType, LensType, LightDirection, MezzotintType,
+        NoiseDistribution, PolarKind, RippleSize, ShearFill, SpherizeMode, StrokeDirection,
+        TextureOptions, WaveType, ZigZagStyle,
     };
 
     Some(match kind {
@@ -1892,6 +1893,179 @@ fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
             foreground: [0, 0, 0],
             background: [255, 255, 255],
             seed: 1,
+        },
+        "accented-edges" => Filter::AccentedEdges {
+            edge_width: 2,
+            edge_brightness: 38,
+            smoothness: 5,
+        },
+        "angled-strokes" => Filter::AngledStrokes {
+            direction_balance: 50,
+            stroke_length: 15,
+            sharpness: 3,
+        },
+        "crosshatch" => Filter::Crosshatch {
+            stroke_length: 9,
+            sharpness: 6,
+            strength: 1,
+        },
+        "dark-strokes" => Filter::DarkStrokes {
+            balance: 5,
+            black_intensity: 6,
+            white_intensity: 5,
+        },
+        "ink-outlines" => Filter::InkOutlines {
+            stroke_length: 10,
+            dark_intensity: 25,
+            light_intensity: 25,
+        },
+        "spatter" => Filter::Spatter {
+            spray_radius: 10,
+            smoothness: 5,
+            seed: 1,
+        },
+        "sprayed-strokes" => Filter::SprayedStrokes {
+            stroke_length: 12,
+            spray_radius: 7,
+            direction: StrokeDirection::RightDiagonal,
+            seed: 1,
+        },
+        "sumi-e" => Filter::SumiE {
+            stroke_width: 8,
+            stroke_pressure: 5,
+            contrast: 20,
+        },
+        "bas-relief" => Filter::BasRelief {
+            detail: 6,
+            smoothness: 3,
+            light_direction: LightDirection::Bottom,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        },
+        "chalk-charcoal" => Filter::ChalkCharcoal {
+            charcoal_area: 6,
+            chalk_area: 6,
+            stroke_pressure: 1,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+            seed: 1,
+        },
+        "charcoal" => Filter::Charcoal {
+            thickness: 1,
+            detail: 3,
+            light_dark_balance: 50,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+            seed: 1,
+        },
+        "chrome" => Filter::Chrome {
+            detail: 4,
+            smoothness: 7,
+        },
+        "conte-crayon" => Filter::ConteCrayon {
+            foreground_level: 8,
+            background_level: 7,
+            texture: TextureOptions::default(),
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+            seed: 1,
+        },
+        "graphic-pen" => Filter::GraphicPen {
+            stroke_length: 6,
+            light_dark_balance: 50,
+            direction: StrokeDirection::RightDiagonal,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        },
+        "halftone-pattern" => Filter::HalftonePattern {
+            size: 5,
+            contrast: 5,
+            pattern: HalftoneType::Dot,
+        },
+        "note-paper" => Filter::NotePaper {
+            image_balance: 25,
+            graininess: 10,
+            relief: 11,
+            seed: 1,
+        },
+        "photocopy" => Filter::Photocopy {
+            detail: 5,
+            darkness: 20,
+        },
+        "plaster" => Filter::Plaster {
+            image_balance: 25,
+            smoothness: 2,
+            light_direction: LightDirection::Bottom,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        },
+        "reticulation" => Filter::Reticulation {
+            density: 13,
+            black_level: 10,
+            white_level: 40,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+            seed: 1,
+        },
+        "stamp" => Filter::Stamp {
+            light_dark_balance: 25,
+            smoothness: 5,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        },
+        "torn-edges" => Filter::TornEdges {
+            image_balance: 25,
+            smoothness: 1,
+            contrast: 8,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        },
+        "water-paper" => Filter::WaterPaper {
+            fiber_length: 15,
+            brightness: 45,
+            contrast: 60,
+            seed: 1,
+        },
+        "craquelure" => Filter::Craquelure {
+            crack_spacing: 10,
+            crack_depth: 6,
+            crack_brightness: 9,
+        },
+        "grain" => Filter::Grain {
+            intensity: 40,
+            contrast: 50,
+            grain_type: GrainType::Regular,
+            background: [255, 255, 255],
+            seed: 1,
+        },
+        "mosaic-tiles" => Filter::MosaicTiles {
+            tile_size: 12,
+            grout_width: 3,
+            lighten_grout: 1,
+            seed: 1,
+        },
+        "patchwork" => Filter::Patchwork {
+            square_size: 5,
+            relief: 8,
+            seed: 1,
+        },
+        "stained-glass" => Filter::StainedGlass {
+            cell_size: 10,
+            border_thickness: 4,
+            light_intensity: 5,
+            foreground: [0, 0, 0],
+            seed: 1,
+        },
+        "texturizer" => Filter::Texturizer {
+            texture: TextureOptions::default(),
+        },
+        "oil-paint" => Filter::OilPaint {
+            stylization: 3.5,
+            cleanliness: 4.5,
+            scale: 0.75,
+            bristle_detail: 3.0,
+            angular_direction: 85.0,
+            shine: 0.55,
         },
         // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
         // default exists; it stays out of the dock and is left unmapped.
@@ -2694,6 +2868,45 @@ mod tests {
                 seed: 1,
             })
         );
+        assert_eq!(filter_from_kind("bogus"), None);
+    }
+
+    #[test]
+    fn filter_from_kind_maps_m25_kinds() {
+        const M25_KINDS: [&str; 29] = [
+            "accented-edges",
+            "angled-strokes",
+            "crosshatch",
+            "dark-strokes",
+            "ink-outlines",
+            "spatter",
+            "sprayed-strokes",
+            "sumi-e",
+            "bas-relief",
+            "chalk-charcoal",
+            "charcoal",
+            "chrome",
+            "conte-crayon",
+            "graphic-pen",
+            "halftone-pattern",
+            "note-paper",
+            "photocopy",
+            "plaster",
+            "reticulation",
+            "stamp",
+            "torn-edges",
+            "water-paper",
+            "craquelure",
+            "grain",
+            "mosaic-tiles",
+            "patchwork",
+            "stained-glass",
+            "texturizer",
+            "oil-paint",
+        ];
+        for kind in M25_KINDS {
+            assert!(filter_from_kind(kind).is_some(), "{kind} should map");
+        }
         assert_eq!(filter_from_kind("bogus"), None);
     }
 

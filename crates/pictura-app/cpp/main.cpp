@@ -1455,6 +1455,84 @@ int main(int argc, char* argv[])
             return 58;
         }
 
+        // M25: the 29 new filter kinds. A clouds-filled document gives every
+        // filter structured content; a pure-white source is a no-op for some.
+        const bool m25FilterDoc = frame.newDocument(QStringLiteral("M25Filters"), 32, 32,
+                                                    QStringLiteral("rgb"), 8,
+                                                    QStringLiteral("white"));
+        pictura::PictureView* m25av = frame.activeView();
+        if (!m25FilterDoc || !m25av || !m25av->apply_filter(QStringLiteral("clouds"))) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 filter document\n");
+            std::fflush(stderr);
+            return 68;
+        }
+
+        // 68: every M25 kind maps, applies, and changes the image.
+        const QStringList m25Kinds = {
+            QStringLiteral("accented-edges"),
+            QStringLiteral("angled-strokes"),
+            QStringLiteral("crosshatch"),
+            QStringLiteral("dark-strokes"),
+            QStringLiteral("ink-outlines"),
+            QStringLiteral("spatter"),
+            QStringLiteral("sprayed-strokes"),
+            QStringLiteral("sumi-e"),
+            QStringLiteral("bas-relief"),
+            QStringLiteral("chalk-charcoal"),
+            QStringLiteral("charcoal"),
+            QStringLiteral("chrome"),
+            QStringLiteral("conte-crayon"),
+            QStringLiteral("graphic-pen"),
+            QStringLiteral("halftone-pattern"),
+            QStringLiteral("note-paper"),
+            QStringLiteral("photocopy"),
+            QStringLiteral("plaster"),
+            QStringLiteral("reticulation"),
+            QStringLiteral("stamp"),
+            QStringLiteral("torn-edges"),
+            QStringLiteral("water-paper"),
+            QStringLiteral("craquelure"),
+            QStringLiteral("grain"),
+            QStringLiteral("mosaic-tiles"),
+            QStringLiteral("patchwork"),
+            QStringLiteral("stained-glass"),
+            QStringLiteral("texturizer"),
+            QStringLiteral("oil-paint"),
+        };
+        int m25Applied = 0;
+        for (const QString& kind : m25Kinds) {
+            const QImage before = m25av->image();
+            const bool ok = m25av->apply_filter(kind);
+            if (ok && m25av->image() != before) {
+                ++m25Applied;
+            }
+            // Undo so every kind is compared against the same structured source
+            // and the scratch history stays well under its 20-state cap.
+            m25av->undo();
+        }
+        std::fprintf(stderr, "pictura self-test: m25_applied applied=%d/%d\n", m25Applied,
+                     static_cast<int>(m25Kinds.size()));
+        std::fflush(stderr);
+        if (m25Applied != m25Kinds.size()) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 filter apply wrong\n");
+            return 68;
+        }
+
+        // 69: a fixed seed makes the seeded M25 filter deterministic across
+        // undo and reapply.
+        m25av->apply_filter(QStringLiteral("grain"));
+        const QImage m25First = m25av->image();
+        m25av->undo();
+        m25av->apply_filter(QStringLiteral("grain"));
+        const bool m25Deterministic = m25av->image() == m25First;
+        std::fprintf(stderr, "pictura self-test: m25_deterministic=%d\n",
+                     m25Deterministic ? 1 : 0);
+        std::fflush(stderr);
+        if (!m25Deterministic) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M25 filter determinism wrong\n");
+            return 69;
+        }
+
         // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
         int m23Levels = 0;
         for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {
@@ -1629,7 +1707,7 @@ int main(int argc, char* argv[])
         const bool m25Smaller = m25Iw < m25Vw && m25Ih < m25Vh;
         const bool m25NotTopLeft = !m25Smaller || m25Actual != QPointF(0, 0);
         std::fprintf(stderr,
-                     "pictura self-test: m25_centre offset=(%g,%g) zoom=%g\n",
+                     "pictura self-test: canvas_centre offset=(%g,%g) zoom=%g\n",
                      m25Actual.x(),
                      m25Actual.y(),
                      m25Zoom);
@@ -1666,7 +1744,7 @@ int main(int argc, char* argv[])
         const bool m25Panned = std::abs(m25Delta.x() - 30.0) < 1e-6
                                && std::abs(m25Delta.y() - 15.0) < 1e-6;
         std::fprintf(stderr,
-                     "pictura self-test: m25_middle_pan delta=(%g,%g)\n",
+                     "pictura self-test: canvas_middle_pan delta=(%g,%g)\n",
                      m25Delta.x(),
                      m25Delta.y());
         std::fflush(stderr);
@@ -1692,7 +1770,7 @@ int main(int argc, char* argv[])
         m25View->undo();
         const bool m25Undone = m25View->image() == m25Pre;
         std::fprintf(stderr,
-                     "pictura self-test: m25_move preview=%d hist=%d undo=%d\n",
+                     "pictura self-test: canvas_move preview=%d hist=%d undo=%d\n",
                      m25Previewed ? 1 : 0,
                      m25CommitHistory ? 1 : 0,
                      m25Undone ? 1 : 0);
@@ -1712,7 +1790,7 @@ int main(int argc, char* argv[])
         m25View->end_move_preview();
         const bool m25HistUnchanged = m25View->history_count() == m25CacheHist;
         std::fprintf(stderr,
-                     "pictura self-test: m25_preview_cache began=%d base=%d layer=%d "
+                     "pictura self-test: canvas_preview_cache began=%d base=%d layer=%d "
                      "hist_unchanged=%d\n",
                      m25Began ? 1 : 0,
                      m25BaseOk ? 1 : 0,

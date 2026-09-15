@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **465 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M24 archived; canonical specs are
-  in `openspec/specs/` (53 capabilities, `validate --all --strict`
+- Test suite: **508 tests, 1 ignored** (one pre-existing app `#[ignore]`).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M25 archived; canonical specs are
+  in `openspec/specs/` (57 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
@@ -37,7 +37,7 @@ openspec validate --all --strict
 | `pictura-codec` | PSD/PSB read/write: composite, layers, masks, adjustment keys, document channels |
 | `pictura-color` | ICC profiles (sRGB/AdobeRGB/ProPhoto), convert/assign, intents, BPC |
 | `pictura-adjust` | 15 destructive adjustments (`apply`) |
-| `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters; `artistic` module (15 CS6 Artistic filters with shared `reduce`/`noise`/`texture` helpers) |
+| `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters; `artistic` module (15 CS6 Artistic filters with shared `reduce`/`noise`/`texture` helpers) + the four remaining families — Brush Strokes, Sketch, Texture, Oil Paint (29 filters, same shared helpers) |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range; `Selection::{rect,ellipse,polygon}` rasterizers + `CombineMode`/`combine_with` |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; re-exports `Anchor`/`Resample`) |
@@ -341,6 +341,44 @@ openspec validate --all --strict
   -D warnings` OK; 465 tests (0 failed, 1 ignored; unchanged — no Rust changes);
   `openspec validate --all --strict` 53/53 pre-archive. OpenSpec change
   m24-panel-rail (capability panel-rail; MODIFIED application-shell), archived.
+- **M25** — Remaining filter families. `pictura-filters` gains the four remaining
+  CS6 families, 29 filters total: **Brush Strokes** (`brush_strokes.rs`: Accented
+  Edges, Angled Strokes, Crosshatch, Dark Strokes, Ink Outlines, Spatter, Sprayed
+  Strokes, Sumi-e), **Sketch** (`sketch/{mod,relief,paper}.rs`: Bas Relief, Chalk
+  & Charcoal, Charcoal, Chrome, Conté Crayon, Graphic Pen, Halftone Pattern, Note
+  Paper, Photocopy, Plaster, Reticulation, Stamp, Torn Edges, Water Paper),
+  **Texture** (`texture.rs`: Craquelure, Grain, Mosaic Tiles, Patchwork, Stained
+  Glass, Texturizer), and **Oil Paint** (`oil_paint.rs`). All are
+  behavioural-parity models (Adobe kernels closed), reusing the M22 shared helpers
+  `artistic::{reduce,noise,texture}` (posterize, edge_magnitude, clamp_u8,
+  value_noise, surface_height, emboss, `TextureOptions`). New `Filter` enums
+  `StrokeDirection`, `LightDirection`, `HalftoneType`, `GrainType` and 29 variants
+  in `lib.rs`; `apply` dispatches to the family functions. Colour-dependent Sketch
+  filters carry explicit `foreground`/`background` RGB (Bas Relief included —
+  dark/recessed→foreground, light/raised→background); Conté Crayon and Texturizer
+  take shared `TextureOptions`; seeded filters carry `seed: u64` and are
+  bit-reproducible. **Oil Paint is a deliberate non-parity divergence:** CS6
+  hard-requires a supported GPU (closed OpenCL kernel, no CPU fallback), so this
+  is a CPU behavioural model (gradient-orientation directional edge-stopping
+  smoothing + a luma/scale/bristle height field shaded Lambert/Blinn-Phong from
+  `angular_direction`/`shine`); it is deterministic (no seed) and a GPU compute
+  path is the deferred upgrade. **Accented Edges** is neutral (no-op) at Edge
+  Brightness 25 by contract; the app default is set to 38 (CS6's dialog default)
+  so the menu item visibly acts. App: `filter_from_kind` maps all 29 kebab-case
+  kinds with fixed in-range defaults (`seed: 1` for seeded ones). Self-test exit
+  codes **68/69** (`m25_applied applied=29/29`; `m25_deterministic=1`), identical
+  on fixture and no-argument runs. Self-test label disambiguation: the earlier
+  canvas-perf checks were renamed `m25_*` → `canvas_*` (`canvas_centre`,
+  `canvas_middle_pan`, `canvas_move`, `canvas_preview_cache`) so the `m25_` prefix
+  belongs to the actual M25 milestone; exit codes 64–67 unchanged. Verified:
+  `cmake --build build` OK; both self-tests exit 0; `cargo fmt/clippy` clean;
+  **508 tests (0 failed, 1 ignored)** — up from 465; `openspec validate --all
+  --strict` 54/54 pre-archive. OpenSpec change `m25-filter-families` adds
+  capabilities `brush-stroke-filters`, `sketch-filters`, `texture-filters`,
+  `oil-paint-filter` (4 new → **57** capabilities after archive). Deferred
+  non-goals: Filter Gallery dialog and cumulative/reorder stack, Smart Filters,
+  `Edit > Fade`, 16/32-bit and CMYK/Lab gating, `Load Texture` file I/O, and an
+  Oil Paint GPU compute pass.
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -386,9 +424,11 @@ checks) is written up in `docs/dev/canvas-view-spec.md`.
   artifact).
 
 Self-test exit codes 64–67, measured identically on fixture and no-argument
-runs: `m25_centre offset=(270.691, 5) zoom=1`; `m25_middle_pan delta=(30,15)`;
-`m25_move preview=1 hist=1 undo=1`;
-`m25_preview_cache began=1 base=1 layer=1 hist_unchanged=1`. Gates green:
+runs: `canvas_centre offset=(270.691, 5) zoom=1`; `canvas_middle_pan
+delta=(30,15)`; `canvas_move preview=1 hist=1 undo=1`; `canvas_preview_cache
+began=1 base=1 layer=1 hist_unchanged=1`. These labels were renamed `m25_*` →
+`canvas_*` during M25 so the `m25_` prefix belongs to the actual milestone; the
+exit codes are unchanged. Gates green:
 `cmake --build build`; both self-tests exit 0; `cargo fmt/clippy/test` clean
 (no new Rust tests; the app crate stays green). The headless self-test cannot
 measure frame timing, so the interactive feel (pan/zoom/move latency on large
@@ -397,7 +437,7 @@ documents) still needs a real GUI check.
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M24 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M25 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -415,21 +455,25 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: placeholder-panel content, then filter families and image modes/bit-depth (propose via OpenSpec first)
+## Next: placeholder-panel content, image modes/bit-depth, Oil Paint GPU, chrome fidelity (propose via OpenSpec first)
 
-M24 is archived; its `panel-rail` capability and `application-shell` delta live
-in `openspec/specs/`. The reference screenshot is at `docs/02-ui-ux/reference/`.
-Next up:
+M24 and M25 are archived; their capabilities and deltas live in
+`openspec/specs/`. The reference screenshot is at `docs/02-ui-ux/reference/`.
+The filter families are done (M22 Artistic + M25 Brush Strokes/Sketch/Texture/
+Oil Paint); next candidates:
 
 - Real content for the M24 placeholder panels (gradient/pattern presets,
   Properties binding, adjustment presets, libraries, channel/path lists,
-  actions), then the remaining filter families (Brush Strokes, Sketch, Texture,
-  Oil Paint) and image modes/bit-depth, then further CS6 panel/chrome fidelity
-  and the deferred brush tip families/dynamics.
+  actions).
+- Image modes and bit-depth (16/32-bit, CMYK/Lab gating for filters and
+  adjustments).
+- An Oil Paint GPU compute pass (the CPU model is the current deliverable).
+- Remaining CS6 panel/chrome fidelity and the deferred brush tip
+  families/dynamics.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M24 are archived; their deltas now live in `openspec/specs/`.
+M6 through M25 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -464,3 +508,7 @@ M6 through M24 are archived; their deltas now live in `openspec/specs/`.
 - The M24 panels are structural placeholders with empty states, not features;
   icon-collapse, workspace presets, and panel-title-bar menus are not
   implemented.
+- Oil Paint is a CPU behavioural model: CS6 requires a supported GPU (closed
+  OpenCL kernel, no CPU fallback), so the result is a deliberate non-parity
+  divergence rather than verified parity.
+- The OS font/filter gallery UI is still absent.

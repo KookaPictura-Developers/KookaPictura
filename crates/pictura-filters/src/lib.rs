@@ -13,15 +13,19 @@ use pictura_core::PixelBuffer;
 
 pub mod artistic;
 pub mod blur;
+pub mod brush_strokes;
 pub mod distort;
 pub mod kernel;
 pub mod luma;
 pub mod noise;
+pub mod oil_paint;
 pub mod other;
 pub mod pixelate;
 pub mod render;
 pub mod sharpen;
+pub mod sketch;
 pub mod stylize;
+pub mod texture;
 
 pub use render::LensType;
 
@@ -143,6 +147,47 @@ impl Default for TextureOptions {
             invert: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StrokeDirection {
+    RightDiagonal,
+    Horizontal,
+    LeftDiagonal,
+    Vertical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LightDirection {
+    Bottom,
+    BottomLeft,
+    Left,
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HalftoneType {
+    Dot,
+    Line,
+    Circle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrainType {
+    Regular,
+    Soft,
+    Sprinkles,
+    Clumped,
+    Contrasty,
+    Enlarged,
+    Stippled,
+    Horizontal,
+    Vertical,
+    Speckle,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -392,6 +437,179 @@ pub enum Filter {
         background: [u8; 3],
         seed: u64,
     },
+    AccentedEdges {
+        edge_width: u8,
+        edge_brightness: u8,
+        smoothness: u8,
+    },
+    AngledStrokes {
+        direction_balance: u8,
+        stroke_length: u8,
+        sharpness: u8,
+    },
+    Crosshatch {
+        stroke_length: u8,
+        sharpness: u8,
+        strength: u8,
+    },
+    DarkStrokes {
+        balance: u8,
+        black_intensity: u8,
+        white_intensity: u8,
+    },
+    InkOutlines {
+        stroke_length: u8,
+        dark_intensity: u8,
+        light_intensity: u8,
+    },
+    Spatter {
+        spray_radius: u8,
+        smoothness: u8,
+        seed: u64,
+    },
+    SprayedStrokes {
+        stroke_length: u8,
+        spray_radius: u8,
+        direction: StrokeDirection,
+        seed: u64,
+    },
+    SumiE {
+        stroke_width: u8,
+        stroke_pressure: u8,
+        contrast: u8,
+    },
+    BasRelief {
+        detail: u8,
+        smoothness: u8,
+        light_direction: LightDirection,
+        foreground: [u8; 3],
+        background: [u8; 3],
+    },
+    ChalkCharcoal {
+        charcoal_area: u8,
+        chalk_area: u8,
+        stroke_pressure: u8,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        seed: u64,
+    },
+    Charcoal {
+        thickness: u8,
+        detail: u8,
+        light_dark_balance: u8,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        seed: u64,
+    },
+    Chrome {
+        detail: u8,
+        smoothness: u8,
+    },
+    ConteCrayon {
+        foreground_level: u8,
+        background_level: u8,
+        texture: TextureOptions,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        seed: u64,
+    },
+    GraphicPen {
+        stroke_length: u8,
+        light_dark_balance: u8,
+        direction: StrokeDirection,
+        foreground: [u8; 3],
+        background: [u8; 3],
+    },
+    HalftonePattern {
+        size: u8,
+        contrast: u8,
+        pattern: HalftoneType,
+    },
+    NotePaper {
+        image_balance: u8,
+        graininess: u8,
+        relief: u8,
+        seed: u64,
+    },
+    Photocopy {
+        detail: u8,
+        darkness: u8,
+    },
+    Plaster {
+        image_balance: u8,
+        smoothness: u8,
+        light_direction: LightDirection,
+        foreground: [u8; 3],
+        background: [u8; 3],
+    },
+    Reticulation {
+        density: u8,
+        black_level: u8,
+        white_level: u8,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        seed: u64,
+    },
+    Stamp {
+        light_dark_balance: u8,
+        smoothness: u8,
+        foreground: [u8; 3],
+        background: [u8; 3],
+    },
+    TornEdges {
+        image_balance: u8,
+        smoothness: u8,
+        contrast: u8,
+        foreground: [u8; 3],
+        background: [u8; 3],
+    },
+    WaterPaper {
+        fiber_length: u8,
+        brightness: u8,
+        contrast: u8,
+        seed: u64,
+    },
+    Craquelure {
+        crack_spacing: u8,
+        crack_depth: u8,
+        crack_brightness: u8,
+    },
+    Grain {
+        intensity: u8,
+        contrast: u8,
+        grain_type: GrainType,
+        background: [u8; 3],
+        seed: u64,
+    },
+    MosaicTiles {
+        tile_size: u8,
+        grout_width: u8,
+        lighten_grout: u8,
+        seed: u64,
+    },
+    Patchwork {
+        square_size: u8,
+        relief: u8,
+        seed: u64,
+    },
+    StainedGlass {
+        cell_size: u8,
+        border_thickness: u8,
+        light_intensity: u8,
+        foreground: [u8; 3],
+        seed: u64,
+    },
+    Texturizer {
+        texture: TextureOptions,
+    },
+    OilPaint {
+        stylization: f64,
+        cleanliness: f64,
+        scale: f64,
+        bristle_detail: f64,
+        angular_direction: f64,
+        shine: f64,
+    },
 }
 
 /// Apply `filter` in place (planar 8-bit; channels 3 or 4; alpha untouched).
@@ -633,6 +851,252 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             *foreground,
             *background,
             *seed,
+        ),
+        Filter::AccentedEdges {
+            edge_width,
+            edge_brightness,
+            smoothness,
+        } => brush_strokes::accented_edges(buf, *edge_width, *edge_brightness, *smoothness),
+        Filter::AngledStrokes {
+            direction_balance,
+            stroke_length,
+            sharpness,
+        } => brush_strokes::angled_strokes(buf, *direction_balance, *stroke_length, *sharpness),
+        Filter::Crosshatch {
+            stroke_length,
+            sharpness,
+            strength,
+        } => brush_strokes::crosshatch(buf, *stroke_length, *sharpness, *strength),
+        Filter::DarkStrokes {
+            balance,
+            black_intensity,
+            white_intensity,
+        } => brush_strokes::dark_strokes(buf, *balance, *black_intensity, *white_intensity),
+        Filter::InkOutlines {
+            stroke_length,
+            dark_intensity,
+            light_intensity,
+        } => brush_strokes::ink_outlines(buf, *stroke_length, *dark_intensity, *light_intensity),
+        Filter::Spatter {
+            spray_radius,
+            smoothness,
+            seed,
+        } => brush_strokes::spatter(buf, *spray_radius, *smoothness, *seed),
+        Filter::SprayedStrokes {
+            stroke_length,
+            spray_radius,
+            direction,
+            seed,
+        } => brush_strokes::sprayed_strokes(buf, *stroke_length, *spray_radius, *direction, *seed),
+        Filter::SumiE {
+            stroke_width,
+            stroke_pressure,
+            contrast,
+        } => brush_strokes::sumi_e(buf, *stroke_width, *stroke_pressure, *contrast),
+        Filter::BasRelief {
+            detail,
+            smoothness,
+            light_direction,
+            foreground,
+            background,
+        } => sketch::bas_relief(
+            buf,
+            *detail,
+            *smoothness,
+            *light_direction,
+            *foreground,
+            *background,
+        ),
+        Filter::ChalkCharcoal {
+            charcoal_area,
+            chalk_area,
+            stroke_pressure,
+            foreground,
+            background,
+            seed,
+        } => sketch::chalk_charcoal(
+            buf,
+            *charcoal_area,
+            *chalk_area,
+            *stroke_pressure,
+            *foreground,
+            *background,
+            *seed,
+        ),
+        Filter::Charcoal {
+            thickness,
+            detail,
+            light_dark_balance,
+            foreground,
+            background,
+            seed,
+        } => sketch::charcoal(
+            buf,
+            *thickness,
+            *detail,
+            *light_dark_balance,
+            *foreground,
+            *background,
+            *seed,
+        ),
+        Filter::Chrome { detail, smoothness } => sketch::chrome(buf, *detail, *smoothness),
+        Filter::ConteCrayon {
+            foreground_level,
+            background_level,
+            texture,
+            foreground,
+            background,
+            seed,
+        } => sketch::conte_crayon(
+            buf,
+            *foreground_level,
+            *background_level,
+            *texture,
+            *foreground,
+            *background,
+            *seed,
+        ),
+        Filter::GraphicPen {
+            stroke_length,
+            light_dark_balance,
+            direction,
+            foreground,
+            background,
+        } => sketch::graphic_pen(
+            buf,
+            *stroke_length,
+            *light_dark_balance,
+            *direction,
+            *foreground,
+            *background,
+        ),
+        Filter::HalftonePattern {
+            size,
+            contrast,
+            pattern,
+        } => sketch::halftone_pattern(buf, *size, *contrast, *pattern),
+        Filter::NotePaper {
+            image_balance,
+            graininess,
+            relief,
+            seed,
+        } => sketch::note_paper(buf, *image_balance, *graininess, *relief, *seed),
+        Filter::Photocopy { detail, darkness } => sketch::photocopy(buf, *detail, *darkness),
+        Filter::Plaster {
+            image_balance,
+            smoothness,
+            light_direction,
+            foreground,
+            background,
+        } => sketch::plaster(
+            buf,
+            *image_balance,
+            *smoothness,
+            *light_direction,
+            *foreground,
+            *background,
+        ),
+        Filter::Reticulation {
+            density,
+            black_level,
+            white_level,
+            foreground,
+            background,
+            seed,
+        } => sketch::reticulation(
+            buf,
+            *density,
+            *black_level,
+            *white_level,
+            *foreground,
+            *background,
+            *seed,
+        ),
+        Filter::Stamp {
+            light_dark_balance,
+            smoothness,
+            foreground,
+            background,
+        } => sketch::stamp(
+            buf,
+            *light_dark_balance,
+            *smoothness,
+            *foreground,
+            *background,
+        ),
+        Filter::TornEdges {
+            image_balance,
+            smoothness,
+            contrast,
+            foreground,
+            background,
+        } => sketch::torn_edges(
+            buf,
+            *image_balance,
+            *smoothness,
+            *contrast,
+            *foreground,
+            *background,
+        ),
+        Filter::WaterPaper {
+            fiber_length,
+            brightness,
+            contrast,
+            seed,
+        } => sketch::water_paper(buf, *fiber_length, *brightness, *contrast, *seed),
+        Filter::Craquelure {
+            crack_spacing,
+            crack_depth,
+            crack_brightness,
+        } => texture::craquelure(buf, *crack_spacing, *crack_depth, *crack_brightness),
+        Filter::Grain {
+            intensity,
+            contrast,
+            grain_type,
+            background,
+            seed,
+        } => texture::grain(buf, *intensity, *contrast, *grain_type, *background, *seed),
+        Filter::MosaicTiles {
+            tile_size,
+            grout_width,
+            lighten_grout,
+            seed,
+        } => texture::mosaic_tiles(buf, *tile_size, *grout_width, *lighten_grout, *seed),
+        Filter::Patchwork {
+            square_size,
+            relief,
+            seed,
+        } => texture::patchwork(buf, *square_size, *relief, *seed),
+        Filter::StainedGlass {
+            cell_size,
+            border_thickness,
+            light_intensity,
+            foreground,
+            seed,
+        } => texture::stained_glass(
+            buf,
+            *cell_size,
+            *border_thickness,
+            *light_intensity,
+            *foreground,
+            *seed,
+        ),
+        Filter::Texturizer { texture } => texture::texturizer(buf, *texture),
+        Filter::OilPaint {
+            stylization,
+            cleanliness,
+            scale,
+            bristle_detail,
+            angular_direction,
+            shine,
+        } => oil_paint::oil_paint(
+            buf,
+            *stylization,
+            *cleanliness,
+            *scale,
+            *bristle_detail,
+            *angular_direction,
+            *shine,
         ),
     }
 }
