@@ -10,8 +10,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
 - Test suite: **401 tests, 1 ignored** (one pre-existing app `#[ignore]`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M16 archived; canonical specs are
-  in `openspec/specs/` (37 capabilities, `validate --all --strict`
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M17 archived; canonical specs are
+  in `openspec/specs/` (39 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 
 ## Commands
@@ -40,7 +40,7 @@ openspec validate --all --strict
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
 | `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask) + `document_ops` (document resize/canvas/orientation; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
-| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, canvas, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), layer/adjustment dock, zoom/pan, GPU demo |
+| `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), layer/adjustment dock, zoom/pan, GPU demo |
 
 ## Milestones done
 
@@ -141,11 +141,32 @@ openspec validate --all --strict
   duplicate panel rejection, and hide-all. OpenSpec change `m16-app-shell`
   (capabilities `command-registry`, `workspace-persistence`; MODIFIED
   `application-shell`), archived.
+- **M17** — Document lifecycle and multi-document tabs. Rust bridge
+  `PictureView` gains `new_document(width,height,mode,depth,background)`
+  (8-bit Grayscale/RGB, white/transparent only), `save(path)` (atomic
+  temp+rename through `write_psd`), `is_dirty()`, `file_path()`, plus
+  `path`/`dirty` state; dirty is set at all 11 mutating-command
+  history-capture sites and cleared by open/save. C++ shell: `new_document_dialog`
+  (New Document dialog), `dialogs` (`askUnsaved` Save/Discard/Cancel with a
+  non-interactive test policy), `frame` rewritten around a `QTabWidget` document
+  area (one `PictureView`+`ImageView` per document, active-document targeting
+  for all menu handlers/dock/status, tab titles with a `*` modified marker,
+  File New/Open/Save/Save As/Revert/Close/Close All/Exit handlers, recent-files
+  list persisted in the session store), `session` gains a bounded `recent`
+  list, and `commands.h`/`command_tree.cpp` file-lifecycle leaves become
+  implemented. `main.cpp` starts empty, opens the CLI path into a document, or
+  creates a scratch document for the GPU smoke test; self-test exit codes 33–37
+  cover New + white fill, Save As/open pixel round-trip, dirty set/cleared, tab
+  switching, and close prompt Cancel/Discard. Verified: `cargo` suite clean
+  (401 tests, 0 failed, 1 ignored — unchanged), fixture and no-argument
+  self-tests exit 0, `guard.sh` OK. OpenSpec change `m17-document-lifecycle`
+  (capabilities `document-lifecycle`, `document-tabs`; MODIFIED
+  `application-shell`), archived.
 
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M16 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M17 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -163,22 +184,22 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M17 (propose via OpenSpec first)
+## Next: M18 (propose via OpenSpec first)
 
-M16 is archived; its `command-registry` and `workspace-persistence` deltas live
-in `openspec/specs/`. The frame now gives every later feature a place to land.
-Next up:
+M17 is archived; its `document-lifecycle` and `document-tabs` deltas (plus the
+MODIFIED `application-shell`) live in `openspec/specs/`. Documents now have a
+lifecycle and the frame hosts several at once. Next up:
 
-- **M17 — Document lifecycle & file IO**: multi-document tabs, New/Open dialogs
-  and recent files, wire the existing `write_psd` into Save/Save As, dirty state
-  and title, close/revert; the File menu leaves become live.
+- **M18 — Toolbox and core tools**: the toolbox and options bar, tool state
+  (active tool, tool-specific options, cursor), and the core tools — Move,
+  Marquee, Lasso, Quick Selection, Crop, Eyedropper, Hand, Zoom — per
+  `docs/03-tools` and `docs/02-ui-ux/toolbox-and-options-bar.md`.
 - Then: History palette + state labels and a full Image Size dialog (panels),
-  the toolbox/options bar and core tools (M18), the painting engine, remaining
-  filter families, image modes/bit-depth.
+  the painting engine, remaining filter families, image modes/bit-depth.
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M16 are archived; their deltas now live in `openspec/specs/`.
+M6 through M17 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -186,3 +207,5 @@ M6 through M16 are archived; their deltas now live in `openspec/specs/`.
 - PSD descriptor coverage is partial (adjustment layers, layer styles not yet).
 - GPU is non-authoritative; non-separable blend modes and Dissolve are CPU-only.
 - `pictura-app` has one `#[ignore]`d interop test.
+- The recent-files menu is rebuilt at startup, so a file opened in-session
+  appears there only after restart.

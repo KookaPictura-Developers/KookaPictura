@@ -32,26 +32,30 @@ void leaf(CommandRegistry& registry, const QStringList& path, const QString& lab
 
 void addDefaultCommands(CommandRegistry& registry) {
     // File
-    leaf(registry, {"File", "New…"}, QStringLiteral("New…"), QStringLiteral("Ctrl+N"));
+    registry.add(command_ids::FileNew, {"File", "New…"}, QStringLiteral("New…"),
+                 QKeySequence(QStringLiteral("Ctrl+N")), true);
     registry.add(command_ids::FileOpen, {"File", "Open..."}, QStringLiteral("Open..."),
                  QKeySequence(QStringLiteral("Ctrl+O")), true);
     leaf(registry, {"File", "Open As…"}, QStringLiteral("Open As…"),
          QStringLiteral("Ctrl+Alt+Shift+O"));
     leaf(registry, {"File", "Open As Smart Object…"}, QStringLiteral("Open As Smart Object…"));
     registry.addSeparator({"File"});
-    leaf(registry, {"File", "Open Recent"}, QStringLiteral("Open Recent"));
-    registry.addSeparator({"File"});
-    leaf(registry, {"File", "Close"}, QStringLiteral("Close"), QStringLiteral("Ctrl+W"));
-    leaf(registry, {"File", "Close All"}, QStringLiteral("Close All"), QStringLiteral("Ctrl+Alt+W"));
+    registry.add(command_ids::FileClose, {"File", "Close"}, QStringLiteral("Close"),
+                 QKeySequence(QStringLiteral("Ctrl+W")), true);
+    registry.add(command_ids::FileCloseAll, {"File", "Close All"}, QStringLiteral("Close All"),
+                 QKeySequence(QStringLiteral("Ctrl+Alt+W")), true);
     leaf(registry, {"File", "Close and Go to Bridge…"}, QStringLiteral("Close and Go to Bridge…"),
          QStringLiteral("Shift+Ctrl+W"));
     registry.addSeparator({"File"});
-    leaf(registry, {"File", "Save"}, QStringLiteral("Save"), QStringLiteral("Ctrl+S"));
-    leaf(registry, {"File", "Save As…"}, QStringLiteral("Save As…"), QStringLiteral("Shift+Ctrl+S"));
+    registry.add(command_ids::FileSave, {"File", "Save"}, QStringLiteral("Save"),
+                 QKeySequence(QStringLiteral("Ctrl+S")), true);
+    registry.add(command_ids::FileSaveAs, {"File", "Save As…"}, QStringLiteral("Save As…"),
+                 QKeySequence(QStringLiteral("Shift+Ctrl+S")), true);
     leaf(registry, {"File", "Check In…"}, QStringLiteral("Check In…"));
     leaf(registry, {"File", "Save for Web & Devices…"}, QStringLiteral("Save for Web & Devices…"),
          QStringLiteral("Ctrl+Alt+Shift+S"));
-    leaf(registry, {"File", "Revert…"}, QStringLiteral("Revert…"), QStringLiteral("F12"));
+    registry.add(command_ids::FileRevert, {"File", "Revert…"}, QStringLiteral("Revert…"),
+                 QKeySequence(QStringLiteral("F12")), true);
     registry.addSeparator({"File"});
     leaf(registry, {"File", "Place…"}, QStringLiteral("Place…"));
     leaf(registry, {"File", "Import", "Variable Data Sets"}, QStringLiteral("Variable Data Sets"));
@@ -84,7 +88,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"File", "Print One Copy"}, QStringLiteral("Print One Copy"),
          QStringLiteral("Ctrl+Alt+Shift+P"));
     registry.addSeparator({"File"});
-    leaf(registry, {"File", "Exit"}, QStringLiteral("Exit"), QStringLiteral("Ctrl+Q"));
+    registry.add(command_ids::FileExit, {"File", "Exit"}, QStringLiteral("Exit"),
+                 QKeySequence(QStringLiteral("Ctrl+Q")), true);
 
     // Edit
     registry.add(command_ids::EditUndo, {"Edit", "Undo"}, QStringLiteral("Undo"),

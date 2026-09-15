@@ -5,7 +5,10 @@ use core::pin::Pin;
 use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QImageFormat, QString};
-use pictura_core::{AdjustmentData, BlendMode, Document, Layer, LayerMask, PixelBuffer, PsdRect};
+use pictura_core::{
+    AdjustmentData, BitDepth, BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer,
+    PsdRect,
+};
 use pictura_select::Selection;
 
 #[cxx_qt::bridge]
@@ -31,6 +34,37 @@ pub mod qobject {
         /// back to a generated test image when the file is missing or unsupported.
         #[qinvokable]
         fn open(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// Create a new `width`×`height` document. `mode` is `"rgb"` or
+        /// `"grayscale"`, `depth` must be 8, and `background` is `"white"` or
+        /// `"transparent"`. Resets the selection and history and clears the
+        /// file path and dirty flag. Returns false and leaves state unchanged
+        /// for any invalid parameter.
+        #[qinvokable]
+        fn new_document(
+            self: Pin<&mut Self>,
+            width: i32,
+            height: i32,
+            mode: &QString,
+            depth: i32,
+            background: &QString,
+        ) -> bool;
+
+        /// Serialize the document to `path` as a PSD, writing a sibling
+        /// `<path>.tmp` first and renaming it over `path`. Clears the dirty
+        /// flag on success. Returns false without a document or on any encode
+        /// or IO error.
+        #[qinvokable]
+        fn save(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// Whether the document has unsaved changes (false when none).
+        #[qinvokable]
+        fn is_dirty(&self) -> bool;
+
+        /// Path the document was last opened from or saved to; empty when
+        /// untitled.
+        #[qinvokable]
+        fn file_path(&self) -> QString;
 
         /// The image to display. Never null.
         #[qinvokable]
@@ -181,12 +215,15 @@ pub struct PictureViewRust {
     doc: Option<Document>,
     selection: Option<Selection>,
     history: History,
+    path: Option<String>,
+    dirty: bool,
     interop: Option<crate::gpu::InteropState>,
 }
 
 impl qobject::PictureView {
     pub fn open(self: Pin<&mut Self>, path: &QString) -> bool {
-        let loaded = std::fs::read(path.to_string())
+        let path = path.to_string();
+        let loaded = std::fs::read(&path)
             .ok()
             .and_then(|bytes| pictura_codec::read_psd(&bytes).ok());
 
@@ -200,7 +237,80 @@ impl qobject::PictureView {
         view.doc = loaded;
         view.selection = None;
         view.history = History::default();
+        view.path = if ok { Some(path) } else { None };
+        view.dirty = false;
         ok
+    }
+
+    pub fn new_document(
+        self: Pin<&mut Self>,
+        width: i32,
+        height: i32,
+        mode: &QString,
+        depth: i32,
+        background: &QString,
+    ) -> bool {
+        if width < 1 || height < 1 || depth != 8 {
+            return false;
+        }
+        let mode = match mode.to_string().as_str() {
+            "rgb" => ColorMode::Rgb,
+            "grayscale" => ColorMode::Grayscale,
+            _ => return false,
+        };
+        let white = match background.to_string().as_str() {
+            "white" => true,
+            "transparent" => false,
+            _ => return false,
+        };
+        let mut doc = Document::new(width as u32, height as u32, mode, BitDepth::Eight);
+        if white {
+            doc.composite.data.fill(255);
+        }
+        let image = document_to_image(&doc);
+        let mut view = self.rust_mut();
+        view.image = image;
+        view.doc = Some(doc);
+        view.selection = None;
+        view.history = History::default();
+        view.path = None;
+        view.dirty = false;
+        true
+    }
+
+    pub fn save(self: Pin<&mut Self>, path: &QString) -> bool {
+        let Some(bytes) = self
+            .rust()
+            .doc
+            .as_ref()
+            .and_then(|doc| pictura_codec::write_psd(doc).ok())
+        else {
+            return false;
+        };
+        let path = path.to_string();
+        let tmp = format!("{path}.tmp");
+        if std::fs::write(&tmp, &bytes).is_err() {
+            return false;
+        }
+        if std::fs::rename(&tmp, &path).is_err() {
+            return false;
+        }
+        let mut view = self.rust_mut();
+        view.path = Some(path);
+        view.dirty = false;
+        true
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.rust().dirty
+    }
+
+    pub fn file_path(&self) -> QString {
+        self.rust()
+            .path
+            .as_deref()
+            .map(QString::from)
+            .unwrap_or_default()
     }
 
     pub fn image(&self) -> QImage {
@@ -252,7 +362,9 @@ impl qobject::PictureView {
         };
         if changed {
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.recomposite();
         }
@@ -264,7 +376,9 @@ impl qobject::PictureView {
             let snapshot = self.snapshot();
             self.as_mut().rust_mut().selection = Some(Selection::all(w, h));
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.changed();
         }
@@ -274,7 +388,9 @@ impl qobject::PictureView {
         let snapshot = self.snapshot();
         self.as_mut().rust_mut().selection = None;
         if let Some(snapshot) = snapshot {
-            self.as_mut().rust_mut().history.capture(snapshot);
+            let mut rust = self.as_mut().rust_mut();
+            rust.history.capture(snapshot);
+            rust.dirty = true;
         }
         self.changed();
     }
@@ -304,7 +420,9 @@ impl qobject::PictureView {
                 let snapshot = self.snapshot();
                 self.as_mut().rust_mut().selection = Some(selection);
                 if let Some(snapshot) = snapshot {
-                    self.as_mut().rust_mut().history.capture(snapshot);
+                    let mut rust = self.as_mut().rust_mut();
+                    rust.history.capture(snapshot);
+                    rust.dirty = true;
                 }
                 self.changed();
                 true
@@ -347,7 +465,9 @@ impl qobject::PictureView {
         };
         if pushed {
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.recomposite();
         }
@@ -380,7 +500,9 @@ impl qobject::PictureView {
         };
         if applied {
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.recomposite();
         }
@@ -404,7 +526,9 @@ impl qobject::PictureView {
         };
         if resized {
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.as_mut().rust_mut().selection = None;
             self.recomposite();
@@ -434,7 +558,9 @@ impl qobject::PictureView {
         };
         if resized {
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.as_mut().rust_mut().selection = None;
             self.recomposite();
@@ -456,7 +582,9 @@ impl qobject::PictureView {
         };
         if rotated {
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.as_mut().rust_mut().selection = None;
             self.recomposite();
@@ -472,6 +600,7 @@ impl qobject::PictureView {
         };
         pictura_render::flip_document(doc, horizontal);
         rust.selection = None;
+        rust.dirty = true;
         if let Some(snapshot) = snapshot {
             self.as_mut().rust_mut().history.capture(snapshot);
         }
@@ -559,7 +688,9 @@ impl qobject::PictureView {
         };
         if removed {
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().history.capture(snapshot);
+                let mut rust = self.as_mut().rust_mut();
+                rust.history.capture(snapshot);
+                rust.dirty = true;
             }
             self.recomposite();
         }

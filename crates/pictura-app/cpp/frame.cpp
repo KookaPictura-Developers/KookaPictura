@@ -1,12 +1,15 @@
 #include "frame.h"
 
 #include "commands.h"
+#include "dialogs.h"
 #include "image_view.h"
+#include "new_document_dialog.h"
 #include "session.h"
 #include "theme.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QFileInfo>
 #include <QtCore/QSignalBlocker>
 #include <QtGui/QAction>
 #include <QtGui/QActionGroup>
@@ -26,6 +29,7 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStatusBar>
+#include <QtWidgets/QTabWidget>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QWidget>
@@ -38,34 +42,45 @@ constexpr int kCanvasColorCount = 4;
 const QColor kCanvasColors[kCanvasColorCount] = {
     QColor(Qt::darkGray), QColor(Qt::gray), QColor(Qt::black), QColor(Qt::white)};
 
+constexpr int kRecentLimit = 20;
+
 } // namespace
 
-PicturaMainWindow::PicturaMainWindow(PictureView* view, QWidget* parent)
+PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     : QMainWindow(parent)
-    , view_(view)
 {
-    imageView_ = new ImageView(this);
+    tabs_ = new QTabWidget(this);
+    tabs_->setTabsClosable(true);
+    tabs_->setMovable(true);
+    tabs_->setDocumentMode(true);
+    setCentralWidget(tabs_);
+    setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
+
     registry_ = new CommandRegistry(this);
     addDefaultCommands(*registry_);
+
+    const SessionState state = pictura::loadSession();
+    recent_ = state.recent;
+    rebuildRecentMenu();
+
     registerHandlers();
     buildMenus();
     buildPanels();
     buildStatusBar();
-    setCentralWidget(imageView_);
-    resize(1100, 700);
-    setWindowTitle(QStringLiteral("Kooka Pictura"));
-    setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
-
-    const SessionState session = pictura::loadSession();
-    setBrightnessLevel(session.brightnessLevel);
-    if (!session.layout.isEmpty()) {
-        restoreState(session.layout);
+    applyBrightness(state.brightnessLevel);
+    if (!state.layout.isEmpty()) {
+        restoreState(state.layout);
     }
+
+    connect(tabs_, &QTabWidget::currentChanged, this, [this](int) { refresh(); });
+    connect(tabs_, &QTabWidget::tabCloseRequested, this,
+            [this](int index) { closeDocument(index, true); });
 
     auto* hidePanels = new QShortcut(QKeySequence(Qt::Key_Tab), this);
     connect(hidePanels, &QShortcut::activated, this, [this]() { setPanelsHidden(!panelsHidden_); });
     auto* hidePanelsBack = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Tab), this);
-    connect(hidePanelsBack, &QShortcut::activated, this, [this]() { setPanelsHidden(!panelsHidden_); });
+    connect(hidePanelsBack, &QShortcut::activated, this,
+            [this]() { setPanelsHidden(!panelsHidden_); });
     auto* cycleCanvas = new QShortcut(QKeySequence(Qt::Key_Space, Qt::Key_F), this);
     connect(cycleCanvas, &QShortcut::activated, this, [this]() { cycleCanvasColor(true); });
     auto* brightnessDown = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F1), this);
@@ -75,9 +90,8 @@ PicturaMainWindow::PicturaMainWindow(PictureView* view, QWidget* parent)
     connect(brightnessUp, &QShortcut::activated, this,
             [this]() { setBrightnessLevel(brightnessLevel_ + 1); });
 
-    refresh();
-    connect(view_, &PictureView::changed, this, &PicturaMainWindow::refresh);
-    connect(imageView_, &ImageView::zoomChanged, this, [this](double) { updateStatus(); });
+    resize(1100, 700);
+    setWindowTitle(QStringLiteral("Kooka Pictura"));
 }
 
 PicturaMainWindow::~PicturaMainWindow() = default;
@@ -97,6 +111,295 @@ bool PicturaMainWindow::registerPanel(QDockWidget* dock, Qt::DockWidgetArea area
     return true;
 }
 
+ImageView* PicturaMainWindow::imageView() const
+{
+    return canvasAt(activeDocumentIndex());
+}
+
+PictureView* PicturaMainWindow::activeView() const
+{
+    return viewAt(activeDocumentIndex());
+}
+
+int PicturaMainWindow::activeDocumentIndex() const
+{
+    if (!tabs_ || tabs_->count() == 0 || docs_.isEmpty()) {
+        return -1;
+    }
+    return tabs_->currentIndex();
+}
+
+void PicturaMainWindow::setActiveDocumentIndex(int index)
+{
+    if (tabs_ && index >= 0 && index < tabs_->count()) {
+        tabs_->setCurrentIndex(index);
+    }
+}
+
+PictureView* PicturaMainWindow::viewAt(int index) const
+{
+    if (index < 0 || index >= docs_.size()) {
+        return nullptr;
+    }
+    return docs_.at(index).view;
+}
+
+ImageView* PicturaMainWindow::canvasAt(int index) const
+{
+    if (index < 0 || index >= docs_.size()) {
+        return nullptr;
+    }
+    return docs_.at(index).canvas;
+}
+
+QString PicturaMainWindow::documentPath(int index) const
+{
+    if (index < 0 || index >= docs_.size()) {
+        return QString();
+    }
+    return docs_.at(index).path;
+}
+
+QString PicturaMainWindow::documentName(int index) const
+{
+    if (index < 0 || index >= docs_.size()) {
+        return QStringLiteral("Untitled");
+    }
+    const DocEntry& entry = docs_.at(index);
+    if (!entry.path.isEmpty()) {
+        return QFileInfo(entry.path).fileName();
+    }
+    return QStringLiteral("Untitled-%1").arg(entry.untitledNumber);
+}
+
+bool PicturaMainWindow::isDocumentDirty(int index) const
+{
+    PictureView* view = viewAt(index);
+    return view && view->is_dirty();
+}
+
+QString PicturaMainWindow::activeFilePath() const
+{
+    return documentPath(activeDocumentIndex());
+}
+
+QString PicturaMainWindow::activeDocumentName() const
+{
+    return documentName(activeDocumentIndex());
+}
+
+bool PicturaMainWindow::isActiveDirty() const
+{
+    return isDocumentDirty(activeDocumentIndex());
+}
+
+int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
+{
+    if (!view) {
+        return -1;
+    }
+    DocEntry entry;
+    entry.view = view;
+    if (path.isEmpty()) {
+        entry.untitledNumber = ++untitledCounter_;
+    } else {
+        entry.path = path;
+    }
+    entry.canvas = new ImageView(this);
+    if (view->has_document()) {
+        entry.canvas->setImage(view->image());
+    } else {
+        entry.canvas->replaceImage(view->image());
+    }
+    entry.canvas->setCanvasColor(kCanvasColors[canvasColorIndex_]);
+
+    connect(view, &PictureView::changed, this, &PicturaMainWindow::refresh);
+    connect(entry.canvas, &ImageView::zoomChanged, this, [this](double) { updateStatus(); });
+
+    docs_.append(entry);
+    const int index = docs_.size() - 1;
+    tabs_->addTab(entry.canvas, documentName(index));
+    tabs_->setCurrentIndex(index);
+    if (!path.isEmpty()) {
+        rememberRecent(path);
+    }
+    refresh();
+    return index;
+}
+
+bool PicturaMainWindow::newDocument(const QString& name, int width, int height,
+                                    const QString& mode, int depth, const QString& background)
+{
+    // `name` is accepted for the frozen API; DocEntry carries no name field, so
+    // the tab always shows the generated Untitled-<n>.
+    Q_UNUSED(name);
+    auto* view = new PictureView(this);
+    if (!view->new_document(width, height, mode, depth, background)) {
+        delete view;
+        return false;
+    }
+    addDocument(view, QString());
+    return true;
+}
+
+bool PicturaMainWindow::openPath(const QString& path)
+{
+    auto* view = new PictureView(this);
+    if (!view->open(path)) {
+        delete view;
+        return false;
+    }
+    addDocument(view, path);
+    return true;
+}
+
+bool PicturaMainWindow::saveActive()
+{
+    const int index = activeDocumentIndex();
+    if (index < 0) {
+        return false;
+    }
+    QString path = docs_.at(index).path;
+    if (path.isEmpty()) {
+        path = QFileDialog::getSaveFileName(this, tr("Save As"), QString(),
+                                            QStringLiteral("Photoshop files (*.psd *.psb)"));
+        if (path.isEmpty()) {
+            return false;
+        }
+        if (QFileInfo(path).suffix().isEmpty()) {
+            path += QStringLiteral(".psd");
+        }
+    }
+    return saveActiveAs(path);
+}
+
+bool PicturaMainWindow::saveActiveAs(const QString& path)
+{
+    const int index = activeDocumentIndex();
+    PictureView* view = viewAt(index);
+    if (!view || path.isEmpty() || !view->save(path)) {
+        return false;
+    }
+    docs_[index].path = path;
+    updateTabTitle(index);
+    rememberRecent(path);
+    updateWindowTitle();
+    return true;
+}
+
+bool PicturaMainWindow::revertActive()
+{
+    const int index = activeDocumentIndex();
+    PictureView* view = viewAt(index);
+    const QString path = documentPath(index);
+    if (!view || path.isEmpty() || !view->open(path)) {
+        return false;
+    }
+    updateTabTitle(index);
+    refresh();
+    return true;
+}
+
+bool PicturaMainWindow::closeDocument(int index, bool interactive)
+{
+    if (index < 0 || index >= docs_.size()) {
+        return false;
+    }
+    if (interactive && isDocumentDirty(index)) {
+        switch (askUnsaved(this, documentName(index))) {
+        case UnsavedChoice::Cancel:
+            return false;
+        case UnsavedChoice::Save:
+            setActiveDocumentIndex(index);
+            if (!saveActive()) {
+                return false;
+            }
+            break;
+        case UnsavedChoice::Discard:
+            break;
+        }
+    }
+    removeDocument(index);
+    return true;
+}
+
+bool PicturaMainWindow::closeActiveDocument(bool interactive)
+{
+    return closeDocument(activeDocumentIndex(), interactive);
+}
+
+void PicturaMainWindow::removeDocument(int index)
+{
+    if (index < 0 || index >= docs_.size()) {
+        return;
+    }
+    const DocEntry entry = docs_.takeAt(index);
+    tabs_->removeTab(index);
+    delete entry.canvas;
+    delete entry.view;
+    refresh();
+}
+
+void PicturaMainWindow::showNewDocumentDialog()
+{
+    NewDocumentSpec spec;
+    if (!NewDocumentDialog::get(this, &spec)) {
+        return;
+    }
+    newDocument(spec.name, spec.width, spec.height, spec.mode, spec.depth, spec.background);
+}
+
+void PicturaMainWindow::showOpenDialog()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Open"), QString(), QStringLiteral("Photoshop files (*.psd *.psb)"));
+    if (!path.isEmpty()) {
+        openPath(path);
+    }
+}
+
+void PicturaMainWindow::rememberRecent(const QString& path)
+{
+    if (path.isEmpty()) {
+        return;
+    }
+    recent_.removeAll(path);
+    recent_.prepend(path);
+    while (recent_.size() > kRecentLimit) {
+        recent_.removeLast();
+    }
+    saveSession();
+}
+
+void PicturaMainWindow::rebuildRecentMenu()
+{
+    QStringList valid;
+    for (const QString& path : recent_) {
+        if (QFileInfo::exists(path)) {
+            valid.append(path);
+        }
+    }
+
+    if (valid.isEmpty()) {
+        registry_->add(QStringLiteral("file.openRecent.none"),
+                       {QStringLiteral("File"), QStringLiteral("Open Recent")},
+                       QStringLiteral("No Recent Files"), QKeySequence(), false);
+        return;
+    }
+
+    for (int i = 0; i < valid.size(); ++i) {
+        const QString path = valid.at(i);
+        const QString label = QFileInfo(path).fileName();
+        const QString id = QStringLiteral("file.openRecent.%1").arg(i);
+        registry_->add(id,
+                       {QStringLiteral("File"), QStringLiteral("Open Recent"), label},
+                       label,
+                       QKeySequence(),
+                       true);
+        registry_->setHandler(id, [this, path]() { openPath(path); });
+    }
+}
+
 void PicturaMainWindow::setBrightnessLevel(int level)
 {
     applyBrightness(level);
@@ -106,6 +409,13 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
 {
     screenMode_ = mode;
     const QList<QDockWidget*> docks = findChildren<QDockWidget*>();
+    auto setCanvasColor = [this](const QColor& color) {
+        for (const DocEntry& entry : docs_) {
+            if (entry.canvas) {
+                entry.canvas->setCanvasColor(color);
+            }
+        }
+    };
     switch (mode) {
     case ScreenMode::Standard: {
         Qt::WindowStates state = windowState();
@@ -116,7 +426,7 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         for (QDockWidget* dock : docks) {
             dock->setVisible(!panelsHidden_);
         }
-        imageView_->setCanvasColor(kCanvasColors[canvasColorIndex_]);
+        setCanvasColor(kCanvasColors[canvasColorIndex_]);
         break;
     }
     case ScreenMode::FullWithMenuBar:
@@ -126,7 +436,7 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         for (QDockWidget* dock : docks) {
             dock->setVisible(false);
         }
-        imageView_->setCanvasColor(QColor(128, 128, 128));
+        setCanvasColor(QColor(128, 128, 128));
         break;
     case ScreenMode::Full:
         setWindowState(Qt::WindowFullScreen);
@@ -135,7 +445,7 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         for (QDockWidget* dock : docks) {
             dock->setVisible(false);
         }
-        imageView_->setCanvasColor(Qt::black);
+        setCanvasColor(Qt::black);
         break;
     }
     registry_->refresh();
@@ -153,7 +463,11 @@ void PicturaMainWindow::cycleCanvasColor(bool forward)
 {
     canvasColorIndex_ = (canvasColorIndex_ + (forward ? 1 : -1) + kCanvasColorCount)
                         % kCanvasColorCount;
-    imageView_->setCanvasColor(kCanvasColors[canvasColorIndex_]);
+    for (const DocEntry& entry : docs_) {
+        if (entry.canvas) {
+            entry.canvas->setCanvasColor(kCanvasColors[canvasColorIndex_]);
+        }
+    }
 }
 
 void PicturaMainWindow::setPanelsHidden(bool hidden)
@@ -165,40 +479,78 @@ void PicturaMainWindow::setPanelsHidden(bool hidden)
     }
 }
 
-void PicturaMainWindow::refresh()
+void PicturaMainWindow::retargetDock()
 {
-    if (view_->has_document()) {
-        imageView_->replaceImage(view_->image());
-    } else {
-        imageView_->setImage(view_->image());
-    }
+    PictureView* view = activeView();
 
     if (layerList_) {
         QSignalBlocker blocker(layerList_);
         layerList_->clear();
-        const int count = view_->layer_count();
-        for (int i = 0; i < count; ++i) {
-            auto* item = new QListWidgetItem(QStringLiteral("%1  [%2]")
-                                                 .arg(view_->layer_name(i), view_->layer_kind(i)));
-            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-            item->setCheckState(view_->layer_visible(i) ? Qt::Checked : Qt::Unchecked);
-            layerList_->addItem(item);
+        if (view) {
+            const int count = view->layer_count();
+            for (int i = 0; i < count; ++i) {
+                auto* item = new QListWidgetItem(QStringLiteral("%1  [%2]")
+                                                     .arg(view->layer_name(i), view->layer_kind(i)));
+                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                item->setCheckState(view->layer_visible(i) ? Qt::Checked : Qt::Unchecked);
+                layerList_->addItem(item);
+            }
         }
     }
 
     if (auto* selectionLabel = findChild<QLabel*>(QStringLiteral("selectionLabel"))) {
         selectionLabel->setText(
-            QStringLiteral("Selection: %1 px").arg(view_->selection_count()));
+            QStringLiteral("Selection: %1 px").arg(view ? view->selection_count() : 0));
     }
     if (auto* undo = findChild<QPushButton*>(QStringLiteral("dockUndo"))) {
-        undo->setEnabled(view_->can_undo());
+        undo->setEnabled(view && view->can_undo());
     }
     if (auto* redo = findChild<QPushButton*>(QStringLiteral("dockRedo"))) {
-        redo->setEnabled(view_->can_redo());
+        redo->setEnabled(view && view->can_redo());
+    }
+}
+
+void PicturaMainWindow::refresh()
+{
+    const int index = activeDocumentIndex();
+    PictureView* view = activeView();
+    ImageView* canvas = canvasAt(index);
+
+    if (view && canvas) {
+        if (view->has_document()) {
+            canvas->replaceImage(view->image());
+        } else {
+            canvas->setImage(view->image());
+        }
     }
 
+    retargetDock();
     updateStatus();
-    registry_->refresh();
+    if (registry_) {
+        registry_->refresh();
+    }
+    updateTabTitle(index);
+    updateWindowTitle();
+}
+
+void PicturaMainWindow::updateTabTitle(int index)
+{
+    if (!tabs_ || index < 0 || index >= docs_.size()) {
+        return;
+    }
+    QString title = documentName(index);
+    if (isDocumentDirty(index)) {
+        title += QStringLiteral(" *");
+    }
+    tabs_->setTabText(index, title);
+    tabs_->setTabToolTip(index, docs_.at(index).path);
+}
+
+void PicturaMainWindow::updateWindowTitle()
+{
+    const int index = activeDocumentIndex();
+    const QString name = index >= 0 ? documentName(index) : QStringLiteral("Untitled");
+    setWindowTitle(QStringLiteral("%1 — Kooka Pictura").arg(name));
 }
 
 void PicturaMainWindow::saveSession()
@@ -207,11 +559,31 @@ void PicturaMainWindow::saveSession()
     state.layout = saveState();
     state.brightnessLevel = brightnessLevel_;
     state.schemaVersion = 1;
+    state.recent = recent_;
     pictura::saveSession(state);
 }
 
 void PicturaMainWindow::closeEvent(QCloseEvent* event)
 {
+    for (int i = 0; i < docs_.size(); ++i) {
+        if (!isDocumentDirty(i)) {
+            continue;
+        }
+        switch (askUnsaved(this, documentName(i))) {
+        case UnsavedChoice::Cancel:
+            event->ignore();
+            return;
+        case UnsavedChoice::Save:
+            setActiveDocumentIndex(i);
+            if (!saveActive()) {
+                event->ignore();
+                return;
+            }
+            break;
+        case UnsavedChoice::Discard:
+            break;
+        }
+    }
     saveSession();
     QMainWindow::closeEvent(event);
 }
@@ -313,7 +685,7 @@ void PicturaMainWindow::buildPanels()
     auto* imageHeader = new QLabel(QStringLiteral("Image"), panel);
     panelLayout->addWidget(imageHeader);
 
-    const QImage image = view_->image();
+    const QImage image = activeView() ? activeView()->image() : QImage();
     auto* imageWidthSpin = new QSpinBox(panel);
     auto* imageHeightSpin = new QSpinBox(panel);
     imageWidthSpin->setRange(1, 32767);
@@ -386,77 +758,107 @@ void PicturaMainWindow::buildPanels()
     registerPanel(layersDock_, Qt::RightDockWidgetArea);
 
     connect(layerList_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) {
-        view_->set_layer_visible(layerList_->row(item), item->checkState() == Qt::Checked);
+        PictureView* view = activeView();
+        if (!view || !layerList_) {
+            return;
+        }
+        view->set_layer_visible(layerList_->row(item), item->checkState() == Qt::Checked);
     });
     connect(addButton, &QPushButton::clicked, this, [this, adjustmentCombo]() {
-        if (view_->add_adjustment(adjustmentCombo->currentData().toString())) {
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        if (view->add_adjustment(adjustmentCombo->currentData().toString())) {
             refresh();
-            layerList_->setCurrentRow(layerList_->count() - 1);
+            if (layerList_) {
+                layerList_->setCurrentRow(layerList_->count() - 1);
+            }
         }
     });
     connect(removeButton, &QPushButton::clicked, this, [this]() {
-        view_->remove_layer(layerList_->currentRow());
+        PictureView* view = activeView();
+        if (!view || !layerList_) {
+            return;
+        }
+        view->remove_layer(layerList_->currentRow());
         refresh();
     });
     connect(applyFilterButton, &QPushButton::clicked, this, [this, filterCombo]() {
-        if (view_->apply_filter(filterCombo->currentData().toString())) {
+        PictureView* view = activeView();
+        if (view && view->apply_filter(filterCombo->currentData().toString())) {
             refresh();
         }
     });
-    connect(selectAllButton, &QPushButton::clicked, this, [this]() { view_->select_all(); });
-    connect(wandButton, &QPushButton::clicked, this, [this]() {
-        const QImage current = view_->image();
-        if (!current.isNull()) {
-            view_->magic_wand(current.width() / 2, current.height() / 2, 32);
+    connect(selectAllButton, &QPushButton::clicked, this, [this]() {
+        if (PictureView* view = activeView()) {
+            view->select_all();
         }
     });
-    connect(deselectButton, &QPushButton::clicked, this, [this]() { view_->deselect(); });
+    connect(wandButton, &QPushButton::clicked, this, [this]() {
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        const QImage current = view->image();
+        if (!current.isNull()) {
+            view->magic_wand(current.width() / 2, current.height() / 2, 32);
+        }
+    });
+    connect(deselectButton, &QPushButton::clicked, this, [this]() {
+        if (PictureView* view = activeView()) {
+            view->deselect();
+        }
+    });
     connect(applyImageSizeButton, &QPushButton::clicked, this,
             [this, imageWidthSpin, imageHeightSpin, resizeCombo]() {
-                if (view_->resize_image(resizeCombo->currentData().toString(),
-                                        imageWidthSpin->value(), imageHeightSpin->value())) {
+                PictureView* view = activeView();
+                if (view && view->resize_image(resizeCombo->currentData().toString(),
+                                               imageWidthSpin->value(), imageHeightSpin->value())) {
                     refresh();
                 }
             });
     connect(applyCanvasSizeButton, &QPushButton::clicked, this,
             [this, canvasWidthSpin, canvasHeightSpin, anchorCombo]() {
-                if (view_->resize_canvas(anchorCombo->currentData().toString(),
-                                         canvasWidthSpin->value(), canvasHeightSpin->value())) {
+                PictureView* view = activeView();
+                if (view && view->resize_canvas(anchorCombo->currentData().toString(),
+                                                canvasWidthSpin->value(),
+                                                canvasHeightSpin->value())) {
                     refresh();
                 }
             });
     connect(rotateCwButton, &QPushButton::clicked, this, [this]() {
-        if (view_->rotate_doc(1)) {
+        if (PictureView* view = activeView(); view && view->rotate_doc(1)) {
             refresh();
         }
     });
     connect(rotateCcwButton, &QPushButton::clicked, this, [this]() {
-        if (view_->rotate_doc(3)) {
+        if (PictureView* view = activeView(); view && view->rotate_doc(3)) {
             refresh();
         }
     });
     connect(rotate180Button, &QPushButton::clicked, this, [this]() {
-        if (view_->rotate_doc(2)) {
+        if (PictureView* view = activeView(); view && view->rotate_doc(2)) {
             refresh();
         }
     });
     connect(flipHorizontalButton, &QPushButton::clicked, this, [this]() {
-        if (view_->flip_doc(true)) {
+        if (PictureView* view = activeView(); view && view->flip_doc(true)) {
             refresh();
         }
     });
     connect(flipVerticalButton, &QPushButton::clicked, this, [this]() {
-        if (view_->flip_doc(false)) {
+        if (PictureView* view = activeView(); view && view->flip_doc(false)) {
             refresh();
         }
     });
     connect(undoButton, &QPushButton::clicked, this, [this]() {
-        if (view_->undo()) {
+        if (PictureView* view = activeView(); view && view->undo()) {
             refresh();
         }
     });
     connect(redoButton, &QPushButton::clicked, this, [this]() {
-        if (view_->redo()) {
+        if (PictureView* view = activeView(); view && view->redo()) {
             refresh();
         }
     });
@@ -500,95 +902,180 @@ void PicturaMainWindow::buildStatusBar()
 
 void PicturaMainWindow::registerHandlers()
 {
-    registry_->setHandler(command_ids::FileOpen, [this]() {
-        const QString path = QFileDialog::getOpenFileName(
-            this, tr("Open"), QString(), QStringLiteral("Photoshop files (*.psd *.psb)"));
+    registry_->setHandler(command_ids::FileNew, [this]() { showNewDocumentDialog(); });
+    registry_->setHandler(command_ids::FileOpen, [this]() { showOpenDialog(); });
+    registry_->setEnabledProvider(command_ids::FileOpen, []() { return true; });
+
+    registry_->setHandler(command_ids::FileSave, [this]() { saveActive(); });
+    registry_->setHandler(command_ids::FileSaveAs, [this]() {
+        QString path = QFileDialog::getSaveFileName(this, tr("Save As"), activeFilePath(),
+                                                    QStringLiteral("Photoshop files (*.psd *.psb)"));
         if (path.isEmpty()) {
             return;
         }
-        view_->open(path);
-        imageView_->setImage(view_->image());
-        refresh();
+        if (QFileInfo(path).suffix().isEmpty()) {
+            path += QStringLiteral(".psd");
+        }
+        saveActiveAs(path);
     });
-    registry_->setEnabledProvider(command_ids::FileOpen, []() { return true; });
+    registry_->setHandler(command_ids::FileRevert, [this]() {
+        const int index = activeDocumentIndex();
+        if (index < 0 || documentPath(index).isEmpty()) {
+            return;
+        }
+        if (isDocumentDirty(index)) {
+            switch (askUnsaved(this, documentName(index))) {
+            case UnsavedChoice::Cancel:
+                return;
+            case UnsavedChoice::Save:
+                setActiveDocumentIndex(index);
+                if (!saveActive()) {
+                    return;
+                }
+                break;
+            case UnsavedChoice::Discard:
+                break;
+            }
+        }
+        revertActive();
+    });
+    registry_->setHandler(command_ids::FileClose, [this]() { closeActiveDocument(true); });
+    registry_->setHandler(command_ids::FileCloseAll, [this]() {
+        for (int i = docs_.size() - 1; i >= 0; --i) {
+            if (!closeDocument(i, true)) {
+                break;
+            }
+        }
+    });
+    registry_->setHandler(command_ids::FileExit, [this]() {
+        for (int i = docs_.size() - 1; i >= 0; --i) {
+            if (!closeDocument(i, true)) {
+                break;
+            }
+        }
+        if (documentCount() == 0) {
+            qApp->quit();
+        }
+    });
+
+    auto hasDocument = [this]() { return documentCount() > 0; };
+    for (const char* id : {command_ids::FileSave, command_ids::FileSaveAs, command_ids::FileClose,
+                           command_ids::FileCloseAll}) {
+        registry_->setEnabledProvider(id, hasDocument);
+    }
+    registry_->setEnabledProvider(command_ids::FileRevert,
+                                  [this]() { return !activeFilePath().isEmpty(); });
 
     registry_->setHandler(command_ids::EditUndo, [this]() {
-        const bool ok = view_->can_undo() ? view_->undo() : view_->redo();
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        const bool ok = view->can_undo() ? view->undo() : view->redo();
         if (ok) {
             refresh();
         }
     });
-    registry_->setEnabledProvider(command_ids::EditUndo,
-                                  [this]() { return view_->can_undo() || view_->can_redo(); });
+    registry_->setEnabledProvider(command_ids::EditUndo, [this]() {
+        PictureView* view = activeView();
+        return view && (view->can_undo() || view->can_redo());
+    });
     registry_->setLabelProvider(command_ids::EditUndo, [this]() {
-        return view_->can_undo() ? QStringLiteral("Undo") : QStringLiteral("Redo");
+        PictureView* view = activeView();
+        return view && !view->can_undo() ? QStringLiteral("Redo") : QStringLiteral("Undo");
     });
 
     registry_->setHandler(command_ids::EditRedo, [this]() {
-        if (view_->redo()) {
+        if (PictureView* view = activeView(); view && view->redo()) {
             refresh();
         }
     });
-    registry_->setEnabledProvider(command_ids::EditRedo, [this]() { return view_->can_redo(); });
+    registry_->setEnabledProvider(command_ids::EditRedo,
+                                  [this]() { return activeView() && activeView()->can_redo(); });
 
     registry_->setHandler(command_ids::EditStepBackward, [this]() {
-        if (view_->undo()) {
+        if (PictureView* view = activeView(); view && view->undo()) {
             refresh();
         }
     });
     registry_->setEnabledProvider(command_ids::EditStepBackward,
-                                  [this]() { return view_->can_undo(); });
+                                  [this]() { return activeView() && activeView()->can_undo(); });
 
     registry_->setHandler(command_ids::EditStepForward, [this]() {
-        if (view_->redo()) {
+        if (PictureView* view = activeView(); view && view->redo()) {
             refresh();
         }
     });
     registry_->setEnabledProvider(command_ids::EditStepForward,
-                                  [this]() { return view_->can_redo(); });
+                                  [this]() { return activeView() && activeView()->can_redo(); });
 
     registry_->setHandler(command_ids::ImageRotate90Cw, [this]() {
-        if (view_->rotate_doc(1)) {
+        if (PictureView* view = activeView(); view && view->rotate_doc(1)) {
             refresh();
         }
     });
     registry_->setHandler(command_ids::ImageRotate90Ccw, [this]() {
-        if (view_->rotate_doc(3)) {
+        if (PictureView* view = activeView(); view && view->rotate_doc(3)) {
             refresh();
         }
     });
     registry_->setHandler(command_ids::ImageRotate180, [this]() {
-        if (view_->rotate_doc(2)) {
+        if (PictureView* view = activeView(); view && view->rotate_doc(2)) {
             refresh();
         }
     });
     registry_->setHandler(command_ids::ImageFlipHorizontal, [this]() {
-        if (view_->flip_doc(true)) {
+        if (PictureView* view = activeView(); view && view->flip_doc(true)) {
             refresh();
         }
     });
     registry_->setHandler(command_ids::ImageFlipVertical, [this]() {
-        if (view_->flip_doc(false)) {
+        if (PictureView* view = activeView(); view && view->flip_doc(false)) {
             refresh();
         }
     });
     for (const char* id : {command_ids::ImageRotate90Cw, command_ids::ImageRotate90Ccw,
                            command_ids::ImageRotate180, command_ids::ImageFlipHorizontal,
                            command_ids::ImageFlipVertical}) {
-        registry_->setEnabledProvider(id, [this]() { return view_->has_document(); });
+        registry_->setEnabledProvider(id,
+                                      [this]() { return activeView() && activeView()->has_document(); });
     }
 
-    registry_->setHandler(command_ids::SelectAll, [this]() { view_->select_all(); });
+    registry_->setHandler(command_ids::SelectAll, [this]() {
+        if (PictureView* view = activeView()) {
+            view->select_all();
+        }
+    });
     registry_->setEnabledProvider(command_ids::SelectAll,
-                                  [this]() { return view_->has_document(); });
-    registry_->setHandler(command_ids::SelectDeselect, [this]() { view_->deselect(); });
+                                  [this]() { return activeView() && activeView()->has_document(); });
+    registry_->setHandler(command_ids::SelectDeselect, [this]() {
+        if (PictureView* view = activeView()) {
+            view->deselect();
+        }
+    });
     registry_->setEnabledProvider(command_ids::SelectDeselect,
-                                  [this]() { return view_->has_document(); });
+                                  [this]() { return activeView() && activeView()->has_document(); });
 
-    registry_->setHandler(command_ids::ViewZoomIn, [this]() { imageView_->zoomIn(); });
-    registry_->setHandler(command_ids::ViewZoomOut, [this]() { imageView_->zoomOut(); });
-    registry_->setHandler(command_ids::ViewFitOnScreen, [this]() { imageView_->fitOnScreen(); });
-    registry_->setHandler(command_ids::ViewActualPixels, [this]() { imageView_->actualPixels(); });
+    registry_->setHandler(command_ids::ViewZoomIn, [this]() {
+        if (ImageView* canvas = imageView()) {
+            canvas->zoomIn();
+        }
+    });
+    registry_->setHandler(command_ids::ViewZoomOut, [this]() {
+        if (ImageView* canvas = imageView()) {
+            canvas->zoomOut();
+        }
+    });
+    registry_->setHandler(command_ids::ViewFitOnScreen, [this]() {
+        if (ImageView* canvas = imageView()) {
+            canvas->fitOnScreen();
+        }
+    });
+    registry_->setHandler(command_ids::ViewActualPixels, [this]() {
+        if (ImageView* canvas = imageView()) {
+            canvas->actualPixels();
+        }
+    });
 
     registry_->setHandler(command_ids::ViewScreenModeStandard,
                           [this]() { setScreenMode(ScreenMode::Standard); });
@@ -621,13 +1108,16 @@ void PicturaMainWindow::registerHandlers()
 
 void PicturaMainWindow::updateStatus()
 {
+    ImageView* canvas = imageView();
     if (zoomLabel_) {
-        zoomLabel_->setText(QStringLiteral("%1%").arg(qRound(imageView_->zoom() * 100.0)));
+        zoomLabel_->setText(
+            canvas ? QStringLiteral("%1%").arg(qRound(canvas->zoom() * 100.0)) : QStringLiteral("—"));
     }
     if (sizeLabel_) {
         QString text = QStringLiteral("—");
-        if (view_->has_document()) {
-            const QImage image = view_->image();
+        PictureView* view = activeView();
+        if (view && view->has_document()) {
+            const QImage image = view->image();
             const QAction* readout = findChild<QAction*>(QStringLiteral("statusReadout"));
             const QString mode = readout ? readout->data().toString() : QStringLiteral("sizes");
             if (mode == QStringLiteral("dimensions")) {

@@ -18,6 +18,13 @@ namespace pictura {
 // future localization and custom menu sets; never derive them from labels.
 namespace command_ids {
 inline constexpr char FileOpen[] = "file.open";
+inline constexpr char FileNew[] = "file.new";
+inline constexpr char FileSave[] = "file.save";
+inline constexpr char FileSaveAs[] = "file.saveAs";
+inline constexpr char FileRevert[] = "file.revert";
+inline constexpr char FileClose[] = "file.close";
+inline constexpr char FileCloseAll[] = "file.closeAll";
+inline constexpr char FileExit[] = "file.exit";
 inline constexpr char EditUndo[] = "edit.undo";
 inline constexpr char EditRedo[] = "edit.redo";
 inline constexpr char EditStepBackward[] = "edit.stepBackward";

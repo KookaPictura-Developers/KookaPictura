@@ -2,6 +2,7 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QString>
+#include <QtCore/QStringList>
 
 namespace pictura {
 
@@ -10,6 +11,7 @@ struct SessionState {
     QByteArray layout;               // QMainWindow::saveState()
     int brightnessLevel = 1;         // Theme level
     int schemaVersion = 1;
+    QStringList recent;
 };
 
 // Path of the session store, $XDG_STATE_HOME/kooka-pictura/state.json.
