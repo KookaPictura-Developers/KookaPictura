@@ -1658,6 +1658,98 @@ int main(int argc, char* argv[])
             return 73;
         }
 
+        // M30: canvas transparency display and document-rect clipping.
+        // 74: an all-transparent document reveals the checkerboard, and a moved
+        // layer is cropped to the document rect (no red on the canvas area).
+        const bool m30Created = frame.newDocument(QStringLiteral("Alpha"), 64, 64,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("transparent"));
+        pictura::ImageView* m30Canvas = frame.imageView();
+        if (!m30Created || !m30Canvas) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M30 transparent document\n");
+            return 74;
+        }
+        const int m30DocIndex = frame.activeDocumentIndex();
+        if (m30Canvas->width() <= 0 || m30Canvas->height() <= 0) {
+            frame.resize(800, 600);
+            QApplication::processEvents();
+        }
+
+        const QColor m30CanvasColor = m30Canvas->canvasColor();
+        const QColor m30A = pictura::ImageView::transparencyColorA();
+        const QColor m30B = pictura::ImageView::transparencyColorB();
+        const QRectF m30DocRect(m30Canvas->offset(),
+                                QSizeF(64.0 * m30Canvas->zoom(), 64.0 * m30Canvas->zoom()));
+
+        QImage m30Shot(m30Canvas->size(), QImage::Format_ARGB32);
+        m30Canvas->render(&m30Shot);
+
+        bool m30SawA = false;
+        bool m30SawB = false;
+        bool m30SawCanvas = false;
+        const QRect m30DocPx = m30DocRect.toAlignedRect();
+        for (int y = m30DocPx.top() + 2; y <= m30DocPx.bottom() - 2; y += 3) {
+            for (int x = m30DocPx.left() + 2; x <= m30DocPx.right() - 2; x += 3) {
+                if (x < 0 || y < 0 || x >= m30Shot.width() || y >= m30Shot.height()) {
+                    continue;
+                }
+                const QColor c = m30Shot.pixelColor(x, y);
+                if (c.rgb() == m30A.rgb()) {
+                    m30SawA = true;
+                } else if (c.rgb() == m30B.rgb()) {
+                    m30SawB = true;
+                } else if (c.rgb() == m30CanvasColor.rgb()) {
+                    m30SawCanvas = true;
+                }
+            }
+        }
+        const QPoint m30OutsidePx = m30DocRect.topLeft().toPoint() - QPoint(4, 4);
+        const bool m30OutsideOk = m30OutsidePx.x() >= 0 && m30OutsidePx.y() >= 0
+                                  && m30OutsidePx.x() < m30Shot.width()
+                                  && m30OutsidePx.y() < m30Shot.height()
+                                  && m30Shot.pixelColor(m30OutsidePx).rgb() == m30CanvasColor.rgb();
+        const bool m30Checker = m30SawA && m30SawB && !m30SawCanvas && m30OutsideOk;
+
+        QImage m30Red(64, 64, QImage::Format_RGBA8888);
+        m30Red.fill(QColor(255, 0, 0));
+        m30Canvas->beginMovePreview(m30Canvas->image(), m30Red, QPointF(-32.0, -32.0), 1.0);
+        QImage m30ClipShot(m30Canvas->size(), QImage::Format_ARGB32);
+        m30Canvas->render(&m30ClipShot);
+        m30Canvas->endMovePreview();
+
+        // The layer at (-32,-32) covers the document's top-left quadrant; probe
+        // the few pixels around the centre on the covered side.
+        const QPoint m30Centre = m30DocRect.center().toPoint();
+        bool m30CentreRed = false;
+        for (int dy = -2; dy <= 0 && !m30CentreRed; ++dy) {
+            for (int dx = -2; dx <= 0 && !m30CentreRed; ++dx) {
+                const QPoint q = m30Centre + QPoint(dx, dy);
+                if (q.x() >= 0 && q.y() >= 0 && q.x() < m30ClipShot.width()
+                    && q.y() < m30ClipShot.height()
+                    && m30ClipShot.pixelColor(q).rgb() == QColor(255, 0, 0).rgb()) {
+                    m30CentreRed = true;
+                }
+            }
+        }
+        const QPoint m30OverflowPx = m30DocRect.topLeft().toPoint() - QPoint(4, 4);
+        const bool m30OverflowOk = m30OverflowPx.x() >= 0 && m30OverflowPx.y() >= 0
+                                   && m30OverflowPx.x() < m30ClipShot.width()
+                                   && m30OverflowPx.y() < m30ClipShot.height()
+                                   && m30ClipShot.pixelColor(m30OverflowPx).rgb()
+                                          == m30CanvasColor.rgb();
+        const bool m30Clipped = m30CentreRed && m30OverflowOk;
+
+        std::fprintf(stderr, "pictura self-test: m30_canvas checker=%d clipped=%d\n",
+                     m30Checker ? 1 : 0,
+                     m30Clipped ? 1 : 0);
+        std::fflush(stderr);
+        if (!m30Checker || !m30Clipped) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M30 transparency/clipping wrong\n");
+            return 74;
+        }
+        // Restore the previously active document so later checks are undisturbed.
+        frame.closeDocument(m30DocIndex, false);
+
         // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
         int m23Levels = 0;
         for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {

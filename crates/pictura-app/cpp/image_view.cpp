@@ -2,6 +2,7 @@
 
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
+#include <QtGui/QPixmap>
 #include <QtGui/QWheelEvent>
 
 #include <algorithm>
@@ -12,7 +13,38 @@ namespace pictura {
 namespace {
 constexpr double kMinZoom = 0.01;
 constexpr double kMaxZoom = 32.0;
+
+// 2x2-cell tile reused for every transparency fill. Built lazily on the GUI
+// thread the first time a document is painted.
+const QPixmap& transparencyTile()
+{
+    static const QPixmap tile = [] {
+        const int cell = ImageView::transparencyCellSize();
+        QPixmap pm(2 * cell, 2 * cell);
+        pm.fill(ImageView::transparencyColorA());
+        QPainter p(&pm);
+        p.fillRect(cell, 0, cell, cell, ImageView::transparencyColorB());
+        p.fillRect(0, cell, cell, cell, ImageView::transparencyColorB());
+        return pm;
+    }();
+    return tile;
+}
 } // namespace
+
+int ImageView::transparencyCellSize()
+{
+    return 8;
+}
+
+QColor ImageView::transparencyColorA()
+{
+    return QColor(255, 255, 255);
+}
+
+QColor ImageView::transparencyColorB()
+{
+    return QColor(204, 204, 204);
+}
 
 ImageView::ImageView(QWidget* parent)
     : QWidget(parent)
@@ -181,8 +213,20 @@ void ImageView::paintEvent(QPaintEvent*)
     if (image_.isNull()) {
         return;
     }
+
+    // Checkerboard in screen space, anchored to the document origin and
+    // clipped to the document rect so it never spills onto the canvas.
+    const QRectF docRect(offset_, QSizeF(image_.width() * zoom_, image_.height() * zoom_));
+    const QRectF checkerRect = docRect.intersected(QRectF(rect()));
+    if (!checkerRect.isEmpty()) {
+        painter.setBrushOrigin(docRect.topLeft().toPoint());
+        painter.fillRect(checkerRect, QBrush(transparencyTile()));
+    }
+
     painter.translate(offset_);
     painter.scale(zoom_, zoom_);
+    // Crop the base, the move-preview layer, and the overlay to the document.
+    painter.setClipRect(QRectF(0.0, 0.0, image_.width(), image_.height()));
     if (movePreviewActive_ && !moveBase_.isNull()) {
         painter.drawImage(QPointF(0.0, 0.0), moveBase_);
         painter.setOpacity(moveOpacity_);

@@ -48,6 +48,12 @@ public:
     void setCanvasColor(const QColor& color);
     QColor canvasColor() const { return canvasColor_; }
 
+    // Transparency checkerboard behind the document (Photoshop "Light" grid):
+    // two tones in 8-screen-pixel cells, anchored to the document origin.
+    static int transparencyCellSize();
+    static QColor transparencyColorA();
+    static QColor transparencyColorB();
+
     // When disabled, mouse presses are forwarded as tool events instead of
     // starting a pan. Default true.
     void setPanEnabled(bool enabled);

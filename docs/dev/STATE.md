@@ -11,7 +11,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
 - Test suite: **530 tests, 3 ignored** (one pre-existing app `#[ignore]` plus the
   two M29 `move_profile_*` timing tests).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M29 archived; canonical specs are
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M30 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
@@ -513,6 +513,29 @@ openspec validate --all --strict
   readback ≈ most of the 332 ms) — on-screen **zero-copy present** is the next
   ceiling; the history capture still clones the whole document (~60 ms/state, and
   up to 20 states of memory) — **copy-on-write or tile diffs** is the deferred fix.
+- **M30** — canvas transparency and clipping. `ImageView::paintEvent` now draws a
+  **transparency checkerboard** behind the document so pixels with alpha < 255
+  reveal it (a fully transparent document shows the checkerboard; opaque pixels
+  cover it). The checkerboard is **screen-space** (constant 8 px cells,
+  independent of zoom), **anchored to the document origin** (stable while
+  panning), rendered with a cached 2×2-cell `QPixmap` tile via a brush origin and
+  clipped to the document rect ∩ viewport (O(1), never allocated beyond the
+  screen). Two light tones `#FFFFFF` / `#CCCCCC` (Photoshop "Light" grid). All
+  canvas content — the composited image, the Move-tool live preview layer, and the
+  selection overlay — is now **clipped to the document rect**, so a layer dragged
+  outside the canvas is cropped instead of drawn over the surrounding area. Test
+  hooks `ImageView::transparencyCellSize()/transparencyColorA()/transparencyColorB()`
+  were added. Self-test exit code **74**: `m30_canvas checker=1 clipped=1` (a
+  transparent document shows both checker tones inside the document rect and the
+  canvas colour outside; a preview layer dragged past the canvas edge is clipped),
+  identical on fixture and no-argument runs. Verified: `cmake --build build` OK;
+  both self-tests exit 0; `cargo fmt/clippy` clean; **530 tests (0 failed, 3
+  ignored)** (no Rust change; the check is in the C++ self-test); `openspec
+  validate --all --strict` 60/60. The M30 change MODIFIES `application-shell`
+  (no new capability → **59** capabilities after archive). Deferred: the
+  `Transparency & Gamut` preferences pane (grid size None/Small/Medium/Large and
+  colour sets Light/Medium/Dark/Red/Custom), the `View > Show > Transparency Grid`
+  toggle, gamut warning, and the GPU/RHI-backed canvas.
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -571,7 +594,7 @@ documents) still needs a real GUI check.
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M29 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M30 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -589,12 +612,16 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: on-screen zero-copy present and off-GUI-thread compute, then history copy-on-write/tile diffs, then GPU painterly/stochastic filters via CPU-generated RNG fields and GPU painting, then panel content and image modes (propose via OpenSpec first)
+## Next: transparency grid preferences/toggle, on-screen zero-copy present and off-GUI-thread compute, then history copy-on-write/tile diffs, then GPU painterly/stochastic filters via CPU-generated RNG fields and GPU painting, then panel content and image modes (propose via OpenSpec first)
 
 M29 lifts the ~4.19 MP GPU dispatch ceiling and makes the per-update panel/move
 path cheap; the CPU compositor and `pictura_filters::apply` are still the oracles.
 Next in order:
 
+- **Transparency grid preferences** — M30's checkerboard is fixed at an 8 px
+  Light (`#FFFFFF`/`#CCCCCC`) grid; the `Transparency & Gamut` preferences pane
+  (grid size None/Small/Medium/Large, colour sets Light/Medium/Dark/Red/Custom),
+  the `View > Show > Transparency Grid` toggle, and gamut warning are deferred.
 - On-screen **zero-copy present** — manual QRhi + `QWindow` swapchain;
   `QRhiWidget` blocks wgpu device adoption
   (`crates/pictura-app/GPU-INTEROP-NOTES.md`). The 4000² GPU composite is
@@ -617,7 +644,7 @@ Next in order:
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M29 are archived; their deltas now live in `openspec/specs/`.
+M6 through M30 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
