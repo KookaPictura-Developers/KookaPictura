@@ -9,10 +9,12 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **544 tests, 0 failed, 6 ignored** (the M29 `move_profile_*` pair,
-  the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, and
-  the M34 `m34_undo_profile_4000`).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M31 archived; canonical specs are
+- Test suite: **546 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
+  the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
+  M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
+  counted from `cargo test --workspace`, excluding the pre-existing ignored
+  `pictura-render` doctest).
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M34 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
@@ -690,7 +692,7 @@ documents) still needs a real GUI check.
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M31 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M34 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -708,7 +710,7 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M34 composite coherence (implemented) — perf series paused
+## Next: M35 region blit in C++ (implemented); M36–M38 remaining — perf series resumed for very large documents
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -723,9 +725,8 @@ dominated by the per-composite source/mask **upload** (~128 + 16 MB), not the GP
 dispatch (~0.2 ms) or the ~38 ms readback, so a zero-copy present still saves
 little while the upload stays.
 
-The perf series is **paused**: the next change is not another canvas-throughput
-step. **M34 is now composite coherence and cheap undo/redo** (OpenSpec change
-`m34-composite-coherence`, **implemented**; brief
+The perf series was **paused** for **M34 — composite coherence and cheap
+undo/redo** (OpenSpec change `m34-composite-coherence`, **implemented**; brief
 `docs/dev/m34-composite-coherence.md`): the canvas rebuild persists its rendered
 result into `doc.composite` (RGBA for an RGB document, plane-count-preserving
 for a non-RGB mode), Save serializes that current composite, `undo`/`redo`
@@ -734,8 +735,40 @@ restore the display from the snapshot composite instead of a full composite
 snapshot carries it. It is app-local and bounded: no `write_psd` format change,
 no new capability. Next in order:
 
-- **M34 — composite coherence and cheap undo/redo (implemented; archive
-  pending).** OpenSpec change `m34-composite-coherence` (MODIFIED
+- **M35 — region blit in C++ (implemented; archive pending).** OpenSpec change
+  `m35-cpp-region-blit` (MODIFIED `document-canvas`; no new capability → **59**
+  after archive), brief `docs/dev/m35-cpp-region-blit.md`. `PictureView` no longer
+  maintains a region-patched full-resolution `QImage`: `refresh_region` composites
+  the region, patches the planar `doc.composite` with `copy_from_slice`, converts
+  only the region-sized buffer to a `QImage`, sets a `display_dirty` marker and
+  emits a new `region_blitted(QImage, x, y)` signal; `ImageView::blitRegion` paints
+  it with `QPainter` + `CompositionMode_Source` (invalidating the present zoom
+  cache so the next paint rebuilds it identically). The per-pixel
+  `QImage::set_pixel_color` loop and `REGION_REFRESH_BUDGET` are deleted, so a large
+  dirty region is blitted in C++ instead of forcing a full document composite.
+  `image()` rebuilds from `doc.composite` when `display_dirty` (with an explicit
+  in-stroke guard), `sample_argb` reads the planar composite directly, and
+  `move_preview_base` builds from the current composite. Measured 4000² (release,
+  GPU): a 1024² region refresh **~33 ms → ~8.8 ms** (composite 4.95 + composite
+  patch 1.81 + region convert 2.04) plus one `QPainter::drawImage` blit in C++; a
+  512² region refresh **3.29 ms**. The old path was a 27.3 ms per-pixel FFI blit
+  plus a ~5.6 ms composite. Honest notes: `refresh_region` no longer emits
+  `changed`, so panel refresh on the region path is debounced in `frame.cpp`; a
+  region blit invalidates the present zoom cache (one rescale on the next paint,
+  the same cost as the old `replaceImage`); `begin_move_preview` now pays one planar
+  clone + conversion per drag start; mid-stroke `sample_argb` reads the pre-stroke
+  composite (unreachable while painting). `m31_region_large` now asserts the region
+  path ran *and* the canvas equals a full recomposite (strictly stronger than
+  before), and `move_preview_region` no longer has an oversized-rect fallback
+  because the budget is gone. Verified: `cargo test --workspace` **546 tests, 0
+  failed, 7 ignored** (up from 544, 6 ignored; the new
+  `m35_region_refresh_profile_4000`), `cargo fmt`/`clippy` clean, both self-tests
+  exit 0 with `m35_region_blit region=1 changed=0 canvas=1 rebuilt=1 cache=1` and
+  `m35_region_large region=1 recomposite=0 canvas=1`, `openspec validate --all
+  --strict` 60/60.
+
+- **M34 — composite coherence and cheap undo/redo (implemented; archived).**
+  OpenSpec change `m34-composite-coherence` (MODIFIED
   `edit-history`, `document-lifecycle`; no new capability → **59** after archive).
   The canvas rebuild now persists its rendered frame into `doc.composite`
   (`store_composite`: RGBA for an RGB document, colour-plane-count-preserving
@@ -756,7 +789,7 @@ no new capability. Next in order:
   fmt`/`clippy` clean, both self-tests exit 0 with
   `m34_coherent composite=1 undo=1 save=1`, `openspec validate --all --strict`
   60/60.
-- **M33 — full-composite throughput (done; archive pending).** OpenSpec change
+- **M33 — full-composite throughput (done; archived).** OpenSpec change
   `m33-composite-throughput` (MODIFIED `gpu-compositing`; no new capability),
   implemented and verified. Row-wise source/mask assembly, a fused planar readback
   that skips the packed `Vec`, and a GPU command-buffer canvas clear took the
@@ -769,15 +802,15 @@ no new capability. Next in order:
   `QQuickGraphicsDevice::fromDeviceObjects(...)`); `QRhiWidget` cannot adopt the
   wgpu device. Deferred because it removes only the ~38 ms readback of a ~123 ms
   composite, not the upload.
-- **M35 (deferred) — 256² GPU tiles + LRU + seam gutters + mipmaps**
+- **M38 (deferred) — 256² GPU tiles + LRU + seam gutters + mipmaps**
   (Graphite-style), only if pan/zoom over documents larger than VRAM demands it;
   includes display-time LoD so a zoomed-out view composites a proxy.
 
-Deferred tracks, in no fixed order. The remaining canvas-performance tracks —
-resident per-layer GPU source buffers, the GPU-resident zero-copy present, 256²
-tiles + LoD, and history copy-on-write / tile diffs — each need their own design
-(the small, app-local composite-coherence slice was carved out as M34 above; these
-four were not):
+Deferred tracks, staged as M36–M38 after M35 (now implemented). The remaining
+canvas-performance tracks — history copy-on-write / tile diffs (M36), resident
+per-layer GPU source buffers (M37), 256² tiles + LoD (M38), plus the GPU-resident
+zero-copy present — each need their own design (the small, app-local region-blit
+slice landed as M35 above):
 
 - **Cheap undo/redo + composite coherence/save** — landed as M34
   (`m34-composite-coherence`); see the brief `docs/dev/m34-composite-coherence.md`.
@@ -786,22 +819,23 @@ four were not):
   frame for RGB and preserving the composite's colour-plane count for a non-RGB
   mode, so the byte layout is unchanged.
 
-- **C++ region blit / `REGION_REFRESH_BUDGET` removal** — `ImageView::blitRegion`
-  (`QPainter` + `CompositionMode_Source`) replacing the per-pixel
-  `QImage::set_pixel_color` loop; the budget cap stays as a bounded fallback
-  (deferred from M32).
-- **Transparency grid preferences** — M30's checkerboard is fixed at an 8 px
-  Light (`#FFFFFF`/`#CCCCCC`) grid; the `Transparency & Gamut` preferences pane
-  (grid size None/Small/Medium/Large, colour sets Light/Medium/Dark/Red/Custom),
-  the `View > Show > Transparency Grid` toggle, and gamut warning are deferred.
-- **History copy-on-write / tile diffs** — the history capture still clones the
-  whole document (~60 ms per state at 4000², and holds up to 20 states).
-- **Resident per-layer GPU source buffers and shader-side planar output** —
+- **M35 — region blit in C++ / `REGION_REFRESH_BUDGET` removal — landed.** See
+  the milestone entry above; OpenSpec change `m35-cpp-region-blit`, brief
+  `docs/dev/m35-cpp-region-blit.md`. The per-pixel `QImage::set_pixel_color` loop
+  and the budget fallback are gone; a dirty region of any size takes the region
+  path.
+- **M36 — history copy-on-write / tile diffs** — the history capture still clones
+  the whole document (~60 ms per state at 4000², and holds up to 20 states).
+- **M37 — resident per-layer GPU source buffers and shader-side planar output** —
   deferred from M33. Keeping a layer's source plane resident on the GPU across a
   composite session needs content versioning to detect a changed layer; the
   remaining composite cost is the per-composite upload (~128 MB + 16 MB at
   4000²), which residency would remove. A shader-side planar output would remove
   the ~32 ms readback de-interleave.
+- **Transparency grid preferences** — M30's checkerboard is fixed at an 8 px
+  Light (`#FFFFFF`/`#CCCCCC`) grid; the `Transparency & Gamut` preferences pane
+  (grid size None/Small/Medium/Large, colour sets Light/Medium/Dark/Red/Custom),
+  the `View > Show > Transparency Grid` toggle, and gamut warning are deferred.
 - **GPU painterly/stochastic filters and GPU painting** — the remaining M22
   Artistic and M25 Brush Strokes/Sketch/Texture families (`Watercolor`,
   `Conté Crayon`, `Paint Daubs`, `Dry Brush`, `Ocean Ripple`, `Spatter`,
@@ -816,7 +850,7 @@ four were not):
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M31 are archived; their deltas now live in `openspec/specs/`.
+M6 through M34 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -834,10 +868,12 @@ M6 through M31 are archived; their deltas now live in `openspec/specs/`.
   (~128 + 16 MB) after M33 removed the per-pixel assembly, while the 64 MB
   readback is ~6 ms (see `docs/dev/canvas-compositing-plan.md` §2.1); resident
   per-layer buffers (deferred) and zero-copy present (M34) both aim at this.
-- Region refresh patches the cached `QImage` per pixel (`QImage::set_pixel_color`)
-  and is bounded by the 1 MP `REGION_REFRESH_BUDGET`; a dirty union larger than
-  that falls back to a full recomposite. A Display-resolution proxy (LoD) is still
-  absent, so a zoomed-out composite still covers the whole document.
+- M35 (`m35-cpp-region-blit`) removed both the per-pixel `QImage::set_pixel_color`
+  blit and the 1 MP `REGION_REFRESH_BUDGET` fallback: the planar composite is the
+  authoritative canvas, `refresh_region` signals the region, and C++
+  `ImageView::blitRegion` (`QPainter`, `CompositionMode_Source`) paints it. A
+  Display-resolution proxy (LoD) is still absent, so a zoomed-out composite still
+  covers the whole document.
 - History capture clones the whole document for each state, so large documents
   pay both RAM (up to 20 states) and latency (~60 ms/state at 4000²); copy-on-write
   or tile diffs are the deferred fix.

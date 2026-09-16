@@ -5,7 +5,7 @@ use core::pin::Pin;
 
 use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QColor, QImage, QImageFormat, QString};
+use cxx_qt_lib::{QImage, QImageFormat, QString};
 use pictura_core::{
     AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
     PixelBuffer, PsdRect,
@@ -31,6 +31,12 @@ pub mod qobject {
         /// Emitted whenever the layer stack changes and the image is refreshed.
         #[qsignal]
         fn changed(self: Pin<&mut Self>);
+
+        /// Emitted after a region composite. The receiver blits `region` at
+        /// `(x, y)`; the full image was not rebuilt.
+        #[qsignal]
+        #[cxx_name = "regionBlitted"]
+        fn region_blitted(self: Pin<&mut Self>, region: QImage, x: i32, y: i32);
 
         /// Try to load a PSD through `pictura-codec`. Returns `false` and falls
         /// back to a generated test image when the file is missing or unsupported.
@@ -68,9 +74,11 @@ pub mod qobject {
         #[qinvokable]
         fn file_path(&self) -> QString;
 
-        /// The image to display. Never null.
+        /// The image to display. Never null. Returns the cached image when the
+        /// display is clean; rebuilds it from the document composite when a
+        /// region refresh has marked the display dirty.
         #[qinvokable]
-        fn image(&self) -> QImage;
+        fn image(self: Pin<&mut Self>) -> QImage;
 
         /// Whether a document is loaded (false when only the fallback image is
         /// shown). Drives command enablement in the shell.
@@ -497,6 +505,7 @@ pub struct PictureViewRust {
     move_y: i32,
     move_opacity: i32,
     gpu_compute: bool,
+    display_dirty: bool,
 }
 
 impl Default for PictureViewRust {
@@ -519,6 +528,7 @@ impl Default for PictureViewRust {
             move_y: 0,
             move_opacity: 0,
             gpu_compute: true,
+            display_dirty: false,
         }
     }
 }
@@ -549,6 +559,7 @@ impl qobject::PictureView {
         view.move_x = 0;
         view.move_y = 0;
         view.move_opacity = 0;
+        view.display_dirty = false;
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -632,6 +643,7 @@ impl qobject::PictureView {
         view.move_x = 0;
         view.move_y = 0;
         view.move_opacity = 0;
+        view.display_dirty = false;
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -679,8 +691,17 @@ impl qobject::PictureView {
             .unwrap_or_default()
     }
 
-    pub fn image(&self) -> QImage {
-        self.rust().image.clone()
+    pub fn image(mut self: Pin<&mut Self>) -> QImage {
+        let mut rust = self.as_mut().rust_mut();
+        if !rust.display_dirty {
+            return rust.image.clone();
+        }
+        let rebuilt = rebuild_display(&rust.doc, rust.stroke.as_ref(), rust.gpu_compute);
+        if let Some(image) = rebuilt {
+            rust.image = image;
+            rust.display_dirty = false;
+        }
+        rust.image.clone()
     }
 
     pub fn has_document(&self) -> bool {
@@ -1091,7 +1112,9 @@ impl qobject::PictureView {
                 .as_ref()
                 .map(|doc| document_to_image(doc, gpu_compute));
             if let Some(image) = image {
-                self.as_mut().rust_mut().image = image;
+                let mut rust = self.as_mut().rust_mut();
+                rust.image = image;
+                rust.display_dirty = false;
             }
             self.changed();
         }
@@ -1099,7 +1122,8 @@ impl qobject::PictureView {
     }
 
     /// Cache the base composite (topmost raster layer hidden), the layer image,
-    /// its document-space origin, and opacity. One composite at drag start.
+    /// its document-space origin, and opacity. One region composite at drag
+    /// start, derived from the authoritative `doc.composite`.
     pub fn begin_move_preview(mut self: Pin<&mut Self>) -> bool {
         let mut guard = self.as_mut().rust_mut();
         let rust = &mut *guard;
@@ -1110,31 +1134,30 @@ impl qobject::PictureView {
         let Some(index) = topmost_pixel_layer_index(doc) else {
             return false;
         };
-        let layer = &doc.layers[index];
-        let Some(layer_image) = layer_image(layer) else {
+        let Some(layer_image) = layer_image(&doc.layers[index]) else {
             return false;
         };
-        let rect = layer.rect;
-        let (x, y, opacity) = (rect.left, rect.top, layer.opacity as i32);
-        // The cached canvas is a full composite with the layer visible; patch
-        // only the layer's rectangle composited with it hidden. Outside the rect
-        // a pixel layer contributes nothing, so this equals the full composite.
-        let cached_ok = !rust.image.is_null()
-            && rust.image.width() == doc.width as i32
-            && rust.image.height() == doc.height as i32;
-        let base = match move_preview_region(rect, doc.width, doc.height, cached_ok) {
+        let rect = doc.layers[index].rect;
+        let (x, y, opacity) = (rect.left, rect.top, doc.layers[index].opacity as i32);
+        // Build the base from the authoritative planar composite, never a
+        // possibly-stale cached image: clone it and overwrite the moved layer's
+        // rectangle with the region composited with the layer hidden.
+        let composite_ok = doc.composite.width == doc.width
+            && doc.composite.height == doc.height
+            && !doc.composite.data.is_empty();
+        let base = match move_preview_region(rect, doc.width, doc.height, composite_ok) {
             Some((x0, y0, ..)) => {
                 doc.layers[index].visible = false;
-                let (buffer, _backend) =
+                let (region, _backend) =
                     pictura_render::composite_region_active(doc, rect, gpu_compute);
                 doc.layers[index].visible = true;
-                let mut base = rust.image.clone();
-                blit_image_region(&mut base, &buffer, x0, y0);
-                base
+                let mut base_buffer = doc.composite.clone();
+                patch_buffer_region(&mut base_buffer, &region, x0, y0);
+                buffer_to_image(&base_buffer)
             }
             None => {
-                // ponytail: full-composite fallback for a null/mismatched cache
-                // or an over-budget rect; the region path covers the common case.
+                // ponytail: full-composite fallback for a missing/mismatched
+                // composite; the region path covers the common case.
                 doc.layers[index].visible = false;
                 let base = document_to_image(doc, gpu_compute);
                 doc.layers[index].visible = true;
@@ -1230,20 +1253,12 @@ impl qobject::PictureView {
 
     pub fn sample_argb(&self, x: i32, y: i32) -> u32 {
         let rust = self.rust();
-        if rust.doc.is_none() {
+        let Some(doc) = rust.doc.as_ref() else {
             return 0;
-        }
-        // Read the already-current cached image instead of re-compositing the
-        // whole document for one pixel.
-        let image = &rust.image;
-        if x < 0 || y < 0 || x >= image.width() || y >= image.height() {
-            return 0;
-        }
-        let color = image.pixel_color(x, y);
-        ((color.alpha() as u32) << 24)
-            | ((color.red() as u32) << 16)
-            | ((color.green() as u32) << 8)
-            | (color.blue() as u32)
+        };
+        // Read the authoritative planar composite directly; never build a full
+        // image for one pixel.
+        sample_planar_argb(&doc.composite, x, y)
     }
 
     pub fn composite_argb(&self, x: i32, y: i32) -> u32 {
@@ -1546,6 +1561,7 @@ impl qobject::PictureView {
             if let Some(image) = image {
                 rust.image = image;
             }
+            rust.display_dirty = false;
         }
         self.changed();
         true
@@ -1564,6 +1580,7 @@ impl qobject::PictureView {
             if let Some(image) = image {
                 rust.image = image;
             }
+            rust.display_dirty = false;
         }
         self.changed();
         true
@@ -1778,16 +1795,16 @@ impl qobject::PictureView {
         self.rust().doc.as_ref()?.layers.get(i as usize)
     }
 
-    /// Composite only `rect` and blit it into the cached canvas at its origin.
+    /// Composite only `rect`, patch the authoritative `doc.composite`, and emit
+    /// [`region_blitted`] with a rectangle-sized image.
     ///
     /// The source is the active stroke's working document while painting, else
-    /// the app document. `doc.composite` is patched too, except while painting
-    /// (its composite is refreshed by `end_paint`'s full recomposite). An empty
-    /// clamped rect is a no-op; a non-empty refresh emits [`changed`].
+    /// the app document. While painting `doc.composite` is the pre-stroke base
+    /// and is left alone (refreshed by `end_paint`'s full recomposite). An empty
+    /// clamped rect is a no-op; the region path emits no `changed` and never
+    /// rebuilds the full image.
     fn refresh_region(mut self: Pin<&mut Self>, rect: PsdRect) {
         let gpu_compute = self.rust().gpu_compute;
-        // Decide region vs full before taking the mutable borrow, so the
-        // fallback can rebuild the image.
         let (region, painting) = {
             let rust = self.rust();
             let painting = rust.stroke.is_some();
@@ -1801,59 +1818,40 @@ impl qobject::PictureView {
                 painting,
             )
         };
-        let Some((x0, y0, w, h)) = region else {
+        let Some((x0, y0, ..)) = region else {
             return;
         };
-        if w as u64 * h as u64 > REGION_REFRESH_BUDGET {
-            // Too big for the per-pixel blit. During a stroke the app document
-            // is the pre-stroke base, so rebuild from the stroke's working
-            // document instead of `recomposite`.
-            if painting {
-                let image = self
-                    .rust()
-                    .stroke
-                    .as_ref()
-                    .map(|stroke| document_to_image(stroke.document(), gpu_compute));
-                if let Some(image) = image {
-                    self.as_mut().rust_mut().image = image;
-                }
-                self.changed();
-            } else {
-                self.as_mut().recomposite();
-            }
-            return;
-        }
-        {
+        let region_image = {
             let mut rust = self.as_mut().rust_mut();
             let rust = &mut *rust;
-            let source: &Document = if painting {
-                rust.stroke.as_ref().unwrap().document()
-            } else if let Some(doc) = rust.doc.as_ref() {
-                doc
-            } else {
-                return;
+            let buffer = {
+                let source: &Document = if painting {
+                    rust.stroke.as_ref().unwrap().document()
+                } else if let Some(doc) = rust.doc.as_ref() {
+                    doc
+                } else {
+                    return;
+                };
+                pictura_render::composite_region_active(source, rect, gpu_compute).0
             };
-            let (buffer, _backend) =
-                pictura_render::composite_region_active(source, rect, gpu_compute);
             if buffer.width == 0 || buffer.height == 0 {
                 return;
             }
-            // ponytail: keep the cached composite coherent with the region; the
-            // other mutations still take the full `recomposite` path.
             if !painting {
                 if let Some(doc) = rust.doc.as_mut() {
                     patch_composite_region(doc, &buffer, x0, y0);
                 }
             }
-            blit_image_region(&mut rust.image, &buffer, x0, y0);
-        }
-        self.changed();
+            rust.display_dirty = true;
+            buffer_to_image(&buffer)
+        };
+        self.region_blitted(region_image, x0, y0);
     }
 
     /// Refresh `image` from the current document and emit [`changed`].
     ///
-    /// The full-document fallback for every mutation that does not report a
-    /// dirty rectangle; [`refresh_region`] is the incremental extension point.
+    /// The full-document path for every mutation that does not report a dirty
+    /// rectangle; [`refresh_region`] is the incremental extension point.
     fn recomposite(mut self: Pin<&mut Self>) {
         let gpu_compute = self.rust().gpu_compute;
         let rendered = self
@@ -1871,6 +1869,7 @@ impl qobject::PictureView {
                 store_composite(doc, &rendered);
             }
             rust.image = buffer_to_image(&rendered);
+            rust.display_dirty = false;
         }
         self.changed();
     }
@@ -2445,16 +2444,6 @@ fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
     }
 }
 
-/// Largest dirty area a `refresh_region` blits pixel-by-pixel.
-///
-/// The region blit costs one FFI call per pixel, so a large dirty union (moving
-/// a canvas-sized layer makes `old ∪ new` ≈ the whole document) would be ~16 M
-/// calls at 4000². Above this budget `refresh_region` falls back to one full
-/// composite plus a `QImage` build — still bounded, and far cheaper than the
-/// per-pixel loop. A fixed cap rather than a document fraction, so a small
-/// document always stays on the region path.
-const REGION_REFRESH_BUDGET: u64 = 1_000_000;
-
 /// Clamp `rect` to `width`×`height`.
 ///
 /// Returns `(x0, y0, w, h)` in document pixels, or `None` when the intersection
@@ -2470,56 +2459,22 @@ fn clamp_region(rect: PsdRect, width: u32, height: u32) -> Option<(i32, i32, u32
     Some((x0, y0, (x1 - x0) as u32, (y1 - y0) as u32))
 }
 
-/// The region to blit for the move-preview base, or `None` to fall back to a
+/// The region to patch for the move-preview base, or `None` to fall back to a
 /// full composite.
 ///
-/// The cached canvas must match the document and the clamped area must fit the
-/// per-pixel blit budget; otherwise patching is not cheaper than a full
-/// composite.
+/// The authoritative composite must match the document (`cached_ok`); an empty
+/// clamped rect also falls back. There is no area budget: the region is blitted
+/// in C++ regardless of size.
 fn move_preview_region(
     rect: PsdRect,
     width: u32,
     height: u32,
     cached_ok: bool,
 ) -> Option<(i32, i32, u32, u32)> {
-    let (x0, y0, w, h) = clamp_region(rect, width, height)?;
-    if !cached_ok || w as u64 * h as u64 > REGION_REFRESH_BUDGET {
+    if !cached_ok {
         return None;
     }
-    Some((x0, y0, w, h))
-}
-
-/// Overwrite `image` at `(x0, y0)` with a 4-channel planar region buffer.
-///
-/// `cxx-qt-lib` 0.10 exposes no `QPainter`/scanline access from Rust, so the
-/// blit is pixel-by-pixel via `QImage::set_pixel_color` — replace semantics,
-/// equivalent to `CompositionMode_Source`.
-///
-/// ponytail: one FFI call per pixel is the ceiling; a C++
-/// `ImageView::blitRegion(const QImage&, x, y)` using `QPainter` +
-/// `CompositionMode_Source` (or M32's GPU-resident present, which drops the
-/// host `QImage`) is the upgrade path. `refresh_region` keeps the dirty area
-/// under [`REGION_REFRESH_BUDGET`] meanwhile.
-fn blit_image_region(image: &mut QImage, region: &PixelBuffer, x0: i32, y0: i32) {
-    if region.channels != 4 {
-        return;
-    }
-    let rw = region.width as i32;
-    let rh = region.height as i32;
-    let plane = (region.width * region.height) as usize;
-    let stride = region.width as usize;
-    for ry in 0..rh {
-        for rx in 0..rw {
-            let i = ry as usize * stride + rx as usize;
-            let color = QColor::from_rgba(
-                region.data[i] as i32,
-                region.data[plane + i] as i32,
-                region.data[2 * plane + i] as i32,
-                region.data[3 * plane + i] as i32,
-            );
-            image.set_pixel_color(x0 + rx, y0 + ry, &color);
-        }
-    }
+    clamp_region(rect, width, height)
 }
 
 /// The rendered buffer as a 4-plane RGBA frame.
@@ -2602,11 +2557,16 @@ fn store_composite(doc: &mut Document, rendered: &PixelBuffer) {
 /// A channel-count or size mismatch is ignored (the region still reaches the
 /// displayed image).
 fn patch_composite_region(doc: &mut Document, region: &PixelBuffer, x0: i32, y0: i32) {
-    if region.channels != 4 {
+    if doc.composite.width != doc.width || doc.composite.height != doc.height {
         return;
     }
-    let dst = &mut doc.composite;
-    if dst.width != doc.width || dst.height != doc.height {
+    patch_buffer_region(&mut doc.composite, region, x0, y0);
+}
+
+/// Overwrite `dst` at `(x0, y0)` with a 4-channel planar region buffer, mapping
+/// region plane `c` to `dst` plane `c` for `min(4, dst.channels)` planes.
+fn patch_buffer_region(dst: &mut PixelBuffer, region: &PixelBuffer, x0: i32, y0: i32) {
+    if region.channels != 4 {
         return;
     }
     if x0 < 0 || y0 < 0 {
@@ -2615,7 +2575,7 @@ fn patch_composite_region(doc: &mut Document, region: &PixelBuffer, x0: i32, y0:
     let (x0, y0) = (x0 as usize, y0 as usize);
     let rw = region.width as usize;
     let rh = region.height as usize;
-    let (fw, fh) = (doc.width as usize, doc.height as usize);
+    let (fw, fh) = (dst.width as usize, dst.height as usize);
     if x0 + rw > fw || y0 + rh > fh {
         return;
     }
@@ -2659,6 +2619,22 @@ fn current_buffer(doc: &Document, gpu_compute: bool) -> PixelBuffer {
 /// Convert the document to a packed RGBA `QImage`.
 fn document_to_image(doc: &Document, gpu_compute: bool) -> QImage {
     buffer_to_image(&current_buffer(doc, gpu_compute))
+}
+
+/// The full display image for the current state, or `None` without a document.
+///
+/// While a stroke is active the source is the stroke's working document, so a
+/// live (uncommitted) stroke is not lost; otherwise it is the authoritative
+/// planar `doc.composite`, which M34 keeps byte-identical to a full composite.
+fn rebuild_display(
+    doc: &Option<Document>,
+    stroke: Option<&Stroke>,
+    gpu_compute: bool,
+) -> Option<QImage> {
+    if let Some(stroke) = stroke {
+        return Some(document_to_image(stroke.document(), gpu_compute));
+    }
+    doc.as_ref().map(|doc| buffer_to_image(&doc.composite))
 }
 
 /// The 4-byte PSD blend key as a `String` (e.g. `"mul "`).
@@ -2776,6 +2752,42 @@ fn layer_thumbnail_image(layer: &Layer, size: u32) -> Option<QImage> {
         }
     }
     Some(rgba_image(rgba, tw as i32, th as i32))
+}
+
+/// The `0xAARRGGBB` value of a planar buffer pixel, or 0 out of bounds.
+///
+/// Mirrors [`buffer_to_image`]'s plane rules: 1 plane is opaque grey, 2 is grey
+/// plus alpha, 3 is opaque RGB, 4 is RGBA.
+fn sample_planar_argb(buffer: &PixelBuffer, x: i32, y: i32) -> u32 {
+    if x < 0 || y < 0 || x >= buffer.width as i32 || y >= buffer.height as i32 {
+        return 0;
+    }
+    let plane = buffer.width as usize * buffer.height as usize;
+    let i = y as usize * buffer.width as usize + x as usize;
+    let (r, g, b, a) = match buffer.channels {
+        0 => return 0,
+        1 => {
+            let v = buffer.data[i];
+            (v, v, v, 255)
+        }
+        2 => {
+            let v = buffer.data[i];
+            (v, v, v, buffer.data[plane + i])
+        }
+        channels if channels >= 4 => (
+            buffer.data[i],
+            buffer.data[plane + i],
+            buffer.data[2 * plane + i],
+            buffer.data[3 * plane + i],
+        ),
+        _ => (
+            buffer.data[i],
+            buffer.data[plane + i],
+            buffer.data[2 * plane + i],
+            255,
+        ),
+    };
+    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }
 
 /// Convert a planar 8-bit buffer (1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA)
@@ -3027,8 +3039,9 @@ mod tests {
             (0, 0, 32, 32)
         );
 
-        // The cached canvas holds the layer visible, as the bridge invariant says.
-        let visible = document_to_image(&doc, false);
+        // The authoritative composite holds the layer visible, as M34 keeps it.
+        let rendered = current_buffer(&doc, false);
+        store_composite(&mut doc, &rendered);
 
         // (a) Full composite with the topmost layer hidden.
         doc.layers[index].visible = false;
@@ -3039,9 +3052,10 @@ mod tests {
         let (x0, y0, w, h) = clamp_region(rect, doc.width, doc.height).expect("in-bounds");
         assert_eq!((buffer.width, buffer.height), (w, h));
 
-        // Blit that region into a clone of the visible composite: the bridge path.
-        let mut base = visible;
-        blit_image_region(&mut base, &buffer, x0, y0);
+        // Patch that region into a planar clone of the composite: the bridge path.
+        let mut base_buffer = doc.composite.clone();
+        patch_buffer_region(&mut base_buffer, &buffer, x0, y0);
+        let base = buffer_to_image(&base_buffer);
 
         assert_eq!(
             (base.width(), base.height()),
@@ -3059,24 +3073,24 @@ mod tests {
     }
 
     #[test]
-    fn move_preview_region_falls_back_for_oversized_rect() {
+    fn move_preview_region_guards_empty_and_missing_composite() {
         let rect = |t, l, b, r| PsdRect {
             top: t,
             left: l,
             bottom: b,
             right: r,
         };
-        // An in-budget, in-bounds rect takes the region path.
+        // An in-bounds rect takes the region path.
         assert_eq!(
             move_preview_region(rect(0, 0, 64, 64), 64, 64, true),
             Some((0, 0, 64, 64))
         );
-        // A clamped area over the per-pixel blit budget falls back.
+        // A rect larger than the old 1 MP budget no longer falls back.
         assert_eq!(
             move_preview_region(rect(0, 0, 2000, 2000), 4000, 4000, true),
-            None
+            Some((0, 0, 2000, 2000))
         );
-        // A null or mismatched cached canvas falls back.
+        // A missing/mismatched composite falls back.
         assert_eq!(move_preview_region(rect(0, 0, 64, 64), 64, 64, false), None);
         // An empty rect (here, zero area after clamping) falls back.
         assert_eq!(move_preview_region(rect(0, 0, 0, 64), 64, 64, true), None);
@@ -3295,6 +3309,111 @@ mod tests {
             redone += 1;
         }
         assert_eq!(redone, 2);
+    }
+
+    /// The region path patches `doc.composite` in place (no FFI) and the image
+    /// rebuilt from it equals a full recomposite, across several refreshes.
+    #[test]
+    fn region_refresh_keeps_composite_and_rebuilt_image_equal_to_full() {
+        let mut doc = Document::new(32, 32, ColorMode::Rgb, BitDepth::Eight);
+        doc.composite.data.fill(255);
+        doc.layers = vec![
+            pixel_layer("base", 32, 32, (30, 60, 90)),
+            pixel_layer("top", 8, 8, (200, 100, 50)),
+        ];
+        let rendered = current_buffer(&doc, false);
+        store_composite(&mut doc, &rendered);
+
+        // Replay `refresh_region`'s non-painting body for a sequence of moves:
+        // patch the composite, then rebuild the display image from it as
+        // `image()` does when dirty.
+        for (dx, dy) in [(2, 1), (1, 3), (0, 2), (3, 0)] {
+            let before = doc.layers.last().unwrap().rect;
+            assert!(pictura_render::translate_layer_rect(&mut doc, dx, dy));
+            let after = doc.layers.last().unwrap().rect;
+            let dirty = union_rect(before, after);
+            let (x0, y0, w, h) = clamp_region(dirty, doc.width, doc.height).expect("in-bounds");
+            let (buffer, _) = pictura_render::composite_region_active(&doc, dirty, false);
+            assert_eq!((buffer.width, buffer.height), (w, h));
+            patch_composite_region(&mut doc, &buffer, x0, y0);
+            let image = buffer_to_image(&doc.composite);
+            let full = document_to_image(&doc, false);
+            assert_eq!(
+                image, full,
+                "region-refreshed image differs after move ({dx},{dy})"
+            );
+        }
+    }
+
+    #[test]
+    fn sample_planar_argb_matches_buffer_to_image_for_every_plane_count() {
+        for channels in 1..=4u8 {
+            let mut buffer = PixelBuffer::new(3, 2, channels);
+            let plane = 3 * 2;
+            for c in 0..channels as usize {
+                for i in 0..plane {
+                    buffer.data[c * plane + i] = ((c * 37 + i * 11 + 5) % 256) as u8;
+                }
+            }
+            let image = buffer_to_image(&buffer);
+            for y in 0..2 {
+                for x in 0..3 {
+                    let color = image.pixel_color(x, y);
+                    let expect = ((color.alpha() as u32) << 24)
+                        | ((color.red() as u32) << 16)
+                        | ((color.green() as u32) << 8)
+                        | (color.blue() as u32);
+                    assert_eq!(
+                        sample_planar_argb(&buffer, x, y),
+                        expect,
+                        "channels={channels} pixel ({x},{y})"
+                    );
+                }
+            }
+            assert_eq!(sample_planar_argb(&buffer, -1, 0), 0);
+            assert_eq!(sample_planar_argb(&buffer, 0, 2), 0);
+        }
+    }
+
+    /// Print-only evidence that a region refresh no longer pays a per-pixel FFI
+    /// blit. Replays `refresh_region`'s body for a 512² and a 1024² region on a
+    /// 4000² document; the old per-pixel `blit_image_region` cost 7.36 ms and
+    /// 27.3 ms respectively (release, RTX 3090, per the M35 brief).
+    #[test]
+    #[ignore = "4000x4000 region profile; run explicitly with --ignored --nocapture"]
+    fn m35_region_refresh_profile_4000() {
+        let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![
+            pixel_layer("base", 4000, 4000, (30, 60, 90)),
+            pixel_layer("top", 4000, 4000, (200, 100, 50)),
+        ];
+        let (_, backend) = pictura_render::composite_active(&doc, true);
+        for side in [512u32, 1024u32] {
+            let rect = PsdRect {
+                top: 1024,
+                left: 1024,
+                bottom: (1024 + side) as i32,
+                right: (1024 + side) as i32,
+            };
+            let t = std::time::Instant::now();
+            let (buffer, _) = pictura_render::composite_region_active(&doc, rect, true);
+            let composite = t.elapsed();
+            let t = std::time::Instant::now();
+            patch_composite_region(&mut doc, &buffer, 1024, 1024);
+            let patch = t.elapsed();
+            let t = std::time::Instant::now();
+            let _ = buffer_to_image(&buffer);
+            let convert = t.elapsed();
+            println!(
+                "m35 region_refresh_profile side={side} composite={:.2}ms patch={:.2}ms \
+                 convert={:.2}ms total={:.2}ms (old per-pixel blit: 512->7.36ms, 1024->27.3ms)",
+                composite.as_secs_f64() * 1000.0,
+                patch.as_secs_f64() * 1000.0,
+                convert.as_secs_f64() * 1000.0,
+                (composite + patch + convert).as_secs_f64() * 1000.0,
+            );
+        }
+        println!("m35 region_refresh_profile backend: {backend:?}");
     }
 
     #[test]
@@ -3992,75 +4111,69 @@ mod tests {
         let _ = cached.pixel_color(0, 0);
         ms("sample_argb(after: cached)", t.elapsed());
 
-        // begin_move_preview (M32 region body): clone the cached canvas and
-        // region-composite only the moved layer's clamped rect with the layer
-        // hidden. A canvas-sized layer is over the per-pixel blit budget, so
-        // this exercises the full-composite fallback.
-        let cached_image = document_to_image(&doc, true);
+        // begin_move_preview (M35 body): clone the authoritative planar
+        // composite and patch only the moved layer's clamped rect with the
+        // region composited with the layer hidden.
         let mut preview = doc.clone();
         let t = std::time::Instant::now();
         let index = topmost_pixel_layer_index(&preview).expect("pixel layer");
         let _ = layer_image(&preview.layers[index]);
         let preview_rect = preview.layers[index].rect;
-        let preview_cached_ok = cached_image.width() == preview.width as i32
-            && cached_image.height() == preview.height as i32;
-        let preview_base = match move_preview_region(
-            preview_rect,
-            preview.width,
-            preview.height,
-            preview_cached_ok,
-        ) {
-            Some((x0, y0, ..)) => {
-                preview.layers[index].visible = false;
-                let (buffer, _backend) =
-                    pictura_render::composite_region_active(&preview, preview_rect, true);
-                preview.layers[index].visible = true;
-                let mut base = cached_image.clone();
-                blit_image_region(&mut base, &buffer, x0, y0);
-                base
-            }
-            None => {
-                preview.layers[index].visible = false;
-                let base = document_to_image(&preview, true);
-                preview.layers[index].visible = true;
-                base
-            }
-        };
+        let preview_ok = preview.composite.width == preview.width
+            && preview.composite.height == preview.height
+            && !preview.composite.data.is_empty();
+        let preview_base =
+            match move_preview_region(preview_rect, preview.width, preview.height, preview_ok) {
+                Some((x0, y0, ..)) => {
+                    preview.layers[index].visible = false;
+                    let (buffer, _backend) =
+                        pictura_render::composite_region_active(&preview, preview_rect, true);
+                    preview.layers[index].visible = true;
+                    let mut base_buffer = preview.composite.clone();
+                    patch_buffer_region(&mut base_buffer, &buffer, x0, y0);
+                    buffer_to_image(&base_buffer)
+                }
+                None => {
+                    preview.layers[index].visible = false;
+                    let base = document_to_image(&preview, true);
+                    preview.layers[index].visible = true;
+                    base
+                }
+            };
         ms("begin_move_preview(region body, full layer)", t.elapsed());
         drop(preview_base);
 
-        // begin_move_preview with the moved layer covering only a sub-rectangle:
-        // the clamped rect is under the per-pixel blit budget, so the region path
-        // is taken instead of the full composite.
+        // begin_move_preview with the moved layer covering only a sub-rectangle.
         let mut partial = Document::new(n, n, ColorMode::Rgb, BitDepth::Eight);
         partial.composite.data.fill(255);
         partial.layers = vec![
             pixel_layer("base", n, n, (255, 255, 255)),
             pixel_layer("top", 512, 512, (200, 100, 50)),
         ];
-        let _ = pictura_render::composite_active(&partial, true);
-        let partial_cached = document_to_image(&partial, true);
+        let rendered = current_buffer(&partial, true);
+        store_composite(&mut partial, &rendered);
         let mut partial_preview = partial.clone();
         let t = std::time::Instant::now();
         let pindex = topmost_pixel_layer_index(&partial_preview).expect("pixel layer");
         let _ = layer_image(&partial_preview.layers[pindex]);
         let partial_rect = partial_preview.layers[pindex].rect;
-        let partial_cached_ok = partial_cached.width() == partial_preview.width as i32
-            && partial_cached.height() == partial_preview.height as i32;
+        let partial_ok = partial_preview.composite.width == partial_preview.width
+            && partial_preview.composite.height == partial_preview.height
+            && !partial_preview.composite.data.is_empty();
         let partial_base = match move_preview_region(
             partial_rect,
             partial_preview.width,
             partial_preview.height,
-            partial_cached_ok,
+            partial_ok,
         ) {
             Some((x0, y0, ..)) => {
                 partial_preview.layers[pindex].visible = false;
                 let (buffer, _backend) =
                     pictura_render::composite_region_active(&partial_preview, partial_rect, true);
                 partial_preview.layers[pindex].visible = true;
-                let mut base = partial_cached.clone();
-                blit_image_region(&mut base, &buffer, x0, y0);
-                base
+                let mut base_buffer = partial_preview.composite.clone();
+                patch_buffer_region(&mut base_buffer, &buffer, x0, y0);
+                buffer_to_image(&base_buffer)
             }
             None => {
                 partial_preview.layers[pindex].visible = false;

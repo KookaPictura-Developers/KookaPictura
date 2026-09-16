@@ -99,6 +99,24 @@ void ImageView::replaceImage(const QImage& image)
     update();
 }
 
+void ImageView::blitRegion(const QImage& region, int x, int y)
+{
+    if (region.isNull() || region.width() <= 0 || region.height() <= 0 || image_.isNull()) {
+        return;
+    }
+    QPainter painter(&image_);
+    // Source mode overwrites the destination pixels; QPainter clips the draw to
+    // the image rect, so a region straddling the document edge cannot spill.
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.drawImage(QPoint(x, y), region);
+    painter.end();
+    // An in-place QPainter write does not reliably bump image_.cacheKey(), so
+    // invalidate the scaled present cache explicitly; the next paint rebuilds it
+    // through the same transform as a direct draw.
+    presentCache_.valid = false;
+    update();
+}
+
 void ImageView::zoomAt(const QPointF& cursor, int angleDelta)
 {
     const double factor = std::pow(1.0015, angleDelta);

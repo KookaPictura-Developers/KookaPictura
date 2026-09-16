@@ -1,6 +1,6 @@
 # Canvas Compositing & Large-Layer Move Plan
 
-- **Status:** dev note (research synthesis + M31–M35 roadmap; not an OpenSpec
+- **Status:** dev note (research synthesis + M31–M38 roadmap; not an OpenSpec
   proposal yet — each milestone is proposed through the normal workflow first)
 - **Scope:** how mature editors keep very large layers responsive while moving,
   painting, and zooming; how the current Kooka Pictura path diverges; and the
@@ -159,7 +159,7 @@ widget is the blocker.
 
 ---
 
-## 3. Plan: M31–M35
+## 3. Plan: M31–M38
 
 ### M31 — region (dirty-rect) compositing (shipped)
 
@@ -192,11 +192,10 @@ present, is the next step.
 
 OpenSpec change `m32-interactive-canvas`.
 
-Deferred from M32 to a later change: cheap undo/redo + composite coherence
-(persisting the rendered composite into `doc.composite` changes what `write_psd`
-serializes, so it needs its own proposal), the C++ region blit
-(`ImageView::blitRegion`) and the `REGION_REFRESH_BUDGET` removal, and
-zoom-level details beyond the single cached scaled image.
+Deferred from M32 to a later change: cheap undo/redo + composite coherence (which
+became **M34**, below) and the C++ region blit (`ImageView::blitRegion`) with the
+`REGION_REFRESH_BUDGET` removal (now staged as **M35**, below). Zoom-level details
+beyond the single cached scaled image stay deferred.
 
 **Re-scoped (M34):** composite coherence + cheap undo/redo is carved out as the
 next change, **M34 — composite coherence and cheap undo/redo**
@@ -248,7 +247,40 @@ the interactive path. It is deferred because the readback is measured at ~7 ms
 most ~57 ms of the interactive path, while the 146 ms source assembly stays until
 M33. Revisit only after M33 and a present-bound profile.
 
-### M35 — 256² GPU tiles + LRU + seam gutters + mipmaps (Graphite-style, deferred)
+### M35 — region blit in C++ (proposed)
+
+The interactive cost that remains after M31–M34 is the **per-pixel FFI blit**: at
+4000² a 1024² paint dab composites in ~5.6 ms but the Rust `blit_image_region`
+writes it into the cached `QImage` with one `QImage::set_pixel_color` call per
+pixel at ~27.3 ms (~5×); at 10000² that is ~170 ms. `REGION_REFRESH_BUDGET =
+1_000_000` px only hides the cost by dropping a large dirty region to a full
+recomposite (130 ms at 4000², 878 ms at 10000²). M35 holds the authoritative
+canvas as the planar `doc.composite`, has `refresh_region` emit a small
+`regionBlitted(QImage, x, y)` signal instead of `changed`, and blits it in C++
+(`ImageView::blitRegion`, `QPainter` + `CompositionMode_Source`), deleting the
+budget and the per-pixel loop. `image()` becomes rebuild-if-dirty from
+`doc.composite`, `sample_argb` reads the composite directly, and
+`move_preview_base` is derived from the current composite. OpenSpec change
+`m35-cpp-region-blit` (MODIFIED `document-canvas`); brief
+`docs/dev/m35-cpp-region-blit.md`.
+
+### M36 — history copy-on-write / tile diffs (deferred)
+
+`History::capture` clones the whole document per undoable state (~60 ms at
+4000² and up to 20 states of RAM). Copy-on-write layer-channel sharing or
+per-tile diffs removes both the latency and the memory. Needs its own design
+(content versioning / tile identity), so it is staged after M35.
+
+### M37 — resident per-layer GPU source buffers (deferred)
+
+Deferred from M33. The remaining full-composite cost is the per-composite
+source/mask **upload** (~128 MB + 16 MB at 4000²), not the dispatch (~0.2 ms) or
+the ~38 ms readback; keeping a layer's source planes resident on the GPU across a
+composite session would remove it, but needs content versioning to detect a
+changed layer. A shader-side planar output would also remove the ~32 ms readback
+de-interleave.
+
+### M38 — 256² GPU tiles + LRU + seam gutters + mipmaps (Graphite-style, deferred)
 
 Only if pan/zoom over documents larger than VRAM demands it. Sparse 256² tiles
 with an LRU budget, per-tile mipmaps, a border/gutter to kill seams, and
@@ -259,7 +291,7 @@ payoff for this project's document sizes.
 ### Non-goals for these milestones
 
 - A mipmap pyramid by default (GIMP opted out; Krita's GPU path opted in). LoD is
-  an M35 concern.
+  an M38 concern.
 - Swap-to-disk tile backends.
 - A fully GPU-resident document (Photoshop does not do this either).
 

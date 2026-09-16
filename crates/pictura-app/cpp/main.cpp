@@ -1750,6 +1750,21 @@ int main(int argc, char* argv[])
         // Restore the previously active document so later checks are undisturbed.
         frame.closeDocument(m30DocIndex, false);
 
+        // Full pixel-by-pixel equality, shared by the canvas checks.
+        auto samePixels = [](const QImage& a, const QImage& b) {
+            if (a.isNull() || b.isNull() || a.size() != b.size()) {
+                return false;
+            }
+            for (int y = 0; y < a.height(); ++y) {
+                for (int x = 0; x < a.width(); ++x) {
+                    if (a.pixel(x, y) != b.pixel(x, y)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+
         // M31: dirty-region canvas refresh. Grow a seeded document so a small
         // white layer sits in a larger transparent canvas, then Move it by a
         // known offset. The layer's pixels must land at the new location, a
@@ -1799,15 +1814,18 @@ int main(int argc, char* argv[])
         // Leave the frame as M30 did: close the scratch document.
         frame.closeDocument(m31DocIndex, false);
 
-        // M31 fallback: when the dirty union exceeds the per-pixel blit budget
-        // `refresh_region` must take the full-recomposite path and stay correct.
-        // A 1024² canvas moved by (1,1) has `old ∪ new` = the whole canvas
-        // (1,048,576 px > the 1,000,000 budget).
+        // M31 large region: with the per-pixel blit budget gone, a canvas-sized
+        // dirty union (a 1024² canvas moved by (1,1) makes `old ∪ new` the whole
+        // canvas) takes the region-blit path in C++ and must NOT trigger a
+        // full-document recomposite. `regionBlitted` fires; `changed` (emitted
+        // only by a full recomposite) does not. The on-screen canvas must still
+        // equal a full recomposite.
         const bool m31bCreated =
             frame.newDocument(QStringLiteral("RegionLarge"), 1024, 1024,
                               QStringLiteral("rgb"), 8, QStringLiteral("white"));
         pictura::PictureView* m31bView = frame.activeView();
-        if (!m31bCreated || !m31bView) {
+        pictura::ImageView* m31bCanvas = frame.imageView();
+        if (!m31bCreated || !m31bView || !m31bCanvas) {
             std::fprintf(stderr, "pictura self-test: FAIL: M31 large document\n");
             std::fflush(stderr);
             return 75;
@@ -1815,18 +1833,36 @@ int main(int argc, char* argv[])
         const int m31bDocIndex = frame.activeDocumentIndex();
         const QImage m31bBefore = m31bView->image();
         const QRgb m31bOrigin = m31bBefore.pixel(0, 0);
+        int m31bRegionBlits = 0;
+        int m31bChanged = 0;
+        auto m31bRegionConn = QObject::connect(
+            m31bView, &pictura::PictureView::regionBlitted,
+            [&m31bRegionBlits](const QImage&, int, int) { ++m31bRegionBlits; });
+        auto m31bChangedConn = QObject::connect(
+            m31bView, &pictura::PictureView::changed, [&m31bChanged]() { ++m31bChanged; });
         const bool m31bMoved = m31bView->commit_move(1, 1);
-        const QImage m31bAfter = m31bView->image();
-        const bool m31bVacated = m31bAfter.pixel(0, 0) != m31bOrigin;
+        const QImage m31bBlitted = m31bCanvas->image();
+        QObject::disconnect(m31bRegionConn);
+        QObject::disconnect(m31bChangedConn);
+        // Force a full recomposite and compare the blitted canvas with it.
+        m31bView->set_gpu_compute(m31bView->gpu_compute());
+        const QImage m31bFull = m31bCanvas->image();
+        const bool m31bVacated = m31bBlitted.pixel(0, 0) != m31bOrigin;
+        const bool m31bRegionPath = m31bRegionBlits >= 1 && m31bChanged == 0;
+        const bool m31bCanvasSame = samePixels(m31bBlitted, m31bFull);
         const bool m31bUndone = m31bView->undo() && m31bView->image() == m31bBefore;
         std::fprintf(stderr,
-                     "pictura self-test: m31_region_large moved=%d vacated=%d undo=%d\n",
+                     "pictura self-test: m31_region_large moved=%d vacated=%d undo=%d "
+                     "region=%d recomposite=%d canvas=%d\n",
                      m31bMoved ? 1 : 0,
                      m31bVacated ? 1 : 0,
-                     m31bUndone ? 1 : 0);
+                     m31bUndone ? 1 : 0,
+                     m31bRegionPath ? 1 : 0,
+                     m31bChanged > 0 ? 1 : 0,
+                     m31bCanvasSame ? 1 : 0);
         std::fflush(stderr);
-        if (!m31bMoved || !m31bVacated || !m31bUndone) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M31 large-union fallback wrong\n");
+        if (!m31bMoved || !m31bVacated || !m31bUndone || !m31bRegionPath || !m31bCanvasSame) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M31 large-region blit wrong\n");
             return 75;
         }
         frame.closeDocument(m31bDocIndex, false);
@@ -2183,20 +2219,6 @@ int main(int argc, char* argv[])
             return 77;
         }
         // Full pixel-by-pixel equality over the small (64x64) canvas.
-        auto m32Same = [](const QImage& a, const QImage& b) {
-            if (a.isNull() || b.isNull() || a.size() != b.size()) {
-                return false;
-            }
-            for (int y = 0; y < a.height(); ++y) {
-                for (int x = 0; x < a.width(); ++x) {
-                    if (a.pixel(x, y) != b.pixel(x, y)) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        };
-
         const bool m32Began = m32View->begin_move_preview();
         const QImage m32Base = m32View->move_preview_base();
         m32View->set_layer_visible(m32k, false);
@@ -2205,8 +2227,8 @@ int main(int argc, char* argv[])
         m32View->set_gpu_compute(m32View->gpu_compute());
         const QImage m32FullHidden = m32View->image();
         const bool m32BaseSame = m32Began && !m32Base.isNull()
-                                 && m32Same(m32Base, m32RegionHidden);
-        const bool m32VisibilitySame = m32Same(m32RegionHidden, m32FullHidden);
+                                 && samePixels(m32Base, m32RegionHidden);
+        const bool m32VisibilitySame = samePixels(m32RegionHidden, m32FullHidden);
         m32View->set_layer_visible(m32k, true);
         m32View->end_move_preview();
         frame.closeDocument(m32DocIndex, false);
@@ -2290,6 +2312,121 @@ int main(int argc, char* argv[])
         }
         frame.closeDocument(frame.activeDocumentIndex(), false);
         frame.closeDocument(m34DocIndex, false);
+
+        // M35: the C++ region-blit path. A region refresh emits regionBlitted
+        // (not changed), ImageView::blitRegion overwrites the canvas, and the
+        // on-screen canvas equals a full recomposite; image() rebuilds from the
+        // composite while dirty; the present cache is invalidated then rebuilt.
+        // 82: document; 83: blit equality; 84: present cache; 85: large region.
+        const bool m35Created = frame.newDocument(QStringLiteral("M35RegionBlit"), 32, 32,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* m35View = frame.activeView();
+        pictura::ImageView* m35Canvas = frame.imageView();
+        if (!m35Created || !m35View || !m35Canvas) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M35 document\n");
+            std::fflush(stderr);
+            return 82;
+        }
+        const int m35DocIndex = frame.activeDocumentIndex();
+        if (!m35View->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M35 canvas growth\n");
+            std::fflush(stderr);
+            return 82;
+        }
+        // Warm the present cache; the second paint at the same zoom must reuse it.
+        QImage m35Warm(m35Canvas->size(), QImage::Format_ARGB32);
+        m35Canvas->render(&m35Warm);
+        m35Canvas->render(&m35Warm);
+        const bool m35ReuseBefore = !m35Canvas->presentCacheRebuiltOnLastPaint();
+
+        int m35RegionBlits = 0;
+        int m35Changed = 0;
+        auto m35RegionConn = QObject::connect(
+            m35View, &pictura::PictureView::regionBlitted,
+            [&m35RegionBlits](const QImage&, int, int) { ++m35RegionBlits; });
+        auto m35ChangedConn = QObject::connect(
+            m35View, &pictura::PictureView::changed, [&m35Changed]() { ++m35Changed; });
+        const bool m35Previewed = m35View->begin_move_preview();
+        const bool m35Moved = m35View->commit_move(4, 4);
+        const QImage m35Blitted = m35Canvas->image();
+        const QImage m35Rebuilt = m35View->image();
+        QObject::disconnect(m35RegionConn);
+        QObject::disconnect(m35ChangedConn);
+
+        QImage m35Shot(m35Canvas->size(), QImage::Format_ARGB32);
+        m35Canvas->render(&m35Shot);
+        const bool m35CacheRebuiltAfter = m35Canvas->presentCacheRebuiltOnLastPaint();
+
+        // Force a full recomposite and compare both the blitted canvas and the
+        // rebuilt image with it.
+        m35View->set_gpu_compute(m35View->gpu_compute());
+        const QImage m35Full = m35Canvas->image();
+        const bool m35RegionPath = m35RegionBlits >= 1 && m35Changed == 0;
+        const bool m35CanvasSame = samePixels(m35Blitted, m35Full);
+        const bool m35RebuiltSame = samePixels(m35Rebuilt, m35Full);
+        const bool m35CacheOk = m35ReuseBefore && m35CacheRebuiltAfter;
+        std::fprintf(stderr,
+                     "pictura self-test: m35_region_blit region=%d changed=%d canvas=%d "
+                     "rebuilt=%d cache=%d\n",
+                     m35RegionPath ? 1 : 0,
+                     m35Changed > 0 ? 1 : 0,
+                     m35CanvasSame ? 1 : 0,
+                     m35RebuiltSame ? 1 : 0,
+                     m35CacheOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m35Previewed || !m35Moved || !m35RegionPath || !m35CanvasSame || !m35RebuiltSame) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M35 region blit wrong\n");
+            return 83;
+        }
+        if (!m35CacheOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M35 present cache wrong\n");
+            return 84;
+        }
+        frame.closeDocument(m35DocIndex, false);
+
+        // M35 large region: a canvas-sized dirty union takes the C++ blit path
+        // and does not recomposite the whole 1024² document.
+        const bool m35bCreated =
+            frame.newDocument(QStringLiteral("M35RegionLarge"), 1024, 1024,
+                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+        pictura::PictureView* m35bView = frame.activeView();
+        pictura::ImageView* m35bCanvas = frame.imageView();
+        if (!m35bCreated || !m35bView || !m35bCanvas) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M35 large document\n");
+            std::fflush(stderr);
+            return 82;
+        }
+        const int m35bDocIndex = frame.activeDocumentIndex();
+        // Run this pass on the CPU compositor to exercise the region-blit path
+        // with the non-default backend (the earlier M35 pass used the default).
+        m35bView->set_gpu_compute(false);
+        int m35bRegionBlits = 0;
+        int m35bChanged = 0;
+        auto m35bRegionConn = QObject::connect(
+            m35bView, &pictura::PictureView::regionBlitted,
+            [&m35bRegionBlits](const QImage&, int, int) { ++m35bRegionBlits; });
+        auto m35bChangedConn = QObject::connect(
+            m35bView, &pictura::PictureView::changed, [&m35bChanged]() { ++m35bChanged; });
+        const bool m35bMoved = m35bView->commit_move(1, 1);
+        const QImage m35bBlitted = m35bCanvas->image();
+        QObject::disconnect(m35bRegionConn);
+        QObject::disconnect(m35bChangedConn);
+        m35bView->set_gpu_compute(m35bView->gpu_compute());
+        const QImage m35bFull = m35bCanvas->image();
+        const bool m35bRegionPath = m35bRegionBlits >= 1 && m35bChanged == 0;
+        const bool m35bCanvasSame = samePixels(m35bBlitted, m35bFull);
+        std::fprintf(stderr,
+                     "pictura self-test: m35_region_large region=%d recomposite=%d canvas=%d\n",
+                     m35bRegionPath ? 1 : 0,
+                     m35bChanged > 0 ? 1 : 0,
+                     m35bCanvasSame ? 1 : 0);
+        std::fflush(stderr);
+        if (!m35bMoved || !m35bRegionPath || !m35bCanvasSame) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M35 large-region blit wrong\n");
+            return 85;
+        }
+        frame.closeDocument(m35bDocIndex, false);
 
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();

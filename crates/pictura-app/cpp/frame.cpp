@@ -278,6 +278,22 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
     entry.canvas->setCanvasColor(kCanvasColors[canvasColorIndex_]);
 
     connect(view, &PictureView::changed, this, &PicturaMainWindow::refresh);
+    connect(view, &PictureView::regionBlitted, this,
+            [this, canvas = entry.canvas](const QImage& region, int x, int y) {
+                if (canvas) {
+                    canvas->blitRegion(region, x, y);
+                }
+                // The cheapest sync only: restart the same 120 ms panel timer the
+                // `changed` path uses, and never call image()/replaceImage(), so
+                // the region path cannot refresh panels faster than a full
+                // recomposite.
+                panelRefreshTimer_->start();
+                updateTabTitle(activeDocumentIndex());
+                updateWindowTitle();
+                if (registry_) {
+                    registry_->refresh();
+                }
+            });
     connect(entry.canvas, &ImageView::zoomChanged, this, [this](double) { updateStatus(); });
     connect(entry.canvas, &ImageView::mouseMoved, this, [this](const QPointF& p) {
         if (infoPanel_) {

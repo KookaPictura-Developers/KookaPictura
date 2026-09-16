@@ -28,6 +28,12 @@ public:
     // Replace the image but keep the current zoom and pan.
     void replaceImage(const QImage& image);
 
+    // Overwrite the canvas at document-space (x, y) with a region-sized image
+    // under CompositionMode_Source (no blending), then invalidate the zoom
+    // present cache so the next paint rebuilds it. A null/empty region and a
+    // null canvas are no-ops.
+    void blitRegion(const QImage& region, int x, int y);
+
     const QImage& image() const { return image_; }
 
     // Zoom about a cursor position so the point under the cursor stays put.
