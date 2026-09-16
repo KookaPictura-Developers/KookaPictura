@@ -265,6 +265,75 @@ pub struct LayerMask {
     pub data: Option<Vec<u8>>,
 }
 
+/// PSD `lclr` sheet color. Values match psd-tools `SheetColorType`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ColorLabel {
+    None = 0,
+    Red = 1,
+    Orange = 2,
+    Yellow = 3,
+    Green = 4,
+    Blue = 5,
+    Violet = 6,
+    Gray = 7,
+}
+
+impl ColorLabel {
+    pub fn from_byte(v: u8) -> ColorLabel {
+        match v {
+            0 => ColorLabel::None,
+            1 => ColorLabel::Red,
+            2 => ColorLabel::Orange,
+            3 => ColorLabel::Yellow,
+            4 => ColorLabel::Green,
+            5 => ColorLabel::Blue,
+            6 => ColorLabel::Violet,
+            7 => ColorLabel::Gray,
+            _ => ColorLabel::None,
+        }
+    }
+
+    pub fn to_byte(self) -> u8 {
+        self as u8
+    }
+}
+
+/// The three CS6 layer locks. A `u8` bit set, not an enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LockFlags(u8);
+
+impl LockFlags {
+    pub const TRANSPARENCY: u8 = 0x01;
+    pub const PIXELS: u8 = 0x02;
+    pub const POSITION: u8 = 0x04;
+
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    pub fn contains(self, flag: u8) -> bool {
+        self.0 & flag != 0
+    }
+
+    pub fn with(self, flag: u8, on: bool) -> LockFlags {
+        if on {
+            LockFlags(self.0 | flag)
+        } else {
+            LockFlags(self.0 & !flag)
+        }
+    }
+
+    /// All three lockable bits (the panel's "Lock All" toggle).
+    pub fn all() -> LockFlags {
+        LockFlags(0x01 | 0x02 | 0x04)
+    }
+
+    pub fn is_all(self) -> bool {
+        self.0 & 0x07 == 0x07
+    }
+}
+
 /// A pixel layer or a group (`is_group`). Groups carry `children`, bottom-first
 /// like everything else. `rect` is the layer bounds; for groups it may be empty.
 ///
@@ -276,6 +345,9 @@ pub struct Layer {
     pub rect: PsdRect,
     pub blend: BlendMode,
     pub opacity: u8,
+    pub fill: u8,
+    pub lock: LockFlags,
+    pub color: ColorLabel,
     pub clipping: bool,
     pub visible: bool,
     pub mask: Option<LayerMask>,
@@ -352,6 +424,9 @@ mod tests {
             rect,
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -371,6 +446,9 @@ mod tests {
             rect,
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -396,6 +474,9 @@ mod tests {
             rect,
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -461,6 +542,9 @@ mod tests {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -470,5 +554,59 @@ mod tests {
             is_group: true,
         };
         assert!(layer.is_group());
+    }
+
+    #[test]
+    fn default_layer_attribute_values() {
+        let layer = Layer {
+            name: "d".into(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+            },
+            blend: BlendMode::Normal,
+            opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels: Vec::new(),
+            children: Vec::new(),
+            is_group: false,
+        };
+        assert_eq!(layer.fill, 255);
+        assert_eq!(layer.lock.bits(), 0);
+        assert_eq!(layer.color, ColorLabel::None);
+    }
+
+    #[test]
+    fn color_label_byte_round_trip_and_out_of_range() {
+        for v in 0u8..=7 {
+            assert_eq!(ColorLabel::from_byte(v).to_byte(), v);
+        }
+        for v in 8u8..=255 {
+            assert_eq!(ColorLabel::from_byte(v), ColorLabel::None);
+        }
+        assert_eq!(ColorLabel::Red.to_byte(), 1);
+        assert_eq!(ColorLabel::Gray.to_byte(), 7);
+    }
+
+    #[test]
+    fn lock_flags_bits_contains_with_and_all() {
+        assert_eq!(LockFlags::all().bits(), 0x07);
+        assert!(LockFlags::all().is_all());
+        assert!(!LockFlags::default().is_all());
+        let t = LockFlags::default().with(LockFlags::TRANSPARENCY, true);
+        assert!(t.contains(LockFlags::TRANSPARENCY));
+        assert!(!t.contains(LockFlags::PIXELS));
+        assert!(!t.is_all());
+        assert_eq!(t.with(LockFlags::TRANSPARENCY, false).bits(), 0);
+        assert!(LockFlags::all().contains(LockFlags::PIXELS));
+        assert!(LockFlags::all().contains(LockFlags::POSITION));
     }
 }

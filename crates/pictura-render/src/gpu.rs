@@ -303,6 +303,7 @@ const SHADER: &str = r#"
 struct Params {
     mode: u32,
     opacity: f32,
+    fill: f32,
     count: u32,
     adj_kind: u32,
     p0: i32,
@@ -633,7 +634,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let cb = unpack_word(canvas[i]);
         let ab = cb.a;
         if (ab <= 0.0) { return; }
-        let as_ = ab * params.opacity * mask_a;
+        let as_ = ab * params.opacity * params.fill * mask_a;
         if (as_ <= 0.0) { return; }
         let cs = adjust(params.adj_kind, cb.rgb, params.p0, params.p1, params.p2);
         let b = blend(params.mode, cb.rgb, cs);
@@ -649,7 +650,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     let s = sample_src(i);
     if (s.a <= 0.0) { return; }
-    let as_ = s.a * params.opacity * mask_a;
+    let as_ = s.a * params.opacity * params.fill * mask_a;
     if (as_ <= 0.0) { return; }
 
     let cb = unpack_word(canvas[i]);
@@ -833,7 +834,7 @@ impl Gpu {
         let n = n as u32;
         let params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-blend-params"),
-            size: 64,
+            size: 80,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -945,6 +946,7 @@ impl Gpu {
                 PACKED_SRC,
                 layer.blend,
                 layer.opacity,
+                255,
                 NO_ADJ,
             );
             return;
@@ -964,6 +966,7 @@ impl Gpu {
                     PACKED_SRC,
                     layer.blend,
                     layer.opacity,
+                    layer.fill,
                     adj,
                 );
             }
@@ -978,6 +981,7 @@ impl Gpu {
                 layout,
                 layer.blend,
                 layer.opacity,
+                layer.fill,
                 NO_ADJ,
             );
         }
@@ -992,6 +996,7 @@ impl Gpu {
         layout: SrcLayout,
         mode: BlendMode,
         opacity: u8,
+        fill: u8,
         adj: (u32, i32, i32, i32),
     ) {
         let flags = u32::from(layout.packed) | (u32::from(layout.gray) << 1);
@@ -1003,6 +1008,7 @@ impl Gpu {
         let params = [
             mode_id(mode).to_le_bytes(),
             (opacity as f32 / 255.0).to_le_bytes(),
+            (fill as f32 / 255.0).to_le_bytes(),
             self.n.to_le_bytes(),
             adj.0.to_le_bytes(),
             adj.1.to_le_bytes(),
@@ -1384,7 +1390,9 @@ fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, LayerMask, PsdRect};
+    use pictura_core::{
+        BitDepth, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags, PsdRect,
+    };
     use std::time::Instant;
 
     #[test]
@@ -1424,6 +1432,9 @@ mod tests {
             rect: px_rect(w, h),
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -1568,6 +1579,9 @@ mod tests {
             rect: px_rect(n, n),
             blend,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -1663,6 +1677,7 @@ mod tests {
                     *layout,
                     layer.blend,
                     layer.opacity,
+                    layer.fill,
                     NO_ADJ,
                 );
             }

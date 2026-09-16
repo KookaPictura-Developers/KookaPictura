@@ -419,14 +419,19 @@ fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustm
 }
 
 /// Composite one source sample over the running backdrop, applying the layer's
-/// opacity and mask to the source alpha.
+/// opacity, fill (ignored for groups) and mask to the source alpha.
 fn blend_into(canvas: &mut Canvas, layer: &Layer, x: usize, y: usize, cs: [f32; 3], src_a: f32) {
     if src_a <= 0.0 {
         return;
     }
     let opacity = layer.opacity as f32 / 255.0;
+    let fill = if layer.is_group {
+        1.0
+    } else {
+        layer.fill as f32 / 255.0
+    };
     let masked = mask_alpha(layer, x as i32, y as i32) as f32 / 255.0;
-    let mut as_ = src_a * opacity * masked;
+    let mut as_ = src_a * opacity * fill * masked;
     if as_ <= 0.0 {
         return;
     }
@@ -717,7 +722,7 @@ fn set_sat(c: [f32; 3], s: f32) -> [f32; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::{BitDepth, Channel, LayerMask, PsdRect};
+    use pictura_core::{BitDepth, Channel, ColorLabel, LayerMask, LockFlags, PsdRect};
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
         PsdRect {
@@ -748,6 +753,9 @@ mod tests {
             rect: r,
             blend,
             opacity,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -787,6 +795,9 @@ mod tests {
             rect: rect(0, 0, 0, 0),
             blend,
             opacity,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask,
@@ -1059,6 +1070,159 @@ mod tests {
             ],
         );
         assert_eq!(px(&composite_rgba(&d), 0, 0), [100, 150, 25, 255]);
+    }
+
+    #[test]
+    fn fill_255_is_byte_identical_to_pre_change_composites() {
+        // Each expected pixel is the pre-fill value: fill 255 is an exact 1.0
+        // factor, so plain, masked, group and adjustment scenes must not move.
+
+        // Plain: the multi-layer source-over scene.
+        let plain = doc(
+            2,
+            2,
+            vec![
+                solid(
+                    "white",
+                    full(2, 2),
+                    (255, 255, 255),
+                    255,
+                    BlendMode::Normal,
+                    255,
+                ),
+                solid(
+                    "red",
+                    full(2, 2),
+                    (255, 0, 0),
+                    255,
+                    BlendMode::Multiply,
+                    255,
+                ),
+                solid("blue", full(2, 2), (0, 0, 255), 255, BlendMode::Screen, 255),
+            ],
+        );
+        assert_eq!(px(&composite_rgba(&plain), 0, 0), [255, 0, 255, 255]);
+
+        // Masked: mask zeroes the top half.
+        let mut masked = solid(
+            "masked",
+            full(1, 2),
+            (255, 0, 0),
+            255,
+            BlendMode::Normal,
+            255,
+        );
+        masked.mask = Some(LayerMask {
+            rect: full(1, 2),
+            default_color: 0,
+            disabled: false,
+            flags: 0,
+            data: Some(vec![0, 255]),
+        });
+        let masked_out = composite_rgba(&doc(1, 2, vec![masked]));
+        assert_eq!(px(&masked_out, 0, 0), [0, 0, 0, 0]);
+        assert_eq!(px(&masked_out, 0, 1), [255, 0, 0, 255]);
+
+        // Group: fill lives on a group and is ignored; fill 0 must equal 255.
+        let group_scene = |fill: u8| {
+            let mut g = group(
+                "group",
+                BlendMode::Multiply,
+                255,
+                None,
+                vec![solid(
+                    "child",
+                    full(1, 1),
+                    (50, 50, 50),
+                    255,
+                    BlendMode::Normal,
+                    255,
+                )],
+            );
+            g.fill = fill;
+            composite_rgba(&doc(
+                1,
+                1,
+                vec![
+                    solid(
+                        "backdrop",
+                        full(1, 1),
+                        (200, 200, 200),
+                        255,
+                        BlendMode::Normal,
+                        255,
+                    ),
+                    g,
+                ],
+            ))
+        };
+        assert_eq!(px(&group_scene(255), 0, 0), [39, 39, 39, 255]);
+        assert_eq!(
+            group_scene(0).data,
+            group_scene(255).data,
+            "group fill is ignored"
+        );
+
+        // Adjustment: fill 255 leaves the invert gate at its pre-fill value.
+        let base = solid(
+            "base",
+            full(2, 1),
+            (100, 100, 100),
+            255,
+            BlendMode::Normal,
+            255,
+        );
+        let mut adj = adjustment_layer("invert", *b"nvrt", Vec::new(), 255, None);
+        adj.mask = Some(LayerMask {
+            rect: full(2, 1),
+            default_color: 0,
+            disabled: false,
+            flags: 0,
+            data: Some(vec![255, 0]),
+        });
+        let adj_out = composite_rgba(&doc(2, 1, vec![base, adj]));
+        assert_eq!(rgb(&adj_out, 0, 0), [155, 155, 155]);
+        assert_eq!(rgb(&adj_out, 1, 0), [100, 100, 100]);
+    }
+
+    #[test]
+    fn fill_below_255_scales_contribution() {
+        // Over a transparent backdrop: source alpha is scaled to 128/255.
+        let over_transparent = doc(
+            1,
+            1,
+            vec![{
+                let mut l = solid("top", full(1, 1), (10, 20, 30), 255, BlendMode::Normal, 255);
+                l.fill = 128;
+                l
+            }],
+        );
+        assert_eq!(
+            px(&composite_rgba(&over_transparent), 0, 0),
+            [10, 20, 30, 128]
+        );
+
+        // Over an opaque backdrop: the same factor lerps toward the source.
+        let over_opaque = doc(
+            1,
+            1,
+            vec![
+                solid(
+                    "base",
+                    full(1, 1),
+                    (100, 100, 100),
+                    255,
+                    BlendMode::Normal,
+                    255,
+                ),
+                {
+                    let mut l = solid("top", full(1, 1), (200, 0, 0), 255, BlendMode::Normal, 255);
+                    l.fill = 128;
+                    l
+                },
+            ],
+        );
+        assert_eq!(px(&composite_rgba(&over_opaque), 0, 0), [150, 50, 50, 255]);
     }
 
     #[test]
@@ -1337,6 +1501,9 @@ mod tests {
             rect: full(1, 1),
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -1369,6 +1536,9 @@ mod tests {
             rect: rect(0, 0, 0, 0),
             blend: BlendMode::Normal,
             opacity,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask,

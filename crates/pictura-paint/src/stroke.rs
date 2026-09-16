@@ -371,7 +371,7 @@ fn find_topmost_raster(layers: &[Layer], prefix: &mut Vec<usize>) -> Option<Vec<
 mod tests {
     use super::*;
     use crate::spacing::SpacingMode;
-    use pictura_core::{BitDepth, BlendMode, Channel, ColorMode};
+    use pictura_core::{BitDepth, BlendMode, Channel, ColorLabel, ColorMode, LockFlags};
 
     const BASE: (u8, u8, u8, u8) = (100, 120, 140, 255);
 
@@ -389,6 +389,9 @@ mod tests {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -688,6 +691,9 @@ mod tests {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,

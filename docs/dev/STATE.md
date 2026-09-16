@@ -9,11 +9,11 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **546 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **556 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
-  `pictura-render` doctest).
+  `pictura-render` doctest, which makes the raw ignored count 8).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M34 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
@@ -634,6 +634,42 @@ openspec validate --all --strict
   **541 tests, 0 failed, 5 ignored** (was 539, 3 ignored); `openspec validate
   --all --strict` 60/60; the M33 change MODIFIES `gpu-compositing` only (no new
   capability → **59** after archive).
+- **M36 — layer attributes end-to-end** (the first milestone of the Layers-panel
+  program; see `docs/dev/layers-panel-program.md`). `pictura_core::Layer` gained
+  `fill: u8` (default 255), `lock: LockFlags` (newtype, `TRANSPARENCY|PIXELS|
+  POSITION`, `all()` = 0x07) and `color: ColorLabel` (None/Red/Orange/Yellow/
+  Green/Blue/Violet/Gray); 37 explicit `Layer { .. }` literals across 14 files
+  were updated with the defaults (plus the `..bare` update-syntax layer in
+  `pictura-core`'s `masked` test). The compositor now uses effective layer alpha
+  = `opacity/255 × fill/255` in both the CPU oracle and the GPU shader (a new
+  `fill` uniform word; groups use 1.0), byte-identical to the previous composite
+  at `fill == 255` and within ±1 LSB on the GPU. The codec reads/writes the
+  `lspf` (lock), `lclr` (color) and `iOpa` (fill) additional-layer blocks,
+  omitted at defaults — a default document's `write_psd` output is byte-identical
+  (proven against `crates/pictura-codec/tests/fixtures/m36_default_before.psd`),
+  and psd-tools reads the new attributes back. The bridge gained
+  `layer_fill`/`set_layer_fill`, `layer_lock`/`set_layer_lock`,
+  `layer_color`/`set_layer_color` with the frozen refusal rules (fill refused for
+  group/Background/fully-locked; opacity refused for Background/fully-locked;
+  lock/color refused for Background) and history labels `Fill Opacity`/`Lock`/
+  `Layer Color`. The panel gained a Fill spinbox, a four-button lock strip and an
+  eight-entry color-label context menu. Honest limits: CS6's `lspf` "Lock All"
+  high-bit `0x80000000` encoding is not handled (writes `0x07`); `layer_kind`'s
+  `"background"` is a name+index heuristic (M37 replaces it); the color context
+  menu is not greyed on the Background row (the bridge refuses). The `lspf`/
+  `iOpa`/`lclr` source disagreements are recorded in
+  `docs/dev/layers-panel-program.md` §5. Self-test exit codes 86–89:
+  `m36_attrs fill=1 lock=1 color=1 undo=1`, identical on the fixture and
+  no-argument runs. Verified: `cmake --build build` OK; both self-tests exit 0;
+  `cargo fmt --all --check`/`cargo clippy --workspace --all-targets --
+  -D warnings` clean; **556 tests, 0 failed, 7 ignored** (up from 546/7; the
+  ignored set is unchanged, so the raw `cargo test` ignored count is 8 with the
+  `pictura-render` doctest); `openspec validate --all --strict` 60/60. The M36
+  change MODIFIES `layers-panel` and `psd-layer-io` and ADDs to
+  `layer-compositing` (no new capability → **59** capabilities after archive).
+  Deferred: group Fill in compositing (CS6 has no group Fill; the value
+  round-trips and is ignored), the forced type/shape locks, and a first-class
+  Background flag (M37).
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -710,7 +746,32 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M35 region blit in C++ (implemented); M36–M38 remaining — perf series resumed for very large documents
+## Next: layers panel program (M37–M41), canvas perf series deferred
+
+### Layers panel program (M37–M41) — M36 done, M37 next
+
+The CS6 Layers panel program's research, gap analysis, and staged plan live in
+`docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
+`openspec/changes/m36-layer-attributes`) is implemented and verified (see the
+milestone entry above): `Layer.fill`/`lock`/`color`, `opacity × fill`
+compositing on CPU and GPU, `lspf`/`lclr`/`iOpa` PSD I/O, the bridge
+getters/setters, and the Fill/lock/color panel controls. The next milestone is
+**M37 — panel anatomy** (tree model for groups with expand/collapse and
+indentation, clipped-layer indent + base underline, mask/link/clip/style badges,
+multi-selection with one command per multi-edit, the seven-button bottom strip,
+Alt-click solo visibility, inline rename with `Tab`/`Shift+Tab`, Panel Options
+persisted in the session store, the panel menu + row context menu, layer-name
+tooltips, and drag-reorder); M38 (six-dimension filter/search), M39
+(duplicate/rasterize/merge/flatten/link/background), M40 (layer styles/effects),
+and M41 (smart objects / vector masks / artboards-as-non-goal / layer comps)
+follow in that order. M36's confirmed ceilings — the `layer_kind`
+`"background"` name+index heuristic and the forced type/shape locks — land in
+M37.
+
+> These numbers reuse M36–M38 previously sketched for canvas performance below.
+> `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
+> those tracks by name (history COW, resident GPU sources, 256² tiles), not by
+> number; they are deferred until after M41.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -802,15 +863,16 @@ no new capability. Next in order:
   `QQuickGraphicsDevice::fromDeviceObjects(...)`); `QRhiWidget` cannot adopt the
   wgpu device. Deferred because it removes only the ~38 ms readback of a ~123 ms
   composite, not the upload.
-- **M38 (deferred) — 256² GPU tiles + LRU + seam gutters + mipmaps**
+- **256² GPU tiles (deferred) + LRU + seam gutters + mipmaps**
   (Graphite-style), only if pan/zoom over documents larger than VRAM demands it;
   includes display-time LoD so a zoomed-out view composites a proxy.
 
-Deferred tracks, staged as M36–M38 after M35 (now implemented). The remaining
-canvas-performance tracks — history copy-on-write / tile diffs (M36), resident
-per-layer GPU source buffers (M37), 256² tiles + LoD (M38), plus the GPU-resident
-zero-copy present — each need their own design (the small, app-local region-blit
-slice landed as M35 above):
+Deferred canvas-performance tracks (previously sketched as M36–M38; those
+numbers are now claimed by the layers panel program above, so these are deferred
+until after M41). The remaining canvas-performance tracks — history
+copy-on-write / tile diffs, resident per-layer GPU source buffers, 256² tiles +
+LoD, plus the GPU-resident zero-copy present — each need their own design (the
+small, app-local region-blit slice landed as M35 above):
 
 - **Cheap undo/redo + composite coherence/save** — landed as M34
   (`m34-composite-coherence`); see the brief `docs/dev/m34-composite-coherence.md`.
@@ -824,9 +886,9 @@ slice landed as M35 above):
   `docs/dev/m35-cpp-region-blit.md`. The per-pixel `QImage::set_pixel_color` loop
   and the budget fallback are gone; a dirty region of any size takes the region
   path.
-- **M36 — history copy-on-write / tile diffs** — the history capture still clones
+- **History copy-on-write / tile diffs** — the history capture still clones
   the whole document (~60 ms per state at 4000², and holds up to 20 states).
-- **M37 — resident per-layer GPU source buffers and shader-side planar output** —
+- **Resident per-layer GPU source buffers and shader-side planar output** —
   deferred from M33. Keeping a layer's source plane resident on the GPU across a
   composite session needs content versioning to detect a changed layer; the
   remaining composite cost is the per-composite upload (~128 MB + 16 MB at

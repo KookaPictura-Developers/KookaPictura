@@ -15,8 +15,8 @@
 use std::time::Instant;
 
 use pictura_core::{
-    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
-    PixelBuffer, PsdRect,
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer,
+    LayerMask, LockFlags, PixelBuffer, PsdRect,
 };
 use pictura_render::{
     composite_active, composite_gpu, composite_gpu_or_cpu, composite_region_active, composite_rgba,
@@ -85,6 +85,9 @@ fn layer(name: &str, blend: BlendMode, sample: impl Fn(u32, u32) -> (u8, u8, u8,
         },
         blend,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask: None,
@@ -112,6 +115,9 @@ fn group(name: &str, blend: BlendMode, opacity: u8, children: Vec<Layer>) -> Lay
         },
         blend,
         opacity,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask: None,
@@ -164,6 +170,9 @@ fn adjustment_layer(name: &str, adjustment: AdjustmentData) -> Layer {
         },
         blend: BlendMode::Normal,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask: None,
@@ -203,6 +212,9 @@ fn large_layer(w: u32, h: u32, seed: u32, blend: BlendMode) -> Layer {
         },
         blend,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask: None,
@@ -313,6 +325,33 @@ fn groups_and_masks_match_cpu() {
     check_scene_parity(&doc, &mut max_delta);
 
     eprintln!("group/mask parity: max delta {max_delta} LSB");
+}
+
+/// A reduced-fill layer must match the CPU oracle within ±1 LSB; over an opaque
+/// backdrop the fill factor scales colour only, so the output alpha stays 255.
+#[test]
+fn fill_scene_matches_cpu() {
+    let mut top = layer("fill", BlendMode::Multiply, |x, y| {
+        (x as u8 * 16 + 8, y as u8 * 16 + 8, 255 - x as u8 * 16, 200)
+    });
+    top.opacity = 180;
+    top.fill = 96;
+    let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![base_layer(), top];
+
+    let mut max_delta = 0i32;
+    check_scene_parity(&doc, &mut max_delta);
+
+    let cpu = composite_rgba(&doc);
+    let plane = cpu.pixel_count();
+    for i in 0..plane {
+        assert_eq!(
+            cpu.data[3 * plane + i],
+            255,
+            "fill must not change the alpha over an opaque backdrop at {i}"
+        );
+    }
+    eprintln!("fill parity: max delta {max_delta} LSB, alpha unchanged");
 }
 
 #[test]

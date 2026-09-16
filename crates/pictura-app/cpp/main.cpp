@@ -2428,6 +2428,69 @@ int main(int argc, char* argv[])
         }
         frame.closeDocument(m35bDocIndex, false);
 
+        // M36: layer attributes through the bridge — fill, lock, color, each one
+        // history state and undoable. 86: fill; 87: lock; 88: color; 89: undo.
+        const bool m36Created = frame.newDocument(QStringLiteral("M36Attrs"), 16, 16,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* m36View = frame.activeView();
+        if (!m36Created || !m36View) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M36 document\n");
+            std::fflush(stderr);
+            return 86;
+        }
+        const int m36DocIndex = frame.activeDocumentIndex();
+        const int m36HistBase = m36View->history_count();
+
+        const int m36FillBefore = m36View->layer_fill(0);
+        const bool m36FillSet = m36View->set_layer_fill(0, 128);
+        const int m36FillAfter = m36View->layer_fill(0);
+        const bool m36FillOk = m36FillBefore == 255 && m36FillSet && m36FillAfter == 128
+                               && m36View->history_count() == m36HistBase + 1;
+
+        const bool m36LockSet =
+            m36View->set_layer_lock(0, QStringLiteral("transparency"), true);
+        const int m36LockAfter = m36View->layer_lock(0);
+        const bool m36LockOk = m36LockSet && (m36LockAfter & 0x01) != 0
+                               && m36View->history_count() == m36HistBase + 2;
+
+        const int m36ColorBefore = m36View->layer_color(0);
+        const bool m36ColorSet = m36View->set_layer_color(0, 3);
+        const int m36ColorAfter = m36View->layer_color(0);
+        const bool m36ColorOk = m36ColorBefore == 0 && m36ColorSet && m36ColorAfter == 3
+                                && m36View->history_count() == m36HistBase + 3;
+
+        // Undo walks each edit back to its prior value; redo restores them.
+        const bool m36Undo = m36View->undo() && m36View->layer_color(0) == 0
+                             && m36View->undo() && m36View->layer_lock(0) == 0
+                             && m36View->undo() && m36View->layer_fill(0) == 255
+                             && m36View->redo() && m36View->redo() && m36View->redo()
+                             && m36View->layer_fill(0) == 128 && m36View->layer_color(0) == 3;
+
+        std::fprintf(stderr, "pictura self-test: m36_attrs fill=%d lock=%d color=%d undo=%d\n",
+                     m36FillOk ? 1 : 0,
+                     m36LockOk ? 1 : 0,
+                     m36ColorOk ? 1 : 0,
+                     m36Undo ? 1 : 0);
+        std::fflush(stderr);
+        if (!m36FillOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M36 fill\n");
+            return 86;
+        }
+        if (!m36LockOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M36 lock\n");
+            return 87;
+        }
+        if (!m36ColorOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M36 color\n");
+            return 88;
+        }
+        if (!m36Undo) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M36 undo restore\n");
+            return 89;
+        }
+        frame.closeDocument(m36DocIndex, false);
+
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {

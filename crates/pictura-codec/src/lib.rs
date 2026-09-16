@@ -13,8 +13,8 @@
 //!   never a panic.
 
 use pictura_core::{
-    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
-    PixelBuffer, PsdRect,
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer,
+    LayerMask, LockFlags, PixelBuffer, PsdRect,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -470,6 +470,11 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     let flags = r.u8()?;
     let _filler = r.u8()?;
 
+    // M36 attribute defaults; the tagged blocks below override them.
+    let mut fill = 255u8;
+    let mut lock = LockFlags::default();
+    let mut color = ColorLabel::None;
+
     let extra_len = r.u32()? as usize;
     let extra = r.take(extra_len)?;
     let mut er = Reader::new(extra);
@@ -532,6 +537,17 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
                     name = unicode;
                 }
             }
+            b"lspf" if data.len() >= 4 => {
+                let value = u32::from_be_bytes(data[0..4].try_into().unwrap());
+                lock = lock_from_bits(value as u8 & 0x07);
+            }
+            b"lclr" if data.len() >= 2 => {
+                let value = u16::from_be_bytes(data[0..2].try_into().unwrap());
+                color = ColorLabel::from_byte(value as u8);
+            }
+            b"iOpa" if !data.is_empty() => {
+                fill = data[0];
+            }
             b"lsct" if data.len() >= 4 => {
                 section = Some(u32::from_be_bytes(data[0..4].try_into().unwrap()));
                 // Photoshop/psd-tools store a group's blend key inside 'lsct'
@@ -556,12 +572,20 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
         }
     }
 
+    // Photoshop ≤5-era transparency-protected bit shares the transparency lock.
+    if flags & 0x01 != 0 {
+        lock = lock.with(LockFlags::TRANSPARENCY, true);
+    }
+
     Ok(RawLayer {
         layer: Layer {
             name,
             rect,
             blend,
             opacity,
+            fill,
+            lock,
+            color,
             clipping,
             visible: flags & 0x02 == 0,
             mask,
@@ -574,6 +598,15 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
         channel_lens,
         section,
     })
+}
+
+/// Build [`LockFlags`] from the three `lspf`/record `flags` low bits. The
+/// newtype has no public bit constructor, so set each lock explicitly.
+fn lock_from_bits(bits: u8) -> LockFlags {
+    LockFlags::default()
+        .with(LockFlags::TRANSPARENCY, bits & LockFlags::TRANSPARENCY != 0)
+        .with(LockFlags::PIXELS, bits & LockFlags::PIXELS != 0)
+        .with(LockFlags::POSITION, bits & LockFlags::POSITION != 0)
 }
 
 /// Decode a `'luni'` tagged block: a `u32` UTF-16 code-unit count followed by
@@ -805,7 +838,11 @@ fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, Vec<u8>
             out.extend_from_slice(&layer.blend.to_psd_key());
             out.push(layer.opacity);
             out.push(u8::from(layer.clipping));
-            out.push(if layer.visible { 0 } else { 0x02 });
+            let mut record_flags = if layer.visible { 0 } else { 0x02 };
+            if layer.lock.contains(LockFlags::TRANSPARENCY) {
+                record_flags |= 0x01;
+            }
+            out.push(record_flags);
             out.push(0); // filler
 
             let mut extra = Vec::new();
@@ -848,6 +885,9 @@ fn empty_layer(name: &str) -> Layer {
         },
         blend: BlendMode::Normal,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask: None,
@@ -877,6 +917,19 @@ fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
     out.extend_from_slice(&0u32.to_be_bytes());
     write_pascal(out, name);
     write_tag(out, b"luni", &luni_data(name));
+    // M36 layer attributes, each omitted at its default so default documents
+    // serialize byte-identically to before.
+    if layer.lock.bits() != 0 {
+        write_tag(out, b"lspf", &(u32::from(layer.lock.bits())).to_be_bytes());
+    }
+    if layer.color != ColorLabel::None {
+        let mut lclr = [0u8; 8];
+        lclr[0..2].copy_from_slice(&u16::from(layer.color.to_byte()).to_be_bytes());
+        write_tag(out, b"lclr", &lclr);
+    }
+    if layer.fill != 255 {
+        write_tag(out, b"iOpa", &[layer.fill]);
+    }
     if let Some(adjustment) = &layer.adjustment {
         // Adjustment payload is opaque here; write the key and bytes back as read.
         write_tag(out, &adjustment.key, &adjustment.data);
@@ -1222,6 +1275,9 @@ mod tests {
             rect: r,
             blend,
             opacity,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -1247,6 +1303,9 @@ mod tests {
             rect: rect(0, 0, 0, 0),
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -1299,6 +1358,9 @@ mod tests {
             rect: rect(0, 0, 0, 0),
             blend: BlendMode::PassThrough,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -1348,6 +1410,9 @@ mod tests {
                 rect: rect(0, 0, 0, 0),
                 blend: BlendMode::Normal,
                 opacity: 255,
+                fill: 255,
+                lock: LockFlags::default(),
+                color: ColorLabel::None,
                 clipping: false,
                 visible: true,
                 mask: None,
@@ -1405,5 +1470,177 @@ mod tests {
         let channel_data = 102 + extra_len;
         bytes[channel_data + 1] = 2; // compression 2 = ZIP
         assert!(matches!(read_psd(&bytes), Err(PsdError::Unsupported(_))));
+    }
+
+    // -- M36: lspf / lclr / iOpa -------------------------------------------
+
+    /// The fixed default document captured before M36; its serialization must
+    /// stay byte-identical because every new tag is omitted at its default.
+    fn m36_default_doc() -> Document {
+        let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+        for (i, b) in doc.composite.data.iter_mut().enumerate() {
+            *b = (i * 7 + 1) as u8;
+        }
+        let mut masked = pixel("Masked", rect(0, 0, 2, 2), 3, BlendMode::Normal, 200);
+        masked.mask = Some(LayerMask {
+            rect: rect(0, 0, 2, 2),
+            default_color: 0,
+            disabled: false,
+            flags: 0,
+            data: Some(vec![9u8; 4]),
+        });
+        let adj = Layer {
+            name: "Invert".to_string(),
+            rect: rect(0, 0, 0, 0),
+            blend: BlendMode::Normal,
+            opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: Some(AdjustmentData {
+                key: *b"nvrt",
+                data: Vec::new(),
+            }),
+            channels: Vec::new(),
+            children: Vec::new(),
+            is_group: false,
+        };
+        let group = Layer {
+            name: "Group".to_string(),
+            rect: rect(0, 0, 0, 0),
+            blend: BlendMode::PassThrough,
+            opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels: Vec::new(),
+            children: vec![pixel(
+                "Inner",
+                rect(1, 1, 3, 3),
+                3,
+                BlendMode::Multiply,
+                128,
+            )],
+            is_group: true,
+        };
+        doc.layers = vec![masked, adj, group];
+        doc
+    }
+
+    #[test]
+    fn default_document_bytes_are_unchanged() {
+        let bytes = write_psd(&m36_default_doc()).unwrap();
+        let before = include_bytes!("../tests/fixtures/m36_default_before.psd");
+        assert_eq!(
+            bytes.as_slice(),
+            before.as_slice(),
+            "default documents must serialize byte-identically to pre-M36"
+        );
+    }
+
+    #[test]
+    fn layer_attributes_round_trip() {
+        let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+        for (i, b) in doc.composite.data.iter_mut().enumerate() {
+            *b = (i * 5) as u8;
+        }
+        let mut layer = pixel("Attrs", rect(0, 0, 2, 2), 3, BlendMode::Normal, 255);
+        layer.fill = 128;
+        layer.color = ColorLabel::Violet;
+        layer.lock = LockFlags::default()
+            .with(LockFlags::TRANSPARENCY, true)
+            .with(LockFlags::POSITION, true);
+        doc.layers = vec![layer];
+
+        let bytes = write_psd(&doc).unwrap();
+        let back = read_psd(&bytes).unwrap();
+        assert_eq!(back, doc, "whole document round-trips");
+        assert_eq!(back.layers[0].fill, 128);
+        assert_eq!(back.layers[0].color, ColorLabel::Violet);
+        assert_eq!(back.layers[0].lock.bits(), 0x05);
+    }
+
+    /// Assemble a 1x1 RGB PSD with one channel-less layer whose record carries
+    /// `flags` and the given hand-built tagged blocks.
+    fn tagged_layer_psd(flags: u8, tags: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+        let mut extra = Vec::new();
+        extra.extend_from_slice(&0u32.to_be_bytes()); // mask data length
+        extra.extend_from_slice(&0u32.to_be_bytes()); // blending ranges
+        extra.extend_from_slice(&[1, b'L', 0, 0]); // pascal name "L"
+        for (key, data) in tags {
+            extra.extend_from_slice(b"8BIM");
+            extra.extend_from_slice(*key);
+            extra.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            extra.extend_from_slice(data);
+            if data.len() % 2 == 1 {
+                extra.push(0);
+            }
+        }
+        if extra.len() % 2 == 1 {
+            extra.push(0);
+        }
+
+        let mut rec = Vec::new();
+        for v in [0i32, 0, 1, 1] {
+            rec.extend_from_slice(&v.to_be_bytes());
+        }
+        rec.extend_from_slice(&0u16.to_be_bytes()); // no channels
+        rec.extend_from_slice(b"8BIM");
+        rec.extend_from_slice(b"norm");
+        rec.push(255);
+        rec.push(0);
+        rec.push(flags);
+        rec.push(0);
+        rec.extend_from_slice(&(extra.len() as u32).to_be_bytes());
+        rec.extend_from_slice(&extra);
+
+        let mut info = Vec::new();
+        info.extend_from_slice(&1i16.to_be_bytes());
+        info.extend_from_slice(&rec);
+        while info.len() % 4 != 0 {
+            info.push(0);
+        }
+
+        let mut out = header(1, 3, 1, 1, 3);
+        out.extend_from_slice(&0u32.to_be_bytes()); // color mode data
+        out.extend_from_slice(&0u32.to_be_bytes()); // image resources
+        let section_len = 4 + info.len() + 4;
+        out.extend_from_slice(&(section_len as u32).to_be_bytes());
+        out.extend_from_slice(&(info.len() as u32).to_be_bytes());
+        out.extend_from_slice(&info);
+        out.extend_from_slice(&0u32.to_be_bytes()); // global layer mask
+        out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
+        out.extend_from_slice(&[1, 2, 3]); // 1x1 RGB composite
+        out
+    }
+
+    #[test]
+    fn reads_hand_built_attribute_tags_and_folds_legacy_flag() {
+        let lspf = 2u32.to_be_bytes(); // lock image pixels
+        let mut lclr = [0u8; 8];
+        lclr[1] = 2; // Orange
+        let iopa = [128u8, 0, 0, 0]; // 4-byte payload: reader takes byte 0
+
+        let psd = tagged_layer_psd(
+            0x01, // legacy transparency-protected bit
+            &[(b"lspf", &lspf), (b"lclr", &lclr), (b"iOpa", &iopa)],
+        );
+        let doc = read_psd(&psd).unwrap();
+        let layer = &doc.layers[0];
+        assert_eq!(layer.fill, 128);
+        assert_eq!(layer.color, ColorLabel::Orange);
+        assert!(layer.lock.contains(LockFlags::PIXELS));
+        assert!(
+            layer.lock.contains(LockFlags::TRANSPARENCY),
+            "legacy bit folds in"
+        );
+        assert!(!layer.lock.contains(LockFlags::POSITION));
     }
 }

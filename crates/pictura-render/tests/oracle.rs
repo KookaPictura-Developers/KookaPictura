@@ -17,7 +17,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use pictura_core::{
-    BitDepth, BlendMode, Channel, ColorMode, Document, Layer, PixelBuffer, PsdRect,
+    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LockFlags, PixelBuffer,
+    PsdRect,
 };
 use pictura_testkit::compare;
 
@@ -107,6 +108,9 @@ fn layer(name: &str, blend: BlendMode, interleaved: &[u8], with_alpha: bool) -> 
         },
         blend,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask: None,

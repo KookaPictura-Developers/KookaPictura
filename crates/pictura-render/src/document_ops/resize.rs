@@ -92,7 +92,8 @@ fn resize_layer(
 mod tests {
     use super::*;
     use pictura_core::{
-        BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask, PsdRect,
+        BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
+        PsdRect,
     };
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
@@ -111,6 +112,9 @@ mod tests {
             rect: r,
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask,

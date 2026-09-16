@@ -107,7 +107,8 @@ pub(crate) fn extend_channel(
 mod tests {
     use super::*;
     use pictura_core::{
-        BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask, PsdRect,
+        BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
+        PsdRect,
     };
     use pictura_ops::Anchor;
 
@@ -131,6 +132,9 @@ mod tests {
             rect: r,
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask,

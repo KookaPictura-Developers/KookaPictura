@@ -106,7 +106,9 @@ fn topmost_pixel_layer(layers: &mut [Layer]) -> Option<&mut Layer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::{BitDepth, BlendMode, Channel, ColorMode, LayerMask, PsdRect};
+    use pictura_core::{
+        BitDepth, BlendMode, Channel, ColorLabel, ColorMode, LayerMask, LockFlags, PsdRect,
+    };
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
         PsdRect {
@@ -129,6 +131,9 @@ mod tests {
             rect: r,
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask,
@@ -277,6 +282,9 @@ mod tests {
             rect: full(4, 4),
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,

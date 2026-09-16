@@ -99,7 +99,7 @@ fn coverage(mask: Option<&LayerMask>, x: i32, y: i32) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::{BlendMode, Channel, PsdRect};
+    use pictura_core::{BlendMode, Channel, ColorLabel, LockFlags, PsdRect};
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
         PsdRect {
@@ -120,6 +120,9 @@ mod tests {
             rect: rect(0, 0, h, w),
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,

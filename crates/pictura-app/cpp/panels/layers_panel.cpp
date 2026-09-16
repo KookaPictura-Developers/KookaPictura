@@ -5,6 +5,7 @@
 #include <QtCore/QAbstractTableModel>
 #include <QtCore/QItemSelectionModel>
 #include <QtCore/QModelIndex>
+#include <QtCore/QPoint>
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
@@ -12,7 +13,11 @@
 #include <QtCore/QVariant>
 #include <QtCore/QVector>
 #include <QtGui/QAction>
+#include <QtGui/QColor>
+#include <QtGui/QIcon>
 #include <QtGui/QImage>
+#include <QtGui/QPainter>
+#include <QtGui/QPixmap>
 #include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QHBoxLayout>
@@ -74,8 +79,67 @@ struct LayerRow {
     bool visible = true;
     QString blend;
     int opacity = 255;
+    int fill = 255;
+    int lockBits = 0;
+    int color = 0;
     QImage thumbnail;
 };
+
+// CS6 sheet colors (PSD `lclr`), index 1..7; 0 is no label.
+QColor labelColor(int label)
+{
+    switch (label) {
+    case 1:
+        return QColor(255, 0, 0);
+    case 2:
+        return QColor(255, 153, 0);
+    case 3:
+        return QColor(255, 255, 0);
+    case 4:
+        return QColor(0, 204, 0);
+    case 5:
+        return QColor(0, 102, 255);
+    case 6:
+        return QColor(153, 0, 204);
+    case 7:
+        return QColor(153, 153, 153);
+    default:
+        return QColor();
+    }
+}
+
+QString labelName(int label)
+{
+    switch (label) {
+    case 1:
+        return QStringLiteral("Red");
+    case 2:
+        return QStringLiteral("Orange");
+    case 3:
+        return QStringLiteral("Yellow");
+    case 4:
+        return QStringLiteral("Green");
+    case 5:
+        return QStringLiteral("Blue");
+    case 6:
+        return QStringLiteral("Violet");
+    case 7:
+        return QStringLiteral("Gray");
+    default:
+        return QStringLiteral("None");
+    }
+}
+
+QPixmap labelSwatch(int label)
+{
+    const QColor color = labelColor(label);
+    if (!color.isValid()) {
+        return {};
+    }
+    QPixmap swatch(10, 10);
+    swatch.fill(color);
+    return swatch;
+}
 
 QString blendName(const QString& key)
 {
@@ -145,6 +209,13 @@ public:
             }
             break;
         case 2:
+            if (role == Qt::DecorationRole) {
+                const QPixmap swatch = labelSwatch(layer.color);
+                if (!swatch.isNull()) {
+                    return swatch;
+                }
+                return {};
+            }
             if (role == Qt::DisplayRole || role == Qt::EditRole) {
                 return layer.name;
             }
@@ -246,8 +317,14 @@ LayersPanel::LayersPanel(QWidget* parent)
     opacity_ = new QSpinBox(body);
     opacity_->setRange(0, 255);
     opacity_->setEnabled(false);
+    opacity_->setToolTip(tr("Opacity"));
+    fill_ = new QSpinBox(body);
+    fill_->setRange(0, 255);
+    fill_->setEnabled(false);
+    fill_->setToolTip(tr("Fill"));
     controls->addWidget(blend_, 1);
     controls->addWidget(opacity_);
+    controls->addWidget(fill_);
     layout->addLayout(controls);
 
     model_ = new LayersModel(this);
@@ -261,7 +338,36 @@ LayersPanel::LayersPanel(QWidget* parent)
     tree_->setSelectionMode(QAbstractItemView::SingleSelection);
     tree_->setIconSize(QSize(24, 24));
     tree_->header()->setSectionResizeMode(2, QHeaderView::Stretch);
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
     layout->addWidget(tree_, 1);
+
+    // The lock strip sits below the blend/opacity/fill strip. Each button is one
+    // flag; "All" is the derived three-bit set. The panel reflects state, so
+    // toggling an individual flag off naturally unchecks "All".
+    auto* locks = new QHBoxLayout();
+    const auto makeLock = [this, body, locks](const QString& text, const QString& flag) {
+        auto* button = new QToolButton(body);
+        button->setText(text);
+        button->setCheckable(true);
+        button->setEnabled(false);
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        locks->addWidget(button);
+        connect(button, &QToolButton::toggled, this, [this, flag](bool on) {
+            if (syncing_ || !view_) {
+                return;
+            }
+            const QModelIndex current = tree_->currentIndex();
+            if (current.isValid()) {
+                view_->set_layer_lock(model_->row(current.row()).index, flag, on);
+            }
+        });
+        return button;
+    };
+    lockTransparency_ = makeLock(tr("Transparency"), QStringLiteral("transparency"));
+    lockPixels_ = makeLock(tr("Pixels"), QStringLiteral("pixels"));
+    lockPosition_ = makeLock(tr("Position"), QStringLiteral("position"));
+    lockAll_ = makeLock(tr("All"), QStringLiteral("all"));
+    layout->addLayout(locks);
 
     auto* buttons = new QHBoxLayout();
     auto* addButton = new QToolButton(body);
@@ -316,6 +422,17 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->set_layer_opacity(model_->row(current.row()).index, value);
         }
     });
+    connect(fill_, &QSpinBox::valueChanged, this, [this](int value) {
+        if (syncing_ || !view_) {
+            return;
+        }
+        const QModelIndex current = tree_->currentIndex();
+        if (current.isValid()) {
+            view_->set_layer_fill(model_->row(current.row()).index, value);
+        }
+    });
+    connect(tree_, &QTreeView::customContextMenuRequested, this,
+            &LayersPanel::showColorMenu);
     connect(deleteButton, &QPushButton::clicked, this, [this] {
         const QModelIndex current = tree_->currentIndex();
         if (view_ && current.isValid()) {
@@ -371,6 +488,9 @@ void LayersPanel::refresh()
             layer.visible = view_->layer_visible(i);
             layer.blend = view_->layer_blend(i);
             layer.opacity = view_->layer_opacity(i);
+            layer.fill = view_->layer_fill(i);
+            layer.lockBits = view_->layer_lock(i);
+            layer.color = view_->layer_color(i);
             layer.thumbnail = view_->layer_thumbnail(i, 24);
             rows.push_back(layer);
         }
@@ -395,13 +515,66 @@ void LayersPanel::syncControls()
     syncing_ = true;
     blend_->setEnabled(active);
     opacity_->setEnabled(active);
+    fill_->setEnabled(active);
+    const std::array<QToolButton*, 4> lockButtons = {
+        lockTransparency_, lockPixels_, lockPosition_, lockAll_};
+    for (QToolButton* button : lockButtons) {
+        button->setEnabled(active);
+        button->setChecked(false);
+    }
     if (active) {
         const LayerRow& layer = model_->row(current.row());
         const int blend = blend_->findData(layer.blend);
         blend_->setCurrentIndex(blend >= 0 ? blend : 0);
         opacity_->setValue(layer.opacity);
+        fill_->setValue(layer.fill);
+
+        // Refusal rules (frozen): Fill is off for a group, the Background, or a
+        // fully locked layer; Opacity is off for the Background or a fully
+        // locked layer; the lock strip is off for the Background.
+        const bool background = layer.kind == QLatin1String("background");
+        const bool group = layer.kind == QLatin1String("group");
+        const bool fullLock = (layer.lockBits & 0x07) == 0x07;
+        opacity_->setEnabled(!background && !fullLock);
+        fill_->setEnabled(!group && !background && !fullLock);
+        const bool locksEnabled = !background;
+        for (QToolButton* button : lockButtons) {
+            button->setEnabled(locksEnabled);
+        }
+        lockTransparency_->setChecked((layer.lockBits & 0x01) != 0);
+        lockPixels_->setChecked((layer.lockBits & 0x02) != 0);
+        lockPosition_->setChecked((layer.lockBits & 0x04) != 0);
+        lockAll_->setChecked((layer.lockBits & 0x07) == 0x07);
     }
     syncing_ = false;
+}
+
+void LayersPanel::showColorMenu(const QPoint& pos)
+{
+    if (!view_) {
+        return;
+    }
+    const QModelIndex index = tree_->indexAt(pos);
+    if (!index.isValid() || index.row() >= model_->rowCount()) {
+        return;
+    }
+    const int layerIndex = model_->row(index.row()).index;
+    const int current = view_->layer_color(layerIndex);
+
+    QMenu menu(tree_);
+    for (int label = 0; label <= 7; ++label) {
+        QAction* action = menu.addAction(labelName(label));
+        action->setCheckable(true);
+        action->setChecked(current == label);
+        const QPixmap swatch = labelSwatch(label);
+        if (!swatch.isNull()) {
+            action->setIcon(QIcon(swatch));
+        }
+        connect(action, &QAction::triggered, this, [this, layerIndex, label] {
+            view_->set_layer_color(layerIndex, label);
+        });
+    }
+    menu.exec(tree_->viewport()->mapToGlobal(pos));
 }
 
 } // namespace pictura

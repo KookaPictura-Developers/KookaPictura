@@ -139,7 +139,9 @@ fn transform_document(doc: &mut Document, kind: Kind) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::{BitDepth, BlendMode, Channel, ColorMode, Layer, LayerMask};
+    use pictura_core::{
+        BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Layer, LayerMask, LockFlags,
+    };
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
         PsdRect {
@@ -161,6 +163,9 @@ mod tests {
             rect: r,
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask,

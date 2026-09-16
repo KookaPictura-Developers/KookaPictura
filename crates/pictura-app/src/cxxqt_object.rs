@@ -7,8 +7,8 @@ use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QImageFormat, QString};
 use pictura_core::{
-    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
-    PixelBuffer, PsdRect,
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer,
+    LayerMask, LockFlags, PixelBuffer, PsdRect,
 };
 use pictura_paint::{spacing::SpacingMode, PaintMode, Rgba, Stroke, StrokeConfig, StrokeSample};
 use pictura_select::{CombineMode, Selection};
@@ -98,8 +98,8 @@ pub mod qobject {
         #[qinvokable]
         fn layer_name(&self, i: i32) -> QString;
 
-        /// `"pixel"`, `"group"`, or `"adjustment"` for layer `i`; empty when out
-        /// of range.
+        /// `"pixel"`, `"group"`, `"adjustment"`, or `"background"` for layer `i`;
+        /// empty when out of range.
         #[qinvokable]
         fn layer_kind(&self, i: i32) -> QString;
 
@@ -122,11 +122,46 @@ pub mod qobject {
         #[qinvokable]
         fn layer_opacity(&self, i: i32) -> i32;
 
-        /// Set layer `i`'s opacity, clamped to `0..=255`. Captures history, marks
-        /// dirty, recomposites, and emits [`changed`]. Returns false when layer
-        /// `i` is out of range, leaving state unchanged.
+        /// Set layer `i`'s opacity, clamped to `0..=255`. Refused (false, state
+        /// unchanged) for the Background layer or a fully locked layer. Captures
+        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
+        /// false when layer `i` is out of range.
         #[qinvokable]
         fn set_layer_opacity(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
+
+        /// Fill opacity of layer `i` in `0..=255` (content opacity, distinct
+        /// from Opacity), or 0 when out of range.
+        #[qinvokable]
+        fn layer_fill(&self, i: i32) -> i32;
+
+        /// Set layer `i`'s fill, clamped to `0..=255`. Refused (false, state
+        /// unchanged) for a group, the Background layer, or a fully locked layer
+        /// (CS6 exposes no group Fill). Captures history, marks dirty,
+        /// recomposites, and emits [`changed`].
+        #[qinvokable]
+        fn set_layer_fill(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
+
+        /// Lock flags of layer `i` as a bitmask (`0x01` transparency, `0x02`
+        /// pixels, `0x04` position), or 0 when out of range.
+        #[qinvokable]
+        fn layer_lock(&self, i: i32) -> i32;
+
+        /// Set one lock flag of layer `i`. `flag` is `"transparency"`, `"pixels"`,
+        /// `"position"`, or `"all"`; an unknown flag returns false. Refused for
+        /// the Background layer. Captures history, recomposites, and emits
+        /// [`changed`].
+        #[qinvokable]
+        fn set_layer_lock(self: Pin<&mut Self>, i: i32, flag: &QString, on: bool) -> bool;
+
+        /// Color label of layer `i` as a byte (`0` none … `7` gray), or 0.
+        #[qinvokable]
+        fn layer_color(&self, i: i32) -> i32;
+
+        /// Set layer `i`'s color label. A `value` outside `0..=7` returns false.
+        /// Refused for the Background layer. Captures history, recomposites, and
+        /// emits [`changed`].
+        #[qinvokable]
+        fn set_layer_color(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
 
         /// Rename layer `i`. Captures history, marks dirty, recomposites, and
         /// emits [`changed`]. Returns false when layer `i` is out of range.
@@ -619,6 +654,9 @@ impl qobject::PictureView {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -733,6 +771,9 @@ impl qobject::PictureView {
         match self.layer(i) {
             Some(l) if l.is_group => QString::from("group"),
             Some(l) if l.adjustment.is_some() => QString::from("adjustment"),
+            // ponytail: the Background is index 0 named "Background" (the only
+            // signal the model carries); M37 adds a first-class layer kind.
+            Some(l) if is_background_layer(i, l) => QString::from("background"),
             Some(_) => QString::from("pixel"),
             None => QString::default(),
         }
@@ -806,8 +847,12 @@ impl qobject::PictureView {
         let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
             match doc.layers.get_mut(i as usize) {
                 Some(layer) => {
-                    layer.opacity = value;
-                    true
+                    if is_background_layer(i, layer) || layer.lock.is_all() {
+                        false
+                    } else {
+                        layer.opacity = value;
+                        true
+                    }
                 }
                 None => false,
             }
@@ -817,6 +862,96 @@ impl qobject::PictureView {
         if changed {
             self.as_mut().recomposite();
             self.as_mut().record("Opacity");
+        }
+        changed
+    }
+
+    pub fn layer_fill(&self, i: i32) -> i32 {
+        self.layer(i).map_or(0, |l| l.fill as i32)
+    }
+
+    pub fn set_layer_fill(mut self: Pin<&mut Self>, i: i32, value: i32) -> bool {
+        let value = value.clamp(0, 255) as u8;
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            match doc.layers.get_mut(i as usize) {
+                Some(layer) => {
+                    if layer.is_group || is_background_layer(i, layer) || layer.lock.is_all() {
+                        false
+                    } else {
+                        layer.fill = value;
+                        true
+                    }
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record("Fill Opacity");
+        }
+        changed
+    }
+
+    pub fn layer_lock(&self, i: i32) -> i32 {
+        self.layer(i).map_or(0, |l| l.lock.bits() as i32)
+    }
+
+    pub fn set_layer_lock(mut self: Pin<&mut Self>, i: i32, flag: &QString, on: bool) -> bool {
+        let Some(bit) = lock_bit(flag.to_string().as_str()) else {
+            return false;
+        };
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            match doc.layers.get_mut(i as usize) {
+                // ponytail: no type/shape layers yet, so nothing forces a lock;
+                // the "cannot unlock a forced lock" rule is M37's.
+                Some(layer) => {
+                    if is_background_layer(i, layer) {
+                        false
+                    } else {
+                        layer.lock = layer.lock.with(bit, on);
+                        true
+                    }
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record("Lock");
+        }
+        changed
+    }
+
+    pub fn layer_color(&self, i: i32) -> i32 {
+        self.layer(i).map_or(0, |l| l.color.to_byte() as i32)
+    }
+
+    pub fn set_layer_color(mut self: Pin<&mut Self>, i: i32, value: i32) -> bool {
+        if !(0..=7).contains(&value) {
+            return false;
+        }
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            match doc.layers.get_mut(i as usize) {
+                Some(layer) => {
+                    if is_background_layer(i, layer) {
+                        false
+                    } else {
+                        layer.color = ColorLabel::from_byte(value as u8);
+                        true
+                    }
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record("Layer Color");
         }
         changed
     }
@@ -1905,6 +2040,9 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
         },
         blend: BlendMode::Normal,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask,
@@ -1913,6 +2051,25 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
         children: Vec::new(),
         is_group: false,
     })
+}
+
+/// ponytail: the Background is detected by CS6's index-0 "Background" name, the
+/// only signal the model carries; M37 adds a first-class layer kind and this
+/// heuristic goes away.
+fn is_background_layer(i: i32, layer: &Layer) -> bool {
+    i == 0 && !layer.is_group && layer.adjustment.is_none() && layer.name == "Background"
+}
+
+/// Map a lock-strip flag name to its [`LockFlags`] bit. `"all"` is the derived
+/// three-bit set; anything else is `None`.
+fn lock_bit(flag: &str) -> Option<u8> {
+    match flag {
+        "transparency" => Some(LockFlags::TRANSPARENCY),
+        "pixels" => Some(LockFlags::PIXELS),
+        "position" => Some(LockFlags::POSITION),
+        "all" => Some(LockFlags::all().bits()),
+        _ => None,
+    }
 }
 
 /// Map a filter `kind` to its [`pictura_filters::Filter`], or `None` unknown.
@@ -2853,7 +3010,9 @@ fn test_image() -> QImage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::{BitDepth, BlendMode, Channel, ColorMode, Layer, PsdRect};
+    use pictura_core::{
+        BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Layer, LockFlags, PsdRect,
+    };
 
     #[test]
     fn converts_planar_rgb_to_rgba() {
@@ -2897,6 +3056,9 @@ mod tests {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -2943,6 +3105,9 @@ mod tests {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -2998,6 +3163,9 @@ mod tests {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,
@@ -3210,6 +3378,9 @@ mod tests {
             },
             blend: BlendMode::Normal,
             opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
             clipping: false,
             visible: true,
             mask: None,

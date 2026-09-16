@@ -1,10 +1,12 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QPoint>
 #include <QtWidgets/QDockWidget>
 
 class QComboBox;
 class QSpinBox;
+class QToolButton;
 class QTreeView;
 
 namespace pictura {
@@ -23,12 +25,18 @@ public:
 
 private:
     void syncControls();
+    void showColorMenu(const QPoint& pos);
 
     PictureView* view_ = nullptr;
     LayersModel* model_ = nullptr;
     QTreeView* tree_ = nullptr;
     QComboBox* blend_ = nullptr;
     QSpinBox* opacity_ = nullptr;
+    QSpinBox* fill_ = nullptr;
+    QToolButton* lockTransparency_ = nullptr;
+    QToolButton* lockPixels_ = nullptr;
+    QToolButton* lockPosition_ = nullptr;
+    QToolButton* lockAll_ = nullptr;
     bool syncing_ = false;
     QMetaObject::Connection viewConnection_;
 };

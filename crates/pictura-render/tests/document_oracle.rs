@@ -14,7 +14,10 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use pictura_codec::{read_psd, write_psd};
-use pictura_core::{BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask, PsdRect};
+use pictura_core::{
+    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
+    PsdRect,
+};
 use pictura_ops::{Anchor, Resample};
 use pictura_render::{
     composite_rgba, flip_document, resize_canvas_document, resize_document, rotate_document,
@@ -42,6 +45,9 @@ fn pixel_layer(name: &str, r: PsdRect, mask: Option<LayerMask>) -> Layer {
         rect: r,
         blend: BlendMode::Normal,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask,
@@ -75,6 +81,9 @@ fn group(name: &str, children: Vec<Layer>) -> Layer {
         rect: rect(0, 0, 0, 0),
         blend: BlendMode::PassThrough,
         opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
         clipping: false,
         visible: true,
         mask: None,
