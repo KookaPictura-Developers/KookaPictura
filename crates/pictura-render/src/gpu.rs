@@ -123,7 +123,7 @@ fn composite_gpu_region(
         gpu.composite_layer(&canvas, layer, doc);
     }
     let pixels = gpu.read_canvas(&canvas)?;
-    Ok(gpu.to_pixel_buffer(&pixels))
+    Ok(pixels)
 }
 
 /// Composite only `rect` (clamped to the document) through the active backend.
@@ -850,12 +850,34 @@ impl Gpu {
         })
     }
 
+    fn region(&self) -> Region {
+        Region {
+            x0: self.x0,
+            y0: self.y0,
+            w: self.w,
+            h: self.h,
+        }
+    }
+
     fn zero_canvas(&self) -> wgpu::Buffer {
-        self.make_buffer(
-            "pictura-canvas",
-            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            &vec![0u8; self.n as usize * 4],
-        )
+        // ponytail: clear_buffer (GPU memset) over a host `vec![0; n*4]` upload;
+        // COPY_DST is required by clear_buffer and the readback's COPY_SRC.
+        let canvas = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pictura-canvas"),
+            size: u64::from(self.n) * 4,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("pictura-canvas-clear"),
+            });
+        encoder.clear_buffer(&canvas, 0, None);
+        self.queue.submit(Some(encoder.finish()));
+        canvas
     }
 
     fn make_buffer(&self, label: &str, usage: wgpu::BufferUsages, bytes: &[u8]) -> wgpu::Buffer {
@@ -875,66 +897,9 @@ impl Gpu {
     /// alpha defaulting to 255 when absent. The shader samples by document
     /// pixel; outside the intersection the source alpha is 0.
     fn build_source(&self, layer: &Layer, doc: &Document) -> Option<(wgpu::Buffer, SrcLayout)> {
-        let lw = layer.rect.width();
-        let lh = layer.rect.height();
-        if lw <= 0 || lh <= 0 {
-            return None;
-        }
-        let region_right = (self.x0 + self.w) as i32;
-        let region_bottom = (self.y0 + self.h) as i32;
-        let x0 = layer.rect.left.max(self.x0 as i32);
-        let y0 = layer.rect.top.max(self.y0 as i32);
-        let x1 = layer.rect.right.min(region_right);
-        let y1 = layer.rect.bottom.min(region_bottom);
-        if x1 <= x0 || y1 <= y0 {
-            return None;
-        }
-
-        let gray = matches!(
-            doc.mode,
-            ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone
-        );
-        let lw = lw as usize;
-        let cw = (x1 - x0) as usize;
-        let ch = (y1 - y0) as usize;
-        let n = cw * ch;
-        let planes = if gray { 2 } else { 4 };
-        let ch0 = channel(layer, 0);
-        let ch1 = channel(layer, 1).or(ch0);
-        let ch2 = channel(layer, 2).or(ch0);
-        let alpha = channel(layer, -1);
-
-        let mut data = vec![0u8; planes * n];
-        for y in y0..y1 {
-            let row = (y - y0) as usize;
-            for (col, x) in (x0..x1).enumerate() {
-                let li = (y - layer.rect.top) as usize * lw + (x - layer.rect.left) as usize;
-                let d = row * cw + col;
-                let a = sample(alpha, li).unwrap_or(255);
-                if gray {
-                    data[d] = sample(ch0, li).unwrap_or(0);
-                    data[n + d] = a;
-                } else {
-                    data[d] = sample(ch0, li).unwrap_or(0);
-                    data[n + d] = sample(ch1, li).unwrap_or(0);
-                    data[2 * n + d] = sample(ch2, li).unwrap_or(0);
-                    data[3 * n + d] = a;
-                }
-            }
-        }
-        pad_to_4(&mut data);
+        let (data, layout) = assemble_source(self.region(), layer, doc)?;
         let buffer = self.make_buffer("pictura-src", wgpu::BufferUsages::STORAGE, &data);
-        Some((
-            buffer,
-            SrcLayout {
-                x0: x0 as u32,
-                y0: y0 as u32,
-                w: cw as u32,
-                h: ch as u32,
-                gray,
-                packed: false,
-            },
-        ))
+        Some((buffer, layout))
     }
 
     /// Per-region-pixel mask coverage as an 8-bit plane, reusing the CPU
@@ -946,30 +911,7 @@ impl Gpu {
     /// ponytail: the plane is region-sized even for a rect-scoped layer; bound
     /// it by the rect if a many-small-layers mask profile ever shows up.
     fn build_mask(&self, layer: &Layer) -> wgpu::Buffer {
-        let n = self.n as usize;
-        let mut data = vec![0u8; n];
-        let region_right = (self.x0 + self.w) as i32;
-        let region_bottom = (self.y0 + self.h) as i32;
-        let (x0, y0, x1, y1) = if layer.is_group || layer.adjustment.is_some() {
-            (self.x0 as i32, self.y0 as i32, region_right, region_bottom)
-        } else {
-            (
-                layer.rect.left.max(self.x0 as i32),
-                layer.rect.top.max(self.y0 as i32),
-                layer.rect.right.min(region_right),
-                layer.rect.bottom.min(region_bottom),
-            )
-        };
-        if x1 > x0 && y1 > y0 {
-            let stride = self.w as usize;
-            for y in y0..y1 {
-                let row = (y - self.y0 as i32) as usize * stride;
-                for x in x0..x1 {
-                    data[row + (x - self.x0 as i32) as usize] = mask_alpha(layer, x, y);
-                }
-            }
-        }
-        pad_to_4(&mut data);
+        let data = assemble_mask(self.region(), layer);
         self.make_buffer("pictura-mask", wgpu::BufferUsages::STORAGE, &data)
     }
 
@@ -1119,7 +1061,7 @@ impl Gpu {
         self.queue.submit(Some(encoder.finish()));
     }
 
-    fn read_canvas(&self, canvas: &wgpu::Buffer) -> Result<Vec<u8>, GpuError> {
+    fn read_canvas(&self, canvas: &wgpu::Buffer) -> Result<PixelBuffer, GpuError> {
         let size = u64::from(self.n) * 4;
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-readback"),
@@ -1145,31 +1087,255 @@ impl Gpu {
             .map_err(|_| GpuError::Readback)?
             .map_err(|_| GpuError::Readback)?;
 
+        // De-interleave straight from the mapped slice: no host packed RGBA Vec.
         let mapped = slice.get_mapped_range().map_err(|_| GpuError::Readback)?;
-        let out = mapped.to_vec();
+        let out = self.to_pixel_buffer(&mapped);
         drop(mapped);
         staging.unmap();
         Ok(out)
     }
 
     /// De-interleave packed RGBA8 readback into the planar straight-alpha
-    /// `PixelBuffer`, identical in shape to `composite_rgba`.
+    /// `PixelBuffer`, identical in shape to `composite_rgba`. Each LE `u32`
+    /// unpacked and masked into four channels is a pure byte permutation, so
+    /// walking 4-byte chunks writes the same bytes.
     fn to_pixel_buffer(&self, packed: &[u8]) -> PixelBuffer {
         let plane = self.n as usize;
         let mut out = PixelBuffer::new(self.w, self.h, 4);
-        for i in 0..plane {
-            let w = u32::from_le_bytes([
-                packed[i * 4],
-                packed[i * 4 + 1],
-                packed[i * 4 + 2],
-                packed[i * 4 + 3],
-            ]);
-            out.data[i] = (w & 0xFF) as u8;
-            out.data[plane + i] = ((w >> 8) & 0xFF) as u8;
-            out.data[2 * plane + i] = ((w >> 16) & 0xFF) as u8;
-            out.data[3 * plane + i] = ((w >> 24) & 0xFF) as u8;
+        for (i, px) in packed.as_chunks::<4>().0.iter().take(plane).enumerate() {
+            out.data[i] = px[0];
+            out.data[plane + i] = px[1];
+            out.data[2 * plane + i] = px[2];
+            out.data[3 * plane + i] = px[3];
         }
         out
+    }
+}
+
+/// The region origin and dimensions a composite runs over. Pure assembly (no
+/// device) so the row-wise and per-pixel paths are unit-testable without a GPU.
+#[derive(Clone, Copy)]
+struct Region {
+    x0: u32,
+    y0: u32,
+    w: u32,
+    h: u32,
+}
+
+/// The clamped layer-rect ∩ region intersection plus the plane layout, the
+/// shared product of both source-assembly paths.
+struct SourceGeom {
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    cw: usize,
+    ch: usize,
+    n: usize,
+    planes: usize,
+    gray: bool,
+}
+
+impl SourceGeom {
+    fn layout(&self) -> SrcLayout {
+        SrcLayout {
+            x0: self.x0 as u32,
+            y0: self.y0 as u32,
+            w: self.cw as u32,
+            h: self.ch as u32,
+            gray: self.gray,
+            packed: false,
+        }
+    }
+}
+
+fn source_geom(region: Region, layer: &Layer, doc: &Document) -> Option<SourceGeom> {
+    if layer.rect.width() <= 0 || layer.rect.height() <= 0 {
+        return None;
+    }
+    let region_right = (region.x0 + region.w) as i32;
+    let region_bottom = (region.y0 + region.h) as i32;
+    let x0 = layer.rect.left.max(region.x0 as i32);
+    let y0 = layer.rect.top.max(region.y0 as i32);
+    let x1 = layer.rect.right.min(region_right);
+    let y1 = layer.rect.bottom.min(region_bottom);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let gray = matches!(
+        doc.mode,
+        ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone
+    );
+    let cw = (x1 - x0) as usize;
+    let ch = (y1 - y0) as usize;
+    Some(SourceGeom {
+        x0,
+        y0,
+        x1,
+        y1,
+        cw,
+        ch,
+        n: cw * ch,
+        planes: if gray { 2 } else { 4 },
+        gray,
+    })
+}
+
+/// The retained per-pixel reference assembly; the fast path must match it byte
+/// for byte. Kept reachable for the equivalence tests and as the short/absent
+/// plane fallback.
+fn assemble_source_per_pixel(layer: &Layer, g: &SourceGeom) -> Vec<u8> {
+    let lw = layer.rect.width() as usize;
+    let ch0 = channel(layer, 0);
+    let ch1 = channel(layer, 1).or(ch0);
+    let ch2 = channel(layer, 2).or(ch0);
+    let alpha = channel(layer, -1);
+    let n = g.n;
+    let mut data = vec![0u8; g.planes * n];
+    for y in g.y0..g.y1 {
+        let row = (y - g.y0) as usize;
+        for (col, x) in (g.x0..g.x1).enumerate() {
+            let li = (y - layer.rect.top) as usize * lw + (x - layer.rect.left) as usize;
+            let d = row * g.cw + col;
+            let a = sample(alpha, li).unwrap_or(255);
+            if g.gray {
+                data[d] = sample(ch0, li).unwrap_or(0);
+                data[n + d] = a;
+            } else {
+                data[d] = sample(ch0, li).unwrap_or(0);
+                data[n + d] = sample(ch1, li).unwrap_or(0);
+                data[2 * n + d] = sample(ch2, li).unwrap_or(0);
+                data[3 * n + d] = a;
+            }
+        }
+    }
+    pad_to_4(&mut data);
+    data
+}
+
+/// Whole-row copies when every required channel covers the clamped row
+/// intersection; `None` (the fallback) when a present plane is short or channel
+/// 0 is absent.
+fn assemble_source_rowwise(layer: &Layer, g: &SourceGeom) -> Option<Vec<u8>> {
+    let lw = layer.rect.width() as usize;
+    let base = (g.y0 - layer.rect.top) as usize * lw + (g.x0 - layer.rect.left) as usize;
+    let last_end = base + (g.ch - 1) * lw + g.cw;
+    let ch0 = channel(layer, 0)?;
+    let ch1 = channel(layer, 1).or(Some(ch0))?;
+    let ch2 = channel(layer, 2).or(Some(ch0))?;
+    let alpha = channel(layer, -1);
+    if ch0.len() < last_end || ch1.len() < last_end || ch2.len() < last_end {
+        return None;
+    }
+    if alpha.is_some_and(|a| a.len() < last_end) {
+        return None;
+    }
+
+    let n = g.n;
+    let mut data = vec![0u8; g.planes * n];
+    for row in 0..g.ch {
+        let src = base + row * lw;
+        let d = row * g.cw;
+        data[d..d + g.cw].copy_from_slice(&ch0[src..src + g.cw]);
+        if g.gray {
+            match alpha {
+                Some(a) => data[n + d..n + d + g.cw].copy_from_slice(&a[src..src + g.cw]),
+                None => data[n + d..n + d + g.cw].fill(255),
+            }
+        } else {
+            data[n + d..n + d + g.cw].copy_from_slice(&ch1[src..src + g.cw]);
+            data[2 * n + d..2 * n + d + g.cw].copy_from_slice(&ch2[src..src + g.cw]);
+            match alpha {
+                Some(a) => {
+                    data[3 * n + d..3 * n + d + g.cw].copy_from_slice(&a[src..src + g.cw]);
+                }
+                None => data[3 * n + d..3 * n + d + g.cw].fill(255),
+            }
+        }
+    }
+    pad_to_4(&mut data);
+    Some(data)
+}
+
+fn assemble_source(region: Region, layer: &Layer, doc: &Document) -> Option<(Vec<u8>, SrcLayout)> {
+    let g = source_geom(region, layer, doc)?;
+    let data =
+        assemble_source_rowwise(layer, &g).unwrap_or_else(|| assemble_source_per_pixel(layer, &g));
+    Some((data, g.layout()))
+}
+
+/// Whether `mask_alpha` has data to sample: absent, disabled, or data-less
+/// masks are the constant-255 case the row fill covers.
+fn mask_has_data(layer: &Layer) -> bool {
+    layer
+        .mask
+        .as_ref()
+        .is_some_and(|m| !m.disabled && m.data.is_some())
+}
+
+/// The coverage influence rectangle: the whole region for a group or an
+/// adjustment layer, the clamped layer rect for a pixel layer.
+fn mask_influence_rect(region: Region, layer: &Layer) -> (i32, i32, i32, i32) {
+    let region_right = (region.x0 + region.w) as i32;
+    let region_bottom = (region.y0 + region.h) as i32;
+    if layer.is_group || layer.adjustment.is_some() {
+        (
+            region.x0 as i32,
+            region.y0 as i32,
+            region_right,
+            region_bottom,
+        )
+    } else {
+        (
+            layer.rect.left.max(region.x0 as i32),
+            layer.rect.top.max(region.y0 as i32),
+            layer.rect.right.min(region_right),
+            layer.rect.bottom.min(region_bottom),
+        )
+    }
+}
+
+/// Constant-255 coverage over the influence rect, 0 elsewhere.
+fn assemble_mask_fill(region: Region, r: (i32, i32, i32, i32)) -> Vec<u8> {
+    let (x0, y0, x1, y1) = r;
+    let mut data = vec![0u8; region.w as usize * region.h as usize];
+    if x1 > x0 && y1 > y0 {
+        let stride = region.w as usize;
+        let left = (x0 - region.x0 as i32) as usize;
+        let right = (x1 - region.x0 as i32) as usize;
+        for y in y0..y1 {
+            let row = (y - region.y0 as i32) as usize * stride;
+            data[row + left..row + right].fill(255);
+        }
+    }
+    pad_to_4(&mut data);
+    data
+}
+
+/// The retained per-pixel `mask_alpha` reference, kept for data-carrying masks
+/// and the equivalence tests.
+fn assemble_mask_per_pixel(region: Region, layer: &Layer, r: (i32, i32, i32, i32)) -> Vec<u8> {
+    let (x0, y0, x1, y1) = r;
+    let mut data = vec![0u8; region.w as usize * region.h as usize];
+    if x1 > x0 && y1 > y0 {
+        let stride = region.w as usize;
+        for y in y0..y1 {
+            let row = (y - region.y0 as i32) as usize * stride;
+            for x in x0..x1 {
+                data[row + (x - region.x0 as i32) as usize] = mask_alpha(layer, x, y);
+            }
+        }
+    }
+    pad_to_4(&mut data);
+    data
+}
+
+fn assemble_mask(region: Region, layer: &Layer) -> Vec<u8> {
+    let r = mask_influence_rect(region, layer);
+    if mask_has_data(layer) {
+        assemble_mask_per_pixel(region, layer, r)
+    } else {
+        assemble_mask_fill(region, r)
     }
 }
 
@@ -1217,7 +1383,9 @@ fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
 
 #[cfg(test)]
 mod tests {
-    use super::grid_2d;
+    use super::*;
+    use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, LayerMask, PsdRect};
+    use std::time::Instant;
 
     #[test]
     fn grid_2d_tiles_without_gaps_or_overlap() {
@@ -1239,5 +1407,301 @@ mod tests {
         // A limit of 1 rejects anything past a single 64-wide row.
         assert_eq!(grid_2d(64, 1), Some((1, 1)));
         assert_eq!(grid_2d(65, 1), None);
+    }
+
+    fn px_rect(w: u32, h: u32) -> PsdRect {
+        PsdRect {
+            top: 0,
+            left: 0,
+            bottom: h as i32,
+            right: w as i32,
+        }
+    }
+
+    fn pix_layer(w: u32, h: u32, channels: Vec<Channel>) -> Layer {
+        Layer {
+            name: "t".into(),
+            rect: px_rect(w, h),
+            blend: BlendMode::Normal,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels,
+            children: Vec::new(),
+            is_group: false,
+        }
+    }
+
+    fn ramp(n: usize, seed: u8) -> Vec<u8> {
+        (0..n)
+            .map(|i| (i as u8).wrapping_mul(31).wrapping_add(seed))
+            .collect()
+    }
+
+    #[test]
+    fn m33_rowwise_source_matches_per_pixel() {
+        let (w, h) = (5u32, 3u32);
+        let n = (w * h) as usize;
+        let region = Region { x0: 0, y0: 0, w, h };
+        let doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+        let chans = |ids: &[i16]| -> Vec<Channel> {
+            ids.iter()
+                .map(|&id| Channel {
+                    id,
+                    data: ramp(n, id as u8),
+                })
+                .collect()
+        };
+
+        // RGB with all four channels: row-wise and per-pixel agree.
+        let all = pix_layer(w, h, chans(&[0, 1, 2, -1]));
+        let g = source_geom(region, &all, &doc).unwrap();
+        let fast = assemble_source_rowwise(&all, &g).expect("covering RGB layer is row-wise");
+        assert_eq!(fast, assemble_source_per_pixel(&all, &g));
+        assert_eq!(assemble_source(region, &all, &doc).unwrap().0, fast);
+
+        // Missing alpha: the alpha plane fills 255.
+        let no_alpha = pix_layer(w, h, chans(&[0, 1, 2]));
+        let g = source_geom(region, &no_alpha, &doc).unwrap();
+        let fast = assemble_source_rowwise(&no_alpha, &g).expect("missing alpha is row-wise");
+        assert_eq!(fast, assemble_source_per_pixel(&no_alpha, &g));
+        assert!(
+            fast[3 * n..4 * n].iter().all(|&b| b == 255),
+            "absent alpha must read 255"
+        );
+
+        // Missing green/blue alias channel 0.
+        let mono = pix_layer(w, h, chans(&[0, -1]));
+        let g = source_geom(region, &mono, &doc).unwrap();
+        let fast = assemble_source_rowwise(&mono, &g).expect("absent G/B alias channel 0");
+        assert_eq!(fast, assemble_source_per_pixel(&mono, &g));
+        assert_eq!(&fast[n..2 * n], &fast[..n]);
+        assert_eq!(&fast[2 * n..3 * n], &fast[..n]);
+
+        // Grayscale document: exactly two planes, colour from channel 0.
+        let gdoc = Document::new(w, h, ColorMode::Grayscale, BitDepth::Eight);
+        let gray = pix_layer(w, h, chans(&[0, -1]));
+        let g = source_geom(region, &gray, &gdoc).unwrap();
+        assert_eq!(g.planes, 2, "grayscale is two planes");
+        let fast = assemble_source_rowwise(&gray, &g).expect("gray layer is row-wise");
+        assert_eq!(fast, assemble_source_per_pixel(&gray, &g));
+
+        // A short colour plane cannot cover the intersection -> fallback.
+        let mut short = pix_layer(w, h, chans(&[0, 1, 2, -1]));
+        short.channels[0].data.truncate(n - 1);
+        let g = source_geom(region, &short, &doc).unwrap();
+        assert!(
+            assemble_source_rowwise(&short, &g).is_none(),
+            "a short plane must take the per-pixel fallback"
+        );
+        assert_eq!(
+            assemble_source(region, &short, &doc).unwrap().0,
+            assemble_source_per_pixel(&short, &g)
+        );
+    }
+
+    #[test]
+    fn m33_rowwise_mask_matches_per_pixel() {
+        let (w, h) = (6u32, 4u32);
+        let n = (w * h) as usize;
+        let region = Region { x0: 0, y0: 0, w, h };
+
+        // Maskless pixel layer -> constant-255 row fill.
+        let mut l = pix_layer(w, h, Vec::new());
+        assert!(!mask_has_data(&l));
+        let r = mask_influence_rect(region, &l);
+        assert_eq!(
+            assemble_mask(region, &l),
+            assemble_mask_per_pixel(region, &l, r)
+        );
+        assert_eq!(assemble_mask(region, &l), assemble_mask_fill(region, r));
+
+        // A disabled mask still reads 255 everywhere.
+        l.mask = Some(LayerMask {
+            rect: px_rect(w, h),
+            default_color: 9,
+            disabled: true,
+            flags: 0,
+            data: Some(ramp(n, 5)),
+        });
+        assert!(!mask_has_data(&l));
+        let r = mask_influence_rect(region, &l);
+        assert_eq!(
+            assemble_mask(region, &l),
+            assemble_mask_per_pixel(region, &l, r)
+        );
+        assert_eq!(assemble_mask(region, &l), assemble_mask_fill(region, r));
+
+        // An enabled data-carrying mask keeps the per-pixel path.
+        l.mask = Some(LayerMask {
+            rect: px_rect(w, h),
+            default_color: 9,
+            disabled: false,
+            flags: 0,
+            data: Some(ramp(n, 5)),
+        });
+        assert!(mask_has_data(&l));
+        let r = mask_influence_rect(region, &l);
+        assert_eq!(
+            assemble_mask(region, &l),
+            assemble_mask_per_pixel(region, &l, r)
+        );
+    }
+
+    fn profile_layer(n: u32, seed: u32, blend: BlendMode) -> Layer {
+        let px = (n as usize) * (n as usize);
+        let (mut r, mut g, mut b, mut a) =
+            (vec![0u8; px], vec![0u8; px], vec![0u8; px], vec![0u8; px]);
+        for y in 0..n {
+            for x in 0..n {
+                let i = (y * n + x) as usize;
+                r[i] = (x * 7 + seed * 31) as u8;
+                g[i] = (y * 5 + seed * 17) as u8;
+                b[i] = (x ^ y) as u8;
+                a[i] = if seed == 0 { 255 } else { 160 };
+            }
+        }
+        Layer {
+            name: format!("layer{seed}"),
+            rect: px_rect(n, n),
+            blend,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels: vec![
+                Channel { id: 0, data: r },
+                Channel { id: 1, data: g },
+                Channel { id: 2, data: b },
+                Channel { id: -1, data: a },
+            ],
+            children: Vec::new(),
+            is_group: false,
+        }
+    }
+
+    /// The transfer half of the readback only (staging + copy + poll + map), so
+    /// the profile can separate it from the de-interleave.
+    fn read_transfer(gpu: &Gpu, canvas: &wgpu::Buffer) -> Result<(), GpuError> {
+        let size = u64::from(gpu.n) * 4;
+        let staging = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pictura-profile-transfer"),
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("pictura-profile-transfer"),
+            });
+        encoder.copy_buffer_to_buffer(canvas, 0, &staging, 0, size);
+        gpu.queue.submit(Some(encoder.finish()));
+        let slice = staging.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |r| {
+            let _ = tx.send(r);
+        });
+        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        rx.recv()
+            .map_err(|_| GpuError::Readback)?
+            .map_err(|_| GpuError::Readback)?;
+        let _mapped = slice.get_mapped_range().map_err(|_| GpuError::Readback)?;
+        Ok(())
+    }
+
+    fn phase_ms(t: Instant) -> f64 {
+        t.elapsed().as_secs_f64() * 1000.0
+    }
+
+    fn run_profile(n: u32) {
+        if !gpu_available() {
+            println!("gpu_phase {n}x{n} n/a: no usable Vulkan adapter");
+            return;
+        }
+        let mut doc = Document::new(n, n, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![
+            profile_layer(n, 0, BlendMode::Normal),
+            profile_layer(n, 1, BlendMode::Multiply),
+        ];
+        // Warm-up keeps device/pipeline setup out of the phase numbers.
+        let _ = composite_gpu_region(&doc, 0, 0, n, n);
+        let gpu = match Gpu::new(0, 0, n, n) {
+            Ok(g) => g,
+            Err(e) => {
+                println!("gpu_phase {n}x{n} n/a: {e}");
+                return;
+            }
+        };
+
+        let t = Instant::now();
+        let canvas = gpu.zero_canvas();
+        println!("gpu_phase zero_canvas {:.3} ms", phase_ms(t));
+
+        let t = Instant::now();
+        let srcs: Vec<_> = doc
+            .layers
+            .iter()
+            .map(|l| gpu.build_source(l, &doc))
+            .collect();
+        println!("gpu_phase build_source {:.3} ms", phase_ms(t));
+
+        let t = Instant::now();
+        let masks: Vec<_> = doc.layers.iter().map(|l| gpu.build_mask(l)).collect();
+        println!("gpu_phase build_mask {:.3} ms", phase_ms(t));
+
+        let t = Instant::now();
+        for (i, layer) in doc.layers.iter().enumerate() {
+            if let Some((src, layout)) = &srcs[i] {
+                gpu.dispatch(
+                    &canvas,
+                    src,
+                    &masks[i],
+                    *layout,
+                    layer.blend,
+                    layer.opacity,
+                    NO_ADJ,
+                );
+            }
+        }
+        println!("gpu_phase dispatch {:.3} ms", phase_ms(t));
+
+        let t = Instant::now();
+        let _ = read_transfer(&gpu, &canvas);
+        println!("gpu_phase read_submit_poll_map {:.3} ms", phase_ms(t));
+
+        // Standalone de-interleave micro-benchmark on a synthetic packed buffer;
+        // it is not part of the composite total (which de-interleaves in
+        // `read_canvas`, printed as `readback` below).
+        let packed = vec![0u8; gpu.n as usize * 4];
+        let t = Instant::now();
+        let _ = gpu.to_pixel_buffer(&packed);
+        println!(
+            "gpu_phase to_pixel_buffer_micro (not in total) {:.3} ms",
+            phase_ms(t)
+        );
+
+        let t = Instant::now();
+        let _ = gpu.read_canvas(&canvas);
+        println!("gpu_phase readback {:.3} ms", phase_ms(t));
+
+        let t = Instant::now();
+        let _ = composite_gpu_region(&doc, 0, 0, n, n);
+        println!("gpu_phase total {:.3} ms", phase_ms(t));
+    }
+
+    #[test]
+    #[ignore = "requires a Vulkan GPU; run with --ignored --nocapture"]
+    fn m33_composite_profile_4000() {
+        run_profile(4000);
+    }
+
+    #[test]
+    #[ignore = "requires a Vulkan GPU; run with --ignored --nocapture"]
+    fn m33_composite_profile_1024() {
+        run_profile(1024);
     }
 }

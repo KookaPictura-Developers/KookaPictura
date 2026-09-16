@@ -9,8 +9,8 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **539 tests, 3 ignored** (one pre-existing app `#[ignore]` plus the
-  two M29 `move_profile_*` timing tests).
+- Test suite: **541 tests, 0 failed, 5 ignored** (the M29 `move_profile_*` pair,
+  the M31 `region_move_timing_4000`, and the M33 `m33_composite_profile_*` pair).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M31 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
@@ -604,6 +604,33 @@ openspec validate --all --strict
   failed, 3 ignored)** — up from 536; `openspec validate --all --strict` 60/60. The
   M32 change MODIFIES `document-canvas` (no new capability → **59** capabilities
   after archive).
+- **M33** — full-composite throughput. `build_source` assembles layer sources with
+  whole-row `copy_from_slice` per plane (row-wise fast path; the per-pixel scan
+  remains the fallback when a channel does not cover the clamped row intersection,
+  preserving grayscale 2-plane, missing-G/B-aliases-channel-0, and
+  missing-alpha-fills-255 semantics); `build_mask` fills the influence rect
+  row-wise when there is no enabled data-carrying mask (per-pixel `mask_alpha`
+  retained otherwise); the readback de-interleaves directly from the mapped
+  staging slice into the planar `PixelBuffer` with no host packed RGBA
+  intermediate (`to_pixel_buffer` walks 4-byte chunks via `as_chunks::<4>`); the
+  canvas is cleared with a GPU command (`clear_buffer`) instead of a host
+  full-canvas zero write. Output stays byte-identical (GPU 0 LSB, ±1 LSB vs the
+  CPU oracle, alpha unchanged) — `cargo test --workspace` includes the new
+  equivalence tests `m33_rowwise_source_matches_per_pixel` and
+  `m33_rowwise_mask_matches_per_pixel`, and `gpu_parity` (18 tests) passes.
+  Measured 4000² (2 RGB layers, release, RTX 3090): total **~123 ms (from
+  ~254 ms, ~2×)**; `zero_canvas` **0.05 ms (from 18)**, `build_source` **~69 ms
+  (from 146)**, `build_mask` **~15 ms (from 16)**, readback (transfer +
+  de-interleave) **~38 ms (from ~57 = 22 `to_vec` + 35 de-interleave)**,
+  dispatch 0.2 ms. 1024² total **~4.3 ms**. The remainder is dominated by the
+  per-composite source/mask **upload** (~128 MB + 16 MB per composite), which only
+  resident per-layer GPU buffers would remove (deferred). M33 stopped here
+  because the measured bottleneck after the change is the upload, and residency
+  needs content versioning (deferred); `build_mask` gained least because its
+  upload dominates the removed `mask_alpha` calls. Self-test: unchanged codes;
+  **541 tests, 0 failed, 5 ignored** (was 539, 3 ignored); `openspec validate
+  --all --strict` 60/60; the M33 change MODIFIES `gpu-compositing` only (no new
+  capability → **59** after archive).
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -682,28 +709,32 @@ complete.
 
 ## Next: M33–M35 (canvas compositing & present)
 
-M31 removes the full composite and readback from every move and paint
-(dirty-rect compositing), and M32 removes it from the move-preview base and the
-visibility toggle and caches the present-scale; every other mutation still
+M31 removed the full composite and readback from every move and paint
+(dirty-rect compositing), M32 removed it from the move-preview base and the
+visibility toggle and cached the present-scale, and M33 removed the host-side
+per-pixel assembly from the remaining full composites; every other mutation still
 composites and reads back the **whole** document, and the CPU compositor and
 `pictura_filters::apply` are still the oracles. The research and the M31–M35 plan
-are written up in `docs/dev/canvas-compositing-plan.md`, and the M32 brief with
-the measured phase table is `docs/dev/m32-interactive-canvas.md`. The measurement
-matters: the 4000² GPU composite (~254 ms) is dominated by host-side per-pixel
-assembly (`build_source` 146 ms, `to_pixel_buffer` 35 ms, `mapped.to_vec()` 22 ms),
-not the GPU dispatch (~0.2 ms) or the 64 MB readback (~7 ms), so a zero-copy
-present saves little while the CPU assembly stays. Next in order:
+are written up in `docs/dev/canvas-compositing-plan.md`; the M32 brief with the
+measured phase table is `docs/dev/m32-interactive-canvas.md`, and the M33 brief is
+`docs/dev/m33-composite-throughput.md`. The 4000² full composite is now ~123 ms,
+dominated by the per-composite source/mask **upload** (~128 + 16 MB), not the GPU
+dispatch (~0.2 ms) or the ~38 ms readback, so a zero-copy present still saves
+little while the upload stays. Next in order:
 
-- **M33 — full-composite throughput.** Replace the per-pixel source assembly with
-  row-wise/`copy_from_slice` assembly, fuse the planar readback to de-interleave
-  directly from the mapped slice and skip the packed `Vec`, and keep per-layer GPU
-  source buffers resident across a composite session (targets the measured
-  146 + 35 + 22 ms).
+- **M33 — full-composite throughput (done; archive pending).** OpenSpec change
+  `m33-composite-throughput` (MODIFIED `gpu-compositing`; no new capability),
+  implemented and verified. Row-wise source/mask assembly, a fused planar readback
+  that skips the packed `Vec`, and a GPU command-buffer canvas clear took the
+  4000² two-layer composite ~254 ms → ~123 ms (~2×), byte-identical. The remaining
+  bottleneck is the per-composite upload; resident per-layer GPU source buffers are
+  deferred (they need content versioning).
 - **M34 (deferred) — GPU-resident zero-copy present** via Qt Quick
   (`QQuickRhiItem` sharing the window's `QRhi` +
   `QQuickWindow::createTextureFromRhiTexture()`, or one shared Vulkan device via
   `QQuickGraphicsDevice::fromDeviceObjects(...)`); `QRhiWidget` cannot adopt the
-  wgpu device. Deferred because it removes only ~57 ms of a ~254 ms composite.
+  wgpu device. Deferred because it removes only the ~38 ms readback of a ~123 ms
+  composite, not the upload.
 - **M35 (deferred) — 256² GPU tiles + LRU + seam gutters + mipmaps**
   (Graphite-style), only if pan/zoom over documents larger than VRAM demands it;
   includes display-time LoD so a zoomed-out view composites a proxy.
@@ -723,6 +754,12 @@ Deferred tracks, in no fixed order:
   the `View > Show > Transparency Grid` toggle, and gamut warning are deferred.
 - **History copy-on-write / tile diffs** — the history capture still clones the
   whole document (~60 ms per state at 4000², and holds up to 20 states).
+- **Resident per-layer GPU source buffers and shader-side planar output** —
+  deferred from M33. Keeping a layer's source plane resident on the GPU across a
+  composite session needs content versioning to detect a changed layer; the
+  remaining composite cost is the per-composite upload (~128 MB + 16 MB at
+  4000²), which residency would remove. A shader-side planar output would remove
+  the ~32 ms readback de-interleave.
 - **GPU painterly/stochastic filters and GPU painting** — the remaining M22
   Artistic and M25 Brush Strokes/Sketch/Texture families (`Watercolor`,
   `Conté Crayon`, `Paint Daubs`, `Dry Brush`, `Ocean Ripple`, `Spatter`,
@@ -751,9 +788,10 @@ M6 through M31 are archived; their deltas now live in `openspec/specs/`.
   plus the M28 heavy window/effect set); the stochastic/seeded filters and the
   warps/distort and render filters fall back to the CPU oracle byte-for-byte.
 - The GPU compositor and filter path are host-side bound, not readback-bound: at
-  4000² the composite is dominated by CPU per-pixel source assembly and
-  de-interleave (~203 ms of ~254 ms) while the 64 MB readback is ~7 ms (see
-  `docs/dev/canvas-compositing-plan.md` §2.1); zero-copy present is deferred (M34).
+  4000² the composite is now dominated by the per-composite source/mask upload
+  (~128 + 16 MB) after M33 removed the per-pixel assembly, while the 64 MB
+  readback is ~6 ms (see `docs/dev/canvas-compositing-plan.md` §2.1); resident
+  per-layer buffers (deferred) and zero-copy present (M34) both aim at this.
 - Region refresh patches the cached `QImage` per pixel (`QImage::set_pixel_color`)
   and is bounded by the 1 MP `REGION_REFRESH_BUDGET`; a dirty union larger than
   that falls back to a full recomposite. A Display-resolution proxy (LoD) is still

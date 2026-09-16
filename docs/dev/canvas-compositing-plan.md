@@ -198,18 +198,27 @@ serializes, so it needs its own proposal), the C++ region blit
 (`ImageView::blitRegion`) and the `REGION_REFRESH_BUDGET` removal, and
 zoom-level details beyond the single cached scaled image.
 
-### M33 — full-composite throughput
+### M33 — full-composite throughput: row-wise assembly, fused planar readback, GPU-side clear (proposed)
 
-Target the measured 146 + 35 + 22 ms of host-side per-pixel work in the full
-composite:
+Target the measured 146 + 35 + 22 + 18 + 16 ms of host-side per-pixel work in
+the full composite. OpenSpec change `m33-composite-throughput` (MODIFIED
+`gpu-compositing`; no new capability):
 
-- row-wise/`copy_from_slice` source assembly instead of the per-pixel loop in
-  `build_source`;
+- row-wise/`copy_from_slice` source assembly in `build_source`, with the
+  per-pixel loop retained as the fallback when a channel plane does not cover the
+  row intersection;
+- row-wise coverage fill in `build_mask` when the layer has no enabled
+  data-carrying mask, with the per-pixel `mask_alpha` path otherwise;
 - a fused planar readback that de-interleaves directly from the mapped readback
   slice into the planar `PixelBuffer`, skipping the packed `Vec` and its
   `to_vec()` copy;
-- per-layer GPU source buffers kept resident across a composite session instead
-  of re-assembled and re-uploaded per composite.
+- a GPU command-buffer clear for the canvas instead of uploading a full-canvas
+  host zero buffer;
+- parity plus an `#[ignore]` phase-timing profile.
+
+All five preserve output byte-for-byte (0 LSB). Deferred: resident per-layer GPU
+source buffers across a composite session (needs content versioning) and
+shader-side planar output (removes the de-interleave entirely).
 
 ### M34 — GPU-resident zero-copy present via Qt Quick (deferred)
 
