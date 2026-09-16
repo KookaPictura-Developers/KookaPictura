@@ -44,7 +44,7 @@ pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 pub mod document_ops;
 pub use document_ops::{
     crop_document, flip_document, resize_canvas_document, resize_document, rotate_document,
-    translate_layer,
+    translate_layer, translate_layer_active,
 };
 
 pub use pictura_ops::{Anchor, Resample};

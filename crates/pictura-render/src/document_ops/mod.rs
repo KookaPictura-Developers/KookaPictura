@@ -7,7 +7,7 @@ mod orient;
 mod resize;
 
 pub use canvas::resize_canvas_document;
-pub use crop::{crop_document, translate_layer};
+pub use crop::{crop_document, translate_layer, translate_layer_active};
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;
 

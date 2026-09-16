@@ -60,6 +60,25 @@ pub fn translate_layer(doc: &mut Document, dx: i32, dy: i32) -> bool {
     true
 }
 
+/// Shift the topmost pixel layer's bounds by `(dx, dy)` and refresh the
+/// composite through the active backend.
+///
+/// Same rect/mask shift as [`translate_layer`]; only the composite refresh
+/// differs — `composite_active` uses the GPU when `gpu_enabled` and an adapter
+/// is usable, falling back to the CPU oracle otherwise.
+pub fn translate_layer_active(doc: &mut Document, dx: i32, dy: i32, gpu_enabled: bool) -> bool {
+    let Some(layer) = topmost_pixel_layer(&mut doc.layers) else {
+        return false;
+    };
+    layer.rect = offset_rect(layer.rect, dx, dy);
+    if let Some(mask) = &mut layer.mask {
+        mask.rect = offset_rect(mask.rect, dx, dy);
+    }
+    let (composite, _) = crate::gpu::composite_active(doc, gpu_enabled);
+    doc.composite = composite;
+    true
+}
+
 fn topmost_pixel_layer(layers: &mut [Layer]) -> Option<&mut Layer> {
     layers
         .iter_mut()
@@ -202,6 +221,16 @@ mod tests {
         assert_eq!(doc.composite.data[2 * 4 + 1], 4);
         // The old origin is no longer covered by the shifted layer.
         assert_eq!(doc.composite.data[3 * plane], 0, "uncovered alpha");
+    }
+
+    #[test]
+    fn translate_layer_active_cpu_matches_translate_layer() {
+        let mut active = sample_doc();
+        let mut oracle = sample_doc();
+        assert!(translate_layer_active(&mut active, 1, 1, false));
+        assert!(translate_layer(&mut oracle, 1, 1));
+        assert_eq!(active, oracle);
+        assert_eq!(active.composite.data, oracle.composite.data);
     }
 
     #[test]

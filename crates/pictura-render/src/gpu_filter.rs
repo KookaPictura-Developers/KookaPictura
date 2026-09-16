@@ -403,9 +403,12 @@ fn run(
         return None;
     }
     let count = (padded / 4) as u32;
-    if count.div_ceil(64) > limits.max_compute_workgroups_per_dimension {
-        return None;
-    }
+    // Oil Paint's first passes dispatch one invocation per pixel (`npix`), so
+    // the grid must cover the larger of the word count and the pixel count.
+    crate::gpu::grid_2d(
+        count.max(npix as u32),
+        limits.max_compute_workgroups_per_dimension,
+    )?;
 
     let mut upload = input.to_vec();
     upload.resize(padded, 0);
@@ -606,6 +609,7 @@ struct Params {
     relief_mag: f32,
     shine_t: f32,
     stop: f32,
+    stride: u32,
 }
 
 impl Params {
@@ -636,6 +640,7 @@ impl Params {
             relief_mag: 1.0,
             shine_t: 0.0,
             stop: 1.0,
+            stride: 0,
         }
     }
 
@@ -667,6 +672,7 @@ impl Params {
             self.relief_mag.to_bits(),
             self.shine_t.to_bits(),
             self.stop.to_bits(),
+            self.stride,
         ];
         for (i, v) in fields.iter().enumerate() {
             out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
@@ -687,7 +693,11 @@ fn dispatch(
     params_buf: &wgpu::Buffer,
     count: u32,
 ) {
-    queue.write_buffer(params_buf, 0, &params.bytes());
+    let (gx, gy) = crate::gpu::grid_2d(count, device.limits().max_compute_workgroups_per_dimension)
+        .expect("run() rejected a count past the 2-D workgroup limit");
+    let mut bytes = *params;
+    bytes.stride = gx * 64;
+    queue.write_buffer(params_buf, 0, &bytes.bytes());
     let res = filter_resources(device);
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("pictura-filter"),
@@ -713,7 +723,7 @@ fn dispatch(
         });
         pass.set_pipeline(&res.pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups(count.div_ceil(64), 1, 1);
+        pass.dispatch_workgroups(gx, gy, 1);
     }
     queue.submit(Some(encoder.finish()));
 }
@@ -851,7 +861,7 @@ struct FParams {
     relief_mag: f32,
     shine_t: f32,
     stop: f32,
-    _p0: u32,
+    stride: u32,
     _p1: u32,
     _p2: u32,
     _p3: u32,
@@ -1215,7 +1225,7 @@ fn oil_shade(idx: u32) -> f32 {
 
 @compute @workgroup_size(64)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let wi = gid.x;
+    let wi = gid.x + gid.y * p.stride;
     let n = p.w * p.h;
     let total = 3u * n;
 

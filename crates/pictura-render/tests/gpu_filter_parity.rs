@@ -156,6 +156,21 @@ fn flat_rgb() -> PixelBuffer {
     buf
 }
 
+/// A large `w×h` RGB gradient (the fixture helpers are fixed at `SIZE`).
+fn large_gradient_rgb(w: u32, h: u32) -> PixelBuffer {
+    let n = (w as usize) * (h as usize);
+    let mut buf = PixelBuffer::new(w, h, 3);
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            buf.data[i] = (x % 256) as u8;
+            buf.data[n + i] = (y % 256) as u8;
+            buf.data[2 * n + i] = ((x + y) % 256) as u8;
+        }
+    }
+    buf
+}
+
 fn oracle(filter: &Filter, base: &PixelBuffer) -> PixelBuffer {
     let mut buf = base.clone();
     apply(filter, &mut buf).expect("oracle parameters are valid");
@@ -209,6 +224,39 @@ fn accelerated_filters_match_cpu_within_one_lsb() {
             let delta = assert_parity(&got, &want, &format!("{label}/{filter:?}"));
             println!("{label}/{filter:?}: max delta {delta} LSB");
         }
+    }
+}
+
+/// M29: a buffer past the old 1-D filter ceiling. 3072×2048 = 6.29 MP ⇒
+/// `3n/4 = 4,718,592` words ⇒ 73728 one-dimensional workgroups, over 65535. The
+/// 2-D grid must run Surface Blur and Median on the GPU within ±1 LSB.
+#[test]
+fn large_buffer_over_1d_limit_runs_on_gpu() {
+    if !filter_gpu_available() {
+        println!("no usable Vulkan GPU; skipping large-buffer filter parity");
+        return;
+    }
+    const W: u32 = 3072;
+    const H: u32 = 2048;
+    let base = large_gradient_rgb(W, H);
+    let filters = [
+        Filter::SurfaceBlur {
+            radius: 1,
+            threshold: 20,
+        },
+        Filter::Median { radius: 1 },
+    ];
+    for filter in filters {
+        let want = oracle(&filter, &base);
+        let mut got = base.clone();
+        let backend = apply_filter_active(&filter, &mut got, true).expect("valid parameters");
+        assert_eq!(
+            backend,
+            Backend::Gpu,
+            "{filter:?} at {W}x{H} fell back to CPU"
+        );
+        let delta = assert_parity(&got, &want, &format!("large/{filter:?}"));
+        println!("large {W}x{H}/{filter:?}: max delta {delta} LSB, backend {backend:?}");
     }
 }
 

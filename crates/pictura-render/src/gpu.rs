@@ -233,7 +233,7 @@ struct Params {
     src_w: u32,
     src_h: u32,
     canvas_w: u32,
-    _pad0: u32,
+    stride: u32,
     _pad1: u32,
     _pad2: u32,
 };
@@ -532,7 +532,7 @@ fn adjust(kind: u32, rgb: vec3<f32>, p0: i32, p1: i32, p2: i32) -> vec3<f32> {
 
 @compute @workgroup_size(64)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x;
+    let i = gid.x + gid.y * params.stride;
     if (i >= params.count) { return; }
     let mask_a = f32(mask_byte(i)) / 255.0;
 
@@ -690,6 +690,23 @@ pub(crate) fn shared_device() -> Option<(&'static wgpu::Device, &'static wgpu::Q
     devices().ok().map(|d| (&d.device, &d.queue))
 }
 
+/// 2-D compute grid for `n` single-invocation items at 64 per workgroup.
+///
+/// `gx` covers one row (capped at the device's per-dimension limit) and `gy`
+/// stacks the remaining rows, so `gx * 64 * gy >= n`. Returns `None` when the
+/// `gx * gy` workgroup product itself exceeds the limit — the device cannot
+/// address that many workgroups (65535² × 64 ≈ 2.8×10¹⁴ items). `gx` is always
+/// ≥ 1; a zero-item dispatch yields `gy == 0`.
+///
+/// ponytail: with `n: u32` and the standard 65535 limit, `limit² × 64` exceeds
+/// `u32::MAX`, so the product guard can never fire on a compliant device; it
+/// exists for adapters that report a smaller `max_compute_workgroups_per_dimension`.
+pub(crate) fn grid_2d(n: u32, max_per_dim: u32) -> Option<(u32, u32)> {
+    let gx = n.div_ceil(64).min(max_per_dim).max(1);
+    let gy = u64::from(n).div_ceil(u64::from(gx) * 64);
+    (gy <= u64::from(max_per_dim)).then_some((gx, gy as u32))
+}
+
 struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -705,15 +722,18 @@ impl Gpu {
         let shared = devices()?;
         let device = shared.device.clone();
         let queue = shared.queue.clone();
-        let n = w * h;
-        let bytes = u64::from(n) * 4;
+        let n = u64::from(w) * u64::from(h);
         let limits = device.limits();
-        if bytes > limits.max_storage_buffer_binding_size || bytes > limits.max_buffer_size {
+        let bytes = n.saturating_mul(4);
+        let limit = u64::from(limits.max_compute_workgroups_per_dimension);
+        if bytes > limits.max_storage_buffer_binding_size
+            || bytes > limits.max_buffer_size
+            || n > limit.saturating_mul(limit).saturating_mul(64)
+            || n > u64::from(u32::MAX)
+        {
             return Err(GpuError::TooLarge);
         }
-        if n.div_ceil(64) > limits.max_compute_workgroups_per_dimension {
-            return Err(GpuError::TooLarge);
-        }
+        let n = n as u32;
         let params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-blend-params"),
             size: 64,
@@ -929,6 +949,11 @@ impl Gpu {
         adj: (u32, i32, i32, i32),
     ) {
         let flags = u32::from(layout.packed) | (u32::from(layout.gray) << 1);
+        let (gx, gy) = grid_2d(
+            self.n,
+            self.device.limits().max_compute_workgroups_per_dimension,
+        )
+        .expect("Gpu::new rejected a canvas past the 2-D workgroup limit");
         let params = [
             mode_id(mode).to_le_bytes(),
             (opacity as f32 / 255.0).to_le_bytes(),
@@ -943,7 +968,7 @@ impl Gpu {
             layout.w.to_le_bytes(),
             layout.h.to_le_bytes(),
             self.w.to_le_bytes(),
-            0u32.to_le_bytes(),
+            (gx * 64).to_le_bytes(),
             0u32.to_le_bytes(),
             0u32.to_le_bytes(),
         ]
@@ -985,7 +1010,7 @@ impl Gpu {
             });
             pass.set_pipeline(&self.res.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(self.n.div_ceil(64), 1, 1);
+            pass.dispatch_workgroups(gx, gy, 1);
         }
         self.queue.submit(Some(encoder.finish()));
     }
@@ -1083,5 +1108,32 @@ fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
             min_binding_size: None,
         },
         count: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::grid_2d;
+
+    #[test]
+    fn grid_2d_tiles_without_gaps_or_overlap() {
+        for n in [1u32, 63, 64, 65, 4096, 4_194_241, 8_388_608, 16_000_000] {
+            let (gx, gy) = grid_2d(n, 65535).expect("65535 limit accepts every u32 count");
+            assert!((1..=65535).contains(&gx), "gx {gx} out of range");
+            assert!((1..=65535).contains(&gy), "gy {gy} out of range");
+            // Invocation (x, y) maps to x + y * gx * 64, so the rows are
+            // contiguous [y*gx*64, (y+1)*gx*64); covering n needs the product.
+            assert!(gx as u64 * 64 * gy as u64 >= n as u64);
+        }
+    }
+
+    #[test]
+    fn grid_2d_rejects_product_past_limit_with_synthetic_small_limit() {
+        // Synthetic 2-workgroup limit => 2*2*64 = 256 items.
+        assert_eq!(grid_2d(256, 2), Some((2, 2)));
+        assert_eq!(grid_2d(257, 2), None);
+        // A limit of 1 rejects anything past a single 64-wide row.
+        assert_eq!(grid_2d(64, 1), Some((1, 1)));
+        assert_eq!(grid_2d(65, 1), None);
     }
 }

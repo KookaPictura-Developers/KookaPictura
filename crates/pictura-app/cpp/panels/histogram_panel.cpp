@@ -95,10 +95,16 @@ void HistogramPanel::recompute()
     if (!view_) {
         return;
     }
-    const QImage image = view_->image().convertToFormat(QImage::Format_RGB32);
+    QImage image = view_->image();
     if (image.isNull()) {
         return;
     }
+    // Bin a bounded downsample so the scan cost is independent of document
+    // size; the panel's 256 bins at ~120 px cannot resolve the full resolution.
+    if (image.width() > 512 || image.height() > 512) {
+        image = image.scaled(512, 512, Qt::KeepAspectRatio, Qt::FastTransformation);
+    }
+    image = image.convertToFormat(QImage::Format_RGB32);
     for (int y = 0; y < image.height(); ++y) {
         const QRgb* line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
         for (int x = 0; x < image.width(); ++x) {

@@ -11,7 +11,8 @@
 use std::time::Instant;
 
 use pictura_core::{
-    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask, PsdRect,
+    AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
+    PixelBuffer, PsdRect,
 };
 use pictura_render::{
     composite_active, composite_gpu, composite_gpu_or_cpu, composite_rgba, encode_invert,
@@ -172,11 +173,16 @@ fn adjustment_layer(name: &str, adjustment: AdjustmentData) -> Layer {
 /// A full-size pixel layer for the timing scene (the `layer` helper is fixed at
 /// `SIZE`). Seed 0 is the opaque backdrop; the rest are partially transparent.
 fn timing_layer(size: u32, seed: u32, blend: BlendMode) -> Layer {
-    let n = (size * size) as usize;
+    large_layer(size, size, seed, blend)
+}
+
+/// A full-size `w×h` pixel layer, for the large-document (non-square) scenes.
+fn large_layer(w: u32, h: u32, seed: u32, blend: BlendMode) -> Layer {
+    let n = (w as usize) * (h as usize);
     let (mut r, mut g, mut b, mut a) = (vec![0u8; n], vec![0u8; n], vec![0u8; n], vec![0u8; n]);
-    for y in 0..size {
-        for x in 0..size {
-            let i = (y * size + x) as usize;
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
             r[i] = (x * 7 + seed * 31) as u8;
             g[i] = (y * 5 + seed * 17) as u8;
             b[i] = (x ^ y) as u8;
@@ -188,8 +194,8 @@ fn timing_layer(size: u32, seed: u32, blend: BlendMode) -> Layer {
         rect: PsdRect {
             top: 0,
             left: 0,
-            bottom: size as i32,
-            right: size as i32,
+            bottom: h as i32,
+            right: w as i32,
         },
         blend,
         opacity: 255,
@@ -489,6 +495,97 @@ fn enabled_gpu_matches_availability() {
         assert_eq!(backend, Backend::Cpu);
         assert_eq!(buf.data, cpu.data);
     }
+}
+
+/// The M29 regression: 4096×2048 is 8.4 MP ⇒ 131072 one-dimensional
+/// workgroups, past the 65535 limit the pre-M29 stack rejected. The 2-D grid
+/// must composite it on the GPU within ±1 LSB of the CPU oracle.
+#[test]
+fn large_document_over_1d_limit_composites_on_gpu() {
+    const W: u32 = 4096;
+    const H: u32 = 2048;
+    let mut doc = Document::new(W, H, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        large_layer(W, H, 0, BlendMode::Normal),
+        large_layer(W, H, 1, BlendMode::Multiply),
+    ];
+    if !gpu_available() {
+        eprintln!("no usable Vulkan GPU; skipping large-document parity");
+        return;
+    }
+    let (gpu, backend) = composite_active(&doc, true);
+    assert_eq!(
+        backend,
+        Backend::Gpu,
+        "2-D dispatch must lift the 1-D ceiling"
+    );
+    assert_eq!((gpu.width, gpu.height, gpu.channels), (W, H, 4));
+    let cpu = composite_rgba(&doc);
+    let mut max_delta = 0i32;
+    for (i, (&a, &b)) in cpu.data.iter().zip(&gpu.data).enumerate() {
+        let d = (a as i32 - b as i32).abs();
+        max_delta = max_delta.max(d);
+        assert!(d <= 1, "byte {i}: cpu {a} vs gpu {b}");
+    }
+    eprintln!("large {W}x{H} parity: max delta {max_delta} LSB, backend {backend:?}");
+}
+
+/// 4000×4000 is 16.7 M px ⇒ 250000 one-dimensional workgroups. Asserts the GPU
+/// backend, full ±1 LSB parity against the CPU oracle, and reports the
+/// GPU-vs-CPU `composite_active` wall time.
+#[test]
+fn full_4000_document_composites_on_gpu() {
+    const N: u32 = 4000;
+    let mut doc = Document::new(N, N, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        large_layer(N, N, 0, BlendMode::Normal),
+        large_layer(N, N, 1, BlendMode::Screen),
+        large_layer(N, N, 2, BlendMode::Overlay),
+    ];
+    if !gpu_available() {
+        eprintln!("no usable Vulkan GPU; skipping 4000² parity");
+        return;
+    }
+
+    // One warm-up call keeps device/pipeline setup out of the GPU number; the
+    // timed GPU buffer doubles as the parity buffer.
+    let _ = composite_active(&doc, true);
+    let t = Instant::now();
+    let (gpu, backend) = composite_active(&doc, true);
+    let gpu_ms = t.elapsed().as_millis();
+    assert_eq!(backend, Backend::Gpu, "4000² must run on the GPU");
+    let t = Instant::now();
+    let cpu = composite_rgba(&doc);
+    let cpu_ms = t.elapsed().as_millis();
+
+    let mut max_delta = 0i32;
+    for (i, (&a, &b)) in cpu.data.iter().zip(&gpu.data).enumerate() {
+        let d = (a as i32 - b as i32).abs();
+        max_delta = max_delta.max(d);
+        assert!(d <= 1, "byte {i}: cpu {a} vs gpu {b}");
+    }
+    eprintln!("4000x4000x3layers: cpu {cpu_ms} ms, gpu {gpu_ms} ms, max delta {max_delta} LSB");
+}
+
+/// `limit² × 64` exceeds `u32::MAX`, so no real document reaches the 2-D product
+/// guard; a struct-literal document with oversized dimensions exercises the
+/// limit path with no large allocation. Must return `TooLarge` and not panic.
+#[test]
+fn document_past_2d_product_limit_returns_too_large() {
+    if !gpu_available() {
+        eprintln!("no usable Vulkan GPU; skipping TooLarge check");
+        return;
+    }
+    let doc = Document {
+        width: u32::MAX,
+        height: u32::MAX,
+        mode: ColorMode::Rgb,
+        depth: BitDepth::Eight,
+        composite: PixelBuffer::new(0, 0, 3),
+        layers: Vec::new(),
+        channels: Vec::new(),
+    };
+    assert!(matches!(composite_gpu(&doc), Err(GpuError::TooLarge)));
 }
 
 /// Evidence only: no ratio is asserted (timings vary by machine and load). One

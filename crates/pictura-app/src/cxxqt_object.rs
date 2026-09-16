@@ -5,7 +5,7 @@ use core::pin::Pin;
 
 use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{AspectRatioMode, QImage, QImageFormat, QString, TransformationMode};
+use cxx_qt_lib::{QImage, QImageFormat, QString};
 use pictura_core::{
     AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
     PixelBuffer, PsdRect,
@@ -824,15 +824,7 @@ impl qobject::PictureView {
         if layer.is_group || layer.adjustment.is_some() {
             return QImage::default();
         }
-        let Some(image) = layer_image(layer) else {
-            return QImage::default();
-        };
-        image.scaled(
-            size,
-            size,
-            AspectRatioMode::KeepAspectRatio,
-            TransformationMode::SmoothTransformation,
-        )
+        layer_thumbnail_image(layer, size as u32).unwrap_or_default()
     }
 
     pub fn select_all(mut self: Pin<&mut Self>) {
@@ -1084,7 +1076,8 @@ impl qobject::PictureView {
     /// its document-space origin, and opacity. One composite at drag start.
     pub fn begin_move_preview(mut self: Pin<&mut Self>) -> bool {
         let mut rust = self.as_mut().rust_mut();
-        let Some(doc) = rust.doc.as_ref() else {
+        let gpu_compute = rust.gpu_compute;
+        let Some(doc) = rust.doc.as_mut() else {
             return false;
         };
         let Some(index) = topmost_pixel_layer_index(doc) else {
@@ -1095,12 +1088,10 @@ impl qobject::PictureView {
             return false;
         };
         let (x, y, opacity) = (layer.rect.left, layer.rect.top, layer.opacity as i32);
-        let gpu_compute = rust.gpu_compute;
-        let base = {
-            let mut hidden = doc.clone();
-            hidden.layers[index].visible = false;
-            document_to_image(&hidden, gpu_compute)
-        };
+        // Hide in place for the base composite instead of cloning the document.
+        doc.layers[index].visible = false;
+        let base = document_to_image(doc, gpu_compute);
+        doc.layers[index].visible = true;
         rust.move_base = Some(base);
         rust.move_layer = Some(layer_image);
         rust.move_x = x;
@@ -1139,17 +1130,18 @@ impl qobject::PictureView {
         }
         let moved = {
             let mut rust = self.as_mut().rust_mut();
+            let gpu_compute = rust.gpu_compute;
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
-            pictura_render::translate_layer(doc, dx, dy)
+            pictura_render::translate_layer_active(doc, dx, dy, gpu_compute)
         };
         if !moved {
             return false;
         }
         self.as_mut().record("Move Layer");
-        // `translate_layer` already recomputed `doc.composite`; convert it
-        // instead of compositing the whole document a second time.
+        // `translate_layer_active` already recomputed `doc.composite` on the
+        // active backend; convert it instead of compositing a second time.
         let image = self
             .rust()
             .doc
@@ -1183,13 +1175,20 @@ impl qobject::PictureView {
 
     pub fn sample_argb(&self, x: i32, y: i32) -> u32 {
         let rust = self.rust();
-        let Some(doc) = rust.doc.as_ref() else {
-            return 0;
-        };
-        if x < 0 || y < 0 || x as u32 >= doc.width || y as u32 >= doc.height {
+        if rust.doc.is_none() {
             return 0;
         }
-        argb_at(&current_buffer(doc, rust.gpu_compute), x as u32, y as u32)
+        // Read the already-current cached image instead of re-compositing the
+        // whole document for one pixel.
+        let image = &rust.image;
+        if x < 0 || y < 0 || x >= image.width() || y >= image.height() {
+            return 0;
+        }
+        let color = image.pixel_color(x, y);
+        ((color.alpha() as u32) << 24)
+            | ((color.red() as u32) << 16)
+            | ((color.green() as u32) << 8)
+            | (color.blue() as u32)
     }
 
     pub fn selection_bounds(&self) -> QString {
@@ -2215,36 +2214,6 @@ fn paint_mode_from(mode: &str) -> PaintMode {
     }
 }
 
-/// Pack one pixel of a planar 8-bit buffer as `0xAARRGGBB`.
-fn argb_at(buffer: &PixelBuffer, x: u32, y: u32) -> u32 {
-    let plane = buffer.width as usize * buffer.height as usize;
-    let i = y as usize * buffer.width as usize + x as usize;
-    let (r, g, b, a) = match buffer.channels {
-        0 => return 0,
-        1 => {
-            let v = buffer.data[i];
-            (v, v, v, 255)
-        }
-        2 => {
-            let v = buffer.data[i];
-            (v, v, v, buffer.data[plane + i])
-        }
-        3 => (
-            buffer.data[i],
-            buffer.data[plane + i],
-            buffer.data[2 * plane + i],
-            255,
-        ),
-        _ => (
-            buffer.data[i],
-            buffer.data[plane + i],
-            buffer.data[2 * plane + i],
-            buffer.data[3 * plane + i],
-        ),
-    };
-    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
-}
-
 /// Index of the topmost pixel layer: the last layer (bottom-first order) that is
 /// neither a group nor an adjustment.
 fn topmost_pixel_layer_index(doc: &Document) -> Option<usize> {
@@ -2349,6 +2318,63 @@ fn layer_image(layer: &Layer) -> Option<QImage> {
         }
     };
     Some(buffer_to_image(&buffer))
+}
+
+/// Downsample a pixel layer's planar channels straight into a `size`-bounded
+/// RGBA `QImage` (long edge `size`, aspect kept), without first materializing a
+/// full-resolution RGBA image. Nearest-neighbour: cost is O(target), not
+/// O(layer pixels). Returns `None` for the same empty/invalid layers as
+/// [`layer_image`].
+fn layer_thumbnail_image(layer: &Layer, size: u32) -> Option<QImage> {
+    let width = layer.rect.width();
+    let height = layer.rect.height();
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let (width, height) = (width as u32, height as u32);
+    let plane = (width * height) as usize;
+    let channel = |id: i16| layer.channels.iter().find(|c| c.id == id).map(|c| &c.data);
+
+    let gray = channel(1).is_none() && channel(2).is_none();
+    let c0 = channel(0)?;
+    if c0.len() != plane {
+        return None;
+    }
+    let (c1, c2) = if gray {
+        (c0, c0)
+    } else {
+        let (c1, c2) = (channel(1)?, channel(2)?);
+        if c1.len() != plane || c2.len() != plane {
+            return None;
+        }
+        (c1, c2)
+    };
+    let alpha = match channel(-1) {
+        Some(a) if a.len() == plane => Some(a),
+        Some(_) => return None,
+        None => None,
+    };
+
+    let (tw, th) = if width >= height {
+        (size, ((height * size) / width).max(1))
+    } else {
+        (((width * size) / height).max(1), size)
+    };
+
+    let mut rgba = vec![0u8; (tw * th * 4) as usize];
+    for ty in 0..th {
+        let sy = ty as usize * height as usize / th as usize;
+        for tx in 0..tw {
+            let sx = tx as usize * width as usize / tw as usize;
+            let si = sy * width as usize + sx;
+            let o = ((ty * tw + tx) * 4) as usize;
+            rgba[o] = c0[si];
+            rgba[o + 1] = c1[si];
+            rgba[o + 2] = c2[si];
+            rgba[o + 3] = alpha.map_or(255, |a| a[si]);
+        }
+    }
+    Some(rgba_image(rgba, tw as i32, th as i32))
 }
 
 /// Convert a planar 8-bit buffer (1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA)
@@ -3154,5 +3180,150 @@ mod tests {
         let ms = start.elapsed().as_secs_f64() * 1000.0 / f64::from(ITERS);
         println!("composite_rgba 1024x1024 (2 layers): {ms:.2} ms/call");
         assert_eq!(pictura_render::composite_rgba(&doc).width, 1024);
+    }
+
+    /// Print-only timing breakdown of the Move tool path. Prints
+    /// `move_profile <name> (<n>x<n>): <ms> ms` lines and no pass/fail budget.
+    ///
+    /// The real `PictureView` is a C++-constructed QObject (cxx-qt 0.10 exposes
+    /// no Rust constructor), so the two bridge rows replay the exact bodies of
+    /// `begin_move_preview`/`commit_move` against the same private helpers. The
+    /// live QObject is timed separately in the C++ self-test.
+    fn move_profile(n: u32) {
+        let ms = |label: &str, d: std::time::Duration| {
+            println!(
+                "move_profile {label} ({n}x{n}): {:.2} ms",
+                d.as_secs_f64() * 1000.0
+            );
+        };
+
+        let mut doc = Document::new(n, n, ColorMode::Rgb, BitDepth::Eight);
+        doc.composite.data.fill(255);
+        doc.layers = vec![
+            pixel_layer("base", n, n, (255, 255, 255)),
+            pixel_layer("top", n, n, (200, 100, 50)),
+        ];
+
+        // Prime the GPU adapter OnceLock and the allocator once, untimed.
+        let (_, backend) = pictura_render::composite_active(&doc, true);
+
+        let t = std::time::Instant::now();
+        let clone = doc.clone();
+        ms("Document::clone", t.elapsed());
+        drop(clone);
+
+        let mut moved = doc.clone();
+        let t = std::time::Instant::now();
+        let translated = pictura_render::translate_layer(&mut moved, 10, 10);
+        ms("translate_layer(+recompute)", t.elapsed());
+        assert!(translated);
+
+        let t = std::time::Instant::now();
+        let _ = pictura_render::composite_rgba(&doc);
+        ms("composite_rgba(CPU)", t.elapsed());
+
+        let t = std::time::Instant::now();
+        let _ = pictura_render::composite_active(&doc, true);
+        ms("composite_active(gpu=true)", t.elapsed());
+
+        let t = std::time::Instant::now();
+        let _ = pictura_render::composite_active(&doc, false);
+        ms("composite_active(gpu=false)", t.elapsed());
+
+        // Reporter's claim: moving the layer outside the canvas should shrink
+        // the clamped-rect blend work. Push the top layer fully off-canvas.
+        let off = |r: PsdRect| PsdRect {
+            top: r.top + n as i32 + 10,
+            left: r.left + n as i32 + 10,
+            bottom: r.bottom + n as i32 + 10,
+            right: r.right + n as i32 + 10,
+        };
+        let mut off_top = doc.clone();
+        off_top.layers[1].rect = off(off_top.layers[1].rect);
+        let t = std::time::Instant::now();
+        let _ = pictura_render::composite_rgba(&off_top);
+        ms("composite_rgba(top off-canvas)", t.elapsed());
+
+        let mut off_all = doc.clone();
+        for layer in &mut off_all.layers {
+            layer.rect = off(layer.rect);
+        }
+        let t = std::time::Instant::now();
+        let _ = pictura_render::composite_rgba(&off_all);
+        ms("composite_rgba(all off-canvas)", t.elapsed());
+
+        if let Err(err) = pictura_render::composite_gpu(&doc) {
+            println!("move_profile composite_gpu refused: {err}");
+        }
+
+        // 4-channel composite, as `recompute` leaves it for the commit path.
+        let t = std::time::Instant::now();
+        let _ = buffer_to_image(&moved.composite);
+        ms("buffer_to_image", t.elapsed());
+
+        let t = std::time::Instant::now();
+        let mut history = History::default();
+        history.capture(
+            Snapshot {
+                doc: doc.clone(),
+                selection: None,
+            },
+            "Move Layer",
+        );
+        ms("History::capture(clone)", t.elapsed());
+
+        let t = std::time::Instant::now();
+        let thumbnail = layer_thumbnail_image(&doc.layers[1], 24);
+        ms("layer_thumbnail(24)", t.elapsed());
+        assert!(thumbnail.is_some());
+
+        // sample_argb before this change re-composited the whole document per
+        // call; after, it reads the already-current cached image.
+        let t = std::time::Instant::now();
+        let _ = current_buffer(&doc, true);
+        ms("sample_argb(before: composite)", t.elapsed());
+        let cached = buffer_to_image(&doc.composite);
+        let t = std::time::Instant::now();
+        let _ = cached.pixel_color(0, 0);
+        ms("sample_argb(after: cached)", t.elapsed());
+
+        // begin_move_preview: hide the moved layer in place, composite, restore.
+        let mut preview = doc.clone();
+        let t = std::time::Instant::now();
+        let index = topmost_pixel_layer_index(&preview).expect("pixel layer");
+        let _ = layer_image(&preview.layers[index]);
+        preview.layers[index].visible = false;
+        let _ = document_to_image(&preview, true);
+        preview.layers[index].visible = true;
+        ms("begin_move_preview(bridge-equivalent)", t.elapsed());
+
+        let mut committed = doc.clone();
+        let t = std::time::Instant::now();
+        let committed_ok = pictura_render::translate_layer_active(&mut committed, 50, 50, true);
+        let mut history = History::default();
+        history.capture(
+            Snapshot {
+                doc: committed.clone(),
+                selection: None,
+            },
+            "Move Layer",
+        );
+        let _ = buffer_to_image(&committed.composite);
+        ms("commit_move(bridge-equivalent)", t.elapsed());
+        assert!(committed_ok);
+
+        println!("move_profile composite_active backend: {backend:?}");
+    }
+
+    #[test]
+    #[ignore = "4000x4000 profile; run explicitly with --ignored --nocapture"]
+    fn move_profile_4000() {
+        move_profile(4000);
+    }
+
+    #[test]
+    #[ignore = "large-document profile; run explicitly with --ignored --nocapture"]
+    fn move_profile_1024() {
+        move_profile(1024);
     }
 }
