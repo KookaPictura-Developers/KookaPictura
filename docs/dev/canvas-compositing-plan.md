@@ -1,6 +1,6 @@
 # Canvas Compositing & Large-Layer Move Plan
 
-- **Status:** dev note (research synthesis + M31–M33 roadmap; not an OpenSpec
+- **Status:** dev note (research synthesis + M31–M35 roadmap; not an OpenSpec
   proposal yet — each milestone is proposed through the normal workflow first)
 - **Scope:** how mature editors keep very large layers responsive while moving,
   painting, and zooming; how the current Kooka Pictura path diverges; and the
@@ -41,9 +41,12 @@ The current Kooka Pictura path is the inverse of that last point: for every
 update it composites the full document on the active backend, reads the full
 packed RGBA buffer back to the CPU, and converts it to a `QImage`
 (`document_to_image` → `current_buffer` → `composite_active` → `buffer_to_image`,
-`crates/pictura-app/src/cxxqt_object.rs`). At 4000² that readback is ~64 MB and
-dominates the ~332 ms GPU composite; the CPU/GPU work is not the bottleneck, the
-transfer is.
+`crates/pictura-app/src/cxxqt_object.rs`).
+
+An earlier draft of this note claimed the 4000² readback "dominates" the
+composite and that "the transfer is" the bottleneck. That premise was measured
+and is **false** — see §2.1. Host-side CPU per-pixel work dominates; the readback
+is a small fraction.
 
 ### 1.1 GIMP / GEGL
 
@@ -113,6 +116,32 @@ transfer is.
 
 ## 2. Qt reality (decisive for this project)
 
+### 2.1 Measured phase cost (corrects the readback premise)
+
+A full 4000×4000 GPU composite (`composite_gpu_region`, 2 RGB pixel layers,
+RTX 3090) costs ~254 ms, measured by phase:
+
+| Phase | Time | Share | What it is |
+|---|---:|---:|---|
+| `build_source` | 146 ms | 58% | CPU planar source assembly + upload of both layer planes |
+| `to_pixel_buffer` | 35 ms | 14% | CPU de-interleave of the readback into the planar `PixelBuffer` |
+| `mapped.to_vec()` | 22 ms | 9% | 64 MB copy of the mapped readback |
+| `zero_canvas` | 18 ms | 7% | |
+| `build_mask` | 16 ms | 6% | |
+| readback submit + `poll(wait)` + `map` | 7 ms | 3% | the actual 64 MB transfer |
+| GPU compute dispatch (submit is async) | 0.2 ms | ~0% | |
+| allocations | ~0.01 ms | ~0% | |
+
+The composite is dominated by **host-side CPU per-pixel work**: `build_source` +
+`to_pixel_buffer` + `mapped.to_vec()` is ~203 ms (80%), the GPU dispatch is
+~0.2 ms, and the 64 MB readback is ~7 ms. `buffer_to_image` alone is ~40 ms.
+The readback is real but small; the CPU assembly is the cost. That reorders the
+plan: a zero-copy GPU-resident present removes only ~57 ms of ~254 ms while the
+146 ms source assembly stays, so the present work is deferred (§3) and the next
+change targets the interactive paths and present caching instead.
+
+### 2.2 Qt reality
+
 - `QRhiWidget` **cannot adopt our wgpu device**: it owns its `QRhi` internally
   and there is no `setRhi`/`adoptDevice` hook; one backend per window
   (`crates/pictura-app/GPU-INTEROP-NOTES.md`).
@@ -130,9 +159,9 @@ widget is the blocker.
 
 ---
 
-## 3. Plan: M31–M33
+## 3. Plan: M31–M35
 
-### M31 — region (dirty-rect) compositing
+### M31 — region (dirty-rect) compositing (shipped)
 
 Composite only the changed document rect into a cached full-document canvas and
 read back only that rect. A moved layer's damage is `old_bounds ∪ new_bounds`; a
@@ -141,21 +170,48 @@ still recomposites fully.
 
 Because compositing is per-pixel and order-independent across disjoint rects, a
 sub-rect composite is **byte-identical** to the corresponding sub-rect of the
-full composite. That makes the dirty-rect path testable directly against the
-existing CPU oracle: composite the full document, composite only the dirty rect,
-assert the rects match.
+full composite, so the dirty-rect path is checked directly against the existing
+CPU oracle. M31 removed the full composite and the full readback from Move and
+paint and added `composite_region_active`; it stays on the QWidget/QImage canvas
+(no new host widget, no Qt Quick migration).
 
-- Stays on the current QWidget/QImage canvas: no new host widget, no Qt Quick
-  migration.
-- Removes the full composite **and** the full readback per move/paint.
-- Also caches the packed display image so `buffer_to_image` runs only for the
-  dirty rect.
+### M32 — interactive-path region completion and present caching (this change)
 
-This is the highest value-per-line step and the one whose correctness is
-provable with the tools already in the repo. It does not need tiles, mipmaps, or
-a GPU-resident document to pay off.
+Complete the region path for the remaining interactive mutations and cache the
+presented image. The measured phase table (§2.1) is why this, not the zero-copy
+present, is the next step.
 
-### M32 — GPU-resident canvas, present without readback
+- **Move-preview base** (`begin_move_preview`) region-composites only the moved
+  layer's document rectangle with that layer hidden into the cached canvas,
+  byte-identical to the old full recomposite with the layer hidden.
+- **Visibility toggle** (`set_layer_visible`) refreshes only the toggled layer's
+  provably bounded rectangle, byte-identical to a full recomposite; unboundable
+  toggles fall back to a full recomposite.
+- **Present zoom cache:** `ImageView` caches the document scaled at the current
+  zoom, so a pan/hover repaint no longer re-scales the full-resolution document.
+
+OpenSpec change `m32-interactive-canvas`.
+
+Deferred from M32 to a later change: cheap undo/redo + composite coherence
+(persisting the rendered composite into `doc.composite` changes what `write_psd`
+serializes, so it needs its own proposal), the C++ region blit
+(`ImageView::blitRegion`) and the `REGION_REFRESH_BUDGET` removal, and
+zoom-level details beyond the single cached scaled image.
+
+### M33 — full-composite throughput
+
+Target the measured 146 + 35 + 22 ms of host-side per-pixel work in the full
+composite:
+
+- row-wise/`copy_from_slice` source assembly instead of the per-pixel loop in
+  `build_source`;
+- a fused planar readback that de-interleaves directly from the mapped readback
+  slice into the planar `PixelBuffer`, skipping the packed `Vec` and its
+  `to_vec()` copy;
+- per-layer GPU source buffers kept resident across a composite session instead
+  of re-assembled and re-uploaded per composite.
+
+### M34 — GPU-resident zero-copy present via Qt Quick (deferred)
 
 Keep the composite in a persistent GPU texture and present it directly. Two
 routes, both Qt Quick:
@@ -164,28 +220,25 @@ routes, both Qt Quick:
   canvas texture; or
 - one shared Vulkan device via `QQuickGraphicsDevice::fromDeviceObjects(...)`.
 
-This removes the readback and the `QImage` conversion from the interactive path
-entirely. It builds on M31: the damage region determines what is recomposited
-into the texture, and the texture is presented as-is. Optionally move compute
-off the GUI thread so a large composite cannot block input.
+`QRhiWidget` cannot adopt our wgpu device, and `QSGSimpleTextureNode` is
+software-backend only. This removes the readback and the `QImage` conversion from
+the interactive path. It is deferred because the readback is measured at ~7 ms
+(plus the ~57 ms CPU de-interleave/copy round trip) of a ~254 ms composite: at
+most ~57 ms of the interactive path, while the 146 ms source assembly stays until
+M33. Revisit only after M33 and a present-bound profile.
 
-Migrating the canvas to Qt Quick is an architectural change; it is gated on M31
-showing the readback still dominates after the full-document composite is gone.
-
-### M33 — 256² GPU tiles + LRU + seam gutters + mipmaps (Graphite-style)
+### M35 — 256² GPU tiles + LRU + seam gutters + mipmaps (Graphite-style, deferred)
 
 Only if pan/zoom over documents larger than VRAM demands it. Sparse 256² tiles
 with an LRU budget, per-tile mipmaps, a border/gutter to kill seams, and
 display-time LoD so a zoomed-out view composites a proxy level instead of the
-full-resolution document.
-
-This is the full consensus architecture; it is deliberately last because it is
-the most code and the least certain payoff for this project's document sizes.
+full-resolution document. Deliberately last: the most code and the least certain
+payoff for this project's document sizes.
 
 ### Non-goals for these milestones
 
 - A mipmap pyramid by default (GIMP opted out; Krita's GPU path opted in). LoD is
-  an M33 concern.
+  an M35 concern.
 - Swap-to-disk tile backends.
 - A fully GPU-resident document (Photoshop does not do this either).
 

@@ -81,6 +81,11 @@ pub mod qobject {
         #[qinvokable]
         fn layer_count(&self) -> i32;
 
+        /// Index of the topmost pixel layer (neither a group nor an adjustment),
+        /// or -1 when there is none.
+        #[qinvokable]
+        fn topmost_pixel_layer_index(&self) -> i32;
+
         /// Name of layer `i`, or empty when out of range.
         #[qinvokable]
         fn layer_name(&self, i: i32) -> QString;
@@ -680,6 +685,14 @@ impl qobject::PictureView {
             .map_or(0, |d| d.layers.len() as i32)
     }
 
+    pub fn topmost_pixel_layer_index(&self) -> i32 {
+        self.rust()
+            .doc
+            .as_ref()
+            .and_then(topmost_pixel_layer_index)
+            .map_or(-1, |index| index as i32)
+    }
+
     pub fn layer_name(&self, i: i32) -> QString {
         self.layer(i)
             .map(|l| QString::from(l.name.as_str()))
@@ -700,20 +713,24 @@ impl qobject::PictureView {
     }
 
     pub fn set_layer_visible(mut self: Pin<&mut Self>, i: i32, visible: bool) {
-        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+        let region = {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            let Some(doc) = rust.doc.as_mut() else {
+                return;
+            };
             match doc.layers.get_mut(i as usize) {
                 Some(layer) => {
                     layer.visible = visible;
-                    true
+                    layer_visibility_region(layer)
                 }
-                None => false,
+                None => return,
             }
-        } else {
-            false
         };
-        if changed {
-            self.as_mut().record("Layer Visibility");
-            self.recomposite();
+        self.as_mut().record("Layer Visibility");
+        match region {
+            Some(rect) => self.as_mut().refresh_region(rect),
+            None => self.recomposite(),
         }
     }
 
@@ -1075,7 +1092,8 @@ impl qobject::PictureView {
     /// Cache the base composite (topmost raster layer hidden), the layer image,
     /// its document-space origin, and opacity. One composite at drag start.
     pub fn begin_move_preview(mut self: Pin<&mut Self>) -> bool {
-        let mut rust = self.as_mut().rust_mut();
+        let mut guard = self.as_mut().rust_mut();
+        let rust = &mut *guard;
         let gpu_compute = rust.gpu_compute;
         let Some(doc) = rust.doc.as_mut() else {
             return false;
@@ -1087,11 +1105,33 @@ impl qobject::PictureView {
         let Some(layer_image) = layer_image(layer) else {
             return false;
         };
-        let (x, y, opacity) = (layer.rect.left, layer.rect.top, layer.opacity as i32);
-        // Hide in place for the base composite instead of cloning the document.
-        doc.layers[index].visible = false;
-        let base = document_to_image(doc, gpu_compute);
-        doc.layers[index].visible = true;
+        let rect = layer.rect;
+        let (x, y, opacity) = (rect.left, rect.top, layer.opacity as i32);
+        // The cached canvas is a full composite with the layer visible; patch
+        // only the layer's rectangle composited with it hidden. Outside the rect
+        // a pixel layer contributes nothing, so this equals the full composite.
+        let cached_ok = !rust.image.is_null()
+            && rust.image.width() == doc.width as i32
+            && rust.image.height() == doc.height as i32;
+        let base = match move_preview_region(rect, doc.width, doc.height, cached_ok) {
+            Some((x0, y0, ..)) => {
+                doc.layers[index].visible = false;
+                let (buffer, _backend) =
+                    pictura_render::composite_region_active(doc, rect, gpu_compute);
+                doc.layers[index].visible = true;
+                let mut base = rust.image.clone();
+                blit_image_region(&mut base, &buffer, x0, y0);
+                base
+            }
+            None => {
+                // ponytail: full-composite fallback for a null/mismatched cache
+                // or an over-budget rect; the region path covers the common case.
+                doc.layers[index].visible = false;
+                let base = document_to_image(doc, gpu_compute);
+                doc.layers[index].visible = true;
+                base
+            }
+        };
         rust.move_base = Some(base);
         rust.move_layer = Some(layer_image);
         rust.move_x = x;
@@ -2313,6 +2353,40 @@ fn topmost_pixel_layer_rect(doc: &Document) -> Option<PsdRect> {
     topmost_pixel_layer_index(doc).map(|index| doc.layers[index].rect)
 }
 
+/// A rectangle that provably bounds a visibility toggle's effect, or `None` when
+/// the toggle can change a pixel outside any such rectangle.
+///
+/// A pixel layer's channels cover its `rect`, so hiding it changes the composite
+/// only there. An adjustment layer transforms the whole backdrop, but a mask
+/// that is enabled, carries data, and has a zero `default_color` confines it to
+/// its mask `rect` (outside, `mask_alpha` returns the default 0). Everything
+/// else — groups, unmasked/disabled/data-less/non-zero-default adjustments — is
+/// unbounded and returns `None`. `refresh_region` clamps the returned rect.
+fn layer_visibility_region(layer: &Layer) -> Option<PsdRect> {
+    if layer.is_group {
+        return None;
+    }
+    if layer.adjustment.is_some() {
+        let mask = layer.mask.as_ref()?;
+        if mask.disabled || mask.data.is_none() || mask.default_color != 0 {
+            return None;
+        }
+        return Some(mask.rect);
+    }
+    if !layer
+        .channels
+        .iter()
+        .any(|c| c.id >= 0 && !c.data.is_empty())
+    {
+        return None;
+    }
+    match &layer.mask {
+        None => Some(layer.rect),
+        Some(mask) if mask.disabled || mask.default_color == 0 => Some(layer.rect),
+        Some(_) => None,
+    }
+}
+
 /// The bounding box of two document-space rects.
 fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
     PsdRect {
@@ -2346,6 +2420,25 @@ fn clamp_region(rect: PsdRect, width: u32, height: u32) -> Option<(i32, i32, u32
         return None;
     }
     Some((x0, y0, (x1 - x0) as u32, (y1 - y0) as u32))
+}
+
+/// The region to blit for the move-preview base, or `None` to fall back to a
+/// full composite.
+///
+/// The cached canvas must match the document and the clamped area must fit the
+/// per-pixel blit budget; otherwise patching is not cheaper than a full
+/// composite.
+fn move_preview_region(
+    rect: PsdRect,
+    width: u32,
+    height: u32,
+    cached_ok: bool,
+) -> Option<(i32, i32, u32, u32)> {
+    let (x0, y0, w, h) = clamp_region(rect, width, height)?;
+    if !cached_ok || w as u64 * h as u64 > REGION_REFRESH_BUDGET {
+        return None;
+    }
+    Some((x0, y0, w, h))
 }
 
 /// Overwrite `image` at `(x0, y0)` with a 4-channel planar region buffer.
@@ -2796,6 +2889,137 @@ mod tests {
             children: Vec::new(),
             is_group: false,
         }
+    }
+
+    #[test]
+    fn move_preview_base_equals_full_composite_with_layer_hidden() {
+        let mut doc = Document::new(64, 64, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![
+            pixel_layer("base", 64, 64, (30, 60, 90)),
+            pixel_layer("top", 32, 32, (200, 100, 50)),
+        ];
+        let index = topmost_pixel_layer_index(&doc).expect("pixel layer");
+        let rect = doc.layers[index].rect;
+        assert_eq!(
+            (rect.left, rect.top, rect.right, rect.bottom),
+            (0, 0, 32, 32)
+        );
+
+        // The cached canvas holds the layer visible, as the bridge invariant says.
+        let visible = document_to_image(&doc, false);
+
+        // (a) Full composite with the topmost layer hidden.
+        doc.layers[index].visible = false;
+        let hidden = document_to_image(&doc, false);
+        // (b) With the layer still hidden, region-composite its rect.
+        let (buffer, _) = pictura_render::composite_region_active(&doc, rect, false);
+        doc.layers[index].visible = true;
+        let (x0, y0, w, h) = clamp_region(rect, doc.width, doc.height).expect("in-bounds");
+        assert_eq!((buffer.width, buffer.height), (w, h));
+
+        // Blit that region into a clone of the visible composite: the bridge path.
+        let mut base = visible;
+        blit_image_region(&mut base, &buffer, x0, y0);
+
+        assert_eq!(
+            (base.width(), base.height()),
+            (hidden.width(), hidden.height())
+        );
+        for y in 0..hidden.height() {
+            for x in 0..hidden.width() {
+                assert_eq!(
+                    base.pixel_color(x, y),
+                    hidden.pixel_color(x, y),
+                    "pixel ({x},{y}) differs"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn move_preview_region_falls_back_for_oversized_rect() {
+        let rect = |t, l, b, r| PsdRect {
+            top: t,
+            left: l,
+            bottom: b,
+            right: r,
+        };
+        // An in-budget, in-bounds rect takes the region path.
+        assert_eq!(
+            move_preview_region(rect(0, 0, 64, 64), 64, 64, true),
+            Some((0, 0, 64, 64))
+        );
+        // A clamped area over the per-pixel blit budget falls back.
+        assert_eq!(
+            move_preview_region(rect(0, 0, 2000, 2000), 4000, 4000, true),
+            None
+        );
+        // A null or mismatched cached canvas falls back.
+        assert_eq!(move_preview_region(rect(0, 0, 64, 64), 64, 64, false), None);
+        // An empty rect (here, zero area after clamping) falls back.
+        assert_eq!(move_preview_region(rect(0, 0, 0, 64), 64, 64, true), None);
+    }
+
+    #[test]
+    fn layer_visibility_region_bounds_raster_and_bounded_adjustments() {
+        // A raster layer is bounded by its own rect (clamped by refresh_region).
+        let raster = pixel_layer("raster", 8, 4, (10, 20, 30));
+        assert_eq!(layer_visibility_region(&raster), Some(raster.rect));
+
+        let mask = |t, l, b, r, data: Option<Vec<u8>>, default_color, disabled| LayerMask {
+            rect: PsdRect {
+                top: t,
+                left: l,
+                bottom: b,
+                right: r,
+            },
+            default_color,
+            disabled,
+            flags: 0,
+            data,
+        };
+
+        // An adjustment with an enabled, data-carrying, zero-default mask is
+        // bounded by its mask rect.
+        let bounded = adjustment_layer(
+            "invert",
+            Some(mask(2, 3, 6, 9, Some(vec![128; 4 * 6]), 0, false)),
+        )
+        .expect("known kind");
+        assert_eq!(
+            layer_visibility_region(&bounded),
+            Some(PsdRect {
+                top: 2,
+                left: 3,
+                bottom: 6,
+                right: 9,
+            })
+        );
+
+        // No mask, a disabled mask, missing mask data, and a non-zero default
+        // are all unbounded: full recomposite.
+        let unmasked = adjustment_layer("invert", None).expect("known kind");
+        assert_eq!(layer_visibility_region(&unmasked), None);
+        let disabled = adjustment_layer(
+            "invert",
+            Some(mask(0, 0, 4, 4, Some(vec![128; 16]), 0, true)),
+        )
+        .expect("known kind");
+        assert_eq!(layer_visibility_region(&disabled), None);
+        let no_data =
+            adjustment_layer("invert", Some(mask(0, 0, 4, 4, None, 0, false))).expect("known kind");
+        assert_eq!(layer_visibility_region(&no_data), None);
+        let non_zero = adjustment_layer(
+            "invert",
+            Some(mask(0, 0, 4, 4, Some(vec![128; 16]), 255, false)),
+        )
+        .expect("known kind");
+        assert_eq!(layer_visibility_region(&non_zero), None);
+
+        // A group is unbounded.
+        let mut group = pixel_layer("group", 4, 4, (0, 0, 0));
+        group.is_group = true;
+        assert_eq!(layer_visibility_region(&group), None);
     }
 
     #[test]
@@ -3489,15 +3713,88 @@ mod tests {
         let _ = cached.pixel_color(0, 0);
         ms("sample_argb(after: cached)", t.elapsed());
 
-        // begin_move_preview: hide the moved layer in place, composite, restore.
+        // begin_move_preview (M32 region body): clone the cached canvas and
+        // region-composite only the moved layer's clamped rect with the layer
+        // hidden. A canvas-sized layer is over the per-pixel blit budget, so
+        // this exercises the full-composite fallback.
+        let cached_image = document_to_image(&doc, true);
         let mut preview = doc.clone();
         let t = std::time::Instant::now();
         let index = topmost_pixel_layer_index(&preview).expect("pixel layer");
         let _ = layer_image(&preview.layers[index]);
-        preview.layers[index].visible = false;
-        let _ = document_to_image(&preview, true);
-        preview.layers[index].visible = true;
-        ms("begin_move_preview(bridge-equivalent)", t.elapsed());
+        let preview_rect = preview.layers[index].rect;
+        let preview_cached_ok = cached_image.width() == preview.width as i32
+            && cached_image.height() == preview.height as i32;
+        let preview_base = match move_preview_region(
+            preview_rect,
+            preview.width,
+            preview.height,
+            preview_cached_ok,
+        ) {
+            Some((x0, y0, ..)) => {
+                preview.layers[index].visible = false;
+                let (buffer, _backend) =
+                    pictura_render::composite_region_active(&preview, preview_rect, true);
+                preview.layers[index].visible = true;
+                let mut base = cached_image.clone();
+                blit_image_region(&mut base, &buffer, x0, y0);
+                base
+            }
+            None => {
+                preview.layers[index].visible = false;
+                let base = document_to_image(&preview, true);
+                preview.layers[index].visible = true;
+                base
+            }
+        };
+        ms("begin_move_preview(region body, full layer)", t.elapsed());
+        drop(preview_base);
+
+        // begin_move_preview with the moved layer covering only a sub-rectangle:
+        // the clamped rect is under the per-pixel blit budget, so the region path
+        // is taken instead of the full composite.
+        let mut partial = Document::new(n, n, ColorMode::Rgb, BitDepth::Eight);
+        partial.composite.data.fill(255);
+        partial.layers = vec![
+            pixel_layer("base", n, n, (255, 255, 255)),
+            pixel_layer("top", 512, 512, (200, 100, 50)),
+        ];
+        let _ = pictura_render::composite_active(&partial, true);
+        let partial_cached = document_to_image(&partial, true);
+        let mut partial_preview = partial.clone();
+        let t = std::time::Instant::now();
+        let pindex = topmost_pixel_layer_index(&partial_preview).expect("pixel layer");
+        let _ = layer_image(&partial_preview.layers[pindex]);
+        let partial_rect = partial_preview.layers[pindex].rect;
+        let partial_cached_ok = partial_cached.width() == partial_preview.width as i32
+            && partial_cached.height() == partial_preview.height as i32;
+        let partial_base = match move_preview_region(
+            partial_rect,
+            partial_preview.width,
+            partial_preview.height,
+            partial_cached_ok,
+        ) {
+            Some((x0, y0, ..)) => {
+                partial_preview.layers[pindex].visible = false;
+                let (buffer, _backend) =
+                    pictura_render::composite_region_active(&partial_preview, partial_rect, true);
+                partial_preview.layers[pindex].visible = true;
+                let mut base = partial_cached.clone();
+                blit_image_region(&mut base, &buffer, x0, y0);
+                base
+            }
+            None => {
+                partial_preview.layers[pindex].visible = false;
+                let base = document_to_image(&partial_preview, true);
+                partial_preview.layers[pindex].visible = true;
+                base
+            }
+        };
+        ms(
+            "begin_move_preview(region body, partial 512x512 layer)",
+            t.elapsed(),
+        );
+        drop(partial_base);
 
         let mut committed = doc.clone();
         let t = std::time::Instant::now();

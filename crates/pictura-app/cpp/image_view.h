@@ -70,6 +70,13 @@ public:
     void endMovePreview();
     bool movePreviewActive() const { return movePreviewActive_; }
 
+    // Test hooks for the internal present cache.
+    bool presentCacheRebuiltOnLastPaint() const { return presentCacheRebuiltLastPaint_; }
+    int presentCacheRebuildCount() const { return presentCache_.rebuilds; }
+    QSize presentCacheImageSize() const { return presentCache_.scaled.size(); }
+    qint64 presentCacheImageKey() const { return presentCache_.key; }
+    void setPresentCacheEnabledForTest(bool enabled);
+
     // Map a widget-space point to document/image coordinates.
     QPointF widgetToImage(const QPointF& widgetPos) const;
 
@@ -91,6 +98,15 @@ private:
     void centreImage();
     void applyInitialView();
 
+    struct PresentCache {
+        qint64 key = 0;
+        double zoom = 0.0;
+        bool valid = false;
+        int rebuilds = 0;
+        QImage scaled;
+    };
+    const QImage* cachedScaled(PresentCache& cache, const QImage& source);
+
     QImage image_;
     QColor canvasColor_{Qt::darkGray};
     double zoom_ = 1.0;
@@ -100,6 +116,12 @@ private:
     bool panning_ = false;
     bool userAdjusted_ = false;
     QPolygonF overlayPolygon_;
+
+    PresentCache presentCache_;
+    PresentCache moveBaseCache_;
+    PresentCache moveLayerCache_;
+    bool presentCacheRebuiltLastPaint_ = false;
+    bool presentCacheEnabledForTest_ = true;
 
     bool movePreviewActive_ = false;
     QImage moveBase_;

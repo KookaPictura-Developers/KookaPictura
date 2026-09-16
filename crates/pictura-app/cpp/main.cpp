@@ -2100,6 +2100,131 @@ int main(int argc, char* argv[])
             return 67;
         }
 
+        // 76: the present cache reuses the scaled document across repaints at a
+        // fixed zoom, rebuilds when the zoom changes, and its size is the
+        // scaled document size.
+        canvas = frame.imageView();
+        if (!canvas || canvas->image().isNull()) {
+            std::fprintf(stderr, "pictura self-test: FAIL: present cache no canvas\n");
+            return 76;
+        }
+        const QImage pcSource = canvas->image();
+        const double pcZoom = canvas->zoom();
+        const QSize pcExpected(std::max(1, int(pcSource.width() * pcZoom)),
+                               std::max(1, int(pcSource.height() * pcZoom)));
+        QImage pcShot1(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcShot1);
+        const int pcRebuildsAfterFirst = canvas->presentCacheRebuildCount();
+        QImage pcShot2(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcShot2);
+        const bool pcReused = !canvas->presentCacheRebuiltOnLastPaint()
+                              && canvas->presentCacheRebuildCount() == pcRebuildsAfterFirst;
+        const bool pcStable = pcShot1 == pcShot2;
+        const QSize pcCachedAtZoom = canvas->presentCacheImageSize();
+        canvas->setZoom(pcZoom * 2.0,
+                        QPointF(canvas->width() / 2.0, canvas->height() / 2.0));
+        QImage pcShot3(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcShot3);
+        const bool pcRebuiltOnZoom = canvas->presentCacheRebuiltOnLastPaint()
+                                      && canvas->presentCacheRebuildCount() > pcRebuildsAfterFirst;
+        const QSize pcCachedAfterZoom = canvas->presentCacheImageSize();
+        const QSize pcExpectedAfterZoom(std::max(1, int(pcSource.width() * canvas->zoom())),
+                                        std::max(1, int(pcSource.height() * canvas->zoom())));
+        const bool pcSizeOk = pcCachedAtZoom == pcExpected
+                              && pcCachedAfterZoom == pcExpectedAfterZoom;
+        canvas->setPresentCacheEnabledForTest(false);
+        QImage pcShot4(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcShot4);
+        canvas->setPresentCacheEnabledForTest(true);
+        const bool pcIdentical = pcShot3 == pcShot4;
+        std::fprintf(stderr,
+                     "pictura self-test: present_cache reused=%d zoom_rebuild=%d src=%dx%d "
+                     "z0=%g z1=%g size=%dx%d stable=%d identical=%d\n",
+                     pcReused ? 1 : 0,
+                     pcRebuiltOnZoom ? 1 : 0,
+                     pcSource.width(),
+                     pcSource.height(),
+                     pcZoom,
+                     canvas->zoom(),
+                     pcCachedAfterZoom.width(),
+                     pcCachedAfterZoom.height(),
+                     pcStable ? 1 : 0,
+                     pcIdentical ? 1 : 0);
+        std::fflush(stderr);
+        if (!pcReused || !pcRebuiltOnZoom || !pcSizeOk || !pcStable || !pcIdentical) {
+            std::fprintf(stderr, "pictura self-test: FAIL: present cache wrong\n");
+            return 76;
+        }
+
+        // M32: the interactive region paths. A 32x32 layer grown into a 64x64
+        // canvas keeps a known sub-rectangle, so hiding it changes only that
+        // rectangle.
+        // 77: the move-preview base equals the canvas with the layer hidden.
+        // 78: a raster visibility toggle equals a full recomposite.
+        const bool m32Created = frame.newDocument(QStringLiteral("M32Region"), 32, 32,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* m32View = frame.activeView();
+        if (!m32Created || !m32View) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M32 document\n");
+            std::fflush(stderr);
+            return 77;
+        }
+        const int m32DocIndex = frame.activeDocumentIndex();
+        if (!m32View->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M32 canvas growth\n");
+            std::fflush(stderr);
+            return 77;
+        }
+        const int m32k = m32View->topmost_pixel_layer_index();
+        if (m32k < 0) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M32 no pixel layer\n");
+            std::fflush(stderr);
+            return 77;
+        }
+        // Full pixel-by-pixel equality over the small (64x64) canvas.
+        auto m32Same = [](const QImage& a, const QImage& b) {
+            if (a.isNull() || b.isNull() || a.size() != b.size()) {
+                return false;
+            }
+            for (int y = 0; y < a.height(); ++y) {
+                for (int x = 0; x < a.width(); ++x) {
+                    if (a.pixel(x, y) != b.pixel(x, y)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+
+        const bool m32Began = m32View->begin_move_preview();
+        const QImage m32Base = m32View->move_preview_base();
+        m32View->set_layer_visible(m32k, false);
+        const QImage m32RegionHidden = m32View->image();
+        // Force a full recomposite of the same document state.
+        m32View->set_gpu_compute(m32View->gpu_compute());
+        const QImage m32FullHidden = m32View->image();
+        const bool m32BaseSame = m32Began && !m32Base.isNull()
+                                 && m32Same(m32Base, m32RegionHidden);
+        const bool m32VisibilitySame = m32Same(m32RegionHidden, m32FullHidden);
+        m32View->set_layer_visible(m32k, true);
+        m32View->end_move_preview();
+        frame.closeDocument(m32DocIndex, false);
+
+        std::fprintf(stderr,
+                     "pictura self-test: m32_region preview_base=%d visibility=%d\n",
+                     m32BaseSame ? 1 : 0,
+                     m32VisibilitySame ? 1 : 0);
+        std::fflush(stderr);
+        if (!m32BaseSame) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M32 preview base wrong\n");
+            return 77;
+        }
+        if (!m32VisibilitySame) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M32 visibility region wrong\n");
+            return 78;
+        }
+
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {

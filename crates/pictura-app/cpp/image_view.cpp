@@ -13,6 +13,9 @@ namespace pictura {
 namespace {
 constexpr double kMinZoom = 0.01;
 constexpr double kMaxZoom = 32.0;
+// ponytail: cap the whole-document present cache at ~64 MP (256 MB); beyond it
+// painting falls back to the transform path rather than risking an OOM.
+constexpr qint64 kMaxCachePixels = 64ll * 1024 * 1024;
 
 // 2x2-cell tile reused for every transparency fill. Built lazily on the GUI
 // thread the first time a document is painted.
@@ -206,6 +209,42 @@ QPointF ImageView::widgetToImage(const QPointF& widgetPos) const
     return (widgetPos - offset_) / zoom_;
 }
 
+void ImageView::setPresentCacheEnabledForTest(bool enabled)
+{
+    presentCacheEnabledForTest_ = enabled;
+}
+
+const QImage* ImageView::cachedScaled(PresentCache& cache, const QImage& source)
+{
+    if (!presentCacheEnabledForTest_ || source.isNull()) {
+        return nullptr;
+    }
+    const qint64 targetW = qint64(source.width() * zoom_);
+    const qint64 targetH = qint64(source.height() * zoom_);
+    if (targetW <= 0 || targetH <= 0 || targetW * targetH > kMaxCachePixels) {
+        return nullptr;
+    }
+    if (cache.valid && cache.key == source.cacheKey() && cache.zoom == zoom_) {
+        return &cache.scaled;
+    }
+    // Build through the same painter transform the direct path uses so the
+    // presented pixels match it exactly; QImage::scaled would resample with a
+    // different filter.
+    cache.scaled = QImage(int(targetW), int(targetH), QImage::Format_ARGB32_Premultiplied);
+    cache.scaled.fill(Qt::transparent);
+    {
+        QPainter builder(&cache.scaled);
+        builder.scale(zoom_, zoom_);
+        builder.setClipRect(QRectF(0.0, 0.0, source.width(), source.height()));
+        builder.drawImage(QPointF(0.0, 0.0), source);
+    }
+    cache.key = source.cacheKey();
+    cache.zoom = zoom_;
+    cache.valid = true;
+    ++cache.rebuilds;
+    return &cache.scaled;
+}
+
 void ImageView::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
@@ -227,13 +266,39 @@ void ImageView::paintEvent(QPaintEvent*)
     painter.scale(zoom_, zoom_);
     // Crop the base, the move-preview layer, and the overlay to the document.
     painter.setClipRect(QRectF(0.0, 0.0, image_.width(), image_.height()));
+
     if (movePreviewActive_ && !moveBase_.isNull()) {
-        painter.drawImage(QPointF(0.0, 0.0), moveBase_);
-        painter.setOpacity(moveOpacity_);
-        painter.drawImage(moveLayerPos_ + moveDelta_, moveLayer_);
-        painter.setOpacity(1.0);
+        const QImage* base = cachedScaled(moveBaseCache_, moveBase_);
+        const QImage* layer = cachedScaled(moveLayerCache_, moveLayer_);
+        if (base && layer) {
+            painter.save();
+            painter.resetTransform();
+            painter.translate(offset_);
+            painter.drawImage(QPointF(0.0, 0.0), *base);
+            painter.setOpacity(moveOpacity_);
+            painter.drawImage((moveLayerPos_ + moveDelta_) * zoom_, *layer);
+            painter.setOpacity(1.0);
+            painter.restore();
+        } else {
+            painter.drawImage(QPointF(0.0, 0.0), moveBase_);
+            painter.setOpacity(moveOpacity_);
+            painter.drawImage(moveLayerPos_ + moveDelta_, moveLayer_);
+            painter.setOpacity(1.0);
+        }
+        presentCacheRebuiltLastPaint_ = false;
     } else {
-        painter.drawImage(QPointF(0.0, 0.0), image_);
+        const int before = presentCache_.rebuilds;
+        const QImage* base = cachedScaled(presentCache_, image_);
+        if (base) {
+            painter.save();
+            painter.resetTransform();
+            painter.translate(offset_);
+            painter.drawImage(QPointF(0.0, 0.0), *base);
+            painter.restore();
+        } else {
+            painter.drawImage(QPointF(0.0, 0.0), image_);
+        }
+        presentCacheRebuiltLastPaint_ = presentCache_.rebuilds != before;
     }
 
     if (!overlayPolygon_.isEmpty()) {

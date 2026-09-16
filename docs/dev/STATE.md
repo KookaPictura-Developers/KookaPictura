@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **536 tests, 3 ignored** (one pre-existing app `#[ignore]` plus the
+- Test suite: **539 tests, 3 ignored** (one pre-existing app `#[ignore]` plus the
   two M29 `move_profile_*` timing tests).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M31 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
@@ -509,10 +509,11 @@ openspec validate --all --strict
   --all --strict` 60/60. The M29 change MODIFIES `gpu-compositing`,
   `gpu-filter-acceleration`, `info-histogram-panel`, `layers-panel`,
   `document-canvas`; no new capability (→ **59** capabilities after archive).
-  Remaining bottlenecks: the 4000² GPU composite is **readback-bound** (64 MB
-  readback ≈ most of the 332 ms) — on-screen **zero-copy present** is the next
-  ceiling; the history capture still clones the whole document (~60 ms/state, and
-  up to 20 states of memory) — **copy-on-write or tile diffs** is the deferred fix.
+  Remaining bottlenecks: the history capture still clones the whole document
+  (~60 ms/state, and up to 20 states of memory) — **copy-on-write or tile diffs**
+  is the deferred fix. (The initial "readback-bound" guess was measured wrong in
+  M32: the 4000² composite is dominated by host-side CPU per-pixel assembly, not
+  the 64 MB readback — see below.)
 - **M30** — canvas transparency and clipping. `ImageView::paintEvent` now draws a
   **transparency checkerboard** behind the document so pixels with alpha < 255
   reveal it (a fully transparent document shows the checkerboard; opaque pixels
@@ -560,7 +561,7 @@ openspec validate --all --strict
   full recomposite for large dirty unions, because the cached image is patched
   with per-pixel `QImage::set_pixel_color` (FFI per pixel) — the `ponytail:`
   upgrade is a C++ `ImageView::blitRegion` via
-  `QPainter::CompositionMode_Source`, or M32's GPU-resident present. Self-test
+  `QPainter::CompositionMode_Source`, or M34's GPU-resident present. Self-test
   exit code **75**: `m31_region moved=1 outside_unchanged=1 undo=1` and
   `m31_region_large moved=1 vacated=1 undo=1` (the latter drives the
   full-recomposite fallback), identical on fixture and no-argument runs.
@@ -568,6 +569,41 @@ openspec validate --all --strict
   clean; **536 tests (0 failed, 3 ignored)** — up from 530; `openspec validate
   --all --strict` 60/60. The M31 change MODIFIES `gpu-compositing` and
   `document-canvas` (no new capability → **59** capabilities after archive).
+- **M32** — interactive-path region completion and present caching.
+  `begin_move_preview` no longer composites the whole document: it
+  region-composites only the moved layer's clamped rectangle with that layer
+  hidden (`composite_region_active`) and blits it into a clone of the cached
+  canvas, **byte-identical** to a full composite with the layer hidden; it falls
+  back to the full path when the layer has no image, the clamped rect is empty or
+  over `REGION_REFRESH_BUDGET`, or the cache is null/stale. `set_layer_visible`
+  refreshes only the toggled layer's influence rectangle — a raster layer's
+  `rect`, or a bounded adjustment layer's mask rect (enabled + data + zero
+  `default_color`) — and falls back to a full recomposite for groups, unbounded
+  adjustments and masks with a non-zero default. `ImageView` now presents from a
+  zoom cache keyed on the source `cacheKey()` and the zoom, built **through a
+  `QPainter`** so it is pixel-identical to the previous transform draw (a
+  `QImage::scaled` smooth build diverged from the painter's non-smooth filter and
+  fractional-offset phase — that was found and fixed); the cache is invalidated on
+  image or zoom change and falls back to the transform draw above a 64 MP bound.
+  Test hooks: `setPresentCacheEnabledForTest`,
+  `presentCacheRebuiltOnLastPaint/RebuildCount/ImageSize/ImageKey`; a
+  `topmost_pixel_layer_index` bridge accessor was added for the self-test. The
+  measurement that scoped M32: a full 4000² GPU composite costs ~254 ms, split
+  `build_source` 146 ms (58%), `to_pixel_buffer` 35 ms, `mapped.to_vec` 22 ms,
+  `zero_canvas` 18 ms, `build_mask` 16 ms, readback submit/poll/map 7 ms, GPU
+  dispatch 0.2 ms — **host-side CPU assembly dominates, not the readback**, which
+  is why M32 deferred the Qt Quick zero-copy present (M34) and why M33 targets the
+  assembly. Measured move preview (4000², release, RTX 3090): the old body (hide
+  layer → full composite) **276 ms**; the new region body with a canvas-sized layer
+  is over the per-pixel blit budget and falls back (**280–290 ms**, unchanged),
+  while a moved **512²** layer takes the region path at **~30 ms (~10×)**. Self-test
+  exit codes **76/77/78**: `present_cache reused=1 zoom_rebuild=1 src=32x32 z0=1
+  z1=2 size=64x64 stable=1 identical=1` and `m32_region preview_base=1
+  visibility=1`, identical on fixture and no-argument runs. Verified: `cmake --build
+  build` OK; both self-tests exit 0; `cargo fmt/clippy` clean; **539 tests (0
+  failed, 3 ignored)** — up from 536; `openspec validate --all --strict` 60/60. The
+  M32 change MODIFIES `document-canvas` (no new capability → **59** capabilities
+  after archive).
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -644,28 +680,43 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M32–M33 (canvas compositing & present)
+## Next: M33–M35 (canvas compositing & present)
 
 M31 removes the full composite and readback from every move and paint
-(dirty-rect compositing); every other mutation still composites and reads back
-the **whole** document, and the CPU compositor and `pictura_filters::apply` are
-still the oracles. The research and the M31–M33 plan are written up in
-`docs/dev/canvas-compositing-plan.md`. Next in order:
+(dirty-rect compositing), and M32 removes it from the move-preview base and the
+visibility toggle and caches the present-scale; every other mutation still
+composites and reads back the **whole** document, and the CPU compositor and
+`pictura_filters::apply` are still the oracles. The research and the M31–M35 plan
+are written up in `docs/dev/canvas-compositing-plan.md`, and the M32 brief with
+the measured phase table is `docs/dev/m32-interactive-canvas.md`. The measurement
+matters: the 4000² GPU composite (~254 ms) is dominated by host-side per-pixel
+assembly (`build_source` 146 ms, `to_pixel_buffer` 35 ms, `mapped.to_vec()` 22 ms),
+not the GPU dispatch (~0.2 ms) or the 64 MB readback (~7 ms), so a zero-copy
+present saves little while the CPU assembly stays. Next in order:
 
-- **M32 — GPU-resident canvas, present without readback.** Keep the composite in
-  a persistent GPU texture and present it directly. Zero-readback present needs
-  Qt Quick (`QQuickRhiItem` sharing the window's `QRhi` +
+- **M33 — full-composite throughput.** Replace the per-pixel source assembly with
+  row-wise/`copy_from_slice` assembly, fuse the planar readback to de-interleave
+  directly from the mapped slice and skip the packed `Vec`, and keep per-layer GPU
+  source buffers resident across a composite session (targets the measured
+  146 + 35 + 22 ms).
+- **M34 (deferred) — GPU-resident zero-copy present** via Qt Quick
+  (`QQuickRhiItem` sharing the window's `QRhi` +
   `QQuickWindow::createTextureFromRhiTexture()`, or one shared Vulkan device via
   `QQuickGraphicsDevice::fromDeviceObjects(...)`); `QRhiWidget` cannot adopt the
-  wgpu device. Removes the readback, the `QImage` conversion, and M31's per-pixel
-  FFI canvas patch (`QImage::set_pixel_color`) entirely; optionally moves compute
-  off the GUI thread.
-- **M33 — 256² GPU tiles + LRU + seam gutters + mipmaps** (Graphite-style), only
-  if pan/zoom over documents larger than VRAM demands it; includes display-time
-  LoD so a zoomed-out view composites a proxy.
+  wgpu device. Deferred because it removes only ~57 ms of a ~254 ms composite.
+- **M35 (deferred) — 256² GPU tiles + LRU + seam gutters + mipmaps**
+  (Graphite-style), only if pan/zoom over documents larger than VRAM demands it;
+  includes display-time LoD so a zoomed-out view composites a proxy.
 
 Deferred tracks, in no fixed order:
 
+- **Cheap undo/redo + composite coherence/save** — persisting the rendered
+  composite into `doc.composite` changes what `write_psd` serializes and needs its
+  own design (deferred from M32).
+- **C++ region blit / `REGION_REFRESH_BUDGET` removal** — `ImageView::blitRegion`
+  (`QPainter` + `CompositionMode_Source`) replacing the per-pixel
+  `QImage::set_pixel_color` loop; the budget cap stays as a bounded fallback
+  (deferred from M32).
 - **Transparency grid preferences** — M30's checkerboard is fixed at an 8 px
   Light (`#FFFFFF`/`#CCCCCC`) grid; the `Transparency & Gamut` preferences pane
   (grid size None/Small/Medium/Large, colour sets Light/Medium/Dark/Red/Custom),
@@ -699,8 +750,10 @@ M6 through M31 are archived; their deltas now live in `openspec/specs/`.
 - Fifteen filter kernels are GPU-accelerated (the blur/sharpen/High Pass family
   plus the M28 heavy window/effect set); the stochastic/seeded filters and the
   warps/distort and render filters fall back to the CPU oracle byte-for-byte.
-- The GPU compositor and filter path are still readback-bound until zero-copy
-  present lands; at 4000² the composite is dominated by the 64 MB readback.
+- The GPU compositor and filter path are host-side bound, not readback-bound: at
+  4000² the composite is dominated by CPU per-pixel source assembly and
+  de-interleave (~203 ms of ~254 ms) while the 64 MB readback is ~7 ms (see
+  `docs/dev/canvas-compositing-plan.md` §2.1); zero-copy present is deferred (M34).
 - Region refresh patches the cached `QImage` per pixel (`QImage::set_pixel_color`)
   and is bounded by the 1 MP `REGION_REFRESH_BUDGET`; a dirty union larger than
   that falls back to a full recomposite. A Display-resolution proxy (LoD) is still
