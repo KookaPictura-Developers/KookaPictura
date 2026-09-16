@@ -10,9 +10,11 @@
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
+#include <QtGui/QPixmap>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDockWidget>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QPushButton>
 #include <QtWidgets/QToolBar>
 #include <QtWidgets/QToolButton>
 
@@ -2571,6 +2573,171 @@ int main(int argc, char* argv[])
             return 94;
         }
         frame.closeDocument(m37DocIndex, false);
+
+        // M38: the frozen 71-tool catalogue, its icons/cursors/hotspots, the
+        // 23-slot toolbox, and the unimplemented-tool guard. Assets are
+        // document-independent, so these run with or without a loaded PSD.
+        const QList<pictura::ToolId> catalogue = pictura::allToolIds();
+        QString missingToolIcon;
+        QString missingToolCursor;
+        int iconsOk = 1;
+        int cursorsOk = 1;
+        for (const pictura::ToolId id : catalogue) {
+            const pictura::ToolInfo& info = pictura::toolInfo(id);
+            const QString assetId = QStringLiteral("tool.") + pictura::toolIdName(id);
+            if (pictura::icon(assetId).isNull()) {
+                iconsOk = 0;
+                if (missingToolIcon.isEmpty()) {
+                    missingToolIcon = assetId;
+                }
+            }
+            const bool hotspotOk = info.hotspotX >= 0 && info.hotspotX < 24
+                                   && info.hotspotY >= 0 && info.hotspotY < 24;
+            if (!hotspotOk
+                || pictura::cursor(assetId, info.hotspotX, info.hotspotY).pixmap().isNull()) {
+                cursorsOk = 0;
+                if (missingToolCursor.isEmpty()) {
+                    missingToolCursor = assetId;
+                }
+            }
+        }
+
+        auto* toolsDock = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        int slotsOk = 0;
+        if (toolsDock) {
+            const QList<QToolButton*> slotButtons = toolsDock->slotButtons();
+            slotsOk = slotButtons.size() == 23 ? 1 : 0;
+            if (slotsOk) {
+                for (int g = 1; g <= slotButtons.size(); ++g) {
+                    bool anyImplemented = false;
+                    for (const pictura::ToolId id : catalogue) {
+                        if (pictura::toolInfo(id).group == g && pictura::toolImplemented(id)) {
+                            anyImplemented = true;
+                        }
+                    }
+                    if (slotButtons.at(g - 1)->isEnabled() != anyImplemented) {
+                        slotsOk = 0;
+                    }
+                }
+            }
+        }
+
+        pictura::ToolController probe;
+        const pictura::ToolId guardBefore = probe.activeTool();
+        probe.setActiveTool(pictura::ToolId::MagicWand);
+        const bool guardOk = probe.activeTool() == guardBefore;
+
+        std::fprintf(stderr,
+                     "pictura self-test: m38_tools icons=%d cursors=%d slots=%d guard=%d\n",
+                     iconsOk,
+                     cursorsOk,
+                     slotsOk,
+                     guardOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!iconsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m38 tool icon missing=%s\n",
+                         missingToolIcon.toLocal8Bit().constData());
+            return 95;
+        }
+        if (!cursorsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m38 tool cursor missing=%s\n",
+                         missingToolCursor.toLocal8Bit().constData());
+            return 96;
+        }
+        if (!slotsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m38 toolbox slots wrong\n");
+            return 97;
+        }
+        if (!guardOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m38 unimplemented tool activated\n");
+            return 98;
+        }
+
+        // M38 panels: the rail buttons, the Layers action strip, and the History
+        // snapshot button resolve the frozen panel icons. Assets are
+        // document-independent, so these run with or without a loaded PSD.
+        auto sameIcon = [](const QIcon& actual, const QIcon& expected) {
+            return !actual.isNull() && !expected.isNull()
+                   && actual.pixmap(20, 20).toImage() == expected.pixmap(20, 20).toImage();
+        };
+        QToolBar* m38Rail = frame.findChild<QToolBar*>(QStringLiteral("panelRail"));
+        int m38RailCount = 0;
+        int m38RailIcons = 0;
+        QString m38RailMissing;
+        if (m38Rail) {
+            for (QAction* action : m38Rail->actions()) {
+                if (action->isSeparator()) {
+                    continue;
+                }
+                ++m38RailCount;
+                if (sameIcon(action->icon(), pictura::icon(action->data().toString()))) {
+                    ++m38RailIcons;
+                } else if (m38RailMissing.isEmpty()) {
+                    m38RailMissing = action->data().toString();
+                }
+            }
+        }
+        const bool m38RailOk = m38Rail && m38RailCount == 5 && m38RailIcons == m38RailCount;
+
+        const QStringList m38StripIds = {
+            QStringLiteral("link"),           QStringLiteral("fx"),
+            QStringLiteral("mask"),           QStringLiteral("fillAdjustment"),
+            QStringLiteral("group"),          QStringLiteral("newLayer"),
+            QStringLiteral("delete")};
+        const QStringList m38StripObjectNames = {
+            QStringLiteral("layersStripLink"),   QStringLiteral("layersStripFx"),
+            QStringLiteral("layersStripMask"),   QStringLiteral("layersStripFillAdjustment"),
+            QStringLiteral("layersStripGroup"),  QStringLiteral("layersStripNewLayer"),
+            QStringLiteral("layersStripDelete")};
+        // link/fx/mask have icons but no behaviour yet.
+        const QSet<QString> m38StripDisabled = {
+            QStringLiteral("link"), QStringLiteral("fx"), QStringLiteral("mask")};
+        QDockWidget* m38Layers = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+        int m38StripOk = 0;
+        QString m38StripWrong;
+        for (int i = 0; i < m38StripIds.size(); ++i) {
+            auto* button = m38Layers
+                ? m38Layers->findChild<QToolButton*>(m38StripObjectNames.at(i))
+                : nullptr;
+            const QIcon expected =
+                pictura::icon(QStringLiteral("layers.") + m38StripIds.at(i));
+            const bool disabled = m38StripDisabled.contains(m38StripIds.at(i));
+            if (button && sameIcon(button->icon(), expected)
+                && button->isEnabled() != disabled) {
+                ++m38StripOk;
+            } else if (m38StripWrong.isEmpty()) {
+                m38StripWrong = m38StripIds.at(i);
+            }
+        }
+        const bool m38StripPass = m38StripOk == m38StripIds.size();
+
+        QDockWidget* m38History = frame.findChild<QDockWidget*>(QStringLiteral("historyPanel"));
+        auto* m38Snapshot =
+            m38History ? m38History->findChild<QPushButton*>(QStringLiteral("snapshotButton"))
+                       : nullptr;
+        const bool m38HistoryOk =
+            m38Snapshot
+            && sameIcon(m38Snapshot->icon(), pictura::icon(QStringLiteral("history.snapshot")));
+
+        std::fprintf(stderr, "pictura self-test: m38_panels rail=%d strip=%d history=%d\n",
+                     m38RailOk ? 1 : 0,
+                     m38StripPass ? 1 : 0,
+                     m38HistoryOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m38RailOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m38 rail icon missing=%s\n",
+                         m38RailMissing.toLocal8Bit().constData());
+            return 99;
+        }
+        if (!m38StripPass) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m38 strip button wrong=%s\n",
+                         m38StripWrong.toLocal8Bit().constData());
+            return 100;
+        }
+        if (!m38HistoryOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m38 snapshot icon wrong\n");
+            return 101;
+        }
 
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();

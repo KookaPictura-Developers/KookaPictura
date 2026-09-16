@@ -22,6 +22,11 @@ QIcon icon(const QString& id)
 
 QCursor cursor(const QString& id)
 {
+    return cursor(id, 12, 12);
+}
+
+QCursor cursor(const QString& id, int hotX, int hotY)
+{
     const QString path = QStringLiteral(":/cursors/") + id + QStringLiteral(".svg");
     if (!QFile::exists(path)) {
         return QCursor();
@@ -43,9 +48,6 @@ QCursor cursor(const QString& id)
     painter.end();
     pixmap.setDevicePixelRatio(dpr);
 
-    const bool eyedropper = id == QStringLiteral("tool.eyedropper");
-    const qreal hotX = eyedropper ? 2 : 12;
-    const qreal hotY = eyedropper ? 22 : 12;
     return QCursor(pixmap, qRound(hotX * dpr), qRound(hotY * dpr));
 }
 

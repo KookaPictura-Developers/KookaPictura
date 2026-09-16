@@ -1,5 +1,7 @@
 #include "layers_panel.h"
 
+#include "icons.h"
+
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include <QtCore/QAbstractTableModel>
@@ -370,10 +372,35 @@ LayersPanel::LayersPanel(QWidget* parent)
     layout->addLayout(locks);
 
     auto* buttons = new QHBoxLayout();
-    auto* addButton = new QToolButton(body);
-    addButton->setText(tr("Add Adjustment"));
+    const auto stripIconButton = [body, buttons](const QString& objectName,
+                                                 const QString& assetId) {
+        auto* button = new QToolButton(body);
+        button->setObjectName(objectName);
+        button->setIcon(pictura::icon(assetId));
+        button->setIconSize(QSize(20, 20));
+        button->setAutoRaise(true);
+        buttons->addWidget(button);
+        return button;
+    };
+
+    // CS6 strip order. Link/fx/mask have icons but no behaviour yet, so they
+    // stay disabled rather than pretending.
+    auto* linkButton =
+        stripIconButton(QStringLiteral("layersStripLink"), QStringLiteral("layers.link"));
+    linkButton->setEnabled(false);
+    linkButton->setToolTip(tr("Link Layers — not implemented yet"));
+    auto* fxButton = stripIconButton(QStringLiteral("layersStripFx"), QStringLiteral("layers.fx"));
+    fxButton->setEnabled(false);
+    fxButton->setToolTip(tr("Layer Style — not implemented yet"));
+    auto* maskButton =
+        stripIconButton(QStringLiteral("layersStripMask"), QStringLiteral("layers.mask"));
+    maskButton->setEnabled(false);
+    maskButton->setToolTip(tr("Add Layer Mask — not implemented yet"));
+
+    auto* addButton = stripIconButton(QStringLiteral("layersStripFillAdjustment"),
+                                      QStringLiteral("layers.fillAdjustment"));
     addButton->setPopupMode(QToolButton::InstantPopup);
-    addButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    addButton->setToolTip(tr("New Fill / Adjustment Layer"));
     auto* menu = new QMenu(addButton);
     const QStringList kinds = {
         QStringLiteral("invert"),
@@ -391,15 +418,18 @@ LayersPanel::LayersPanel(QWidget* parent)
         });
     }
     addButton->setMenu(menu);
-    auto* newGroupButton = new QPushButton(tr("New Group"), body);
-    auto* newLayerButton = new QPushButton(tr("New Layer"), body);
-    auto* deleteButton = new QPushButton(tr("Delete Layer"), body);
+
+    auto* newGroupButton =
+        stripIconButton(QStringLiteral("layersStripGroup"), QStringLiteral("layers.group"));
+    newGroupButton->setToolTip(tr("New Group"));
+    auto* newLayerButton =
+        stripIconButton(QStringLiteral("layersStripNewLayer"), QStringLiteral("layers.newLayer"));
+    newLayerButton->setToolTip(tr("New Layer"));
+    auto* deleteButton =
+        stripIconButton(QStringLiteral("layersStripDelete"), QStringLiteral("layers.delete"));
+    deleteButton->setToolTip(tr("Delete"));
     auto* upButton = new QPushButton(tr("Move Up"), body);
     auto* downButton = new QPushButton(tr("Move Down"), body);
-    buttons->addWidget(addButton);
-    buttons->addWidget(newGroupButton);
-    buttons->addWidget(newLayerButton);
-    buttons->addWidget(deleteButton);
     buttons->addWidget(upButton);
     buttons->addWidget(downButton);
     layout->addLayout(buttons);
@@ -437,7 +467,7 @@ LayersPanel::LayersPanel(QWidget* parent)
     });
     connect(tree_, &QTreeView::customContextMenuRequested, this,
             &LayersPanel::showColorMenu);
-    connect(newGroupButton, &QPushButton::clicked, this, [this] {
+    connect(newGroupButton, &QToolButton::clicked, this, [this] {
         if (!view_) {
             return;
         }
@@ -447,7 +477,7 @@ LayersPanel::LayersPanel(QWidget* parent)
             selectLayer(created);
         }
     });
-    connect(newLayerButton, &QPushButton::clicked, this, [this] {
+    connect(newLayerButton, &QToolButton::clicked, this, [this] {
         if (!view_) {
             return;
         }
@@ -457,7 +487,7 @@ LayersPanel::LayersPanel(QWidget* parent)
             selectLayer(created);
         }
     });
-    connect(deleteButton, &QPushButton::clicked, this, [this] {
+    connect(deleteButton, &QToolButton::clicked, this, [this] {
         const QModelIndex current = tree_->currentIndex();
         if (view_ && current.isValid()) {
             view_->remove_layer(model_->row(current.row()).index);

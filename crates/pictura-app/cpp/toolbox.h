@@ -1,11 +1,16 @@
 #pragma once
 
+#include <QtCore/QList>
+#include <QtCore/QMap>
 #include <QtCore/QRect>
 #include <QtWidgets/QDockWidget>
 #include <QtWidgets/QWidget>
 
+#include "tools.h"
+
 class QMouseEvent;
 class QPaintEvent;
+class QToolButton;
 
 namespace pictura {
 
@@ -38,19 +43,30 @@ private:
     ColorState* state_ = nullptr;
 };
 
-// The Tools dock: a two-column grid of icon-only tool buttons, the
-// foreground/background swatches, and the screen-mode toggle.
+// The Tools dock: a CS6 single-column list of flyout slots (one button per
+// group), the foreground/background swatches, and the screen-mode toggle.
 class Toolbox : public QDockWidget {
     Q_OBJECT
 
 public:
     explicit Toolbox(ToolController* controller, ColorState* colors, QWidget* parent = nullptr);
 
+    // The 23 group slot buttons in catalogue order (self-test accessor).
+    QList<QToolButton*> slotButtons() const { return slotButtons_; }
+
 signals:
     void screenModeRequested();
 
 private:
+    ToolId groupCurrentTool(int group) const;
+    void refreshSlot(int group);
+    void selectMember(int group, ToolId id);
+    void cycleGroup(int group);
+
+    ToolController* controller_ = nullptr;
     ColorState* colors_ = nullptr;
+    QMap<int, ToolId> currentByGroup_;
+    QList<QToolButton*> slotButtons_;
 };
 
 } // namespace pictura

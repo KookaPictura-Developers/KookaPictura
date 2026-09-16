@@ -1,7 +1,10 @@
 #include "history_panel.h"
 
+#include "icons.h"
+
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QSize>
 #include <QtCore/QTimer>
 #include <QtCore/QVariant>
 #include <QtGui/QFont>
@@ -31,6 +34,10 @@ HistoryPanel::HistoryPanel(QWidget* parent)
     list_ = new QListWidget(body);
     layout->addWidget(list_, 1);
     snapshotButton_ = new QPushButton(tr("Create Snapshot"), body);
+    snapshotButton_->setObjectName(QStringLiteral("snapshotButton"));
+    snapshotButton_->setIcon(pictura::icon(QStringLiteral("history.snapshot")));
+    snapshotButton_->setIconSize(QSize(20, 20));
+    snapshotButton_->setToolTip(tr("Create New Snapshot"));
     layout->addWidget(snapshotButton_);
     setWidget(body);
 

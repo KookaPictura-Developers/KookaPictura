@@ -1,7 +1,9 @@
-# Layers panel program — CS6 research, gap analysis, and staged plan (M36–M42)
+# Layers panel program — CS6 research, gap analysis, and staged plan (M36–M43)
 
 - **Status:** research + plan. M36 (layer attributes) is implemented and
-  archived; M37 is proposed as `openspec/changes/m37-layer-creation`; M38–M42
+  archived; M37 (layer creation and grouping) is implemented and archived; **M38
+  is the user-requested icon/cursor library**
+  (`openspec/changes/m38-icon-cursor-library`); the panel stages M39–M43
   are not yet proposed.
 - **Contract:** `docs/05-layers/layer-management-ui.md` (`LAY-002`) is the
   long-form behavior spec; `docs/02-ui-ux/panels/layers-panel.md` (`PAN-001`) is
@@ -13,12 +15,21 @@
   perf series (`docs/dev/canvas-compositing-plan.md`), or any behavior owned by
   a different milestone.
 
-> Milestone-numbering note. This program claims **M36–M42**. The deferred
+> Milestone-numbering note. This program claims **M36–M43**. The deferred
 > canvas-performance tracks previously sketched as "M36–M38" in
 > `docs/dev/STATE.md` (history copy-on-write, resident GPU layer sources, 256²
-> tiles) are **renumbered/deferred after M42**; `docs/dev/canvas-compositing-plan.md`
+> tiles) are **renumbered/deferred after M43**; `docs/dev/canvas-compositing-plan.md`
 > is left untouched, so its older M36–M38 references now point at this program's
 > milestones and must be read as the perf tracks by name, not by number.
+>
+> **Interruption note (M38).** A user-requested milestone — the full CS6 toolbox
+> icon/cursor library and the panel icons
+> (`openspec/changes/m38-icon-cursor-library`, contract
+> `docs/dev/m38-icon-cursor-library.md`) — takes **M38**, ahead of the panel
+> stages. The panel stages therefore shift by one from M38 onward: panel
+> anatomy → **M39**, filtering/search → **M40**, remaining management
+> operations → **M41**, styles/effects → **M42**, smart objects / vector masks /
+> artboards / layer comps → **M43**. M36 and M37 keep their numbers.
 
 ## 1. CS6 behavior summary
 
@@ -221,32 +232,32 @@ Stage is the milestone that closes it.
 | New layer / group | New Layer, New Group buttons + Layer menu | **absent** | — | — | `add_layer`/`add_group` | buttons + menu | **M37** |
 | Duplicate (incl. groups) | `Ctrl/Cmd+J`, menu, `" copy"` naming | **absent** | — | — | `duplicate_layer` | menu | **M37** |
 | Group / Ungroup | wrap/ungroup in place, `Ctrl+G` | **absent** | — | — | `group_layer`/`ungroup_layer` | menu | **M37** |
-| Group tree | expand/collapse, folder rows | flat top-level only | ids already nested; expansion state | — | tree accessors | `QAbstractItemModel` tree + delegate | M38 |
-| Clipped-layer display | indent + base underline | absent | `clipping` exists | — | — | delegate | M38 |
-| Mask thumbnail / link / clip / style badge | extra thumb + link icon + badges | absent | mask exists; link/vector/styles missing | mask `-2` exists; link/vector/styles missing | accessors | delegate | M38 (mask/clip), M41 (fx), M42 (vector) |
-| Multi-selection | shift/ctrl, one command over N | `SingleSelection` | — | — | multi-id setters | selection model + commands | M38 |
-| Bottom quick-action strip | 7 buttons | 6 buttons (link/fx/mask missing) | — | — | new commands | buttons | M38 |
-| Solo visibility | Alt-click eye, restore | absent | — | — | snapshot/restore | eye handler | M38 |
-| Inline rename Tab/Shift+Tab | next/previous while renaming | single-row edit | — | — | — | delegate/key handling | M38 |
-| Panel Options | thumb size/contents, expand effects, copy, default masks | absent | — | — | — | dialog + persistence | M38 |
-| Panel + row menus | full command set | absent | — | — | commands | `QMenu` | M38 |
-| Tooltips incl. name | present | `name (kind)` | — | — | — | delegate | M38 |
-| Filtering/search | 6 dims + toggle, view-only | absent | needs `color`/`lock`/effects | — | — | filter bar + proxy | M39 |
-| Rasterize variants | Type/Shape/Fill/Mask/Layer/All | absent | kind + vector/fill content | various | command | menu | M40 |
-| Merge / Flatten | Merge Down/Layers/Visible, Flatten | absent | — | — | commands | menu | M40 |
-| Layer Via Copy/Cut | selection → new layer | absent | — | — | commands | menu | M40 |
-| Convert Background | from/to Background | absent | `is_background`/kind | `B0` name convention | commands | menu | M40 |
-| Link sets | link/unlink, link icon | absent | link-set id | unsourced | commands | icon/delegate | M40 |
-| Delete hidden layers | `Layer > Delete > Hidden` | absent | — | — | command | menu | M40 |
-| Layer styles / fx | fx menu, badge, effect rows, dialog, render | absent | `styles` | `lrFX`/`lfx2` + descriptors | commands | fx UI + rendering | M41 |
-| Blend-If badge / advanced blending | badge when customized | absent | advanced-blending fields | `brst`/`knko`/blend ranges | accessors | delegate | M41 |
-| Smart Objects | convert/edit/replace/rasterize | absent | smart-object kind | `SoLd`/`lnk2` | commands | panel + menus | M42 |
-| Vector masks / clipping | thumb, density/feather, clip runs | `clipping` bool only | vector mask, clip run | `vmsk`/`vsms` | commands | delegate + Properties | M42 |
-| Artboards | **not CS6** (non-goal) | — | — | — | — | — | M42 (non-goal) |
-| Layer Comps | capture/apply, resource 1065 | absent | `LayerComp` store | image resource 1065 | commands | panel | M42 |
-| Type/shape kinds | forced locks, tool names | `kind` is pixel/adj/group | `NodeKind` | `TySh`/`vmsk` | `layer_kind` | delegate | M40/M42 |
-| `00`/`Shift+00` | layer/fill opacity 0% | absent | — | — | — | shortcut | M38/M39 |
-| Select All/Similar/Linked | menus | absent | — | — | commands | menu | M40 |
+| Group tree | expand/collapse, folder rows | flat top-level only | ids already nested; expansion state | — | tree accessors | `QAbstractItemModel` tree + delegate | M39 |
+| Clipped-layer display | indent + base underline | absent | `clipping` exists | — | — | delegate | M39 |
+| Mask thumbnail / link / clip / style badge | extra thumb + link icon + badges | absent | mask exists; link/vector/styles missing | mask `-2` exists; link/vector/styles missing | accessors | delegate | M39 (mask/clip), M42 (fx), M43 (vector) |
+| Multi-selection | shift/ctrl, one command over N | `SingleSelection` | — | — | multi-id setters | selection model + commands | M39 |
+| Bottom quick-action strip | 7 buttons | 6 buttons (link/fx/mask missing) | — | — | new commands | buttons | M39 |
+| Solo visibility | Alt-click eye, restore | absent | — | — | snapshot/restore | eye handler | M39 |
+| Inline rename Tab/Shift+Tab | next/previous while renaming | single-row edit | — | — | — | delegate/key handling | M39 |
+| Panel Options | thumb size/contents, expand effects, copy, default masks | absent | — | — | — | dialog + persistence | M39 |
+| Panel + row menus | full command set | absent | — | — | commands | `QMenu` | M39 |
+| Tooltips incl. name | present | `name (kind)` | — | — | — | delegate | M39 |
+| Filtering/search | 6 dims + toggle, view-only | absent | needs `color`/`lock`/effects | — | — | filter bar + proxy | M40 |
+| Rasterize variants | Type/Shape/Fill/Mask/Layer/All | absent | kind + vector/fill content | various | command | menu | M41 |
+| Merge / Flatten | Merge Down/Layers/Visible, Flatten | absent | — | — | commands | menu | M41 |
+| Layer Via Copy/Cut | selection → new layer | absent | — | — | commands | menu | M41 |
+| Convert Background | from/to Background | absent | `is_background`/kind | `B0` name convention | commands | menu | M41 |
+| Link sets | link/unlink, link icon | absent | link-set id | unsourced | commands | icon/delegate | M41 |
+| Delete hidden layers | `Layer > Delete > Hidden` | absent | — | — | command | menu | M41 |
+| Layer styles / fx | fx menu, badge, effect rows, dialog, render | absent | `styles` | `lrFX`/`lfx2` + descriptors | commands | fx UI + rendering | M42 |
+| Blend-If badge / advanced blending | badge when customized | absent | advanced-blending fields | `brst`/`knko`/blend ranges | accessors | delegate | M42 |
+| Smart Objects | convert/edit/replace/rasterize | absent | smart-object kind | `SoLd`/`lnk2` | commands | panel + menus | M43 |
+| Vector masks / clipping | thumb, density/feather, clip runs | `clipping` bool only | vector mask, clip run | `vmsk`/`vsms` | commands | delegate + Properties | M43 |
+| Artboards | **not CS6** (non-goal) | — | — | — | — | — | M43 (non-goal) |
+| Layer Comps | capture/apply, resource 1065 | absent | `LayerComp` store | image resource 1065 | commands | panel | M43 |
+| Type/shape kinds | forced locks, tool names | `kind` is pixel/adj/group | `NodeKind` | `TySh`/`vmsk` | `layer_kind` | delegate | M41/M43 |
+| `00`/`Shift+00` | layer/fill opacity 0% | absent | — | — | — | shortcut | M39/M40 |
+| Select All/Similar/Linked | menus | absent | — | — | commands | menu | M41 |
 | Properties panel binding | contextual editor | placeholder panel | — | — | — | Properties panel | cross-cutting |
 | 32-bit / Lab gating | mode-restricted modes/tools | 8-bit RGB/gray only | depth/mode gating | — | — | menus | deferred |
 
@@ -258,11 +269,11 @@ operations need the fields. **M37** then lands the most basic panel action, whic
 was missing entirely: creating a layer or group, duplicating one, and wrapping or
 unwrapping it. Nothing else in the panel can be exercised end-to-end on a fresh
 document until a user can add a node, so creation comes before the structural
-panel work. **M38** makes the panel structurally CS6 (a tree, selection, menus,
-options). **M39** is view-only and depends on M38's model/proxy. **M40**
-operations depend on M38's selection and tree and on M37's node creation. **M41**
-is the largest visual payoff but needs M38's fx rows and M36's Fill (the
-Fill-vs-Opacity distinction only becomes observable once effects exist). **M42**
+panel work. **M39** makes the panel structurally CS6 (a tree, selection, menus,
+options). **M40** is view-only and depends on M39's model/proxy. **M41**
+operations depend on M39's selection and tree and on M37's node creation. **M42**
+is the largest visual payoff but needs M39's fx rows and M36's Fill (the
+Fill-vs-Opacity distinction only becomes observable once effects exist). **M43**
 is the deepest and last. Sizes are relative (S ≤ 1 week, M ≈ 1–2, L ≈ 2–4,
 XL > 4, at this repo's pace).
 
@@ -312,7 +323,7 @@ Proposed as `openspec/changes/m37-layer-creation`.
 M34 (composite-then-record). **PSD-interop risk: none** — in-memory document
 nodes; no file-format change.
 
-### M38 — Panel anatomy (L, Core)
+### M39 — Panel anatomy (L, Core)
 
 Tree model for groups (expand/collapse, indentation, folder icon), clipped-layer
 indentation + base underline, mask thumbnail + link icon + clip/style badges,
@@ -328,19 +339,19 @@ M23/M24 (chrome/rail). **PSD-interop risk: low** — mostly view state;
 link/mask flags serialise later. The multi-selection work here upgrades M37's
 single-layer Group/Ungroup/Duplicate to per-selection operations.
 
-### M39 — Layer filtering/search (M, Core)
+### M40 — Layer filtering/search (M, Core)
 
 The six CS6 dimensions (name, kind, effect, mode, attribute, color label) behind
 a `QSortFilterProxyModel` and the on/off toggle, with ancestor promotion; kind
 is a multi-select icon row; name is a text field; effect/mode/attribute/color
 are value menus. View-only (no history, no serialization). Effect/attribute
-criteria that need FX/advanced-blending data degrade until M41 (matching
+criteria that need FX/advanced-blending data degrade until M42 (matching
 `LAY-032`'s CC-only exclusions).
 
-**Dependencies:** M38 (tree + model roles), M36 (color/lock values).
+**Dependencies:** M39 (tree + model roles), M36 (color/lock values).
 **PSD-interop risk: none** — transient view state.
 
-### M40 — Layer management operations (L, Core)
+### M41 — Layer management operations (L, Core)
 
 The remaining structural operations: rasterize variants (Type/Shape/Fill
 Content/Vector Mask/Smart Object/Video/Layer/All Layers), merge/flatten
@@ -350,11 +361,11 @@ detection to become a first-class flag), Select All / Similar / Linked, link
 sets, Delete Hidden Layers, and the New Layer/Group **dialogs** (neutral-color
 fill, use-previous-as-clipping) that M37 deliberately ships without.
 
-**Dependencies:** M36, M37, M38. **PSD-interop risk: low–medium** — structural
+**Dependencies:** M36, M37, M39. **PSD-interop risk: low–medium** — structural
 operations that recompute the composite; link-set serialization is unsourced
 (`LAY-002` open question).
 
-### M41 — Layer styles / effects (XL, Core)
+### M42 — Layer styles / effects (XL, Core)
 
 The `fx` menu and badge, effect child rows in the tree, the Layer Style dialog
 for the seven effect families, effect rendering as compositor passes,
@@ -363,11 +374,11 @@ Styles preset panel (`.asl`). Advanced Blending + Blend-If + the "customized"
 badge. This is when `Fill` must move **after** the effect passes and `Opacity`
 must scale the effect result — a formal dependency back on M36's compositor.
 
-**Dependencies:** M36 (fill/opacity split), M38 (fx rows). **PSD-interop risk:
+**Dependencies:** M36 (fill/opacity split), M39 (fx rows). **PSD-interop risk:
 high** — `lrFX` plus the extended descriptor blocks (`lfx2`, `vscg`, `vogk`
 family) are only partly catalogued; unknown keys must be preserved.
 
-### M42 — Smart objects, vector masks, artboards, layer comps (XL, Core + Extended/non-goal)
+### M43 — Smart objects, vector masks, artboards, layer comps (XL, Core + Extended/non-goal)
 
 Smart Objects (embedded; convert/edit/replace/export/rasterize; `SoLd`/`lnk2`),
 vector masks and clipping masks (thumb, density/feather, clip runs, `vmsk`/
@@ -375,7 +386,7 @@ vector masks and clipping masks (thumb, density/feather, clip runs, `vmsk`/
 linked/embedded object handling (`lnkD`/`lnk3`; linked is post-CS6, preserved
 only). **Artboards are a non-goal** for CS6 parity (`docs/05-layers/artboards.md`).
 
-**Dependencies:** M36–M41. **PSD-interop risk: high** — SoLd/lnk2/vmsk/1065
+**Dependencies:** M36–M42. **PSD-interop risk: high** — SoLd/lnk2/vmsk/1065
 descriptors and layer identity (`lyid`, resource 1044) are only partly
 documented.
 
@@ -388,11 +399,11 @@ Carried forward from `LAY-002` / `PAN-001`:
   Essentials: Kind = five icons (multi-select), Name = text, Effect/Mode/
   Attribute/Color = menus. Attribute/Effect sub-lists remain unverified.
 - **Link-set persistence in PSD.** Whether CS6 stores link relationships in a
-  block or transiently is unsourced. Blocks the M40 link-set serialization.
+  block or transiently is unsourced. Blocks the M41 link-set serialization.
 - **Color-label palette coordinates.** The exact RGB of each label is not
   sourced; only the seven names and the 0–7 PSD values.
 - **Rasterize Layer Style semantics.** Whether it bakes only effects or also
-  clears the style list, and its undo granularity, is undocumented. M41.
+  clears the style list, and its undo granularity, is undocumented. M42.
 - **Panel Options defaults.** Thumbnail contents = Entire Document, Expand New
   Effects = on, Add "copy" = on, Use Default Masks = on are sourced; the
   thumbnail-size default is still not stated.
@@ -412,9 +423,9 @@ New from this research:
   group fill or a constant is open (`LAY-003`). M36 preserves and ignores it.
 - **Background identification.** M36's `index 0 && name == "Background"`
   heuristic is a ceiling; a first-class `is_background`/`NodeKind::Background`
-  lands in M38/M40. Type/shape forced locks need layer kinds too.
+  lands in M39/M41. Type/shape forced locks need layer kinds too.
 - **Expansion state persistence.** Whether CS6 persists group expand/collapse is
-  not sourced; M38 chooses session state (matching workspace persistence) unless
+  not sourced; M39 chooses session state (matching workspace persistence) unless
   a preference dump says otherwise.
 - **M37 insertion sentinel and group blend.** An out-of-range or negative
   `above` inserts at the top (including the no-selection `-1`), so there is no
@@ -426,10 +437,10 @@ New from this research:
   labelled M36–M38 in `docs/dev/STATE.md`; this program reuses those numbers.
   `docs/dev/canvas-compositing-plan.md` is frozen and still uses them.
 - **Layer identity.** Comps/link sets/styles ultimately need a stable layer id
-  (`lyid`, resource 1044); the model has none. Needed by M42 (and comps).
+  (`lyid`, resource 1044); the model has none. Needed by M43 (and comps).
 - **`write_psd` unknown-tag preservation.** The codec currently drops unknown
   additional-layer tags; CS6 files with styles/vector masks/link blocks will not
-  round-trip until those tags are either modelled or preserved opaquely (M41/M42).
+  round-trip until those tags are either modelled or preserved opaquely (M42/M43).
 
 ## 6. Sources
 

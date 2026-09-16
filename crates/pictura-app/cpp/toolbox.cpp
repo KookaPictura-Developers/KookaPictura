@@ -5,13 +5,17 @@
 #include "tools.h"
 
 #include <QtCore/QSize>
+#include <QtCore/QTimer>
+#include <QtGui/QAction>
 #include <QtGui/QKeySequence>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtWidgets/QButtonGroup>
-#include <QtWidgets/QGridLayout>
+#include <QtWidgets/QMenu>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
+
+#include <functional>
 
 namespace pictura {
 
@@ -20,6 +24,80 @@ namespace {
 constexpr int kSwatchSize = 22;
 constexpr int kWidgetSize = 40;
 constexpr int kResetSize = 12;
+
+// A slot button: the base tool button plus the CS6 interactions the stock
+// class lacks — right-click and press-and-hold open the flyout, Alt-click
+// cycles the group's implemented members.
+class ToolSlotButton : public QToolButton {
+public:
+    explicit ToolSlotButton(QWidget* parent = nullptr)
+        : QToolButton(parent)
+    {
+        holdTimer_.setSingleShot(true);
+        holdTimer_.setInterval(350);
+        connect(&holdTimer_, &QTimer::timeout, this, [this]() {
+            held_ = true;
+            if (onMenu) {
+                onMenu();
+            }
+        });
+    }
+
+    std::function<void()> onMenu;
+    std::function<void()> onCycle;
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        if (event->button() == Qt::RightButton) {
+            if (onMenu) {
+                onMenu();
+            }
+            event->accept();
+            return;
+        }
+        if (event->button() == Qt::LeftButton
+            && event->modifiers().testFlag(Qt::AltModifier)) {
+            if (onCycle) {
+                onCycle();
+            }
+            event->accept();
+            return;
+        }
+        if (event->button() == Qt::LeftButton) {
+            held_ = false;
+            holdTimer_.start();
+        }
+        QToolButton::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override
+    {
+        holdTimer_.stop();
+        if (held_) {
+            held_ = false;
+            event->accept();
+            return;
+        }
+        QToolButton::mouseReleaseEvent(event);
+    }
+
+private:
+    QTimer holdTimer_;
+    bool held_ = false;
+};
+
+QString enabledTooltip(const ToolInfo& info)
+{
+    return QStringLiteral("%1 (%2) — %3")
+        .arg(QString::fromLatin1(info.label), QString(info.shortcut),
+             QString::fromLatin1(info.hint));
+}
+
+QString disabledTooltip(const ToolInfo& info)
+{
+    return QStringLiteral("%1 — not implemented yet").arg(QString::fromLatin1(info.label));
+}
 
 } // namespace
 
@@ -114,6 +192,7 @@ void ForegroundBackgroundWidget::mousePressEvent(QMouseEvent* event)
 
 Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent)
     : QDockWidget(QStringLiteral("Tools"), parent)
+    , controller_(controller)
     , colors_(colors)
 {
     setObjectName(QStringLiteral("toolsPanel"));
@@ -123,42 +202,71 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     layout->setContentsMargins(2, 2, 2, 2);
     layout->setSpacing(4);
 
-    auto* gridWidget = new QWidget(body);
-    auto* grid = new QGridLayout(gridWidget);
-    grid->setContentsMargins(0, 0, 0, 0);
-    grid->setSpacing(2);
+    auto* columnWidget = new QWidget(body);
+    auto* column = new QVBoxLayout(columnWidget);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(1);
 
     auto* group = new QButtonGroup(this);
     group->setExclusive(true);
 
-    const QList<ToolId> ids = allToolIds();
-    for (int i = 0; i < ids.size(); ++i) {
-        const ToolId id = ids.at(i);
-        const ToolInfo& info = toolInfo(id);
-        auto* button = new QToolButton(gridWidget);
-        button->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));
+    for (int g = 1; g <= 23; ++g) {
+        QList<ToolId> members;
+        bool anyImplemented = false;
+        for (ToolId id : allToolIds()) {
+            if (toolInfo(id).group == g) {
+                members << id;
+                anyImplemented = anyImplemented || toolImplemented(id);
+            }
+        }
+        if (members.isEmpty()) {
+            continue;
+        }
+
+        currentByGroup_[g] = groupCurrentTool(g);
+        auto* button = new ToolSlotButton(columnWidget);
         button->setIconSize(QSize(20, 20));
         button->setFixedSize(30, 30);
         button->setCheckable(true);
         button->setAutoRaise(true);
-        if (id != ToolId::Brush && id != ToolId::Pencil) {
-            button->setShortcut(QKeySequence(QString(info.shortcut)));
+        button->setEnabled(anyImplemented);
+        if (members.size() > 1) {
+            button->setPopupMode(QToolButton::MenuButtonPopup);
+            auto* menu = new QMenu(button);
+            for (ToolId member : members) {
+                const ToolInfo& info = toolInfo(member);
+                QAction* action =
+                    menu->addAction(icon(QStringLiteral("tool.") + toolIdName(member)),
+                                    QString::fromLatin1(info.label));
+                action->setData(int(member));
+                action->setEnabled(info.implemented);
+                action->setToolTip(info.implemented ? enabledTooltip(info)
+                                                    : disabledTooltip(info));
+            }
+            button->setMenu(menu);
+            connect(menu, &QMenu::triggered, this, [this, g](QAction* action) {
+                selectMember(g, ToolId(action->data().toInt()));
+            });
         }
-        button->setToolTip(QStringLiteral("%1 (%2) — %3")
-                               .arg(QString::fromLatin1(info.label), QString(info.shortcut),
-                                    QString::fromLatin1(info.hint)));
-        grid->addWidget(button, i / 2, i % 2);
-        group->addButton(button);
 
-        if (controller) {
-            button->setChecked(controller->activeTool() == id);
-            connect(button, &QToolButton::clicked, controller,
-                    [controller, id]() { controller->setActiveTool(id); });
-            connect(controller, &ToolController::activeToolChanged, button,
-                    [button, id](ToolId active) { button->setChecked(active == id); });
+        button->onMenu = [button]() { button->showMenu(); };
+        button->onCycle = [this, g]() { cycleGroup(g); };
+
+        slotButtons_ << button;
+        group->addButton(button);
+        column->addWidget(button, 0, Qt::AlignHCenter);
+
+        refreshSlot(g);
+        if (controller_) {
+            connect(button, &QToolButton::clicked, this, [this, g]() {
+                const ToolId current = groupCurrentTool(g);
+                if (toolImplemented(current)) {
+                    controller_->setActiveTool(current);
+                }
+            });
         }
     }
-    layout->addWidget(gridWidget, 0, Qt::AlignHCenter);
+    layout->addWidget(columnWidget, 0, Qt::AlignHCenter);
 
     layout->addWidget(new ForegroundBackgroundWidget(colors, body), 0, Qt::AlignHCenter);
 
@@ -180,6 +288,83 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     layout->addStretch(1);
     setWidget(body);
     setMinimumWidth(66);
+
+    if (controller_) {
+        connect(controller_, &ToolController::activeToolChanged, this, [this](ToolId id) {
+            const int g = toolInfo(id).group;
+            currentByGroup_[g] = id;
+            refreshSlot(g);
+        });
+    }
+}
+
+ToolId Toolbox::groupCurrentTool(int group) const
+{
+    if (currentByGroup_.contains(group)) {
+        return currentByGroup_.value(group);
+    }
+    ToolId first;
+    bool have = false;
+    for (ToolId id : allToolIds()) {
+        if (toolInfo(id).group != group) {
+            continue;
+        }
+        if (!have) {
+            first = id;
+            have = true;
+        }
+        if (toolImplemented(id)) {
+            return id;
+        }
+    }
+    return first;
+}
+
+void Toolbox::refreshSlot(int group)
+{
+    if (group < 1 || group > slotButtons_.size()) {
+        return;
+    }
+    QToolButton* button = slotButtons_.at(group - 1);
+    const ToolId id = groupCurrentTool(group);
+    const ToolInfo& info = toolInfo(id);
+    button->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));
+    if (info.implemented) {
+        button->setToolTip(enabledTooltip(info));
+        if (id != ToolId::Brush && id != ToolId::Pencil && !info.shortcut.isNull()) {
+            button->setShortcut(QKeySequence(QString(info.shortcut)));
+        } else {
+            button->setShortcut(QKeySequence());
+        }
+    } else {
+        button->setToolTip(disabledTooltip(info));
+        button->setShortcut(QKeySequence());
+    }
+    button->setChecked(controller_ && controller_->activeTool() == id);
+}
+
+void Toolbox::selectMember(int group, ToolId id)
+{
+    currentByGroup_[group] = id;
+    refreshSlot(group);
+    if (controller_ && toolImplemented(id)) {
+        controller_->setActiveTool(id);
+    }
+}
+
+void Toolbox::cycleGroup(int group)
+{
+    QList<ToolId> enabled;
+    for (ToolId id : allToolIds()) {
+        if (toolInfo(id).group == group && toolImplemented(id)) {
+            enabled << id;
+        }
+    }
+    if (enabled.size() < 2) {
+        return;
+    }
+    const int index = enabled.indexOf(groupCurrentTool(group));
+    selectMember(group, enabled.at((index + 1) % enabled.size()));
 }
 
 } // namespace pictura

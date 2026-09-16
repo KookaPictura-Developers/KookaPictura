@@ -5,30 +5,101 @@
     <file>icons/edit.stepBackward.svg</file>
     <file>icons/edit.stepForward.svg</file>
     <file>icons/edit.undo.svg</file>
-    <file>icons/file.close.svg</file>
     <file>icons/file.closeAll.svg</file>
+    <file>icons/file.close.svg</file>
     <file>icons/file.exit.svg</file>
     <file>icons/file.new.svg</file>
     <file>icons/file.open.svg</file>
     <file>icons/file.revert.svg</file>
-    <file>icons/file.save.svg</file>
     <file>icons/file.saveAs.svg</file>
+    <file>icons/file.save.svg</file>
     <file>icons/help.about.svg</file>
+    <file>icons/history.snapshot.svg</file>
     <file>icons/image.crop.svg</file>
     <file>icons/image.flipHorizontal.svg</file>
     <file>icons/image.flipVertical.svg</file>
     <file>icons/image.rotate180.svg</file>
     <file>icons/image.rotate90ccw.svg</file>
     <file>icons/image.rotate90cw.svg</file>
+    <file>icons/layers.delete.svg</file>
+    <file>icons/layers.fillAdjustment.svg</file>
+    <file>icons/layers.fx.svg</file>
+    <file>icons/layers.group.svg</file>
+    <file>icons/layers.link.svg</file>
+    <file>icons/layers.mask.svg</file>
+    <file>icons/layers.newLayer.svg</file>
     <file>icons/select.all.svg</file>
     <file>icons/select.deselect.svg</file>
+    <file>icons/tool.addanchorpoint.svg</file>
+    <file>icons/tool.arthistorybrush.svg</file>
+    <file>icons/tool.backgrounderaser.svg</file>
+    <file>icons/tool.blur.svg</file>
+    <file>icons/tool.brush.svg</file>
+    <file>icons/tool.burn.svg</file>
+    <file>icons/tool.camerapan.svg</file>
+    <file>icons/tool.cameraroll.svg</file>
+    <file>icons/tool.camerarotate.svg</file>
+    <file>icons/tool.camerawalk.svg</file>
+    <file>icons/tool.camerazoom.svg</file>
+    <file>icons/tool.clonestamp.svg</file>
+    <file>icons/tool.colorreplacement.svg</file>
+    <file>icons/tool.colorsampler.svg</file>
+    <file>icons/tool.contentawaremove.svg</file>
+    <file>icons/tool.convertpoint.svg</file>
+    <file>icons/tool.count.svg</file>
     <file>icons/tool.crop.svg</file>
+    <file>icons/tool.customshape.svg</file>
+    <file>icons/tool.deleteanchorpoint.svg</file>
+    <file>icons/tool.directselection.svg</file>
+    <file>icons/tool.dodge.svg</file>
+    <file>icons/tool.ellipse.svg</file>
+    <file>icons/tool.ellipticalmarquee.svg</file>
+    <file>icons/tool.eraser.svg</file>
     <file>icons/tool.eyedropper.svg</file>
+    <file>icons/tool.freeformpen.svg</file>
+    <file>icons/tool.gradient.svg</file>
     <file>icons/tool.hand.svg</file>
+    <file>icons/tool.healingbrush.svg</file>
+    <file>icons/tool.historybrush.svg</file>
+    <file>icons/tool.horizontaltypemask.svg</file>
+    <file>icons/tool.horizontaltype.svg</file>
     <file>icons/tool.lasso.svg</file>
+    <file>icons/tool.line.svg</file>
+    <file>icons/tool.magiceraser.svg</file>
+    <file>icons/tool.magicwand.svg</file>
+    <file>icons/tool.magneticlasso.svg</file>
     <file>icons/tool.marquee.svg</file>
+    <file>icons/tool.mixerbrush.svg</file>
     <file>icons/tool.move.svg</file>
+    <file>icons/tool.note.svg</file>
+    <file>icons/tool.objectpan.svg</file>
+    <file>icons/tool.objectroll.svg</file>
+    <file>icons/tool.objectrotate.svg</file>
+    <file>icons/tool.objectscale.svg</file>
+    <file>icons/tool.objectslide.svg</file>
+    <file>icons/tool.paintbucket.svg</file>
+    <file>icons/tool.patch.svg</file>
+    <file>icons/tool.pathselection.svg</file>
+    <file>icons/tool.patternstamp.svg</file>
+    <file>icons/tool.pencil.svg</file>
+    <file>icons/tool.pen.svg</file>
+    <file>icons/tool.perspectivecrop.svg</file>
+    <file>icons/tool.polygonallasso.svg</file>
+    <file>icons/tool.polygon.svg</file>
     <file>icons/tool.quickselection.svg</file>
+    <file>icons/tool.rectangle.svg</file>
+    <file>icons/tool.redeye.svg</file>
+    <file>icons/tool.rotateview.svg</file>
+    <file>icons/tool.roundedrectangle.svg</file>
+    <file>icons/tool.ruler.svg</file>
+    <file>icons/tool.sharpen.svg</file>
+    <file>icons/tool.sliceselect.svg</file>
+    <file>icons/tool.slice.svg</file>
+    <file>icons/tool.smudge.svg</file>
+    <file>icons/tool.sponge.svg</file>
+    <file>icons/tool.spothealingbrush.svg</file>
+    <file>icons/tool.verticaltypemask.svg</file>
+    <file>icons/tool.verticaltype.svg</file>
     <file>icons/tool.zoom.svg</file>
     <file>icons/view.actualPixels.svg</file>
     <file>icons/view.fitOnScreen.svg</file>
@@ -38,15 +109,104 @@
     <file>icons/view.screenMode.standard.svg</file>
     <file>icons/view.zoomIn.svg</file>
     <file>icons/view.zoomOut.svg</file>
+    <file>icons/window.panels.3d.svg</file>
+    <file>icons/window.panels.actions.svg</file>
+    <file>icons/window.panels.adjustments.svg</file>
+    <file>icons/window.panels.brushes.svg</file>
+    <file>icons/window.panels.channels.svg</file>
+    <file>icons/window.panels.character.svg</file>
+    <file>icons/window.panels.cloneSource.svg</file>
+    <file>icons/window.panels.color.svg</file>
+    <file>icons/window.panels.gradients.svg</file>
+    <file>icons/window.panels.histogram.svg</file>
+    <file>icons/window.panels.history.svg</file>
+    <file>icons/window.panels.info.svg</file>
     <file>icons/window.panels.layers.svg</file>
+    <file>icons/window.panels.libraries.svg</file>
+    <file>icons/window.panels.masks.svg</file>
+    <file>icons/window.panels.measurementLog.svg</file>
+    <file>icons/window.panels.navigator.svg</file>
+    <file>icons/window.panels.notes.svg</file>
+    <file>icons/window.panels.paragraph.svg</file>
+    <file>icons/window.panels.paths.svg</file>
+    <file>icons/window.panels.patterns.svg</file>
+    <file>icons/window.panels.properties.svg</file>
+    <file>icons/window.panels.smartObjects.svg</file>
+    <file>icons/window.panels.swatches.svg</file>
+    <file>icons/window.panels.timeline.svg</file>
+    <file>icons/window.panels.toolPresets.svg</file>
     <file>icons/window.panels.tools.svg</file>
+    <file>icons/window.panels.typeStyles.svg</file>
+    <file>cursors/tool.addanchorpoint.svg</file>
+    <file>cursors/tool.arthistorybrush.svg</file>
+    <file>cursors/tool.backgrounderaser.svg</file>
+    <file>cursors/tool.blur.svg</file>
+    <file>cursors/tool.brush.svg</file>
+    <file>cursors/tool.burn.svg</file>
+    <file>cursors/tool.camerapan.svg</file>
+    <file>cursors/tool.cameraroll.svg</file>
+    <file>cursors/tool.camerarotate.svg</file>
+    <file>cursors/tool.camerawalk.svg</file>
+    <file>cursors/tool.camerazoom.svg</file>
+    <file>cursors/tool.clonestamp.svg</file>
+    <file>cursors/tool.colorreplacement.svg</file>
+    <file>cursors/tool.colorsampler.svg</file>
+    <file>cursors/tool.contentawaremove.svg</file>
+    <file>cursors/tool.convertpoint.svg</file>
+    <file>cursors/tool.count.svg</file>
     <file>cursors/tool.crop.svg</file>
+    <file>cursors/tool.customshape.svg</file>
+    <file>cursors/tool.deleteanchorpoint.svg</file>
+    <file>cursors/tool.directselection.svg</file>
+    <file>cursors/tool.dodge.svg</file>
+    <file>cursors/tool.ellipse.svg</file>
+    <file>cursors/tool.ellipticalmarquee.svg</file>
+    <file>cursors/tool.eraser.svg</file>
     <file>cursors/tool.eyedropper.svg</file>
+    <file>cursors/tool.freeformpen.svg</file>
+    <file>cursors/tool.gradient.svg</file>
     <file>cursors/tool.hand.svg</file>
+    <file>cursors/tool.healingbrush.svg</file>
+    <file>cursors/tool.historybrush.svg</file>
+    <file>cursors/tool.horizontaltypemask.svg</file>
+    <file>cursors/tool.horizontaltype.svg</file>
     <file>cursors/tool.lasso.svg</file>
+    <file>cursors/tool.line.svg</file>
+    <file>cursors/tool.magiceraser.svg</file>
+    <file>cursors/tool.magicwand.svg</file>
+    <file>cursors/tool.magneticlasso.svg</file>
     <file>cursors/tool.marquee.svg</file>
+    <file>cursors/tool.mixerbrush.svg</file>
     <file>cursors/tool.move.svg</file>
+    <file>cursors/tool.note.svg</file>
+    <file>cursors/tool.objectpan.svg</file>
+    <file>cursors/tool.objectroll.svg</file>
+    <file>cursors/tool.objectrotate.svg</file>
+    <file>cursors/tool.objectscale.svg</file>
+    <file>cursors/tool.objectslide.svg</file>
+    <file>cursors/tool.paintbucket.svg</file>
+    <file>cursors/tool.patch.svg</file>
+    <file>cursors/tool.pathselection.svg</file>
+    <file>cursors/tool.patternstamp.svg</file>
+    <file>cursors/tool.pencil.svg</file>
+    <file>cursors/tool.pen.svg</file>
+    <file>cursors/tool.perspectivecrop.svg</file>
+    <file>cursors/tool.polygonallasso.svg</file>
+    <file>cursors/tool.polygon.svg</file>
     <file>cursors/tool.quickselection.svg</file>
+    <file>cursors/tool.rectangle.svg</file>
+    <file>cursors/tool.redeye.svg</file>
+    <file>cursors/tool.rotateview.svg</file>
+    <file>cursors/tool.roundedrectangle.svg</file>
+    <file>cursors/tool.ruler.svg</file>
+    <file>cursors/tool.sharpen.svg</file>
+    <file>cursors/tool.sliceselect.svg</file>
+    <file>cursors/tool.slice.svg</file>
+    <file>cursors/tool.smudge.svg</file>
+    <file>cursors/tool.sponge.svg</file>
+    <file>cursors/tool.spothealingbrush.svg</file>
+    <file>cursors/tool.verticaltypemask.svg</file>
+    <file>cursors/tool.verticaltype.svg</file>
     <file>cursors/tool.zoom.svg</file>
   </qresource>
 </RCC>

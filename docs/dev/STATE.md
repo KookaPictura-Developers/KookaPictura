@@ -703,7 +703,7 @@ openspec validate --all --strict
   `layer.duplicate.layer`, `layer.group.layers`, `layer.ungroup.layers`) and
   handled in `frame.cpp` against the active view's current layer. Honest limit:
   `Group Layers`/`Ungroup Layers` (and `Duplicate Layer`) act on the **single**
-  selected layer — CS6 groups a multi-selection; M38's selection work upgrades
+  selected layer — CS6 groups a multi-selection; M39's selection work upgrades
   these to per-selection operations (the handler carries the `// ponytail:` note).
   Self-test exit codes 90–94: `m37_create new=1 group=1 duplicate=1 ungroup=1
   undo=1` (count growth, an inert transparent layer, a `" copy"` duplicate name,
@@ -719,6 +719,67 @@ openspec validate --all --strict
   Deferred: a New Layer / New Group **dialog** (neutral-color fill, blend/opacity,
   use-previous-as-clipping), multi-selection grouping, and empty-rect layer
   storage.
+
+- **M38 — icon and cursor library** (a user-requested interruption to the
+  Layers-panel program; see `docs/dev/layers-panel-program.md` and the contract
+  `docs/dev/m38-icon-cursor-library.md`; OpenSpec change
+  `m38-icon-cursor-library`). The full CS6 toolbox catalogue and icon/cursor set
+  landed in the Qt shell only — no Rust, bridge, document, compositor, or PSD
+  change. **Assets:** `assets/icons/` now holds 137 SVGs and `assets/cursors/`
+  71; `assets/pictura.qrc` was regenerated to 208 entries with the on-disk set
+  equal to the listed set (all parse under `xmllint`, none use `<text>`, and a
+  48 px render check found no blank and no solid-fill assets). **Tool
+  catalogue:** `ToolId`/`ToolInfo` in `tools.{h,cpp}` expanded from the M19/M23
+  ten to all **71** CS6 tools in catalogue order, each carrying `name`, `label`,
+  `shortcut`, `Qt::CursorShape`, `hint`, `group` 1..23, `implemented`, and
+  `hotspotX/Y`; `allToolIds()` returns 71, `implementedToolIds()` 10,
+  `toolImplemented()` answers membership, and `static_assert(kToolCount == 71)`
+  guards the table (the separate `ToolCatalogueEntry` layer in the design was
+  collapsed into the existing `ToolInfo` table). **Toolbox:** rebuilt as one
+  button per group (23 slots, single column); a slot shows its current member
+  (first implemented member, else first) and gets a flyout triangle plus a
+  hold/right-click menu only when the group has more than one member; Alt-click
+  cycles the implemented members; an all-unimplemented slot is disabled with the
+  exact `<label> — not implemented yet` tooltip; `setActiveTool` refuses an
+  unimplemented id. The fg/bg swatch widget and the Screen Mode button are
+  unchanged below the slots; `slotButtons()` exposes the slots for the
+  self-test. **Cursors:** `cursor(id, hotX, hotY)` was added (the 24×24 centre
+  default is preserved); the hardcoded eyedropper hotspot is gone and per-tool
+  hotspots come from the catalogue; a null or failed SVG render falls back to
+  the tool's `Qt::CursorShape`, so a missing asset can never yield an invisible
+  cursor. **Panels:** rail buttons carry their `window.panels.<panel>` icons
+  (history/actions/info/navigator/histogram — none null); the Layers strip is
+  the CS6-order icon set `link, fx, mask, fillAdjustment, group, newLayer,
+  delete` (link/fx/mask disabled "not implemented yet";
+  fillAdjustment/group/newLayer/delete wired to the existing behaviour); the
+  History snapshot button uses `history.snapshot`. Existing objectNames and
+  `currentLayer()`/`selectLayer()`/`setView` are unchanged. **Self-tests:**
+  `m38_tools icons=1 cursors=1 slots=1 guard=1` (exit codes 95–98) and
+  `m38_panels rail=1 strip=1 history=1` (codes 99–101), both identical on the
+  no-argument and `two_layers.psd` runs; all earlier lines/codes are unchanged
+  (`m23_toolbox dock=1 buttons=24 fgbg=1` still passes). Two fixes during the
+  milestone: `assets/cursors/tool.move.svg` was clobbered by a parallel asset
+  agent and restored from git before the required compound rewrite, and
+  `tool.brush`/`tool.pencil` had no cursor assets at all (the original defect)
+  and were added. **Honest limits:** dock-tab window icons were not wired (only
+  the rail, Layers strip, and History snapshot get icons); the 3D-object,
+  3D-camera, and Count slots are Extended-only and every all-unimplemented slot
+  is disabled; the blur/sharpen/smudge slot has no default letter (flyout or
+  Alt-click only); the toolbox 1-/2-column toggle is not present (single column
+  only); and the **functionality** of the 61 new catalogue entries is not
+  implemented — assets and disabled UI only. Verified: `cargo fmt --all
+  --check` and `cargo clippy --workspace --all-targets -- -D warnings` clean;
+  **568 tests, 0 failed, 7 ignored** (unchanged — no Rust change; the raw
+  `cargo test --workspace` ignored count is 8 with the pre-existing
+  `pictura-render` doctest); `openspec validate m38-icon-cursor-library
+  --strict` valid and `openspec validate --all --strict` 60/60; both self-tests
+  exit 0. The M38 change ADDs to `application-shell` and `layers-panel` and
+  MODIFIES `tool-framework`, `panel-rail`, `svg-cursors` (no new capability →
+  **59** capabilities after archive). Because it claimed the M38 number, the
+  Layers-panel program's stages shift by one: **M39** panel anatomy, **M40**
+  filtering/search, **M41** remaining management ops, **M42** styles/effects,
+  **M43** smart objects / vector masks / artboards / layer comps; the deferred
+  canvas-performance tracks stay by name.
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -795,9 +856,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: layers panel program (M37–M42), canvas perf series deferred
+## Next: layers panel program (M36–M43), canvas perf series deferred
 
-### Layers panel program (M37–M42) — M37 done, M38 next
+### Layers panel program (M36–M43) — M36/M37/M38 done, M39 next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -807,22 +868,30 @@ the milestone entries above): M36 added `Layer.fill`/`lock`/`color`, `opacity ×
 fill` compositing on CPU and GPU, `lspf`/`lclr`/`iOpa` PSD I/O, the bridge
 getters/setters, and the Fill/lock/color panel controls; M37 added
 `document_ops::layer_ops` New Layer / New Group / Duplicate / Group / Ungroup, the
-bridge methods, the panel buttons and the five `Layer` menu commands. The next
-milestone is **M38 — panel anatomy** (tree model for groups, clipped-layer
-indentation, mask/link/clip/style badges, multi-selection, the seven-button bottom
-strip, Alt-click solo visibility, inline rename, Panel Options, the panel + row
-menus, tooltips, and drag-reorder); M39 (six-dimension filter/search), M40
+bridge methods, the panel buttons and the five `Layer` menu commands.
+
+**M38 was a user-requested interruption: the full CS6 toolbox icon/cursor
+library and the panel icons** (`openspec/changes/m38-icon-cursor-library`,
+contract `docs/dev/m38-icon-cursor-library.md`) — the frozen 71-tool catalogue,
+the full icon/cursor asset set, the single-column flyout toolbox, and the
+panel/Layers/History icons. It is implemented and verified (see the milestone
+entry above); it took the M38 number, so the panel stages shifted by one: the
+next panel milestone is **M39 — panel anatomy** (tree model for
+groups, clipped-layer indentation, mask/link/clip/style badges, multi-selection,
+the seven-button bottom strip, Alt-click solo visibility, inline rename, Panel
+Options, the panel + row menus, tooltips, and drag-reorder); M40
+(six-dimension filter/search), M41
 (rasterize/merge/flatten/link/select-similar/convert-background/layer-via-copy-cut
-and the New Layer/Group dialogs), M41 (layer styles/effects), and M42 (smart
+and the New Layer/Group dialogs), M42 (layer styles/effects), and M43 (smart
 objects / vector masks / artboards-as-non-goal / layer comps) follow in that
 order. M36's confirmed ceilings — the `layer_kind` `"background"` name+index
-heuristic and the forced type/shape locks — land in M38/M40, and M37's
-single-layer grouping limit is lifted by M38's multi-selection.
+heuristic and the forced type/shape locks — land in M39/M41, and M37's
+single-layer grouping limit is lifted by M39's multi-selection.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M42.
+> number; they are deferred until after M43.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -920,7 +989,7 @@ no new capability. Next in order:
 
 Deferred canvas-performance tracks (previously sketched as M36–M38; those
 numbers are now claimed by the layers panel program above, so these are deferred
-until after M41). The remaining canvas-performance tracks — history
+until after M43). The remaining canvas-performance tracks — history
 copy-on-write / tile diffs, resident per-layer GPU source buffers, 256² tiles +
 LoD, plus the GPU-resident zero-copy present — each need their own design (the
 small, app-local region-blit slice landed as M35 above):

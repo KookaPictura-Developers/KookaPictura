@@ -831,26 +831,18 @@ void PicturaMainWindow::buildPanels()
 
     panelRail_ = new PanelRail(this);
     addToolBar(Qt::RightToolBarArea, panelRail_);
-    panelRail_->setToolButtonStyle(Qt::ToolButtonTextOnly);
 
-    // ponytail: glyphs are action text on a text-only rail; swap to real icons
-    // when the icon set covers these panels.
-    auto addRailPanel = [this](const char* commandId, const QString& glyph,
-                               const QString& tooltip) {
+    // Each rail command id is the panel's `window.panels.<name>` asset id, so the
+    // rail button, the dock tab, and the Window menu resolve the same icon.
+    auto addRailPanel = [this](const char* commandId, const QString& tooltip) {
         const QString id = QString::fromLatin1(commandId);
-        panelRail_->addPanel(id, QIcon(), tooltip);
-        for (QAction* action : panelRail_->actions()) {
-            if (action->data().toString() == id) {
-                action->setText(glyph);
-                break;
-            }
-        }
+        panelRail_->addPanel(id, pictura::icon(id), tooltip);
     };
-    addRailPanel(command_ids::WindowPanelsHistory, QStringLiteral("Hi"), tr("History"));
-    addRailPanel(command_ids::WindowPanelsActions, QStringLiteral("Ac"), tr("Actions"));
-    addRailPanel(command_ids::WindowPanelsInfo, QStringLiteral("In"), tr("Info"));
-    addRailPanel(command_ids::WindowPanelsNavigator, QStringLiteral("Na"), tr("Navigator"));
-    addRailPanel(command_ids::WindowPanelsHistogram, QStringLiteral("Hs"), tr("Histogram"));
+    addRailPanel(command_ids::WindowPanelsHistory, tr("History"));
+    addRailPanel(command_ids::WindowPanelsActions, tr("Actions"));
+    addRailPanel(command_ids::WindowPanelsInfo, tr("Info"));
+    addRailPanel(command_ids::WindowPanelsNavigator, tr("Navigator"));
+    addRailPanel(command_ids::WindowPanelsHistogram, tr("Histogram"));
 
     connect(panelRail_, &PanelRail::commandTriggered, this, [this](const QString& id) {
         if (QAction* action = registry_->action(id)) {

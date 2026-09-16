@@ -18,17 +18,80 @@ namespace pictura {
 class ImageView;
 class PictureView;
 
+// The 71-tool CS6 catalogue in frozen table order. The 10 implemented tools
+// keep their M19 names; the enum order matches `kToolTable` in tools.cpp.
 enum class ToolId {
     Move,
     Marquee,
+    EllipticalMarquee,
     Lasso,
+    PolygonalLasso,
+    MagneticLasso,
+    MagicWand,
     QuickSelection,
     Crop,
+    PerspectiveCrop,
+    Slice,
+    SliceSelect,
     Eyedropper,
-    Hand,
-    Zoom,
+    ColorSampler,
+    Ruler,
+    Note,
+    Count,
+    SpotHealingBrush,
+    HealingBrush,
+    Patch,
+    ContentAwareMove,
+    RedEye,
     Brush,
-    Pencil
+    Pencil,
+    ColorReplacement,
+    MixerBrush,
+    CloneStamp,
+    PatternStamp,
+    HistoryBrush,
+    ArtHistoryBrush,
+    Eraser,
+    BackgroundEraser,
+    MagicEraser,
+    Gradient,
+    PaintBucket,
+    Blur,
+    Sharpen,
+    Smudge,
+    Dodge,
+    Burn,
+    Sponge,
+    Pen,
+    FreeformPen,
+    AddAnchorPoint,
+    DeleteAnchorPoint,
+    ConvertPoint,
+    HorizontalType,
+    VerticalType,
+    HorizontalTypeMask,
+    VerticalTypeMask,
+    PathSelection,
+    DirectSelection,
+    Rectangle,
+    RoundedRectangle,
+    Ellipse,
+    Polygon,
+    Line,
+    CustomShape,
+    ObjectRotate,
+    ObjectRoll,
+    ObjectPan,
+    ObjectSlide,
+    ObjectScale,
+    CameraRotate,
+    CameraRoll,
+    CameraPan,
+    CameraWalk,
+    CameraZoom,
+    Hand,
+    RotateView,
+    Zoom
 };
 enum class SelectionMode { New, Add, Subtract, Intersect };
 
@@ -39,10 +102,16 @@ struct ToolInfo {
     QChar shortcut;
     Qt::CursorShape cursor;
     const char* hint;
+    int group;
+    bool implemented;
+    int hotspotX;
+    int hotspotY;
 };
 
 const ToolInfo& toolInfo(ToolId id);
 const QList<ToolId>& allToolIds();
+const QList<ToolId>& implementedToolIds();
+bool toolImplemented(ToolId id);
 QString selectionModeString(SelectionMode mode);
 
 // Asset base name for a tool ("move", "quickselection"), used for the
