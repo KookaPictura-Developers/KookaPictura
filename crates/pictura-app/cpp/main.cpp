@@ -2225,6 +2225,72 @@ int main(int argc, char* argv[])
             return 78;
         }
 
+        // M34: composite coherence and cheap undo/redo. A region-path move must
+        // leave the stored document composite equal to the displayed image;
+        // undo/redo restore from the snapshot composite; and a save after the
+        // edit must write that composite to disk.
+        const bool m34Created = frame.newDocument(QStringLiteral("M34Coherent"), 32, 32,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* m34View = frame.activeView();
+        if (!m34Created || !m34View) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M34 document\n");
+            std::fflush(stderr);
+            return 79;
+        }
+        const int m34DocIndex = frame.activeDocumentIndex();
+        const QImage m34Pre = m34View->image();
+        m34View->begin_move_preview();
+        const bool m34Moved = m34View->commit_move(4, 4);
+        const QImage m34Post = m34View->image();
+        const bool m34Composite =
+            m34Moved
+            && static_cast<unsigned>(m34View->composite_argb(6, 6))
+                   == static_cast<unsigned>(m34Post.pixel(6, 6))
+            && static_cast<unsigned>(m34View->composite_argb(2, 2))
+                   == static_cast<unsigned>(m34Post.pixel(2, 2));
+        const bool m34Undo = m34View->undo() && m34View->image() == m34Pre
+                             && m34View->redo() && m34View->image() == m34Post;
+
+        // A full-recomposite edit (add noise) changes the layer's colour; the
+        // save must write that edited composite, not the pre-edit merged image.
+        const bool m34Filtered = m34View->apply_filter(QStringLiteral("add-noise"));
+        const QImage m34Edited = m34View->image();
+        const bool m34EditChanged = m34Edited != m34Post;
+
+        const QString m34SavePath =
+            QDir::tempPath() + QStringLiteral("/kooka-pictura-m34-roundtrip.psd");
+        const bool m34Saved = frame.saveActiveAs(m34SavePath);
+        const bool m34Reopened = frame.openPath(m34SavePath);
+        pictura::PictureView* m34Reloaded = frame.activeView();
+        const bool m34Save =
+            m34Filtered && m34EditChanged && m34Saved && m34Reopened && m34Reloaded
+            && m34Reloaded->has_document()
+            && m34Reloaded->image() == m34Edited
+            && static_cast<unsigned>(m34Reloaded->composite_argb(6, 6))
+                   == static_cast<unsigned>(m34Edited.pixel(6, 6));
+
+        std::fprintf(stderr,
+                     "pictura self-test: m34_coherent composite=%d undo=%d save=%d\n",
+                     m34Composite ? 1 : 0,
+                     m34Undo ? 1 : 0,
+                     m34Save ? 1 : 0);
+        std::fflush(stderr);
+        if (!m34Composite) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M34 composite coherence wrong\n");
+            return 79;
+        }
+        if (!m34Undo) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M34 undo/redo wrong\n");
+            return 80;
+        }
+        if (!m34Save) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M34 save round-trip wrong\n");
+            return 81;
+        }
+        frame.closeDocument(frame.activeDocumentIndex(), false);
+        frame.closeDocument(m34DocIndex, false);
+
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {

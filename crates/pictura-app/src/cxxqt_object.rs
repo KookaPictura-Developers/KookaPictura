@@ -287,6 +287,11 @@ pub mod qobject {
         #[qinvokable]
         fn sample_argb(&self, x: i32, y: i32) -> u32;
 
+        /// Self-test probe: the stored document composite's pixel at `(x, y)` as
+        /// `0xAARRGGBB`, or 0 when there is no document or out of bounds.
+        #[qinvokable]
+        fn composite_argb(&self, x: i32, y: i32) -> u32;
+
         /// The selected pixels' `"x y w h"` bounding box, or an empty string
         /// when nothing is selected.
         #[qinvokable]
@@ -521,16 +526,17 @@ impl Default for PictureViewRust {
 impl qobject::PictureView {
     pub fn open(self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
-        let loaded = std::fs::read(&path)
+        let mut loaded = std::fs::read(&path)
             .ok()
             .and_then(|bytes| pictura_codec::read_psd(&bytes).ok());
 
         let ok = loaded.is_some();
         let gpu_compute = self.rust().gpu_compute;
-        let image = loaded
-            .as_ref()
-            .map(|doc| document_to_image(doc, gpu_compute))
-            .unwrap_or_else(test_image);
+        let rendered = loaded.as_ref().map(|doc| current_buffer(doc, gpu_compute));
+        if let (Some(doc), Some(rendered)) = (loaded.as_mut(), rendered.as_ref()) {
+            store_composite(doc, rendered);
+        }
+        let image = rendered.as_ref().map_or_else(test_image, buffer_to_image);
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = loaded;
@@ -610,7 +616,10 @@ impl qobject::PictureView {
             children: Vec::new(),
             is_group: false,
         });
-        let image = document_to_image(&doc, self.rust().gpu_compute);
+        let gpu_compute = self.rust().gpu_compute;
+        let rendered = current_buffer(&doc, gpu_compute);
+        store_composite(&mut doc, &rendered);
+        let image = buffer_to_image(&rendered);
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = Some(doc);
@@ -727,11 +736,11 @@ impl qobject::PictureView {
                 None => return,
             }
         };
-        self.as_mut().record("Layer Visibility");
         match region {
             Some(rect) => self.as_mut().refresh_region(rect),
-            None => self.recomposite(),
+            None => self.as_mut().recomposite(),
         }
+        self.as_mut().record("Layer Visibility");
     }
 
     pub fn layer_blend(&self, i: i32) -> QString {
@@ -761,8 +770,8 @@ impl qobject::PictureView {
             false
         };
         if changed {
+            self.as_mut().recomposite();
             self.as_mut().record("Blend Mode");
-            self.recomposite();
         }
         changed
     }
@@ -785,8 +794,8 @@ impl qobject::PictureView {
             false
         };
         if changed {
+            self.as_mut().recomposite();
             self.as_mut().record("Opacity");
-            self.recomposite();
         }
         changed
     }
@@ -805,8 +814,8 @@ impl qobject::PictureView {
             false
         };
         if changed {
+            self.as_mut().recomposite();
             self.as_mut().record("Rename Layer");
-            self.recomposite();
         }
         changed
     }
@@ -825,8 +834,8 @@ impl qobject::PictureView {
             false
         };
         if changed {
+            self.as_mut().recomposite();
             self.as_mut().record("Reorder Layer");
-            self.recomposite();
         }
         changed
     }
@@ -916,8 +925,8 @@ impl qobject::PictureView {
             base.combine_with(&shape, mode);
             rust.selection = Some(base);
         }
+        self.as_mut().recomposite();
         self.as_mut().record("Selection");
-        self.recomposite();
         true
     }
 
@@ -1042,8 +1051,8 @@ impl qobject::PictureView {
             true
         };
         if cropped {
+            self.as_mut().recomposite();
             self.as_mut().record("Crop");
-            self.recomposite();
         }
         cropped
     }
@@ -1057,8 +1066,8 @@ impl qobject::PictureView {
             pictura_render::translate_layer(doc, dx, dy)
         };
         if moved {
+            self.as_mut().recomposite();
             self.as_mut().record("Move Layer");
-            self.recomposite();
         }
         moved
     }
@@ -1195,8 +1204,8 @@ impl qobject::PictureView {
             };
             union_rect(before, topmost_pixel_layer_rect(doc).unwrap_or(before))
         };
-        self.as_mut().record("Move Layer");
         self.as_mut().refresh_region(dirty);
+        self.as_mut().record("Move Layer");
         self.as_mut().clear_move_cache();
         true
     }
@@ -1205,8 +1214,8 @@ impl qobject::PictureView {
         if self.rust().doc.is_none() {
             return false;
         }
+        self.as_mut().recomposite();
         self.as_mut().record("Move Layer");
-        self.recomposite();
         true
     }
 
@@ -1227,6 +1236,22 @@ impl qobject::PictureView {
         // Read the already-current cached image instead of re-compositing the
         // whole document for one pixel.
         let image = &rust.image;
+        if x < 0 || y < 0 || x >= image.width() || y >= image.height() {
+            return 0;
+        }
+        let color = image.pixel_color(x, y);
+        ((color.alpha() as u32) << 24)
+            | ((color.red() as u32) << 16)
+            | ((color.green() as u32) << 8)
+            | (color.blue() as u32)
+    }
+
+    pub fn composite_argb(&self, x: i32, y: i32) -> u32 {
+        let rust = self.rust();
+        let Some(doc) = rust.doc.as_ref() else {
+            return 0;
+        };
+        let image = buffer_to_image(&doc.composite);
         if x < 0 || y < 0 || x >= image.width() || y >= image.height() {
             return 0;
         }
@@ -1281,8 +1306,8 @@ impl qobject::PictureView {
             None => false,
         };
         if pushed {
+            self.as_mut().recomposite();
             self.as_mut().record("Adjustment");
-            self.recomposite();
         }
         pushed
     }
@@ -1312,8 +1337,8 @@ impl qobject::PictureView {
             pictura_render::apply_filter(layer, &filter, mask.as_ref(), gpu_compute).is_ok()
         };
         if applied {
+            self.as_mut().recomposite();
             self.as_mut().record("Filter");
-            self.recomposite();
         }
         applied
     }
@@ -1409,8 +1434,8 @@ impl qobject::PictureView {
                 }
                 Some(outcome) => {
                     self.as_mut().rust_mut().doc = Some(outcome.document);
-                    self.as_mut().record(&label);
                     self.as_mut().recomposite();
+                    self.as_mut().record(&label);
                     true
                 }
             },
@@ -1442,8 +1467,8 @@ impl qobject::PictureView {
         };
         if resized {
             self.as_mut().rust_mut().selection = None;
+            self.as_mut().recomposite();
             self.as_mut().record("Image Size");
-            self.recomposite();
         }
         resized
     }
@@ -1469,8 +1494,8 @@ impl qobject::PictureView {
         };
         if resized {
             self.as_mut().rust_mut().selection = None;
+            self.as_mut().recomposite();
             self.as_mut().record("Canvas Size");
-            self.recomposite();
         }
         resized
     }
@@ -1488,8 +1513,8 @@ impl qobject::PictureView {
         };
         if rotated {
             self.as_mut().rust_mut().selection = None;
+            self.as_mut().recomposite();
             self.as_mut().record("Rotate");
-            self.recomposite();
         }
         rotated
     }
@@ -1503,8 +1528,8 @@ impl qobject::PictureView {
             pictura_render::flip_document(doc, horizontal);
             rust.selection = None;
         }
+        self.as_mut().recomposite();
         self.as_mut().record("Flip");
-        self.recomposite();
         true
     }
 
@@ -1513,10 +1538,16 @@ impl qobject::PictureView {
         let Some(snapshot) = restored else {
             return false;
         };
-        let mut rust = self.as_mut().rust_mut();
-        rust.doc = Some(snapshot.doc);
-        rust.selection = snapshot.selection;
-        self.recomposite();
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.doc = Some(snapshot.doc);
+            rust.selection = snapshot.selection;
+            let image = rust.doc.as_ref().map(|doc| buffer_to_image(&doc.composite));
+            if let Some(image) = image {
+                rust.image = image;
+            }
+        }
+        self.changed();
         true
     }
 
@@ -1525,10 +1556,16 @@ impl qobject::PictureView {
         let Some(snapshot) = restored else {
             return false;
         };
-        let mut rust = self.as_mut().rust_mut();
-        rust.doc = Some(snapshot.doc);
-        rust.selection = snapshot.selection;
-        self.recomposite();
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.doc = Some(snapshot.doc);
+            rust.selection = snapshot.selection;
+            let image = rust.doc.as_ref().map(|doc| buffer_to_image(&doc.composite));
+            if let Some(image) = image {
+                rust.image = image;
+            }
+        }
+        self.changed();
         true
     }
 
@@ -1570,7 +1607,7 @@ impl qobject::PictureView {
         let mut rust = self.as_mut().rust_mut();
         rust.doc = Some(snapshot.doc);
         rust.selection = snapshot.selection;
-        self.recomposite();
+        self.as_mut().recomposite();
         true
     }
 
@@ -1607,11 +1644,14 @@ impl qobject::PictureView {
         let mut rust = self.as_mut().rust_mut();
         rust.doc = Some(snapshot.doc);
         rust.selection = snapshot.selection;
-        self.recomposite();
+        self.as_mut().recomposite();
         true
     }
 
     /// Snapshot the current state, capture it under `label`, and mark dirty.
+    ///
+    /// Callers must run their `recomposite`/`refresh_region` first, so the
+    /// captured document's composite is the current rendered image.
     fn record(mut self: Pin<&mut Self>, label: &str) {
         if let Some(snapshot) = self.snapshot() {
             let mut rust = self.as_mut().rust_mut();
@@ -1642,8 +1682,8 @@ impl qobject::PictureView {
             false
         };
         if removed {
+            self.as_mut().recomposite();
             self.as_mut().record("Delete Layer");
-            self.recomposite();
         }
     }
 
@@ -1713,7 +1753,7 @@ impl qobject::PictureView {
 
     pub fn set_gpu_compute(mut self: Pin<&mut Self>, enabled: bool) {
         self.as_mut().rust_mut().gpu_compute = enabled;
-        self.recomposite();
+        self.as_mut().recomposite();
     }
 
     pub fn gpu_compute(&self) -> bool {
@@ -1779,7 +1819,7 @@ impl qobject::PictureView {
                 }
                 self.changed();
             } else {
-                self.recomposite();
+                self.as_mut().recomposite();
             }
             return;
         }
@@ -1816,13 +1856,21 @@ impl qobject::PictureView {
     /// dirty rectangle; [`refresh_region`] is the incremental extension point.
     fn recomposite(mut self: Pin<&mut Self>) {
         let gpu_compute = self.rust().gpu_compute;
-        let image = self
+        let rendered = self
             .rust()
             .doc
             .as_ref()
-            .map(|doc| document_to_image(doc, gpu_compute));
-        if let Some(image) = image {
-            self.as_mut().rust_mut().image = image;
+            .map(|doc| current_buffer(doc, gpu_compute));
+        let Some(rendered) = rendered else {
+            self.changed();
+            return;
+        };
+        {
+            let mut rust = self.as_mut().rust_mut();
+            if let Some(doc) = rust.doc.as_mut() {
+                store_composite(doc, &rendered);
+            }
+            rust.image = buffer_to_image(&rendered);
         }
         self.changed();
     }
@@ -2474,16 +2522,90 @@ fn blit_image_region(image: &mut QImage, region: &PixelBuffer, x0: i32, y0: i32)
     }
 }
 
-/// Copy a region of a 4-channel planar buffer into `doc.composite` at `(x0, y0)`.
+/// The rendered buffer as a 4-plane RGBA frame.
 ///
+/// A 1/2/3-plane render (a layerless document's embedded composite) is expanded
+/// with grey replication and opaque alpha exactly as [`buffer_to_image`] does.
+fn rgba_frame(rendered: &PixelBuffer) -> PixelBuffer {
+    if rendered.channels == 4 {
+        return rendered.clone();
+    }
+    let plane = rendered.pixel_count();
+    let channels = rendered.channels as usize;
+    let mut data = vec![0u8; plane * 4];
+    for i in 0..plane {
+        let (r, g, b, a) = if channels <= 1 {
+            let v = rendered.data[i];
+            (v, v, v, 255)
+        } else if channels == 2 {
+            let v = rendered.data[i];
+            (v, v, v, rendered.data[plane + i])
+        } else {
+            (
+                rendered.data[i],
+                rendered.data[plane + i],
+                rendered.data[2 * plane + i],
+                255,
+            )
+        };
+        data[i] = r;
+        data[plane + i] = g;
+        data[2 * plane + i] = b;
+        data[3 * plane + i] = a;
+    }
+    PixelBuffer {
+        width: rendered.width,
+        height: rendered.height,
+        channels: 4,
+        data,
+    }
+}
+
+/// Persist a full-frame rendered composite into `doc.composite`.
+///
+/// An RGB document takes the rendered 4-plane RGBA frame, so its merged
+/// composite is RGBA after any rebuild. A non-RGB mode keeps its existing
+/// composite colour-plane count and copies `min(rendered, composite)` planes, so
+/// a 1-plane grayscale composite stays 1-plane. A composite whose dimensions no
+/// longer match the document is replaced with the rendered frame.
+fn store_composite(doc: &mut Document, rendered: &PixelBuffer) {
+    if rendered.width != doc.width || rendered.height != doc.height {
+        return;
+    }
+    let rgba = rgba_frame(rendered);
+    if doc.mode == ColorMode::Rgb
+        || doc.composite.width != doc.width
+        || doc.composite.height != doc.height
+    {
+        doc.composite = rgba;
+        return;
+    }
+    let target = doc.composite.channels as usize;
+    let plane = (doc.width as usize) * (doc.height as usize);
+    let mut data = vec![0u8; plane * target];
+    for c in 0..target.min(rgba.channels as usize) {
+        data[c * plane..(c + 1) * plane].copy_from_slice(&rgba.data[c * plane..(c + 1) * plane]);
+    }
+    doc.composite = PixelBuffer {
+        width: doc.width,
+        height: doc.height,
+        channels: target as u8,
+        data,
+    };
+}
+
+/// Copy a region of a 4-plane rendered buffer into `doc.composite` at `(x0, y0)`.
+///
+/// Writes the composite's own colour-plane count (an RGB composite is 4-plane,
+/// a grayscale one 1-plane), mapping region plane `c` to composite plane `c`.
 /// Used to keep the cached document composite consistent with the region blit.
 /// A channel-count or size mismatch is ignored (the region still reaches the
 /// displayed image).
 fn patch_composite_region(doc: &mut Document, region: &PixelBuffer, x0: i32, y0: i32) {
-    let dst = &mut doc.composite;
-    if dst.channels != 4 || region.channels != 4 {
+    if region.channels != 4 {
         return;
     }
+    let dst = &mut doc.composite;
     if dst.width != doc.width || dst.height != doc.height {
         return;
     }
@@ -2499,7 +2621,7 @@ fn patch_composite_region(doc: &mut Document, region: &PixelBuffer, x0: i32, y0:
     }
     let fplane = fw * fh;
     let rplane = rw * rh;
-    for c in 0..4 {
+    for c in 0..(dst.channels as usize).min(4) {
         for ry in 0..rh {
             let src = c * rplane + ry * rw;
             let at = c * fplane + (y0 + ry) * fw + x0;
@@ -3051,6 +3173,163 @@ mod tests {
     #[test]
     fn test_image_is_not_null() {
         assert!(!test_image().is_null());
+    }
+
+    #[test]
+    fn store_composite_stores_rgba_for_rgb_and_keeps_grayscale_plane() {
+        let mut rgb = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        rgb.layers = vec![pixel_layer("base", 8, 8, (30, 60, 90))];
+        let rendered = current_buffer(&rgb, false);
+        assert_eq!(rendered.channels, 4);
+        store_composite(&mut rgb, &rendered);
+        assert_eq!(rgb.composite.channels, 4);
+        assert_eq!(rgb.composite.data, rendered.data);
+
+        let mut gray = Document::new(8, 8, ColorMode::Grayscale, BitDepth::Eight);
+        gray.layers = vec![Layer {
+            name: "gray".into(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 8,
+                right: 8,
+            },
+            blend: BlendMode::Normal,
+            opacity: 255,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels: vec![
+                Channel {
+                    id: 0,
+                    data: vec![120; 64],
+                },
+                Channel {
+                    id: -1,
+                    data: vec![255; 64],
+                },
+            ],
+            children: Vec::new(),
+            is_group: false,
+        }];
+        let rendered = current_buffer(&gray, false);
+        assert_eq!(rendered.channels, 4);
+        store_composite(&mut gray, &rendered);
+        assert_eq!(gray.composite.channels, 1, "grayscale stays one plane");
+        assert_eq!(
+            gray.composite.data,
+            rendered.data[..64],
+            "stored grey plane"
+        );
+    }
+
+    #[test]
+    fn undo_display_from_snapshot_composite_equals_full_recomposite() {
+        let mut doc = Document::new(16, 16, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![
+            pixel_layer("base", 16, 16, (30, 60, 90)),
+            pixel_layer("top", 6, 6, (200, 100, 50)),
+        ];
+        let rendered = current_buffer(&doc, false);
+        store_composite(&mut doc, &rendered);
+        let open = Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        };
+        let mut history = History::default();
+        history.capture(open, "Open");
+
+        // A full-composite mutation, captured after the store.
+        assert!(pictura_render::translate_layer(&mut doc, 3, 2));
+        let rendered = current_buffer(&doc, false);
+        store_composite(&mut doc, &rendered);
+        history.capture(
+            Snapshot {
+                doc: doc.clone(),
+                selection: None,
+            },
+            "Move Layer",
+        );
+
+        // A region-refresh mutation (`refresh_region`'s non-painting body).
+        let before = doc.layers.last().unwrap().rect;
+        assert!(pictura_render::translate_layer_rect(&mut doc, 2, 1));
+        let after = doc.layers.last().unwrap().rect;
+        let dirty = union_rect(before, after);
+        let (x0, y0, w, h) = clamp_region(dirty, doc.width, doc.height).expect("in-bounds");
+        assert_eq!((w, h), (dirty.width() as u32, dirty.height() as u32));
+        let (buffer, _) = pictura_render::composite_region_active(&doc, dirty, false);
+        assert_eq!((buffer.width, buffer.height), (w, h));
+        patch_composite_region(&mut doc, &buffer, x0, y0);
+        history.capture(
+            Snapshot {
+                doc: doc.clone(),
+                selection: None,
+            },
+            "Move Layer",
+        );
+
+        // Walk the undo stack; every restored display must be the snapshot
+        // composite and equal a full recomposite of the restored document.
+        let mut undone = 0;
+        while let Some(snapshot) = history.undo() {
+            let display = buffer_to_image(&snapshot.doc.composite);
+            let full = document_to_image(&snapshot.doc, false);
+            assert_eq!(
+                display, full,
+                "undo display differs from a full recomposite"
+            );
+            undone += 1;
+        }
+        assert_eq!(undone, 2);
+        // And back up the redo stack.
+        let mut redone = 0;
+        while let Some(snapshot) = history.redo() {
+            let display = buffer_to_image(&snapshot.doc.composite);
+            let full = document_to_image(&snapshot.doc, false);
+            assert_eq!(
+                display, full,
+                "redo display differs from a full recomposite"
+            );
+            redone += 1;
+        }
+        assert_eq!(redone, 2);
+    }
+
+    #[test]
+    fn save_after_edit_serializes_the_current_composite() {
+        let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![pixel_layer("base", 8, 8, (40, 40, 40))];
+        let rendered = current_buffer(&doc, false);
+        store_composite(&mut doc, &rendered);
+        let plane = 64usize;
+        let before = doc.composite.data[..3 * plane].to_vec();
+
+        // Edit every colour channel, then make the composite current (the app's
+        // `recomposite`). The pre-edit merged image is no longer the composite.
+        let layer = doc.layers.last_mut().unwrap();
+        for ch in layer.channels.iter_mut().filter(|c| c.id >= 0) {
+            for byte in ch.data.iter_mut() {
+                *byte = byte.wrapping_add(100);
+            }
+        }
+        let rendered = current_buffer(&doc, false);
+        store_composite(&mut doc, &rendered);
+        assert_eq!(doc.composite.channels, 4);
+        let edited = doc.composite.data[..3 * plane].to_vec();
+        assert_ne!(edited, before, "the edit must change the composite");
+
+        let bytes = pictura_codec::write_psd(&doc).expect("write psd");
+        let back = pictura_codec::read_psd(&bytes).expect("read psd");
+        assert_eq!(
+            back.composite.channels, 3,
+            "RGB read-back is the mode's planes"
+        );
+        assert_eq!(
+            back.composite.data, edited,
+            "reopened composite is the edited render, not the pre-edit one"
+        );
     }
 
     #[test]
@@ -3824,5 +4103,58 @@ mod tests {
     #[ignore = "large-document profile; run explicitly with --ignored --nocapture"]
     fn move_profile_1024() {
         move_profile(1024);
+    }
+
+    /// Print-only evidence that the M34 undo/redo display no longer recomposites.
+    /// Prints `m34 undo_profile ...` lines and no pass/fail budget, because the
+    /// reference machine is not pinned. The real `PictureView::undo` is a
+    /// C++-constructed QObject, so this replays the exact display body
+    /// (`buffer_to_image(&snapshot.doc.composite)`) against the same helpers.
+    #[test]
+    #[ignore = "4000x4000 undo profile; run explicitly with --ignored --nocapture"]
+    fn m34_undo_profile_4000() {
+        let ms = |label: &str, d: std::time::Duration| {
+            println!(
+                "m34 undo_profile {label} 4000x4000: {:.2} ms",
+                d.as_secs_f64() * 1000.0
+            );
+        };
+
+        let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![
+            pixel_layer("base", 4000, 4000, (30, 60, 90)),
+            pixel_layer("top", 4000, 4000, (200, 100, 50)),
+        ];
+
+        // Prime the GPU adapter and allocator once, untimed.
+        let (_, backend) = pictura_render::composite_active(&doc, true);
+
+        // Old undo display path: full composite + buffer_to_image.
+        let t = std::time::Instant::now();
+        let _ = document_to_image(&doc, true);
+        ms("old document_to_image(gpu=true)", t.elapsed());
+
+        // Persist the composite the way the bridge's `recomposite` does.
+        let rendered = current_buffer(&doc, true);
+        store_composite(&mut doc, &rendered);
+
+        // New undo display path: the snapshot already holds the composite.
+        let t = std::time::Instant::now();
+        let _ = buffer_to_image(&doc.composite);
+        ms("new buffer_to_image(snapshot.composite)", t.elapsed());
+
+        // The remaining per-snapshot undo cost: the whole-document clone.
+        let t = std::time::Instant::now();
+        let mut history = History::default();
+        history.capture(
+            Snapshot {
+                doc: doc.clone(),
+                selection: None,
+            },
+            "Undo Profile",
+        );
+        ms("History::capture(clone)", t.elapsed());
+
+        println!("m34 undo_profile composite_active backend: {backend:?}");
     }
 }

@@ -198,6 +198,18 @@ serializes, so it needs its own proposal), the C++ region blit
 (`ImageView::blitRegion`) and the `REGION_REFRESH_BUDGET` removal, and
 zoom-level details beyond the single cached scaled image.
 
+**Re-scoped (M34):** composite coherence + cheap undo/redo is carved out as the
+next change, **M34 — composite coherence and cheap undo/redo**
+(`openspec/changes/m34-composite-coherence`, brief
+`docs/dev/m34-composite-coherence.md`). It is app-local and bounded — persist the
+rendered composite into `doc.composite` preserving its colour-plane count, make
+Save serialize that current composite, and have `undo`/`redo` restore from the
+snapshot composite instead of recompositing — with **no `write_psd` format
+change**. The canvas-throughput tracks below stay deferred: resident per-layer GPU
+source buffers, GPU-resident zero-copy present, 256² tiles + LoD, and history
+copy-on-write / tile diffs each still need their own design, and the perf series
+is paused while M34 lands.
+
 ### M33 — full-composite throughput: row-wise assembly, fused planar readback, GPU-side clear (proposed)
 
 Target the measured 146 + 35 + 22 + 18 + 16 ms of host-side per-pixel work in
@@ -220,7 +232,7 @@ All five preserve output byte-for-byte (0 LSB). Deferred: resident per-layer GPU
 source buffers across a composite session (needs content versioning) and
 shader-side planar output (removes the de-interleave entirely).
 
-### M34 — GPU-resident zero-copy present via Qt Quick (deferred)
+### GPU-resident zero-copy present via Qt Quick (deferred; was planned as M34)
 
 Keep the composite in a persistent GPU texture and present it directly. Two
 routes, both Qt Quick:

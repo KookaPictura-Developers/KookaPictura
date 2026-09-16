@@ -9,8 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **541 tests, 0 failed, 5 ignored** (the M29 `move_profile_*` pair,
-  the M31 `region_move_timing_4000`, and the M33 `m33_composite_profile_*` pair).
+- Test suite: **544 tests, 0 failed, 6 ignored** (the M29 `move_profile_*` pair,
+  the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, and
+  the M34 `m34_undo_profile_4000`).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M31 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
@@ -707,7 +708,7 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: M33–M35 (canvas compositing & present)
+## Next: M34 composite coherence (implemented) — perf series paused
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -720,8 +721,41 @@ measured phase table is `docs/dev/m32-interactive-canvas.md`, and the M33 brief 
 `docs/dev/m33-composite-throughput.md`. The 4000² full composite is now ~123 ms,
 dominated by the per-composite source/mask **upload** (~128 + 16 MB), not the GPU
 dispatch (~0.2 ms) or the ~38 ms readback, so a zero-copy present still saves
-little while the upload stays. Next in order:
+little while the upload stays.
 
+The perf series is **paused**: the next change is not another canvas-throughput
+step. **M34 is now composite coherence and cheap undo/redo** (OpenSpec change
+`m34-composite-coherence`, **implemented**; brief
+`docs/dev/m34-composite-coherence.md`): the canvas rebuild persists its rendered
+result into `doc.composite` (RGBA for an RGB document, plane-count-preserving
+for a non-RGB mode), Save serializes that current composite, `undo`/`redo`
+restore the display from the snapshot composite instead of a full composite
+(unconditionally), and the `record` call moves after the composite step so the
+snapshot carries it. It is app-local and bounded: no `write_psd` format change,
+no new capability. Next in order:
+
+- **M34 — composite coherence and cheap undo/redo (implemented; archive
+  pending).** OpenSpec change `m34-composite-coherence` (MODIFIED
+  `edit-history`, `document-lifecycle`; no new capability → **59** after archive).
+  The canvas rebuild now persists its rendered frame into `doc.composite`
+  (`store_composite`: RGBA for an RGB document, colour-plane-count-preserving
+  otherwise), `recomposite` renders → stores → builds the `QImage` from the
+  rendered frame, `refresh_region` patches the composite on its region path, and
+  `record` runs after the composite step so every snapshot carries a current
+  composite. `undo`/`redo` therefore rebuild the display with
+  `buffer_to_image(&snapshot.doc.composite)` instead of a full composite, and
+  Save serializes the current composite. Measured 4000² (2 RGB layers, release,
+  GPU): the old undo display path `document_to_image(gpu=true)` **163.16 ms** vs
+  the new `buffer_to_image(snapshot.composite)` **40.94 ms** (~4×); the remaining
+  per-snapshot cost is the whole-document `History::capture` clone at **59.49 ms**
+  (COW/tile-diff history remains deferred). Honest limits: a layered **grayscale**
+  document with transparent coverage restores opaque because its composite stays
+  1-plane, and a dimension-changing op on grayscale keeps the pre-existing
+  4-plane outcome. Verified: `cargo test --workspace` **544 tests, 0 failed, 6
+  ignored** (up from 541, 5 ignored; the new `m34_undo_profile_4000`), `cargo
+  fmt`/`clippy` clean, both self-tests exit 0 with
+  `m34_coherent composite=1 undo=1 save=1`, `openspec validate --all --strict`
+  60/60.
 - **M33 — full-composite throughput (done; archive pending).** OpenSpec change
   `m33-composite-throughput` (MODIFIED `gpu-compositing`; no new capability),
   implemented and verified. Row-wise source/mask assembly, a fused planar readback
@@ -729,7 +763,7 @@ little while the upload stays. Next in order:
   4000² two-layer composite ~254 ms → ~123 ms (~2×), byte-identical. The remaining
   bottleneck is the per-composite upload; resident per-layer GPU source buffers are
   deferred (they need content versioning).
-- **M34 (deferred) — GPU-resident zero-copy present** via Qt Quick
+- **GPU-resident zero-copy present (deferred; was planned as M34)** via Qt Quick
   (`QQuickRhiItem` sharing the window's `QRhi` +
   `QQuickWindow::createTextureFromRhiTexture()`, or one shared Vulkan device via
   `QQuickGraphicsDevice::fromDeviceObjects(...)`); `QRhiWidget` cannot adopt the
@@ -739,11 +773,19 @@ little while the upload stays. Next in order:
   (Graphite-style), only if pan/zoom over documents larger than VRAM demands it;
   includes display-time LoD so a zoomed-out view composites a proxy.
 
-Deferred tracks, in no fixed order:
+Deferred tracks, in no fixed order. The remaining canvas-performance tracks —
+resident per-layer GPU source buffers, the GPU-resident zero-copy present, 256²
+tiles + LoD, and history copy-on-write / tile diffs — each need their own design
+(the small, app-local composite-coherence slice was carved out as M34 above; these
+four were not):
 
-- **Cheap undo/redo + composite coherence/save** — persisting the rendered
-  composite into `doc.composite` changes what `write_psd` serializes and needs its
-  own design (deferred from M32).
+- **Cheap undo/redo + composite coherence/save** — landed as M34
+  (`m34-composite-coherence`); see the brief `docs/dev/m34-composite-coherence.md`.
+  The original concern — persisting the rendered composite into `doc.composite`
+  changes what `write_psd` serializes — is handled by storing the rendered RGBA
+  frame for RGB and preserving the composite's colour-plane count for a non-RGB
+  mode, so the byte layout is unchanged.
+
 - **C++ region blit / `REGION_REFRESH_BUDGET` removal** — `ImageView::blitRegion`
   (`QPainter` + `CompositionMode_Source`) replacing the per-pixel
   `QImage::set_pixel_color` loop; the budget cap stays as a bounded fallback
