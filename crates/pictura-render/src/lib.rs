@@ -32,7 +32,8 @@ use pictura_core::{AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelB
 
 pub mod gpu;
 pub use gpu::{
-    composite_active, composite_gpu, composite_gpu_or_cpu, gpu_available, Backend, GpuError,
+    composite_active, composite_gpu, composite_gpu_or_cpu, composite_region_active, gpu_available,
+    Backend, GpuError,
 };
 
 mod filter;
@@ -44,7 +45,7 @@ pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 pub mod document_ops;
 pub use document_ops::{
     crop_document, flip_document, resize_canvas_document, resize_document, rotate_document,
-    translate_layer, translate_layer_active,
+    translate_layer, translate_layer_active, translate_layer_rect,
 };
 
 pub use pictura_ops::{Anchor, Resample};

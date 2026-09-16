@@ -9,9 +9,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **530 tests, 3 ignored** (one pre-existing app `#[ignore]` plus the
+- Test suite: **536 tests, 3 ignored** (one pre-existing app `#[ignore]` plus the
   two M29 `move_profile_*` timing tests).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M30 archived; canonical specs are
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M31 archived; canonical specs are
   in `openspec/specs/` (59 capabilities, `validate --all --strict`
   green), change history under `openspec/changes/archive/`.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
@@ -41,7 +41,7 @@ openspec validate --all --strict
 | `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters; `artistic` module (15 CS6 Artistic filters with shared `reduce`/`noise`/`texture` helpers) + the four remaining families — Brush Strokes, Sketch, Texture, Oil Paint (29 filters, same shared helpers) |
 | `pictura-select` | selection coverage mask, boolean/modify ops, wand, color range; `Selection::{rect,ellipse,polygon}` rasterizers + `CombineMode`/`combine_with` |
 | `pictura-ops` | image resize (Nearest/Bilinear/Bicubic), canvas size (9 anchors), rotate/flip + arbitrary rotation; ImageMagick oracle |
-| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor (default backend: 26 GPU modes + 5 adjustment layers, `Backend`/`composite_active`; GPU-native 8-bit data path; 2-D compute dispatch so large documents like 4000² composite on the GPU instead of falling back to the CPU above the old ~4.19 MP 1-D workgroup ceiling) + GPU filter path (`filter_gpu_available`/`apply_filter_active`, byte-exact CPU-parity kernels — the nine convolution kernels plus the M28 heavy window/effect kernels Surface Blur, Maximum, Minimum, Median, Custom 5×5, Oil Paint; same 2-D dispatch for >4.19 MP) + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask, GPU-accelerated when `gpu_enabled`) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; `translate_layer_active` composites through the active backend, CPU `translate_layer`/`recompute` remain the oracle; re-exports `Anchor`/`Resample`) |
+| `pictura-render` | CPU compositor (27 blend modes, groups, masks, adjustment layers) + GPU compositor (default backend: 26 GPU modes + 5 adjustment layers, `Backend`/`composite_active`/`composite_region_active` (dirty-rect composite, byte-identical to the sub-rect); GPU-native 8-bit data path; 2-D compute dispatch so large documents like 4000² composite on the GPU instead of falling back to the CPU above the old ~4.19 MP 1-D workgroup ceiling) + GPU filter path (`filter_gpu_available`/`apply_filter_active`, byte-exact CPU-parity kernels — the nine convolution kernels plus the M28 heavy window/effect kernels Surface Blur, Maximum, Minimum, Median, Custom 5×5, Oil Paint; same 2-D dispatch for >4.19 MP) + PSD adjustment encode/decode + `apply_filter` (layer filter gated by mask, GPU-accelerated when `gpu_enabled`) + `document_ops` (document resize/canvas/orientation/crop/layer-translate; `translate_layer_active` composites through the active backend, `translate_layer_rect` shifts a layer rect (and mask) without recompute, CPU `translate_layer`/`recompute` remain the oracle; re-exports `Anchor`/`Resample`) |
 | `pictura-testkit` | golden compare/hash + `pictura-diff` CLI |
 | `pictura-paint` | dab-splatting brush/pencil stroke engine — tip coverage, spacing, flow/opacity, paint modes; depends on `pictura-core` |
 | `pictura-app` | cxx-qt `PictureView` QObject + Qt C++ shell: `commands` (command registry + full documented CS6 menu tree), `frame` (`PicturaMainWindow`: menu bar, tabbed document area with a `PictureView`+`ImageView` per document, file lifecycle New/Open/Save/Save As/Revert/Close/Close All/Exit, status bar, docks, screen modes), `theme` (Fusion dark palette, 4 brightness levels), `session` (XDG state store), real Layers/History/Navigator/Color/Swatches/Info/Histogram panel docks replacing the debug dock (backed by the document and history models, with a frame-owned `ColorState` fed by the Eyedropper), tool layer (`tools`/`toolbox`/`options_bar` — Move/Marquee/Lasso/Quick Selection/Crop/Eyedropper/Hand/Zoom/Brush/Pencil), paint bridge (`begin_paint`/`paint_dab`/`end_paint`/`cancel_paint`/`is_painting`) with a live paint options bar, zoom/pan, GPU demo |
@@ -536,6 +536,38 @@ openspec validate --all --strict
   `Transparency & Gamut` preferences pane (grid size None/Small/Medium/Large and
   colour sets Light/Medium/Dark/Red/Custom), the `View > Show > Transparency Grid`
   toggle, gamut warning, and the GPU/RHI-backed canvas.
+- **M31** — region (dirty-rect) compositing. New render API
+  `pictura_render::composite_region_active(doc, rect: PsdRect, gpu_enabled) ->
+  (PixelBuffer, Backend)` composites only the (clamped) rect and returns a
+  rect-sized buffer **byte-identical (0 LSB)** to the corresponding
+  sub-rectangle of `composite_active`, verified across separable, non-separable
+  (Hue), adjustment-layer, masked and isolated-group scenes. The GPU path threads
+  a region origin/size/stride so the canvas, per-layer sources, mask and group
+  inner canvases are region-sized and only the region is dispatched and read
+  back; the CPU fallback is a full composite + slice (`ponytail:`).
+  `composite_gpu`/`composite_active` are unchanged (the region kernel over the
+  full rect). Measured: 4000² with a 512² region **52 ms vs 3082 ms full (59×)**.
+  New `pictura_render::translate_layer_rect(doc, dx, dy)` shifts a layer's rect
+  (and mask) **without** recomputing (the CPU `translate_layer`/`recompute`
+  remain the oracle). App: `PictureView` caches the composited document `QImage`;
+  `refresh_region(rect)` composites the rect through the active backend and
+  patches the cached image (and `doc.composite`) so pixels outside the rect are
+  untouched. `commit_move` now invalidates `old ∪ new` layer bounds and refreshes
+  only that region; `paint_dab` invalidates the stroke's `dirty()` rect. All
+  other mutations keep the full recomposite path (the incremental-extension
+  point). Measured region-move: a 64² region **0.497 ms vs 585 ms full
+  (~1170×)**. A guard (`REGION_REFRESH_BUDGET = 1_000_000` px) falls back to the
+  full recomposite for large dirty unions, because the cached image is patched
+  with per-pixel `QImage::set_pixel_color` (FFI per pixel) — the `ponytail:`
+  upgrade is a C++ `ImageView::blitRegion` via
+  `QPainter::CompositionMode_Source`, or M32's GPU-resident present. Self-test
+  exit code **75**: `m31_region moved=1 outside_unchanged=1 undo=1` and
+  `m31_region_large moved=1 vacated=1 undo=1` (the latter drives the
+  full-recomposite fallback), identical on fixture and no-argument runs.
+  Verified: `cmake --build build` OK; both self-tests exit 0; `cargo fmt/clippy`
+  clean; **536 tests (0 failed, 3 ignored)** — up from 530; `openspec validate
+  --all --strict` 60/60. The M31 change MODIFIES `gpu-compositing` and
+  `document-canvas` (no new capability → **59** capabilities after archive).
 
 ## Canvas viewport & performance (post-M24 pass)
 
@@ -594,7 +626,7 @@ documents) still needs a real GUI check.
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
-"Spec workflow (OpenSpec)". M0–M30 are archived; `openspec/specs/` is now the
+"Spec workflow (OpenSpec)". M0–M31 are archived; `openspec/specs/` is now the
 canonical contract, with the per-change history under
 `openspec/changes/archive/`. New work starts as a new change under
 `openspec/changes/` (not as code), with `proposal.md`, `design.md`, `tasks.md`,
@@ -612,22 +644,32 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: transparency grid preferences/toggle, on-screen zero-copy present and off-GUI-thread compute, then history copy-on-write/tile diffs, then GPU painterly/stochastic filters via CPU-generated RNG fields and GPU painting, then panel content and image modes (propose via OpenSpec first)
+## Next: M32–M33 (canvas compositing & present)
 
-M29 lifts the ~4.19 MP GPU dispatch ceiling and makes the per-update panel/move
-path cheap; the CPU compositor and `pictura_filters::apply` are still the oracles.
-Next in order:
+M31 removes the full composite and readback from every move and paint
+(dirty-rect compositing); every other mutation still composites and reads back
+the **whole** document, and the CPU compositor and `pictura_filters::apply` are
+still the oracles. The research and the M31–M33 plan are written up in
+`docs/dev/canvas-compositing-plan.md`. Next in order:
+
+- **M32 — GPU-resident canvas, present without readback.** Keep the composite in
+  a persistent GPU texture and present it directly. Zero-readback present needs
+  Qt Quick (`QQuickRhiItem` sharing the window's `QRhi` +
+  `QQuickWindow::createTextureFromRhiTexture()`, or one shared Vulkan device via
+  `QQuickGraphicsDevice::fromDeviceObjects(...)`); `QRhiWidget` cannot adopt the
+  wgpu device. Removes the readback, the `QImage` conversion, and M31's per-pixel
+  FFI canvas patch (`QImage::set_pixel_color`) entirely; optionally moves compute
+  off the GUI thread.
+- **M33 — 256² GPU tiles + LRU + seam gutters + mipmaps** (Graphite-style), only
+  if pan/zoom over documents larger than VRAM demands it; includes display-time
+  LoD so a zoomed-out view composites a proxy.
+
+Deferred tracks, in no fixed order:
 
 - **Transparency grid preferences** — M30's checkerboard is fixed at an 8 px
   Light (`#FFFFFF`/`#CCCCCC`) grid; the `Transparency & Gamut` preferences pane
   (grid size None/Small/Medium/Large, colour sets Light/Medium/Dark/Red/Custom),
   the `View > Show > Transparency Grid` toggle, and gamut warning are deferred.
-- On-screen **zero-copy present** — manual QRhi + `QWindow` swapchain;
-  `QRhiWidget` blocks wgpu device adoption
-  (`crates/pictura-app/GPU-INTEROP-NOTES.md`). The 4000² GPU composite is
-  readback-bound (64 MB readback ≈ most of the 332 ms), so present is the next
-  ceiling. **Off-GUI-thread compute** follows so a large composite cannot block
-  the UI.
 - **History copy-on-write / tile diffs** — the history capture still clones the
   whole document (~60 ms per state at 4000², and holds up to 20 states).
 - **GPU painterly/stochastic filters and GPU painting** — the remaining M22
@@ -644,7 +686,7 @@ Next in order:
 
 Process: every new milestone is proposed through OpenSpec first
 (`openspec/changes/<name>`, new capabilities), validated, then implemented.
-M6 through M30 are archived; their deltas now live in `openspec/specs/`.
+M6 through M31 are archived; their deltas now live in `openspec/specs/`.
 
 ## Known risks / open items
 
@@ -659,6 +701,10 @@ M6 through M30 are archived; their deltas now live in `openspec/specs/`.
   warps/distort and render filters fall back to the CPU oracle byte-for-byte.
 - The GPU compositor and filter path are still readback-bound until zero-copy
   present lands; at 4000² the composite is dominated by the 64 MB readback.
+- Region refresh patches the cached `QImage` per pixel (`QImage::set_pixel_color`)
+  and is bounded by the 1 MP `REGION_REFRESH_BUDGET`; a dirty union larger than
+  that falls back to a full recomposite. A Display-resolution proxy (LoD) is still
+  absent, so a zoomed-out composite still covers the whole document.
 - History capture clones the whole document for each state, so large documents
   pay both RAM (up to 20 states) and latency (~60 ms/state at 4000²); copy-on-write
   or tile diffs are the deferred fix.

@@ -7,6 +7,15 @@
 //! wgpu compute shader. It is proven, not assumed — the parity test in
 //! `tests/gpu_parity.rs` diffs it against the CPU compositor within ±1 LSB.
 //!
+//! # Region compositing
+//!
+//! [`composite_region_active`] runs the same kernel over a clamped document
+//! rectangle: the canvas, each layer source, the mask, and group inner canvases
+//! are region-sized, and each invocation maps a region-local index to document
+//! coordinates for layer-rect and mask sampling. Only the region is dispatched
+//! and read back, so the output is byte-identical to the same slice of the full
+//! composite. `composite_gpu` is just the region kernel over the whole document.
+//!
 //! # CPU-only modes
 //!
 //! Dissolve is the only CPU-only blend mode. [`composite_gpu`] returns
@@ -39,7 +48,7 @@ use std::fmt;
 use std::sync::OnceLock;
 
 use pictura_adjust::Adjustment;
-use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
+use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer, PsdRect};
 
 use crate::{channel, decode_adjustment, mask_alpha, sample};
 
@@ -88,17 +97,89 @@ pub enum Backend {
 /// [`GpuError`] when no Vulkan device is usable or the stack contains a
 /// CPU-only mode; it never panics.
 pub fn composite_gpu(doc: &Document) -> Result<PixelBuffer, GpuError> {
+    composite_gpu_region(doc, 0, 0, doc.width, doc.height)
+}
+
+/// Composite a document-space region `[x0, x0+rw) × [y0, y0+rh)` on the GPU.
+///
+/// The same kernel as [`composite_gpu`], with every buffer (canvas, per-layer
+/// source, mask, group inner canvases) sized to the region and each invocation
+/// mapping a region-local index to document coordinates. `x0 + rw <= doc.width`
+/// and `y0 + rh <= doc.height` are the caller's responsibility.
+fn composite_gpu_region(
+    doc: &Document,
+    x0: u32,
+    y0: u32,
+    rw: u32,
+    rh: u32,
+) -> Result<PixelBuffer, GpuError> {
     check_supported(doc)?;
-    if doc.width == 0 || doc.height == 0 {
-        return Ok(PixelBuffer::new(doc.width, doc.height, 4));
+    if rw == 0 || rh == 0 {
+        return Ok(PixelBuffer::new(rw, rh, 4));
     }
-    let gpu = Gpu::new(doc.width, doc.height)?;
+    let gpu = Gpu::new(x0, y0, rw, rh)?;
     let canvas = gpu.zero_canvas();
     for layer in &doc.layers {
         gpu.composite_layer(&canvas, layer, doc);
     }
     let pixels = gpu.read_canvas(&canvas)?;
     Ok(gpu.to_pixel_buffer(&pixels))
+}
+
+/// Composite only `rect` (clamped to the document) through the active backend.
+///
+/// Returns a `rect`-sized buffer, byte-identical to the corresponding
+/// sub-rectangle of `composite_active(doc, gpu_enabled).0`. An empty clamped
+/// intersection returns a zero-dimension buffer and never panics.
+pub fn composite_region_active(
+    doc: &Document,
+    rect: PsdRect,
+    gpu_enabled: bool,
+) -> (PixelBuffer, Backend) {
+    let x0 = rect.left.max(0);
+    let y0 = rect.top.max(0);
+    let x1 = rect.right.min(doc.width as i32);
+    let y1 = rect.bottom.min(doc.height as i32);
+    if x1 <= x0 || y1 <= y0 {
+        // Nothing ran, so report the fallback backend rather than a device.
+        return (PixelBuffer::new(0, 0, 4), Backend::Cpu);
+    }
+    let w = (x1 - x0) as u32;
+    let h = (y1 - y0) as u32;
+    let (x0, y0) = (x0 as u32, y0 as u32);
+    if gpu_enabled && gpu_available() {
+        if let Ok(buf) = composite_gpu_region(doc, x0, y0, w, h) {
+            return (buf, Backend::Gpu);
+        }
+    }
+    (composite_cpu_region(doc, x0, y0, w, h), Backend::Cpu)
+}
+
+/// The CPU region fallback: composite the whole document, then slice the region.
+///
+/// ponytail: full CPU composite + slice; the CPU path is the non-default
+/// fallback, so a genuinely region-limited accumulator is not worth it until a
+/// profile asks for it. The oracle stays `composite_rgba`.
+fn composite_cpu_region(doc: &Document, x0: u32, y0: u32, rw: u32, rh: u32) -> PixelBuffer {
+    let full = crate::composite_rgba(doc);
+    let fw = doc.width as usize;
+    let fplane = fw * doc.height as usize;
+    let rw = rw as usize;
+    let rh = rh as usize;
+    let rplane = rw * rh;
+    let mut out = PixelBuffer::new(rw as u32, rh as u32, 4);
+    for ry in 0..rh {
+        let frow = (y0 as usize + ry) * fw + x0 as usize;
+        let rrow = ry * rw;
+        for rx in 0..rw {
+            let f = frow + rx;
+            let r = rrow + rx;
+            for c in 0..4 {
+                out.data[c * rplane + r] = full.data[c * fplane + f];
+            }
+        }
+    }
+    out
 }
 
 /// Try [`composite_gpu`]; on any [`GpuError`] fall back to the CPU oracle.
@@ -232,10 +313,10 @@ struct Params {
     src_y0: u32,
     src_w: u32,
     src_h: u32,
-    canvas_w: u32,
+    region_x0: u32,
+    region_y0: u32,
+    region_w: u32,
     stride: u32,
-    _pad1: u32,
-    _pad2: u32,
 };
 
 @group(0) @binding(0) var<storage, read_write> canvas: array<u32>;
@@ -402,15 +483,27 @@ fn pack_word(c: vec3<f32>, a: f32) -> u32 {
     return quant(c.x) | (quant(c.y) << 8u) | (quant(c.z) << 16u) | (quant(a) << 24u);
 }
 
-// Resolve one canvas pixel's source sample. A packed group source is a full
-// canvas word; a pixel layer is planar planes over its clamped rect, with the
-// grayscale colour replicated from plane 0 and alpha defaulted by the host.
+// Map a region-local invocation index to its document pixel. The packed canvas
+// and every source plane are region-local; only the layer-rect test below needs
+// document coordinates.
+fn doc_x(i: u32) -> u32 {
+    return params.region_x0 + i % params.region_w;
+}
+
+fn doc_y(i: u32) -> u32 {
+    return params.region_y0 + i / params.region_w;
+}
+
+// Resolve one canvas pixel's source sample. A packed group source is a
+// region-local canvas word; a pixel layer is planar planes over its layer-rect
+// intersection with the region, with the grayscale colour replicated from plane
+// 0 and alpha defaulted by the host.
 fn sample_src(i: u32) -> vec4<f32> {
     if ((params.flags & 1u) != 0u) {
         return unpack_word(src[i]);
     }
-    let x = i % params.canvas_w;
-    let y = i / params.canvas_w;
+    let x = doc_x(i);
+    let y = doc_y(i);
     if (x < params.src_x0 || x >= params.src_x0 + params.src_w
         || y < params.src_y0 || y >= params.src_y0 + params.src_h) {
         return vec4<f32>(0.0);
@@ -712,13 +805,17 @@ struct Gpu {
     queue: wgpu::Queue,
     res: &'static ComputeResources,
     params: wgpu::Buffer,
+    /// Region origin in document pixels.
+    x0: u32,
+    y0: u32,
+    /// Region dimensions; the canvas is `w * h` packed words.
     w: u32,
     h: u32,
     n: u32,
 }
 
 impl Gpu {
-    fn new(w: u32, h: u32) -> Result<Self, GpuError> {
+    fn new(x0: u32, y0: u32, w: u32, h: u32) -> Result<Self, GpuError> {
         let shared = devices()?;
         let device = shared.device.clone();
         let queue = shared.queue.clone();
@@ -745,6 +842,8 @@ impl Gpu {
             queue,
             res: shared.resources(),
             params,
+            x0,
+            y0,
             w,
             h,
             n,
@@ -770,21 +869,23 @@ impl Gpu {
         buffer
     }
 
-    /// Assemble the source for one pixel layer over its clamped canvas rect,
-    /// matching `composite_pixels`: planar 8-bit channel planes, grayscale
-    /// replicating channel 0 (one colour plane), and straight alpha defaulting
-    /// to 255 when absent. The shader samples by canvas pixel; outside the rect
-    /// the source alpha is 0.
+    /// Assemble the source for one pixel layer over its layer-rect intersection
+    /// with the region, matching `composite_pixels`: planar 8-bit channel
+    /// planes, grayscale replicating channel 0 (one colour plane), and straight
+    /// alpha defaulting to 255 when absent. The shader samples by document
+    /// pixel; outside the intersection the source alpha is 0.
     fn build_source(&self, layer: &Layer, doc: &Document) -> Option<(wgpu::Buffer, SrcLayout)> {
         let lw = layer.rect.width();
         let lh = layer.rect.height();
         if lw <= 0 || lh <= 0 {
             return None;
         }
-        let x0 = layer.rect.left.max(0);
-        let y0 = layer.rect.top.max(0);
-        let x1 = layer.rect.right.min(self.w as i32);
-        let y1 = layer.rect.bottom.min(self.h as i32);
+        let region_right = (self.x0 + self.w) as i32;
+        let region_bottom = (self.y0 + self.h) as i32;
+        let x0 = layer.rect.left.max(self.x0 as i32);
+        let y0 = layer.rect.top.max(self.y0 as i32);
+        let x1 = layer.rect.right.min(region_right);
+        let y1 = layer.rect.bottom.min(region_bottom);
         if x1 <= x0 || y1 <= y0 {
             return None;
         }
@@ -836,32 +937,35 @@ impl Gpu {
         ))
     }
 
-    /// Per-canvas-pixel mask coverage as an 8-bit plane, reusing the CPU
+    /// Per-region-pixel mask coverage as an 8-bit plane, reusing the CPU
     /// `mask_alpha`. A group's inner buffer and an adjustment layer act across
-    /// the whole canvas; a pixel layer only over its clamped rect (outside it
-    /// the source alpha is 0, so the coverage is irrelevant).
+    /// the whole region; a pixel layer only over its layer-rect intersection
+    /// with the region (outside it the source alpha is 0, so the coverage is
+    /// irrelevant).
     ///
-    /// ponytail: the plane is canvas-sized even for a rect-scoped layer; bound
+    /// ponytail: the plane is region-sized even for a rect-scoped layer; bound
     /// it by the rect if a many-small-layers mask profile ever shows up.
     fn build_mask(&self, layer: &Layer) -> wgpu::Buffer {
         let n = self.n as usize;
         let mut data = vec![0u8; n];
+        let region_right = (self.x0 + self.w) as i32;
+        let region_bottom = (self.y0 + self.h) as i32;
         let (x0, y0, x1, y1) = if layer.is_group || layer.adjustment.is_some() {
-            (0, 0, self.w as i32, self.h as i32)
+            (self.x0 as i32, self.y0 as i32, region_right, region_bottom)
         } else {
             (
-                layer.rect.left.max(0),
-                layer.rect.top.max(0),
-                layer.rect.right.min(self.w as i32),
-                layer.rect.bottom.min(self.h as i32),
+                layer.rect.left.max(self.x0 as i32),
+                layer.rect.top.max(self.y0 as i32),
+                layer.rect.right.min(region_right),
+                layer.rect.bottom.min(region_bottom),
             )
         };
         if x1 > x0 && y1 > y0 {
             let stride = self.w as usize;
             for y in y0..y1 {
-                let row = y as usize * stride;
+                let row = (y - self.y0 as i32) as usize * stride;
                 for x in x0..x1 {
-                    data[row + x as usize] = mask_alpha(layer, x, y);
+                    data[row + (x - self.x0 as i32) as usize] = mask_alpha(layer, x, y);
                 }
             }
         }
@@ -967,10 +1071,10 @@ impl Gpu {
             layout.y0.to_le_bytes(),
             layout.w.to_le_bytes(),
             layout.h.to_le_bytes(),
+            self.x0.to_le_bytes(),
+            self.y0.to_le_bytes(),
             self.w.to_le_bytes(),
             (gx * 64).to_le_bytes(),
-            0u32.to_le_bytes(),
-            0u32.to_le_bytes(),
         ]
         .concat();
         self.queue.write_buffer(&self.params, 0, &params);
@@ -1080,7 +1184,7 @@ struct SrcLayout {
     packed: bool,
 }
 
-/// A group's inner canvas: one packed RGBA word per canvas pixel, full canvas.
+/// A group's inner canvas: one packed RGBA word per region pixel.
 const PACKED_SRC: SrcLayout = SrcLayout {
     x0: 0,
     y0: 0,

@@ -75,6 +75,45 @@ entries are evicted under the memory cap. On GPU, tiles live in a texture atlas
 or an array texture; on CPU, in row-major buffers. A generation counter is
 incremented on undo/redo so stale tiles are never displayed.
 
+### Industry architecture
+
+Mature editors converge on the same shape, and it is worth stating because this
+project's current path is its inverse. The document owns pixels; the screen
+shows a derived view; a change produces a **damage region** (rect or tile set);
+only that region is re-composited; and the result is **presented as a GPU
+texture without reading the whole document back**.
+
+- **GIMP/GEGL** — ~128² tiles in a global LRU (budget ≈ `min(RAM, available)`,
+  512 MB floor, swap backends); `GimpProjection` holds a mipmap pyramid; dirty
+  tracking via `cairo_region` aligned to 32² chunks; `GimpTileHandlerValidate`
+  blits one tile-sized region per tile through the graph (`gegl_node_blit`);
+  viewport-priority rendering on an idle callback; the Move tool changes a layer
+  offset, not pixels. Known scar: a projectable offset change re-renders the
+  whole projection (FIXME), and the mipmap canvas is opt-in.
+- **Krita** — 64² CPU tiles in a hash table with copy-on-write; per-node
+  `KisProjectionPlane` composited by `KisAsyncMerger`; `setDirty` propagation
+  and a rects-walker for `changeRect`/`needRect`/`accessRect`;
+  `KisUpdateScheduler` with two queues and workers; Move = node offset; a
+  non-destructive Transform Mask applied at composite time; the GPU canvas uses
+  256² textures with a `1 << levels` border, per-tile mipmaps, PBO uploads, and
+  no host readback. Known scars: freezes at the tile RAM+swap ceiling and hidden
+  layers still recomputing.
+- **Photoshop** — the GPU (Mercury) is a display/effects layer over a CPU tiled
+  working set plus scratch disk, not a fully GPU-resident document. Adobe patent
+  US20150062182A1 describes progressively rendered scale-level tiles with the best
+  cached tile drawn immediately.
+- **Chromium `cc`** — sparse per-scale 256² tiles, a three-tree pipeline,
+  viewport-priority raster, and an explicit damage taxonomy in `DamageTracker`
+  (paint invalidation vs raster invalidation vs draw/expose damage); missing
+  tiles checkerboard rather than stall.
+- **Graphite (Rust + wgpu)** — 256² GPU tiles, ~512 MiB LRU, viewport-driven
+  cache; the closest reference implementation.
+
+Anti-patterns from the same sources: main-thread-blocking VRAM eviction, tile
+seams without a border/gutter, unbounded tile caches (Paint.NET crashed zoomed
+out), and `device.poll(Wait)` per frame. The full survey and the staged response
+are in `docs/dev/canvas-compositing-plan.md`.
+
 ### Layer compositing
 
 Composition runs bottom to top. For each tile, the renderer evaluates the layer
@@ -146,32 +185,37 @@ resources are not shareable between instances.
 
 ### Recommendation (staged)
 
-**Stage 1 (correct, lazy).** Let **Qt own the on-screen device and surface**.
-Implement compositing on the QRhi path so the canvas is an ordinary
-`QRhiWidget` (or `QQuickRhiItem` later). Rust compute filters run offscreen
-(wgpu or CPU) and hand results to the compositor through one of:
+The research pass and the M29 timing evidence reorder this. At 4000² the GPU
+composite is **readback-bound**: the 64 MB readback plus the `QImage` conversion
+dominates, and the CPU/GPU composite work does not. The first win is therefore
+not a new device arrangement but **not doing whole-document work per update**.
+Stages, in order (M31–M33 in `docs/dev/canvas-compositing-plan.md`):
 
-1. a CPU buffer upload for correctness and simplicity, or
-2. a Vulkan image shared with the QRhi device where the platform permits.
+**Stage 1 — dirty-region compositing (correct, lazy).** Composite only the
+changed document rect into a cached full-document canvas and read back only that
+rect. A sub-rect composite is byte-identical to the corresponding sub-rect of the
+full composite, so it is testable directly against the CPU oracle. This stays on
+the ordinary QWidget/QImage canvas and removes the full composite and full
+readback from every move and paint.
 
-Stage 1 accepts a readback or upload cost for filter results. It avoids a
-fragile device-sharing design before the pipeline is proven.
+**Stage 2 — zero-readback present.** Keep the composite in a persistent GPU
+texture and present it directly. **Qt Quick is required**: `QRhiWidget` owns its
+`QRhi` and cannot adopt our wgpu device (M0.5 finding), so the host is
+`QQuickRhiItem` sharing the window's `QRhi`,
+`QQuickWindow::createTextureFromRhiTexture()` (6.6), or one Vulkan device shared
+via `QQuickGraphicsDevice::fromDeviceObjects(...)`. The existing same-device
+image-sharing path (`QRhiTexture::createFrom`) already works; presentation was
+the gap. This removes the readback and the `QImage` conversion entirely.
 
-**Stage 2 (zero-copy target).** If profiling shows transfer cost dominates,
-adopt same-device sharing on Vulkan:
+**Stage 3 — 256² GPU tiles, LRU, seam gutters, mipmaps.** The Graphite-style
+consensus architecture, adopted only if pan/zoom over documents larger than VRAM
+demands it. Includes display-time LoD so a zoomed-out view composites a proxy.
 
-- Rust (wgpu) creates the Vulkan instance/device and the composited output
-  image.
-- Qt adopts the same instance/device and a QRhi is created with `importDevice`.
-- The final image is exported by Rust and wrapped by Qt with
-  `QRhiTexture::createFrom`, with `setNativeLayout()` used for the Vulkan
-  layout contract.
-- Alternatively, Qt owns the device and Rust wraps Qt's native textures; the
-  direction depends on which side can cleanly import (see `## Open questions`).
-
-**Rejected for now:** presenting with wgpu directly to a native window outside Qt.
-It would bypass widget composition, docking, and HiDPI handling, and conflicts
-with `ARCH-003`.
+**Rejected for now:** presenting with wgpu directly to a native window outside Qt,
+and migrating the canvas host before Stage 1 has shown the readback still
+dominates. The former bypasses widget composition, docking, and HiDPI handling
+and conflicts with `ARCH-003`; the latter is a large architectural change with no
+measured justification yet.
 
 ### Shader strategy
 
@@ -344,6 +388,37 @@ Fetched for this document:
   input; HDR surface color spaces and the rule that wgpu applies the transfer
   function automatically only for `*Srgb` view formats; MSRV 1.87.
 
+Industry survey for the `## Industry architecture` subsection (full list and
+per-editor notes in `docs/dev/canvas-compositing-plan.md`):
+
+- `https://gegl.org/features.html` and `https://gegl.org/environment.html` —
+  GEGL tile size and cache budget.
+- `https://raw.githubusercontent.com/GNOME/gimp/master/app/core/gimpprojection.c`
+  — GIMP projection, mipmap pyramid, dirty regions, per-tile blit.
+- `https://raw.githubusercontent.com/Krita/krita/master/libs/image/tiles3/kis_tiled_data_manager.h`
+  — Krita 64² copy-on-write tiles.
+- `https://docs.krita.org/en/reference_manual/layers_and_masks/transformation_masks.html`
+  — Krita composite-time transform mask.
+- `https://deepwiki.com/KDE/krita/3.2-opengl-rendering` — Krita GPU canvas
+  (256² textures, border, mipmaps, PBO, no readback).
+- `https://patents.google.com/patent/US20150062182A1/en` — Adobe tile-based
+  caching for complex artwork.
+- `https://www.nvidia.com/content/adobe/pdf/adobe-hardware-performance-white-paper.pdf`
+  — Mercury / OpenCL over a CPU tiled working set.
+- `https://chromium.googlesource.com/chromium/src.git/+/HEAD/docs/how_cc_works.md`
+  — Chromium `cc` tiles and three-tree pipeline.
+- `https://chromium.googlesource.com/chromium/src/+/f830f3d4ae0191c9095949096e9c3ca1f6dc8d12/cc/damage_tracker.h`
+  — `DamageTracker` damage taxonomy.
+- `https://docs.rs/wgpu/latest/wgpu/struct.Queue.html` — readback/submit cost
+  model as used in the anti-patterns.
+- `https://doc.qt.io/qt-6/qrhiwidget.html`,
+  `https://doc.qt.io/qt-6/qquickrhiitem.html`,
+  `https://doc.qt.io/qt-6/qquickwindow.html`,
+  `https://doc.qt.io/qt-6/qquickgraphicsdevice.html` — Qt host constraints and
+  the Qt Quick zero-readback present path.
+- `https://deepwiki.com/GraphiteEditor/Graphite/4.3-tile-based-caching` —
+  Graphite 256² GPU tiles, LRU, viewport-driven cache.
+
 Not fetched or not usable in this pass:
 
 - Adobe Photoshop CS6 Help GPU FAQ (linked from the above pages; not fetched).
@@ -362,6 +437,16 @@ Not fetched or not usable in this pass:
 >   `QRhi` + `QWindow` swapchain and `VK_KHR_swapchain` (absent from the wgpu
 >   device). Evidence: `crates/pictura-app/GPU-INTEROP-NOTES.md`.
 
+> **Industry-survey finding (canvas-compositing-plan.md):** at 4000² the GPU
+> composite is readback-bound, so the first priority is **viewport/dirty-region
+> compositing** (M31), not a new device arrangement. Zero-readback present
+> (M32) requires **Qt Quick** — `QQuickRhiItem` + `createTextureFromRhiTexture`,
+> or a shared Vulkan device via `QQuickGraphicsDevice::fromDeviceObjects` —
+> because `QRhiWidget` cannot adopt the wgpu device. **256² GPU tiles + LRU +
+> seam gutters + mipmaps** (M33, Graphite-style) are the last step, gated on
+> pan/zoom over documents larger than VRAM. The questions below are re-ordered
+> accordingly.
+
 - **wgpu–QRhi device sharing feasibility.** ~~Unverified.~~ **Resolved (M0.5):**
   QRhi's Vulkan backend imports the wgpu `VkDevice` and wraps a wgpu `VkImage`;
   see the finding above.
@@ -369,7 +454,8 @@ Not fetched or not usable in this pass:
   `QVulkanInstance::setVkInstance` + `QRhi::create(..., importDevice)` works.
 - **Queue and layout ownership.** Which side owns the queue and who performs
   layout transitions when both engines touch the same image. `setNativeLayout()`
-  is the documented hook but the full contract needs testing.
+  is the documented hook but the full contract needs testing. Applies to
+  **Stage 2** (zero-readback present), not Stage 1.
 - **Exact Mercury feature set.** The authoritative CS6 GPU feature list from
   Adobe is not fetched; current claims come from secondary sources. Resolve from
   the archived CS6 Help PDF/GPU FAQ.
@@ -388,3 +474,13 @@ Not fetched or not usable in this pass:
 - **Linux driver matrix.** Which Vulkan drivers and versions are required for the
   zero-copy path, and what the guaranteed fallback is. Resolve in
   `ARCH-013` build-and-packaging and `11-cross-cutting/testing-strategy.md`.
+- **Dirty-region scope (Stage 1).** Which operations are safely region-composable
+  (per-pixel, order-independent across disjoint rects) and which must force a
+  full recomposite (colour-mode change, document size, adjustment layers with
+  neighbourhood effects, Dissolve's RNG). Resolve in M31 against the CPU oracle.
+- **Canvas host migration (Stage 2).** Whether the docked QWidget shell can host
+  a `QQuickRhiItem` canvas without breaking docking/HiDPI, and the effect on
+  `ARCH-003`. Resolve only after Stage 1 profiling shows the readback still
+  dominates.
+- **Tile budget and eviction (Stage 3).** LRU size, eviction trigger (never on
+  the GUI thread), and seam-gutter width for 256² tiles. Resolve in M33.

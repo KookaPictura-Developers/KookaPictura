@@ -1,0 +1,230 @@
+# Canvas Compositing & Large-Layer Move Plan
+
+- **Status:** dev note (research synthesis + M31–M33 roadmap; not an OpenSpec
+  proposal yet — each milestone is proposed through the normal workflow first)
+- **Scope:** how mature editors keep very large layers responsive while moving,
+  painting, and zooming; how the current Kooka Pictura path diverges; and the
+  staged plan to close the gap.
+- **Companion specs:** `01-architecture/gpu-rendering-pipeline.md` (ARCH-006),
+  `01-architecture/performance-targets.md` (ARCH-013),
+  `01-architecture/threading-and-concurrency.md` (ARCH-005),
+  `dev/STATE.md`, `dev/m29-large-doc-performance.md`, `dev/canvas-view-spec.md`,
+  `crates/pictura-app/GPU-INTEROP-NOTES.md`.
+
+This note records three sourced web-research passes plus the local M29 timing
+evidence. It is deliberately implementation-agnostic about *where* tiles live:
+the M31 step is a small change to the existing QWidget/QImage path, and M32/M33
+only become worth doing when a measured cost says so.
+
+---
+
+## 1. The consensus architecture
+
+Across GIMP/GEGL, Krita, Photoshop, Chromium, Affinity, Paint.NET, and Graphite
+the same shape recurs:
+
+- **Separate document state from display.** The document owns pixels; the screen
+  shows a derived view. The two are not the same buffer.
+- **Keep pixels resident.** The working set (or the visible part of it) stays in
+  a cache — CPU RAM and/or VRAM — rather than being rebuilt from the layer stack
+  on demand.
+- **Compute a damage region.** A change produces a rectangle (or a set of
+  tiles); only that region is re-composited. The damage taxonomy is explicit:
+  paint invalidation (content changed) vs raster invalidation (raster cache
+  stale) vs draw/expose damage (needs a new frame).
+- **Re-render only dirty tiles/region**, and
+- **present a texture without reading the whole document back.** The final image
+  reaches the screen as a GPU texture; a CPU readback of the whole document is
+  never on the interactive path.
+
+The current Kooka Pictura path is the inverse of that last point: for every
+update it composites the full document on the active backend, reads the full
+packed RGBA buffer back to the CPU, and converts it to a `QImage`
+(`document_to_image` → `current_buffer` → `composite_active` → `buffer_to_image`,
+`crates/pictura-app/src/cxxqt_object.rs`). At 4000² that readback is ~64 MB and
+dominates the ~332 ms GPU composite; the CPU/GPU work is not the bottleneck, the
+transfer is.
+
+### 1.1 GIMP / GEGL
+
+- **Tiles ~128²**, held in a global LRU tile cache whose budget defaults to
+  roughly `min(RAM, available)` with a 512 MB floor; swap-to-disk backends extend
+  it.
+- `GimpProjection` holds a **mipmap pyramid** of the projection, so zoomed-out
+  views read a smaller level rather than a full-resolution composite.
+- Dirty tracking uses `cairo_region`, aligned to 32² chunks, plus per-tile
+  validate.
+- `GimpTileHandlerValidate` blits **one tile-sized region per tile** through the
+  GEGL graph (`gegl_node_blit`) — the graph is evaluated per tile, not wholesale.
+- Viewport-priority chunked rendering happens on an idle callback.
+- The Move tool changes a layer **offset**, not pixels.
+- **Known scar:** an explicit FIXME notes that a projectable offset change
+  re-renders the whole projection; and there is no mipmap-based canvas by default
+  (it is opt-in behind a flag).
+
+### 1.2 Krita
+
+- **CPU tiles 64²** in a hash table with **copy-on-write** tile data.
+- Each node caches its own **projection** (`KisProjectionPlane`), composited by
+  `KisAsyncMerger`.
+- `setDirty` propagates up the tree; a rects-walker computes
+  `changeRect` / `needRect` / `accessRect`.
+- `KisUpdateScheduler` runs two queues (updates vs stroke jobs) on worker
+  threads.
+- **Move = node offset** (`supportsLodMoves`); a non-destructive **Transform
+  Mask** is applied at composite time.
+- The GPU canvas uses **256² textures with a `1 << levels` border, per-tile
+  mipmaps, PBO uploads, and no host readback**.
+- Instant Preview is LOD stroke clones.
+- **Known scars:** freezes at the tile RAM+swap ceiling; hidden layers still
+  recompute; transform-mask commit region drift.
+
+### 1.3 Photoshop
+
+- The GPU (Mercury) is a **display/effects layer** (OpenGL + OpenCL) over a
+  **CPU tiled working set plus scratch disk** — not a fully GPU-resident
+  document.
+- Adobe patent **US20150062182A1**, "Tile-based caching for rendering complex
+  artwork": progressively rendered scale-level tiles; the best cached tile is
+  drawn immediately and new tiles render in the background.
+
+### 1.4 Chromium `cc`
+
+- Sparse per-scale **256² tiles**, a three-tree (main / pending / active)
+  pipeline, and viewport-priority raster.
+- An explicit **damage taxonomy** in `DamageTracker`: paint invalidation vs
+  raster invalidation vs draw/expose damage.
+- Missing tiles **checkerboard** rather than stall the frame.
+
+### 1.5 Graphite (Rust + wgpu)
+
+- 256² GPU tiles, ~512 MiB LRU, viewport-driven cache. The closest reference
+  implementation to what this project would build: same language, same GPU API.
+
+### 1.6 Anti-patterns to avoid
+
+- **VRAM eviction on the main thread** — synchronous eviction blocks the frame.
+- **Tile seams** — filtering and feathering need a border/gutter.
+- **Unbounded tile cache** — Paint.NET crashed from tile-cache blow-up when
+  zoomed out.
+- **`device.poll(Wait)` per frame** — stalls the GPU pipeline.
+
+---
+
+## 2. Qt reality (decisive for this project)
+
+- `QRhiWidget` **cannot adopt our wgpu device**: it owns its `QRhi` internally
+  and there is no `setRhi`/`adoptDevice` hook; one backend per window
+  (`crates/pictura-app/GPU-INTEROP-NOTES.md`).
+- Zero-readback present therefore needs **Qt Quick**:
+  - `QQuickRhiItem` shares the window's `QRhi`;
+  - `QQuickWindow::createTextureFromRhiTexture()` (Qt 6.6) wraps our canvas
+    texture as a scene-graph texture;
+  - or share one Vulkan device via
+    `QQuickGraphicsDevice::fromDeviceObjects(...)`.
+- `QSGSimpleTextureNode` is software-backend only and is not a path here.
+
+The existing M0.5 finding (same-device, same-image sharing works; presentation
+is the gap) is consistent with this: the transfer mechanism is proven, the host
+widget is the blocker.
+
+---
+
+## 3. Plan: M31–M33
+
+### M31 — region (dirty-rect) compositing
+
+Composite only the changed document rect into a cached full-document canvas and
+read back only that rect. A moved layer's damage is `old_bounds ∪ new_bounds`; a
+paint dab's damage is its bounding box; a global op (mode switch, document size)
+still recomposites fully.
+
+Because compositing is per-pixel and order-independent across disjoint rects, a
+sub-rect composite is **byte-identical** to the corresponding sub-rect of the
+full composite. That makes the dirty-rect path testable directly against the
+existing CPU oracle: composite the full document, composite only the dirty rect,
+assert the rects match.
+
+- Stays on the current QWidget/QImage canvas: no new host widget, no Qt Quick
+  migration.
+- Removes the full composite **and** the full readback per move/paint.
+- Also caches the packed display image so `buffer_to_image` runs only for the
+  dirty rect.
+
+This is the highest value-per-line step and the one whose correctness is
+provable with the tools already in the repo. It does not need tiles, mipmaps, or
+a GPU-resident document to pay off.
+
+### M32 — GPU-resident canvas, present without readback
+
+Keep the composite in a persistent GPU texture and present it directly. Two
+routes, both Qt Quick:
+
+- `QQuickRhiItem` + `QQuickWindow::createTextureFromRhiTexture()`, wrapping our
+  canvas texture; or
+- one shared Vulkan device via `QQuickGraphicsDevice::fromDeviceObjects(...)`.
+
+This removes the readback and the `QImage` conversion from the interactive path
+entirely. It builds on M31: the damage region determines what is recomposited
+into the texture, and the texture is presented as-is. Optionally move compute
+off the GUI thread so a large composite cannot block input.
+
+Migrating the canvas to Qt Quick is an architectural change; it is gated on M31
+showing the readback still dominates after the full-document composite is gone.
+
+### M33 — 256² GPU tiles + LRU + seam gutters + mipmaps (Graphite-style)
+
+Only if pan/zoom over documents larger than VRAM demands it. Sparse 256² tiles
+with an LRU budget, per-tile mipmaps, a border/gutter to kill seams, and
+display-time LoD so a zoomed-out view composites a proxy level instead of the
+full-resolution document.
+
+This is the full consensus architecture; it is deliberately last because it is
+the most code and the least certain payoff for this project's document sizes.
+
+### Non-goals for these milestones
+
+- A mipmap pyramid by default (GIMP opted out; Krita's GPU path opted in). LoD is
+  an M33 concern.
+- Swap-to-disk tile backends.
+- A fully GPU-resident document (Photoshop does not do this either).
+
+---
+
+## 4. Sources
+
+- GEGL features — `https://gegl.org/features.html`
+- GEGL environment / cache budget — `https://gegl.org/environment.html`
+- GIMP projection (mipmap pyramid, dirty regions) —
+  `https://raw.githubusercontent.com/GNOME/gimp/master/app/core/gimpprojection.c`
+- Krita tiled data manager (64² tiles, COW) —
+  `https://raw.githubusercontent.com/Krita/krita/master/libs/image/tiles3/kis_tiled_data_manager.h`
+- Krita transformation masks (composite-time transform) —
+  `https://docs.krita.org/en/reference_manual/layers_and_masks/transformation_masks.html`
+- Krita OpenGL rendering (256² textures, border, mipmaps, PBO, no readback) —
+  `https://deepwiki.com/KDE/krita/3.2-opengl-rendering`
+- Adobe patent US20150062182A1, tile-based caching for complex artwork —
+  `https://patents.google.com/patent/US20150062182A1/en`
+- Adobe hardware-performance white paper (Mercury / OpenCL) —
+  `https://www.nvidia.com/content/adobe/pdf/adobe-hardware-performance-white-paper.pdf`
+- Chromium `cc` overview (256² tiles, three-tree, viewport-priority) —
+  `https://chromium.googlesource.com/chromium/src.git/+/HEAD/docs/how_cc_works.md`
+- Chromium `DamageTracker` (damage taxonomy) —
+  `https://chromium.googlesource.com/chromium/src/+/f830f3d4ae0191c9095949096e9c3ca1f6dc8d12/cc/damage_tracker.h`
+- wgpu `Queue` (write/submit, readback cost model) —
+  `https://docs.rs/wgpu/latest/wgpu/struct.Queue.html`
+- Qt `QRhiWidget` (owns its QRhi; no device adoption) —
+  `https://doc.qt.io/qt-6/qrhiwidget.html`
+- Qt `QQuickRhiItem` (shares the window's QRhi) —
+  `https://doc.qt.io/qt-6/qquickrhiitem.html`
+- Qt `QQuickWindow` (`createTextureFromRhiTexture`, 6.6) —
+  `https://doc.qt.io/qt-6/qquickwindow.html`
+- Qt `QQuickGraphicsDevice` (`fromDeviceObjects`, shared Vulkan device) —
+  `https://doc.qt.io/qt-6/qquickgraphicsdevice.html`
+- Graphite tile-based caching (256² GPU tiles, ~512 MiB LRU, viewport-driven) —
+  `https://deepwiki.com/GraphiteEditor/Graphite/4.3-tile-based-caching`
+
+Repository inputs read: `crates/pictura-app/src/cxxqt_object.rs`
+(`document_to_image`, `current_buffer`, `buffer_to_image`),
+`crates/pictura-app/GPU-INTEROP-NOTES.md`, `docs/dev/m29-large-doc-performance.md`,
+`docs/01-architecture/gpu-rendering-pipeline.md`.

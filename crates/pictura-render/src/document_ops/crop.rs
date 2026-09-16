@@ -60,6 +60,23 @@ pub fn translate_layer(doc: &mut Document, dx: i32, dy: i32) -> bool {
     true
 }
 
+/// Shift the topmost pixel layer's bounds by `(dx, dy)` without recompositing.
+///
+/// Same rect/mask shift as [`translate_layer`]; the caller is expected to
+/// refresh the dirty region through the active backend. Use [`translate_layer`]
+/// or [`translate_layer_active`] when a full recomposite is wanted. Returns
+/// false when there is no pixel layer.
+pub fn translate_layer_rect(doc: &mut Document, dx: i32, dy: i32) -> bool {
+    let Some(layer) = topmost_pixel_layer(&mut doc.layers) else {
+        return false;
+    };
+    layer.rect = offset_rect(layer.rect, dx, dy);
+    if let Some(mask) = &mut layer.mask {
+        mask.rect = offset_rect(mask.rect, dx, dy);
+    }
+    true
+}
+
 /// Shift the topmost pixel layer's bounds by `(dx, dy)` and refresh the
 /// composite through the active backend.
 ///
@@ -234,6 +251,25 @@ mod tests {
     }
 
     #[test]
+    fn translate_layer_rect_shifts_without_recompositing() {
+        let mut doc = sample_doc();
+        let before = doc.composite.clone();
+        let mask = LayerMask {
+            rect: full(4, 4),
+            default_color: 255,
+            disabled: false,
+            flags: 0,
+            data: Some(vec![128; 16]),
+        };
+        doc.layers[0] = pixel_layer("masked", full(4, 4), Some(mask));
+
+        assert!(translate_layer_rect(&mut doc, 2, -1));
+        assert_eq!(doc.layers[0].rect, rect(-1, 2, 3, 6));
+        assert_eq!(doc.layers[0].mask.as_ref().unwrap().rect, rect(-1, 2, 3, 6));
+        assert_eq!(doc.composite.data, before.data, "no recomposite");
+    }
+
+    #[test]
     fn translate_layer_rejects_non_pixel_layers() {
         let mut doc = sample_doc();
         doc.layers = vec![Layer {
@@ -255,5 +291,47 @@ mod tests {
         let before = doc.clone();
         assert!(!translate_layer(&mut doc, 2, 2));
         assert_eq!(doc, before);
+    }
+
+    /// Manual M31 evidence: a small region composite against the full 4000²
+    /// composite through the active backend. Ignored by default (it allocates a
+    /// 4000² layer); run with `--ignored --nocapture`.
+    #[test]
+    #[ignore = "manual 4000x4000 region-vs-full timing measurement"]
+    fn region_move_timing_4000() {
+        use std::time::Instant;
+
+        let (w, h) = (4000u32, 4000u32);
+        let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![pixel_layer(
+            "big",
+            PsdRect {
+                top: 0,
+                left: 0,
+                bottom: h as i32,
+                right: w as i32,
+            },
+            None,
+        )];
+        doc.composite = crate::composite_rgba(&doc);
+
+        let full = Instant::now();
+        let _ = crate::composite_active(&doc, true);
+        let full_ms = full.elapsed().as_secs_f64() * 1000.0;
+
+        let rect = PsdRect {
+            top: 1000,
+            left: 1000,
+            bottom: 1064,
+            right: 1064,
+        };
+        let region = Instant::now();
+        let (buffer, backend) = crate::gpu::composite_region_active(&doc, rect, true);
+        let region_ms = region.elapsed().as_secs_f64() * 1000.0;
+
+        assert_eq!((buffer.width, buffer.height), (64, 64));
+        eprintln!(
+            "m31 timing 4000^2 backend={backend:?} full={full_ms:.1}ms region64={region_ms:.3}ms"
+        );
     }
 }

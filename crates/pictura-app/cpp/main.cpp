@@ -1750,6 +1750,87 @@ int main(int argc, char* argv[])
         // Restore the previously active document so later checks are undisturbed.
         frame.closeDocument(m30DocIndex, false);
 
+        // M31: dirty-region canvas refresh. Grow a seeded document so a small
+        // white layer sits in a larger transparent canvas, then Move it by a
+        // known offset. The layer's pixels must land at the new location, a
+        // sample far outside the dirty union must be untouched, and undo must
+        // restore the pre-move image.
+        // 75: region move.
+        const bool m31Created = frame.newDocument(QStringLiteral("Region"), 32, 32,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* m31View = frame.activeView();
+        if (!m31Created || !m31View) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M31 document\n");
+            std::fflush(stderr);
+            return 75;
+        }
+        const int m31DocIndex = frame.activeDocumentIndex();
+        const bool m31Grown =
+            m31View->resize_canvas(QStringLiteral("top-left"), 128, 128);
+        if (!m31Grown) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M31 canvas growth\n");
+            std::fflush(stderr);
+            return 75;
+        }
+        const QImage m31Before = m31View->image();
+        const QRgb m31Src = m31Before.pixel(5, 5);         // inside the layer
+        const QRgb m31NewBefore = m31Before.pixel(38, 38); // shape's new home
+        const QRgb m31Far = m31Before.pixel(100, 100);     // outside dirty union
+        const bool m31Preview = m31View->begin_move_preview();
+        const bool m31Moved = m31View->commit_move(8, 8);
+        const QImage m31After = m31View->image();
+        const bool m31Appeared = m31After.pixel(38, 38) == m31Src
+                                 && m31NewBefore != m31Src;
+        const bool m31Vacated = m31After.pixel(2, 2) != m31Src;
+        const bool m31Outside = m31After.pixel(100, 100) == m31Far;
+        const bool m31Undone = m31View->undo() && m31View->image() == m31Before;
+        std::fprintf(stderr,
+                     "pictura self-test: m31_region moved=%d outside_unchanged=%d undo=%d\n",
+                     (m31Moved && m31Appeared && m31Vacated) ? 1 : 0,
+                     m31Outside ? 1 : 0,
+                     m31Undone ? 1 : 0);
+        std::fflush(stderr);
+        if (!m31Preview || !m31Moved || !m31Appeared || !m31Vacated || !m31Outside
+            || !m31Undone) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M31 region move wrong\n");
+            return 75;
+        }
+        // Leave the frame as M30 did: close the scratch document.
+        frame.closeDocument(m31DocIndex, false);
+
+        // M31 fallback: when the dirty union exceeds the per-pixel blit budget
+        // `refresh_region` must take the full-recomposite path and stay correct.
+        // A 1024² canvas moved by (1,1) has `old ∪ new` = the whole canvas
+        // (1,048,576 px > the 1,000,000 budget).
+        const bool m31bCreated =
+            frame.newDocument(QStringLiteral("RegionLarge"), 1024, 1024,
+                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+        pictura::PictureView* m31bView = frame.activeView();
+        if (!m31bCreated || !m31bView) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M31 large document\n");
+            std::fflush(stderr);
+            return 75;
+        }
+        const int m31bDocIndex = frame.activeDocumentIndex();
+        const QImage m31bBefore = m31bView->image();
+        const QRgb m31bOrigin = m31bBefore.pixel(0, 0);
+        const bool m31bMoved = m31bView->commit_move(1, 1);
+        const QImage m31bAfter = m31bView->image();
+        const bool m31bVacated = m31bAfter.pixel(0, 0) != m31bOrigin;
+        const bool m31bUndone = m31bView->undo() && m31bView->image() == m31bBefore;
+        std::fprintf(stderr,
+                     "pictura self-test: m31_region_large moved=%d vacated=%d undo=%d\n",
+                     m31bMoved ? 1 : 0,
+                     m31bVacated ? 1 : 0,
+                     m31bUndone ? 1 : 0);
+        std::fflush(stderr);
+        if (!m31bMoved || !m31bVacated || !m31bUndone) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M31 large-union fallback wrong\n");
+            return 75;
+        }
+        frame.closeDocument(m31bDocIndex, false);
+
         // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
         int m23Levels = 0;
         for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {

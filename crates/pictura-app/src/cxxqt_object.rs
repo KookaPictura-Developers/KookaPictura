@@ -5,7 +5,7 @@ use core::pin::Pin;
 
 use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QImage, QImageFormat, QString};
+use cxx_qt_lib::{QColor, QImage, QImageFormat, QString};
 use pictura_core::{
     AdjustmentData, BitDepth, BlendMode, Channel, ColorMode, Document, Layer, LayerMask,
     PixelBuffer, PsdRect,
@@ -1128,30 +1128,36 @@ impl qobject::PictureView {
         if dx == 0 && dy == 0 {
             return false;
         }
+        let before = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            match topmost_pixel_layer_rect(doc) {
+                Some(rect) => rect,
+                None => return false,
+            }
+        };
         let moved = {
             let mut rust = self.as_mut().rust_mut();
-            let gpu_compute = rust.gpu_compute;
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
-            pictura_render::translate_layer_active(doc, dx, dy, gpu_compute)
+            pictura_render::translate_layer_rect(doc, dx, dy)
         };
         if !moved {
             return false;
         }
+        let dirty = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            union_rect(before, topmost_pixel_layer_rect(doc).unwrap_or(before))
+        };
         self.as_mut().record("Move Layer");
-        // `translate_layer_active` already recomputed `doc.composite` on the
-        // active backend; convert it instead of compositing a second time.
-        let image = self
-            .rust()
-            .doc
-            .as_ref()
-            .map(|doc| buffer_to_image(&doc.composite));
-        if let Some(image) = image {
-            self.as_mut().rust_mut().image = image;
-        }
+        self.as_mut().refresh_region(dirty);
         self.as_mut().clear_move_cache();
-        self.changed();
         true
     }
 
@@ -1339,16 +1345,14 @@ impl qobject::PictureView {
             }
         };
         if changed {
-            let gpu_compute = self.rust().gpu_compute;
-            let image = self
+            let dirty = self
                 .rust()
                 .stroke
                 .as_ref()
-                .map(|stroke| document_to_image(stroke.document(), gpu_compute));
-            if let Some(image) = image {
-                self.as_mut().rust_mut().image = image;
+                .and_then(|stroke| stroke.dirty());
+            if let Some(rect) = dirty {
+                self.as_mut().refresh_region(rect);
             }
-            self.changed();
         }
         changed
     }
@@ -1694,7 +1698,82 @@ impl qobject::PictureView {
         self.rust().doc.as_ref()?.layers.get(i as usize)
     }
 
+    /// Composite only `rect` and blit it into the cached canvas at its origin.
+    ///
+    /// The source is the active stroke's working document while painting, else
+    /// the app document. `doc.composite` is patched too, except while painting
+    /// (its composite is refreshed by `end_paint`'s full recomposite). An empty
+    /// clamped rect is a no-op; a non-empty refresh emits [`changed`].
+    fn refresh_region(mut self: Pin<&mut Self>, rect: PsdRect) {
+        let gpu_compute = self.rust().gpu_compute;
+        // Decide region vs full before taking the mutable borrow, so the
+        // fallback can rebuild the image.
+        let (region, painting) = {
+            let rust = self.rust();
+            let painting = rust.stroke.is_some();
+            let dims = rust
+                .stroke
+                .as_ref()
+                .map(|stroke| (stroke.document().width, stroke.document().height))
+                .or_else(|| rust.doc.as_ref().map(|doc| (doc.width, doc.height)));
+            (
+                dims.and_then(|(width, height)| clamp_region(rect, width, height)),
+                painting,
+            )
+        };
+        let Some((x0, y0, w, h)) = region else {
+            return;
+        };
+        if w as u64 * h as u64 > REGION_REFRESH_BUDGET {
+            // Too big for the per-pixel blit. During a stroke the app document
+            // is the pre-stroke base, so rebuild from the stroke's working
+            // document instead of `recomposite`.
+            if painting {
+                let image = self
+                    .rust()
+                    .stroke
+                    .as_ref()
+                    .map(|stroke| document_to_image(stroke.document(), gpu_compute));
+                if let Some(image) = image {
+                    self.as_mut().rust_mut().image = image;
+                }
+                self.changed();
+            } else {
+                self.recomposite();
+            }
+            return;
+        }
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            let source: &Document = if painting {
+                rust.stroke.as_ref().unwrap().document()
+            } else if let Some(doc) = rust.doc.as_ref() {
+                doc
+            } else {
+                return;
+            };
+            let (buffer, _backend) =
+                pictura_render::composite_region_active(source, rect, gpu_compute);
+            if buffer.width == 0 || buffer.height == 0 {
+                return;
+            }
+            // ponytail: keep the cached composite coherent with the region; the
+            // other mutations still take the full `recomposite` path.
+            if !painting {
+                if let Some(doc) = rust.doc.as_mut() {
+                    patch_composite_region(doc, &buffer, x0, y0);
+                }
+            }
+            blit_image_region(&mut rust.image, &buffer, x0, y0);
+        }
+        self.changed();
+    }
+
     /// Refresh `image` from the current document and emit [`changed`].
+    ///
+    /// The full-document fallback for every mutation that does not report a
+    /// dirty rectangle; [`refresh_region`] is the incremental extension point.
     fn recomposite(mut self: Pin<&mut Self>) {
         let gpu_compute = self.rust().gpu_compute;
         let image = self
@@ -2229,6 +2308,113 @@ fn topmost_pixel_layer(doc: &mut Document) -> Option<&mut Layer> {
     doc.layers.get_mut(index)
 }
 
+/// The topmost pixel layer's document-space rect.
+fn topmost_pixel_layer_rect(doc: &Document) -> Option<PsdRect> {
+    topmost_pixel_layer_index(doc).map(|index| doc.layers[index].rect)
+}
+
+/// The bounding box of two document-space rects.
+fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
+    PsdRect {
+        top: a.top.min(b.top),
+        left: a.left.min(b.left),
+        bottom: a.bottom.max(b.bottom),
+        right: a.right.max(b.right),
+    }
+}
+
+/// Largest dirty area a `refresh_region` blits pixel-by-pixel.
+///
+/// The region blit costs one FFI call per pixel, so a large dirty union (moving
+/// a canvas-sized layer makes `old ∪ new` ≈ the whole document) would be ~16 M
+/// calls at 4000². Above this budget `refresh_region` falls back to one full
+/// composite plus a `QImage` build — still bounded, and far cheaper than the
+/// per-pixel loop. A fixed cap rather than a document fraction, so a small
+/// document always stays on the region path.
+const REGION_REFRESH_BUDGET: u64 = 1_000_000;
+
+/// Clamp `rect` to `width`×`height`.
+///
+/// Returns `(x0, y0, w, h)` in document pixels, or `None` when the intersection
+/// is empty (zero or negative area).
+fn clamp_region(rect: PsdRect, width: u32, height: u32) -> Option<(i32, i32, u32, u32)> {
+    let x0 = rect.left.max(0);
+    let y0 = rect.top.max(0);
+    let x1 = rect.right.min(width as i32);
+    let y1 = rect.bottom.min(height as i32);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    Some((x0, y0, (x1 - x0) as u32, (y1 - y0) as u32))
+}
+
+/// Overwrite `image` at `(x0, y0)` with a 4-channel planar region buffer.
+///
+/// `cxx-qt-lib` 0.10 exposes no `QPainter`/scanline access from Rust, so the
+/// blit is pixel-by-pixel via `QImage::set_pixel_color` — replace semantics,
+/// equivalent to `CompositionMode_Source`.
+///
+/// ponytail: one FFI call per pixel is the ceiling; a C++
+/// `ImageView::blitRegion(const QImage&, x, y)` using `QPainter` +
+/// `CompositionMode_Source` (or M32's GPU-resident present, which drops the
+/// host `QImage`) is the upgrade path. `refresh_region` keeps the dirty area
+/// under [`REGION_REFRESH_BUDGET`] meanwhile.
+fn blit_image_region(image: &mut QImage, region: &PixelBuffer, x0: i32, y0: i32) {
+    if region.channels != 4 {
+        return;
+    }
+    let rw = region.width as i32;
+    let rh = region.height as i32;
+    let plane = (region.width * region.height) as usize;
+    let stride = region.width as usize;
+    for ry in 0..rh {
+        for rx in 0..rw {
+            let i = ry as usize * stride + rx as usize;
+            let color = QColor::from_rgba(
+                region.data[i] as i32,
+                region.data[plane + i] as i32,
+                region.data[2 * plane + i] as i32,
+                region.data[3 * plane + i] as i32,
+            );
+            image.set_pixel_color(x0 + rx, y0 + ry, &color);
+        }
+    }
+}
+
+/// Copy a region of a 4-channel planar buffer into `doc.composite` at `(x0, y0)`.
+///
+/// Used to keep the cached document composite consistent with the region blit.
+/// A channel-count or size mismatch is ignored (the region still reaches the
+/// displayed image).
+fn patch_composite_region(doc: &mut Document, region: &PixelBuffer, x0: i32, y0: i32) {
+    let dst = &mut doc.composite;
+    if dst.channels != 4 || region.channels != 4 {
+        return;
+    }
+    if dst.width != doc.width || dst.height != doc.height {
+        return;
+    }
+    if x0 < 0 || y0 < 0 {
+        return;
+    }
+    let (x0, y0) = (x0 as usize, y0 as usize);
+    let rw = region.width as usize;
+    let rh = region.height as usize;
+    let (fw, fh) = (doc.width as usize, doc.height as usize);
+    if x0 + rw > fw || y0 + rh > fh {
+        return;
+    }
+    let fplane = fw * fh;
+    let rplane = rw * rh;
+    for c in 0..4 {
+        for ry in 0..rh {
+            let src = c * rplane + ry * rw;
+            let at = c * fplane + (y0 + ry) * fw + x0;
+            dst.data[at..at + rw].copy_from_slice(&region.data[src..src + rw]);
+        }
+    }
+}
+
 /// A full-frame raster mask whose coverage is the selection.
 fn selection_to_mask(selection: &Selection, doc: &Document) -> LayerMask {
     LayerMask {
@@ -2453,6 +2639,22 @@ mod tests {
         assert_eq!(image.pixel_color(0, 0).green(), 30);
         assert_eq!(image.pixel_color(0, 0).blue(), 50);
         assert_eq!(image.pixel_color(0, 0).alpha(), 255);
+    }
+
+    #[test]
+    fn clamp_region_matches_document_bounds() {
+        let rect = |t, l, b, r| PsdRect {
+            top: t,
+            left: l,
+            bottom: b,
+            right: r,
+        };
+        assert_eq!(clamp_region(rect(0, 0, 4, 4), 4, 4), Some((0, 0, 4, 4)));
+        // Partially outside clamps to the intersection.
+        assert_eq!(clamp_region(rect(-2, -2, 3, 3), 4, 4), Some((0, 0, 3, 3)));
+        // Entirely outside, and zero-area rects, are empty.
+        assert_eq!(clamp_region(rect(10, 10, 12, 12), 4, 4), None);
+        assert_eq!(clamp_region(rect(0, 0, 0, 4), 4, 4), None);
     }
 
     #[test]
