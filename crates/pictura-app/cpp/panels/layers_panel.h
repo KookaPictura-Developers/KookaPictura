@@ -23,8 +23,12 @@ public:
     void setView(PictureView* view);
     void refresh();
 
+    /// Bottom-first index of the selected row, or -1 when nothing is selected.
+    int currentLayer() const;
+
 private:
     void syncControls();
+    void selectLayer(int index);
     void showColorMenu(const QPoint& pos);
 
     PictureView* view_ = nullptr;

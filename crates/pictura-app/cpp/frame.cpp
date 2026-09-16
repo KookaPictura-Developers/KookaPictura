@@ -1176,6 +1176,47 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::SelectDeselect,
                                   [this]() { return activeView() && activeView()->has_document(); });
 
+    // M37: layer creation and grouping. The target is the active document's
+    // current layer — the Layers panel's selected row, -1 when none.
+    // ponytail: one current layer; M38's multi-selection upgrades these to
+    // per-selection operations.
+    registry_->setHandler(command_ids::LayerNewLayer, [this]() {
+        if (PictureView* view = activeView()) {
+            view->add_layer(layersPanel_ ? layersPanel_->currentLayer() : -1);
+            refresh();
+        }
+    });
+    registry_->setHandler(command_ids::LayerNewGroup, [this]() {
+        if (PictureView* view = activeView()) {
+            view->add_group(layersPanel_ ? layersPanel_->currentLayer() : -1);
+            refresh();
+        }
+    });
+    registry_->setHandler(command_ids::LayerDuplicateLayer, [this]() {
+        if (PictureView* view = activeView()) {
+            view->duplicate_layer(layersPanel_ ? layersPanel_->currentLayer() : -1);
+            refresh();
+        }
+    });
+    registry_->setHandler(command_ids::LayerGroupLayers, [this]() {
+        if (PictureView* view = activeView()) {
+            view->group_layer(layersPanel_ ? layersPanel_->currentLayer() : -1);
+            refresh();
+        }
+    });
+    registry_->setHandler(command_ids::LayerUngroupLayers, [this]() {
+        if (PictureView* view = activeView()) {
+            view->ungroup_layer(layersPanel_ ? layersPanel_->currentLayer() : -1);
+            refresh();
+        }
+    });
+    for (const char* id : {command_ids::LayerNewLayer, command_ids::LayerNewGroup,
+                           command_ids::LayerDuplicateLayer, command_ids::LayerGroupLayers,
+                           command_ids::LayerUngroupLayers}) {
+        registry_->setEnabledProvider(id,
+                                      [this]() { return activeView() && activeView()->has_document(); });
+    }
+
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {
             canvas->zoomIn();

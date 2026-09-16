@@ -263,10 +263,12 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Image", "Calculations…"}, QStringLiteral("Calculations…"));
 
     // Layer
-    leaf(registry, {"Layer", "New", "Layer"}, QStringLiteral("Layer"), QStringLiteral("Shift+Ctrl+N"));
+    registry.add(command_ids::LayerNewLayer, {"Layer", "New", "Layer"}, QStringLiteral("Layer"),
+                 QKeySequence(QStringLiteral("Shift+Ctrl+N")), true);
     leaf(registry, {"Layer", "New", "Layer from Background…"},
          QStringLiteral("Layer from Background…"));
-    leaf(registry, {"Layer", "New", "Group…"}, QStringLiteral("Group…"));
+    registry.add(command_ids::LayerNewGroup, {"Layer", "New", "Group…"}, QStringLiteral("Group…"),
+                 QKeySequence(), true);
     leaf(registry, {"Layer", "New", "Group from Layers…"}, QStringLiteral("Group from Layers…"));
     leaf(registry, {"Layer", "New", "Layer via Copy"}, QStringLiteral("Layer via Copy"),
          QStringLiteral("Ctrl+J"));
@@ -275,7 +277,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "New", "Background From Layer"},
          QStringLiteral("Background From Layer"));
     registry.addSeparator({"Layer"});
-    leaf(registry, {"Layer", "Duplicate Layer…"}, QStringLiteral("Duplicate Layer…"));
+    registry.add(command_ids::LayerDuplicateLayer, {"Layer", "Duplicate Layer…"},
+                 QStringLiteral("Duplicate Layer…"), QKeySequence(), true);
     leaf(registry, {"Layer", "Delete Layer"}, QStringLiteral("Delete Layer"));
     leaf(registry, {"Layer", "Delete Hidden Layers"}, QStringLiteral("Delete Hidden Layers"));
     registry.addSeparator({"Layer"});
@@ -384,9 +387,11 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Rasterize", "Video"}, QStringLiteral("Video"));
     leaf(registry, {"Layer", "Rasterize", "3D"}, QStringLiteral("3D"));
     leaf(registry, {"Layer", "New Layer-based Slice"}, QStringLiteral("New Layer-based Slice"));
-    leaf(registry, {"Layer", "Group Layers"}, QStringLiteral("Group Layers"), QStringLiteral("Ctrl+G"));
-    leaf(registry, {"Layer", "Ungroup Layers"}, QStringLiteral("Ungroup Layers"),
-         QStringLiteral("Shift+Ctrl+G"));
+    registry.add(command_ids::LayerGroupLayers, {"Layer", "Group Layers"},
+                 QStringLiteral("Group Layers"), QKeySequence(QStringLiteral("Ctrl+G")), true);
+    registry.add(command_ids::LayerUngroupLayers, {"Layer", "Ungroup Layers"},
+                 QStringLiteral("Ungroup Layers"),
+                 QKeySequence(QStringLiteral("Shift+Ctrl+G")), true);
     leaf(registry, {"Layer", "Hide Layers"}, QStringLiteral("Hide Layers"));
     leaf(registry, {"Layer", "Arrange", "Bring to Front"}, QStringLiteral("Bring to Front"),
          QStringLiteral("Shift+Ctrl+]"));

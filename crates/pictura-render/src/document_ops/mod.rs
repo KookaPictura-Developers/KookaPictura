@@ -3,11 +3,15 @@
 
 mod canvas;
 mod crop;
+mod layer_ops;
 mod orient;
 mod resize;
 
 pub use canvas::resize_canvas_document;
 pub use crop::{crop_document, translate_layer, translate_layer_active, translate_layer_rect};
+pub use layer_ops::{
+    add_group, add_layer, duplicate_layer, group_layer, next_layer_name, ungroup_layer,
+};
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;
 

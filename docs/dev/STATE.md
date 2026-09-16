@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **556 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **568 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
@@ -671,6 +671,55 @@ openspec validate --all --strict
   round-trips and is ignored), the forced type/shape locks, and a first-class
   Background flag (M37).
 
+- **M37 — layer creation and grouping** (the second milestone of the Layers-panel
+  program; see `docs/dev/layers-panel-program.md`). New
+  `crates/pictura-render/src/document_ops/layer_ops.rs` (418 lines) adds five pure
+  functions over `&mut Document` — `add_layer(doc, above, name) -> i32`,
+  `add_group(doc, above, name) -> i32`, `duplicate_layer(doc, index) -> i32`,
+  `group_layer(doc, index) -> i32`, `ungroup_layer(doc, index) -> bool` — plus
+  `next_layer_name(doc, prefix)`, re-exported from `document_ops` and the crate
+  root. Insertion is "directly above `above`" = `above + 1` in the bottom-first
+  stack, clamped to the top; a negative sentinel (no selection) or an out-of-range
+  value also lands on top. `duplicate_layer` deep-clones the node (children,
+  channels, mask, adjustment and all attributes) directly above the source and
+  names the copy `"<name> copy"`; `group_layer` wraps the target in place (the
+  group takes the layer's slot, the layer becomes its only child) and names it
+  `"Group N"` via `next_layer_name`; `ungroup_layer` splices the children back in
+  order and refuses a non-group (state unchanged). A new layer is a
+  document-sized transparent raster layer (channels `0/1/2/-1` of `w*h` zero
+  bytes, `Normal`/opacity 255/fill 255/visible) and leaves `composite_rgba`
+  unchanged; a new group is an empty `is_group` node with a `Normal` blend (not
+  `PassThrough`) and an empty `{0,0,0,0}` rectangle. Ceiling: the empty layer is
+  stored document-sized and costs `w*h*4` bytes before it is painted — Photoshop
+  stores nothing until a dab — marked with a `// ponytail:` empty-rect upgrade in
+  the module. The bridge `PictureView` gains `add_layer`/`add_group`/
+  `duplicate_layer`/`group_layer`/`ungroup_layer` `#[qinvokable]`, each
+  `recomposite()`-then-`record()` with labels `New Layer` / `New Group` /
+  `Duplicate Layer` / `Group Layers` / `Ungroup Layers`; a failed op records
+  nothing. The panel adds **New Group** then **New Layer** buttons before Delete
+  (Add Adjustment / New Group / New Layer / Delete / Move Up / Move Down) and
+  `LayersPanel::currentLayer()`/`selectLayer(int)`; the five `Layer` leaves are
+  frozen to `command_ids` (`layer.new.layer`, `layer.new.group`,
+  `layer.duplicate.layer`, `layer.group.layers`, `layer.ungroup.layers`) and
+  handled in `frame.cpp` against the active view's current layer. Honest limit:
+  `Group Layers`/`Ungroup Layers` (and `Duplicate Layer`) act on the **single**
+  selected layer — CS6 groups a multi-selection; M38's selection work upgrades
+  these to per-selection operations (the handler carries the `// ponytail:` note).
+  Self-test exit codes 90–94: `m37_create new=1 group=1 duplicate=1 ungroup=1
+  undo=1` (count growth, an inert transparent layer, a `" copy"` duplicate name,
+  wrap/unwrap ordering, one history step per op, and five undos restoring the
+  start), identical on the no-argument and `two_layers.psd` runs. Verified:
+  `cmake --build build` OK; both self-tests exit 0 with no FAILs; `cargo fmt --all
+  --check` and `cargo clippy --workspace --all-targets -- -D warnings` clean;
+  **568 tests, 0 failed, 7 ignored** (up from 556/7; the ignored set is unchanged,
+  so the raw `cargo test --workspace` ignored count is 8 with the pre-existing
+  `pictura-render` doctest); `openspec validate m37-layer-creation --strict` valid
+  and `openspec validate --all --strict` 60/60. The M37 change MODIFIES
+  `layers-panel` (no new capability → **59** capabilities after archive).
+  Deferred: a New Layer / New Group **dialog** (neutral-color fill, blend/opacity,
+  use-previous-as-clipping), multi-selection grouping, and empty-rect layer
+  storage.
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -746,32 +795,34 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: layers panel program (M37–M41), canvas perf series deferred
+## Next: layers panel program (M37–M42), canvas perf series deferred
 
-### Layers panel program (M37–M41) — M36 done, M37 next
+### Layers panel program (M37–M42) — M37 done, M38 next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
-`openspec/changes/m36-layer-attributes`) is implemented and verified (see the
-milestone entry above): `Layer.fill`/`lock`/`color`, `opacity × fill`
-compositing on CPU and GPU, `lspf`/`lclr`/`iOpa` PSD I/O, the bridge
-getters/setters, and the Fill/lock/color panel controls. The next milestone is
-**M37 — panel anatomy** (tree model for groups with expand/collapse and
-indentation, clipped-layer indent + base underline, mask/link/clip/style badges,
-multi-selection with one command per multi-edit, the seven-button bottom strip,
-Alt-click solo visibility, inline rename with `Tab`/`Shift+Tab`, Panel Options
-persisted in the session store, the panel menu + row context menu, layer-name
-tooltips, and drag-reorder); M38 (six-dimension filter/search), M39
-(duplicate/rasterize/merge/flatten/link/background), M40 (layer styles/effects),
-and M41 (smart objects / vector masks / artboards-as-non-goal / layer comps)
-follow in that order. M36's confirmed ceilings — the `layer_kind`
-`"background"` name+index heuristic and the forced type/shape locks — land in
-M37.
+`openspec/changes/m36-layer-attributes`) and **M37 — layer creation and grouping**
+(change `openspec/changes/m37-layer-creation`) are implemented and verified (see
+the milestone entries above): M36 added `Layer.fill`/`lock`/`color`, `opacity ×
+fill` compositing on CPU and GPU, `lspf`/`lclr`/`iOpa` PSD I/O, the bridge
+getters/setters, and the Fill/lock/color panel controls; M37 added
+`document_ops::layer_ops` New Layer / New Group / Duplicate / Group / Ungroup, the
+bridge methods, the panel buttons and the five `Layer` menu commands. The next
+milestone is **M38 — panel anatomy** (tree model for groups, clipped-layer
+indentation, mask/link/clip/style badges, multi-selection, the seven-button bottom
+strip, Alt-click solo visibility, inline rename, Panel Options, the panel + row
+menus, tooltips, and drag-reorder); M39 (six-dimension filter/search), M40
+(rasterize/merge/flatten/link/select-similar/convert-background/layer-via-copy-cut
+and the New Layer/Group dialogs), M41 (layer styles/effects), and M42 (smart
+objects / vector masks / artboards-as-non-goal / layer comps) follow in that
+order. M36's confirmed ceilings — the `layer_kind` `"background"` name+index
+heuristic and the forced type/shape locks — land in M38/M40, and M37's
+single-layer grouping limit is lifted by M38's multi-selection.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M41.
+> number; they are deferred until after M42.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the

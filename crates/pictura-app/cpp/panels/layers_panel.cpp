@@ -391,10 +391,14 @@ LayersPanel::LayersPanel(QWidget* parent)
         });
     }
     addButton->setMenu(menu);
+    auto* newGroupButton = new QPushButton(tr("New Group"), body);
+    auto* newLayerButton = new QPushButton(tr("New Layer"), body);
     auto* deleteButton = new QPushButton(tr("Delete Layer"), body);
     auto* upButton = new QPushButton(tr("Move Up"), body);
     auto* downButton = new QPushButton(tr("Move Down"), body);
     buttons->addWidget(addButton);
+    buttons->addWidget(newGroupButton);
+    buttons->addWidget(newLayerButton);
     buttons->addWidget(deleteButton);
     buttons->addWidget(upButton);
     buttons->addWidget(downButton);
@@ -433,6 +437,26 @@ LayersPanel::LayersPanel(QWidget* parent)
     });
     connect(tree_, &QTreeView::customContextMenuRequested, this,
             &LayersPanel::showColorMenu);
+    connect(newGroupButton, &QPushButton::clicked, this, [this] {
+        if (!view_) {
+            return;
+        }
+        const int created = view_->add_group(currentLayer());
+        if (created >= 0) {
+            refresh();
+            selectLayer(created);
+        }
+    });
+    connect(newLayerButton, &QPushButton::clicked, this, [this] {
+        if (!view_) {
+            return;
+        }
+        const int created = view_->add_layer(currentLayer());
+        if (created >= 0) {
+            refresh();
+            selectLayer(created);
+        }
+    });
     connect(deleteButton, &QPushButton::clicked, this, [this] {
         const QModelIndex current = tree_->currentIndex();
         if (view_ && current.isValid()) {
@@ -470,11 +494,7 @@ void LayersPanel::setView(PictureView* view)
 
 void LayersPanel::refresh()
 {
-    int selectedLayer = -1;
-    const QModelIndex current = tree_->currentIndex();
-    if (current.isValid()) {
-        selectedLayer = model_->row(current.row()).index;
-    }
+    const int selectedLayer = currentLayer();
 
     QVector<LayerRow> rows;
     if (view_) {
@@ -498,14 +518,31 @@ void LayersPanel::refresh()
     model_->setRows(std::move(rows));
 
     if (selectedLayer >= 0) {
-        for (int r = 0; r < model_->rowCount(); ++r) {
-            if (model_->row(r).index == selectedLayer) {
-                tree_->setCurrentIndex(model_->index(r, 0));
-                break;
-            }
-        }
+        selectLayer(selectedLayer);
     }
     syncControls();
+}
+
+int LayersPanel::currentLayer() const
+{
+    const QModelIndex current = tree_->currentIndex();
+    if (!current.isValid() || current.row() >= model_->rowCount()) {
+        return -1;
+    }
+    return model_->row(current.row()).index;
+}
+
+void LayersPanel::selectLayer(int index)
+{
+    if (index < 0) {
+        return;
+    }
+    for (int r = 0; r < model_->rowCount(); ++r) {
+        if (model_->row(r).index == index) {
+            tree_->setCurrentIndex(model_->index(r, 0));
+            return;
+        }
+    }
 }
 
 void LayersPanel::syncControls()

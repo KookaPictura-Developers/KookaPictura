@@ -2491,6 +2491,87 @@ int main(int argc, char* argv[])
         }
         frame.closeDocument(m36DocIndex, false);
 
+        // M37: layer creation and grouping. Each op is exactly one history
+        // step; a transparent new layer leaves the composite unchanged, and
+        // undo restores the original stack.
+        const bool m37Created = frame.newDocument(QStringLiteral("M37Create"), 16, 16,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* m37View = frame.activeView();
+        if (!m37Created || !m37View) {
+            std::fprintf(stderr, "pictura self-test: FAIL: m37 no view\n");
+            return 90;
+        }
+        const int m37DocIndex = frame.activeDocumentIndex();
+        const int m37BaseCount = m37View->layer_count();
+        const int m37HistBase = m37View->history_count();
+
+        // (a) New Layer: count grows by one and the transparent layer is inert.
+        const QImage m37Before = m37View->image();
+        const int m37Added = m37View->add_layer(-1);
+        const int m37AfterAdd = m37View->layer_count();
+        const bool m37AddOk = m37Added == m37BaseCount && m37AfterAdd == m37BaseCount + 1
+                              && m37View->image() == m37Before
+                              && m37View->history_count() == m37HistBase + 1;
+
+        // (b) New Group.
+        const int m37Group = m37View->add_group(-1);
+        const bool m37GroupOk = m37Group == m37AfterAdd
+                                && m37View->layer_count() == m37AfterAdd + 1
+                                && m37View->layer_kind(m37Group) == QStringLiteral("group")
+                                && m37View->history_count() == m37HistBase + 2;
+
+        // (c) Duplicate: count grows and the copy is named "<name> copy".
+        const int m37Dup = m37View->duplicate_layer(m37Added);
+        const QString m37DupName = m37Dup >= 0 ? m37View->layer_name(m37Dup) : QString();
+        const bool m37DupOk = m37Dup == m37Added + 1
+                              && m37View->layer_count() == m37AfterAdd + 2
+                              && m37DupName.endsWith(QStringLiteral(" copy"))
+                              && m37View->history_count() == m37HistBase + 3;
+
+        // (d) Group then ungroup: the wrapped layer keeps its slot and the
+        // ungrouped children splice back in order.
+        const int m37Wrapped = m37View->group_layer(m37Added);
+        const bool m37Grouped = m37Wrapped == m37Added
+                                && m37View->layer_kind(m37Wrapped) == QStringLiteral("group");
+        const bool m37Ungrouped = m37View->ungroup_layer(m37Wrapped)
+                                  && m37View->layer_kind(m37Wrapped) == QStringLiteral("pixel");
+        const bool m37UngroupOk = m37Grouped && m37Ungrouped
+                                  && m37View->history_count() == m37HistBase + 5;
+
+        // (e) Five undos restore the initial single-layer stack.
+        bool m37UndoOk = true;
+        for (int i = 0; i < 5; ++i) {
+            m37UndoOk = m37UndoOk && m37View->undo();
+        }
+        m37UndoOk = m37UndoOk && m37View->layer_count() == m37BaseCount;
+
+        std::fprintf(stderr,
+                     "pictura self-test: m37_create new=%d group=%d duplicate=%d "
+                     "ungroup=%d undo=%d\n",
+                     m37AddOk ? 1 : 0,
+                     m37GroupOk ? 1 : 0,
+                     m37DupOk ? 1 : 0,
+                     m37UngroupOk ? 1 : 0,
+                     m37UndoOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m37AddOk) {
+            return 90;
+        }
+        if (!m37GroupOk) {
+            return 91;
+        }
+        if (!m37DupOk) {
+            return 92;
+        }
+        if (!m37UngroupOk) {
+            return 93;
+        }
+        if (!m37UndoOk) {
+            return 94;
+        }
+        frame.closeDocument(m37DocIndex, false);
+
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {

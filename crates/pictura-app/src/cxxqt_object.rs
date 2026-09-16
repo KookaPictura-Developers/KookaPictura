@@ -174,6 +174,39 @@ pub mod qobject {
         #[qinvokable]
         fn move_layer(self: Pin<&mut Self>, i: i32, delta: i32) -> bool;
 
+        /// Insert a new empty transparent raster layer above layer `above`
+        /// (`above < 0` or out of range means the top of the stack). Captures
+        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
+        /// the new index, or -1 without a document.
+        #[qinvokable]
+        fn add_layer(self: Pin<&mut Self>, above: i32) -> i32;
+
+        /// Insert an empty group above layer `above`. Captures history, marks
+        /// dirty, recomposites, and emits [`changed`]. Returns the new index, or
+        /// -1 without a document.
+        #[qinvokable]
+        fn add_group(self: Pin<&mut Self>, above: i32) -> i32;
+
+        /// Deep-clone layer `index` (children, mask, adjustment, and all
+        /// attributes) directly above it, named `"<name> copy"`. Captures
+        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
+        /// the new index, or -1 when `index` is out of range.
+        #[qinvokable]
+        fn duplicate_layer(self: Pin<&mut Self>, index: i32) -> i32;
+
+        /// Wrap layer `index` in a new group at the same stack position.
+        /// Captures history, marks dirty, recomposites, and emits [`changed`].
+        /// Returns the group's index, or -1 when `index` is out of range.
+        #[qinvokable]
+        fn group_layer(self: Pin<&mut Self>, index: i32) -> i32;
+
+        /// Splice group `index`'s children into its parent position. Captures
+        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
+        /// false, leaving state unchanged, when `index` is out of range or not
+        /// a group.
+        #[qinvokable]
+        fn ungroup_layer(self: Pin<&mut Self>, index: i32) -> bool;
+
         /// The RGBA content of layer `i` scaled to fit `size`×`size`, keeping
         /// the aspect ratio with smooth filtering. Null for group or adjustment
         /// layers and when `i` or `size` is out of range.
@@ -992,6 +1025,78 @@ impl qobject::PictureView {
         if changed {
             self.as_mut().recomposite();
             self.as_mut().record("Reorder Layer");
+        }
+        changed
+    }
+
+    pub fn add_layer(mut self: Pin<&mut Self>, above: i32) -> i32 {
+        let created = {
+            let mut rust = self.as_mut().rust_mut();
+            match rust.doc.as_mut() {
+                Some(doc) => {
+                    let name = pictura_render::next_layer_name(doc, "Layer");
+                    pictura_render::add_layer(doc, above, &name)
+                }
+                None => -1,
+            }
+        };
+        if created >= 0 {
+            self.as_mut().recomposite();
+            self.as_mut().record("New Layer");
+        }
+        created
+    }
+
+    pub fn add_group(mut self: Pin<&mut Self>, above: i32) -> i32 {
+        let created = {
+            let mut rust = self.as_mut().rust_mut();
+            match rust.doc.as_mut() {
+                Some(doc) => {
+                    let name = pictura_render::next_layer_name(doc, "Group");
+                    pictura_render::add_group(doc, above, &name)
+                }
+                None => -1,
+            }
+        };
+        if created >= 0 {
+            self.as_mut().recomposite();
+            self.as_mut().record("New Group");
+        }
+        created
+    }
+
+    pub fn duplicate_layer(mut self: Pin<&mut Self>, index: i32) -> i32 {
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::duplicate_layer(doc, index),
+            None => -1,
+        };
+        if created >= 0 {
+            self.as_mut().recomposite();
+            self.as_mut().record("Duplicate Layer");
+        }
+        created
+    }
+
+    pub fn group_layer(mut self: Pin<&mut Self>, index: i32) -> i32 {
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::group_layer(doc, index),
+            None => -1,
+        };
+        if created >= 0 {
+            self.as_mut().recomposite();
+            self.as_mut().record("Group Layers");
+        }
+        created
+    }
+
+    pub fn ungroup_layer(mut self: Pin<&mut Self>, index: i32) -> bool {
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::ungroup_layer(doc, index),
+            None => false,
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record("Ungroup Layers");
         }
         changed
     }
