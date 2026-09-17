@@ -118,6 +118,11 @@ QString selectionModeString(SelectionMode mode);
 // `tool.<name>` icon and cursor ids.
 QString toolIdName(ToolId id);
 
+// The distinct slot letters in catalogue order, and the group a letter maps to
+// (0 when no tool carries it). Every letter maps to exactly one group.
+QList<QChar> toolShortcutKeys();
+int toolGroupForKey(QChar key);
+
 // Routes canvas pointer events to the active tool. One switch, not one class per
 // tool (see design.md); painting tools with per-tool engines can split later.
 class ToolController : public QObject {

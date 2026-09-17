@@ -4,13 +4,19 @@
 #include "panels/color_panel.h"
 #include "tools.h"
 
+#include <QtCore/QEvent>
 #include <QtCore/QSize>
 #include <QtCore/QTimer>
 #include <QtGui/QAction>
 #include <QtGui/QKeySequence>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
+#include <QtGui/QPolygon>
+#include <QtGui/QScreen>
 #include <QtWidgets/QButtonGroup>
+#include <QtWidgets/QGridLayout>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
@@ -24,17 +30,19 @@ namespace {
 constexpr int kSwatchSize = 22;
 constexpr int kWidgetSize = 40;
 constexpr int kResetSize = 12;
+constexpr int kFlyoutDelayMs = 300;
 
 // A slot button: the base tool button plus the CS6 interactions the stock
-// class lacks — right-click and press-and-hold open the flyout, Alt-click
-// cycles the group's implemented members.
+// class lacks — a custom lower-right flyout triangle, right-click and
+// press-and-hold open the flyout, Alt-click cycles the group's implemented
+// members.
 class ToolSlotButton : public QToolButton {
 public:
     explicit ToolSlotButton(QWidget* parent = nullptr)
         : QToolButton(parent)
     {
         holdTimer_.setSingleShot(true);
-        holdTimer_.setInterval(350);
+        holdTimer_.setInterval(kFlyoutDelayMs);
         connect(&holdTimer_, &QTimer::timeout, this, [this]() {
             held_ = true;
             if (onMenu) {
@@ -43,10 +51,36 @@ public:
         });
     }
 
+    void setHasFlyout(bool hasFlyout)
+    {
+        hasFlyout_ = hasFlyout;
+        update();
+    }
+    bool hasFlyout() const { return hasFlyout_; }
+
     std::function<void()> onMenu;
     std::function<void()> onCycle;
 
 protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        QToolButton::paintEvent(event);
+        if (!hasFlyout_) {
+            return;
+        }
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(palette().color(QPalette::ButtonText));
+        const int size = 5;
+        const int margin = 2;
+        QPolygon triangle;
+        triangle << QPoint(width() - margin - size, height() - margin)
+                 << QPoint(width() - margin, height() - margin)
+                 << QPoint(width() - margin, height() - margin - size);
+        painter.drawPolygon(triangle);
+    }
+
     void mousePressEvent(QMouseEvent* event) override
     {
         if (event->button() == Qt::RightButton) {
@@ -85,6 +119,7 @@ protected:
 private:
     QTimer holdTimer_;
     bool held_ = false;
+    bool hasFlyout_ = false;
 };
 
 QString enabledTooltip(const ToolInfo& info)
@@ -97,6 +132,27 @@ QString enabledTooltip(const ToolInfo& info)
 QString disabledTooltip(const ToolInfo& info)
 {
     return QStringLiteral("%1 — not implemented yet").arg(QString::fromLatin1(info.label));
+}
+
+int groupMemberCount(int group)
+{
+    int count = 0;
+    for (ToolId id : allToolIds()) {
+        if (toolInfo(id).group == group) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool groupHasImplemented(int group)
+{
+    for (ToolId id : allToolIds()) {
+        if (toolInfo(id).group == group && toolImplemented(id)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -196,16 +252,41 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     , colors_(colors)
 {
     setObjectName(QStringLiteral("toolsPanel"));
+    setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
+                | QDockWidget::DockWidgetClosable);
+    // ponytail: Qt has no clean tabify-veto API (no per-dock setTabbable(false)).
+    // This filter refuses drag/drop over the panel; the frame's
+    // dockLocationChanged/topLevelChanged handler re-docks the panel when it is
+    // still tabified. A drop can briefly tabify before that fallback runs.
+    installEventFilter(this);
+
+    auto* titleBar = new QWidget(this);
+    auto* titleLayout = new QHBoxLayout(titleBar);
+    titleLayout->setContentsMargins(4, 2, 2, 2);
+    titleLayout->setSpacing(2);
+    titleLayout->addWidget(new QLabel(QStringLiteral("Tools"), titleBar));
+    titleLayout->addStretch(1);
+    titleToggle_ = new QToolButton(titleBar);
+    titleToggle_->setObjectName(QStringLiteral("toolsColumnToggle"));
+    titleToggle_->setAutoRaise(true);
+    titleToggle_->setFixedSize(20, 20);
+    titleToggle_->setToolTip(tr("Toggle one or two columns of tools"));
+    connect(titleToggle_, &QToolButton::clicked, this,
+            [this]() { setColumns(columns_ == 1 ? 2 : 1); });
+    titleLayout->addWidget(titleToggle_);
+    setTitleBarWidget(titleBar);
+    updateTitleIcon();
 
     auto* body = new QWidget(this);
     auto* layout = new QVBoxLayout(body);
     layout->setContentsMargins(2, 2, 2, 2);
     layout->setSpacing(4);
 
-    auto* columnWidget = new QWidget(body);
-    auto* column = new QVBoxLayout(columnWidget);
-    column->setContentsMargins(0, 0, 0, 0);
-    column->setSpacing(1);
+    gridWidget_ = new QWidget(body);
+    grid_ = new QGridLayout(gridWidget_);
+    grid_->setContentsMargins(0, 0, 0, 0);
+    grid_->setSpacing(1);
 
     auto* group = new QButtonGroup(this);
     group->setExclusive(true);
@@ -224,15 +305,17 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
         }
 
         currentByGroup_[g] = groupCurrentTool(g);
-        auto* button = new ToolSlotButton(columnWidget);
+        auto* button = new ToolSlotButton(gridWidget_);
         button->setIconSize(QSize(20, 20));
         button->setFixedSize(30, 30);
         button->setCheckable(true);
         button->setAutoRaise(true);
         button->setEnabled(anyImplemented);
+        button->setHasFlyout(members.size() > 1);
+
+        QMenu* menu = nullptr;
         if (members.size() > 1) {
-            button->setPopupMode(QToolButton::MenuButtonPopup);
-            auto* menu = new QMenu(button);
+            menu = new QMenu(button);
             for (ToolId member : members) {
                 const ToolInfo& info = toolInfo(member);
                 QAction* action =
@@ -242,19 +325,23 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
                 action->setEnabled(info.implemented);
                 action->setToolTip(info.implemented ? enabledTooltip(info)
                                                     : disabledTooltip(info));
+                if (!info.shortcut.isNull()) {
+                    action->setShortcut(QKeySequence(QString(info.shortcut)));
+                    action->setShortcutVisibleInContextMenu(true);
+                    action->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+                }
             }
-            button->setMenu(menu);
             connect(menu, &QMenu::triggered, this, [this, g](QAction* action) {
                 selectMember(g, ToolId(action->data().toInt()));
             });
         }
+        slotMenus_ << menu;
 
-        button->onMenu = [button]() { button->showMenu(); };
+        button->onMenu = [this, g]() { showSlotMenu(g); };
         button->onCycle = [this, g]() { cycleGroup(g); };
 
         slotButtons_ << button;
         group->addButton(button);
-        column->addWidget(button, 0, Qt::AlignHCenter);
 
         refreshSlot(g);
         if (controller_) {
@@ -266,7 +353,9 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
             });
         }
     }
-    layout->addWidget(columnWidget, 0, Qt::AlignHCenter);
+    reflow();
+
+    layout->addWidget(gridWidget_, 0, Qt::AlignHCenter);
 
     layout->addWidget(new ForegroundBackgroundWidget(colors, body), 0, Qt::AlignHCenter);
 
@@ -296,6 +385,140 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
             refreshSlot(g);
         });
     }
+}
+
+bool Toolbox::eventFilter(QObject* watched, QEvent* event)
+{
+    switch (event->type()) {
+    case QEvent::DragEnter:
+    case QEvent::DragMove:
+    case QEvent::Drop:
+        event->ignore();
+        return true;
+    default:
+        break;
+    }
+    return QDockWidget::eventFilter(watched, event);
+}
+
+void Toolbox::setColumns(int columns)
+{
+    columns = columns == 2 ? 2 : 1;
+    if (columns == columns_) {
+        return;
+    }
+    columns_ = columns;
+    reflow();
+    setMinimumWidth(columns_ == 1 ? 66 : 104);
+    updateTitleIcon();
+    emit columnsChanged(columns_);
+}
+
+void Toolbox::reflow()
+{
+    while (QLayoutItem* item = grid_->takeAt(0)) {
+        delete item;
+    }
+    for (int i = 0; i < slotButtons_.size(); ++i) {
+        if (columns_ == 2) {
+            grid_->addWidget(slotButtons_.at(i), i / 2, i % 2, Qt::AlignHCenter);
+        } else {
+            grid_->addWidget(slotButtons_.at(i), i, 0, Qt::AlignHCenter);
+        }
+    }
+}
+
+void Toolbox::updateTitleIcon()
+{
+    const QIcon target =
+        icon(columns_ == 1 ? QStringLiteral("panel.columnsTwo")
+                            : QStringLiteral("panel.columnsOne"));
+    if (!target.isNull()) {
+        titleToggle_->setIcon(target);
+        titleToggle_->setIconSize(QSize(16, 16));
+        titleToggle_->setText(QString());
+    } else {
+        titleToggle_->setIcon(QIcon());
+        titleToggle_->setText(columns_ == 1 ? QStringLiteral("»") : QStringLiteral("«"));
+    }
+}
+
+void Toolbox::showSlotMenu(int group)
+{
+    QMenu* menu = slotMenuForTest(group);
+    if (!menu || group < 1 || group > slotButtons_.size()) {
+        return;
+    }
+    QToolButton* button = slotButtons_.at(group - 1);
+    const QSize hint = menu->sizeHint();
+    QPoint pos = button->mapToGlobal(QPoint(0, button->height()));
+    if (QScreen* screen = button->screen()) {
+        const QRect avail = screen->availableGeometry();
+        if (pos.x() + hint.width() > avail.right()) {
+            pos.setX(avail.right() - hint.width());
+        }
+        if (pos.x() < avail.left()) {
+            pos.setX(avail.left());
+        }
+        if (pos.y() + hint.height() > avail.bottom()) {
+            pos.setY(avail.bottom() - hint.height());
+        }
+    }
+    menu->popup(pos);
+}
+
+QMenu* Toolbox::slotMenuForTest(int group) const
+{
+    if (group < 1 || group > slotMenus_.size()) {
+        return nullptr;
+    }
+    return slotMenus_.at(group - 1);
+}
+
+QList<QAction*> Toolbox::slotMenuActionsForTest(int group) const
+{
+    QMenu* menu = slotMenuForTest(group);
+    return menu ? menu->actions() : QList<QAction*>();
+}
+
+QStringList Toolbox::flyoutKeysForTest(int group) const
+{
+    QStringList keys;
+    for (QAction* action : slotMenuActionsForTest(group)) {
+        keys << action->shortcut().toString();
+    }
+    return keys;
+}
+
+bool Toolbox::hasFlyoutTriangleForTest(int group) const
+{
+    if (group < 1 || group > slotButtons_.size()) {
+        return false;
+    }
+    return static_cast<ToolSlotButton*>(slotButtons_.at(group - 1))->hasFlyout();
+}
+
+void Toolbox::openSlotFlyoutForTest(int group)
+{
+    showSlotMenu(group);
+}
+
+bool Toolbox::handleToolKey(const QChar& key, bool shift)
+{
+    const int group = toolGroupForKey(key);
+    if (group < 1 || !groupHasImplemented(group)) {
+        return false;
+    }
+    if (shift || !shiftKeyForToolSwitch_) {
+        cycleGroup(group);
+        return true;
+    }
+    const ToolId current = groupCurrentTool(group);
+    if (!toolImplemented(current)) {
+        return false;
+    }
+    selectMember(group, current);
+    return true;
 }
 
 ToolId Toolbox::groupCurrentTool(int group) const
@@ -329,17 +552,7 @@ void Toolbox::refreshSlot(int group)
     const ToolId id = groupCurrentTool(group);
     const ToolInfo& info = toolInfo(id);
     button->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));
-    if (info.implemented) {
-        button->setToolTip(enabledTooltip(info));
-        if (id != ToolId::Brush && id != ToolId::Pencil && !info.shortcut.isNull()) {
-            button->setShortcut(QKeySequence(QString(info.shortcut)));
-        } else {
-            button->setShortcut(QKeySequence());
-        }
-    } else {
-        button->setToolTip(disabledTooltip(info));
-        button->setShortcut(QKeySequence());
-    }
+    button->setToolTip(info.implemented ? enabledTooltip(info) : disabledTooltip(info));
     button->setChecked(controller_ && controller_->activeTool() == id);
 }
 

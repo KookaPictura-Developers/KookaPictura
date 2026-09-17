@@ -77,6 +77,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     const SessionState state = pictura::loadSession();
     recent_ = state.recent;
     gpuCompute_ = state.gpuCompute;
+    useShiftKeyForToolSwitch_ = state.useShiftKeyForToolSwitch;
     // Probe the adapter once so the toggle can be offered without a document.
     {
         PictureView probe;
@@ -87,7 +88,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     registerHandlers();
     buildMenus();
     buildPanels();
-    buildTools();
+    buildTools(state.toolsColumns, state.useShiftKeyForToolSwitch);
     buildStatusBar();
     applyBrightness(state.brightnessLevel);
     if (!state.layout.isEmpty()) {
@@ -652,7 +653,9 @@ void PicturaMainWindow::saveSession()
     state.layout = saveState();
     state.brightnessLevel = brightnessLevel_;
     state.gpuCompute = gpuCompute_;
-    state.schemaVersion = 3;
+    state.toolsColumns = toolbox_ ? toolbox_->columns() : 1;
+    state.useShiftKeyForToolSwitch = useShiftKeyForToolSwitch_;
+    state.schemaVersion = 4;
     state.recent = recent_;
     pictura::saveSession(state);
 }
@@ -867,7 +870,7 @@ void PicturaMainWindow::buildPanels()
     });
 }
 
-void PicturaMainWindow::buildTools()
+void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwitch)
 {
     tools_ = new ToolController(this);
     tools_->setViewProvider([this]() { return activeView(); });
@@ -881,16 +884,28 @@ void PicturaMainWindow::buildTools()
                 &ToolController::setBackground);
     }
 
-    auto cyclePaintTool = [this]() {
-        if (tools_) {
-            tools_->setActiveTool(tools_->activeTool() == ToolId::Brush ? ToolId::Pencil
-                                                                        : ToolId::Brush);
-        }
-    };
-    connect(new QShortcut(QKeySequence(Qt::Key_B), this), &QShortcut::activated, this,
-            cyclePaintTool);
-    connect(new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_B), this), &QShortcut::activated,
-            this, cyclePaintTool);
+    auto* toolbox = new Toolbox(tools_, colorState_, this);
+    toolbox_ = toolbox;
+    toolbox->setShiftKeyForToolSwitch(useShiftKeyForToolSwitch);
+    toolbox->setColumns(toolsColumns);
+
+    // One plain and one Shift shortcut per distinct slot letter; the toolbox
+    // resolves the letter to its group and honours `Use Shift Key For Tool
+    // Switch`. refreshSlot() no longer owns any letter.
+    for (const QChar key : toolShortcutKeys()) {
+        connect(new QShortcut(QKeySequence(QString(key)), this), &QShortcut::activated, this,
+                [this, key]() {
+                    if (toolbox_) {
+                        toolbox_->handleToolKey(key, false);
+                    }
+                });
+        connect(new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key(key.toUpper().unicode())), this),
+                &QShortcut::activated, this, [this, key]() {
+                    if (toolbox_) {
+                        toolbox_->handleToolKey(key, true);
+                    }
+                });
+    }
 
     auto brushActive = [this]() {
         return tools_ && (tools_->activeTool() == ToolId::Brush
@@ -921,11 +936,19 @@ void PicturaMainWindow::buildTools()
                 }
             });
 
-    auto* toolbox = new Toolbox(tools_, colorState_, this);
     toolsDock_ = toolbox;
     registerPanel(toolbox, Qt::LeftDockWidgetArea);
     connect(toolbox, &Toolbox::screenModeRequested, this,
             [this]() { cycleScreenMode(true); });
+    connect(toolbox, &Toolbox::columnsChanged, this, [this](int) { saveSession(); });
+    connect(toolbox, &QDockWidget::dockLocationChanged, this, [this](Qt::DockWidgetArea area) {
+        if (area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea) {
+            toolsArea_ = area;
+        }
+        ensureToolsNotTabified();
+    });
+    connect(toolbox, &QDockWidget::topLevelChanged, this,
+            [this](bool) { ensureToolsNotTabified(); });
 
     optionsBar_ = new OptionsBar(tools_, this);
     addToolBar(optionsBar_);
@@ -947,6 +970,19 @@ void PicturaMainWindow::buildTools()
     if (optionsBar_) {
         optionsBar_->showTool(tools_->activeTool());
     }
+}
+
+void PicturaMainWindow::ensureToolsNotTabified()
+{
+    if (!toolsDock_ || toolsDock_->isFloating()) {
+        return;
+    }
+    if (tabifiedDockWidgets(toolsDock_).isEmpty()) {
+        return;
+    }
+    toolsDock_->setFloating(true);
+    addDockWidget(toolsArea_, toolsDock_);
+    toolsDock_->show();
 }
 
 void PicturaMainWindow::buildStatusBar()

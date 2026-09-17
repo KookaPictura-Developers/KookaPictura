@@ -45,6 +45,10 @@ SessionState loadSession()
     state.layersThumbContents = obj.value(QStringLiteral("layersThumbContents")).toInt(0);
     state.layersExpandNewEffects =
         obj.value(QStringLiteral("layersExpandNewEffects")).toBool(true);
+    state.toolsColumns =
+        obj.value(QStringLiteral("toolsColumns")).toInt(1) == 2 ? 2 : 1;
+    state.useShiftKeyForToolSwitch =
+        obj.value(QStringLiteral("useShiftKeyForToolSwitch")).toBool(true);
     state.layout =
         QByteArray::fromBase64(obj.value(QStringLiteral("layout")).toString().toLatin1());
     const QJsonArray recent = obj.value(QStringLiteral("recent")).toArray();
@@ -70,6 +74,8 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("layersThumbSize"), state.layersThumbSize);
     obj.insert(QStringLiteral("layersThumbContents"), state.layersThumbContents);
     obj.insert(QStringLiteral("layersExpandNewEffects"), state.layersExpandNewEffects);
+    obj.insert(QStringLiteral("toolsColumns"), state.toolsColumns);
+    obj.insert(QStringLiteral("useShiftKeyForToolSwitch"), state.useShiftKeyForToolSwitch);
     obj.insert(QStringLiteral("layout"), QString::fromLatin1(state.layout.toBase64()));
     QJsonArray recent;
     for (const QString& path : state.recent) {

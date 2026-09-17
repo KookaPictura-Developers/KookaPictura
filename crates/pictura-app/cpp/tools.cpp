@@ -177,6 +177,33 @@ QString toolIdName(ToolId id)
         (index >= 0 && index < kToolCount) ? kToolTable[index].name : kToolTable[0].name);
 }
 
+QList<QChar> toolShortcutKeys()
+{
+    QList<QChar> keys;
+    for (ToolId id : allToolIds()) {
+        const QChar key = toolInfo(id).shortcut;
+        if (!key.isNull() && !keys.contains(key)) {
+            keys << key;
+        }
+    }
+    return keys;
+}
+
+int toolGroupForKey(QChar key)
+{
+    if (key.isNull()) {
+        return 0;
+    }
+    const QChar upper = key.toUpper();
+    for (ToolId id : allToolIds()) {
+        const QChar shortcut = toolInfo(id).shortcut;
+        if (!shortcut.isNull() && shortcut.toUpper() == upper) {
+            return toolInfo(id).group;
+        }
+    }
+    return 0;
+}
+
 const QList<ToolId>& allToolIds()
 {
     static const QList<ToolId> ids = {

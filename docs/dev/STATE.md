@@ -14,9 +14,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
   `pictura-render` doctest, which makes the raw ignored count 8).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M34 archived; canonical specs are
-  in `openspec/specs/` (59 capabilities, `validate --all --strict`
-  green), change history under `openspec/changes/archive/`.
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M39 archived; canonical specs are
+  in `openspec/specs/` (59 specs, `validate --all --strict` green), change
+  history under `openspec/changes/archive/`. Active change:
+  `openspec/changes/m40-tools-panel` (M40 Tools panel, **implemented, archive
+  pending**; brief `docs/dev/m40-tools-panel.md`). M41 is next.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 
@@ -857,6 +859,66 @@ openspec validate --all --strict
   styles/effects (M42), smart objects / vector masks / artboards / layer comps
   (M43).
 
+- **M40 — CS6 Tools panel** (a second user-requested interruption to the
+  Layers-panel program; OpenSpec change `m40-tools-panel`, brief
+  `docs/dev/m40-tools-panel.md`). The Tools panel becomes CS6-shaped. **Flyout:**
+  `ToolSlotButton` paints a 5 px filled triangle at the **bottom-right** when the
+  slot's group has ≥2 members (counting unimplemented members); `MenuButtonPopup`
+  and `setMenu` are gone so the icon is centred with no stock arrow. A **300 ms**
+  hold timer opens the group `QMenu` below the button (screen-clamped);
+  **right-click opens immediately**; a release before the timeout selects
+  normally; `Alt`+click still cycles. Menu items carry the group's key via
+  `QAction::setShortcut` + `setShortcutVisibleInContextMenu(true)` +
+  `setShortcutContext(Qt::WidgetWithChildrenShortcut)` (no window-global shortcut,
+  so a disabled item cannot steal the key); unimplemented members stay disabled
+  with the "not implemented yet" tooltip. `refreshSlot()` no longer calls
+  `setShortcut`. **Columns:** a custom `QDockWidget` title bar (`Tools` label + a
+  flat double-arrow button, `objectName` `toolsColumnToggle`) toggles one/two
+  columns; the icon shows the **target** layout
+  (`assets/icons/panel.columnsTwo.svg` in one column, `panel.columnsOne.svg` in
+  two — both new, 24×24 stroke-`#c8c8c8`, added to the regenerated qrc); reflow is
+  row-major `(i/2, i%2)` with `minimumWidth` 66 → 104; the fg/bg widget and Screen
+  Mode button stay pinned below the slots. **Standalone dock:**
+  `setAllowedAreas(Left|Right)` and `setFeatures(Movable|Floatable|Closable)`;
+  tabification refused by an event filter plus a reactive
+  `PicturaMainWindow::ensureToolsNotTabified()` (float → re-add → show) driven from
+  `dockLocationChanged`/`topLevelChanged`. **Shift cycling:**
+  `toolShortcutKeys()`/`toolGroupForKey()` in `tools.{h,cpp}` and
+  `Toolbox::handleToolKey(key, shift)`; `frame.cpp` registers one plain and one
+  `Shift`+letter `QShortcut` per distinct key routed to it, replacing the
+  hard-coded B / Shift+B `cyclePaintTool`. A plain letter activates the slot's
+  current member; `Shift` cycles to the next **implemented** member (skipping
+  unimplemented, wrapping); an all-unimplemented group is a no-op;
+  `setShiftKeyForToolSwitch(false)` makes the plain letter cycle. Gated on a new
+  session preference `useShiftKeyForToolSwitch` (default **true**) — **no UI
+  yet**; M41 adds the Preferences dialog (General + Interface) and gives it a home
+  alongside `Auto-Collapse Iconic Panels`. **Session v4:** `toolsColumns` (1|2)
+  and `useShiftKeyForToolSwitch` with per-key defaults;
+  `PicturaMainWindow::saveSession()` still loads-then-writes so unknown keys
+  survive; `columnsChanged` persists. **Self-tests:** `m40_columns` (113/114),
+  `m40_flyout` (115), `m40_keys` (116), `m40_shift` (117, driven through the real
+  `QShortcut`/`QKeyEvent` path), `m40_dock` (118), `m40_session` (119);
+  `m23_toolbox` tightened from a loose `buttons < 10` to `buttons != 25` plus
+  `toggle=1` (the new title-bar toggle is found by `objectName` and is not one of
+  the 23 slots). All earlier lines/codes unchanged. **Honest limits:** Qt has no
+  clean per-dock tabify veto — the event filter only covers the toolbox body and a
+  drop can briefly tabify before the reactive re-dock; the
+  **right-click-immediate and quick-release-select timing are not self-tested**
+  (the paths exist but only triangle/member-split/popup-placement are asserted);
+  the preference has no UI until M41; the two-column width is 66/104 rather than
+  the sketched 34/64 (the swatch + dock chrome need the width); `m40_columns`
+  asserts widening via `minimumWidth` (the actual mechanism) with actual width
+  only non-decreasing. No Rust changes: **588 tests, 0 failed, 7 ignored**
+  (unchanged; the raw ignored count is 8 with the pre-existing
+  `pictura-render` doctest). Verified: `cargo fmt --all --check` and
+  `cargo clippy --workspace --all-targets -- -D warnings` clean;
+  `TASK_ALLOWS_DOCS=1 bash scripts/verify-fast.sh` → `verify-fast: OK`
+  (588 tests, 0 failed); both self-tests exit 0 with all m20–m40 lines `=1`;
+  `openspec validate m40-tools-panel --strict` valid and
+  `openspec validate --all --strict` 60/60. The M40 change MODIFIES/ADDs to
+  `tool-framework` and ADDs to `application-shell` (no new capability → **59**
+  capabilities after archive).
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -932,9 +994,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: layers panel program (M36–M43), canvas perf series deferred
+## Next: panels program (M41–M45), canvas perf series deferred
 
-### Layers panel program (M36–M43) — M36/M37/M38/M39 done, M40 next
+### Panels program (M36–M45) — M36–M40 done; M41 dock/rail refactor next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -953,7 +1015,7 @@ grammar and depth-first topmost-first projection, the path/batch bridge API,
 the `QAbstractItemModel` tree + delegate row anatomy, multi-selection with the
 per-node refusal table, solo visibility, `Tab` rename, Panel Options (session
 schema v3), the panel/row menus, tooltips, and the explicit drag-reorder
-deferral to M41.
+deferral to M43.
 
 **M38 was a user-requested interruption: the full CS6 toolbox icon/cursor
 library and the panel icons** (`openspec/changes/m38-icon-cursor-library`,
@@ -961,22 +1023,42 @@ contract `docs/dev/m38-icon-cursor-library.md`) — the frozen 71-tool catalogue
 the full icon/cursor asset set, the single-column flyout toolbox, and the
 panel/Layers/History icons. It is implemented and verified (see the milestone
 entry above); it took the M38 number, so the panel stages shifted by one:
-**M39 — panel anatomy** is done (see the milestone entry above), and the next
-panel milestone is **M40 — filtering/search** (the six-dimension filter/search
-row), then **M41 — remaining management ops**
-(rasterize/merge/flatten/link/select-similar/convert-background/layer-via-copy-cut,
-the New Layer/Group dialogs, and the deferred drag-reorder with its recorded drop
-rules), **M42** (layer styles/effects), and **M43** (smart objects / vector masks
-/ artboards-as-non-goal / layer comps). M36's confirmed ceilings — the
-`layer_kind` `"background"` name+index heuristic and the forced type/shape locks
-— land in M41, and M37's single-layer grouping limit was lifted by M39's
-multi-selection (the `is_background` single source of truth and the path/batch
-selection ops).
+**M39 — panel anatomy** is done (see the milestone entry above).
+
+**M40 was a second user-requested interruption — the CS6 Tools panel**
+(`openspec/changes/m40-tools-panel`, brief `docs/dev/m40-tools-panel.md`): the
+custom lower-right flyout triangle, hold/right-click flyout with shortcut keys,
+the one/two-column double-arrow toggle, the standalone dock (left/right only, no
+tab groups), and the generic `Shift`+letter group cycling gated by a session
+`Use Shift Key For Tool Switch` preference (session schema v4). It is
+**implemented and independently verified** (see the milestone entry above).
+
+**M41 is the panel dock/rail refactor plus the Preferences dialog** — content
+widgets move under a `PanelColumn`: in normal mode vertical tab groups with the
+tabs explicitly on top, in compact mode an icon strip with group dividers,
+labels-on-widen, and `Qt::Popup` flyouts that close on click-away; the
+`Auto-Collapse Iconic Panels` preference defaults **off**, the double-chevron
+toggle, fixed CS6 Essentials groups, and the hard panel minimums removed with a
+scroll so the window resizes freely; session **v5** adds
+`panelRailMode`/`railWidth`/`autoCollapseIconic`, and the Preferences dialog
+(General + Interface panes) gives `Use Shift Key For Tool Switch` and
+`Auto-Collapse Iconic Panels` a UI. Because the M40/M41 pair claims the two
+numbers the Layers-panel program had reserved, that program shifts by **two**:
+**M42** layer filtering/search (the six-dimension filter/search row), **M43**
+remaining management (rasterize/merge/flatten/link/select-similar/
+convert-background/layer-via-copy-cut, the New Layer/Group dialogs, and the
+deferred drag-reorder with its recorded drop rules), **M44** styles/effects, and
+**M45** smart objects / vector masks / artboards-as-non-goal / layer comps.
+M36's confirmed ceilings — the `layer_kind` `"background"` name+index heuristic
+and the forced type/shape locks — land in M43, and M37's single-layer grouping
+limit was lifted by M39's multi-selection (the `is_background` single source of
+truth and the path/batch selection ops). The pre-shift numbers still stand in
+`docs/dev/layers-panel-program.md`; this file is the up-to-date anchor.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M43.
+> number; they are deferred until after M45.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -1073,8 +1155,8 @@ no new capability. Next in order:
   includes display-time LoD so a zoomed-out view composites a proxy.
 
 Deferred canvas-performance tracks (previously sketched as M36–M38; those
-numbers are now claimed by the layers panel program above, so these are deferred
-until after M43). The remaining canvas-performance tracks — history
+numbers are now claimed by the panels program above, so these are deferred
+until after M45). The remaining canvas-performance tracks — history
 copy-on-write / tile diffs, resident per-layer GPU source buffers, 256² tiles +
 LoD, plus the GPU-resident zero-copy present — each need their own design (the
 small, app-local region-blit slice landed as M35 above):

@@ -31,6 +31,7 @@ class PanelRail;
 class PictureView;
 class PlaceholderPanel;
 class SwatchesPanel;
+class Toolbox;
 
 // The CS6-shaped application frame: menu bar, tabbed document area, status bar,
 // and dock areas. Owns the UI and the open documents; each document's state
@@ -51,6 +52,10 @@ public:
     QStringList topLevelMenuTitles() const;
     bool registerPanel(QDockWidget* dock, Qt::DockWidgetArea area);
     const QSet<QString>& panelObjectNames() const { return panelNames_; }
+
+    // The Tools panel must not join a tab group; re-dock it to its last side if
+    // it somehow does (the tabify fallback, exposed for the self-test).
+    void ensureToolsNotTabified();
 
     // Tool test hooks.
     ToolId activeTool() const;
@@ -115,7 +120,7 @@ private:
 
     void buildMenus();
     void buildPanels();
-    void buildTools();
+    void buildTools(int toolsColumns, bool useShiftKeyForToolSwitch);
     void buildStatusBar();
     void registerHandlers();
     void retargetDock();
@@ -152,6 +157,7 @@ private:
     PanelRail* panelRail_ = nullptr;
     ToolController* tools_ = nullptr;
     OptionsBar* optionsBar_ = nullptr;
+    Toolbox* toolbox_ = nullptr;
     QDockWidget* toolsDock_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
@@ -164,6 +170,8 @@ private:
     int brightnessLevel_ = 1;
     bool gpuCompute_ = true;
     bool gpuAvailable_ = true;
+    bool useShiftKeyForToolSwitch_ = true;
+    Qt::DockWidgetArea toolsArea_ = Qt::LeftDockWidgetArea;
     ScreenMode screenMode_ = ScreenMode::Standard;
     int canvasColorIndex_ = 0;
     bool panelsHidden_ = false;

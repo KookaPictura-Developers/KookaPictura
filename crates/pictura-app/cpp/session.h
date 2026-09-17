@@ -14,7 +14,9 @@ struct SessionState {
     int layersThumbSize = 2;         // 0 None / 1 Small / 2 Medium / 3 Large
     int layersThumbContents = 0;     // 0 Entire Document / 1 Layer Bounds
     bool layersExpandNewEffects = true;
-    int schemaVersion = 3;
+    int toolsColumns = 1;            // 1 or 2; out-of-range loads the default
+    bool useShiftKeyForToolSwitch = true;
+    int schemaVersion = 4;
     QStringList recent;
 };
 

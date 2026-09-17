@@ -1,7 +1,9 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtCore/QProcessEnvironment>
 #include <QtCore/QSet>
+#include <QtCore/QSignalBlocker>
 #include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QTimer>
@@ -17,6 +19,7 @@
 #include <QtWidgets/QDockWidget>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
+#include <QtWidgets/QMenu>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QToolBar>
 #include <QtWidgets/QToolButton>
@@ -1895,18 +1898,27 @@ int main(int argc, char* argv[])
             return 59;
         }
 
-        QDockWidget* m23Tools = frame.findChild<QDockWidget*>(QStringLiteral("toolsPanel"));
+        auto* m23Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        QDockWidget* m23Tools = m23Toolbox;
+        const QList<QToolButton*> m23SlotButtons =
+            m23Toolbox ? m23Toolbox->slotButtons() : QList<QToolButton*>();
         const int m23Buttons =
             m23Tools ? static_cast<int>(m23Tools->findChildren<QToolButton*>().size()) : 0;
+        QToolButton* m23Toggle = m23Tools
+            ? m23Tools->findChild<QToolButton*>(QStringLiteral("toolsColumnToggle"))
+            : nullptr;
+        const bool m23ToggleDistinct =
+            m23Toggle != nullptr && !m23SlotButtons.contains(m23Toggle);
         const bool m23Fgbg = m23Tools
             && m23Tools->findChild<pictura::ForegroundBackgroundWidget*>() != nullptr;
         std::fprintf(stderr,
-                     "pictura self-test: m23_toolbox dock=%d buttons=%d fgbg=%d\n",
+                     "pictura self-test: m23_toolbox dock=%d buttons=%d toggle=%d fgbg=%d\n",
                      m23Tools ? 1 : 0,
                      m23Buttons,
+                     m23ToggleDistinct ? 1 : 0,
                      m23Fgbg ? 1 : 0);
         std::fflush(stderr);
-        if (!m23Tools || m23Buttons < 10 || !m23Fgbg) {
+        if (!m23Tools || m23Buttons != 25 || !m23ToggleDistinct || !m23Fgbg) {
             std::fprintf(stderr, "pictura self-test: FAIL: M23 toolbox wrong\n");
             return 60;
         }
@@ -3130,6 +3142,282 @@ int main(int argc, char* argv[])
         if (!m39StripOk) {
             std::fprintf(stderr, "pictura self-test: FAIL: M39 action strip\n");
             return 112;
+        }
+
+        // M40: the tools panel — one/two columns, the flyout indicator, opening,
+        // and keys, Shift-key cycling, the standalone dock, and session v4.
+        // Exit codes 113–119.
+        auto* m40Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        const QList<QToolButton*> m40Slots =
+            m40Toolbox ? m40Toolbox->slotButtons() : QList<QToolButton*>();
+
+        // m40_columns (113/114): default one column; two columns reflow the 23
+        // slots row-major and widen the dock; toggling back restores one column;
+        // the colour control and the Screen Mode button stay below the slots in
+        // both layouts.
+        QCoreApplication::processEvents();
+        auto m40PinnedBelow = [m40Toolbox, &m40Slots]() {
+            if (!m40Toolbox || m40Slots.isEmpty()) {
+                return false;
+            }
+            int slotBottom = 0;
+            for (QToolButton* button : m40Slots) {
+                slotBottom = qMax(
+                    slotBottom, button->mapTo(m40Toolbox, QPoint(0, button->height())).y());
+            }
+            auto* fgbg = m40Toolbox->findChild<pictura::ForegroundBackgroundWidget*>();
+            auto* screenMode =
+                m40Toolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton"));
+            return fgbg != nullptr && screenMode != nullptr
+                   && fgbg->mapTo(m40Toolbox, QPoint(0, 0)).y() > slotBottom
+                   && screenMode->mapTo(m40Toolbox, QPoint(0, 0)).y() > slotBottom;
+        };
+        const bool m40Default =
+            m40Toolbox != nullptr && m40Toolbox->columns() == 1 && m40Slots.size() == 23;
+        const int m40Min1 = m40Toolbox ? m40Toolbox->minimumWidth() : 0;
+        const int m40Width1 = m40Toolbox ? m40Toolbox->width() : 0;
+        const bool m40Pinned1 = m40PinnedBelow();
+        if (m40Toolbox) {
+            m40Toolbox->setColumns(2);
+        }
+        QCoreApplication::processEvents();
+        const int m40Min2 = m40Toolbox ? m40Toolbox->minimumWidth() : 0;
+        const int m40Width2 = m40Toolbox ? m40Toolbox->width() : 0;
+        bool m40RowMajor = m40Slots.size() == 23;
+        for (int i = 0; i + 2 < m40Slots.size() && m40RowMajor; ++i) {
+            const QPoint a = m40Slots.at(i)->mapTo(m40Toolbox, QPoint(0, 0));
+            const QPoint b = m40Slots.at(i + 2)->mapTo(m40Toolbox, QPoint(0, 0));
+            if (a.x() != b.x() || a.y() >= b.y()) {
+                m40RowMajor = false;
+            }
+        }
+        for (int i = 0; i + 1 < m40Slots.size() && m40RowMajor; i += 2) {
+            const QPoint a = m40Slots.at(i)->mapTo(m40Toolbox, QPoint(0, 0));
+            const QPoint b = m40Slots.at(i + 1)->mapTo(m40Toolbox, QPoint(0, 0));
+            if (a.y() != b.y() || a.x() >= b.x()) {
+                m40RowMajor = false;
+            }
+        }
+        const bool m40Pinned2 = m40PinnedBelow();
+        if (m40Toolbox) {
+            m40Toolbox->setColumns(1);
+        }
+        QCoreApplication::processEvents();
+        const bool m40Restored = m40Toolbox != nullptr && m40Toolbox->columns() == 1;
+        const bool m40Widened = m40Min2 > m40Min1 && m40Width2 >= m40Width1;
+        const bool m40ColumnsOk = m40Default && m40Restored && m40RowMajor && m40Widened;
+        const bool m40PinnedOk = m40Pinned1 && m40Pinned2;
+        std::fprintf(stderr, "pictura self-test: m40_columns default=%d two=%d pinned=%d\n",
+                     m40Default ? 1 : 0,
+                     (m40Restored && m40RowMajor && m40Widened) ? 1 : 0,
+                     m40PinnedOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m40ColumnsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M40 column layout\n");
+            return 113;
+        }
+        if (!m40PinnedOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M40 pinned controls\n");
+            return 114;
+        }
+
+        // m40_flyout (115): a multi-member group shows the triangle and opens a
+        // menu of its members at the button's bottom edge; a single-member group
+        // shows no triangle.
+        const bool m40TriMulti = m40Toolbox && m40Toolbox->hasFlyoutTriangleForTest(2);
+        const bool m40SingleTri = m40Toolbox && m40Toolbox->hasFlyoutTriangleForTest(1);
+        const bool m40TriSingle = m40Toolbox && !m40SingleTri;
+        bool m40MenuActions = false;
+        if (m40Toolbox) {
+            const QList<QAction*> actions = m40Toolbox->slotMenuActionsForTest(2);
+            QList<pictura::ToolId> members;
+            for (pictura::ToolId id : pictura::allToolIds()) {
+                if (pictura::toolInfo(id).group == 2) {
+                    members << id;
+                }
+            }
+            m40MenuActions = actions.size() == members.size() && !members.isEmpty();
+            for (int i = 0; m40MenuActions && i < members.size(); ++i) {
+                const pictura::ToolInfo& info = pictura::toolInfo(members.at(i));
+                if (actions.at(i)->text() != QString::fromLatin1(info.label)
+                    || actions.at(i)->isEnabled() != info.implemented) {
+                    m40MenuActions = false;
+                }
+            }
+        }
+        bool m40Below = false;
+        if (m40Toolbox) {
+            m40Toolbox->openSlotFlyoutForTest(2);
+            QCoreApplication::processEvents();
+            QMenu* menu = m40Toolbox->slotMenuForTest(2);
+            QToolButton* button = m40Slots.value(1);
+            if (menu && button && menu->isVisible()) {
+                m40Below = menu->pos().y()
+                           == button->mapToGlobal(QPoint(0, button->height())).y();
+            }
+            if (menu) {
+                menu->close();
+                QCoreApplication::processEvents();
+            }
+        }
+        const bool m40FlyoutOk = m40TriMulti && m40TriSingle && m40MenuActions && m40Below;
+        std::fprintf(stderr, "pictura self-test: m40_flyout tri=%d/%d menu=%d below=%d\n",
+                     m40TriMulti ? 1 : 0,
+                     m40SingleTri ? 1 : 0,
+                     m40MenuActions ? 1 : 0,
+                     m40Below ? 1 : 0);
+        std::fflush(stderr);
+        if (!m40FlyoutOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M40 flyout\n");
+            return 115;
+        }
+
+        // m40_keys (116): every flyout action carries the group's letter, visible
+        // in the context menu; a disabled member stays disabled, keeps its tooltip
+        // and still shows the key.
+        bool m40KeysShown = m40Toolbox != nullptr;
+        bool m40KeysDisabled = false;
+        if (m40Toolbox) {
+            const QList<QAction*> actions = m40Toolbox->slotMenuActionsForTest(8);
+            for (QAction* action : actions) {
+                const bool keyShown =
+                    action->shortcut() == QKeySequence(QStringLiteral("B"))
+                    && action->isShortcutVisibleInContextMenu();
+                if (!keyShown) {
+                    m40KeysShown = false;
+                }
+                if (!action->isEnabled()) {
+                    const bool disabledOk =
+                        action->shortcut() == QKeySequence(QStringLiteral("B"))
+                        && action->toolTip().contains(QStringLiteral("not implemented yet"));
+                    m40KeysDisabled = m40KeysDisabled || disabledOk;
+                    if (!disabledOk) {
+                        m40KeysShown = false;
+                    }
+                }
+            }
+        }
+        const bool m40KeysOk = m40KeysShown && m40KeysDisabled;
+        std::fprintf(stderr, "pictura self-test: m40_keys shown=%d disabled=%d\n",
+                     m40KeysShown ? 1 : 0,
+                     m40KeysDisabled ? 1 : 0);
+        std::fflush(stderr);
+        if (!m40KeysOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M40 flyout keys\n");
+            return 116;
+        }
+
+        // m40_shift (117): drive the real QShortcut path by synthesizing a key
+        // press on the window. Preference on: the plain letter activates the
+        // slot's current member and Shift+letter cycles the implemented members;
+        // an all-unimplemented group is a no-op; preference off: the plain letter
+        // cycles.
+        frame.activateWindow();
+        QCoreApplication::processEvents();
+        auto m40SendKey = [&frame](int key, Qt::KeyboardModifiers mods, const QString& text) {
+            QKeyEvent event(QEvent::KeyPress, key, mods, text);
+            QApplication::sendEvent(&frame, &event);
+        };
+        frame.setActiveTool(pictura::ToolId::Move);
+        QCoreApplication::processEvents();
+        m40SendKey(Qt::Key_B, Qt::NoModifier, QStringLiteral("b"));
+        const bool m40Plain = frame.activeTool() == pictura::ToolId::Brush;
+        m40SendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
+        const bool m40Shift = frame.activeTool() == pictura::ToolId::Pencil;
+        m40SendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
+        const bool m40Wrap = frame.activeTool() == pictura::ToolId::Brush;
+        m40SendKey(Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
+        const bool m40NoImpl = frame.activeTool() == pictura::ToolId::Brush;
+        if (m40Toolbox) {
+            m40Toolbox->setShiftKeyForToolSwitch(false);
+        }
+        m40SendKey(Qt::Key_B, Qt::NoModifier, QStringLiteral("b"));
+        const bool m40Off = frame.activeTool() == pictura::ToolId::Pencil;
+        if (m40Toolbox) {
+            m40Toolbox->setShiftKeyForToolSwitch(true);
+        }
+        const bool m40ShiftOk = m40Plain && m40Shift && m40Wrap && m40NoImpl && m40Off;
+        std::fprintf(stderr,
+                     "pictura self-test: m40_shift plain=%d shift=%d noimpl=%d off=%d\n",
+                     m40Plain ? 1 : 0,
+                     (m40Shift && m40Wrap) ? 1 : 0,
+                     m40NoImpl ? 1 : 0,
+                     m40Off ? 1 : 0);
+        std::fflush(stderr);
+        if (!m40ShiftOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M40 shift cycling\n");
+            return 117;
+        }
+
+        // m40_dock (118): left/right only, movable/floatable/closable, and a
+        // simulated tabify is undone by the frame's re-dock fallback.
+        QDockWidget* m40Dock = m40Toolbox;
+        const bool m40Areas =
+            m40Dock
+            && m40Dock->allowedAreas() == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+        const bool m40Features =
+            m40Dock
+            && m40Dock->features()
+                   == (QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
+                       | QDockWidget::DockWidgetClosable);
+        bool m40TabBefore = false;
+        bool m40TabAfter = false;
+        if (m40Dock) {
+            QDockWidget* companion =
+                frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+            if (companion) {
+                // Block the dock's signals so the frame's own dockLocationChanged
+                // fallback does not undo the tabify before the assertion samples it.
+                {
+                    QSignalBlocker blocker(m40Dock);
+                    frame.tabifyDockWidget(companion, m40Dock);
+                    QCoreApplication::processEvents();
+                }
+                m40TabBefore = !frame.tabifiedDockWidgets(m40Dock).isEmpty();
+                frame.ensureToolsNotTabified();
+                QCoreApplication::processEvents();
+                m40TabAfter = !frame.tabifiedDockWidgets(m40Dock).isEmpty();
+            }
+        }
+        const bool m40DockOk = m40Areas && m40Features && m40TabBefore && !m40TabAfter;
+        std::fprintf(stderr, "pictura self-test: m40_dock areas=%d feat=%d tab=%d->%d\n",
+                     m40Areas ? 1 : 0,
+                     m40Features ? 1 : 0,
+                     m40TabBefore ? 1 : 0,
+                     m40TabAfter ? 1 : 0);
+        std::fflush(stderr);
+        if (!m40DockOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M40 standalone dock\n");
+            return 118;
+        }
+
+        // m40_session (119): the two v4 fields round-trip, and a store lacking
+        // them loads the defaults (one column, Shift required).
+        pictura::SessionState m40State = pictura::loadSession();
+        m40State.toolsColumns = 2;
+        m40State.useShiftKeyForToolSwitch = false;
+        const bool m40Saved = pictura::saveSession(m40State);
+        const pictura::SessionState m40Reloaded = pictura::loadSession();
+        const bool m40Roundtrip = m40Saved && m40Reloaded.toolsColumns == 2
+                                  && !m40Reloaded.useShiftKeyForToolSwitch;
+        bool m40Defaults = false;
+        {
+            QFile store(pictura::sessionFilePath());
+            if (store.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                store.write("{\"schemaVersion\":3,\"brightnessLevel\":2}");
+                store.close();
+            }
+            const pictura::SessionState m40Missing = pictura::loadSession();
+            m40Defaults =
+                m40Missing.toolsColumns == 1 && m40Missing.useShiftKeyForToolSwitch;
+        }
+        std::fprintf(stderr, "pictura self-test: m40_session roundtrip=%d defaults=%d\n",
+                     m40Roundtrip ? 1 : 0,
+                     m40Defaults ? 1 : 0);
+        std::fflush(stderr);
+        if (!m40Roundtrip || !m40Defaults) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M40 session v4\n");
+            return 119;
         }
 
         frame.closeDocument(m39DocIndex, false);
