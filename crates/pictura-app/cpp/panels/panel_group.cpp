@@ -316,6 +316,13 @@ PanelGroup::PanelGroup(QWidget* parent)
     tabs_->setTabPosition(QTabWidget::North);
     tabs_->setDocumentMode(true);
     tabs_->tabBar()->installEventFilter(this);
+    // M43: name the panel-group tab bar so the scoped theme can make the active
+    // tab use the pane `${base}` colour without touching the document tabs. The
+    // tab bar elides instead of forcing width, and does not expand, so the
+    // corner `▾` button keeps its place at the column minimum width.
+    tabs_->tabBar()->setObjectName(QStringLiteral("panelTabBar"));
+    tabs_->tabBar()->setElideMode(Qt::ElideRight);
+    tabs_->tabBar()->setExpanding(false);
     layout->addWidget(tabs_);
 
     headerButton_ = new QToolButton(tabs_);
@@ -561,6 +568,11 @@ void PanelGroup::insertPanel(QWidget* panel, const QString& title, const QIcon& 
 QTabBar* PanelGroup::tabBar() const
 {
     return tabs_ ? tabs_->tabBar() : nullptr;
+}
+
+int PanelGroup::headerCornerWidthForTest() const
+{
+    return headerButton_ ? headerButton_->width() : 0;
 }
 
 int PanelGroup::indexOfPanel(const QString& objectName) const

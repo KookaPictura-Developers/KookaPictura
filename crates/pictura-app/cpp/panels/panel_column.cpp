@@ -1,5 +1,6 @@
 #include "panel_column.h"
 
+#include "frame.h"
 #include "icons.h"
 #include "panel_group.h"
 
@@ -33,8 +34,8 @@ namespace pictura {
 namespace {
 
 constexpr int kIconLabelWidth = 120;
-constexpr int kIconButtonSize = 30;
-constexpr int kIconPixmapSize = 20;
+constexpr int kIconButtonSize = 34;
+constexpr int kIconPixmapSize = 24;
 // ponytail: chosen constants, not sourced CS6 metrics. Normal-mode minimum is
 // the widest visible group's size hint clamped between a readable floor and a
 // cap that keeps the main window resizable; the iconic strip only needs its
@@ -158,11 +159,32 @@ PanelColumn::PanelColumn(QWidget* parent)
     updateMinimumWidth();
 }
 
+PanelSide PanelColumn::side() const
+{
+    auto* splitter = qobject_cast<QSplitter*>(parentWidget());
+    if (!splitter) {
+        return PanelSide::Right;
+    }
+    const int self = splitter->indexOf(const_cast<PanelColumn*>(this));
+    for (int i = 0; i < splitter->count(); ++i) {
+        QWidget* pane = splitter->widget(i);
+        if (pane && pane->objectName() == QStringLiteral("documentTabs")) {
+            return self < i ? PanelSide::Left : PanelSide::Right;
+        }
+    }
+    // The document tabs are the first pane when no left column exists.
+    return self == 0 ? PanelSide::Left : PanelSide::Right;
+}
+
 void PanelColumn::addGroup(PanelGroup* group)
 {
     if (!group) {
         return;
     }
+    // A group adopted from another column may still be wired to it; drop any
+    // stale wiring to this column so `insertGroupAt` re-wires it cleanly.
+    QObject::disconnect(group, nullptr, this, nullptr);
+    wired_.remove(group);
     insertGroupAt(group, groups_.size());
     for (QWidget* panel : group->panels()) {
         if (panel) {
@@ -225,6 +247,24 @@ bool PanelColumn::removeGroup(PanelGroup* group)
     groups_.removeAt(index);
     group->setParent(nullptr);
     return true;
+}
+
+PanelGroup* PanelColumn::takeGroup(const QString& groupObjectName)
+{
+    PanelGroup* group = findGroupByName(groupObjectName);
+    if (!group) {
+        return nullptr;
+    }
+    const int index = groups_.indexOf(group);
+    if (index < 0) {
+        return nullptr;
+    }
+    groups_.removeAt(index);
+    group->setParent(nullptr);
+    // Leave the group unwired here; the adopting column re-wires it.
+    QObject::disconnect(group, nullptr, this, nullptr);
+    wired_.remove(group);
+    return group;
 }
 
 void PanelColumn::cleanupEmptyGroup(PanelGroup* group)
@@ -361,7 +401,10 @@ void PanelColumn::updateMinimumWidth()
     int widest = 0;
     for (PanelGroup* group : groups_) {
         if (group && group->isVisible()) {
-            widest = qMax(widest, group->sizeHint().width());
+            // M43: reserve the per-widget corner width so the `▾` button is
+            // inside the header at the minimum width even when the tab text
+            // elides.
+            widest = qMax(widest, group->sizeHint().width() + group->headerCornerWidthForTest());
         }
     }
     setMinimumWidth(qBound(kNormalMinWidthFloor, widest, kNormalMinWidthCap));
@@ -394,13 +437,22 @@ void PanelColumn::setPreferredWidth(int width)
         return;
     }
     auto* splitter = qobject_cast<QSplitter*>(parentWidget());
-    if (!splitter || splitter->count() != 2 || splitter->width() <= width) {
+    const int index = splitter ? splitter->indexOf(this) : -1;
+    if (!splitter || index < 0 || splitter->width() <= width) {
         // Before the first layout the splitter has no width; remember the value
         // and apply it on show.
         pendingWidth_ = width;
         return;
     }
-    splitter->setSizes({splitter->width() - width, width});
+    // Keep every other pane's size (other columns, the document tabs) and set
+    // only this column. The M41 two-pane case is the same operation.
+    QList<int> sizes = splitter->sizes();
+    if (index >= sizes.size()) {
+        pendingWidth_ = width;
+        return;
+    }
+    sizes[index] = width;
+    splitter->setSizes(sizes);
     pendingWidth_ = 0;
 }
 
@@ -667,39 +719,43 @@ void PanelColumn::openIconFlyout(const QString& objectName, const QPoint& global
         size.setWidth(480);
     }
     flyout_->resize(size);
-    placeFlyout(globalPos, size);
+    // M43: derive the flyout position from the button's actual geometry (not
+    // `anchorRightTop ± kIconButtonSize`), so it meets the inner edge exactly
+    // and never overlaps the button.
+    if (QToolButton* button = flyoutButtonFor(objectName)) {
+        placeFlyout(QRect(button->mapToGlobal(QPoint(0, 0)), button->size()), size);
+    } else {
+        placeFlyout(QRect(globalPos - QPoint(kIconButtonSize, 0),
+                           QSize(kIconButtonSize, kIconButtonSize)),
+                    size);
+    }
     flyout_->show();
     flyout_->raise();
 }
 
 QString PanelColumn::flyoutSide() const
 {
-    QWidget* win = window();
-    if (!win) {
-        return QStringLiteral("left");
-    }
-    const int colLeft = mapToGlobal(QPoint(0, 0)).x();
-    const int colRight = mapToGlobal(QPoint(width(), 0)).x();
-    const int winLeft = win->mapToGlobal(QPoint(0, 0)).x();
-    const int winRight = win->mapToGlobal(QPoint(win->width(), 0)).x();
-    // A column hugging the window's right edge opens its flyouts to the left.
-    return (winRight - colRight) <= (colLeft - winLeft) ? QStringLiteral("left")
-                                                        : QStringLiteral("right");
+    // M43: the inner side generalises to N columns from the column's own
+    // layout side (right column => popup to its left, left column => to its
+    // right), not from the window-edge heuristic.
+    return side() == PanelSide::Right ? QStringLiteral("left") : QStringLiteral("right");
 }
 
-void PanelColumn::placeFlyout(const QPoint& anchorRightTop, const QSize& size)
+void PanelColumn::placeFlyout(const QRect& buttonGlobalRect, const QSize& size)
 {
     if (!flyout_) {
         return;
     }
-    // `anchorRightTop` is the icon button's top-right corner, as passed by the
-    // click handlers. Derive the icon rect so the popup meets the inner edge.
-    const QRect iconRect(anchorRightTop.x() - kIconButtonSize, anchorRightTop.y(),
-                         kIconButtonSize, kIconButtonSize);
-    int x = flyoutSide() == QStringLiteral("left") ? iconRect.left() - size.width()
-                                                   : iconRect.right() + 1;
-    int y = iconRect.top();
-    QScreen* screen = window() ? window()->screen() : QGuiApplication::screenAt(anchorRightTop);
+    // M43: use the button's actual global rect. For a right-hand column the
+    // flyout sits flush to the left of the button (its inner edge); for a
+    // left-hand column, to the right. The screen clamp bounds only the inner
+    // coordinate, so it can never push the flyout across to the outer side.
+    const bool innerLeft = flyoutSide() == QStringLiteral("left");
+    int x = innerLeft ? buttonGlobalRect.left() - size.width()
+                      : buttonGlobalRect.right() + 1;
+    int y = buttonGlobalRect.top();
+    QScreen* screen = window() ? window()->screen()
+                               : QGuiApplication::screenAt(buttonGlobalRect.center());
     if (!screen) {
         screen = QGuiApplication::primaryScreen();
     }
@@ -709,6 +765,23 @@ void PanelColumn::placeFlyout(const QPoint& anchorRightTop, const QSize& size)
         y = qBound(avail.top(), y, avail.bottom() - size.height() + 1);
     }
     flyout_->move(x, y);
+}
+
+QToolButton* PanelColumn::flyoutButtonFor(const QString& objectName) const
+{
+    if (QToolButton* button = stripButtonFor(objectName)) {
+        return button;
+    }
+    for (PanelGroup* group : groups_) {
+        if (!group) {
+            continue;
+        }
+        if (QToolButton* button =
+                group->findChild<QToolButton*>(QStringLiteral("panelGroupIcon_") + objectName)) {
+            return button;
+        }
+    }
+    return nullptr;
 }
 
 void PanelColumn::setActiveIcon(const QString& objectName)
@@ -980,31 +1053,67 @@ bool PanelColumn::triggerTabMenuForTest(const QString& text)
 
 PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
 {
+    // M43: the workspace-edge new-column band is resolved before the local
+    // column grammar, so a drop at an outer edge always means a new column on
+    // that side. Compact strips are exempt (they sit on the edge), so the
+    // iconic pass runs first.
+    if (railMode_) {
+        DropTarget iconic;
+        if (resolveIconicDrop(globalPos, iconic)) {
+            return iconic;
+        }
+    }
+    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+        const int side = frame->newColumnSideAt(globalPos);
+        if (side >= 0) {
+            DropTarget target;
+            target.valid = true;
+            target.kind = side == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
+            return target;
+        }
+    }
+    DropTarget target = resolveLocalDrop(globalPos);
+    if (target.outside) {
+        // A point inside another column may still regroup a panel there. Only
+        // the tab-insert kind is safe to apply cross-column: the group lives in
+        // the other column's stack, so the panel is inserted into it directly.
+        if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+            if (PanelColumn* other = frame->columnAtGlobal(globalPos)) {
+                if (other != this) {
+                    DropTarget delegated = other->resolveLocalDrop(globalPos);
+                    if (delegated.valid && delegated.kind == DropKind::IntoGroup) {
+                        return delegated;
+                    }
+                }
+            }
+        }
+    }
+    return target;
+}
+
+PanelColumn::DropTarget PanelColumn::resolveLocalDrop(const QPoint& globalPos) const
+{
     DropTarget target;
     if (railMode_) {
-        // Iconic mode shows only the strip, so a drop is either an in-strip
-        // reorder or a tear-off; the group stack is handled after the column
-        // expands back to normal.
-        const int stripIndex = stripInsertionIndexAt(globalPos);
-        if (stripIndex >= 0) {
-            target.valid = true;
-            target.onStrip = true;
-            target.stripIndex = stripIndex;
+        if (resolveIconicDrop(globalPos, target)) {
             return target;
         }
         target.valid = true;
         target.outside = true;
+        target.kind = DropKind::Outside;
         return target;
     }
     if (!scroll_ || !scroll_->isVisible()) {
         target.valid = true;
         target.outside = true;
+        target.kind = DropKind::Outside;
         return target;
     }
     QWidget* viewport = scroll_->viewport();
     if (!viewport || !viewport->rect().contains(viewport->mapFromGlobal(globalPos))) {
         target.valid = true;
         target.outside = true;
+        target.kind = DropKind::Outside;
         return target;
     }
     for (PanelGroup* group : groups_) {
@@ -1020,6 +1129,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
                 target.group = group;
                 target.tabIndex = index;
                 target.boundary = boundaryIndexForGlobalY(globalPos);
+                target.kind = group == dragGroup_ ? DropKind::Reorder : DropKind::IntoGroup;
                 return target;
             }
         }
@@ -1029,13 +1139,73 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
             target.group = group;
             const int centerY = groupRect.top() + groupRect.height() / 2;
             const int base = groups_.indexOf(group);
-            target.boundary = globalPos.y() < centerY ? base : base + 1;
+            if (globalPos.y() < centerY) {
+                target.kind = DropKind::AboveGroup;
+                target.boundary = base;
+            } else {
+                target.kind = DropKind::BelowGroup;
+                target.boundary = base + 1;
+            }
             return target;
         }
     }
+    // The column background between groups is a boundary insert.
     target.valid = true;
+    target.kind = DropKind::AboveGroup;
     target.boundary = boundaryIndexForGlobalY(globalPos);
     return target;
+}
+
+bool PanelColumn::resolveIconicDrop(const QPoint& globalPos, DropTarget& target) const
+{
+    if (!iconStrip_ || !iconStrip_->isVisible() || stripEntries_.isEmpty()) {
+        return false;
+    }
+    if (!iconStrip_->rect().contains(iconStrip_->mapFromGlobal(globalPos))) {
+        return false;
+    }
+    // A hit on a strip button's interior inserts into the group that owns it.
+    for (int i = 0; i < stripEntries_.size(); ++i) {
+        const StripEntry& entry = stripEntries_.at(i);
+        QToolButton* button = entry.button;
+        if (!button || !entry.group) {
+            continue;
+        }
+        const QRect row(button->mapToGlobal(QPoint(0, 0)), button->size());
+        if (row.adjusted(0, 2, 0, -2).contains(globalPos)) {
+            target.valid = true;
+            target.kind = DropKind::IntoGroup;
+            target.onTabBar = true;
+            target.group = entry.group;
+            target.tabIndex = entry.group->indexOfPanel(entry.name);
+            target.stripIndex = i;
+            return true;
+        }
+    }
+    const int index = stripInsertionIndexAt(globalPos);
+    if (index < 0) {
+        return false;
+    }
+    PanelGroup* before = index > 0 ? stripEntries_.at(index - 1).group : nullptr;
+    PanelGroup* after = index < stripEntries_.size() ? stripEntries_.at(index).group : nullptr;
+    if (index > 0 && index < stripEntries_.size() && before != after) {
+        // A divider between two groups resolves to a boundary insert above the
+        // group that follows.
+        PanelGroup* reference = after;
+        const int boundary = groups_.indexOf(reference);
+        target.valid = true;
+        target.group = reference;
+        target.stripIndex = index;
+        target.boundary = boundary >= 0 ? boundary : groups_.size();
+        target.kind = DropKind::AboveGroup;
+        return true;
+    }
+    // Within a group the strip reorders the panel.
+    target.valid = true;
+    target.onStrip = true;
+    target.stripIndex = index;
+    target.kind = DropKind::OnStrip;
+    return true;
 }
 
 int PanelColumn::stripInsertionIndexAt(const QPoint& globalPos) const
@@ -1079,7 +1249,14 @@ int PanelColumn::boundaryIndexForGlobalY(const QPoint& globalPos) const
 
 void PanelColumn::showIndicatorFor(const DropTarget& target)
 {
-    if (target.onStrip) {
+    const bool newColumn =
+        target.kind == DropKind::NewColumnLeft || target.kind == DropKind::NewColumnRight;
+    const bool compactKind =
+        railMode_
+        && (target.kind == DropKind::IntoGroup || target.kind == DropKind::AboveGroup
+            || target.kind == DropKind::BelowGroup)
+        && target.stripIndex >= 0;
+    if (target.onStrip || compactKind) {
         if (!stripIndicator_ || stripEntries_.isEmpty()) {
             clearIndicator();
             return;
@@ -1110,6 +1287,14 @@ void PanelColumn::showIndicatorFor(const DropTarget& target)
     }
     QWidget* viewport = scroll_->viewport();
     if (!viewport) {
+        return;
+    }
+    if (newColumn) {
+        // A full-height mark at the workspace edge for a new-column candidate.
+        const int x = target.kind == DropKind::NewColumnLeft ? 0 : qMax(0, viewport->width() - 3);
+        indicator_->setGeometry(QRect(x, 0, 3, viewport->height()));
+        indicator_->show();
+        indicator_->raise();
         return;
     }
     if (target.onTabBar && target.group) {
@@ -1179,7 +1364,10 @@ void PanelColumn::beginPanelDrag(PanelGroup* group, const QString& objectName,
     dragGroup_ = group;
     dragPanel_ = objectName;
     dragOriginalIndex_ = groups_.indexOf(group);
-    dragFloat_ = floatForGroup(group);
+    // M43: a panel drag never reuses the source float. Leaving the column
+    // builds a fresh one-panel float (createFloat), so clipping one tab out of
+    // a float moves only that panel.
+    dragFloat_ = nullptr;
     dragGrabOffset_ = globalPos - group->mapToGlobal(QPoint(0, 0));
     dropTarget_ = {};
     clearIndicator();
@@ -1228,13 +1416,17 @@ bool PanelColumn::commitDrop()
         return false;
     }
     const DropTarget target = dropTarget_;
-    const bool tornOffThisDrag = dragFloat_ && dragOriginalIndex_ >= 0;
     bool ok = false;
     clearIndicator();
     if (target.valid && !target.outside) {
-        if (target.onStrip) {
+        if (target.kind == DropKind::NewColumnLeft || target.kind == DropKind::NewColumnRight) {
+            ok = applyNewColumnDrop(target.kind == DropKind::NewColumnLeft ? PanelSide::Left
+                                                                          : PanelSide::Right);
+        } else if (target.onStrip) {
             ok = applyStripDrop(dragGroup_, dragPanel_, target.stripIndex);
-        } else if (dragIsPanel_ && !tornOffThisDrag) {
+        } else if (dragIsPanel_) {
+            // A tab drag always moves one panel: from the source tab stack when
+            // it never left, or from a one-panel float when it did.
             ok = applyPanelDrop(dragGroup_, dragPanel_, target);
         } else {
             ok = applyGroupDrop(dragGroup_, target);
@@ -1257,6 +1449,11 @@ bool PanelColumn::commitDrop()
         buildIconStrip();
     }
     emit stateChanged();
+    // A dynamic column whose last group just left is torn down; a committed
+    // drop is the only place this happens.
+    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+        frame->removeColumnIfEmpty(this);
+    }
     return ok;
 }
 
@@ -1374,6 +1571,53 @@ bool PanelColumn::applyStripDrop(PanelGroup* source, const QString& name, int st
     return true;
 }
 
+bool PanelColumn::applyNewColumnDrop(PanelSide side)
+{
+    auto* frame = qobject_cast<PicturaMainWindow*>(window());
+    if (!frame || !dragGroup_) {
+        return false;
+    }
+    PanelGroup* source = dragGroup_;
+    PanelGroup* payload = source;
+    if (dragIsPanel_ && !dragPanel_.isEmpty()) {
+        QString title;
+        QIcon iconValue;
+        int panelIndex = -1;
+        QWidget* panel = source->takePanel(dragPanel_, &title, &iconValue, &panelIndex);
+        if (!panel) {
+            return false;
+        }
+        payload = new PanelGroup(this);
+        payload->addPanel(panel, title, iconValue);
+        panelVisible_[dragPanel_] = true;
+    }
+    // A whole group is detached from this column's stack; a floating group is
+    // already parented to its overlay and is simply adopted by the new column.
+    // A single-panel drag leaves its source group in place (it keeps the rest).
+    int index = -1;
+    if (!dragIsPanel_) {
+        // The group stops routing its drags here; the new column wires it.
+        QObject::disconnect(source, nullptr, this, nullptr);
+        index = groups_.indexOf(source);
+        if (index >= 0) {
+            groups_.removeAt(index);
+            source->setParent(nullptr);
+        }
+    }
+    PanelColumn* destination = frame->createPanelColumn(side);
+    if (!destination) {
+        if (index >= 0) {
+            insertGroupAt(source, qBound(0, dragOriginalIndex_, groups_.size()));
+        }
+        return false;
+    }
+    destination->addGroup(payload);
+    if (dragIsPanel_) {
+        cleanupEmptyGroup(source);
+    }
+    return true;
+}
+
 bool PanelColumn::applyGroupDrop(PanelGroup* group, const DropTarget& target)
 {
     if (!group) {
@@ -1407,10 +1651,27 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
     if (!group) {
         return nullptr;
     }
-    const int index = groups_.indexOf(group);
+    PanelGroup* hosted = group;
+    if (dragIsPanel_ && !dragPanel_.isEmpty()) {
+        // M43: a tab drag floats a one-panel group holding only the dragged
+        // panel; the source stack (docked group or old float) keeps the rest.
+        QString title;
+        QIcon iconValue;
+        int index = -1;
+        QWidget* panel = group->takePanel(dragPanel_, &title, &iconValue, &index);
+        if (!panel) {
+            return nullptr;
+        }
+        hosted = new PanelGroup(this);
+        hosted->addPanel(panel, title, iconValue);
+        panelVisible_[dragPanel_] = true;
+        wireGroup(hosted);
+        cleanupEmptyGroup(group);
+    }
+    const int index = groups_.indexOf(hosted);
     if (index >= 0) {
         groups_.removeAt(index);
-        group->setParent(nullptr);
+        hosted->setParent(nullptr);
     }
     // The overlay parents to the main window (its central area is the clamp
     // rect) so it is clipped to the window; it must not parent to the
@@ -1420,9 +1681,9 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
         host = this;
     }
     auto* floatWindow = new PanelFloat(host);
-    floatWindow->setGroup(group);
-    group->setVisible(true);
-    QSize size = group->sizeHint();
+    floatWindow->setGroup(hosted);
+    hosted->setVisible(true);
+    QSize size = hosted->sizeHint();
     size = size.expandedTo(QSize(220, 120));
     if (size.width() > 520) {
         size.setWidth(520);
@@ -1435,6 +1696,9 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
     if (railMode_) {
         buildIconStrip();
     }
+    // Re-dock routes through the float's group, so commitDrop takes the panel
+    // out of the one-panel float (or re-inserts the whole group).
+    dragGroup_ = hosted;
     return floatWindow;
 }
 
@@ -1475,6 +1739,13 @@ void PanelColumn::destroyFloat(PanelFloat* floatWindow)
     if (!floatWindow) {
         return;
     }
+    if (!floats_.contains(floatWindow)) {
+        // Already torn down by a cleanup path in this drop; do not double-free.
+        if (dragFloat_ == floatWindow) {
+            dragFloat_ = nullptr;
+        }
+        return;
+    }
     floats_.removeAll(floatWindow);
     if (dragFloat_ == floatWindow) {
         dragFloat_ = nullptr;
@@ -1499,6 +1770,25 @@ bool PanelColumn::beginTabDragForTest(const QString& objectName)
         return false;
     }
     beginPanelDrag(group, objectName, group->mapToGlobal(QPoint(0, 0)));
+    return true;
+}
+
+bool PanelColumn::beginGroupDragForTest(const QString& panelName)
+{
+    PanelGroup* group = groupForPanel(panelName);
+    if (!group) {
+        for (PanelFloat* floatWindow : floats_) {
+            PanelGroup* candidate = floatWindow ? floatWindow->group() : nullptr;
+            if (candidate && candidate->containsPanel(panelName)) {
+                group = candidate;
+                break;
+            }
+        }
+    }
+    if (!group) {
+        return false;
+    }
+    beginGroupDrag(group, group->mapToGlobal(QPoint(0, 0)));
     return true;
 }
 
@@ -1593,6 +1883,25 @@ int PanelColumn::stripDropIndexForTest() const
     return dropTarget_.onStrip ? dropTarget_.stripIndex : -1;
 }
 
+QPoint PanelColumn::stripEntryPointForTest(const QString& panelName, int where) const
+{
+    for (const StripEntry& entry : stripEntries_) {
+        if (entry.name != panelName || !entry.button) {
+            continue;
+        }
+        const QRect row(entry.button->mapToGlobal(QPoint(0, 0)), entry.button->size());
+        switch (where) {
+        case 1:
+            return QPoint(row.center().x(), row.top());
+        case 2:
+            return QPoint(row.center().x(), row.bottom());
+        default:
+            return row.center();
+        }
+    }
+    return QPoint();
+}
+
 bool PanelColumn::dropStripOnGroupForTest(const QString& objectName, const QString& targetPanel)
 {
     PanelGroup* dest = groupForPanel(targetPanel);
@@ -1618,6 +1927,14 @@ bool PanelColumn::dropStripOnGroupForTest(const QString& objectName, const QStri
 QString PanelColumn::flyoutSideForTest() const
 {
     return flyoutSide();
+}
+
+QRect PanelColumn::iconFlyoutGeometryForTest() const
+{
+    if (!flyout_ || !flyout_->isVisible()) {
+        return QRect();
+    }
+    return QRect(flyout_->mapToGlobal(QPoint(0, 0)), flyout_->size());
 }
 
 QString PanelColumn::flyoutHeaderTitleForTest() const
@@ -1710,7 +2027,32 @@ bool PanelColumn::tearOffForTest(const QString& groupName)
         return false;
     }
     beginGroupDrag(group, group->mapToGlobal(QPoint(0, 0)));
-    const QPoint outside = mapToGlobal(QPoint(-40, height() / 2));
+    const bool leftColumn = side() == PanelSide::Left;
+    const QPoint outside = leftColumn ? mapToGlobal(QPoint(width() + 40, height() / 2))
+                                      : mapToGlobal(QPoint(-40, height() / 2));
+    dragToForTest(outside);
+    return dropForTest(outside);
+}
+
+bool PanelColumn::tearOffPanelForTest(const QString& objectName)
+{
+    PanelGroup* group = groupForPanel(objectName);
+    if (!group) {
+        for (PanelFloat* floatWindow : floats_) {
+            PanelGroup* candidate = floatWindow ? floatWindow->group() : nullptr;
+            if (candidate && candidate->containsPanel(objectName)) {
+                group = candidate;
+                break;
+            }
+        }
+    }
+    if (!group) {
+        return false;
+    }
+    beginPanelDrag(group, objectName, group->mapToGlobal(QPoint(0, 0)));
+    const bool leftColumn = side() == PanelSide::Left;
+    const QPoint outside = leftColumn ? mapToGlobal(QPoint(width() + 40, height() / 2))
+                                      : mapToGlobal(QPoint(-40, height() / 2));
     dragToForTest(outside);
     return dropForTest(outside);
 }

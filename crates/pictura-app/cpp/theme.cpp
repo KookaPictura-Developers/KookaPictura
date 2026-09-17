@@ -168,6 +168,13 @@ QTabBar::tab:hover { background: ${hover}; }
 QTabBar::tab:selected { background: ${activeTab}; color: ${windowText}; }
 QTabBar::tab:disabled { color: ${disabledText}; }
 
+/* M43: the panel-group tab bars are named `panelTabBar`, so their active tab
+   takes the pane (`${base}`) colour while the document tabs keep the unscoped
+   `QTabBar::tab` rules above. Inactive panel tabs stay `${window}`/`${hover}`. */
+QTabBar#panelTabBar::tab { background: ${window}; color: ${windowText}; border: 1px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; }
+QTabBar#panelTabBar::tab:hover { background: ${hover}; }
+QTabBar#panelTabBar::tab:selected { background: ${base}; color: ${windowText}; }
+
 QTabWidget::pane { border: 1px solid ${border}; background: ${base}; }
 QTabWidget::tab-bar { alignment: left; }
 

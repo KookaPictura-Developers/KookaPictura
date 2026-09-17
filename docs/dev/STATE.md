@@ -14,11 +14,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
   `pictura-render` doctest, which makes the raw ignored count 8).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M41 archived; canonical specs are
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M42 archived; canonical specs are
   in `openspec/specs/` (60 specs, `validate --all --strict` green), change
   history under `openspec/changes/archive/`. Active change:
-  `openspec/changes/m42-panel-refinements` (M42 panel refinements, **implemented,
-  archive pending**; brief `docs/dev/m42-panel-refinements.md`). M43 is next.
+  `openspec/changes/m43-panel-multicolumn` (M43 panel multicolumn, **implemented,
+  archive pending**; brief `docs/dev/m43-panel-multicolumn.md`). M44 is next.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 
@@ -1108,6 +1108,80 @@ openspec validate --all --strict
   earlier m20–m41 line unchanged; `openspec validate m42-panel-refinements
   --strict` valid and `openspec validate --all --strict` 61/61.
 
+- **M43 — panel multicolumn** (a fifth user-requested interruption to the
+  Layers-panel program; OpenSpec change `m43-panel-multicolumn`, brief
+  `docs/dev/m43-panel-multicolumn.md`). **Phase A — drag/chrome/float.** A tab
+  press drags/floats **only that panel** (a one-panel float built via `takePanel`
+  + a fresh wired `PanelGroup`), an empty-header press drags/floats the **whole
+  group**; both work docked and for a group already floating
+  (`PanelColumn::beginPanelDrag`/`createFloat` payload-aware). The panel tab bar
+  carries `objectName` `panelTabBar` and scoped QSS — selected tab `${base}`
+  (identical to the `QTabWidget::pane`/widget background), unselected
+  `${window}` (hover `${hover}`); the document bar is `documentTabBar`,
+  unaffected (pixel sample: active `srgb(35,35,35)` = base, inactive
+  `srgb(43,43,43)` = window). The corner `▾` is fixed with `ElideRight` +
+  `setExpanding(false)` + the corner width added to `updateMinimumWidth`, so it
+  is fully visible at the column minimum. `placeFlyout` uses the **actual button
+  geometry** and the column's side, clamping only the inner coordinate so it can
+  never flip outward or overlap the button. The Tools dock gets
+  `setFixedWidth(content)` + `QSizePolicy::Fixed` horizontal + a `Resize`
+  event-filter clamp (belt-and-braces for QMainWindow's internal splitter); the
+  separator no longer resizes it, min == max == content width in 1- and 2-column
+  modes and while floating, with the M42 float-height and the M40 standalone-dock
+  contract intact. **`D`** resets fg/bg to default (black/white) through the
+  existing `resetColors()`; the M42 `X` swap is kept (`D` was free — not in the
+  tool catalogue). Compact icon buttons grew again (30 → 34 px, pixmap 24).
+  **Phase B — multi-column host.** `centerSplitter_` now hosts an ordered set:
+  left `PanelColumn`s, the document tabs (`objectName` `documentTabs`), right
+  `PanelColumn`s; stretch stays on the tabs. `PanelColumn::side()` is derived
+  from the splitter index vs `documentTabs` (not geometry). Columns are
+  **created on drop** (`createPanelColumn(side)`) and **removed when empty**
+  (`removeColumnIfEmpty`, dynamic-only), with the frame owning the wiring
+  (`stateChanged`, `interfaceOptionsRequested`). `resolveDrop` gained a
+  `DropKind` enum — `Reorder`, `IntoGroup`, `AboveGroup`, `BelowGroup`,
+  `OnStrip`, `NewColumnLeft`, `NewColumnRight`, `Outside` — with a **28 px outer
+  band / over-the-Tools-dock** rule for new columns, group top/bottom halves for
+  above/below, tab-bar hits for into-group, cross-column `IntoGroup` delegation,
+  and compact mode handled first so strip drags still reorder. One `#2a7fff`
+  indicator marks every candidate. `flyoutSide()` is now `side() == Right ?
+  "left" : "right"`. `Window → Panels` targets the owning column;
+  `setPanelsHidden`/screen modes iterate all columns. **Phase C — session v6.**
+  `panelColumns: [{side, order, groups:[{name, order, visible, minimized,
+  collapsed}]}]` with `schemaVersion` **6**; the legacy flat `panelGroups` is
+  still written as a mirror and a **v5 store loads as a single right-hand
+  column** (synthesised when `panelColumns` is absent); load-then-write keeps
+  unknown keys; the M42 `layoutRevision` guard and all v4/v5 keys survive.
+  `applyPanelSession` rebuilds N columns and re-applies rail mode to all;
+  `clearDynamicColumns` for re-apply. `m41_session`'s schema assertion changed
+  from `==5` to `>=5` (the schema advanced — the only earlier-check change).
+  **Self-tests** 140–151: `m43_tabdrag`(140), `m43_tabcolors`(141),
+  `m43_corner`(142), `m43_newcolumn`(143), `m43_intogroup`(144),
+  `m43_boundary`(145), `m43_singlefloat`(146), `m43_tools`(147),
+  `m43_icon`(148), `m43_flyout`(149), `m43_dreset`(150), `m43_session`(151);
+  all older codes green. **Honest limits:** cross-column drops delegate only
+  `into-group` — a whole group dropped onto another existing column (not the
+  outer edge) resolves as tear-off rather than a cross-column move; new columns
+  are only allocated at the workspace outer edges or over the Tools dock;
+  compact "above the first group" boundary is unreachable (the gap resolves as
+  on-strip); the vertical group order **inside** a column is written but not
+  re-applied on restore (pre-existing M41 behaviour); one workspace-wide
+  `panelRailMode`/`railWidth`; float existence/position not persisted; only the
+  left+right pair is self-tested (not multiple columns on the same side); the
+  primary right column is never removable (an all-left layout leaves it present
+  but empty); the Tools `setFixedWidth` clamp is verified under xcb only;
+  `headerCornerWidthForTest` over-reserves when the `▾` is hidden. No Rust
+  change: **588 tests, 0 failed, 7 ignored** (unchanged — no Rust change; the raw
+  ignored count is 8 with the pre-existing `pictura-render` doctest).
+  **Capability:** MODIFIES `panel-column`, `application-shell`, `tool-framework`,
+  `workspace-persistence`; **no new capability** → **60** canonical specs after
+  archive. Verified: `cmake --build` clean; both self-tests exit 0 (no-arg 5/5)
+  with all m43 lines `=1` and every earlier m20–m42 line unchanged except the
+  `m41_session` `>=5` schema assertion; `cargo fmt --all --check` and `cargo
+  clippy --workspace --all-targets -- -D warnings` clean; `TASK_ALLOWS_DOCS=1
+  bash scripts/verify-fast.sh` → `verify-fast: OK`; `openspec validate
+  m43-panel-multicolumn --strict` valid and `openspec validate --all --strict`
+  61/61.
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -1183,9 +1257,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: panels program (M43–M46), canvas perf series deferred
+## Next: panels program (M44–M47), canvas perf series deferred
 
-### Panels program (M36–M46) — M36–M41 done; M42 panel refinements done; M43 layer filtering/search next
+### Panels program (M36–M47) — M36–M41 done; M42 panel refinements done; M43 panel multicolumn done; M44 layer filtering/search next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -1204,7 +1278,7 @@ grammar and depth-first topmost-first projection, the path/batch bridge API,
 the `QAbstractItemModel` tree + delegate row anatomy, multi-selection with the
 per-node refusal table, solo visibility, `Tab` rename, Panel Options (session
 schema v3), the panel/row menus, tooltips, and the explicit drag-reorder
-deferral to M44.
+deferral to M45.
 
 **M38 was a user-requested interruption: the full CS6 toolbox icon/cursor
 library and the panel icons** (`openspec/changes/m38-icon-cursor-library`,
@@ -1241,15 +1315,23 @@ brief `docs/dev/m42-panel-refinements.md`, research
 compact flyout, the per-widget header menus, the in-window float overlay, the
 bounded normal-mode width / larger icons, and the menu-bar overlay root cause (a
 duplicate `actionsPanel_`). It is **implemented and independently verified** (see
-the milestone entry above). Because the M40/M41/M42 interruptions claim three
-numbers the Layers-panel program had reserved, that program shifts by **three**:
-**M43** layer filtering/search (the six-dimension filter/search row) is next,
-**M44** remaining management (rasterize/merge/flatten/link/select-similar/
+the milestone entry above). **M43 was a fifth user-requested interruption — panel
+multicolumn** (`openspec/changes/m43-panel-multicolumn`, brief
+`docs/dev/m43-panel-multicolumn.md`): the multi-column host of
+create-on-drop/remove-when-empty columns, tab-vs-group drag and single-panel
+floats, the unified `DropKind`/`resolveDrop` drop targets, the `panelTabBar` tab
+colours, the fixed corner button and actual-geometry inner-side flyout, the
+fixed-width Tools dock, the `D` colour reset, and session **v6**
+(`panelColumns`). It is **implemented and independently verified** (see the
+milestone entry above). Because the M40/M41/M42/M43 interruptions claim four
+numbers the Layers-panel program had reserved, that program shifts by **four**:
+**M44** layer filtering/search (the six-dimension filter/search row) is next,
+**M45** remaining management (rasterize/merge/flatten/link/select-similar/
 convert-background/layer-via-copy-cut, the New Layer/Group dialogs, and the
-deferred drag-reorder with its recorded drop rules), **M45** styles/effects, and
-**M46** smart objects / vector masks / artboards-as-non-goal / layer comps.
+deferred drag-reorder with its recorded drop rules), **M46** styles/effects, and
+**M47** smart objects / vector masks / artboards-as-non-goal / layer comps.
 M36's confirmed ceilings — the `layer_kind` `"background"` name+index heuristic
-and the forced type/shape locks — land in M44, and M37's single-layer grouping
+and the forced type/shape locks — land in M45, and M37's single-layer grouping
 limit was lifted by M39's multi-selection (the `is_background` single source of
 truth and the path/batch selection ops). The pre-shift numbers still stand in
 `docs/dev/layers-panel-program.md`; this file is the up-to-date anchor.
@@ -1257,7 +1339,7 @@ truth and the path/batch selection ops). The pre-shift numbers still stand in
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M46.
+> number; they are deferred until after M47.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -1355,7 +1437,7 @@ no new capability. Next in order:
 
 Deferred canvas-performance tracks (previously sketched as M36–M38; those
 numbers are now claimed by the panels program above, so these are deferred
-until after M46). The remaining canvas-performance tracks — history
+until after M47). The remaining canvas-performance tracks — history
 copy-on-write / tile diffs, resident per-layer GPU source buffers, 256² tiles +
 LoD, plus the GPU-resident zero-copy present — each need their own design (the
 small, app-local region-blit slice landed as M35 above):

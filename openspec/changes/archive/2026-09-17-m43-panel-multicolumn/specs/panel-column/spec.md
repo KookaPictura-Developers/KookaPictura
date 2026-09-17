@@ -1,8 +1,5 @@
-# panel-column Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change m41-panel-column. Update Purpose after archive.
-## Requirements
 ### Requirement: Panel column host
 
 The system SHALL host the right-hand panels in a custom `PanelColumn` widget
@@ -54,101 +51,6 @@ on-screen geometry.
 - **WHEN** the last group leaves a dynamically created column
 - **THEN** the column is removed from the workspace and the document tabs keep
   the stretch
-
-### Requirement: Panel groups and top tabs
-
-Each `PanelGroup` SHALL present its panels in a `QTabWidget` with the tab
-position explicitly set to `QTabWidget::North`, so the tabs render on top of the
-group on every platform and stylesheet. The tab text SHALL be the panel's title,
-there SHALL be no separate group-title label widget, and a group containing a
-single panel SHALL still show that panel's tab.
-
-#### Scenario: Tabs are on top [m41_tabs]
-
-- **WHEN** any group is shown
-- **THEN** its tab position is `QTabWidget::North`
-
-#### Scenario: The tab is the only group chrome [m41_tabs]
-
-- **WHEN** a group's tab bar is inspected
-- **THEN** the group has no title label beyond the tabs, and each tab's text is
-  the panel title
-
-#### Scenario: A single-panel group shows its tab [m41_tabs]
-
-- **WHEN** a group contains exactly one panel
-- **THEN** that panel's tab is shown
-
-### Requirement: Default panel groups
-
-The system SHALL open with the CS6 Essentials groups: `Color | Swatches |
-Styles`; `Adjustments`; `Layers | Channels | Paths`; `Navigator | Histogram |
-Info`; and the iconic `History` and `Actions`. `Styles` SHALL occupy the former
-Gradients/Patterns tab slot, and the Properties content SHALL fold into
-`Adjustments`. The Gradients, Patterns, Properties, and Libraries panels SHALL
-remain registered and reachable from `Window > Panels` but SHALL NOT be in a
-default visible group.
-
-#### Scenario: Default groups match CS6 Essentials [m41_groups]
-
-- **WHEN** the frame starts with a fresh session
-- **THEN** the visible groups are exactly Color/Swatches/Styles, Adjustments,
-  Layers/Channels/Paths, Navigator/Histogram/Info, and iconic History and Actions
-
-#### Scenario: A folded panel stays reachable [m41_groups]
-
-- **WHEN** the `Window > Panels > Properties` toggle is invoked
-- **THEN** the Properties panel can be shown even though it is not in a default
-  visible group
-
-### Requirement: Panel registry and content widgets
-
-Each panel SHALL be a plain `QWidget` content widget with a stable `objectName`
-and SHALL be registered in a frame-owned registry mapping the panel to its
-title, icon asset id, group id, visibility, iconic state, minimized state, and
-order. The `objectName`, `setView`, `refresh`, and existing test hooks of every
-panel SHALL be preserved where possible. The `Window > Panels` toggles SHALL
-remain the single command path for panel visibility and SHALL reflect and drive
-the registry.
-
-#### Scenario: Panels are content widgets [m41_tabs]
-
-- **WHEN** a panel object is queried
-- **THEN** it is a `QWidget` content widget with its documented `objectName` and
-  is not a `QDockWidget`
-
-#### Scenario: The Window menu drives the registry [m41_groups]
-
-- **WHEN** a `Window > Panels` toggle is invoked
-- **THEN** the panel's registry visibility changes and the column reflects it
-
-### Requirement: Column width toggle
-
-The top of the column SHALL carry one thin width-toggle control with
-`objectName` `panelColumnToggle` that switches the whole column between `normal`
-and `iconic` modes, using the same visual language as the Tools panel's
-`toolsColumnToggle`. Switching to `iconic` SHALL set the column to the smallest
-width that shows the icon strip rather than keeping the prior splitter width,
-and switching back to `normal` SHALL restore the normal-mode width. The control
-SHALL replace the M24 `PanelRail` far-right toolbar.
-
-#### Scenario: The toggle switches modes [m41_iconic]
-
-- **WHEN** the column width toggle is activated
-- **THEN** the column switches from `normal` to `iconic` and back, and the
-  control's state reflects the current mode
-
-#### Scenario: Switching to iconic uses the smallest width [m42_iconic]
-
-- **WHEN** the column is wide in `normal` mode and the toggle switches it to
-  `iconic`
-- **THEN** the column collapses to the smallest width that shows the icon strip
-  and does not keep the prior splitter width
-
-#### Scenario: The toggle replaces the rail [m41_rail]
-
-- **WHEN** the frame is built
-- **THEN** there is no `PanelRail` and no far-right panel rail toolbar
 
 ### Requirement: Compact and iconic mode
 
@@ -217,55 +119,6 @@ coordinate, so the flyout can never cross to the outer side of the column.
 
 - **WHEN** a popup flyout is open and the user clicks outside it
 - **THEN** the flyout closes
-
-### Requirement: Panel tab context menu
-
-Right-clicking a group's tab bar SHALL show exactly, in order, `Close`,
-`Close Panel Group`, `Minimize`, `Collapse to Icons`, `Auto-Collapse Iconic
-Panels` (checkable), `Auto-Show Hidden Panels` (checkable), and
-`Interface Options…`. The two checkable items SHALL persist in the session.
-`Interface Options…` SHALL open the Preferences dialog on its Interface pane.
-An action that cannot apply SHALL be disabled rather than shown as an inert
-stub.
-
-#### Scenario: The tab menu has exactly the seven items [m41_menu]
-
-- **WHEN** a group's tab bar is right-clicked
-- **THEN** the menu contains exactly the seven named items in order
-
-#### Scenario: The checkable items persist [m41_session]
-
-- **WHEN** `Auto-Collapse Iconic Panels` is toggled and the session is saved and
-  reloaded
-- **THEN** the setting is restored
-
-#### Scenario: Interface Options opens the Interface pane [m41_prefs]
-
-- **WHEN** `Interface Options…` is chosen
-- **THEN** the Preferences dialog opens on the Interface pane
-
-### Requirement: Minimize and collapse to icons
-
-`Minimize` SHALL roll a group up so only its tab bar remains visible with the
-content hidden. `Collapse to Icons` SHALL reduce the group to its iconic
-representation. The two actions SHALL be distinct and SHALL persist their state
-per group in the session.
-
-#### Scenario: Minimize hides the content [m41_minimize]
-
-- **WHEN** `Minimize` is chosen for a group
-- **THEN** the group shows only its tab bar and its content is hidden
-
-#### Scenario: Collapse to icons is distinct from minimize [m41_iconic]
-
-- **WHEN** `Collapse to Icons` is chosen for a group
-- **THEN** the group is represented iconically rather than rolled up to its tab
-  bar
-
-#### Scenario: The minimized state persists [m41_session]
-
-- **WHEN** a group is minimized, the session is saved, and the store is reloaded
-- **THEN** the group is still minimized
 
 ### Requirement: Panel drag and drop rules
 
@@ -346,6 +199,40 @@ is cancelled. The M41/M42 indicator look SHALL be kept.
 - **WHEN** a drag hovers beyond the workspace edge on a side
 - **THEN** the blue indicator marks the new-column position on that side
 
+### Requirement: Floating panel overlay
+
+A torn-off panel or group SHALL float as a child overlay inside the main window,
+not as an operating-system top-level window. The overlay SHALL move with its tab
+bar within the main window, SHALL be clipped to the main window's bounds so it
+cannot be dragged outside them, SHALL render above the columns and the canvas,
+and SHALL re-dock into the panel column when dropped back on it. A single-panel
+float SHALL hold only its one panel and a group float its group; the float's own
+tab bar SHALL route a tab drag to a one-panel move and its empty header to a
+group move. The overlay SHALL NOT appear as its own window in the window manager
+or task list.
+
+#### Scenario: A torn-off group is an in-window overlay [m42_float_overlay]
+
+- **WHEN** a group is torn off the column
+- **THEN** it floats as a child overlay inside the main window and does not open
+  a separate operating-system window
+
+#### Scenario: The overlay is clipped to the main window [m42_float_overlay]
+
+- **WHEN** the floating overlay is dragged toward the main window's edge
+- **THEN** it stays within the main window's bounds and is not drawn outside it
+
+#### Scenario: The overlay re-docks on drop [m42_float_overlay]
+
+- **WHEN** the floating overlay is dropped back on the column
+- **THEN** the group re-docks into the column and the overlay disappears
+
+#### Scenario: A one-panel float carries only its panel [m43_singlefloat]
+
+- **WHEN** a tab drag tears off one panel
+- **THEN** the float contains that panel only, and re-docking it restores the
+  group with the other panels
+
 ### Requirement: Panel column session state
 
 The session store SHALL advance to schema version 6 and SHALL persist the
@@ -384,123 +271,7 @@ preserve unknown keys and the version-4 `toolsColumns` and
 - **THEN** the workspace shows one right-hand column containing those groups and
   the existing keys are preserved
 
-### Requirement: Preferences dialog
-
-The system SHALL provide a Preferences dialog with `General` and `Interface`
-panes, reachable from the tab menu's `Interface Options…` and, when the command
-tree's `Edit > Preferences > General` leaf is implemented, from
-`Edit → Preferences…`. The Interface pane SHALL expose `Use Shift Key For Tool
-Switch`, `Auto-Collapse Iconic Panels`, and the column width-toggle default;
-applying a change SHALL persist it and apply it to the toolbox and column
-without a restart. The remaining CS6 preference panes SHALL stay disabled and
-unimplemented.
-
-#### Scenario: The Interface pane carries the preferences [m41_prefs]
-
-- **WHEN** the Preferences dialog is opened on the Interface pane
-- **THEN** it shows `Use Shift Key For Tool Switch`, `Auto-Collapse Iconic
-  Panels`, and the column width-toggle default
-
-#### Scenario: A preference round-trips and applies [m41_prefs]
-
-- **WHEN** `Use Shift Key For Tool Switch` is toggled off in the dialog and the
-  session is saved and reloaded
-- **THEN** the toolbox honours the off value and the store reads it back
-
-#### Scenario: Unimplemented panes stay disabled [m41_prefs]
-
-- **WHEN** the Preferences dialog is shown
-- **THEN** only the General and Interface panes are enabled
-
-### Requirement: Iconic strip drag and reorder
-
-The iconic strip SHALL support dragging a panel icon to reorder it within the
-strip, and SHALL support dropping a dragged icon onto the normal-mode group
-stack to move the panel into the target group. The strip drag SHALL reuse the
-`PanelColumn` drag machinery used by tabs and groups rather than a second drag
-system, and a strip reorder SHALL persist through the existing per-group panel
-order.
-
-#### Scenario: Dragging a strip icon reorders it [m42_dragstrip]
-
-- **WHEN** a panel icon in the iconic strip is dragged to another position in
-  the strip
-- **THEN** the strip and the stored panel order reflect the new order
-
-#### Scenario: Dropping a strip icon on the group stack moves the panel [m42_dragstrip]
-
-- **WHEN** a panel icon is dragged from the strip onto a normal-mode group's tab
-  bar or the space between groups
-- **THEN** the panel moves into that group, and the column returns to displaying
-  the group stack
-
-### Requirement: Floating panel overlay
-
-A torn-off panel or group SHALL float as a child overlay inside the main window,
-not as an operating-system top-level window. The overlay SHALL move with its tab
-bar within the main window, SHALL be clipped to the main window's bounds so it
-cannot be dragged outside them, SHALL render above the columns and the canvas,
-and SHALL re-dock into the panel column when dropped back on it. A single-panel
-float SHALL hold only its one panel and a group float its group; the float's own
-tab bar SHALL route a tab drag to a one-panel move and its empty header to a
-group move. The overlay SHALL NOT appear as its own window in the window manager
-or task list.
-
-#### Scenario: A torn-off group is an in-window overlay [m42_float_overlay]
-
-- **WHEN** a group is torn off the column
-- **THEN** it floats as a child overlay inside the main window and does not open
-  a separate operating-system window
-
-#### Scenario: The overlay is clipped to the main window [m42_float_overlay]
-
-- **WHEN** the floating overlay is dragged toward the main window's edge
-- **THEN** it stays within the main window's bounds and is not drawn outside it
-
-#### Scenario: The overlay re-docks on drop [m42_float_overlay]
-
-- **WHEN** the floating overlay is dropped back on the column
-- **THEN** the group re-docks into the column and the overlay disappears
-
-#### Scenario: A one-panel float carries only its panel [m43_singlefloat]
-
-- **WHEN** a tab drag tears off one panel
-- **THEN** the float contains that panel only, and re-docking it restores the
-  group with the other panels
-
-### Requirement: Per-widget panel header action menu
-
-Each panel group's tab header SHALL carry a context-action button at its far
-right. Activating it SHALL show the menu of the panel that is current in the
-group, so the menu is per-widget rather than per-group. Each menu SHALL contain
-that panel's researched CS6 entries as recorded in `docs/dev/m42-panel-menus.md`,
-in a stable order. An entry that is not implemented SHALL be shown disabled with
-the tooltip `<label> — not implemented yet` and SHALL NOT fake behaviour. `Close`
-and `Close Panel Group` SHALL NOT appear in the per-widget menu; they remain on
-the tab context menu. The Layers panel's `Panel Options…` entry SHALL open the
-existing Panel Options behaviour.
-
-#### Scenario: The header button shows the current panel's menu [m42_widgetmenu]
-
-- **WHEN** the tab-header action button is activated for a group whose current
-  panel is Layers
-- **THEN** the Layers per-widget menu is shown
-
-#### Scenario: Unimplemented entries are disabled with a tooltip [m42_widgetmenu]
-
-- **WHEN** a per-widget menu contains an entry whose feature is not implemented
-- **THEN** that entry is disabled and its tooltip is
-  `<label> — not implemented yet`
-
-#### Scenario: Close entries stay off the per-widget menu [m42_widgetmenu]
-
-- **WHEN** a per-widget menu is shown
-- **THEN** it contains neither `Close` nor `Close Panel Group`
-
-#### Scenario: Layers Panel Options still opens [m42_widgetmenu]
-
-- **WHEN** `Panel Options…` is chosen from the Layers per-widget menu
-- **THEN** the existing Layers Panel Options behaviour runs
+## ADDED Requirements
 
 ### Requirement: Multi-column drop targets
 
@@ -595,4 +366,3 @@ outside the group header at the minimum width.
 
 - **WHEN** the group's available tab-bar width is less than the tab text needs
 - **THEN** the tab text elides and the corner button remains visible
-

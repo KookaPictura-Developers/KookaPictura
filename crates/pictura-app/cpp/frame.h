@@ -2,17 +2,20 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QList>
+#include <QtCore/QPoint>
 #include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtGui/QColor>
 #include <QtWidgets/QMainWindow>
 
+#include "panels/panel_column.h"
 #include "tools.h"
 
 class QDockWidget;
 class QLabel;
 class QListWidget;
+class QSplitter;
 class QTabWidget;
 class QTimer;
 class QWidget;
@@ -58,6 +61,29 @@ public:
     const QSet<QString>& panelObjectNames() const { return panelNames_; }
     PanelColumn* panelColumn() const { return panelColumn_; }
     PreferencesDialog* preferencesDialog() const { return preferencesDialog_; }
+
+    // M43 multi-column host. Columns live in the central splitter around the
+    // document tabs; a column's side is its splitter order relative to the
+    // tabs, never its geometry.
+    PanelColumn* createPanelColumn(PanelSide side);
+    void removeColumnIfEmpty(PanelColumn* column);
+    PanelSide sideOf(const PanelColumn* column) const;
+    int columnCount() const;
+    QList<PanelColumn*> panelColumns() const;
+    PanelColumn* columnForPanel(const QString& objectName) const;
+    PanelColumn* columnAtGlobal(const QPoint& globalPos) const;
+    // -1 = not a new-column candidate, 0 = left, 1 = right.
+    int newColumnSideAt(const QPoint& globalPos) const;
+
+    // M43 Phase B test hooks. All drive the same resolve/commit drag path.
+    int panelColumnCountForTest() const { return columnCount(); }
+    QString panelColumnSideForTest(int index) const;
+    bool newColumnDropForTest(const QString& panelName, const QString& side);
+    bool dropIntoGroupForTest(const QString& panelName, const QString& targetPanel, int index = 1);
+    bool dropBoundaryForTest(const QString& panelName, const QString& targetPanel, bool above);
+    // M43 Phase C test hook: re-runs the real startup restore path so a saved
+    // layout can be applied and re-applied without a second frame.
+    void applyPanelSessionForTest(const SessionState& state) { applyPanelSession(state); }
 
     // Bumped when the chrome layout changes shape (M42 removed the old dock
     // set); a persisted layout from another revision is discarded on restore so
@@ -137,6 +163,9 @@ private:
     void buildStatusBar();
     void registerHandlers();
     void applyPanelSession(const SessionState& state);
+    void wirePanelColumn(PanelColumn* column);
+    void clearDynamicColumns();
+    void reapplyColumnStretch();
     void showPreferences(const QString& page);
     void retargetDock();
     void refreshPanels();
@@ -151,6 +180,7 @@ private:
 
     QList<DocEntry> docs_;
     QTabWidget* tabs_ = nullptr;
+    QSplitter* centerSplitter_ = nullptr;
     QTimer* panelRefreshTimer_ = nullptr;
     CommandRegistry* registry_ = nullptr;
     LayersPanel* layersPanel_ = nullptr;
@@ -192,6 +222,7 @@ private:
     ScreenMode screenMode_ = ScreenMode::Standard;
     int canvasColorIndex_ = 0;
     bool panelsHidden_ = false;
+    bool restoringPanelSession_ = false;
 };
 
 } // namespace pictura

@@ -25,6 +25,10 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include <QtCore/QFileInfo>
+#include <QtCore/QCoreApplication>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonObject>
+#include <QtCore/QRect>
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QTimer>
 #include <QtGui/QAction>
@@ -68,20 +72,24 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
     tabs_ = new QTabWidget(this);
+    tabs_->setObjectName(QStringLiteral("documentTabs"));
+    tabs_->tabBar()->setObjectName(QStringLiteral("documentTabBar"));
     tabs_->setTabsClosable(true);
     tabs_->setMovable(true);
     tabs_->setDocumentMode(true);
 
-    // The document area and the right-hand PanelColumn share the central
-    // widget through a splitter; the column is the only host for the panels.
+    // The document area and the panel columns share the central widget through
+    // a splitter; the columns are the only host for the panels. M43: the
+    // splitter is an ordered set of left columns, the document tabs, then right
+    // columns, with the tabs keeping the stretch.
     panelColumn_ = new PanelColumn(this);
-    auto* centerSplitter = new QSplitter(Qt::Horizontal, this);
-    centerSplitter->setObjectName(QStringLiteral("centerSplitter"));
-    centerSplitter->addWidget(tabs_);
-    centerSplitter->addWidget(panelColumn_);
-    centerSplitter->setStretchFactor(0, 1);
-    centerSplitter->setStretchFactor(1, 0);
-    setCentralWidget(centerSplitter);
+    centerSplitter_ = new QSplitter(Qt::Horizontal, this);
+    centerSplitter_->setObjectName(QStringLiteral("centerSplitter"));
+    centerSplitter_->addWidget(tabs_);
+    centerSplitter_->addWidget(panelColumn_);
+    centerSplitter_->setStretchFactor(0, 1);
+    centerSplitter_->setStretchFactor(1, 0);
+    setCentralWidget(centerSplitter_);
     setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
 
     registry_ = new CommandRegistry(this);
@@ -107,9 +115,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     applyPanelSession(state);
     // Persist every column change through the same path as the Window toggles,
     // and route the tab menu's `Interface Options…` to the Interface pane.
-    connect(panelColumn_, &PanelColumn::stateChanged, this, [this]() { saveSession(); });
-    connect(panelColumn_, &PanelColumn::interfaceOptionsRequested, this,
-            [this]() { showPreferences(PreferencesDialog::kInterface); });
+    wirePanelColumn(panelColumn_);
     if (!state.layout.isEmpty()) {
         restoreStoredLayout(state.layout, state.layoutRevision);
     }
@@ -530,8 +536,8 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         if (toolsDock_) {
             toolsDock_->setVisible(visible);
         }
-        if (panelColumn_) {
-            panelColumn_->setVisible(visible);
+        for (PanelColumn* column : panelColumns()) {
+            column->setVisible(visible);
         }
     };
     switch (mode) {
@@ -588,8 +594,8 @@ void PicturaMainWindow::setPanelsHidden(bool hidden)
     if (toolsDock_) {
         toolsDock_->setVisible(!hidden);
     }
-    if (panelColumn_) {
-        panelColumn_->setVisible(!hidden);
+    for (PanelColumn* column : panelColumns()) {
+        column->setVisible(!hidden);
     }
 }
 
@@ -673,6 +679,11 @@ void PicturaMainWindow::updateWindowTitle()
 
 void PicturaMainWindow::saveSession()
 {
+    // A session restore rebuilds the columns from the store; re-saving mid
+    // rebuild would persist a partial layout.
+    if (restoringPanelSession_) {
+        return;
+    }
     SessionState state = pictura::loadSession();
     state.layout = saveState();
     state.layoutRevision = kLayoutRevision;
@@ -690,9 +701,23 @@ void PicturaMainWindow::saveSession()
         }
         state.autoCollapseIconic = panelColumn_->autoCollapseIconic();
         state.autoShowHidden = panelColumn_->autoShowHidden();
+        // Legacy flat mirror of the primary column kept for older stores.
         state.panelGroups = panelColumn_->savePanelState();
     }
-    state.schemaVersion = 5;
+    // v6: the ordered per-column layout, in central-splitter order.
+    QJsonArray columns;
+    int order = 0;
+    for (PanelColumn* column : panelColumns()) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("side"),
+                     sideOf(column) == PanelSide::Left ? QStringLiteral("left")
+                                                       : QStringLiteral("right"));
+        entry.insert(QStringLiteral("order"), order++);
+        entry.insert(QStringLiteral("groups"), column->savePanelState());
+        columns.append(entry);
+    }
+    state.panelColumns = columns;
+    state.schemaVersion = 6;
     state.recent = recent_;
     pictura::saveSession(state);
 }
@@ -705,19 +730,391 @@ bool PicturaMainWindow::restoreStoredLayout(const QByteArray& layout, int revisi
     return restoreState(layout);
 }
 
+void PicturaMainWindow::wirePanelColumn(PanelColumn* column)
+{
+    if (!column) {
+        return;
+    }
+    connect(column, &PanelColumn::stateChanged, this, [this]() { saveSession(); });
+    connect(column, &PanelColumn::interfaceOptionsRequested, this,
+            [this]() { showPreferences(PreferencesDialog::kInterface); });
+}
+
+void PicturaMainWindow::reapplyColumnStretch()
+{
+    if (!centerSplitter_ || !tabs_) {
+        return;
+    }
+    for (int i = 0; i < centerSplitter_->count(); ++i) {
+        centerSplitter_->setStretchFactor(i, centerSplitter_->widget(i) == tabs_ ? 1 : 0);
+    }
+}
+
+QList<PanelColumn*> PicturaMainWindow::panelColumns() const
+{
+    QList<PanelColumn*> out;
+    if (!centerSplitter_) {
+        return out;
+    }
+    for (int i = 0; i < centerSplitter_->count(); ++i) {
+        if (auto* column = qobject_cast<PanelColumn*>(centerSplitter_->widget(i))) {
+            out << column;
+        }
+    }
+    return out;
+}
+
+int PicturaMainWindow::columnCount() const
+{
+    return panelColumns().size();
+}
+
+PanelSide PicturaMainWindow::sideOf(const PanelColumn* column) const
+{
+    if (!column || !centerSplitter_ || !tabs_) {
+        return PanelSide::Right;
+    }
+    const int tabsIndex = centerSplitter_->indexOf(tabs_);
+    const int index = centerSplitter_->indexOf(const_cast<PanelColumn*>(column));
+    return index >= 0 && index < tabsIndex ? PanelSide::Left : PanelSide::Right;
+}
+
+PanelColumn* PicturaMainWindow::createPanelColumn(PanelSide side)
+{
+    if (!centerSplitter_) {
+        return nullptr;
+    }
+    auto* column = new PanelColumn(this);
+    column->setDynamic(true);
+    wirePanelColumn(column);
+    const int insertAt = side == PanelSide::Left ? 0 : centerSplitter_->count();
+    centerSplitter_->insertWidget(insertAt, column);
+    reapplyColumnStretch();
+    column->setVisible(!panelsHidden_);
+    return column;
+}
+
+void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
+{
+    // Only drop-created columns disappear; the primary column keeps its place
+    // even when every group is closed.
+    if (!column || column == panelColumn_ || !column->isDynamic()) {
+        return;
+    }
+    if (!column->groups().isEmpty()) {
+        return;
+    }
+    column->hide();
+    column->setParent(nullptr);
+    column->deleteLater();
+    reapplyColumnStretch();
+    saveSession();
+}
+
+PanelColumn* PicturaMainWindow::columnForPanel(const QString& objectName) const
+{
+    for (PanelColumn* column : panelColumns()) {
+        if (column->groupForPanel(objectName)) {
+            return column;
+        }
+    }
+    return nullptr;
+}
+
+PanelColumn* PicturaMainWindow::columnAtGlobal(const QPoint& globalPos) const
+{
+    for (PanelColumn* column : panelColumns()) {
+        if (column->isVisible()
+            && QRect(column->mapToGlobal(QPoint(0, 0)), column->size()).contains(globalPos)) {
+            return column;
+        }
+    }
+    return nullptr;
+}
+
+int PicturaMainWindow::newColumnSideAt(const QPoint& globalPos) const
+{
+    // Dropping over the Tools dock allocates a column on the dock's side.
+    if (toolsDock_ && toolsDock_->isVisible()) {
+        const QRect dockRect(toolsDock_->mapToGlobal(QPoint(0, 0)), toolsDock_->size());
+        if (dockRect.contains(globalPos)) {
+            return toolsArea_ == Qt::LeftDockWidgetArea ? 0 : 1;
+        }
+    }
+    QWidget* central = centralWidget();
+    if (!central) {
+        return -1;
+    }
+    // ponytail: chosen constant band at the central area's outer edges, not a
+    // sourced CS6 metric. A screenshot can retune it.
+    constexpr int kNewColumnMargin = 28;
+    const int left = central->mapToGlobal(QPoint(0, 0)).x();
+    const int right = left + central->width();
+    if (globalPos.x() < left + kNewColumnMargin) {
+        return 0;
+    }
+    if (globalPos.x() > right - kNewColumnMargin) {
+        return 1;
+    }
+    return -1;
+}
+
+QString PicturaMainWindow::panelColumnSideForTest(int index) const
+{
+    const QList<PanelColumn*> columns = panelColumns();
+    if (index < 0 || index >= columns.size()) {
+        return QString();
+    }
+    return sideOf(columns.at(index)) == PanelSide::Left ? QStringLiteral("left")
+                                                        : QStringLiteral("right");
+}
+
+bool PicturaMainWindow::newColumnDropForTest(const QString& panelName, const QString& side)
+{
+    PanelColumn* source = columnForPanel(panelName);
+    if (!source || !centralWidget()) {
+        return false;
+    }
+    const int before = columnCount();
+    const QRect central(centralWidget()->mapToGlobal(QPoint(0, 0)), centralWidget()->size());
+    QPoint point;
+    int expected = -1;
+    if (side == QStringLiteral("left")) {
+        point = QPoint(central.left() + 2, central.center().y());
+        expected = 0;
+    } else if (side == QStringLiteral("right")) {
+        point = QPoint(central.right() - 2, central.center().y());
+        expected = 1;
+    } else if (side == QStringLiteral("tools")) {
+        if (!toolsDock_ || !toolsDock_->isVisible()) {
+            return false;
+        }
+        point = toolsDock_->mapToGlobal(toolsDock_->rect().center());
+        expected = toolsArea_ == Qt::LeftDockWidgetArea ? 0 : 1;
+    } else {
+        return false;
+    }
+    if (!source->beginTabDragForTest(panelName)) {
+        return false;
+    }
+    source->dragToForTest(point);
+    const bool dropped = source->dropForTest(point);
+    QCoreApplication::processEvents();
+    PanelColumn* destination = columnForPanel(panelName);
+    if (!dropped || !destination || destination == source) {
+        return false;
+    }
+    if (columnCount() != before + 1) {
+        return false;
+    }
+    const PanelSide want = expected == 0 ? PanelSide::Left : PanelSide::Right;
+    return sideOf(destination) == want;
+}
+
+bool PicturaMainWindow::dropIntoGroupForTest(const QString& panelName, const QString& targetPanel,
+                                             int index)
+{
+    PanelColumn* source = columnForPanel(panelName);
+    PanelColumn* destination = columnForPanel(targetPanel);
+    if (!source || !destination) {
+        return false;
+    }
+    PanelGroup* targetGroup = destination->groupForPanel(targetPanel);
+    if (!targetGroup) {
+        return false;
+    }
+    QPoint point;
+    if (destination->railMode()) {
+        point = destination->stripEntryPointForTest(targetPanel, 0);
+    } else {
+        destination->ensureGroupVisibleForTest(targetPanel);
+        for (int i = 0; i < 4; ++i) {
+            QCoreApplication::processEvents();
+        }
+        const int at = index < 0 ? targetGroup->titleCountForTest()
+                                 : qMin(index, targetGroup->titleCountForTest());
+        point = targetGroup->tabInsertionGlobalPointForTest(at);
+    }
+    if (point.isNull() || !source->beginTabDragForTest(panelName)) {
+        return false;
+    }
+    source->dragToForTest(point);
+    const bool dropped = source->dropForTest(point);
+    for (int i = 0; i < 4; ++i) {
+        QCoreApplication::processEvents();
+    }
+    PanelColumn* owner = columnForPanel(panelName);
+    return dropped && owner && owner->groupForPanel(panelName) == targetGroup;
+}
+
+bool PicturaMainWindow::dropBoundaryForTest(const QString& panelName, const QString& targetPanel,
+                                            bool above)
+{
+    PanelColumn* source = columnForPanel(panelName);
+    PanelColumn* destination = columnForPanel(targetPanel);
+    if (!source || !destination) {
+        return false;
+    }
+    PanelGroup* targetGroup = destination->groupForPanel(targetPanel);
+    if (!targetGroup) {
+        return false;
+    }
+    QPoint point;
+    if (destination->railMode()) {
+        point = destination->stripEntryPointForTest(targetPanel, above ? 1 : 2);
+    } else {
+        destination->ensureGroupVisibleForTest(targetPanel);
+        for (int i = 0; i < 4; ++i) {
+            QCoreApplication::processEvents();
+        }
+        const QRect groupRect(targetGroup->mapToGlobal(QPoint(0, 0)), targetGroup->size());
+        // Stay clear of the tab bar so the drop resolves the group's top/bottom
+        // half, not a tab insertion.
+        const int barBottom = targetGroup->tabBarGlobalRect().bottom();
+        const int top = qMax(groupRect.top(), barBottom + 1);
+        const int height = qMax(1, groupRect.bottom() - top);
+        point = QPoint(groupRect.center().x(),
+                       above ? top + height / 4 : top + (height * 3) / 4);
+    }
+    PanelGroup* original = source->groupForPanel(panelName);
+    if (point.isNull() || !source->beginTabDragForTest(panelName)) {
+        return false;
+    }
+    source->dragToForTest(point);
+    const bool dropped = source->dropForTest(point);
+    for (int i = 0; i < 4; ++i) {
+        QCoreApplication::processEvents();
+    }
+    // A panel boundary drop leaves the panel alone in a fresh group.
+    PanelColumn* owner = columnForPanel(panelName);
+    PanelGroup* landed = owner ? owner->groupForPanel(panelName) : nullptr;
+    return dropped && landed && landed != original && landed->titleCountForTest() == 1;
+}
+
+void PicturaMainWindow::clearDynamicColumns()
+{
+    // Move every drop-created column's groups back into the primary column and
+    // delete the column, without the `removeColumnIfEmpty` save side effect.
+    const QList<PanelColumn*> columns = panelColumns();
+    for (PanelColumn* column : columns) {
+        if (!column || column == panelColumn_) {
+            continue;
+        }
+        const QList<PanelGroup*> groups = column->groups();
+        for (PanelGroup* group : groups) {
+            if (!group) {
+                continue;
+            }
+            if (PanelGroup* taken = column->takeGroup(group->objectName())) {
+                panelColumn_->addGroup(taken);
+            }
+        }
+        column->hide();
+        column->setParent(nullptr);
+        column->deleteLater();
+    }
+    reapplyColumnStretch();
+}
+
 void PicturaMainWindow::applyPanelSession(const SessionState& state)
 {
     if (!panelColumn_) {
         return;
     }
-    panelColumn_->setAutoCollapseIconic(state.autoCollapseIconic);
-    panelColumn_->setAutoShowHidden(state.autoShowHidden);
-    panelColumn_->restorePanelState(state.panelGroups);
+    restoringPanelSession_ = true;
+    clearDynamicColumns();
+
+    // Order the stored columns by `order` (a stable selection sort: the list is
+    // at most a handful of entries).
+    QList<QJsonObject> entries;
+    for (const QJsonValue& value : state.panelColumns) {
+        if (value.isObject()) {
+            entries.append(value.toObject());
+        }
+    }
+    for (int i = 0; i < entries.size(); ++i) {
+        for (int j = i + 1; j < entries.size(); ++j) {
+            if (entries.at(j).value(QStringLiteral("order")).toInt()
+                < entries.at(i).value(QStringLiteral("order")).toInt()) {
+                entries.swapItemsAt(i, j);
+            }
+        }
+    }
+
+    // The primary column is the first stored right-hand column; its groups stay
+    // in `panelColumn_`. Every other stored column adopts its groups from the
+    // current column stack. A column whose groups are all unknown is skipped.
+    int primary = -1;
+    QList<int> leftIndices;
+    QList<int> rightIndices;
+    for (int i = 0; i < entries.size(); ++i) {
+        if (entries.at(i).value(QStringLiteral("side")).toString()
+            == QStringLiteral("left")) {
+            leftIndices.append(i);
+        } else {
+            rightIndices.append(i);
+        }
+    }
+    if (!rightIndices.isEmpty()) {
+        primary = rightIndices.first();
+    }
+
+    auto buildColumn = [this](const QJsonObject& entry, PanelSide side) {
+        const QJsonArray groups = entry.value(QStringLiteral("groups")).toArray();
+        QList<PanelGroup*> moved;
+        for (const QJsonValue& value : groups) {
+            const QString name =
+                value.toObject().value(QStringLiteral("name")).toString();
+            if (PanelGroup* group = panelColumn_->takeGroup(name)) {
+                moved.append(group);
+            }
+        }
+        if (moved.isEmpty()) {
+            return;
+        }
+        PanelColumn* column = createPanelColumn(side);
+        if (!column) {
+            for (PanelGroup* group : moved) {
+                panelColumn_->addGroup(group);
+            }
+            return;
+        }
+        for (PanelGroup* group : moved) {
+            column->addGroup(group);
+        }
+        column->restorePanelState(groups);
+    };
+
+    if (entries.isEmpty()) {
+        // No v6 layout (or an explicit empty one): keep the legacy behaviour.
+        panelColumn_->restorePanelState(state.panelGroups);
+    } else {
+        // Left columns are inserted at the splitter head, so adopt them
+        // outermost-first to preserve their left-to-right order.
+        for (int k = leftIndices.size() - 1; k >= 0; --k) {
+            buildColumn(entries.at(leftIndices.at(k)), PanelSide::Left);
+        }
+        for (int i = 0; i < rightIndices.size(); ++i) {
+            if (rightIndices.at(i) != primary) {
+                buildColumn(entries.at(rightIndices.at(i)), PanelSide::Right);
+            }
+        }
+        if (primary >= 0) {
+            panelColumn_->restorePanelState(
+                entries.at(primary).value(QStringLiteral("groups")).toArray());
+        }
+    }
+
     const bool iconic = state.panelRailMode == QStringLiteral("iconic");
-    panelColumn_->setRailMode(iconic);
+    for (PanelColumn* column : panelColumns()) {
+        column->setAutoCollapseIconic(state.autoCollapseIconic);
+        column->setAutoShowHidden(state.autoShowHidden);
+        column->setRailMode(iconic);
+    }
     if (!iconic) {
         panelColumn_->setPreferredWidth(state.railWidth);
     }
+    restoringPanelSession_ = false;
 }
 
 void PicturaMainWindow::showPreferences(const QString& page)
@@ -1055,6 +1452,15 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
             [this]() {
                 if (toolbox_) {
                     toolbox_->swapForegroundBackground();
+                }
+            });
+
+    // M43: `D` resets fg/bg to the CS6 defaults (black/white). `D` is also
+    // unassigned in the tool letter catalogue (see tools.cpp `kToolTable`).
+    connect(new QShortcut(QKeySequence(Qt::Key_D), this), &QShortcut::activated, this,
+            [this]() {
+                if (toolbox_) {
+                    toolbox_->resetForegroundBackground();
                 }
             });
 
@@ -1471,12 +1877,20 @@ void PicturaMainWindow::registerHandlers()
         const QString panel = QString::fromLatin1(toggle.panel);
         registry_->setHandler(command, [this, command, panel]() {
             QAction* action = registry_->action(command);
-            if (panelColumn_ && action) {
-                panelColumn_->showPanel(panel, action->isChecked());
+            PanelColumn* owner = columnForPanel(panel);
+            if (!owner) {
+                owner = panelColumn_;
+            }
+            if (owner && action) {
+                owner->showPanel(panel, action->isChecked());
             }
         });
         registry_->setCheckedProvider(command, [this, panel]() {
-            return panelColumn_ && panelColumn_->isPanelVisible(panel);
+            PanelColumn* owner = columnForPanel(panel);
+            if (!owner) {
+                owner = panelColumn_;
+            }
+            return owner && owner->isPanelVisible(panel);
         });
     }
 

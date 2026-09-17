@@ -53,9 +53,11 @@ the slot and screen-mode icons at a larger pixmap size than the M40 20×20 pass.
 The panel SHALL keep the foreground/background colour control and the screen-mode
 control pinned below the slots. The foreground/background control SHALL provide,
 besides the two swatches and the default-colour (X) reset, a swap control (a
-double-headed arrow) that exchanges the foreground and background colours, and
-the `X` key SHALL swap them when no tool shortcut claims it. The implemented tool
-set and the active-tool contract SHALL be unchanged.
+double-headed arrow) that exchanges the foreground and background colours, the
+`X` key SHALL swap them when no tool shortcut claims it, and the `D` key SHALL
+reset them to the default colours (black foreground, white background) when no
+tool shortcut claims it. The implemented tool set and the active-tool contract
+SHALL be unchanged.
 
 #### Scenario: Tools panel reflects the active tool [m23_toolbox]
 
@@ -97,6 +99,11 @@ set and the active-tool contract SHALL be unchanged.
 
 - **WHEN** `X` is pressed while no tool shortcut claims it
 - **THEN** the foreground and background colours are exchanged
+
+#### Scenario: The D key resets the colours [m43_dreset]
+
+- **WHEN** `D` is pressed while no tool shortcut claims it
+- **THEN** the foreground colour is black and the background colour is white
 
 #### Scenario: Screen-mode control [m23_toolbox]
 
@@ -154,11 +161,15 @@ widths SHALL fit the slot buttons plus the foreground/background control rather
 than a fixed constant, so the foreground/background control fits within the
 current column width and never widens it. Each width SHALL be the tight content
 width plus only the body layout's margins, so the dock carries no extra
-horizontal space in either mode. The chosen column count SHALL persist in the
-session store at schema version 4 and SHALL load as one column when the store is
-missing, older, or the value is out of range. The foreground/background control
-and the screen-mode control SHALL remain below the slots in both layouts. A
-missing column icon SHALL fall back to a text arrow rather than fail.
+horizontal space in either mode. Each width SHALL be fixed: the dock's minimum
+and maximum width SHALL both equal its content width for the active column count,
+recomputed when the column count changes and while the dock is floating, and
+dragging the dock separator SHALL NOT resize it. The chosen column count SHALL
+persist in the session store at schema version 4 and SHALL load as one column
+when the store is missing, older, or the value is out of range. The
+foreground/background control and the screen-mode control SHALL remain below the
+slots in both layouts. A missing column icon SHALL fall back to a text arrow
+rather than fail.
 
 #### Scenario: The double-arrow toggles to two columns and back [m41_tools]
 
@@ -182,6 +193,12 @@ missing column icon SHALL fall back to a text arrow rather than fail.
 - **WHEN** the dock's actual width is compared with the content width in either
   one- or two-column mode
 - **THEN** the difference is only the body layout's margins
+
+#### Scenario: The width is fixed [m43_tools]
+
+- **WHEN** the Tools panel's minimum and maximum widths are queried in one- or
+  two-column mode
+- **THEN** both equal the content width for that mode
 
 #### Scenario: Column count persists [m40_session]
 

@@ -79,6 +79,17 @@ SessionState loadSession()
         obj.value(QStringLiteral("autoCollapseIconic")).toBool(false);
     state.autoShowHidden = obj.value(QStringLiteral("autoShowHidden")).toBool(false);
     state.panelGroups = obj.value(QStringLiteral("panelGroups")).toArray();
+    state.panelColumns = obj.value(QStringLiteral("panelColumns")).toArray();
+    // v5 (or older) stores have no per-column layout: synthesise one right-hand
+    // column from the legacy flat per-group state so they open unchanged. An
+    // explicit empty `panelColumns` is v6 and is left as-is.
+    if (!obj.contains(QStringLiteral("panelColumns"))) {
+        QJsonObject column;
+        column.insert(QStringLiteral("side"), QStringLiteral("right"));
+        column.insert(QStringLiteral("order"), 0);
+        column.insert(QStringLiteral("groups"), state.panelGroups);
+        state.panelColumns = QJsonArray{column};
+    }
     state.layout =
         QByteArray::fromBase64(obj.value(QStringLiteral("layout")).toString().toLatin1());
     state.layoutRevision = obj.value(QStringLiteral("layoutRevision")).toInt(0);
@@ -112,6 +123,7 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("autoCollapseIconic"), state.autoCollapseIconic);
     obj.insert(QStringLiteral("autoShowHidden"), state.autoShowHidden);
     obj.insert(QStringLiteral("panelGroups"), state.panelGroups);
+    obj.insert(QStringLiteral("panelColumns"), state.panelColumns);
     obj.insert(QStringLiteral("layout"), QString::fromLatin1(state.layout.toBase64()));
     obj.insert(QStringLiteral("layoutRevision"), state.layoutRevision);
     QJsonArray recent;

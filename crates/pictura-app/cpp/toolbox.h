@@ -104,6 +104,8 @@ public:
     int foregroundBackgroundWidthForTest() const;
     // Exchanges the foreground/background swatches (the frame's `X` key).
     void swapForegroundBackground();
+    // Resets the swatches to the default black/white pair (the frame's `D` key).
+    void resetForegroundBackground();
     ForegroundBackgroundWidget* foregroundBackgroundForTest() const { return fgbg_; }
     // Floated/docked body geometry: the trailing stretch is 0 while floating so
     // a floated dock can hug its content height.
@@ -143,6 +145,7 @@ private:
     QToolButton* screenMode_ = nullptr;
     int columns_ = 1;
     bool shiftKeyForToolSwitch_ = true;
+    bool widthClamping_ = false;
 };
 
 } // namespace pictura

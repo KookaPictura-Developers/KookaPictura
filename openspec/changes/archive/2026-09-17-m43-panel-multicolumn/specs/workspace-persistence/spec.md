@@ -1,57 +1,4 @@
-# workspace-persistence Specification
-
-## Purpose
-TBD - created by archiving change m16-app-shell. Update Purpose after archive.
-## Requirements
-### Requirement: Panels registered as named docks
-
-The system SHALL host each right-hand panel as a plain `QWidget` content widget
-with a unique, stable `objectName`, registered in the frame's panel registry
-before any layout is saved or restored. The Tools panel and the options bar SHALL
-remain `QDockWidget`/toolbar docks outside the column. Registration SHALL reject
-a duplicate `objectName`.
-
-#### Scenario: Panel registration assigns a stable name
-
-- **WHEN** a panel content widget is created
-- **THEN** it has a unique `objectName` used by layout and registry persistence
-
-#### Scenario: Duplicate names are rejected
-
-- **WHEN** two panels are registered with the same `objectName`
-- **THEN** registration fails rather than silently corrupting layout restore
-
-#### Scenario: The Tools panel stays a dock
-
-- **WHEN** the frame is built
-- **THEN** the Tools panel remains a `QDockWidget` and the column panels do not
-
-### Requirement: Layout persistence across restart
-The system SHALL save the dock and toolbar layout with
-`QMainWindow::saveState()` and restore it with `restoreState()` on startup, so
-the frame arrangement survives a restart at the same scale factor.
-
-#### Scenario: Layout round-trips
-- **WHEN** the layout is changed, saved, and the application restarts
-- **THEN** the dock arrangement is restored
-
-#### Scenario: Unknown panel in saved layout
-- **WHEN** a saved layout references a panel that no longer exists
-- **THEN** restore ignores the unknown entry and keeps the remaining arrangement
-
-### Requirement: Window panels toggle and hide-all
-The system SHALL expose a `Window > Panels` entry that toggles each panel's
-visibility, and SHALL hide and restore all panels with `Tab`. `Shift+Tab` SHALL
-hide all panels except the Tools panel and options bar; until those exist it
-SHALL behave as `Tab`.
-
-#### Scenario: Toggle a panel from the Window menu
-- **WHEN** the user selects a panel from `Window > Panels`
-- **THEN** that panel's visibility toggles without producing a history state
-
-#### Scenario: Tab hides all panels
-- **WHEN** the user presses `Tab`
-- **THEN** all panels are hidden, and pressing `Tab` again restores them
+## MODIFIED Requirements
 
 ### Requirement: Session state store
 
@@ -106,4 +53,3 @@ survive a load-then-write cycle.
   layout is loaded
 - **THEN** the workspace shows one right-hand column containing those groups and
   the existing keys are preserved
-

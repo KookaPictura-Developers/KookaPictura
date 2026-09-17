@@ -50,6 +50,9 @@ public:
     void insertPanel(QWidget* panel, const QString& title, const QIcon& icon, int index);
     QTabBar* tabBar() const;
     int indexOfPanel(const QString& objectName) const;
+    // The width the per-widget corner `▾` button reserves in the header, so the
+    // column minimum can include it (M43 corner-button fix).
+    int headerCornerWidthForTest() const;
 
     // Tab-bar geometry used by the column's drop resolver. All coordinates are
     // global except `tabInsertionX`, which is in tab-bar space.

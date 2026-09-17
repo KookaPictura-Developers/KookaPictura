@@ -18,6 +18,7 @@
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMenu>
+#include <QtWidgets/QSizePolicy>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
 
@@ -481,6 +482,19 @@ bool Toolbox::eventFilter(QObject* watched, QEvent* event)
     case QEvent::Drop:
         event->ignore();
         return true;
+    case QEvent::Resize:
+        // M43: the main-window dock splitter can still attempt a width change on
+        // some platforms; clamp it back to the fixed content width. The guard
+        // stops setFixedWidth's own resize from recursing.
+        if (watched == this && !widthClamping_) {
+            const int target = contentWidth(columns_);
+            if (target > 0 && width() != target) {
+                widthClamping_ = true;
+                setFixedWidth(target);
+                widthClamping_ = false;
+            }
+        }
+        break;
     default:
         break;
     }
@@ -514,10 +528,13 @@ int Toolbox::contentWidth(int columns) const
 void Toolbox::updateContentMetrics()
 {
     const int content = contentWidth(columns_);
-    setMinimumWidth(content);
+    // M43: the Tools dock is fixed to its tight content width in one and two
+    // columns and while floating; the dock separator cannot resize it.
+    setFixedWidth(content);
     // A QDockWidget caches its layout minimum; without an explicit invalidation a
     // 2->1 column change leaves the two-column floor in place.
     if (QWidget* body = widget()) {
+        body->setSizePolicy(QSizePolicy::Fixed, body->sizePolicy().verticalPolicy());
         if (body->layout()) {
             body->layout()->invalidate();
         }
@@ -561,6 +578,13 @@ void Toolbox::swapForegroundBackground()
 {
     if (fgbg_) {
         fgbg_->swapForegroundBackground();
+    }
+}
+
+void Toolbox::resetForegroundBackground()
+{
+    if (fgbg_) {
+        fgbg_->resetColors();
     }
 }
 

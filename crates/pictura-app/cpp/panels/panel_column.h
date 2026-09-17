@@ -27,6 +27,11 @@ namespace pictura {
 
 class PanelColumn;
 class PanelGroup;
+class PicturaMainWindow;
+
+// A panel column's side is a property of its order in the central splitter
+// relative to the document tabs, never of its on-screen geometry (M43).
+enum class PanelSide { Left, Right };
 
 // A torn-off group in an in-window frameless overlay. It hosts a real
 // `PanelGroup` (same tabs, menu, minimize, iconic row) whose own tab-bar drag
@@ -72,9 +77,21 @@ public:
     PanelGroup* groupForPanel(const QString& objectName) const;
     QList<PanelGroup*> groups() const { return groups_; }
 
+    // M43 multi-column host. `side` is derived from the splitter order relative
+    // to the document tabs; `dynamic` marks a column created by a drop, which is
+    // removed when it holds no groups.
+    PanelSide side() const;
+    bool isDynamic() const { return dynamic_; }
+    void setDynamic(bool dynamic) { dynamic_ = dynamic; }
+
     bool showPanel(const QString& objectName, bool visible);
     bool isPanelVisible(const QString& objectName) const;
     void closeGroup(PanelGroup* group);
+
+    // M43 session v6: detach a group so it can be adopted by another column
+    // (used to rebuild a stored multi-column layout at startup). Returns the
+    // live group, unwired from this column, or nullptr when unknown.
+    PanelGroup* takeGroup(const QString& groupObjectName);
 
     // `normal` (splitter of groups) <-> `iconic` (narrow icon strip).
     void setRailMode(bool iconic);
@@ -123,6 +140,7 @@ public:
     int floatCountForTest() const;
     QStringList floatPanelNamesForTest(int index) const;
     bool tearOffForTest(const QString& groupName);
+    bool tearOffPanelForTest(const QString& objectName);
     bool redockForTest(int floatIndex, int boundaryIndex);
     bool floatIsWindowForTest(int index) const;
     QRect floatGeometryForTest(int index) const;
@@ -130,6 +148,9 @@ public:
     bool floatClampedForTest(int index, const QPoint& globalTopLeft);
     QPoint boundaryPointForTest(int boundary) const;
     bool ensureGroupVisibleForTest(const QString& panelName);
+    // M43 Phase B: begin a whole-group drag and a compact-strip entry point.
+    bool beginGroupDragForTest(const QString& panelName);
+    QPoint stripEntryPointForTest(const QString& panelName, int where) const;
 
     // Phase B iconic-strip drag. These drive the same begin/update/commit path
     // the strip button's mouse handler uses.
@@ -142,6 +163,7 @@ public:
     // Phase C flyout refinement.
     QString flyoutSideForTest() const;
     QString activeIconNameForTest() const { return activeIconName_; }
+    QRect iconFlyoutGeometryForTest() const;
     QString flyoutHeaderTitleForTest() const;
     bool flyoutHeaderCloseForTest() const;
     bool triggerFlyoutCloseForTest();
@@ -160,6 +182,20 @@ protected:
     void showEvent(QShowEvent* event) override;
 
 private:
+    // The frozen M43 drop-target grammar. `onTabBar`/`onStrip`/`outside` are
+    // kept alongside `kind` so the M41/M42 hooks keep their meaning.
+    enum class DropKind {
+        None,
+        Reorder,
+        IntoGroup,
+        AboveGroup,
+        BelowGroup,
+        OnStrip,
+        NewColumnLeft,
+        NewColumnRight,
+        Outside,
+    };
+
     struct DropTarget {
         bool valid = false;
         bool outside = false;
@@ -169,6 +205,7 @@ private:
         int tabIndex = -1;
         int boundary = -1;
         int stripIndex = -1;
+        DropKind kind = DropKind::None;
     };
 
     // One icon in the iconic strip, in strip order. `button` is the drag source
@@ -188,8 +225,9 @@ private:
     void openIconFlyout(const QString& objectName, const QPoint& globalPos);
     void closeIconFlyout();
     void restoreFlyoutPanel();
-    void placeFlyout(const QPoint& anchorRightTop, const QSize& size);
+    void placeFlyout(const QRect& buttonGlobalRect, const QSize& size);
     QString flyoutSide() const;
+    QToolButton* flyoutButtonFor(const QString& objectName) const;
     void setActiveIcon(const QString& objectName);
     QToolButton* stripButtonFor(const QString& objectName) const;
     void showTabMenu(PanelGroup* group, const QPoint& globalPos);
@@ -202,6 +240,8 @@ private:
     bool removeGroup(PanelGroup* group);
     void cleanupEmptyGroup(PanelGroup* group);
     DropTarget resolveDrop(const QPoint& globalPos) const;
+    DropTarget resolveLocalDrop(const QPoint& globalPos) const;
+    bool resolveIconicDrop(const QPoint& globalPos, DropTarget& target) const;
     int boundaryIndexForGlobalY(const QPoint& globalPos) const;
     int stripInsertionIndexAt(const QPoint& globalPos) const;
     void showIndicatorFor(const DropTarget& target);
@@ -210,6 +250,7 @@ private:
     bool applyPanelDrop(PanelGroup* source, const QString& name, const DropTarget& target);
     bool applyStripDrop(PanelGroup* source, const QString& name, int stripIndex);
     bool applyGroupDrop(PanelGroup* group, const DropTarget& target);
+    bool applyNewColumnDrop(PanelSide side);
     void beginPanelDrag(PanelGroup* group, const QString& objectName, const QPoint& globalPos);
     void beginGroupDrag(PanelGroup* group, const QPoint& globalPos);
     void updateDrag(const QPoint& globalPos);
@@ -235,6 +276,7 @@ private:
     QHash<QString, bool> panelVisible_;
 
     bool railMode_ = false;
+    bool dynamic_ = false;
     bool iconLabelsShown_ = false;
     int pendingWidth_ = 0;
     int normalWidthBeforeIconic_ = 0;
