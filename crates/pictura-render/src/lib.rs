@@ -44,9 +44,13 @@ pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 
 pub mod document_ops;
 pub use document_ops::{
-    add_group, add_layer, crop_document, duplicate_layer, flip_document, group_layer,
-    next_layer_name, resize_canvas_document, resize_document, rotate_document, translate_layer,
-    translate_layer_active, translate_layer_rect, ungroup_layer,
+    add_group, add_group_in, add_layer, add_layer_in, apply_visibility, crop_document,
+    delete_paths, duplicate_layer, duplicate_paths, flatten_rows, flip_document, group_layer,
+    group_paths, is_background, move_path, next_layer_name, parent_path, rename_path,
+    resize_canvas_document, resize_document, resolve_path, resolve_path_mut, rotate_document,
+    set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths,
+    set_visible_paths, translate_layer, translate_layer_active, translate_layer_rect,
+    ungroup_layer, ungroup_paths,
 };
 
 pub use pictura_ops::{Anchor, Resample};

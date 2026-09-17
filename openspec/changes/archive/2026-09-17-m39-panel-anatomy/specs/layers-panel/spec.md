@@ -1,8 +1,5 @@
-# layers-panel Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change m20-panels. Update Purpose after archive.
-## Requirements
 ### Requirement: Layers panel rows
 
 The system SHALL present the full layer tree of the active document as rows in
@@ -150,27 +147,6 @@ undoable step.
 - **WHEN** the user moves the selected layer up or down from the panel or row menu
 - **THEN** its order within its container changes, the rows reorder, and the composite updates
 
-### Requirement: Layers panel docking and toggle
-The system SHALL host the Layers panel in a registered dock with a stable
-`objectName` and SHALL expose a `Window > Panels > Layers` toggle.
-
-#### Scenario: Toggle the Layers panel
-- **WHEN** the user toggles Layers from the Window menu
-- **THEN** the panel is shown or hidden without changing the document
-
-### Requirement: Thumbnails downsample without a full-size intermediate
-
-Layer thumbnails SHALL be produced by downsampling the layer's channel data
-directly, without first materializing a full-resolution RGBA image, so that
-thumbnail cost is not proportional to the layer's full pixel buffer. The
-thumbnail's visual result SHALL be unchanged.
-
-#### Scenario: A thumbnail of a large layer avoids a full-resolution image
-
-- **WHEN** a 24 px thumbnail is generated for a 4000×4000 layer
-- **THEN** no full-resolution RGBA image is allocated, the thumbnail is visually
-  unchanged, and generation completes within a small time budget
-
 ### Requirement: Layer grouping commands
 
 The system SHALL offer Group Layers and Ungroup Layers from the panel, the row
@@ -212,26 +188,7 @@ group. Each applied operation SHALL be one undoable step.
 - **WHEN** the user runs Ungroup Layers on a selection that includes a pixel or adjustment layer
 - **THEN** the non-group is left unchanged and remains selected
 
-### Requirement: Layers panel action strip icons
-
-The system SHALL give each Layers-panel action-strip button an icon from the
-frozen layers asset set: `layers.link` (Link Layers), `layers.fx` (Layer Style),
-`layers.mask` (Add Layer Mask), `layers.fillAdjustment` (New Fill / Adjustment
-Layer), `layers.group` (New Group), `layers.newLayer` (New Layer), and
-`layers.delete` (Delete). The buttons SHALL keep their text labels, and adding
-an icon SHALL NOT change what each button does. Buttons whose operation is not
-yet implemented (link, fx, mask) SHALL be shown disabled until their operation
-lands.
-
-#### Scenario: The implemented strip buttons carry icons
-
-- **WHEN** the Layers panel is shown
-- **THEN** its fill/adjustment, group, new-layer, and delete buttons each carry their documented icon
-
-#### Scenario: A deferred button is disabled
-
-- **WHEN** the Layers panel is shown before the link, fx, or mask operation exists
-- **THEN** that button is disabled
+## ADDED Requirements
 
 ### Requirement: Layer tree projection and paths
 
@@ -445,4 +402,3 @@ and its kind, where the kind is one of pixel, group, adjustment, or background.
 
 - **WHEN** the pointer rests on a pixel layer row
 - **THEN** the tooltip contains the layer's name and the word `pixel`
-

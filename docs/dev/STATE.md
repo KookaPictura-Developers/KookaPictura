@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **568 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **588 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
@@ -781,6 +781,82 @@ openspec validate --all --strict
   **M43** smart objects / vector masks / artboards / layer comps; the deferred
   canvas-performance tracks stay by name.
 
+- **M39 — panel anatomy** (the Layers-panel program's panel-anatomy milestone
+  after the M38 interruption; see
+  `docs/dev/layers-panel-program.md`; OpenSpec change `m39-panel-anatomy`, brief
+  `docs/dev/m39-panel-anatomy.md`). The Layers panel becomes a full expandable
+  tree over the document's existing `Layer.children` hierarchy, and edits become
+  path-addressed and selection-based. **Path/tree core**
+  (`crates/pictura-render/src/document_ops/layer_ops.rs`): a frozen path grammar
+  (`segment *("/" segment)`, digits with no leading zeros, bottom-first),
+  `resolve_path`/`resolve_path_mut`/`parent_path`, `flatten_rows ->
+  Vec<(String,u32)>` (depth-first, topmost-first `(path, depth)` pairs), and
+  `is_background` (the single source of truth; the app's `is_background_layer`
+  delegates). Batch ops `set_visible_paths`/`apply_visibility`/`set_blend_paths`/
+  `set_opacity_paths`/`set_fill_paths`/`set_lock_paths`/`set_color_paths`/
+  `delete_paths`/`duplicate_paths`/`group_paths`/`ungroup_paths`/`rename_path`/
+  `move_path`/`add_layer_in`/`add_group_in` apply the frozen per-node skip vs
+  whole-op refuse table (only `group_paths` refuses the whole op); structural ops
+  resolve-then-apply deepest-first with ancestor-descendant dropping so indices
+  never invalidate. `move_path` refuses the Background and fully-locked layers
+  (the LAY-002 ruling). **Bridge** (`cxxqt_object.rs`): `layer_row_count` + 17
+  `layer_row_*` getters over the projection (path, depth, name, kind, visible,
+  blend, opacity, fill, lock, color, clipping, has-mask, has-adjustment,
+  expandable, child-count, thumbnail, mask-thumbnail); `set_layer_name_path`/
+  `move_layer_path`; `QStringList` batch mutators for visible/blend/opacity/fill/
+  lock/color plus `apply_visibility(paths,label)`, `delete_layers`,
+  `duplicate_layers`, `group_layers`, `ungroup_layers`; `add_layer_in`/
+  `add_group_in`. Undo contract: `recomposite()` then `record(label)` only when
+  the changed count is non-zero; a zero-change call records nothing and emits no
+  `changed`. Labels per the design (`Set Visibility`, `Solo Visibility`,
+  `Restore Visibility`, `Group Layers`, …). Every legacy top-level
+  `layer_*(i)`/`set_layer_*(i)`/M37 op is left **byte-identical** — the new path
+  surface is the tree implementation and nothing calls legacy after the panel
+  migration — with the deliberate asymmetry that legacy `move_layer` still swaps
+  unconditionally while `move_layer_path` refuses. Thumbnails:
+  `layer_row_thumbnail(i,size,entire_document)` (layer bounds vs
+  document-positioned) and `layer_row_mask_thumbnail`; groups and adjustments
+  return a null image (the delegate draws a folder glyph). **Panel**:
+  `LayersModel` becomes a `QAbstractItemModel` over the flat projection (roles,
+  `internalPointer` path, `CheckStateRole`→visibility, `EditRole`→rename);
+  `LayerRowDelegate` paints the eye (with a press hit-test), thumbnail/folder
+  glyph, name, color swatch, clip indent + base underline, mask thumbnail, and
+  `fx` badge (null-asset safe); a `QTreeView` with `ExtendedSelection`,
+  `SelectRows`, `uniformRowHeights`, `expandsOnDoubleClick(false)`,
+  `dragEnabled(false)`; panel-side expansion (`QSet<QString>`, default collapsed,
+  new groups expanded) and path-based re-selection; multi-selection routing for
+  the header controls and Delete/Duplicate/Group/Ungroup (one undo step each);
+  solo (`Alt`-click) snapshots visibility and uses `apply_visibility` for a
+  one-step exact restore; rename `Tab`/`Shift+Tab` moves to the next/previous
+  visible row with no wrap; tooltips `"<name> (<kind>)"`; Panel Options (Medium /
+  Entire Document / Expand New Effects on) persisted in session **schema v3**
+  (`layersThumbSize`/`layersThumbContents`/`layersExpandNewEffects`); the panel
+  menu (`layersPanelMenu`) + row context menu with the wired commands only and a
+  `Color Label` submenu; eye right-click show-only/show-all. The seven-button
+  strip is unchanged and reordering is menu-only. **Fixes/decisions:**
+  `PicturaMainWindow::saveSession()` now loads before writing so the v3 fields
+  are not clobbered; `layerTooltip` now always returns `"<name> (<kind>)"` (the
+  old helper predated M39 and would have failed the new tooltip check).
+  **Self-tests:** `m39_tree` (102/103), `m39_multi` (104/105), `m39_solo` (106),
+  `m39_rename` (107), `m39_options` (108), `m39_badges` (109), `m39_menus` (110),
+  `m39_tooltip` (111), `m39_strip` (112); all earlier lines/codes unchanged.
+  **Honest limits:** the clip-indent rendering is not positively proven (no
+  bridge operation can set `Layer.clipping` and no fixture has a clipped layer —
+  `m39_badges clip=1` only proves the role is plumbed and `clipBase` is not
+  spuriously set); group thumbnails are folder glyphs (no group composite);
+  drag-reorder is explicitly deferred to M41; multi-row move is deferred;
+  expansion is session-only (not persisted); solo is one undo step per direction.
+  Verified: `cargo fmt --all --check` and `cargo clippy --workspace --all-targets
+  -- -D warnings` clean; **588 tests, 0 failed, 7 ignored** (up from 568/7; the
+  ignored set is unchanged, so the raw `cargo test --workspace` ignored count is
+  8 with the pre-existing `pictura-render` doctest); `openspec validate
+  m39-panel-anatomy --strict` valid and `openspec validate --all --strict`
+  60/60; both self-tests exit 0. The M39 change MODIFIES `layers-panel` (no new
+  capability → **59** capabilities after archive). Deferred within the program:
+  filtering/search (M40), the remaining management ops and drag-reorder (M41),
+  styles/effects (M42), smart objects / vector masks / artboards / layer comps
+  (M43).
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -858,7 +934,7 @@ complete.
 
 ## Next: layers panel program (M36–M43), canvas perf series deferred
 
-### Layers panel program (M36–M43) — M36/M37/M38 done, M39 next
+### Layers panel program (M36–M43) — M36/M37/M38/M39 done, M40 next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -870,23 +946,32 @@ getters/setters, and the Fill/lock/color panel controls; M37 added
 `document_ops::layer_ops` New Layer / New Group / Duplicate / Group / Ungroup, the
 bridge methods, the panel buttons and the five `Layer` menu commands.
 
+**M39 — panel anatomy** (change `openspec/changes/m39-panel-anatomy`, brief
+`docs/dev/m39-panel-anatomy.md`) is implemented and independently verified (see
+the milestone entry above): the full expandable layer tree, the frozen layer-path
+grammar and depth-first topmost-first projection, the path/batch bridge API,
+the `QAbstractItemModel` tree + delegate row anatomy, multi-selection with the
+per-node refusal table, solo visibility, `Tab` rename, Panel Options (session
+schema v3), the panel/row menus, tooltips, and the explicit drag-reorder
+deferral to M41.
+
 **M38 was a user-requested interruption: the full CS6 toolbox icon/cursor
 library and the panel icons** (`openspec/changes/m38-icon-cursor-library`,
 contract `docs/dev/m38-icon-cursor-library.md`) — the frozen 71-tool catalogue,
 the full icon/cursor asset set, the single-column flyout toolbox, and the
 panel/Layers/History icons. It is implemented and verified (see the milestone
-entry above); it took the M38 number, so the panel stages shifted by one: the
-next panel milestone is **M39 — panel anatomy** (tree model for
-groups, clipped-layer indentation, mask/link/clip/style badges, multi-selection,
-the seven-button bottom strip, Alt-click solo visibility, inline rename, Panel
-Options, the panel + row menus, tooltips, and drag-reorder); M40
-(six-dimension filter/search), M41
-(rasterize/merge/flatten/link/select-similar/convert-background/layer-via-copy-cut
-and the New Layer/Group dialogs), M42 (layer styles/effects), and M43 (smart
-objects / vector masks / artboards-as-non-goal / layer comps) follow in that
-order. M36's confirmed ceilings — the `layer_kind` `"background"` name+index
-heuristic and the forced type/shape locks — land in M39/M41, and M37's
-single-layer grouping limit is lifted by M39's multi-selection.
+entry above); it took the M38 number, so the panel stages shifted by one:
+**M39 — panel anatomy** is done (see the milestone entry above), and the next
+panel milestone is **M40 — filtering/search** (the six-dimension filter/search
+row), then **M41 — remaining management ops**
+(rasterize/merge/flatten/link/select-similar/convert-background/layer-via-copy-cut,
+the New Layer/Group dialogs, and the deferred drag-reorder with its recorded drop
+rules), **M42** (layer styles/effects), and **M43** (smart objects / vector masks
+/ artboards-as-non-goal / layer comps). M36's confirmed ceilings — the
+`layer_kind` `"background"` name+index heuristic and the forced type/shape locks
+— land in M41, and M37's single-layer grouping limit was lifted by M39's
+multi-selection (the `is_background` single source of truth and the path/batch
+selection ops).
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

@@ -8,15 +8,19 @@
 #include <QtGui/QAction>
 #include <QtGui/QIcon>
 #include <QtGui/QImage>
+#include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
 #include <QtGui/QPixmap>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDockWidget>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QToolBar>
 #include <QtWidgets/QToolButton>
+#include <QtWidgets/QTreeView>
 
 #include <cmath>
 #include <cstdint>
@@ -28,6 +32,7 @@
 #include "frame.h"
 #include "icons.h"
 #include "image_view.h"
+#include "panels/layers_panel.h"
 #include "session.h"
 #include "theme.h"
 #include "toolbox.h"
@@ -2738,6 +2743,396 @@ int main(int argc, char* argv[])
             std::fprintf(stderr, "pictura self-test: FAIL: m38 snapshot icon wrong\n");
             return 101;
         }
+
+        // M39: the layers panel's tree projection, multi-selection batches,
+        // solo visibility, Tab rename, Panel Options, badges, menus, tooltips,
+        // and the seven-button strip. A deterministic fixture is built through
+        // the bridge; the panel is read through its M39 test hooks.
+        auto* m39Panel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+        const bool m39Created = frame.newDocument(QStringLiteral("M39"), 16, 16,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* m39View = frame.activeView();
+        if (!m39Created || !m39View || !m39Panel) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 document/panel\n");
+            std::fflush(stderr);
+            return 102;
+        }
+        const int m39DocIndex = frame.activeDocumentIndex();
+
+        // Fixture: a Background, a group "1" with two pixel children and a
+        // nested group "1/2", and a masked adjustment layer "2" on top.
+        m39View->set_layer_name_path(QStringLiteral("0"), QStringLiteral("Background"));
+        const QString m39Group = m39View->add_group_in(QString());
+        const QString m39ChildA = m39View->add_layer_in(m39Group);
+        const QString m39ChildB = m39View->add_layer_in(m39Group);
+        const QString m39Nested = m39View->add_group_in(m39Group);
+        const QString m39NestedChild = m39View->add_layer_in(m39Nested);
+        m39View->select_all();
+        m39View->add_adjustment(QStringLiteral("invert"));
+        m39View->deselect();
+        m39Panel->setView(m39View);
+        m39Panel->refresh();
+
+        auto m39RowOf = [m39View](const QString& path) {
+            for (int i = 0; i < m39View->layer_row_count(); ++i) {
+                if (m39View->layer_row_path(i) == path) {
+                    return i;
+                }
+            }
+            return -1;
+        };
+
+        // 8.1 m39_tree (102-103): the depth-first, topmost-first projection,
+        // the tree-aware add-inside-group paths, and a nested rename by path.
+        const QStringList m39TreePaths = {
+            QStringLiteral("2"), QStringLiteral("1"), QStringLiteral("1/2"),
+            QStringLiteral("1/2/0"), QStringLiteral("1/1"), QStringLiteral("1/0"),
+            QStringLiteral("0")};
+        const int m39TreeDepths[] = {0, 0, 1, 2, 1, 1, 0};
+        const QStringList m39TreeKinds = {
+            QStringLiteral("adjustment"), QStringLiteral("group"), QStringLiteral("group"),
+            QStringLiteral("pixel"), QStringLiteral("pixel"), QStringLiteral("pixel"),
+            QStringLiteral("background")};
+        bool m39OrderOk = m39View->layer_row_count() == m39TreePaths.size();
+        for (int i = 0; m39OrderOk && i < m39TreePaths.size(); ++i) {
+            m39OrderOk = m39View->layer_row_path(i) == m39TreePaths.at(i)
+                         && m39View->layer_row_depth(i) == m39TreeDepths[i]
+                         && m39View->layer_row_kind(i) == m39TreeKinds.at(i);
+        }
+        const bool m39AddOk =
+            m39ChildA == QStringLiteral("1/0") && m39ChildB == QStringLiteral("1/1")
+            && m39Nested == QStringLiteral("1/2")
+            && m39NestedChild == QStringLiteral("1/2/0")
+            && m39View->layer_row_depth(m39RowOf(m39NestedChild)) == 2
+            && m39View->layer_row_expandable(m39RowOf(QStringLiteral("1")))
+            && m39View->layer_row_expandable(m39RowOf(m39Nested));
+        const int m39RenameBase = m39View->history_count();
+        const bool m39TreeRenameOk =
+            m39View->set_layer_name_path(QStringLiteral("1/1"), QStringLiteral("Nested"))
+            && m39View->layer_row_name(m39RowOf(QStringLiteral("1/1")))
+                   == QStringLiteral("Nested")
+            && m39View->history_count() == m39RenameBase + 1
+            && !m39View->set_layer_name_path(QStringLiteral("1/9"), QStringLiteral("Bogus"))
+            && m39View->history_count() == m39RenameBase + 1;
+        std::fprintf(stderr, "pictura self-test: m39_tree order=%d add=%d rename=%d\n",
+                     m39OrderOk ? 1 : 0, m39AddOk ? 1 : 0, m39TreeRenameOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39OrderOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 projection order\n");
+            return 102;
+        }
+        if (!m39AddOk || !m39TreeRenameOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 tree add/nested rename\n");
+            return 103;
+        }
+
+        // 8.2 m39_multi (104-105): a batch is one undo step, the Background and
+        // a group are skipped per node, and multi group/ungroup is one step.
+        const QString m39Bg = QStringLiteral("0");
+        const QString m39PixA = QStringLiteral("1/1");
+        const QString m39PixB = QStringLiteral("1/0");
+        const int m39BlendBase = m39View->history_count();
+        const int m39BlendChanged =
+            m39View->set_layers_blend(QStringList{m39PixA, m39PixB}, QStringLiteral("mul "));
+        const bool m39BatchOk =
+            m39BlendChanged == 2 && m39View->history_count() == m39BlendBase + 1
+            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("mul ")
+            && m39View->layer_row_blend(m39RowOf(m39PixB)) == QStringLiteral("mul ");
+        const bool m39BatchUndoOk =
+            m39View->undo()
+            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("norm")
+            && m39View->layer_row_blend(m39RowOf(m39PixB)) == QStringLiteral("norm")
+            && m39View->redo()
+            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("mul ");
+
+        const int m39SkipBase = m39View->history_count();
+        const int m39BgChanged =
+            m39View->set_layers_blend(QStringList{m39Bg, m39PixA}, QStringLiteral("scrn"));
+        const int m39FillBase = m39View->history_count();
+        const int m39GroupFill = m39View->set_layers_fill(QStringList{m39Group, m39PixB}, 128);
+        const bool m39SkipOk =
+            m39BgChanged == 1 && m39FillBase == m39SkipBase + 1
+            && m39View->layer_row_blend(m39RowOf(m39Bg)) == QStringLiteral("norm")
+            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("scrn")
+            && m39GroupFill == 1 && m39View->history_count() == m39FillBase + 1
+            && m39View->layer_row_fill(m39RowOf(m39Group)) == 255
+            && m39View->layer_row_fill(m39RowOf(m39PixB)) == 128;
+
+        const int m39GroupBase = m39View->history_count();
+        const QString m39Wrapped = m39View->group_layers(QStringList{m39PixA, m39PixB});
+        const bool m39GroupStepOk =
+            !m39Wrapped.isEmpty() && m39View->history_count() == m39GroupBase + 1;
+        const int m39UngroupBase = m39View->history_count();
+        const int m39Ungrouped = m39View->ungroup_layers(QStringList{m39Wrapped});
+        const bool m39UngroupOk =
+            m39Ungrouped == 1 && m39View->history_count() == m39UngroupBase + 1;
+
+        std::fprintf(stderr,
+                     "pictura self-test: m39_multi batch=%d skip=%d group=%d undo=%d\n",
+                     m39BatchOk ? 1 : 0, m39SkipOk ? 1 : 0,
+                     (m39GroupStepOk && m39UngroupOk) ? 1 : 0, m39BatchUndoOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39BatchOk || !m39SkipOk || !m39BatchUndoOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 multi-selection batch\n");
+            return 104;
+        }
+        if (!m39GroupStepOk || !m39UngroupOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 multi group/ungroup\n");
+            return 105;
+        }
+
+        // 8.3 m39_solo (106): Alt-solo hides every other row, a second Alt
+        // restores the exact prior per-row visibility, and undo restores.
+        const QString m39SoloHidden = QStringLiteral("1/1");
+        m39View->set_layers_visible(QStringList{m39SoloHidden}, false);
+        m39Panel->refresh();
+        QStringList m39PriorHidden;
+        for (int i = 0; i < m39View->layer_row_count(); ++i) {
+            if (!m39View->layer_row_visible(i)) {
+                m39PriorHidden.push_back(m39View->layer_row_path(i));
+            }
+        }
+        const QString m39SoloPath = QStringLiteral("1/0");
+        m39Panel->toggleSoloForTest(m39SoloPath);
+        m39Panel->refresh();
+        bool m39SoloOk = true;
+        for (int i = 0; i < m39View->layer_row_count(); ++i) {
+            const QString path = m39View->layer_row_path(i);
+            const bool expected = path == m39SoloPath || path == m39Group;
+            m39SoloOk = m39SoloOk && m39View->layer_row_visible(i) == expected;
+        }
+        const bool m39SoloUndo = m39View->undo();
+        m39Panel->refresh();
+        bool m39SoloUndoOk = m39SoloUndo;
+        for (int i = 0; i < m39View->layer_row_count(); ++i) {
+            m39SoloUndoOk = m39SoloUndoOk
+                            && m39View->layer_row_visible(i)
+                                   == !m39PriorHidden.contains(m39View->layer_row_path(i));
+        }
+        const bool m39SoloRedo = m39View->redo();
+        m39Panel->refresh();
+        m39Panel->toggleSoloForTest(m39Group);
+        m39Panel->refresh();
+        bool m39SoloRestoreOk = m39SoloRedo;
+        for (int i = 0; i < m39View->layer_row_count(); ++i) {
+            m39SoloRestoreOk =
+                m39SoloRestoreOk
+                && m39View->layer_row_visible(i)
+                       == !m39PriorHidden.contains(m39View->layer_row_path(i));
+        }
+        std::fprintf(stderr, "pictura self-test: m39_solo solo=%d restore=%d undo=%d\n",
+                     m39SoloOk ? 1 : 0, m39SoloRestoreOk ? 1 : 0, m39SoloUndoOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39SoloOk || !m39SoloRestoreOk || !m39SoloUndoOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 solo visibility\n");
+            return 106;
+        }
+
+        // 8.4 m39_rename (107): Tab commits and moves down, Shift+Tab up, and
+        // the ends do not wrap. The key is delivered to the delegate's own
+        // event filter (its role on the inline editor); headless focus routing
+        // makes QApplication::sendEvent to the editor unreliable, so the
+        // delegate is invoked directly and the view still performs the move.
+        QCoreApplication::processEvents();
+        m39Panel->refresh();
+        QCoreApplication::processEvents();
+        auto m39Edit = [m39Panel](const QString& path, const QString& text, int key) {
+            QCoreApplication::processEvents();
+            if (!m39Panel->beginRenameForTest(path)) {
+                return false;
+            }
+            QCoreApplication::processEvents();
+            // Drop editors from the previous step that are pending deleteLater,
+            // so findChild returns the editor the view currently has registered.
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QCoreApplication::processEvents();
+            auto* tree = m39Panel->findChild<QTreeView*>();
+            QLineEdit* editor = tree ? tree->viewport()->findChild<QLineEdit*>() : nullptr;
+            QObject* delegate = m39Panel->itemDelegateForTest();
+            if (!editor || !delegate) {
+                return false;
+            }
+            editor->setText(text);
+            QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier);
+            delegate->eventFilter(editor, &event);
+            QCoreApplication::processEvents();
+            m39Panel->refresh();
+            return true;
+        };
+        const QString m39FirstRow = QStringLiteral("2");
+        const QString m39LastRow = QStringLiteral("0");
+        const bool m39DownSent = m39Edit(m39FirstRow, QStringLiteral("TopAdj"), Qt::Key_Tab);
+        const bool m39DownMoved =
+            m39DownSent
+            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("TopAdj")
+            && m39Panel->currentPath() == QStringLiteral("1");
+        // The commit is exactly one undoable step: one undo restores the prior
+        // name and one redo reapplies it.
+        const bool m39DownUndoOk =
+            m39View->undo()
+            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("Invert")
+            && m39View->redo()
+            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("TopAdj");
+        const bool m39DownOk = m39DownMoved && m39DownUndoOk;
+        const bool m39UpOk =
+            m39Edit(m39LastRow, QStringLiteral("Bottom"), Qt::Key_Backtab)
+            && m39View->layer_row_name(m39RowOf(m39LastRow)) == QStringLiteral("Bottom")
+            && m39Panel->currentPath() == QStringLiteral("1");
+        const bool m39NoWrapFirst =
+            m39Edit(m39FirstRow, QStringLiteral("First"), Qt::Key_Backtab)
+            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("First")
+            && m39Panel->currentPath() == m39FirstRow;
+        const bool m39NoWrapLast =
+            m39Edit(m39LastRow, QStringLiteral("Last"), Qt::Key_Tab)
+            && m39View->layer_row_name(m39RowOf(m39LastRow)) == QStringLiteral("Last")
+            && m39Panel->currentPath() == m39LastRow;
+        const bool m39NowrapOk = m39NoWrapFirst && m39NoWrapLast;
+        std::fprintf(stderr, "pictura self-test: m39_rename down=%d up=%d nowrap=%d\n",
+                     m39DownOk ? 1 : 0, m39UpOk ? 1 : 0, m39NowrapOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39DownOk || !m39UpOk || !m39NowrapOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 Tab rename\n");
+            return 107;
+        }
+
+        // 8.5 m39_options (108): the defaults are Medium / Entire Document /
+        // on, and a session save/load round-trip preserves a changed triple.
+        const pictura::SessionState m39Fresh = pictura::loadSession();
+        const bool m39DefaultsOk =
+            m39Fresh.layersThumbSize == 2 && m39Fresh.layersThumbContents == 0
+            && m39Fresh.layersExpandNewEffects
+            && m39Panel->thumbSizeIndexForTest() == 2
+            && m39Panel->thumbContentsForTest() == 0
+            && m39Panel->expandNewEffectsForTest();
+        m39Panel->setOptionsForTest(3, 1, false);
+        const pictura::SessionState m39Saved = pictura::loadSession();
+        auto* m39Reloaded = new pictura::LayersPanel();
+        const bool m39RoundtripOk =
+            m39Saved.layersThumbSize == 3 && m39Saved.layersThumbContents == 1
+            && !m39Saved.layersExpandNewEffects
+            && m39Reloaded->thumbSizeIndexForTest() == 3
+            && m39Reloaded->thumbContentsForTest() == 1
+            && !m39Reloaded->expandNewEffectsForTest();
+        delete m39Reloaded;
+        std::fprintf(stderr, "pictura self-test: m39_options defaults=%d roundtrip=%d\n",
+                     m39DefaultsOk ? 1 : 0, m39RoundtripOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39DefaultsOk || !m39RoundtripOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 panel options\n");
+            return 108;
+        }
+
+        // 8.6 m39_badges (109): the mask and adjustment badge data reaches the
+        // model. No bridge op creates a clipped layer, so `clip` verifies the
+        // clip role is plumbed consistently (and the group expand indicator).
+        const bool m39BadgeMask =
+            m39View->layer_row_has_mask(m39RowOf(QStringLiteral("2")))
+            && m39Panel->rowHasMaskForTest(QStringLiteral("2"));
+        const bool m39BadgeFx =
+            m39View->layer_row_has_adjustment(m39RowOf(QStringLiteral("2")))
+            && m39Panel->rowHasAdjustmentForTest(QStringLiteral("2"));
+        bool m39BadgeClip = m39Panel->rowExpandableForTest(QStringLiteral("1"))
+                            && m39Panel->rowExpandableForTest(QStringLiteral("1/2"));
+        for (int i = 0; i < m39View->layer_row_count(); ++i) {
+            const QString path = m39View->layer_row_path(i);
+            m39BadgeClip = m39BadgeClip
+                           && m39Panel->rowClippingForTest(path)
+                                  == m39View->layer_row_clipping(i)
+                           && !m39Panel->rowClipBaseForTest(path);
+        }
+        std::fprintf(stderr, "pictura self-test: m39_badges mask=%d fx=%d clip=%d\n",
+                     m39BadgeMask ? 1 : 0, m39BadgeFx ? 1 : 0, m39BadgeClip ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39BadgeMask || !m39BadgeFx || !m39BadgeClip) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 row badges\n");
+            return 109;
+        }
+
+        // m39_menus (110): the panel and row menus carry exactly the wired
+        // commands (no unimplemented entry) and the eight color labels.
+        const QStringList m39ExpectedPanel = {
+            QStringLiteral("Panel Options…"), QStringLiteral("New Layer"),
+            QStringLiteral("New Group"), QStringLiteral("Duplicate Layer(s)"),
+            QStringLiteral("Delete Layer(s)"), QStringLiteral("Group Layers"),
+            QStringLiteral("Ungroup Layers"), QStringLiteral("Move Layer Up"),
+            QStringLiteral("Move Layer Down")};
+        const QStringList m39ExpectedRow = {
+            QStringLiteral("Rename"), QStringLiteral("New Layer"), QStringLiteral("New Group"),
+            QStringLiteral("Duplicate Layer(s)"), QStringLiteral("Delete Layer(s)"),
+            QStringLiteral("Group Layers"), QStringLiteral("Ungroup Layers"),
+            QStringLiteral("Move Layer Up"), QStringLiteral("Move Layer Down"),
+            QStringLiteral("Color Label")};
+        const QStringList m39ExpectedColor = {
+            QStringLiteral("None"), QStringLiteral("Red"), QStringLiteral("Orange"),
+            QStringLiteral("Yellow"), QStringLiteral("Green"), QStringLiteral("Blue"),
+            QStringLiteral("Violet"), QStringLiteral("Gray")};
+        const bool m39PanelMenuOk = m39Panel->panelMenuTextsForTest() == m39ExpectedPanel;
+        const bool m39RowMenuOk = m39Panel->rowMenuTextsForTest() == m39ExpectedRow;
+        const bool m39ColorMenuOk = m39Panel->colorLabelTextsForTest() == m39ExpectedColor;
+        std::fprintf(stderr, "pictura self-test: m39_menus panel=%d row=%d color=%d\n",
+                     m39PanelMenuOk ? 1 : 0, m39RowMenuOk ? 1 : 0, m39ColorMenuOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39PanelMenuOk || !m39RowMenuOk || !m39ColorMenuOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 panel/row menus\n");
+            return 110;
+        }
+
+        // m39_tooltip (111): every row's tooltip is "<name> (<kind>)".
+        const QString m39GroupTip = m39Panel->rowToolTipForTest(QStringLiteral("1"));
+        const QString m39PixelTip = m39Panel->rowToolTipForTest(QStringLiteral("1/1"));
+        const QString m39AdjTip = m39Panel->rowToolTipForTest(QStringLiteral("2"));
+        const bool m39TipOk =
+            m39GroupTip
+                == QStringLiteral("%1 (group)")
+                       .arg(m39View->layer_row_name(m39RowOf(QStringLiteral("1"))))
+            && m39PixelTip
+                   == QStringLiteral("%1 (pixel)")
+                          .arg(m39View->layer_row_name(m39RowOf(QStringLiteral("1/1"))))
+            && m39AdjTip
+                   == QStringLiteral("%1 (adjustment)")
+                          .arg(m39View->layer_row_name(m39RowOf(QStringLiteral("2"))));
+        std::fprintf(stderr, "pictura self-test: m39_tooltip ok=%d\n", m39TipOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39TipOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 row tooltip\n");
+            return 111;
+        }
+
+        // m39_strip (112): exactly the seven CS6 strip buttons, no Move text
+        // buttons (reordering lives in the menus).
+        const QStringList m39StripNames = {
+            QStringLiteral("layersStripLink"), QStringLiteral("layersStripFx"),
+            QStringLiteral("layersStripMask"), QStringLiteral("layersStripFillAdjustment"),
+            QStringLiteral("layersStripGroup"), QStringLiteral("layersStripNewLayer"),
+            QStringLiteral("layersStripDelete")};
+        QDockWidget* m39Dock = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+        int m39StripFound = 0;
+        for (const QString& name : m39StripNames) {
+            if (m39Dock && m39Dock->findChild<QToolButton*>(name)) {
+                ++m39StripFound;
+            }
+        }
+        bool m39NoMoveButtons = true;
+        if (m39Dock) {
+            const QList<QAbstractButton*> m39Buttons =
+                m39Dock->findChildren<QAbstractButton*>();
+            for (QAbstractButton* button : m39Buttons) {
+                if (button->text().contains(QStringLiteral("Move"))) {
+                    m39NoMoveButtons = false;
+                }
+            }
+        }
+        const bool m39StripOk =
+            m39StripFound == m39StripNames.size() && m39NoMoveButtons;
+        std::fprintf(stderr, "pictura self-test: m39_strip seven=%d\n", m39StripOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!m39StripOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M39 action strip\n");
+            return 112;
+        }
+
+        frame.closeDocument(m39DocIndex, false);
 
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();

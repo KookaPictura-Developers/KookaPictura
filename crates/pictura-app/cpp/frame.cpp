@@ -648,11 +648,11 @@ void PicturaMainWindow::updateWindowTitle()
 
 void PicturaMainWindow::saveSession()
 {
-    SessionState state;
+    SessionState state = pictura::loadSession();
     state.layout = saveState();
     state.brightnessLevel = brightnessLevel_;
     state.gpuCompute = gpuCompute_;
-    state.schemaVersion = 2;
+    state.schemaVersion = 3;
     state.recent = recent_;
     pictura::saveSession(state);
 }

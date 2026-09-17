@@ -11,7 +11,10 @@ struct SessionState {
     QByteArray layout;               // QMainWindow::saveState()
     int brightnessLevel = 1;         // Theme level
     bool gpuCompute = true;          // GPU compositing preference
-    int schemaVersion = 2;
+    int layersThumbSize = 2;         // 0 None / 1 Small / 2 Medium / 3 Large
+    int layersThumbContents = 0;     // 0 Entire Document / 1 Layer Bounds
+    bool layersExpandNewEffects = true;
+    int schemaVersion = 3;
     QStringList recent;
 };
 

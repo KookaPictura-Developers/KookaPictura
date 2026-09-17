@@ -5,7 +5,7 @@ use core::pin::Pin;
 
 use crate::history::{History, Snapshot};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QImage, QImageFormat, QString};
+use cxx_qt_lib::{QImage, QImageFormat, QString, QStringList};
 use pictura_core::{
     AdjustmentData, BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer,
     LayerMask, LockFlags, PixelBuffer, PsdRect,
@@ -21,6 +21,9 @@ pub mod qobject {
 
         include!("cxx-qt-lib/qimage.h");
         type QImage = cxx_qt_lib::QImage;
+
+        include!("cxx-qt-lib/qstringlist.h");
+        type QStringList = cxx_qt_lib::QStringList;
     }
 
     extern "RustQt" {
@@ -212,6 +215,172 @@ pub mod qobject {
         /// layers and when `i` or `size` is out of range.
         #[qinvokable]
         fn layer_thumbnail(&self, i: i32, size: i32) -> QImage;
+
+        // ------------------------------------------------------------------
+        // M39 tree rows, path/batch mutation. See
+        // `docs/dev/m39-panel-anatomy.md` §3.2.
+        // ------------------------------------------------------------------
+
+        /// Number of nodes in the whole layer tree (all depths; 0 without a
+        /// document).
+        #[qinvokable]
+        fn layer_row_count(&self) -> i32;
+
+        /// Frozen path of flat row `i` (depth-first, topmost-first), or empty.
+        #[qinvokable]
+        fn layer_row_path(&self, i: i32) -> QString;
+
+        /// Nesting depth of row `i` (top-level rows are 0).
+        #[qinvokable]
+        fn layer_row_depth(&self, i: i32) -> i32;
+
+        /// Name of row `i`, or empty when out of range.
+        #[qinvokable]
+        fn layer_row_name(&self, i: i32) -> QString;
+
+        /// Kind of row `i`: `"pixel"`, `"group"`, `"adjustment"`, or
+        /// `"background"` (the same strings as [`layer_kind`]), or empty.
+        #[qinvokable]
+        fn layer_row_kind(&self, i: i32) -> QString;
+
+        /// Visibility flag of row `i`.
+        #[qinvokable]
+        fn layer_row_visible(&self, i: i32) -> bool;
+
+        /// Blend mode of row `i` as its 4-byte PSD key, or empty.
+        #[qinvokable]
+        fn layer_row_blend(&self, i: i32) -> QString;
+
+        /// Opacity of row `i` in `0..=255`.
+        #[qinvokable]
+        fn layer_row_opacity(&self, i: i32) -> i32;
+
+        /// Fill opacity of row `i` in `0..=255`.
+        #[qinvokable]
+        fn layer_row_fill(&self, i: i32) -> i32;
+
+        /// Lock flags of row `i` as a bitmask `0x01/0x02/0x04`.
+        #[qinvokable]
+        fn layer_row_lock(&self, i: i32) -> i32;
+
+        /// Color label of row `i` as a byte (`0` none … `7` gray).
+        #[qinvokable]
+        fn layer_row_color(&self, i: i32) -> i32;
+
+        /// Clipping flag of row `i`.
+        #[qinvokable]
+        fn layer_row_clipping(&self, i: i32) -> bool;
+
+        /// Whether row `i` carries a layer mask.
+        #[qinvokable]
+        fn layer_row_has_mask(&self, i: i32) -> bool;
+
+        /// Whether row `i` carries adjustment content.
+        #[qinvokable]
+        fn layer_row_has_adjustment(&self, i: i32) -> bool;
+
+        /// Whether row `i` is a group with at least one child.
+        #[qinvokable]
+        fn layer_row_expandable(&self, i: i32) -> bool;
+
+        /// Number of direct children of row `i`.
+        #[qinvokable]
+        fn layer_row_child_count(&self, i: i32) -> i32;
+
+        /// Thumbnail of row `i` scaled to `size`. `entire_document` places the
+        /// layer at its document position in a transparent `size`×`size`
+        /// square; otherwise the layer's own bounds fill the square. Null for
+        /// a group, an adjustment layer, or an invalid index/size.
+        #[qinvokable]
+        fn layer_row_thumbnail(&self, i: i32, size: i32, entire_document: bool) -> QImage;
+
+        /// Mask thumbnail of row `i` scaled to `size`, or null without a mask.
+        #[qinvokable]
+        fn layer_row_mask_thumbnail(&self, i: i32, size: i32) -> QImage;
+
+        /// Rename the node at `path`. Recomposites and records one undo state
+        /// on success. Returns false for a path that does not resolve.
+        #[qinvokable]
+        fn set_layer_name_path(self: Pin<&mut Self>, path: &QString, name: &QString) -> bool;
+
+        /// Move the node at `path` `delta` places within its own container.
+        /// Refuses the Background and fully-locked nodes. Recomposites and
+        /// records one undo state on success.
+        #[qinvokable]
+        fn move_layer_path(self: Pin<&mut Self>, path: &QString, delta: i32) -> bool;
+
+        /// Set visibility on every path (always eligible per node). Returns the
+        /// number of nodes changed; recomposites and records one undo state
+        /// only when that count is non-zero.
+        #[qinvokable]
+        fn set_layers_visible(self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32;
+
+        /// Set the blend mode from a 4-byte PSD `key` on every path. Returns
+        /// the number changed; records one undo state only when non-zero.
+        #[qinvokable]
+        fn set_layers_blend(self: Pin<&mut Self>, paths: &QStringList, key: &QString) -> i32;
+
+        /// Set opacity (clamped `0..=255`) on every path. Returns the number
+        /// changed; records one undo state only when non-zero.
+        #[qinvokable]
+        fn set_layers_opacity(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
+
+        /// Set fill opacity (clamped `0..=255`) on every path. Returns the
+        /// number changed; records one undo state only when non-zero.
+        #[qinvokable]
+        fn set_layers_fill(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
+
+        /// Set one lock flag on every path. `flag` is `"transparency"`,
+        /// `"pixels"`, `"position"`, or `"all"`. Returns the number changed;
+        /// records one undo state only when non-zero.
+        #[qinvokable]
+        fn set_layers_lock(
+            self: Pin<&mut Self>,
+            paths: &QStringList,
+            flag: &QString,
+            on: bool,
+        ) -> i32;
+
+        /// Set the color label on every path. Returns the number changed;
+        /// records one undo state only when non-zero.
+        #[qinvokable]
+        fn set_layers_color(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
+
+        /// Solo visibility: set exactly `paths` visible and every other node
+        /// invisible, recording one undo state under `label`. Returns the
+        /// number of nodes changed.
+        #[qinvokable]
+        fn apply_visibility(self: Pin<&mut Self>, paths: &QStringList, label: &QString) -> i32;
+
+        /// Delete every eligible path. Returns the number deleted; records one
+        /// undo state only when non-zero.
+        #[qinvokable]
+        fn delete_layers(self: Pin<&mut Self>, paths: &QStringList) -> i32;
+
+        /// Deep-copy every path directly above itself, returning the new paths.
+        /// Records one undo state only when at least one copy was created.
+        #[qinvokable]
+        fn duplicate_layers(self: Pin<&mut Self>, paths: &QStringList) -> QStringList;
+
+        /// Wrap the selection in one new group at the topmost selected
+        /// position, returning its path or empty on refusal.
+        #[qinvokable]
+        fn group_layers(self: Pin<&mut Self>, paths: &QStringList) -> QString;
+
+        /// Splice each selected group's children in place. Returns the number
+        /// of groups changed; records one undo state only when non-zero.
+        #[qinvokable]
+        fn ungroup_layers(self: Pin<&mut Self>, paths: &QStringList) -> i32;
+
+        /// Insert a new transparent raster layer inside `selection_path` when it
+        /// is a group else above it, returning the new path or empty.
+        #[qinvokable]
+        fn add_layer_in(self: Pin<&mut Self>, selection_path: &QString) -> QString;
+
+        /// Insert a new empty group by the [`add_layer_in`] rule, returning the
+        /// new path or empty.
+        #[qinvokable]
+        fn add_group_in(self: Pin<&mut Self>, selection_path: &QString) -> QString;
 
         /// Set layer `i` visibility, recomposite, and emit [`changed`].
         #[qinvokable]
@@ -801,13 +970,11 @@ impl qobject::PictureView {
     }
 
     pub fn layer_kind(&self, i: i32) -> QString {
-        match self.layer(i) {
-            Some(l) if l.is_group => QString::from("group"),
-            Some(l) if l.adjustment.is_some() => QString::from("adjustment"),
-            // ponytail: the Background is index 0 named "Background" (the only
-            // signal the model carries); M37 adds a first-class layer kind.
-            Some(l) if is_background_layer(i, l) => QString::from("background"),
-            Some(_) => QString::from("pixel"),
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return QString::default();
+        };
+        match doc.layers.get(i as usize) {
+            Some(layer) => layer_kind_str(doc, &i.to_string(), layer),
             None => QString::default(),
         }
     }
@@ -878,9 +1045,10 @@ impl qobject::PictureView {
     pub fn set_layer_opacity(mut self: Pin<&mut Self>, i: i32, value: i32) -> bool {
         let value = value.clamp(0, 255) as u8;
         let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            let background = is_background_layer(doc, i);
             match doc.layers.get_mut(i as usize) {
                 Some(layer) => {
-                    if is_background_layer(i, layer) || layer.lock.is_all() {
+                    if background || layer.lock.is_all() {
                         false
                     } else {
                         layer.opacity = value;
@@ -906,9 +1074,10 @@ impl qobject::PictureView {
     pub fn set_layer_fill(mut self: Pin<&mut Self>, i: i32, value: i32) -> bool {
         let value = value.clamp(0, 255) as u8;
         let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            let background = is_background_layer(doc, i);
             match doc.layers.get_mut(i as usize) {
                 Some(layer) => {
-                    if layer.is_group || is_background_layer(i, layer) || layer.lock.is_all() {
+                    if layer.is_group || background || layer.lock.is_all() {
                         false
                     } else {
                         layer.fill = value;
@@ -936,11 +1105,12 @@ impl qobject::PictureView {
             return false;
         };
         let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            let background = is_background_layer(doc, i);
             match doc.layers.get_mut(i as usize) {
                 // ponytail: no type/shape layers yet, so nothing forces a lock;
                 // the "cannot unlock a forced lock" rule is M37's.
                 Some(layer) => {
-                    if is_background_layer(i, layer) {
+                    if background {
                         false
                     } else {
                         layer.lock = layer.lock.with(bit, on);
@@ -968,9 +1138,10 @@ impl qobject::PictureView {
             return false;
         }
         let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            let background = is_background_layer(doc, i);
             match doc.layers.get_mut(i as usize) {
                 Some(layer) => {
-                    if is_background_layer(i, layer) {
+                    if background {
                         false
                     } else {
                         layer.color = ColorLabel::from_byte(value as u8);
@@ -1112,6 +1283,276 @@ impl qobject::PictureView {
             return QImage::default();
         }
         layer_thumbnail_image(layer, size as u32).unwrap_or_default()
+    }
+
+    pub fn layer_row_count(&self) -> i32 {
+        self.rust()
+            .doc
+            .as_ref()
+            .map_or(0, |doc| pictura_render::flatten_rows(doc).len() as i32)
+    }
+
+    pub fn layer_row_path(&self, i: i32) -> QString {
+        self.row_at(i)
+            .map(|(_, path, _, _)| QString::from(path.as_str()))
+            .unwrap_or_default()
+    }
+
+    pub fn layer_row_depth(&self, i: i32) -> i32 {
+        self.row_at(i).map_or(0, |(_, _, depth, _)| depth as i32)
+    }
+
+    pub fn layer_row_name(&self, i: i32) -> QString {
+        self.row_at(i)
+            .map(|(_, _, _, layer)| QString::from(layer.name.as_str()))
+            .unwrap_or_default()
+    }
+
+    pub fn layer_row_kind(&self, i: i32) -> QString {
+        self.row_at(i)
+            .map(|(doc, path, _, layer)| layer_kind_str(doc, &path, layer))
+            .unwrap_or_default()
+    }
+
+    pub fn layer_row_visible(&self, i: i32) -> bool {
+        self.row_at(i).is_some_and(|(_, _, _, layer)| layer.visible)
+    }
+
+    pub fn layer_row_blend(&self, i: i32) -> QString {
+        self.row_at(i)
+            .map(|(_, _, _, layer)| QString::from(blend_key(layer.blend).as_str()))
+            .unwrap_or_default()
+    }
+
+    pub fn layer_row_opacity(&self, i: i32) -> i32 {
+        self.row_at(i)
+            .map_or(0, |(_, _, _, layer)| layer.opacity as i32)
+    }
+
+    pub fn layer_row_fill(&self, i: i32) -> i32 {
+        self.row_at(i)
+            .map_or(0, |(_, _, _, layer)| layer.fill as i32)
+    }
+
+    pub fn layer_row_lock(&self, i: i32) -> i32 {
+        self.row_at(i)
+            .map_or(0, |(_, _, _, layer)| layer.lock.bits() as i32)
+    }
+
+    pub fn layer_row_color(&self, i: i32) -> i32 {
+        self.row_at(i)
+            .map_or(0, |(_, _, _, layer)| layer.color.to_byte() as i32)
+    }
+
+    pub fn layer_row_clipping(&self, i: i32) -> bool {
+        self.row_at(i)
+            .is_some_and(|(_, _, _, layer)| layer.clipping)
+    }
+
+    pub fn layer_row_has_mask(&self, i: i32) -> bool {
+        self.row_at(i)
+            .is_some_and(|(_, _, _, layer)| layer.mask.is_some())
+    }
+
+    pub fn layer_row_has_adjustment(&self, i: i32) -> bool {
+        self.row_at(i)
+            .is_some_and(|(_, _, _, layer)| layer.adjustment.is_some())
+    }
+
+    pub fn layer_row_expandable(&self, i: i32) -> bool {
+        self.row_at(i)
+            .is_some_and(|(_, _, _, layer)| layer.is_group && !layer.children.is_empty())
+    }
+
+    pub fn layer_row_child_count(&self, i: i32) -> i32 {
+        self.row_at(i)
+            .map_or(0, |(_, _, _, layer)| layer.children.len() as i32)
+    }
+
+    pub fn layer_row_thumbnail(&self, i: i32, size: i32, entire_document: bool) -> QImage {
+        if size <= 0 {
+            return QImage::default();
+        }
+        let Some((doc, _, _, layer)) = self.row_at(i) else {
+            return QImage::default();
+        };
+        if layer.is_group || layer.adjustment.is_some() {
+            return QImage::default();
+        }
+        let rendered = if entire_document {
+            layer_thumbnail_positioned(layer, doc.width, doc.height, size as u32)
+        } else {
+            layer_thumbnail_image(layer, size as u32)
+        };
+        rendered.unwrap_or_default()
+    }
+
+    pub fn layer_row_mask_thumbnail(&self, i: i32, size: i32) -> QImage {
+        if size <= 0 {
+            return QImage::default();
+        }
+        self.row_at(i)
+            .and_then(|(_, _, _, layer)| layer.mask.as_ref())
+            .and_then(|mask| mask_thumbnail_image(mask, size as u32))
+            .unwrap_or_default()
+    }
+
+    pub fn set_layer_name_path(mut self: Pin<&mut Self>, path: &QString, name: &QString) -> bool {
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::rename_path(doc, &path.to_string(), &name.to_string()),
+            None => false,
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record("Rename Layer");
+        }
+        changed
+    }
+
+    pub fn move_layer_path(mut self: Pin<&mut Self>, path: &QString, delta: i32) -> bool {
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::move_path(doc, &path.to_string(), delta),
+            None => false,
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record("Move Layer");
+        }
+        changed
+    }
+
+    pub fn set_layers_visible(mut self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32 {
+        self.as_mut()
+            .batch_changed(paths, "Set Visibility", |doc, paths| {
+                pictura_render::set_visible_paths(doc, paths, visible)
+            })
+    }
+
+    pub fn set_layers_blend(mut self: Pin<&mut Self>, paths: &QStringList, key: &QString) -> i32 {
+        let key = key.to_string();
+        let bytes = key.as_bytes();
+        if bytes.len() != 4 {
+            return 0;
+        }
+        let Some(mode) = BlendMode::from_psd_key([bytes[0], bytes[1], bytes[2], bytes[3]]) else {
+            return 0;
+        };
+        self.as_mut()
+            .batch_changed(paths, "Blend Mode", |doc, paths| {
+                pictura_render::set_blend_paths(doc, paths, mode)
+            })
+    }
+
+    pub fn set_layers_opacity(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
+        let value = value.clamp(0, 255) as u8;
+        self.as_mut().batch_changed(paths, "Opacity", |doc, paths| {
+            pictura_render::set_opacity_paths(doc, paths, value)
+        })
+    }
+
+    pub fn set_layers_fill(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
+        let value = value.clamp(0, 255) as u8;
+        self.as_mut()
+            .batch_changed(paths, "Fill Opacity", |doc, paths| {
+                pictura_render::set_fill_paths(doc, paths, value)
+            })
+    }
+
+    pub fn set_layers_lock(
+        mut self: Pin<&mut Self>,
+        paths: &QStringList,
+        flag: &QString,
+        on: bool,
+    ) -> i32 {
+        let Some(bit) = lock_bit(flag.to_string().as_str()) else {
+            return 0;
+        };
+        self.as_mut().batch_changed(paths, "Lock", |doc, paths| {
+            pictura_render::set_lock_paths(doc, paths, bit, on)
+        })
+    }
+
+    pub fn set_layers_color(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
+        if !(0..=7).contains(&value) {
+            return 0;
+        }
+        let color = ColorLabel::from_byte(value as u8);
+        self.as_mut()
+            .batch_changed(paths, "Layer Color", |doc, paths| {
+                pictura_render::set_color_paths(doc, paths, color)
+            })
+    }
+
+    pub fn apply_visibility(mut self: Pin<&mut Self>, paths: &QStringList, label: &QString) -> i32 {
+        let label = label.to_string();
+        self.as_mut().batch_changed(paths, &label, |doc, paths| {
+            pictura_render::apply_visibility(doc, paths)
+        })
+    }
+
+    pub fn delete_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> i32 {
+        self.as_mut()
+            .batch_changed(paths, "Delete Layers", pictura_render::delete_paths)
+    }
+
+    pub fn duplicate_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> QStringList {
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::duplicate_paths(doc, &refs),
+            None => Vec::new(),
+        };
+        if !created.is_empty() {
+            self.as_mut().recomposite();
+            self.as_mut().record("Duplicate Layer");
+        }
+        created.into_iter().map(QString::from).collect()
+    }
+
+    pub fn group_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> QString {
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::group_paths(doc, &refs),
+            None => None,
+        };
+        match created {
+            Some(path) => {
+                self.as_mut().recomposite();
+                self.as_mut().record("Group Layers");
+                QString::from(path.as_str())
+            }
+            None => QString::default(),
+        }
+    }
+
+    pub fn ungroup_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> i32 {
+        self.as_mut()
+            .batch_changed(paths, "Ungroup Layers", pictura_render::ungroup_paths)
+    }
+
+    pub fn add_layer_in(mut self: Pin<&mut Self>, selection_path: &QString) -> QString {
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::add_layer_in(doc, &selection_path.to_string(), ""),
+            None => String::new(),
+        };
+        if !created.is_empty() {
+            self.as_mut().recomposite();
+            self.as_mut().record("New Layer");
+        }
+        QString::from(created.as_str())
+    }
+
+    pub fn add_group_in(mut self: Pin<&mut Self>, selection_path: &QString) -> QString {
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::add_group_in(doc, &selection_path.to_string(), ""),
+            None => String::new(),
+        };
+        if !created.is_empty() {
+            self.as_mut().recomposite();
+            self.as_mut().record("New Group");
+        }
+        QString::from(created.as_str())
     }
 
     pub fn select_all(mut self: Pin<&mut Self>) {
@@ -2035,6 +2476,24 @@ impl qobject::PictureView {
         self.rust().doc.as_ref()?.layers.get(i as usize)
     }
 
+    /// Resolve flat row `i` to its document, path, depth, and layer, or `None`
+    /// when out of range or without a document.
+    ///
+    /// ponytail: re-flattens the whole tree on every row getter (O(n) each, so
+    /// a full panel refresh is O(n²)). Cache the projection and invalidate it on
+    /// `changed` if a many-row document ever profiles hot.
+    fn row_at(&self, i: i32) -> Option<(&Document, String, u32, &Layer)> {
+        if i < 0 {
+            return None;
+        }
+        let doc = self.rust().doc.as_ref()?;
+        let (path, depth) = pictura_render::flatten_rows(doc)
+            .into_iter()
+            .nth(i as usize)?;
+        let layer = pictura_render::resolve_path(doc, &path)?;
+        Some((doc, path, depth, layer))
+    }
+
     /// Composite only `rect`, patch the authoritative `doc.composite`, and emit
     /// [`region_blitted`] with a rectangle-sized image.
     ///
@@ -2086,6 +2545,28 @@ impl qobject::PictureView {
             buffer_to_image(&buffer)
         };
         self.region_blitted(region_image, x0, y0);
+    }
+
+    /// Shared batch mutation wrapper: apply `op` to every listed path, then
+    /// recomposite and record `label` iff the change count is non-zero. A
+    /// zero-change batch records nothing and emits no `changed` (M34/M39).
+    fn batch_changed(
+        mut self: Pin<&mut Self>,
+        paths: &QStringList,
+        label: &str,
+        op: impl FnOnce(&mut Document, &[&str]) -> usize,
+    ) -> i32 {
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => op(doc, &refs),
+            None => 0,
+        };
+        if changed > 0 {
+            self.as_mut().recomposite();
+            self.as_mut().record(label);
+        }
+        changed as i32
     }
 
     /// Refresh `image` from the current document and emit [`changed`].
@@ -2158,11 +2639,10 @@ fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
     })
 }
 
-/// ponytail: the Background is detected by CS6's index-0 "Background" name, the
-/// only signal the model carries; M37 adds a first-class layer kind and this
-/// heuristic goes away.
-fn is_background_layer(i: i32, layer: &Layer) -> bool {
-    i == 0 && !layer.is_group && layer.adjustment.is_none() && layer.name == "Background"
+/// Delegates to the shared M36 Background heuristic in `pictura-render`, so the
+/// panel core and the bridge agree on one definition.
+fn is_background_layer(doc: &Document, i: i32) -> bool {
+    pictura_render::is_background(doc, &i.to_string())
 }
 
 /// Map a lock-strip flag name to its [`LockFlags`] bit. `"all"` is the derived
@@ -2175,6 +2655,29 @@ fn lock_bit(flag: &str) -> Option<u8> {
         "all" => Some(LockFlags::all().bits()),
         _ => None,
     }
+}
+
+/// The shared row-kind label, so [`layer_kind`] and the tree projection agree.
+fn layer_kind_str(doc: &Document, path: &str, layer: &Layer) -> QString {
+    if layer.is_group {
+        QString::from("group")
+    } else if layer.adjustment.is_some() {
+        QString::from("adjustment")
+    } else if pictura_render::is_background(doc, path) {
+        QString::from("background")
+    } else {
+        QString::from("pixel")
+    }
+}
+
+/// Owned copy of a `QStringList`'s entries.
+fn list_of_strings(paths: &QStringList) -> Vec<String> {
+    paths.iter().map(|path| path.to_string()).collect()
+}
+
+/// Borrow a `Vec<String>` as `&[&str]` for the path core.
+fn as_str_slice(owned: &[String]) -> Vec<&str> {
+    owned.iter().map(String::as_str).collect()
 }
 
 /// Map a filter `kind` to its [`pictura_filters::Filter`], or `None` unknown.
@@ -3016,6 +3519,123 @@ fn layer_thumbnail_image(layer: &Layer, size: u32) -> Option<QImage> {
     Some(rgba_image(rgba, tw as i32, th as i32))
 }
 
+/// Sample a pixel layer's RGBA at layer-local `(x, y)`, or `None` when the
+/// layer's channels are absent/misshaped or the coordinate is out of bounds.
+fn layer_pixel(layer: &Layer, x: u32, y: u32) -> Option<[u8; 4]> {
+    let width = layer.rect.width();
+    let height = layer.rect.height();
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let (width, height) = (width as u32, height as u32);
+    if x >= width || y >= height {
+        return None;
+    }
+    let plane = (width * height) as usize;
+    let at = (y * width + x) as usize;
+    let channel = |id: i16| layer.channels.iter().find(|c| c.id == id).map(|c| &c.data);
+    let c0 = channel(0)?;
+    if c0.len() != plane {
+        return None;
+    }
+    let (r, g, b) = if channel(1).is_none() && channel(2).is_none() {
+        (c0[at], c0[at], c0[at])
+    } else {
+        let (c1, c2) = (channel(1)?, channel(2)?);
+        if c1.len() != plane || c2.len() != plane {
+            return None;
+        }
+        (c0[at], c1[at], c2[at])
+    };
+    let a = match channel(-1) {
+        Some(a) if a.len() == plane => a[at],
+        Some(_) => return None,
+        None => 255,
+    };
+    Some([r, g, b, a])
+}
+
+/// Panel Options "Entire Document": render a pixel layer inside a transparent
+/// `size`×`size` document square, placing its pixels at their document position
+/// (`rect.left/top`) scaled by `size / max(doc_width, doc_height)`, so a small
+/// layer appears small in its document context.
+fn layer_thumbnail_positioned(
+    layer: &Layer,
+    doc_width: u32,
+    doc_height: u32,
+    size: u32,
+) -> Option<QImage> {
+    if doc_width == 0 || doc_height == 0 {
+        return None;
+    }
+    let width = layer.rect.width();
+    let height = layer.rect.height();
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let scale = size as f64 / doc_width.max(doc_height) as f64;
+    let dest_left = (layer.rect.left as f64 * scale).round() as i64;
+    let dest_top = (layer.rect.top as f64 * scale).round() as i64;
+    let dest_w = ((width as f64 * scale).round() as i64).max(1);
+    let dest_h = ((height as f64 * scale).round() as i64).max(1);
+    let (src_w, src_h) = (width as u32, height as u32);
+
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+    for py in 0..size as i64 {
+        for px in 0..size as i64 {
+            if px < dest_left
+                || py < dest_top
+                || px >= dest_left + dest_w
+                || py >= dest_top + dest_h
+            {
+                continue;
+            }
+            let sx = ((px - dest_left) as u32 * src_w / dest_w as u32).min(src_w - 1);
+            let sy = ((py - dest_top) as u32 * src_h / dest_h as u32).min(src_h - 1);
+            let Some([r, g, b, a]) = layer_pixel(layer, sx, sy) else {
+                continue;
+            };
+            let o = ((py as u32 * size + px as u32) * 4) as usize;
+            rgba[o..o + 4].copy_from_slice(&[r, g, b, a]);
+        }
+    }
+    Some(rgba_image(rgba, size as i32, size as i32))
+}
+
+/// Downsample a layer mask's grayscale data into a `size`-bounded square (long
+/// edge `size`, aspect kept), replicating the value across RGB. Null without
+/// mask data.
+fn mask_thumbnail_image(mask: &LayerMask, size: u32) -> Option<QImage> {
+    let data = mask.data.as_ref()?;
+    let width = mask.rect.width();
+    let height = mask.rect.height();
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let (width, height) = (width as u32, height as u32);
+    let plane = (width * height) as usize;
+    if data.len() != plane {
+        return None;
+    }
+    let (tw, th) = if width >= height {
+        (size, ((height * size) / width).max(1))
+    } else {
+        (((width * size) / height).max(1), size)
+    };
+
+    let mut rgba = vec![0u8; (tw * th * 4) as usize];
+    for ty in 0..th {
+        let sy = ty as usize * height as usize / th as usize;
+        for tx in 0..tw {
+            let sx = (tx as usize * width as usize / tw as usize).min(width as usize - 1);
+            let v = data[sy * width as usize + sx];
+            let o = ((ty * tw + tx) * 4) as usize;
+            rgba[o..o + 4].copy_from_slice(&[v, v, v, 255]);
+        }
+    }
+    Some(rgba_image(rgba, tw as i32, th as i32))
+}
+
 /// The `0xAARRGGBB` value of a planar buffer pixel, or 0 out of bounds.
 ///
 /// Mirrors [`buffer_to_image`]'s plane rules: 1 plane is opaque grey, 2 is grey
@@ -3296,6 +3916,53 @@ mod tests {
             children: Vec::new(),
             is_group: false,
         }
+    }
+
+    #[test]
+    fn row_thumbnails_respect_contents_and_masks() {
+        let mut layer = pixel_layer("red", 2, 2, (255, 0, 0));
+        layer.rect = PsdRect {
+            top: 2,
+            left: 2,
+            bottom: 4,
+            right: 4,
+        };
+
+        let positioned =
+            layer_thumbnail_positioned(&layer, 4, 4, 4).expect("entire-document square");
+        assert_eq!((positioned.width(), positioned.height()), (4, 4));
+        assert_eq!(positioned.pixel_color(2, 2).red(), 255);
+        assert_eq!(positioned.pixel_color(2, 2).alpha(), 255);
+        assert_eq!(
+            positioned.pixel_color(0, 0).alpha(),
+            0,
+            "document is empty outside the layer"
+        );
+
+        let bounds = layer_thumbnail_image(&layer, 4).expect("layer-bounds thumbnail");
+        assert_eq!(
+            (bounds.width(), bounds.height()),
+            (4, 4),
+            "layer bounds fill the square"
+        );
+        assert_eq!(bounds.pixel_color(0, 0).red(), 255);
+
+        let mask = LayerMask {
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 2,
+                right: 2,
+            },
+            default_color: 255,
+            disabled: false,
+            flags: 0,
+            data: Some(vec![0, 128, 255, 64]),
+        };
+        let mask_image = mask_thumbnail_image(&mask, 4).expect("mask thumbnail");
+        assert_eq!((mask_image.width(), mask_image.height()), (4, 4));
+        assert_eq!(mask_image.pixel_color(0, 0).red(), 0);
+        assert_eq!(mask_image.pixel_color(3, 3).red(), 64);
     }
 
     #[test]

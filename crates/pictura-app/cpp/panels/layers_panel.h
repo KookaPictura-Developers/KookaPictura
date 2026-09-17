@@ -1,16 +1,24 @@
 #pragma once
 
+#include <QtCore/QHash>
 #include <QtCore/QObject>
 #include <QtCore/QPoint>
+#include <QtCore/QSet>
+#include <QtCore/QString>
+#include <QtCore/QStringList>
 #include <QtWidgets/QDockWidget>
 
 class QComboBox;
+class QEvent;
+class QMenu;
+class QModelIndex;
 class QSpinBox;
 class QToolButton;
 class QTreeView;
 
 namespace pictura {
 
+class LayerRowDelegate;
 class LayersModel;
 class PictureView;
 
@@ -23,16 +31,65 @@ public:
     void setView(PictureView* view);
     void refresh();
 
-    /// Bottom-first index of the selected row, or -1 when nothing is selected.
+    /// Bottom-first top-level index of the selected row, or -1 when nothing is
+    /// selected or the selected row is nested below a group.
     int currentLayer() const;
+
+    /// Frozen path of the selected row, or empty when nothing is selected.
+    QString currentPath() const;
+
+    // Self-test hooks (M39). Read the projected model and menus, drive solo and
+    // inline rename, and expose the Panel Options values without synthetic
+    // mouse/key input.
+    bool rowHasMaskForTest(const QString& path) const;
+    bool rowHasAdjustmentForTest(const QString& path) const;
+    bool rowClippingForTest(const QString& path) const;
+    bool rowClipBaseForTest(const QString& path) const;
+    bool rowExpandableForTest(const QString& path) const;
+    QString rowToolTipForTest(const QString& path) const;
+    bool beginRenameForTest(const QString& path);
+    QObject* itemDelegateForTest() const;
+    void toggleSoloForTest(const QString& path);
+    int thumbSizeIndexForTest() const;
+    int thumbContentsForTest() const;
+    bool expandNewEffectsForTest() const;
+    void setOptionsForTest(int size, int contents, bool expand);
+    QStringList panelMenuTextsForTest() const;
+    QStringList rowMenuTextsForTest();
+    QStringList colorLabelTextsForTest();
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     void syncControls();
     void selectLayer(int index);
-    void showColorMenu(const QPoint& pos);
+    void selectPath(const QString& path);
+    void selectPaths(const QStringList& paths, const QString& current);
+    QStringList selectedPaths() const;
+    void showContextMenu(const QPoint& pos);
+    void populateRowMenu(QMenu& menu, const QString& path, int color);
+    void showEyeMenu(const QPoint& pos, const QModelIndex& index);
+    void addColorLabelActions(QMenu* menu, int currentLabel);
+    void openPanelOptions();
+    void persistOptions();
+
+    void addLayerAt(const QString& path);
+    void addGroupAt(const QString& path);
+    void duplicateSelection();
+    void deleteSelection();
+    void groupSelection();
+    void ungroupSelection();
+    void moveCurrent(int delta);
+
+    void toggleSolo(const QString& path);
+    void restoreSolo();
+    void clearSolo();
+    QStringList soloPaths(const QString& path, const QHash<QString, bool>& snapshot) const;
 
     PictureView* view_ = nullptr;
     LayersModel* model_ = nullptr;
+    LayerRowDelegate* delegate_ = nullptr;
     QTreeView* tree_ = nullptr;
     QComboBox* blend_ = nullptr;
     QSpinBox* opacity_ = nullptr;
@@ -41,6 +98,15 @@ private:
     QToolButton* lockPixels_ = nullptr;
     QToolButton* lockPosition_ = nullptr;
     QToolButton* lockAll_ = nullptr;
+    QToolButton* panelMenu_ = nullptr;
+    QSet<QString> expandedPaths_;
+    bool thumbEntireDocument_ = true;
+    int thumbSizeIndex_ = 2;
+    int thumbContents_ = 0;
+    bool expandNewEffects_ = true;
+    bool soloActive_ = false;
+    QString soloPath_;
+    QHash<QString, bool> soloSnapshot_;
     bool syncing_ = false;
     QMetaObject::Connection viewConnection_;
 };
