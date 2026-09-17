@@ -58,6 +58,10 @@ public:
     QStringList rowMenuTextsForTest();
     QStringList colorLabelTextsForTest();
 
+    // Phase D: run a wired Layers per-widget menu entry by its action id.
+    // Returns false for ids this panel does not own.
+    bool performPanelMenuAction(const QString& actionId);
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 

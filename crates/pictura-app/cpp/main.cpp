@@ -21,6 +21,7 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
+#include <QtWidgets/QMenuBar>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QToolBar>
@@ -3486,10 +3487,13 @@ int main(int argc, char* argv[])
             QCoreApplication::processEvents();
         }
         const bool m41ModeRestored = m41Column && m41Column->railMode() == m41ModeBefore;
-        // The column must impose no hard minimum of its own; the frame's other
-        // chrome (the options bar) still sets its own floor.
-        const bool m41NoMin = m41Column && m41Column->minimumWidthForTest() <= 0
-                              && m41Column->minimumSizeHint().width() <= 120;
+        // M42 amends this check to the new normal-mode width floor: the column
+        // now enforces a bounded content-derived minimum width (so it cannot be
+        // squeezed to nothing) while keeping no height minimum and staying
+        // scrollable.
+        const int m41MinFloor = m41Column ? m41Column->minimumWidthForTest() : 0;
+        const bool m41NoMin = m41Column && m41MinFloor >= 160 && m41MinFloor <= 400
+                              && m41Column->minimumHeight() == 0;
         const bool m41Scroll = m41Column && m41Column->scrollableForTest();
         const bool m41WidthOk =
             m41ToggleExists && m41Flipped && m41ModeRestored && m41NoMin && m41Scroll;
@@ -4008,6 +4012,547 @@ int main(int argc, char* argv[])
         if (!m41SessionOk) {
             std::fprintf(stderr, "pictura self-test: FAIL: M41 session v5\n");
             return 128;
+        }
+
+        // M42 Phase A: the column's normal-mode minimum width and smallest-width
+        // compact transition, the bigger strip and tool icons, the fg/bg swap
+        // control and `X` key, the menu-bar clearance + stale-layout guard, and
+        // the floated Tools dock geometry. Exit codes 131, 132, 137, 138, 139.
+        auto* m42Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+
+        // m42_minwidth (131): normal mode enforces a bounded content-derived
+        // minimum width (no height minimum, still scrollable); entering iconic
+        // lands at the smallest strip width and leaving restores the prior width.
+        int m42NormalMin = 0;
+        int m42IconicMin = 0;
+        bool m42NormalWidth = false;
+        bool m42IconicSmall = false;
+        bool m42RestoredWidth = false;
+        if (m41Column) {
+            m41Column->setRailMode(false);
+            QCoreApplication::processEvents();
+            m42NormalMin = m41Column->minimumWidthForTest();
+            m42NormalWidth = m42NormalMin >= 180 && m42NormalMin <= 400
+                             && m41Column->minimumHeight() == 0
+                             && m41Column->scrollableForTest();
+            const int before = m41Column->width();
+            m41Column->setRailMode(true);
+            QCoreApplication::processEvents();
+            m42IconicMin = m41Column->minimumWidthForTest();
+            m42IconicSmall = m42IconicMin > 0 && m42IconicMin < m42NormalMin
+                             && m41Column->width() <= m42IconicMin + 8;
+            m41Column->setRailMode(false);
+            QCoreApplication::processEvents();
+            m42RestoredWidth = m41Column->minimumWidthForTest() == m42NormalMin
+                               && m41Column->width() >= m42NormalMin
+                               && (before <= 0 || m41Column->width() >= before - 4);
+        }
+        const bool m42MinWidthOk =
+            m42NormalWidth && m42IconicSmall && m42RestoredWidth;
+        std::fprintf(stderr,
+                     "pictura self-test: m42_minwidth normal=%d iconic=%d restored=%d "
+                     "min=%d strip=%d\n",
+                     m42NormalWidth ? 1 : 0,
+                     m42IconicSmall ? 1 : 0,
+                     m42RestoredWidth ? 1 : 0,
+                     m42NormalMin,
+                     m42IconicMin);
+        std::fflush(stderr);
+        if (!m42MinWidthOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 column minimum width\n");
+            return 131;
+        }
+
+        // m42_iconic (132): the iconic-strip buttons and their pixmap are larger
+        // than M41 (24 button / 16 pixmap), and iconic mode reports a strip
+        // narrower than the normal-mode floor. Active/pressed look and flyout are
+        // Phase C and are not asserted here.
+        bool m42IconBig = false;
+        bool m42IconSmallest = false;
+        if (m41Column) {
+            m41Column->setRailMode(true);
+            QCoreApplication::processEvents();
+            QToolButton* stripButton =
+                m41Column->findChild<QToolButton*>(QStringLiteral("panelIcon_layersPanel"));
+            if (!stripButton) {
+                for (QToolButton* candidate : m41Column->findChildren<QToolButton*>()) {
+                    if (candidate->objectName().startsWith(QStringLiteral("panelIcon_"))) {
+                        stripButton = candidate;
+                        break;
+                    }
+                }
+            }
+            m42IconBig = stripButton && stripButton->minimumWidth() >= 28
+                         && stripButton->iconSize().width() >= 20;
+            m42IconSmallest = m41Column->minimumWidthForTest() < 180
+                              && m41Column->iconStripVisibleForTest();
+            m41Column->setRailMode(false);
+            QCoreApplication::processEvents();
+        }
+        const bool m42IconicOk = m42IconBig && m42IconSmallest;
+        std::fprintf(stderr, "pictura self-test: m42_iconic bigger=%d smallest=%d\n",
+                     m42IconBig ? 1 : 0,
+                     m42IconSmallest ? 1 : 0);
+        std::fflush(stderr);
+        if (!m42IconicOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 iconic strip\n");
+            return 132;
+        }
+
+        // m42_fgbg (137): the swap control exists as a real hit target, clicking
+        // it exchanges fg/bg, and the `X` key swaps too (`X` is unassigned in the
+        // tool letter catalogue).
+        bool m42SwapControl = false;
+        bool m42SwapClick = false;
+        bool m42SwapKey = false;
+        if (m42Toolbox) {
+            auto* fgbg = m42Toolbox->foregroundBackgroundForTest();
+            if (fgbg) {
+                const QColor fg0 = fgbg->foregroundForTest();
+                const QColor bg0 = fgbg->backgroundForTest();
+                const int count0 = fgbg->swapCountForTest();
+                const QRect swap = fgbg->swapRectForTest();
+                m42SwapControl = swap.isValid() && swap.width() > 0 && swap.height() > 0
+                                 && fgbg->rect().contains(swap);
+                const QPoint local = swap.center();
+                QMouseEvent press(QEvent::MouseButtonPress, QPointF(local),
+                                  QPointF(fgbg->mapToGlobal(local)), Qt::LeftButton,
+                                  Qt::LeftButton, Qt::NoModifier);
+                QApplication::sendEvent(fgbg, &press);
+                QCoreApplication::processEvents();
+                m42SwapClick = fgbg->swapCountForTest() == count0 + 1
+                               && fgbg->foregroundForTest() == bg0
+                               && fgbg->backgroundForTest() == fg0;
+                const int count1 = fgbg->swapCountForTest();
+                const QColor fg1 = fgbg->foregroundForTest();
+                const QColor bg1 = fgbg->backgroundForTest();
+                frame.activateWindow();
+                QCoreApplication::processEvents();
+                QKeyEvent xEvent(QEvent::KeyPress, Qt::Key_X, Qt::NoModifier,
+                                 QStringLiteral("x"));
+                QApplication::sendEvent(&frame, &xEvent);
+                QCoreApplication::processEvents();
+                m42SwapKey = fgbg->swapCountForTest() == count1 + 1
+                             && fgbg->foregroundForTest() == bg1
+                             && fgbg->backgroundForTest() == fg1;
+            }
+        }
+        const bool m42FgbgOk = m42SwapControl && m42SwapClick && m42SwapKey;
+        std::fprintf(stderr,
+                     "pictura self-test: m42_fgbg control=%d click=%d key=%d\n",
+                     m42SwapControl ? 1 : 0,
+                     m42SwapClick ? 1 : 0,
+                     m42SwapKey ? 1 : 0);
+        std::fflush(stderr);
+        if (!m42FgbgOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 fg/bg swap\n");
+            return 137;
+        }
+
+        // m42_menubar (138): no visible child widget's global geometry overlaps
+        // the menu-bar rect, and a persisted layout from another chrome revision
+        // is discarded instead of restored.
+        bool m42MenuClear = frame.menuBar() != nullptr;
+        QString m42MenuOffender;
+        if (QMenuBar* bar = frame.menuBar()) {
+            QCoreApplication::processEvents();
+            const QRect barRect(bar->mapToGlobal(QPoint(0, 0)), bar->size());
+            for (QWidget* child : frame.findChildren<QWidget*>()) {
+                if (!child || child == bar || !child->isVisible()
+                    || bar->isAncestorOf(child) || child->window() != &frame) {
+                    continue;
+                }
+                const QRect childRect(child->mapToGlobal(QPoint(0, 0)), child->size());
+                if (childRect.intersects(barRect)) {
+                    m42MenuClear = false;
+                    if (m42MenuOffender.isEmpty()) {
+                        m42MenuOffender = child->objectName().isEmpty()
+                                              ? QString::fromLatin1(
+                                                    child->metaObject()->className())
+                                              : child->objectName();
+                    }
+                }
+            }
+        }
+        const bool m42StaleDiscarded =
+            !frame.restoreStoredLayout(QByteArrayLiteral("stale-layout"),
+                                       frame.layoutRevisionForTest() - 1);
+        frame.saveSession();
+        const bool m42RevisionSaved =
+            pictura::loadSession().layoutRevision == frame.layoutRevisionForTest();
+        const bool m42MenubarOk = m42MenuClear && m42StaleDiscarded && m42RevisionSaved;
+        std::fprintf(stderr, "pictura self-test: m42_menubar clear=%d stale=%d rev=%d\n",
+                     m42MenuClear ? 1 : 0,
+                     m42StaleDiscarded ? 1 : 0,
+                     m42RevisionSaved ? 1 : 0);
+        std::fflush(stderr);
+        if (!m42MenubarOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 menu-bar overlay=%s\n",
+                         m42MenuOffender.toLocal8Bit().constData());
+            return 138;
+        }
+
+        // m42_tools (139): the slot/screen-mode icons are larger than M40 (30
+        // button / 20 pixmap), the one- and two-column minimum widths equal the
+        // content width exactly, and a floated dock's body hugs its content
+        // height (stretch 0, no leftover vertical space).
+        bool m42ToolIcons = false;
+        bool m42ToolTight = false;
+        bool m42ToolFloat = false;
+        int m42ToolMin1 = 0;
+        int m42ToolContent1 = 0;
+        int m42ToolMin2 = 0;
+        int m42ToolContent2 = 0;
+        if (m42Toolbox) {
+            m42Toolbox->setColumns(1);
+            QCoreApplication::processEvents();
+            const QList<QToolButton*> m42Slots = m42Toolbox->slotButtons();
+            m42ToolIcons = !m42Slots.isEmpty();
+            for (QToolButton* button : m42Slots) {
+                if (button->minimumWidth() < 32 || button->iconSize().width() < 22) {
+                    m42ToolIcons = false;
+                }
+            }
+            auto* screenMode =
+                m42Toolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton"));
+            if (screenMode && !screenMode->icon().isNull()
+                && (screenMode->minimumWidth() < 32
+                    || screenMode->iconSize().width() < 22)) {
+                m42ToolIcons = false;
+            }
+
+            m42ToolMin1 = m42Toolbox->minimumWidth();
+            m42ToolContent1 = m42Toolbox->contentWidthForTest();
+            m42Toolbox->setColumns(2);
+            QCoreApplication::processEvents();
+            m42ToolMin2 = m42Toolbox->minimumWidth();
+            m42ToolContent2 = m42Toolbox->contentWidthForTest();
+            m42ToolTight = m42ToolMin1 > 0 && m42ToolMin1 == m42ToolContent1
+                           && m42ToolMin2 == m42ToolContent2 && m42ToolMin2 > m42ToolMin1;
+
+            if (!m42Toolbox->isFloating()) {
+                m42Toolbox->setFloating(true);
+                QCoreApplication::processEvents();
+                QCoreApplication::processEvents();
+                const int bodyHeight = m42Toolbox->bodyHeightForTest();
+                const int hintHeight = m42Toolbox->bodySizeHintHeightForTest();
+                m42ToolFloat = m42Toolbox->bodyStretchForTest() == 0
+                               && hintHeight > 0 && bodyHeight <= hintHeight + 8;
+                m42Toolbox->setFloating(false);
+                QCoreApplication::processEvents();
+            }
+            m42Toolbox->setColumns(1);
+            QCoreApplication::processEvents();
+        }
+        const bool m42ToolsOk = m42ToolIcons && m42ToolTight && m42ToolFloat;
+        std::fprintf(stderr,
+                     "pictura self-test: m42_tools icons=%d tight=%d float=%d "
+                     "min1=%d content1=%d min2=%d content2=%d\n",
+                     m42ToolIcons ? 1 : 0,
+                     m42ToolTight ? 1 : 0,
+                     m42ToolFloat ? 1 : 0,
+                     m42ToolMin1,
+                     m42ToolContent1,
+                     m42ToolMin2,
+                     m42ToolContent2);
+        std::fflush(stderr);
+        if (!m42ToolsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 tools geometry\n");
+            return 139;
+        }
+
+        // m42_dragstrip (133): a strip icon reorders within the strip and the
+        // order persists, and dropping a strip icon on the normal-mode group
+        // stack moves the panel into that group. The strip drop indicator is
+        // drawn and cleared. Both paths drive the real begin/update/commit drag.
+        bool m42StripReorder = false;
+        bool m42StripMove = false;
+        bool m42StripIndicator = false;
+        bool m42StripClear = false;
+        if (m41Column) {
+            m41Column->setMinimumWidth(360);
+            m41Column->setRailMode(true);
+            QCoreApplication::processEvents();
+            const QStringList m42StripBefore = m41Column->stripOrderForTest();
+            int m42StripMoveIndex = -1;
+            for (int i = 1; i < m42StripBefore.size(); ++i) {
+                const QString sameGroup = m41Column->groupOfForTest(m42StripBefore.at(i));
+                if (!sameGroup.isEmpty()
+                    && sameGroup == m41Column->groupOfForTest(m42StripBefore.at(i - 1))) {
+                    m42StripMoveIndex = i;
+                    break;
+                }
+            }
+            if (m42StripMoveIndex > 0) {
+                const QString moving = m42StripBefore.at(m42StripMoveIndex);
+                const QPoint target =
+                    m41Column->stripInsertionPointForTest(m42StripMoveIndex - 1);
+                m41Column->beginStripDragForTest(moving);
+                QCoreApplication::processEvents();
+                m41Column->dragToForTest(target);
+                m42StripIndicator =
+                    m41Column->dropIndicatorVisibleForTest()
+                    && m41Column->stripDropIndexForTest() == m42StripMoveIndex - 1;
+                m41Column->dropForTest(target);
+                const QStringList after = m41Column->stripOrderForTest();
+                m42StripReorder = after != m42StripBefore
+                                 && after.value(m42StripMoveIndex - 1) == moving;
+                m42StripClear = !m41Column->dropIndicatorVisibleForTest();
+            }
+
+            pictura::PanelGroup* m42DestGroup =
+                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            if (!m42DestGroup && !m41Column->groups().isEmpty()) {
+                m42DestGroup = m41Column->groups().first();
+            }
+            QString m42DestPanel;
+            if (m42DestGroup) {
+                for (QWidget* panel : m42DestGroup->visiblePanels()) {
+                    if (panel) {
+                        m42DestPanel = panel->objectName();
+                        break;
+                    }
+                }
+            }
+            QString m42SourcePanel;
+            for (pictura::PanelGroup* group : m41Column->groups()) {
+                if (!group || group == m42DestGroup) {
+                    continue;
+                }
+                for (QWidget* panel : group->visiblePanels()) {
+                    if (panel) {
+                        m42SourcePanel = panel->objectName();
+                        break;
+                    }
+                }
+                if (!m42SourcePanel.isEmpty()) {
+                    break;
+                }
+            }
+            if (!m42SourcePanel.isEmpty() && !m42DestPanel.isEmpty()) {
+                const bool moved =
+                    m41Column->dropStripOnGroupForTest(m42SourcePanel, m42DestPanel);
+                m42StripMove = moved
+                               && m41Column->groupForPanel(m42SourcePanel) == m42DestGroup
+                               && !m41Column->railMode();
+            }
+            m41Column->setRailMode(false);
+            m41Column->setMinimumWidth(0);
+            QCoreApplication::processEvents();
+        }
+        const bool m42DragStripOk =
+            m42StripReorder && m42StripMove && m42StripIndicator && m42StripClear;
+        std::fprintf(stderr,
+                     "pictura self-test: m42_dragstrip reorder=%d move=%d indicator=%d "
+                     "clear=%d\n",
+                     m42StripReorder ? 1 : 0,
+                     m42StripMove ? 1 : 0,
+                     m42StripIndicator ? 1 : 0,
+                     m42StripClear ? 1 : 0);
+        std::fflush(stderr);
+        if (!m42DragStripOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 strip drag\n");
+            return 133;
+        }
+
+        // m42_flyout (134): the flyout opens on the inner side of the right-hand
+        // column, its header names the panel and carries the close chevron, the
+        // open icon renders active, and closing clears the active state.
+        bool m42FlyoutSide = false;
+        bool m42FlyoutActive = false;
+        bool m42FlyoutGroup = false;
+        bool m42FlyoutClose = false;
+        if (m41Column) {
+            m41Column->setRailMode(true);
+            QCoreApplication::processEvents();
+            m42FlyoutSide = m41Column->flyoutSideForTest() == QStringLiteral("left");
+            const bool opened =
+                m41Column->openIconFlyoutForTest(QStringLiteral("layersPanel"));
+            for (int i = 0; i < 20 && !m41Column->iconFlyoutVisibleForTest(); ++i) {
+                QCoreApplication::processEvents();
+            }
+            m42FlyoutActive = opened && m41Column->iconFlyoutVisibleForTest()
+                              && m41Column->activeIconNameForTest()
+                                     == QStringLiteral("layersPanel");
+            m42FlyoutGroup =
+                m41Column->flyoutHeaderTitleForTest() == QStringLiteral("Layers")
+                && m41Column->flyoutHeaderCloseForTest();
+            const bool closed = m41Column->triggerFlyoutCloseForTest();
+            m42FlyoutClose = closed && !m41Column->iconFlyoutVisibleForTest()
+                             && m41Column->activeIconNameForTest().isEmpty();
+            m41Column->setRailMode(false);
+            QCoreApplication::processEvents();
+        }
+        const bool m42FlyoutOk =
+            m42FlyoutSide && m42FlyoutActive && m42FlyoutGroup && m42FlyoutClose;
+        std::fprintf(stderr,
+                     "pictura self-test: m42_flyout side=%d active=%d group=%d close=%d\n",
+                     m42FlyoutSide ? 1 : 0,
+                     m42FlyoutActive ? 1 : 0,
+                     m42FlyoutGroup ? 1 : 0,
+                     m42FlyoutClose ? 1 : 0);
+        std::fflush(stderr);
+        if (!m42FlyoutOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 compact flyout\n");
+            return 134;
+        }
+
+        // m42_widgetmenu (135): each group's tab header carries a per-widget
+        // action button at its right; the menu follows the current tab and is
+        // per-panel, not per-group; unimplemented entries are disabled with the
+        // "<label> — not implemented yet" tooltip; `Close`/`Close Panel Group`
+        // stay off it; the Layers `Panel Options…` entry is enabled and wired.
+        bool m42WmButton = false;
+        bool m42WmPerPanel = false;
+        bool m42WmDisabled = false;
+        bool m42WmNoClose = false;
+        if (m41Column) {
+            m41Column->setRailMode(false);
+            m41Column->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
+            QCoreApplication::processEvents();
+            pictura::PanelGroup* m42WmLayerGroup =
+                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            if (m42WmLayerGroup) {
+                m41Column->showPanel(QStringLiteral("layersPanel"), true);
+                QCoreApplication::processEvents();
+                QToolButton* m42WmBtnPtr = m42WmLayerGroup->headerMenuButtonForTest();
+                QToolButton* m42WmHooked = m41Column->widgetMenuButtonForTest(
+                    m42WmLayerGroup->objectName());
+                m42WmButton = m42WmBtnPtr && m42WmHooked == m42WmBtnPtr
+                              && m42WmBtnPtr->isVisible()
+                              && m42WmLayerGroup->headerMenuAtRightForTest();
+
+                const QStringList m42WmLayerTexts =
+                    m42WmLayerGroup->panelMenuTextsForTest();
+                m41Column->showPanel(QStringLiteral("channelsPanel"), true);
+                QCoreApplication::processEvents();
+                const QStringList m42WmChannelTexts =
+                    m42WmLayerGroup->panelMenuTextsForTest();
+                const bool m42WmFollows =
+                    m42WmLayerGroup->headerMenuButtonForTest()
+                    && m42WmLayerGroup->headerMenuButtonForTest()->objectName()
+                           == QStringLiteral("panelWidgetMenu_channelsPanel");
+                const QStringList m42WmColorTexts =
+                    m41Column->widgetMenuTextsForTest(QStringLiteral("colorPanel"));
+                const bool m42WmFirstsDiffer = !m42WmLayerTexts.isEmpty()
+                                               && !m42WmChannelTexts.isEmpty()
+                                               && !m42WmColorTexts.isEmpty()
+                                               && m42WmLayerTexts.first()
+                                                      != m42WmChannelTexts.first()
+                                               && m42WmLayerTexts.first()
+                                                      != m42WmColorTexts.first();
+                m41Column->showPanel(QStringLiteral("layersPanel"), true);
+                QCoreApplication::processEvents();
+                const bool m42WmOptions =
+                    m42WmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Panel Options…"));
+                m42WmPerPanel = m42WmFollows && m42WmFirstsDiffer && m42WmOptions;
+
+                const bool m42WmCopyDisabled =
+                    !m42WmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Copy CSS"));
+                const bool m42WmBlendDisabled = !m42WmLayerGroup->panelMenuEnabledForTest(
+                    QStringLiteral("Blending Options…"));
+                const bool m42WmTriggerBlocked = !m41Column->triggerWidgetMenuForTest(
+                    QStringLiteral("layersPanel"), QStringLiteral("Copy CSS"));
+                m42WmDisabled =
+                    m42WmCopyDisabled && m42WmBlendDisabled && m42WmTriggerBlocked
+                    && m42WmLayerGroup->panelMenuToolTipForTest(QStringLiteral("Copy CSS"))
+                           == QStringLiteral("Copy CSS — not implemented yet");
+            }
+            m42WmNoClose = m41Column->widgetMenuHasCloseForTest(QStringLiteral("layersPanel"))
+                           && m41Column->widgetMenuHasCloseForTest(
+                               QStringLiteral("channelsPanel"))
+                           && m41Column->widgetMenuHasCloseForTest(
+                               QStringLiteral("colorPanel"))
+                           && m41Column->widgetMenuHasCloseForTest(
+                               QStringLiteral("historyPanel"));
+        }
+        const bool m42WmOk = m42WmButton && m42WmPerPanel && m42WmDisabled && m42WmNoClose;
+        std::fprintf(stderr,
+                     "pictura self-test: m42_widgetmenu button=%d perpanel=%d disabled=%d "
+                     "noclose=%d\n",
+                     m42WmButton ? 1 : 0,
+                     m42WmPerPanel ? 1 : 0,
+                     m42WmDisabled ? 1 : 0,
+                     m42WmNoClose ? 1 : 0);
+        std::fflush(stderr);
+        if (!m42WmOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 per-widget menu\n");
+            return 135;
+        }
+
+        // m42_float_overlay (136): a torn-off group is an in-window child
+        // overlay (never a top-level window), a move toward or past the main
+        // window edge is clamped inside the central area, and the group
+        // re-docks and the overlay disappears.
+        bool m42FloatChild = false;
+        bool m42FloatClamped = false;
+        bool m42FloatMove = false;
+        bool m42FloatRedock = false;
+        if (m41Column) {
+            m41Column->setRailMode(false);
+            QCoreApplication::processEvents();
+            pictura::PanelGroup* m42FloatGroup =
+                m41Column->groupForPanel(QStringLiteral("colorPanel"));
+            if (!m42FloatGroup) {
+                m42FloatGroup = m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            }
+            if (!m42FloatGroup && !m41Column->groups().isEmpty()) {
+                m42FloatGroup = m41Column->groups().first();
+            }
+            QString m42FloatPanel;
+            if (m42FloatGroup) {
+                for (QWidget* panel : m42FloatGroup->panels()) {
+                    if (panel) {
+                        m42FloatPanel = panel->objectName();
+                        break;
+                    }
+                }
+            }
+            if (!m42FloatPanel.isEmpty()) {
+                const bool m42FloatTore = m41Column->tearOffForTest(m42FloatPanel);
+                for (int i = 0; i < 20; ++i) {
+                    QCoreApplication::processEvents();
+                }
+                m42FloatChild = m42FloatTore && m41Column->floatCountForTest() == 1
+                                && !m41Column->floatIsWindowForTest(0)
+                                && !m41Column->groupForPanel(m42FloatPanel);
+                if (m42FloatChild) {
+                    const QRect m42FloatHost = m41Column->floatHostRectForTest();
+                    const QRect m42FloatBefore = m41Column->floatGeometryForTest(0);
+                    const bool m42FloatPastBr = m41Column->floatClampedForTest(
+                        0, m42FloatHost.bottomRight() + QPoint(400, 400));
+                    const QRect m42FloatAfterBr = m41Column->floatGeometryForTest(0);
+                    const bool m42FloatPastTl = m41Column->floatClampedForTest(
+                        0, m42FloatHost.topLeft() - QPoint(400, 400));
+                    const QRect m42FloatAfterTl = m41Column->floatGeometryForTest(0);
+                    m42FloatClamped = m42FloatPastBr && m42FloatPastTl;
+                    m42FloatMove = m42FloatAfterBr.topLeft() != m42FloatBefore.topLeft()
+                                   && m42FloatAfterTl.topLeft() != m42FloatAfterBr.topLeft();
+                    if (m42FloatClamped) {
+                        const bool m42FloatRedocked = m41Column->redockForTest(0, 1);
+                        for (int i = 0; i < 20; ++i) {
+                            QCoreApplication::processEvents();
+                        }
+                        m42FloatRedock = m42FloatRedocked
+                                         && m41Column->floatCountForTest() == 0
+                                         && m41Column->groupForPanel(m42FloatPanel);
+                    }
+                }
+            }
+        }
+        const bool m42FloatOk =
+            m42FloatChild && m42FloatClamped && m42FloatMove && m42FloatRedock;
+        std::fprintf(stderr,
+                     "pictura self-test: m42_float_overlay child=%d clipped=%d move=%d "
+                     "redock=%d\n",
+                     m42FloatChild ? 1 : 0,
+                     m42FloatClamped ? 1 : 0,
+                     m42FloatMove ? 1 : 0,
+                     m42FloatRedock ? 1 : 0);
+        std::fflush(stderr);
+        if (!m42FloatOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M42 in-window float overlay\n");
+            return 136;
         }
 
         frame.closeDocument(m39DocIndex, false);

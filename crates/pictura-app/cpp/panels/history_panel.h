@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QString>
 #include <QtWidgets/QWidget>
 
 class QListWidget;
@@ -19,6 +20,10 @@ public:
 
     void setView(PictureView* view);
     void refresh();
+
+    // Phase D: run a wired History per-widget menu entry by its action id.
+    // Returns false for ids this panel does not own.
+    bool performPanelMenuAction(const QString& actionId);
 
 private:
     void activate(QListWidgetItem* item);

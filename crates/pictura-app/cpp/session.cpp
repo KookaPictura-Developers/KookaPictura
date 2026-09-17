@@ -81,6 +81,7 @@ SessionState loadSession()
     state.panelGroups = obj.value(QStringLiteral("panelGroups")).toArray();
     state.layout =
         QByteArray::fromBase64(obj.value(QStringLiteral("layout")).toString().toLatin1());
+    state.layoutRevision = obj.value(QStringLiteral("layoutRevision")).toInt(0);
     const QJsonArray recent = obj.value(QStringLiteral("recent")).toArray();
     for (const QJsonValue& entry : recent) {
         if (entry.isString()) {
@@ -112,6 +113,7 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("autoShowHidden"), state.autoShowHidden);
     obj.insert(QStringLiteral("panelGroups"), state.panelGroups);
     obj.insert(QStringLiteral("layout"), QString::fromLatin1(state.layout.toBase64()));
+    obj.insert(QStringLiteral("layoutRevision"), state.layoutRevision);
     QJsonArray recent;
     for (const QString& path : state.recent) {
         recent.append(path);

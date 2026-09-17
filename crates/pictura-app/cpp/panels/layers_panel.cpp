@@ -1432,6 +1432,43 @@ void LayersPanel::setOptionsForTest(int size, int contents, bool expand)
     persistOptions();
 }
 
+bool LayersPanel::performPanelMenuAction(const QString& actionId)
+{
+    if (actionId == QLatin1String("newLayer")) {
+        addLayerAt(currentPath());
+    } else if (actionId == QLatin1String("duplicate")) {
+        duplicateSelection();
+    } else if (actionId == QLatin1String("delete")) {
+        deleteSelection();
+    } else if (actionId == QLatin1String("newGroup")) {
+        addGroupAt(currentPath());
+    } else if (actionId == QLatin1String("group")) {
+        groupSelection();
+    } else if (actionId == QLatin1String("ungroup")) {
+        ungroupSelection();
+    } else if (actionId == QLatin1String("hide")) {
+        if (view_) {
+            const QStringList paths = selectedPaths();
+            if (!paths.isEmpty()) {
+                view_->set_layers_visible(paths, false);
+            }
+        }
+    } else if (actionId == QLatin1String("moveUp")) {
+        moveCurrent(1);
+    } else if (actionId == QLatin1String("moveDown")) {
+        moveCurrent(-1);
+    } else if (actionId == QLatin1String("panelOptions")) {
+        openPanelOptions();
+    } else if (actionId.startsWith(QLatin1String("adjustment:"))) {
+        if (view_) {
+            view_->add_adjustment(actionId.mid(QLatin1String("adjustment:").size()));
+        }
+    } else {
+        return false;
+    }
+    return true;
+}
+
 QStringList LayersPanel::panelMenuTextsForTest() const
 {
     QStringList texts;

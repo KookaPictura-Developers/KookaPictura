@@ -106,6 +106,24 @@ void HistoryPanel::activate(QListWidgetItem* item)
     }
 }
 
+bool HistoryPanel::performPanelMenuAction(const QString& actionId)
+{
+    if (actionId == QLatin1String("stepForward")) {
+        if (view_) {
+            view_->redo();
+        }
+    } else if (actionId == QLatin1String("stepBackward")) {
+        if (view_) {
+            view_->undo();
+        }
+    } else if (actionId == QLatin1String("newSnapshot")) {
+        createSnapshot();
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void HistoryPanel::createSnapshot()
 {
     if (!view_) {

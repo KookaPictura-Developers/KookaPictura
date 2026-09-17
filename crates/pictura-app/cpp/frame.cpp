@@ -111,7 +111,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     connect(panelColumn_, &PanelColumn::interfaceOptionsRequested, this,
             [this]() { showPreferences(PreferencesDialog::kInterface); });
     if (!state.layout.isEmpty()) {
-        restoreState(state.layout);
+        restoreStoredLayout(state.layout, state.layoutRevision);
     }
 
     // Expensive panel work (layer thumbnails, histogram) is coalesced off the
@@ -675,6 +675,7 @@ void PicturaMainWindow::saveSession()
 {
     SessionState state = pictura::loadSession();
     state.layout = saveState();
+    state.layoutRevision = kLayoutRevision;
     state.brightnessLevel = brightnessLevel_;
     state.gpuCompute = gpuCompute_;
     state.toolsColumns = toolbox_ ? toolbox_->columns() : 1;
@@ -694,6 +695,14 @@ void PicturaMainWindow::saveSession()
     state.schemaVersion = 5;
     state.recent = recent_;
     pictura::saveSession(state);
+}
+
+bool PicturaMainWindow::restoreStoredLayout(const QByteArray& layout, int revision)
+{
+    if (layout.isEmpty() || revision != kLayoutRevision) {
+        return false;
+    }
+    return restoreState(layout);
 }
 
 void PicturaMainWindow::applyPanelSession(const SessionState& state)
@@ -876,9 +885,6 @@ void PicturaMainWindow::buildPanels()
     actionsPanel_ = new PlaceholderPanel(QStringLiteral("Actions"), QString(), this);
     actionsPanel_->setObjectName(QStringLiteral("actionsPanel"));
 
-    actionsPanel_ = new PlaceholderPanel(QStringLiteral("Actions"), QString(), this);
-    actionsPanel_->setObjectName(QStringLiteral("actionsPanel"));
-
     // `Styles` takes the former Gradients/Patterns tab slot in the default set.
     stylesPanel_ = new PlaceholderPanel(QStringLiteral("Styles"), QString(), this);
     stylesPanel_->setObjectName(QStringLiteral("stylesPanel"));
@@ -1040,6 +1046,15 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
             &QShortcut::activated, this, [this, brushActive]() {
                 if (brushActive()) {
                     tools_->adjustBrushHardness(+5);
+                }
+            });
+
+    // CS6 foreground/background swap. `X` is unassigned in the tool letter
+    // catalogue, so it does not collide with the tool-switch shortcuts.
+    connect(new QShortcut(QKeySequence(Qt::Key_X), this), &QShortcut::activated, this,
+            [this]() {
+                if (toolbox_) {
+                    toolbox_->swapForegroundBackground();
                 }
             });
 

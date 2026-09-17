@@ -4,6 +4,7 @@
 #include <QtCore/QMap>
 #include <QtCore/QRect>
 #include <QtCore/QStringList>
+#include <QtGui/QColor>
 #include <QtWidgets/QDockWidget>
 #include <QtWidgets/QWidget>
 
@@ -32,10 +33,18 @@ public:
     explicit ForegroundBackgroundWidget(ColorState* state, QWidget* parent = nullptr);
 
     void resetColors();
+    // Exchange foreground and background (CS6 double-headed-arrow swap).
+    void swapForegroundBackground();
 
     // The column width scales the swatches; the widget never dictates a wider
     // dock. `side` is clamped to a square that still reads as two swatches.
     void setSide(int side);
+
+    // Test hooks.
+    QRect swapRectForTest() const { return swapRect(); }
+    int swapCountForTest() const { return swapCount_; }
+    QColor foregroundForTest() const;
+    QColor backgroundForTest() const;
 
 signals:
     void clicked();
@@ -49,10 +58,12 @@ private:
     QRect foregroundRect() const;
     QRect backgroundRect() const;
     QRect resetRect() const;
+    QRect swapRect() const;
     int swatchSize() const;
     int resetSize() const;
 
     ColorState* state_ = nullptr;
+    int swapCount_ = 0;
 };
 
 // The Tools dock: a CS6 list of flyout slots (one button per group) that reflows
@@ -91,6 +102,14 @@ public:
     int minimumWidthForTest() const { return minimumWidth(); }
     int contentWidthForTest() const;
     int foregroundBackgroundWidthForTest() const;
+    // Exchanges the foreground/background swatches (the frame's `X` key).
+    void swapForegroundBackground();
+    ForegroundBackgroundWidget* foregroundBackgroundForTest() const { return fgbg_; }
+    // Floated/docked body geometry: the trailing stretch is 0 while floating so
+    // a floated dock can hug its content height.
+    int bodyStretchForTest() const;
+    int bodyHeightForTest() const;
+    int bodySizeHintHeightForTest() const;
 
 signals:
     void screenModeRequested();

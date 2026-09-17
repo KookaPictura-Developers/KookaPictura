@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QByteArray>
 #include <QtCore/QList>
 #include <QtCore/QSet>
 #include <QtCore/QString>
@@ -57,6 +58,13 @@ public:
     const QSet<QString>& panelObjectNames() const { return panelNames_; }
     PanelColumn* panelColumn() const { return panelColumn_; }
     PreferencesDialog* preferencesDialog() const { return preferencesDialog_; }
+
+    // Bumped when the chrome layout changes shape (M42 removed the old dock
+    // set); a persisted layout from another revision is discarded on restore so
+    // stale chrome cannot reappear over the menu bar.
+    static constexpr int kLayoutRevision = 2;
+    int layoutRevisionForTest() const { return kLayoutRevision; }
+    bool restoreStoredLayout(const QByteArray& layout, int revision);
 
     // The Tools panel must not join a tab group; re-dock it to its last side if
     // it somehow does (the tabify fallback, exposed for the self-test).

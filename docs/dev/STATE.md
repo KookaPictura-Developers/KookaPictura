@@ -14,11 +14,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
   `pictura-render` doctest, which makes the raw ignored count 8).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M40 archived; canonical specs are
-  in `openspec/specs/` (59 specs, `validate --all --strict` green), change
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M41 archived; canonical specs are
+  in `openspec/specs/` (60 specs, `validate --all --strict` green), change
   history under `openspec/changes/archive/`. Active change:
-  `openspec/changes/m41-panel-column` (M41 CS6 panel column, **implemented,
-  archive pending**; brief `docs/dev/m41-panel-column.md`). M42 is next.
+  `openspec/changes/m42-panel-refinements` (M42 panel refinements, **implemented,
+  archive pending**; brief `docs/dev/m42-panel-refinements.md`). M43 is next.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 
@@ -1016,6 +1016,98 @@ openspec validate --all --strict
   M24 `panel-rail` requirement, ADDing the `panel-column` capability (→ **60**
   capabilities after archive).
 
+- **M42 — panel refinements** (a fourth user-requested interruption to the
+  Layers-panel program; OpenSpec change `m42-panel-refinements`, brief
+  `docs/dev/m42-panel-refinements.md`, research `docs/dev/m42-panel-menus.md`).
+  **Phase A — chrome fixes.** The normal-mode `PanelColumn` minimum width is the
+  widest visible group's `sizeHint` clamped to `[180,320]` (iconic-strip floor
+  40); entering iconic now starts at the smallest possible width instead of
+  keeping the prior splitter width. Iconic-strip buttons grew `24→30` (pixmap
+  `16→20`) and Tools slots `30→32` (icons `20→22`). The floated Tools dock hugs
+  its content height (the trailing stretch is zeroed on `topLevelChanged(true)`
+  and the body layout invalidated so the two-column floor is not cached) and
+  stays width-tight (1-col min = content = 36, 2-col 69).
+  `ForegroundBackgroundWidget` gains the CS6 double-arrow swap control top-right
+  (the default-colors X is kept) wired to the **`X`** key (was free; not in the
+  tool catalogue or the frame's shortcut list). **Menu-bar overlay root cause
+  (item 8):** `frame.cpp` constructed `actionsPanel_` **twice**; the first
+  `PlaceholderPanel("Actions")` was never added to a group, so it remained a
+  direct child of the main window and painted its dim "Actions" label over
+  `File`/`Edit` — that was the "File Act…" artifact (confirmed against
+  `/tmp/opencode/clean_wide.png`; a fresh `XDG_STATE_HOME` reproduced it, so it
+  was not the persisted layout). Fixed by deleting the duplicate.
+  Defence-in-depth: `saveState()` records `layoutRevision` and
+  `restoreStoredLayout` discards a stored layout whose revision mismatches
+  (`kLayoutRevision=2`), so the pre-M41 dock blob is no longer restored (**the
+  session gains `layoutRevision`; no schema bump**). **Phase B — compact-strip
+  drag** reuses the M41 `beginPanelDrag`/`updateDrag`/`commitDrop`/`resolveDrop`
+  path (no second drag system): `resolveDrop` gained an `onStrip` branch with
+  `stripInsertionIndexAt`, `applyStripDrop` rewrites order via
+  `PanelGroup::setPanelOrder` or reuses `takePanel`/`insertPanel`/
+  `cleanupEmptyGroup` across groups, and a dedicated `stripIndicator_` draws the
+  blue line (the normal indicator lives in the hidden scroll viewport). Commit is
+  queued (`Qt::QueuedConnection`) so the strip can rebuild after the button's
+  event returns. **Phase C — compact flyout.** Opens on the **inner** side,
+  derived from the column's geometry vs its window (right-edge column ⇒ popup to
+  the left), clamped to `QScreen::availableGeometry`. The open icon is a
+  checkable/pressed strip button cleared on restore. The popup is now
+  **group-styled**: a `panelFlyoutHeader` (`panelFlyoutTitle` + stretch +
+  `panelFlyoutClose`) above the detached panel, with a new
+  `assets/icons/panel.closeChevron.svg` (double right chevron, 24×24 `#c8c8c8`,
+  qrc regenerated) for the close button. Still `Qt::Popup` (click-away), still
+  reparents the panel back exactly once. **Phase D — per-widget header menu.** A
+  `▾` `QToolButton` (`panelWidgetMenu_<panelName>`) is installed as
+  `QTabWidget::setCornerWidget(..., Qt::TopRightCorner)` on each `PanelGroup`, and
+  follows the **current tab** (menu + tooltip switch on `currentChanged`); hidden
+  when the current panel has no menu table. Menu contents are transcribed from
+  `docs/dev/m42-panel-menus.md` (CS6 panel fly-outs, order best-effort;
+  `[toggle]`/radio entries checkable). Unimplemented entries ship **disabled**
+  with `"<label> — not implemented yet"`. `Close`/`Close Panel Group` are
+  excluded (they stay on the M41 tab menu). **Wired:** Layers — New Layer…,
+  Duplicate Layer/Group…, Delete Layer/Group, New Group…, Group Layers, Ungroup
+  Layers, Hide Layers, Arrange ▸ Move Layer Up/Down, Panel Options…; History —
+  Step Forward/Backward, New Snapshot…; Adjustments — Invert, Posterize,
+  Threshold, Brightness/Contrast, Hue/Saturation. Everything else disabled (all
+  of Channels, Paths, Color, Swatches, Styles, Navigator, Histogram, Info,
+  Actions, Properties; Channels/Paths `Panel Options…` stay disabled — no options
+  dialog exists for placeholder panels). Gradients/Patterns/Libraries get no
+  header button (not CS6 panels: picker pop-ups / CC-only Libraries). **Phase E —
+  in-window float overlay.** `PanelFloat` is no longer a `Qt::Tool` top-level: it
+  is a plain child of the main window (`Qt::Widget`, `WA_StyledBackground`,
+  `#panelFloat{background:#3a3a3a;border:1px solid #555}`), raised, clipped to
+  `centralWidget()`'s rect and clamped there on every header drag (`moveFloat`).
+  It is parented to `window()` **not** `centerSplitter`, because
+  `QSplitter::childEvent` auto-inserts non-window children as panes. Re-dock is
+  the existing `applyGroupDrop` (remove-then-insert; overlay destroyed once
+  emptied). `m41_tearoff` is unchanged and proves the same claim (group left the
+  column, contains its panels, re-docks, no float remains); windowness is now
+  proven separately by `m42_float_overlay` (`!isWindow()`). **Self-tests**
+  131–139: `m42_minwidth`(131), `m42_iconic`(132), `m42_dragstrip`(133),
+  `m42_flyout`(134), `m42_widgetmenu`(135), `m42_float_overlay`(136),
+  `m42_fgbg`(137), `m42_menubar`(138), `m42_tools`(139); `m41_width`(121) was
+  amended (output format unchanged) and all 120–140 lines are `=1`. **Honest
+  limits:** the per-panel menu order/separators are the research doc's
+  best-effort reconstruction; the disabled entries are stubs (no invented
+  dialogs); Layers `Panel Options…`/History `New Snapshot…` open modal dialogs so
+  the test asserts structural wiring, not execution; `New Snapshot…` is marked
+  disabled in the research doc but was wired to the existing snapshot behavior;
+  Adjustments route through the Layers panel's view (the Adjustments placeholder
+  has no view handle); the float overlay does not persist position, is not
+  re-clamped on window resize, and cannot cover the docked Tools panel (clamped
+  to the central-widget rect); min widths/icon sizes are chosen constants, not
+  CS6 metrics; `m42_tools` tolerates ±8 px on the float height under xvfb; the
+  stale-layout revision guard is defence-in-depth (proven not to be the overlay's
+  cause); drop-on-stack from the strip requires the column to be expanded
+  mid-drag. No Rust change: **588 tests, 0 failed, 7 ignored** (unchanged; the
+  raw ignored count is 8 with the pre-existing `pictura-render` doctest).
+  **Capability:** MODIFIES `panel-column`, `tool-framework`, `application-shell`;
+  **no new capability** → **60** canonical specs after archive. Verified:
+  `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --
+  -D warnings` clean; `TASK_ALLOWS_DOCS=1 bash scripts/verify-fast.sh` →
+  `verify-fast: OK`; both self-tests exit 0 with all m42 lines `=1` and every
+  earlier m20–m41 line unchanged; `openspec validate m42-panel-refinements
+  --strict` valid and `openspec validate --all --strict` 61/61.
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -1091,9 +1183,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: panels program (M42–M45), canvas perf series deferred
+## Next: panels program (M43–M46), canvas perf series deferred
 
-### Panels program (M36–M45) — M36–M41 done; M42 layer filtering/search next
+### Panels program (M36–M46) — M36–M41 done; M42 panel refinements done; M43 layer filtering/search next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -1112,7 +1204,7 @@ grammar and depth-first topmost-first projection, the path/batch bridge API,
 the `QAbstractItemModel` tree + delegate row anatomy, multi-selection with the
 per-node refusal table, solo visibility, `Tab` rename, Panel Options (session
 schema v3), the panel/row menus, tooltips, and the explicit drag-reorder
-deferral to M43.
+deferral to M44.
 
 **M38 was a user-requested interruption: the full CS6 toolbox icon/cursor
 library and the panel icons** (`openspec/changes/m38-icon-cursor-library`,
@@ -1142,15 +1234,22 @@ scroll so the window resizes freely; session **v5** adds
 (General + Interface panes) gives `Use Shift Key For Tool Switch` and
 `Auto-Collapse Iconic Panels` a UI — M40's previously UI-less `Use Shift Key For
 Tool Switch` now has its home there. It is **implemented and independently
-verified** (see the milestone entry above). Because the M40/M41 pair claims the
-two numbers the Layers-panel program had reserved, that program shifts by
-**two**: **M42** layer filtering/search (the six-dimension filter/search row) is
-next, **M43** remaining management (rasterize/merge/flatten/link/select-similar/
+verified** (see the milestone entry above). **M42 was a fourth user-requested
+interruption — panel refinements** (`openspec/changes/m42-panel-refinements`,
+brief `docs/dev/m42-panel-refinements.md`, research
+`docs/dev/m42-panel-menus.md`): the compact-strip drag/reorder, the group-styled
+compact flyout, the per-widget header menus, the in-window float overlay, the
+bounded normal-mode width / larger icons, and the menu-bar overlay root cause (a
+duplicate `actionsPanel_`). It is **implemented and independently verified** (see
+the milestone entry above). Because the M40/M41/M42 interruptions claim three
+numbers the Layers-panel program had reserved, that program shifts by **three**:
+**M43** layer filtering/search (the six-dimension filter/search row) is next,
+**M44** remaining management (rasterize/merge/flatten/link/select-similar/
 convert-background/layer-via-copy-cut, the New Layer/Group dialogs, and the
-deferred drag-reorder with its recorded drop rules), **M44** styles/effects, and
-**M45** smart objects / vector masks / artboards-as-non-goal / layer comps.
+deferred drag-reorder with its recorded drop rules), **M45** styles/effects, and
+**M46** smart objects / vector masks / artboards-as-non-goal / layer comps.
 M36's confirmed ceilings — the `layer_kind` `"background"` name+index heuristic
-and the forced type/shape locks — land in M43, and M37's single-layer grouping
+and the forced type/shape locks — land in M44, and M37's single-layer grouping
 limit was lifted by M39's multi-selection (the `is_background` single source of
 truth and the path/batch selection ops). The pre-shift numbers still stand in
 `docs/dev/layers-panel-program.md`; this file is the up-to-date anchor.
@@ -1158,7 +1257,7 @@ truth and the path/batch selection ops). The pre-shift numbers still stand in
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M45.
+> number; they are deferred until after M46.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -1256,7 +1355,7 @@ no new capability. Next in order:
 
 Deferred canvas-performance tracks (previously sketched as M36–M38; those
 numbers are now claimed by the panels program above, so these are deferred
-until after M45). The remaining canvas-performance tracks — history
+until after M46). The remaining canvas-performance tracks — history
 copy-on-write / tile diffs, resident per-layer GPU source buffers, 256² tiles +
 LoD, plus the GPU-resident zero-copy present — each need their own design (the
 small, app-local region-blit slice landed as M35 above):

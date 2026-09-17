@@ -32,6 +32,8 @@ constexpr int kSwatchSize = 22;
 constexpr int kWidgetSize = 40;
 constexpr int kMinWidgetSize = 20;
 constexpr int kResetSize = 12;
+constexpr int kSlotButtonSize = 32;
+constexpr int kSlotIconSize = 22;
 constexpr int kFlyoutDelayMs = 300;
 
 // A slot button: the base tool button plus the CS6 interactions the stock
@@ -211,6 +213,33 @@ QRect ForegroundBackgroundWidget::resetRect() const
     return QRect(2, height() - size - 2, size, size);
 }
 
+QRect ForegroundBackgroundWidget::swapRect() const
+{
+    const int size = resetSize();
+    return QRect(width() - size - 2, 2, size, size);
+}
+
+void ForegroundBackgroundWidget::swapForegroundBackground()
+{
+    if (state_) {
+        const QColor fg = state_->foreground();
+        state_->setForeground(state_->background());
+        state_->setBackground(fg);
+    }
+    ++swapCount_;
+    update();
+}
+
+QColor ForegroundBackgroundWidget::foregroundForTest() const
+{
+    return state_ ? state_->foreground() : QColor(Qt::black);
+}
+
+QColor ForegroundBackgroundWidget::backgroundForTest() const
+{
+    return state_ ? state_->background() : QColor(Qt::white);
+}
+
 void ForegroundBackgroundWidget::resetColors()
 {
     if (state_) {
@@ -247,6 +276,18 @@ void ForegroundBackgroundWidget::paintEvent(QPaintEvent*)
     painter.drawRect(reset.adjusted(0, 0, -1, -1));
     painter.fillRect(QRect(reset.topLeft(), QSize(reset.width() / 2, reset.height() / 2)),
                      QColor(Qt::black));
+
+    // CS6 double-headed swap arrow, top-right of the swatch area.
+    const QRect swap = swapRect();
+    const int midY = swap.center().y();
+    const int left = swap.left() + 1;
+    const int right = swap.right() - 1;
+    painter.setPen(QPen(palette().color(QPalette::ButtonText), 1));
+    painter.drawLine(left, midY, right, midY);
+    painter.drawLine(left, midY, left + 3, midY - 3);
+    painter.drawLine(left, midY, left + 3, midY + 3);
+    painter.drawLine(right, midY, right - 3, midY - 3);
+    painter.drawLine(right, midY, right - 3, midY + 3);
 }
 
 void ForegroundBackgroundWidget::mousePressEvent(QMouseEvent* event)
@@ -258,6 +299,10 @@ void ForegroundBackgroundWidget::mousePressEvent(QMouseEvent* event)
     const QPoint pos = event->position().toPoint();
     if (resetRect().contains(pos)) {
         resetColors();
+        return;
+    }
+    if (swapRect().contains(pos)) {
+        swapForegroundBackground();
         return;
     }
     if (foregroundRect().contains(pos)) {
@@ -305,6 +350,9 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     auto* body = new QWidget(this);
     auto* layout = new QVBoxLayout(body);
     bodyLayout_ = layout;
+    // Track the body's content exactly so a 2->1 column change lowers the dock's
+    // minimum width instead of leaving the two-column floor behind.
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
     layout->setContentsMargins(2, 2, 2, 2);
     layout->setSpacing(4);
 
@@ -331,8 +379,8 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
 
         currentByGroup_[g] = groupCurrentTool(g);
         auto* button = new ToolSlotButton(gridWidget_);
-        button->setIconSize(QSize(20, 20));
-        button->setFixedSize(30, 30);
+        button->setIconSize(QSize(kSlotIconSize, kSlotIconSize));
+        button->setFixedSize(kSlotButtonSize, kSlotButtonSize);
         button->setCheckable(true);
         button->setAutoRaise(true);
         button->setEnabled(anyImplemented);
@@ -387,12 +435,12 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
 
     screenMode_ = new QToolButton(body);
     screenMode_->setObjectName(QStringLiteral("screenModeButton"));
-    screenMode_->setFixedSize(30, 30);
+    screenMode_->setFixedSize(kSlotButtonSize, kSlotButtonSize);
     screenMode_->setAutoRaise(true);
     const QIcon screenModeIcon = icon(QStringLiteral("view.screenMode.full"));
     if (!screenModeIcon.isNull()) {
         screenMode_->setIcon(screenModeIcon);
-        screenMode_->setIconSize(QSize(20, 20));
+        screenMode_->setIconSize(QSize(kSlotIconSize, kSlotIconSize));
     } else {
         screenMode_->setText(QStringLiteral("Screen Mode"));
     }
@@ -402,6 +450,17 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     layout->addWidget(screenMode_, 0, Qt::AlignHCenter);
 
     layout->addStretch(1);
+    // Floated, the trailing stretch is zeroed and the window resized to its
+    // content hint so the dock hugs the grid + fg/bg + Screen Mode. Docked, the
+    // stretch stays so the body may fill the dock area.
+    connect(this, &QDockWidget::topLevelChanged, this, [this](bool floating) {
+        if (bodyLayout_ && bodyLayout_->count() > 0) {
+            bodyLayout_->setStretch(bodyLayout_->count() - 1, floating ? 0 : 1);
+        }
+        if (floating) {
+            resize(width(), sizeHint().height());
+        }
+    });
     setWidget(body);
     updateContentMetrics();
 
@@ -443,7 +502,7 @@ void Toolbox::setColumns(int columns)
 
 int Toolbox::contentWidth(int columns) const
 {
-    const int slot = 30;
+    const int slot = kSlotButtonSize;
     const int spacing = grid_ ? grid_->spacing() : 0;
     const int gridWidth = columns * slot + (columns > 1 ? (columns - 1) * spacing : 0);
     const int margins = bodyLayout_
@@ -456,6 +515,17 @@ void Toolbox::updateContentMetrics()
 {
     const int content = contentWidth(columns_);
     setMinimumWidth(content);
+    // A QDockWidget caches its layout minimum; without an explicit invalidation a
+    // 2->1 column change leaves the two-column floor in place.
+    if (QWidget* body = widget()) {
+        if (body->layout()) {
+            body->layout()->invalidate();
+        }
+        body->updateGeometry();
+    }
+    if (layout()) {
+        layout()->invalidate();
+    }
     if (fgbg_) {
         // The swatch is sized from the column's content width, so it can never
         // be the widest child. Clamped to a readable square.
@@ -485,6 +555,31 @@ int Toolbox::contentWidthForTest() const
 int Toolbox::foregroundBackgroundWidthForTest() const
 {
     return fgbg_ ? fgbg_->width() : 0;
+}
+
+void Toolbox::swapForegroundBackground()
+{
+    if (fgbg_) {
+        fgbg_->swapForegroundBackground();
+    }
+}
+
+int Toolbox::bodyStretchForTest() const
+{
+    if (!bodyLayout_ || bodyLayout_->count() == 0) {
+        return 0;
+    }
+    return static_cast<int>(bodyLayout_->stretch(bodyLayout_->count() - 1));
+}
+
+int Toolbox::bodyHeightForTest() const
+{
+    return widget() ? widget()->height() : 0;
+}
+
+int Toolbox::bodySizeHintHeightForTest() const
+{
+    return widget() ? widget()->sizeHint().height() : 0;
 }
 
 void Toolbox::reflow()

@@ -9,6 +9,7 @@
 #include <QtWidgets/QWidget>
 
 class QBoxLayout;
+class QMenu;
 class QTabBar;
 class QTabWidget;
 class QToolButton;
@@ -87,6 +88,16 @@ public:
     bool tabBarVisibleForTest() const;
     bool iconRowVisibleForTest() const;
 
+    // Phase D: the per-widget header action button and its per-panel menu.
+    QToolButton* headerMenuButtonForTest() const { return headerButton_; }
+    bool headerMenuAtRightForTest() const;
+    QStringList panelMenuTextsForTest() const;
+    bool panelMenuEnabledForTest(const QString& text) const;
+    QString panelMenuToolTipForTest(const QString& text) const;
+    bool triggerPanelMenuForTest(const QString& text);
+    static bool panelHasMenu(const QString& panelName);
+    static QStringList menuTextsForPanel(const QString& panelName);
+
 signals:
     void panelActivated(const QString& objectName, const QPoint& globalPos);
     void tabContextMenuRequested(const QPoint& globalPos);
@@ -104,12 +115,16 @@ protected:
 private:
     void rebuildIconRow();
     void applyMinimize();
+    void updateHeaderMenu();
+    void runPanelMenuAction(const QString& actionId);
     QToolButton* makeIconButton(const QIcon& icon, const QString& title,
                                 const QString& objectName);
 
     QTabWidget* tabs_ = nullptr;
     QWidget* iconRow_ = nullptr;
     QBoxLayout* iconRowLayout_ = nullptr;
+    QToolButton* headerButton_ = nullptr;
+    QMenu* headerMenu_ = nullptr;
     bool defaultIconic_ = false;
     bool collapsedToIcons_ = false;
     bool minimized_ = false;

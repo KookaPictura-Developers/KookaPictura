@@ -28,10 +28,12 @@ namespace pictura {
 class PanelColumn;
 class PanelGroup;
 
-// A torn-off group in a frameless top-level `Qt::Tool` window. It hosts a real
+// A torn-off group in an in-window frameless overlay. It hosts a real
 // `PanelGroup` (same tabs, menu, minimize, iconic row) whose own tab-bar drag
 // path routes back through the owning column, so it can be dragged back and
-// re-docked. The column deletes the float once its group is empty or re-docked.
+// re-docked. It is a child of the main window (never a top-level `Qt::Tool`),
+// so it is clipped to the window and never appears in the task list. The column
+// deletes the overlay once its group is empty or re-docked.
 class PanelFloat : public QWidget {
     Q_OBJECT
 
@@ -122,8 +124,33 @@ public:
     QStringList floatPanelNamesForTest(int index) const;
     bool tearOffForTest(const QString& groupName);
     bool redockForTest(int floatIndex, int boundaryIndex);
+    bool floatIsWindowForTest(int index) const;
+    QRect floatGeometryForTest(int index) const;
+    QRect floatHostRectForTest() const;
+    bool floatClampedForTest(int index, const QPoint& globalTopLeft);
     QPoint boundaryPointForTest(int boundary) const;
     bool ensureGroupVisibleForTest(const QString& panelName);
+
+    // Phase B iconic-strip drag. These drive the same begin/update/commit path
+    // the strip button's mouse handler uses.
+    QStringList stripOrderForTest() const;
+    bool beginStripDragForTest(const QString& objectName);
+    QPoint stripInsertionPointForTest(int index) const;
+    int stripDropIndexForTest() const;
+    bool dropStripOnGroupForTest(const QString& objectName, const QString& targetPanel);
+
+    // Phase C flyout refinement.
+    QString flyoutSideForTest() const;
+    QString activeIconNameForTest() const { return activeIconName_; }
+    QString flyoutHeaderTitleForTest() const;
+    bool flyoutHeaderCloseForTest() const;
+    bool triggerFlyoutCloseForTest();
+
+    // Phase D per-widget header action menu.
+    QToolButton* widgetMenuButtonForTest(const QString& groupObjectName) const;
+    QStringList widgetMenuTextsForTest(const QString& panelName) const;
+    bool widgetMenuHasCloseForTest(const QString& panelName) const;
+    bool triggerWidgetMenuForTest(const QString& panelName, const QString& text);
 signals:
     void interfaceOptionsRequested();
     void stateChanged();
@@ -137,12 +164,23 @@ private:
         bool valid = false;
         bool outside = false;
         bool onTabBar = false;
+        bool onStrip = false;
         PanelGroup* group = nullptr;
         int tabIndex = -1;
         int boundary = -1;
+        int stripIndex = -1;
+    };
+
+    // One icon in the iconic strip, in strip order. `button` is the drag source
+    // and the anchor for the strip insertion maths.
+    struct StripEntry {
+        PanelGroup* group = nullptr;
+        QString name;
+        QToolButton* button = nullptr;
     };
 
     void updateColumnToggle();
+    void updateMinimumWidth();
     void buildIconStrip();
     void clearIconStrip();
     void updateIconStripLabels();
@@ -150,6 +188,10 @@ private:
     void openIconFlyout(const QString& objectName, const QPoint& globalPos);
     void closeIconFlyout();
     void restoreFlyoutPanel();
+    void placeFlyout(const QPoint& anchorRightTop, const QSize& size);
+    QString flyoutSide() const;
+    void setActiveIcon(const QString& objectName);
+    QToolButton* stripButtonFor(const QString& objectName) const;
     void showTabMenu(PanelGroup* group, const QPoint& globalPos);
     QMenu* buildTabMenu(PanelGroup* group);
     QToolButton* makeIconButton(QWidget* parent, const QString& objectName,
@@ -161,10 +203,12 @@ private:
     void cleanupEmptyGroup(PanelGroup* group);
     DropTarget resolveDrop(const QPoint& globalPos) const;
     int boundaryIndexForGlobalY(const QPoint& globalPos) const;
+    int stripInsertionIndexAt(const QPoint& globalPos) const;
     void showIndicatorFor(const DropTarget& target);
     void clearIndicator();
     QList<PanelGroup*> visibleGroups() const;
     bool applyPanelDrop(PanelGroup* source, const QString& name, const DropTarget& target);
+    bool applyStripDrop(PanelGroup* source, const QString& name, int stripIndex);
     bool applyGroupDrop(PanelGroup* group, const DropTarget& target);
     void beginPanelDrag(PanelGroup* group, const QString& objectName, const QPoint& globalPos);
     void beginGroupDrag(PanelGroup* group, const QPoint& globalPos);
@@ -173,6 +217,8 @@ private:
     void cancelDrag();
     PanelFloat* createFloat(PanelGroup* group, const QPoint& globalPos);
     void destroyFloat(PanelFloat* floatWindow);
+    void moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft);
+    QRect floatBounds(QWidget* host) const;
     PanelFloat* floatForGroup(PanelGroup* group) const;
     PanelGroup* findGroupByName(const QString& objectName) const;
 
@@ -183,15 +229,21 @@ private:
     QWidget* iconStrip_ = nullptr;
     QBoxLayout* iconStripLayout_ = nullptr;
     QList<QLabel*> stripLabels_;
+    QList<StripEntry> stripEntries_;
+    QString activeIconName_;
     QList<PanelGroup*> groups_;
     QHash<QString, bool> panelVisible_;
 
     bool railMode_ = false;
     bool iconLabelsShown_ = false;
     int pendingWidth_ = 0;
+    int normalWidthBeforeIconic_ = 0;
 
     PanelFlyout* flyout_ = nullptr;
     QBoxLayout* flyoutLayout_ = nullptr;
+    QWidget* flyoutHeader_ = nullptr;
+    QLabel* flyoutTitle_ = nullptr;
+    QToolButton* flyoutClose_ = nullptr;
     QWidget* flyoutPanel_ = nullptr;
     PanelGroup* flyoutGroup_ = nullptr;
     QString flyoutName_;
@@ -202,6 +254,7 @@ private:
     PanelGroup* menuGroup_ = nullptr;
 
     QWidget* indicator_ = nullptr;
+    QWidget* stripIndicator_ = nullptr;
     QSet<PanelGroup*> wired_;
     QList<PanelFloat*> floats_;
 
@@ -213,6 +266,11 @@ private:
     int dragOriginalIndex_ = -1;
     PanelFloat* dragFloat_ = nullptr;
     DropTarget dropTarget_;
+
+    bool stripPressPending_ = false;
+    bool stripDragging_ = false;
+    QPoint stripPressGlobal_;
+    QToolButton* stripDragButton_ = nullptr;
 };
 
 } // namespace pictura

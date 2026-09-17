@@ -10,6 +10,8 @@ namespace pictura {
 // Opaque UI session state persisted across restarts. Not document data.
 struct SessionState {
     QByteArray layout;               // QMainWindow::saveState()
+    int layoutRevision = 0;          // chrome revision that wrote `layout`; a
+                                     // mismatch discards the layout on restore
     int brightnessLevel = 1;         // Theme level
     bool gpuCompute = true;          // GPU compositing preference
     int layersThumbSize = 2;         // 0 None / 1 Small / 2 Medium / 3 Large
