@@ -14,6 +14,12 @@ use pictura_render::{apply_filter_active, filter_gpu_available, Backend};
 
 const SIZE: u32 = 32;
 
+/// Heavy large-buffer/timing evidence tests are opt-in. Set `PICTURA_GPU_BENCH=1`
+/// to run them; the default `cargo test` on a GPU box stays correctness-only.
+fn bench_enabled() -> bool {
+    std::env::var_os("PICTURA_GPU_BENCH").is_some()
+}
+
 /// Accelerated filters with representative parameters.
 fn accelerated_filters() -> Vec<Filter> {
     vec![
@@ -232,6 +238,10 @@ fn accelerated_filters_match_cpu_within_one_lsb() {
 /// 2-D grid must run Surface Blur and Median on the GPU within ±1 LSB.
 #[test]
 fn large_buffer_over_1d_limit_runs_on_gpu() {
+    if !bench_enabled() {
+        println!("skipping large-buffer filter parity: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     if !filter_gpu_available() {
         println!("no usable Vulkan GPU; skipping large-buffer filter parity");
         return;
@@ -290,6 +300,10 @@ fn disabled_gpu_is_byte_identical() {
 /// baseline (~7.1 s at radius 10 per `profile.rs`) dwarfs the GPU path.
 #[test]
 fn surface_blur_1024_gpu_beats_cpu() {
+    if !bench_enabled() {
+        println!("skipping Surface Blur speedup check: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     if !filter_gpu_available() {
         println!("no usable Vulkan GPU; skipping Surface Blur speedup check");
         return;
@@ -334,6 +348,10 @@ fn surface_blur_1024_gpu_beats_cpu() {
 /// eight clamped window scans per byte, which may or may not beat the CPU sort.
 #[test]
 fn median_1024_parity_and_timing() {
+    if !bench_enabled() {
+        println!("skipping Median 1024 timing: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     if !filter_gpu_available() {
         println!("no usable Vulkan GPU; skipping Median 1024 timing");
         return;
@@ -371,6 +389,10 @@ fn median_1024_parity_and_timing() {
 /// gated on beating the CPU.
 #[test]
 fn oil_paint_1024_parity_and_timing() {
+    if !bench_enabled() {
+        println!("skipping Oil Paint 1024 timing: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     if !filter_gpu_available() {
         println!("no usable Vulkan GPU; skipping Oil Paint 1024 timing");
         return;

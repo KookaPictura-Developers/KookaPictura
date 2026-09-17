@@ -320,11 +320,14 @@ print(layer.sheet_color.value)
 }
 
 fn psd_tools_available() -> bool {
-    Command::new("python3")
-        .args(["-c", "import psd_tools"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("python3")
+            .args(["-c", "import psd_tools"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
 }
 
 /// Unique scratch directory per call so tests can run in parallel.

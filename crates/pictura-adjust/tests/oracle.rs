@@ -155,11 +155,14 @@ fn script() -> PathBuf {
 }
 
 fn magick_available() -> bool {
-    Command::new("magick")
-        .arg("-version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("magick")
+            .arg("-version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
 }
 
 /// Unique scratch directory per call so tests can run in parallel.

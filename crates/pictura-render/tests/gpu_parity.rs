@@ -58,6 +58,13 @@ const GPU_MODES: &[BlendMode] = &[
 
 const CPU_ONLY: &[BlendMode] = &[BlendMode::Dissolve];
 
+/// Heavy hardware evidence tests are opt-in. Set `PICTURA_GPU_BENCH=1` to run the
+/// 4000²/2048/1024 timing and large-document tests; the default `cargo test` on a
+/// GPU box stays correctness-only.
+fn bench_enabled() -> bool {
+    std::env::var_os("PICTURA_GPU_BENCH").is_some()
+}
+
 fn layer(name: &str, blend: BlendMode, sample: impl Fn(u32, u32) -> (u8, u8, u8, u8)) -> Layer {
     let pixels = (SIZE * SIZE) as usize;
     let (mut r, mut g, mut b, mut a) = (
@@ -545,6 +552,10 @@ fn enabled_gpu_matches_availability() {
 /// must composite it on the GPU within ±1 LSB of the CPU oracle.
 #[test]
 fn large_document_over_1d_limit_composites_on_gpu() {
+    if !bench_enabled() {
+        eprintln!("skipping large-document parity: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     const W: u32 = 4096;
     const H: u32 = 2048;
     let mut doc = Document::new(W, H, ColorMode::Rgb, BitDepth::Eight);
@@ -578,6 +589,10 @@ fn large_document_over_1d_limit_composites_on_gpu() {
 /// GPU-vs-CPU `composite_active` wall time.
 #[test]
 fn full_4000_document_composites_on_gpu() {
+    if !bench_enabled() {
+        eprintln!("skipping 4000² parity: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     const N: u32 = 4000;
     let mut doc = Document::new(N, N, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![
@@ -635,6 +650,10 @@ fn document_past_2d_product_limit_returns_too_large() {
 /// warm-up call keeps one-time device/ pipeline setup out of the GPU number.
 #[test]
 fn gpu_vs_cpu_timing_1024() {
+    if !bench_enabled() {
+        println!("skipping m27 1024 timing: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     const N: u32 = 1024;
     let modes = [
         BlendMode::Normal,
@@ -871,6 +890,10 @@ fn empty_and_out_of_bounds_region_are_safe() {
 /// because timings vary by machine and load.
 #[test]
 fn region_vs_full_timing_4000() {
+    if !bench_enabled() {
+        eprintln!("skipping region timing: set PICTURA_GPU_BENCH=1 to run");
+        return;
+    }
     const N: u32 = 4000;
     if !gpu_available() {
         eprintln!("no usable Vulkan GPU; skipping region timing");

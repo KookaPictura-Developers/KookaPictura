@@ -283,11 +283,14 @@ fn dimension_check_bites() {
 // --- independent psd-tools check --------------------------------------------
 
 fn psd_tools_available() -> bool {
-    Command::new("python3")
-        .args(["-c", "import psd_tools"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("python3")
+            .args(["-c", "import psd_tools"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
 }
 
 /// Write `doc` to a scratch file and have `scripts/validate_output.py` open it
