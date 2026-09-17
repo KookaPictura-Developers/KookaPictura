@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QtCore/QPointF>
-#include <QtWidgets/QDockWidget>
+#include <QtWidgets/QWidget>
 
 class QLabel;
 
@@ -9,7 +9,7 @@ namespace pictura {
 
 class PictureView;
 
-class InfoPanel : public QDockWidget {
+class InfoPanel : public QWidget {
     Q_OBJECT
 
 public:

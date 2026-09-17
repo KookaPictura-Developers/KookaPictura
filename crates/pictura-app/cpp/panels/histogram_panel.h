@@ -2,7 +2,6 @@
 
 #include <QtCore/QVector>
 #include <QtGui/QColor>
-#include <QtWidgets/QDockWidget>
 #include <QtWidgets/QWidget>
 
 #include <array>
@@ -29,7 +28,7 @@ private:
     QColor color_{Qt::white};
 };
 
-class HistogramPanel : public QDockWidget {
+class HistogramPanel : public QWidget {
     Q_OBJECT
 
 public:

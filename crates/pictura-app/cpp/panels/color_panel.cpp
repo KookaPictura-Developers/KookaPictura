@@ -102,10 +102,10 @@ void HueSpectrum::pickAt(const QPointF& pos)
 }
 
 ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
-    : QDockWidget(tr("Color"), parent)
+    : QWidget(parent)
     , state_(state)
 {
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
 
     auto* swatchRow = new QHBoxLayout();
@@ -147,7 +147,6 @@ ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
     spectrum_ = new HueSpectrum(body);
     layout->addWidget(spectrum_);
     layout->addStretch(1);
-    setWidget(body);
 
     for (int i = 0; i < 3; ++i) {
         connect(rgb_[i], &QSlider::valueChanged, this, [this](int) { applyRgb(); });

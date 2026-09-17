@@ -16,6 +16,7 @@ class QMenu;
 class QMouseEvent;
 class QPaintEvent;
 class QToolButton;
+class QVBoxLayout;
 
 namespace pictura {
 
@@ -32,6 +33,10 @@ public:
 
     void resetColors();
 
+    // The column width scales the swatches; the widget never dictates a wider
+    // dock. `side` is clamped to a square that still reads as two swatches.
+    void setSide(int side);
+
 signals:
     void clicked();
     void reset();
@@ -44,6 +49,8 @@ private:
     QRect foregroundRect() const;
     QRect backgroundRect() const;
     QRect resetRect() const;
+    int swatchSize() const;
+    int resetSize() const;
 
     ColorState* state_ = nullptr;
 };
@@ -80,6 +87,10 @@ public:
     void cycleGroupForTest(int group) { cycleGroup(group); }
     QToolButton* titleBarToggleForTest() const { return titleToggle_; }
     bool hasFlyoutTriangleForTest(int group) const;
+    QString titleTextForTest() const;
+    int minimumWidthForTest() const { return minimumWidth(); }
+    int contentWidthForTest() const;
+    int foregroundBackgroundWidthForTest() const;
 
 signals:
     void screenModeRequested();
@@ -95,6 +106,8 @@ private:
     void cycleGroup(int group);
     void showSlotMenu(int group);
     void reflow();
+    void updateContentMetrics();
+    int contentWidth(int columns) const;
     void updateTitleIcon();
 
     ToolController* controller_ = nullptr;
@@ -104,7 +117,11 @@ private:
     QList<QMenu*> slotMenus_;
     QGridLayout* grid_ = nullptr;
     QWidget* gridWidget_ = nullptr;
+    QWidget* titleBar_ = nullptr;
     QToolButton* titleToggle_ = nullptr;
+    QVBoxLayout* bodyLayout_ = nullptr;
+    ForegroundBackgroundWidget* fgbg_ = nullptr;
+    QToolButton* screenMode_ = nullptr;
     int columns_ = 1;
     bool shiftKeyForToolSwitch_ = true;
 };

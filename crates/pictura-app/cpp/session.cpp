@@ -12,6 +12,26 @@
 
 namespace pictura {
 
+namespace {
+
+// The existing store's top-level object, or empty when missing/corrupt. Used by
+// the load-then-write save so keys this build does not know survive a rewrite.
+QJsonObject readStoreObject()
+{
+    QFile file(sessionFilePath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    QJsonParseError error{};
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+        return {};
+    }
+    return doc.object();
+}
+
+} // namespace
+
 // ponytail: stopgap for the deferred typed pictura-prefs / prefs.toml store
 // (XC-002); keeps the C++ session file so M16 needs no new dependency.
 QString sessionFilePath()
@@ -49,6 +69,16 @@ SessionState loadSession()
         obj.value(QStringLiteral("toolsColumns")).toInt(1) == 2 ? 2 : 1;
     state.useShiftKeyForToolSwitch =
         obj.value(QStringLiteral("useShiftKeyForToolSwitch")).toBool(true);
+    state.panelRailMode = obj.value(QStringLiteral("panelRailMode")).toString(
+        QStringLiteral("normal"));
+    if (state.panelRailMode != QStringLiteral("iconic")) {
+        state.panelRailMode = QStringLiteral("normal");
+    }
+    state.railWidth = obj.value(QStringLiteral("railWidth")).toInt(0);
+    state.autoCollapseIconic =
+        obj.value(QStringLiteral("autoCollapseIconic")).toBool(false);
+    state.autoShowHidden = obj.value(QStringLiteral("autoShowHidden")).toBool(false);
+    state.panelGroups = obj.value(QStringLiteral("panelGroups")).toArray();
     state.layout =
         QByteArray::fromBase64(obj.value(QStringLiteral("layout")).toString().toLatin1());
     const QJsonArray recent = obj.value(QStringLiteral("recent")).toArray();
@@ -67,7 +97,7 @@ bool saveSession(const SessionState& state)
         return false;
     }
 
-    QJsonObject obj;
+    QJsonObject obj = readStoreObject();
     obj.insert(QStringLiteral("schemaVersion"), state.schemaVersion);
     obj.insert(QStringLiteral("brightnessLevel"), state.brightnessLevel);
     obj.insert(QStringLiteral("gpuCompute"), state.gpuCompute);
@@ -76,6 +106,11 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("layersExpandNewEffects"), state.layersExpandNewEffects);
     obj.insert(QStringLiteral("toolsColumns"), state.toolsColumns);
     obj.insert(QStringLiteral("useShiftKeyForToolSwitch"), state.useShiftKeyForToolSwitch);
+    obj.insert(QStringLiteral("panelRailMode"), state.panelRailMode);
+    obj.insert(QStringLiteral("railWidth"), state.railWidth);
+    obj.insert(QStringLiteral("autoCollapseIconic"), state.autoCollapseIconic);
+    obj.insert(QStringLiteral("autoShowHidden"), state.autoShowHidden);
+    obj.insert(QStringLiteral("panelGroups"), state.panelGroups);
     obj.insert(QStringLiteral("layout"), QString::fromLatin1(state.layout.toBase64()));
     QJsonArray recent;
     for (const QString& path : state.recent) {

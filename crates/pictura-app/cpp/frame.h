@@ -14,6 +14,7 @@ class QLabel;
 class QListWidget;
 class QTabWidget;
 class QTimer;
+class QWidget;
 
 namespace pictura {
 
@@ -27,11 +28,13 @@ class InfoPanel;
 class LayersPanel;
 class NavigatorPanel;
 class OptionsBar;
-class PanelRail;
+class PanelColumn;
 class PictureView;
 class PlaceholderPanel;
+class PreferencesDialog;
 class SwatchesPanel;
 class Toolbox;
+struct SessionState;
 
 // The CS6-shaped application frame: menu bar, tabbed document area, status bar,
 // and dock areas. Owns the UI and the open documents; each document's state
@@ -50,8 +53,10 @@ public:
     ImageView* imageView() const;       // active canvas, or nullptr with no document
     PictureView* activeView() const;    // active document, or nullptr
     QStringList topLevelMenuTitles() const;
-    bool registerPanel(QDockWidget* dock, Qt::DockWidgetArea area);
+    bool registerPanel(QWidget* panel, Qt::DockWidgetArea area);
     const QSet<QString>& panelObjectNames() const { return panelNames_; }
+    PanelColumn* panelColumn() const { return panelColumn_; }
+    PreferencesDialog* preferencesDialog() const { return preferencesDialog_; }
 
     // The Tools panel must not join a tab group; re-dock it to its last side if
     // it somehow does (the tabify fallback, exposed for the self-test).
@@ -123,6 +128,8 @@ private:
     void buildTools(int toolsColumns, bool useShiftKeyForToolSwitch);
     void buildStatusBar();
     void registerHandlers();
+    void applyPanelSession(const SessionState& state);
+    void showPreferences(const QString& page);
     void retargetDock();
     void refreshPanels();
     void updateStatus();
@@ -154,7 +161,9 @@ private:
     PlaceholderPanel* channelsPanel_ = nullptr;
     PlaceholderPanel* pathsPanel_ = nullptr;
     PlaceholderPanel* actionsPanel_ = nullptr;
-    PanelRail* panelRail_ = nullptr;
+    PlaceholderPanel* stylesPanel_ = nullptr;
+    PanelColumn* panelColumn_ = nullptr;
+    PreferencesDialog* preferencesDialog_ = nullptr;
     ToolController* tools_ = nullptr;
     OptionsBar* optionsBar_ = nullptr;
     Toolbox* toolbox_ = nullptr;

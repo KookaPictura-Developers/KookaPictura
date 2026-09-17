@@ -579,9 +579,9 @@ private:
 };
 
 LayersPanel::LayersPanel(QWidget* parent)
-    : QDockWidget(tr("Layers"), parent)
+    : QWidget(parent)
 {
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
 
     // Panel Options are session state (schema v3); clamp a corrupt store.
@@ -724,8 +724,6 @@ LayersPanel::LayersPanel(QWidget* parent)
         stripIconButton(QStringLiteral("layersStripDelete"), QStringLiteral("layers.delete"));
     deleteButton->setToolTip(tr("Delete"));
     layout->addLayout(buttons);
-
-    setWidget(body);
 
     // Panel menu: only commands M39 actually wires (no disabled placeholders).
     auto* panelMenu = new QMenu(panelMenu_);
@@ -987,7 +985,7 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             }
         }
     }
-    return QDockWidget::eventFilter(watched, event);
+    return QWidget::eventFilter(watched, event);
 }
 
 void LayersPanel::syncControls()

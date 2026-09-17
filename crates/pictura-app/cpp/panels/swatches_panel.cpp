@@ -28,9 +28,9 @@ QColor swatchColor(int row, int col)
 } // namespace
 
 SwatchesPanel::SwatchesPanel(ColorState* state, QWidget* parent)
-    : QDockWidget(tr("Swatches"), parent)
+    : QWidget(parent)
 {
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
     auto* grid = new QGridLayout();
     grid->setSpacing(2);
@@ -55,7 +55,6 @@ SwatchesPanel::SwatchesPanel(ColorState* state, QWidget* parent)
     }
     layout->addLayout(grid);
     layout->addStretch(1);
-    setWidget(body);
 }
 
 } // namespace pictura

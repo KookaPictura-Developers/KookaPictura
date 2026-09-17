@@ -12,9 +12,11 @@
 #include "panels/info_panel.h"
 #include "panels/layers_panel.h"
 #include "panels/navigator_panel.h"
-#include "panels/panel_rail.h"
+#include "panels/panel_column.h"
+#include "panels/panel_group.h"
 #include "panels/placeholder_panel.h"
 #include "panels/swatches_panel.h"
+#include "preferences_dialog.h"
 #include "session.h"
 #include "theme.h"
 #include "toolbox.h"
@@ -43,6 +45,7 @@
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QSpinBox>
+#include <QtWidgets/QSplitter>
 #include <QtWidgets/QStatusBar>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QToolButton>
@@ -68,7 +71,17 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     tabs_->setTabsClosable(true);
     tabs_->setMovable(true);
     tabs_->setDocumentMode(true);
-    setCentralWidget(tabs_);
+
+    // The document area and the right-hand PanelColumn share the central
+    // widget through a splitter; the column is the only host for the panels.
+    panelColumn_ = new PanelColumn(this);
+    auto* centerSplitter = new QSplitter(Qt::Horizontal, this);
+    centerSplitter->setObjectName(QStringLiteral("centerSplitter"));
+    centerSplitter->addWidget(tabs_);
+    centerSplitter->addWidget(panelColumn_);
+    centerSplitter->setStretchFactor(0, 1);
+    centerSplitter->setStretchFactor(1, 0);
+    setCentralWidget(centerSplitter);
     setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
 
     registry_ = new CommandRegistry(this);
@@ -91,6 +104,12 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     buildTools(state.toolsColumns, state.useShiftKeyForToolSwitch);
     buildStatusBar();
     applyBrightness(state.brightnessLevel);
+    applyPanelSession(state);
+    // Persist every column change through the same path as the Window toggles,
+    // and route the tab menu's `Interface Options…` to the Interface pane.
+    connect(panelColumn_, &PanelColumn::stateChanged, this, [this]() { saveSession(); });
+    connect(panelColumn_, &PanelColumn::interfaceOptionsRequested, this,
+            [this]() { showPreferences(PreferencesDialog::kInterface); });
     if (!state.layout.isEmpty()) {
         restoreState(state.layout);
     }
@@ -161,13 +180,15 @@ bool PicturaMainWindow::commitCrop()
     return true;
 }
 
-bool PicturaMainWindow::registerPanel(QDockWidget* dock, Qt::DockWidgetArea area)
+bool PicturaMainWindow::registerPanel(QWidget* panel, Qt::DockWidgetArea area)
 {
-    if (!dock || panelNames_.contains(dock->objectName())) {
+    if (!panel || panelNames_.contains(panel->objectName())) {
         return false;
     }
-    panelNames_.insert(dock->objectName());
-    addDockWidget(area, dock);
+    panelNames_.insert(panel->objectName());
+    if (auto* dock = qobject_cast<QDockWidget*>(panel)) {
+        addDockWidget(area, dock);
+    }
     return true;
 }
 
@@ -498,12 +519,19 @@ void PicturaMainWindow::setBrightnessLevel(int level)
 void PicturaMainWindow::setScreenMode(ScreenMode mode)
 {
     screenMode_ = mode;
-    const QList<QDockWidget*> docks = findChildren<QDockWidget*>();
     auto setCanvasColor = [this](const QColor& color) {
         for (const DocEntry& entry : docs_) {
             if (entry.canvas) {
                 entry.canvas->setCanvasColor(color);
             }
+        }
+    };
+    auto setChromeVisible = [this](bool visible) {
+        if (toolsDock_) {
+            toolsDock_->setVisible(visible);
+        }
+        if (panelColumn_) {
+            panelColumn_->setVisible(visible);
         }
     };
     switch (mode) {
@@ -513,9 +541,7 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         setWindowState(state);
         menuBar()->setVisible(true);
         statusBar()->setVisible(true);
-        for (QDockWidget* dock : docks) {
-            dock->setVisible(!panelsHidden_);
-        }
+        setChromeVisible(!panelsHidden_);
         setCanvasColor(kCanvasColors[canvasColorIndex_]);
         break;
     }
@@ -523,18 +549,14 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         setWindowState(Qt::WindowFullScreen);
         menuBar()->setVisible(true);
         statusBar()->setVisible(false);
-        for (QDockWidget* dock : docks) {
-            dock->setVisible(false);
-        }
+        setChromeVisible(false);
         setCanvasColor(QColor(128, 128, 128));
         break;
     case ScreenMode::Full:
         setWindowState(Qt::WindowFullScreen);
         menuBar()->setVisible(false);
         statusBar()->setVisible(false);
-        for (QDockWidget* dock : docks) {
-            dock->setVisible(false);
-        }
+        setChromeVisible(false);
         setCanvasColor(Qt::black);
         break;
     }
@@ -563,9 +585,11 @@ void PicturaMainWindow::cycleCanvasColor(bool forward)
 void PicturaMainWindow::setPanelsHidden(bool hidden)
 {
     panelsHidden_ = hidden;
-    const QList<QDockWidget*> docks = findChildren<QDockWidget*>();
-    for (QDockWidget* dock : docks) {
-        dock->setVisible(!hidden);
+    if (toolsDock_) {
+        toolsDock_->setVisible(!hidden);
+    }
+    if (panelColumn_) {
+        panelColumn_->setVisible(!hidden);
     }
 }
 
@@ -655,9 +679,65 @@ void PicturaMainWindow::saveSession()
     state.gpuCompute = gpuCompute_;
     state.toolsColumns = toolbox_ ? toolbox_->columns() : 1;
     state.useShiftKeyForToolSwitch = useShiftKeyForToolSwitch_;
-    state.schemaVersion = 4;
+    if (panelColumn_) {
+        const bool iconic = panelColumn_->railMode();
+        state.panelRailMode = iconic ? QStringLiteral("iconic") : QStringLiteral("normal");
+        // Keep the last normal-mode width; an iconic column has no width of its
+        // own, so the loaded value survives unchanged.
+        if (!iconic && panelColumn_->width() > 0) {
+            state.railWidth = panelColumn_->width();
+        }
+        state.autoCollapseIconic = panelColumn_->autoCollapseIconic();
+        state.autoShowHidden = panelColumn_->autoShowHidden();
+        state.panelGroups = panelColumn_->savePanelState();
+    }
+    state.schemaVersion = 5;
     state.recent = recent_;
     pictura::saveSession(state);
+}
+
+void PicturaMainWindow::applyPanelSession(const SessionState& state)
+{
+    if (!panelColumn_) {
+        return;
+    }
+    panelColumn_->setAutoCollapseIconic(state.autoCollapseIconic);
+    panelColumn_->setAutoShowHidden(state.autoShowHidden);
+    panelColumn_->restorePanelState(state.panelGroups);
+    const bool iconic = state.panelRailMode == QStringLiteral("iconic");
+    panelColumn_->setRailMode(iconic);
+    if (!iconic) {
+        panelColumn_->setPreferredWidth(state.railWidth);
+    }
+}
+
+void PicturaMainWindow::showPreferences(const QString& page)
+{
+    if (!preferencesDialog_) {
+        preferencesDialog_ = new PreferencesDialog(this);
+        preferencesDialog_->setShiftKeyForToolSwitch(useShiftKeyForToolSwitch_);
+        preferencesDialog_->setAutoCollapseIconic(panelColumn_->autoCollapseIconic());
+        preferencesDialog_->setAutoShowHidden(panelColumn_->autoShowHidden());
+        preferencesDialog_->setBrightnessLevel(brightnessLevel_);
+        connect(preferencesDialog_, &PreferencesDialog::useShiftKeyForToolSwitchChanged,
+                this, [this](bool on) {
+                    useShiftKeyForToolSwitch_ = on;
+                    if (toolbox_) {
+                        toolbox_->setShiftKeyForToolSwitch(on);
+                    }
+                    saveSession();
+                });
+        connect(preferencesDialog_, &PreferencesDialog::autoCollapseIconicChanged, this,
+                [this](bool on) { panelColumn_->setAutoCollapseIconic(on); });
+        connect(preferencesDialog_, &PreferencesDialog::autoShowHiddenChanged, this,
+                [this](bool on) { panelColumn_->setAutoShowHidden(on); });
+        connect(preferencesDialog_, &PreferencesDialog::brightnessLevelChanged, this,
+                [this](int level) {
+                    setBrightnessLevel(level);
+                    saveSession();
+                });
+    }
+    preferencesDialog_->openOn(page);
 }
 
 void PicturaMainWindow::closeEvent(QCloseEvent* event)
@@ -796,11 +876,21 @@ void PicturaMainWindow::buildPanels()
     actionsPanel_ = new PlaceholderPanel(QStringLiteral("Actions"), QString(), this);
     actionsPanel_->setObjectName(QStringLiteral("actionsPanel"));
 
+    actionsPanel_ = new PlaceholderPanel(QStringLiteral("Actions"), QString(), this);
+    actionsPanel_->setObjectName(QStringLiteral("actionsPanel"));
+
+    // `Styles` takes the former Gradients/Patterns tab slot in the default set.
+    stylesPanel_ = new PlaceholderPanel(QStringLiteral("Styles"), QString(), this);
+    stylesPanel_->setObjectName(QStringLiteral("stylesPanel"));
+
+    // Content widgets, not docks: the PanelColumn hosts them. Registering the
+    // objectNames keeps the Window menu and the duplicate-name guard working.
     registerPanel(layersPanel_, Qt::RightDockWidgetArea);
     registerPanel(historyPanel_, Qt::RightDockWidgetArea);
     registerPanel(navigatorPanel_, Qt::RightDockWidgetArea);
     registerPanel(colorPanel_, Qt::RightDockWidgetArea);
     registerPanel(swatchesPanel_, Qt::RightDockWidgetArea);
+    registerPanel(stylesPanel_, Qt::RightDockWidgetArea);
     registerPanel(infoPanel_, Qt::RightDockWidgetArea);
     registerPanel(histogramPanel_, Qt::RightDockWidgetArea);
     registerPanel(gradientsPanel_, Qt::RightDockWidgetArea);
@@ -812,62 +902,79 @@ void PicturaMainWindow::buildPanels()
     registerPanel(pathsPanel_, Qt::RightDockWidgetArea);
     registerPanel(actionsPanel_, Qt::RightDockWidgetArea);
 
-    tabifyDockWidget(colorPanel_, swatchesPanel_);
-    tabifyDockWidget(colorPanel_, gradientsPanel_);
-    tabifyDockWidget(colorPanel_, patternsPanel_);
-    colorPanel_->raise();
-
-    tabifyDockWidget(propertiesPanel_, adjustmentsPanel_);
-    tabifyDockWidget(propertiesPanel_, librariesPanel_);
-    propertiesPanel_->raise();
-
-    tabifyDockWidget(layersPanel_, channelsPanel_);
-    tabifyDockWidget(layersPanel_, pathsPanel_);
-    layersPanel_->raise();
-
-    // The rail panels start collapsed; a restored session may override this.
-    historyPanel_->hide();
-    actionsPanel_->hide();
-    infoPanel_->hide();
-    navigatorPanel_->hide();
-    histogramPanel_->hide();
-
-    panelRail_ = new PanelRail(this);
-    addToolBar(Qt::RightToolBarArea, panelRail_);
-
-    // Each rail command id is the panel's `window.panels.<name>` asset id, so the
-    // rail button, the dock tab, and the Window menu resolve the same icon.
-    auto addRailPanel = [this](const char* commandId, const QString& tooltip) {
-        const QString id = QString::fromLatin1(commandId);
-        panelRail_->addPanel(id, pictura::icon(id), tooltip);
+    // CS6 Essentials groups and order. The tab text is the panel title and the
+    // tab icon reuses the panel's `window.panels.<name>` asset.
+    auto addPanel = [](PanelGroup* group, QWidget* panel, const QString& title,
+                       const QString& iconId) {
+        group->addPanel(panel, title, pictura::icon(iconId));
     };
-    addRailPanel(command_ids::WindowPanelsHistory, tr("History"));
-    addRailPanel(command_ids::WindowPanelsActions, tr("Actions"));
-    addRailPanel(command_ids::WindowPanelsInfo, tr("Info"));
-    addRailPanel(command_ids::WindowPanelsNavigator, tr("Navigator"));
-    addRailPanel(command_ids::WindowPanelsHistogram, tr("Histogram"));
 
-    connect(panelRail_, &PanelRail::commandTriggered, this, [this](const QString& id) {
-        if (QAction* action = registry_->action(id)) {
-            action->setChecked(!action->isChecked());
-            registry_->dispatch(id);
-        }
-    });
-    connect(historyPanel_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        panelRail_->setPanelChecked(command_ids::WindowPanelsHistory, visible);
-    });
-    connect(actionsPanel_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        panelRail_->setPanelChecked(command_ids::WindowPanelsActions, visible);
-    });
-    connect(infoPanel_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        panelRail_->setPanelChecked(command_ids::WindowPanelsInfo, visible);
-    });
-    connect(navigatorPanel_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        panelRail_->setPanelChecked(command_ids::WindowPanelsNavigator, visible);
-    });
-    connect(histogramPanel_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        panelRail_->setPanelChecked(command_ids::WindowPanelsHistogram, visible);
-    });
+    auto* colorGroup = new PanelGroup(this);
+    addPanel(colorGroup, colorPanel_, tr("Color"), QString::fromLatin1(command_ids::WindowPanelsColor));
+    addPanel(colorGroup, swatchesPanel_, tr("Swatches"),
+             QString::fromLatin1(command_ids::WindowPanelsSwatches));
+    addPanel(colorGroup, stylesPanel_, tr("Styles"), QStringLiteral("window.panels.styles"));
+    panelColumn_->addGroup(colorGroup);
+
+    // Properties folds into the Adjustments group; its tab starts hidden.
+    auto* adjustmentsGroup = new PanelGroup(this);
+    addPanel(adjustmentsGroup, adjustmentsPanel_, tr("Adjustments"),
+             QString::fromLatin1(command_ids::WindowPanelsAdjustments));
+    addPanel(adjustmentsGroup, propertiesPanel_, tr("Properties"),
+             QString::fromLatin1(command_ids::WindowPanelsProperties));
+    panelColumn_->addGroup(adjustmentsGroup);
+
+    auto* layersGroup = new PanelGroup(this);
+    addPanel(layersGroup, layersPanel_, tr("Layers"),
+             QString::fromLatin1(command_ids::WindowPanelsLayers));
+    addPanel(layersGroup, channelsPanel_, tr("Channels"),
+             QString::fromLatin1(command_ids::WindowPanelsChannels));
+    addPanel(layersGroup, pathsPanel_, tr("Paths"),
+             QString::fromLatin1(command_ids::WindowPanelsPaths));
+    panelColumn_->addGroup(layersGroup);
+
+    auto* navigatorGroup = new PanelGroup(this);
+    addPanel(navigatorGroup, navigatorPanel_, tr("Navigator"),
+             QString::fromLatin1(command_ids::WindowPanelsNavigator));
+    addPanel(navigatorGroup, histogramPanel_, tr("Histogram"),
+             QString::fromLatin1(command_ids::WindowPanelsHistogram));
+    addPanel(navigatorGroup, infoPanel_, tr("Info"),
+             QString::fromLatin1(command_ids::WindowPanelsInfo));
+    panelColumn_->addGroup(navigatorGroup);
+
+    // Iconic single-panel groups. Phase A only records `defaultIconic`; the
+    // compact rendering lands in Phase B.
+    auto* historyGroup = new PanelGroup(this);
+    addPanel(historyGroup, historyPanel_, tr("History"),
+             QString::fromLatin1(command_ids::WindowPanelsHistory));
+    historyGroup->setDefaultIconic(true);
+    panelColumn_->addGroup(historyGroup);
+
+    auto* actionsGroup = new PanelGroup(this);
+    addPanel(actionsGroup, actionsPanel_, tr("Actions"),
+             QString::fromLatin1(command_ids::WindowPanelsActions));
+    actionsGroup->setDefaultIconic(true);
+    panelColumn_->addGroup(actionsGroup);
+
+    // Kept registered and Window-menu reachable, but out of the default groups.
+    auto* overflowGroup = new PanelGroup(this);
+    addPanel(overflowGroup, gradientsPanel_, tr("Gradients"),
+             QString::fromLatin1(command_ids::WindowPanelsGradients));
+    addPanel(overflowGroup, patternsPanel_, tr("Patterns"),
+             QString::fromLatin1(command_ids::WindowPanelsPatterns));
+    addPanel(overflowGroup, librariesPanel_, tr("Libraries"),
+             QString::fromLatin1(command_ids::WindowPanelsLibraries));
+    panelColumn_->addGroup(overflowGroup);
+
+    // Default visibility matches the pre-M41 layout: Color/Swatches/Styles,
+    // Adjustments, Layers/Channels/Paths and Navigator/Histogram/Info visible;
+    // History, Actions and the overflow panels hidden.
+    panelColumn_->showPanel(QStringLiteral("historyPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("actionsPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("propertiesPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("gradientsPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("patternsPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("librariesPanel"), false);
 }
 
 void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwitch)
@@ -1304,15 +1411,6 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::ViewGpuCompute, [this]() { return gpuAvailable_; });
     registry_->setCheckedProvider(command_ids::ViewGpuCompute, [this]() { return gpuCompute_; });
 
-    registry_->setHandler(command_ids::WindowPanelsLayers, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsLayers);
-        if (layersPanel_ && action) {
-            layersPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsLayers,
-                                  [this]() { return layersPanel_ && layersPanel_->isVisible(); });
-
     registry_->setHandler(command_ids::WindowPanelsTools, [this]() {
         QAction* action = registry_->action(command_ids::WindowPanelsTools);
         if (toolsDock_ && action) {
@@ -1322,131 +1420,50 @@ void PicturaMainWindow::registerHandlers()
     registry_->setCheckedProvider(command_ids::WindowPanelsTools,
                                   [this]() { return toolsDock_ && toolsDock_->isVisible(); });
 
-    registry_->setHandler(command_ids::WindowPanelsNavigator, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsNavigator);
-        if (navigatorPanel_ && action) {
-            navigatorPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsNavigator,
-                                  [this]() { return navigatorPanel_ && navigatorPanel_->isVisible(); });
+    // The two implemented Preferences leaves; the other CS6 panes stay
+    // disabled and are no-ops (their command-tree enablement is unchanged).
+    registry_->setHandler(command_ids::EditPreferencesGeneral,
+                          [this]() { showPreferences(PreferencesDialog::kGeneral); });
+    registry_->setHandler(command_ids::EditPreferencesInterface,
+                          [this]() { showPreferences(PreferencesDialog::kInterface); });
 
-    registry_->setHandler(command_ids::WindowPanelsHistory, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsHistory);
-        if (historyPanel_ && action) {
-            historyPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsHistory,
-                                  [this]() { return historyPanel_ && historyPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsColor, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsColor);
-        if (colorPanel_ && action) {
-            colorPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsColor,
-                                  [this]() { return colorPanel_ && colorPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsSwatches, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsSwatches);
-        if (swatchesPanel_ && action) {
-            swatchesPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsSwatches,
-                                  [this]() { return swatchesPanel_ && swatchesPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsInfo, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsInfo);
-        if (infoPanel_ && action) {
-            infoPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsInfo,
-                                  [this]() { return infoPanel_ && infoPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsHistogram, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsHistogram);
-        if (histogramPanel_ && action) {
-            histogramPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsHistogram,
-                                  [this]() { return histogramPanel_ && histogramPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsGradients, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsGradients);
-        if (gradientsPanel_ && action) {
-            gradientsPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsGradients,
-                                  [this]() { return gradientsPanel_ && gradientsPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsPatterns, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsPatterns);
-        if (patternsPanel_ && action) {
-            patternsPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsPatterns,
-                                  [this]() { return patternsPanel_ && patternsPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsProperties, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsProperties);
-        if (propertiesPanel_ && action) {
-            propertiesPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsProperties,
-                                  [this]() { return propertiesPanel_ && propertiesPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsAdjustments, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsAdjustments);
-        if (adjustmentsPanel_ && action) {
-            adjustmentsPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsAdjustments,
-                                  [this]() { return adjustmentsPanel_ && adjustmentsPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsLibraries, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsLibraries);
-        if (librariesPanel_ && action) {
-            librariesPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsLibraries,
-                                  [this]() { return librariesPanel_ && librariesPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsChannels, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsChannels);
-        if (channelsPanel_ && action) {
-            channelsPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsChannels,
-                                  [this]() { return channelsPanel_ && channelsPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsPaths, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsPaths);
-        if (pathsPanel_ && action) {
-            pathsPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsPaths,
-                                  [this]() { return pathsPanel_ && pathsPanel_->isVisible(); });
-
-    registry_->setHandler(command_ids::WindowPanelsActions, [this]() {
-        QAction* action = registry_->action(command_ids::WindowPanelsActions);
-        if (actionsPanel_ && action) {
-            actionsPanel_->setVisible(action->isChecked());
-        }
-    });
-    registry_->setCheckedProvider(command_ids::WindowPanelsActions,
-                                  [this]() { return actionsPanel_ && actionsPanel_->isVisible(); });
+    // Every other panel is a content widget hosted by the PanelColumn; the
+    // Window > Panels toggles drive and reflect the column's registry rather
+    // than a dock's visibility.
+    struct PanelToggle {
+        const char* command;
+        const char* panel;
+    };
+    static const PanelToggle kPanelToggles[] = {
+        {command_ids::WindowPanelsLayers, "layersPanel"},
+        {command_ids::WindowPanelsNavigator, "navigatorPanel"},
+        {command_ids::WindowPanelsHistory, "historyPanel"},
+        {command_ids::WindowPanelsColor, "colorPanel"},
+        {command_ids::WindowPanelsSwatches, "swatchesPanel"},
+        {command_ids::WindowPanelsInfo, "infoPanel"},
+        {command_ids::WindowPanelsHistogram, "histogramPanel"},
+        {command_ids::WindowPanelsGradients, "gradientsPanel"},
+        {command_ids::WindowPanelsPatterns, "patternsPanel"},
+        {command_ids::WindowPanelsProperties, "propertiesPanel"},
+        {command_ids::WindowPanelsAdjustments, "adjustmentsPanel"},
+        {command_ids::WindowPanelsLibraries, "librariesPanel"},
+        {command_ids::WindowPanelsChannels, "channelsPanel"},
+        {command_ids::WindowPanelsPaths, "pathsPanel"},
+        {command_ids::WindowPanelsActions, "actionsPanel"},
+    };
+    for (const PanelToggle& toggle : kPanelToggles) {
+        const QString command = QString::fromLatin1(toggle.command);
+        const QString panel = QString::fromLatin1(toggle.panel);
+        registry_->setHandler(command, [this, command, panel]() {
+            QAction* action = registry_->action(command);
+            if (panelColumn_ && action) {
+                panelColumn_->showPanel(panel, action->isChecked());
+            }
+        });
+        registry_->setCheckedProvider(command, [this, panel]() {
+            return panelColumn_ && panelColumn_->isPanelVisible(panel);
+        });
+    }
 
     registry_->setHandler(command_ids::HelpAbout, [this]() {
         QMessageBox::about(this, tr("About Kooka Pictura"),

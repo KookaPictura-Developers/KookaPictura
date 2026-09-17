@@ -16,7 +16,6 @@ namespace pictura {
 HistogramView::HistogramView(QWidget* parent)
     : QWidget(parent)
 {
-    setMinimumHeight(120);
 }
 
 void HistogramView::setBins(const QVector<quint32>& bins, const QColor& color)
@@ -60,9 +59,9 @@ void HistogramView::paintEvent(QPaintEvent*)
 }
 
 HistogramPanel::HistogramPanel(QWidget* parent)
-    : QDockWidget(tr("Histogram"), parent)
+    : QWidget(parent)
 {
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
     channel_ = new QComboBox(body);
     channel_->addItem(tr("Red"));
@@ -72,7 +71,6 @@ HistogramPanel::HistogramPanel(QWidget* parent)
     layout->addWidget(channel_);
     histogram_ = new HistogramView(body);
     layout->addWidget(histogram_, 1);
-    setWidget(body);
 
     connect(channel_, &QComboBox::currentIndexChanged, this, [this](int) { applyChannel(); });
 }

@@ -170,9 +170,10 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Edit", "Keyboard Shortcuts…"}, QStringLiteral("Keyboard Shortcuts…"),
          QStringLiteral("Alt+Shift+Ctrl+K"));
     leaf(registry, {"Edit", "Menus…"}, QStringLiteral("Menus…"));
-    leaf(registry, {"Edit", "Preferences", "General"}, QStringLiteral("General"),
-         QStringLiteral("Ctrl+K"));
-    leaf(registry, {"Edit", "Preferences", "Interface"}, QStringLiteral("Interface"));
+    registry.add(command_ids::EditPreferencesGeneral, {"Edit", "Preferences", "General"},
+                 QStringLiteral("General"), QKeySequence(QStringLiteral("Ctrl+K")), true);
+    registry.add(command_ids::EditPreferencesInterface, {"Edit", "Preferences", "Interface"},
+                 QStringLiteral("Interface"), QKeySequence(), true);
     leaf(registry, {"Edit", "Preferences", "File Handling"}, QStringLiteral("File Handling"));
     leaf(registry, {"Edit", "Preferences", "Performance"}, QStringLiteral("Performance"));
     leaf(registry, {"Edit", "Preferences", "Cursors"}, QStringLiteral("Cursors"));

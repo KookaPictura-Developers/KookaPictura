@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QByteArray>
+#include <QtCore/QJsonArray>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 
@@ -16,7 +17,15 @@ struct SessionState {
     bool layersExpandNewEffects = true;
     int toolsColumns = 1;            // 1 or 2; out-of-range loads the default
     bool useShiftKeyForToolSwitch = true;
-    int schemaVersion = 4;
+    // v5 panel-column state. `panelGroups` is a JSON array of
+    // {name, order, visible, minimized, collapsed}; kept opaque here so an
+    // older or newer store round-trips unchanged.
+    QString panelRailMode = QStringLiteral("normal");
+    int railWidth = 0;               // 0 = derive from the current column width
+    bool autoCollapseIconic = false;
+    bool autoShowHidden = false;
+    QJsonArray panelGroups;
+    int schemaVersion = 5;
     QStringList recent;
 };
 

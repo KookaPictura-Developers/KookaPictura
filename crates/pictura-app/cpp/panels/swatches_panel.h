@@ -1,12 +1,12 @@
 #pragma once
 
-#include <QtWidgets/QDockWidget>
+#include <QtWidgets/QWidget>
 
 namespace pictura {
 
 class ColorState;
 
-class SwatchesPanel : public QDockWidget {
+class SwatchesPanel : public QWidget {
     Q_OBJECT
 
 public:

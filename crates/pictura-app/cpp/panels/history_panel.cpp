@@ -27,9 +27,9 @@ constexpr int kSnapshotKind = 1;
 } // namespace
 
 HistoryPanel::HistoryPanel(QWidget* parent)
-    : QDockWidget(tr("History"), parent)
+    : QWidget(parent)
 {
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
     list_ = new QListWidget(body);
     layout->addWidget(list_, 1);
@@ -39,7 +39,6 @@ HistoryPanel::HistoryPanel(QWidget* parent)
     snapshotButton_->setIconSize(QSize(20, 20));
     snapshotButton_->setToolTip(tr("Create New Snapshot"));
     layout->addWidget(snapshotButton_);
-    setWidget(body);
 
     connect(list_, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) { activate(item); });
     connect(snapshotButton_, &QPushButton::clicked, this, [this] { createSnapshot(); });

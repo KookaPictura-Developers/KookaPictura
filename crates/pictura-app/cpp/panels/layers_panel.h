@@ -6,7 +6,7 @@
 #include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
-#include <QtWidgets/QDockWidget>
+#include <QtWidgets/QWidget>
 
 class QComboBox;
 class QEvent;
@@ -22,7 +22,7 @@ class LayerRowDelegate;
 class LayersModel;
 class PictureView;
 
-class LayersPanel : public QDockWidget {
+class LayersPanel : public QWidget {
     Q_OBJECT
 
 public:

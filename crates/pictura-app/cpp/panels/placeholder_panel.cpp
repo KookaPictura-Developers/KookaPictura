@@ -7,17 +7,16 @@
 namespace pictura {
 
 PlaceholderPanel::PlaceholderPanel(const QString& title, const QString& message, QWidget* parent)
-    : QDockWidget(parent)
+    : QWidget(parent)
 {
     setWindowTitle(title);
 
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
     auto* label = new QLabel(message.isEmpty() ? QStringLiteral("No ") + title : message, body);
     label->setAlignment(Qt::AlignCenter);
     label->setEnabled(false);
     layout->addWidget(label, 1, Qt::AlignCenter);
-    setWidget(body);
 }
 
 } // namespace pictura

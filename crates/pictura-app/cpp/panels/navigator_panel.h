@@ -4,7 +4,6 @@
 #include <QtCore/QRect>
 #include <QtCore/QSize>
 #include <QtGui/QImage>
-#include <QtWidgets/QDockWidget>
 #include <QtWidgets/QWidget>
 
 #include <functional>
@@ -44,7 +43,7 @@ private:
     std::function<void(const QPointF&)> picked_;
 };
 
-class NavigatorPanel : public QDockWidget {
+class NavigatorPanel : public QWidget {
     Q_OBJECT
 
 public:

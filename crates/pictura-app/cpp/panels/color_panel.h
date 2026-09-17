@@ -2,7 +2,6 @@
 
 #include <QtCore/QObject>
 #include <QtGui/QColor>
-#include <QtWidgets/QDockWidget>
 #include <QtWidgets/QWidget>
 
 #include <functional>
@@ -59,7 +58,7 @@ private:
     std::function<void(int)> picked_;
 };
 
-class ColorPanel : public QDockWidget {
+class ColorPanel : public QWidget {
     Q_OBJECT
 
 public:

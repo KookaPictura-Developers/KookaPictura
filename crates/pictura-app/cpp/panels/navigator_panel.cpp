@@ -39,7 +39,6 @@ int sliderForZoom(double zoom)
 NavigatorThumbnail::NavigatorThumbnail(QWidget* parent)
     : QWidget(parent)
 {
-    setMinimumSize(160, 120);
 }
 
 void NavigatorThumbnail::setImage(const QImage& image)
@@ -149,9 +148,9 @@ void NavigatorThumbnail::pickAt(const QPointF& pos)
 }
 
 NavigatorPanel::NavigatorPanel(QWidget* parent)
-    : QDockWidget(tr("Navigator"), parent)
+    : QWidget(parent)
 {
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
 
     thumbnail_ = new NavigatorThumbnail(body);
@@ -175,7 +174,6 @@ NavigatorPanel::NavigatorPanel(QWidget* parent)
     buttonRow->addStretch(1);
     layout->addLayout(buttonRow);
 
-    setWidget(body);
     refresh();
 
     connect(slider_, &QSlider::valueChanged, this, [this](int value) {
@@ -222,7 +220,7 @@ bool NavigatorPanel::eventFilter(QObject* watched, QEvent* event)
             syncFromCanvas();
         }
     }
-    return QDockWidget::eventFilter(watched, event);
+    return QWidget::eventFilter(watched, event);
 }
 
 void NavigatorPanel::refresh()

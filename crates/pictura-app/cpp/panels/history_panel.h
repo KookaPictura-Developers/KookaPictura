@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QtCore/QObject>
-#include <QtWidgets/QDockWidget>
+#include <QtWidgets/QWidget>
 
 class QListWidget;
 class QListWidgetItem;
@@ -11,7 +11,7 @@ namespace pictura {
 
 class PictureView;
 
-class HistoryPanel : public QDockWidget {
+class HistoryPanel : public QWidget {
     Q_OBJECT
 
 public:

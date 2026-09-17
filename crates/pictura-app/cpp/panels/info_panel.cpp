@@ -12,9 +12,9 @@
 namespace pictura {
 
 InfoPanel::InfoPanel(QWidget* parent)
-    : QDockWidget(tr("Info"), parent)
+    : QWidget(parent)
 {
-    auto* body = new QWidget(this);
+    QWidget* body = this;
     auto* layout = new QFormLayout(body);
     positionLabel_ = new QLabel(body);
     colorLabel_ = new QLabel(body);
@@ -24,7 +24,6 @@ InfoPanel::InfoPanel(QWidget* parent)
     layout->addRow(tr("Color"), colorLabel_);
     layout->addRow(tr("Selection"), selectionLabel_);
     layout->addRow(tr("Dimensions"), sizeLabel_);
-    setWidget(body);
     refresh();
 }
 

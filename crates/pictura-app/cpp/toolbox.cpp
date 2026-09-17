@@ -21,6 +21,7 @@
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
 
+#include <algorithm>
 #include <functional>
 
 namespace pictura {
@@ -29,6 +30,7 @@ namespace {
 
 constexpr int kSwatchSize = 22;
 constexpr int kWidgetSize = 40;
+constexpr int kMinWidgetSize = 20;
 constexpr int kResetSize = 12;
 constexpr int kFlyoutDelayMs = 300;
 
@@ -161,7 +163,7 @@ ForegroundBackgroundWidget::ForegroundBackgroundWidget(ColorState* state, QWidge
     : QWidget(parent)
     , state_(state)
 {
-    setFixedSize(kWidgetSize, kWidgetSize);
+    setMinimumSize(kMinWidgetSize, kMinWidgetSize);
     setToolTip(tr("Foreground / background colors — click a swatch to make it active"));
     if (state_) {
         connect(state_, &ColorState::foregroundChanged, this, [this](const QColor&) { update(); });
@@ -170,20 +172,43 @@ ForegroundBackgroundWidget::ForegroundBackgroundWidget(ColorState* state, QWidge
     }
 }
 
+void ForegroundBackgroundWidget::setSide(int side)
+{
+    // ponytail: square only; a height-for-width layout is overkill for a pair of
+    // swatches. Clamped so the two squares stay readable at the smallest column.
+    const int clamped = std::clamp(side, kMinWidgetSize, kWidgetSize);
+    if (clamped == width() && clamped == height()) {
+        return;
+    }
+    setFixedSize(clamped, clamped);
+}
+
+int ForegroundBackgroundWidget::swatchSize() const
+{
+    return std::clamp(width() * 55 / 100, 12, kSwatchSize);
+}
+
+int ForegroundBackgroundWidget::resetSize() const
+{
+    return std::clamp(width() * 30 / 100, 7, kResetSize);
+}
+
 QRect ForegroundBackgroundWidget::foregroundRect() const
 {
-    return QRect(1, 1, kSwatchSize, kSwatchSize);
+    const int size = swatchSize();
+    return QRect(1, 1, size, size);
 }
 
 QRect ForegroundBackgroundWidget::backgroundRect() const
 {
-    return QRect(kWidgetSize - kSwatchSize - 1, kWidgetSize - kSwatchSize - 1, kSwatchSize,
-                 kSwatchSize);
+    const int size = swatchSize();
+    return QRect(width() - size - 1, height() - size - 1, size, size);
 }
 
 QRect ForegroundBackgroundWidget::resetRect() const
 {
-    return QRect(2, kWidgetSize - kResetSize - 2, kResetSize, kResetSize);
+    const int size = resetSize();
+    return QRect(2, height() - size - 2, size, size);
 }
 
 void ForegroundBackgroundWidget::resetColors()
@@ -261,13 +286,12 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     // still tabified. A drop can briefly tabify before that fallback runs.
     installEventFilter(this);
 
-    auto* titleBar = new QWidget(this);
-    auto* titleLayout = new QHBoxLayout(titleBar);
+    titleBar_ = new QWidget(this);
+    auto* titleLayout = new QHBoxLayout(titleBar_);
     titleLayout->setContentsMargins(4, 2, 2, 2);
     titleLayout->setSpacing(2);
-    titleLayout->addWidget(new QLabel(QStringLiteral("Tools"), titleBar));
     titleLayout->addStretch(1);
-    titleToggle_ = new QToolButton(titleBar);
+    titleToggle_ = new QToolButton(titleBar_);
     titleToggle_->setObjectName(QStringLiteral("toolsColumnToggle"));
     titleToggle_->setAutoRaise(true);
     titleToggle_->setFixedSize(20, 20);
@@ -275,11 +299,12 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     connect(titleToggle_, &QToolButton::clicked, this,
             [this]() { setColumns(columns_ == 1 ? 2 : 1); });
     titleLayout->addWidget(titleToggle_);
-    setTitleBarWidget(titleBar);
+    setTitleBarWidget(titleBar_);
     updateTitleIcon();
 
     auto* body = new QWidget(this);
     auto* layout = new QVBoxLayout(body);
+    bodyLayout_ = layout;
     layout->setContentsMargins(2, 2, 2, 2);
     layout->setSpacing(4);
 
@@ -357,26 +382,28 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
 
     layout->addWidget(gridWidget_, 0, Qt::AlignHCenter);
 
-    layout->addWidget(new ForegroundBackgroundWidget(colors, body), 0, Qt::AlignHCenter);
+    fgbg_ = new ForegroundBackgroundWidget(colors, body);
+    layout->addWidget(fgbg_, 0, Qt::AlignHCenter);
 
-    auto* screenMode = new QToolButton(body);
-    screenMode->setObjectName(QStringLiteral("screenModeButton"));
-    screenMode->setFixedSize(30, 30);
-    screenMode->setAutoRaise(true);
+    screenMode_ = new QToolButton(body);
+    screenMode_->setObjectName(QStringLiteral("screenModeButton"));
+    screenMode_->setFixedSize(30, 30);
+    screenMode_->setAutoRaise(true);
     const QIcon screenModeIcon = icon(QStringLiteral("view.screenMode.full"));
     if (!screenModeIcon.isNull()) {
-        screenMode->setIcon(screenModeIcon);
-        screenMode->setIconSize(QSize(20, 20));
+        screenMode_->setIcon(screenModeIcon);
+        screenMode_->setIconSize(QSize(20, 20));
     } else {
-        screenMode->setText(QStringLiteral("Screen Mode"));
+        screenMode_->setText(QStringLiteral("Screen Mode"));
     }
-    screenMode->setToolTip(tr("Screen Mode"));
-    connect(screenMode, &QToolButton::clicked, this, [this]() { emit screenModeRequested(); });
-    layout->addWidget(screenMode, 0, Qt::AlignHCenter);
+    screenMode_->setToolTip(tr("Screen Mode"));
+    connect(screenMode_, &QToolButton::clicked, this,
+            [this]() { emit screenModeRequested(); });
+    layout->addWidget(screenMode_, 0, Qt::AlignHCenter);
 
     layout->addStretch(1);
     setWidget(body);
-    setMinimumWidth(66);
+    updateContentMetrics();
 
     if (controller_) {
         connect(controller_, &ToolController::activeToolChanged, this, [this](ToolId id) {
@@ -409,9 +436,55 @@ void Toolbox::setColumns(int columns)
     }
     columns_ = columns;
     reflow();
-    setMinimumWidth(columns_ == 1 ? 66 : 104);
+    updateContentMetrics();
     updateTitleIcon();
     emit columnsChanged(columns_);
+}
+
+int Toolbox::contentWidth(int columns) const
+{
+    const int slot = 30;
+    const int spacing = grid_ ? grid_->spacing() : 0;
+    const int gridWidth = columns * slot + (columns > 1 ? (columns - 1) * spacing : 0);
+    const int margins = bodyLayout_
+        ? bodyLayout_->contentsMargins().left() + bodyLayout_->contentsMargins().right()
+        : 0;
+    return gridWidth + margins;
+}
+
+void Toolbox::updateContentMetrics()
+{
+    const int content = contentWidth(columns_);
+    setMinimumWidth(content);
+    if (fgbg_) {
+        // The swatch is sized from the column's content width, so it can never
+        // be the widest child. Clamped to a readable square.
+        fgbg_->setSide(content - (bodyLayout_ ? bodyLayout_->contentsMargins().left()
+                                                   + bodyLayout_->contentsMargins().right()
+                                               : 0));
+    }
+}
+
+QString Toolbox::titleTextForTest() const
+{
+    if (!titleBar_) {
+        return QString();
+    }
+    QStringList texts;
+    for (QLabel* label : titleBar_->findChildren<QLabel*>()) {
+        texts << label->text();
+    }
+    return texts.join(QString());
+}
+
+int Toolbox::contentWidthForTest() const
+{
+    return contentWidth(columns_);
+}
+
+int Toolbox::foregroundBackgroundWidthForTest() const
+{
+    return fgbg_ ? fgbg_->width() : 0;
 }
 
 void Toolbox::reflow()

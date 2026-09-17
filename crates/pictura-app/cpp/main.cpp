@@ -1,9 +1,10 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonObject>
 #include <QtCore/QProcessEnvironment>
 #include <QtCore/QSet>
-#include <QtCore/QSignalBlocker>
 #include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QTimer>
@@ -21,6 +22,7 @@
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QTabWidget>
 #include <QtWidgets/QToolBar>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QTreeView>
@@ -28,6 +30,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <optional>
 
 #include "commands.h"
@@ -36,6 +39,9 @@
 #include "icons.h"
 #include "image_view.h"
 #include "panels/layers_panel.h"
+#include "panels/panel_column.h"
+#include "panels/panel_group.h"
+#include "preferences_dialog.h"
 #include "session.h"
 #include "theme.h"
 #include "toolbox.h"
@@ -46,6 +52,20 @@
 
 int main(int argc, char* argv[])
 {
+    // xvfb-run sets DISPLAY but a live Wayland session's WAYLAND_DISPLAY leaks
+    // through, so Qt prefers the Wayland plugin. There a popup opened without a
+    // preceding input event cannot grab and the compositor dismisses it, which
+    // makes the UI self-tests flaky. Route the self-test back to the X display.
+    bool selfTestArg = false;
+    for (int i = 1; i < argc && !selfTestArg; ++i) {
+        selfTestArg = std::strcmp(argv[i], "--self-test") == 0;
+    }
+    if (selfTestArg && qEnvironmentVariableIsSet("DISPLAY")
+        && qEnvironmentVariableIsSet("WAYLAND_DISPLAY")
+        && !qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) {
+        qputenv("QT_QPA_PLATFORM", "xcb");
+    }
+
     QApplication app(argc, argv);
     QApplication::setWindowIcon(pictura::icon(QStringLiteral("app")));
 
@@ -691,7 +711,7 @@ int main(int argc, char* argv[])
             }
 
             // M16: Tab hides and restores all panels.
-            auto* layersPanel = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+            auto* layersPanel = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
             frame.setPanelsHidden(true);
             const bool panelsHidden = layersPanel && !layersPanel->isVisible();
             frame.setPanelsHidden(false);
@@ -1208,21 +1228,22 @@ int main(int argc, char* argv[])
             QStringLiteral("window.panels.histogram"),
         };
         int panelsToggled = 0;
+        auto* m20Column = frame.panelColumn();
         for (const QString& id : panelCommands) {
             QAction* action = frame.registry()->action(id);
             const QString objectName =
                 id.section(QLatin1Char('.'), -1) + QStringLiteral("Panel");
-            QDockWidget* dock = frame.findChild<QDockWidget*>(objectName);
-            if (!action || !dock) {
+            QWidget* panel = frame.findChild<QWidget*>(objectName);
+            if (!action || !panel || !m20Column) {
                 continue;
             }
-            const bool before = dock->isVisible();
+            const bool before = m20Column->isPanelVisible(objectName);
             action->setChecked(!before);
             frame.registry()->dispatch(id);
-            const bool toggled = dock->isVisible() != before;
-            action->setChecked(!dock->isVisible());
+            const bool toggled = m20Column->isPanelVisible(objectName) != before;
+            action->setChecked(!m20Column->isPanelVisible(objectName));
             frame.registry()->dispatch(id);
-            const bool restored = dock->isVisible() == before;
+            const bool restored = m20Column->isPanelVisible(objectName) == before;
             if (toggled && restored) {
                 ++panelsToggled;
             }
@@ -1923,37 +1944,32 @@ int main(int argc, char* argv[])
             return 60;
         }
 
-        // M24: CS6 right side. 61 default dock groups, 62 the new panels,
-        // 63 the icon rail toggling a collapsed panel.
-        auto m24Dock = [&frame](const char* name) {
-            return frame.findChild<QDockWidget*>(QString::fromLatin1(name));
+        // M24: CS6 right side. 61 default PanelColumn groups, 62 the new
+        // panels, 63 the Window > Panels toggles (the icon rail was removed in
+        // M41, so this now proves no PanelRail remains and the toggles work).
+        auto* m24Column = frame.panelColumn();
+        auto m24GroupOf = [m24Column](const char* name) {
+            return m24Column ? m24Column->groupOfForTest(QString::fromLatin1(name)) : QString();
         };
-        QDockWidget* m24Color = m24Dock("colorPanel");
-        QDockWidget* m24Swatch = m24Dock("swatchesPanel");
-        QDockWidget* m24Gradients = m24Dock("gradientsPanel");
-        QDockWidget* m24Patterns = m24Dock("patternsPanel");
-        QDockWidget* m24Properties = m24Dock("propertiesPanel");
-        QDockWidget* m24Adjustments = m24Dock("adjustmentsPanel");
-        QDockWidget* m24Libraries = m24Dock("librariesPanel");
-        QDockWidget* m24Layers = m24Dock("layersPanel");
-        QDockWidget* m24Channels = m24Dock("channelsPanel");
-        QDockWidget* m24Paths = m24Dock("pathsPanel");
-        auto m24Tabbed = [&frame](QDockWidget* base, QDockWidget* member) {
-            return base && member && frame.tabifiedDockWidgets(base).contains(member);
-        };
+        QWidget* m24Properties = frame.findChild<QWidget*>(QStringLiteral("propertiesPanel"));
         int m24Groups = 0;
-        m24Groups += m24Tabbed(m24Color, m24Swatch) ? 1 : 0;
-        m24Groups += m24Tabbed(m24Color, m24Gradients) ? 1 : 0;
-        m24Groups += m24Tabbed(m24Color, m24Patterns) ? 1 : 0;
-        m24Groups += (m24Color && frame.tabifiedDockWidgets(m24Color).size() == 3) ? 1 : 0;
-        m24Groups += m24Tabbed(m24Properties, m24Adjustments) ? 1 : 0;
-        m24Groups += m24Tabbed(m24Properties, m24Libraries) ? 1 : 0;
-        m24Groups += m24Tabbed(m24Layers, m24Channels) ? 1 : 0;
-        m24Groups += m24Tabbed(m24Layers, m24Paths) ? 1 : 0;
+        m24Groups += (!m24GroupOf("colorPanel").isEmpty()
+                      && m24GroupOf("colorPanel") == m24GroupOf("swatchesPanel")) ? 1 : 0;
+        m24Groups += (!m24GroupOf("colorPanel").isEmpty()
+                      && m24GroupOf("colorPanel") == m24GroupOf("stylesPanel")) ? 1 : 0;
+        m24Groups += (!m24GroupOf("layersPanel").isEmpty()
+                      && m24GroupOf("layersPanel") == m24GroupOf("channelsPanel")) ? 1 : 0;
+        m24Groups += (m24GroupOf("layersPanel") == m24GroupOf("pathsPanel")) ? 1 : 0;
+        m24Groups += (!m24GroupOf("navigatorPanel").isEmpty()
+                      && m24GroupOf("navigatorPanel") == m24GroupOf("histogramPanel")) ? 1 : 0;
+        m24Groups += (m24GroupOf("navigatorPanel") == m24GroupOf("infoPanel")) ? 1 : 0;
+        m24Groups += (!m24GroupOf("adjustmentsPanel").isEmpty()) ? 1 : 0;
+        m24Groups += (!m24GroupOf("historyPanel").isEmpty()
+                      && m24GroupOf("historyPanel") != m24GroupOf("actionsPanel")) ? 1 : 0;
         std::fprintf(stderr, "pictura self-test: m24_groups grouped=%d/8\n", m24Groups);
         std::fflush(stderr);
         if (m24Groups != 8) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M24 dock grouping wrong\n");
+            std::fprintf(stderr, "pictura self-test: FAIL: M24 panel grouping wrong\n");
             return 61;
         }
 
@@ -1969,7 +1985,7 @@ int main(int argc, char* argv[])
         };
         int m24Found = 0;
         for (const QString& name : m24PanelNames) {
-            if (frame.findChild<QDockWidget*>(name)) {
+            if (frame.findChild<QWidget*>(name)) {
                 ++m24Found;
             }
         }
@@ -1992,49 +2008,44 @@ int main(int argc, char* argv[])
             return 62;
         }
 
-        QToolBar* m24Rail = frame.findChild<QToolBar*>(QStringLiteral("panelRail"));
+        const QStringList m24RailCommands = {
+            QStringLiteral("window.panels.history"),
+            QStringLiteral("window.panels.actions"),
+            QStringLiteral("window.panels.info"),
+            QStringLiteral("window.panels.navigator"),
+            QStringLiteral("window.panels.histogram"),
+        };
         int m24RailActions = 0;
-        if (m24Rail) {
-            for (QAction* action : m24Rail->actions()) {
-                if (!action->isSeparator()) {
-                    ++m24RailActions;
-                }
+        for (const QString& id : m24RailCommands) {
+            if (frame.registry()->action(id)) {
+                ++m24RailActions;
             }
         }
-        QDockWidget* m24Actions = m24Dock("actionsPanel");
         int m24Toggled = 0;
-        int m24Synced = 0;
-        if (m24Rail && m24Actions) {
-            m24Actions->hide();
-            const QString command = QStringLiteral("window.panels.actions");
-            QAction* railAction = nullptr;
-            for (QAction* action : m24Rail->actions()) {
-                if (action->data().toString() == command) {
-                    railAction = action;
-                    break;
-                }
-            }
-            QAction* commandAction = frame.registry()->action(command);
-            if (railAction && commandAction) {
-                commandAction->setChecked(true);
+        if (m24Column) {
+            const QString command = QStringLiteral("window.panels.history");
+            const QString panelName = QStringLiteral("historyPanel");
+            QAction* action = frame.registry()->action(command);
+            const bool before = m24Column->isPanelVisible(panelName);
+            if (action) {
+                action->setChecked(!before);
                 frame.registry()->dispatch(command);
-                const bool shown = m24Actions->isVisible();
-                const bool railShown = railAction->isChecked();
-                commandAction->setChecked(false);
+                const bool shown = m24Column->isPanelVisible(panelName) != before;
+                action->setChecked(before);
                 frame.registry()->dispatch(command);
-                const bool hidden = !m24Actions->isVisible();
-                const bool railHidden = !railAction->isChecked();
+                const bool hidden = m24Column->isPanelVisible(panelName) == before;
                 m24Toggled = (shown && hidden) ? 1 : 0;
-                m24Synced = (railShown && railHidden) ? 1 : 0;
             }
         }
+        const bool m24NoRail =
+            frame.findChild<QToolBar*>(QStringLiteral("panelRail")) == nullptr;
         std::fprintf(stderr,
-                     "pictura self-test: m24_rail actions=%d toggled=%d synced=%d\n",
+                     "pictura self-test: m24_rail actions=%d toggled=%d norail=%d\n",
                      m24RailActions,
                      m24Toggled,
-                     m24Synced);
+                     m24NoRail ? 1 : 0);
         std::fflush(stderr);
-        if (!m24Rail || m24RailActions < 5 || m24Toggled != 1 || m24Synced != 1) {
+        if (m24RailActions < 5 || m24Toggled != 1 || !m24NoRail) {
             std::fprintf(stderr, "pictura self-test: FAIL: M24 rail wrong\n");
             return 63;
         }
@@ -2670,31 +2681,50 @@ int main(int argc, char* argv[])
             return 98;
         }
 
-        // M38 panels: the rail buttons, the Layers action strip, and the History
-        // snapshot button resolve the frozen panel icons. Assets are
-        // document-independent, so these run with or without a loaded PSD.
+        // M38 panels: the former rail icon ids now live on the PanelColumn
+        // group tabs, plus the Layers action strip and the History snapshot
+        // button. Assets are document-independent, so these run with or without
+        // a loaded PSD.
         auto sameIcon = [](const QIcon& actual, const QIcon& expected) {
             return !actual.isNull() && !expected.isNull()
                    && actual.pixmap(20, 20).toImage() == expected.pixmap(20, 20).toImage();
         };
-        QToolBar* m38Rail = frame.findChild<QToolBar*>(QStringLiteral("panelRail"));
-        int m38RailCount = 0;
+        auto* m38Column = frame.panelColumn();
+        const QStringList m38RailTitles = {
+            QStringLiteral("History"),
+            QStringLiteral("Actions"),
+            QStringLiteral("Info"),
+            QStringLiteral("Navigator"),
+            QStringLiteral("Histogram"),
+        };
+        const QStringList m38RailIds = {
+            QStringLiteral("window.panels.history"),
+            QStringLiteral("window.panels.actions"),
+            QStringLiteral("window.panels.info"),
+            QStringLiteral("window.panels.navigator"),
+            QStringLiteral("window.panels.histogram"),
+        };
         int m38RailIcons = 0;
         QString m38RailMissing;
-        if (m38Rail) {
-            for (QAction* action : m38Rail->actions()) {
-                if (action->isSeparator()) {
-                    continue;
-                }
-                ++m38RailCount;
-                if (sameIcon(action->icon(), pictura::icon(action->data().toString()))) {
-                    ++m38RailIcons;
-                } else if (m38RailMissing.isEmpty()) {
-                    m38RailMissing = action->data().toString();
+        for (int i = 0; i < m38RailTitles.size(); ++i) {
+            bool matched = false;
+            if (m38Column) {
+                for (pictura::PanelGroup* group : m38Column->groups()) {
+                    if (group
+                        && sameIcon(group->titleIconForTest(m38RailTitles.at(i)),
+                                    pictura::icon(m38RailIds.at(i)))) {
+                        matched = true;
+                        break;
+                    }
                 }
             }
+            if (matched) {
+                ++m38RailIcons;
+            } else if (m38RailMissing.isEmpty()) {
+                m38RailMissing = m38RailIds.at(i);
+            }
         }
-        const bool m38RailOk = m38Rail && m38RailCount == 5 && m38RailIcons == m38RailCount;
+        const bool m38RailOk = m38Column && m38RailIcons == m38RailTitles.size();
 
         const QStringList m38StripIds = {
             QStringLiteral("link"),           QStringLiteral("fx"),
@@ -2709,7 +2739,7 @@ int main(int argc, char* argv[])
         // link/fx/mask have icons but no behaviour yet.
         const QSet<QString> m38StripDisabled = {
             QStringLiteral("link"), QStringLiteral("fx"), QStringLiteral("mask")};
-        QDockWidget* m38Layers = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+        QWidget* m38Layers = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
         int m38StripOk = 0;
         QString m38StripWrong;
         for (int i = 0; i < m38StripIds.size(); ++i) {
@@ -2728,7 +2758,7 @@ int main(int argc, char* argv[])
         }
         const bool m38StripPass = m38StripOk == m38StripIds.size();
 
-        QDockWidget* m38History = frame.findChild<QDockWidget*>(QStringLiteral("historyPanel"));
+        QWidget* m38History = frame.findChild<QWidget*>(QStringLiteral("historyPanel"));
         auto* m38Snapshot =
             m38History ? m38History->findChild<QPushButton*>(QStringLiteral("snapshotButton"))
                        : nullptr;
@@ -3118,7 +3148,7 @@ int main(int argc, char* argv[])
             QStringLiteral("layersStripMask"), QStringLiteral("layersStripFillAdjustment"),
             QStringLiteral("layersStripGroup"), QStringLiteral("layersStripNewLayer"),
             QStringLiteral("layersStripDelete")};
-        QDockWidget* m39Dock = frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
+        QWidget* m39Dock = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
         int m39StripFound = 0;
         for (const QString& name : m39StripNames) {
             if (m39Dock && m39Dock->findChild<QToolButton*>(name)) {
@@ -3349,8 +3379,10 @@ int main(int argc, char* argv[])
             return 117;
         }
 
-        // m40_dock (118): left/right only, movable/floatable/closable, and a
-        // simulated tabify is undone by the frame's re-dock fallback.
+        // m40_dock (118): left/right only, movable/floatable/closable, and no
+        // tab group. The right-hand panels are no longer docks, so this asserts
+        // the Tools dock carries no tab group after the frame's re-dock
+        // fallback runs (`tabifiedDockWidgets` is empty without a companion).
         QDockWidget* m40Dock = m40Toolbox;
         const bool m40Areas =
             m40Dock
@@ -3360,31 +3392,14 @@ int main(int argc, char* argv[])
             && m40Dock->features()
                    == (QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
                        | QDockWidget::DockWidgetClosable);
-        bool m40TabBefore = false;
-        bool m40TabAfter = false;
-        if (m40Dock) {
-            QDockWidget* companion =
-                frame.findChild<QDockWidget*>(QStringLiteral("layersPanel"));
-            if (companion) {
-                // Block the dock's signals so the frame's own dockLocationChanged
-                // fallback does not undo the tabify before the assertion samples it.
-                {
-                    QSignalBlocker blocker(m40Dock);
-                    frame.tabifyDockWidget(companion, m40Dock);
-                    QCoreApplication::processEvents();
-                }
-                m40TabBefore = !frame.tabifiedDockWidgets(m40Dock).isEmpty();
-                frame.ensureToolsNotTabified();
-                QCoreApplication::processEvents();
-                m40TabAfter = !frame.tabifiedDockWidgets(m40Dock).isEmpty();
-            }
-        }
-        const bool m40DockOk = m40Areas && m40Features && m40TabBefore && !m40TabAfter;
-        std::fprintf(stderr, "pictura self-test: m40_dock areas=%d feat=%d tab=%d->%d\n",
+        frame.ensureToolsNotTabified();
+        QCoreApplication::processEvents();
+        const bool m40NoTab = m40Dock && frame.tabifiedDockWidgets(m40Dock).isEmpty();
+        const bool m40DockOk = m40Areas && m40Features && m40NoTab;
+        std::fprintf(stderr, "pictura self-test: m40_dock areas=%d feat=%d no_tab=%d\n",
                      m40Areas ? 1 : 0,
                      m40Features ? 1 : 0,
-                     m40TabBefore ? 1 : 0,
-                     m40TabAfter ? 1 : 0);
+                     m40NoTab ? 1 : 0);
         std::fflush(stderr);
         if (!m40DockOk) {
             std::fprintf(stderr, "pictura self-test: FAIL: M40 standalone dock\n");
@@ -3418,6 +3433,581 @@ int main(int argc, char* argv[])
         if (!m40Roundtrip || !m40Defaults) {
             std::fprintf(stderr, "pictura self-test: FAIL: M40 session v4\n");
             return 119;
+        }
+
+        // M41: the panel column — top tabs, the width toggle, the iconic strip
+        // with its Qt::Popup flyout, the seven-item tab menu, minimize vs
+        // collapse-to-icons, and the content-fit Tools panel. Exit codes
+        // 120–124 and 130.
+        auto* m41Column = frame.panelColumn();
+
+        // m41_tabs (120): every group's tabs are North, a single-panel group
+        // still has its one tab, and no group-title label widget exists.
+        bool m41TabsNorth = m41Column != nullptr;
+        bool m41SingleTab = false;
+        bool m41NoLabel = true;
+        if (m41Column) {
+            for (pictura::PanelGroup* group : m41Column->groups()) {
+                if (group->tabPositionForTest() != static_cast<int>(QTabWidget::North)) {
+                    m41TabsNorth = false;
+                }
+                if (group->titleCountForTest() == 1
+                    && !group->titleTextsForTest().value(0).isEmpty()) {
+                    m41SingleTab = true;
+                }
+                if (group->groupLabelForTest()) {
+                    m41NoLabel = false;
+                }
+            }
+        }
+        const bool m41TabsOk = m41Column && m41TabsNorth && m41SingleTab && m41NoLabel;
+        std::fprintf(stderr, "pictura self-test: m41_tabs tabs=north single=%d nolabel=%d\n",
+                     m41SingleTab ? 1 : 0,
+                     m41NoLabel ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41TabsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 top tabs\n");
+            return 120;
+        }
+
+        // m41_width (121): the `panelColumnToggle` flips normal/iconic, the
+        // column has no hard minimum, and it is scrollable.
+        QToolButton* m41Toggle = m41Column ? m41Column->panelColumnToggleForTest() : nullptr;
+        const bool m41ToggleExists =
+            m41Toggle && m41Toggle->objectName() == QStringLiteral("panelColumnToggle");
+        const bool m41ModeBefore = m41Column && m41Column->railMode();
+        if (m41Toggle) {
+            m41Toggle->click();
+            QCoreApplication::processEvents();
+        }
+        const bool m41Flipped = m41Column && m41Column->railMode() != m41ModeBefore;
+        if (m41Toggle) {
+            m41Toggle->click();
+            QCoreApplication::processEvents();
+        }
+        const bool m41ModeRestored = m41Column && m41Column->railMode() == m41ModeBefore;
+        // The column must impose no hard minimum of its own; the frame's other
+        // chrome (the options bar) still sets its own floor.
+        const bool m41NoMin = m41Column && m41Column->minimumWidthForTest() <= 0
+                              && m41Column->minimumSizeHint().width() <= 120;
+        const bool m41Scroll = m41Column && m41Column->scrollableForTest();
+        const bool m41WidthOk =
+            m41ToggleExists && m41Flipped && m41ModeRestored && m41NoMin && m41Scroll;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_width toggle=%d modes=%d min=%d scroll=%d\n",
+                     m41ToggleExists ? 1 : 0,
+                     (m41Flipped && m41ModeRestored) ? 1 : 0,
+                     m41NoMin ? 1 : 0,
+                     m41Scroll ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41WidthOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 column width toggle\n");
+            return 121;
+        }
+
+        // m41_iconic (122): iconic mode shows the icon strip with a divider,
+        // widening shows the labels, an icon opens a visible Qt::Popup flyout,
+        // and closing it restores the panel to its group.
+        if (m41Column) {
+            m41Column->setRailMode(true);
+            QCoreApplication::processEvents();
+        }
+        const bool m41Strip = m41Column && m41Column->iconStripVisibleForTest();
+        const bool m41Dividers = m41Column && m41Column->dividerCountForTest() >= 1;
+        // Widening the column past the label threshold shows the panel labels.
+        // A temporary minimum forces the splitter to give the column the width.
+        if (m41Column) {
+            m41Column->setMinimumWidth(320);
+            QCoreApplication::processEvents();
+        }
+        const bool m41Labels = m41Column && m41Column->iconLabelsShownForTest();
+        if (m41Column) {
+            m41Column->setMinimumWidth(0);
+            QCoreApplication::processEvents();
+        }
+        const bool m41Opened =
+            m41Column && m41Column->openIconFlyoutForTest(QStringLiteral("layersPanel"));
+        for (int i = 0; i < 20 && !(m41Column && m41Column->iconFlyoutVisibleForTest()); ++i) {
+            QCoreApplication::processEvents();
+        }
+        const bool m41Popup = m41Opened && m41Column && m41Column->iconFlyoutVisibleForTest();
+        auto* m41Flyout = m41Column
+            ? m41Column->findChild<QWidget*>(QStringLiteral("panelIconFlyout"))
+            : nullptr;
+        if (m41Flyout) {
+            m41Flyout->close();
+            QCoreApplication::processEvents();
+        }
+        pictura::PanelGroup* m41LayerGroup =
+            m41Column ? m41Column->groupForPanel(QStringLiteral("layersPanel")) : nullptr;
+        const bool m41Restore =
+            m41LayerGroup && m41LayerGroup->containsPanel(QStringLiteral("layersPanel"));
+        if (m41Column) {
+            m41Column->setRailMode(false);
+            QCoreApplication::processEvents();
+        }
+        const bool m41IconicOk = m41Strip && m41Dividers && m41Labels && m41Popup && m41Restore;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_iconic strip=%d dividers=%d labels=%d popup=%d "
+                     "restore=%d\n",
+                     m41Strip ? 1 : 0,
+                     m41Dividers ? 1 : 0,
+                     m41Labels ? 1 : 0,
+                     m41Popup ? 1 : 0,
+                     m41Restore ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41IconicOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 iconic strip\n");
+            return 122;
+        }
+
+        // m41_menu (123): the seven tab-menu items in exact order, both
+        // checkables toggle, and `Interface Options…` fires the signal.
+        const QStringList m41ExpectedMenu = {
+            QStringLiteral("Close"),
+            QStringLiteral("Close Panel Group"),
+            QStringLiteral("Minimize"),
+            QStringLiteral("Collapse to Icons"),
+            QStringLiteral("Auto-Collapse Iconic Panels"),
+            QStringLiteral("Auto-Show Hidden Panels"),
+            QStringLiteral("Interface Options\u2026"),
+        };
+        const QStringList m41Menu =
+            m41Column ? m41Column->tabMenuActionsForTest() : QStringList();
+        const bool m41MenuOrder = m41Menu == m41ExpectedMenu;
+        bool m41Check = m41Column != nullptr;
+        if (m41Column) {
+            const bool a0 = m41Column->autoCollapseIconicForTest();
+            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
+            const bool a1 = m41Column->autoCollapseIconicForTest();
+            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
+            const bool a2 = m41Column->autoCollapseIconicForTest();
+            const bool b0 = m41Column->autoShowHiddenForTest();
+            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
+            const bool b1 = m41Column->autoShowHiddenForTest();
+            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
+            const bool b2 = m41Column->autoShowHiddenForTest();
+            m41Check = a1 != a0 && a2 == a0 && b1 != b0 && b2 == b0;
+        }
+        bool m41OptionsFired = false;
+        if (m41Column) {
+            QObject::connect(m41Column, &pictura::PanelColumn::interfaceOptionsRequested,
+                             m41Column, [&m41OptionsFired]() { m41OptionsFired = true; });
+            m41Column->triggerTabMenuForTest(QStringLiteral("Interface Options\u2026"));
+        }
+        const bool m41MenuOk =
+            m41Menu.size() == 7 && m41MenuOrder && m41Check && m41OptionsFired;
+        std::fprintf(stderr, "pictura self-test: m41_menu count=%d order=%d check=%d\n",
+                     m41Menu.size(),
+                     m41MenuOrder ? 1 : 0,
+                     m41Check ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41MenuOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 tab menu\n");
+            return 123;
+        }
+
+        // m41_minimize (124): minimize hides the content but keeps the tab bar,
+        // restores, and collapse-to-icons is a distinct state.
+        pictura::PanelGroup* m41MinGroup =
+            m41Column ? m41Column->groupForPanel(QStringLiteral("layersPanel")) : nullptr;
+        bool m41Min = false;
+        bool m41Content = false;
+        bool m41MinRestore = false;
+        bool m41Icons = false;
+        if (m41MinGroup) {
+            m41MinGroup->setMinimizedForTest(true);
+            QCoreApplication::processEvents();
+            m41Min = m41MinGroup->isMinimizedForTest();
+            m41Content = m41MinGroup->contentHiddenForTest()
+                         && m41MinGroup->tabBarVisibleForTest();
+            m41MinGroup->setMinimizedForTest(false);
+            QCoreApplication::processEvents();
+            m41MinRestore = !m41MinGroup->isMinimizedForTest()
+                            && !m41MinGroup->contentHiddenForTest();
+            m41MinGroup->setCollapsedToIconsForTest(true);
+            QCoreApplication::processEvents();
+            m41Icons = m41MinGroup->isCollapsedToIconsForTest()
+                       && !m41MinGroup->isMinimizedForTest();
+            m41MinGroup->setCollapsedToIconsForTest(false);
+            QCoreApplication::processEvents();
+        }
+        const bool m41MinimizeOk = m41Min && m41Content && m41MinRestore && m41Icons;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_minimize min=%d content=%d restore=%d icons=%d\n",
+                     m41Min ? 1 : 0,
+                     m41Content ? 1 : 0,
+                     m41MinRestore ? 1 : 0,
+                     m41Icons ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41MinimizeOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 minimize\n");
+            return 124;
+        }
+
+        // m41_tools (130): no `Tools` title, content-fit widths, and the
+        // foreground/background widget fits within the current column width in
+        // both column counts.
+        auto* m41Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        const bool m41Title = m41Toolbox && m41Toolbox->titleTextForTest().isEmpty();
+        bool m41Min1 = false;
+        bool m41Min2 = false;
+        bool m41Fit = false;
+        if (m41Toolbox) {
+            m41Toolbox->setColumns(1);
+            QCoreApplication::processEvents();
+            const int min1 = m41Toolbox->minimumWidth();
+            const int content1 = m41Toolbox->contentWidthForTest();
+            const int fg1 = m41Toolbox->foregroundBackgroundWidthForTest();
+            const int width1 = m41Toolbox->width();
+            m41Toolbox->setColumns(2);
+            QCoreApplication::processEvents();
+            const int min2 = m41Toolbox->minimumWidth();
+            const int content2 = m41Toolbox->contentWidthForTest();
+            const int fg2 = m41Toolbox->foregroundBackgroundWidthForTest();
+            const int width2 = m41Toolbox->width();
+            m41Toolbox->setColumns(1);
+            QCoreApplication::processEvents();
+            m41Min1 = min1 > 0 && min1 >= content1;
+            m41Min2 = min2 > min1 && min2 >= content2;
+            m41Fit = fg1 <= width1 && fg2 <= width2 && fg1 <= min1 && fg2 <= min2;
+        }
+        const bool m41ToolsOk = m41Title && m41Min1 && m41Min2 && m41Fit;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_tools title=%d min1=%d min2=%d fit=%d\n",
+                     m41Title ? 1 : 0,
+                     m41Min1 ? 1 : 0,
+                     m41Min2 ? 1 : 0,
+                     m41Fit ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41ToolsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 tools panel\n");
+            return 130;
+        }
+
+        // m41_drag (126): a tab reorders within its group, a tab regroups into
+        // another group at the drop index, a drop between groups inserts a new
+        // group, and the thick blue indicator is drawn at the candidate
+        // position and cleared afterwards. Every step drives the column's real
+        // begin/update/commit drag path.
+        bool m41DragReorder = false;
+        bool m41DragRegroup = false;
+        bool m41DragInsert = false;
+        bool m41DragIndicator = false;
+        bool m41DragClear = false;
+        if (m41Column) {
+            // Give the column a normal width so the group tab bars are inside
+            // the scroll viewport; the default splitter share is icon-strip
+            // narrow under xvfb.
+            m41Column->setMinimumWidth(360);
+            QCoreApplication::processEvents();
+            // Reorder: move the second Layers tab to the front of its own bar.
+            pictura::PanelGroup* reorderGroup =
+                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            if (reorderGroup && reorderGroup->titleCountForTest() >= 2) {
+                const QStringList before = reorderGroup->titleTextsForTest();
+                const QString moving = reorderGroup->panels().at(1)->objectName();
+                m41Column->ensureGroupVisibleForTest(moving);
+                QCoreApplication::processEvents();
+                const QPoint target = reorderGroup->tabInsertionGlobalPointForTest(0);
+                m41Column->beginTabDragForTest(moving);
+                m41Column->dragToForTest(target);
+                const bool visible = m41Column->dropIndicatorVisibleForTest();
+                const QRect geometry = m41Column->dropIndicatorGeometryForTest();
+                const bool vertical = geometry.height() > geometry.width() && geometry.height() > 0
+                                      && geometry.width() == 3;
+                m41Column->dropForTest(target);
+                const QStringList after = reorderGroup->titleTextsForTest();
+                m41DragReorder = !before.isEmpty() && after != before
+                                 && after.value(0) == before.value(1);
+                m41DragIndicator = visible && vertical;
+                m41DragClear = !m41Column->dropIndicatorVisibleForTest();
+            }
+
+            // Regroup: append the Styles tab to the Layers group.
+            pictura::PanelGroup* colorGroup =
+                m41Column->groupForPanel(QStringLiteral("stylesPanel"));
+            pictura::PanelGroup* layerGroup =
+                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            if (colorGroup && layerGroup && colorGroup != layerGroup) {
+                const int targetIndex = layerGroup->titleCountForTest();
+                m41Column->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
+                QCoreApplication::processEvents();
+                const QPoint target = layerGroup->tabInsertionGlobalPointForTest(targetIndex);
+                m41Column->beginTabDragForTest(QStringLiteral("stylesPanel"));
+                m41Column->dragToForTest(target);
+                m41Column->dropForTest(target);
+                m41DragRegroup =
+                    layerGroup->containsPanel(QStringLiteral("stylesPanel"))
+                    && !colorGroup->containsPanel(QStringLiteral("stylesPanel"))
+                    && m41Column->groupForPanel(QStringLiteral("stylesPanel")) == layerGroup;
+            }
+
+            // Insert: drop Histogram into the gap between two groups, which
+            // must create a new one-panel group at that boundary.
+            pictura::PanelGroup* navGroup =
+                m41Column->groupForPanel(QStringLiteral("histogramPanel"));
+            if (navGroup && m41Column->groups().size() >= 2) {
+                const int groupCount = m41Column->groups().size();
+                const QPoint target = m41Column->boundaryPointForTest(1);
+                m41Column->beginTabDragForTest(QStringLiteral("histogramPanel"));
+                m41Column->dragToForTest(target);
+                const bool visible = m41Column->dropIndicatorVisibleForTest();
+                const QRect geometry = m41Column->dropIndicatorGeometryForTest();
+                const bool horizontal = geometry.width() > geometry.height()
+                                        && geometry.height() == 3;
+                m41Column->dropForTest(target);
+                pictura::PanelGroup* inserted =
+                    m41Column->groupForPanel(QStringLiteral("histogramPanel"));
+                m41DragInsert = m41Column->groups().size() == groupCount + 1 && inserted
+                                && inserted->titleCountForTest() == 1
+                                && inserted->containsPanel(QStringLiteral("histogramPanel"));
+                m41DragClear = m41DragClear && visible && horizontal
+                               && !m41Column->dropIndicatorVisibleForTest();
+            }
+        }
+        const bool m41DragOk = m41DragReorder && m41DragRegroup && m41DragInsert
+                               && m41DragIndicator && m41DragClear;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_drag reorder=%d regroup=%d insert=%d indicator=%d "
+                     "clear=%d\n",
+                     m41DragReorder ? 1 : 0,
+                     m41DragRegroup ? 1 : 0,
+                     m41DragInsert ? 1 : 0,
+                     m41DragIndicator ? 1 : 0,
+                     m41DragClear ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41DragOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 drag and drop\n");
+            return 126;
+        }
+
+        // m41_tearoff (127): tearing a group off the column creates a visible
+        // `panelFloat` holding the group's panels, and re-docking returns them
+        // to the column at the drop index and leaves no float behind.
+        bool m41TearFloat = false;
+        bool m41TearPanels = false;
+        bool m41Redock = false;
+        bool m41TearEmpty = false;
+        if (m41Column) {
+            pictura::PanelGroup* source =
+                m41Column->groupForPanel(QStringLiteral("histogramPanel"));
+            QStringList expected;
+            if (source) {
+                for (QWidget* panel : source->panels()) {
+                    if (panel) {
+                        expected << panel->objectName();
+                    }
+                }
+            }
+            const int groupCount = m41Column->groups().size();
+            m41TearFloat = source
+                           && m41Column->tearOffForTest(source->objectName())
+                           && m41Column->floatCountForTest() == 1;
+            if (m41TearFloat) {
+                m41TearPanels = m41Column->floatPanelNamesForTest(0) == expected
+                                && !expected.isEmpty()
+                                && !m41Column->groupForPanel(QStringLiteral("histogramPanel"));
+                const bool redocked = m41Column->redockForTest(0, 1);
+                pictura::PanelGroup* back =
+                    m41Column->groupForPanel(QStringLiteral("histogramPanel"));
+                m41Redock = redocked && back
+                            && back->containsPanel(QStringLiteral("histogramPanel"))
+                            && m41Column->groups().size() == groupCount;
+                m41TearEmpty = m41Column->floatCountForTest() == 0;
+            }
+        }
+        const bool m41TearoffOk = m41TearFloat && m41TearPanels && m41Redock && m41TearEmpty;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_tearoff float=%d panels=%d redock=%d empty=%d\n",
+                     m41TearFloat ? 1 : 0,
+                     m41TearPanels ? 1 : 0,
+                     m41Redock ? 1 : 0,
+                     m41TearEmpty ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41TearoffOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 tear-off and re-dock\n");
+            return 127;
+        }
+        if (m41Column) {
+            m41Column->setMinimumWidth(0);
+            QCoreApplication::processEvents();
+        }
+
+        // m41_prefs (125): the Preferences dialog has exactly General and
+        // Interface, opens from the command path and from Interface Options…,
+        // and its checkboxes drive the toolbox and the column and persist.
+        pictura::PreferencesDialog* m41Prefs = nullptr;
+        bool m41PrefsPages = false;
+        bool m41PrefsOpen = false;
+        bool m41PrefsRoundtrip = false;
+        bool m41PrefsShift = false;
+        bool m41PrefsIconic = false;
+        if (QAction* general = frame.registry()->action(
+                QString::fromLatin1(pictura::command_ids::EditPreferencesGeneral))) {
+            general->trigger();
+            QCoreApplication::processEvents();
+        }
+        m41Prefs = frame.preferencesDialog();
+        const bool m41OpenedGeneral =
+            m41Prefs && m41Prefs->isVisible()
+            && m41Prefs->currentPageForTest() == QStringLiteral("General");
+        if (m41Column) {
+            m41Column->triggerTabMenuForTest(QStringLiteral("Interface Options\u2026"));
+            QCoreApplication::processEvents();
+        }
+        const bool m41OpenedInterface =
+            m41Prefs && m41Prefs->isVisible()
+            && m41Prefs->currentPageForTest() == QStringLiteral("Interface");
+        m41PrefsPages =
+            m41Prefs
+            && m41Prefs->pagesForTest()
+                   == QStringList({QStringLiteral("General"), QStringLiteral("Interface")});
+        m41PrefsOpen = m41OpenedGeneral && m41OpenedInterface;
+        if (m41Prefs) {
+            auto* prefsToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+            const bool shiftToggled = m41Prefs->setCheckboxForTest(
+                QStringLiteral("useShiftKeyForToolSwitch"), false);
+            QCoreApplication::processEvents();
+            m41PrefsShift = shiftToggled && prefsToolbox
+                            && !prefsToolbox->shiftKeyForToolSwitch();
+            frame.saveSession();
+            m41PrefsRoundtrip = !pictura::loadSession().useShiftKeyForToolSwitch;
+            m41Prefs->setCheckboxForTest(QStringLiteral("useShiftKeyForToolSwitch"), true);
+            QCoreApplication::processEvents();
+            frame.saveSession();
+            m41Prefs->setCheckboxForTest(QStringLiteral("autoCollapseIconic"), true);
+            QCoreApplication::processEvents();
+            m41PrefsIconic = m41Column && m41Column->autoCollapseIconicForTest();
+            m41Prefs->setCheckboxForTest(QStringLiteral("autoCollapseIconic"), false);
+            QCoreApplication::processEvents();
+            m41Prefs->close();
+        }
+        const bool m41PrefsOk = m41PrefsPages && m41PrefsOpen && m41PrefsRoundtrip
+                                && m41PrefsShift && m41PrefsIconic;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_prefs pages=%d open=%d roundtrip=%d shift=%d "
+                     "iconic=%d\n",
+                     m41Prefs ? m41Prefs->pagesForTest().size() : 0,
+                     m41PrefsOpen ? 1 : 0,
+                     m41PrefsRoundtrip ? 1 : 0,
+                     m41PrefsShift ? 1 : 0,
+                     m41PrefsIconic ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41PrefsOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 preferences dialog\n");
+            return 125;
+        }
+
+        // m41_session (128): the v5 fields round-trip through the real
+        // save/load path, a schema-4 store loads the v5 defaults and keeps its
+        // own keys, an unknown key survives a rewrite, and per-group panel
+        // visibility/order/minimized/collapsed are saved and restored.
+        if (m41Column) {
+            m41Column->setAutoCollapseIconic(true);
+            m41Column->setAutoShowHidden(true);
+            m41Column->setRailMode(true);
+        }
+        frame.saveSession();
+        pictura::SessionState m41Reloaded = pictura::loadSession();
+        pictura::SessionState m41WidthState = pictura::loadSession();
+        m41WidthState.panelRailMode = QStringLiteral("normal");
+        m41WidthState.railWidth = 260;
+        pictura::saveSession(m41WidthState);
+        const bool m41WidthRound = pictura::loadSession().railWidth == 260;
+        const bool m41V5 = !m41Reloaded.panelGroups.isEmpty()
+                           && m41Reloaded.schemaVersion == 5
+                           && m41Reloaded.panelRailMode == QStringLiteral("iconic")
+                           && m41Reloaded.autoCollapseIconic && m41Reloaded.autoShowHidden
+                           && m41WidthRound;
+
+        bool m41Defaults = false;
+        bool m41V4 = false;
+        {
+            QFile store(pictura::sessionFilePath());
+            if (store.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                store.write("{\"schemaVersion\":4,\"toolsColumns\":2,"
+                            "\"useShiftKeyForToolSwitch\":false}");
+                store.close();
+            }
+            const pictura::SessionState v4 = pictura::loadSession();
+            m41Defaults = v4.panelRailMode == QStringLiteral("normal") && v4.railWidth == 0
+                          && !v4.autoCollapseIconic && !v4.autoShowHidden;
+            m41V4 = v4.toolsColumns == 2 && !v4.useShiftKeyForToolSwitch;
+        }
+
+        bool m41Unknown = false;
+        {
+            QFile store(pictura::sessionFilePath());
+            if (store.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                store.write("{\"schemaVersion\":4,\"toolsColumns\":1,"
+                            "\"unknownKey\":\"keep-me\"}");
+                store.close();
+            }
+            frame.saveSession();
+            QFile read(pictura::sessionFilePath());
+            if (read.open(QIODevice::ReadOnly)) {
+                const QByteArray rewritten = read.readAll();
+                m41Unknown = rewritten.contains("unknownKey")
+                             && rewritten.contains("keep-me");
+            }
+        }
+
+        bool m41Panels = false;
+        if (m41Column) {
+            pictura::PanelGroup* m41PanelGroup =
+                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            if (m41PanelGroup) {
+                auto panelNames = [](pictura::PanelGroup* group) {
+                    QStringList names;
+                    for (QWidget* panel : group->panels()) {
+                        if (panel) {
+                            names << panel->objectName();
+                        }
+                    }
+                    return names;
+                };
+                const QJsonArray m41Baseline = m41Column->savePanelState();
+                QStringList m41Order = panelNames(m41PanelGroup);
+                if (m41Order.size() >= 2) {
+                    m41Order.move(0, m41Order.size() - 1);
+                    m41PanelGroup->setPanelOrder(m41Order);
+                }
+                m41PanelGroup->setMinimizedForTest(true);
+                m41Column->showPanel(QStringLiteral("channelsPanel"), false);
+                QCoreApplication::processEvents();
+                const QJsonArray m41Mutated = m41Column->savePanelState();
+                m41Column->restorePanelState(m41Baseline);
+                const bool m41BackToBaseline =
+                    !m41Column->groupForPanel(QStringLiteral("layersPanel"))->isMinimizedForTest()
+                    && m41Column->isPanelVisible(QStringLiteral("channelsPanel"));
+                m41Column->restorePanelState(m41Mutated);
+                pictura::PanelGroup* m41Restored =
+                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                m41Panels = m41BackToBaseline && m41Restored
+                            && m41Restored->isMinimizedForTest()
+                            && !m41Column->isPanelVisible(QStringLiteral("channelsPanel"))
+                            && panelNames(m41Restored) == m41Order;
+            }
+            m41Column->setAutoCollapseIconic(false);
+            m41Column->setAutoShowHidden(false);
+            m41Column->setRailMode(false);
+            QCoreApplication::processEvents();
+        }
+        const bool m41SessionOk =
+            m41V5 && m41Defaults && m41V4 && m41Unknown && m41Panels;
+        std::fprintf(stderr,
+                     "pictura self-test: m41_session v5=%d defaults=%d v4=%d unknown=%d "
+                     "panels=%d\n",
+                     m41V5 ? 1 : 0,
+                     m41Defaults ? 1 : 0,
+                     m41V4 ? 1 : 0,
+                     m41Unknown ? 1 : 0,
+                     m41Panels ? 1 : 0);
+        std::fflush(stderr);
+        if (!m41SessionOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M41 session v5\n");
+            return 128;
         }
 
         frame.closeDocument(m39DocIndex, false);

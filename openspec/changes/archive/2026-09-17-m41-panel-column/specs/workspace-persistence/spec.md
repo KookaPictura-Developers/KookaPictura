@@ -1,8 +1,5 @@
-# workspace-persistence Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change m16-app-shell. Update Purpose after archive.
-## Requirements
 ### Requirement: Panels registered as named docks
 
 The system SHALL host each right-hand panel as a plain `QWidget` content widget
@@ -25,33 +22,6 @@ a duplicate `objectName`.
 
 - **WHEN** the frame is built
 - **THEN** the Tools panel remains a `QDockWidget` and the column panels do not
-
-### Requirement: Layout persistence across restart
-The system SHALL save the dock and toolbar layout with
-`QMainWindow::saveState()` and restore it with `restoreState()` on startup, so
-the frame arrangement survives a restart at the same scale factor.
-
-#### Scenario: Layout round-trips
-- **WHEN** the layout is changed, saved, and the application restarts
-- **THEN** the dock arrangement is restored
-
-#### Scenario: Unknown panel in saved layout
-- **WHEN** a saved layout references a panel that no longer exists
-- **THEN** restore ignores the unknown entry and keeps the remaining arrangement
-
-### Requirement: Window panels toggle and hide-all
-The system SHALL expose a `Window > Panels` entry that toggles each panel's
-visibility, and SHALL hide and restore all panels with `Tab`. `Shift+Tab` SHALL
-hide all panels except the Tools panel and options bar; until those exist it
-SHALL behave as `Tab`.
-
-#### Scenario: Toggle a panel from the Window menu
-- **WHEN** the user selects a panel from `Window > Panels`
-- **THEN** that panel's visibility toggles without producing a history state
-
-#### Scenario: Tab hides all panels
-- **WHEN** the user presses `Tab`
-- **THEN** all panels are hidden, and pressing `Tab` again restores them
 
 ### Requirement: Session state store
 
@@ -89,4 +59,3 @@ SHALL survive a load-then-write cycle.
 - **WHEN** a schema-4 store with none of the version-5 fields is loaded
 - **THEN** the panel-column mode is `normal`, auto-collapse and auto-show are
   off, and the existing keys are preserved
-

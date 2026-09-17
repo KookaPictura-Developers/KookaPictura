@@ -1,13 +1,13 @@
 #pragma once
 
 #include <QtCore/QString>
-#include <QtWidgets/QDockWidget>
+#include <QtWidgets/QWidget>
 
 namespace pictura {
 
-// A dockable panel with a CS6-style empty state, used for panels whose
-// contents are not implemented yet.
-class PlaceholderPanel : public QDockWidget {
+// A CS6-style empty-state panel content widget hosted by a PanelGroup, used
+// for panels whose contents are not implemented yet.
+class PlaceholderPanel : public QWidget {
     Q_OBJECT
 
 public:

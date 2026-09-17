@@ -14,11 +14,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
   `pictura-render` doctest, which makes the raw ignored count 8).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M39 archived; canonical specs are
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M40 archived; canonical specs are
   in `openspec/specs/` (59 specs, `validate --all --strict` green), change
   history under `openspec/changes/archive/`. Active change:
-  `openspec/changes/m40-tools-panel` (M40 Tools panel, **implemented, archive
-  pending**; brief `docs/dev/m40-tools-panel.md`). M41 is next.
+  `openspec/changes/m41-panel-column` (M41 CS6 panel column, **implemented,
+  archive pending**; brief `docs/dev/m41-panel-column.md`). M42 is next.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 
@@ -919,6 +919,103 @@ openspec validate --all --strict
   `tool-framework` and ADDs to `application-shell` (no new capability → **59**
   capabilities after archive).
 
+- **M41 — CS6 panel column** (a third user-requested interruption to the
+  Layers-panel program; OpenSpec change `m41-panel-column`, brief
+  `docs/dev/m41-panel-column.md`). The fifteen right-hand `QDockWidget`s are
+  replaced by a custom column of plain content widgets. **Hosts:** `PanelGroup`
+  is a `QTabWidget` with `setTabPosition(QTabWidget::North)` forced; the tab
+  text is the panel title and there is **no separate group label** (a
+  single-panel group still shows its tab). `PanelColumn` is a `QScrollArea` over
+  a vertical `QSplitter` of groups with no hard panel minimums, so the window
+  shrinks freely. **Groups (CS6 Essentials, fixed):** `Color | Swatches |
+  Styles`; `Adjustments` (plus a hidden `Properties` tab); `Layers | Channels |
+  Paths`; `Navigator | Histogram | Info`; iconic `History`, `Actions`; and a
+  hidden overflow group `Gradients | Patterns | Libraries` (kept reachable from
+  `Window → Panels`). `Styles` is a new placeholder; Properties is folded into
+  Adjustments. **Width toggle:** a `panelColumnToggle` double-arrow in the column
+  header switches **normal ⇄ iconic**. **Iconic mode** is a vertical icon strip
+  with group dividers, labels-on-widen (threshold 120 px), and a `Qt::Popup`
+  flyout per panel that reparents the panel in and restores it on close.
+  Per-group **Collapse to Icons** reuses the same component; **Minimize** rolls a
+  group up to its tab bar (distinct from iconic). **Tab context menu** (right-click
+  a group's tab bar), exactly: `Close`, `Close Panel Group`, `Minimize`,
+  `Collapse to Icons`, sep, `Auto-Collapse Iconic Panels` (checkable),
+  `Auto-Show Hidden Panels` (checkable), sep, `Interface Options…`. **Drag &
+  drop:** in-group reorder, cross-group regroup, between-groups insert (new
+  group), with a **3 px `#2a7fff` drop indicator** (`panelDropIndicator`) — a
+  vertical marker at the tab index or a full-width horizontal bar at the group
+  boundary; hidden on commit/cancel/out. **Tear-off:** leaving the column floats
+  the source group in a `Qt::Tool` `panelFloat`; dragging it back re-docks at the
+  index; the float is hidden/`deleteLater`-ed when emptied. Drops are
+  remove-then-insert, so a panel is never double-parented. **M24 `PanelRail`
+  deleted** (`panel_rail.{h,cpp}` removed from disk and CMake, creation + five
+  `setPanelChecked` connections gone). `Window → Panels` is the single visibility
+  path; the `m24_rail` self-test (code 63) was repointed to it (`actions=5
+  toggled=1 norail=1`). **Tools panel fixes:** the `"Tools"` title label is gone
+  (the `toolsColumnToggle` stays); the hard-coded 66/104 widths became content-fit
+  **34 / 65** px; `ForegroundBackgroundWidget` scales to the column (30/40) and
+  no longer widens the dock. M40 flyout/hold/right-click/shortcuts/Shift-cycling/
+  left-right dock all intact. **Session v5:** `panelRailMode` (`normal`|`iconic`,
+  default normal), `railWidth` (0 = derive), `autoCollapseIconic` (default
+  **false**), `autoShowHidden` (default **false**), `panelGroups` (per-group
+  `order`/`visible`/`minimized`/`collapsed`), `schemaVersion` 5.
+  `saveSession()` starts from the parsed on-disk object so unknown keys survive;
+  a v4 store loads with v5 defaults. **Preferences dialog** (new
+  `preferences_dialog.{h,cpp}`, `objectName` `preferencesDialog`, modeless, page
+  list + `QStackedWidget`) with exactly two real pages, **General** (the real
+  brightness setting) and **Interface** (`Use Shift Key For Tool Switch`,
+  `Auto-Collapse Iconic Panels`, `Auto-Show Hidden Panels`). Wired to
+  `Edit → Preferences → General` (`edit.preferences.general`, implemented) and
+  `→ Interface` (`edit.preferences.interface`, implemented); the other nine
+  Preferences leaves stay disabled no-ops (enablement unchanged).
+  `PanelColumn::interfaceOptionsRequested()` opens Interface. **M40's UI-less
+  preference now has a home:** `Use Shift Key For Tool Switch` →
+  `Toolbox::setShiftKeyForToolSwitch` → `handleToolKey`, persisted.
+  **`Auto-Collapse Iconic Panels`** (default off) — when a flyout closes and the
+  column is in normal mode it returns to iconic; inert when already iconic; no
+  per-panel expand-in-place state machine. **`Auto-Show Hidden Panels`** (default
+  off) — the iconic strip includes hidden panels' icons and opening one reveals
+  it; inert: no hover-at-edge gesture. **Self-tests**, new codes **120–130**:
+  `m41_tabs`(120), `m41_width`(121), `m41_iconic`(122), `m41_menu`(123),
+  `m41_minimize`(124), `m41_prefs`(125), `m41_drag`(126), `m41_tearoff`(127),
+  `m41_session`(128), `m41_tools`(130). Code **129** (`m41_rail`) was folded into
+  the repurposed `m24_rail` rather than allocated. Earlier codes all still pass
+  with adapted internals (`m24_groups`/`m24_panels` now assert `PanelColumn`
+  membership via `groupOfForTest`, `m38`/`m39`/`m40_dock` use
+  `QWidget`/`PanelColumn`). **Harness fix (not product):** `main.cpp` now forces
+  `QT_QPA_PLATFORM=xcb` for `--self-test` when both `DISPLAY` and
+  `WAYLAND_DISPLAY` are set and no platform is pinned. Without it, a live Wayland
+  session leaked through `xvfb-run`, Qt picked Wayland, and a
+  programmatically-opened `QMenu` popup could not grab and was dismissed — making
+  `m40_flyout` (code 115) flaky (**3/8** pass under Phase A; clean HEAD measured
+  **8/8** only by luck, **3/12** in the agent's sample). Deterministic **5/5**
+  no-arg after the guard. **Honest limits:** multi-monitor tear-off untested and
+  the float is not screen-clamped; no cross-process drag; no translucent drag
+  ghost (the float is the feedback); float chrome is a plain WM-framed
+  `Qt::Tool`; Escape-cancel is not key-bound (`cancelDrag()` is programmatic
+  only); drop-on-gap needs the ~4 px splitter or a group's top/bottom half;
+  torn-off floats are not serialized; `panelGroups` keys groups by first-ever
+  panel objectName and skips a stale name; iconic label threshold (120 px) and
+  popup size are unsourced constants; the frame's own minimum width is ~776 px
+  from the M40 options bar (column min is 64 px) so shrink-to-nothing is
+  untestable; `Styles` has no dedicated SVG asset; the group collapse-icon row is
+  horizontal while the column iconic strip is vertical (shared flyout/button
+  code, not the identical widget). No Rust/bridge/codec/compositor/PSD change.
+  **Capability:** ADD `panel-column`; the M24 `panel-rail` requirement is
+  REMOVED (its spec persists without the rail requirement); MODIFIED
+  `application-shell`, `tool-framework`, `workspace-persistence`. 59 canonical
+  specs → **60 after archive**. Verified: `cargo fmt --all --check` and
+  `cargo clippy --workspace --all-targets -- -D warnings` clean;
+  `TASK_ALLOWS_DOCS=1 bash scripts/verify-fast.sh` → `verify-fast: OK`;
+  **588 tests, 0 failed, 7 ignored** (unchanged — no Rust change; the raw
+  ignored count is 8 with the pre-existing `pictura-render` doctest); both
+  self-tests exit 0 with the new `m41_*` lines and every earlier m20–m40 line
+  unchanged; `openspec validate m41-panel-column --strict` valid and
+  `openspec validate --all --strict` 60/60 pre-archive. The M41 change MODIFIES
+  `application-shell`, `tool-framework`, `workspace-persistence` and REMOVES the
+  M24 `panel-rail` requirement, ADDing the `panel-column` capability (→ **60**
+  capabilities after archive).
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -994,9 +1091,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: panels program (M41–M45), canvas perf series deferred
+## Next: panels program (M42–M45), canvas perf series deferred
 
-### Panels program (M36–M45) — M36–M40 done; M41 dock/rail refactor next
+### Panels program (M36–M45) — M36–M41 done; M42 layer filtering/search next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -1033,19 +1130,22 @@ tab groups), and the generic `Shift`+letter group cycling gated by a session
 `Use Shift Key For Tool Switch` preference (session schema v4). It is
 **implemented and independently verified** (see the milestone entry above).
 
-**M41 is the panel dock/rail refactor plus the Preferences dialog** — content
-widgets move under a `PanelColumn`: in normal mode vertical tab groups with the
-tabs explicitly on top, in compact mode an icon strip with group dividers,
-labels-on-widen, and `Qt::Popup` flyouts that close on click-away; the
+**M41 was a third user-requested interruption — the CS6 panel column**
+(`openspec/changes/m41-panel-column`, brief `docs/dev/m41-panel-column.md`):
+content widgets moved under a `PanelColumn`: in normal mode vertical tab groups
+with the tabs explicitly on top, in compact mode an icon strip with group
+dividers, labels-on-widen, and `Qt::Popup` flyouts that close on click-away; the
 `Auto-Collapse Iconic Panels` preference defaults **off**, the double-chevron
 toggle, fixed CS6 Essentials groups, and the hard panel minimums removed with a
 scroll so the window resizes freely; session **v5** adds
 `panelRailMode`/`railWidth`/`autoCollapseIconic`, and the Preferences dialog
 (General + Interface panes) gives `Use Shift Key For Tool Switch` and
-`Auto-Collapse Iconic Panels` a UI. Because the M40/M41 pair claims the two
-numbers the Layers-panel program had reserved, that program shifts by **two**:
-**M42** layer filtering/search (the six-dimension filter/search row), **M43**
-remaining management (rasterize/merge/flatten/link/select-similar/
+`Auto-Collapse Iconic Panels` a UI — M40's previously UI-less `Use Shift Key For
+Tool Switch` now has its home there. It is **implemented and independently
+verified** (see the milestone entry above). Because the M40/M41 pair claims the
+two numbers the Layers-panel program had reserved, that program shifts by
+**two**: **M42** layer filtering/search (the six-dimension filter/search row) is
+next, **M43** remaining management (rasterize/merge/flatten/link/select-similar/
 convert-background/layer-via-copy-cut, the New Layer/Group dialogs, and the
 deferred drag-reorder with its recorded drop rules), **M44** styles/effects, and
 **M45** smart objects / vector masks / artboards-as-non-goal / layer comps.

@@ -1,8 +1,5 @@
-# panel-rail Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change m24-panel-rail. Update Purpose after archive.
-## Requirements
 ### Requirement: Panel set
 
 The system SHALL provide panels for Gradients, Patterns, Properties,
@@ -49,3 +46,17 @@ made from the column. The former rail buttons SHALL no longer exist.
 - **WHEN** `Window > Panels > Gradients` (or Patterns, Properties, Adjustments, Libraries, Channels, Paths, Actions) is invoked
 - **THEN** that panel is shown or hidden
 
+## REMOVED Requirements
+
+### Requirement: Right panel icon rail
+
+**Reason**: The far-right `PanelRail` toolbar is not part of Photoshop CS6 and
+is replaced by the `PanelColumn`'s built-in width toggle and compact/iconic
+strip (`panel-column`). Its five buttons duplicated the `Window > Panels`
+toggles, which already own the command path.
+
+**Migration**: Use the `Window > Panels > <name>` toggles to show or hide a
+panel. Use the `panelColumnToggle` control to switch the column between `normal`
+and `iconic` mode, where a panel icon opens the same panel in a `Qt::Popup`
+flyout. The M24 self-test assertions that read `PanelRail` (`m24_rail`) are
+retired and replaced by the M41 `m41_rail` check.
