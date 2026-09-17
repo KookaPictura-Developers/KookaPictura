@@ -73,6 +73,10 @@ public:
     QWidget* detachPanel(const QString& objectName);
     bool attachPanel(const QString& objectName);
 
+    // M44: make the first visible panel current (a stored layout used to leave
+    // the last visible panel active after `setPanelVisible` walked the tabs).
+    void setCurrentToFirstVisible();
+
     // Phase B consumes this to seed iconic mode; Phase A only records it.
     bool defaultIconic() const { return defaultIconic_; }
     void setDefaultIconic(bool iconic) { defaultIconic_ = iconic; }
@@ -90,6 +94,9 @@ public:
     bool contentHiddenForTest() const;
     bool tabBarVisibleForTest() const;
     bool iconRowVisibleForTest() const;
+    // M44 default-active check: the current tab index and the first visible one.
+    int currentTabIndexForTest() const;
+    int firstVisibleTabIndexForTest() const;
 
     // Phase D: the per-widget header action button and its per-panel menu.
     QToolButton* headerMenuButtonForTest() const { return headerButton_; }

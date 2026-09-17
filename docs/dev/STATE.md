@@ -9,16 +9,19 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **588 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **589 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
-  counted from `cargo test --workspace`, excluding the pre-existing ignored
-  `pictura-render` doctest, which makes the raw ignored count 8).
+  M44 added the `gpu_parity` fresh-white-document regression; counted from
+  `cargo test --workspace`, excluding the pre-existing ignored `pictura-render`
+  doctest, which makes the raw ignored count 8).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M43 archived; canonical specs are
   in `openspec/specs/` (60 specs, `validate --all --strict` green), change
   history under `openspec/changes/archive/`. The headless/CI/build-speed
   infrastructure change `ci-headless-and-speedup` is **archived** (not part of
-  the M44 layer filtering/search program); no change is active and M44 is next.
+  the panels program). The M44 panel/theme polish change `m44-panel-theme-polish`
+  is **implemented and verified** (archive/commit deferred); **M45** layer
+  filtering/search is next.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 
@@ -1183,6 +1186,97 @@ openspec validate --all --strict
   m43-panel-multicolumn --strict` valid and `openspec validate --all --strict`
   61/61.
 
+- **M44 — panel/theme polish** (a sixth user-requested interruption to the
+  Layers-panel program; OpenSpec change `m44-panel-theme-polish`, brief
+  `docs/dev/m44-panel-theme-polish.md`). **Phase A — new-document canvas bug
+  (E1).** On startup with no PSD the canvas showed the M0.5 GPU demo's repeating
+  black/white/green/red banding instead of the white scratch document. Root
+  cause: `PictureView::render_gpu` (the M0.5 GPU spike in `cxxqt_object.rs`)
+  offscreen-rendered `crate::gpu::render_gradient` and **assigned it directly to
+  `rust.image` without touching `rust.doc` or setting `display_dirty`**; startup
+  creates a white scratch document, calls `render_gpu()`, then presents
+  `view->image()`, so the canvas showed the gradient while the document composite
+  stayed white — any later recomposite derives the display from `doc.composite`,
+  which is why moving a layer turned it white. Fix: removed the image
+  assignment; `render_gpu` is now a pure smoke probe (`Rendered { distinct, .. }`)
+  that never mutates the display image (a pre-fix capture had 8634 distinct
+  canvas colours, 1 after). New Rust regression
+  `crates/pictura-render/tests/gpu_parity.rs::fresh_white_document_composites_uniform_white_twice`
+  (37×23, CPU oracle + GPU first and second composite byte-equal white; self-skips
+  without an adapter, **runs** on the RTX 3090). The startup check that previously
+  asserted the gradient was non-blank became `fresh_white=1`; self-test **153**
+  `m44_newdoc white=1 uniform=1 immediate=1`. **Phase B — theme/borders/style.**
+  **W1** the collapse chevrons were inverted; swapped the `panel.columnsOne`/
+  `columnsTwo` mapping so the toggle shows the correct target state (**154**
+  `m44_chevrons`). **W2** the "last item active" default was
+  **`PanelColumn::restorePanelState`**: replaying `PanelGroup::setPanelVisible`
+  left the **last visible** tab current after a session restore (every normal
+  launch after the first), fixed with `setCurrentToFirstVisible()` at the end of
+  each group's restore (**155** `m44_defaultactive`). **W3** tab colours: the
+  measured visible widget surface is `${window}` (`#2b2b2b`), not the QSS pane;
+  active tab = `${window}`, inactive = `${base}` (`#232323`), panel groups get
+  `QTabWidget#panelGroupTabs::pane { background: ${window} }`, document tabs
+  unchanged (**156** `m44_tabswap`; the M43 `m43_tabcolors` direction corrected).
+  **W6** group divider: splitter `setHandleWidth(kGroupDividerWidth = 6)` +
+  `QSplitter#panelColumnSplitter::handle { background: ${border} }` (**159**).
+  **C2** the compact-strip divider is now 2 px `${border}` (dark grey) instead of
+  white (**161**). **C4** strip labels now **elide as soon as there is any room**
+  (`QFontMetrics::elidedText`), replacing the fixed `>= 120 px` show/hide
+  threshold (**164**). **F1/F2** document tab bar: `QTabBar#documentTabBar {
+  border-right: 1px solid ${border}; border-top: 0 }` plus
+  `QTabWidget#documentTabs::pane { border-top: 0 }` (**165**; F2 is a no-op at the
+  sampled pixels — the only top line was the options bar's own bottom border).
+  **S1** darker grey 1 px `${border}` on `#toolsPanel`, `#panelGroupTabs`,
+  `#panelColumnIconStrip`, `#panelColumnContainer` (**166**). **S2** removed the
+  inline `#panelFloat`/`#panelIconFlyout`/`#panelFlyoutHeader` stylesheets;
+  docked, popup and floating now all take the `${window}` surface + `${border}`
+  border from theme. Shared constants `Theme::kPanelBorderWidth = 1`,
+  `Theme::kGroupDividerWidth = 6`. **Phase C — drag/dock.** **T1** the floating
+  Tools dock height is now locked (both axes fixed while floating; the M40
+  four-area dock contract is intact — `m40_dock` now asserts all four areas).
+  **T2/W5** `CreatePanelColumn(side, anchor)` inserts immediately before/after an
+  **anchor** column (not only the splitter ends); `columnEdgeAnchorAt()` yields a
+  new-column target beside any `PanelColumn`; `newColumnSideAt` maps the Tools
+  dock's side; the Tools dock uses `setAllowedAreas(AllDockWidgetAreas)` with a
+  width-or-height lock per dock side. Same M43 `DropKind` resolver, one `#2a7fff`
+  indicator (**158** `m44_docksides toolbar=1 column=1 workspace=1 float=1`).
+  **W4** `createFloat` no longer cleaned the source group on a tab drag (the
+  source tab bar owns the implicit mouse grab), so the float now **tracks the
+  cursor until release**; the source is cleaned on commit/cancel (**157**
+  `m44_floatdrag`). **C3** `resolveIconicDrop` proximity rule: icon hit → into
+  that group; divider → new group at that boundary; inside a group container →
+  on-strip/boundary; otherwise new group at the top/bottom end. Each group is a
+  `panelIconGroup` container with a `panelIconGroupGrip` (`•••`) drag handle above
+  its icons, and the container gets a `${base}` background/border so the icons
+  read as one group (**162** `m44_compactdrop`, **163** `m44_draghandle`).
+  **160** `m44_popupstyle parity=1` — the flyout shares the docked group's styling.
+  **Self-tests** 153–166: `m44_newdoc`(153), `m44_chevrons`(154),
+  `m44_defaultactive`(155), `m44_tabswap`(156), `m44_floatdrag`(157),
+  `m44_docksides`(158), `m44_divider`(159), `m44_popupstyle`(160),
+  `m44_compactdivider`(161), `m44_compactdrop`(162), `m44_draghandle`(163),
+  `m44_elide`(164), `m44_filebar`(165), `m44_panelborder`(166); exit **152**
+  remains the user's headless-platform check; all earlier m20–m43 lines unchanged
+  except the corrected `m43_tabcolors` direction and the strengthened `m40_dock`.
+  **Honest limits:** widget columns dock only left/right of another
+  column/workspace (the host is a horizontal splitter) — top/bottom is supported
+  for the Tools **dock** only; the compact "very close above/below ⇒ into" zone is
+  the group container including the grip; multiple columns on one side with a
+  column drag in flight remain best-effort; the M44 spec's parenthetical describes
+  the pane as `${base}` while the measured surface/implementation uses `${window}`
+  (the behavioural scenario holds); F2 is a no-op at sampled pixels; elide width
+  is an approximate row allowance; the Rust regression pins the composite
+  invariant but not the demo overlay itself (that is pinned by `m44_newdoc` + the
+  startup `fresh_white` assertion). **Capability:** MODIFIES `panel-column`,
+  `application-shell`, `tool-framework`, `document-canvas`; **no new capability**
+  → **60** canonical specs after archive. Verified: `cmake --build` clean;
+  `./build/pictura --headless --self-test` exit 0 with all `m44_*` `=1`; the PSD
+  headless self-test exit 0; `cargo fmt --all --check` and `cargo clippy
+  --workspace --all-targets -- -D warnings` clean; `cargo test --workspace`
+  **589 tests, 0 failed, 7 ignored** (up from 588/7; the raw ignored count is 8
+  with the pre-existing `pictura-render` doctest); `openspec validate
+  m44-panel-theme-polish --strict` valid and `openspec validate --all --strict`
+  61/61.
+
 - **CI headless and build speed** (infrastructure, not a milestone; archived
   OpenSpec change `ci-headless-and-speedup`). `main.cpp` gains an explicit **`--headless`**
   flag: it selects the offscreen QPA plugin before `QApplication` (when
@@ -1276,9 +1370,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: panels program (M44–M47), canvas perf series deferred
+## Next: panels program (M45–M48), canvas perf series deferred
 
-### Panels program (M36–M47) — M36–M41 done; M42 panel refinements done; M43 panel multicolumn done; M44 layer filtering/search next
+### Panels program (M36–M48) — M36–M41 done; M42–M43 panel refinements/multicolumn done; M44 panel/theme polish done; M45 layer filtering/search next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -1297,7 +1391,7 @@ grammar and depth-first topmost-first projection, the path/batch bridge API,
 the `QAbstractItemModel` tree + delegate row anatomy, multi-selection with the
 per-node refusal table, solo visibility, `Tab` rename, Panel Options (session
 schema v3), the panel/row menus, tooltips, and the explicit drag-reorder
-deferral to M45.
+deferral to M46.
 
 **M38 was a user-requested interruption: the full CS6 toolbox icon/cursor
 library and the panel icons** (`openspec/changes/m38-icon-cursor-library`,
@@ -1341,16 +1435,24 @@ create-on-drop/remove-when-empty columns, tab-vs-group drag and single-panel
 floats, the unified `DropKind`/`resolveDrop` drop targets, the `panelTabBar` tab
 colours, the fixed corner button and actual-geometry inner-side flyout, the
 fixed-width Tools dock, the `D` colour reset, and session **v6**
-(`panelColumns`). It is **implemented and independently verified** (see the
-milestone entry above). Because the M40/M41/M42/M43 interruptions claim four
-numbers the Layers-panel program had reserved, that program shifts by **four**:
-**M44** layer filtering/search (the six-dimension filter/search row) is next,
-**M45** remaining management (rasterize/merge/flatten/link/select-similar/
-convert-background/layer-via-copy-cut, the New Layer/Group dialogs, and the
-deferred drag-reorder with its recorded drop rules), **M46** styles/effects, and
-**M47** smart objects / vector masks / artboards-as-non-goal / layer comps.
-M36's confirmed ceilings — the `layer_kind` `"background"` name+index heuristic
-and the forced type/shape locks — land in M45, and M37's single-layer grouping
+  (`panelColumns`). It is **implemented and independently verified** (see the
+  milestone entry above). **M44 was a sixth user-requested interruption — panel/
+  theme polish** (`openspec/changes/m44-panel-theme-polish`, brief
+  `docs/dev/m44-panel-theme-polish.md`): the new-document canvas E1 root cause
+  (the GPU demo image assigned straight to `rust.image`) and its fix, the
+  chevron/tab-colour/default-active corrections, the theme border/tab/flyout/elide
+  unification, the float-drag continuation and any-side docking, and the compact
+  group-relative drop with drag handles. It is **implemented and independently
+  verified** (see the milestone entry above). Because the M40/M41/M42/M43/M44
+  interruptions claim five numbers the Layers-panel program had reserved, that
+  program shifts by **five**: **M45** layer filtering/search (the six-dimension
+  filter/search row) is next, **M46** remaining management
+  (rasterize/merge/flatten/link/select-similar/convert-background/
+  layer-via-copy-cut, the New Layer/Group dialogs, and the deferred drag-reorder
+  with its recorded drop rules), **M47** styles/effects, and **M48** smart
+  objects / vector masks / artboards-as-non-goal / layer comps. M36's confirmed
+  ceilings — the `layer_kind` `"background"` name+index heuristic and the forced
+  type/shape locks — land in M46, and M37's single-layer grouping
 limit was lifted by M39's multi-selection (the `is_background` single source of
 truth and the path/batch selection ops). The pre-shift numbers still stand in
 `docs/dev/layers-panel-program.md`; this file is the up-to-date anchor.
@@ -1358,7 +1460,7 @@ truth and the path/batch selection ops). The pre-shift numbers still stand in
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M47.
+> number; they are deferred until after M48.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -1456,7 +1558,7 @@ no new capability. Next in order:
 
 Deferred canvas-performance tracks (previously sketched as M36–M38; those
 numbers are now claimed by the panels program above, so these are deferred
-until after M47). The remaining canvas-performance tracks — history
+until after M48). The remaining canvas-performance tracks — history
 copy-on-write / tile diffs, resident per-layer GPU source buffers, 256² tiles +
 LoD, plus the GPU-resident zero-copy present — each need their own design (the
 small, app-local region-blit slice landed as M35 above):

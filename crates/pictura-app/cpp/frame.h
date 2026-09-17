@@ -64,8 +64,9 @@ public:
 
     // M43 multi-column host. Columns live in the central splitter around the
     // document tabs; a column's side is its splitter order relative to the
-    // tabs, never its geometry.
-    PanelColumn* createPanelColumn(PanelSide side);
+    // tabs, never its geometry. M44 W5: `anchor` inserts the new column
+    // immediately before (side Left) or after (side Right) another column.
+    PanelColumn* createPanelColumn(PanelSide side, PanelColumn* anchor = nullptr);
     void removeColumnIfEmpty(PanelColumn* column);
     PanelSide sideOf(const PanelColumn* column) const;
     int columnCount() const;
@@ -74,11 +75,18 @@ public:
     PanelColumn* columnAtGlobal(const QPoint& globalPos) const;
     // -1 = not a new-column candidate, 0 = left, 1 = right.
     int newColumnSideAt(const QPoint& globalPos) const;
+    // M44 W5: a point in a band beside an existing column (other than `exclude`)
+    // resolves to a new column anchored on that side; returns the anchor.
+    PanelColumn* columnEdgeAnchorAt(const QPoint& globalPos, const PanelColumn* exclude,
+                                    int* side) const;
 
     // M43 Phase B test hooks. All drive the same resolve/commit drag path.
     int panelColumnCountForTest() const { return columnCount(); }
     QString panelColumnSideForTest(int index) const;
     bool newColumnDropForTest(const QString& panelName, const QString& side);
+    // M44 W5: drop a panel beside an existing column; the new column lands
+    // immediately adjacent to the anchor.
+    bool newColumnBesideForTest(const QString& panelName, const QString& anchorPanel);
     bool dropIntoGroupForTest(const QString& panelName, const QString& targetPanel, int index = 1);
     bool dropBoundaryForTest(const QString& panelName, const QString& targetPanel, bool above);
     // M43 Phase C test hook: re-runs the real startup restore path so a saved

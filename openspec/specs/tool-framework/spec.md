@@ -56,8 +56,10 @@ besides the two swatches and the default-colour (X) reset, a swap control (a
 double-headed arrow) that exchanges the foreground and background colours, the
 `X` key SHALL swap them when no tool shortcut claims it, and the `D` key SHALL
 reset them to the default colours (black foreground, white background) when no
-tool shortcut claims it. The implemented tool set and the active-tool contract
-SHALL be unchanged.
+tool shortcut claims it. The panel SHALL be dockable on every side of the
+workspace and the widget panels — left, right, top, and bottom — without
+breaking the fixed content size or the no-tabification contract. The implemented
+tool set and the active-tool contract SHALL be unchanged.
 
 #### Scenario: Tools panel reflects the active tool [m23_toolbox]
 
@@ -109,6 +111,13 @@ SHALL be unchanged.
 
 - **WHEN** the screen-mode control is clicked
 - **THEN** the frame advances to the next screen mode
+
+#### Scenario: The panel docks on every side [m44_docksides]
+
+- **WHEN** the Tools panel is moved toward the top, bottom, left, or right of the
+  workspace or the widget panels
+- **THEN** it can be docked there without being tabified and without losing its
+  fixed content size
 
 ### Requirement: Options bar
 
@@ -164,12 +173,13 @@ width plus only the body layout's margins, so the dock carries no extra
 horizontal space in either mode. Each width SHALL be fixed: the dock's minimum
 and maximum width SHALL both equal its content width for the active column count,
 recomputed when the column count changes and while the dock is floating, and
-dragging the dock separator SHALL NOT resize it. The chosen column count SHALL
-persist in the session store at schema version 4 and SHALL load as one column
-when the store is missing, older, or the value is out of range. The
-foreground/background control and the screen-mode control SHALL remain below the
-slots in both layouts. A missing column icon SHALL fall back to a text arrow
-rather than fail.
+dragging the dock separator SHALL NOT resize it. While floating, the dock's
+height SHALL also be fixed to the minimum its content needs and SHALL NOT be
+drag-resizable. The chosen column count SHALL persist in the session store at
+schema version 4 and SHALL load as one column when the store is missing, older,
+or the value is out of range. The foreground/background control and the
+screen-mode control SHALL remain below the slots in both layouts. A missing
+column icon SHALL fall back to a text arrow rather than fail.
 
 #### Scenario: The double-arrow toggles to two columns and back [m41_tools]
 
@@ -199,6 +209,11 @@ rather than fail.
 - **WHEN** the Tools panel's minimum and maximum widths are queried in one- or
   two-column mode
 - **THEN** both equal the content width for that mode
+
+#### Scenario: The floated height is fixed [m44_toolsfloat]
+
+- **WHEN** the Tools panel is floating and a resize is attempted
+- **THEN** its height stays the minimum its content needs and does not change
 
 #### Scenario: Column count persists [m40_session]
 

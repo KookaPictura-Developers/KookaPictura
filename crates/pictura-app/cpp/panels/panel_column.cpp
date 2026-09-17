@@ -3,6 +3,7 @@
 #include "frame.h"
 #include "icons.h"
 #include "panel_group.h"
+#include "theme.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QJsonObject>
@@ -11,9 +12,11 @@
 #include <QtCore/QSize>
 #include <QtGui/QAction>
 #include <QtGui/QCursor>
+#include <QtGui/QFontMetrics>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QHideEvent>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QPalette>
 #include <QtGui/QScreen>
 #include <QtGui/QShowEvent>
 #include <QtWidgets/QApplication>
@@ -33,9 +36,17 @@ namespace pictura {
 
 namespace {
 
-constexpr int kIconLabelWidth = 120;
+constexpr int kIconLabelMinWidth = 16;
 constexpr int kIconButtonSize = 34;
 constexpr int kIconPixmapSize = 24;
+// ponytail: chosen compact-strip divider height, not a sourced CS6 metric.
+constexpr int kCompactDividerHeight = 2;
+// M44 C3: chosen compact-strip grip height and the "very close to a group"
+// proximity band, not sourced CS6 metrics. The band is zero so the strip's own
+// margins remain new-group boundaries rather than swallowing the first/last
+// group.
+constexpr int kCompactGripHeight = 10;
+constexpr int kCompactNearBand = 0;
 // ponytail: chosen constants, not sourced CS6 metrics. Normal-mode minimum is
 // the widest visible group's size hint clamped between a readable floor and a
 // cap that keeps the main window resizable; the iconic strip only needs its
@@ -79,8 +90,6 @@ PanelFloat::PanelFloat(QWidget* parent)
     // list. OS-window float chrome and multi-monitor float are non-goals.
     setWindowFlags(Qt::Widget);
     setAttribute(Qt::WA_StyledBackground, true);
-    setStyleSheet(QStringLiteral(
-        "#panelFloat{background:#3a3a3a;border:1px solid #555;}"));
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(1, 1, 1, 1);
     layout->setSpacing(0);
@@ -99,6 +108,8 @@ void PanelFloat::setGroup(PanelGroup* group)
 PanelColumn::PanelColumn(QWidget* parent)
     : QWidget(parent)
 {
+    setObjectName(QStringLiteral("panelColumnContainer"));
+    setAttribute(Qt::WA_StyledBackground, true);
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
@@ -126,12 +137,13 @@ PanelColumn::PanelColumn(QWidget* parent)
 
     splitter_ = new QSplitter(Qt::Vertical, scroll_);
     splitter_->setObjectName(QStringLiteral("panelColumnSplitter"));
-    splitter_->setHandleWidth(4);
+    splitter_->setHandleWidth(Theme::kGroupDividerWidth);
     scroll_->setWidget(splitter_);
     layout->addWidget(scroll_, 1);
 
     iconStrip_ = new QWidget(this);
     iconStrip_->setObjectName(QStringLiteral("panelColumnIconStrip"));
+    iconStrip_->setAttribute(Qt::WA_StyledBackground, true);
     iconStripLayout_ = new QVBoxLayout(iconStrip_);
     iconStripLayout_->setContentsMargins(2, 2, 2, 2);
     iconStripLayout_->setSpacing(2);
@@ -528,6 +540,9 @@ void PanelColumn::restorePanelState(const QJsonArray& state)
         }
         group->setMinimized(entry.value(QStringLiteral("minimized")).toBool(false));
         group->setCollapsedToIcons(entry.value(QStringLiteral("collapsed")).toBool(false));
+        // M44: `setPanelVisible` makes each shown panel current, so the last
+        // visible panel would win; restore the first visible as the active tab.
+        group->setCurrentToFirstVisible();
     }
     if (railMode_) {
         buildIconStrip();
@@ -537,15 +552,18 @@ void PanelColumn::restorePanelState(const QJsonArray& state)
 
 void PanelColumn::updateColumnToggle()
 {
-    const QIcon target =
-        icon(railMode_ ? QStringLiteral("panel.columnsTwo") : QStringLiteral("panel.columnsOne"));
+    // M44: the toggle shows the icon for the action it performs — collapse to
+    // icons in normal mode (`panel.columnsTwo`, the inward double chevron) and
+    // expand in iconic mode (`panel.columnsOne`).
+    const QIcon target = icon(railMode_ ? QStringLiteral("panel.columnsOne")
+                                        : QStringLiteral("panel.columnsTwo"));
     if (!target.isNull()) {
         columnToggle_->setIcon(target);
         columnToggle_->setIconSize(QSize(16, 16));
         columnToggle_->setText(QString());
     } else {
         columnToggle_->setIcon(QIcon());
-        columnToggle_->setText(railMode_ ? QStringLiteral("\u00bb") : QStringLiteral("\u00ab"));
+        columnToggle_->setText(railMode_ ? QStringLiteral("\u00ab") : QStringLiteral("\u00bb"));
     }
     columnToggle_->setToolTip(railMode_ ? tr("Expand panels")
                                         : tr("Collapse panels to icons"));
@@ -555,9 +573,13 @@ void PanelColumn::clearIconStrip()
 {
     stripLabels_.clear();
     stripEntries_.clear();
+    stripGroupOrder_.clear();
+    stripGroupBoxes_.clear();
+    stripDividers_.clear();
     stripPressPending_ = false;
     stripDragging_ = false;
     stripDragButton_ = nullptr;
+    stripGripGroup_ = nullptr;
     while (QLayoutItem* item = iconStripLayout_->takeAt(0)) {
         if (QWidget* widget = item->widget()) {
             delete widget;
@@ -581,16 +603,29 @@ void PanelColumn::buildIconStrip()
         if (!first) {
             auto* divider = new QFrame(iconStrip_);
             divider->setObjectName(QStringLiteral("panelIconDivider"));
-            divider->setFrameShape(QFrame::HLine);
-            divider->setFrameShadow(QFrame::Plain);
+            divider->setAttribute(Qt::WA_StyledBackground, true);
+            divider->setFrameShape(QFrame::NoFrame);
+            divider->setFixedHeight(kCompactDividerHeight);
             iconStripLayout_->addWidget(divider);
+            stripDividers_.append(StripDivider{group, divider});
         }
         first = false;
+        // M44 C3: one shared container per group (with a drag-handle grip above
+        // its icons) so the group reads as a single visual unit and the whole
+        // group is draggable.
+        auto* groupBox = new QWidget(iconStrip_);
+        groupBox->setObjectName(QStringLiteral("panelIconGroup"));
+        groupBox->setAttribute(Qt::WA_StyledBackground, true);
+        groupBox->setProperty("groupObjectName", group->objectName());
+        auto* groupLayout = new QVBoxLayout(groupBox);
+        groupLayout->setContentsMargins(1, 1, 1, 1);
+        groupLayout->setSpacing(1);
+        groupLayout->addWidget(makeGroupGrip(group));
         const QStringList titles = autoShowHidden_ ? group->titles() : group->visibleTitles();
         for (int i = 0; i < panels.size(); ++i) {
             QWidget* panel = panels.at(i);
             const QString title = titles.value(i);
-            auto* row = new QWidget(iconStrip_);
+            auto* row = new QWidget(groupBox);
             row->setObjectName(QStringLiteral("panelIconRow"));
             auto* rowLayout = new QHBoxLayout(row);
             rowLayout->setContentsMargins(0, 0, 0, 0);
@@ -601,29 +636,60 @@ void PanelColumn::buildIconStrip()
             stripEntries_.append(StripEntry{group, panel->objectName(), iconButton});
             auto* label = new QLabel(title, row);
             label->setObjectName(QStringLiteral("panelIconLabel"));
+            label->setProperty("fullTitle", title);
             label->setVisible(iconLabelsShown_);
             rowLayout->addWidget(label);
             rowLayout->addStretch(1);
-            iconStripLayout_->addWidget(row);
+            groupLayout->addWidget(row);
             stripLabels_ << label;
         }
+        iconStripLayout_->addWidget(groupBox);
+        stripGroupOrder_.append(group);
+        stripGroupBoxes_.insert(group, groupBox);
     }
     iconStripLayout_->addStretch(1);
     updateIconStripLabels();
 }
 
+QWidget* PanelColumn::makeGroupGrip(PanelGroup* group)
+{
+    auto* grip = new QLabel(iconStrip_);
+    grip->setObjectName(QStringLiteral("panelIconGroupGrip"));
+    grip->setProperty("groupObjectName", group ? group->objectName() : QString());
+    grip->setAlignment(Qt::AlignCenter);
+    grip->setText(QStringLiteral("\u2022\u2022\u2022"));
+    grip->setFixedHeight(kCompactGripHeight);
+    grip->setCursor(Qt::SizeAllCursor);
+    grip->setToolTip(tr("Drag to move this panel group"));
+    grip->setAttribute(Qt::WA_StyledBackground, true);
+    grip->installEventFilter(this);
+    return grip;
+}
+
+QWidget* PanelColumn::stripGroupBoxFor(PanelGroup* group) const
+{
+    return stripGroupBoxes_.value(group, nullptr);
+}
+
 void PanelColumn::updateIconStripLabels()
 {
-    const bool show = iconStrip_->width() >= kIconLabelWidth;
-    if (show == iconLabelsShown_) {
-        return;
+    // M44: show the label as soon as the row has room beyond the icon button and
+    // elide its text to that room, instead of hiding it until the full title
+    // fits (the M42/M43 `>= 120 px` gate).
+    const int available = iconStrip_->width() - kIconButtonSize - 10;
+    const bool show = available >= kIconLabelMinWidth;
+    QFontMetrics metrics(font());
+    for (QLabel* label : stripLabels_) {
+        if (!label) {
+            continue;
+        }
+        if (show) {
+            const QString full = label->property("fullTitle").toString();
+            label->setText(metrics.elidedText(full, Qt::ElideRight, available));
+        }
+        label->setVisible(show);
     }
     iconLabelsShown_ = show;
-    for (QLabel* label : stripLabels_) {
-        if (label) {
-            label->setVisible(show);
-        }
-    }
 }
 
 QToolButton* PanelColumn::makeIconButton(QWidget* parent, const QString& objectName,
@@ -656,9 +722,6 @@ void PanelColumn::ensureFlyout()
     }
     flyout_ = new PanelFlyout(this);
     flyout_->setObjectName(QStringLiteral("panelIconFlyout"));
-    flyout_->setStyleSheet(QStringLiteral(
-        "#panelIconFlyout{background:#3a3a3a;border:1px solid #555;}"
-        "#panelFlyoutHeader{background:#4a4a4a;border-bottom:1px solid #555;}"));
     flyoutLayout_ = new QVBoxLayout(flyout_);
     flyoutLayout_->setContentsMargins(1, 1, 1, 1);
     flyoutLayout_->setSpacing(0);
@@ -901,6 +964,50 @@ bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
     if (watched == iconStrip_ && event->type() == QEvent::Resize) {
         updateIconStripLabels();
     }
+    // M44 C3: the group drag-handle grip drags the whole group through the same
+    // begin/update/commit path as a panel button.
+    if (auto* grip = qobject_cast<QWidget*>(watched);
+        grip && grip->objectName() == QStringLiteral("panelIconGroupGrip")) {
+        const QEvent::Type type = event->type();
+        if (type == QEvent::MouseButtonPress) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                stripGripGroup_ =
+                    findGroupByName(grip->property("groupObjectName").toString());
+                stripPressPending_ = true;
+                stripDragging_ = false;
+                stripDragButton_ = nullptr;
+                stripPressGlobal_ = mouse->globalPosition().toPoint();
+            }
+        } else if (type == QEvent::MouseMove) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            const QPoint globalPos = mouse->globalPosition().toPoint();
+            if (stripPressPending_ && !stripDragging_ && stripGripGroup_
+                && (globalPos - stripPressGlobal_).manhattanLength()
+                       >= QApplication::startDragDistance()) {
+                stripPressPending_ = false;
+                stripDragging_ = true;
+                beginGroupDrag(stripGripGroup_, globalPos);
+            }
+            if (stripDragging_ && stripGripGroup_) {
+                updateDrag(globalPos);
+                return true;
+            }
+        } else if (type == QEvent::MouseButtonRelease) {
+            stripPressPending_ = false;
+            if (stripDragging_ && stripGripGroup_) {
+                stripDragging_ = false;
+                stripGripGroup_ = nullptr;
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                const QPoint globalPos = mouse->globalPosition().toPoint();
+                QMetaObject::invokeMethod(
+                    this, [this, globalPos]() { updateDrag(globalPos); commitDrop(); },
+                    Qt::QueuedConnection);
+                return true;
+            }
+            stripGripGroup_ = nullptr;
+        }
+    }
     auto* button = qobject_cast<QToolButton*>(watched);
     if (button && button->objectName().startsWith(QStringLiteral("panelIcon_"))) {
         if (event->type() == QEvent::MouseButtonPress) {
@@ -990,6 +1097,40 @@ int PanelColumn::dividerCountForTest() const
         : 0;
 }
 
+int PanelColumn::groupDividerWidthForTest() const
+{
+    return splitter_ ? splitter_->handleWidth() : 0;
+}
+
+QString PanelColumn::stripLabelTextForTest(const QString& objectName) const
+{
+    for (int i = 0; i < stripEntries_.size() && i < stripLabels_.size(); ++i) {
+        if (stripEntries_.at(i).name == objectName && stripLabels_.at(i)) {
+            return stripLabels_.at(i)->text();
+        }
+    }
+    return QString();
+}
+
+bool PanelColumn::stripLabelVisibleForTest(const QString& objectName) const
+{
+    for (int i = 0; i < stripEntries_.size() && i < stripLabels_.size(); ++i) {
+        if (stripEntries_.at(i).name == objectName && stripLabels_.at(i)) {
+            return stripLabels_.at(i)->isVisible();
+        }
+    }
+    return false;
+}
+
+void PanelColumn::setIconStripWidthForTest(int width)
+{
+    if (!iconStrip_) {
+        return;
+    }
+    iconStrip_->resize(qMax(0, width), iconStrip_->height());
+    updateIconStripLabels();
+}
+
 bool PanelColumn::openIconFlyoutForTest(const QString& objectName)
 {
     if (!groupForPanel(objectName)) {
@@ -1069,6 +1210,16 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
             DropTarget target;
             target.valid = true;
             target.kind = side == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
+            return target;
+        }
+        // M44 W5: a drop beside another column allocates the new column adjacent
+        // to that column, so a widget column can dock on any side of another.
+        int anchorSide = -1;
+        if (PanelColumn* anchor = frame->columnEdgeAnchorAt(globalPos, this, &anchorSide)) {
+            DropTarget target;
+            target.valid = true;
+            target.anchorColumn = anchor;
+            target.kind = anchorSide == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
             return target;
         }
     }
@@ -1164,7 +1315,13 @@ bool PanelColumn::resolveIconicDrop(const QPoint& globalPos, DropTarget& target)
     if (!iconStrip_->rect().contains(iconStrip_->mapFromGlobal(globalPos))) {
         return false;
     }
-    // A hit on a strip button's interior inserts into the group that owns it.
+    // M44 C3 proximity rule, in order:
+    //   1. a direct hit on an icon inserts into that group at that place;
+    //   2. an inter-group divider creates a new group at that boundary;
+    //   3. within (or very close to) a group's container inserts into it;
+    //   4. beyond the top/bottom group creates a new group at that end.
+
+    // 1. A hit on a strip button's interior inserts into the group that owns it.
     for (int i = 0; i < stripEntries_.size(); ++i) {
         const StripEntry& entry = stripEntries_.at(i);
         QToolButton* button = entry.button;
@@ -1174,37 +1331,83 @@ bool PanelColumn::resolveIconicDrop(const QPoint& globalPos, DropTarget& target)
         const QRect row(button->mapToGlobal(QPoint(0, 0)), button->size());
         if (row.adjusted(0, 2, 0, -2).contains(globalPos)) {
             target.valid = true;
-            target.kind = DropKind::IntoGroup;
-            target.onTabBar = true;
             target.group = entry.group;
-            target.tabIndex = entry.group->indexOfPanel(entry.name);
             target.stripIndex = i;
+            if (dragIsPanel_) {
+                target.kind = DropKind::IntoGroup;
+                target.onTabBar = true;
+                target.tabIndex = entry.group->indexOfPanel(entry.name);
+            } else {
+                const int gi = groups_.indexOf(entry.group);
+                const bool below = globalPos.y() > row.center().y();
+                target.kind = below ? DropKind::BelowGroup : DropKind::AboveGroup;
+                target.boundary = below ? gi + 1 : gi;
+            }
             return true;
         }
     }
-    const int index = stripInsertionIndexAt(globalPos);
-    if (index < 0) {
-        return false;
+
+    // 2. The divider between two groups is a new-group boundary.
+    for (const StripDivider& divider : stripDividers_) {
+        if (!divider.widget || !divider.after) {
+            continue;
+        }
+        const QRect r(divider.widget->mapToGlobal(QPoint(0, 0)), divider.widget->size());
+        if (r.adjusted(0, -kCompactNearBand - 1, 0, kCompactNearBand + 1).contains(globalPos)) {
+            const int after = groups_.indexOf(divider.after);
+            target.valid = true;
+            target.group = divider.after;
+            target.boundary = after >= 0 ? after : groups_.size();
+            target.kind = DropKind::AboveGroup;
+            target.stripIndex = stripInsertionIndexAt(globalPos);
+            return true;
+        }
     }
-    PanelGroup* before = index > 0 ? stripEntries_.at(index - 1).group : nullptr;
-    PanelGroup* after = index < stripEntries_.size() ? stripEntries_.at(index).group : nullptr;
-    if (index > 0 && index < stripEntries_.size() && before != after) {
-        // A divider between two groups resolves to a boundary insert above the
-        // group that follows.
-        PanelGroup* reference = after;
-        const int boundary = groups_.indexOf(reference);
-        target.valid = true;
-        target.group = reference;
-        target.stripIndex = index;
-        target.boundary = boundary >= 0 ? boundary : groups_.size();
-        target.kind = DropKind::AboveGroup;
-        return true;
+
+    // 3. Within (or very close to) a group container.
+    for (int gi = 0; gi < groups_.size(); ++gi) {
+        PanelGroup* group = groups_.at(gi);
+        if (!group) {
+            continue;
+        }
+        QWidget* box = stripGroupBoxFor(group);
+        if (!box) {
+            continue;
+        }
+        const QRect r(box->mapToGlobal(QPoint(0, 0)), box->size());
+        if (r.adjusted(0, -kCompactNearBand, 0, kCompactNearBand).contains(globalPos)) {
+            target.valid = true;
+            target.group = group;
+            target.stripIndex = stripInsertionIndexAt(globalPos);
+            if (dragIsPanel_) {
+                target.kind = DropKind::OnStrip;
+                target.onStrip = true;
+            } else {
+                const bool below = globalPos.y() > r.center().y();
+                target.kind = below ? DropKind::BelowGroup : DropKind::AboveGroup;
+                target.boundary = below ? gi + 1 : gi;
+            }
+            return true;
+        }
     }
-    // Within a group the strip reorders the panel.
+
+    // 4. Between groups, above the top, or below the bottom: a new group there.
+    int boundary = groups_.size();
+    for (int gi = 0; gi < groups_.size(); ++gi) {
+        QWidget* box = stripGroupBoxFor(groups_.at(gi));
+        if (!box) {
+            continue;
+        }
+        const QRect r(box->mapToGlobal(QPoint(0, 0)), box->size());
+        if (globalPos.y() < r.center().y()) {
+            boundary = gi;
+            break;
+        }
+    }
     target.valid = true;
-    target.onStrip = true;
-    target.stripIndex = index;
-    target.kind = DropKind::OnStrip;
+    target.boundary = boundary;
+    target.kind = DropKind::AboveGroup;
+    target.stripIndex = stripInsertionIndexAt(globalPos);
     return true;
 }
 
@@ -1362,6 +1565,7 @@ void PanelColumn::beginPanelDrag(PanelGroup* group, const QString& objectName,
     dragActive_ = true;
     dragIsPanel_ = true;
     dragGroup_ = group;
+    dragSourceGroup_ = group;
     dragPanel_ = objectName;
     dragOriginalIndex_ = groups_.indexOf(group);
     // M43: a panel drag never reuses the source float. Leaving the column
@@ -1381,6 +1585,7 @@ void PanelColumn::beginGroupDrag(PanelGroup* group, const QPoint& globalPos)
     dragActive_ = true;
     dragIsPanel_ = false;
     dragGroup_ = group;
+    dragSourceGroup_ = group;
     dragPanel_.clear();
     dragOriginalIndex_ = groups_.indexOf(group);
     dragFloat_ = floatForGroup(group);
@@ -1416,12 +1621,14 @@ bool PanelColumn::commitDrop()
         return false;
     }
     const DropTarget target = dropTarget_;
+    PanelGroup* source = dragSourceGroup_;
     bool ok = false;
     clearIndicator();
     if (target.valid && !target.outside) {
         if (target.kind == DropKind::NewColumnLeft || target.kind == DropKind::NewColumnRight) {
             ok = applyNewColumnDrop(target.kind == DropKind::NewColumnLeft ? PanelSide::Left
-                                                                          : PanelSide::Right);
+                                                                          : PanelSide::Right,
+                                    target.anchorColumn);
         } else if (target.onStrip) {
             ok = applyStripDrop(dragGroup_, dragPanel_, target.stripIndex);
         } else if (dragIsPanel_) {
@@ -1437,9 +1644,16 @@ bool PanelColumn::commitDrop()
     } else {
         ok = dragFloat_ != nullptr;
     }
+    // M44 W4: the panel's source group was kept alive for the whole drag; clean
+    // it up once the panel has landed elsewhere (it is empty when the drag took
+    // its only tab).
+    if (source && source != dragGroup_ && source->titleCountForTest() == 0) {
+        cleanupEmptyGroup(source);
+    }
     dragActive_ = false;
     dragIsPanel_ = false;
     dragGroup_ = nullptr;
+    dragSourceGroup_ = nullptr;
     dragPanel_.clear();
     dragGrabOffset_ = QPoint();
     dragOriginalIndex_ = -1;
@@ -1460,14 +1674,20 @@ bool PanelColumn::commitDrop()
 void PanelColumn::cancelDrag()
 {
     clearIndicator();
+    PanelGroup* source = dragSourceGroup_;
     const bool tornOffThisDrag = dragFloat_ && dragOriginalIndex_ >= 0;
     if (tornOffThisDrag && dragGroup_) {
         insertGroupAt(dragGroup_, qBound(0, dragOriginalIndex_, groups_.size()));
         destroyFloat(dragFloat_);
     }
+    // M44 W4: release the source group held for the drag's lifetime.
+    if (source && source != dragGroup_ && source->titleCountForTest() == 0) {
+        cleanupEmptyGroup(source);
+    }
     dragActive_ = false;
     dragIsPanel_ = false;
     dragGroup_ = nullptr;
+    dragSourceGroup_ = nullptr;
     dragPanel_.clear();
     dragGrabOffset_ = QPoint();
     dragOriginalIndex_ = -1;
@@ -1571,7 +1791,7 @@ bool PanelColumn::applyStripDrop(PanelGroup* source, const QString& name, int st
     return true;
 }
 
-bool PanelColumn::applyNewColumnDrop(PanelSide side)
+bool PanelColumn::applyNewColumnDrop(PanelSide side, PanelColumn* anchor)
 {
     auto* frame = qobject_cast<PicturaMainWindow*>(window());
     if (!frame || !dragGroup_) {
@@ -1604,7 +1824,7 @@ bool PanelColumn::applyNewColumnDrop(PanelSide side)
             source->setParent(nullptr);
         }
     }
-    PanelColumn* destination = frame->createPanelColumn(side);
+    PanelColumn* destination = frame->createPanelColumn(side, anchor);
     if (!destination) {
         if (index >= 0) {
             insertGroupAt(source, qBound(0, dragOriginalIndex_, groups_.size()));
@@ -1666,7 +1886,9 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
         hosted->addPanel(panel, title, iconValue);
         panelVisible_[dragPanel_] = true;
         wireGroup(hosted);
-        cleanupEmptyGroup(group);
+        // M44 W4: keep the (possibly now empty) source group alive so its tab
+        // bar keeps the implicit mouse grab until release; commitDrop/cancelDrag
+        // clean it up once the drag ends.
     }
     const int index = groups_.indexOf(hosted);
     if (index >= 0) {
@@ -2082,6 +2304,113 @@ bool PanelColumn::ensureGroupVisibleForTest(const QString& panelName)
     }
     scroll_->ensureWidgetVisible(group, 0, 12);
     return true;
+}
+
+bool PanelColumn::dragSourceGroupAliveForTest() const
+{
+    return dragSourceGroup_ && groups_.contains(dragSourceGroup_);
+}
+
+QWidget* PanelColumn::dragHandleForTest(const QString& groupName) const
+{
+    PanelGroup* group = findGroupByName(groupName);
+    if (!group) {
+        return nullptr;
+    }
+    QWidget* box = stripGroupBoxFor(group);
+    return box ? box->findChild<QWidget*>(QStringLiteral("panelIconGroupGrip")) : nullptr;
+}
+
+QStringList PanelColumn::compactStripGroupOrderForTest() const
+{
+    QStringList out;
+    for (PanelGroup* group : stripGroupOrder_) {
+        out << (group ? group->objectName() : QString());
+    }
+    return out;
+}
+
+int PanelColumn::compactStripGroupIndexForTest(const QString& panelName) const
+{
+    PanelGroup* owner = groupForPanel(panelName);
+    return owner ? stripGroupOrder_.indexOf(owner) : -1;
+}
+
+QPoint PanelColumn::compactStripBoundaryPointForTest(int boundary) const
+{
+    if (!iconStrip_ || stripGroupOrder_.isEmpty()) {
+        return QPoint();
+    }
+    auto centerX = [this](PanelGroup* group) {
+        QWidget* box = stripGroupBoxFor(group);
+        return box ? box->mapToGlobal(QPoint(box->width() / 2, 0)).x()
+                   : iconStrip_->mapToGlobal(QPoint(iconStrip_->width() / 2, 0)).x();
+    };
+    auto topOf = [this](PanelGroup* group) {
+        QWidget* box = stripGroupBoxFor(group);
+        return box ? box->mapToGlobal(QPoint(0, 0)).y() : 0;
+    };
+    auto bottomOf = [this](PanelGroup* group) {
+        QWidget* box = stripGroupBoxFor(group);
+        return box ? box->mapToGlobal(QPoint(0, box->height())).y() : 0;
+    };
+    boundary = qBound(0, boundary, stripGroupOrder_.size());
+    if (boundary <= 0) {
+        PanelGroup* first = stripGroupOrder_.first();
+        return QPoint(centerX(first), topOf(first) - 1);
+    }
+    if (boundary >= stripGroupOrder_.size()) {
+        PanelGroup* last = stripGroupOrder_.last();
+        return QPoint(centerX(last), bottomOf(last) + 1);
+    }
+    const int dividerIndex = boundary - 1;
+    if (dividerIndex >= 0 && dividerIndex < stripDividers_.size()) {
+        QWidget* divider = stripDividers_.at(dividerIndex).widget;
+        if (divider) {
+            return divider->mapToGlobal(QPoint(divider->width() / 2, divider->height() / 2));
+        }
+    }
+    return QPoint();
+}
+
+bool PanelColumn::beginGroupGripDragForTest(const QString& groupName)
+{
+    PanelGroup* group = findGroupByName(groupName);
+    QWidget* grip = dragHandleForTest(groupName);
+    if (!group || !grip) {
+        return false;
+    }
+    beginGroupDrag(group, grip->mapToGlobal(QPoint(grip->width() / 2, grip->height() / 2)));
+    return true;
+}
+
+bool PanelColumn::popupStyleParityForTest(const QString& objectName) const
+{
+    if (!flyout_ || !flyout_->isVisible() || flyoutName_ != objectName || !flyoutPanel_) {
+        return false;
+    }
+    // M44 C1/S2: no per-host inline override; the same scoped selectors style the
+    // docked group, the float, and the flyout.
+    if (!flyout_->styleSheet().isEmpty()) {
+        return false;
+    }
+    const QString sheet = qApp->styleSheet();
+    const QColor windowColor = qApp->palette().color(QPalette::Window);
+    const QString windowHex = windowColor.name(QColor::HexRgb);
+    const QString borderHex = windowColor.darker(135).name(QColor::HexRgb);
+    const QString width = QString::number(Theme::kPanelBorderWidth);
+    const QString container = QStringLiteral("background: ") + windowHex + QStringLiteral("; border: ")
+        + width + QStringLiteral("px solid ") + borderHex;
+    const bool sameContainer =
+        sheet.contains(QStringLiteral("QWidget#panelIconFlyout { ") + container + QStringLiteral("; }"))
+        && sheet.contains(QStringLiteral("QWidget#panelFloat { ") + container + QStringLiteral("; }"));
+    const bool samePane = sheet.contains(
+        QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ") + windowHex
+        + QStringLiteral("; }"));
+    const bool sameHeader = sheet.contains(
+        QStringLiteral("QWidget#panelFlyoutHeader { background: ") + windowHex);
+    const bool hosted = flyoutPanel_->parentWidget() == flyout_;
+    return sameContainer && samePane && sameHeader && hosted;
 }
 
 QToolButton* PanelColumn::widgetMenuButtonForTest(const QString& groupObjectName) const

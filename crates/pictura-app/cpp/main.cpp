@@ -146,8 +146,10 @@ int main(int argc, char* argv[])
     if (!psdPath.isEmpty()) {
         codecLoaded = frame.openPath(psdPath);
     }
-    // M0.5: fall back to a scratch document with the offscreen GPU demo only
-    // when no document loaded. 0 = no GPU, 1 = rendered non-blank, 2 = blank.
+    // M0.5: fall back to a scratch white document when no document loaded; the
+    // GPU smoke probe reports 0 = no GPU, 1 = rendered non-blank, 2 = blank.
+    // The probe never replaces the document image (E1), so the scratch document
+    // presents pure white rather than the probe's gradient.
     int gpu = 0;
     if (!codecLoaded) {
         frame.newDocument(QStringLiteral("Untitled"), 512, 512, QStringLiteral("rgb"), 8,
@@ -186,22 +188,24 @@ int main(int argc, char* argv[])
             return 4;
         }
         if (!codecLoaded) {
-            // The generated image (GPU or CPU fallback) must not be blank.
-            QSet<QRgb> seen;
-            for (int gy = 0; gy < 8; ++gy) {
-                for (int gx = 0; gx < 8; ++gx) {
-                    const int x = image.width() * gx / 8 + image.width() / 16;
-                    const int y = image.height() * gy / 8 + image.height() / 16;
-                    seen.insert(image.pixel(x, y));
+            // E1: the scratch document is plain white and its first present must
+            // be pure white across every pixel. The GPU smoke probe above must
+            // not leak its gradient into the document's display image.
+            bool freshWhite = true;
+            for (int y = 0; y < image.height() && freshWhite; ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    if (image.pixel(x, y) != 0xFFFFFFFFu) {
+                        freshWhite = false;
+                        break;
+                    }
                 }
             }
             std::fprintf(stderr,
-                         "pictura self-test: nonblank=%d distinct=%d\n",
-                         seen.size() >= 2 ? 1 : 0,
-                         seen.size());
+                         "pictura self-test: fresh_white=%d\n",
+                         freshWhite ? 1 : 0);
             std::fflush(stderr);
-            if (seen.size() < 2) {
-                std::fprintf(stderr, "pictura self-test: FAIL: blank render\n");
+            if (!freshWhite) {
+                std::fprintf(stderr, "pictura self-test: FAIL: fresh document not white\n");
                 return 5;
             }
         }
@@ -3404,14 +3408,13 @@ int main(int argc, char* argv[])
             return 117;
         }
 
-        // m40_dock (118): left/right only, movable/floatable/closable, and no
-        // tab group. The right-hand panels are no longer docks, so this asserts
-        // the Tools dock carries no tab group after the frame's re-dock
-        // fallback runs (`tabifiedDockWidgets` is empty without a companion).
+        // m40_dock (118): M44 T2 widens the allowed sides to all four dock areas;
+        // it stays movable/floatable/closable and carries no tab group. The
+        // right-hand panels are no longer docks, so this asserts the Tools dock
+        // carries no tab group after the frame's re-dock fallback runs
+        // (`tabifiedDockWidgets` is empty without a companion).
         QDockWidget* m40Dock = m40Toolbox;
-        const bool m40Areas =
-            m40Dock
-            && m40Dock->allowedAreas() == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+        const bool m40Areas = m40Dock && m40Dock->allowedAreas() == Qt::AllDockWidgetAreas;
         const bool m40Features =
             m40Dock
             && m40Dock->features()
@@ -4700,9 +4703,9 @@ int main(int argc, char* argv[])
         }
 
         // m43_tabcolors (141): the panel tab bar is named `panelTabBar`; its
-        // selected tab uses the pane `${base}` colour and its inactive tab uses
-        // `${window}` (which differs); the document tab bar is not the scoped
-        // one, so it keeps the unscoped rules.
+        // selected tab uses the widget surface `${window}` colour and its
+        // inactive tab uses the darker `${base}` (which differs); the document
+        // tab bar is not the scoped one, so it keeps the unscoped rules.
         bool m43ColorsActive = false;
         bool m43ColorsInactive = false;
         bool m43ColorsDiffer = false;
@@ -4713,13 +4716,9 @@ int main(int argc, char* argv[])
             const QString baseHex = base.name(QColor::HexRgb);
             const QString windowHex = windowColor.name(QColor::HexRgb);
             const QString activeRule =
-                QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ") + baseHex;
+                QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ") + windowHex;
             const QString inactiveRule =
-                QStringLiteral("QTabBar#panelTabBar::tab { background: ") + windowHex;
-            const int paneIdx = ss.indexOf(QStringLiteral("QTabWidget::pane { border: 1px solid "));
-            const bool paneUsesBase =
-                paneIdx >= 0
-                && ss.mid(paneIdx, 160).contains(QStringLiteral("background: ") + baseHex);
+                QStringLiteral("QTabBar#panelTabBar::tab { background: ") + baseHex;
             QTabBar* docBar = frame.findChild<QTabBar*>(QStringLiteral("documentTabBar"));
             const bool docUnscoped =
                 docBar && docBar->objectName() != QStringLiteral("panelTabBar");
@@ -4728,7 +4727,7 @@ int main(int argc, char* argv[])
             const bool panelNamed =
                 anyGroup && anyGroup->tabBar()
                 && anyGroup->tabBar()->objectName() == QStringLiteral("panelTabBar");
-            m43ColorsActive = paneUsesBase && ss.contains(activeRule);
+            m43ColorsActive = ss.contains(activeRule);
             m43ColorsInactive = ss.contains(inactiveRule);
             m43ColorsDiffer = m43ColorsActive && m43ColorsInactive && baseHex != windowHex
                               && docUnscoped && panelNamed;
@@ -5226,6 +5225,552 @@ int main(int argc, char* argv[])
         if (!m43SessionOk) {
             std::fprintf(stderr, "pictura self-test: FAIL: M43 session v6\n");
             return 151;
+        }
+
+        // m44_newdoc (153): E1. A newly created white document must present
+        // pure white immediately: the first `image()` read, before any move or
+        // recomposite, is uniformly opaque white and the canvas already holds
+        // it. Pins the regression where the M0.5 GPU smoke probe wrote its demo
+        // gradient into the document's display image.
+        const int m44DocsBefore = frame.documentCount();
+        const bool m44Made = frame.newDocument(QStringLiteral("M44 White"), 32, 24,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        pictura::PictureView* m44View = frame.activeView();
+        const QImage m44Image = m44View ? m44View->image() : QImage();
+        pictura::ImageView* m44Canvas = frame.imageView();
+        const QImage m44CanvasImage = m44Canvas ? m44Canvas->image() : QImage();
+        bool m44Uniform = m44Made && m44View && !m44Image.isNull();
+        if (m44Uniform) {
+            const QRgb m44First = m44Image.pixel(0, 0);
+            for (int y = 0; y < m44Image.height() && m44Uniform; ++y) {
+                for (int x = 0; x < m44Image.width(); ++x) {
+                    if (m44Image.pixel(x, y) != m44First) {
+                        m44Uniform = false;
+                        break;
+                    }
+                }
+            }
+        }
+        const bool m44White = m44Uniform && m44Image.pixel(0, 0) == 0xFFFFFFFFu;
+        const bool m44Immediate = m44White && m44CanvasImage == m44Image;
+        const bool m44NewdocOk = m44Made && m44Image.width() == 32 && m44Image.height() == 24
+                                  && m44White && m44Uniform && m44Immediate;
+        std::fprintf(stderr,
+                     "pictura self-test: m44_newdoc white=%d uniform=%d immediate=%d\n",
+                     m44White ? 1 : 0, m44Uniform ? 1 : 0, m44Immediate ? 1 : 0);
+        std::fflush(stderr);
+        if (!m44NewdocOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: M44 new-document render\n");
+            return 153;
+        }
+        frame.closeDocument(frame.documentCount() - 1, false);
+
+        // M44 Phase B (154, 155, 156, 159, 161, 164, 165, 166): panel chrome,
+        // borders, and the shared widget styling. Every check reads a real style
+        // property (icon pixmap, tab index, QSS/palette colour, elided text,
+        // splitter handle width) rather than only that a stylesheet exists.
+        {
+            const QString m44Sheet = qApp->styleSheet();
+            const QColor m44Window = qApp->palette().color(QPalette::Window);
+            const QString m44WindowHex = m44Window.name(QColor::HexRgb);
+            const QString m44BaseHex = qApp->palette().color(QPalette::Base).name(QColor::HexRgb);
+            const QString m44BorderHex = m44Window.darker(135).name(QColor::HexRgb);
+            const QString m44BorderWidth = QString::number(pictura::Theme::kPanelBorderWidth);
+
+            // 154: the collapse toggle shows the action's target icon, not the
+            // inverted one (collapse-to-icons in normal, expand in iconic).
+            bool m44ChevronsMode = false;
+            bool m44ChevronsTarget = false;
+            if (m41Column) {
+                const QImage m44CollapseIcon =
+                    pictura::icon(QStringLiteral("panel.columnsTwo")).pixmap(16, 16).toImage();
+                const QImage m44ExpandIcon =
+                    pictura::icon(QStringLiteral("panel.columnsOne")).pixmap(16, 16).toImage();
+                m41Column->setRailMode(false);
+                m43Pump(2);
+                QToolButton* m44Toggle = m41Column->panelColumnToggleForTest();
+                m44ChevronsMode =
+                    m44Toggle && m44Toggle->icon().pixmap(16, 16).toImage() == m44CollapseIcon;
+                m41Column->setRailMode(true);
+                m43Pump(2);
+                m44ChevronsTarget =
+                    m44Toggle && m44Toggle->icon().pixmap(16, 16).toImage() == m44ExpandIcon;
+                m41Column->setRailMode(false);
+                m43Pump(2);
+            }
+            std::fprintf(stderr, "pictura self-test: m44_chevrons mode=%d target=%d\n",
+                         m44ChevronsMode ? 1 : 0, m44ChevronsTarget ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44ChevronsMode && m44ChevronsTarget)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 collapse chevrons\n");
+                return 154;
+            }
+
+            // 155: a restored layout leaves the first visible panel active, not
+            // the last (the old path made each shown panel current in turn).
+            bool m44DefaultActive = m41Column != nullptr;
+            int m44ActiveGroups = 0;
+            if (m41Column) {
+                m41Column->restorePanelState(m41Column->savePanelState());
+                m43Pump(2);
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (!group) {
+                        continue;
+                    }
+                    const int first = group->firstVisibleTabIndexForTest();
+                    if (first < 0) {
+                        continue;
+                    }
+                    ++m44ActiveGroups;
+                    if (group->currentTabIndexForTest() != first) {
+                        m44DefaultActive = false;
+                    }
+                }
+                m44DefaultActive = m44DefaultActive && m44ActiveGroups > 0;
+            }
+            std::fprintf(stderr, "pictura self-test: m44_defaultactive first=%d\n",
+                         m44DefaultActive ? 1 : 0);
+            std::fflush(stderr);
+            if (!m44DefaultActive) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 default active panel\n");
+                return 155;
+            }
+
+            // 156: the active panel tab matches the widget surface (`window`),
+            // the inactive tab is the darker `base`, and neither uses the other.
+            const bool m44TabSelected =
+                m44Sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ")
+                                  + m44WindowHex)
+                && m44Sheet.contains(
+                    QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ")
+                    + m44WindowHex);
+            const bool m44TabInactive =
+                m44Sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab { background: ")
+                                  + m44BaseHex);
+            const bool m44TabDiffer =
+                m44TabSelected && m44TabInactive && m44WindowHex != m44BaseHex;
+            std::fprintf(stderr,
+                         "pictura self-test: m44_tabswap selected=%d unselected=%d differ=%d\n",
+                         m44TabSelected ? 1 : 0,
+                         m44TabInactive ? 1 : 0,
+                         m44TabDiffer ? 1 : 0);
+            std::fflush(stderr);
+            if (!m44TabDiffer) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 panel tab colours\n");
+                return 156;
+            }
+
+            // 159: the inter-group splitter handle is thicker and darker grey.
+            const bool m44DividerThick =
+                m41Column && m41Column->groupDividerWidthForTest()
+                                 >= pictura::Theme::kGroupDividerWidth;
+            const bool m44DividerDark = m44Sheet.contains(
+                QStringLiteral("QSplitter#panelColumnSplitter::handle { background: ")
+                + m44BorderHex);
+            std::fprintf(stderr, "pictura self-test: m44_divider thick=%d dark=%d\n",
+                         m44DividerThick ? 1 : 0, m44DividerDark ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44DividerThick && m44DividerDark)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 group divider\n");
+                return 159;
+            }
+
+            // 161: the compact-strip group divider is dark grey, not white.
+            bool m44CompactDividerDark = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m43Pump(4);
+                m44CompactDividerDark =
+                    m41Column->dividerCountForTest() > 0
+                    && m44Sheet.contains(QStringLiteral("QFrame#panelIconDivider { background: ")
+                                         + m44BorderHex)
+                    && m44BorderHex != QStringLiteral("#ffffff");
+                m41Column->setRailMode(false);
+                m43Pump(2);
+            }
+            std::fprintf(stderr, "pictura self-test: m44_compactdivider dark=%d\n",
+                         m44CompactDividerDark ? 1 : 0);
+            std::fflush(stderr);
+            if (!m44CompactDividerDark) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 compact divider\n");
+                return 161;
+            }
+
+            // 164: at a strip width with room only beyond the icon button, the
+            // label appears and its text is elided to that width.
+            bool m44ElidePartial = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m41Column->showPanel(QStringLiteral("layersPanel"), true);
+                m43Pump(4);
+                pictura::PanelGroup* m44Layers =
+                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                const QString m44FullTitle =
+                    m44Layers ? m44Layers->titleForPanel(QStringLiteral("layersPanel"))
+                              : QString();
+                m41Column->setIconStripWidthForTest(64);
+                const QString m44Shown =
+                    m41Column->stripLabelTextForTest(QStringLiteral("layersPanel"));
+                const bool m44Visible =
+                    m41Column->stripLabelVisibleForTest(QStringLiteral("layersPanel"));
+                m44ElidePartial = m44Visible && !m44FullTitle.isEmpty() && !m44Shown.isEmpty()
+                                  && m44Shown.size() < m44FullTitle.size()
+                                  && m44Shown.contains(QChar(0x2026));
+                m41Column->setRailMode(false);
+                m43Pump(2);
+            }
+            std::fprintf(stderr, "pictura self-test: m44_elide partial=%d\n",
+                         m44ElidePartial ? 1 : 0);
+            std::fflush(stderr);
+            if (!m44ElidePartial) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 strip label elide\n");
+                return 164;
+            }
+
+            // 165: the document tab strip has a dark grey right border and no
+            // extra top border (the options bar above already draws one).
+            QTabBar* m44DocBar = frame.findChild<QTabBar*>(QStringLiteral("documentTabBar"));
+            const bool m44FileRight =
+                m44DocBar
+                && m44Sheet.contains(QStringLiteral("QTabBar#documentTabBar { border-right: ")
+                                     + m44BorderWidth + QStringLiteral("px solid ") + m44BorderHex);
+            const bool m44FileNoTop =
+                m44Sheet.contains(
+                    QStringLiteral("QTabWidget#documentTabs::pane { border-top: 0; }"))
+                && m44Sheet.contains(
+                    QStringLiteral("QTabBar#documentTabBar { border-right: ") + m44BorderWidth
+                    + QStringLiteral("px solid ") + m44BorderHex
+                    + QStringLiteral("; border-top: 0; }"));
+            std::fprintf(stderr, "pictura self-test: m44_filebar right=%d notop=%d\n",
+                         m44FileRight ? 1 : 0, m44FileNoTop ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44FileRight && m44FileNoTop)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 document tab strip borders\n");
+                return 165;
+            }
+
+            // 166: Tools, normal widget panels, and the compact strip share the
+            // darker grey border; flyout and float use the same palette.
+            const QString m44BorderRule =
+                m44BorderWidth + QStringLiteral("px solid ") + m44BorderHex;
+            const bool m44PanelTools =
+                m44Sheet.contains(QStringLiteral("QDockWidget#toolsPanel { border: ")
+                                  + m44BorderRule + QStringLiteral("; }"));
+            const bool m44PanelNormal =
+                m44Sheet.contains(QStringLiteral("QTabWidget#panelGroupTabs { border: ")
+                                  + m44BorderRule + QStringLiteral("; }"));
+            const bool m44PanelCompact =
+                m44Sheet.contains(QStringLiteral("QWidget#panelColumnIconStrip { border: ")
+                                  + m44BorderRule + QStringLiteral("; }"));
+            const bool m44PanelParity =
+                m44Sheet.contains(QStringLiteral("QWidget#panelFloat { background: ")
+                                  + m44WindowHex)
+                && m44Sheet.contains(QStringLiteral("QWidget#panelIconFlyout { background: ")
+                                     + m44WindowHex);
+            std::fprintf(stderr,
+                         "pictura self-test: m44_panelborder tools=%d panel=%d compact=%d\n",
+                         m44PanelTools ? 1 : 0,
+                         m44PanelNormal ? 1 : 0,
+                         m44PanelCompact ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44PanelTools && m44PanelNormal && m44PanelCompact && m44PanelParity)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 panel borders\n");
+                return 166;
+            }
+        }
+
+        // M44 Phase C (157, 158, 160, 162, 163): float-drag continuation,
+        // any-side column/dock docking, popup/dock style parity, and the compact
+        // group-relative drop with its drag handle.
+        {
+            // 157: a widget-tab float drag stays active after the float is
+            // created, tracks the cursor, and only the release commits it. The
+            // source group must survive so its tab bar keeps the mouse grab.
+            bool m44FdActive = false;
+            bool m44FdFollows = false;
+            bool m44FdRelease = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m41Column->showPanel(QStringLiteral("historyPanel"), true);
+                m43Pump(8);
+                pictura::PanelGroup* m44FdGroup =
+                    m41Column->groupForPanel(QStringLiteral("historyPanel"));
+                if (m44FdGroup && m44FdGroup->titleCountForTest() == 1) {
+                    const int before = m41Column->floatCountForTest();
+                    const QPoint outsideA =
+                        m41Column->mapToGlobal(QPoint(-60, m41Column->height() / 3));
+                    const QPoint outsideB =
+                        m41Column->mapToGlobal(QPoint(-60, (m41Column->height() * 2) / 3));
+                    const bool began =
+                        m41Column->beginTabDragForTest(QStringLiteral("historyPanel"));
+                    m41Column->dragToForTest(outsideA);
+                    m43Pump(8);
+                    const bool floated = m41Column->floatCountForTest() == before + 1;
+                    const QRect g1 = m41Column->floatGeometryForTest(before);
+                    m44FdActive = began && floated && m41Column->dragActiveForTest()
+                                  && m41Column->dragSourceGroupAliveForTest();
+                    m41Column->dragToForTest(outsideB);
+                    m43Pump(8);
+                    const QRect g2 = m41Column->floatGeometryForTest(before);
+                    m44FdFollows = m41Column->dragActiveForTest() && g1.isValid()
+                                   && g2.isValid() && g2.topLeft() != g1.topLeft()
+                                   && m41Column->floatCountForTest() == before + 1;
+                    const bool dropped = m41Column->dropForTest(outsideB);
+                    m43Pump(8);
+                    m44FdRelease = dropped && !m41Column->dragActiveForTest();
+                    for (int i = 0; i < 8 && m41Column->floatCountForTest() > 0; ++i) {
+                        if (!m41Column->redockForTest(0, 0)) {
+                            break;
+                        }
+                        m43Pump(4);
+                    }
+                }
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m44_floatdrag active=%d follows=%d release=%d\n",
+                         m44FdActive ? 1 : 0,
+                         m44FdFollows ? 1 : 0,
+                         m44FdRelease ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44FdActive && m44FdFollows && m44FdRelease)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 float drag continuation\n");
+                return 157;
+            }
+
+            // 160: the compact flyout shares the docked widget's scoped
+            // style/container (no per-host inline stylesheet).
+            bool m44PsParity = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m43Pump(6);
+                const bool opened =
+                    m41Column->openIconFlyoutForTest(QStringLiteral("layersPanel"));
+                m43Pump(10);
+                m44PsParity = opened && m41Column->iconFlyoutVisibleForTest()
+                              && m41Column->popupStyleParityForTest(
+                                     QStringLiteral("layersPanel"));
+                m41Column->triggerFlyoutCloseForTest();
+                m43Pump(6);
+                m41Column->setRailMode(false);
+                m43Pump(4);
+            }
+            std::fprintf(stderr, "pictura self-test: m44_popupstyle parity=%d\n",
+                         m44PsParity ? 1 : 0);
+            std::fflush(stderr);
+            if (!m44PsParity) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 popup style parity\n");
+                return 160;
+            }
+
+            // 162: compact drop placement. Onto a group inserts there; on the
+            // inter-group divider, above the top, and below the bottom create a
+            // fresh one-panel group at that boundary.
+            bool m44CdInto = false;
+            bool m44CdBetween = false;
+            bool m44CdAbove = false;
+            bool m44CdBelow = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m43Pump(8);
+
+                const QString m44IntoSource = QStringLiteral("swatchesPanel");
+                const QString m44IntoTarget = QStringLiteral("layersPanel");
+                pictura::PanelGroup* m44IntoTargetGroup =
+                    m41Column->groupForPanel(m44IntoTarget);
+                if (m44IntoTargetGroup
+                    && m41Column->groupForPanel(m44IntoSource) != m44IntoTargetGroup) {
+                    const QPoint intoPoint =
+                        m41Column->stripEntryPointForTest(m44IntoTarget, 0);
+                    const bool began = m41Column->beginStripDragForTest(m44IntoSource);
+                    m41Column->dragToForTest(intoPoint);
+                    const bool dropped = m41Column->dropForTest(intoPoint);
+                    m43Pump(8);
+                    m44CdInto = began && dropped
+                                && m41Column->groupForPanel(m44IntoSource)
+                                       == m44IntoTargetGroup;
+                }
+
+                if (m41Column->compactStripGroupOrderForTest().size() >= 2) {
+                    const QString m44Between = QStringLiteral("channelsPanel");
+                    pictura::PanelGroup* m44Before =
+                        m41Column->groupForPanel(m44Between);
+                    const QPoint betweenPoint =
+                        m41Column->compactStripBoundaryPointForTest(1);
+                    const bool began = m41Column->beginStripDragForTest(m44Between);
+                    m41Column->dragToForTest(betweenPoint);
+                    const bool dropped = m41Column->dropForTest(betweenPoint);
+                    m43Pump(8);
+                    pictura::PanelGroup* landed =
+                        m41Column->groupForPanel(m44Between);
+                    m44CdBetween = began && dropped && landed && landed != m44Before
+                                   && landed->titleCountForTest() == 1;
+                }
+
+                {
+                    const QString m44Above = QStringLiteral("pathsPanel");
+                    const QPoint abovePoint =
+                        m41Column->compactStripBoundaryPointForTest(0);
+                    const bool began = m41Column->beginStripDragForTest(m44Above);
+                    m41Column->dragToForTest(abovePoint);
+                    const bool dropped = m41Column->dropForTest(abovePoint);
+                    m43Pump(8);
+                    const QStringList order =
+                        m41Column->compactStripGroupOrderForTest();
+                    pictura::PanelGroup* landed =
+                        m41Column->groupForPanel(m44Above);
+                    m44CdAbove = began && dropped && landed
+                                 && landed->titleCountForTest() == 1 && !order.isEmpty()
+                                 && order.first() == landed->objectName();
+                }
+
+                {
+                    const QString m44Below = QStringLiteral("histogramPanel");
+                    const int count =
+                        m41Column->compactStripGroupOrderForTest().size();
+                    const QPoint belowPoint =
+                        m41Column->compactStripBoundaryPointForTest(count);
+                    const bool began = m41Column->beginStripDragForTest(m44Below);
+                    m41Column->dragToForTest(belowPoint);
+                    const bool dropped = m41Column->dropForTest(belowPoint);
+                    m43Pump(8);
+                    const QStringList order =
+                        m41Column->compactStripGroupOrderForTest();
+                    pictura::PanelGroup* landed =
+                        m41Column->groupForPanel(m44Below);
+                    m44CdBelow = began && dropped && landed
+                                 && landed->titleCountForTest() == 1 && !order.isEmpty()
+                                 && order.last() == landed->objectName();
+                }
+
+                m41Column->setRailMode(false);
+                m43Pump(4);
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m44_compactdrop into=%d between=%d above=%d "
+                         "below=%d\n",
+                         m44CdInto ? 1 : 0,
+                         m44CdBetween ? 1 : 0,
+                         m44CdAbove ? 1 : 0,
+                         m44CdBelow ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44CdInto && m44CdBetween && m44CdAbove && m44CdBelow)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 compact drop\n");
+                return 162;
+            }
+
+            // 163: every compact group carries a dots grip and dragging it moves
+            // the whole group to a new boundary.
+            bool m44DhDots = false;
+            bool m44DhGroup = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m43Pump(8);
+                const QStringList order = m41Column->compactStripGroupOrderForTest();
+                if (order.size() >= 2) {
+                    const QString first = order.first();
+                    m44DhDots = m41Column->dragHandleForTest(first) != nullptr;
+                    if (m44DhDots) {
+                        const int count =
+                            m41Column->compactStripGroupOrderForTest().size();
+                        const QPoint to =
+                            m41Column->compactStripBoundaryPointForTest(count);
+                        const bool began = m41Column->beginGroupGripDragForTest(first);
+                        m41Column->dragToForTest(to);
+                        const bool dropped = m41Column->dropForTest(to);
+                        m43Pump(8);
+                        const QStringList after =
+                            m41Column->compactStripGroupOrderForTest();
+                        m44DhGroup = began && dropped && after.size() == order.size()
+                                     && after != order && after.last() == first;
+                    }
+                }
+                m41Column->setRailMode(false);
+                m43Pump(4);
+            }
+            std::fprintf(stderr, "pictura self-test: m44_draghandle dots=%d groupdrag=%d\n",
+                         m44DhDots ? 1 : 0, m44DhGroup ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44DhDots && m44DhGroup)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 compact drag handle\n");
+                return 163;
+            }
+
+            // 158: a widget column docks at the toolbar side, beside another
+            // column, and at the workspace edge; the Tools dock allows all four
+            // sides and its floating height is pinned (T1/T2/W5).
+            bool m44DsToolbar = false;
+            bool m44DsColumn = false;
+            bool m44DsWorkspace = false;
+            bool m44DsFloat = false;
+            if (m40Toolbox && m41Column) {
+                m41Column->setRailMode(false);
+                m43Pump(8);
+                const int baseCount = frame.panelColumnCountForTest();
+
+                const bool ws =
+                    frame.newColumnDropForTest(QStringLiteral("stylesPanel"),
+                                               QStringLiteral("right"));
+                const bool wsBack =
+                    ws && frame.dropIntoGroupForTest(QStringLiteral("stylesPanel"),
+                                                     QStringLiteral("colorPanel"), -1);
+                m44DsWorkspace =
+                    ws && wsBack && frame.panelColumnCountForTest() == baseCount;
+
+                const bool tb =
+                    frame.newColumnDropForTest(QStringLiteral("gradientsPanel"),
+                                               QStringLiteral("tools"));
+                const bool tbBack =
+                    tb && frame.dropIntoGroupForTest(QStringLiteral("gradientsPanel"),
+                                                     QStringLiteral("colorPanel"), -1);
+                m44DsToolbar =
+                    tb && tbBack && frame.panelColumnCountForTest() == baseCount;
+
+                const bool madeAnchor =
+                    frame.newColumnDropForTest(QStringLiteral("patternsPanel"),
+                                               QStringLiteral("right"));
+                const bool beside =
+                    madeAnchor
+                    && frame.newColumnBesideForTest(QStringLiteral("librariesPanel"),
+                                                    QStringLiteral("patternsPanel"));
+                const bool besideBack =
+                    beside
+                    && frame.dropIntoGroupForTest(QStringLiteral("librariesPanel"),
+                                                  QStringLiteral("colorPanel"), -1)
+                    && frame.dropIntoGroupForTest(QStringLiteral("patternsPanel"),
+                                                  QStringLiteral("colorPanel"), -1);
+                m44DsColumn = madeAnchor && beside && besideBack
+                              && frame.panelColumnCountForTest() == baseCount;
+
+                const bool areas = m40Toolbox->allowedAreas() == Qt::AllDockWidgetAreas;
+                const bool wasFloating = m40Toolbox->isFloating();
+                if (!wasFloating) {
+                    m40Toolbox->setFloating(true);
+                    m43Pump(8);
+                }
+                const int floatH = m40Toolbox->floatHeightForTest();
+                m40Toolbox->resize(m40Toolbox->width(), floatH + 80);
+                m43Pump(8);
+                const bool locked = m40Toolbox->floatHeightLockedForTest()
+                                    && m40Toolbox->height() == floatH;
+                if (!wasFloating) {
+                    m40Toolbox->setFloating(false);
+                    m43Pump(8);
+                }
+                m44DsFloat = areas && locked;
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m44_docksides toolbar=%d column=%d workspace=%d "
+                         "float=%d\n",
+                         m44DsToolbar ? 1 : 0,
+                         m44DsColumn ? 1 : 0,
+                         m44DsWorkspace ? 1 : 0,
+                         m44DsFloat ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m44DsToolbar && m44DsColumn && m44DsWorkspace && m44DsFloat)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M44 any-side docking\n");
+                return 158;
+            }
         }
 
         frame.closeDocument(m39DocIndex, false);

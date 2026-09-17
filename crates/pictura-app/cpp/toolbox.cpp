@@ -323,7 +323,9 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     , colors_(colors)
 {
     setObjectName(QStringLiteral("toolsPanel"));
-    setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    // M44 T2: the Tools dock may sit on any side of the workspace/panel columns,
+    // not only the workspace left/right dock areas.
+    setAllowedAreas(Qt::AllDockWidgetAreas);
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
                 | QDockWidget::DockWidgetClosable);
     // ponytail: Qt has no clean tabify-veto API (no per-dock setTabbable(false)).
@@ -459,9 +461,23 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
             bodyLayout_->setStretch(bodyLayout_->count() - 1, floating ? 0 : 1);
         }
         if (floating) {
-            resize(width(), sizeHint().height());
+            // M44 T1: pin the floating height to the content height so the
+            // vertical separator/grip cannot resize it.
+            floatHeight_ = sizeHint().height();
+            resize(contentWidth(columns_), floatHeight_);
+        } else {
+            floatHeight_ = 0;
         }
+        updateContentMetrics();
     });
+    // M44 T2: which axis is fixed depends on the dock area.
+    connect(this, &QDockWidget::dockLocationChanged, this,
+            [this](Qt::DockWidgetArea area) {
+                if (area != Qt::NoDockWidgetArea) {
+                    dockArea_ = area;
+                }
+                updateContentMetrics();
+            });
     setWidget(body);
     updateContentMetrics();
 
@@ -483,15 +499,30 @@ bool Toolbox::eventFilter(QObject* watched, QEvent* event)
         event->ignore();
         return true;
     case QEvent::Resize:
-        // M43: the main-window dock splitter can still attempt a width change on
-        // some platforms; clamp it back to the fixed content width. The guard
-        // stops setFixedWidth's own resize from recursing.
-        if (watched == this && !widthClamping_) {
-            const int target = contentWidth(columns_);
-            if (target > 0 && width() != target) {
-                widthClamping_ = true;
-                setFixedWidth(target);
-                widthClamping_ = false;
+        // M43/M44: the main-window dock splitter can still attempt a size change
+        // on some platforms; clamp the fixed axis back. The guards stop
+        // setFixed*Width/Height's own resize from recursing.
+        if (watched == this) {
+            const bool widthFixed = isFloating() || dockArea_ == Qt::LeftDockWidgetArea
+                                    || dockArea_ == Qt::RightDockWidgetArea;
+            if (widthFixed && !widthClamping_) {
+                const int target = contentWidth(columns_);
+                if (target > 0 && width() != target) {
+                    widthClamping_ = true;
+                    setFixedWidth(target);
+                    widthClamping_ = false;
+                }
+            }
+            const bool heightFixed = isFloating() || dockArea_ == Qt::TopDockWidgetArea
+                                     || dockArea_ == Qt::BottomDockWidgetArea;
+            if (heightFixed && !heightClamping_) {
+                const int target =
+                    floatHeight_ > 0 ? floatHeight_ : sizeHint().height();
+                if (target > 0 && height() != target) {
+                    heightClamping_ = true;
+                    setFixedHeight(target);
+                    heightClamping_ = false;
+                }
             }
         }
         break;
@@ -528,9 +559,29 @@ int Toolbox::contentWidth(int columns) const
 void Toolbox::updateContentMetrics()
 {
     const int content = contentWidth(columns_);
-    // M43: the Tools dock is fixed to its tight content width in one and two
-    // columns and while floating; the dock separator cannot resize it.
-    setFixedWidth(content);
+    // M43/M44: the Tools dock is fixed to its tight content on the axis it does
+    // not stretch. Left/right docks fix the width; top/bottom docks fix the
+    // height; floating fixes both (T1). A QDockWidget caches its layout minimum,
+    // so the other axis is explicitly released.
+    if (isFloating()) {
+        setMinimumHeight(0);
+        setMaximumHeight(QWIDGETSIZE_MAX);
+        floatHeight_ = sizeHint().height();
+        setFixedWidth(content);
+        setFixedHeight(floatHeight_);
+    } else if (dockArea_ == Qt::TopDockWidgetArea || dockArea_ == Qt::BottomDockWidgetArea) {
+        setMinimumWidth(0);
+        setMaximumWidth(QWIDGETSIZE_MAX);
+        setMinimumHeight(0);
+        setMaximumHeight(QWIDGETSIZE_MAX);
+        floatHeight_ = 0;
+        setFixedHeight(sizeHint().height());
+    } else {
+        setMinimumHeight(0);
+        setMaximumHeight(QWIDGETSIZE_MAX);
+        floatHeight_ = 0;
+        setFixedWidth(content);
+    }
     // A QDockWidget caches its layout minimum; without an explicit invalidation a
     // 2->1 column change leaves the two-column floor in place.
     if (QWidget* body = widget()) {
@@ -550,6 +601,12 @@ void Toolbox::updateContentMetrics()
                                                    + bodyLayout_->contentsMargins().right()
                                                : 0));
     }
+}
+
+bool Toolbox::floatHeightLockedForTest() const
+{
+    return isFloating() && floatHeight_ > 0 && minimumHeight() == floatHeight_
+           && maximumHeight() == floatHeight_ && height() == floatHeight_;
 }
 
 QString Toolbox::titleTextForTest() const

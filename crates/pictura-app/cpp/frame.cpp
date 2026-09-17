@@ -779,7 +779,7 @@ PanelSide PicturaMainWindow::sideOf(const PanelColumn* column) const
     return index >= 0 && index < tabsIndex ? PanelSide::Left : PanelSide::Right;
 }
 
-PanelColumn* PicturaMainWindow::createPanelColumn(PanelSide side)
+PanelColumn* PicturaMainWindow::createPanelColumn(PanelSide side, PanelColumn* anchor)
 {
     if (!centerSplitter_) {
         return nullptr;
@@ -787,7 +787,14 @@ PanelColumn* PicturaMainWindow::createPanelColumn(PanelSide side)
     auto* column = new PanelColumn(this);
     column->setDynamic(true);
     wirePanelColumn(column);
-    const int insertAt = side == PanelSide::Left ? 0 : centerSplitter_->count();
+    int insertAt;
+    const int anchorIndex = anchor ? centerSplitter_->indexOf(anchor) : -1;
+    if (anchorIndex >= 0) {
+        // M44 W5: place the new column immediately before/after its anchor.
+        insertAt = side == PanelSide::Left ? anchorIndex : anchorIndex + 1;
+    } else {
+        insertAt = side == PanelSide::Left ? 0 : centerSplitter_->count();
+    }
     centerSplitter_->insertWidget(insertAt, column);
     reapplyColumnStretch();
     column->setVisible(!panelsHidden_);
@@ -838,7 +845,13 @@ int PicturaMainWindow::newColumnSideAt(const QPoint& globalPos) const
     if (toolsDock_ && toolsDock_->isVisible()) {
         const QRect dockRect(toolsDock_->mapToGlobal(QPoint(0, 0)), toolsDock_->size());
         if (dockRect.contains(globalPos)) {
-            return toolsArea_ == Qt::LeftDockWidgetArea ? 0 : 1;
+            switch (toolsArea_) {
+            case Qt::RightDockWidgetArea:
+            case Qt::BottomDockWidgetArea:
+                return 1;
+            default:
+                return 0;
+            }
         }
     }
     QWidget* central = centralWidget();
@@ -859,9 +872,45 @@ int PicturaMainWindow::newColumnSideAt(const QPoint& globalPos) const
     return -1;
 }
 
-QString PicturaMainWindow::panelColumnSideForTest(int index) const
+PanelColumn* PicturaMainWindow::columnEdgeAnchorAt(const QPoint& globalPos,
+                                                   const PanelColumn* exclude,
+                                                   int* side) const
 {
-    const QList<PanelColumn*> columns = panelColumns();
+    if (side) {
+        *side = -1;
+    }
+    // ponytail: chosen proximity band beside a column, not a sourced CS6 metric.
+    constexpr int kEdgeBand = 26;
+    constexpr int kEdgeInside = 6;
+    for (PanelColumn* column : panelColumns()) {
+        if (!column || column == exclude || !column->isVisible()) {
+            continue;
+        }
+        const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
+        if (!r.isValid() || r.width() <= kEdgeBand + kEdgeInside) {
+            continue;
+        }
+        if (globalPos.y() < r.top() || globalPos.y() > r.bottom()) {
+            continue;
+        }
+        if (globalPos.x() >= r.left() - kEdgeBand && globalPos.x() <= r.left() + kEdgeInside) {
+            if (side) {
+                *side = 0;
+            }
+            return column;
+        }
+        if (globalPos.x() >= r.right() - kEdgeInside && globalPos.x() <= r.right() + kEdgeBand) {
+            if (side) {
+                *side = 1;
+            }
+            return column;
+        }
+    }
+    return nullptr;
+}
+
+QString PicturaMainWindow::panelColumnSideForTest(int index) const
+{    const QList<PanelColumn*> columns = panelColumns();
     if (index < 0 || index >= columns.size()) {
         return QString();
     }
@@ -909,6 +958,34 @@ bool PicturaMainWindow::newColumnDropForTest(const QString& panelName, const QSt
     }
     const PanelSide want = expected == 0 ? PanelSide::Left : PanelSide::Right;
     return sideOf(destination) == want;
+}
+
+bool PicturaMainWindow::newColumnBesideForTest(const QString& panelName,
+                                               const QString& anchorPanel)
+{
+    PanelColumn* source = columnForPanel(panelName);
+    PanelColumn* anchor = columnForPanel(anchorPanel);
+    if (!source || !anchor || source == anchor) {
+        return false;
+    }
+    const int before = columnCount();
+    const QRect r(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
+    // Just outside the anchor's left edge: the resolver treats this as a new
+    // column anchored immediately before `anchor`.
+    const QPoint point(r.left() - 8, r.center().y());
+    if (!source->beginTabDragForTest(panelName)) {
+        return false;
+    }
+    source->dragToForTest(point);
+    const bool dropped = source->dropForTest(point);
+    QCoreApplication::processEvents();
+    PanelColumn* destination = columnForPanel(panelName);
+    if (!dropped || !destination || destination == source || columnCount() != before + 1) {
+        return false;
+    }
+    const int destIndex = centerSplitter_->indexOf(destination);
+    const int anchorIndex = centerSplitter_->indexOf(anchor);
+    return destIndex >= 0 && anchorIndex >= 0 && qAbs(destIndex - anchorIndex) == 1;
 }
 
 bool PicturaMainWindow::dropIntoGroupForTest(const QString& panelName, const QString& targetPanel,
@@ -961,7 +1038,13 @@ bool PicturaMainWindow::dropBoundaryForTest(const QString& panelName, const QStr
     }
     QPoint point;
     if (destination->railMode()) {
-        point = destination->stripEntryPointForTest(targetPanel, above ? 1 : 2);
+        // M44 C3: compact boundaries are the inter-group dividers / strip ends,
+        // not a button edge (a button edge now inserts into its group).
+        const int gi = destination->compactStripGroupIndexForTest(targetPanel);
+        if (gi < 0) {
+            return false;
+        }
+        point = destination->compactStripBoundaryPointForTest(above ? gi : gi + 1);
     } else {
         destination->ensureGroupVisibleForTest(targetPanel);
         for (int i = 0; i < 4; ++i) {
@@ -1470,7 +1553,8 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
             [this]() { cycleScreenMode(true); });
     connect(toolbox, &Toolbox::columnsChanged, this, [this](int) { saveSession(); });
     connect(toolbox, &QDockWidget::dockLocationChanged, this, [this](Qt::DockWidgetArea area) {
-        if (area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea) {
+        // M44 T2: the Tools dock can now sit on any side.
+        if (area != Qt::NoDockWidgetArea) {
             toolsArea_ = area;
         }
         ensureToolsNotTabified();

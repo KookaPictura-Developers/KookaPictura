@@ -2385,17 +2385,18 @@ impl qobject::PictureView {
         }
     }
 
+    /// M0.5 GPU smoke probe: offscreen-render the demo gradient and report
+    /// whether it is non-blank (0 unavailable, 1 non-blank, 2 blank).
+    ///
+    /// It must not write `image`/`doc`: a document's display image is always
+    /// derived from its composite, so a probe that stored the demo gradient in
+    /// `image` presented garbage on the first paint (E1) until the next
+    /// recomposite rebuilt the image from the white document.
     pub fn render_gpu(self: Pin<&mut Self>) -> i32 {
         let (width, height) = (512u32, 512u32);
         match crate::gpu::render_gradient(width, height) {
             crate::gpu::GpuRender::Unavailable => 0,
-            crate::gpu::GpuRender::Rendered {
-                width: w,
-                height: h,
-                rgba,
-                distinct,
-            } => {
-                self.rust_mut().image = rgba_image(rgba, w as i32, h as i32);
+            crate::gpu::GpuRender::Rendered { distinct, .. } => {
                 if distinct >= 2 {
                     1
                 } else {

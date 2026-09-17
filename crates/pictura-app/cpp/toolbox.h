@@ -112,6 +112,10 @@ public:
     int bodyStretchForTest() const;
     int bodyHeightForTest() const;
     int bodySizeHintHeightForTest() const;
+    // M44 T1: while floating the dock height is pinned to the content height and
+    // cannot be drag-resizable.
+    int floatHeightForTest() const { return floatHeight_; }
+    bool floatHeightLockedForTest() const;
 
 signals:
     void screenModeRequested();
@@ -146,6 +150,11 @@ private:
     int columns_ = 1;
     bool shiftKeyForToolSwitch_ = true;
     bool widthClamping_ = false;
+    // M44 T2: the dock area decides which axis is fixed (width for left/right,
+    // height for top/bottom); floating fixes both.
+    Qt::DockWidgetArea dockArea_ = Qt::LeftDockWidgetArea;
+    int floatHeight_ = 0;
+    bool heightClamping_ = false;
 };
 
 } // namespace pictura

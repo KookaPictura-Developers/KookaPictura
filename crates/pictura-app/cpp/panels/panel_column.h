@@ -121,6 +121,11 @@ public:
     bool iconStripVisibleForTest() const;
     int dividerCountForTest() const;
     bool iconLabelsShownForTest() const { return iconLabelsShown_; }
+    // M44 chrome checks.
+    int groupDividerWidthForTest() const;
+    QString stripLabelTextForTest(const QString& objectName) const;
+    bool stripLabelVisibleForTest(const QString& objectName) const;
+    void setIconStripWidthForTest(int width);
     bool openIconFlyoutForTest(const QString& objectName);
     bool iconFlyoutVisibleForTest() const;
     QStringList tabMenuActionsForTest() const;
@@ -167,6 +172,17 @@ public:
     QString flyoutHeaderTitleForTest() const;
     bool flyoutHeaderCloseForTest() const;
     bool triggerFlyoutCloseForTest();
+    // M44 C1/S2: the flyout shares the docked widget's scoped style/container.
+    bool popupStyleParityForTest(const QString& objectName) const;
+
+    // M44 Phase C: whole-widget-column docking and compact drop.
+    bool dragActiveForTest() const { return dragActive_; }
+    bool dragSourceGroupAliveForTest() const;
+    QWidget* dragHandleForTest(const QString& groupName) const;
+    QStringList compactStripGroupOrderForTest() const;
+    int compactStripGroupIndexForTest(const QString& panelName) const;
+    QPoint compactStripBoundaryPointForTest(int boundary) const;
+    bool beginGroupGripDragForTest(const QString& groupName);
 
     // Phase D per-widget header action menu.
     QToolButton* widgetMenuButtonForTest(const QString& groupObjectName) const;
@@ -206,6 +222,9 @@ private:
         int boundary = -1;
         int stripIndex = -1;
         DropKind kind = DropKind::None;
+        // M44 W5: a whole-column drop beside another column creates the new
+        // column adjacent to this anchor instead of at the workspace end.
+        PanelColumn* anchorColumn = nullptr;
     };
 
     // One icon in the iconic strip, in strip order. `button` is the drag source
@@ -214,6 +233,14 @@ private:
         PanelGroup* group = nullptr;
         QString name;
         QToolButton* button = nullptr;
+    };
+
+    // M44 C3: the compact strip renders one container per group (a drag-handle
+    // grip above its icons) with a dark divider between containers. The divider
+    // and container geometry drive the group-relative proximity rule.
+    struct StripDivider {
+        PanelGroup* after = nullptr;
+        QWidget* widget = nullptr;
     };
 
     void updateColumnToggle();
@@ -250,7 +277,7 @@ private:
     bool applyPanelDrop(PanelGroup* source, const QString& name, const DropTarget& target);
     bool applyStripDrop(PanelGroup* source, const QString& name, int stripIndex);
     bool applyGroupDrop(PanelGroup* group, const DropTarget& target);
-    bool applyNewColumnDrop(PanelSide side);
+    bool applyNewColumnDrop(PanelSide side, PanelColumn* anchor);
     void beginPanelDrag(PanelGroup* group, const QString& objectName, const QPoint& globalPos);
     void beginGroupDrag(PanelGroup* group, const QPoint& globalPos);
     void updateDrag(const QPoint& globalPos);
@@ -262,6 +289,8 @@ private:
     QRect floatBounds(QWidget* host) const;
     PanelFloat* floatForGroup(PanelGroup* group) const;
     PanelGroup* findGroupByName(const QString& objectName) const;
+    QWidget* makeGroupGrip(PanelGroup* group);
+    QWidget* stripGroupBoxFor(PanelGroup* group) const;
 
     QWidget* header_ = nullptr;
     QToolButton* columnToggle_ = nullptr;
@@ -271,6 +300,10 @@ private:
     QBoxLayout* iconStripLayout_ = nullptr;
     QList<QLabel*> stripLabels_;
     QList<StripEntry> stripEntries_;
+    // M44 C3: group containers and inter-group dividers in strip order.
+    QList<PanelGroup*> stripGroupOrder_;
+    QHash<PanelGroup*, QWidget*> stripGroupBoxes_;
+    QList<StripDivider> stripDividers_;
     QString activeIconName_;
     QList<PanelGroup*> groups_;
     QHash<QString, bool> panelVisible_;
@@ -303,6 +336,10 @@ private:
     bool dragActive_ = false;
     bool dragIsPanel_ = false;
     PanelGroup* dragGroup_ = nullptr;
+    // M44 W4: the panel's original group is kept alive for the whole drag so the
+    // tab bar that owns the implicit mouse grab survives until release; it is
+    // emptied by `createFloat` and cleaned up on commit/cancel.
+    PanelGroup* dragSourceGroup_ = nullptr;
     QString dragPanel_;
     QPoint dragGrabOffset_;
     int dragOriginalIndex_ = -1;
@@ -313,6 +350,8 @@ private:
     bool stripDragging_ = false;
     QPoint stripPressGlobal_;
     QToolButton* stripDragButton_ = nullptr;
+    // M44 C3: the group whose grip press/held state is active.
+    PanelGroup* stripGripGroup_ = nullptr;
 };
 
 } // namespace pictura

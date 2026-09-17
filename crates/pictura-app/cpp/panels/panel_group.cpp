@@ -313,6 +313,7 @@ PanelGroup::PanelGroup(QWidget* parent)
     layout->setSpacing(0);
 
     tabs_ = new QTabWidget(this);
+    tabs_->setObjectName(QStringLiteral("panelGroupTabs"));
     tabs_->setTabPosition(QTabWidget::North);
     tabs_->setDocumentMode(true);
     tabs_->tabBar()->installEventFilter(this);
@@ -503,6 +504,16 @@ QString PanelGroup::currentPanelName() const
 {
     QWidget* panel = tabs_->currentWidget();
     return panel ? panel->objectName() : QString();
+}
+
+void PanelGroup::setCurrentToFirstVisible()
+{
+    for (int i = 0; i < tabs_->count(); ++i) {
+        if (tabs_->isTabVisible(i)) {
+            tabs_->setCurrentIndex(i);
+            return;
+        }
+    }
 }
 
 QString PanelGroup::titleForPanel(const QString& objectName) const
@@ -846,6 +857,21 @@ bool PanelGroup::tabBarVisibleForTest() const
 bool PanelGroup::iconRowVisibleForTest() const
 {
     return iconRow_ && iconRow_->isVisible();
+}
+
+int PanelGroup::firstVisibleTabIndexForTest() const
+{
+    for (int i = 0; i < tabs_->count(); ++i) {
+        if (tabs_->isTabVisible(i)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int PanelGroup::currentTabIndexForTest() const
+{
+    return tabs_->currentIndex();
 }
 
 void PanelGroup::updateHeaderMenu()

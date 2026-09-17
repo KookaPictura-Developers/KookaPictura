@@ -168,14 +168,31 @@ QTabBar::tab:hover { background: ${hover}; }
 QTabBar::tab:selected { background: ${activeTab}; color: ${windowText}; }
 QTabBar::tab:disabled { color: ${disabledText}; }
 
-/* M43: the panel-group tab bars are named `panelTabBar`, so their active tab
-   takes the pane (`${base}`) colour while the document tabs keep the unscoped
-   `QTabBar::tab` rules above. Inactive panel tabs stay `${window}`/`${hover}`. */
-QTabBar#panelTabBar::tab { background: ${window}; color: ${windowText}; border: 1px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; }
+/* M44: the active panel tab takes the widget/panel surface (`${window}`) so it
+   reads as continuous with the body; inactive tabs recede to the darker
+   `${base}`. The panel pane is `${window}` too, so active == pane and inactive
+   != pane. The document tab bar keeps the unscoped `QTabBar::tab` rules above. */
+QTabBar#panelTabBar::tab { background: ${base}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; }
 QTabBar#panelTabBar::tab:hover { background: ${hover}; }
-QTabBar#panelTabBar::tab:selected { background: ${base}; color: ${windowText}; }
+QTabBar#panelTabBar::tab:selected { background: ${window}; color: ${windowText}; }
 
-QTabWidget::pane { border: 1px solid ${border}; background: ${base}; }
+QSplitter#panelColumnSplitter::handle { background: ${border}; }
+QFrame#panelIconDivider { background: ${border}; border: 0; }
+QWidget#panelIconGroup { background: ${base}; border: 1px solid ${border}; border-radius: 2px; }
+QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid ${border}; }
+
+QTabWidget::pane { border: ${borderWidth}px solid ${border}; background: ${base}; }
+QTabWidget#panelGroupTabs { border: ${borderWidth}px solid ${border}; }
+QTabWidget#panelGroupTabs::pane { border: 0; background: ${window}; }
+QTabWidget#documentTabs::pane { border-top: 0; }
+QTabBar#documentTabBar { border-right: ${borderWidth}px solid ${border}; border-top: 0; }
+QWidget#panelColumnContainer { border: ${borderWidth}px solid ${border}; }
+QWidget#panelColumnIconStrip { border: ${borderWidth}px solid ${border}; }
+QDockWidget#toolsPanel { border: ${borderWidth}px solid ${border}; }
+QWidget#panelIconFlyout { background: ${window}; border: ${borderWidth}px solid ${border}; }
+QWidget#panelFlyoutHeader { background: ${window}; border-bottom: ${borderWidth}px solid ${border}; }
+QWidget#panelFloat { background: ${window}; border: ${borderWidth}px solid ${border}; }
+
 QTabWidget::tab-bar { alignment: left; }
 
 QStatusBar { background: ${window}; color: ${windowText}; border-top: 1px solid ${border}; }
@@ -207,6 +224,7 @@ QPushButton:disabled { color: ${disabledText}; }
     for (const ColorToken& token : tokens) {
         qss.replace(QLatin1String(token.key), token.color.name(QColor::HexRgb));
     }
+    qss.replace(QStringLiteral("${borderWidth}"), QString::number(Theme::kPanelBorderWidth));
     return qss;
 }
 
