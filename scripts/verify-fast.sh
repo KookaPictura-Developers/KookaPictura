@@ -11,10 +11,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# mold is installed on the dev box; scoped to this script so CI (no mold) is
-# unaffected. First run after changing this recompiles once (fingerprint change).
-export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
-
 echo "== fmt =="
 cargo fmt --all --check
 echo "fmt=ok"

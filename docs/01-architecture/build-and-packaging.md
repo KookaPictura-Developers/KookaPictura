@@ -53,7 +53,7 @@ Build-time switches and runtime environment knobs the packaging must expose.
 | Control | Type | Default | Options | Notes |
 |---|---|---|---|---|
 | Graphics backend | Runtime | `auto` | `vulkan`, `opengl`, `null` | Maps to `wgpu`/QRhi backend selection. |
-| Qt QPA platform | Env / CLI | system | `wayland`, `xcb` | `-platform` / `QT_QPA_PLATFORM`. |
+| Qt QPA platform | Env / CLI | system | `wayland`, `xcb`, `offscreen` | `-platform` / `QT_QPA_PLATFORM` / `--headless`. |
 | Rendering hardware | Env | on | on/off | Software fallback for unsupported GPUs. |
 | Sandbox socket | Flatpak manifest | `wayland` + `fallback-x11` | — | From Flatpak's documented Qt example. |
 | DRM device access | Flatpak manifest | `--device=dri` | — | Required for GPU rendering in the sandbox. |

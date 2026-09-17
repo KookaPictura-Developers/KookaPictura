@@ -9,13 +9,13 @@ cd "$(dirname "$0")/.."
 bash scripts/verify-fast.sh
 
 echo "== cmake =="
-[ -d build ] || cmake -S . -B build
-cmake --build build
+[ -d build ] || cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
+cmake --build build --parallel
 echo "cmake_build=ok"
 
 echo "== self-tests =="
-xvfb-run -a ./build/pictura --self-test
-xvfb-run -a ./build/pictura --self-test crates/pictura-codec/tests/fixtures/two_layers.psd
+./build/pictura --headless --self-test
+./build/pictura --headless --self-test crates/pictura-codec/tests/fixtures/two_layers.psd
 echo "self_tests=ok"
 
 echo "verify-full: OK"

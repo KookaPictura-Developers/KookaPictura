@@ -14,11 +14,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
   counted from `cargo test --workspace`, excluding the pre-existing ignored
   `pictura-render` doctest, which makes the raw ignored count 8).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M42 archived; canonical specs are
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M43 archived; canonical specs are
   in `openspec/specs/` (60 specs, `validate --all --strict` green), change
-  history under `openspec/changes/archive/`. Active change:
-  `openspec/changes/m43-panel-multicolumn` (M43 panel multicolumn, **implemented,
-  archive pending**; brief `docs/dev/m43-panel-multicolumn.md`). M44 is next.
+  history under `openspec/changes/archive/`. The headless/CI/build-speed
+  infrastructure change `ci-headless-and-speedup` is **archived** (not part of
+  the M44 layer filtering/search program); no change is active and M44 is next.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 
@@ -27,10 +27,11 @@ Snapshot for resuming after a context break. Update after each milestone.
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cmake -S . -B build && cmake --build build
-xvfb-run -a ./build/pictura --self-test
-xvfb-run -a ./build/pictura --self-test crates/pictura-codec/tests/fixtures/two_layers.psd
+cargo nextest run --workspace          # preferred; cargo test --workspace is the fallback
+cargo test --workspace --doc           # doctests (nextest does not run them)
+cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld && cmake --build build --parallel
+./build/pictura --headless --self-test
+./build/pictura --headless --self-test crates/pictura-codec/tests/fixtures/two_layers.psd
 bash scripts/guard.sh
 openspec validate --all --strict
 ```
@@ -1181,6 +1182,24 @@ openspec validate --all --strict
   bash scripts/verify-fast.sh` → `verify-fast: OK`; `openspec validate
   m43-panel-multicolumn --strict` valid and `openspec validate --all --strict`
   61/61.
+
+- **CI headless and build speed** (infrastructure, not a milestone; archived
+  OpenSpec change `ci-headless-and-speedup`). `main.cpp` gains an explicit **`--headless`**
+  flag: it selects the offscreen QPA plugin before `QApplication` (when
+  `QT_QPA_PLATFORM` is unset), wins over the `--self-test` xcb override, and
+  implies `--self-test` when no document is given so it never blocks in
+  `app.exec()`. The self-test asserts `QApplication::platformName() ==
+  "offscreen"` and exits `152` otherwise. `--interop-probe` is excluded (it
+  needs a real platform Vulkan instance); explicit `QT_QPA_PLATFORM=offscreen`
+  and `xvfb-run` still work. Build speed: a new `.cargo/config.toml` links with
+  `lld`, `[profile.test]` compiles dependencies at `opt-level = 0` with the
+  workspace crates pinned at `2`, and CMake uses Ninja + `--parallel` with the
+  self-test run headless. CI is rebuilt into three jobs — `rust` (fmt, clippy,
+  nextest, doctests), `qt-headless` (pinned Qt 6.11.1 + CMake/Ninja +
+  `--headless --self-test`), and `oracles` (ImageMagick + `psd-tools`, full
+  `cargo test --workspace`) — with registry/sccache caching. No Rust API,
+  document, codec, compositor, or dependency change: **588 tests, 0 failed, 7
+  ignored** (unchanged).
 
 ## Canvas viewport & performance (post-M24 pass)
 

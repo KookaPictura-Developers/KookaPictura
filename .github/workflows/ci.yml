@@ -6,16 +6,40 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
 
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - &checkout
+        uses: actions/checkout@v4
 
       # Reads rust-toolchain.toml (channel 1.98) and installs it on the runner.
-      - name: Install pinned toolchain
+      - &toolchain
+        name: Install pinned toolchain
         run: rustup show active-toolchain
+
+      - &apt
+        name: Install lld and ninja
+        run: sudo apt-get update && sudo apt-get install -y lld ninja-build
+
+      - &qt
+        name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+          cache: true
+
+      - &sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - &rustcache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: "false"
 
       - name: Format
         run: cargo fmt --all --check
@@ -23,8 +47,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - uses: taiki-e/install-action@nextest
+
       - name: Test
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
+
+      - name: Doctests
+        run: cargo test --workspace --doc
 
       - name: Install cargo-deny
         if: ${{ hashFiles('deny.toml') != '' }}
@@ -33,3 +62,55 @@ jobs:
       - name: Deny
         if: ${{ hashFiles('deny.toml') != '' }}
         run: cargo deny check
+
+  qt-headless:
+    runs-on: ubuntu-24.04
+    steps:
+      - *checkout
+      - *toolchain
+      - *apt
+      - *qt
+      - *sccache
+      - *rustcache
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Self-test
+        run: ./build/pictura --headless --self-test
+
+      - name: Self-test with document
+        run: ./build/pictura --headless --self-test crates/pictura-codec/tests/fixtures/two_layers.psd
+
+  oracles:
+    runs-on: ubuntu-24.04
+    steps:
+      - *checkout
+      - *toolchain
+      - *apt
+      - *qt
+      - *sccache
+      - *rustcache
+
+      - name: Install ImageMagick 7
+        run: |
+          curl -fsSL -o /tmp/magick.AppImage \
+            https://github.com/ImageMagick/ImageMagick/releases/download/7.1.2-31/ImageMagick-7.1.2-31-gcc-x86_64.AppImage
+          chmod +x /tmp/magick.AppImage
+          ( cd /tmp && /tmp/magick.AppImage --appimage-extract >/dev/null )
+          sudo mv /tmp/squashfs-root /opt/imagemagick
+          sudo tee /usr/local/bin/magick >/dev/null <<'EOF'
+          #!/usr/bin/env bash
+          exec /opt/imagemagick/AppRun "$@"
+          EOF
+          sudo chmod +x /usr/local/bin/magick
+          magick -version
+
+      - name: Install psd-tools
+        run: python3 -m pip install --user --break-system-packages psd-tools
+
+      - name: Test
+        run: cargo test --workspace

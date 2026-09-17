@@ -20,15 +20,37 @@ crates/
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings
-cargo test --workspace
-cargo nextest run --workspace          # preferred when available
+cargo nextest run --workspace          # preferred; cargo test --workspace is the fallback
+cargo test --workspace --doc           # doctests (nextest does not run them)
 cargo deny check                       # licenses/advisories/bans
-cmake -S . -B build && cmake --build build   # Qt app (M0+)
+cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld && cmake --build build --parallel
+./build/pictura --headless --self-test         # headless Qt app self-test (also: with a .psd argument)
 openspec validate --all --strict       # validate change proposals + specs
 ```
 
 Toolchain is pinned by `rust-toolchain.toml` (1.98). Qt is the system Qt 6
-(`qmake6 -query QT_VERSION`).
+(`qmake6 -query QT_VERSION`). Cargo links with `lld` (`.cargo/config.toml`),
+`[profile.test]` compiles dependencies at `opt-level = 0`, and CMake builds with
+Ninja and `--parallel`.
+
+## Testing
+
+- Suite: **588 tests, 7 ignored** (`cargo nextest run --workspace` preferred;
+  `cargo test --workspace` is the fallback). Doctests run separately with
+  `cargo test --workspace --doc` — nextest does not run them.
+- External oracle tests (ImageMagick / `psd-tools`) self-skip when the tool is
+  absent; CI has a dedicated `oracles` job that installs both so they run for
+  real.
+- Local gates: `scripts/verify-fast.sh` (fmt, clippy, tests) and
+  `scripts/verify-full.sh` (adds the CMake app build and headless self-test).
+
+## Headless mode
+
+`./build/pictura --headless` selects the offscreen QPA plugin before
+`QApplication` and implies `--self-test` when no document is given, so it never
+blocks. The self-test asserts the platform is `offscreen`. Explicit
+`QT_QPA_PLATFORM=offscreen` and `xvfb-run` remain valid. `--interop-probe`
+requires a real platform Vulkan instance and is **not** offscreen-compatible.
 
 ## Spec workflow (OpenSpec)
 

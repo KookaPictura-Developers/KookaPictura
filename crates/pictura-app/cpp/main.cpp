@@ -60,8 +60,15 @@ int main(int argc, char* argv[])
     // preceding input event cannot grab and the compositor dismisses it, which
     // makes the UI self-tests flaky. Route the self-test back to the X display.
     bool selfTestArg = false;
-    for (int i = 1; i < argc && !selfTestArg; ++i) {
-        selfTestArg = std::strcmp(argv[i], "--self-test") == 0;
+    bool headlessArg = false;
+    for (int i = 1; i < argc; ++i) {
+        selfTestArg = selfTestArg || std::strcmp(argv[i], "--self-test") == 0;
+        headlessArg = headlessArg || std::strcmp(argv[i], "--headless") == 0;
+    }
+    // A headless run must not need X or Wayland; --headless wins over the
+    // self-test xcb routing below because it sets the variable that guard checks.
+    if (headlessArg && !qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
     }
     if (selfTestArg && qEnvironmentVariableIsSet("DISPLAY")
         && qEnvironmentVariableIsSet("WAYLAND_DISPLAY")
@@ -82,15 +89,24 @@ int main(int argc, char* argv[])
     const QStringList args = app.arguments();
     bool selfTest = false;
     bool interopProbe = false;
+    bool headless = false;
     QString psdPath;
     for (int i = 1; i < args.size(); ++i) {
         if (args.at(i) == QStringLiteral("--self-test")) {
             selfTest = true;
         } else if (args.at(i) == QStringLiteral("--interop-probe")) {
             interopProbe = true;
+        } else if (args.at(i) == QStringLiteral("--headless")) {
+            headless = true;
         } else if (!args.at(i).startsWith(QLatin1Char('-'))) {
             psdPath = args.at(i);
         }
+    }
+
+    // A bare --headless run has nothing to show and no way to quit; run the
+    // bridge self-test instead of blocking in the event loop.
+    if (headless && !selfTest && psdPath.isEmpty()) {
+        selfTest = true;
     }
 
     // Self-test must not read the user's saved layout: isolate the session store
@@ -148,6 +164,12 @@ int main(int argc, char* argv[])
     frame.show();
 
     if (selfTest) {
+        if (headless && qApp->platformName() != QStringLiteral("offscreen")) {
+            std::fprintf(stderr,
+                         "pictura self-test: FAIL: headless platform is %s, expected offscreen\n",
+                         qPrintable(qApp->platformName()));
+            return 152;
+        }
         std::fprintf(stderr,
                      "pictura self-test: image=%dx%d codec_loaded=%d gpu=%d\n",
                      image.width(),

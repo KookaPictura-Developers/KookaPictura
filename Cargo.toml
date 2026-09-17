@@ -23,7 +23,45 @@ rust-version = "1.98"
 [workspace.dependencies]
 thiserror = "2"
 
-# Pixel-heavy correctness/oracle tests run far faster compiled than interpreted.
+# Pixel-heavy correctness/oracle tests run far faster compiled than interpreted,
+# but compiling all 123 dependencies at opt-level 2 is not worth it: the
+# workspace crates keep the optimisation, dependencies do not.
 [profile.test]
-opt-level = 2
+opt-level = 0
 debug = "line-tables-only"
+
+[profile.test.package."*"]
+opt-level = 0
+
+[profile.test.package.pictura-core]
+opt-level = 2
+
+[profile.test.package.pictura-codec]
+opt-level = 2
+
+[profile.test.package.pictura-color]
+opt-level = 2
+
+[profile.test.package.pictura-adjust]
+opt-level = 2
+
+[profile.test.package.pictura-filters]
+opt-level = 2
+
+[profile.test.package.pictura-ops]
+opt-level = 2
+
+[profile.test.package.pictura-paint]
+opt-level = 2
+
+[profile.test.package.pictura-select]
+opt-level = 2
+
+[profile.test.package.pictura-render]
+opt-level = 2
+
+[profile.test.package.pictura-testkit]
+opt-level = 2
+
+[profile.test.package.pictura-app]
+opt-level = 2

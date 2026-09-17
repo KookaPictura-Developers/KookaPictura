@@ -177,8 +177,11 @@ lossless. A regression corpus of every historical crash is run on every PR.
   `QAbstractItemModelTester` for every item model, `QTest::mouseClick`/`keyClick`
   for interaction.
 - **Qt Quick Test** for QML surfaces.
-- Headless by default: `-platform offscreen`; a real GPU job runs the subset
-  that needs a swapchain.
+- The app's `--headless` flag selects the offscreen QPA plugin before
+  `QApplication` and the self-test asserts the platform is `offscreen`; an
+  explicit `QT_QPA_PLATFORM=offscreen` or an `xvfb-run` wrapper still works.
+  `--interop-probe` is excluded — it needs a real platform Vulkan instance and
+  is not offscreen-compatible.
 - **Accessibility** is checked via `QAccessible`/AT-SPI smoke probes (roles,
   names, focus order), matching `02-ui-ux/accessibility.md`.
 - Visual widget styling (dark theme, panel layout) is covered by a small

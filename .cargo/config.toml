@@ -1,0 +1,4 @@
+# CXX-Qt on Linux expects a fast linker (mold/lld/ld.gold); lld is the portable
+# choice. Applies to cargo test/clippy and to Corrosion's cargo call from CMake.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
