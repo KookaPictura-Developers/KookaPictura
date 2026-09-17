@@ -323,9 +323,10 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     , colors_(colors)
 {
     setObjectName(QStringLiteral("toolsPanel"));
-    // M44 T2: the Tools dock may sit on any side of the workspace/panel columns,
-    // not only the workspace left/right dock areas.
-    setAllowedAreas(Qt::AllDockWidgetAreas);
+    // M45 T2: top/bottom docking is refused again; the M44 `AllDockWidgetAreas`
+    // reverts to left/right. Placement beside a widget column is handled by the
+    // frame's central-splitter pane path, not a dock area.
+    setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
                 | QDockWidget::DockWidgetClosable);
     // ponytail: Qt has no clean tabify-veto API (no per-dock setTabbable(false)).
@@ -348,6 +349,9 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
             [this]() { setColumns(columns_ == 1 ? 2 : 1); });
     titleLayout->addWidget(titleToggle_);
     setTitleBarWidget(titleBar_);
+    // M45 T3: observe the title-bar drag so the frame can resolve the drop
+    // beside a widget column; Qt's own dock drag still runs underneath.
+    titleBar_->installEventFilter(this);
     updateTitleIcon();
 
     auto* body = new QWidget(this);
@@ -460,24 +464,12 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
         if (bodyLayout_ && bodyLayout_->count() > 0) {
             bodyLayout_->setStretch(bodyLayout_->count() - 1, floating ? 0 : 1);
         }
-        if (floating) {
-            // M44 T1: pin the floating height to the content height so the
-            // vertical separator/grip cannot resize it.
-            floatHeight_ = sizeHint().height();
-            resize(contentWidth(columns_), floatHeight_);
-        } else {
-            floatHeight_ = 0;
-        }
+        // M45 T1: one recompute owns both axes and the pinned float height.
         updateContentMetrics();
     });
-    // M44 T2: which axis is fixed depends on the dock area.
+    // M45 T1: a dock/undock move recomputes both fixed axes and the float lock.
     connect(this, &QDockWidget::dockLocationChanged, this,
-            [this](Qt::DockWidgetArea area) {
-                if (area != Qt::NoDockWidgetArea) {
-                    dockArea_ = area;
-                }
-                updateContentMetrics();
-            });
+            [this](Qt::DockWidgetArea) { updateContentMetrics(); });
     setWidget(body);
     updateContentMetrics();
 
@@ -498,32 +490,32 @@ bool Toolbox::eventFilter(QObject* watched, QEvent* event)
     case QEvent::Drop:
         event->ignore();
         return true;
+    case QEvent::MouseMove:
+        // M45 T3: a left-button drag on the floating title bar is the
+        // floating-toolbar drop gesture; the frame resolves it through the
+        // column grammar. Only floating drags are reported so a docked title-bar
+        // press that Qt is about to undock does not spend an indicator early.
+        if (watched == titleBar_ && isFloating()) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->buttons() & Qt::LeftButton) {
+                emit toolbarDragMoved(mouse->globalPosition().toPoint());
+            }
+        }
+        break;
+    case QEvent::MouseButtonRelease:
+        if (watched == titleBar_ && isFloating()) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                emit toolbarDragFinished(mouse->globalPosition().toPoint());
+            }
+        }
+        break;
     case QEvent::Resize:
-        // M43/M44: the main-window dock splitter can still attempt a size change
-        // on some platforms; clamp the fixed axis back. The guards stop
-        // setFixed*Width/Height's own resize from recursing.
-        if (watched == this) {
-            const bool widthFixed = isFloating() || dockArea_ == Qt::LeftDockWidgetArea
-                                    || dockArea_ == Qt::RightDockWidgetArea;
-            if (widthFixed && !widthClamping_) {
-                const int target = contentWidth(columns_);
-                if (target > 0 && width() != target) {
-                    widthClamping_ = true;
-                    setFixedWidth(target);
-                    widthClamping_ = false;
-                }
-            }
-            const bool heightFixed = isFloating() || dockArea_ == Qt::TopDockWidgetArea
-                                     || dockArea_ == Qt::BottomDockWidgetArea;
-            if (heightFixed && !heightClamping_) {
-                const int target =
-                    floatHeight_ > 0 ? floatHeight_ : sizeHint().height();
-                if (target > 0 && height() != target) {
-                    heightClamping_ = true;
-                    setFixedHeight(target);
-                    heightClamping_ = false;
-                }
-            }
+        // M45 T1: the main-window dock splitter can still attempt a size change
+        // on some platforms; recompute both fixed axes from the content formula.
+        // The guard stops setFixed*'s own resize from recursing.
+        if (watched == this && !metricsClamping_) {
+            updateContentMetrics();
         }
         break;
     default:
@@ -556,36 +548,68 @@ int Toolbox::contentWidth(int columns) const
     return gridWidth + margins;
 }
 
+int Toolbox::contentHeight(int columns) const
+{
+    // The matching vertical formula (T1): the grid's row count for the active
+    // column count, the swatch, and the screen-mode button with the body
+    // spacing, plus the custom title bar. Same grid metrics as `contentWidth`.
+    const int count = slotButtons_.size();
+    const int rows = columns > 0 ? (count + columns - 1) / columns : count;
+    const int gridSpacing = grid_ ? grid_->spacing() : 0;
+    const int gridHeight =
+        rows * kSlotButtonSize + (rows > 1 ? (rows - 1) * gridSpacing : 0);
+    const int vmargin = bodyLayout_
+        ? bodyLayout_->contentsMargins().top() + bodyLayout_->contentsMargins().bottom()
+        : 0;
+    const int hmargin = bodyLayout_
+        ? bodyLayout_->contentsMargins().left() + bodyLayout_->contentsMargins().right()
+        : 0;
+    const int spacing = bodyLayout_ ? bodyLayout_->spacing() : 0;
+    const int fgbgSide =
+        std::clamp(contentWidth(columns) - hmargin, kMinWidgetSize, kWidgetSize);
+    const int title = titleBar_ ? titleBar_->sizeHint().height() : 0;
+    // Three body gaps: grid | swatch | screen mode | trailing stretch.
+    return title + vmargin + gridHeight + spacing + fgbgSide + spacing + kSlotButtonSize
+           + spacing;
+}
+
 void Toolbox::updateContentMetrics()
 {
-    const int content = contentWidth(columns_);
-    // M43/M44: the Tools dock is fixed to its tight content on the axis it does
-    // not stretch. Left/right docks fix the width; top/bottom docks fix the
-    // height; floating fixes both (T1). A QDockWidget caches its layout minimum,
-    // so the other axis is explicitly released.
-    if (isFloating()) {
-        setMinimumHeight(0);
-        setMaximumHeight(QWIDGETSIZE_MAX);
-        floatHeight_ = sizeHint().height();
-        setFixedWidth(content);
-        setFixedHeight(floatHeight_);
-    } else if (dockArea_ == Qt::TopDockWidgetArea || dockArea_ == Qt::BottomDockWidgetArea) {
-        setMinimumWidth(0);
-        setMaximumWidth(QWIDGETSIZE_MAX);
-        setMinimumHeight(0);
-        setMaximumHeight(QWIDGETSIZE_MAX);
-        floatHeight_ = 0;
-        setFixedHeight(sizeHint().height());
-    } else {
-        setMinimumHeight(0);
-        setMaximumHeight(QWIDGETSIZE_MAX);
-        floatHeight_ = 0;
-        setFixedWidth(content);
+    if (metricsClamping_) {
+        return;
     }
+    metricsClamping_ = true;
+
+    // M45 T1: release both fixed axes before re-fixing them, so the M43 width
+    // lock and the M44 height lock cannot double-apply and leave behind a stale
+    // width (a cut-off one-column layout) or a stale height (an over-tall
+    // two-column layout).
+    setMinimumSize(0, 0);
+    setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+
+    // Activate the layout so the grid reflects the current column count before
+    // the content formula reads it; otherwise `reflow` leaves a stale hint.
+    if (QWidget* body = widget()) {
+        if (body->layout()) {
+            body->layout()->activate();
+        }
+    }
+    if (layout()) {
+        layout()->activate();
+    }
+
+    const int content = contentWidth(columns_);
+    const int contentH = contentHeight(columns_);
+    setFixedWidth(content);
+    setFixedHeight(contentH);
+    // M44 T1: while floating the pinned height is the content height, so the
+    // grip/separator cannot stretch it.
+    floatHeight_ = isFloating() ? contentH : 0;
+
     // A QDockWidget caches its layout minimum; without an explicit invalidation a
     // 2->1 column change leaves the two-column floor in place.
     if (QWidget* body = widget()) {
-        body->setSizePolicy(QSizePolicy::Fixed, body->sizePolicy().verticalPolicy());
+        body->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         if (body->layout()) {
             body->layout()->invalidate();
         }
@@ -601,6 +625,8 @@ void Toolbox::updateContentMetrics()
                                                    + bodyLayout_->contentsMargins().right()
                                                : 0));
     }
+
+    metricsClamping_ = false;
 }
 
 bool Toolbox::floatHeightLockedForTest() const
@@ -624,6 +650,11 @@ QString Toolbox::titleTextForTest() const
 int Toolbox::contentWidthForTest() const
 {
     return contentWidth(columns_);
+}
+
+int Toolbox::contentHeightForTest() const
+{
+    return contentHeight(columns_);
 }
 
 int Toolbox::foregroundBackgroundWidthForTest() const

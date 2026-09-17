@@ -20,8 +20,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   history under `openspec/changes/archive/`. The headless/CI/build-speed
   infrastructure change `ci-headless-and-speedup` is **archived** (not part of
   the panels program). The M44 panel/theme polish change `m44-panel-theme-polish`
-  is **implemented and verified** (archive/commit deferred); **M45** layer
-  filtering/search is next.
+  is **implemented and verified** (archive/commit deferred); the M45 panel-fixes
+  change `m45-panel-fixes` is **implemented and verified** (archive/commit
+  deferred); **M46** layer filtering/search is next.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 
@@ -1277,6 +1278,86 @@ openspec validate --all --strict
   m44-panel-theme-polish --strict` valid and `openspec validate --all --strict`
   61/61.
 
+- **M45 — panel fixes** (a seventh user-requested interruption to the
+  Layers-panel program; OpenSpec change `m45-panel-fixes`, brief
+  `docs/dev/m45-panel-fixes.md`). **Phase A — Tools toolbar.** **T1 sizing:**
+  `updateContentMetrics` previously fixed only one axis and read `sizeHint()`
+  before the reflowed grid was active, while `topLevelChanged` latched a
+  `floatHeight_`; the M43 width lock and M44 height lock could each keep a size
+  from the previous column count, so 1↔2 read as 1-col ≈507 px and 2-col ≈862 px.
+  Both axes now come from one content formula (`contentWidth` + a new
+  `contentHeight` = title bar + margins + `rows*slot + gaps` + fg/bg + screen
+  mode + body spacing), released and re-fixed after `layout()->activate()`;
+  measured `w1=36 h1=862 w2=69 h2=507`, stable across the toggle. **T2:** the dock
+  allowed areas revert to **left/right only** (M44 had `AllDockWidgetAreas`),
+  keeping the M40 contract and the per-side lock. **T3:** the floating toolbar now
+  docks **beside any widget column** via the existing `columnEdgeAnchorAt` + a new
+  `PanelColumn::showEdgeDropIndicator(side)` (reusing the single `#2a7fff`
+  indicator) and `commitToolboxDrop` (inserts at the anchor's splitter index); the
+  toolbox title-bar drag emits `toolbarDragMoved`/`toolbarDragFinished`. It is
+  hosted as a **central-splitter pane** (a `QDockWidget` cannot sit *between*
+  columns); its title-bar re-float is not re-wired yet. **Phase B — widget
+  panel.** **W1/W2/W3/W6 indicator correctness:** `DropTarget` gained
+  `PanelColumn* owner`; `resolveDrop` sets it (`this` for local/workspace-edge/
+  iconic, the **anchor** for beside-column, and the **destination column** for a
+  delegated cross-column `IntoGroup`); `updateDrag` renders through the owner and
+  clears the previous owner's line on change. Root cause: `resolveDrop` delegated
+  the target but `showIndicatorFor` still ran on the **source column**, mapping
+  the target's tab-bar x through the wrong `scroll_->viewport()` — so a
+  right-hand target mapped off to the left (W1) or outside/clipped (W2). Tab
+  inserts draw at `target.group->tabInsertionX(target.tabIndex)` (W3) and bottom
+  boundaries at the last visible group's bottom edge (W6), in the owning column.
+  `kEdgeInside` reduced 6→0 so an inside-edge tab insert is not mistaken for a
+  new-column anchor. **W4 emptied column:** one `PanelColumn::maybeRemoveSelf()`
+  (calls `frame->removeColumnIfEmpty(this)`) runs from `commitDrop`, `cancelDrag`,
+  `closeGroup`, `showPanel(name,false)`, `restoreFlyoutPanel`;
+  `removeColumnIfEmpty` **rehomes still-live groups into the primary column** via
+  the new `PanelColumn::adoptGroup` (so panels survive for a later Window-menu
+  show) and keeps a column that still owns a float. **W5 minimize actually
+  collapses:** `PanelGroup::applyMinimize` clamps the **group's** `maximumHeight`
+  (and size policy) to the tab-bar height, saving/restoring
+  `savedGroupMaxHeight_`; the tab menu entry is state-derived — **"Expand Panel"**
+  while minimized, "Minimize" otherwise (`tabMenuActionsForTest` applies the same
+  substitution). **W7 never clip:** the scroll area's horizontal policy changed
+  `AlwaysOff → ScrollBarAsNeeded`, tab text elides, the corner button keeps its
+  reserved width. **W8 shared floor:** one `constexpr int kPanelMinWidth = 180`
+  for every normal-mode column (the compact strip keeps `kIconStripMinWidth = 40`),
+  replacing the per-column widest-derived floor, so columns share the floor and
+  none can vanish. **Phase C — compact parity.** **C1 the popup is a real
+  group:** `ensureFlyout` no longer builds a bespoke one-tab header;
+  `openIconFlyout` finds the group, `PanelGroup::setCurrentPanel(clicked)`,
+  records its index, and reparents the **whole `PanelGroup`** into the popup (it
+  stays in `groups_`); `restoreFlyoutGroup` inserts it back at the recorded
+  splitter index exactly once, guarded by `restoringFlyout_`/`flyoutGroup_`.
+  Docked, popup and floating are now the **same widget instance** (same tabs, `▾`
+  menu, minimize, drag, styling). **C2 group-drag line:** in compact mode a
+  whole-group drag (`!dragIsPanel_`) anchors `stripIndicator_` to the target
+  group's **container top −1** (above the `•••` grip dots), not the first icon
+  button; panel drags keep the M42/M44 anchoring. **Self-tests** 167–179
+  (`m45_tools_sizing` 167, `m45_tools_sides` 168, `m45_tools_beside_column` 169,
+  `m45_indicator_side` 170, `m45_indicator_cross_column` 171,
+  `m45_indicator_rightmost_tab` 172, `m45_empty_column_removed` 173,
+  `m45_minimize_collapse` 174, `m45_indicator_bottom` 175, `m45_no_clip` 176,
+  `m45_min_width_floor` 177, `m45_popup_group` 178, `m45_compact_group_line`
+  179); exit **152** remains the headless-platform check. **Honest limits:** the
+  toolbar is hosted as a central-splitter pane, so it cannot sit *between* columns
+  as a dock and its title-bar re-float is not re-wired yet; a narrow column's
+  group content can still scroll (W7's stated trade-off); `removeColumnIfEmpty`
+  deliberately does not tear down a column that owns a live float; drag *from
+  inside* the popup is not automatically tested; `PanelGroup::detachPanel`/
+  `attachPanel`/`detached_` are now unused (left in place) and `theme.cpp`'s
+  `panelFlyoutHeader` selector is dead (untouched); C2 falls back to the last strip
+  box when the boundary maps to a group hidden from the strip; chosen constants
+  remain unsourced CS6 metrics. No Rust change: **589 tests, 0 failed, 7 ignored**
+  (unchanged; the raw ignored count is 8 with the pre-existing `pictura-render`
+  doctest). **Capability:** MODIFIES `panel-column`, `application-shell`,
+  `tool-framework`; **no new capability** → **60** canonical specs after archive.
+  Verified: `cmake --build` clean; `./build/pictura --headless --self-test` exit 0
+  with all `m45_*` `=1`; the PSD headless self-test exit 0; `cargo fmt --all
+  --check` and `cargo clippy --workspace --all-targets -- -D warnings` clean;
+  `cargo test --workspace` **589 tests, 0 failed, 7 ignored**; `openspec validate
+  m45-panel-fixes --strict` valid and `openspec validate --all --strict` 61/61.
+
 - **CI headless and build speed** (infrastructure, not a milestone; archived
   OpenSpec change `ci-headless-and-speedup`). `main.cpp` gains an explicit **`--headless`**
   flag: it selects the offscreen QPA plugin before `QApplication` (when
@@ -1370,9 +1451,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: panels program (M45–M48), canvas perf series deferred
+## Next: panels program (M46–M49), canvas perf series deferred
 
-### Panels program (M36–M48) — M36–M41 done; M42–M43 panel refinements/multicolumn done; M44 panel/theme polish done; M45 layer filtering/search next
+### Panels program (M36–M49) — M36–M41 done; M42–M45 panel refinements/multicolumn/polish/fixes done; M46 layer filtering/search next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -1391,7 +1472,7 @@ grammar and depth-first topmost-first projection, the path/batch bridge API,
 the `QAbstractItemModel` tree + delegate row anatomy, multi-selection with the
 per-node refusal table, solo visibility, `Tab` rename, Panel Options (session
 schema v3), the panel/row menus, tooltips, and the explicit drag-reorder
-deferral to M46.
+deferral to M47.
 
 **M38 was a user-requested interruption: the full CS6 toolbox icon/cursor
 library and the panel icons** (`openspec/changes/m38-icon-cursor-library`,
@@ -1443,24 +1524,31 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   chevron/tab-colour/default-active corrections, the theme border/tab/flyout/elide
   unification, the float-drag continuation and any-side docking, and the compact
   group-relative drop with drag handles. It is **implemented and independently
-  verified** (see the milestone entry above). Because the M40/M41/M42/M43/M44
-  interruptions claim five numbers the Layers-panel program had reserved, that
-  program shifts by **five**: **M45** layer filtering/search (the six-dimension
-  filter/search row) is next, **M46** remaining management
+  verified** (see the milestone entry above). **M45 was a seventh user-requested
+  interruption — panel fixes** (`openspec/changes/m45-panel-fixes`, brief
+  `docs/dev/m45-panel-fixes.md`): the resolver-owner drop indicator, the single
+  emptied-column cleanup, the group-height minimize with its state-derived label,
+  the one-formula Tools sizing and left/right-only beside-column pane, the shared
+  minimum-width floor with no clipping, and the whole-group compact popup. It is
+  **implemented and independently verified** (see the milestone entry above).
+  Because the M40/M41/M42/M43/M44/M45 interruptions claim six numbers the
+  Layers-panel program had reserved, that program shifts by **six**: **M46**
+  layer filtering/search (the six-dimension
+  filter/search row) is next, **M47** remaining management
   (rasterize/merge/flatten/link/select-similar/convert-background/
   layer-via-copy-cut, the New Layer/Group dialogs, and the deferred drag-reorder
-  with its recorded drop rules), **M47** styles/effects, and **M48** smart
+  with its recorded drop rules), **M48** styles/effects, and **M49** smart
   objects / vector masks / artboards-as-non-goal / layer comps. M36's confirmed
   ceilings — the `layer_kind` `"background"` name+index heuristic and the forced
-  type/shape locks — land in M46, and M37's single-layer grouping
-limit was lifted by M39's multi-selection (the `is_background` single source of
-truth and the path/batch selection ops). The pre-shift numbers still stand in
-`docs/dev/layers-panel-program.md`; this file is the up-to-date anchor.
+  type/shape locks — land in M47, and M37's single-layer grouping
+  limit was lifted by M39's multi-selection (the `is_background` single source of
+  truth and the path/batch selection ops). The pre-shift numbers still stand in
+  `docs/dev/layers-panel-program.md`; this file is the up-to-date anchor.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M48.
+> number; they are deferred until after M49.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
@@ -1558,7 +1646,7 @@ no new capability. Next in order:
 
 Deferred canvas-performance tracks (previously sketched as M36–M38; those
 numbers are now claimed by the panels program above, so these are deferred
-until after M48). The remaining canvas-performance tracks — history
+until after M49). The remaining canvas-performance tracks — history
 copy-on-write / tile diffs, resident per-layer GPU source buffers, 256² tiles +
 LoD, plus the GPU-resident zero-copy present — each need their own design (the
 small, app-local region-blit slice landed as M35 above):

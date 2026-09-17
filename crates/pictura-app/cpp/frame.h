@@ -80,6 +80,13 @@ public:
     PanelColumn* columnEdgeAnchorAt(const QPoint& globalPos, const PanelColumn* exclude,
                                     int* side) const;
 
+    // M45 T3: a floating-Tools drop resolved through the same column grammar.
+    // `resolveToolboxDrop` shows the single `#2a7fff` indicator at the resolved
+    // boundary; `commitToolboxDrop` hosts the Tools panel as a fixed-width
+    // central-splitter pane there (a QDockWidget cannot sit between columns).
+    bool resolveToolboxDrop(const QPoint& globalPos, PanelColumn** anchor, int* side);
+    bool commitToolboxDrop(const QPoint& globalPos);
+
     // M43 Phase B test hooks. All drive the same resolve/commit drag path.
     int panelColumnCountForTest() const { return columnCount(); }
     QString panelColumnSideForTest(int index) const;
@@ -87,6 +94,11 @@ public:
     // M44 W5: drop a panel beside an existing column; the new column lands
     // immediately adjacent to the anchor.
     bool newColumnBesideForTest(const QString& panelName, const QString& anchorPanel);
+    // M45 T3: dock the floating Tools panel to the left/right of a widget column
+    // (the primary column, or a throwaway dynamic anchor) through the real
+    // resolve/commit path; returns true when the indicator showed and the pane
+    // landed adjacent.
+    bool toolboxBesideColumnForTest(const QString& side, bool dynamicAnchor);
     bool dropIntoGroupForTest(const QString& panelName, const QString& targetPanel, int index = 1);
     bool dropBoundaryForTest(const QString& panelName, const QString& targetPanel, bool above);
     // M43 Phase C test hook: re-runs the real startup restore path so a saved
@@ -214,6 +226,8 @@ private:
     OptionsBar* optionsBar_ = nullptr;
     Toolbox* toolbox_ = nullptr;
     QDockWidget* toolsDock_ = nullptr;
+    // M45 T3: the column currently showing the floating-Tools drop indicator.
+    PanelColumn* toolboxDropAnchor_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
     QLabel* hintLabel_ = nullptr;

@@ -47,12 +47,10 @@ constexpr int kCompactDividerHeight = 2;
 // group.
 constexpr int kCompactGripHeight = 10;
 constexpr int kCompactNearBand = 0;
-// ponytail: chosen constants, not sourced CS6 metrics. Normal-mode minimum is
-// the widest visible group's size hint clamped between a readable floor and a
-// cap that keeps the main window resizable; the iconic strip only needs its
-// icon button plus margins. Tune here.
-constexpr int kNormalMinWidthFloor = 180;
-constexpr int kNormalMinWidthCap = 320;
+// M45 W8: one shared minimum width for every normal-mode widget column, so all
+// columns match and none can be squeezed away. ponytail: chosen, not a sourced
+// CS6 metric; tune here. The iconic strip keeps its own narrow minimum.
+constexpr int kPanelMinWidth = 180;
 constexpr int kIconStripMinWidth = 40;
 
 const char* const kTabMenuTexts[] = {
@@ -133,7 +131,9 @@ PanelColumn::PanelColumn(QWidget* parent)
     scroll_->setObjectName(QStringLiteral("panelColumnScroll"));
     scroll_->setWidgetResizable(true);
     scroll_->setFrameShape(QFrame::NoFrame);
-    scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // M45 W7: never clip the right side — a narrow column scrolls horizontally
+    // instead of hiding content.
+    scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
     splitter_ = new QSplitter(Qt::Vertical, scroll_);
     splitter_->setObjectName(QStringLiteral("panelColumnSplitter"));
@@ -201,6 +201,28 @@ void PanelColumn::addGroup(PanelGroup* group)
     for (QWidget* panel : group->panels()) {
         if (panel) {
             panelVisible_[panel->objectName()] = true;
+        }
+    }
+    if (railMode_) {
+        buildIconStrip();
+    }
+    updateMinimumWidth();
+}
+
+void PanelColumn::adoptGroup(PanelGroup* group)
+{
+    if (!group) {
+        return;
+    }
+    // M45 W4: take a group from another column. Its own tab visibility carries
+    // the state (a group closed via `closeGroup` has its tabs hidden), so
+    // `insertGroupAt` restores exactly the right visibility.
+    QObject::disconnect(group, nullptr, this, nullptr);
+    wired_.remove(group);
+    insertGroupAt(group, groups_.size());
+    for (QWidget* panel : group->panels()) {
+        if (panel) {
+            panelVisible_[panel->objectName()] = group->isPanelVisible(panel->objectName());
         }
     }
     if (railMode_) {
@@ -353,6 +375,9 @@ bool PanelColumn::showPanel(const QString& objectName, bool visible)
     }
     updateMinimumWidth();
     emit stateChanged();
+    if (!visible) {
+        maybeRemoveSelf();
+    }
     return true;
 }
 
@@ -368,12 +393,26 @@ void PanelColumn::closeGroup(PanelGroup* group)
     }
     for (QWidget* panel : group->panels()) {
         if (panel) {
-            panelVisible_[panel->objectName()] = false;
+            const QString name = panel->objectName();
+            // M45 W4: hide each tab too, so the group stays closed if it is
+            // rehomed to another column when this dynamic column is removed.
+            group->setPanelVisible(name, false);
+            panelVisible_[name] = false;
         }
     }
     group->setVisible(false);
     updateMinimumWidth();
     emit stateChanged();
+    maybeRemoveSelf();
+}
+
+void PanelColumn::maybeRemoveSelf()
+{
+    // M45 W4: the frame owns the "is this dynamic column empty" test; every
+    // path that can empty this column funnels through here.
+    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+        frame->removeColumnIfEmpty(this);
+    }
 }
 
 void PanelColumn::setRailMode(bool iconic)
@@ -410,16 +449,9 @@ void PanelColumn::updateMinimumWidth()
         setMinimumWidth(kIconStripMinWidth);
         return;
     }
-    int widest = 0;
-    for (PanelGroup* group : groups_) {
-        if (group && group->isVisible()) {
-            // M43: reserve the per-widget corner width so the `▾` button is
-            // inside the header at the minimum width even when the tab text
-            // elides.
-            widest = qMax(widest, group->sizeHint().width() + group->headerCornerWidthForTest());
-        }
-    }
-    setMinimumWidth(qBound(kNormalMinWidthFloor, widest, kNormalMinWidthCap));
+    // M45 W8: one shared floor for every normal-mode widget column (see
+    // kPanelMinWidth), so unequal content-derived minimums cannot vanish one.
+    setMinimumWidth(kPanelMinWidth);
 }
 
 void PanelColumn::setAutoCollapseIconic(bool on)
@@ -722,32 +754,13 @@ void PanelColumn::ensureFlyout()
     }
     flyout_ = new PanelFlyout(this);
     flyout_->setObjectName(QStringLiteral("panelIconFlyout"));
+    // M45 C1: a frameless popup host only. The clicked group is reparented in
+    // as-is, so its own tab bar (and the per-widget `▾` menu) is the popup
+    // chrome — no bespoke one-tab header, no parity difference from docked.
     flyoutLayout_ = new QVBoxLayout(flyout_);
     flyoutLayout_->setContentsMargins(1, 1, 1, 1);
     flyoutLayout_->setSpacing(0);
-
-    // A one-tab group look: the panel title as the header, then the content,
-    // with the close chevron at the right end of the header.
-    flyoutHeader_ = new QWidget(flyout_);
-    flyoutHeader_->setObjectName(QStringLiteral("panelFlyoutHeader"));
-    auto* headerLayout = new QHBoxLayout(flyoutHeader_);
-    headerLayout->setContentsMargins(6, 2, 2, 2);
-    headerLayout->setSpacing(2);
-    flyoutTitle_ = new QLabel(flyoutHeader_);
-    flyoutTitle_->setObjectName(QStringLiteral("panelFlyoutTitle"));
-    headerLayout->addWidget(flyoutTitle_);
-    headerLayout->addStretch(1);
-    flyoutClose_ = new QToolButton(flyoutHeader_);
-    flyoutClose_->setObjectName(QStringLiteral("panelFlyoutClose"));
-    flyoutClose_->setAutoRaise(true);
-    flyoutClose_->setIcon(icon(QStringLiteral("panel.closeChevron")));
-    flyoutClose_->setIconSize(QSize(16, 16));
-    flyoutClose_->setToolTip(tr("Close"));
-    connect(flyoutClose_, &QToolButton::clicked, this, [this]() { closeIconFlyout(); });
-    headerLayout->addWidget(flyoutClose_);
-    flyoutLayout_->addWidget(flyoutHeader_);
-
-    flyout_->onHidden = [this]() { restoreFlyoutPanel(); };
+    flyout_->onHidden = [this]() { restoreFlyoutGroup(); };
 }
 
 void PanelColumn::openIconFlyout(const QString& objectName, const QPoint& globalPos)
@@ -757,27 +770,24 @@ void PanelColumn::openIconFlyout(const QString& objectName, const QPoint& global
     if (!group) {
         return;
     }
-    const QString title = group->titleForPanel(objectName);
-    QWidget* panel = group->detachPanel(objectName);
-    if (!panel) {
-        return;
-    }
     // `Auto-Show Hidden Panels`: opening a hidden panel's icon reveals it.
-    if (autoShowHidden_ && !panelVisible_.value(objectName, false)) {
+    if (autoShowHidden_ && !group->isPanelVisible(objectName)) {
         panelVisible_[objectName] = true;
-        group->setVisible(true);
+        group->setPanelVisible(objectName, true);
     }
+    // The clicked panel is the group's active tab.
+    group->setCurrentPanel(objectName);
     ensureFlyout();
-    flyoutPanel_ = panel;
     flyoutGroup_ = group;
     flyoutName_ = objectName;
-    if (flyoutTitle_) {
-        flyoutTitle_->setText(title);
-    }
-    flyoutLayout_->addWidget(panel);
-    panel->setVisible(true);
+    flyoutGroupIndex_ = groups_.indexOf(group);
+    // Detach the whole group from the column splitter, then host it in the
+    // popup: one reparent out, one back on close, never two parents.
+    group->setParent(nullptr);
+    flyoutLayout_->addWidget(group);
+    group->setVisible(true);
     setActiveIcon(objectName);
-    QSize size = panel->sizeHint().expandedTo(QSize(220, 180));
+    QSize size = group->sizeHint().expandedTo(QSize(220, 180));
     if (size.width() > 480) {
         size.setWidth(480);
     }
@@ -866,28 +876,38 @@ void PanelColumn::closeIconFlyout()
     if (flyout_ && flyout_->isVisible()) {
         flyout_->hide();
     } else {
-        restoreFlyoutPanel();
+        restoreFlyoutGroup();
     }
 }
 
-void PanelColumn::restoreFlyoutPanel()
+void PanelColumn::restoreFlyoutGroup()
 {
-    if (!flyoutPanel_ || restoringFlyout_) {
+    if (!flyoutGroup_ || restoringFlyout_) {
         return;
     }
     restoringFlyout_ = true;
-    QWidget* panel = flyoutPanel_;
     PanelGroup* group = flyoutGroup_;
-    const QString name = flyoutName_;
-    flyoutPanel_ = nullptr;
+    const int index = flyoutGroupIndex_;
     flyoutGroup_ = nullptr;
     flyoutName_.clear();
+    flyoutGroupIndex_ = -1;
+    if (group->parentWidget() != flyout_) {
+        // A drag rehomed the group (e.g. tore it off) before the popup hid;
+        // leave it where it went rather than stealing it back.
+        restoringFlyout_ = false;
+        setActiveIcon(QString());
+        return;
+    }
     if (flyoutLayout_) {
-        flyoutLayout_->removeWidget(panel);
+        flyoutLayout_->removeWidget(group);
     }
-    if (group) {
-        group->attachPanel(name);
-    }
+    // The group stayed in `groups_` while popped; only its widget parent
+    // changed. Put it back at its remembered splitter slot exactly once.
+    group->setParent(nullptr);
+    splitter_->insertWidget(qBound(0, index, splitter_->count()), group);
+    splitter_->setStretchFactor(qBound(0, index, splitter_->count()), 1);
+    group->setVisible(!group->visibleTitles().isEmpty());
+    wireGroup(group);
     restoringFlyout_ = false;
     setActiveIcon(QString());
     // `Auto-Collapse Iconic Panels`: once an icon flyout closes, return the
@@ -895,6 +915,7 @@ void PanelColumn::restoreFlyoutPanel()
     if (autoCollapseIconic_ && !railMode_) {
         setRailMode(true);
     }
+    maybeRemoveSelf();
 }
 
 void PanelColumn::showTabMenu(PanelGroup* group, const QPoint& globalPos)
@@ -925,7 +946,8 @@ QMenu* PanelColumn::buildTabMenu(PanelGroup* group)
     connect(closeGroupAction, &QAction::triggered, this,
             [this, group]() { closeGroup(group); });
 
-    QAction* minimize = menu->addAction(tr("Minimize"));
+    const bool minimized = group && group->isMinimized();
+    QAction* minimize = menu->addAction(minimized ? tr("Expand Panel") : tr("Minimize"));
     connect(minimize, &QAction::triggered, this, [this, group]() {
         group->setMinimized(!group->isMinimized());
         emit stateChanged();
@@ -1158,13 +1180,31 @@ bool PanelColumn::iconFlyoutVisibleForTest() const
     return flyout_ && flyout_->isVisible();
 }
 
-QStringList PanelColumn::tabMenuActionsForTest() const
+QStringList PanelColumn::tabMenuTextsFor(const PanelGroup* group) const
 {
     QStringList out;
     for (const char* text : kTabMenuTexts) {
         out << QString::fromUtf8(text);
     }
+    // M45 W5: the minimize entry is a function of the group's state.
+    if (group && group->isMinimized() && out.size() > 2) {
+        out[2] = QStringLiteral("Expand Panel");
+    }
     return out;
+}
+
+QStringList PanelColumn::tabMenuActionsForTest() const
+{
+    const PanelGroup* group = menuGroup_;
+    if (!group && !groups_.isEmpty()) {
+        group = groups_.first();
+    }
+    return tabMenuTextsFor(group);
+}
+
+QStringList PanelColumn::tabMenuActionsForTest(const QString& groupObjectName) const
+{
+    return tabMenuTextsFor(findGroupByName(groupObjectName));
 }
 
 bool PanelColumn::triggerTabMenuForTest(const QString& text)
@@ -1201,6 +1241,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
     if (railMode_) {
         DropTarget iconic;
         if (resolveIconicDrop(globalPos, iconic)) {
+            iconic.owner = const_cast<PanelColumn*>(this);
             return iconic;
         }
     }
@@ -1209,6 +1250,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
         if (side >= 0) {
             DropTarget target;
             target.valid = true;
+            target.owner = const_cast<PanelColumn*>(this);
             target.kind = side == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
             return target;
         }
@@ -1219,11 +1261,15 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
             DropTarget target;
             target.valid = true;
             target.anchorColumn = anchor;
+            // M45 W1: the new column lands beside the anchor, so the edge line
+            // is drawn in the anchor column, not the drag's source column.
+            target.owner = anchor;
             target.kind = anchorSide == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
             return target;
         }
     }
     DropTarget target = resolveLocalDrop(globalPos);
+    target.owner = const_cast<PanelColumn*>(this);
     if (target.outside) {
         // A point inside another column may still regroup a panel there. Only
         // the tab-insert kind is safe to apply cross-column: the group lives in
@@ -1233,6 +1279,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
                 if (other != this) {
                     DropTarget delegated = other->resolveLocalDrop(globalPos);
                     if (delegated.valid && delegated.kind == DropKind::IntoGroup) {
+                        delegated.owner = other;
                         return delegated;
                     }
                 }
@@ -1464,6 +1511,37 @@ void PanelColumn::showIndicatorFor(const DropTarget& target)
             clearIndicator();
             return;
         }
+        // M45 C2: a whole-group drag draws at the group container's insertion
+        // boundary — above its drag-handle grip — not at an icon button, so the
+        // line sits where the drop inserts rather than inside the group.
+        if (!dragIsPanel_) {
+            QWidget* box = nullptr;
+            bool below = false;
+            if (target.group) {
+                box = stripGroupBoxFor(target.group);
+                below = target.kind == DropKind::BelowGroup;
+            }
+            if (!box) {
+                const int boundary = qBound(0, target.boundary, groups_.size());
+                if (boundary < groups_.size()) {
+                    box = stripGroupBoxFor(groups_.at(boundary));
+                } else if (!groups_.isEmpty()) {
+                    box = stripGroupBoxFor(groups_.last());
+                    below = true;
+                }
+            }
+            if (box) {
+                const QPoint origin = box->mapTo(iconStrip_, QPoint(0, 0));
+                const int y = below ? origin.y() + box->height() + 1 : origin.y() - 1;
+                stripIndicator_->setGeometry(QRect(0, y, iconStrip_->width(), 3));
+                stripIndicator_->show();
+                stripIndicator_->raise();
+                if (indicator_) {
+                    indicator_->hide();
+                }
+                return;
+            }
+        }
         const int index = qBound(0, target.stripIndex, stripEntries_.size());
         QToolButton* anchor = index < stripEntries_.size() ? stripEntries_.at(index).button
                                                            : stripEntries_.last().button;
@@ -1574,6 +1652,10 @@ void PanelColumn::beginPanelDrag(PanelGroup* group, const QString& objectName,
     dragFloat_ = nullptr;
     dragGrabOffset_ = globalPos - group->mapToGlobal(QPoint(0, 0));
     dropTarget_ = {};
+    if (indicatorOwner_ && indicatorOwner_ != this) {
+        indicatorOwner_->clearIndicator();
+    }
+    indicatorOwner_ = nullptr;
     clearIndicator();
 }
 
@@ -1591,6 +1673,10 @@ void PanelColumn::beginGroupDrag(PanelGroup* group, const QPoint& globalPos)
     dragFloat_ = floatForGroup(group);
     dragGrabOffset_ = globalPos - group->mapToGlobal(QPoint(0, 0));
     dropTarget_ = {};
+    if (indicatorOwner_ && indicatorOwner_ != this) {
+        indicatorOwner_->clearIndicator();
+    }
+    indicatorOwner_ = nullptr;
     clearIndicator();
 }
 
@@ -1600,8 +1686,16 @@ void PanelColumn::updateDrag(const QPoint& globalPos)
         return;
     }
     dropTarget_ = resolveDrop(globalPos);
+    // M45 W1/W2: render the resolved target in the column that owns it, so a
+    // cross-column drop draws its line in the target column.
+    PanelColumn* owner = dropTarget_.owner ? dropTarget_.owner : this;
+    if (indicatorOwner_ && indicatorOwner_ != owner) {
+        indicatorOwner_->clearIndicator();
+    }
+    indicatorOwner_ = owner;
     if (dropTarget_.outside) {
-        clearIndicator();
+        owner->clearIndicator();
+        indicatorOwner_ = nullptr;
         if (!dragFloat_ && dragGroup_) {
             dragFloat_ = createFloat(dragGroup_, globalPos);
         } else if (dragFloat_) {
@@ -1612,7 +1706,7 @@ void PanelColumn::updateDrag(const QPoint& globalPos)
     if (dragFloat_) {
         moveFloat(dragFloat_, globalPos - dragGrabOffset_);
     }
-    showIndicatorFor(dropTarget_);
+    owner->showIndicatorFor(dropTarget_);
 }
 
 bool PanelColumn::commitDrop()
@@ -1623,6 +1717,10 @@ bool PanelColumn::commitDrop()
     const DropTarget target = dropTarget_;
     PanelGroup* source = dragSourceGroup_;
     bool ok = false;
+    if (indicatorOwner_ && indicatorOwner_ != this) {
+        indicatorOwner_->clearIndicator();
+    }
+    indicatorOwner_ = nullptr;
     clearIndicator();
     if (target.valid && !target.outside) {
         if (target.kind == DropKind::NewColumnLeft || target.kind == DropKind::NewColumnRight) {
@@ -1663,16 +1761,18 @@ bool PanelColumn::commitDrop()
         buildIconStrip();
     }
     emit stateChanged();
-    // A dynamic column whose last group just left is torn down; a committed
-    // drop is the only place this happens.
-    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
-        frame->removeColumnIfEmpty(this);
-    }
+    // M45 W4: a dynamic column whose last group just left is torn down; every
+    // path funnels through the frame's one cleanup entry point.
+    maybeRemoveSelf();
     return ok;
 }
 
 void PanelColumn::cancelDrag()
 {
+    if (indicatorOwner_ && indicatorOwner_ != this) {
+        indicatorOwner_->clearIndicator();
+    }
+    indicatorOwner_ = nullptr;
     clearIndicator();
     PanelGroup* source = dragSourceGroup_;
     const bool tornOffThisDrag = dragFloat_ && dragOriginalIndex_ >= 0;
@@ -1697,6 +1797,7 @@ void PanelColumn::cancelDrag()
         buildIconStrip();
     }
     emit stateChanged();
+    maybeRemoveSelf();
 }
 
 bool PanelColumn::applyPanelDrop(PanelGroup* source, const QString& name,
@@ -2039,12 +2140,50 @@ bool PanelColumn::dropIndicatorVisibleForTest() const
            || (stripIndicator_ && stripIndicator_->isVisible());
 }
 
+void PanelColumn::showEdgeDropIndicator(PanelSide side)
+{
+    // M45 T3: reuse the M43/M44 new-column `DropTarget` and the single
+    // `#2a7fff` indicator; no second indicator system.
+    DropTarget target;
+    target.valid = true;
+    target.anchorColumn = this;
+    target.kind = side == PanelSide::Left ? DropKind::NewColumnLeft
+                                          : DropKind::NewColumnRight;
+    showIndicatorFor(target);
+}
+
+void PanelColumn::hideEdgeDropIndicator()
+{
+    clearIndicator();
+}
+
 QRect PanelColumn::dropIndicatorGeometryForTest() const
 {
     if (stripIndicator_ && stripIndicator_->isVisible()) {
         return stripIndicator_->geometry();
     }
     return indicator_ ? indicator_->geometry() : QRect();
+}
+
+QRect PanelColumn::dropIndicatorGlobalGeometryForTest() const
+{
+    if (stripIndicator_ && stripIndicator_->isVisible()) {
+        return QRect(stripIndicator_->mapToGlobal(QPoint(0, 0)), stripIndicator_->size());
+    }
+    if (indicator_ && indicator_->isVisible()) {
+        return QRect(indicator_->mapToGlobal(QPoint(0, 0)), indicator_->size());
+    }
+    return QRect();
+}
+
+int PanelColumn::horizontalScrollPolicyForTest() const
+{
+    return scroll_ ? static_cast<int>(scroll_->horizontalScrollBarPolicy()) : -1;
+}
+
+int PanelColumn::minimumWidthFloorForTest() const
+{
+    return kPanelMinWidth;
 }
 
 int PanelColumn::dropIndexForTest() const
@@ -2161,20 +2300,21 @@ QRect PanelColumn::iconFlyoutGeometryForTest() const
 
 QString PanelColumn::flyoutHeaderTitleForTest() const
 {
-    return flyoutTitle_ ? flyoutTitle_->text() : QString();
+    // M45 C1: the popup chrome is the hosted group's own tab bar, so the
+    // "header" title is the clicked panel's tab title.
+    return flyoutGroup_ ? flyoutGroup_->titleForPanel(flyoutName_) : QString();
 }
 
 bool PanelColumn::flyoutHeaderCloseForTest() const
 {
-    return flyoutClose_ && flyoutClose_->parentWidget() == flyoutHeader_;
+    // M45 C1: the hosted group's tab bar (with its per-widget `▾` menu, which
+    // carries Close) is the popup's close affordance.
+    return flyoutGroup_ && flyoutGroup_->tabBar() != nullptr;
 }
 
 bool PanelColumn::triggerFlyoutCloseForTest()
 {
-    if (!flyoutClose_) {
-        return false;
-    }
-    flyoutClose_->click();
+    closeIconFlyout();
     QCoreApplication::processEvents();
     return flyout_ ? !flyout_->isVisible() : true;
 }
@@ -2386,12 +2526,16 @@ bool PanelColumn::beginGroupGripDragForTest(const QString& groupName)
 
 bool PanelColumn::popupStyleParityForTest(const QString& objectName) const
 {
-    if (!flyout_ || !flyout_->isVisible() || flyoutName_ != objectName || !flyoutPanel_) {
+    if (!flyout_ || !flyout_->isVisible() || flyoutName_ != objectName || !flyoutGroup_) {
         return false;
     }
+    // M45 C1: the popup hosts the very same `PanelGroup` widget as the docked
+    // stack and the float, so its scoped style/container is shared by identity.
+    const bool hosted = flyoutGroup_->parentWidget() == flyout_
+                        && flyoutGroup_->containsPanel(objectName);
     // M44 C1/S2: no per-host inline override; the same scoped selectors style the
     // docked group, the float, and the flyout.
-    if (!flyout_->styleSheet().isEmpty()) {
+    if (!hosted || !flyout_->styleSheet().isEmpty()) {
         return false;
     }
     const QString sheet = qApp->styleSheet();
@@ -2407,10 +2551,7 @@ bool PanelColumn::popupStyleParityForTest(const QString& objectName) const
     const bool samePane = sheet.contains(
         QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ") + windowHex
         + QStringLiteral("; }"));
-    const bool sameHeader = sheet.contains(
-        QStringLiteral("QWidget#panelFlyoutHeader { background: ") + windowHex);
-    const bool hosted = flyoutPanel_->parentWidget() == flyout_;
-    return sameContainer && samePane && sameHeader && hosted;
+    return sameContainer && samePane;
 }
 
 QToolButton* PanelColumn::widgetMenuButtonForTest(const QString& groupObjectName) const

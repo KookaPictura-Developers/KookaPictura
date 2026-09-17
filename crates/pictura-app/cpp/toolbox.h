@@ -2,6 +2,7 @@
 
 #include <QtCore/QList>
 #include <QtCore/QMap>
+#include <QtCore/QPoint>
 #include <QtCore/QRect>
 #include <QtCore/QStringList>
 #include <QtGui/QColor>
@@ -101,6 +102,7 @@ public:
     QString titleTextForTest() const;
     int minimumWidthForTest() const { return minimumWidth(); }
     int contentWidthForTest() const;
+    int contentHeightForTest() const;
     int foregroundBackgroundWidthForTest() const;
     // Exchanges the foreground/background swatches (the frame's `X` key).
     void swapForegroundBackground();
@@ -120,6 +122,10 @@ public:
 signals:
     void screenModeRequested();
     void columnsChanged(int columns);
+    // M45 T3: the floating Tools panel's title-bar drag. The frame resolves the
+    // drop through the column grammar and hosts the pane at that boundary.
+    void toolbarDragMoved(const QPoint& globalPos);
+    void toolbarDragFinished(const QPoint& globalPos);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -133,6 +139,7 @@ private:
     void reflow();
     void updateContentMetrics();
     int contentWidth(int columns) const;
+    int contentHeight(int columns) const;
     void updateTitleIcon();
 
     ToolController* controller_ = nullptr;
@@ -149,12 +156,11 @@ private:
     QToolButton* screenMode_ = nullptr;
     int columns_ = 1;
     bool shiftKeyForToolSwitch_ = true;
-    bool widthClamping_ = false;
-    // M44 T2: the dock area decides which axis is fixed (width for left/right,
-    // height for top/bottom); floating fixes both.
-    Qt::DockWidgetArea dockArea_ = Qt::LeftDockWidgetArea;
+    // M45 T1: one guard for the single content-metrics recompute; the M43
+    // width lock and M44 height lock are now one pass over both axes.
+    bool metricsClamping_ = false;
+    // M44 T1: while floating the height is pinned to this content height.
     int floatHeight_ = 0;
-    bool heightClamping_ = false;
 };
 
 } // namespace pictura

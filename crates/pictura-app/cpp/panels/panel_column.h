@@ -51,8 +51,10 @@ private:
     PanelGroup* group_ = nullptr;
 };
 
-// The frameless `Qt::Popup` that hosts a panel detached from its group. It
-// reports its own hide so the column can put the panel back exactly once.
+// The frameless `Qt::Popup` that hosts the whole `PanelGroup` a compact-strip
+// icon was clicked in (M45 C1), so docked, popup, and floating present the same
+// widget with no parity differences. It reports its own hide so the column can
+// put the group back exactly once.
 class PanelFlyout : public QWidget {
 public:
     explicit PanelFlyout(QWidget* parent = nullptr);
@@ -74,6 +76,10 @@ public:
     explicit PanelColumn(QWidget* parent = nullptr);
 
     void addGroup(PanelGroup* group);
+    // M45 W4: adopt a group from another column without clobbering its panel
+    // visibility (used to rehome a hidden group before its empty dynamic column
+    // is removed, so the panel widget survives for a later show).
+    void adoptGroup(PanelGroup* group);
     PanelGroup* groupForPanel(const QString& objectName) const;
     QList<PanelGroup*> groups() const { return groups_; }
 
@@ -129,6 +135,7 @@ public:
     bool openIconFlyoutForTest(const QString& objectName);
     bool iconFlyoutVisibleForTest() const;
     QStringList tabMenuActionsForTest() const;
+    QStringList tabMenuActionsForTest(const QString& groupObjectName) const;
     bool triggerTabMenuForTest(const QString& text);
     bool autoCollapseIconicForTest() const { return autoCollapseIconic_; }
     bool autoShowHiddenForTest() const { return autoShowHidden_; }
@@ -141,7 +148,14 @@ public:
     void cancelDragForTest();
     bool dropIndicatorVisibleForTest() const;
     QRect dropIndicatorGeometryForTest() const;
+    QRect dropIndicatorGlobalGeometryForTest() const;
     int dropIndexForTest() const;
+    int horizontalScrollPolicyForTest() const;
+    int minimumWidthFloorForTest() const;
+    // M45 T3: the frame resolves a floating-Tools drop through this column's
+    // grammar and shows the same `#2a7fff` new-column edge indicator.
+    void showEdgeDropIndicator(PanelSide side);
+    void hideEdgeDropIndicator();
     int floatCountForTest() const;
     QStringList floatPanelNamesForTest(int index) const;
     bool tearOffForTest(const QString& groupName);
@@ -174,6 +188,9 @@ public:
     bool triggerFlyoutCloseForTest();
     // M44 C1/S2: the flyout shares the docked widget's scoped style/container.
     bool popupStyleParityForTest(const QString& objectName) const;
+    // M45 C1: the whole PanelGroup currently hosted in the popup, or null when
+    // the popup is closed. The caller compares it to the docked group.
+    PanelGroup* iconFlyoutGroupForTest() const { return flyoutGroup_; }
 
     // M44 Phase C: whole-widget-column docking and compact drop.
     bool dragActiveForTest() const { return dragActive_; }
@@ -225,6 +242,10 @@ private:
         // M44 W5: a whole-column drop beside another column creates the new
         // column adjacent to this anchor instead of at the workspace end.
         PanelColumn* anchorColumn = nullptr;
+        // M45 W1/W2: the column that owns this target (the target group's
+        // column for a cross-column result). The indicator is rendered through
+        // the owner so the line is drawn where the commit will place it.
+        PanelColumn* owner = nullptr;
     };
 
     // One icon in the iconic strip, in strip order. `button` is the drag source
@@ -251,7 +272,7 @@ private:
     void ensureFlyout();
     void openIconFlyout(const QString& objectName, const QPoint& globalPos);
     void closeIconFlyout();
-    void restoreFlyoutPanel();
+    void restoreFlyoutGroup();
     void placeFlyout(const QRect& buttonGlobalRect, const QSize& size);
     QString flyoutSide() const;
     QToolButton* flyoutButtonFor(const QString& objectName) const;
@@ -259,6 +280,7 @@ private:
     QToolButton* stripButtonFor(const QString& objectName) const;
     void showTabMenu(PanelGroup* group, const QPoint& globalPos);
     QMenu* buildTabMenu(PanelGroup* group);
+    QStringList tabMenuTextsFor(const PanelGroup* group) const;
     QToolButton* makeIconButton(QWidget* parent, const QString& objectName,
                                 const QString& title, const QIcon& icon);
 
@@ -266,6 +288,9 @@ private:
     void insertGroupAt(PanelGroup* group, int index);
     bool removeGroup(PanelGroup* group);
     void cleanupEmptyGroup(PanelGroup* group);
+    // M45 W4: remove this dynamic column when no group/panel is left, through
+    // the frame's one cleanup entry point.
+    void maybeRemoveSelf();
     DropTarget resolveDrop(const QPoint& globalPos) const;
     DropTarget resolveLocalDrop(const QPoint& globalPos) const;
     bool resolveIconicDrop(const QPoint& globalPos, DropTarget& target) const;
@@ -316,12 +341,9 @@ private:
 
     PanelFlyout* flyout_ = nullptr;
     QBoxLayout* flyoutLayout_ = nullptr;
-    QWidget* flyoutHeader_ = nullptr;
-    QLabel* flyoutTitle_ = nullptr;
-    QToolButton* flyoutClose_ = nullptr;
-    QWidget* flyoutPanel_ = nullptr;
     PanelGroup* flyoutGroup_ = nullptr;
     QString flyoutName_;
+    int flyoutGroupIndex_ = -1;
     bool restoringFlyout_ = false;
 
     bool autoCollapseIconic_ = false;
@@ -345,6 +367,8 @@ private:
     int dragOriginalIndex_ = -1;
     PanelFloat* dragFloat_ = nullptr;
     DropTarget dropTarget_;
+    // M45 W1/W2: the column currently owning the rendered drop indicator.
+    PanelColumn* indicatorOwner_ = nullptr;
 
     bool stripPressPending_ = false;
     bool stripDragging_ = false;

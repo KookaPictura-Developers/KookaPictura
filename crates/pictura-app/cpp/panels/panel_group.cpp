@@ -506,6 +506,18 @@ QString PanelGroup::currentPanelName() const
     return panel ? panel->objectName() : QString();
 }
 
+bool PanelGroup::setCurrentPanel(const QString& objectName)
+{
+    for (int i = 0; i < tabs_->count(); ++i) {
+        QWidget* panel = tabs_->widget(i);
+        if (panel && panel->objectName() == objectName) {
+            tabs_->setCurrentIndex(i);
+            return true;
+        }
+    }
+    return false;
+}
+
 void PanelGroup::setCurrentToFirstVisible()
 {
     for (int i = 0; i < tabs_->count(); ++i) {
@@ -662,11 +674,19 @@ void PanelGroup::applyMinimize()
             setCollapsedToIcons(false);
         }
         savedMaxHeight_ = tabs_->maximumHeight();
+        savedGroupMaxHeight_ = maximumHeight();
         const int barHeight = tabs_->tabBar() ? tabs_->tabBar()->sizeHint().height() : 24;
+        // M45 W5: clamp the group itself, not only its tab widget, so the
+        // splitter gives it just the tab-bar height.
         tabs_->setMaximumHeight(barHeight);
+        setMaximumHeight(barHeight);
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     } else {
         tabs_->setMaximumHeight(savedMaxHeight_);
+        setMaximumHeight(savedGroupMaxHeight_);
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     }
+    updateGeometry();
 }
 
 void PanelGroup::setCollapsedToIcons(bool collapsed)
@@ -678,7 +698,7 @@ void PanelGroup::setCollapsedToIcons(bool collapsed)
     if (collapsed) {
         if (minimized_) {
             minimized_ = false;
-            tabs_->setMaximumHeight(savedMaxHeight_);
+            applyMinimize();
         }
         rebuildIconRow();
     }

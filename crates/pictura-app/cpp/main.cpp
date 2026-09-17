@@ -3408,13 +3408,17 @@ int main(int argc, char* argv[])
             return 117;
         }
 
-        // m40_dock (118): M44 T2 widens the allowed sides to all four dock areas;
-        // it stays movable/floatable/closable and carries no tab group. The
-        // right-hand panels are no longer docks, so this asserts the Tools dock
-        // carries no tab group after the frame's re-dock fallback runs
-        // (`tabifiedDockWidgets` is empty without a companion).
+        // m40_dock (118): M45 T2 restricts the allowed sides to left/right again
+        // (M44 had widened them to all four); it stays movable/floatable/closable
+        // and carries no tab group. The right-hand panels are no longer docks, so
+        // this asserts the Tools dock carries no tab group after the frame's
+        // re-dock fallback runs (`tabifiedDockWidgets` is empty without a
+        // companion).
         QDockWidget* m40Dock = m40Toolbox;
-        const bool m40Areas = m40Dock && m40Dock->allowedAreas() == Qt::AllDockWidgetAreas;
+        const bool m40Areas =
+            m40Dock
+            && m40Dock->allowedAreas()
+                   == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
         const bool m40Features =
             m40Dock
             && m40Dock->features()
@@ -5697,8 +5701,9 @@ int main(int argc, char* argv[])
             }
 
             // 158: a widget column docks at the toolbar side, beside another
-            // column, and at the workspace edge; the Tools dock allows all four
-            // sides and its floating height is pinned (T1/T2/W5).
+            // column, and at the workspace edge; the Tools dock now allows only
+            // the left/right sides (M45 T2) and its floating height is pinned
+            // (T1/T2/W5).
             bool m44DsToolbar = false;
             bool m44DsColumn = false;
             bool m44DsWorkspace = false;
@@ -5742,7 +5747,9 @@ int main(int argc, char* argv[])
                 m44DsColumn = madeAnchor && beside && besideBack
                               && frame.panelColumnCountForTest() == baseCount;
 
-                const bool areas = m40Toolbox->allowedAreas() == Qt::AllDockWidgetAreas;
+                const bool areas =
+                    m40Toolbox->allowedAreas()
+                    == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
                 const bool wasFloating = m40Toolbox->isFloating();
                 if (!wasFloating) {
                     m40Toolbox->setFloating(true);
@@ -5770,6 +5777,639 @@ int main(int argc, char* argv[])
             if (!(m44DsToolbar && m44DsColumn && m44DsWorkspace && m44DsFloat)) {
                 std::fprintf(stderr, "pictura self-test: FAIL: M44 any-side docking\n");
                 return 158;
+            }
+        }
+
+        // M45 Phase A (167-169): the Tools toolbar content sizing, left/right-only
+        // docking, and placement beside a widget column through the column
+        // grammar. Geometry is read after a bounded pump so it is real offscreen.
+        {
+            // 167: both axes are content-derived in one and two columns and
+            // stable across a 1->2->1 toggle; neither axis is cut or over-tall.
+            bool m45One = false;
+            bool m45Two = false;
+            bool m45Stable = false;
+            int m45W1 = 0;
+            int m45H1 = 0;
+            int m45W2 = 0;
+            int m45H2 = 0;
+            if (m40Toolbox) {
+                m40Toolbox->setColumns(1);
+                m43Pump(8);
+                m45W1 = m40Toolbox->width();
+                m45H1 = m40Toolbox->height();
+                const int cw1 = m40Toolbox->contentWidthForTest();
+                const int ch1 = m40Toolbox->contentHeightForTest();
+                m45One = cw1 > 0 && ch1 > 0 && m45W1 == cw1 && m45H1 == ch1
+                         && m40Toolbox->minimumWidth() == cw1
+                         && m40Toolbox->maximumWidth() == cw1
+                         && m40Toolbox->minimumHeight() == ch1
+                         && m40Toolbox->maximumHeight() == ch1;
+                m40Toolbox->setColumns(2);
+                m43Pump(8);
+                m45W2 = m40Toolbox->width();
+                m45H2 = m40Toolbox->height();
+                const int cw2 = m40Toolbox->contentWidthForTest();
+                const int ch2 = m40Toolbox->contentHeightForTest();
+                m45Two = cw2 > cw1 && ch2 > 0 && ch2 < ch1 && m45W2 == cw2 && m45H2 == ch2;
+                m40Toolbox->setColumns(1);
+                m43Pump(8);
+                m45Stable = m40Toolbox->width() == cw1 && m40Toolbox->height() == ch1;
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m45_tools_sizing one=%d two=%d stable=%d "
+                         "w1=%d h1=%d w2=%d h2=%d\n",
+                         m45One ? 1 : 0, m45Two ? 1 : 0, m45Stable ? 1 : 0, m45W1, m45H1,
+                         m45W2, m45H2);
+            std::fflush(stderr);
+            if (!(m45One && m45Two && m45Stable)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 tools sizing\n");
+                return 167;
+            }
+        }
+
+        {
+            // 168: the Tools dock allows left/right only; top and bottom refused.
+            const Qt::DockWidgetAreas m45Areas =
+                m40Toolbox ? m40Toolbox->allowedAreas() : Qt::NoDockWidgetArea;
+            const bool m45Left = m45Areas.testFlag(Qt::LeftDockWidgetArea);
+            const bool m45Right = m45Areas.testFlag(Qt::RightDockWidgetArea);
+            const bool m45NoTop = !m45Areas.testFlag(Qt::TopDockWidgetArea)
+                                  && !m45Areas.testFlag(Qt::BottomDockWidgetArea);
+            std::fprintf(stderr,
+                         "pictura self-test: m45_tools_sides left=%d right=%d notop=%d\n",
+                         m45Left ? 1 : 0, m45Right ? 1 : 0, m45NoTop ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45Left && m45Right && m45NoTop)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 tools sides\n");
+                return 168;
+            }
+        }
+
+        {
+            // 169: the floating Tools panel docks to the left of the primary
+            // widget column and to the right of a dynamically created one, with
+            // the single indicator shown, through the column grammar.
+            const bool m45BesideLeft =
+                frame.toolboxBesideColumnForTest(QStringLiteral("left"), false);
+            const bool m45BesideRight =
+                frame.toolboxBesideColumnForTest(QStringLiteral("right"), true);
+            std::fprintf(stderr,
+                         "pictura self-test: m45_tools_beside_column left=%d right=%d\n",
+                         m45BesideLeft ? 1 : 0, m45BesideRight ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45BesideLeft && m45BesideRight)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 tools beside column\n");
+                return 169;
+            }
+        }
+
+        // M45 Phase B (170-177): the widget-panel drop indicator is rendered
+        // from the resolved DropTarget in the owning column (W1-W3, W6); a
+        // dynamic column emptied by any path is removed (W4); minimize collapses
+        // the group to its tab bar with a state-derived menu label (W5); a
+        // column never clips and shares one minimum-width floor (W7/W8). Every
+        // check pumps the event loop bounded and forces layout so geometry is
+        // real offscreen.
+        {
+            auto m45Pump = [](int n) {
+                for (int i = 0; i < n; ++i) {
+                    QCoreApplication::processEvents();
+                }
+            };
+            // A visible panel in the primary column that is not in `exclude`.
+            auto m45OtherPanel = [&](pictura::PanelGroup* exclude,
+                                     const QString& alsoExclude) -> QString {
+                if (!m41Column) {
+                    return QString();
+                }
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (!group || group == exclude || !group->isVisible()
+                        || group->titleCountForTest() == 0) {
+                        continue;
+                    }
+                    for (QWidget* panel : group->panels()) {
+                        if (panel && panel->objectName() != alsoExclude) {
+                            return panel->objectName();
+                        }
+                    }
+                }
+                return QString();
+            };
+            auto m45CollapseDynamics = [&]() {
+                // Geometry-independent teardown: move every dynamic column's
+                // groups (and their panels) back into the primary column, then
+                // drop the empty columns. Keeps the tested resolve/commit path
+                // untouched without depending on a drop's pixel geometry.
+                for (pictura::PanelColumn* column : frame.panelColumns()) {
+                    if (!column || column == m41Column) {
+                        continue;
+                    }
+                    const QList<pictura::PanelGroup*> groups = column->groups();
+                    for (pictura::PanelGroup* group : groups) {
+                        if (!group) {
+                            continue;
+                        }
+                        if (pictura::PanelGroup* taken =
+                                column->takeGroup(group->objectName())) {
+                            m41Column->adoptGroup(taken);
+                        }
+                    }
+                    frame.removeColumnIfEmpty(column);
+                }
+                m45Pump(6);
+            };
+
+            // 170: the line follows the resolved target's side in the owning
+            // (destination) column, never the drag's source column.
+            bool m45SideLeft = false;
+            bool m45SideRight = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m45Pump(4);
+                pictura::PanelColumn* dest =
+                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                pictura::PanelGroup* dg = nullptr;
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (group && group->isVisible() && group->titleCountForTest() == 1) {
+                        dg = group;
+                        break;
+                    }
+                }
+                if (dest && dg) {
+                    const QString seedName = dg->objectName();
+                    if (pictura::PanelGroup* taken = m41Column->takeGroup(seedName)) {
+                        dest->adoptGroup(taken);
+                    }
+                }
+                if (dest) {
+                    m41Column->setPreferredWidth(180);
+                    dest->setPreferredWidth(420);
+                    m45Pump(6);
+                }
+                const QString srcA = m45OtherPanel(dg, QString());
+                const QString srcB = m45OtherPanel(dg, srcA);
+                if (dest && dest != m41Column && dg && !srcA.isEmpty() && !srcB.isEmpty()) {
+                    // Append one panel (right side), then insert the other
+                    // between the first two tabs (left side); both points are
+                    // interior to the target bar, so they exercise the
+                    // cross-column target rather than a column-edge anchor.
+                    const int endR = dg->titleCountForTest();
+                    const QPoint rightPoint = dg->tabInsertionGlobalPointForTest(endR);
+                    m41Column->beginTabDragForTest(srcA);
+                    m41Column->dragToForTest(rightPoint);
+                    const QRect rg = dest->dropIndicatorGlobalGeometryForTest();
+                    m45SideRight = dest->dropIndicatorVisibleForTest()
+                                   && !m41Column->dropIndicatorVisibleForTest() && rg.isValid()
+                                   && qAbs(rg.center().x() - rightPoint.x()) <= 8;
+                    m41Column->dropForTest(rightPoint);
+                    m45Pump(4);
+                    m45SideRight = m45SideRight && dest->groupForPanel(srcA) == dg
+                                   && dg->indexOfPanel(srcA) == endR;
+
+                    const QPoint leftPoint = dg->tabInsertionGlobalPointForTest(1);
+                    m41Column->beginTabDragForTest(srcB);
+                    m41Column->dragToForTest(leftPoint);
+                    const QRect lg = dest->dropIndicatorGlobalGeometryForTest();
+                    m45SideLeft = dest->dropIndicatorVisibleForTest()
+                                  && !m41Column->dropIndicatorVisibleForTest() && lg.isValid()
+                                  && qAbs(lg.center().x() - leftPoint.x()) <= 8;
+                    m41Column->dropForTest(leftPoint);
+                    m45Pump(4);
+                    m45SideLeft = m45SideLeft && dest->groupForPanel(srcB) == dg
+                                  && dg->indexOfPanel(srcB) == 1;
+                }
+                m45CollapseDynamics();
+            }
+            std::fprintf(stderr, "pictura self-test: m45_indicator_side left=%d right=%d\n",
+                         m45SideLeft ? 1 : 0, m45SideRight ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45SideLeft && m45SideRight)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 indicator side\n");
+                return 170;
+            }
+
+            // 171: a cross-column IntoGroup drop shows the line in the target
+            // column (shown) and lands the panel there (placed).
+            bool m45CrossShown = false;
+            bool m45CrossPlaced = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m45Pump(4);
+                pictura::PanelColumn* dest =
+                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                pictura::PanelGroup* dg = nullptr;
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (group && group->isVisible() && group->titleCountForTest() == 1) {
+                        dg = group;
+                        break;
+                    }
+                }
+                if (dest && dg) {
+                    const QString seedName = dg->objectName();
+                    if (pictura::PanelGroup* taken = m41Column->takeGroup(seedName)) {
+                        dest->adoptGroup(taken);
+                    }
+                }
+                if (dest) {
+                    m41Column->setPreferredWidth(180);
+                    dest->setPreferredWidth(420);
+                    m45Pump(6);
+                }
+                const QString src = m45OtherPanel(dg, QString());
+                if (dest && dest != m41Column && dg && !src.isEmpty()) {
+                    const QPoint p = dg->tabInsertionGlobalPointForTest(
+                        dg->titleCountForTest());
+                    m41Column->beginTabDragForTest(src);
+                    m41Column->dragToForTest(p);
+                    m45CrossShown = dest->dropIndicatorVisibleForTest()
+                                    && !m41Column->dropIndicatorVisibleForTest();
+                    m41Column->dropForTest(p);
+                    m45Pump(4);
+                    m45CrossPlaced = dest->groupForPanel(src) == dg;
+                }
+                m45CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m45_indicator_cross_column shown=%d placed=%d\n",
+                         m45CrossShown ? 1 : 0, m45CrossPlaced ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45CrossShown && m45CrossPlaced)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 cross-column indicator\n");
+                return 171;
+            }
+
+            // 172: the rightmost tab insertion draws at that tab's index, not
+            // the leftmost edge, and the panel lands last.
+            bool m45Rightmost = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m41Column->setPreferredWidth(420);
+                m45Pump(6);
+                pictura::PanelGroup* target =
+                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                const QString src = m45OtherPanel(target, QString());
+                if (target && target->titleCountForTest() >= 1 && !src.isEmpty()) {
+                    const int end = target->titleCountForTest();
+                    const QPoint p = target->tabInsertionGlobalPointForTest(end);
+                    QTabBar* bar = target->tabBar();
+                    const int firstLeft =
+                        bar ? bar->mapToGlobal(QPoint(target->tabInsertionX(0), 0)).x() : 0;
+                    const int lastLeft = bar ? bar->mapToGlobal(
+                                                   QPoint(target->tabInsertionX(end - 1), 0))
+                                                   .x()
+                                             : 0;
+                    m41Column->beginTabDragForTest(src);
+                    m41Column->dragToForTest(p);
+                    const QRect g = m41Column->dropIndicatorGlobalGeometryForTest();
+                    m45Rightmost = m41Column->dropIndicatorVisibleForTest() && g.isValid()
+                                   && qAbs(g.center().x() - p.x()) <= 8
+                                   && g.center().x() >= lastLeft
+                                   && g.center().x() > firstLeft;
+                    m41Column->dropForTest(p);
+                    m45Pump(4);
+                    m45Rightmost = m45Rightmost && target->indexOfPanel(src) == end
+                                   && m41Column->groupForPanel(src) == target;
+                }
+            }
+            std::fprintf(stderr, "pictura self-test: m45_indicator_rightmost_tab rightmost=%d\n",
+                         m45Rightmost ? 1 : 0);
+            std::fflush(stderr);
+            if (!m45Rightmost) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 rightmost-tab indicator\n");
+                return 172;
+            }
+
+            // 173: a dynamic column emptied by a close path and by a move path
+            // is removed; a closed panel is rehomed so it can be shown again.
+            bool m45Closed = false;
+            bool m45Moved = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m45Pump(4);
+                // closed: a dynamic column whose group is closed is removed;
+                // the hidden group is rehomed so the panel can be shown again.
+                const int beforeClose = frame.panelColumnCountForTest();
+                pictura::PanelColumn* closeDest =
+                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                pictura::PanelGroup* closeGroup = nullptr;
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (group && group->isVisible() && group->titleCountForTest() == 1
+                        && group->objectName() != QStringLiteral("panelGroup_layersPanel")) {
+                        closeGroup = group;
+                        break;
+                    }
+                }
+                if (closeDest && closeGroup) {
+                    const QString closeName = closeGroup->objectName();
+                    if (pictura::PanelGroup* taken = m41Column->takeGroup(closeName)) {
+                        closeDest->adoptGroup(taken);
+                    }
+                    const QString closePanel = closeGroup->panels().isEmpty()
+                                                   ? QString()
+                                                   : closeGroup->panels().first()->objectName();
+                    m45Pump(6);
+                    closeDest->closeGroup(closeGroup);
+                    m45Pump(6);
+                    m45Closed = frame.panelColumnCountForTest() == beforeClose
+                                && !closePanel.isEmpty()
+                                && m41Column->groupForPanel(closePanel) != nullptr;
+                }
+                // moved: a dynamic column whose panel is moved out through the
+                // real drag path empties and is removed.
+                const int beforeMove = frame.panelColumnCountForTest();
+                pictura::PanelColumn* moveDest =
+                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                pictura::PanelGroup* moveGroup = nullptr;
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (group && group->isVisible() && group->titleCountForTest() == 1
+                        && group->objectName() != QStringLiteral("panelGroup_layersPanel")) {
+                        moveGroup = group;
+                        break;
+                    }
+                }
+                if (moveDest && moveGroup) {
+                    const QString moveName = moveGroup->objectName();
+                    if (pictura::PanelGroup* taken = m41Column->takeGroup(moveName)) {
+                        moveDest->adoptGroup(taken);
+                    }
+                    const QString movePanel = moveGroup->panels().isEmpty()
+                                                  ? QString()
+                                                  : moveGroup->panels().first()->objectName();
+                    m41Column->setPreferredWidth(420);
+                    m45Pump(6);
+                    const bool back =
+                        frame.dropIntoGroupForTest(movePanel, QStringLiteral("colorPanel"), -1);
+                    m45Pump(6);
+                    m45Moved = back && frame.panelColumnCountForTest() == beforeMove;
+                }
+                m45CollapseDynamics();
+            }
+            std::fprintf(stderr, "pictura self-test: m45_empty_column_removed closed=%d moved=%d\n",
+                         m45Closed ? 1 : 0, m45Moved ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45Closed && m45Moved)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 empty column removed\n");
+                return 173;
+            }
+
+            // 174: minimize collapses the group to its tab-bar height with the
+            // content hidden and the tab menu reading `Expand Panel`.
+            bool m45MinHeight = false;
+            bool m45MinContent = false;
+            bool m45MinLabel = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m41Column->showPanel(QStringLiteral("layersPanel"), true);
+                m41Column->setPreferredWidth(360);
+                m45Pump(8);
+                pictura::PanelGroup* g =
+                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                if (g) {
+                    g->setMinimizedForTest(false);
+                    m45Pump(8);
+                    const int expanded = g->height();
+                    const int barH = g->tabBar() ? g->tabBar()->sizeHint().height() : 24;
+                    g->setMinimizedForTest(true);
+                    g->updateGeometry();
+                    m41Column->updateGeometry();
+                    m45Pump(16);
+                    const int collapsed = g->height();
+                    m45MinHeight = expanded > barH + 4 && collapsed > 0
+                                   && collapsed <= barH + 6 && collapsed < expanded
+                                   && g->maximumHeight() <= barH + 4;
+                    m45MinContent = g->contentHiddenForTest();
+                    const QStringList texts = m41Column->tabMenuActionsForTest(g->objectName());
+                    m45MinLabel = texts.size() == 7
+                                  && texts.value(2) == QStringLiteral("Expand Panel");
+                    g->setMinimizedForTest(false);
+                    g->updateGeometry();
+                    m45Pump(8);
+                }
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m45_minimize_collapse height=%d content=%d "
+                         "label=%d\n",
+                         m45MinHeight ? 1 : 0, m45MinContent ? 1 : 0, m45MinLabel ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45MinHeight && m45MinContent && m45MinLabel)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 minimize collapse\n");
+                return 174;
+            }
+
+            // 175: a bottom-boundary insert draws the horizontal line at the
+            // last group's bottom edge and lands a new last group.
+            bool m45Bottom = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m45Pump(4);
+                const QString src = m45OtherPanel(nullptr, QString());
+                const QPoint p = m41Column->boundaryPointForTest(1000);
+                if (!src.isEmpty() && !p.isNull()) {
+                    m41Column->beginTabDragForTest(src);
+                    m41Column->dragToForTest(p);
+                    const QRect g = m41Column->dropIndicatorGeometryForTest();
+                    const bool horiz =
+                        g.isValid() && g.width() > g.height() && g.height() == 3;
+                    m41Column->dropForTest(p);
+                    m45Pump(6);
+                    pictura::PanelGroup* landed = m41Column->groupForPanel(src);
+                    m45Bottom = horiz && g.center().y() > m41Column->height() / 2 && landed
+                                && landed->titleCountForTest() == 1;
+                }
+            }
+            std::fprintf(stderr, "pictura self-test: m45_indicator_bottom bottom=%d\n",
+                         m45Bottom ? 1 : 0);
+            std::fflush(stderr);
+            if (!m45Bottom) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 bottom indicator\n");
+                return 175;
+            }
+
+            // 176: the column never clips — the tab text elides, the corner
+            // button keeps its width, and the scroll area allows horizontal
+            // scrolling.
+            bool m45NoClipElide = false;
+            bool m45NoClipScroll = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m45Pump(4);
+                bool any = false;
+                bool elide = true;
+                bool corner = true;
+                for (pictura::PanelGroup* g : m41Column->groups()) {
+                    if (!g || !g->isVisible()) {
+                        continue;
+                    }
+                    any = true;
+                    QTabBar* bar = g->tabBar();
+                    elide = elide && bar && bar->elideMode() == Qt::ElideRight
+                            && !bar->expanding();
+                    corner = corner && g->headerCornerWidthForTest() > 0;
+                }
+                m45NoClipElide = any && elide && corner;
+                m45NoClipScroll = m41Column->horizontalScrollPolicyForTest()
+                                  == static_cast<int>(Qt::ScrollBarAsNeeded);
+            }
+            std::fprintf(stderr, "pictura self-test: m45_no_clip elide=%d scroll=%d\n",
+                         m45NoClipElide ? 1 : 0, m45NoClipScroll ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45NoClipElide && m45NoClipScroll)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 no clip\n");
+                return 176;
+            }
+
+            // 177: every normal-mode widget column shares one minimum-width
+            // floor and cannot vanish when resized to it.
+            bool m45FloorShared = false;
+            bool m45FloorNotGone = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m45Pump(2);
+                m41Column->setRailMode(false);
+                m45Pump(4);
+                pictura::PanelColumn* dest =
+                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                pictura::PanelGroup* seed = nullptr;
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (group && group->isVisible() && group->titleCountForTest() == 1) {
+                        seed = group;
+                        break;
+                    }
+                }
+                if (dest && seed) {
+                    const QString seedName = seed->objectName();
+                    if (pictura::PanelGroup* taken = m41Column->takeGroup(seedName)) {
+                        dest->adoptGroup(taken);
+                    }
+                }
+                if (dest && dest != m41Column) {
+                    const int floor = m41Column->minimumWidthFloorForTest();
+                    const int minA = m41Column->minimumWidthForTest();
+                    const int minB = dest->minimumWidthForTest();
+                    m45FloorShared = floor > 0 && minA == floor && minB == floor;
+                    dest->setPreferredWidth(floor);
+                    m41Column->setPreferredWidth(floor);
+                    m45Pump(8);
+                    m45FloorNotGone = minA > 0 && !m41Column->isHidden()
+                                      && !dest->isHidden() && m41Column->width() >= floor;
+                    m45CollapseDynamics();
+                }
+            }
+            std::fprintf(stderr, "pictura self-test: m45_min_width_floor shared=%d notgone=%d\n",
+                         m45FloorShared ? 1 : 0, m45FloorNotGone ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45FloorShared && m45FloorNotGone)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 min width floor\n");
+                return 177;
+            }
+        }
+
+        // M45 Phase C (178-179): the compact popup hosts the whole PanelGroup
+        // (all tabs, clicked panel active) and restores it exactly once on close
+        // (C1); a whole-group compact drag draws above the drag-handle dots (C2).
+        {
+            auto m45Pump = [](int n) {
+                for (int i = 0; i < n; ++i) {
+                    QCoreApplication::processEvents();
+                }
+            };
+
+            // 178: the popup contains the full group's tabs, the clicked panel
+            // is current, it is the very same widget as the docked group (shared
+            // style/container), and closing restores it exactly once.
+            bool m45PopupTabs = false;
+            bool m45PopupActive = false;
+            bool m45PopupParity = false;
+            bool m45PopupRestore = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m45Pump(6);
+                // The Layers group carries three tabs (Layers/Channels/Paths),
+                // so clicking Channels proves the whole group is hosted.
+                const QString clicked = QStringLiteral("channelsPanel");
+                pictura::PanelGroup* group = m41Column->groupForPanel(clicked);
+                if (group) {
+                    group->setCurrentPanel(QStringLiteral("layersPanel"));
+                    m45Pump(2);
+                    const QStringList expectedTitles = group->titles();
+                    const int expectedCount = group->titleCountForTest();
+                    const bool opened = m41Column->openIconFlyoutForTest(clicked);
+                    m45Pump(10);
+                    pictura::PanelGroup* hosted = m41Column->iconFlyoutGroupForTest();
+                    m45PopupTabs = opened && hosted == group && group->isVisible()
+                                   && hosted->titleCountForTest() == expectedCount
+                                   && hosted->titles() == expectedTitles;
+                    m45PopupActive = hosted && hosted->currentPanelName() == clicked;
+                    m45PopupParity = m41Column->iconFlyoutVisibleForTest()
+                                     && m41Column->popupStyleParityForTest(clicked);
+                    const bool closed = m41Column->triggerFlyoutCloseForTest();
+                    m45Pump(10);
+                    int occurrences = 0;
+                    for (pictura::PanelGroup* cand : m41Column->groups()) {
+                        if (cand == group) {
+                            ++occurrences;
+                        }
+                    }
+                    QWidget* parent = group->parentWidget();
+                    m45PopupRestore =
+                        closed && !m41Column->iconFlyoutVisibleForTest()
+                        && m41Column->iconFlyoutGroupForTest() == nullptr
+                        && occurrences == 1 && parent
+                        && parent->objectName() == QStringLiteral("panelColumnSplitter")
+                        && group->titleCountForTest() == expectedCount
+                        && group->currentPanelName() == clicked
+                        && m41Column->groupForPanel(clicked) == group;
+                }
+                m41Column->setRailMode(false);
+                m45Pump(4);
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m45_popup_group tabs=%d active=%d parity=%d "
+                         "restore=%d\n",
+                         m45PopupTabs ? 1 : 0, m45PopupActive ? 1 : 0, m45PopupParity ? 1 : 0,
+                         m45PopupRestore ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m45PopupTabs && m45PopupActive && m45PopupParity && m45PopupRestore)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 popup group\n");
+                return 178;
+            }
+
+            // 179: dragging a whole group in compact mode shows the placement
+            // line above the group's drag-handle grip (at its insertion
+            // boundary), never inside the group below the dots.
+            bool m45CompactAbove = false;
+            if (m41Column) {
+                m41Column->setRailMode(true);
+                m45Pump(8);
+                const QStringList order = m41Column->compactStripGroupOrderForTest();
+                const QString first = order.isEmpty() ? QString() : order.first();
+                QWidget* grip = first.isEmpty() ? nullptr : m41Column->dragHandleForTest(first);
+                const QPoint boundary = m41Column->compactStripBoundaryPointForTest(0);
+                const bool began =
+                    !first.isEmpty() && m41Column->beginGroupGripDragForTest(first);
+                m41Column->dragToForTest(boundary);
+                const QRect indicator = m41Column->dropIndicatorGeometryForTest();
+                const QRect indicatorGlobal = m41Column->dropIndicatorGlobalGeometryForTest();
+                const QRect gripGlobal =
+                    grip ? QRect(grip->mapToGlobal(QPoint(0, 0)), grip->size()) : QRect();
+                m45CompactAbove =
+                    began && grip && boundary != QPoint() && indicator.isValid()
+                    && indicator.width() > indicator.height()
+                    && indicatorGlobal.isValid() && gripGlobal.isValid()
+                    && indicatorGlobal.center().y() <= gripGlobal.top()
+                    && qAbs(indicatorGlobal.center().y() - boundary.y()) <= 3;
+                m41Column->cancelDragForTest();
+                m45Pump(6);
+                m41Column->setRailMode(false);
+                m45Pump(4);
+            }
+            std::fprintf(stderr, "pictura self-test: m45_compact_group_line above=%d\n",
+                         m45CompactAbove ? 1 : 0);
+            std::fflush(stderr);
+            if (!m45CompactAbove) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M45 compact group line\n");
+                return 179;
             }
         }
 

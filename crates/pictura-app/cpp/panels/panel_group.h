@@ -38,6 +38,9 @@ public:
     bool removePanel(const QString& objectName);
     bool setPanelVisible(const QString& objectName, bool visible);
     QString currentPanelName() const;
+    // M45 C1: make the named panel the active tab (the compact popup opens the
+    // whole group with the clicked panel current). False when unknown.
+    bool setCurrentPanel(const QString& objectName);
     QString titleForPanel(const QString& objectName) const;
     QIcon iconForPanel(const QString& objectName) const;
 
@@ -139,6 +142,7 @@ private:
     bool collapsedToIcons_ = false;
     bool minimized_ = false;
     int savedMaxHeight_ = QWIDGETSIZE_MAX;
+    int savedGroupMaxHeight_ = QWIDGETSIZE_MAX;
 
     bool pressPending_ = false;
     bool dragging_ = false;

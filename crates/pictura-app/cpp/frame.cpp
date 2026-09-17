@@ -808,8 +808,28 @@ void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
     if (!column || column == panelColumn_ || !column->isDynamic()) {
         return;
     }
-    if (!column->groups().isEmpty()) {
+    // A float still routes its drags through this column, so keep it while one
+    // is live (a one-panel float must be able to re-dock).
+    if (column->floatCountForTest() > 0) {
         return;
+    }
+    // M45 W4: a dynamic column is empty when no visible group has visible
+    // content — this covers both a moved-out group and a closed panel.
+    for (PanelGroup* group : column->groups()) {
+        if (group && group->isVisible() && !group->visibleTitles().isEmpty()) {
+            return;
+        }
+    }
+    // Rehome any still-live (hidden) groups so their panel widgets survive for
+    // a later Window-menu show; then close the now-empty column.
+    const QList<PanelGroup*> remaining = column->groups();
+    for (PanelGroup* group : remaining) {
+        if (!group) {
+            continue;
+        }
+        if (PanelGroup* taken = column->takeGroup(group->objectName())) {
+            panelColumn_->adoptGroup(taken);
+        }
     }
     column->hide();
     column->setParent(nullptr);
@@ -880,8 +900,11 @@ PanelColumn* PicturaMainWindow::columnEdgeAnchorAt(const QPoint& globalPos,
         *side = -1;
     }
     // ponytail: chosen proximity band beside a column, not a sourced CS6 metric.
+    // M45 W8: strictly outside the column (inside = 0), so a rightmost/leftmost
+    // tab insertion inside a narrow, scrolled column is not mistaken for a
+    // new-column anchor.
     constexpr int kEdgeBand = 26;
-    constexpr int kEdgeInside = 6;
+    constexpr int kEdgeInside = 0;
     for (PanelColumn* column : panelColumns()) {
         if (!column || column == exclude || !column->isVisible()) {
             continue;
@@ -909,9 +932,65 @@ PanelColumn* PicturaMainWindow::columnEdgeAnchorAt(const QPoint& globalPos,
     return nullptr;
 }
 
+bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn** anchor,
+                                           int* side)
+{
+    if (anchor) {
+        *anchor = nullptr;
+    }
+    if (side) {
+        *side = -1;
+    }
+    PanelColumn* resolved = nullptr;
+    int resolvedSide = -1;
+    if (toolbox_ && centerSplitter_) {
+        resolved = columnEdgeAnchorAt(globalPos, nullptr, &resolvedSide);
+    }
+    // Drop the previous boundary's line when the pointer moves off it.
+    if (toolboxDropAnchor_ && toolboxDropAnchor_ != resolved) {
+        toolboxDropAnchor_->hideEdgeDropIndicator();
+        toolboxDropAnchor_ = nullptr;
+    }
+    if (!resolved) {
+        return false;
+    }
+    resolved->showEdgeDropIndicator(resolvedSide == 0 ? PanelSide::Left : PanelSide::Right);
+    toolboxDropAnchor_ = resolved;
+    if (anchor) {
+        *anchor = resolved;
+    }
+    if (side) {
+        *side = resolvedSide;
+    }
+    return true;
+}
+
+bool PicturaMainWindow::commitToolboxDrop(const QPoint& globalPos)
+{
+    int side = -1;
+    PanelColumn* anchor = nullptr;
+    if (!resolveToolboxDrop(globalPos, &anchor, &side) || !anchor || !centerSplitter_) {
+        return false;
+    }
+    anchor->hideEdgeDropIndicator();
+    toolboxDropAnchor_ = nullptr;
+    const int anchorIndex = centerSplitter_->indexOf(anchor);
+    if (anchorIndex < 0) {
+        return false;
+    }
+    const int insertAt = side == 0 ? anchorIndex : anchorIndex + 1;
+    // M45 T3 honest limit: a QDockWidget cannot sit *between* two columns, so the
+    // panel is re-hosted as a fixed-width pane at that central-splitter boundary.
+    removeDockWidget(toolbox_);
+    toolbox_->hide();
+    centerSplitter_->insertWidget(insertAt, toolbox_);
+    reapplyColumnStretch();
+    toolbox_->show();
+    return centerSplitter_->indexOf(toolbox_) == insertAt;
+}
+
 QString PicturaMainWindow::panelColumnSideForTest(int index) const
-{    const QList<PanelColumn*> columns = panelColumns();
-    if (index < 0 || index >= columns.size()) {
+{    const QList<PanelColumn*> columns = panelColumns();    if (index < 0 || index >= columns.size()) {
         return QString();
     }
     return sideOf(columns.at(index)) == PanelSide::Left ? QStringLiteral("left")
@@ -986,6 +1065,57 @@ bool PicturaMainWindow::newColumnBesideForTest(const QString& panelName,
     const int destIndex = centerSplitter_->indexOf(destination);
     const int anchorIndex = centerSplitter_->indexOf(anchor);
     return destIndex >= 0 && anchorIndex >= 0 && qAbs(destIndex - anchorIndex) == 1;
+}
+
+bool PicturaMainWindow::toolboxBesideColumnForTest(const QString& side, bool dynamicAnchor)
+{
+    if (!toolbox_ || !panelColumn_ || !centerSplitter_) {
+        return false;
+    }
+    PanelColumn* anchor = panelColumn_;
+    if (dynamicAnchor) {
+        anchor = createPanelColumn(PanelSide::Right, panelColumn_);
+        if (!anchor) {
+            return false;
+        }
+        for (int i = 0; i < 4; ++i) {
+            QCoreApplication::processEvents();
+        }
+    }
+    // The real path is a floating-Tools drag; float it so the resolve/commit
+    // below is the same path the title-bar gesture drives. Re-dock first when a
+    // previous beside-column placement left it in the splitter.
+    if (centerSplitter_->indexOf(toolbox_) >= 0) {
+        addDockWidget(Qt::LeftDockWidgetArea, toolbox_);
+        for (int i = 0; i < 4; ++i) {
+            QCoreApplication::processEvents();
+        }
+    }
+    if (!toolbox_->isFloating()) {
+        toolbox_->setFloating(true);
+        for (int i = 0; i < 4; ++i) {
+            QCoreApplication::processEvents();
+        }
+    }
+    const QRect r(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
+    if (!r.isValid() || r.width() <= 0) {
+        return false;
+    }
+    const bool left = side == QStringLiteral("left");
+    const QPoint point = left ? QPoint(r.left() - 8, r.center().y())
+                              : QPoint(r.right() + 8, r.center().y());
+    PanelColumn* resolved = nullptr;
+    int resolvedSide = -1;
+    if (!resolveToolboxDrop(point, &resolved, &resolvedSide) || resolved != anchor) {
+        return false;
+    }
+    const bool indicator = anchor->dropIndicatorVisibleForTest();
+    const int anchorIndex = centerSplitter_->indexOf(anchor);
+    // `commitToolboxDrop` inserts before the anchor for a left drop and after it
+    // for a right drop, matching `createPanelColumn`.
+    const int expected = left ? anchorIndex : anchorIndex + 1;
+    const bool placed = commitToolboxDrop(point) && centerSplitter_->indexOf(toolbox_) == expected;
+    return indicator && placed;
 }
 
 bool PicturaMainWindow::dropIntoGroupForTest(const QString& panelName, const QString& targetPanel,
@@ -1561,6 +1691,25 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     });
     connect(toolbox, &QDockWidget::topLevelChanged, this,
             [this](bool) { ensureToolsNotTabified(); });
+
+    // M45 T3: while the floating Tools panel is dragged, resolve the drop through
+    // the column grammar and show the single indicator; on release host it at
+    // that boundary. The commit is deferred past Qt's own dock-drag handling.
+    connect(toolbox, &Toolbox::toolbarDragMoved, this, [this](const QPoint& pos) {
+        if (toolbox_ && toolbox_->isFloating()) {
+            resolveToolboxDrop(pos, nullptr, nullptr);
+        }
+    });
+    connect(toolbox, &Toolbox::toolbarDragFinished, this, [this](const QPoint& pos) {
+        if (!toolbox_ || !toolbox_->isFloating()) {
+            return;
+        }
+        QTimer::singleShot(0, this, [this, pos]() {
+            if (toolbox_ && toolbox_->isFloating()) {
+                commitToolboxDrop(pos);
+            }
+        });
+    });
 
     optionsBar_ = new OptionsBar(tools_, this);
     addToolBar(optionsBar_);
