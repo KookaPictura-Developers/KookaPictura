@@ -642,11 +642,23 @@ int PanelGroup::tabInsertionX(int index) const
     if (!bar || bar->count() == 0) {
         return 0;
     }
-    index = qBound(0, index, bar->count());
-    if (index < bar->count()) {
-        return bar->tabRect(index).left();
+    const int count = bar->count();
+    index = qBound(0, index, count);
+    // ponytail: hidden QTabBar tabs have empty rects, so scan for the first
+    // visible tab instead of trusting tabRect(index).
+    for (int i = index; i < count; ++i) {
+        const QRect rect = bar->tabRect(i);
+        if (rect.isValid() && !rect.isEmpty()) {
+            return rect.left();
+        }
     }
-    return bar->tabRect(bar->count() - 1).right() + 1;
+    for (int i = qMin(index, count) - 1; i >= 0; --i) {
+        const QRect rect = bar->tabRect(i);
+        if (rect.isValid() && !rect.isEmpty()) {
+            return rect.right() + 1;
+        }
+    }
+    return bar->rect().right() + 1;
 }
 
 QPoint PanelGroup::tabInsertionGlobalPointForTest(int index) const
@@ -676,12 +688,18 @@ void PanelGroup::applyMinimize()
         savedMaxHeight_ = tabs_->maximumHeight();
         savedGroupMaxHeight_ = maximumHeight();
         const int barHeight = tabs_->tabBar() ? tabs_->tabBar()->sizeHint().height() : 24;
+        savedTabsMinHeight_ = tabs_->minimumHeight();
+        savedMinHeight_ = minimumHeight();
+        tabs_->setMinimumHeight(barHeight);
+        setMinimumHeight(barHeight);
         // M45 W5: clamp the group itself, not only its tab widget, so the
         // splitter gives it just the tab-bar height.
         tabs_->setMaximumHeight(barHeight);
         setMaximumHeight(barHeight);
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     } else {
+        tabs_->setMinimumHeight(savedTabsMinHeight_);
+        setMinimumHeight(savedMinHeight_);
         tabs_->setMaximumHeight(savedMaxHeight_);
         setMaximumHeight(savedGroupMaxHeight_);
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);

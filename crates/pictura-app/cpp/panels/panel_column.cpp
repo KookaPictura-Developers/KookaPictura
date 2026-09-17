@@ -138,6 +138,7 @@ PanelColumn::PanelColumn(QWidget* parent)
     splitter_ = new QSplitter(Qt::Vertical, scroll_);
     splitter_->setObjectName(QStringLiteral("panelColumnSplitter"));
     splitter_->setHandleWidth(Theme::kGroupDividerWidth);
+    splitter_->setChildrenCollapsible(false);
     scroll_->setWidget(splitter_);
     layout->addWidget(scroll_, 1);
 
@@ -309,10 +310,12 @@ void PanelColumn::cleanupEmptyGroup(PanelGroup* group)
     wired_.remove(group);
     if (PanelFloat* floatWindow = floatForGroup(group)) {
         destroyFloat(floatWindow);
+        maybeRemoveSelf();
         return;
     }
     removeGroup(group);
     group->deleteLater();
+    maybeRemoveSelf();
 }
 
 PanelFloat* PanelColumn::floatForGroup(PanelGroup* group) const
@@ -368,6 +371,7 @@ bool PanelColumn::showPanel(const QString& objectName, bool visible)
     }
     panelVisible_[objectName] = visible;
     if (visible) {
+        show();
         group->setVisible(true);
     }
     if (railMode_) {
@@ -1250,7 +1254,29 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
         if (side >= 0) {
             DropTarget target;
             target.valid = true;
-            target.owner = const_cast<PanelColumn*>(this);
+            // The new column lands at the workspace end on `side`; the line is
+            // drawn by the column actually on that side, not the drag source.
+            const QList<PanelColumn*> columns = frame->panelColumns();
+            PanelColumn* edgeColumn = nullptr;
+            if (side == 0) {
+                for (PanelColumn* column : columns) {
+                    if (column && column->isVisible()
+                        && frame->sideOf(column) == PanelSide::Left) {
+                        edgeColumn = column;
+                        break;
+                    }
+                }
+            } else {
+                for (int i = columns.size() - 1; i >= 0; --i) {
+                    PanelColumn* column = columns.at(i);
+                    if (column && column->isVisible()
+                        && frame->sideOf(column) == PanelSide::Right) {
+                        edgeColumn = column;
+                        break;
+                    }
+                }
+            }
+            target.owner = edgeColumn ? edgeColumn : const_cast<PanelColumn*>(this);
             target.kind = side == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
             return target;
         }
@@ -1271,14 +1297,14 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
     DropTarget target = resolveLocalDrop(globalPos);
     target.owner = const_cast<PanelColumn*>(this);
     if (target.outside) {
-        // A point inside another column may still regroup a panel there. Only
-        // the tab-insert kind is safe to apply cross-column: the group lives in
-        // the other column's stack, so the panel is inserted into it directly.
+        // A point inside another column may still land there; that column's own
+        // grammar decides the valid non-outside target.
         if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
             if (PanelColumn* other = frame->columnAtGlobal(globalPos)) {
                 if (other != this) {
                     DropTarget delegated = other->resolveLocalDrop(globalPos);
-                    if (delegated.valid && delegated.kind == DropKind::IntoGroup) {
+                    if (delegated.valid && !delegated.outside
+                        && delegated.kind != DropKind::OnStrip) {
                         delegated.owner = other;
                         return delegated;
                     }
@@ -1618,6 +1644,7 @@ void PanelColumn::showIndicatorFor(const DropTarget& target)
         } else if (prev >= 0) {
             y = topOf(groups_.at(prev)) + groups_.at(prev)->height() + 1;
         }
+        y = qBound(0, y, qMax(0, viewport->height() - 3));
         indicator_->setGeometry(QRect(0, y, viewport->width(), 3));
     }
     indicator_->show();
@@ -1739,6 +1766,9 @@ bool PanelColumn::commitDrop()
         if (dragFloat_) {
             destroyFloat(dragFloat_);
         }
+        if (ok && target.owner && target.owner != this && target.owner->railMode()) {
+            target.owner->buildIconStrip();
+        }
     } else {
         ok = dragFloat_ != nullptr;
     }
@@ -1819,11 +1849,15 @@ bool PanelColumn::applyPanelDrop(PanelGroup* source, const QString& name,
             --index;
         }
         target.group->insertPanel(panel, title, iconValue, index);
+        (target.owner ? target.owner : this)->panelVisible_[name] = true;
     } else {
-        auto* group = new PanelGroup(this);
+        // A body/boundary drop may resolve into another column; build the new
+        // group in the target column so the commit matches the drawn line.
+        PanelColumn* owner = target.owner ? target.owner : this;
+        auto* group = new PanelGroup(owner);
         group->addPanel(panel, title, iconValue);
-        insertGroupAt(group, qBound(0, target.boundary, groups_.size()));
-        panelVisible_[name] = true;
+        owner->insertGroupAt(group, qBound(0, target.boundary, owner->groups_.size()));
+        owner->panelVisible_[name] = true;
     }
     cleanupEmptyGroup(source);
     return true;
@@ -1944,26 +1978,44 @@ bool PanelColumn::applyGroupDrop(PanelGroup* group, const DropTarget& target)
     if (!group) {
         return false;
     }
+    // A whole-group drop can resolve into another column; move the group there
+    // so the commit matches the drawn line.
+    PanelColumn* owner = target.owner ? target.owner : this;
     int boundary = target.boundary;
     if (target.onTabBar && target.group) {
-        const int index = groups_.indexOf(target.group);
-        boundary = index >= 0 ? index : groups_.size();
+        const int index = owner->groups_.indexOf(target.group);
+        boundary = index >= 0 ? index : owner->groups_.size();
     }
     if (boundary < 0) {
-        boundary = groups_.size();
+        boundary = owner->groups_.size();
     }
     const int current = groups_.indexOf(group);
     if (current >= 0) {
-        if (boundary > current) {
-            --boundary;
-        }
-        if (boundary == current) {
-            return true;
+        if (owner == this) {
+            if (boundary > current) {
+                --boundary;
+            }
+            if (boundary == current) {
+                return true;
+            }
         }
         groups_.removeAt(current);
         group->setParent(nullptr);
     }
-    insertGroupAt(group, qBound(0, boundary, groups_.size()));
+    if (owner != this) {
+        // The group stops routing its drags through the source column and the
+        // destination wires it. `wired_` must be cleared or `wireGroup`'s
+        // early-return would leave a later move back dead.
+        QObject::disconnect(group, nullptr, this, nullptr);
+        wired_.remove(group);
+        for (QWidget* panel : group->panels()) {
+            if (panel) {
+                owner->panelVisible_[panel->objectName()] =
+                    group->isPanelVisible(panel->objectName());
+            }
+        }
+    }
+    owner->insertGroupAt(group, qBound(0, boundary, owner->groups_.size()));
     return true;
 }
 
@@ -2067,6 +2119,7 @@ void PanelColumn::destroyFloat(PanelFloat* floatWindow)
         if (dragFloat_ == floatWindow) {
             dragFloat_ = nullptr;
         }
+        maybeRemoveSelf();
         return;
     }
     floats_.removeAll(floatWindow);
@@ -2075,6 +2128,7 @@ void PanelColumn::destroyFloat(PanelFloat* floatWindow)
     }
     floatWindow->hide();
     floatWindow->deleteLater();
+    maybeRemoveSelf();
 }
 
 bool PanelColumn::beginTabDragForTest(const QString& objectName)
@@ -2163,6 +2217,11 @@ QRect PanelColumn::dropIndicatorGeometryForTest() const
         return stripIndicator_->geometry();
     }
     return indicator_ ? indicator_->geometry() : QRect();
+}
+
+int PanelColumn::scrollViewportHeightForTest() const
+{
+    return scroll_ ? scroll_->viewport()->height() : 0;
 }
 
 QRect PanelColumn::dropIndicatorGlobalGeometryForTest() const

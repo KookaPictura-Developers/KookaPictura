@@ -143,6 +143,8 @@ private:
     bool minimized_ = false;
     int savedMaxHeight_ = QWIDGETSIZE_MAX;
     int savedGroupMaxHeight_ = QWIDGETSIZE_MAX;
+    int savedMinHeight_ = 0;
+    int savedTabsMinHeight_ = 0;
 
     bool pressPending_ = false;
     bool dragging_ = false;

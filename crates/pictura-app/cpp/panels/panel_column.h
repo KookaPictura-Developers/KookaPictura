@@ -149,6 +149,7 @@ public:
     bool dropIndicatorVisibleForTest() const;
     QRect dropIndicatorGeometryForTest() const;
     QRect dropIndicatorGlobalGeometryForTest() const;
+    int scrollViewportHeightForTest() const;
     int dropIndexForTest() const;
     int horizontalScrollPolicyForTest() const;
     int minimumWidthFloorForTest() const;

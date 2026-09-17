@@ -484,18 +484,32 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
 
 bool Toolbox::eventFilter(QObject* watched, QEvent* event)
 {
+    // A dock that leaves the floating state mid-gesture must not leave the
+    // title-bar press armed, or a later move would emit a phantom drop.
+    if (!isFloating()) {
+        titleDragPending_ = false;
+    }
     switch (event->type()) {
     case QEvent::DragEnter:
     case QEvent::DragMove:
     case QEvent::Drop:
         event->ignore();
         return true;
+    case QEvent::MouseButtonPress:
+        if (watched == titleBar_ && isFloating()) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                titleDragPending_ = true;
+            }
+        }
+        break;
     case QEvent::MouseMove:
         // M45 T3: a left-button drag on the floating title bar is the
         // floating-toolbar drop gesture; the frame resolves it through the
-        // column grammar. Only floating drags are reported so a docked title-bar
-        // press that Qt is about to undock does not spend an indicator early.
-        if (watched == titleBar_ && isFloating()) {
+        // column grammar. M46: once floating, Qt's own dock drag grabs the
+        // mouse and delivers move/release to the dock, not the title bar, so
+        // the pending flag carries the gesture across that grab.
+        if (isFloating() && titleDragPending_) {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (mouse->buttons() & Qt::LeftButton) {
                 emit toolbarDragMoved(mouse->globalPosition().toPoint());
@@ -503,10 +517,11 @@ bool Toolbox::eventFilter(QObject* watched, QEvent* event)
         }
         break;
     case QEvent::MouseButtonRelease:
-        if (watched == titleBar_ && isFloating()) {
+        if (isFloating() && titleDragPending_) {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (mouse->button() == Qt::LeftButton) {
                 emit toolbarDragFinished(mouse->globalPosition().toPoint());
+                titleDragPending_ = false;
             }
         }
         break;

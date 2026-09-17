@@ -89,6 +89,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     centerSplitter_->addWidget(panelColumn_);
     centerSplitter_->setStretchFactor(0, 1);
     centerSplitter_->setStretchFactor(1, 0);
+    centerSplitter_->setChildrenCollapsible(false);
     setCentralWidget(centerSplitter_);
     setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
 
@@ -803,9 +804,7 @@ PanelColumn* PicturaMainWindow::createPanelColumn(PanelSide side, PanelColumn* a
 
 void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
 {
-    // Only drop-created columns disappear; the primary column keeps its place
-    // even when every group is closed.
-    if (!column || column == panelColumn_ || !column->isDynamic()) {
+    if (!column) {
         return;
     }
     // A float still routes its drags through this column, so keep it while one
@@ -813,12 +812,21 @@ void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
     if (column->floatCountForTest() > 0) {
         return;
     }
-    // M45 W4: a dynamic column is empty when no visible group has visible
-    // content — this covers both a moved-out group and a closed panel.
+    // M45 W4/M46: a column is empty when no group has visible content. This
+    // must not depend on `group->isVisible()`: in rail mode the scroll host is
+    // hidden and a popped group is reparented into the flyout, both of which
+    // make an ancestor hidden while the group still holds visible panels.
     for (PanelGroup* group : column->groups()) {
-        if (group && group->isVisible() && !group->visibleTitles().isEmpty()) {
+        if (group && !group->visibleTitles().isEmpty()) {
             return;
         }
+    }
+    // M46: the primary column keeps its identity but hides when empty; a hidden
+    // splitter child takes no space and `PanelColumn::showPanel` re-shows it.
+    if (column == panelColumn_) {
+        column->hide();
+        saveSession();
+        return;
     }
     // Rehome any still-live (hidden) groups so their panel widgets survive for
     // a later Window-menu show; then close the now-empty column.
@@ -945,6 +953,15 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
     int resolvedSide = -1;
     if (toolbox_ && centerSplitter_) {
         resolved = columnEdgeAnchorAt(globalPos, nullptr, &resolvedSide);
+    }
+    if (!resolved) {
+        if (PanelColumn* column = columnAtGlobal(globalPos)) {
+            const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
+            if (r.isValid() && r.width() > 0) {
+                resolved = column;
+                resolvedSide = globalPos.x() < r.center().x() ? 0 : 1;
+            }
+        }
     }
     // Drop the previous boundary's line when the pointer moves off it.
     if (toolboxDropAnchor_ && toolboxDropAnchor_ != resolved) {
@@ -1683,8 +1700,9 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
             [this]() { cycleScreenMode(true); });
     connect(toolbox, &Toolbox::columnsChanged, this, [this](int) { saveSession(); });
     connect(toolbox, &QDockWidget::dockLocationChanged, this, [this](Qt::DockWidgetArea area) {
-        // M44 T2: the Tools dock can now sit on any side.
-        if (area != Qt::NoDockWidgetArea) {
+        // M46: only left/right persist; a stray top/bottom area must not be
+        // re-applied by `ensureToolsNotTabified`.
+        if (area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea) {
             toolsArea_ = area;
         }
         ensureToolsNotTabified();

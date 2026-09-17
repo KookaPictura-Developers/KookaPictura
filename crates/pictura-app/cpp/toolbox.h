@@ -159,6 +159,9 @@ private:
     // M45 T1: one guard for the single content-metrics recompute; the M43
     // width lock and M44 height lock are now one pass over both axes.
     bool metricsClamping_ = false;
+    // M46: a floating title-bar press arms the drag; Qt's dock drag then grabs
+    // the mouse, so move/release arrive on the dock before it completes.
+    bool titleDragPending_ = false;
     // M44 T1: while floating the height is pinned to this content height.
     int floatHeight_ = 0;
 };
