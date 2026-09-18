@@ -1650,7 +1650,9 @@ by self-test section is a deliberate later step, out of this pass.
   from the font metrics for `100` + `%`, and `lpr_percent` asserts the fit. The
   `layers.eyeOn/Off` art was redrawn as a bolder Lucide-style eye for 14–20 px
   and `LayerRowDelegate::paintAsset` now renders a square, device-pixel-ratio-
-  aware pixmap so the eye and chevron stay crisp.
+  aware pixmap so the eye and chevron stay crisp. The popup slider is now a
+  `JumpSlider` that jumps to the clicked point and tracks the held cursor, since
+  the stock `QSlider` only page-steps; `lpr_slider` (218) covers it.
 
 ## Canvas viewport & performance (post-M24 pass)
 
