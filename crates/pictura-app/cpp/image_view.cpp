@@ -1,5 +1,6 @@
 #include "image_view.h"
 
+#include <QtCore/QDebug>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
@@ -317,6 +318,26 @@ void ImageView::paintEvent(QPaintEvent*)
         painter.setPen(QPen(Qt::white, 0, Qt::DashLine));
         painter.drawPolygon(overlayPolygon_);
     }
+
+    if (pressTrace_.armed) {
+        pressTrace_.armed = false;
+        const qint64 totalNs = pressTrace_.clock.nsecsElapsed();
+        const bool force = qEnvironmentVariableIsSet("PICTURA_PRESS_TRACE");
+        if (force || totalNs > 16000000) {
+            const qint64 handled = pressTrace_.handledNs < 0 ? 0 : pressTrace_.handledNs;
+            if (pressTrace_.firstMoveNs < 0) {
+                qWarning("[press-trace] no-move press_handler=%.1fms total=%.1fms",
+                         handled / 1e6, totalNs / 1e6);
+            } else {
+                const double osPressToMove = double(pressTrace_.firstMoveHwMs - pressTrace_.pressHwMs);
+                qWarning("[press-trace] press_handler=%.1fms os_press_to_move=%.0fms "
+                         "after_handler_to_move=%.1fms move_to_paint=%.1fms total=%.1fms",
+                         handled / 1e6, osPressToMove,
+                         (pressTrace_.firstMoveNs - handled) / 1e6,
+                         (totalNs - pressTrace_.firstMoveNs) / 1e6, totalNs / 1e6);
+            }
+        }
+    }
 }
 
 void ImageView::wheelEvent(QWheelEvent* event)
@@ -337,8 +358,15 @@ void ImageView::mousePressEvent(QMouseEvent* event)
         userAdjusted_ = true;
         last_ = event->position();
     } else {
+        pressTrace_.clock.restart();
+        pressTrace_.pressHwMs = event->timestamp();
+        pressTrace_.handledNs = -1;
+        pressTrace_.firstMoveNs = -1;
+        pressTrace_.firstMoveHwMs = -1;
+        pressTrace_.armed = true;
         emit mousePressed(widgetToImage(event->position()), event->button(),
                           event->modifiers());
+        pressTrace_.handledNs = pressTrace_.clock.nsecsElapsed();
     }
     QWidget::mousePressEvent(event);
 }
@@ -350,6 +378,10 @@ void ImageView::mouseMoveEvent(QMouseEvent* event)
         panBy(event->position() - last_);
         last_ = event->position();
     } else {
+        if (pressTrace_.armed && pressTrace_.firstMoveNs < 0) {
+            pressTrace_.firstMoveNs = pressTrace_.clock.nsecsElapsed();
+            pressTrace_.firstMoveHwMs = event->timestamp();
+        }
         emit mouseMoved(widgetToImage(event->position()));
     }
     QWidget::mouseMoveEvent(event);

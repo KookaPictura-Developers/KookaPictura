@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QPointF>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
@@ -133,6 +134,19 @@ private:
     QPointF moveLayerPos_;
     QPointF moveDelta_;
     double moveOpacity_ = 1.0;
+
+    // Drag-start latency probe: reports the press -> handler -> first move ->
+    // paint gaps to stderr when a drag start exceeds one frame, or always when
+    // PICTURA_PRESS_TRACE is set. Left in deliberately; it is a few loads.
+    struct PressTrace {
+        QElapsedTimer clock;
+        qint64 pressHwMs = -1;
+        qint64 handledNs = -1;
+        qint64 firstMoveNs = -1;
+        qint64 firstMoveHwMs = -1;
+        bool armed = false;
+    };
+    PressTrace pressTrace_;
 };
 
 } // namespace pictura

@@ -5,6 +5,9 @@
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QDebug>
+#include <QtCore/QElapsedTimer>
+
 #include <algorithm>
 
 namespace pictura {
@@ -471,7 +474,18 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         return;
     }
     case ToolId::Move: {
-        if (!v || !v->begin_move_preview()) {
+        if (!v) {
+            return;
+        }
+        QElapsedTimer pressClock;
+        pressClock.start();
+        const bool prepared = v->begin_move_preview();
+        const qint64 pressNs = pressClock.nsecsElapsed();
+        if (qEnvironmentVariableIsSet("PICTURA_PRESS_TRACE") || pressNs > 8000000) {
+            qWarning("[move-press] begin_move_preview hit=%d work=%.1fms",
+                     (prepared && v->move_preview_cache_hit()) ? 1 : 0, pressNs / 1e6);
+        }
+        if (!prepared) {
             return;
         }
         dragging_ = true;
