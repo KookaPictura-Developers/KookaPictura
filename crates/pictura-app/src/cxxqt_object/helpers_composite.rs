@@ -248,9 +248,15 @@ pub(super) fn layer_thumbnail_image(layer: &Layer, size: u32) -> Option<QImage> 
     };
 
     let (tw, th) = if width >= height {
-        (size, ((height * size) / width).max(1))
+        (
+            size,
+            ((height as u64 * size as u64) / width as u64).max(1) as u32,
+        )
     } else {
-        (((width * size) / height).max(1), size)
+        (
+            ((width as u64 * size as u64) / height as u64).max(1) as u32,
+            size,
+        )
     };
 
     let mut rgba = vec![0u8; (tw * th * 4) as usize];
@@ -328,7 +334,7 @@ pub(super) fn layer_thumbnail_positioned(
     let dest_h = ((height as f64 * scale).round() as i64).max(1);
     let (src_w, src_h) = (width as u32, height as u32);
 
-    let mut rgba = vec![0u8; (size * size * 4) as usize];
+    let mut rgba = vec![0u8; (size as u64 * size as u64 * 4) as usize];
     for py in 0..size as i64 {
         for px in 0..size as i64 {
             if px < dest_left
@@ -365,9 +371,15 @@ pub(super) fn mask_thumbnail_image(mask: &LayerMask, size: u32) -> Option<QImage
         return None;
     }
     let (tw, th) = if width >= height {
-        (size, ((height * size) / width).max(1))
+        (
+            size,
+            ((height as u64 * size as u64) / width as u64).max(1) as u32,
+        )
     } else {
-        (((width * size) / height).max(1), size)
+        (
+            ((width as u64 * size as u64) / height as u64).max(1) as u32,
+            size,
+        )
     };
 
     let mut rgba = vec![0u8; (tw * th * 4) as usize];

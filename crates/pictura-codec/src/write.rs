@@ -85,6 +85,12 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
                 channels.push((-2, data));
             }
         }
+        if channels.len() > MAX_CHANNELS as usize {
+            return Err(PsdError::Invalid(format!(
+                "layer channel count {}",
+                channels.len()
+            )));
+        }
         write_record(&mut info, record, &channels);
         channel_data.push(channels);
     }

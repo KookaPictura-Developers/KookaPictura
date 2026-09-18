@@ -421,6 +421,24 @@ fn zip_layer_compression_is_unsupported() {
     assert!(matches!(read_psd(&bytes), Err(PsdError::Unsupported(_))));
 }
 
+#[test]
+fn layer_with_too_many_channels_is_rejected() {
+    let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+    let mut layer = pixel("TooMany", rect(0, 0, 1, 1), 3, BlendMode::Normal, 255);
+    layer.channels = (0..=crate::common::MAX_CHANNELS as i16)
+        .map(|id| Channel {
+            id,
+            data: vec![0; 1],
+        })
+        .collect();
+    doc.layers = vec![layer];
+
+    assert!(matches!(
+        write_psd(&doc),
+        Err(PsdError::Invalid(msg)) if msg.contains("layer channel count")
+    ));
+}
+
 // -- M36: lspf / lclr / iOpa -------------------------------------------
 
 /// The fixed default document captured before M36; its serialization must

@@ -131,6 +131,7 @@ impl qobject::PictureView {
             return false;
         }
         if std::fs::rename(&tmp, &path).is_err() {
+            let _ = std::fs::remove_file(&tmp);
             return false;
         }
         let mut view = self.rust_mut();

@@ -47,7 +47,7 @@ impl<'a> Reader<'a> {
     }
 
     pub(crate) fn remaining(&self) -> usize {
-        self.data.len() - self.pos
+        self.data.len().saturating_sub(self.pos)
     }
 
     pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8], PsdError> {

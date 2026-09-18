@@ -493,6 +493,9 @@ fn parse_luni(data: &[u8]) -> Option<String> {
         return None;
     }
     let count = u32::from_be_bytes(data[0..4].try_into().ok()?) as usize;
+    if count == 0 {
+        return None;
+    }
     let bytes = count.checked_mul(2)?;
     let end = (4 + bytes).min(data.len());
     let (pairs, _) = data[4..end].as_chunks::<2>();
