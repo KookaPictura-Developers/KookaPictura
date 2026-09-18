@@ -365,9 +365,21 @@ public:
         const QRect eye = eyeRect(rect);
         paintEye(painter, eye, index.data(VisibleRole).toBool(), selected, palette);
 
-        // Thumbnail (pixel layer) or folder glyph (group).
+        // Thumbnail (pixel layer) or folder glyph (group). A clipped row draws
+        // its clipping-mask glyph just left of the thumbnail; a missing asset
+        // is simply omitted.
         const int thumb = qMax(0, thumbnailSize_);
         int x = eye.right() + 3;
+        if (index.data(ClippingRole).toBool()) {
+            const int side = qMax(10, thumb > 0 ? thumb - 8 : 12);
+            const QPixmap clip =
+                pictura::icon(QStringLiteral("layers.clipMask")).pixmap(side, side);
+            if (!clip.isNull()) {
+                painter->drawPixmap(
+                    QRect(x, rect.top() + (height - side) / 2, side, side), clip);
+                x += side + 2;
+            }
+        }
         if (thumb > 0) {
             const QRect thumbRect(x, rect.top() + (height - thumb) / 2, thumb, thumb);
             if (index.data(KindRole).toString() == QLatin1String("group")) {

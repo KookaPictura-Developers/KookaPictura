@@ -1,16 +1,36 @@
 #include "layers_panel.h"
 
 #include "layers_panel_internal.h"
+#include "percent_field.h"
 
+#include <QtCore/QMetaObject>
 #include <QtCore/QModelIndex>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtGui/QAction>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QTreeView>
 
 namespace pictura {
+
+namespace {
+
+void setPercentForTest(PercentField* field, int pct)
+{
+    if (!field) {
+        return;
+    }
+    auto* edit = field->findChild<QLineEdit*>();
+    if (!edit) {
+        return;
+    }
+    edit->setText(QString::number(pct));
+    QMetaObject::invokeMethod(edit, "editingFinished");
+}
+
+} // namespace
 
 // --- M39 self-test hooks ----------------------------------------------------
 
@@ -129,6 +149,31 @@ QStringList LayersPanel::colorLabelTextsForTest()
         texts.push_back(action->text());
     }
     return texts;
+}
+
+int LayersPanel::lockButtonCountForTest() const
+{
+    return 5;
+}
+
+int LayersPanel::opacityPercentForTest() const
+{
+    return opacity_ ? opacity_->value() : 0;
+}
+
+int LayersPanel::fillPercentForTest() const
+{
+    return fill_ ? fill_->value() : 0;
+}
+
+void LayersPanel::setOpacityPercentForTest(int pct)
+{
+    setPercentForTest(opacity_, pct);
+}
+
+void LayersPanel::setFillPercentForTest(int pct)
+{
+    setPercentForTest(fill_, pct);
 }
 
 } // namespace pictura

@@ -221,6 +221,14 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit { background: ${b
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled, QPlainTextEdit:disabled { color: ${disabledText}; }
 QComboBox QAbstractItemView { background: ${base}; color: ${text}; border: 1px solid ${border}; selection-background-color: ${highlight}; selection-color: ${highlightedText}; }
 
+QWidget#percentField QLineEdit { background: ${base}; color: ${text}; border: 1px solid ${border}; border-radius: 2px; padding: 1px 2px; }
+QWidget#percentField QLineEdit:disabled { color: ${disabledText}; }
+QWidget#percentField QToolButton { background: transparent; color: ${buttonText}; border: 0; border-left: 1px solid ${border}; border-radius: 0; padding: 0 2px; }
+QWidget#percentField QToolButton:hover { background: ${hover}; }
+QWidget#percentField QToolButton:disabled { color: ${disabledText}; }
+QWidget#percentField QSlider::groove:horizontal { height: 4px; background: ${border}; border-radius: 2px; }
+QWidget#percentField QSlider::handle:horizontal { width: 10px; margin: -4px 0; background: ${buttonText}; border-radius: 3px; }
+
 QPushButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 4px 10px; }
 QPushButton:hover { background: ${hover}; }
 QPushButton:pressed { background: ${pressed}; }

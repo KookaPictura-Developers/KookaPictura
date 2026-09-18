@@ -21,11 +21,17 @@
     <file>icons/image.rotate180.svg</file>
     <file>icons/image.rotate90ccw.svg</file>
     <file>icons/image.rotate90cw.svg</file>
+    <file>icons/layers.clipMask.svg</file>
     <file>icons/layers.delete.svg</file>
     <file>icons/layers.fillAdjustment.svg</file>
     <file>icons/layers.fx.svg</file>
     <file>icons/layers.group.svg</file>
     <file>icons/layers.link.svg</file>
+    <file>icons/layers.lockAll.svg</file>
+    <file>icons/layers.lockAlpha.svg</file>
+    <file>icons/layers.lockNesting.svg</file>
+    <file>icons/layers.lockPaint.svg</file>
+    <file>icons/layers.lockPosition.svg</file>
     <file>icons/layers.mask.svg</file>
     <file>icons/layers.newLayer.svg</file>
     <file>icons/panel.close.svg</file>

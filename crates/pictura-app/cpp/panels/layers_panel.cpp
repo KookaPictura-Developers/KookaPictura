@@ -3,6 +3,7 @@
 #include "layers_panel_internal.h"
 
 #include "icons.h"
+#include "percent_field.h"
 #include "session.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -42,7 +43,6 @@
 #include <QtWidgets/QHeaderView>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
-#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QStyledItemDelegate>
 #include <QtWidgets/QStyleOptionViewItem>
@@ -154,12 +154,12 @@ LayersPanel::LayersPanel(QWidget* parent)
         blend_->addItem(QString::fromLatin1(entry.name), QString::fromLatin1(entry.key));
     }
     blend_->setEnabled(false);
-    opacity_ = new QSpinBox(body);
-    opacity_->setRange(0, 255);
+    opacity_ = new PercentField(body);
+    opacity_->setObjectName(QStringLiteral("layersOpacityField"));
     opacity_->setEnabled(false);
     opacity_->setToolTip(tr("Opacity"));
-    fill_ = new QSpinBox(body);
-    fill_->setRange(0, 255);
+    fill_ = new PercentField(body);
+    fill_->setObjectName(QStringLiteral("layersFillField"));
     fill_->setEnabled(false);
     fill_->setToolTip(tr("Fill"));
     panelMenu_ = new QToolButton(body);
@@ -195,16 +195,19 @@ LayersPanel::LayersPanel(QWidget* parent)
     tree_->viewport()->installEventFilter(this);
     layout->addWidget(tree_, 1);
 
-    // The lock strip sits below the blend/opacity/fill strip. Each button is one
-    // flag; "All" is the derived three-bit set. The panel reflects state, so
+    // The lock strip sits below the blend/opacity/fill strip. Each icon is one
+    // flag; "All" is the derived four-bit set. The panel reflects state, so
     // toggling an individual flag off naturally unchecks "All".
     auto* locks = new QHBoxLayout();
-    const auto makeLock = [this, body, locks](const QString& text, const QString& flag) {
+    const auto makeLock = [this, body, locks](const QString& assetId, const QString& tooltip,
+                                              const QString& flag) {
         auto* button = new QToolButton(body);
-        button->setText(text);
         button->setCheckable(true);
         button->setEnabled(false);
-        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setIcon(pictura::icon(assetId));
+        button->setIconSize(QSize(20, 20));
+        button->setAutoRaise(true);
+        button->setToolTip(tooltip);
         locks->addWidget(button);
         connect(button, &QToolButton::toggled, this, [this, flag](bool on) {
             if (syncing_ || !view_) {
@@ -217,10 +220,16 @@ LayersPanel::LayersPanel(QWidget* parent)
         });
         return button;
     };
-    lockTransparency_ = makeLock(tr("Transparency"), QStringLiteral("transparency"));
-    lockPixels_ = makeLock(tr("Pixels"), QStringLiteral("pixels"));
-    lockPosition_ = makeLock(tr("Position"), QStringLiteral("position"));
-    lockAll_ = makeLock(tr("All"), QStringLiteral("all"));
+    lockTransparency_ = makeLock(QStringLiteral("layers.lockAlpha"),
+                                 tr("Lock Transparent Pixels"), QStringLiteral("transparency"));
+    lockPixels_ = makeLock(QStringLiteral("layers.lockPaint"), tr("Lock Image Pixels"),
+                           QStringLiteral("pixels"));
+    lockPosition_ = makeLock(QStringLiteral("layers.lockPosition"), tr("Lock Position"),
+                             QStringLiteral("position"));
+    lockNesting_ = makeLock(QStringLiteral("layers.lockNesting"), tr("Lock Nesting"),
+                            QStringLiteral("nesting"));
+    lockAll_ = makeLock(QStringLiteral("layers.lockAll"), tr("Lock All"),
+                        QStringLiteral("all"));
     layout->addLayout(locks);
 
     auto* buttons = new QHBoxLayout();
@@ -323,22 +332,22 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->set_layers_blend(paths, blend_->itemData(index).toString());
         }
     });
-    connect(opacity_, &QSpinBox::valueChanged, this, [this](int value) {
+    connect(opacity_, &PercentField::valueChanged, this, [this](int pct) {
         if (syncing_ || !view_) {
             return;
         }
         const QStringList paths = selectedPaths();
         if (!paths.isEmpty()) {
-            view_->set_layers_opacity(paths, value);
+            view_->set_layers_opacity(paths, qRound(pct * 255.0 / 100.0));
         }
     });
-    connect(fill_, &QSpinBox::valueChanged, this, [this](int value) {
+    connect(fill_, &PercentField::valueChanged, this, [this](int pct) {
         if (syncing_ || !view_) {
             return;
         }
         const QStringList paths = selectedPaths();
         if (!paths.isEmpty()) {
-            view_->set_layers_fill(paths, value);
+            view_->set_layers_fill(paths, qRound(pct * 255.0 / 100.0));
         }
     });
     connect(tree_, &QTreeView::customContextMenuRequested, this,
@@ -554,8 +563,8 @@ void LayersPanel::syncControls()
     blend_->setEnabled(false);
     opacity_->setEnabled(false);
     fill_->setEnabled(false);
-    const std::array<QToolButton*, 4> lockButtons = {
-        lockTransparency_, lockPixels_, lockPosition_, lockAll_};
+    const std::array<QToolButton*, 5> lockButtons = {
+        lockTransparency_, lockPixels_, lockPosition_, lockNesting_, lockAll_};
     for (QToolButton* button : lockButtons) {
         button->setEnabled(false);
         button->setChecked(false);
@@ -566,13 +575,14 @@ void LayersPanel::syncControls()
             current.isValid() ? current : model_->indexForPath(paths.first());
         const int blend = blend_->findData(valueIndex.data(BlendRole).toString());
         blend_->setCurrentIndex(blend >= 0 ? blend : 0);
-        opacity_->setValue(valueIndex.data(OpacityRole).toInt());
-        fill_->setValue(valueIndex.data(FillRole).toInt());
+        opacity_->setValue(qRound(valueIndex.data(OpacityRole).toInt() * 100.0 / 255.0));
+        fill_->setValue(qRound(valueIndex.data(FillRole).toInt() * 100.0 / 255.0));
         const int lockBits = valueIndex.data(LockRole).toInt();
         lockTransparency_->setChecked((lockBits & 0x01) != 0);
         lockPixels_->setChecked((lockBits & 0x02) != 0);
         lockPosition_->setChecked((lockBits & 0x04) != 0);
-        lockAll_->setChecked((lockBits & 0x07) == 0x07);
+        lockNesting_->setChecked((lockBits & 0x08) != 0);
+        lockAll_->setChecked((lockBits & 0x0F) == 0x0F);
 
         // Enable iff at least one selected node is eligible (frozen table).
         bool lockAny = false;
@@ -584,7 +594,7 @@ void LayersPanel::syncControls()
             const QString kind = index.data(KindRole).toString();
             const bool background = kind == QLatin1String("background");
             const bool group = kind == QLatin1String("group");
-            const bool fullLock = (index.data(LockRole).toInt() & 0x07) == 0x07;
+            const bool fullLock = (index.data(LockRole).toInt() & 0x0F) == 0x0F;
             if (!background) {
                 lockAny = true;
             }

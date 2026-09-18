@@ -9,17 +9,17 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **592 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **594 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
   fresh-white-document regression; counted from `cargo test --workspace`, which
   includes the pre-existing ignored `pictura-render` doctest as the ninth).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived; canonical specs are
-  in `openspec/specs/` (61 specs, `validate --all --strict` green), change
-  history under `openspec/changes/archive/`. The M44/M45 panel changes and the
-  M46/M47 panel toolbar/interaction fixes are **archived**; no change is open.
-  The next panel-program stage is **layer filtering/search**, named by content
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
+  content-named `layers-panel-controls` change; canonical specs are in
+  `openspec/specs/` (61 specs, `validate --all --strict` green), change history
+  under `openspec/changes/archive/`; no change is open. The next panel-program
+  stage is **layer filtering/search**, named by content
   (`layers-filtering-search`) rather than a milestone number.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
@@ -1514,6 +1514,30 @@ by self-test section is a deliberate later step, out of this pass.
   write-only `PanelGroup::defaultIconic` / `PanelColumn::isDynamic` flags are
   gone. All self-test stderr unchanged (code 196 unaffected).
 
+- **layers-panel-controls** (the Layers-panel program's controls stage, named by
+  content; OpenSpec change `layers-panel-controls`, archived). Opacity and Fill
+  became percentage controls: a reusable `PercentField`
+  (`crates/pictura-app/cpp/panels/percent_field.{h,cpp}`) with a text box, a
+  popup slider, and drag-on-label scrubbing, converted at the view boundary with
+  `round(pct*255/100)`; the bridge keeps reporting and editing `0..=255`, so no
+  stored-format change. The lock strip became five icon toggles — alpha, paint,
+  position, nesting, full — and `LockFlags` gained `NESTING = 0x08`, with
+  `all()`/`is_all()` moving to the four-bit `0x0F`. The `lspf` reader mask
+  widened to `& 0x0F` and `lock_from_bits` sets the fourth flag, so the PSD
+  round-trips; `lock_bit("nesting")` reaches the bridge. A nesting-locked layer
+  keeps its structural parent: `group_paths` refuses and `ungroup_paths` skips
+  it, while within-container `move_path` still reorders. The row delegate paints
+  a clipping-mask glyph (`layers.clipMask`) for a clipped layer. Six independent-creation
+  SVGs were added and the qrc regenerated. Ceiling: a PSD whose `lspf` is the old
+  three-bit `0x07` is no longer treated as fully locked (`all` now requires
+  `0x0F`); `Lock All` sets all four bits. Self-tests `lpc_percent` (199) and
+  `lpc_nesting` (200) live in a new `selftest_layers_controls.cpp` so
+  `selftest.cpp` stays at its 6730 allowance. Verified: `cargo nextest run
+  --workspace` **594 passed, 8 skipped**; `TASK_ALLOWS_DOCS=1 bash
+  scripts/verify-full.sh` → `verify-full: OK` (TOTAL 768 passed · 9 skipped · 0
+  failed, file-size OK, guard OK, `openspec validate --all --strict` 61/61).
+  Capability: MODIFIED `layers-panel`; no new capability.
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -1679,9 +1703,12 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   scroll, the Tools central-splitter pane, and the floating close button. Both
   are implemented, independently verified, and **archived**
   (`openspec/changes/archive/2026-09-18-m46-panel-toolbar-fixes/` and
-  `…-m47-panel-interaction-fixes/`). The Layers-panel program therefore continues
-  **by content, not by number**: next is **layer filtering/search** (the
-  six-dimension filter/search row), then **remaining management**
+  `…-m47-panel-interaction-fixes/`). The **controls stage**
+  (`layers-panel-controls`: percent Opacity/Fill, the five-lock strip with the
+  nesting lock, and the clipping row indicator) has landed and archived. The
+  Layers-panel program therefore continues **by content, not by number**: next
+  is **layer filtering/search** (the six-dimension filter/search row), then
+  **remaining management**
   (rasterize/merge/flatten/link/select-similar/convert-background/
   layer-via-copy-cut, the New Layer/Group dialogs, and the deferred drag-reorder
   with its recorded drop rules), then **styles/effects**, then **smart objects /

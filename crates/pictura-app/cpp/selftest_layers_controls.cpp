@@ -1,0 +1,100 @@
+#include "selftest_layers_controls.h"
+#include "selftest_report.h"
+
+#include "frame.h"
+#include "panels/layers_panel.h"
+
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+
+int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
+{
+        // lpc_percent (199): the Opacity control carries 0..100 % and converts
+        // to the stored 0..255 byte through the panel, a stored byte displays as
+        // its percentage, a programmatic sync adds no history, and the lock
+        // strip is five toggles.
+        const bool lpcCreated = frame.newDocument(QStringLiteral("PercentCtl"), 16, 16,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* lpcView = frame.activeView();
+        auto* lpcPanel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+        if (!lpcCreated || !lpcView || !lpcPanel) {
+            return pictura::selfTest().fail(199, "percent fixture");
+        }
+        const int lpcDoc = frame.activeDocumentIndex();
+        lpcPanel->setView(lpcView);
+        lpcView->select_all();
+        lpcPanel->refresh();
+        const int lpcBase = lpcView->history_count();
+        lpcPanel->setOpacityPercentForTest(50);
+        const bool lpcByteOk =
+            lpcView->layer_opacity(0) == 128 && lpcView->history_count() == lpcBase + 1;
+        lpcView->set_layers_opacity(QStringList{QStringLiteral("0")}, 128);
+        lpcPanel->refresh();
+        const bool lpcDisplayOk = lpcPanel->opacityPercentForTest() == 50
+            && lpcPanel->lockButtonCountForTest() == 5;
+        const int lpcSyncBase = lpcView->history_count();
+        lpcPanel->refresh();
+        const bool lpcSyncOk = lpcView->history_count() == lpcSyncBase
+            && lpcPanel->opacityPercentForTest() == 50;
+        ST_BEGIN("lpc_percent");
+        ST_PASS("lpc_percent byte=%d display=%d sync=%d", lpcByteOk ? 1 : 0,
+                     lpcDisplayOk ? 1 : 0, lpcSyncOk ? 1 : 0);
+        if (!lpcByteOk || !lpcDisplayOk || !lpcSyncOk) {
+            return pictura::selfTest().fail(199, "percent controls");
+        }
+        frame.closeDocument(lpcDoc, false);
+
+        // lpc_nesting (200): the nesting flag reaches the row projection, "all"
+        // is the four-bit set, Group Layers refuses a nesting-locked node, and
+        // Move Up within the container still reorders.
+        const bool lpcNestCreated = frame.newDocument(QStringLiteral("NestLock"), 16, 16,
+                                                      QStringLiteral("rgb"), 8,
+                                                      QStringLiteral("white"));
+        pictura::PictureView* lpcNestView = frame.activeView();
+        if (!lpcNestCreated || !lpcNestView) {
+            return pictura::selfTest().fail(200, "nesting fixture");
+        }
+        const int lpcNestDoc = frame.activeDocumentIndex();
+        const QString lpcGroup = lpcNestView->add_group_in(QString());
+        const QString lpcA = lpcNestView->add_layer_in(lpcGroup);
+        const QString lpcB = lpcNestView->add_layer_in(lpcGroup);
+        lpcNestView->set_layer_name_path(lpcA, QStringLiteral("A"));
+        lpcNestView->set_layer_name_path(lpcB, QStringLiteral("B"));
+        const auto lpcRow = [lpcNestView](const QString& path) {
+            for (int i = 0; i < lpcNestView->layer_row_count(); ++i) {
+                if (lpcNestView->layer_row_path(i) == path) {
+                    return i;
+                }
+            }
+            return -1;
+        };
+        const int lpcLockBase = lpcNestView->history_count();
+        const int lpcLocked =
+            lpcNestView->set_layers_lock(QStringList{lpcA}, QStringLiteral("nesting"), true);
+        const bool lpcBitOk = lpcLocked == 1
+            && (lpcNestView->layer_row_lock(lpcRow(lpcA)) & 0x08) != 0
+            && lpcNestView->history_count() == lpcLockBase + 1;
+        const int lpcGroupBase = lpcNestView->history_count();
+        const QString lpcWrapped = lpcNestView->group_layers(QStringList{lpcA});
+        const bool lpcRefuseOk = lpcWrapped.isEmpty()
+            && lpcNestView->history_count() == lpcGroupBase
+            && lpcNestView->layer_row_path(lpcRow(lpcA)) == lpcA;
+        const int lpcMoveBase = lpcNestView->history_count();
+        const bool lpcMoved = lpcNestView->move_layer_path(lpcA, 1);
+        const bool lpcMoveOk = lpcMoved
+            && lpcNestView->layer_row_name(lpcRow(QStringLiteral("1/1"))) == QStringLiteral("A")
+            && lpcNestView->history_count() == lpcMoveBase + 1;
+        const int lpcAll = lpcNestView->set_layers_lock(
+            QStringList{QStringLiteral("1/1")}, QStringLiteral("all"), true);
+        const bool lpcAllOk = lpcAll == 1
+            && (lpcNestView->layer_row_lock(lpcRow(QStringLiteral("1/1"))) & 0x0F) == 0x0F;
+        ST_BEGIN("lpc_nesting");
+        ST_PASS("lpc_nesting bit=%d refuse=%d move=%d all=%d", lpcBitOk ? 1 : 0,
+                     lpcRefuseOk ? 1 : 0, lpcMoveOk ? 1 : 0, lpcAllOk ? 1 : 0);
+        if (!lpcBitOk || !lpcRefuseOk || !lpcMoveOk || !lpcAllOk) {
+            return pictura::selfTest().fail(200, "nesting lock");
+        }
+        frame.closeDocument(lpcNestDoc, false);
+
+    return 0;
+}

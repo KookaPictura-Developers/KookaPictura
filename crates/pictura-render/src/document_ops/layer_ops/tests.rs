@@ -588,3 +588,40 @@ fn move_path_refuses_background_and_locked() {
     assert_eq!(doc.layers[1].name, "normal");
     assert_eq!(doc.layers[2].name, "locked");
 }
+
+#[test]
+fn nesting_lock_refuses_grouping_but_allows_reorder() {
+    let mut nested = pixel_layer("nested", 4, 4, 1);
+    nested.lock = LockFlags::default().with(LockFlags::NESTING, true);
+
+    let mut doc = doc_with(vec![
+        pixel_layer("a", 4, 4, 0),
+        nested,
+        pixel_layer("c", 4, 4, 2),
+    ]);
+    let before = doc.clone();
+    assert_eq!(
+        group_paths(&mut doc, &["0", "1"]),
+        None,
+        "nesting-locked node refuses grouping"
+    );
+    assert_eq!(doc, before, "document unchanged");
+
+    assert!(
+        move_path(&mut doc, "1", 1),
+        "nesting lock does not block a within-container reorder"
+    );
+    assert_eq!(doc.layers[2].name, "nested");
+
+    let mut group = empty_group("Group 1");
+    group.lock = LockFlags::default().with(LockFlags::NESTING, true);
+    group.children.push(pixel_layer("child", 4, 4, 1));
+    let mut doc = doc_with(vec![group]);
+    let before = doc.clone();
+    assert_eq!(
+        ungroup_paths(&mut doc, &["0"]),
+        0,
+        "nesting-locked group is skipped"
+    );
+    assert_eq!(doc, before, "document unchanged");
+}

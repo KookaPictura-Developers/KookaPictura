@@ -57,6 +57,7 @@
 #include "interop.h"
 
 #include "selftest.h"
+#include "selftest_layers_controls.h"
 
 int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 pictura::PicturaMainWindow& frame, pictura::PictureView* view,
@@ -6704,7 +6705,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(195, "compact shade");
             }
         }
-
+        if (const int lpc = pictura::runLayersControlsChecks(frame); lpc != 0) { return lpc; }
         frame.closeDocument(anatomyDocIndex, false);
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
@@ -6725,6 +6726,5 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         pictura::setUnsavedPromptInteractive(false);
         pictura::setNonInteractiveUnsavedChoice(pictura::UnsavedChoice::Discard);
         QTimer::singleShot(2000, &app, &QCoreApplication::quit);
-
     ST_FINISH();
 }

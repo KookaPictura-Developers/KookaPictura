@@ -534,6 +534,20 @@ fn layer_attributes_round_trip() {
     assert_eq!(back.layers[0].lock.bits(), 0x05);
 }
 
+#[test]
+fn nesting_lock_bit_round_trips_through_lspf() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut layer = pixel("Nested", rect(0, 0, 2, 2), 3, BlendMode::Normal, 255);
+    layer.lock = LockFlags::default().with(LockFlags::NESTING, true);
+    doc.layers = vec![layer];
+
+    let bytes = write_psd(&doc).unwrap();
+    let back = read_psd(&bytes).unwrap();
+    assert!(back.layers[0].lock.contains(LockFlags::NESTING));
+    assert_eq!(back.layers[0].lock.bits(), 0x08);
+    assert_eq!(back, doc, "whole document round-trips");
+}
+
 /// Assemble a 1x1 RGB PSD with one channel-less layer whose record carries
 /// `flags` and the given hand-built tagged blocks.
 fn tagged_layer_psd(flags: u8, tags: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
