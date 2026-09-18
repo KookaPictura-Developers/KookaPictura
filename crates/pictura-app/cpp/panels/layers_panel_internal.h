@@ -108,18 +108,29 @@ public:
         beginResetModel();
         root_ = std::make_unique<Node>();
         byPath_.clear();
+
+        // Two-pass: materialize every node first, then attach by parent path.
+        // A forward reference (child before parent) or a partial list therefore
+        // cannot silently drop the row to `root_` mid-build, and well-formed
+        // pre-order input still attaches in encounter order.
+        std::vector<std::unique_ptr<Node>> nodes;
+        nodes.reserve(static_cast<size_t>(rows.size()));
         for (LayerRow& row : rows) {
             auto node = std::make_unique<Node>();
             node->row = std::move(row);
+            byPath_.insert(node->row.path, node.get());
+            nodes.push_back(std::move(node));
+        }
+        for (auto& node : nodes) {
             const int slash = node->row.path.lastIndexOf(QLatin1Char('/'));
             Node* parent = root_.get();
             if (slash >= 0) {
-                parent = byPath_.value(node->row.path.left(slash), root_.get());
+                if (Node* found = byPath_.value(node->row.path.left(slash), nullptr)) {
+                    parent = found;
+                }
             }
             node->parent = parent;
             node->rowInParent = static_cast<int>(parent->children.size());
-            Node* raw = node.get();
-            byPath_.insert(node->row.path, raw);
             parent->children.push_back(std::move(node));
         }
         for (Node* node : byPath_) {

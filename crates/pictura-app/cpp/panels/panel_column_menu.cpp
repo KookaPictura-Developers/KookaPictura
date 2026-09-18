@@ -39,15 +39,21 @@ namespace pictura {
 
 namespace {
 
-const char* const kTabMenuTexts[] = {
-    "Close",
-    "Close Panel Group",
-    "Minimize",
-    "Collapse to Icons",
-    "Auto-Collapse Iconic Panels",
-    "Auto-Show Hidden Panels",
-    "Interface Options\u2026",
-};
+// One source of truth for the tab-menu labels: `buildTabMenu` constructs the
+// actions from this list and `tabMenuTextsFor` reports the same strings, so a
+// rename cannot desync the menu from the test.
+QStringList tabMenuTexts(bool minimized)
+{
+    return {
+        PanelColumn::tr("Close"),
+        PanelColumn::tr("Close Panel Group"),
+        minimized ? PanelColumn::tr("Expand Panel") : PanelColumn::tr("Minimize"),
+        PanelColumn::tr("Collapse to Icons"),
+        PanelColumn::tr("Auto-Collapse Iconic Panels"),
+        PanelColumn::tr("Auto-Show Hidden Panels"),
+        PanelColumn::tr("Interface Options\u2026"),
+    };
+}
 
 } // namespace
 
@@ -64,7 +70,10 @@ QMenu* PanelColumn::buildTabMenu(PanelGroup* group)
     auto* menu = new QMenu(this);
     menu->setObjectName(QStringLiteral("panelTabMenu"));
 
-    QAction* close = menu->addAction(tr("Close"));
+    const bool minimized = group && group->isMinimized();
+    const QStringList labels = tabMenuTexts(minimized);
+
+    QAction* close = menu->addAction(labels[0]);
     connect(close, &QAction::triggered, this, [this, group]() {
         if (!group) {
             return;
@@ -75,18 +84,17 @@ QMenu* PanelColumn::buildTabMenu(PanelGroup* group)
         }
     });
 
-    QAction* closeGroupAction = menu->addAction(tr("Close Panel Group"));
+    QAction* closeGroupAction = menu->addAction(labels[1]);
     connect(closeGroupAction, &QAction::triggered, this,
             [this, group]() { closeGroup(group); });
 
-    const bool minimized = group && group->isMinimized();
-    QAction* minimize = menu->addAction(minimized ? tr("Expand Panel") : tr("Minimize"));
+    QAction* minimize = menu->addAction(labels[2]);
     connect(minimize, &QAction::triggered, this, [this, group]() {
         group->setMinimized(!group->isMinimized());
         emit stateChanged();
     });
 
-    QAction* collapse = menu->addAction(tr("Collapse to Icons"));
+    QAction* collapse = menu->addAction(labels[3]);
     connect(collapse, &QAction::triggered, this, [this, group]() {
         group->setCollapsedToIcons(!group->isCollapsedToIcons());
         emit stateChanged();
@@ -94,21 +102,21 @@ QMenu* PanelColumn::buildTabMenu(PanelGroup* group)
 
     menu->addSeparator();
 
-    QAction* autoCollapse = menu->addAction(tr("Auto-Collapse Iconic Panels"));
+    QAction* autoCollapse = menu->addAction(labels[4]);
     autoCollapse->setCheckable(true);
     autoCollapse->setChecked(autoCollapseIconic_);
     connect(autoCollapse, &QAction::triggered, this, [this](bool on) {
         setAutoCollapseIconic(on);
     });
 
-    QAction* autoShow = menu->addAction(tr("Auto-Show Hidden Panels"));
+    QAction* autoShow = menu->addAction(labels[5]);
     autoShow->setCheckable(true);
     autoShow->setChecked(autoShowHidden_);
     connect(autoShow, &QAction::triggered, this, [this](bool on) { setAutoShowHidden(on); });
 
     menu->addSeparator();
 
-    QAction* options = menu->addAction(tr("Interface Options\u2026"));
+    QAction* options = menu->addAction(labels[6]);
     connect(options, &QAction::triggered, this, [this]() { emit interfaceOptionsRequested(); });
 
     return menu;
@@ -116,15 +124,8 @@ QMenu* PanelColumn::buildTabMenu(PanelGroup* group)
 
 QStringList PanelColumn::tabMenuTextsFor(const PanelGroup* group) const
 {
-    QStringList out;
-    for (const char* text : kTabMenuTexts) {
-        out << QString::fromUtf8(text);
-    }
     // M45 W5: the minimize entry is a function of the group's state.
-    if (group && group->isMinimized() && out.size() > 2) {
-        out[2] = QStringLiteral("Expand Panel");
-    }
-    return out;
+    return tabMenuTexts(group && group->isMinimized());
 }
 
 } // namespace pictura

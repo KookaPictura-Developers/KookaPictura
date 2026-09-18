@@ -85,11 +85,8 @@ public:
     QList<PanelGroup*> groups() const { return groups_; }
 
     // M43 multi-column host. `side` is derived from the splitter order relative
-    // to the document tabs; `dynamic` marks a column created by a drop, which is
-    // removed when it holds no groups.
+    // to the document tabs.
     PanelSide side() const;
-    bool isDynamic() const { return dynamic_; }
-    void setDynamic(bool dynamic) { dynamic_ = dynamic; }
 
     bool showPanel(const QString& objectName, bool visible);
     bool isPanelVisible(const QString& objectName) const;
@@ -116,6 +113,11 @@ public:
     bool autoCollapseIconic() const { return autoCollapseIconic_; }
     bool autoShowHidden() const { return autoShowHidden_; }
     void setPreferredWidth(int width);
+
+    // M45 W8: drop a column's contribution to the shared minimum floor after it
+    // is added or removed, recomputing from the columns currently alive so a
+    // since-destroyed wide column cannot pin every column's minimum high.
+    static void refreshSharedFloor(PicturaMainWindow* frame);
 
     // Per-group order/visibility/minimized/collapsed as a compact JSON array;
     // round-trips exactly and skips groups whose stored name is gone.
@@ -343,7 +345,6 @@ private:
     QHash<QString, bool> panelVisible_;
 
     bool railMode_ = false;
-    bool dynamic_ = false;
     bool iconLabelsShown_ = false;
     int pendingWidth_ = 0;
     int normalWidthBeforeIconic_ = 0;

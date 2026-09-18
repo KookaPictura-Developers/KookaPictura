@@ -395,6 +395,17 @@ void PanelColumn::updateMinimumWidth()
     setMinimumWidth(gSharedFloor);
 }
 
+void PanelColumn::refreshSharedFloor(PicturaMainWindow* frame)
+{
+    gSharedFloor = kPanelMinWidth;
+    if (!frame) {
+        return;
+    }
+    for (PanelColumn* column : frame->panelColumns()) {
+        column->updateMinimumWidth();
+    }
+}
+
 void PanelColumn::setAutoCollapseIconic(bool on)
 {
     if (autoCollapseIconic_ == on) {

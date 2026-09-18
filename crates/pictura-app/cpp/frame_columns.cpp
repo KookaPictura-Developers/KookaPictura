@@ -57,7 +57,6 @@ PanelColumn* PicturaMainWindow::createPanelColumn(PanelSide side, PanelColumn* a
         return nullptr;
     }
     auto* column = new PanelColumn(this);
-    column->setDynamic(true);
     wirePanelColumn(column);
     int insertAt;
     const int anchorIndex = anchor ? centerSplitter_->indexOf(anchor) : -1;
@@ -70,6 +69,7 @@ PanelColumn* PicturaMainWindow::createPanelColumn(PanelSide side, PanelColumn* a
     centerSplitter_->insertWidget(insertAt, column);
     reapplyColumnStretch();
     column->setVisible(!panelsHidden_);
+    PanelColumn::refreshSharedFloor(this);
     return column;
 }
 
@@ -113,6 +113,7 @@ void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
     }
     column->hide();
     column->setParent(nullptr);
+    PanelColumn::refreshSharedFloor(this);
     column->deleteLater();
     reapplyColumnStretch();
     saveSession();
@@ -317,6 +318,7 @@ void PicturaMainWindow::clearDynamicColumns()
     // Move every drop-created column's groups back into the primary column and
     // delete the column, without the `removeColumnIfEmpty` save side effect.
     const QList<PanelColumn*> columns = panelColumns();
+    bool removedAny = false;
     for (PanelColumn* column : columns) {
         if (!column || column == panelColumn_) {
             continue;
@@ -335,8 +337,12 @@ void PicturaMainWindow::clearDynamicColumns()
         column->hide();
         column->setParent(nullptr);
         column->deleteLater();
+        removedAny = true;
     }
     reapplyColumnStretch();
+    if (removedAny) {
+        PanelColumn::refreshSharedFloor(this);
+    }
 }
 
 } // namespace pictura

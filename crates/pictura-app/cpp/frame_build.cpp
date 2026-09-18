@@ -115,18 +115,15 @@ void PicturaMainWindow::buildPanels()
              QString::fromLatin1(command_ids::WindowPanelsInfo));
     panelColumn_->addGroup(navigatorGroup);
 
-    // Iconic single-panel groups. Phase A only records `defaultIconic`; the
-    // compact rendering lands in Phase B.
+    // Iconic single-panel groups.
     auto* historyGroup = new PanelGroup(this);
     addPanel(historyGroup, historyPanel_, tr("History"),
              QString::fromLatin1(command_ids::WindowPanelsHistory));
-    historyGroup->setDefaultIconic(true);
     panelColumn_->addGroup(historyGroup);
 
     auto* actionsGroup = new PanelGroup(this);
     addPanel(actionsGroup, actionsPanel_, tr("Actions"),
              QString::fromLatin1(command_ids::WindowPanelsActions));
-    actionsGroup->setDefaultIconic(true);
     panelColumn_->addGroup(actionsGroup);
 
     // Kept registered and Window-menu reachable, but out of the default groups.

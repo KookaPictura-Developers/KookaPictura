@@ -74,10 +74,6 @@ public:
     // the last visible panel active after `setPanelVisible` walked the tabs).
     void setCurrentToFirstVisible();
 
-    // Phase B consumes this to seed iconic mode; Phase A only records it.
-    bool defaultIconic() const { return defaultIconic_; }
-    void setDefaultIconic(bool iconic) { defaultIconic_ = iconic; }
-
     // M47 D10: a group hosted in a floating overlay shows a rightmost close
     // control; docked and popup hosts hide it.
     void setFloating(bool on);
@@ -138,7 +134,6 @@ private:
     QWidget* headerCorner_ = nullptr;
     QToolButton* floatCloseButton_ = nullptr;
     QMenu* headerMenu_ = nullptr;
-    bool defaultIconic_ = false;
     bool collapsedToIcons_ = false;
     bool minimized_ = false;
     int savedMaxHeight_ = QWIDGETSIZE_MAX;
