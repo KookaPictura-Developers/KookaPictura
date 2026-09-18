@@ -5,7 +5,9 @@
 # Fails when tracked code drifts into a declared non-goal:
 #   1. crates/ source referencing Adobe .8bf plugin binaries (wrong ABI, non-goal).
 #   2. an artboard* file appearing under crates/ (artboards are post-CS6 CC 2015).
-#   3. docs/ modified without a TASK-ALLOWS-DOCS marker.
+#   3. a milestone name (m<NN>/M<NN>) in a crates/ identifier or string literal
+#      (milestones belong in comments, docs, and specs only).
+#   4. docs/ modified without a TASK-ALLOWS-DOCS marker.
 #
 # Runnable locally with no setup:   bash scripts/guard.sh
 #
@@ -39,7 +41,13 @@ if [ -n "$artboards" ]; then
     fail=1
 fi
 
-# --- 3. docs/ modified without a TASK-ALLOWS-DOCS marker ----------------------
+# --- 3. milestone names in crates/ identifiers or strings ---------------------
+echo "check: no milestone names in crates/ code"
+if ! python3 "$(dirname "$0")/check-milestone-names.py"; then
+    fail=1
+fi
+
+# --- 4. docs/ modified without a TASK-ALLOWS-DOCS marker ----------------------
 echo "check: docs/ changes carry a TASK-ALLOWS-DOCS marker"
 base="${GUARD_BASE:-}"
 

@@ -426,3 +426,60 @@ plugin onto `--interop-probe`, which requires a platform Vulkan instance.
 - **WHEN** the headless self-test runs while the application platform is not `offscreen`
 - **THEN** the self-test prints a failure and exits non-zero
 
+### Requirement: Central splitter keeps every pane
+
+The application shell SHALL keep every pane of its central splitter — the
+ordered set of left widget columns, the document tab area, and right widget
+columns — at or above its minimum size, and SHALL NOT allow a handle drag to
+collapse a pane to zero. The splitter SHALL clamp a handle drag at the pane's
+minimum size, and a widget column SHALL remain visible at its minimum floor
+instead of disappearing. The per-column group splitter SHALL enforce the same
+non-collapsible invariant for its panel groups.
+
+#### Scenario: Dragging the central splitter handle cannot hide a pane [m46_center_splitter]
+
+- **WHEN** the central splitter handle is dragged past a widget column's minimum
+  width
+- **THEN** the column is clamped at its minimum and stays visible rather than
+  collapsing to zero
+
+#### Scenario: The group splitter cannot collapse a group to zero [m46_no_collapse]
+
+- **WHEN** a column's group splitter handle is dragged past a panel group's
+  minimum height
+- **THEN** the group is clamped at its minimum and its tab bar stays visible
+
+### Requirement: Central splitter hosts the Tools pane
+
+The application shell SHALL allow the Tools panel to be re-hosted from its dock
+into the central splitter as a fixed-width pane, on either side of a widget
+column or between two widget columns, through the same column drop grammar and
+indicator the widget columns use. While it is a splitter pane the Tools panel
+SHALL keep its fixed content width, fill the splitter height, remain re-draggable
+by its title bar, and SHALL NOT be tabified. A docked or pane-hosted Tools panel
+SHALL NOT block a floating widget overlay from being dragged across it.
+
+#### Scenario: The Tools panel is hosted between columns [m47_tools_pane]
+
+- **WHEN** the floating Tools panel is dropped between two widget columns
+- **THEN** it becomes a fixed-width splitter pane at that boundary and is not
+  tabified
+
+#### Scenario: A widget overlay crosses the Tools pane [m47_float_over_tools]
+
+- **WHEN** a widget overlay is dragged over the Tools panel
+- **THEN** it continues to follow the cursor instead of stopping at the central
+  area edge
+
+### Requirement: Compact group chrome shading
+
+The compact/iconic group container SHALL use the panel surface shade rather than
+the darker base shade, and its drag-handle dots SHALL be dark gray, distinct
+from the near-white window text, so the dots read as a handle.
+
+#### Scenario: Compact group background and dots [m47_compact_shade]
+
+- **WHEN** the compact strip is built
+- **THEN** each group container uses the panel surface shade and its drag dots
+  render in dark gray
+
