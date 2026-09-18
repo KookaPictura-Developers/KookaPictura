@@ -62,6 +62,11 @@ add_executable(pictura
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/icons.cpp
     crates/pictura-app/cpp/frame.cpp
+    crates/pictura-app/cpp/frame_columns.cpp
+    crates/pictura-app/cpp/frame_session.cpp
+    crates/pictura-app/cpp/frame_menus.cpp
+    crates/pictura-app/cpp/frame_test.cpp
+    crates/pictura-app/cpp/frame_build.cpp
     crates/pictura-app/cpp/panels/layers_panel.cpp
     crates/pictura-app/cpp/panels/layers_panel_actions.cpp
     crates/pictura-app/cpp/panels/layers_panel_menu.cpp
