@@ -35,7 +35,7 @@ Ninja and `--parallel`.
 
 ## Testing
 
-- Suite: **588 tests, 7 ignored** (`cargo nextest run --workspace` preferred;
+- Suite: **592 tests, 9 ignored** (`cargo nextest run --workspace` preferred;
   `cargo test --workspace` is the fallback). Doctests run separately with
   `cargo test --workspace --doc` — nextest does not run them.
 - External oracle tests (ImageMagick / `psd-tools`) self-skip when the tool is

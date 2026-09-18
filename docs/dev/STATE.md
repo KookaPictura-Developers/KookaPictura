@@ -9,12 +9,12 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **589 tests, 0 failed, 7 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **592 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
-  M34 `m34_undo_profile_4000`, and the M35 `m35_region_refresh_profile_4000`;
-  M44 added the `gpu_parity` fresh-white-document regression; counted from
-  `cargo test --workspace`, excluding the pre-existing ignored `pictura-render`
-  doctest, which makes the raw ignored count 8).
+  M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
+  newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
+  fresh-white-document regression; counted from `cargo test --workspace`, which
+  includes the pre-existing ignored `pictura-render` doctest as the ninth).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M43 archived; canonical specs are
   in `openspec/specs/` (60 specs, `validate --all --strict` green), change
   history under `openspec/changes/archive/`. The headless/CI/build-speed
@@ -1429,6 +1429,41 @@ by self-test section is a deliberate later step, out of this pass.
   `cargo test --workspace`) — with registry/sccache caching. No Rust API,
   document, codec, compositor, or dependency change: **588 tests, 0 failed, 7
   ignored** (unchanged).
+
+- **Post-M47 cleanup pass** (review follow-up; no OpenSpec change, no new
+  capability, canonical specs unchanged). **Bug fix — document tab reorder:** the
+  document `QTabWidget` was movable but nothing connected `QTabBar::tabMoved`, so
+  dragging a tab left `docs_` in the old order while `tabs_->currentIndex()`,
+  `viewAt` and `removeDocument` indexed the new one — the wrong document became
+  active, closed, or returned. `frame.cpp` now connects `tabMoved(from,to)` to
+  `docs_.move(from,to)` (valid-index guarded); Qt keeps the dragged tab current,
+  so the active document is unchanged. Regression: self-test exit **196**
+  `doc_tab_reorder aligned=1` (`PicturaMainWindow::reorderDocumentsForTest`,
+  which also exercises `viewAt`/`documentName`/`activeDocumentIndex` after the
+  move). **Dead-code deletions:** `PanelGroup::detachPanel`/`attachPanel`/
+  `removePanel`, `PanelColumn`'s `removePanel`, the unused `blendName`,
+  `activeForeground_`, a no-op provider, the dead `panelFlyoutHeader` QSS
+  selector, and three unused panel test hooks. **Dedupe (pure moves to one
+  home):** the duplicated filter math helpers hoisted into
+  `kernel`/`luma`/`texture` (bit-identical, oracle-verified), the frame TU
+  include block shared via `frame_includes.h`, the shared `storage_entry` in
+  `pictura-render::gpu`, and the bridge `mutate_layer`/`reset_edit_state`
+  helpers. **Hardening:** the panel-drop path no longer orphans/leaks a lifted
+  panel when no column can be created (`applyNewColumnDrop` re-inserts it into
+  its home group), session reads are capped at 1 MiB, thumbnail size math
+  widened, temp files cleaned up on save failure, over-cap layer channel counts
+  rejected by the codec writer, filter coverage honours disabled masks, and
+  NaN/overflow guards added in `pictura-adjust`/`pictura-filters`/
+  `pictura-select`. **Kept despite review flags** because they are spec'd or
+  planned: `history_depth`, `move_layer`, `layer_thumbnail`, `file_path`,
+  `resize_canvas`, `rotate_arbitrary`, `composite_gpu_or_cpu`, `parent_path`,
+  `hash_bytes`, `Layer::is_group`, `pictura_color::assign`, the whole
+  `pictura-color` crate, and `move_preview`. Verified: `cmake --build` clean;
+  `./build/pictura --headless --self-test` exit 0 with `doc_tab_reorder=1`;
+  `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D
+  warnings` clean; `cargo test --workspace` **592 tests, 0 failed, 9 ignored**
+  (up from 589/7; the raw ignored count rose 8→9 with the newly-ignored M25
+  `filter_profile_1024`).
 
 ## Canvas viewport & performance (post-M24 pass)
 
