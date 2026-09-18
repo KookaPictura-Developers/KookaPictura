@@ -15,7 +15,7 @@ public:
     // M44: chosen chrome dimensions (unsourced CS6 metrics), shared so the
     // stylesheet and the splitter agree.
     static constexpr int kPanelBorderWidth = 1;
-    static constexpr int kGroupDividerWidth = 6;
+    static constexpr int kGroupDividerWidth = 4;
 
     // Clamp a level into [0, kLevelCount).
     static int clampLevel(int level);

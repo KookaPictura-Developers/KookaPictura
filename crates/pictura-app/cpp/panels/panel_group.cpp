@@ -1,6 +1,7 @@
 #include "panel_group.h"
 
 #include "history_panel.h"
+#include "icons.h"
 #include "layers_panel.h"
 
 #include <QtCore/QEvent>
@@ -326,14 +327,30 @@ PanelGroup::PanelGroup(QWidget* parent)
     tabs_->tabBar()->setExpanding(false);
     layout->addWidget(tabs_);
 
-    headerButton_ = new QToolButton(tabs_);
+    headerCorner_ = new QWidget(tabs_);
+    auto* cornerLayout = new QHBoxLayout(headerCorner_);
+    cornerLayout->setContentsMargins(0, 0, 0, 0);
+    cornerLayout->setSpacing(0);
+
+    headerButton_ = new QToolButton(headerCorner_);
     headerButton_->setObjectName(QStringLiteral("panelWidgetMenu"));
     headerButton_->setText(QStringLiteral("\u25BE"));
     headerButton_->setAutoRaise(true);
     headerButton_->setPopupMode(QToolButton::InstantPopup);
     headerButton_->setFixedSize(kHeaderButtonSize, kHeaderButtonSize);
     headerButton_->setVisible(false);
-    tabs_->setCornerWidget(headerButton_, Qt::TopRightCorner);
+    cornerLayout->addWidget(headerButton_);
+
+    floatCloseButton_ = new QToolButton(headerCorner_);
+    floatCloseButton_->setObjectName(QStringLiteral("panelFloatClose"));
+    floatCloseButton_->setAutoRaise(true);
+    floatCloseButton_->setFixedSize(kHeaderButtonSize, kHeaderButtonSize);
+    floatCloseButton_->setToolTip(tr("Close"));
+    floatCloseButton_->setIcon(icon(QStringLiteral("panel.closeChevron")));
+    floatCloseButton_->setVisible(false);
+    cornerLayout->addWidget(floatCloseButton_);
+
+    tabs_->setCornerWidget(headerCorner_, Qt::TopRightCorner);
     connect(tabs_, &QTabWidget::currentChanged, this, [this]() { updateHeaderMenu(); });
 
     iconRow_ = new QWidget(this);
@@ -595,7 +612,16 @@ QTabBar* PanelGroup::tabBar() const
 
 int PanelGroup::headerCornerWidthForTest() const
 {
-    return headerButton_ ? headerButton_->width() : 0;
+    int width = headerButton_ ? headerButton_->width() : 0;
+    if (floatCloseButton_ && floatCloseButton_->isVisible()) {
+        width += floatCloseButton_->width();
+    }
+    return width;
+}
+
+bool PanelGroup::floatCloseVisibleForTest() const
+{
+    return floatCloseButton_ && floatCloseButton_->isVisible();
 }
 
 int PanelGroup::indexOfPanel(const QString& objectName) const
@@ -920,6 +946,12 @@ void PanelGroup::updateHeaderMenu()
     const QString panel = currentPanelName();
     const bool has = !panel.isEmpty() && panelHasMenu(panel);
     headerButton_->setVisible(has);
+    if (headerCorner_) {
+        // `headerButton_->isVisible()` is false while the corner container is
+        // still hidden, so decide from the explicit flags, not effective state.
+        headerCorner_->setVisible(has
+                                  || (floatCloseButton_ && !floatCloseButton_->isHidden()));
+    }
     headerButton_->setMenu(nullptr);
     delete headerMenu_;
     headerMenu_ = nullptr;
@@ -934,6 +966,14 @@ void PanelGroup::updateHeaderMenu()
     populatePanelMenu(headerMenu_, panel,
                       [this](const QString& id) { runPanelMenuAction(id); });
     headerButton_->setMenu(headerMenu_);
+}
+
+void PanelGroup::setFloating(bool on)
+{
+    if (floatCloseButton_) {
+        floatCloseButton_->setVisible(on);
+    }
+    updateHeaderMenu();
 }
 
 void PanelGroup::runPanelMenuAction(const QString& actionId)
@@ -982,7 +1022,8 @@ QStringList PanelGroup::menuTextsForPanel(const QString& panelName)
 bool PanelGroup::headerMenuAtRightForTest() const
 {
     if (!headerButton_ || !headerButton_->isVisible()
-        || tabs_->cornerWidget(Qt::TopRightCorner) != headerButton_) {
+        || tabs_->cornerWidget(Qt::TopRightCorner) != headerCorner_
+        || !tabs_->isAncestorOf(headerButton_)) {
         return false;
     }
     QTabBar* bar = tabs_->tabBar();

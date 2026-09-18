@@ -46,6 +46,7 @@ public:
     explicit PanelFloat(QWidget* parent = nullptr);
     PanelGroup* group() const { return group_; }
     void setGroup(PanelGroup* group);
+    std::function<void()> onClose;
 
 private:
     PanelGroup* group_ = nullptr;
@@ -93,6 +94,10 @@ public:
     bool showPanel(const QString& objectName, bool visible);
     bool isPanelVisible(const QString& objectName) const;
     void closeGroup(PanelGroup* group);
+
+    // M47: move this column's live floating overlays to another column (drag
+    // wiring and `floats_` ownership) so an emptied source column can be removed.
+    void rehomeFloatsTo(PanelColumn* target);
 
     // M43 session v6: detach a group so it can be adopted by another column
     // (used to rebuild a stored multi-column layout at startup). Returns the
@@ -152,6 +157,7 @@ public:
     int scrollViewportHeightForTest() const;
     int dropIndexForTest() const;
     int horizontalScrollPolicyForTest() const;
+    int horizontalScrollRangeForTest() const;
     int minimumWidthFloorForTest() const;
     // M45 T3: the frame resolves a floating-Tools drop through this column's
     // grammar and shows the same `#2a7fff` new-column edge indicator.
@@ -162,6 +168,8 @@ public:
     bool tearOffForTest(const QString& groupName);
     bool tearOffPanelForTest(const QString& objectName);
     bool redockForTest(int floatIndex, int boundaryIndex);
+    bool closeFloatForTest(int index);
+    QToolButton* floatCloseButtonForTest(int index) const;
     bool floatIsWindowForTest(int index) const;
     QRect floatGeometryForTest(int index) const;
     QRect floatHostRectForTest() const;
@@ -311,6 +319,7 @@ private:
     void cancelDrag();
     PanelFloat* createFloat(PanelGroup* group, const QPoint& globalPos);
     void destroyFloat(PanelFloat* floatWindow);
+    void closeFloat(PanelFloat* floatWindow);
     void moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft);
     QRect floatBounds(QWidget* host) const;
     PanelFloat* floatForGroup(PanelGroup* group) const;

@@ -132,6 +132,10 @@ QString styleSheetFor(const Ramp& ramp)
         {"${hover}", ramp.button.lighter(120)},
         {"${pressed}", ramp.button.darker(120)},
         {"${activeTab}", ramp.window.lighter(130)},
+        // The panel-group header strip sits between the panel surface and the
+        // darker inactive tab, so the tabs read against it without reaching
+        // the inactive-tab shade.
+        {"${panelHeader}", ramp.window.darker(108)},
     };
 
     QString qss = QStringLiteral(R"(
@@ -171,15 +175,18 @@ QTabBar::tab:disabled { color: ${disabledText}; }
 /* M44: the active panel tab takes the widget/panel surface (`${window}`) so it
    reads as continuous with the body; inactive tabs recede to the darker
    `${base}`. The panel pane is `${window}` too, so active == pane and inactive
-   != pane. The document tab bar keeps the unscoped `QTabBar::tab` rules above. */
+   != pane. M46: the header strip behind the tabs is `${panelHeader}`, a shade
+   between the pane and the inactive tab. The document tab bar keeps the
+   unscoped `QTabBar::tab` rules above. */
+QTabBar#panelTabBar { background: ${panelHeader}; }
 QTabBar#panelTabBar::tab { background: ${base}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; }
 QTabBar#panelTabBar::tab:hover { background: ${hover}; }
 QTabBar#panelTabBar::tab:selected { background: ${window}; color: ${windowText}; }
 
 QSplitter#panelColumnSplitter::handle { background: ${border}; }
 QFrame#panelIconDivider { background: ${border}; border: 0; }
-QWidget#panelIconGroup { background: ${base}; border: 1px solid ${border}; border-radius: 2px; }
-QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid ${border}; }
+QWidget#panelIconGroup { background: ${window}; border: 1px solid ${border}; border-radius: 2px; }
+QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid ${border}; color: ${disabledText}; }
 
 QTabWidget::pane { border: ${borderWidth}px solid ${border}; background: ${base}; }
 QTabWidget#panelGroupTabs { border: ${borderWidth}px solid ${border}; }

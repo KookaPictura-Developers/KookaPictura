@@ -807,15 +807,12 @@ void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
     if (!column) {
         return;
     }
-    // A float still routes its drags through this column, so keep it while one
-    // is live (a one-panel float must be able to re-dock).
-    if (column->floatCountForTest() > 0) {
-        return;
-    }
     // M45 W4/M46: a column is empty when no group has visible content. This
     // must not depend on `group->isVisible()`: in rail mode the scroll host is
     // hidden and a popped group is reparented into the flyout, both of which
     // make an ancestor hidden while the group still holds visible panels.
+    // M47: emptiness is checked before any float guard, so a torn-off last group
+    // does not keep its empty source column alive.
     for (PanelGroup* group : column->groups()) {
         if (group && !group->visibleTitles().isEmpty()) {
             return;
@@ -823,11 +820,15 @@ void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
     }
     // M46: the primary column keeps its identity but hides when empty; a hidden
     // splitter child takes no space and `PanelColumn::showPanel` re-shows it.
+    // M47: it survives even with a live float, so the floats stay wired.
     if (column == panelColumn_) {
         column->hide();
         saveSession();
         return;
     }
+    // M47: a dynamic column may still own a live float; rewire it to the primary
+    // before the column is destroyed so the float stays re-dockable.
+    column->rehomeFloatsTo(panelColumn_);
     // Rehome any still-live (hidden) groups so their panel widgets survive for
     // a later Window-menu show; then close the now-empty column.
     const QList<PanelGroup*> remaining = column->groups();
@@ -869,8 +870,11 @@ PanelColumn* PicturaMainWindow::columnAtGlobal(const QPoint& globalPos) const
 
 int PicturaMainWindow::newColumnSideAt(const QPoint& globalPos) const
 {
-    // Dropping over the Tools dock allocates a column on the dock's side.
-    if (toolsDock_ && toolsDock_->isVisible()) {
+    // Dropping over the Tools dock allocates a column on the dock's side. M47:
+    // skip this when the toolbox is a central-splitter pane; the column grammar
+    // owns the drop there.
+    if (toolsDock_ && toolsDock_->isVisible()
+        && (!centerSplitter_ || centerSplitter_->indexOf(toolsDock_) < 0)) {
         const QRect dockRect(toolsDock_->mapToGlobal(QPoint(0, 0)), toolsDock_->size());
         if (dockRect.contains(globalPos)) {
             switch (toolsArea_) {
@@ -954,6 +958,34 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
     if (toolbox_ && centerSplitter_) {
         resolved = columnEdgeAnchorAt(globalPos, nullptr, &resolvedSide);
     }
+    // M47 D9: the Tools pane itself is a valid target; anchor its nearest
+    // neighbouring column so the indicator and the landing slot agree.
+    if (!resolved && toolbox_ && centerSplitter_) {
+        const int toolsIndex = centerSplitter_->indexOf(toolbox_);
+        const QRect toolsRect(toolbox_->mapToGlobal(QPoint(0, 0)), toolbox_->size());
+        if (toolsIndex >= 0 && toolsRect.contains(globalPos)) {
+            PanelColumn* left = nullptr;
+            PanelColumn* right = nullptr;
+            for (int i = 0; i < centerSplitter_->count(); ++i) {
+                auto* column = qobject_cast<PanelColumn*>(centerSplitter_->widget(i));
+                if (!column || !column->isVisible()) {
+                    continue;
+                }
+                if (i < toolsIndex) {
+                    left = column;
+                } else if (i > toolsIndex && !right) {
+                    right = column;
+                }
+            }
+            if (left) {
+                resolved = left;
+                resolvedSide = 1;
+            } else if (right) {
+                resolved = right;
+                resolvedSide = 0;
+            }
+        }
+    }
     if (!resolved) {
         if (PanelColumn* column = columnAtGlobal(globalPos)) {
             const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
@@ -963,6 +995,8 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
             }
         }
     }
+    // A pointer over no column (e.g. the document tabs) keeps the panel in its
+    // current state rather than forcing it into the splitter.
     // Drop the previous boundary's line when the pointer moves off it.
     if (toolboxDropAnchor_ && toolboxDropAnchor_ != resolved) {
         toolboxDropAnchor_->hideEdgeDropIndicator();
@@ -1001,6 +1035,7 @@ bool PicturaMainWindow::commitToolboxDrop(const QPoint& globalPos)
     removeDockWidget(toolbox_);
     toolbox_->hide();
     centerSplitter_->insertWidget(insertAt, toolbox_);
+    toolbox_->setSplitterPane(true);
     reapplyColumnStretch();
     toolbox_->show();
     return centerSplitter_->indexOf(toolbox_) == insertAt;
@@ -1239,6 +1274,8 @@ void PicturaMainWindow::clearDynamicColumns()
                 panelColumn_->addGroup(taken);
             }
         }
+        // M47: live floats must not be orphaned when the column is deleted.
+        column->rehomeFloatsTo(panelColumn_);
         column->hide();
         column->setParent(nullptr);
         column->deleteLater();
@@ -1705,25 +1742,32 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
         if (area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea) {
             toolsArea_ = area;
         }
+        // M47: a real dock is no longer a central-splitter pane.
+        toolbox_->setSplitterPane(false);
         ensureToolsNotTabified();
     });
-    connect(toolbox, &QDockWidget::topLevelChanged, this,
-            [this](bool) { ensureToolsNotTabified(); });
+    connect(toolbox, &QDockWidget::topLevelChanged, this, [this](bool) {
+        toolbox_->setSplitterPane(false);
+        ensureToolsNotTabified();
+    });
 
     // M45 T3: while the floating Tools panel is dragged, resolve the drop through
     // the column grammar and show the single indicator; on release host it at
     // that boundary. The commit is deferred past Qt's own dock-drag handling.
     connect(toolbox, &Toolbox::toolbarDragMoved, this, [this](const QPoint& pos) {
-        if (toolbox_ && toolbox_->isFloating()) {
+        // M47 D8: show the indicator for a docked/pane title-bar drag too.
+        if (toolbox_) {
             resolveToolboxDrop(pos, nullptr, nullptr);
         }
     });
     connect(toolbox, &Toolbox::toolbarDragFinished, this, [this](const QPoint& pos) {
-        if (!toolbox_ || !toolbox_->isFloating()) {
+        // M47 D8: commit a docked or pane-hosted drag-out too; `commitToolboxDrop`
+        // handles the reparenting, so the float state is irrelevant here.
+        if (!toolbox_) {
             return;
         }
         QTimer::singleShot(0, this, [this, pos]() {
-            if (toolbox_ && toolbox_->isFloating()) {
+            if (toolbox_) {
                 commitToolboxDrop(pos);
             }
         });

@@ -6228,8 +6228,8 @@ int main(int argc, char* argv[])
             }
 
             // 176: the column never clips — the tab text elides, the corner
-            // button keeps its width, and the scroll area allows horizontal
-            // scrolling.
+            // button keeps its width, and the column is wide enough that no
+            // horizontal scrollbar is ever needed (policy off).
             bool m45NoClipElide = false;
             bool m45NoClipScroll = false;
             if (m41Column) {
@@ -6250,7 +6250,7 @@ int main(int argc, char* argv[])
                 }
                 m45NoClipElide = any && elide && corner;
                 m45NoClipScroll = m41Column->horizontalScrollPolicyForTest()
-                                  == static_cast<int>(Qt::ScrollBarAsNeeded);
+                                  == static_cast<int>(Qt::ScrollBarAlwaysOff);
             }
             std::fprintf(stderr, "pictura self-test: m45_no_clip elide=%d scroll=%d\n",
                          m45NoClipElide ? 1 : 0, m45NoClipScroll ? 1 : 0);
@@ -6627,22 +6627,43 @@ int main(int argc, char* argv[])
             }
 
             // 182: the bottom-boundary line is clamped inside the scroll
-            // viewport so none of it is drawn past the visible area.
+            // viewport so none of it is drawn past the visible area. Use a
+            // fresh column with one group so the group fills the viewport and
+            // its bottom is a reachable BelowGroup boundary.
             bool m46BottomInside = false;
             if (m41Column) {
                 m41Column->setRailMode(false);
                 m46Pump(4);
-                const QString src = m46OtherPanel(nullptr, QString());
-                const QPoint p = m41Column->boundaryPointForTest(1000);
-                if (!src.isEmpty() && !p.isNull()) {
-                    m41Column->beginTabDragForTest(src);
-                    m41Column->dragToForTest(p);
-                    const QRect g = m41Column->dropIndicatorGeometryForTest();
-                    const int vh = m41Column->scrollViewportHeightForTest();
-                    m46BottomInside =
-                        g.isValid() && vh > 0 && g.top() >= 0 && g.bottom() <= vh;
-                    m41Column->dropForTest(p);
+                pictura::PanelColumn* dest =
+                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                if (dest) {
+                    for (pictura::PanelGroup* group : m41Column->groups()) {
+                        if (group && group->isVisible() && !group->visibleTitles().isEmpty()) {
+                            if (pictura::PanelGroup* taken = m41Column->takeGroup(group->objectName())) {
+                                dest->adoptGroup(taken);
+                            }
+                            break;
+                        }
+                    }
                     m46Pump(6);
+                    QString src;
+                    for (pictura::PanelGroup* group : dest->groups()) {
+                        if (group && group->isVisible() && !group->visibleTitles().isEmpty()) {
+                            src = group->visibleTitles().first();
+                            break;
+                        }
+                    }
+                    const QPoint p = dest->boundaryPointForTest(1000);
+                    if (!src.isEmpty() && !p.isNull()) {
+                        dest->beginTabDragForTest(src);
+                        dest->dragToForTest(p);
+                        const QRect g = dest->dropIndicatorGeometryForTest();
+                        const int vh = dest->scrollViewportHeightForTest();
+                        m46BottomInside =
+                            g.isValid() && vh > 0 && g.top() >= 0 && g.bottom() <= vh;
+                        dest->dropForTest(p);
+                        m46Pump(6);
+                    }
                 }
                 m46CollapseDynamics();
             }
@@ -6801,6 +6822,470 @@ int main(int argc, char* argv[])
             if (!(m46PrimaryHide && m46PrimaryShow)) {
                 std::fprintf(stderr, "pictura self-test: FAIL: M46 primary empty\n");
                 return 186;
+            }
+
+            // M47 (187-195): empty-column-after-float, ghost-group hiding,
+            // compact icon float, compact grip group creation, no horizontal
+            // scroll, fixed iconic width, Tools pane hosting, float close, and
+            // compact chrome shading. Exit codes 187-195.
+            auto m47FirstVisiblePanel = [](pictura::PanelGroup* group) -> QString {
+                if (!group) {
+                    return QString();
+                }
+                const QList<QWidget*> visible = group->visiblePanels();
+                return visible.isEmpty() ? QString() : visible.first()->objectName();
+            };
+            auto m47ShowPrimary = [&]() {
+                m41Column->setRailMode(false);
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (!group) {
+                        continue;
+                    }
+                    for (QWidget* panel : group->panels()) {
+                        if (panel) {
+                            m41Column->showPanel(panel->objectName(), true);
+                        }
+                    }
+                }
+                m46Pump(8);
+            };
+            auto m47AdoptOneInto = [&](pictura::PanelColumn* dest) -> bool {
+                if (!dest) {
+                    return false;
+                }
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (group && !group->visiblePanels().isEmpty()) {
+                        if (pictura::PanelGroup* taken =
+                                m41Column->takeGroup(group->objectName())) {
+                            dest->adoptGroup(taken);
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            };
+            auto m47CloseAllFloats = [&]() {
+                for (int i = 0; i < 24 && m41Column->floatCountForTest() > 0; ++i) {
+                    const int count = m41Column->floatCountForTest();
+                    // M47: a re-homed float's close callback is repointed at the
+                    // primary, so closing tears the overlay down; fall back to a
+                    // re-dock only if a float refuses to close.
+                    if (!m41Column->closeFloatForTest(0)
+                        && !m41Column->redockForTest(0, 0)) {
+                        m41Column->cancelDragForTest();
+                    }
+                    m46Pump(4);
+                    if (m41Column->floatCountForTest() >= count) {
+                        break;
+                    }
+                }
+            };
+
+            // 187: the last group of a dynamic column is torn off and left
+            // floating; the now-empty column is removed and its float is
+            // re-homed to the primary (still live and re-dockable).
+            bool m47EmptyGone = false;
+            bool m47EmptyFloat = false;
+            bool m47EmptyPrimary = false;
+            if (m41Column) {
+                m47ShowPrimary();
+                m47CloseAllFloats();
+                const int floatsBefore = m41Column->floatCountForTest();
+                const int before = frame.panelColumnCountForTest();
+                pictura::PanelColumn* dest =
+                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                pictura::PanelGroup* destGroup = nullptr;
+                if (dest) {
+                    for (pictura::PanelGroup* group : m41Column->groups()) {
+                        if (group && !group->visiblePanels().isEmpty()) {
+                            if (pictura::PanelGroup* taken =
+                                    m41Column->takeGroup(group->objectName())) {
+                                dest->adoptGroup(taken);
+                                destGroup = taken;
+                            }
+                            break;
+                        }
+                    }
+                    m46Pump(6);
+                }
+                const QString adoptPanel = m47FirstVisiblePanel(destGroup);
+                if (dest && !adoptPanel.isEmpty()) {
+                    // A point over the source column's own header is outside its
+                    // scroll viewport (and resolves to no sibling), so the drag
+                    // leaves a live float without re-docking it.
+                    const QPoint outside =
+                        dest->mapToGlobal(QPoint(dest->width() / 2, 3));
+                    dest->beginGroupDragForTest(adoptPanel);
+                    dest->dragToForTest(outside);
+                    dest->dropForTest(outside);
+                    m46Pump(8);
+                }
+                m47EmptyGone = dest && frame.panelColumnCountForTest() == before;
+                m47EmptyFloat = m41Column->floatCountForTest() == floatsBefore + 1;
+                m47EmptyPrimary = frame.panelColumn() == m41Column && m41Column->isVisible();
+                // A float re-homed by the removal must close through the primary
+                // (its close callback is repointed), not strand the overlay.
+                const bool m47RehomedCloses =
+                    m41Column->closeFloatForTest(0)
+                    && m41Column->floatCountForTest() == floatsBefore;
+                m47EmptyFloat = m47EmptyFloat && m47RehomedCloses;
+                m47CloseAllFloats();
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_empty_after_float gone=%d float=%d "
+                         "primary=%d\n",
+                         m47EmptyGone ? 1 : 0, m47EmptyFloat ? 1 : 0,
+                         m47EmptyPrimary ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47EmptyGone && m47EmptyFloat && m47EmptyPrimary)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 empty after float\n");
+                return 187;
+            }
+
+            // 188: moving the last visible tab out of a group hides the emptied
+            // group (no ghost shell) while its hidden panel stays reachable and
+            // re-showable.
+            bool m47GhostHidden = false;
+            bool m47GhostFound = false;
+            bool m47GhostShown = false;
+            if (m41Column) {
+                m47ShowPrimary();
+                pictura::PanelGroup* ghost =
+                    m41Column->groupForPanel(QStringLiteral("adjustmentsPanel"));
+                pictura::PanelGroup* groupTarget =
+                    m41Column->groupForPanel(QStringLiteral("colorPanel"));
+                if (ghost && groupTarget && ghost != groupTarget
+                    && ghost->titleCountForTest() >= 2) {
+                    ghost->setPanelVisible(QStringLiteral("propertiesPanel"), false);
+                    m46Pump(4);
+                    const QString last = m47FirstVisiblePanel(ghost);
+                    const QPoint p = groupTarget->tabInsertionGlobalPointForTest(0);
+                    const bool began =
+                        !last.isEmpty() && m41Column->beginTabDragForTest(last);
+                    m41Column->dragToForTest(p);
+                    const bool dropped = m41Column->dropForTest(p);
+                    m46Pump(8);
+                    m47GhostHidden = began && dropped && !ghost->isVisible();
+                    m47GhostFound =
+                        m41Column->groupForPanel(QStringLiteral("propertiesPanel")) == ghost;
+                    m41Column->showPanel(QStringLiteral("propertiesPanel"), true);
+                    m46Pump(8);
+                    m47GhostShown =
+                        ghost->isVisible()
+                        && m41Column->groupForPanel(QStringLiteral("propertiesPanel")) == ghost;
+                }
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_ghost_group hidden=%d found=%d shown=%d\n",
+                         m47GhostHidden ? 1 : 0, m47GhostFound ? 1 : 0,
+                         m47GhostShown ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47GhostHidden && m47GhostFound && m47GhostShown)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 ghost group\n");
+                return 188;
+            }
+
+            // 189: a real press+move on a compact strip icon tears the panel
+            // into a float that survives the (now non-rebuilding) strip and
+            // commits on release.
+            bool m47IconDrag = false;
+            bool m47IconFloat = false;
+            bool m47IconReleased = false;
+            if (m41Column) {
+                m47ShowPrimary();
+                m47CloseAllFloats();
+                const int floatsBefore = m41Column->floatCountForTest();
+                m41Column->setRailMode(true);
+                m46Pump(8);
+                QToolButton* button = nullptr;
+                for (QToolButton* candidate : m41Column->findChildren<QToolButton*>()) {
+                    if (candidate
+                        && candidate->objectName().startsWith(QStringLiteral("panelIcon_"))
+                        && candidate->isVisible()) {
+                        button = candidate;
+                        break;
+                    }
+                }
+                const QPoint outside =
+                    m41Column->mapToGlobal(QPoint(-40, m41Column->height() / 2));
+                if (button) {
+                    const QPoint local = button->rect().center();
+                    const QPointF localF(local);
+                    const QPointF globalF(button->mapToGlobal(local));
+                    QMouseEvent press(QEvent::MouseButtonPress, localF, globalF,
+                                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(button, &press);
+                    const QPointF outsideF(outside);
+                    QMouseEvent move(QEvent::MouseMove, outsideF, outsideF, Qt::NoButton,
+                                     Qt::LeftButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(button, &move);
+                    m46Pump(4);
+                    m47IconDrag = m41Column->dragActiveForTest();
+                    m47IconFloat = m41Column->floatCountForTest() == floatsBefore + 1;
+                    QMouseEvent release(QEvent::MouseButtonRelease, outsideF, outsideF,
+                                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(button, &release);
+                    m46Pump(8);
+                    m47IconReleased = !m41Column->dragActiveForTest();
+                }
+                m47CloseAllFloats();
+                m41Column->setRailMode(false);
+                m46Pump(6);
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_compact_icon_float drag=%d float=%d "
+                         "released=%d\n",
+                         m47IconDrag ? 1 : 0, m47IconFloat ? 1 : 0,
+                         m47IconReleased ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47IconDrag && m47IconFloat && m47IconReleased)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 compact icon float\n");
+                return 189;
+            }
+
+            // 190: a single compact panel dropped on a group's grip creates a
+            // new group immediately above (before) that group.
+            bool m47GripGroup = false;
+            if (m41Column) {
+                m47ShowPrimary();
+                m41Column->setRailMode(true);
+                m46Pump(8);
+                pictura::PanelGroup* groupTarget = nullptr;
+                QString src;
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (!group || group->visiblePanels().isEmpty()) {
+                        continue;
+                    }
+                    if (!groupTarget) {
+                        groupTarget = group;
+                    } else if (src.isEmpty()) {
+                        src = group->visiblePanels().first()->objectName();
+                    }
+                }
+                if (groupTarget && !src.isEmpty()) {
+                    QWidget* grip = m41Column->dragHandleForTest(groupTarget->objectName());
+                    const int targetIndex = m41Column->groups().indexOf(groupTarget);
+                    if (grip && targetIndex >= 0) {
+                        const QPoint gripCenter = grip->mapToGlobal(grip->rect().center());
+                        const bool began = m41Column->beginTabDragForTest(src);
+                        m41Column->dragToForTest(gripCenter);
+                        const bool dropped = m41Column->dropForTest(gripCenter);
+                        m46Pump(8);
+                        pictura::PanelGroup* landed = m41Column->groupForPanel(src);
+                        const int landedIndex =
+                            landed ? m41Column->groups().indexOf(landed) : -1;
+                        const int targetNow = m41Column->groups().indexOf(groupTarget);
+                        m47GripGroup = began && dropped && landed && landed != groupTarget
+                                       && landedIndex == targetIndex
+                                       && targetNow == targetIndex + 1;
+                    }
+                }
+                m41Column->setRailMode(false);
+                m46Pump(6);
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr, "pictura self-test: m47_compact_grip_group above=%d\n",
+                         m47GripGroup ? 1 : 0);
+            std::fflush(stderr);
+            if (!m47GripGroup) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 compact grip group\n");
+                return 190;
+            }
+
+            // 191: the column never scrolls horizontally, even at its minimum
+            // width, because the shared floor keeps the content visible.
+            bool m47HScrollOff = false;
+            bool m47HScrollZero = false;
+            if (m41Column) {
+                m41Column->setRailMode(false);
+                m46Pump(4);
+                m47HScrollOff = m41Column->horizontalScrollPolicyForTest()
+                                == static_cast<int>(Qt::ScrollBarAlwaysOff);
+                m41Column->setPreferredWidth(m41Column->minimumWidthForTest());
+                m46Pump(8);
+                m47HScrollZero = m41Column->horizontalScrollRangeForTest() == 0;
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_no_hscroll off=%d range=%d\n",
+                         m47HScrollOff ? 1 : 0, m47HScrollZero ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47HScrollOff && m47HScrollZero)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 no hscroll\n");
+                return 191;
+            }
+
+            // 192: an iconic column is fixed to its strip width and a preferred
+            // width change cannot grow it; leaving iconic clears the maximum.
+            bool m47IconicWidth = false;
+            bool m47IconicMax = false;
+            bool m47IconicNoGrow = false;
+            bool m47IconicExit = false;
+            if (m41Column) {
+                m47ShowPrimary();
+                m41Column->setRailMode(true);
+                m46Pump(8);
+                const int stripMin = m41Column->minimumWidthForTest();
+                const int iconicWidth = m41Column->width();
+                m47IconicWidth = stripMin > 0 && stripMin <= 60 && iconicWidth == stripMin;
+                m47IconicMax = m41Column->maximumWidth() == m41Column->minimumWidth();
+                m41Column->setPreferredWidth(400);
+                m46Pump(8);
+                m47IconicNoGrow = m41Column->width() <= stripMin;
+                m41Column->setRailMode(false);
+                m46Pump(8);
+                m47IconicExit = m41Column->maximumWidth() > stripMin;
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_iconic_fixed_width width=%d max=%d "
+                         "nogrow=%d exit=%d\n",
+                         m47IconicWidth ? 1 : 0, m47IconicMax ? 1 : 0,
+                         m47IconicNoGrow ? 1 : 0, m47IconicExit ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47IconicWidth && m47IconicMax && m47IconicNoGrow && m47IconicExit)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 iconic fixed width\n");
+                return 192;
+            }
+
+            // 193: the Tools panel is dropped between two widget columns and is
+            // hosted as a fixed-width central-splitter pane at that index.
+            bool m47ToolsResolved = false;
+            bool m47ToolsPane = false;
+            bool m47ToolsIndex = false;
+            if (auto* toolbox =
+                    frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"))) {
+                auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+                if (cs) {
+                    if (cs->indexOf(toolbox) >= 0) {
+                        frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+                        m46Pump(6);
+                    }
+                    m47ShowPrimary();
+                    pictura::PanelColumn* c1 =
+                        frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    m46Pump(6);
+                    m47AdoptOneInto(c1);
+                    m46Pump(6);
+                    pictura::PanelColumn* c2 =
+                        c1 ? frame.createPanelColumn(pictura::PanelSide::Right, c1) : nullptr;
+                    m46Pump(6);
+                    m47AdoptOneInto(c2);
+                    m46Pump(8);
+                    if (c1 && c2) {
+                        const QRect r1(c1->mapToGlobal(QPoint(0, 0)), c1->size());
+                        const QRect r2(c2->mapToGlobal(QPoint(0, 0)), c2->size());
+                        const QPoint between((r1.right() + r2.left()) / 2,
+                                             (r1.center().y() + r2.center().y()) / 2);
+                        pictura::PanelColumn* anchor = nullptr;
+                        int side = -1;
+                        const bool resolved =
+                            frame.resolveToolboxDrop(between, &anchor, &side);
+                        const int anchorIndex =
+                            anchor ? cs->indexOf(anchor) : -1;
+                        const int expected =
+                            anchorIndex < 0 ? -1
+                                            : (side == 0 ? anchorIndex : anchorIndex + 1);
+                        const bool committed = frame.commitToolboxDrop(between);
+                        m47ToolsResolved = resolved && anchor != nullptr;
+                        m47ToolsPane = committed && toolbox->isSplitterPane()
+                                       && cs->indexOf(toolbox) >= 0;
+                        m47ToolsIndex = expected >= 0 && cs->indexOf(toolbox) == expected;
+                    }
+                    frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+                    toolbox->setSplitterPane(false);
+                    m46Pump(6);
+                }
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_tools_pane resolved=%d pane=%d index=%d\n",
+                         m47ToolsResolved ? 1 : 0, m47ToolsPane ? 1 : 0,
+                         m47ToolsIndex ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47ToolsResolved && m47ToolsPane && m47ToolsIndex)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 tools pane\n");
+                return 193;
+            }
+
+            // 194: a floating group shows a visible close control; closing it
+            // removes the overlay, hides the group's panels, and keeps the group
+            // restorable in a column.
+            bool m47FloatCloseBtn = false;
+            bool m47FloatClosed = false;
+            bool m47FloatRestore = false;
+            if (m41Column) {
+                m47ShowPrimary();
+                m47CloseAllFloats();
+                pictura::PanelGroup* floater = nullptr;
+                for (pictura::PanelGroup* group : m41Column->groups()) {
+                    if (group && !group->visiblePanels().isEmpty()) {
+                        floater = group;
+                        break;
+                    }
+                }
+                const QString hiddenName = m47FirstVisiblePanel(floater);
+                if (floater && !hiddenName.isEmpty()) {
+                    const bool torn = m41Column->tearOffForTest(floater->objectName());
+                    m46Pump(8);
+                    QToolButton* close = m41Column->floatCountForTest() == 1
+                                             ? m41Column->floatCloseButtonForTest(0)
+                                             : nullptr;
+                    m47FloatCloseBtn = torn && close && close->isVisible();
+                    const bool clicked = m41Column->closeFloatForTest(0);
+                    m46Pump(8);
+                    pictura::PanelGroup* back = m41Column->groupForPanel(hiddenName);
+                    m47FloatClosed = clicked && m41Column->floatCountForTest() == 0
+                                     && back != nullptr && !back->isVisible();
+                    if (back) {
+                        m41Column->showPanel(hiddenName, true);
+                        m46Pump(6);
+                        m47FloatRestore = back->isVisible();
+                    }
+                }
+                m46CollapseDynamics();
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_float_close button=%d closed=%d "
+                         "restore=%d\n",
+                         m47FloatCloseBtn ? 1 : 0, m47FloatClosed ? 1 : 0,
+                         m47FloatRestore ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47FloatCloseBtn && m47FloatClosed && m47FloatRestore)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 float close\n");
+                return 194;
+            }
+
+            // 195: the compact group container uses the panel surface shade and
+            // its drag dots are dark gray, not the near-white window text.
+            bool m47Shade = false;
+            bool m47Dots = false;
+            {
+                const QString ss = qApp->styleSheet();
+                const QColor windowColor = qApp->palette().color(QPalette::Window);
+                const QColor disabledColor =
+                    qApp->palette().color(QPalette::Disabled, QPalette::WindowText);
+                const QString windowHex = windowColor.name(QColor::HexRgb);
+                const QString disabledHex = disabledColor.name(QColor::HexRgb);
+                m47Shade = ss.contains(
+                    QStringLiteral("QWidget#panelIconGroup { background: ") + windowHex);
+                const int grip = ss.indexOf(QStringLiteral("QWidget#panelIconGroupGrip {"));
+                if (grip >= 0) {
+                    const int end = ss.indexOf(QLatin1Char('}'), grip);
+                    const QString rule = ss.mid(grip, end - grip);
+                    m47Dots = rule.contains(QStringLiteral("color: ") + disabledHex);
+                }
+            }
+            std::fprintf(stderr,
+                         "pictura self-test: m47_compact_shade shade=%d dots=%d\n",
+                         m47Shade ? 1 : 0, m47Dots ? 1 : 0);
+            std::fflush(stderr);
+            if (!(m47Shade && m47Dots)) {
+                std::fprintf(stderr, "pictura self-test: FAIL: M47 compact shade\n");
+                return 195;
             }
         }
 

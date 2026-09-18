@@ -84,6 +84,11 @@ public:
     bool defaultIconic() const { return defaultIconic_; }
     void setDefaultIconic(bool iconic) { defaultIconic_ = iconic; }
 
+    // M47 D10: a group hosted in a floating overlay shows a rightmost close
+    // control; docked and popup hosts hide it.
+    void setFloating(bool on);
+    QToolButton* floatCloseButton() const { return floatCloseButton_; }
+
     // Test hooks.
     int tabPositionForTest() const;
     int titleCountForTest() const;
@@ -103,6 +108,7 @@ public:
 
     // Phase D: the per-widget header action button and its per-panel menu.
     QToolButton* headerMenuButtonForTest() const { return headerButton_; }
+    bool floatCloseVisibleForTest() const;
     bool headerMenuAtRightForTest() const;
     QStringList panelMenuTextsForTest() const;
     bool panelMenuEnabledForTest(const QString& text) const;
@@ -137,6 +143,8 @@ private:
     QWidget* iconRow_ = nullptr;
     QBoxLayout* iconRowLayout_ = nullptr;
     QToolButton* headerButton_ = nullptr;
+    QWidget* headerCorner_ = nullptr;
+    QToolButton* floatCloseButton_ = nullptr;
     QMenu* headerMenu_ = nullptr;
     bool defaultIconic_ = false;
     bool collapsedToIcons_ = false;

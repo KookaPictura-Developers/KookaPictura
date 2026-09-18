@@ -14,6 +14,7 @@
 #include <QtGui/QPolygon>
 #include <QtGui/QScreen>
 #include <QtWidgets/QButtonGroup>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
@@ -484,11 +485,6 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
 
 bool Toolbox::eventFilter(QObject* watched, QEvent* event)
 {
-    // A dock that leaves the floating state mid-gesture must not leave the
-    // title-bar press armed, or a later move would emit a phantom drop.
-    if (!isFloating()) {
-        titleDragPending_ = false;
-    }
     switch (event->type()) {
     case QEvent::DragEnter:
     case QEvent::DragMove:
@@ -496,33 +492,47 @@ bool Toolbox::eventFilter(QObject* watched, QEvent* event)
         event->ignore();
         return true;
     case QEvent::MouseButtonPress:
-        if (watched == titleBar_ && isFloating()) {
+        // M47 T4.1: the title bar is draggable in every state, not just while
+        // floating, so arm the gesture regardless of `isFloating()`.
+        if (watched == titleBar_) {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (mouse->button() == Qt::LeftButton) {
                 titleDragPending_ = true;
+                titleDragMoved_ = false;
+                titlePressGlobal_ = mouse->globalPosition().toPoint();
             }
         }
         break;
     case QEvent::MouseMove:
-        // M45 T3: a left-button drag on the floating title bar is the
-        // floating-toolbar drop gesture; the frame resolves it through the
-        // column grammar. M46: once floating, Qt's own dock drag grabs the
-        // mouse and delivers move/release to the dock, not the title bar, so
-        // the pending flag carries the gesture across that grab.
-        if (isFloating() && titleDragPending_) {
+        // M45 T3: a left-button drag on the title bar is the floating-toolbar
+        // drop gesture; the frame resolves it through the column grammar. M46:
+        // once floating, Qt's own dock drag grabs the mouse and delivers
+        // move/release to the dock, not the title bar, so the pending flag
+        // carries the gesture across that grab. M47 T4.1: the same applies when
+        // the gesture starts docked/pane, gated on the drag threshold so a
+        // jittery click does not relocate the panel.
+        if (titleDragPending_) {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (mouse->buttons() & Qt::LeftButton) {
-                emit toolbarDragMoved(mouse->globalPosition().toPoint());
+                const QPoint pos = mouse->globalPosition().toPoint();
+                if ((pos - titlePressGlobal_).manhattanLength()
+                    >= QApplication::startDragDistance()) {
+                    titleDragMoved_ = true;
+                    emit toolbarDragMoved(pos);
+                }
             }
         }
         break;
     case QEvent::MouseButtonRelease:
-        if (isFloating() && titleDragPending_) {
-            auto* mouse = static_cast<QMouseEvent*>(event);
-            if (mouse->button() == Qt::LeftButton) {
-                emit toolbarDragFinished(mouse->globalPosition().toPoint());
-                titleDragPending_ = false;
+        if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+            // Only a real drag commits; a plain click on the title bar must not
+            // relocate the panel.
+            if (titleDragPending_ && titleDragMoved_) {
+                emit toolbarDragFinished(
+                    static_cast<QMouseEvent*>(event)->globalPosition().toPoint());
             }
+            titleDragPending_ = false;
+            titleDragMoved_ = false;
         }
         break;
     case QEvent::Resize:
@@ -550,6 +560,15 @@ void Toolbox::setColumns(int columns)
     updateContentMetrics();
     updateTitleIcon();
     emit columnsChanged(columns_);
+}
+
+void Toolbox::setSplitterPane(bool on)
+{
+    if (splitterPane_ == on) {
+        return;
+    }
+    splitterPane_ = on;
+    updateContentMetrics();
 }
 
 int Toolbox::contentWidth(int columns) const
@@ -616,10 +635,18 @@ void Toolbox::updateContentMetrics()
     const int content = contentWidth(columns_);
     const int contentH = contentHeight(columns_);
     setFixedWidth(content);
-    setFixedHeight(contentH);
-    // M44 T1: while floating the pinned height is the content height, so the
-    // grip/separator cannot stretch it.
-    floatHeight_ = isFloating() ? contentH : 0;
+    if (splitterPane_) {
+        // M47 T4.3: as a vertical splitter pane the dock keeps a fixed width
+        // but must fill (and be drag-resizable in) the splitter height.
+        setMinimumHeight(0);
+        setMaximumHeight(QWIDGETSIZE_MAX);
+        floatHeight_ = 0;
+    } else {
+        setFixedHeight(contentH);
+        // M44 T1: while floating the pinned height is the content height, so the
+        // grip/separator cannot stretch it.
+        floatHeight_ = isFloating() ? contentH : 0;
+    }
 
     // A QDockWidget caches its layout minimum; without an explicit invalidation a
     // 2->1 column change leaves the two-column floor in place.

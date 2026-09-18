@@ -83,6 +83,11 @@ public:
     int columns() const { return columns_; }
     void setColumns(int columns);
 
+    // M47 T4.3: while hosted as a vertical pane in the central splitter the dock
+    // keeps a fixed width but fills the splitter height.
+    void setSplitterPane(bool on);
+    bool isSplitterPane() const { return splitterPane_; }
+
     // Gated by `Use Shift Key For Tool Switch`: with it on a plain letter
     // activates the slot's current member and `Shift`+letter cycles; with it off
     // the letter alone cycles. Returns true when a group handled the key.
@@ -156,12 +161,16 @@ private:
     QToolButton* screenMode_ = nullptr;
     int columns_ = 1;
     bool shiftKeyForToolSwitch_ = true;
+    // M47 T4.3: true while the dock is a pane in the central splitter.
+    bool splitterPane_ = false;
     // M45 T1: one guard for the single content-metrics recompute; the M43
     // width lock and M44 height lock are now one pass over both axes.
     bool metricsClamping_ = false;
     // M46: a floating title-bar press arms the drag; Qt's dock drag then grabs
     // the mouse, so move/release arrive on the dock before it completes.
     bool titleDragPending_ = false;
+    bool titleDragMoved_ = false;
+    QPoint titlePressGlobal_;
     // M44 T1: while floating the height is pinned to this content height.
     int floatHeight_ = 0;
 };
