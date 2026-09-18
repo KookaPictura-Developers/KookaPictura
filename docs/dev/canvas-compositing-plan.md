@@ -264,6 +264,23 @@ budget and the per-pixel loop. `image()` becomes rebuild-if-dirty from
 `m35-cpp-region-blit` (MODIFIED `document-canvas`); brief
 `docs/dev/m35-cpp-region-blit.md`.
 
+### Move-preview base cache (shipped)
+
+`begin_move_preview` rebuilds the base (topmost pixel layer hidden) from the
+authoritative composite on every mouse-press: at 4000² that measured 247 ms and
+made the Move tool's drag start lag. The base does not change when the topmost
+layer moves, so it is now cached alongside the layer image. The cache is valid
+while `content_revision`, the topmost-layer index, and the layer's clamped
+`(left, top, right, bottom)` rect are unchanged; `prepare_move_preview` warms it
+and `ToolController::applyToolPolicy` calls that when Move is selected or the
+canvas rebinds, so the first press is a cache hit. `translate_layer`,
+`commit_move`, undo/redo, `history_jump`, and `history_restore_snapshot` are the
+only paths that change document content without a plain `record`; the move
+paths use `record_move`, which skips the revision bump because they only move
+the topmost layer, and the history paths bump it explicitly. The fresh-compute
+path is byte-identical to the region composite it replaced; at 4000² the hit
+costs <1 ms against ~250 ms fresh (self-test `move_preview_cache`, exit 197).
+
 ### M36 — history copy-on-write / tile diffs (deferred)
 
 `History::capture` clones the whole document per undoable state (~60 ms at

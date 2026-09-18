@@ -23,6 +23,13 @@ Snapshot for resuming after a context break. Update after each milestone.
   is **implemented and verified** (archive/commit deferred); the M45 panel-fixes
   change `m45-panel-fixes` is **implemented and verified** (archive/commit
   deferred); **M46** layer filtering/search is next.
+- Move-tool drag start is instant: `begin_move_preview` reuses a cached base
+  composite keyed by `content_revision` + topmost-layer index + clamped rect,
+  and `ToolController::applyToolPolicy` warms it when Move is selected or the
+  canvas rebinds. The fresh-compute path is byte-identical to before; the
+  `move_preview_cache` self-test (exit 197) covers hit, byte-identical reuse,
+  and miss-after-content-change. Moves (`translate_layer`, `commit_move`) and
+  history restore bump/reuse the revision so the cache cannot go stale.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 

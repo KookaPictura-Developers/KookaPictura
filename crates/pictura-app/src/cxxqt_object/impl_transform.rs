@@ -16,7 +16,7 @@ impl qobject::PictureView {
         };
         if moved {
             self.as_mut().recomposite();
-            self.as_mut().record("Move Layer");
+            self.as_mut().record_move("Move Layer");
         }
         moved
     }
@@ -52,7 +52,74 @@ impl qobject::PictureView {
     /// Cache the base composite (topmost raster layer hidden), the layer image,
     /// its document-space origin, and opacity. One region composite at drag
     /// start, derived from the authoritative `doc.composite`.
+    ///
+    /// Reuses the cached base when the content revision, topmost layer, and
+    /// clamped rect all match; otherwise it recomputes.
     pub fn begin_move_preview(mut self: Pin<&mut Self>) -> bool {
+        let Some((index, clamped)) = self.as_mut().move_cache_target() else {
+            return false;
+        };
+        if self.as_ref().move_cache_valid(index, clamped) {
+            {
+                let mut rust = self.as_mut().rust_mut();
+                let (x, y, opacity) = rust
+                    .doc
+                    .as_ref()
+                    .and_then(|doc| doc.layers.get(index as usize))
+                    .map_or((0, 0, 0), |layer| {
+                        (layer.rect.left, layer.rect.top, layer.opacity as i32)
+                    });
+                rust.move_x = x;
+                rust.move_y = y;
+                rust.move_opacity = opacity;
+                rust.move_preview_cache_hit = true;
+            }
+            return true;
+        }
+        let computed = self.as_mut().compute_move_preview();
+        self.as_mut().rust_mut().move_preview_cache_hit = false;
+        computed
+    }
+
+    /// Warm the move-preview cache without entering preview mode.
+    pub fn prepare_move_preview(mut self: Pin<&mut Self>) -> bool {
+        let Some((index, clamped)) = self.as_mut().move_cache_target() else {
+            return false;
+        };
+        if self.as_ref().move_cache_valid(index, clamped) {
+            return true;
+        }
+        self.as_mut().compute_move_preview()
+    }
+
+    pub fn move_preview_cache_hit(&self) -> bool {
+        self.rust().move_preview_cache_hit
+    }
+
+    /// The current topmost pixel layer index and its clamped `(l, t, r, b)`
+    /// rect, or `None` without a document or raster layer.
+    fn move_cache_target(&self) -> Option<(i32, (i32, i32, i32, i32))> {
+        let rust = self.rust();
+        let doc = rust.doc.as_ref()?;
+        let index = topmost_pixel_layer_index(doc)?;
+        Some((
+            index as i32,
+            clamped_ltrb(doc.layers[index].rect, doc.width, doc.height),
+        ))
+    }
+
+    fn move_cache_valid(&self, index: i32, clamped: (i32, i32, i32, i32)) -> bool {
+        let rust = self.rust();
+        rust.move_base.is_some()
+            && rust.move_prepared_revision == rust.content_revision
+            && rust.move_prepared_layer == index
+            && rust.move_prepared_rect == clamped
+    }
+
+    /// Compute and store the move-preview base/layer and record the revision,
+    /// topmost index, and clamped rect they were built from. Byte-identical to
+    /// the previous `begin_move_preview` body.
+    fn compute_move_preview(mut self: Pin<&mut Self>) -> bool {
         let mut guard = self.as_mut().rust_mut();
         let rust = &mut *guard;
         let gpu_compute = rust.gpu_compute;
@@ -67,6 +134,7 @@ impl qobject::PictureView {
         };
         let rect = doc.layers[index].rect;
         let (x, y, opacity) = (rect.left, rect.top, doc.layers[index].opacity as i32);
+        let clamped = clamped_ltrb(rect, doc.width, doc.height);
         // Build the base from the authoritative planar composite, never a
         // possibly-stale cached image: clone it and overwrite the moved layer's
         // rectangle with the region composited with the layer hidden.
@@ -97,6 +165,9 @@ impl qobject::PictureView {
         rust.move_x = x;
         rust.move_y = y;
         rust.move_opacity = opacity;
+        rust.move_prepared_revision = rust.content_revision;
+        rust.move_prepared_layer = index as i32;
+        rust.move_prepared_rect = clamped;
         true
     }
 
@@ -120,8 +191,9 @@ impl qobject::PictureView {
         self.rust().move_opacity
     }
 
-    pub fn end_move_preview(mut self: Pin<&mut Self>) {
-        self.as_mut().clear_move_cache();
+    pub fn end_move_preview(self: Pin<&mut Self>) {
+        // Keep the cache: the next press reuses it when the revision, topmost
+        // layer, and clamped rect are unchanged.
     }
 
     pub fn commit_move(mut self: Pin<&mut Self>, dx: i32, dy: i32) -> bool {
@@ -156,8 +228,7 @@ impl qobject::PictureView {
             union_rect(before, topmost_pixel_layer_rect(doc).unwrap_or(before))
         };
         self.as_mut().refresh_region(dirty);
-        self.as_mut().record("Move Layer");
-        self.as_mut().clear_move_cache();
+        self.as_mut().record_move("Move Layer");
         true
     }
 
@@ -168,15 +239,6 @@ impl qobject::PictureView {
         self.as_mut().recomposite();
         self.as_mut().record("Move Layer");
         true
-    }
-
-    fn clear_move_cache(mut self: Pin<&mut Self>) {
-        let mut rust = self.as_mut().rust_mut();
-        rust.move_base = None;
-        rust.move_layer = None;
-        rust.move_x = 0;
-        rust.move_y = 0;
-        rust.move_opacity = 0;
     }
 
     pub fn resize_image(mut self: Pin<&mut Self>, kind: &QString, width: i32, height: i32) -> bool {
@@ -260,4 +322,14 @@ impl qobject::PictureView {
         self.as_mut().record("Flip");
         true
     }
+}
+
+/// `(left, top, right, bottom)` clamped to a `width`×`height` document.
+fn clamped_ltrb(rect: pictura_core::PsdRect, width: u32, height: u32) -> (i32, i32, i32, i32) {
+    (
+        rect.left.max(0),
+        rect.top.max(0),
+        rect.right.min(width as i32),
+        rect.bottom.min(height as i32),
+    )
 }

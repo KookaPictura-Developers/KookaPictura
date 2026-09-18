@@ -495,9 +495,22 @@ pub mod qobject {
         /// Enter move-preview mode: cache the document composited with the
         /// topmost raster layer hidden, that layer's own image, its
         /// document-space top-left, and its opacity (0..=255). Returns false
-        /// without a document or raster layer.
+        /// without a document or raster layer. Reuses the cached base when the
+        /// document content, topmost layer, and clamped rect are unchanged.
         #[qinvokable]
         fn begin_move_preview(self: Pin<&mut Self>) -> bool;
+
+        /// Warm the move-preview cache without entering preview mode, so the
+        /// next `begin_move_preview` is a cache hit. Returns true when the
+        /// cache is valid (reused or just rebuilt), false without a document
+        /// or raster layer.
+        #[qinvokable]
+        fn prepare_move_preview(self: Pin<&mut Self>) -> bool;
+
+        /// Whether the last `begin_move_preview` reused the cached base instead
+        /// of recomputing it.
+        #[qinvokable]
+        fn move_preview_cache_hit(&self) -> bool;
 
         /// The cached base image (layers with the moved layer hidden); null when
         /// not previewing.
@@ -754,6 +767,11 @@ pub struct PictureViewRust {
     move_x: i32,
     move_y: i32,
     move_opacity: i32,
+    move_prepared_revision: u64,
+    move_prepared_layer: i32,
+    move_prepared_rect: (i32, i32, i32, i32),
+    move_preview_cache_hit: bool,
+    content_revision: u64,
     gpu_compute: bool,
     display_dirty: bool,
 }
@@ -777,6 +795,11 @@ impl Default for PictureViewRust {
             move_x: 0,
             move_y: 0,
             move_opacity: 0,
+            move_prepared_revision: 0,
+            move_prepared_layer: -1,
+            move_prepared_rect: (0, 0, 0, 0),
+            move_preview_cache_hit: false,
+            content_revision: 0,
             gpu_compute: true,
             display_dirty: false,
         }
@@ -789,6 +812,19 @@ impl qobject::PictureView {
     /// Callers must run their `recomposite`/`refresh_region` first, so the
     /// captured document's composite is the current rendered image.
     fn record(mut self: Pin<&mut Self>, label: &str) {
+        if let Some(snapshot) = self.snapshot() {
+            let mut rust = self.as_mut().rust_mut();
+            rust.history.capture(snapshot, label);
+            rust.dirty = true;
+            rust.content_revision = rust.content_revision.wrapping_add(1);
+        }
+    }
+
+    /// As [`record`], but without bumping `content_revision`.
+    ///
+    /// Only for moves of the topmost pixel layer, which leave the composite
+    /// below that layer unchanged, so a cached move-preview base stays valid.
+    fn record_move(mut self: Pin<&mut Self>, label: &str) {
         if let Some(snapshot) = self.snapshot() {
             let mut rust = self.as_mut().rust_mut();
             rust.history.capture(snapshot, label);

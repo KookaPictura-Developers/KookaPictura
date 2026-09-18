@@ -396,6 +396,12 @@ void ToolController::applyToolPolicy()
         cursor(QStringLiteral("tool.") + toolIdName(active_), info.hotspotX, info.hotspotY);
     canvas_->setCursor(
         toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
+    if (active_ == ToolId::Move) {
+        PictureView* v = view();
+        if (v) {
+            v->prepare_move_preview();
+        }
+    }
 }
 
 void ToolController::handlePressed(const QPointF& imagePos, int button, int modifiers)

@@ -19,6 +19,7 @@ impl qobject::PictureView {
                 rust.image = image;
             }
             rust.display_dirty = false;
+            rust.content_revision = rust.content_revision.wrapping_add(1);
         }
         self.changed();
         true
@@ -38,6 +39,7 @@ impl qobject::PictureView {
                 rust.image = image;
             }
             rust.display_dirty = false;
+            rust.content_revision = rust.content_revision.wrapping_add(1);
         }
         self.changed();
         true
@@ -81,6 +83,7 @@ impl qobject::PictureView {
         let mut rust = self.as_mut().rust_mut();
         rust.doc = Some(snapshot.doc);
         rust.selection = snapshot.selection;
+        rust.content_revision = rust.content_revision.wrapping_add(1);
         self.as_mut().recomposite();
         true
     }
@@ -118,6 +121,7 @@ impl qobject::PictureView {
         let mut rust = self.as_mut().rust_mut();
         rust.doc = Some(snapshot.doc);
         rust.selection = snapshot.selection;
+        rust.content_revision = rust.content_revision.wrapping_add(1);
         self.as_mut().recomposite();
         true
     }

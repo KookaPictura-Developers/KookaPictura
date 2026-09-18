@@ -780,6 +780,24 @@ fn move_profile(n: u32) {
     );
     drop(partial_base);
 
+    // begin_move_preview cache hit: find the topmost layer, clamp its rect,
+    // and refresh the cached origin/opacity. No region composite, no readback.
+    let t = std::time::Instant::now();
+    let hit_index = topmost_pixel_layer_index(&partial_preview).expect("pixel layer");
+    let hit_rect = partial_preview.layers[hit_index].rect;
+    let _hit_clamped = (
+        hit_rect.left.max(0),
+        hit_rect.top.max(0),
+        hit_rect.right.min(partial_preview.width as i32),
+        hit_rect.bottom.min(partial_preview.height as i32),
+    );
+    let _hit_origin = (
+        hit_rect.left,
+        hit_rect.top,
+        partial_preview.layers[hit_index].opacity,
+    );
+    ms("begin_move_preview(cache hit)", t.elapsed());
+
     let mut committed = doc.clone();
     let t = std::time::Instant::now();
     let committed_ok = pictura_render::translate_layer_active(&mut committed, 50, 50, true);

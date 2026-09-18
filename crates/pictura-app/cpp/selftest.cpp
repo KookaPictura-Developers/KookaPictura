@@ -2389,6 +2389,19 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         frame.closeDocument(m35bDocIndex, false);
 
+        // Move-preview base cache: warm prepare -> begin hit, base reused byte-for-byte, content change -> miss. 197: cache.
+        const bool mpcCreated = frame.newDocument(QStringLiteral("MovePreviewCache"), 32, 32, QStringLiteral("rgb"), 8, QStringLiteral("white"));
+        pictura::PictureView* mpcView = frame.activeView();
+        const bool mpcHit = mpcCreated && mpcView && mpcView->prepare_move_preview() && mpcView->begin_move_preview() && mpcView->move_preview_cache_hit();
+        const QImage mpcBase = mpcView ? mpcView->move_preview_base() : QImage();
+        const bool mpcReuse = mpcView && mpcView->begin_move_preview() && mpcView->move_preview_cache_hit() && !mpcBase.isNull() && samePixels(mpcBase, mpcView->move_preview_base());
+        if (mpcView) mpcView->set_layer_visible(0, false);
+        const bool mpcMiss = mpcView && mpcView->begin_move_preview() && !mpcView->move_preview_cache_hit();
+        if (mpcView) mpcView->end_move_preview();
+        std::fprintf(stderr, "pictura self-test: move_preview_cache hit=%d reuse=%d miss=%d\n", mpcHit ? 1 : 0, mpcReuse ? 1 : 0, mpcMiss ? 1 : 0);
+        std::fflush(stderr);
+        if (!mpcHit || !mpcReuse || !mpcMiss) { std::fprintf(stderr, "pictura self-test: FAIL: move preview cache wrong\n"); return 197; }
+        frame.closeDocument(frame.activeDocumentIndex(), false);
         // M36: layer attributes through the bridge — fill, lock, color, each one
         // history state and undoable. 86: fill; 87: lock; 88: color; 89: undo.
         const bool m36Created = frame.newDocument(QStringLiteral("M36Attrs"), 16, 16,
@@ -2451,7 +2464,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             return 89;
         }
         frame.closeDocument(m36DocIndex, false);
-
         // M37: layer creation and grouping. Each op is exactly one history
         // step; a transparent new layer leaves the composite unchanged, and
         // undo restores the original stack.
@@ -2532,7 +2544,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             return 94;
         }
         frame.closeDocument(m37DocIndex, false);
-
         // M38: the frozen 71-tool catalogue, its icons/cursors/hotspots, the
         // 23-slot toolbox, and the unimplemented-tool guard. Assets are
         // document-independent, so these run with or without a loaded PSD.
@@ -2611,7 +2622,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             std::fprintf(stderr, "pictura self-test: FAIL: m38 unimplemented tool activated\n");
             return 98;
         }
-
         // M38 panels: the former rail icon ids now live on the PanelColumn
         // group tabs, plus the Layers action strip and the History snapshot
         // button. Assets are document-independent, so these run with or without
@@ -2716,7 +2726,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             std::fprintf(stderr, "pictura self-test: FAIL: m38 snapshot icon wrong\n");
             return 101;
         }
-
         // M39: the layers panel's tree projection, multi-selection batches,
         // solo visibility, Tab rename, Panel Options, badges, menus, tooltips,
         // and the seven-button strip. A deterministic fixture is built through
@@ -3104,7 +3113,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             std::fprintf(stderr, "pictura self-test: FAIL: M39 action strip\n");
             return 112;
         }
-
         // M40: the tools panel — one/two columns, the flyout indicator, opening,
         // and keys, Shift-key cycling, the standalone dock, and session v4.
         // Exit codes 113–119.
@@ -3368,7 +3376,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             std::fprintf(stderr, "pictura self-test: FAIL: M40 session v4\n");
             return 119;
         }
-
         // M41: the panel column — top tabs, the width toggle, the iconic strip
         // with its Qt::Popup flyout, the seven-item tab menu, minimize vs
         // collapse-to-icons, and the content-fit Tools panel. Exit codes
@@ -3946,7 +3953,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             std::fprintf(stderr, "pictura self-test: FAIL: M41 session v5\n");
             return 128;
         }
-
         // M42 Phase A: the column's normal-mode minimum width and smallest-width
         // compact transition, the bigger strip and tool icons, the fg/bg swap
         // control and `X` key, the menu-bar clearance + stale-layout guard, and
@@ -4487,7 +4493,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             std::fprintf(stderr, "pictura self-test: FAIL: M42 in-window float overlay\n");
             return 136;
         }
-
         // M43 Phase A: tab-vs-group drag + one-panel float (140), panel tab
         // colours (141), corner button at minimum width (142), one-panel float
         // re-dock (146), Tools fixed width (147), compact icon size (148),
@@ -5171,7 +5176,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             return 153;
         }
         frame.closeDocument(frame.documentCount() - 1, false);
-
         // M44 Phase B (154, 155, 156, 159, 161, 164, 165, 166): panel chrome,
         // borders, and the shared widget styling. Every check reads a real style
         // property (icon pixmap, tab index, QSS/palette colour, elided text,
@@ -5385,7 +5389,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 return 166;
             }
         }
-
         // M44 Phase C (157, 158, 160, 162, 163): float-drag continuation,
         // any-side column/dock docking, popup/dock style parity, and the compact
         // group-relative drop with its drag handle.
@@ -5681,7 +5684,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 return 158;
             }
         }
-
         // M45 Phase A (167-169): the Tools toolbar content sizing, left/right-only
         // docking, and placement beside a widget column through the column
         // grammar. Geometry is read after a bounded pump so it is real offscreen.
@@ -5765,7 +5767,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 return 169;
             }
         }
-
         // M45 Phase B (170-177): the widget-panel drop indicator is rendered
         // from the resolved DropTarget in the owning column (W1-W3, W6); a
         // dynamic column emptied by any path is removed (W4); minimize collapses
@@ -6206,7 +6207,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 return 177;
             }
         }
-
         // M45 Phase C (178-179): the compact popup hosts the whole PanelGroup
         // (all tabs, clicked panel active) and restores it exactly once on close
         // (C1); a whole-group compact drag draws above the drag-handle dots (C2).
