@@ -205,11 +205,13 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(214, "preview commit");
         }
 
-        // lpr_percent (215): the `%` renders inside the value box.
+        // lpr_percent (215): the `%` renders inside the value box, which is
+        // wide enough to show the largest value "100 %".
         const bool pvSuffix = pvPanel->opacitySuffixInsideEditForTest();
+        const bool pvFits = pvPanel->opacityValueFitsForTest();
         ST_BEGIN("lpr_percent");
-        ST_PASS("lpr_percent inside=%d", pvSuffix ? 1 : 0);
-        if (!pvSuffix) {
+        ST_PASS("lpr_percent inside=%d fits=%d", pvSuffix ? 1 : 0, pvFits ? 1 : 0);
+        if (!pvSuffix || !pvFits) {
             return pictura::selfTest().fail(215, "percent suffix");
         }
 

@@ -76,6 +76,7 @@ public:
     QString opacityLabelTextForTest() const;
     bool opacitySuffixPresentForTest() const;
     bool opacitySuffixInsideEditForTest() const;
+    bool opacityValueFitsForTest() const;
     int lockBadgeLeftForTest(const QString& path) const;
     bool rowCheckStateForTest(const QString& path) const;
     bool lockIconsPresentForTest() const;

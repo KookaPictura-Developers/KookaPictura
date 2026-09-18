@@ -32,7 +32,6 @@ PercentField::PercentField(const QString& label, QWidget* parent)
     edit_->setObjectName(QStringLiteral("percentEdit"));
     edit_->setValidator(new QIntValidator(0, 100, edit_));
     edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    edit_->setFixedWidth(34);
     edit_->setText(QString::number(value_));
     edit_->installEventFilter(this);
     layout->addWidget(edit_);
@@ -41,6 +40,12 @@ PercentField::PercentField(const QString& label, QWidget* parent)
     suffix_->setObjectName(QStringLiteral("percentSuffix"));
     suffix_->setCursor(Qt::SizeHorCursor);
     suffix_->installEventFilter(this);
+
+    // Reserve room for the largest value, the inside `%`, and the margins, so
+    // "100 %" is never clipped.
+    const int valueWidth = edit_->fontMetrics().horizontalAdvance(QStringLiteral("100"));
+    const int signWidth = suffix_->fontMetrics().horizontalAdvance(QStringLiteral("%"));
+    edit_->setFixedWidth(valueWidth + signWidth + 12);
 
     arrow_ = new QToolButton(this);
     arrow_->setObjectName(QStringLiteral("percentArrow"));

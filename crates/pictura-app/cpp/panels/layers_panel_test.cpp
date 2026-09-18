@@ -342,6 +342,21 @@ bool LayersPanel::opacitySuffixInsideEditForTest() const
     return edit->rect().contains(QRect(suffix->mapTo(edit, QPoint(0, 0)), suffix->size()));
 }
 
+bool LayersPanel::opacityValueFitsForTest() const
+{
+    if (!opacity_) {
+        return false;
+    }
+    auto* edit = opacity_->findChild<QLineEdit*>(QStringLiteral("percentEdit"));
+    auto* suffix = opacity_->findChild<QLabel*>(QStringLiteral("percentSuffix"));
+    if (!edit || !suffix) {
+        return false;
+    }
+    const int needed = edit->fontMetrics().horizontalAdvance(QStringLiteral("100"))
+        + suffix->fontMetrics().horizontalAdvance(QStringLiteral("%"));
+    return edit->width() >= needed;
+}
+
 int LayersPanel::lockBadgeLeftForTest(const QString& path) const
 {
     const QModelIndex index = proxyIndexForPath(path);

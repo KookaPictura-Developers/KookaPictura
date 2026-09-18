@@ -1645,7 +1645,12 @@ by self-test section is a deliberate later step, out of this pass.
   failed, file-size OK, guard OK, `openspec validate --all --strict` 63 items
   while the change was open); `cargo nextest run --workspace` **595 passed, 8
   skipped**; app self-test **153 passed, 0 failed**. Capability: MODIFIED
-  `layers-panel` (4 requirements).
+  `layers-panel` (4 requirements). Follow-up fix: the inside-`%` field was too
+  narrow (`setFixedWidth(34)`) and clipped `100` to `0`; the edit is now sized
+  from the font metrics for `100` + `%`, and `lpr_percent` asserts the fit. The
+  `layers.eyeOn/Off` art was redrawn as a bolder Lucide-style eye for 14–20 px
+  and `LayerRowDelegate::paintAsset` now renders a square, device-pixel-ratio-
+  aware pixmap so the eye and chevron stay crisp.
 
 ## Canvas viewport & performance (post-M24 pass)
 

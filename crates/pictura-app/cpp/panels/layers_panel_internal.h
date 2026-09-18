@@ -631,9 +631,20 @@ public:
 private:
     static void paintAsset(QPainter* painter, const QRect& rect, const QString& assetId)
     {
-        const QPixmap pixmap = pictura::icon(assetId).pixmap(rect.size());
+        // Render the SVG at the largest square that fits, at the painter's
+        // device pixel ratio, so it stays crisp instead of being scaled from a
+        // logical-size pixmap (or stretched into a non-square rect).
+        const int side = qMin(rect.width(), rect.height());
+        if (side <= 0) {
+            return;
+        }
+        const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        const QPixmap pixmap = pictura::icon(assetId).pixmap(QSize(side, side), dpr);
         if (!pixmap.isNull()) {
-            painter->drawPixmap(rect, pixmap);
+            painter->drawPixmap(
+                QRect(rect.left() + (rect.width() - side) / 2,
+                      rect.top() + (rect.height() - side) / 2, side, side),
+                pixmap);
         }
     }
 
