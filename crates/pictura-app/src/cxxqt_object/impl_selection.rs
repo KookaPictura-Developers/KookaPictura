@@ -452,6 +452,23 @@ impl qobject::PictureView {
         };
         QString::from(format!("{x0} {y0} {} {}", x1 - x0 + 1, y1 - y0 + 1))
     }
+
+    /// The 50 %-coverage outline of the selection as `"x,y x,y ..."` polylines
+    /// joined by `;` (integer pixel corners). Empty string without a selection.
+    /// View-only: derives from the mask, records no history.
+    pub fn selection_contour(&self) -> QString {
+        let rust = self.rust();
+        let Some(sel) = rust.selection.as_ref() else {
+            return QString::default();
+        };
+        let loops = pictura_select::contour(sel, 128);
+        let mut parts: Vec<String> = Vec::with_capacity(loops.len());
+        for poly in &loops {
+            let points: Vec<String> = poly.iter().map(|p| format!("{},{}", p[0], p[1])).collect();
+            parts.push(points.join(" "));
+        }
+        QString::from(parts.join(";"))
+    }
 }
 
 /// The zero-based `doc.channels` index for a dialog label `"Alpha N"`.

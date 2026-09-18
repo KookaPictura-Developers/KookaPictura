@@ -1,6 +1,8 @@
 #include "image_view.h"
 
 #include <QtCore/QDebug>
+#include <QtCore/QStringList>
+#include <QtCore/QTimer>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
@@ -55,6 +57,12 @@ ImageView::ImageView(QWidget* parent)
 {
     setMinimumSize(320, 240);
     setFocusPolicy(Qt::StrongFocus);
+    antsTimer_ = new QTimer(this);
+    antsTimer_->setInterval(120);
+    connect(antsTimer_, &QTimer::timeout, this, [this]() {
+        antsPhase_ = (antsPhase_ + 1) % 8;
+        update();
+    });
 }
 
 void ImageView::setImage(const QImage& image)
@@ -195,6 +203,60 @@ void ImageView::clearOverlay()
     update();
 }
 
+void ImageView::setSelectionContour(const QString& encoded)
+{
+    selectionContours_.clear();
+    if (!encoded.isEmpty()) {
+        const QStringList loops = encoded.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+        for (const QString& loop : loops) {
+            QPolygonF poly;
+            const QStringList points = loop.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            for (const QString& point : points) {
+                const int comma = point.indexOf(QLatin1Char(','));
+                if (comma < 0) {
+                    continue;
+                }
+                bool okX = false;
+                bool okY = false;
+                const double x = point.left(comma).toDouble(&okX);
+                const double y = point.mid(comma + 1).toDouble(&okY);
+                if (okX && okY) {
+                    poly << QPointF(x, y);
+                }
+            }
+            if (poly.size() >= 2) {
+                selectionContours_ << poly;
+            }
+        }
+    }
+    updateAntsTimer();
+    update();
+}
+
+void ImageView::clearSelectionContour()
+{
+    selectionContours_.clear();
+    updateAntsTimer();
+    update();
+}
+
+void ImageView::setSelectionEdgesVisible(bool on)
+{
+    selectionEdgesVisible_ = on;
+    updateAntsTimer();
+    update();
+}
+
+void ImageView::updateAntsTimer()
+{
+    const bool run = !selectionContours_.isEmpty() && selectionEdgesVisible_ && isVisible();
+    if (run && !antsTimer_->isActive()) {
+        antsTimer_->start();
+    } else if (!run && antsTimer_->isActive()) {
+        antsTimer_->stop();
+    }
+}
+
 void ImageView::beginMovePreview(const QImage& base, const QImage& layer, const QPointF& layerPos,
                                  double opacity)
 {
@@ -319,6 +381,23 @@ void ImageView::paintEvent(QPaintEvent*)
         painter.drawPolygon(overlayPolygon_);
     }
 
+    if (selectionEdgesVisible_ && !selectionContours_.isEmpty()) {
+        // Marching ants: a solid white base under an animated black dashed pen,
+        // so the edge reads against both light and dark pixels. Width 0 = a
+        // cosmetic 1-px line independent of the pan/zoom transform.
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(Qt::white, 0));
+        for (const QPolygonF& loop : selectionContours_) {
+            painter.drawPolygon(loop);
+        }
+        QPen ants(Qt::black, 0, Qt::DashLine);
+        ants.setDashOffset(antsPhase_);
+        painter.setPen(ants);
+        for (const QPolygonF& loop : selectionContours_) {
+            painter.drawPolygon(loop);
+        }
+    }
+
     if (pressTrace_.armed) {
         pressTrace_.armed = false;
         const qint64 totalNs = pressTrace_.clock.nsecsElapsed();
@@ -405,6 +484,18 @@ void ImageView::resizeEvent(QResizeEvent* event)
         applyInitialView();
     }
     QWidget::resizeEvent(event);
+}
+
+void ImageView::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    updateAntsTimer();
+}
+
+void ImageView::hideEvent(QHideEvent* event)
+{
+    QWidget::hideEvent(event);
+    updateAntsTimer();
 }
 
 void ImageView::setZoom(double zoom, const QPointF& anchor)

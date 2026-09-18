@@ -152,6 +152,11 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     tools_ = new ToolController(this);
     tools_->setViewProvider([this]() { return activeView(); });
 
+    // A tool commit (marquee release, wand click, lasso close) reaches the
+    // picture view without a `changed` emission, so refresh the overlay directly.
+    connect(tools_, &ToolController::selectionCommitted, this,
+            &PicturaMainWindow::refreshSelectionOverlay);
+
     if (colorState_) {
         tools_->setForeground(colorState_->foreground());
         tools_->setBackground(colorState_->background());

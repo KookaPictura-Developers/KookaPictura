@@ -489,5 +489,67 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
         }
         frame.closeDocument(lsDoc, false);
 
+        // tsc_selection_ants (259): a committed rectangular marquee mirrors its
+        // 50%-coverage contour onto the canvas as one loop carrying the
+        // rectangle corners. Drives the frame's real document/tool wiring.
+        const bool antsCreated = frame.newDocument(QStringLiteral("SelectionAnts"), 16, 16,
+                                                   QStringLiteral("rgb"), 8,
+                                                   QStringLiteral("white"));
+        pictura::PictureView* antsView = frame.activeView();
+        pictura::ImageView* antsCanvas = frame.imageView();
+        if (!antsCreated || !antsView || !antsCanvas || !tools) {
+            return pictura::selfTest().fail(259, "selection ants fixture");
+        }
+        const int antsDoc = frame.activeDocumentIndex();
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        tools->setFeather(0.0);
+        antsView->deselect();
+        antsCanvas->mousePressed(QPointF(2, 2), Qt::LeftButton, int(Qt::NoModifier));
+        antsCanvas->mouseMoved(QPointF(10, 10));
+        antsCanvas->mouseReleased(QPointF(10, 10));
+        const QString antsContour = antsView->selection_contour();
+        const bool antsCommitted = antsView->has_selection();
+        const bool antsOutline = antsCanvas->hasSelectionContourForTest()
+            && antsCanvas->selectionContourLoopCountForTest() == 1;
+        const bool antsCorner = antsContour.contains(QStringLiteral("2,2"))
+            && antsContour.contains(QStringLiteral("10,10"));
+        ST_BEGIN("tsc_selection_ants");
+        ST_PASS("tsc_selection_ants committed=%d outline=%d loops=%d corner=%d",
+                antsCommitted ? 1 : 0, antsOutline ? 1 : 0,
+                antsCanvas->selectionContourLoopCountForTest(), antsCorner ? 1 : 0);
+        if (!antsCommitted || !antsOutline || !antsCorner) {
+            return pictura::selfTest().fail(259, "selection ants contour");
+        }
+
+        // tsc_selection_ants_clear (260): Deselect clears the canvas contour
+        // through the `changed`-driven refresh, leaving none to draw.
+        antsView->deselect();
+        const bool antsCleared = !antsCanvas->hasSelectionContourForTest();
+        ST_BEGIN("tsc_selection_ants_clear");
+        ST_PASS("tsc_selection_ants_clear cleared=%d", antsCleared ? 1 : 0);
+        if (!antsCleared) {
+            return pictura::selfTest().fail(260, "deselect clears contour");
+        }
+
+        // tsc_selection_edges_toggle (261): dropping `selectionEdgesVisible`
+        // keeps the contour data but hides it; restoring it shows it again.
+        antsCanvas->mousePressed(QPointF(2, 2), Qt::LeftButton, int(Qt::NoModifier));
+        antsCanvas->mouseMoved(QPointF(8, 8));
+        antsCanvas->mouseReleased(QPointF(8, 8));
+        antsCanvas->setSelectionEdgesVisible(false);
+        const bool antsHidden = !antsCanvas->selectionEdgesVisible()
+            && antsCanvas->hasSelectionContourForTest();
+        antsCanvas->setSelectionEdgesVisible(true);
+        const bool antsShown = antsCanvas->selectionEdgesVisible();
+        ST_BEGIN("tsc_selection_edges_toggle");
+        ST_PASS("tsc_selection_edges_toggle hidden=%d shown=%d", antsHidden ? 1 : 0,
+                antsShown ? 1 : 0);
+        if (!antsHidden || !antsShown) {
+            return pictura::selfTest().fail(261, "selection edges toggle");
+        }
+        frame.closeDocument(antsDoc, false);
+
     return 0;
 }

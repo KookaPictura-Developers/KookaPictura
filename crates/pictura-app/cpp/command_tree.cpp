@@ -703,7 +703,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"View"});
     leaf(registry, {"View", "Lock Slices"}, QStringLiteral("Lock Slices"));
     registry.addSeparator({"View"});
-    leaf(registry, {"View", "Show", "Selection Edges"}, QStringLiteral("Selection Edges"));
+    registry.add(CommandSpec{command_ids::ViewShowSelectionEdges,
+                             {"View", "Show", "Selection Edges"},
+                             QStringLiteral("Selection Edges"), QKeySequence(), true, true});
     leaf(registry, {"View", "Show", "Target Path"}, QStringLiteral("Target Path"));
     leaf(registry, {"View", "Show", "Layer Edges"}, QStringLiteral("Layer Edges"));
     leaf(registry, {"View", "Show", "3D Axis"}, QStringLiteral("3D Axis"));

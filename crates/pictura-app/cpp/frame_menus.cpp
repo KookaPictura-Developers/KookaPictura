@@ -609,6 +609,19 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::ViewGpuCompute, [this]() { return gpuAvailable_; });
     registry_->setCheckedProvider(command_ids::ViewGpuCompute, [this]() { return gpuCompute_; });
 
+    registry_->setHandler(command_ids::ViewShowSelectionEdges, [this]() {
+        const QAction* action = registry_->action(command_ids::ViewShowSelectionEdges);
+        if (ImageView* canvas = imageView()) {
+            canvas->setSelectionEdgesVisible(action && action->isChecked());
+        }
+    });
+    registry_->setEnabledProvider(command_ids::ViewShowSelectionEdges,
+                                  [this]() { return documentCount() > 0; });
+    registry_->setCheckedProvider(command_ids::ViewShowSelectionEdges, [this]() {
+        ImageView* canvas = imageView();
+        return canvas ? canvas->selectionEdgesVisible() : true;
+    });
+
     registry_->setHandler(command_ids::WindowPanelsTools, [this]() {
         QAction* action = registry_->action(command_ids::WindowPanelsTools);
         if (toolsDock_ && action) {

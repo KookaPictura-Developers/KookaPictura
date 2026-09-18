@@ -793,6 +793,12 @@ pub mod qobject {
         #[qinvokable]
         fn selection_bounds(&self) -> QString;
 
+        /// The marching-ants outline of the selection as `"x,y x,y ..."`
+        /// polylines (integer pixel corners) joined by `;`, or an empty string
+        /// when nothing is selected. View-only: no history, no recomposite.
+        #[qinvokable]
+        fn selection_contour(&self) -> QString;
+
         /// Append an adjustment layer for `kind` (invert, posterize, threshold,
         /// brightness-contrast, hue-saturation), recomposite, and emit
         /// [`changed`]. When a selection is active the layer gets a raster mask
