@@ -53,6 +53,7 @@ cxx_qt_import_crate(
 
 add_executable(pictura
     crates/pictura-app/cpp/main.cpp
+    crates/pictura-app/cpp/selftest.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
     crates/pictura-app/cpp/command_tree.cpp

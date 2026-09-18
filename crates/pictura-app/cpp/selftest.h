@@ -1,0 +1,14 @@
+#pragma once
+
+#include <QtCore/QString>
+#include <QtGui/QImage>
+#include <QtWidgets/QApplication>
+
+namespace pictura {
+class PicturaMainWindow;
+class PictureView;
+}
+
+int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
+                pictura::PicturaMainWindow& frame, pictura::PictureView* view,
+                const QImage& image, bool codecLoaded, int gpu);
