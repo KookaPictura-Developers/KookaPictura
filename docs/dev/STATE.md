@@ -40,6 +40,48 @@ bash scripts/guard.sh
 openspec validate --all --strict
 ```
 
+## Code health (LOC guardrail)
+
+Every source file is under the **1000-LOC hard cap** (target <800; `AGENTS.md`
+rule). `scripts/check-file-size.sh` is the guard, `scripts/file-size-allowlist.txt`
+the exception list, and `scripts/verify-fast.sh` runs it. A completed
+code-splitting pass (`docs/dev/refactor-code-splitting.md`) took the sixteen
+over-cap files down to one by pure moves — build, byte-identical self-test
+stderr, the Rust suite, and the specs green throughout:
+
+- **C++ app TUs** — `panels/panel_group.cpp` → `panel_group{,_menu,_test}.cpp`;
+  `panels/layers_panel.cpp` → `layers_panel{,_actions,_menu,_test}.cpp` +
+  `layers_panel_internal.h`; `panels/panel_column.cpp` →
+  `panel_column{,_drag,_iconic,_menu,_test}.cpp` + `panel_float.cpp` +
+  `panel_column_internal.h`; `frame.cpp` →
+  `frame{,_columns,_session,_menus,_build,_test}.cpp`. New TUs are registered in
+  `CMakeLists.txt`.
+- **Self-test** — the `--self-test` block moved out of `main.cpp` into
+  `selftest.cpp` / `selftest.h` (`int runSelfTest(QApplication&, bool, const
+  QString&, PicturaMainWindow&, PictureView*, const QImage&, bool, int)`).
+  `main.cpp` is now the startup path only (7320 → 180 LOC) that calls
+  `runSelfTest`; the self-test lines live in `selftest.cpp`.
+- **cxx-qt bridge** — `cxxqt_object.rs` is a Rust-2018 root that keeps the
+  cxx-qt bridge and shared private helpers, with concern submodules under
+  `src/cxxqt_object/`: `impl_{core,layers,selection,transform,paint,history,filters}.rs`,
+  `helpers.rs`, `helpers_composite.rs`, `tests.rs`, `tests_impl.rs`. The root +
+  directory layout keeps the generated-header path and the 14 C++ includes
+  untouched.
+- **Engine crates** — `pictura-filters` (`artistic/filters.rs` →
+  `artistic/filters/{effects,brush,common,tests}.rs`; `lib.rs` → `filter.rs`),
+  `pictura-render` (`lib.rs` → `composite.rs` + `tests/`; `gpu.rs` →
+  `gpu/{mod,backend,shader}.rs`; `gpu_filter.rs` →
+  `gpu_filter/{mod,plan,resources}.rs`; `document_ops/layer_ops.rs` →
+  `document_ops/layer_ops/{mod,create,paths,properties,tests}.rs`),
+  `pictura-adjust` (`lib.rs` → `types/common/apply/tonal/color/auto/tests.rs`),
+  `pictura-codec` (`lib.rs` → `error/common/read/write/tests.rs`), and the
+  integration tests (`tests/oracle.rs` → `tests/oracle/`;
+  `tests/gpu_parity.rs` → `tests/gpu_parity/`).
+
+One file remains allowlisted: `crates/pictura-app/cpp/selftest.cpp` (7212 LOC).
+It was extracted whole first to protect the verification oracle; subdividing it
+by self-test section is a deliberate later step, out of this pass.
+
 ## Crates
 
 | Crate | Responsibility |
@@ -149,7 +191,8 @@ openspec validate --all --strict
   `F`/`Shift+F`, canvas colour `Space+F`, `Tab`/`Shift+Tab` hide-all),
   `theme` (Fusion + dark palette, four brightness levels, `Shift+F1`/`F2`),
   `session` (atomic `QSaveFile` XDG state, schema-versioned). Bridge gains
-  `has_document()` for enablement. `main.cpp` shrinks to startup + self-test;
+  `has_document()` for enablement. `main.cpp` shrinks to startup + the self-test
+  call (`selftest.cpp`);
   new self-test checks (exit codes 25–32) cover menu order, dispatch/inertness,
   no-document enablement, brightness, screen-mode cycle, session round-trip,
   duplicate panel rejection, and hide-all. OpenSpec change `m16-app-shell`
@@ -192,7 +235,7 @@ openspec validate --all --strict
   (context-sensitive options bar); `frame.{h,cpp}` hosts them, routes canvas
   events, exposes `activeTool/setActiveTool/foregroundColor/hasPendingCrop/
   commitCrop`. Commands `image.crop`, `view.options`, `window.panels.tools`.
-  `main.cpp` self-test (exit codes 39–46): tool switching, marquee rect (16 px)
+  `selftest.cpp` self-test (exit codes 39–46): tool switching, marquee rect (16 px)
   + ellipse (12 px), combine modes (16/28/12/4), lasso (25 px) + short-lasso
   rejection, quick selection, crop remap, layer move, eyedropper sample
   (`ffff0000`/`00000000`). Verified: build green, fixture and no-arg self-tests
@@ -209,7 +252,7 @@ openspec validate --all --strict
   DPR-scaled render, existence-guarded so unknown ids are silent). Build gains
   `Qt6::Svg`, `CMAKE_AUTORCC`, the `.qrc`, and the `Qt6::Svg` link. Wiring:
   application/window icon, Tools-panel action icons, the 31 implemented
-  menu-action icons, and the active tool's SVG cursor. `main.cpp` self-test exit
+  menu-action icons, and the active tool's SVG cursor. `selftest.cpp` self-test exit
   codes 47–49: all 40 icons resolve + unknown is null, all 8 cursors resolve,
   window icon set. Verified: build green, fixture and no-arg self-tests exit 0
   with no Qt warnings, `cargo fmt/clippy` clean, 411 tests (0 failed, 1 ignored;
@@ -231,7 +274,7 @@ openspec validate --all --strict
   `ImageView::mouseMoved` into the Info panel, and implements checkable
   `Window > Panels` toggles for Navigator/History/Color/Swatches/Info/Histogram
   in addition to Layers/Tools. `CMakeLists.txt` gains the panel sources.
-  `main.cpp` self-test exit codes 50–52 (`m20_layer count=2 name=1 blend=1
+  `selftest.cpp` self-test exit codes 50–52 (`m20_layer count=2 name=1 blend=1
   badblend=1 opacity=128 dirty=1`; `m20_history states=5 open_label=1 grew=1
   jump=1 snapshot=1`; `m20_panels registered=7 toggled=7`), and the
   headless-shutdown hang is fixed by disabling the interactive
@@ -260,7 +303,7 @@ openspec validate --all --strict
   Bug fixed: `PictureView::new_document` now creates one raster layer (opaque for
   "white", transparent for "transparent"), matching
   `docs/10-workflow-io/open-and-new.md`; previously a fresh document had no layer
-  and could not be painted. `main.cpp` self-test exit codes 53–56
+  and could not be painted. `selftest.cpp` self-test exit codes 53–56
   (`m21_stroke ended=1 painted=196 dirty=1 hist=2`; `m21_opacity a1=84 a2=140`;
   `m21_aliased pencil_ok=1 brush_aa=1`; `m21_undo changed=1 restored=1`), with
   identical output on fixture and no-argument runs. Deferred non-goals:
@@ -806,7 +849,7 @@ openspec validate --all --strict
   whole-op refuse table (only `group_paths` refuses the whole op); structural ops
   resolve-then-apply deepest-first with ancestor-descendant dropping so indices
   never invalidate. `move_path` refuses the Background and fully-locked layers
-  (the LAY-002 ruling). **Bridge** (`cxxqt_object.rs`): `layer_row_count` + 17
+  (the LAY-002 ruling). **Bridge** (`cxxqt_object/impl_layers.rs`): `layer_row_count` + 17
   `layer_row_*` getters over the projection (path, depth, name, kind, visible,
   blend, opacity, fill, lock, color, clipping, has-mask, has-adjustment,
   expandable, child-count, thumbnail, mask-thumbnail); `set_layer_name_path`/
@@ -1192,7 +1235,8 @@ openspec validate --all --strict
   `docs/dev/m44-panel-theme-polish.md`). **Phase A — new-document canvas bug
   (E1).** On startup with no PSD the canvas showed the M0.5 GPU demo's repeating
   black/white/green/red banding instead of the white scratch document. Root
-  cause: `PictureView::render_gpu` (the M0.5 GPU spike in `cxxqt_object.rs`)
+  cause: `PictureView::render_gpu` (the M0.5 GPU spike now in
+  `cxxqt_object/impl_core.rs`)
   offscreen-rendered `crate::gpu::render_gradient` and **assigned it directly to
   `rust.image` without touching `rust.doc` or setting `display_dirty`**; startup
   creates a white scratch document, calls `render_gpu()`, then presents
@@ -1391,7 +1435,7 @@ checks) is written up in `docs/dev/canvas-view-spec.md`.
   but defers the expensive panel refresh (`retargetDock`) behind a single-shot
   120 ms `QTimer`, so a burst of `changed` signals no longer blocks the canvas
   repaint; tab add/remove/switch force an immediate panel refresh.
-- `cxxqt_object.rs` + `tools.cpp`: the Move tool previews live **without
+- `cxxqt_object/impl_transform.rs` + `tools.cpp`: the Move tool previews live **without
   compositing during the drag**. `begin_move_preview()` caches a base image (the
   document composited with the moved topmost raster layer hidden), the layer's
   own image, its document-space top-left, and its opacity; `move_preview_base/
