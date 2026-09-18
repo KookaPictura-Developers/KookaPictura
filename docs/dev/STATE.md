@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **644 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **649 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -1863,6 +1863,17 @@ Selection are deliberately deferred and left visible-but-disabled; the anti-alia
 and Sample-All-Layers options are honest disabled controls. The residual ceilings
 are recorded in `openspec/changes/archive/…-selection-tools-and-menu/design.md`
 §Residual.
+
+The committed selection edge is drawn as **marching ants**: `pictura-select::contour`
+extracts the 50 %-coverage boundary as chained lattice polylines (bbox-scoped, with
+a Select-All short-circuit), `PictureView::selection_contour()` serializes them, and
+`ImageView` paints them as an animated black dash over a white line in the document
+transform. Tool commits reach the canvas through the now-connected
+`ToolController::selectionCommitted` → `refreshSelectionOverlay()`; menu/`changed`
+paths go through `refresh()`. `View > Show > Selection Edges` is wired as a
+per-canvas toggle (default on). `apply_selection` deliberately does not emit
+`changed()` (Quick Selection would repaint per mouse-move); only the released
+commit refreshes the overlay.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

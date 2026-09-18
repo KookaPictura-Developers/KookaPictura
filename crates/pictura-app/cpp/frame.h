@@ -143,6 +143,10 @@ public:
     void refresh();
     void saveSession();
 
+    // Mirror the active document's selection outline onto its canvas (or clear
+    // it). Called from refresh() and on toolbar selection commits; view-only.
+    void refreshSelectionOverlay();
+
     // Document operations.
     int documentCount() const { return docs_.size(); }
     int activeDocumentIndex() const;

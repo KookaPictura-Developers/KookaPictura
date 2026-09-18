@@ -12,6 +12,9 @@ use std::collections::{HashSet, VecDeque};
 
 use pictura_core::{Channel, PixelBuffer};
 
+mod contour;
+pub use contour::contour;
+
 #[derive(Debug, thiserror::Error)]
 pub enum SelectError {
     #[error("size mismatch: {0}")]

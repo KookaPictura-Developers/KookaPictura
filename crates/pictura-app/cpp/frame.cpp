@@ -568,6 +568,21 @@ void PicturaMainWindow::refresh()
     }
     updateTabTitle(index);
     updateWindowTitle();
+    refreshSelectionOverlay();
+}
+
+void PicturaMainWindow::refreshSelectionOverlay()
+{
+    PictureView* view = activeView();
+    ImageView* canvas = imageView();
+    if (!view || !canvas) {
+        return;
+    }
+    if (view->has_selection()) {
+        canvas->setSelectionContour(view->selection_contour());
+    } else {
+        canvas->clearSelectionContour();
+    }
 }
 
 void PicturaMainWindow::updateTabTitle(int index)

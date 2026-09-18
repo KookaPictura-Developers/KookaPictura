@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QList>
 #include <QtCore/QPointF>
+#include <QtCore/QString>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
 #include <QtGui/QPolygonF>
@@ -11,6 +13,9 @@ class QMouseEvent;
 class QPaintEvent;
 class QResizeEvent;
 class QWheelEvent;
+class QShowEvent;
+class QHideEvent;
+class QTimer;
 
 namespace pictura {
 
@@ -69,6 +74,15 @@ public:
     void setOverlayPolygon(const QPolygonF& polygon);
     void clearOverlay();
 
+    // Committed-selection marching ants. `encoded` is `"x,y x,y ..."` loops
+    // joined by `;` (see PictureView::selection_contour); empty clears.
+    void setSelectionContour(const QString& encoded);
+    void clearSelectionContour();
+    void setSelectionEdgesVisible(bool on);
+    bool selectionEdgesVisible() const { return selectionEdgesVisible_; }
+    bool hasSelectionContourForTest() const { return !selectionContours_.isEmpty(); }
+    int selectionContourLoopCountForTest() const { return selectionContours_.size(); }
+
     // Move-tool live preview: draw a cached base plus the moved layer at a live
     // image-space offset, so the drag never composites the document.
     void beginMovePreview(const QImage& base, const QImage& layer, const QPointF& layerPos,
@@ -100,10 +114,13 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
 
 private:
     void centreImage();
     void applyInitialView();
+    void updateAntsTimer();
 
     struct PresentCache {
         qint64 key = 0;
@@ -123,6 +140,11 @@ private:
     bool panning_ = false;
     bool userAdjusted_ = false;
     QPolygonF overlayPolygon_;
+
+    QList<QPolygonF> selectionContours_;
+    bool selectionEdgesVisible_ = true;
+    int antsPhase_ = 0;
+    QTimer* antsTimer_ = nullptr;
 
     PresentCache presentCache_;
     bool presentCacheRebuiltLastPaint_ = false;

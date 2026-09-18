@@ -19,6 +19,9 @@ class PicturaMainWindow;
 // tsc_select_similar (255) reaches disconnected patches; tsc_save_load (256)
 // round-trips a channel exactly; tsc_select_refusal (257) proves refusals record
 // nothing; tsc_layer_select_commands (258) selects/clears panel rows.
+// tsc_selection_ants (259) mirrors a committed marquee contour onto the canvas;
+// tsc_selection_ants_clear (260) proves Deselect clears it; and
+// tsc_selection_edges_toggle (261) hides/shows the edges without losing data.
 // Returns 0 when all pass, otherwise the self-test failure code.
 int runToolsSelectionChecks(PicturaMainWindow& frame);
 } // namespace pictura
