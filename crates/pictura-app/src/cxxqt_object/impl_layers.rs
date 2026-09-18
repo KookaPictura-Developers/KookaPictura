@@ -475,6 +475,80 @@ impl qobject::PictureView {
             })
     }
 
+    // ponytail: the preview flag is sticky, so a drag that returns to its start
+    // value records one redundant state; store per-path originals if that matters.
+    pub fn preview_layers_opacity(
+        mut self: Pin<&mut Self>,
+        paths: &QStringList,
+        value: i32,
+    ) -> i32 {
+        let value = value.clamp(0, 255) as u8;
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::set_opacity_paths(doc, &refs, value),
+            None => 0,
+        };
+        if changed > 0 {
+            self.as_mut().recomposite();
+            let mut rust = self.as_mut().rust_mut();
+            rust.content_revision = rust.content_revision.wrapping_add(1);
+            rust.opacity_preview_changed = true;
+        }
+        changed as i32
+    }
+
+    pub fn commit_layers_opacity(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
+        let value = value.clamp(0, 255) as u8;
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::set_opacity_paths(doc, &refs, value),
+            None => 0,
+        };
+        let pending = self.rust().opacity_preview_changed;
+        self.as_mut().rust_mut().opacity_preview_changed = false;
+        if changed > 0 || pending {
+            self.as_mut().recomposite();
+            self.as_mut().record("Opacity");
+        }
+        changed as i32
+    }
+
+    pub fn preview_layers_fill(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
+        let value = value.clamp(0, 255) as u8;
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::set_fill_paths(doc, &refs, value),
+            None => 0,
+        };
+        if changed > 0 {
+            self.as_mut().recomposite();
+            let mut rust = self.as_mut().rust_mut();
+            rust.content_revision = rust.content_revision.wrapping_add(1);
+            rust.fill_preview_changed = true;
+        }
+        changed as i32
+    }
+
+    pub fn commit_layers_fill(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
+        let value = value.clamp(0, 255) as u8;
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::set_fill_paths(doc, &refs, value),
+            None => 0,
+        };
+        let pending = self.rust().fill_preview_changed;
+        self.as_mut().rust_mut().fill_preview_changed = false;
+        if changed > 0 || pending {
+            self.as_mut().recomposite();
+            self.as_mut().record("Fill Opacity");
+        }
+        changed as i32
+    }
+
     pub fn set_layers_lock(
         mut self: Pin<&mut Self>,
         paths: &QStringList,

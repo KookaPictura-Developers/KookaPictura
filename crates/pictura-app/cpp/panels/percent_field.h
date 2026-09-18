@@ -10,10 +10,11 @@ class QToolButton;
 
 namespace pictura {
 
-// A 0..100 percentage field: a leading label, a text box, a `%` suffix, and an
-// arrow that opens a slider popup. Pressing and dragging horizontally on the
-// label, the `%`, or the field scrubs the value. `valueChanged` is emitted for
-// user input only; `setValue` never feeds back.
+// A 0..100 percentage field: a leading label, a text box with an inside `%`,
+// and an arrow that opens a slider popup. Pressing and dragging horizontally on
+// the label, the `%`, or the field scrubs the value. `valueChanged` previews
+// user input; `valueCommitted` fires once when the edit finishes. `setValue`
+// never feeds back.
 class PercentField : public QWidget {
     Q_OBJECT
 
@@ -26,6 +27,7 @@ public:
 
 signals:
     void valueChanged(int pct);
+    void valueCommitted(int pct);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -33,6 +35,8 @@ protected:
 private:
     void commitEdit();
     void applyUserValue(int pct);
+    void commitPending();
+    void layoutSuffix();
     void showPopup();
 
     QLabel* label_ = nullptr;
@@ -44,6 +48,7 @@ private:
     int value_ = 100;
     bool syncing_ = false;
     bool scrubbing_ = false;
+    bool pending_ = false;
     QPoint scrubOrigin_;
     int scrubStart_ = 0;
 };

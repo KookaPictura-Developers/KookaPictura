@@ -38,7 +38,7 @@ Ninja and `--parallel`.
 
 ## Testing
 
-- Suite: **592 tests, 8 ignored** (`cargo nextest run --workspace` preferred;
+- Suite: **595 tests, 8 ignored** (`cargo nextest run --workspace` preferred;
   `cargo test --workspace` is the fallback). Doctests run separately with
   `cargo test --workspace --doc` — nextest does not run them. nextest writes a
   JUnit report to `target/nextest/default/junit.xml`.

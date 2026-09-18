@@ -361,6 +361,26 @@ pub mod qobject {
         #[qinvokable]
         fn set_layers_fill(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 
+        /// Preview opacity (clamped `0..=255`) on every path without recording
+        /// history. Returns the number changed.
+        #[qinvokable]
+        fn preview_layers_opacity(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
+
+        /// Commit opacity: apply and record one undo state when the value
+        /// changed or a preview ran. Returns the number changed.
+        #[qinvokable]
+        fn commit_layers_opacity(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
+
+        /// Preview fill opacity (clamped `0..=255`) on every path without
+        /// recording history. Returns the number changed.
+        #[qinvokable]
+        fn preview_layers_fill(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
+
+        /// Commit fill opacity: apply and record one undo state when the value
+        /// changed or a preview ran. Returns the number changed.
+        #[qinvokable]
+        fn commit_layers_fill(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
+
         /// Set one lock flag on every path. `flag` is `"transparency"`,
         /// `"pixels"`, `"position"`, or `"all"`. Returns the number changed;
         /// records one undo state only when non-zero.
@@ -788,6 +808,8 @@ pub struct PictureViewRust {
     move_prepared_revision: u64,
     move_prepared_layer: i32,
     move_preview_cache_hit: bool,
+    opacity_preview_changed: bool,
+    fill_preview_changed: bool,
     content_revision: u64,
     gpu_compute: bool,
     display_dirty: bool,
@@ -815,6 +837,8 @@ impl Default for PictureViewRust {
             move_prepared_revision: 0,
             move_prepared_layer: -1,
             move_preview_cache_hit: false,
+            opacity_preview_changed: false,
+            fill_preview_changed: false,
             content_revision: 0,
             gpu_compute: true,
             display_dirty: false,
