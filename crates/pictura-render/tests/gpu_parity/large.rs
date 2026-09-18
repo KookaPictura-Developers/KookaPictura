@@ -113,7 +113,7 @@ fn document_past_2d_product_limit_returns_too_large() {
 #[test]
 fn gpu_vs_cpu_timing_1024() {
     if !bench_enabled() {
-        println!("skipping m27 1024 timing: set PICTURA_GPU_BENCH=1 to run");
+        println!("skipping GPU 1024 timing: set PICTURA_GPU_BENCH=1 to run");
         return;
     }
     const N: u32 = 1024;
@@ -135,13 +135,13 @@ fn gpu_vs_cpu_timing_1024() {
     let cpu_ms = t.elapsed().as_millis();
 
     if !gpu_available() {
-        println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
+        println!("GPU timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
         return;
     }
     let warm = composite_gpu(&doc);
     if let Err(e) = &warm {
         if is_gpu_gone(e) {
-            println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
+            println!("GPU timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a");
             return;
         }
     }
@@ -151,8 +151,8 @@ fn gpu_vs_cpu_timing_1024() {
     match composite_gpu(&doc) {
         Ok(_) => {
             let gpu_ms = t.elapsed().as_millis();
-            println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu {gpu_ms} ms");
+            println!("GPU timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu {gpu_ms} ms");
         }
-        Err(e) => println!("m27 timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a ({e})"),
+        Err(e) => println!("GPU timing {N}x{N}x4layers: cpu {cpu_ms} ms, gpu n/a ({e})"),
     }
 }

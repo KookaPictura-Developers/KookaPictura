@@ -443,7 +443,7 @@ fn layer_with_too_many_channels_is_rejected() {
 
 /// The fixed default document captured before M36; its serialization must
 /// stay byte-identical because every new tag is omitted at its default.
-fn m36_default_doc() -> Document {
+fn default_document() -> Document {
     let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
     for (i, b) in doc.composite.data.iter_mut().enumerate() {
         *b = (i * 7 + 1) as u8;
@@ -503,12 +503,12 @@ fn m36_default_doc() -> Document {
 
 #[test]
 fn default_document_bytes_are_unchanged() {
-    let bytes = write_psd(&m36_default_doc()).unwrap();
-    let before = include_bytes!("../tests/fixtures/m36_default_before.psd");
+    let bytes = write_psd(&default_document()).unwrap();
+    let before = include_bytes!("../tests/fixtures/default_before.psd");
     assert_eq!(
         bytes.as_slice(),
         before.as_slice(),
-        "default documents must serialize byte-identically to pre-M36"
+        "default documents must serialize byte-identically to the original baseline"
     );
 }
 

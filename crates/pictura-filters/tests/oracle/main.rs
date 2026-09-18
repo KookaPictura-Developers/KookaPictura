@@ -29,6 +29,6 @@ mod common;
 mod differentials;
 mod distort_properties;
 mod harness;
-mod m8_properties;
 mod mapping;
+mod pixelate_properties;
 mod properties;

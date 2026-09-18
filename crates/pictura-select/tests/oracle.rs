@@ -42,7 +42,7 @@ const MAPPING: &[Mapping] = &[
         im: "-morphology Dilate Square:r",
         tolerance: 0,
         note:
-            "M5-A is a separable box element; IM Square:r is (2r+1)^2. Disk:r diverges at corners",
+            "expand/contract uses a separable box element; IM Square:r is (2r+1)^2. Disk:r diverges at corners",
     },
     Mapping {
         op: "contract(r)",
@@ -54,7 +54,7 @@ const MAPPING: &[Mapping] = &[
         op: "feather(r)",
         im: "-gaussian-blur 0x(r/2)",
         tolerance: 0,
-        note: "sigma=r/2 matches M5-A's separable Gaussian on the 8x8 mask",
+        note: "sigma=r/2 matches the selection feather's separable Gaussian on the 8x8 mask",
     },
     Mapping {
         op: "smooth(r)",

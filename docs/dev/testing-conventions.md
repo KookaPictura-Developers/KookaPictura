@@ -133,12 +133,14 @@ The first check asserts the platform is `offscreen`.
   emitted only when the suite changes; one `SUMMARY` closes the run. Legacy human
   `key=value` and `FAIL:` lines still appear, but only the tokens are
   machine-read — the human lines do not match the token grammar.
-- **Suite is derived from the milestone prefix** already in the check name
-  (`m47_float_close` → `m47`); names with no milestone prefix map to `core`.
+- **Names carry no milestone.** Check names and suites are descriptive
+  (`float_close`, `compact_shade`, `platform_headless`); milestones appear only
+  in comments, docs, and specs. With no `m<NN>` prefix the harness groups every
+  check under the default suite `core`.
 - **Exit code is the failure identity.** Each `ST_FAIL` returns its check's code;
   codes run from `2` upward, roughly one per check (currently into the `190s`,
-  e.g. `m47_float_close` = 194, `m47_compact_shade` = 195, `move_preview_cache` =
-  197). Exit `0` = all passed.
+  e.g. `float_close` = 194, `compact_shade` = 195, `move_preview_cache` = 197).
+  Exit `0` = all passed.
 - **The reporter consumes this layer.** `scripts/report_tests.py` parses both
   self-test invocations' token streams and merges checks by `(suite, name)`, so a
   check present in both runs counts once (the later stream's status wins).
@@ -187,11 +189,11 @@ introduced a new comparison helper. Document the mapping + tolerance in
 `tests/README.md`.
 
 **Add a C++ self-test check:** append a block in `runSelfTest()` using
-`ST_BEGIN("<name>")` (the name carries the milestone prefix that picks the
-suite), `ST_PASS("...")` on success, and `ST_FAIL(<unused_code>, "...")` on
+`ST_BEGIN("<name>")` (give it a descriptive, milestone-free name),
+`ST_PASS("...")` on success, and `ST_FAIL(<unused_code>, "...")` on
 failure. Take the next free code — codes are append-only so they stay stable
 identifiers. Keep `selftest.cpp` within its `scripts/file-size-allowlist.txt`
-ceiling.
+ceiling. Milestones belong in comments, docs, and specs, never in names.
 
 ## 9. Divergences from `XC-010` (the spec)
 

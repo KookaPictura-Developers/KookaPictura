@@ -9,7 +9,7 @@ use crate::common::{pixel_row, plane_range, test_image_buffer};
 /// M7 no-equivalent rows: guard the contracts directly because no ImageMagick
 /// operator is faithful. See the mapping table for the observed deltas.
 #[test]
-fn m7_no_equivalent_filters_properties() {
+fn stylize_no_equivalent_filters_properties() {
     // A flat color field for the spatial filters.
     let mut flat = PixelBuffer::new(6, 5, 3);
     for v in flat.data.iter_mut() {

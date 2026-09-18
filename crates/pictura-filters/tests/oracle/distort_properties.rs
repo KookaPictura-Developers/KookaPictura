@@ -13,7 +13,7 @@ use crate::common::test_image_buffer;
 /// directly at the `Filter::apply` level. The module unit tests cover the same
 /// filters in more detail.
 #[test]
-fn m9_no_equivalent_filters_properties() {
+fn warp_no_equivalent_filters_properties() {
     let original = test_image_buffer();
 
     // Zero amount is a bit-exact no-op for every radial / ripple warp.
@@ -89,7 +89,7 @@ fn m9_no_equivalent_filters_properties() {
 /// at the `Filter::apply` level. The module unit tests cover the same filters
 /// in more detail.
 #[test]
-fn m11_no_equivalent_filters_properties() {
+fn polar_no_equivalent_filters_properties() {
     let original = test_image_buffer();
     let run = |filter: &Filter| {
         let mut out = original.clone();

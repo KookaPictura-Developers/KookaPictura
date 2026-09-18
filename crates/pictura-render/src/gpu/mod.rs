@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn m33_rowwise_source_matches_per_pixel() {
+    fn rowwise_source_matches_per_pixel() {
         let (w, h) = (5u32, 3u32);
         let n = (w * h) as usize;
         let region = Region { x0: 0, y0: 0, w, h };
@@ -448,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn m33_rowwise_mask_matches_per_pixel() {
+    fn rowwise_mask_matches_per_pixel() {
         let (w, h) = (6u32, 4u32);
         let n = (w * h) as usize;
         let region = Region { x0: 0, y0: 0, w, h };
@@ -645,13 +645,13 @@ mod tests {
 
     #[test]
     #[ignore = "requires a Vulkan GPU; run with --ignored --nocapture"]
-    fn m33_composite_profile_4000() {
+    fn composite_profile_4000() {
         run_profile(4000);
     }
 
     #[test]
     #[ignore = "requires a Vulkan GPU; run with --ignored --nocapture"]
-    fn m33_composite_profile_1024() {
+    fn composite_profile_1024() {
         run_profile(1024);
     }
 }

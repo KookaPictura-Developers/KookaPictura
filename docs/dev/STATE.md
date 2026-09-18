@@ -746,7 +746,7 @@ by self-test section is a deliberate later step, out of this pass.
   at `fill == 255` and within ±1 LSB on the GPU. The codec reads/writes the
   `lspf` (lock), `lclr` (color) and `iOpa` (fill) additional-layer blocks,
   omitted at defaults — a default document's `write_psd` output is byte-identical
-  (proven against `crates/pictura-codec/tests/fixtures/m36_default_before.psd`),
+  (proven against `crates/pictura-codec/tests/fixtures/default_before.psd`),
   and psd-tools reads the new attributes back. The bridge gained
   `layer_fill`/`set_layer_fill`, `layer_lock`/`set_layer_lock`,
   `layer_color`/`set_layer_color` with the frozen refusal rules (fill refused for

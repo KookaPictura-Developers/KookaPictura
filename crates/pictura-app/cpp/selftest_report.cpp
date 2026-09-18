@@ -1,32 +1,12 @@
 #include "selftest_report.h"
 
 #include <cstdio>
-#include <cstring>
-#include <map>
-#include <string>
 
 namespace pictura {
 
 SelfTestReport& selfTest() {
     static SelfTestReport instance;
     return instance;
-}
-
-const char* SelfTestReport::suiteFor(const char* name) const {
-    // Suite strings must outlive the call so lastSuite_ stays a valid handle.
-    static std::map<std::string, std::string> cache;
-    if (name && (name[0] == 'm' || name[0] == 'M')) {
-        int i = 1;
-        while (name[i] >= '0' && name[i] <= '9') {
-            ++i;
-        }
-        if (i > 1) {
-            std::string suite = "m";
-            suite.append(name + 1, static_cast<std::size_t>(i - 1));
-            return cache.emplace(suite, suite).first->second.c_str();
-        }
-    }
-    return "core";
 }
 
 void SelfTestReport::emit(const char* keyword, const char* fmt, va_list ap) {
@@ -45,11 +25,10 @@ void SelfTestReport::begin(const char* name) {
     } else {
         std::snprintf(name_, sizeof(name_), "unnamed");
     }
-    const char* suite = suiteFor(name_);
-    suite_ = suite;
-    if (!lastSuite_ || std::strcmp(suite, lastSuite_) != 0) {
-        lastSuite_ = suite;
-        std::fprintf(stderr, "pictura self-test: SUITE %s %s\n", suite_, name_);
+    const char* suite = suite_;
+    if (!suiteEmitted_) {
+        suiteEmitted_ = true;
+        std::fprintf(stderr, "pictura self-test: SUITE %s %s\n", suite, name_);
         std::fflush(stderr);
     }
 }
