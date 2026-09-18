@@ -55,6 +55,13 @@ jobs:
       - name: Doctests
         run: cargo test --workspace --doc
 
+      - name: Upload nextest JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-junit
+          path: target/nextest/default/junit.xml
+
       - name: Install cargo-deny
         if: ${{ hashFiles('deny.toml') != '' }}
         run: cargo install cargo-deny --locked

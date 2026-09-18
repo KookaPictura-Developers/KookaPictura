@@ -1,3 +1,5 @@
+#include "selftest_report.h"
+
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
@@ -60,12 +62,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 pictura::PicturaMainWindow& frame, pictura::PictureView* view,
                 const QImage& image, bool codecLoaded, int gpu)
 {
+        ST_BEGIN("platform_headless");
         if (headless && qApp->platformName() != QStringLiteral("offscreen")) {
-            std::fprintf(stderr,
-                         "pictura self-test: FAIL: headless platform is %s, expected offscreen\n",
-                         qPrintable(qApp->platformName()));
-            return 152;
+            ST_FAIL(152, "headless platform is %s, expected offscreen",
+                    qPrintable(qApp->platformName()));
         }
+        ST_PASS("offscreen");
+
         std::fprintf(stderr,
                      "pictura self-test: image=%dx%d codec_loaded=%d gpu=%d\n",
                      image.width(),
@@ -73,18 +76,21 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                      codecLoaded ? 1 : 0,
                      gpu);
         std::fflush(stderr);
+        ST_BEGIN("null_image");
         if (!view || image.isNull()) {
-            std::fprintf(stderr, "pictura self-test: FAIL: null image\n");
-            return 2;
+            ST_FAIL(2, "null image");
         }
+        ST_PASS("image present");
+        ST_BEGIN("gpu_blank");
         if (gpu == 2) {
-            std::fprintf(stderr, "pictura self-test: FAIL: GPU render was blank\n");
-            return 4;
+            ST_FAIL(4, "GPU render was blank");
         }
+        ST_PASS("gpu=%d", gpu);
         if (!codecLoaded) {
             // E1: the scratch document is plain white and its first present must
             // be pure white across every pixel. The GPU smoke probe above must
             // not leak its gradient into the document's display image.
+            ST_BEGIN("fresh_white");
             bool freshWhite = true;
             for (int y = 0; y < image.height() && freshWhite; ++y) {
                 for (int x = 0; x < image.width(); ++x) {
@@ -94,13 +100,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
             }
-            std::fprintf(stderr,
-                         "pictura self-test: fresh_white=%d\n",
-                         freshWhite ? 1 : 0);
-            std::fflush(stderr);
+            ST_PASS("fresh_white=%d", freshWhite ? 1 : 0);
             if (!freshWhite) {
-                std::fprintf(stderr, "pictura self-test: FAIL: fresh document not white\n");
-                return 5;
+                ST_FAIL(5, "fresh document not white");
             }
         }
         if (codecLoaded) {
@@ -112,21 +114,19 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     seen.insert(image.pixel(x, y));
                 }
             }
-            std::fprintf(stderr, "pictura self-test: layered distinct=%d\n", seen.size());
-            std::fflush(stderr);
+            ST_BEGIN("layered_distinct");
+            ST_PASS("layered distinct=%d", seen.size());
             if (seen.size() < 2) {
-                std::fprintf(stderr, "pictura self-test: FAIL: blank composition\n");
-                return 6;
+                ST_FAIL(6, "blank composition");
             }
             if (image.width() >= 8 && image.height() >= 8) {
                 const QRgb tl = image.pixel(2, 2);
                 const QRgb br = image.pixel(6, 6);
                 const QRgb tr = image.pixel(6, 2);
                 const QRgb bl = image.pixel(2, 6);
-                std::fprintf(stderr,
-                             "pictura self-test: tl=(%d,%d,%d,a%d) br=(%d,%d,%d,a%d) "
-                             "tr_a=%d bl_a=%d\n",
-                             qRed(tl),
+                ST_BEGIN("tl");
+                ST_PASS("tl=(%d,%d,%d,a%d) br=(%d,%d,%d,a%d) "
+                             "tr_a=%d bl_a=%d", qRed(tl),
                              qGreen(tl),
                              qBlue(tl),
                              qAlpha(tl),
@@ -136,20 +136,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                              qAlpha(br),
                              qAlpha(tr),
                              qAlpha(bl));
-                std::fflush(stderr);
                 const bool red = qRed(tl) > 200 && qGreen(tl) < 60 && qBlue(tl) < 60
                                  && qAlpha(tl) == 255;
                 const bool blue = qBlue(br) > 200 && qRed(br) < 60 && qGreen(br) < 60
                                   && qAlpha(br) == 255;
                 if (!red || !blue) {
-                    std::fprintf(stderr, "pictura self-test: FAIL: composited quadrants wrong\n");
-                    return 7;
+                    ST_FAIL(7, "composited quadrants wrong");
                 }
                 // Uncovered quadrants must be transparent: this proves the layer
                 // stack was composited, not the opaque embedded PSD composite.
                 if (qAlpha(tr) != 0 || qAlpha(bl) != 0) {
-                    std::fprintf(stderr, "pictura self-test: FAIL: layer stack not composited\n");
-                    return 8;
+                    ST_FAIL(8, "layer stack not composited");
                 }
             }
 
@@ -160,25 +157,21 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool wand = view->magic_wand(2, 2, 10);
             const bool hasSelection = view->has_selection();
             const int selectedPx = view->selection_count();
-            std::fprintf(stderr,
-                         "pictura self-test: magic_wand=%d has_selection=%d selected_px=%d\n",
-                         wand ? 1 : 0,
+            ST_BEGIN("magic_wand");
+            ST_PASS("magic_wand=%d has_selection=%d selected_px=%d", wand ? 1 : 0,
                          hasSelection ? 1 : 0,
                          selectedPx);
-            std::fflush(stderr);
             if (!wand || !hasSelection || selectedPx <= 0
                 || selectedPx >= image.width() * image.height()) {
-                std::fprintf(stderr, "pictura self-test: FAIL: wand selection wrong\n");
-                return 14;
+                ST_FAIL(14, "wand selection wrong");
             }
             const bool maskedAdded = view->add_adjustment(QStringLiteral("invert"));
             const QImage masked = view->image();
             const QRgb mtl = masked.pixel(2, 2);
             const QRgb mbr = masked.pixel(6, 6);
-            std::fprintf(stderr,
-                         "pictura self-test: masked_adjustment=%d tl=(%d,%d,%d,a%d) "
-                         "br=(%d,%d,%d,a%d)\n",
-                         maskedAdded ? 1 : 0,
+            ST_BEGIN("masked_adjustment");
+            ST_PASS("masked_adjustment=%d tl=(%d,%d,%d,a%d) "
+                         "br=(%d,%d,%d,a%d)", maskedAdded ? 1 : 0,
                          qRed(mtl),
                          qGreen(mtl),
                          qBlue(mtl),
@@ -187,18 +180,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                          qGreen(mbr),
                          qBlue(mbr),
                          qAlpha(mbr));
-            std::fflush(stderr);
             const bool maskedCyan = qRed(mtl) < 60 && qGreen(mtl) > 200 && qBlue(mtl) > 200;
             const bool maskedBlue = qBlue(mbr) > 200 && qRed(mbr) < 60 && qGreen(mbr) < 60;
             if (!maskedAdded || !maskedCyan || !maskedBlue) {
-                std::fprintf(stderr, "pictura self-test: FAIL: masked adjustment not confined\n");
-                return 15;
+                ST_FAIL(15, "masked adjustment not confined");
             }
             view->remove_layer(view->layer_count() - 1);
             view->deselect();
             if (view->has_selection() || view->selection_count() != 0) {
-                std::fprintf(stderr, "pictura self-test: FAIL: deselect left a selection\n");
-                return 16;
+                ST_FAIL(16, "deselect left a selection");
             }
 
             // M4-C: add an Invert adjustment layer over the stack and verify the
@@ -207,22 +197,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool added = view->add_adjustment(QStringLiteral("invert"));
             const QImage adjusted = view->image();
             const int layerCount = view->layer_count();
-            std::fprintf(stderr,
-                         "pictura self-test: add_adjustment(invert)=%d layers=%d last_kind=%s\n",
-                         added ? 1 : 0,
+            ST_BEGIN("add_adjustment(invert)");
+            ST_PASS("add_adjustment(invert)=%d layers=%d last_kind=%s", added ? 1 : 0,
                          layerCount,
                          view->layer_kind(layerCount - 1).toLocal8Bit().constData());
-            std::fflush(stderr);
             if (!added || layerCount != 3
                 || view->layer_kind(layerCount - 1) != QStringLiteral("adjustment")) {
-                std::fprintf(stderr, "pictura self-test: FAIL: invert adjustment not added\n");
-                return 9;
+                ST_FAIL(9, "invert adjustment not added");
             }
             const QRgb atl = adjusted.pixel(2, 2);
             const QRgb abr = adjusted.pixel(6, 6);
-            std::fprintf(stderr,
-                         "pictura self-test: adjusted tl=(%d,%d,%d,a%d) br=(%d,%d,%d,a%d)\n",
-                         qRed(atl),
+            ST_BEGIN("adjusted_tl");
+            ST_PASS("adjusted tl=(%d,%d,%d,a%d) br=(%d,%d,%d,a%d)", qRed(atl),
                          qGreen(atl),
                          qBlue(atl),
                          qAlpha(atl),
@@ -230,24 +216,20 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                          qGreen(abr),
                          qBlue(abr),
                          qAlpha(abr));
-            std::fflush(stderr);
             const bool cyan = qRed(atl) < 60 && qGreen(atl) > 200 && qBlue(atl) > 200
                               && qAlpha(atl) == 255;
             const bool yellow = qRed(abr) > 200 && qGreen(abr) > 200 && qBlue(abr) < 60
                                 && qAlpha(abr) == 255;
             if (!cyan || !yellow) {
-                std::fprintf(stderr, "pictura self-test: FAIL: invert composite wrong\n");
-                return 10;
+                ST_FAIL(10, "invert composite wrong");
             }
             if (beforeAdjust == adjusted) {
-                std::fprintf(stderr, "pictura self-test: FAIL: adjustment did not change image\n");
-                return 11;
+                ST_FAIL(11, "adjustment did not change image");
             }
 
             // Toggle the bottom pixel layer's visibility: the output must change.
             if (!view->layer_visible(0)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: base layer not visible\n");
-                return 12;
+                ST_FAIL(12, "base layer not visible");
             }
             view->set_layer_visible(0, false);
             const QImage hidden = view->image();
@@ -260,12 +242,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
             }
-            std::fprintf(stderr, "pictura self-test: visibility_change=%d\n", differs ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("visibility_change");
+            ST_PASS("visibility_change=%d", differs ? 1 : 0);
             if (!differs || view->layer_visible(0)) {
-                std::fprintf(stderr,
-                             "pictura self-test: FAIL: visibility toggle did not change output\n");
-                return 13;
+                ST_FAIL(13, "visibility toggle did not change output");
             }
 
             // M6-C: a filter must confine its change to the active selection.
@@ -276,15 +256,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool filterWand = view->magic_wand(6, 6, 10);
             const bool filterSelected = view->has_selection();
             const int filterSelectedPx = view->selection_count();
-            std::fprintf(stderr,
-                         "pictura self-test: filter_wand=%d selected_px=%d\n",
-                         filterWand ? 1 : 0,
+            ST_BEGIN("filter_wand");
+            ST_PASS("filter_wand=%d selected_px=%d", filterWand ? 1 : 0,
                          filterSelectedPx);
-            std::fflush(stderr);
             if (!filterWand || !filterSelected || filterSelectedPx <= 0
                 || filterSelectedPx >= view->image().width() * view->image().height()) {
-                std::fprintf(stderr, "pictura self-test: FAIL: filter selection wrong\n");
-                return 17;
+                ST_FAIL(17, "filter selection wrong");
             }
             const QImage filterBefore = view->image();
             const bool filtered = view->apply_filter(QStringLiteral("add-noise"));
@@ -304,16 +281,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
             }
-            std::fprintf(stderr,
-                         "pictura self-test: filter_change=%d changed_inside=%d "
-                         "changed_outside=%d\n",
-                         filtered ? 1 : 0,
+            ST_BEGIN("filter_change");
+            ST_PASS("filter_change=%d changed_inside=%d "
+                         "changed_outside=%d", filtered ? 1 : 0,
                          insideChanged,
                          outsideChanged);
-            std::fflush(stderr);
             if (!filtered || insideChanged == 0 || outsideChanged != 0) {
-                std::fprintf(stderr, "pictura self-test: FAIL: filter not confined\n");
-                return 18;
+                ST_FAIL(18, "filter not confined");
             }
             view->deselect();
 
@@ -327,23 +301,20 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const QImage rotatedImg = view->image();
             const QRgb rotTr = rotatedImg.pixel(5, 2);
             const QRgb rotBl = rotatedImg.pixel(1, 6);
-            std::fprintf(stderr,
-                         "pictura self-test: rotate_cw=%d size=%dx%d "
-                         "map_tl=%d map_br=%d corner_a=%d sel=%d\n",
-                         rotated ? 1 : 0,
+            ST_BEGIN("rotate_cw");
+            ST_PASS("rotate_cw=%d size=%dx%d "
+                         "map_tl=%d map_br=%d corner_a=%d sel=%d", rotated ? 1 : 0,
                          rotatedImg.width(),
                          rotatedImg.height(),
                          rotTr == preRotate.pixel(2, 2) ? 1 : 0,
                          rotBl == preRotate.pixel(6, 6) ? 1 : 0,
                          qAlpha(rotatedImg.pixel(5, 6)),
                          view->selection_count());
-            std::fflush(stderr);
             if (!rotated || rotatedImg.width() != 8 || rotatedImg.height() != 8
                 || rotTr != preRotate.pixel(2, 2) || rotBl != preRotate.pixel(6, 6)
                 || qAlpha(rotatedImg.pixel(5, 6)) != 0 || view->has_selection()
                 || view->selection_count() != 0) {
-                std::fprintf(stderr, "pictura self-test: FAIL: rotate cw wrong\n");
-                return 19;
+                ST_FAIL(19, "rotate cw wrong");
             }
 
             // M13: invalid document ops must be rejected and leave pixels put.
@@ -353,18 +324,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool badResizeClean = view->image() == rotatedImg;
             const bool badCanvas = view->resize_canvas(QStringLiteral("nope"), 10, 10);
             const bool badCanvasClean = view->image() == rotatedImg;
-            std::fprintf(stderr,
-                         "pictura self-test: reject rotate0=%d resize_w0=%d "
-                         "canvas_bad_anchor=%d unchanged=%d\n",
-                         badRotate ? 1 : 0,
+            ST_BEGIN("reject_rotate0");
+            ST_PASS("reject rotate0=%d resize_w0=%d "
+                         "canvas_bad_anchor=%d unchanged=%d", badRotate ? 1 : 0,
                          badResize ? 1 : 0,
                          badCanvas ? 1 : 0,
                          badRotateClean && badResizeClean && badCanvasClean ? 1 : 0);
-            std::fflush(stderr);
             if (badRotate || badResize || badCanvas || !badRotateClean || !badResizeClean
                 || !badCanvasClean) {
-                std::fprintf(stderr, "pictura self-test: FAIL: invalid doc op accepted\n");
-                return 20;
+                ST_FAIL(20, "invalid doc op accepted");
             }
 
             // M13: CCW must undo CW bit-exactly, then growing the canvas to
@@ -373,27 +341,23 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool restoredOk = view->rotate_doc(3);
             const QImage restored = view->image();
             if (!restoredOk || restored != preRotate) {
-                std::fprintf(stderr, "pictura self-test: FAIL: rotate ccw did not restore\n");
-                return 21;
+                ST_FAIL(21, "rotate ccw did not restore");
             }
             const bool grown = view->resize_canvas(QStringLiteral("bottom-right"), 10, 12);
             const QImage grownImg = view->image();
-            std::fprintf(stderr,
-                         "pictura self-test: canvas_grow=%d size=%dx%d "
-                         "map_tl=%d map_br=%d corner_a=%d\n",
-                         grown ? 1 : 0,
+            ST_BEGIN("canvas_grow");
+            ST_PASS("canvas_grow=%d size=%dx%d "
+                         "map_tl=%d map_br=%d corner_a=%d", grown ? 1 : 0,
                          grownImg.width(),
                          grownImg.height(),
                          grownImg.pixel(4, 6) == restored.pixel(2, 2) ? 1 : 0,
                          grownImg.pixel(8, 10) == restored.pixel(6, 6) ? 1 : 0,
                          qAlpha(grownImg.pixel(0, 0)));
-            std::fflush(stderr);
             if (!grown || grownImg.width() != 10 || grownImg.height() != 12
                 || grownImg.pixel(4, 6) != restored.pixel(2, 2)
                 || grownImg.pixel(8, 10) != restored.pixel(6, 6)
                 || qAlpha(grownImg.pixel(0, 0)) != 0 || qAlpha(grownImg.pixel(1, 1)) != 0) {
-                std::fprintf(stderr, "pictura self-test: FAIL: canvas growth wrong\n");
-                return 21;
+                ST_FAIL(21, "canvas growth wrong");
             }
 
             // M14: mutating ops capture history; undo/redo must round-trip the
@@ -408,22 +372,19 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool undoIdentical = view->image() == preUndo;
             const bool redone = view->redo();
             const bool redoIdentical = view->image() == postRotate;
-            std::fprintf(stderr,
-                         "pictura self-test: history rotate=%d depth=%d undo=%d "
-                         "undo_ident=%d redo=%d redo_ident=%d\n",
-                         historyRotated ? 1 : 0,
+            ST_BEGIN("history_rotate");
+            ST_PASS("history rotate=%d depth=%d undo=%d "
+                         "undo_ident=%d redo=%d redo_ident=%d", historyRotated ? 1 : 0,
                          depthAfterRotate,
                          undone ? 1 : 0,
                          undoIdentical ? 1 : 0,
                          redone ? 1 : 0,
                          redoIdentical ? 1 : 0);
-            std::fflush(stderr);
             if (!historyRotated || depthAfterRotate != depthBefore + 1
                 || !rotatedCanUndo || postRotate.width() != 12
                 || postRotate.height() != 10 || !undone || !undoIdentical
                 || !redone || !redoIdentical) {
-                std::fprintf(stderr, "pictura self-test: FAIL: undo/redo round-trip wrong\n");
-                return 22;
+                ST_FAIL(22, "undo/redo round-trip wrong");
             }
 
             // M14: a fresh op invalidates redo; reopening the fixture resets
@@ -436,16 +397,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool boundaryUndone = view->undo();
             const bool boundaryIdentical = view->image() == reopenedImg;
             const bool openReset = reopened && noUndoAfterOpen && boundaryIdentical;
-            std::fprintf(stderr,
-                         "pictura self-test: history redo_invalid=%d open_reset=%d "
-                         "boundary_undo=%d\n",
-                         redoInvalidated ? 1 : 0,
+            ST_BEGIN("history_redo_invalid");
+            ST_PASS("history redo_invalid=%d open_reset=%d "
+                         "boundary_undo=%d", redoInvalidated ? 1 : 0,
                          openReset ? 1 : 0,
                          boundaryUndone ? 1 : 0);
-            std::fflush(stderr);
             if (!redoInvalidated || !openReset || boundaryUndone) {
-                std::fprintf(stderr, "pictura self-test: FAIL: history invalidation wrong\n");
-                return 23;
+                ST_FAIL(23, "history invalidation wrong");
             }
 
             // M15: render filters. The topmost pixel layer is the blue
@@ -482,20 +440,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
             }
-            std::fprintf(stderr,
-                         "pictura self-test: clouds=%d confined=%d inside=%d "
-                         "reapply_ident=%d flare=%d\n",
-                         clouded ? 1 : 0,
+            ST_BEGIN("clouds");
+            ST_PASS("clouds=%d confined=%d inside=%d "
+                         "reapply_ident=%d flare=%d", clouded ? 1 : 0,
                          cloudsOutside == 0 && flareOutsideChanged == 0 ? 1 : 0,
                          cloudsInside,
                          reapplyIdentical ? 1 : 0,
                          flared && flaredImg != cloudedImg ? 1 : 0);
-            std::fflush(stderr);
             if (!clouded || cloudedImg == preClouds || cloudsInside == 0
                 || cloudsOutside != 0 || !reapplyIdentical || !flared
                 || flaredImg == cloudedImg || flareOutsideChanged != 0) {
-                std::fprintf(stderr, "pictura self-test: FAIL: clouds/flare wrong\n");
-                return 24;
+                ST_FAIL(24, "clouds/flare wrong");
             }
 
             // M16: the frame exposes the ten documented menus in order.
@@ -510,15 +465,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                QStringLiteral("Window"),
                                                QStringLiteral("Help")};
             const QStringList actualMenus = frame.topLevelMenuTitles();
-            std::fprintf(stderr,
-                         "pictura self-test: menus=%d first=%s last=%s\n",
-                         actualMenus.size(),
+            ST_BEGIN("menus");
+            ST_PASS("menus=%d first=%s last=%s", actualMenus.size(),
                          actualMenus.isEmpty() ? "-" : actualMenus.first().toLocal8Bit().constData(),
                          actualMenus.isEmpty() ? "-" : actualMenus.last().toLocal8Bit().constData());
-            std::fflush(stderr);
             if (actualMenus != expectedMenus) {
-                std::fprintf(stderr, "pictura self-test: FAIL: menu bar wrong\n");
-                return 25;
+                ST_FAIL(25, "menu bar wrong");
             }
 
             // M16: dispatch a registered command and prove an unknown id is inert.
@@ -528,15 +480,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool selected = view->has_selection();
             const bool unknownInert = !registry->dispatch(QStringLiteral("no.such.command"));
             view->deselect();
-            std::fprintf(stderr,
-                         "pictura self-test: dispatch=%d selected=%d unknown_inert=%d\n",
-                         dispatched ? 1 : 0,
+            ST_BEGIN("dispatch");
+            ST_PASS("dispatch=%d selected=%d unknown_inert=%d", dispatched ? 1 : 0,
                          selected ? 1 : 0,
                          unknownInert ? 1 : 0);
-            std::fflush(stderr);
             if (!dispatched || !selected || !unknownInert) {
-                std::fprintf(stderr, "pictura self-test: FAIL: command dispatch wrong\n");
-                return 26;
+                ST_FAIL(26, "command dispatch wrong");
             }
 
             // M16: document-required commands disable with no document, while
@@ -551,14 +500,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool openEnabled = openAction && openAction->isEnabled();
             view->open(psdPath);
             registry->refresh();
-            std::fprintf(stderr,
-                         "pictura self-test: no_doc_disable=%d open_enable=%d\n",
-                         docDisabled ? 1 : 0,
+            ST_BEGIN("no_doc_disable");
+            ST_PASS("no_doc_disable=%d open_enable=%d", docDisabled ? 1 : 0,
                          openEnabled ? 1 : 0);
-            std::fflush(stderr);
             if (!docDisabled || !openEnabled) {
-                std::fprintf(stderr, "pictura self-test: FAIL: command enablement wrong\n");
-                return 27;
+                ST_FAIL(27, "command enablement wrong");
             }
 
             // M16: brightness levels apply and differ (theme is the source of truth).
@@ -569,15 +515,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool brightOk =
                 frame.brightnessLevel() == 3 && darkWindow != lightWindow;
             frame.setBrightnessLevel(1);
-            std::fprintf(stderr,
-                         "pictura self-test: brightness ok=%d dark=%s light=%s\n",
-                         brightOk ? 1 : 0,
+            ST_BEGIN("brightness_ok");
+            ST_PASS("brightness ok=%d dark=%s light=%s", brightOk ? 1 : 0,
                          darkWindow.name().toLocal8Bit().constData(),
                          lightWindow.name().toLocal8Bit().constData());
-            std::fflush(stderr);
             if (!brightOk) {
-                std::fprintf(stderr, "pictura self-test: FAIL: brightness wrong\n");
-                return 28;
+                ST_FAIL(28, "brightness wrong");
             }
 
             // M16: screen modes cycle forward and backward.
@@ -593,11 +536,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                  && mode2 == ScreenMode::Full
                                  && mode3 == ScreenMode::FullWithMenuBar;
             frame.setScreenMode(ScreenMode::Standard);
-            std::fprintf(stderr, "pictura self-test: screen_modes=%d\n", modesOk ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("screen_modes");
+            ST_PASS("screen_modes=%d", modesOk ? 1 : 0);
             if (!modesOk) {
-                std::fprintf(stderr, "pictura self-test: FAIL: screen mode cycle wrong\n");
-                return 29;
+                ST_FAIL(29, "screen mode cycle wrong");
             }
 
             // M16: layout + brightness persist atomically under a temp XDG state dir.
@@ -610,15 +552,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const pictura::SessionState loaded = pictura::loadSession();
             const bool sessionOk = loaded.brightnessLevel == 2
                                    && loaded.layout == frame.saveState();
-            std::fprintf(stderr,
-                         "pictura self-test: session_ok=%d bytes=%d level=%d\n",
-                         sessionOk ? 1 : 0,
+            ST_BEGIN("session_ok");
+            ST_PASS("session_ok=%d bytes=%d level=%d", sessionOk ? 1 : 0,
                          loaded.layout.size(),
                          loaded.brightnessLevel);
-            std::fflush(stderr);
             if (!sessionOk) {
-                std::fprintf(stderr, "pictura self-test: FAIL: session round-trip wrong\n");
-                return 30;
+                ST_FAIL(30, "session round-trip wrong");
             }
 
             // M16: duplicate panel objectNames are rejected.
@@ -626,11 +565,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             duplicate->setObjectName(QStringLiteral("layersPanel"));
             const bool duplicateRejected = !frame.registerPanel(duplicate, Qt::LeftDockWidgetArea);
             delete duplicate;
-            std::fprintf(stderr, "pictura self-test: dup_panel_rejected=%d\n", duplicateRejected ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("dup_panel_rejected");
+            ST_PASS("dup_panel_rejected=%d", duplicateRejected ? 1 : 0);
             if (!duplicateRejected) {
-                std::fprintf(stderr, "pictura self-test: FAIL: duplicate panel accepted\n");
-                return 31;
+                ST_FAIL(31, "duplicate panel accepted");
             }
 
             // M16: Tab hides and restores all panels.
@@ -639,14 +577,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool panelsHidden = layersPanel && !layersPanel->isVisible();
             frame.setPanelsHidden(false);
             const bool panelsShown = layersPanel && layersPanel->isVisible();
-            std::fprintf(stderr,
-                         "pictura self-test: hide_all=%d restore=%d\n",
-                         panelsHidden ? 1 : 0,
+            ST_BEGIN("hide_all");
+            ST_PASS("hide_all=%d restore=%d", panelsHidden ? 1 : 0,
                          panelsShown ? 1 : 0);
-            std::fflush(stderr);
             if (!panelsHidden || !panelsShown) {
-                std::fprintf(stderr, "pictura self-test: FAIL: hide-all wrong\n");
-                return 32;
+                ST_FAIL(32, "hide-all wrong");
             }
 
             // M17: New creates an untitled document with the requested size and
@@ -662,12 +597,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const QRgb whitePixel = fresh ? fresh->image().pixel(1, 1) : 0;
             const bool whiteOk = qRed(whitePixel) == 255 && qGreen(whitePixel) == 255
                                  && qBlue(whitePixel) == 255 && qAlpha(whitePixel) == 255;
-            std::fprintf(stderr, "pictura self-test: new_doc=%d white=%d\n",
-                         freshOk ? 1 : 0, whiteOk ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("new_doc");
+            ST_PASS("new_doc=%d white=%d", freshOk ? 1 : 0, whiteOk ? 1 : 0);
             if (!freshOk || !whiteOk) {
-                std::fprintf(stderr, "pictura self-test: FAIL: new document wrong\n");
-                return 33;
+                ST_FAIL(33, "new document wrong");
             }
 
             // M17: Save As then open round-trips the new document's pixels.
@@ -679,11 +612,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             pictura::PictureView* reloaded = frame.activeView();
             const bool roundtrip = saved && reopenedM17 && reloaded && reloaded->has_document()
                                    && reloaded->image() == scratchImg;
-            std::fprintf(stderr, "pictura self-test: roundtrip=%d\n", roundtrip ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("roundtrip");
+            ST_PASS("roundtrip=%d", roundtrip ? 1 : 0);
             if (!roundtrip) {
-                std::fprintf(stderr, "pictura self-test: FAIL: save/open round-trip wrong\n");
-                return 34;
+                ST_FAIL(34, "save/open round-trip wrong");
             }
 
             // M17: a mutating command sets dirty; save clears it.
@@ -692,13 +624,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool dirtyAfterMutate = reloaded->is_dirty();
             const bool resaved = frame.saveActive();
             const bool cleanAfterSave = !reloaded->is_dirty();
-            std::fprintf(stderr, "pictura self-test: dirty clean=%d set=%d resave=%d cleared=%d\n",
-                         cleanAfterOpen ? 1 : 0, dirtyAfterMutate ? 1 : 0,
+            ST_BEGIN("dirty_clean");
+            ST_PASS("dirty clean=%d set=%d resave=%d cleared=%d", cleanAfterOpen ? 1 : 0, dirtyAfterMutate ? 1 : 0,
                          resaved ? 1 : 0, cleanAfterSave ? 1 : 0);
-            std::fflush(stderr);
             if (!cleanAfterOpen || !dirtyAfterMutate || !resaved || !cleanAfterSave) {
-                std::fprintf(stderr, "pictura self-test: FAIL: dirty state wrong\n");
-                return 35;
+                ST_FAIL(35, "dirty state wrong");
             }
 
             // M17: multiple documents become multiple tabs; switching targets.
@@ -708,12 +638,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                      && frame.imageView() == frame.canvasAt(0);
             frame.setActiveDocumentIndex(totalDocs - 1);
             const bool lastActive = frame.activeDocumentIndex() == totalDocs - 1;
-            std::fprintf(stderr, "pictura self-test: tabs=%d first=%d last=%d\n",
-                         totalDocs, firstActive ? 1 : 0, lastActive ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("tabs");
+            ST_PASS("tabs=%d first=%d last=%d", totalDocs, firstActive ? 1 : 0, lastActive ? 1 : 0);
             if (totalDocs < 2 || !firstActive || !lastActive) {
-                std::fprintf(stderr, "pictura self-test: FAIL: document tabs wrong\n");
-                return 36;
+                ST_FAIL(36, "document tabs wrong");
             }
 
             // M17: closing a modified document honours the prompt: Cancel keeps
@@ -729,12 +657,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool discarded = frame.closeDocument(frame.activeDocumentIndex(), true)
                                    && frame.documentCount() == beforeClose - 1;
             pictura::setUnsavedPromptInteractive(true);
-            std::fprintf(stderr, "pictura self-test: close_cancel=%d close_discard=%d\n",
-                         cancelled ? 1 : 0, discarded ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("close_cancel");
+            ST_PASS("close_cancel=%d close_discard=%d", cancelled ? 1 : 0, discarded ? 1 : 0);
             if (!cancelled || !discarded) {
-                std::fprintf(stderr, "pictura self-test: FAIL: unsaved close prompt wrong\n");
-                return 37;
+                ST_FAIL(37, "unsaved close prompt wrong");
             }
 
             // M18: the frame's active tool round-trips through the controller.
@@ -746,18 +672,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool eyedropOn = frame.activeTool() == pictura::ToolId::Eyedropper;
             frame.setActiveTool(pictura::ToolId::Move);
             const bool moveOn = frame.activeTool() == pictura::ToolId::Move;
-            std::fprintf(stderr,
-                         "pictura self-test: tool_switch marquee=%d lasso=%d eyedropper=%d "
-                         "move=%d active=%s\n",
-                         marqueeOn ? 1 : 0,
+            ST_BEGIN("tool_switch_marquee");
+            ST_PASS("tool_switch marquee=%d lasso=%d eyedropper=%d "
+                         "move=%d active=%s", marqueeOn ? 1 : 0,
                          lassoOn ? 1 : 0,
                          eyedropOn ? 1 : 0,
                          moveOn ? 1 : 0,
                          pictura::toolInfo(frame.activeTool()).label);
-            std::fflush(stderr);
             if (!marqueeOn || !lassoOn || !eyedropOn || !moveOn) {
-                std::fprintf(stderr, "pictura self-test: FAIL: tool switch wrong\n");
-                return 39;
+                ST_FAIL(39, "tool switch wrong");
             }
 
             // M18: marquee rect/ellipse counts and pixel membership. The 4x4
@@ -785,21 +708,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolView->select_rect(0, 0, 1, 1, QStringLiteral("intersect"));
             }
             const bool cornerOutside = toolView && toolView->selection_count() == 0;
-            std::fprintf(stderr,
-                         "pictura self-test: marquee rect=%d(%d) ellipse=%d(%d) add_same=%d "
-                         "centre=%d corner=%d\n",
-                         rectSel ? 1 : 0,
+            ST_BEGIN("marquee_rect");
+            ST_PASS("marquee rect=%d(%d) ellipse=%d(%d) add_same=%d "
+                         "centre=%d corner=%d", rectSel ? 1 : 0,
                          rectPx,
                          ellipseSel ? 1 : 0,
                          ellipsePx,
                          addIdempotent ? 1 : 0,
                          centreInside ? 1 : 0,
                          cornerOutside ? 1 : 0);
-            std::fflush(stderr);
             if (!rectSel || rectPx != 16 || !ellipseSel || ellipsePx != 12 || !addIdempotent
                 || !centreInside || !cornerOutside) {
-                std::fprintf(stderr, "pictura self-test: FAIL: marquee selection wrong\n");
-                return 40;
+                ST_FAIL(40, "marquee selection wrong");
             }
 
             // M18: combine modes union/subtract/intersect on the 8x8 canvas.
@@ -821,16 +741,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolView->select_rect(2, 2, 4, 4, QStringLiteral("intersect"));
             }
             const int interPx = toolView ? toolView->selection_count() : -1;
-            std::fprintf(stderr,
-                         "pictura self-test: combine new=%d add=%d subtract=%d intersect=%d\n",
-                         newPx,
+            ST_BEGIN("combine_new");
+            ST_PASS("combine new=%d add=%d subtract=%d intersect=%d", newPx,
                          addPx,
                          subPx,
                          interPx);
-            std::fflush(stderr);
             if (newPx != 16 || addPx != 28 || subPx != 12 || interPx != 4) {
-                std::fprintf(stderr, "pictura self-test: FAIL: combine modes wrong\n");
-                return 41;
+                ST_FAIL(41, "combine modes wrong");
             }
 
             // M18: lasso fills a 5x5 square, and a two-point path is rejected
@@ -853,19 +770,16 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
             const bool shortEnded = toolView && toolView->end_lasso();
             const bool shortUnchanged = toolView && toolView->selection_count() == lassoPx;
-            std::fprintf(stderr,
-                         "pictura self-test: lasso start=%d end=%d px=%d short_end=%d "
-                         "unchanged=%d\n",
-                         lassoStarted ? 1 : 0,
+            ST_BEGIN("lasso_start");
+            ST_PASS("lasso start=%d end=%d px=%d short_end=%d "
+                         "unchanged=%d", lassoStarted ? 1 : 0,
                          lassoEnded ? 1 : 0,
                          lassoPx,
                          shortEnded ? 1 : 0,
                          shortUnchanged ? 1 : 0);
-            std::fflush(stderr);
             if (!lassoStarted || !lassoEnded || lassoPx != 25 || !shortStarted || shortEnded
                 || !shortUnchanged) {
-                std::fprintf(stderr, "pictura self-test: FAIL: lasso selection wrong\n");
-                return 42;
+                ST_FAIL(42, "lasso selection wrong");
             }
 
             // M18: quick selection wands a white region and leaves a selection.
@@ -876,12 +790,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolView && toolView->quick_select(4, 4, 32, QStringLiteral("new"));
             const bool quickSelected = toolView && toolView->has_selection();
             const int quickPx = toolView ? toolView->selection_count() : -1;
-            std::fprintf(stderr, "pictura self-test: quick_select=%d has=%d px=%d\n",
-                         quickOk ? 1 : 0, quickSelected ? 1 : 0, quickPx);
-            std::fflush(stderr);
+            ST_BEGIN("quick_select");
+            ST_PASS("quick_select=%d has=%d px=%d", quickOk ? 1 : 0, quickSelected ? 1 : 0, quickPx);
             if (!quickOk || !quickSelected || quickPx <= 0) {
-                std::fprintf(stderr, "pictura self-test: FAIL: quick selection wrong\n");
-                return 43;
+                ST_FAIL(43, "quick selection wrong");
             }
 
             // M18: crop the fixture to its blue bottom-right quadrant.
@@ -891,12 +803,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const QImage cropImg = cropView ? cropView->image() : QImage();
             const QRgb cropPx = cropImg.isNull() ? 0 : cropImg.pixel(1, 1);
             const bool cropBlue = qBlue(cropPx) > 200 && qRed(cropPx) < 60 && qGreen(cropPx) < 60;
-            std::fprintf(stderr, "pictura self-test: crop=%d size=%dx%d blue=%d\n",
-                         cropOk ? 1 : 0, cropImg.width(), cropImg.height(), cropBlue ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("crop");
+            ST_PASS("crop=%d size=%dx%d blue=%d", cropOk ? 1 : 0, cropImg.width(), cropImg.height(), cropBlue ? 1 : 0);
             if (!cropOk || cropImg.width() != 4 || cropImg.height() != 4 || !cropBlue) {
-                std::fprintf(stderr, "pictura self-test: FAIL: crop wrong\n");
-                return 44;
+                ST_FAIL(44, "crop wrong");
             }
 
             // M18: move the topmost (blue) layer over the red quadrant.
@@ -906,12 +816,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const QImage moveImg = moveView ? moveView->image() : QImage();
             const QRgb movePx = moveImg.isNull() ? 0 : moveImg.pixel(2, 2);
             const bool moveBlue = qBlue(movePx) > 200 && qRed(movePx) < 60 && qGreen(movePx) < 60;
-            std::fprintf(stderr, "pictura self-test: translate=%d blue=%d\n",
-                         moved ? 1 : 0, moveBlue ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("translate");
+            ST_PASS("translate=%d blue=%d", moved ? 1 : 0, moveBlue ? 1 : 0);
             if (!moved || !moveBlue) {
-                std::fprintf(stderr, "pictura self-test: FAIL: layer move wrong\n");
-                return 45;
+                ST_FAIL(45, "layer move wrong");
             }
 
             // M18: eyedropper samples the composited red and rejects out-of-bounds.
@@ -923,15 +831,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 eyeView->deselect();
             }
             const bool eyeDeselected = eyeView && !eyeView->has_selection();
-            std::fprintf(stderr,
-                         "pictura self-test: eyedropper red=%08x out=%08x deselected=%d\n",
-                         static_cast<unsigned>(redSample),
+            ST_BEGIN("eyedropper_red");
+            ST_PASS("eyedropper red=%08x out=%08x deselected=%d", static_cast<unsigned>(redSample),
                          static_cast<unsigned>(outSample),
                          eyeDeselected ? 1 : 0);
-            std::fflush(stderr);
             if (redSample != 0xFFFF0000u || outSample != 0u || !eyeDeselected) {
-                std::fprintf(stderr, "pictura self-test: FAIL: eyedropper wrong\n");
-                return 46;
+                ST_FAIL(46, "eyedropper wrong");
             }
 
             // M20: layer property getters/setters round-trip and mark dirty.
@@ -955,21 +860,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const int roundTripOpacity = propView ? propView->layer_opacity(0) : -1;
             const bool clampOk = propView && propView->set_layer_opacity(0, 9999);
             const int clampedOpacity = propView ? propView->layer_opacity(0) : -1;
-            std::fprintf(stderr,
-                         "pictura self-test: m20_layer count=%d name=%d blend=%d badblend=%d "
-                         "opacity=%d dirty=%d\n",
-                         m20Count,
+            ST_BEGIN("m20_layer_count");
+            ST_PASS("m20_layer count=%d name=%d blend=%d badblend=%d "
+                         "opacity=%d dirty=%d", m20Count,
                          renameOk && renamedOk ? 1 : 0,
                          blendOk && blendRoundTrip ? 1 : 0,
                          badBlendRejected ? 1 : 0,
                          roundTripOpacity,
                          dirtyAfterRename ? 1 : 0);
-            std::fflush(stderr);
             if (m20Count != 2 || !renameOk || !renamedOk || !dirtyAfterRename || !blendOk
                 || !blendRoundTrip || !badBlendRejected || !opacityOk || roundTripOpacity != 128
                 || !clampOk || clampedOpacity != 255) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M20 layer properties wrong\n");
-                return 50;
+                ST_FAIL(50, "M20 layer properties wrong");
             }
 
             // M20: labeled history, jump restore, and named snapshots.
@@ -993,29 +895,24 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool snapLabelOk =
                 propView && propView->history_snapshot_label(0) == QStringLiteral("Checkpoint");
             const bool snapRestored = propView && propView->history_restore_snapshot(0);
-            std::fprintf(stderr,
-                         "pictura self-test: m20_history states=%d open_label=%d grew=%d "
-                         "jump=%d snapshot=%d\n",
-                         histBefore,
+            ST_BEGIN("m20_history_states");
+            ST_PASS("m20_history states=%d open_label=%d grew=%d "
+                         "jump=%d snapshot=%d", histBefore,
                          histOpenLabel ? 1 : 0,
                          histGrew ? 1 : 0,
                          histJump && histAtZero && opacityRestored && histJumpBack ? 1 : 0,
                          snapAdded && snapCount >= 1 && snapLabelOk && snapRestored ? 1 : 0);
-            std::fflush(stderr);
             if (!histOpenLabel || !histMutated || !histGrew || !histTopLabel || !histAtTop
                 || !histJump || !histAtZero || !opacityRestored || !histJumpBack || !snapAdded
                 || snapCount < 1 || !snapLabelOk || !snapRestored) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M20 history wrong\n");
-                return 51;
+                ST_FAIL(51, "M20 history wrong");
             }
         }
         const bool docTabReorderOk = frame.reorderDocumentsForTest();
-        std::fprintf(stderr, "pictura self-test: doc_tab_reorder aligned=%d\n",
-                     docTabReorderOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("doc_tab_reorder_aligned");
+        ST_PASS("doc_tab_reorder aligned=%d", docTabReorderOk ? 1 : 0);
         if (!docTabReorderOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: document tab reorder desync\n");
-            return 196;
+            ST_FAIL(196, "document tab reorder desync");
         }
 
         // M19: every documented asset id resolves from the Qt resource
@@ -1075,17 +972,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool unknownIconNull = pictura::icon(QStringLiteral("no.such.icon")).isNull();
-        std::fprintf(stderr,
-                     "pictura self-test: icons=%d unknown_null=%d\n",
-                     iconsResolved,
+        ST_BEGIN("icons");
+        ST_PASS("icons=%d unknown_null=%d", iconsResolved,
                      unknownIconNull ? 1 : 0);
-        std::fflush(stderr);
         if (iconsResolved != expectedIcons.size() || !unknownIconNull) {
-            std::fprintf(stderr,
-                         "pictura self-test: FAIL: icon missing=%s unknown_null=%d\n",
-                         missingIcon.toLocal8Bit().constData(),
+            ST_FAIL(47, "icon missing=%s unknown_null=%d", missingIcon.toLocal8Bit().constData(),
                          unknownIconNull ? 1 : 0);
-            return 47;
         }
 
         // M19: the eight tool cursors must render; an unknown cursor id must
@@ -1112,22 +1004,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         pictura::cursor(QStringLiteral("no.such.cursor"));
-        std::fprintf(stderr, "pictura self-test: cursors=%d\n", cursorsResolved);
-        std::fflush(stderr);
+        ST_BEGIN("cursors");
+        ST_PASS("cursors=%d", cursorsResolved);
         if (cursorsResolved != expectedCursors.size()) {
-            std::fprintf(stderr,
-                         "pictura self-test: FAIL: cursor missing=%s\n",
-                         missingCursor.toLocal8Bit().constData());
-            return 48;
+            ST_FAIL(48, "cursor missing=%s", missingCursor.toLocal8Bit().constData());
         }
 
         // M19: the window icon must be set from the app asset.
         const bool windowIconSet = !QApplication::windowIcon().isNull();
-        std::fprintf(stderr, "pictura self-test: window_icon=%d\n", windowIconSet ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("window_icon");
+        ST_PASS("window_icon=%d", windowIconSet ? 1 : 0);
         if (!windowIconSet) {
-            std::fprintf(stderr, "pictura self-test: FAIL: window icon not set\n");
-            return 49;
+            ST_FAIL(49, "window icon not set");
         }
 
         // M20: the seven panel docks are registered and their menu actions
@@ -1179,15 +1067,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ++panelsToggled;
             }
         }
-        std::fprintf(stderr,
-                     "pictura self-test: m20_panels registered=%d toggled=%d\n",
-                     panelsRegistered,
+        ST_BEGIN("m20_panels_registered");
+        ST_PASS("m20_panels registered=%d toggled=%d", panelsRegistered,
                      panelsToggled);
-        std::fflush(stderr);
         if (panelsRegistered != expectedPanelDocks.size()
             || panelsToggled != panelCommands.size()) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M20 panels wrong\n");
-            return 52;
+            ST_FAIL(52, "M20 panels wrong");
         }
 
         // M21: painting. A fresh transparent document keeps these checks
@@ -1197,9 +1082,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                 QStringLiteral("transparent"));
         pictura::PictureView* pv = frame.activeView();
         if (!paintDoc || !pv) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M21 paint document\n");
-            std::fflush(stderr);
-            return 53;
+            ST_FAIL(53, "M21 paint document");
         }
 
         // 53: a stroke marks pixels, dirties the document, and adds one state.
@@ -1220,17 +1103,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
             }
         }
-        std::fprintf(stderr,
-                     "pictura self-test: m21_stroke ended=%d painted=%d dirty=%d hist=%d\n",
-                     m21Ended ? 1 : 0,
+        ST_BEGIN("m21_stroke_ended");
+        ST_PASS("m21_stroke ended=%d painted=%d dirty=%d hist=%d", m21Ended ? 1 : 0,
                      m21Painted,
                      pv->is_dirty() ? 1 : 0,
                      pv->history_count());
-        std::fflush(stderr);
         if (!m21Ended || !pv->is_dirty() || pv->history_count() != m21HistBefore + 1
             || m21Painted < 20) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M21 stroke wrong\n");
-            return 53;
+            ST_FAIL(53, "M21 stroke wrong");
         }
 
         // 54: opacity caps one stroke and a second stroke adds coverage. A fresh
@@ -1240,8 +1120,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("transparent"));
         pv = frame.activeView();
         if (!opacityDoc || !pv) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M21 opacity document\n");
-            return 54;
+            ST_FAIL(54, "M21 opacity document");
         }
         pv->begin_paint(0xFF00FF00u, 0xFFFFFFFFu, 12, 100, 100, 0, 33, 100, 0,
                         QStringLiteral("normal"), false, false);
@@ -1257,11 +1136,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         pv->end_paint();
         const int m21A2 = qAlpha(pv->sample_argb(16, 16));
-        std::fprintf(stderr, "pictura self-test: m21_opacity a1=%d a2=%d\n", m21A1, m21A2);
-        std::fflush(stderr);
+        ST_BEGIN("m21_opacity_a1");
+        ST_PASS("m21_opacity a1=%d a2=%d", m21A1, m21A2);
         if (!(m21A1 >= 78 && m21A1 <= 92) || !(m21A2 > m21A1 && m21A2 < 255)) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M21 opacity wrong\n");
-            return 54;
+            ST_FAIL(54, "M21 opacity wrong");
         }
 
         // 55: Pencil edges are aliased; Brush edges are anti-aliased.
@@ -1328,12 +1206,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool pencilOk =
             pencilBegun && pencilEnded && pencilBinary && pencilCovered > 0;
         const bool brushOk = brushBegun && brushEnded && brushCovered > 0 && brushSoft;
-        std::fprintf(stderr, "pictura self-test: m21_aliased pencil_ok=%d brush_aa=%d\n",
-                     pencilOk ? 1 : 0, brushOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m21_aliased_pencil_ok");
+        ST_PASS("m21_aliased pencil_ok=%d brush_aa=%d", pencilOk ? 1 : 0, brushOk ? 1 : 0);
         if (!pencilOk || !brushOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M21 aliasing wrong\n");
-            return 55;
+            ST_FAIL(55, "M21 aliasing wrong");
         }
 
         // 56: undo restores the touched pixels of the brush document.
@@ -1345,12 +1221,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m21Changed = brushView->end_paint() && brushView->image() != m21Pre;
         const bool m21Restored = brushView->undo() && brushView->image() == m21Pre;
-        std::fprintf(stderr, "pictura self-test: m21_undo changed=%d restored=%d\n",
-                     m21Changed ? 1 : 0, m21Restored ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m21_undo_changed");
+        ST_PASS("m21_undo changed=%d restored=%d", m21Changed ? 1 : 0, m21Restored ? 1 : 0);
         if (!m21Changed || !m21Restored) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M21 undo wrong\n");
-            return 56;
+            ST_FAIL(56, "M21 undo wrong");
         }
 
         // M22: the 15 Artistic filters. A fresh white document exercises each
@@ -1360,9 +1234,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                               QStringLiteral("white"));
         pictura::PictureView* av = frame.activeView();
         if (!artDoc || !av) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M22 artistic document\n");
-            std::fflush(stderr);
-            return 57;
+            ST_FAIL(57, "M22 artistic document");
         }
 
         // 57: every Artistic kind maps, applies, and changes the image.
@@ -1391,12 +1263,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ++m22Applied;
             }
         }
-        std::fprintf(stderr, "pictura self-test: m22_applied applied=%d/%d\n", m22Applied,
+        ST_BEGIN("m22_applied_applied");
+        ST_PASS("m22_applied applied=%d/%d", m22Applied,
                      static_cast<int>(artisticKinds.size()));
-        std::fflush(stderr);
         if (m22Applied != artisticKinds.size()) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M22 artistic apply wrong\n");
-            return 57;
+            ST_FAIL(57, "M22 artistic apply wrong");
         }
 
         // 58: a fixed seed makes a stochastic Artistic filter deterministic
@@ -1409,12 +1280,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         av->undo();
         av->apply_filter(QStringLiteral("film-grain"));
         const bool m22Deterministic = av->image() == m22First;
-        std::fprintf(stderr, "pictura self-test: m22_deterministic=%d\n",
-                     m22Deterministic ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m22_deterministic");
+        ST_PASS("m22_deterministic=%d", m22Deterministic ? 1 : 0);
         if (!m22Deterministic) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M22 artistic determinism wrong\n");
-            return 58;
+            ST_FAIL(58, "M22 artistic determinism wrong");
         }
 
         // M25: the 29 new filter kinds. A clouds-filled document gives every
@@ -1424,9 +1293,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                     QStringLiteral("white"));
         pictura::PictureView* m25av = frame.activeView();
         if (!m25FilterDoc || !m25av || !m25av->apply_filter(QStringLiteral("clouds"))) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 filter document\n");
-            std::fflush(stderr);
-            return 68;
+            ST_FAIL(68, "M25 filter document");
         }
 
         // 68: every M25 kind maps, applies, and changes the image.
@@ -1472,12 +1339,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // and the scratch history stays well under its 20-state cap.
             m25av->undo();
         }
-        std::fprintf(stderr, "pictura self-test: m25_applied applied=%d/%d\n", m25Applied,
+        ST_BEGIN("m25_applied_applied");
+        ST_PASS("m25_applied applied=%d/%d", m25Applied,
                      static_cast<int>(m25Kinds.size()));
-        std::fflush(stderr);
         if (m25Applied != m25Kinds.size()) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 filter apply wrong\n");
-            return 68;
+            ST_FAIL(68, "M25 filter apply wrong");
         }
 
         // 69: a fixed seed makes the seeded M25 filter deterministic across
@@ -1487,21 +1353,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         m25av->undo();
         m25av->apply_filter(QStringLiteral("grain"));
         const bool m25Deterministic = m25av->image() == m25First;
-        std::fprintf(stderr, "pictura self-test: m25_deterministic=%d\n",
-                     m25Deterministic ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m25_deterministic");
+        ST_PASS("m25_deterministic=%d", m25Deterministic ? 1 : 0);
         if (!m25Deterministic) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 filter determinism wrong\n");
-            return 69;
+            ST_FAIL(69, "M25 filter determinism wrong");
         }
 
         // M26: GPU-compute default/toggle and its persisted preference.
         // 70: default is on; the toggle flips to CPU and restores the backend.
         pictura::PictureView* m26av = frame.activeView();
         if (!m26av) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M26 no active view\n");
-            std::fflush(stderr);
-            return 70;
+            ST_FAIL(70, "M26 no active view");
         }
         const bool m26Avail = m26av->gpu_available();
         const bool m26DefaultOn = m26av->gpu_compute();
@@ -1512,16 +1374,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m26OffCpu = m26av->active_backend() == QStringLiteral("CPU");
         m26av->set_gpu_compute(true);
         const bool m26Restored = m26av->active_backend() == m26OnBackend;
-        std::fprintf(stderr,
-                     "pictura self-test: m26_gpu available=%d default_on=%d off_cpu=%d on_back=%d\n",
-                     m26Avail ? 1 : 0,
+        ST_BEGIN("m26_gpu_available");
+        ST_PASS("m26_gpu available=%d default_on=%d off_cpu=%d on_back=%d", m26Avail ? 1 : 0,
                      m26DefaultOn ? 1 : 0,
                      m26OffCpu ? 1 : 0,
                      m26Restored ? 1 : 0);
-        std::fflush(stderr);
         if (!m26DefaultOn || !m26OnOk || !m26OffCpu || !m26Restored) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M26 gpu backend wrong\n");
-            return 70;
+            ST_FAIL(70, "M26 gpu backend wrong");
         }
 
         // 71: the GPU preference round-trips through the session store, and a
@@ -1537,15 +1396,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m26Default = pictura::SessionState{}.gpuCompute;
         m26State.gpuCompute = m26FramePref;
         pictura::saveSession(m26State);
-        std::fprintf(stderr,
-                     "pictura self-test: m26_session gpu_off=%d gpu_on=%d default=%d\n",
-                     (m26SavedOff && m26OffRound) ? 1 : 0,
+        ST_BEGIN("m26_session_gpu_off");
+        ST_PASS("m26_session gpu_off=%d gpu_on=%d default=%d", (m26SavedOff && m26OffRound) ? 1 : 0,
                      (m26SavedOn && m26OnRound) ? 1 : 0,
                      m26Default ? 1 : 0);
-        std::fflush(stderr);
         if (!m26SavedOff || !m26OffRound || !m26SavedOn || !m26OnRound || !m26Default) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M26 session persistence wrong\n");
-            return 71;
+            ST_FAIL(71, "M26 session persistence wrong");
         }
 
         // M27: the GPU filter path. A supported filter must produce the same
@@ -1554,9 +1410,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // 72: gaussian-blur is byte-identical through both backends.
         pictura::PictureView* m27av = frame.activeView();
         if (!m27av) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M27 no active view\n");
-            std::fflush(stderr);
-            return 72;
+            ST_FAIL(72, "M27 no active view");
         }
         m27av->set_gpu_compute(true);
         m27av->apply_filter(QStringLiteral("gaussian-blur"));
@@ -1567,12 +1421,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const QImage m27Cpu = m27av->image();
         m27av->set_gpu_compute(true);
         const bool m27Identical = m27Gpu == m27Cpu;
-        std::fprintf(stderr, "pictura self-test: m27_filter byte_identical=%d\n",
-                     m27Identical ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m27_filter_byte_identical");
+        ST_PASS("m27_filter byte_identical=%d", m27Identical ? 1 : 0);
         if (!m27Identical) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M27 filter byte-identity wrong\n");
-            return 72;
+            ST_FAIL(72, "M27 filter byte-identity wrong");
         }
 
         // M28: the heavy deterministic kernels. Surface Blur and Median must
@@ -1581,9 +1433,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // 73: both kinds match across backends.
         pictura::PictureView* m28av = frame.activeView();
         if (!m28av) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M28 no active view\n");
-            std::fflush(stderr);
-            return 73;
+            ST_FAIL(73, "M28 no active view");
         }
         const QStringList m28Kinds = {
             QStringLiteral("surface-blur"),
@@ -1612,12 +1462,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         m28av->set_gpu_compute(true);
-        std::fprintf(stderr, "pictura self-test: m28_heavy byte_identical=%d\n",
-                     m28Heavy ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m28_heavy_byte_identical");
+        ST_PASS("m28_heavy byte_identical=%d", m28Heavy ? 1 : 0);
         if (!m28Heavy) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M28 heavy byte-identity wrong\n");
-            return 73;
+            ST_FAIL(73, "M28 heavy byte-identity wrong");
         }
 
         // M30: canvas transparency display and document-rect clipping.
@@ -1628,8 +1476,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("transparent"));
         pictura::ImageView* m30Canvas = frame.imageView();
         if (!m30Created || !m30Canvas) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M30 transparent document\n");
-            return 74;
+            ST_FAIL(74, "M30 transparent document");
         }
         const int m30DocIndex = frame.activeDocumentIndex();
         if (m30Canvas->width() <= 0 || m30Canvas->height() <= 0) {
@@ -1701,13 +1548,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                           == m30CanvasColor.rgb();
         const bool m30Clipped = m30CentreRed && m30OverflowOk;
 
-        std::fprintf(stderr, "pictura self-test: m30_canvas checker=%d clipped=%d\n",
-                     m30Checker ? 1 : 0,
+        ST_BEGIN("m30_canvas_checker");
+        ST_PASS("m30_canvas checker=%d clipped=%d", m30Checker ? 1 : 0,
                      m30Clipped ? 1 : 0);
-        std::fflush(stderr);
         if (!m30Checker || !m30Clipped) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M30 transparency/clipping wrong\n");
-            return 74;
+            ST_FAIL(74, "M30 transparency/clipping wrong");
         }
         // Restore the previously active document so later checks are undisturbed.
         frame.closeDocument(m30DocIndex, false);
@@ -1738,17 +1583,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("white"));
         pictura::PictureView* m31View = frame.activeView();
         if (!m31Created || !m31View) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M31 document\n");
-            std::fflush(stderr);
-            return 75;
+            ST_FAIL(75, "M31 document");
         }
         const int m31DocIndex = frame.activeDocumentIndex();
         const bool m31Grown =
             m31View->resize_canvas(QStringLiteral("top-left"), 128, 128);
         if (!m31Grown) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M31 canvas growth\n");
-            std::fflush(stderr);
-            return 75;
+            ST_FAIL(75, "M31 canvas growth");
         }
         const QImage m31Before = m31View->image();
         const QRgb m31Src = m31Before.pixel(5, 5);         // inside the layer
@@ -1762,16 +1603,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m31Vacated = m31After.pixel(2, 2) != m31Src;
         const bool m31Outside = m31After.pixel(100, 100) == m31Far;
         const bool m31Undone = m31View->undo() && m31View->image() == m31Before;
-        std::fprintf(stderr,
-                     "pictura self-test: m31_region moved=%d outside_unchanged=%d undo=%d\n",
-                     (m31Moved && m31Appeared && m31Vacated) ? 1 : 0,
+        ST_BEGIN("m31_region_moved");
+        ST_PASS("m31_region moved=%d outside_unchanged=%d undo=%d", (m31Moved && m31Appeared && m31Vacated) ? 1 : 0,
                      m31Outside ? 1 : 0,
                      m31Undone ? 1 : 0);
-        std::fflush(stderr);
         if (!m31Preview || !m31Moved || !m31Appeared || !m31Vacated || !m31Outside
             || !m31Undone) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M31 region move wrong\n");
-            return 75;
+            ST_FAIL(75, "M31 region move wrong");
         }
         // Leave the frame as M30 did: close the scratch document.
         frame.closeDocument(m31DocIndex, false);
@@ -1788,9 +1626,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         pictura::PictureView* m31bView = frame.activeView();
         pictura::ImageView* m31bCanvas = frame.imageView();
         if (!m31bCreated || !m31bView || !m31bCanvas) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M31 large document\n");
-            std::fflush(stderr);
-            return 75;
+            ST_FAIL(75, "M31 large document");
         }
         const int m31bDocIndex = frame.activeDocumentIndex();
         const QImage m31bBefore = m31bView->image();
@@ -1813,19 +1649,16 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m31bRegionPath = m31bRegionBlits >= 1 && m31bChanged == 0;
         const bool m31bCanvasSame = samePixels(m31bBlitted, m31bFull);
         const bool m31bUndone = m31bView->undo() && m31bView->image() == m31bBefore;
-        std::fprintf(stderr,
-                     "pictura self-test: m31_region_large moved=%d vacated=%d undo=%d "
-                     "region=%d recomposite=%d canvas=%d\n",
-                     m31bMoved ? 1 : 0,
+        ST_BEGIN("m31_region_large_moved");
+        ST_PASS("m31_region_large moved=%d vacated=%d undo=%d "
+                     "region=%d recomposite=%d canvas=%d", m31bMoved ? 1 : 0,
                      m31bVacated ? 1 : 0,
                      m31bUndone ? 1 : 0,
                      m31bRegionPath ? 1 : 0,
                      m31bChanged > 0 ? 1 : 0,
                      m31bCanvasSame ? 1 : 0);
-        std::fflush(stderr);
         if (!m31bMoved || !m31bVacated || !m31bUndone || !m31bRegionPath || !m31bCanvasSame) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M31 large-region blit wrong\n");
-            return 75;
+            ST_FAIL(75, "M31 large-region blit wrong");
         }
         frame.closeDocument(m31bDocIndex, false);
 
@@ -1838,16 +1671,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m23Distinct =
             pictura::Theme::styleSheet(0) != pictura::Theme::styleSheet(3);
-        std::fprintf(stderr,
-                     "pictura self-test: m23_stylesheet applied=%d levels=%d distinct=%d\n",
-                     qApp->styleSheet().isEmpty() ? 0 : 1,
+        ST_BEGIN("m23_stylesheet_applied");
+        ST_PASS("m23_stylesheet applied=%d levels=%d distinct=%d", qApp->styleSheet().isEmpty() ? 0 : 1,
                      m23Levels,
                      m23Distinct ? 1 : 0);
-        std::fflush(stderr);
         if (qApp->styleSheet().isEmpty() || m23Levels != pictura::Theme::kLevelCount
             || !m23Distinct) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M23 stylesheet wrong\n");
-            return 59;
+            ST_FAIL(59, "M23 stylesheet wrong");
         }
 
         auto* m23Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
@@ -1863,16 +1693,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m23Toggle != nullptr && !m23SlotButtons.contains(m23Toggle);
         const bool m23Fgbg = m23Tools
             && m23Tools->findChild<pictura::ForegroundBackgroundWidget*>() != nullptr;
-        std::fprintf(stderr,
-                     "pictura self-test: m23_toolbox dock=%d buttons=%d toggle=%d fgbg=%d\n",
-                     m23Tools ? 1 : 0,
+        ST_BEGIN("m23_toolbox_dock");
+        ST_PASS("m23_toolbox dock=%d buttons=%d toggle=%d fgbg=%d", m23Tools ? 1 : 0,
                      m23Buttons,
                      m23ToggleDistinct ? 1 : 0,
                      m23Fgbg ? 1 : 0);
-        std::fflush(stderr);
         if (!m23Tools || m23Buttons != 25 || !m23ToggleDistinct || !m23Fgbg) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M23 toolbox wrong\n");
-            return 60;
+            ST_FAIL(60, "M23 toolbox wrong");
         }
 
         // M24: CS6 right side. 61 default PanelColumn groups, 62 the new
@@ -1897,11 +1724,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         m24Groups += (!m24GroupOf("adjustmentsPanel").isEmpty()) ? 1 : 0;
         m24Groups += (!m24GroupOf("historyPanel").isEmpty()
                       && m24GroupOf("historyPanel") != m24GroupOf("actionsPanel")) ? 1 : 0;
-        std::fprintf(stderr, "pictura self-test: m24_groups grouped=%d/8\n", m24Groups);
-        std::fflush(stderr);
+        ST_BEGIN("m24_groups_grouped");
+        ST_PASS("m24_groups grouped=%d/8", m24Groups);
         if (m24Groups != 8) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M24 panel grouping wrong\n");
-            return 61;
+            ST_FAIL(61, "M24 panel grouping wrong");
         }
 
         const QStringList m24PanelNames = {
@@ -1929,14 +1755,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
             }
         }
-        std::fprintf(stderr,
-                     "pictura self-test: m24_panels found=%d/8 properties_empty=%d\n",
-                     m24Found,
+        ST_BEGIN("m24_panels_found");
+        ST_PASS("m24_panels found=%d/8 properties_empty=%d", m24Found,
                      m24PropsEmpty);
-        std::fflush(stderr);
         if (m24Found != 8 || m24PropsEmpty != 1) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M24 panels wrong\n");
-            return 62;
+            ST_FAIL(62, "M24 panels wrong");
         }
 
         const QStringList m24RailCommands = {
@@ -1970,21 +1793,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m24NoRail =
             frame.findChild<QToolBar*>(QStringLiteral("panelRail")) == nullptr;
-        std::fprintf(stderr,
-                     "pictura self-test: m24_rail actions=%d toggled=%d norail=%d\n",
-                     m24RailActions,
+        ST_BEGIN("m24_rail_actions");
+        ST_PASS("m24_rail actions=%d toggled=%d norail=%d", m24RailActions,
                      m24Toggled,
                      m24NoRail ? 1 : 0);
-        std::fflush(stderr);
         if (m24RailActions < 5 || m24Toggled != 1 || !m24NoRail) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M24 rail wrong\n");
-            return 63;
+            ST_FAIL(63, "M24 rail wrong");
         }
 
         pictura::ImageView* canvas = frame.imageView();
         if (!canvas) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 no active canvas\n");
-            return 64;
+            ST_FAIL(64, "M25 no active canvas");
         }
 
         // 64: a freshly set image is centred, not pinned to the top-left.
@@ -2001,15 +1820,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                 && std::abs(m25Actual.y() - m25Expected.y()) < 1e-6;
         const bool m25Smaller = m25Iw < m25Vw && m25Ih < m25Vh;
         const bool m25NotTopLeft = !m25Smaller || m25Actual != QPointF(0, 0);
-        std::fprintf(stderr,
-                     "pictura self-test: canvas_centre offset=(%g,%g) zoom=%g\n",
-                     m25Actual.x(),
+        ST_BEGIN("canvas_centre_offset");
+        ST_PASS("canvas_centre offset=(%g,%g) zoom=%g", m25Actual.x(),
                      m25Actual.y(),
                      m25Zoom);
-        std::fflush(stderr);
         if (!m25Centred || !m25NotTopLeft || m25Zoom <= 0.0) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 centre wrong\n");
-            return 64;
+            ST_FAIL(64, "M25 centre wrong");
         }
 
         // 65: middle-button drag pans regardless of the active tool.
@@ -2038,21 +1854,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const QPointF m25Delta = canvas->offset() - m25Before;
         const bool m25Panned = std::abs(m25Delta.x() - 30.0) < 1e-6
                                && std::abs(m25Delta.y() - 15.0) < 1e-6;
-        std::fprintf(stderr,
-                     "pictura self-test: canvas_middle_pan delta=(%g,%g)\n",
-                     m25Delta.x(),
+        ST_BEGIN("canvas_middle_pan_delta");
+        ST_PASS("canvas_middle_pan delta=(%g,%g)", m25Delta.x(),
                      m25Delta.y());
-        std::fflush(stderr);
         if (!m25Panned) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 middle pan wrong\n");
-            return 65;
+            ST_FAIL(65, "M25 middle pan wrong");
         }
 
         // 66: a live move preview is transient; commit adds exactly one state.
         pictura::PictureView* m25View = frame.activeView();
         if (!m25View) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 move preview no document\n");
-            return 66;
+            ST_FAIL(66, "M25 move preview no document");
         }
         const int m25HistBefore = m25View->history_count();
         const QImage m25Pre = m25View->image();
@@ -2064,16 +1876,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m25Dirty = m25View->is_dirty();
         m25View->undo();
         const bool m25Undone = m25View->image() == m25Pre;
-        std::fprintf(stderr,
-                     "pictura self-test: canvas_move preview=%d hist=%d undo=%d\n",
-                     m25Previewed ? 1 : 0,
+        ST_BEGIN("canvas_move_preview");
+        ST_PASS("canvas_move preview=%d hist=%d undo=%d", m25Previewed ? 1 : 0,
                      m25CommitHistory ? 1 : 0,
                      m25Undone ? 1 : 0);
-        std::fflush(stderr);
         if (!m25Previewed || !m25PreviewChanged || !m25PreviewNoHistory
             || !m25Committed || !m25CommitHistory || !m25Dirty || !m25Undone) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 move preview wrong\n");
-            return 66;
+            ST_FAIL(66, "M25 move preview wrong");
         }
 
         // 67: the drag-start cache (base + layer) must not touch history.
@@ -2084,17 +1893,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m25CacheHistOk = m25View->history_count() == m25CacheHist;
         m25View->end_move_preview();
         const bool m25HistUnchanged = m25View->history_count() == m25CacheHist;
-        std::fprintf(stderr,
-                     "pictura self-test: canvas_preview_cache began=%d base=%d layer=%d "
-                     "hist_unchanged=%d\n",
-                     m25Began ? 1 : 0,
+        ST_BEGIN("canvas_preview_cache_began");
+        ST_PASS("canvas_preview_cache began=%d base=%d layer=%d "
+                     "hist_unchanged=%d", m25Began ? 1 : 0,
                      m25BaseOk ? 1 : 0,
                      m25LayerOk ? 1 : 0,
                      (m25CacheHistOk && m25HistUnchanged) ? 1 : 0);
-        std::fflush(stderr);
         if (!m25Began || !m25BaseOk || !m25LayerOk || !m25CacheHistOk || !m25HistUnchanged) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M25 preview cache wrong\n");
-            return 67;
+            ST_FAIL(67, "M25 preview cache wrong");
         }
 
         // 76: the present cache reuses the scaled document across repaints at a
@@ -2102,8 +1908,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // scaled document size.
         canvas = frame.imageView();
         if (!canvas || canvas->image().isNull()) {
-            std::fprintf(stderr, "pictura self-test: FAIL: present cache no canvas\n");
-            return 76;
+            ST_FAIL(76, "present cache no canvas");
         }
         const QImage pcSource = canvas->image();
         const double pcZoom = canvas->zoom();
@@ -2134,10 +1939,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         canvas->render(&pcShot4);
         canvas->setPresentCacheEnabledForTest(true);
         const bool pcIdentical = pcShot3 == pcShot4;
-        std::fprintf(stderr,
-                     "pictura self-test: present_cache reused=%d zoom_rebuild=%d src=%dx%d "
-                     "z0=%g z1=%g size=%dx%d stable=%d identical=%d\n",
-                     pcReused ? 1 : 0,
+        ST_BEGIN("present_cache_reused");
+        ST_PASS("present_cache reused=%d zoom_rebuild=%d src=%dx%d "
+                     "z0=%g z1=%g size=%dx%d stable=%d identical=%d", pcReused ? 1 : 0,
                      pcRebuiltOnZoom ? 1 : 0,
                      pcSource.width(),
                      pcSource.height(),
@@ -2147,10 +1951,8 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                      pcCachedAfterZoom.height(),
                      pcStable ? 1 : 0,
                      pcIdentical ? 1 : 0);
-        std::fflush(stderr);
         if (!pcReused || !pcRebuiltOnZoom || !pcSizeOk || !pcStable || !pcIdentical) {
-            std::fprintf(stderr, "pictura self-test: FAIL: present cache wrong\n");
-            return 76;
+            ST_FAIL(76, "present cache wrong");
         }
 
         // M32: the interactive region paths. A 32x32 layer grown into a 64x64
@@ -2163,21 +1965,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("white"));
         pictura::PictureView* m32View = frame.activeView();
         if (!m32Created || !m32View) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M32 document\n");
-            std::fflush(stderr);
-            return 77;
+            ST_FAIL(77, "M32 document");
         }
         const int m32DocIndex = frame.activeDocumentIndex();
         if (!m32View->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M32 canvas growth\n");
-            std::fflush(stderr);
-            return 77;
+            ST_FAIL(77, "M32 canvas growth");
         }
         const int m32k = m32View->topmost_pixel_layer_index();
         if (m32k < 0) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M32 no pixel layer\n");
-            std::fflush(stderr);
-            return 77;
+            ST_FAIL(77, "M32 no pixel layer");
         }
         // Full pixel-by-pixel equality over the small (64x64) canvas.
         const bool m32Began = m32View->begin_move_preview();
@@ -2194,18 +1990,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         m32View->end_move_preview();
         frame.closeDocument(m32DocIndex, false);
 
-        std::fprintf(stderr,
-                     "pictura self-test: m32_region preview_base=%d visibility=%d\n",
-                     m32BaseSame ? 1 : 0,
+        ST_BEGIN("m32_region_preview_base");
+        ST_PASS("m32_region preview_base=%d visibility=%d", m32BaseSame ? 1 : 0,
                      m32VisibilitySame ? 1 : 0);
-        std::fflush(stderr);
         if (!m32BaseSame) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M32 preview base wrong\n");
-            return 77;
+            ST_FAIL(77, "M32 preview base wrong");
         }
         if (!m32VisibilitySame) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M32 visibility region wrong\n");
-            return 78;
+            ST_FAIL(78, "M32 visibility region wrong");
         }
 
         // M34: composite coherence and cheap undo/redo. A region-path move must
@@ -2217,9 +2009,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("white"));
         pictura::PictureView* m34View = frame.activeView();
         if (!m34Created || !m34View) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M34 document\n");
-            std::fflush(stderr);
-            return 79;
+            ST_FAIL(79, "M34 document");
         }
         const int m34DocIndex = frame.activeDocumentIndex();
         const QImage m34Pre = m34View->image();
@@ -2253,23 +2043,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             && static_cast<unsigned>(m34Reloaded->composite_argb(6, 6))
                    == static_cast<unsigned>(m34Edited.pixel(6, 6));
 
-        std::fprintf(stderr,
-                     "pictura self-test: m34_coherent composite=%d undo=%d save=%d\n",
-                     m34Composite ? 1 : 0,
+        ST_BEGIN("m34_coherent_composite");
+        ST_PASS("m34_coherent composite=%d undo=%d save=%d", m34Composite ? 1 : 0,
                      m34Undo ? 1 : 0,
                      m34Save ? 1 : 0);
-        std::fflush(stderr);
         if (!m34Composite) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M34 composite coherence wrong\n");
-            return 79;
+            ST_FAIL(79, "M34 composite coherence wrong");
         }
         if (!m34Undo) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M34 undo/redo wrong\n");
-            return 80;
+            ST_FAIL(80, "M34 undo/redo wrong");
         }
         if (!m34Save) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M34 save round-trip wrong\n");
-            return 81;
+            ST_FAIL(81, "M34 save round-trip wrong");
         }
         frame.closeDocument(frame.activeDocumentIndex(), false);
         frame.closeDocument(m34DocIndex, false);
@@ -2285,15 +2070,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         pictura::PictureView* m35View = frame.activeView();
         pictura::ImageView* m35Canvas = frame.imageView();
         if (!m35Created || !m35View || !m35Canvas) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M35 document\n");
-            std::fflush(stderr);
-            return 82;
+            ST_FAIL(82, "M35 document");
         }
         const int m35DocIndex = frame.activeDocumentIndex();
         if (!m35View->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M35 canvas growth\n");
-            std::fflush(stderr);
-            return 82;
+            ST_FAIL(82, "M35 canvas growth");
         }
         // Warm the present cache; the second paint at the same zoom must reuse it.
         QImage m35Warm(m35Canvas->size(), QImage::Format_ARGB32);
@@ -2327,22 +2108,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m35CanvasSame = samePixels(m35Blitted, m35Full);
         const bool m35RebuiltSame = samePixels(m35Rebuilt, m35Full);
         const bool m35CacheOk = m35ReuseBefore && m35CacheRebuiltAfter;
-        std::fprintf(stderr,
-                     "pictura self-test: m35_region_blit region=%d changed=%d canvas=%d "
-                     "rebuilt=%d cache=%d\n",
-                     m35RegionPath ? 1 : 0,
+        ST_BEGIN("m35_region_blit_region");
+        ST_PASS("m35_region_blit region=%d changed=%d canvas=%d "
+                     "rebuilt=%d cache=%d", m35RegionPath ? 1 : 0,
                      m35Changed > 0 ? 1 : 0,
                      m35CanvasSame ? 1 : 0,
                      m35RebuiltSame ? 1 : 0,
                      m35CacheOk ? 1 : 0);
-        std::fflush(stderr);
         if (!m35Previewed || !m35Moved || !m35RegionPath || !m35CanvasSame || !m35RebuiltSame) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M35 region blit wrong\n");
-            return 83;
+            ST_FAIL(83, "M35 region blit wrong");
         }
         if (!m35CacheOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M35 present cache wrong\n");
-            return 84;
+            ST_FAIL(84, "M35 present cache wrong");
         }
         frame.closeDocument(m35DocIndex, false);
 
@@ -2354,9 +2131,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         pictura::PictureView* m35bView = frame.activeView();
         pictura::ImageView* m35bCanvas = frame.imageView();
         if (!m35bCreated || !m35bView || !m35bCanvas) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M35 large document\n");
-            std::fflush(stderr);
-            return 82;
+            ST_FAIL(82, "M35 large document");
         }
         const int m35bDocIndex = frame.activeDocumentIndex();
         // Run this pass on the CPU compositor to exercise the region-blit path
@@ -2377,15 +2152,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const QImage m35bFull = m35bCanvas->image();
         const bool m35bRegionPath = m35bRegionBlits >= 1 && m35bChanged == 0;
         const bool m35bCanvasSame = samePixels(m35bBlitted, m35bFull);
-        std::fprintf(stderr,
-                     "pictura self-test: m35_region_large region=%d recomposite=%d canvas=%d\n",
-                     m35bRegionPath ? 1 : 0,
+        ST_BEGIN("m35_region_large_region");
+        ST_PASS("m35_region_large region=%d recomposite=%d canvas=%d", m35bRegionPath ? 1 : 0,
                      m35bChanged > 0 ? 1 : 0,
                      m35bCanvasSame ? 1 : 0);
-        std::fflush(stderr);
         if (!m35bMoved || !m35bRegionPath || !m35bCanvasSame) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M35 large-region blit wrong\n");
-            return 85;
+            ST_FAIL(85, "M35 large-region blit wrong");
         }
         frame.closeDocument(m35bDocIndex, false);
 
@@ -2398,17 +2170,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool mpcAfterMove = mpcView && mpcView->commit_move(1, 1) && mpcView->begin_move_preview() && mpcView->move_preview_cache_hit(); if (mpcView) mpcView->set_layer_visible(0, false);
         const bool mpcMiss = mpcView && mpcView->begin_move_preview() && !mpcView->move_preview_cache_hit();
         if (mpcView) mpcView->end_move_preview();
-        std::fprintf(stderr, "pictura self-test: move_preview_cache hit=%d reuse=%d after_move=%d miss=%d\n", mpcHit ? 1 : 0, mpcReuse ? 1 : 0, mpcAfterMove ? 1 : 0, mpcMiss ? 1 : 0);
-        std::fflush(stderr);
-        if (!mpcHit || !mpcReuse || !mpcAfterMove || !mpcMiss) { std::fprintf(stderr, "pictura self-test: FAIL: move preview cache wrong\n"); return 197; }
+        ST_BEGIN("move_preview_cache_hit");
+        ST_PASS("move_preview_cache hit=%d reuse=%d after_move=%d miss=%d", mpcHit ? 1 : 0, mpcReuse ? 1 : 0, mpcAfterMove ? 1 : 0, mpcMiss ? 1 : 0);
+        if (!mpcHit || !mpcReuse || !mpcAfterMove || !mpcMiss) { ST_FAIL(197, "move preview cache wrong"); }
         frame.closeDocument(frame.activeDocumentIndex(), false);
         // Document size accessors: match full-image dims, then track a resize. 198: size.
         const bool dsCreated = frame.newDocument(QStringLiteral("DocSize"), 20, 12, QStringLiteral("rgb"), 8, QStringLiteral("white"));
         pictura::PictureView* dsView = frame.activeView();
         const bool dsMatch = dsCreated && dsView && dsView->document_width() == dsView->image().width() && dsView->document_height() == dsView->image().height();
         const bool dsResized = dsView && dsView->resize_canvas(QStringLiteral("top-left"), 30, 18) && dsView->document_width() == 30 && dsView->document_height() == 18 && dsView->document_width() == dsView->image().width() && dsView->document_height() == dsView->image().height();
-        std::fprintf(stderr, "pictura self-test: document_size match=%d resized=%d\n", dsMatch ? 1 : 0, dsResized ? 1 : 0); std::fflush(stderr);
-        if (!dsMatch || !dsResized) { std::fprintf(stderr, "pictura self-test: FAIL: document size wrong\n"); return 198; }
+        ST_BEGIN("document_size_match");
+        ST_PASS("document_size match=%d resized=%d", dsMatch ? 1 : 0, dsResized ? 1 : 0);
+        if (!dsMatch || !dsResized) { ST_FAIL(198, "document size wrong"); }
         frame.closeDocument(frame.activeDocumentIndex(), false);
         // M36: layer attributes through the bridge — fill, lock, color, each one
         // history state and undoable. 86: fill; 87: lock; 88: color; 89: undo.
@@ -2417,9 +2190,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("white"));
         pictura::PictureView* m36View = frame.activeView();
         if (!m36Created || !m36View) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M36 document\n");
-            std::fflush(stderr);
-            return 86;
+            ST_FAIL(86, "M36 document");
         }
         const int m36DocIndex = frame.activeDocumentIndex();
         const int m36HistBase = m36View->history_count();
@@ -2444,27 +2215,22 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                              && m36View->undo() && m36View->layer_fill(0) == 255
                              && m36View->redo() && m36View->redo() && m36View->redo()
                              && m36View->layer_fill(0) == 128 && m36View->layer_color(0) == 3;
-        std::fprintf(stderr, "pictura self-test: m36_attrs fill=%d lock=%d color=%d undo=%d\n",
-                     m36FillOk ? 1 : 0,
+        ST_BEGIN("m36_attrs_fill");
+        ST_PASS("m36_attrs fill=%d lock=%d color=%d undo=%d", m36FillOk ? 1 : 0,
                      m36LockOk ? 1 : 0,
                      m36ColorOk ? 1 : 0,
                      m36Undo ? 1 : 0);
-        std::fflush(stderr);
         if (!m36FillOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M36 fill\n");
-            return 86;
+            ST_FAIL(86, "M36 fill");
         }
         if (!m36LockOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M36 lock\n");
-            return 87;
+            ST_FAIL(87, "M36 lock");
         }
         if (!m36ColorOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M36 color\n");
-            return 88;
+            ST_FAIL(88, "M36 color");
         }
         if (!m36Undo) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M36 undo restore\n");
-            return 89;
+            ST_FAIL(89, "M36 undo restore");
         }
         frame.closeDocument(m36DocIndex, false);
         // M37: layer creation and grouping. Each op is exactly one history
@@ -2475,8 +2241,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("white"));
         pictura::PictureView* m37View = frame.activeView();
         if (!m37Created || !m37View) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m37 no view\n");
-            return 90;
+            ST_FAIL(90, "m37 no view");
         }
         const int m37DocIndex = frame.activeDocumentIndex();
         const int m37BaseCount = m37View->layer_count();
@@ -2519,29 +2284,27 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         m37UndoOk = m37UndoOk && m37View->layer_count() == m37BaseCount;
 
-        std::fprintf(stderr,
-                     "pictura self-test: m37_create new=%d group=%d duplicate=%d "
-                     "ungroup=%d undo=%d\n",
-                     m37AddOk ? 1 : 0,
+        ST_BEGIN("m37_create_new");
+        ST_PASS("m37_create new=%d group=%d duplicate=%d "
+                     "ungroup=%d undo=%d", m37AddOk ? 1 : 0,
                      m37GroupOk ? 1 : 0,
                      m37DupOk ? 1 : 0,
                      m37UngroupOk ? 1 : 0,
                      m37UndoOk ? 1 : 0);
-        std::fflush(stderr);
         if (!m37AddOk) {
-            return 90;
+            ST_FAIL(90, "m37 add failed");
         }
         if (!m37GroupOk) {
-            return 91;
+            ST_FAIL(91, "m37 group failed");
         }
         if (!m37DupOk) {
-            return 92;
+            ST_FAIL(92, "m37 duplicate failed");
         }
         if (!m37UngroupOk) {
-            return 93;
+            ST_FAIL(93, "m37 ungroup failed");
         }
         if (!m37UndoOk) {
-            return 94;
+            ST_FAIL(94, "m37 undo failed");
         }
         frame.closeDocument(m37DocIndex, false);
         // M38: the frozen 71-tool catalogue, its icons/cursors/hotspots, the
@@ -2597,30 +2360,22 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         probe.setActiveTool(pictura::ToolId::MagicWand);
         const bool guardOk = probe.activeTool() == guardBefore;
 
-        std::fprintf(stderr,
-                     "pictura self-test: m38_tools icons=%d cursors=%d slots=%d guard=%d\n",
-                     iconsOk,
+        ST_BEGIN("m38_tools_icons");
+        ST_PASS("m38_tools icons=%d cursors=%d slots=%d guard=%d", iconsOk,
                      cursorsOk,
                      slotsOk,
                      guardOk ? 1 : 0);
-        std::fflush(stderr);
         if (!iconsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m38 tool icon missing=%s\n",
-                         missingToolIcon.toLocal8Bit().constData());
-            return 95;
+            ST_FAIL(95, "m38 tool icon missing=%s", missingToolIcon.toLocal8Bit().constData());
         }
         if (!cursorsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m38 tool cursor missing=%s\n",
-                         missingToolCursor.toLocal8Bit().constData());
-            return 96;
+            ST_FAIL(96, "m38 tool cursor missing=%s", missingToolCursor.toLocal8Bit().constData());
         }
         if (!slotsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m38 toolbox slots wrong\n");
-            return 97;
+            ST_FAIL(97, "m38 toolbox slots wrong");
         }
         if (!guardOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m38 unimplemented tool activated\n");
-            return 98;
+            ST_FAIL(98, "m38 unimplemented tool activated");
         }
         // M38 panels: the former rail icon ids now live on the PanelColumn
         // group tabs, plus the Layers action strip and the History snapshot
@@ -2707,24 +2462,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m38Snapshot
             && sameIcon(m38Snapshot->icon(), pictura::icon(QStringLiteral("history.snapshot")));
 
-        std::fprintf(stderr, "pictura self-test: m38_panels rail=%d strip=%d history=%d\n",
-                     m38RailOk ? 1 : 0,
+        ST_BEGIN("m38_panels_rail");
+        ST_PASS("m38_panels rail=%d strip=%d history=%d", m38RailOk ? 1 : 0,
                      m38StripPass ? 1 : 0,
                      m38HistoryOk ? 1 : 0);
-        std::fflush(stderr);
         if (!m38RailOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m38 rail icon missing=%s\n",
-                         m38RailMissing.toLocal8Bit().constData());
-            return 99;
+            ST_FAIL(99, "m38 rail icon missing=%s", m38RailMissing.toLocal8Bit().constData());
         }
         if (!m38StripPass) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m38 strip button wrong=%s\n",
-                         m38StripWrong.toLocal8Bit().constData());
-            return 100;
+            ST_FAIL(100, "m38 strip button wrong=%s", m38StripWrong.toLocal8Bit().constData());
         }
         if (!m38HistoryOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: m38 snapshot icon wrong\n");
-            return 101;
+            ST_FAIL(101, "m38 snapshot icon wrong");
         }
         // M39: the layers panel's tree projection, multi-selection batches,
         // solo visibility, Tab rename, Panel Options, badges, menus, tooltips,
@@ -2736,9 +2485,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("white"));
         pictura::PictureView* m39View = frame.activeView();
         if (!m39Created || !m39View || !m39Panel) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 document/panel\n");
-            std::fflush(stderr);
-            return 102;
+            ST_FAIL(102, "M39 document/panel");
         }
         const int m39DocIndex = frame.activeDocumentIndex();
 
@@ -2797,16 +2544,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             && m39View->history_count() == m39RenameBase + 1
             && !m39View->set_layer_name_path(QStringLiteral("1/9"), QStringLiteral("Bogus"))
             && m39View->history_count() == m39RenameBase + 1;
-        std::fprintf(stderr, "pictura self-test: m39_tree order=%d add=%d rename=%d\n",
-                     m39OrderOk ? 1 : 0, m39AddOk ? 1 : 0, m39TreeRenameOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_tree_order");
+        ST_PASS("m39_tree order=%d add=%d rename=%d", m39OrderOk ? 1 : 0, m39AddOk ? 1 : 0, m39TreeRenameOk ? 1 : 0);
         if (!m39OrderOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 projection order\n");
-            return 102;
+            ST_FAIL(102, "M39 projection order");
         }
         if (!m39AddOk || !m39TreeRenameOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 tree add/nested rename\n");
-            return 103;
+            ST_FAIL(103, "M39 tree add/nested rename");
         }
 
         // 8.2 m39_multi (104-105): a batch is one undo step, the Background and
@@ -2850,18 +2594,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m39UngroupOk =
             m39Ungrouped == 1 && m39View->history_count() == m39UngroupBase + 1;
 
-        std::fprintf(stderr,
-                     "pictura self-test: m39_multi batch=%d skip=%d group=%d undo=%d\n",
-                     m39BatchOk ? 1 : 0, m39SkipOk ? 1 : 0,
+        ST_BEGIN("m39_multi_batch");
+        ST_PASS("m39_multi batch=%d skip=%d group=%d undo=%d", m39BatchOk ? 1 : 0, m39SkipOk ? 1 : 0,
                      (m39GroupStepOk && m39UngroupOk) ? 1 : 0, m39BatchUndoOk ? 1 : 0);
-        std::fflush(stderr);
         if (!m39BatchOk || !m39SkipOk || !m39BatchUndoOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 multi-selection batch\n");
-            return 104;
+            ST_FAIL(104, "M39 multi-selection batch");
         }
         if (!m39GroupStepOk || !m39UngroupOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 multi group/ungroup\n");
-            return 105;
+            ST_FAIL(105, "M39 multi group/ungroup");
         }
 
         // 8.3 m39_solo (106): Alt-solo hides every other row, a second Alt
@@ -2903,12 +2643,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 && m39View->layer_row_visible(i)
                        == !m39PriorHidden.contains(m39View->layer_row_path(i));
         }
-        std::fprintf(stderr, "pictura self-test: m39_solo solo=%d restore=%d undo=%d\n",
-                     m39SoloOk ? 1 : 0, m39SoloRestoreOk ? 1 : 0, m39SoloUndoOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_solo_solo");
+        ST_PASS("m39_solo solo=%d restore=%d undo=%d", m39SoloOk ? 1 : 0, m39SoloRestoreOk ? 1 : 0, m39SoloUndoOk ? 1 : 0);
         if (!m39SoloOk || !m39SoloRestoreOk || !m39SoloUndoOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 solo visibility\n");
-            return 106;
+            ST_FAIL(106, "M39 solo visibility");
         }
 
         // 8.4 m39_rename (107): Tab commits and moves down, Shift+Tab up, and
@@ -2970,12 +2708,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             && m39View->layer_row_name(m39RowOf(m39LastRow)) == QStringLiteral("Last")
             && m39Panel->currentPath() == m39LastRow;
         const bool m39NowrapOk = m39NoWrapFirst && m39NoWrapLast;
-        std::fprintf(stderr, "pictura self-test: m39_rename down=%d up=%d nowrap=%d\n",
-                     m39DownOk ? 1 : 0, m39UpOk ? 1 : 0, m39NowrapOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_rename_down");
+        ST_PASS("m39_rename down=%d up=%d nowrap=%d", m39DownOk ? 1 : 0, m39UpOk ? 1 : 0, m39NowrapOk ? 1 : 0);
         if (!m39DownOk || !m39UpOk || !m39NowrapOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 Tab rename\n");
-            return 107;
+            ST_FAIL(107, "M39 Tab rename");
         }
 
         // 8.5 m39_options (108): the defaults are Medium / Entire Document /
@@ -2997,12 +2733,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             && m39Reloaded->thumbContentsForTest() == 1
             && !m39Reloaded->expandNewEffectsForTest();
         delete m39Reloaded;
-        std::fprintf(stderr, "pictura self-test: m39_options defaults=%d roundtrip=%d\n",
-                     m39DefaultsOk ? 1 : 0, m39RoundtripOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_options_defaults");
+        ST_PASS("m39_options defaults=%d roundtrip=%d", m39DefaultsOk ? 1 : 0, m39RoundtripOk ? 1 : 0);
         if (!m39DefaultsOk || !m39RoundtripOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 panel options\n");
-            return 108;
+            ST_FAIL(108, "M39 panel options");
         }
 
         // 8.6 m39_badges (109): the mask and adjustment badge data reaches the
@@ -3023,12 +2757,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                   == m39View->layer_row_clipping(i)
                            && !m39Panel->rowClipBaseForTest(path);
         }
-        std::fprintf(stderr, "pictura self-test: m39_badges mask=%d fx=%d clip=%d\n",
-                     m39BadgeMask ? 1 : 0, m39BadgeFx ? 1 : 0, m39BadgeClip ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_badges_mask");
+        ST_PASS("m39_badges mask=%d fx=%d clip=%d", m39BadgeMask ? 1 : 0, m39BadgeFx ? 1 : 0, m39BadgeClip ? 1 : 0);
         if (!m39BadgeMask || !m39BadgeFx || !m39BadgeClip) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 row badges\n");
-            return 109;
+            ST_FAIL(109, "M39 row badges");
         }
 
         // m39_menus (110): the panel and row menus carry exactly the wired
@@ -3052,12 +2784,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m39PanelMenuOk = m39Panel->panelMenuTextsForTest() == m39ExpectedPanel;
         const bool m39RowMenuOk = m39Panel->rowMenuTextsForTest() == m39ExpectedRow;
         const bool m39ColorMenuOk = m39Panel->colorLabelTextsForTest() == m39ExpectedColor;
-        std::fprintf(stderr, "pictura self-test: m39_menus panel=%d row=%d color=%d\n",
-                     m39PanelMenuOk ? 1 : 0, m39RowMenuOk ? 1 : 0, m39ColorMenuOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_menus_panel");
+        ST_PASS("m39_menus panel=%d row=%d color=%d", m39PanelMenuOk ? 1 : 0, m39RowMenuOk ? 1 : 0, m39ColorMenuOk ? 1 : 0);
         if (!m39PanelMenuOk || !m39RowMenuOk || !m39ColorMenuOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 panel/row menus\n");
-            return 110;
+            ST_FAIL(110, "M39 panel/row menus");
         }
 
         // m39_tooltip (111): every row's tooltip is "<name> (<kind>)".
@@ -3074,11 +2804,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             && m39AdjTip
                    == QStringLiteral("%1 (adjustment)")
                           .arg(m39View->layer_row_name(m39RowOf(QStringLiteral("2"))));
-        std::fprintf(stderr, "pictura self-test: m39_tooltip ok=%d\n", m39TipOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_tooltip_ok");
+        ST_PASS("m39_tooltip ok=%d", m39TipOk ? 1 : 0);
         if (!m39TipOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 row tooltip\n");
-            return 111;
+            ST_FAIL(111, "M39 row tooltip");
         }
 
         // m39_strip (112): exactly the seven CS6 strip buttons, no Move text
@@ -3107,11 +2836,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m39StripOk =
             m39StripFound == m39StripNames.size() && m39NoMoveButtons;
-        std::fprintf(stderr, "pictura self-test: m39_strip seven=%d\n", m39StripOk ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m39_strip_seven");
+        ST_PASS("m39_strip seven=%d", m39StripOk ? 1 : 0);
         if (!m39StripOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M39 action strip\n");
-            return 112;
+            ST_FAIL(112, "M39 action strip");
         }
         // M40: the tools panel — one/two columns, the flyout indicator, opening,
         // and keys, Shift-key cycling, the standalone dock, and session v4.
@@ -3176,18 +2904,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m40Widened = m40Min2 > m40Min1 && m40Width2 >= m40Width1;
         const bool m40ColumnsOk = m40Default && m40Restored && m40RowMajor && m40Widened;
         const bool m40PinnedOk = m40Pinned1 && m40Pinned2;
-        std::fprintf(stderr, "pictura self-test: m40_columns default=%d two=%d pinned=%d\n",
-                     m40Default ? 1 : 0,
+        ST_BEGIN("m40_columns_default");
+        ST_PASS("m40_columns default=%d two=%d pinned=%d", m40Default ? 1 : 0,
                      (m40Restored && m40RowMajor && m40Widened) ? 1 : 0,
                      m40PinnedOk ? 1 : 0);
-        std::fflush(stderr);
         if (!m40ColumnsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M40 column layout\n");
-            return 113;
+            ST_FAIL(113, "M40 column layout");
         }
         if (!m40PinnedOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M40 pinned controls\n");
-            return 114;
+            ST_FAIL(114, "M40 pinned controls");
         }
 
         // m40_flyout (115): a multi-member group shows the triangle and opens a
@@ -3230,15 +2955,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m40FlyoutOk = m40TriMulti && m40TriSingle && m40MenuActions && m40Below;
-        std::fprintf(stderr, "pictura self-test: m40_flyout tri=%d/%d menu=%d below=%d\n",
-                     m40TriMulti ? 1 : 0,
+        ST_BEGIN("m40_flyout_tri");
+        ST_PASS("m40_flyout tri=%d/%d menu=%d below=%d", m40TriMulti ? 1 : 0,
                      m40SingleTri ? 1 : 0,
                      m40MenuActions ? 1 : 0,
                      m40Below ? 1 : 0);
-        std::fflush(stderr);
         if (!m40FlyoutOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M40 flyout\n");
-            return 115;
+            ST_FAIL(115, "M40 flyout");
         }
 
         // m40_keys (116): every flyout action carries the group's letter, visible
@@ -3267,13 +2990,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m40KeysOk = m40KeysShown && m40KeysDisabled;
-        std::fprintf(stderr, "pictura self-test: m40_keys shown=%d disabled=%d\n",
-                     m40KeysShown ? 1 : 0,
+        ST_BEGIN("m40_keys_shown");
+        ST_PASS("m40_keys shown=%d disabled=%d", m40KeysShown ? 1 : 0,
                      m40KeysDisabled ? 1 : 0);
-        std::fflush(stderr);
         if (!m40KeysOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M40 flyout keys\n");
-            return 116;
+            ST_FAIL(116, "M40 flyout keys");
         }
 
         // m40_shift (117): drive the real QShortcut path by synthesizing a key
@@ -3306,16 +3027,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m40Toolbox->setShiftKeyForToolSwitch(true);
         }
         const bool m40ShiftOk = m40Plain && m40Shift && m40Wrap && m40NoImpl && m40Off;
-        std::fprintf(stderr,
-                     "pictura self-test: m40_shift plain=%d shift=%d noimpl=%d off=%d\n",
-                     m40Plain ? 1 : 0,
+        ST_BEGIN("m40_shift_plain");
+        ST_PASS("m40_shift plain=%d shift=%d noimpl=%d off=%d", m40Plain ? 1 : 0,
                      (m40Shift && m40Wrap) ? 1 : 0,
                      m40NoImpl ? 1 : 0,
                      m40Off ? 1 : 0);
-        std::fflush(stderr);
         if (!m40ShiftOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M40 shift cycling\n");
-            return 117;
+            ST_FAIL(117, "M40 shift cycling");
         }
 
         // m40_dock (118): M45 T2 restricts the allowed sides to left/right again
@@ -3338,14 +3056,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         QCoreApplication::processEvents();
         const bool m40NoTab = m40Dock && frame.tabifiedDockWidgets(m40Dock).isEmpty();
         const bool m40DockOk = m40Areas && m40Features && m40NoTab;
-        std::fprintf(stderr, "pictura self-test: m40_dock areas=%d feat=%d no_tab=%d\n",
-                     m40Areas ? 1 : 0,
+        ST_BEGIN("m40_dock_areas");
+        ST_PASS("m40_dock areas=%d feat=%d no_tab=%d", m40Areas ? 1 : 0,
                      m40Features ? 1 : 0,
                      m40NoTab ? 1 : 0);
-        std::fflush(stderr);
         if (!m40DockOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M40 standalone dock\n");
-            return 118;
+            ST_FAIL(118, "M40 standalone dock");
         }
 
         // m40_session (119): the two v4 fields round-trip, and a store lacking
@@ -3368,13 +3084,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m40Defaults =
                 m40Missing.toolsColumns == 1 && m40Missing.useShiftKeyForToolSwitch;
         }
-        std::fprintf(stderr, "pictura self-test: m40_session roundtrip=%d defaults=%d\n",
-                     m40Roundtrip ? 1 : 0,
+        ST_BEGIN("m40_session_roundtrip");
+        ST_PASS("m40_session roundtrip=%d defaults=%d", m40Roundtrip ? 1 : 0,
                      m40Defaults ? 1 : 0);
-        std::fflush(stderr);
         if (!m40Roundtrip || !m40Defaults) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M40 session v4\n");
-            return 119;
+            ST_FAIL(119, "M40 session v4");
         }
         // M41: the panel column — top tabs, the width toggle, the iconic strip
         // with its Qt::Popup flyout, the seven-item tab menu, minimize vs
@@ -3402,13 +3116,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m41TabsOk = m41Column && m41TabsNorth && m41SingleTab && m41NoLabel;
-        std::fprintf(stderr, "pictura self-test: m41_tabs tabs=north single=%d nolabel=%d\n",
-                     m41SingleTab ? 1 : 0,
+        ST_BEGIN("m41_tabs_tabs");
+        ST_PASS("m41_tabs tabs=north single=%d nolabel=%d", m41SingleTab ? 1 : 0,
                      m41NoLabel ? 1 : 0);
-        std::fflush(stderr);
         if (!m41TabsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 top tabs\n");
-            return 120;
+            ST_FAIL(120, "M41 top tabs");
         }
 
         // m41_width (121): the `panelColumnToggle` flips normal/iconic, the
@@ -3437,16 +3149,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m41Scroll = m41Column && m41Column->scrollableForTest();
         const bool m41WidthOk =
             m41ToggleExists && m41Flipped && m41ModeRestored && m41NoMin && m41Scroll;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_width toggle=%d modes=%d min=%d scroll=%d\n",
-                     m41ToggleExists ? 1 : 0,
+        ST_BEGIN("m41_width_toggle");
+        ST_PASS("m41_width toggle=%d modes=%d min=%d scroll=%d", m41ToggleExists ? 1 : 0,
                      (m41Flipped && m41ModeRestored) ? 1 : 0,
                      m41NoMin ? 1 : 0,
                      m41Scroll ? 1 : 0);
-        std::fflush(stderr);
         if (!m41WidthOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 column width toggle\n");
-            return 121;
+            ST_FAIL(121, "M41 column width toggle");
         }
 
         // m41_iconic (122): iconic mode shows the icon strip with a divider,
@@ -3491,18 +3200,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QCoreApplication::processEvents();
         }
         const bool m41IconicOk = m41Strip && m41Dividers && m41Labels && m41Popup && m41Restore;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_iconic strip=%d dividers=%d labels=%d popup=%d "
-                     "restore=%d\n",
-                     m41Strip ? 1 : 0,
+        ST_BEGIN("m41_iconic_strip");
+        ST_PASS("m41_iconic strip=%d dividers=%d labels=%d popup=%d "
+                     "restore=%d", m41Strip ? 1 : 0,
                      m41Dividers ? 1 : 0,
                      m41Labels ? 1 : 0,
                      m41Popup ? 1 : 0,
                      m41Restore ? 1 : 0);
-        std::fflush(stderr);
         if (!m41IconicOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 iconic strip\n");
-            return 122;
+            ST_FAIL(122, "M41 iconic strip");
         }
 
         // m41_menu (123): the seven tab-menu items in exact order, both
@@ -3541,14 +3247,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m41MenuOk =
             m41Menu.size() == 7 && m41MenuOrder && m41Check && m41OptionsFired;
-        std::fprintf(stderr, "pictura self-test: m41_menu count=%d order=%d check=%d\n",
-                     m41Menu.size(),
+        ST_BEGIN("m41_menu_count");
+        ST_PASS("m41_menu count=%d order=%d check=%d", m41Menu.size(),
                      m41MenuOrder ? 1 : 0,
                      m41Check ? 1 : 0);
-        std::fflush(stderr);
         if (!m41MenuOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 tab menu\n");
-            return 123;
+            ST_FAIL(123, "M41 tab menu");
         }
 
         // m41_minimize (124): minimize hides the content but keeps the tab bar,
@@ -3577,16 +3281,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QCoreApplication::processEvents();
         }
         const bool m41MinimizeOk = m41Min && m41Content && m41MinRestore && m41Icons;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_minimize min=%d content=%d restore=%d icons=%d\n",
-                     m41Min ? 1 : 0,
+        ST_BEGIN("m41_minimize_min");
+        ST_PASS("m41_minimize min=%d content=%d restore=%d icons=%d", m41Min ? 1 : 0,
                      m41Content ? 1 : 0,
                      m41MinRestore ? 1 : 0,
                      m41Icons ? 1 : 0);
-        std::fflush(stderr);
         if (!m41MinimizeOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 minimize\n");
-            return 124;
+            ST_FAIL(124, "M41 minimize");
         }
 
         // m41_tools (130): no `Tools` title, content-fit widths, and the
@@ -3617,16 +3318,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m41Fit = fg1 <= width1 && fg2 <= width2 && fg1 <= min1 && fg2 <= min2;
         }
         const bool m41ToolsOk = m41Title && m41Min1 && m41Min2 && m41Fit;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_tools title=%d min1=%d min2=%d fit=%d\n",
-                     m41Title ? 1 : 0,
+        ST_BEGIN("m41_tools_title");
+        ST_PASS("m41_tools title=%d min1=%d min2=%d fit=%d", m41Title ? 1 : 0,
                      m41Min1 ? 1 : 0,
                      m41Min2 ? 1 : 0,
                      m41Fit ? 1 : 0);
-        std::fflush(stderr);
         if (!m41ToolsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 tools panel\n");
-            return 130;
+            ST_FAIL(130, "M41 tools panel");
         }
 
         // m41_drag (126): a tab reorders within its group, a tab regroups into
@@ -3712,18 +3410,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m41DragOk = m41DragReorder && m41DragRegroup && m41DragInsert
                                && m41DragIndicator && m41DragClear;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_drag reorder=%d regroup=%d insert=%d indicator=%d "
-                     "clear=%d\n",
-                     m41DragReorder ? 1 : 0,
+        ST_BEGIN("m41_drag_reorder");
+        ST_PASS("m41_drag reorder=%d regroup=%d insert=%d indicator=%d "
+                     "clear=%d", m41DragReorder ? 1 : 0,
                      m41DragRegroup ? 1 : 0,
                      m41DragInsert ? 1 : 0,
                      m41DragIndicator ? 1 : 0,
                      m41DragClear ? 1 : 0);
-        std::fflush(stderr);
         if (!m41DragOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 drag and drop\n");
-            return 126;
+            ST_FAIL(126, "M41 drag and drop");
         }
 
         // m41_tearoff (127): tearing a group off the column creates a visible
@@ -3762,16 +3457,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m41TearoffOk = m41TearFloat && m41TearPanels && m41Redock && m41TearEmpty;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_tearoff float=%d panels=%d redock=%d empty=%d\n",
-                     m41TearFloat ? 1 : 0,
+        ST_BEGIN("m41_tearoff_float");
+        ST_PASS("m41_tearoff float=%d panels=%d redock=%d empty=%d", m41TearFloat ? 1 : 0,
                      m41TearPanels ? 1 : 0,
                      m41Redock ? 1 : 0,
                      m41TearEmpty ? 1 : 0);
-        std::fflush(stderr);
         if (!m41TearoffOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 tear-off and re-dock\n");
-            return 127;
+            ST_FAIL(127, "M41 tear-off and re-dock");
         }
         if (m41Column) {
             m41Column->setMinimumWidth(0);
@@ -3829,18 +3521,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m41PrefsOk = m41PrefsPages && m41PrefsOpen && m41PrefsRoundtrip
                                 && m41PrefsShift && m41PrefsIconic;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_prefs pages=%d open=%d roundtrip=%d shift=%d "
-                     "iconic=%d\n",
-                     m41Prefs ? m41Prefs->pagesForTest().size() : 0,
+        ST_BEGIN("m41_prefs_pages");
+        ST_PASS("m41_prefs pages=%d open=%d roundtrip=%d shift=%d "
+                     "iconic=%d", m41Prefs ? m41Prefs->pagesForTest().size() : 0,
                      m41PrefsOpen ? 1 : 0,
                      m41PrefsRoundtrip ? 1 : 0,
                      m41PrefsShift ? 1 : 0,
                      m41PrefsIconic ? 1 : 0);
-        std::fflush(stderr);
         if (!m41PrefsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 preferences dialog\n");
-            return 125;
+            ST_FAIL(125, "M41 preferences dialog");
         }
 
         // m41_session (128): the v5 fields round-trip through the real
@@ -3940,18 +3629,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m41SessionOk =
             m41V5 && m41Defaults && m41V4 && m41Unknown && m41Panels;
-        std::fprintf(stderr,
-                     "pictura self-test: m41_session v5=%d defaults=%d v4=%d unknown=%d "
-                     "panels=%d\n",
-                     m41V5 ? 1 : 0,
+        ST_BEGIN("m41_session_v5");
+        ST_PASS("m41_session v5=%d defaults=%d v4=%d unknown=%d "
+                     "panels=%d", m41V5 ? 1 : 0,
                      m41Defaults ? 1 : 0,
                      m41V4 ? 1 : 0,
                      m41Unknown ? 1 : 0,
                      m41Panels ? 1 : 0);
-        std::fflush(stderr);
         if (!m41SessionOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M41 session v5\n");
-            return 128;
+            ST_FAIL(128, "M41 session v5");
         }
         // M42 Phase A: the column's normal-mode minimum width and smallest-width
         // compact transition, the bigger strip and tool icons, the fg/bg swap
@@ -3988,18 +3674,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m42MinWidthOk =
             m42NormalWidth && m42IconicSmall && m42RestoredWidth;
-        std::fprintf(stderr,
-                     "pictura self-test: m42_minwidth normal=%d iconic=%d restored=%d "
-                     "min=%d strip=%d\n",
-                     m42NormalWidth ? 1 : 0,
+        ST_BEGIN("m42_minwidth_normal");
+        ST_PASS("m42_minwidth normal=%d iconic=%d restored=%d "
+                     "min=%d strip=%d", m42NormalWidth ? 1 : 0,
                      m42IconicSmall ? 1 : 0,
                      m42RestoredWidth ? 1 : 0,
                      m42NormalMin,
                      m42IconicMin);
-        std::fflush(stderr);
         if (!m42MinWidthOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 column minimum width\n");
-            return 131;
+            ST_FAIL(131, "M42 column minimum width");
         }
 
         // m42_iconic (132): the iconic-strip buttons and their pixmap are larger
@@ -4029,13 +3712,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QCoreApplication::processEvents();
         }
         const bool m42IconicOk = m42IconBig && m42IconSmallest;
-        std::fprintf(stderr, "pictura self-test: m42_iconic bigger=%d smallest=%d\n",
-                     m42IconBig ? 1 : 0,
+        ST_BEGIN("m42_iconic_bigger");
+        ST_PASS("m42_iconic bigger=%d smallest=%d", m42IconBig ? 1 : 0,
                      m42IconSmallest ? 1 : 0);
-        std::fflush(stderr);
         if (!m42IconicOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 iconic strip\n");
-            return 132;
+            ST_FAIL(132, "M42 iconic strip");
         }
 
         // m42_fgbg (137): the swap control exists as a real hit target, clicking
@@ -4077,15 +3758,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m42FgbgOk = m42SwapControl && m42SwapClick && m42SwapKey;
-        std::fprintf(stderr,
-                     "pictura self-test: m42_fgbg control=%d click=%d key=%d\n",
-                     m42SwapControl ? 1 : 0,
+        ST_BEGIN("m42_fgbg_control");
+        ST_PASS("m42_fgbg control=%d click=%d key=%d", m42SwapControl ? 1 : 0,
                      m42SwapClick ? 1 : 0,
                      m42SwapKey ? 1 : 0);
-        std::fflush(stderr);
         if (!m42FgbgOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 fg/bg swap\n");
-            return 137;
+            ST_FAIL(137, "M42 fg/bg swap");
         }
 
         // m42_menubar (138): no visible child widget's global geometry overlaps
@@ -4120,15 +3798,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m42RevisionSaved =
             pictura::loadSession().layoutRevision == frame.layoutRevisionForTest();
         const bool m42MenubarOk = m42MenuClear && m42StaleDiscarded && m42RevisionSaved;
-        std::fprintf(stderr, "pictura self-test: m42_menubar clear=%d stale=%d rev=%d\n",
-                     m42MenuClear ? 1 : 0,
+        ST_BEGIN("m42_menubar_clear");
+        ST_PASS("m42_menubar clear=%d stale=%d rev=%d", m42MenuClear ? 1 : 0,
                      m42StaleDiscarded ? 1 : 0,
                      m42RevisionSaved ? 1 : 0);
-        std::fflush(stderr);
         if (!m42MenubarOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 menu-bar overlay=%s\n",
-                         m42MenuOffender.toLocal8Bit().constData());
-            return 138;
+            ST_FAIL(138, "M42 menu-bar overlay=%s", m42MenuOffender.toLocal8Bit().constData());
         }
 
         // m42_tools (139): the slot/screen-mode icons are larger than M40 (30
@@ -4184,20 +3859,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QCoreApplication::processEvents();
         }
         const bool m42ToolsOk = m42ToolIcons && m42ToolTight && m42ToolFloat;
-        std::fprintf(stderr,
-                     "pictura self-test: m42_tools icons=%d tight=%d float=%d "
-                     "min1=%d content1=%d min2=%d content2=%d\n",
-                     m42ToolIcons ? 1 : 0,
+        ST_BEGIN("m42_tools_icons");
+        ST_PASS("m42_tools icons=%d tight=%d float=%d "
+                     "min1=%d content1=%d min2=%d content2=%d", m42ToolIcons ? 1 : 0,
                      m42ToolTight ? 1 : 0,
                      m42ToolFloat ? 1 : 0,
                      m42ToolMin1,
                      m42ToolContent1,
                      m42ToolMin2,
                      m42ToolContent2);
-        std::fflush(stderr);
         if (!m42ToolsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 tools geometry\n");
-            return 139;
+            ST_FAIL(139, "M42 tools geometry");
         }
 
         // m42_dragstrip (133): a strip icon reorders within the strip and the
@@ -4281,17 +3953,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m42DragStripOk =
             m42StripReorder && m42StripMove && m42StripIndicator && m42StripClear;
-        std::fprintf(stderr,
-                     "pictura self-test: m42_dragstrip reorder=%d move=%d indicator=%d "
-                     "clear=%d\n",
-                     m42StripReorder ? 1 : 0,
+        ST_BEGIN("m42_dragstrip_reorder");
+        ST_PASS("m42_dragstrip reorder=%d move=%d indicator=%d "
+                     "clear=%d", m42StripReorder ? 1 : 0,
                      m42StripMove ? 1 : 0,
                      m42StripIndicator ? 1 : 0,
                      m42StripClear ? 1 : 0);
-        std::fflush(stderr);
         if (!m42DragStripOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 strip drag\n");
-            return 133;
+            ST_FAIL(133, "M42 strip drag");
         }
 
         // m42_flyout (134): the flyout opens on the inner side of the right-hand
@@ -4324,16 +3993,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m42FlyoutOk =
             m42FlyoutSide && m42FlyoutActive && m42FlyoutGroup && m42FlyoutClose;
-        std::fprintf(stderr,
-                     "pictura self-test: m42_flyout side=%d active=%d group=%d close=%d\n",
-                     m42FlyoutSide ? 1 : 0,
+        ST_BEGIN("m42_flyout_side");
+        ST_PASS("m42_flyout side=%d active=%d group=%d close=%d", m42FlyoutSide ? 1 : 0,
                      m42FlyoutActive ? 1 : 0,
                      m42FlyoutGroup ? 1 : 0,
                      m42FlyoutClose ? 1 : 0);
-        std::fflush(stderr);
         if (!m42FlyoutOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 compact flyout\n");
-            return 134;
+            ST_FAIL(134, "M42 compact flyout");
         }
 
         // m42_widgetmenu (135): each group's tab header carries a per-widget
@@ -4406,17 +4072,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                QStringLiteral("historyPanel"));
         }
         const bool m42WmOk = m42WmButton && m42WmPerPanel && m42WmDisabled && m42WmNoClose;
-        std::fprintf(stderr,
-                     "pictura self-test: m42_widgetmenu button=%d perpanel=%d disabled=%d "
-                     "noclose=%d\n",
-                     m42WmButton ? 1 : 0,
+        ST_BEGIN("m42_widgetmenu_button");
+        ST_PASS("m42_widgetmenu button=%d perpanel=%d disabled=%d "
+                     "noclose=%d", m42WmButton ? 1 : 0,
                      m42WmPerPanel ? 1 : 0,
                      m42WmDisabled ? 1 : 0,
                      m42WmNoClose ? 1 : 0);
-        std::fflush(stderr);
         if (!m42WmOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 per-widget menu\n");
-            return 135;
+            ST_FAIL(135, "M42 per-widget menu");
         }
 
         // m42_float_overlay (136): a torn-off group is an in-window child
@@ -4481,17 +4144,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m42FloatOk =
             m42FloatChild && m42FloatClamped && m42FloatMove && m42FloatRedock;
-        std::fprintf(stderr,
-                     "pictura self-test: m42_float_overlay child=%d clipped=%d move=%d "
-                     "redock=%d\n",
-                     m42FloatChild ? 1 : 0,
+        ST_BEGIN("m42_float_overlay_child");
+        ST_PASS("m42_float_overlay child=%d clipped=%d move=%d "
+                     "redock=%d", m42FloatChild ? 1 : 0,
                      m42FloatClamped ? 1 : 0,
                      m42FloatMove ? 1 : 0,
                      m42FloatRedock ? 1 : 0);
-        std::fflush(stderr);
         if (!m42FloatOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M42 in-window float overlay\n");
-            return 136;
+            ST_FAIL(136, "M42 in-window float overlay");
         }
         // M43 Phase A: tab-vs-group drag + one-panel float (140), panel tab
         // colours (141), corner button at minimum width (142), one-panel float
@@ -4603,14 +4263,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m43TabDragOk = m43TabPanel && m43GroupPanel && m43FloatPanel;
-        std::fprintf(stderr, "pictura self-test: m43_tabdrag tab=%d group=%d floatpanel=%d\n",
-                     m43TabPanel ? 1 : 0,
+        ST_BEGIN("m43_tabdrag_tab");
+        ST_PASS("m43_tabdrag tab=%d group=%d floatpanel=%d", m43TabPanel ? 1 : 0,
                      m43GroupPanel ? 1 : 0,
                      m43FloatPanel ? 1 : 0);
-        std::fflush(stderr);
         if (!m43TabDragOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 tab vs group drag\n");
-            return 140;
+            ST_FAIL(140, "M43 tab vs group drag");
         }
 
         // m43_tabcolors (141): the panel tab bar is named `panelTabBar`; its
@@ -4644,14 +4302,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                               && docUnscoped && panelNamed;
         }
         const bool m43TabColorsOk = m43ColorsActive && m43ColorsInactive && m43ColorsDiffer;
-        std::fprintf(stderr, "pictura self-test: m43_tabcolors active=%d inactive=%d differ=%d\n",
-                     m43ColorsActive ? 1 : 0,
+        ST_BEGIN("m43_tabcolors_active");
+        ST_PASS("m43_tabcolors active=%d inactive=%d differ=%d", m43ColorsActive ? 1 : 0,
                      m43ColorsInactive ? 1 : 0,
                      m43ColorsDiffer ? 1 : 0);
-        std::fflush(stderr);
         if (!m43TabColorsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 panel tab colours\n");
-            return 141;
+            ST_FAIL(141, "M43 panel tab colours");
         }
 
         // m43_corner (142): at the column minimum width the `▾` corner button is
@@ -4682,13 +4338,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m43CornerOk = m43CornerVisible && m43CornerElide;
-        std::fprintf(stderr, "pictura self-test: m43_corner visible=%d elide=%d\n",
-                     m43CornerVisible ? 1 : 0,
+        ST_BEGIN("m43_corner_visible");
+        ST_PASS("m43_corner visible=%d elide=%d", m43CornerVisible ? 1 : 0,
                      m43CornerElide ? 1 : 0);
-        std::fflush(stderr);
         if (!m43CornerOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 corner button\n");
-            return 142;
+            ST_FAIL(142, "M43 corner button");
         }
 
         // m43_newcolumn (143): a panel dropped at the left or right workspace
@@ -4718,16 +4372,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m43TrySide(QStringLiteral("tools"), m43NewTools);
         }
         const bool m43NewColumnOk = m43NewLeft && m43NewRight && m43NewTools && m43NewRemoved;
-        std::fprintf(stderr,
-                     "pictura self-test: m43_newcolumn left=%d right=%d tools=%d removed=%d\n",
-                     m43NewLeft ? 1 : 0,
+        ST_BEGIN("m43_newcolumn_left");
+        ST_PASS("m43_newcolumn left=%d right=%d tools=%d removed=%d", m43NewLeft ? 1 : 0,
                      m43NewRight ? 1 : 0,
                      m43NewTools ? 1 : 0,
                      m43NewRemoved ? 1 : 0);
-        std::fflush(stderr);
         if (!m43NewColumnOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 new column drop\n");
-            return 143;
+            ST_FAIL(143, "M43 new column drop");
         }
 
         // m43_intogroup (144): dropping a panel inside another group inserts it
@@ -4778,14 +4429,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m43IntoGroupOk = m43IntoNormal && m43IntoCompact && m43IntoIndex;
-        std::fprintf(stderr, "pictura self-test: m43_intogroup normal=%d compact=%d index=%d\n",
-                     m43IntoNormal ? 1 : 0,
+        ST_BEGIN("m43_intogroup_normal");
+        ST_PASS("m43_intogroup normal=%d compact=%d index=%d", m43IntoNormal ? 1 : 0,
                      m43IntoCompact ? 1 : 0,
                      m43IntoIndex ? 1 : 0);
-        std::fflush(stderr);
         if (!m43IntoGroupOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 into-group drop\n");
-            return 144;
+            ST_FAIL(144, "M43 into-group drop");
         }
 
         // m43_boundary (145): dropping a panel above or below a group inserts a
@@ -4819,14 +4468,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m43Pump(4);
         }
         const bool m43BoundaryOk = m43Above && m43Below && m43BoundaryCompact;
-        std::fprintf(stderr, "pictura self-test: m43_boundary above=%d below=%d compact=%d\n",
-                     m43Above ? 1 : 0,
+        ST_BEGIN("m43_boundary_above");
+        ST_PASS("m43_boundary above=%d below=%d compact=%d", m43Above ? 1 : 0,
                      m43Below ? 1 : 0,
                      m43BoundaryCompact ? 1 : 0);
-        std::fflush(stderr);
         if (!m43BoundaryOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 boundary drop\n");
-            return 145;
+            ST_FAIL(145, "M43 boundary drop");
         }
 
         // m43_singlefloat (146): a one-panel float carries only its panel, and
@@ -4870,13 +4517,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m43SingleFloatOk = m43SinglePanel && m43SingleRedock;
-        std::fprintf(stderr, "pictura self-test: m43_singlefloat panel=%d redock=%d\n",
-                     m43SinglePanel ? 1 : 0,
+        ST_BEGIN("m43_singlefloat_panel");
+        ST_PASS("m43_singlefloat panel=%d redock=%d", m43SinglePanel ? 1 : 0,
                      m43SingleRedock ? 1 : 0);
-        std::fflush(stderr);
         if (!m43SingleFloatOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 single-panel float\n");
-            return 146;
+            ST_FAIL(146, "M43 single-panel float");
         }
 
         // m43_tools (147): the Tools dock width is fixed to its content width in
@@ -4922,19 +4567,16 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m43Pump(4);
         }
         const bool m43ToolsOk = m43ToolMin1 && m43ToolMin2 && m43ToolFloat && m43ToolLocked;
-        std::fprintf(stderr,
-                     "pictura self-test: m43_tools min1=%d min2=%d float=%d locked=%d "
-                     "content1=%d content2=%d\n",
-                     m43ToolMin1 ? 1 : 0,
+        ST_BEGIN("m43_tools_min1");
+        ST_PASS("m43_tools min1=%d min2=%d float=%d locked=%d "
+                     "content1=%d content2=%d", m43ToolMin1 ? 1 : 0,
                      m43ToolMin2 ? 1 : 0,
                      m43ToolFloat ? 1 : 0,
                      m43ToolLocked ? 1 : 0,
                      m43ToolsContent1,
                      m43ToolsContent2);
-        std::fflush(stderr);
         if (!m43ToolsOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 tools fixed width\n");
-            return 147;
+            ST_FAIL(147, "M43 tools fixed width");
         }
 
         // m43_icon (148): the compact strip button and pixmap are larger than
@@ -4957,11 +4599,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m41Column->setRailMode(false);
             m43Pump(4);
         }
-        std::fprintf(stderr, "pictura self-test: m43_icon bigger=%d\n", m43IconBigger ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m43_icon_bigger");
+        ST_PASS("m43_icon bigger=%d", m43IconBigger ? 1 : 0);
         if (!m43IconBigger) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 compact icon size\n");
-            return 148;
+            ST_FAIL(148, "M43 compact icon size");
         }
 
         // m43_flyout (149): the flyout meets the clicked button's actual edge on
@@ -4991,13 +4632,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             m43Pump(4);
         }
         const bool m43FlyoutOk = m43FlyoutInner && m43FlyoutNoOverlap;
-        std::fprintf(stderr, "pictura self-test: m43_flyout inner=%d nooverlap=%d\n",
-                     m43FlyoutInner ? 1 : 0,
+        ST_BEGIN("m43_flyout_inner");
+        ST_PASS("m43_flyout inner=%d nooverlap=%d", m43FlyoutInner ? 1 : 0,
                      m43FlyoutNoOverlap ? 1 : 0);
-        std::fflush(stderr);
         if (!m43FlyoutOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 inner-side flyout\n");
-            return 149;
+            ST_FAIL(149, "M43 inner-side flyout");
         }
 
         // m43_dreset (150): `D` resets the foreground to black and the
@@ -5025,13 +4664,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
         }
         const bool m43DResetOk = m43DResetFg && m43DResetBg;
-        std::fprintf(stderr, "pictura self-test: m43_dreset fg=%d bg=%d\n",
-                     m43DResetFg ? 1 : 0,
+        ST_BEGIN("m43_dreset_fg");
+        ST_PASS("m43_dreset fg=%d bg=%d", m43DResetFg ? 1 : 0,
                      m43DResetBg ? 1 : 0);
-        std::fflush(stderr);
         if (!m43DResetOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 default-colours reset\n");
-            return 150;
+            ST_FAIL(150, "M43 default-colours reset");
         }
 
         // m43_session (151): the v6 store carries the per-column layout. A
@@ -5124,18 +4761,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const bool m43SessionOk = m43SessionV6 && m43SessionColumns && m43SessionV5
                                   && m43SessionRound && m43SessionUnknown;
-        std::fprintf(stderr,
-                     "pictura self-test: m43_session v6=%d v5=%d columns=%d roundtrip=%d "
-                     "unknown=%d\n",
-                     m43SessionV6 ? 1 : 0,
+        ST_BEGIN("m43_session_v6");
+        ST_PASS("m43_session v6=%d v5=%d columns=%d roundtrip=%d "
+                     "unknown=%d", m43SessionV6 ? 1 : 0,
                      m43SessionV5 ? 1 : 0,
                      m43SessionColumns ? 1 : 0,
                      m43SessionRound ? 1 : 0,
                      m43SessionUnknown ? 1 : 0);
-        std::fflush(stderr);
         if (!m43SessionOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M43 session v6\n");
-            return 151;
+            ST_FAIL(151, "M43 session v6");
         }
 
         // m44_newdoc (153): E1. A newly created white document must present
@@ -5167,13 +4801,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m44Immediate = m44White && m44CanvasImage == m44Image;
         const bool m44NewdocOk = m44Made && m44Image.width() == 32 && m44Image.height() == 24
                                   && m44White && m44Uniform && m44Immediate;
-        std::fprintf(stderr,
-                     "pictura self-test: m44_newdoc white=%d uniform=%d immediate=%d\n",
-                     m44White ? 1 : 0, m44Uniform ? 1 : 0, m44Immediate ? 1 : 0);
-        std::fflush(stderr);
+        ST_BEGIN("m44_newdoc_white");
+        ST_PASS("m44_newdoc white=%d uniform=%d immediate=%d", m44White ? 1 : 0, m44Uniform ? 1 : 0, m44Immediate ? 1 : 0);
         if (!m44NewdocOk) {
-            std::fprintf(stderr, "pictura self-test: FAIL: M44 new-document render\n");
-            return 153;
+            ST_FAIL(153, "M44 new-document render");
         }
         frame.closeDocument(frame.documentCount() - 1, false);
         // M44 Phase B (154, 155, 156, 159, 161, 164, 165, 166): panel chrome,
@@ -5209,12 +4840,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m43Pump(2);
             }
-            std::fprintf(stderr, "pictura self-test: m44_chevrons mode=%d target=%d\n",
-                         m44ChevronsMode ? 1 : 0, m44ChevronsTarget ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_chevrons_mode");
+            ST_PASS("m44_chevrons mode=%d target=%d", m44ChevronsMode ? 1 : 0, m44ChevronsTarget ? 1 : 0);
             if (!(m44ChevronsMode && m44ChevronsTarget)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 collapse chevrons\n");
-                return 154;
+                ST_FAIL(154, "M44 collapse chevrons");
             }
 
             // 155: a restored layout leaves the first visible panel active, not
@@ -5239,12 +4868,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m44DefaultActive = m44DefaultActive && m44ActiveGroups > 0;
             }
-            std::fprintf(stderr, "pictura self-test: m44_defaultactive first=%d\n",
-                         m44DefaultActive ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_defaultactive_first");
+            ST_PASS("m44_defaultactive first=%d", m44DefaultActive ? 1 : 0);
             if (!m44DefaultActive) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 default active panel\n");
-                return 155;
+                ST_FAIL(155, "M44 default active panel");
             }
 
             // 156: the active panel tab matches the widget surface (`window`),
@@ -5260,15 +4887,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                   + m44BaseHex);
             const bool m44TabDiffer =
                 m44TabSelected && m44TabInactive && m44WindowHex != m44BaseHex;
-            std::fprintf(stderr,
-                         "pictura self-test: m44_tabswap selected=%d unselected=%d differ=%d\n",
-                         m44TabSelected ? 1 : 0,
+            ST_BEGIN("m44_tabswap_selected");
+            ST_PASS("m44_tabswap selected=%d unselected=%d differ=%d", m44TabSelected ? 1 : 0,
                          m44TabInactive ? 1 : 0,
                          m44TabDiffer ? 1 : 0);
-            std::fflush(stderr);
             if (!m44TabDiffer) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 panel tab colours\n");
-                return 156;
+                ST_FAIL(156, "M44 panel tab colours");
             }
 
             // 159: the inter-group splitter handle is thicker and darker grey.
@@ -5278,12 +4902,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool m44DividerDark = m44Sheet.contains(
                 QStringLiteral("QSplitter#panelColumnSplitter::handle { background: ")
                 + m44BorderHex);
-            std::fprintf(stderr, "pictura self-test: m44_divider thick=%d dark=%d\n",
-                         m44DividerThick ? 1 : 0, m44DividerDark ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_divider_thick");
+            ST_PASS("m44_divider thick=%d dark=%d", m44DividerThick ? 1 : 0, m44DividerDark ? 1 : 0);
             if (!(m44DividerThick && m44DividerDark)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 group divider\n");
-                return 159;
+                ST_FAIL(159, "M44 group divider");
             }
 
             // 161: the compact-strip group divider is dark grey, not white.
@@ -5299,12 +4921,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m43Pump(2);
             }
-            std::fprintf(stderr, "pictura self-test: m44_compactdivider dark=%d\n",
-                         m44CompactDividerDark ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_compactdivider_dark");
+            ST_PASS("m44_compactdivider dark=%d", m44CompactDividerDark ? 1 : 0);
             if (!m44CompactDividerDark) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 compact divider\n");
-                return 161;
+                ST_FAIL(161, "M44 compact divider");
             }
 
             // 164: at a strip width with room only beyond the icon button, the
@@ -5330,12 +4950,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m43Pump(2);
             }
-            std::fprintf(stderr, "pictura self-test: m44_elide partial=%d\n",
-                         m44ElidePartial ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_elide_partial");
+            ST_PASS("m44_elide partial=%d", m44ElidePartial ? 1 : 0);
             if (!m44ElidePartial) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 strip label elide\n");
-                return 164;
+                ST_FAIL(164, "M44 strip label elide");
             }
 
             // 165: the document tab strip has a dark grey right border and no
@@ -5352,12 +4970,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     QStringLiteral("QTabBar#documentTabBar { border-right: ") + m44BorderWidth
                     + QStringLiteral("px solid ") + m44BorderHex
                     + QStringLiteral("; border-top: 0; }"));
-            std::fprintf(stderr, "pictura self-test: m44_filebar right=%d notop=%d\n",
-                         m44FileRight ? 1 : 0, m44FileNoTop ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_filebar_right");
+            ST_PASS("m44_filebar right=%d notop=%d", m44FileRight ? 1 : 0, m44FileNoTop ? 1 : 0);
             if (!(m44FileRight && m44FileNoTop)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 document tab strip borders\n");
-                return 165;
+                ST_FAIL(165, "M44 document tab strip borders");
             }
 
             // 166: Tools, normal widget panels, and the compact strip share the
@@ -5378,15 +4994,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                   + m44WindowHex)
                 && m44Sheet.contains(QStringLiteral("QWidget#panelIconFlyout { background: ")
                                      + m44WindowHex);
-            std::fprintf(stderr,
-                         "pictura self-test: m44_panelborder tools=%d panel=%d compact=%d\n",
-                         m44PanelTools ? 1 : 0,
+            ST_BEGIN("m44_panelborder_tools");
+            ST_PASS("m44_panelborder tools=%d panel=%d compact=%d", m44PanelTools ? 1 : 0,
                          m44PanelNormal ? 1 : 0,
                          m44PanelCompact ? 1 : 0);
-            std::fflush(stderr);
             if (!(m44PanelTools && m44PanelNormal && m44PanelCompact && m44PanelParity)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 panel borders\n");
-                return 166;
+                ST_FAIL(166, "M44 panel borders");
             }
         }
         // M44 Phase C (157, 158, 160, 162, 163): float-drag continuation,
@@ -5436,15 +5049,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m44_floatdrag active=%d follows=%d release=%d\n",
-                         m44FdActive ? 1 : 0,
+            ST_BEGIN("m44_floatdrag_active");
+            ST_PASS("m44_floatdrag active=%d follows=%d release=%d", m44FdActive ? 1 : 0,
                          m44FdFollows ? 1 : 0,
                          m44FdRelease ? 1 : 0);
-            std::fflush(stderr);
             if (!(m44FdActive && m44FdFollows && m44FdRelease)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 float drag continuation\n");
-                return 157;
+                ST_FAIL(157, "M44 float drag continuation");
             }
 
             // 160: the compact flyout shares the docked widget's scoped
@@ -5464,12 +5074,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m43Pump(4);
             }
-            std::fprintf(stderr, "pictura self-test: m44_popupstyle parity=%d\n",
-                         m44PsParity ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_popupstyle_parity");
+            ST_PASS("m44_popupstyle parity=%d", m44PsParity ? 1 : 0);
             if (!m44PsParity) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 popup style parity\n");
-                return 160;
+                ST_FAIL(160, "M44 popup style parity");
             }
 
             // 162: compact drop placement. Onto a group inserts there; on the
@@ -5555,17 +5163,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m43Pump(4);
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m44_compactdrop into=%d between=%d above=%d "
-                         "below=%d\n",
-                         m44CdInto ? 1 : 0,
+            ST_BEGIN("m44_compactdrop_into");
+            ST_PASS("m44_compactdrop into=%d between=%d above=%d "
+                         "below=%d", m44CdInto ? 1 : 0,
                          m44CdBetween ? 1 : 0,
                          m44CdAbove ? 1 : 0,
                          m44CdBelow ? 1 : 0);
-            std::fflush(stderr);
             if (!(m44CdInto && m44CdBetween && m44CdAbove && m44CdBelow)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 compact drop\n");
-                return 162;
+                ST_FAIL(162, "M44 compact drop");
             }
 
             // 163: every compact group carries a dots grip and dragging it moves
@@ -5597,12 +5202,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m43Pump(4);
             }
-            std::fprintf(stderr, "pictura self-test: m44_draghandle dots=%d groupdrag=%d\n",
-                         m44DhDots ? 1 : 0, m44DhGroup ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m44_draghandle_dots");
+            ST_PASS("m44_draghandle dots=%d groupdrag=%d", m44DhDots ? 1 : 0, m44DhGroup ? 1 : 0);
             if (!(m44DhDots && m44DhGroup)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 compact drag handle\n");
-                return 163;
+                ST_FAIL(163, "M44 compact drag handle");
             }
 
             // 158: a widget column docks at the toolbar side, beside another
@@ -5671,17 +5274,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m44DsFloat = areas && locked;
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m44_docksides toolbar=%d column=%d workspace=%d "
-                         "float=%d\n",
-                         m44DsToolbar ? 1 : 0,
+            ST_BEGIN("m44_docksides_toolbar");
+            ST_PASS("m44_docksides toolbar=%d column=%d workspace=%d "
+                         "float=%d", m44DsToolbar ? 1 : 0,
                          m44DsColumn ? 1 : 0,
                          m44DsWorkspace ? 1 : 0,
                          m44DsFloat ? 1 : 0);
-            std::fflush(stderr);
             if (!(m44DsToolbar && m44DsColumn && m44DsWorkspace && m44DsFloat)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M44 any-side docking\n");
-                return 158;
+                ST_FAIL(158, "M44 any-side docking");
             }
         }
         // M45 Phase A (167-169): the Tools toolbar content sizing, left/right-only
@@ -5720,15 +5320,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m43Pump(8);
                 m45Stable = m40Toolbox->width() == cw1 && m40Toolbox->height() == ch1;
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m45_tools_sizing one=%d two=%d stable=%d "
-                         "w1=%d h1=%d w2=%d h2=%d\n",
-                         m45One ? 1 : 0, m45Two ? 1 : 0, m45Stable ? 1 : 0, m45W1, m45H1,
+            ST_BEGIN("m45_tools_sizing_one");
+            ST_PASS("m45_tools_sizing one=%d two=%d stable=%d "
+                         "w1=%d h1=%d w2=%d h2=%d", m45One ? 1 : 0, m45Two ? 1 : 0, m45Stable ? 1 : 0, m45W1, m45H1,
                          m45W2, m45H2);
-            std::fflush(stderr);
             if (!(m45One && m45Two && m45Stable)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 tools sizing\n");
-                return 167;
+                ST_FAIL(167, "M45 tools sizing");
             }
         }
 
@@ -5740,13 +5337,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool m45Right = m45Areas.testFlag(Qt::RightDockWidgetArea);
             const bool m45NoTop = !m45Areas.testFlag(Qt::TopDockWidgetArea)
                                   && !m45Areas.testFlag(Qt::BottomDockWidgetArea);
-            std::fprintf(stderr,
-                         "pictura self-test: m45_tools_sides left=%d right=%d notop=%d\n",
-                         m45Left ? 1 : 0, m45Right ? 1 : 0, m45NoTop ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_tools_sides_left");
+            ST_PASS("m45_tools_sides left=%d right=%d notop=%d", m45Left ? 1 : 0, m45Right ? 1 : 0, m45NoTop ? 1 : 0);
             if (!(m45Left && m45Right && m45NoTop)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 tools sides\n");
-                return 168;
+                ST_FAIL(168, "M45 tools sides");
             }
         }
 
@@ -5758,13 +5352,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 frame.toolboxBesideColumnForTest(QStringLiteral("left"), false);
             const bool m45BesideRight =
                 frame.toolboxBesideColumnForTest(QStringLiteral("right"), true);
-            std::fprintf(stderr,
-                         "pictura self-test: m45_tools_beside_column left=%d right=%d\n",
-                         m45BesideLeft ? 1 : 0, m45BesideRight ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_tools_beside_column_left");
+            ST_PASS("m45_tools_beside_column left=%d right=%d", m45BesideLeft ? 1 : 0, m45BesideRight ? 1 : 0);
             if (!(m45BesideLeft && m45BesideRight)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 tools beside column\n");
-                return 169;
+                ST_FAIL(169, "M45 tools beside column");
             }
         }
         // M45 Phase B (170-177): the widget-panel drop indicator is rendered
@@ -5884,12 +5475,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m45CollapseDynamics();
             }
-            std::fprintf(stderr, "pictura self-test: m45_indicator_side left=%d right=%d\n",
-                         m45SideLeft ? 1 : 0, m45SideRight ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_indicator_side_left");
+            ST_PASS("m45_indicator_side left=%d right=%d", m45SideLeft ? 1 : 0, m45SideRight ? 1 : 0);
             if (!(m45SideLeft && m45SideRight)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 indicator side\n");
-                return 170;
+                ST_FAIL(170, "M45 indicator side");
             }
 
             // 171: a cross-column IntoGroup drop shows the line in the target
@@ -5933,13 +5522,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m45CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m45_indicator_cross_column shown=%d placed=%d\n",
-                         m45CrossShown ? 1 : 0, m45CrossPlaced ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_indicator_cross_column_shown");
+            ST_PASS("m45_indicator_cross_column shown=%d placed=%d", m45CrossShown ? 1 : 0, m45CrossPlaced ? 1 : 0);
             if (!(m45CrossShown && m45CrossPlaced)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 cross-column indicator\n");
-                return 171;
+                ST_FAIL(171, "M45 cross-column indicator");
             }
 
             // 172: the rightmost tab insertion draws at that tab's index, not
@@ -5975,12 +5561,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                    && m41Column->groupForPanel(src) == target;
                 }
             }
-            std::fprintf(stderr, "pictura self-test: m45_indicator_rightmost_tab rightmost=%d\n",
-                         m45Rightmost ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_indicator_rightmost_tab_rightmost");
+            ST_PASS("m45_indicator_rightmost_tab rightmost=%d", m45Rightmost ? 1 : 0);
             if (!m45Rightmost) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 rightmost-tab indicator\n");
-                return 172;
+                ST_FAIL(172, "M45 rightmost-tab indicator");
             }
 
             // 173: a dynamic column emptied by a close path and by a move path
@@ -6048,12 +5632,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m45CollapseDynamics();
             }
-            std::fprintf(stderr, "pictura self-test: m45_empty_column_removed closed=%d moved=%d\n",
-                         m45Closed ? 1 : 0, m45Moved ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_empty_column_removed_closed");
+            ST_PASS("m45_empty_column_removed closed=%d moved=%d", m45Closed ? 1 : 0, m45Moved ? 1 : 0);
             if (!(m45Closed && m45Moved)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 empty column removed\n");
-                return 173;
+                ST_FAIL(173, "M45 empty column removed");
             }
 
             // 174: minimize collapses the group to its tab-bar height with the
@@ -6090,14 +5672,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     m45Pump(8);
                 }
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m45_minimize_collapse height=%d content=%d "
-                         "label=%d\n",
-                         m45MinHeight ? 1 : 0, m45MinContent ? 1 : 0, m45MinLabel ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_minimize_collapse_height");
+            ST_PASS("m45_minimize_collapse height=%d content=%d "
+                         "label=%d", m45MinHeight ? 1 : 0, m45MinContent ? 1 : 0, m45MinLabel ? 1 : 0);
             if (!(m45MinHeight && m45MinContent && m45MinLabel)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 minimize collapse\n");
-                return 174;
+                ST_FAIL(174, "M45 minimize collapse");
             }
 
             // 175: a bottom-boundary insert draws the horizontal line at the
@@ -6121,12 +5700,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                 && landed->titleCountForTest() == 1;
                 }
             }
-            std::fprintf(stderr, "pictura self-test: m45_indicator_bottom bottom=%d\n",
-                         m45Bottom ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_indicator_bottom_bottom");
+            ST_PASS("m45_indicator_bottom bottom=%d", m45Bottom ? 1 : 0);
             if (!m45Bottom) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 bottom indicator\n");
-                return 175;
+                ST_FAIL(175, "M45 bottom indicator");
             }
 
             // 176: the column never clips — the tab text elides, the corner
@@ -6154,12 +5731,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m45NoClipScroll = m41Column->horizontalScrollPolicyForTest()
                                   == static_cast<int>(Qt::ScrollBarAlwaysOff);
             }
-            std::fprintf(stderr, "pictura self-test: m45_no_clip elide=%d scroll=%d\n",
-                         m45NoClipElide ? 1 : 0, m45NoClipScroll ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_no_clip_elide");
+            ST_PASS("m45_no_clip elide=%d scroll=%d", m45NoClipElide ? 1 : 0, m45NoClipScroll ? 1 : 0);
             if (!(m45NoClipElide && m45NoClipScroll)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 no clip\n");
-                return 176;
+                ST_FAIL(176, "M45 no clip");
             }
 
             // 177: every normal-mode widget column shares one minimum-width
@@ -6199,12 +5774,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     m45CollapseDynamics();
                 }
             }
-            std::fprintf(stderr, "pictura self-test: m45_min_width_floor shared=%d notgone=%d\n",
-                         m45FloorShared ? 1 : 0, m45FloorNotGone ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_min_width_floor_shared");
+            ST_PASS("m45_min_width_floor shared=%d notgone=%d", m45FloorShared ? 1 : 0, m45FloorNotGone ? 1 : 0);
             if (!(m45FloorShared && m45FloorNotGone)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 min width floor\n");
-                return 177;
+                ST_FAIL(177, "M45 min width floor");
             }
         }
         // M45 Phase C (178-179): the compact popup hosts the whole PanelGroup
@@ -6266,15 +5839,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m45Pump(4);
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m45_popup_group tabs=%d active=%d parity=%d "
-                         "restore=%d\n",
-                         m45PopupTabs ? 1 : 0, m45PopupActive ? 1 : 0, m45PopupParity ? 1 : 0,
+            ST_BEGIN("m45_popup_group_tabs");
+            ST_PASS("m45_popup_group tabs=%d active=%d parity=%d "
+                         "restore=%d", m45PopupTabs ? 1 : 0, m45PopupActive ? 1 : 0, m45PopupParity ? 1 : 0,
                          m45PopupRestore ? 1 : 0);
-            std::fflush(stderr);
             if (!(m45PopupTabs && m45PopupActive && m45PopupParity && m45PopupRestore)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 popup group\n");
-                return 178;
+                ST_FAIL(178, "M45 popup group");
             }
 
             // 179: dragging a whole group in compact mode shows the placement
@@ -6306,12 +5876,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m41Column->setRailMode(false);
                 m45Pump(4);
             }
-            std::fprintf(stderr, "pictura self-test: m45_compact_group_line above=%d\n",
-                         m45CompactAbove ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m45_compact_group_line_above");
+            ST_PASS("m45_compact_group_line above=%d", m45CompactAbove ? 1 : 0);
             if (!m45CompactAbove) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M45 compact group line\n");
-                return 179;
+                ST_FAIL(179, "M45 compact group line");
             }
         }
 
@@ -6438,13 +6006,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m46_indicator_hidden_tab shown=%d placed=%d\n",
-                         m46HiddenShown ? 1 : 0, m46HiddenPlaced ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m46_indicator_hidden_tab_shown");
+            ST_PASS("m46_indicator_hidden_tab shown=%d placed=%d", m46HiddenShown ? 1 : 0, m46HiddenPlaced ? 1 : 0);
             if (!(m46HiddenShown && m46HiddenPlaced)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M46 hidden-tab indicator\n");
-                return 180;
+                ST_FAIL(180, "M46 hidden-tab indicator");
             }
 
             // 181: a cross-column drop onto a group body (and between two groups)
@@ -6515,16 +6080,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m46_indicator_cross_body shown=%d placed=%d "
-                         "boundary_shown=%d boundary_placed=%d\n",
-                         m46CrossShown ? 1 : 0, m46CrossPlaced ? 1 : 0,
+            ST_BEGIN("m46_indicator_cross_body_shown");
+            ST_PASS("m46_indicator_cross_body shown=%d placed=%d "
+                         "boundary_shown=%d boundary_placed=%d", m46CrossShown ? 1 : 0, m46CrossPlaced ? 1 : 0,
                          m46BoundaryShown ? 1 : 0, m46BoundaryPlaced ? 1 : 0);
-            std::fflush(stderr);
             if (!(m46CrossShown && m46CrossPlaced && m46BoundaryShown
                   && m46BoundaryPlaced)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M46 cross-column indicator\n");
-                return 181;
+                ST_FAIL(181, "M46 cross-column indicator");
             }
 
             // 182: the bottom-boundary line is clamped inside the scroll
@@ -6568,13 +6130,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m46_indicator_bottom_inside inside=%d\n",
-                         m46BottomInside ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m46_indicator_bottom_inside_inside");
+            ST_PASS("m46_indicator_bottom_inside inside=%d", m46BottomInside ? 1 : 0);
             if (!m46BottomInside) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M46 bottom inside viewport\n");
-                return 182;
+                ST_FAIL(182, "M46 bottom inside viewport");
             }
 
             // 183: a real title-bar press still drives the floating Tools drag
@@ -6624,13 +6183,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 tb->setFloating(false);
                 m46Pump(6);
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m46_tools_gesture moved=%d finished=%d\n",
-                         m46ToolsMoved ? 1 : 0, m46ToolsFinished ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m46_tools_gesture_moved");
+            ST_PASS("m46_tools_gesture moved=%d finished=%d", m46ToolsMoved ? 1 : 0, m46ToolsFinished ? 1 : 0);
             if (!(m46ToolsMoved && m46ToolsFinished)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M46 tools gesture\n");
-                return 183;
+                ST_FAIL(183, "M46 tools gesture");
             }
 
             // 184: neither splitter collapses a pane, and the column cannot be
@@ -6649,13 +6205,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m46ColumnKept = m41Column->isVisible()
                                 && m41Column->width() >= m41Column->minimumWidthForTest();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m46_splitter_nocollapse nocollapse=%d kept=%d\n",
-                         m46NoCollapse ? 1 : 0, m46ColumnKept ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m46_splitter_nocollapse_nocollapse");
+            ST_PASS("m46_splitter_nocollapse nocollapse=%d kept=%d", m46NoCollapse ? 1 : 0, m46ColumnKept ? 1 : 0);
             if (!(m46NoCollapse && m46ColumnKept)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M46 splitter no collapse\n");
-                return 184;
+                ST_FAIL(184, "M46 splitter no collapse");
             }
 
             // 185: minimizing a group whose content minimum exceeds its tab bar
@@ -6685,12 +6238,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     m46Pump(8);
                 }
             }
-            std::fprintf(stderr, "pictura self-test: m46_minimize_tall height=%d\n",
-                         m46MinTall ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m46_minimize_tall_height");
+            ST_PASS("m46_minimize_tall height=%d", m46MinTall ? 1 : 0);
             if (!m46MinTall) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M46 minimize tall group\n");
-                return 185;
+                ST_FAIL(185, "M46 minimize tall group");
             }
 
             // 186: the primary column hides when its last visible panel closes
@@ -6716,13 +6267,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     m41Column->show();
                 }
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m46_primary_empty hide=%d show=%d\n",
-                         m46PrimaryHide ? 1 : 0, m46PrimaryShow ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m46_primary_empty_hide");
+            ST_PASS("m46_primary_empty hide=%d show=%d", m46PrimaryHide ? 1 : 0, m46PrimaryShow ? 1 : 0);
             if (!(m46PrimaryHide && m46PrimaryShow)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M46 primary empty\n");
-                return 186;
+                ST_FAIL(186, "M46 primary empty");
             }
 
             // M47 (187-195): empty-column-after-float, ghost-group hiding,
@@ -6833,15 +6381,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m47CloseAllFloats();
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_empty_after_float gone=%d float=%d "
-                         "primary=%d\n",
-                         m47EmptyGone ? 1 : 0, m47EmptyFloat ? 1 : 0,
+            ST_BEGIN("m47_empty_after_float_gone");
+            ST_PASS("m47_empty_after_float gone=%d float=%d "
+                         "primary=%d", m47EmptyGone ? 1 : 0, m47EmptyFloat ? 1 : 0,
                          m47EmptyPrimary ? 1 : 0);
-            std::fflush(stderr);
             if (!(m47EmptyGone && m47EmptyFloat && m47EmptyPrimary)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 empty after float\n");
-                return 187;
+                ST_FAIL(187, "M47 empty after float");
             }
 
             // 188: moving the last visible tab out of a group hides the emptied
@@ -6878,14 +6423,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_ghost_group hidden=%d found=%d shown=%d\n",
-                         m47GhostHidden ? 1 : 0, m47GhostFound ? 1 : 0,
+            ST_BEGIN("m47_ghost_group_hidden");
+            ST_PASS("m47_ghost_group hidden=%d found=%d shown=%d", m47GhostHidden ? 1 : 0, m47GhostFound ? 1 : 0,
                          m47GhostShown ? 1 : 0);
-            std::fflush(stderr);
             if (!(m47GhostHidden && m47GhostFound && m47GhostShown)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 ghost group\n");
-                return 188;
+                ST_FAIL(188, "M47 ghost group");
             }
             // 189: a real press+move on a compact strip icon tears the panel
             // into a float that survives the (now non-rebuilding) strip and
@@ -6935,15 +6477,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m46Pump(6);
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_compact_icon_float drag=%d float=%d "
-                         "released=%d\n",
-                         m47IconDrag ? 1 : 0, m47IconFloat ? 1 : 0,
+            ST_BEGIN("m47_compact_icon_float_drag");
+            ST_PASS("m47_compact_icon_float drag=%d float=%d "
+                         "released=%d", m47IconDrag ? 1 : 0, m47IconFloat ? 1 : 0,
                          m47IconReleased ? 1 : 0);
-            std::fflush(stderr);
             if (!(m47IconDrag && m47IconFloat && m47IconReleased)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 compact icon float\n");
-                return 189;
+                ST_FAIL(189, "M47 compact icon float");
             }
             // 190: a single compact panel dropped on a group's grip creates a
             // new group immediately above (before) that group.
@@ -6986,12 +6525,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m46Pump(6);
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr, "pictura self-test: m47_compact_grip_group above=%d\n",
-                         m47GripGroup ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m47_compact_grip_group_above");
+            ST_PASS("m47_compact_grip_group above=%d", m47GripGroup ? 1 : 0);
             if (!m47GripGroup) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 compact grip group\n");
-                return 190;
+                ST_FAIL(190, "M47 compact grip group");
             }
             // 191: the column never scrolls horizontally, even at its minimum
             // width, because the shared floor keeps the content visible.
@@ -7007,13 +6544,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m47HScrollZero = m41Column->horizontalScrollRangeForTest() == 0;
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_no_hscroll off=%d range=%d\n",
-                         m47HScrollOff ? 1 : 0, m47HScrollZero ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m47_no_hscroll_off");
+            ST_PASS("m47_no_hscroll off=%d range=%d", m47HScrollOff ? 1 : 0, m47HScrollZero ? 1 : 0);
             if (!(m47HScrollOff && m47HScrollZero)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 no hscroll\n");
-                return 191;
+                ST_FAIL(191, "M47 no hscroll");
             }
             // 192: an iconic column is fixed to its strip width and a preferred
             // width change cannot grow it; leaving iconic clears the maximum.
@@ -7037,15 +6571,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 m47IconicExit = m41Column->maximumWidth() > stripMin;
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_iconic_fixed_width width=%d max=%d "
-                         "nogrow=%d exit=%d\n",
-                         m47IconicWidth ? 1 : 0, m47IconicMax ? 1 : 0,
+            ST_BEGIN("m47_iconic_fixed_width_width");
+            ST_PASS("m47_iconic_fixed_width width=%d max=%d "
+                         "nogrow=%d exit=%d", m47IconicWidth ? 1 : 0, m47IconicMax ? 1 : 0,
                          m47IconicNoGrow ? 1 : 0, m47IconicExit ? 1 : 0);
-            std::fflush(stderr);
             if (!(m47IconicWidth && m47IconicMax && m47IconicNoGrow && m47IconicExit)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 iconic fixed width\n");
-                return 192;
+                ST_FAIL(192, "M47 iconic fixed width");
             }
             // 193: the Tools panel is dropped between two widget columns and is
             // hosted as a fixed-width central-splitter pane at that index.
@@ -7097,14 +6628,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_tools_pane resolved=%d pane=%d index=%d\n",
-                         m47ToolsResolved ? 1 : 0, m47ToolsPane ? 1 : 0,
+            ST_BEGIN("m47_tools_pane_resolved");
+            ST_PASS("m47_tools_pane resolved=%d pane=%d index=%d", m47ToolsResolved ? 1 : 0, m47ToolsPane ? 1 : 0,
                          m47ToolsIndex ? 1 : 0);
-            std::fflush(stderr);
             if (!(m47ToolsResolved && m47ToolsPane && m47ToolsIndex)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 tools pane\n");
-                return 193;
+                ST_FAIL(193, "M47 tools pane");
             }
             // 194: a floating group shows a visible close control; closing it
             // removes the overlay, hides the group's panels, and keeps the group
@@ -7143,15 +6671,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 m46CollapseDynamics();
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_float_close button=%d closed=%d "
-                         "restore=%d\n",
-                         m47FloatCloseBtn ? 1 : 0, m47FloatClosed ? 1 : 0,
+            ST_BEGIN("m47_float_close_button");
+            ST_PASS("m47_float_close button=%d closed=%d "
+                         "restore=%d", m47FloatCloseBtn ? 1 : 0, m47FloatClosed ? 1 : 0,
                          m47FloatRestore ? 1 : 0);
-            std::fflush(stderr);
             if (!(m47FloatCloseBtn && m47FloatClosed && m47FloatRestore)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 float close\n");
-                return 194;
+                ST_FAIL(194, "M47 float close");
             }
             // 195: the compact group container uses the panel surface shade and
             // its drag dots are dark gray, not the near-white window text.
@@ -7173,13 +6698,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     m47Dots = rule.contains(QStringLiteral("color: ") + disabledHex);
                 }
             }
-            std::fprintf(stderr,
-                         "pictura self-test: m47_compact_shade shade=%d dots=%d\n",
-                         m47Shade ? 1 : 0, m47Dots ? 1 : 0);
-            std::fflush(stderr);
+            ST_BEGIN("m47_compact_shade_shade");
+            ST_PASS("m47_compact_shade shade=%d dots=%d", m47Shade ? 1 : 0, m47Dots ? 1 : 0);
             if (!(m47Shade && m47Dots)) {
-                std::fprintf(stderr, "pictura self-test: FAIL: M47 compact shade\n");
-                return 195;
+                ST_FAIL(195, "M47 compact shade");
             }
         }
 
@@ -7187,26 +6709,22 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {
-            std::fprintf(stderr, "pictura self-test: FAIL: no active canvas\n");
-            return 38;
+            ST_FAIL(38, "no active canvas");
         }
         const QPointF center(canvas->width() / 2.0, canvas->height() / 2.0);
         canvas->zoomAt(center, 120);
         const QPointF afterZoom = canvas->offset();
         canvas->panBy(QPointF(10.0, 5.0));
         if (canvas->zoom() <= 1.0 || canvas->offset() != afterZoom + QPointF(10.0, 5.0)) {
-            std::fprintf(stderr, "pictura self-test: FAIL: zoom/pan transform wrong\n");
-            return 3;
+            ST_FAIL(3, "zoom/pan transform wrong");
         }
-        std::fprintf(stderr,
-                     "pictura self-test: zoom=%.3f pan_ok=1\n",
-                     canvas->zoom());
-        std::fflush(stderr);
+        ST_BEGIN("zoom");
+        ST_PASS("zoom=%.3f pan_ok=1", canvas->zoom());
         // The self-test leaves dirty documents behind; headless shutdown closes
         // the window and must discard them without opening a modal prompt.
         pictura::setUnsavedPromptInteractive(false);
         pictura::setNonInteractiveUnsavedChoice(pictura::UnsavedChoice::Discard);
         QTimer::singleShot(2000, &app, &QCoreApplication::quit);
 
-    return 0;
+    ST_FINISH();
 }

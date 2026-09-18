@@ -1,0 +1,10 @@
+[profile.default]
+fail-fast = false
+status-level = "all"
+final-status-level = "all"
+failure-output = "final"
+success-output = "never"
+
+[profile.default.junit]
+path = "junit.xml"
+report-skipped = "ignored"

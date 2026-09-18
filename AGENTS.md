@@ -22,6 +22,9 @@ cargo fmt --all
 cargo clippy --all-targets -- -D warnings
 cargo nextest run --workspace          # preferred; cargo test --workspace is the fallback
 cargo test --workspace --doc           # doctests (nextest does not run them)
+bash scripts/test-report.sh            # unified report: nextest + doctests + app self-test
+bash scripts/verify-fast.sh            # fmt, clippy, test-report, file-size, guard, openspec
+bash scripts/verify-full.sh            # CMake app build first, then verify-fast (runs self-test)
 cargo deny check                       # licenses/advisories/bans
 cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld && cmake --build build --parallel
 ./build/pictura --headless --self-test         # headless Qt app self-test (also: with a .psd argument)
@@ -35,14 +38,20 @@ Ninja and `--parallel`.
 
 ## Testing
 
-- Suite: **592 tests, 9 ignored** (`cargo nextest run --workspace` preferred;
+- Suite: **592 tests, 8 ignored** (`cargo nextest run --workspace` preferred;
   `cargo test --workspace` is the fallback). Doctests run separately with
-  `cargo test --workspace --doc` — nextest does not run them.
+  `cargo test --workspace --doc` — nextest does not run them. nextest writes a
+  JUnit report to `target/nextest/default/junit.xml`.
 - External oracle tests (ImageMagick / `psd-tools`) self-skip when the tool is
   absent; CI has a dedicated `oracles` job that installs both so they run for
   real.
-- Local gates: `scripts/verify-fast.sh` (fmt, clippy, tests) and
-  `scripts/verify-full.sh` (adds the CMake app build and headless self-test).
+- `scripts/test-report.sh [auto|always|never]` runs nextest, doctests, and both
+  app self-test invocations, then prints one unified report via
+  `scripts/report_tests.py` (python3 stdlib; `python3 scripts/report_tests.py
+  --self-check` is the parser's runnable check).
+- Local gates: `scripts/verify-fast.sh` (fmt, clippy, test-report, file-size,
+  guard, openspec) and `scripts/verify-full.sh` (adds the CMake app build so the
+  headless self-test runs).
 
 ## Headless mode
 

@@ -4,4 +4,4 @@
 # lines starting with '#' are ignored. This list only shrinks: as files are
 # split along class/concern seams, remove their entry, and never raise a
 # recorded LOC — a file that grows is a violation.
-crates/pictura-app/cpp/selftest.cpp 7212
+crates/pictura-app/cpp/selftest.cpp 6730
