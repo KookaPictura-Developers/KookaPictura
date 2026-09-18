@@ -48,6 +48,7 @@ fn pixel_layer(name: &str, w: u32, h: u32, value: u8) -> Layer {
         ],
         children: Vec::new(),
         is_group: false,
+        background: name == "Background",
     }
 }
 
@@ -331,33 +332,84 @@ fn flatten_rows_is_topmost_first() {
 }
 
 #[test]
-fn is_background_uses_default_heuristic() {
-    let doc = doc_with(vec![
-        pixel_layer("Background", 4, 4, 0),
-        pixel_layer("Layer 1", 4, 4, 1),
-    ]);
-    assert!(is_background(&doc, "0"));
-    assert!(!is_background(&doc, "1"));
+fn is_background_reads_the_flag_not_position_or_name() {
+    // A flagged layer is the Background wherever it sits and whatever it is
+    // called; the flag is the only source of truth.
+    let mut flagged = pixel_layer("Not Background", 4, 4, 0);
+    flagged.background = true;
+    let doc = doc_with(vec![pixel_layer("Layer 1", 4, 4, 1), flagged]);
+    assert!(is_background(&doc, "1"));
+    assert!(!is_background(&doc, "0"));
     assert!(!is_background(&doc, "9"), "missing path");
 
-    let named_group = doc_with(vec![empty_group("Background")]);
-    assert!(
-        !is_background(&named_group, "0"),
-        "a group is not Background"
-    );
+    // An unflagged bottom layer named "Background" is not the Background.
+    let mut bottom = pixel_layer("Background", 4, 4, 0);
+    bottom.background = false;
+    let doc = doc_with(vec![bottom]);
+    assert!(!is_background(&doc, "0"));
 
-    let mut group = empty_group("Group 1");
-    group.children.push(pixel_layer("Background", 4, 4, 0));
-    let nested = doc_with(vec![group]);
-    assert!(!is_background(&nested, "0/0"), "nested is not top-level 0");
+    // A missing path resolves to false rather than panicking.
+    assert!(!is_background(&doc, "1/2"));
+}
 
-    let mut adjusted = pixel_layer("Background", 4, 4, 0);
-    adjusted.adjustment = Some(crate::encode_invert());
-    let adjusted = doc_with(vec![adjusted]);
-    assert!(
-        !is_background(&adjusted, "0"),
-        "an adjustment is not Background"
+#[test]
+fn background_from_layer_flags_opaque_and_moves_to_bottom() {
+    let mut top = pixel_layer("Base", 4, 4, 50);
+    top.channels[3].data[0] = 0; // one fully transparent pixel
+    let mut doc = doc_with(vec![pixel_layer("other", 4, 4, 10), top]);
+
+    assert!(background_from_layer(&mut doc, "1"));
+    assert_eq!(doc.layers.len(), 2);
+    let moved = &doc.layers[0];
+    assert_eq!(moved.name, "Base", "node keeps its pixels and name");
+    assert!(moved.background);
+    assert_eq!(doc.layers[1].name, "other");
+    assert_eq!(
+        moved.channels[3].data[0], 255,
+        "transparent pixel becomes opaque"
     );
+    assert_eq!(
+        moved.channels[0].data[0], 255,
+        "and takes the white background"
+    );
+    assert_eq!(moved.channels[1].data[0], 255);
+    assert_eq!(moved.channels[2].data[0], 255);
+    assert_eq!(moved.channels[0].data[1], 50, "opaque pixels are untouched");
+    assert_eq!(moved.channels[3].data[1], 255);
+}
+
+#[test]
+fn background_from_layer_refuses_non_raster_and_existing_background() {
+    let mut group = empty_group("Group");
+    group.children.push(pixel_layer("child", 4, 4, 1));
+    let mut doc = doc_with(vec![group]);
+    assert!(!background_from_layer(&mut doc, "0"));
+
+    let mut adj = pixel_layer("adj", 4, 4, 1);
+    adj.channels.clear();
+    adj.adjustment = Some(crate::encode_invert());
+    let mut doc = doc_with(vec![adj]);
+    assert!(!background_from_layer(&mut doc, "0"));
+
+    let bg = pixel_layer("Background", 4, 4, 1);
+    let mut doc = doc_with(vec![bg]);
+    assert!(!background_from_layer(&mut doc, "0"));
+}
+
+#[test]
+fn layer_from_background_clears_flag_and_unlocks() {
+    let mut flagged = pixel_layer("Background", 4, 4, 1);
+    flagged.background = true;
+    flagged.lock = LockFlags::all();
+    let mut doc = doc_with(vec![flagged]);
+
+    assert!(layer_from_background(&mut doc, "0"));
+    assert!(!doc.layers[0].background);
+    assert_eq!(doc.layers[0].lock.bits(), 0, "unlocked");
+
+    let before = doc.clone();
+    assert!(!layer_from_background(&mut doc, "0"), "not a background");
+    assert_eq!(doc, before);
 }
 
 #[test]
@@ -627,7 +679,7 @@ fn nesting_lock_refuses_grouping_but_allows_reorder() {
 }
 
 #[test]
-fn move_path_to_reparents_and_refuses() {
+fn move_path_to_reparents_refuses_and_dry_runs() {
     fn sample() -> Document {
         let mut group = empty_group("Group");
         group.children = vec![pixel_layer("A", 4, 4, 1), pixel_layer("B", 4, 4, 2)];
@@ -637,47 +689,312 @@ fn move_path_to_reparents_and_refuses() {
             pixel_layer("top", 4, 4, 3),
         ])
     }
+    fn child_names(group: &Layer) -> Vec<&str> {
+        group.children.iter().map(|c| c.name.as_str()).collect()
+    }
 
-    // Into a group appends as its topmost child.
+    // Valid moves agree with the dry run and land where expected.
     let mut doc = sample();
+    assert!(can_move_path_to(&doc, "2", "1", 2));
     assert!(move_path_to(&mut doc, "2", "1", 2));
     assert_eq!(doc.layers.len(), 2);
     assert_eq!(doc.layers[1].children.len(), 3);
     assert_eq!(doc.layers[1].children[2].name, "top");
 
-    // Below a sibling reorders within the container.
+    // Below then above a sibling both put A on top of B (bottom-first stack).
     let mut doc = sample();
+    assert!(can_move_path_to(&doc, "1/1", "1/0", 1));
     assert!(move_path_to(&mut doc, "1/1", "1/0", 1));
-    let names: Vec<_> = doc.layers[1]
-        .children
-        .iter()
-        .map(|c| c.name.as_str())
-        .collect();
-    assert_eq!(names, vec!["B", "A"]);
-
-    // Above a sibling (A ends on top of B in the bottom-first stack).
+    assert_eq!(child_names(&doc.layers[1]), vec!["B", "A"]);
     let mut doc = sample();
+    assert!(can_move_path_to(&doc, "1/0", "1/1", 0));
     assert!(move_path_to(&mut doc, "1/0", "1/1", 0));
-    let names: Vec<_> = doc.layers[1]
-        .children
-        .iter()
-        .map(|c| c.name.as_str())
-        .collect();
-    assert_eq!(names, vec!["B", "A"]);
+    assert_eq!(child_names(&doc.layers[1]), vec!["B", "A"]);
 
-    // Self-drop, descendant-drop, and Background are refused unchanged.
-    let mut doc = sample();
+    // Every refusal is identical in the dry run, which never mutates.
+    let cases: &[(&str, &str, i32)] = &[
+        ("1/0", "1/0", 0), // self
+        ("1", "1/0", 0),   // descendant
+        ("0", "2", 2),     // Background
+        ("2", "1/0", 2),   // Into a non-group
+        ("9", "", 0),      // missing source
+        ("2", "9/0", 0),   // unknown target container
+        ("1/0", "bad", 0), // malformed target
+    ];
+    for &(path, target, mode) in cases {
+        let mut doc = sample();
+        let before = doc.clone();
+        assert!(
+            !can_move_path_to(&doc, path, target, mode),
+            "{path}->{target}"
+        );
+        assert_eq!(doc, before, "dry run mutated {path}->{target} m{mode}");
+        assert!(!move_path_to(&mut doc, path, target, mode));
+        assert_eq!(doc, before, "refusal mutated {path}->{target} m{mode}");
+    }
+
+    // Locked and nesting-locked sources refuse in both forms.
+    for lock in [
+        LockFlags::all(),
+        LockFlags::default().with(LockFlags::NESTING, true),
+    ] {
+        let mut doc = sample();
+        doc.layers[2].lock = lock;
+        let before = doc.clone();
+        assert!(!can_move_path_to(&doc, "2", "1", 2));
+        assert_eq!(doc, before);
+        assert!(!move_path_to(&mut doc, "2", "1", 2));
+    }
+}
+
+#[test]
+fn neutral_color_lookup_table() {
+    let white = Some([255, 255, 255, 255]);
+    let black = Some([0, 0, 0, 255]);
+    let gray = Some([128, 128, 128, 255]);
+    for mode in [
+        BlendMode::Darken,
+        BlendMode::Multiply,
+        BlendMode::ColorBurn,
+        BlendMode::LinearBurn,
+        BlendMode::DarkerColor,
+        BlendMode::Divide,
+    ] {
+        assert_eq!(neutral_color(mode), white, "{mode:?}");
+    }
+    for mode in [
+        BlendMode::Lighten,
+        BlendMode::Screen,
+        BlendMode::ColorDodge,
+        BlendMode::LinearDodge,
+        BlendMode::LighterColor,
+        BlendMode::Difference,
+        BlendMode::Exclusion,
+        BlendMode::Subtract,
+    ] {
+        assert_eq!(neutral_color(mode), black, "{mode:?}");
+    }
+    for mode in [
+        BlendMode::Overlay,
+        BlendMode::SoftLight,
+        BlendMode::HardLight,
+        BlendMode::VividLight,
+        BlendMode::LinearLight,
+        BlendMode::PinLight,
+    ] {
+        assert_eq!(neutral_color(mode), gray, "{mode:?}");
+    }
+    for mode in [
+        BlendMode::Normal,
+        BlendMode::Dissolve,
+        BlendMode::HardMix,
+        BlendMode::Hue,
+        BlendMode::Saturation,
+        BlendMode::Color,
+        BlendMode::Luminosity,
+    ] {
+        assert_eq!(neutral_color(mode), None, "{mode:?}");
+    }
+    let colored = BlendMode::LAYER_MODES
+        .iter()
+        .filter(|mode| neutral_color(**mode).is_some())
+        .count();
+    assert_eq!(colored, 20, "27 layer modes minus the seven unlisted");
+}
+
+#[test]
+fn add_layer_full_applies_attributes_and_neutral_fill() {
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 0)]);
+    let spec = NewLayerSpec {
+        name: "Neutral".into(),
+        color: ColorLabel::Red,
+        blend: BlendMode::Multiply,
+        opacity: 128,
+        fill: 200,
+        clipping: true,
+        neutral_fill: true,
+    };
+    let path = add_layer_full(&mut doc, "", &spec);
+    assert_eq!(path, "1");
+    let layer = &doc.layers[1];
+    assert_eq!(layer.name, "Neutral");
+    assert_eq!(layer.color, ColorLabel::Red);
+    assert_eq!(layer.blend, BlendMode::Multiply);
+    assert_eq!(layer.opacity, 128);
+    assert_eq!(layer.fill, 200);
+    assert!(layer.clipping);
+    for channel in &layer.channels {
+        let expected = match channel.id {
+            -1..=2 => 255,
+            _ => continue,
+        };
+        assert!(
+            channel.data.iter().all(|&v| v == expected),
+            "channel {} is the Multiply white",
+            channel.id
+        );
+    }
+}
+
+#[test]
+fn add_layer_full_without_a_neutral_color_is_transparent() {
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 0)]);
+    let spec = NewLayerSpec {
+        name: "Normal".into(),
+        blend: BlendMode::Normal,
+        neutral_fill: true,
+        ..NewLayerSpec::default()
+    };
+    let path = add_layer_full(&mut doc, "", &spec);
+    assert_eq!(path, "1");
+    for channel in &doc.layers[1].channels {
+        assert!(
+            channel.data.iter().all(|&v| v == 0),
+            "channel {} transparent",
+            channel.id
+        );
+    }
+}
+
+#[test]
+fn add_group_full_ignores_fill_clipping_and_neutral_fill() {
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 0)]);
+    let spec = NewLayerSpec {
+        name: "Grp".into(),
+        color: ColorLabel::Blue,
+        blend: BlendMode::Screen,
+        opacity: 200,
+        fill: 10,
+        clipping: true,
+        neutral_fill: true,
+    };
+    let path = add_group_full(&mut doc, "", &spec);
+    assert_eq!(path, "1");
+    let group = &doc.layers[1];
+    assert!(group.is_group);
+    assert_eq!(group.name, "Grp");
+    assert_eq!(group.color, ColorLabel::Blue);
+    assert_eq!(group.blend, BlendMode::Screen);
+    assert_eq!(group.opacity, 200);
+    assert_eq!(group.fill, 255, "groups ignore fill");
+    assert!(!group.clipping, "groups ignore clipping");
+    assert!(group.channels.is_empty());
+}
+
+fn selection_mask(data: Vec<u8>) -> LayerMask {
+    LayerMask {
+        rect: rect(4, 4),
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: Some(data),
+    }
+}
+
+#[test]
+fn layer_via_copy_extracts_selection_and_keeps_source() {
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+    let mut data = vec![0u8; 16];
+    data[..8].fill(255);
+    let path = layer_via_copy(&mut doc, "0", &selection_mask(data));
+
+    assert_eq!(path, "1");
+    assert_eq!(doc.layers.len(), 2);
+    let copy = &doc.layers[1];
+    assert_eq!(copy.name, "base copy");
+    assert!(!copy.is_group && copy.adjustment.is_none());
+    assert_eq!(copy.rect, rect(4, 4));
+
+    let alpha = copy.channels.iter().find(|c| c.id == -1).unwrap();
+    assert_eq!(&alpha.data[..8], &[255u8; 8]);
+    assert!(
+        alpha.data[8..].iter().all(|&v| v == 0),
+        "outside is transparent"
+    );
+    let color = copy.channels.iter().find(|c| c.id == 0).unwrap();
+    assert!(color.data[..8].iter().all(|&v| v == 40));
+    assert!(
+        color.data[8..].iter().all(|&v| v == 0),
+        "outside not copied"
+    );
+
+    let source_alpha = doc.layers[0].channels.iter().find(|c| c.id == -1).unwrap();
+    assert!(source_alpha.data.iter().all(|&v| v == 255), "source intact");
+}
+
+#[test]
+fn layer_via_copy_scales_feathered_alpha() {
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+    let path = layer_via_copy(&mut doc, "0", &selection_mask(vec![128; 16]));
+
+    assert_eq!(path, "1");
+    let alpha = doc.layers[1].channels.iter().find(|c| c.id == -1).unwrap();
+    assert!(
+        alpha.data.iter().all(|&v| v == 128),
+        "255 * 128/255 rounds to 128"
+    );
+    let source_alpha = doc.layers[0].channels.iter().find(|c| c.id == -1).unwrap();
+    assert!(
+        source_alpha.data.iter().all(|&v| v == 255),
+        "copy leaves source"
+    );
+}
+
+#[test]
+fn layer_via_cut_clears_full_and_scales_partial_coverage() {
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+    assert_eq!(
+        layer_via_cut(&mut doc, "0", &selection_mask(vec![255; 16])),
+        "1"
+    );
+    let source_alpha = doc.layers[0].channels.iter().find(|c| c.id == -1).unwrap();
+    assert!(
+        source_alpha.data.iter().all(|&v| v == 0),
+        "full coverage clears"
+    );
+
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+    layer_via_cut(&mut doc, "0", &selection_mask(vec![128; 16]));
+    let source_alpha = doc.layers[0].channels.iter().find(|c| c.id == -1).unwrap();
+    assert!(
+        source_alpha.data.iter().all(|&v| v == 127),
+        "255 * 127/255 = 127"
+    );
+}
+
+#[test]
+fn layer_via_copy_lands_above_the_source_inside_its_group() {
+    let mut group = empty_group("Group 1");
+    group.children.push(pixel_layer("child", 4, 4, 40));
+    let mut doc = doc_with(vec![group]);
+
+    let path = layer_via_copy(&mut doc, "0/0", &selection_mask(vec![255; 16]));
+    assert_eq!(path, "0/1");
+    assert_eq!(doc.layers[0].children.len(), 2);
+    assert_eq!(doc.layers[0].children[1].name, "child copy");
+}
+
+#[test]
+fn layer_via_refuses_missing_group_and_empty_mask() {
+    let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
     let before = doc.clone();
-    assert!(!move_path_to(&mut doc, "1/0", "1/0", 0));
-    assert!(!move_path_to(&mut doc, "1", "1/0", 0));
-    assert!(!move_path_to(&mut doc, "0", "2", 2));
-    assert!(!move_path_to(&mut doc, "2", "1/0", 2), "Into a non-group");
+    assert!(layer_via_copy(&mut doc, "9", &selection_mask(vec![255; 16])).is_empty());
+    assert!(layer_via_copy(&mut doc, "bad", &selection_mask(vec![255; 16])).is_empty());
+    let empty = LayerMask {
+        rect: rect(4, 4),
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: None,
+    };
+    assert!(layer_via_copy(&mut doc, "0", &empty).is_empty());
     assert_eq!(doc, before);
 
-    // A locked or nesting-locked source is refused.
-    let mut doc = sample();
-    doc.layers[2].lock = LockFlags::all();
-    assert!(!move_path_to(&mut doc, "2", "1", 2));
-    doc.layers[2].lock = LockFlags::default().with(LockFlags::NESTING, true);
-    assert!(!move_path_to(&mut doc, "2", "1", 2));
+    let mut group = empty_group("Group 1");
+    group.children.push(pixel_layer("child", 4, 4, 1));
+    let mut doc = doc_with(vec![group]);
+    let before = doc.clone();
+    assert!(layer_via_copy(&mut doc, "0", &selection_mask(vec![255; 16])).is_empty());
+    assert!(layer_via_cut(&mut doc, "0", &selection_mask(vec![255; 16])).is_empty());
+    assert_eq!(doc, before);
 }

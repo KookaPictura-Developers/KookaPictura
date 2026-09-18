@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **595 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **642 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -17,11 +17,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   includes the pre-existing ignored `pictura-render` doctest as the ninth).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
-  `layers-panel-chrome-fixes`, `layers-panel-row-interactions`, and
-  `layers-panel-control-polish` changes;
-  canonical specs are in `openspec/specs/` (62 specs, `validate --all --strict`
+  `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
+  `layers-panel-control-polish`, and `layers-panel-management` changes;
+  canonical specs are in `openspec/specs/` (63 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
-  The next panel-program stage is **remaining layer management**, named by
+  The next panel-program stage is **layer styles / effects**, named by
   content rather than a milestone number.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
@@ -1829,20 +1829,26 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   (`layers-panel-row-interactions`: label scrub + `%`, semantic lock/eye/Kind
   icons, and row drag-and-drop reorder plus drop-on-strip), and a **control
   polish pass** (`layers-panel-control-polish`: eye-only rows, `%` inside the
-  box, a right-side lock badge, and one-undo-state live Opacity/Fill preview).
-  The Layers-panel
-  program therefore continues **by content, not by number**: next is
-  **remaining management**
-  (rasterize/merge/flatten/link/select-similar/convert-background/
-  layer-via-copy-cut, the New Layer/Group dialogs, and the deferred drag-reorder
-  with its recorded drop rules), then **styles/effects**, then **smart objects /
-  vector masks / artboards-as-non-goal / layer comps**. M36's confirmed ceilings
-  — the `layer_kind` `"background"` name+index heuristic and the forced
-  type/shape locks — land with the management stage, and M37's single-layer
-  grouping limit was lifted by M39's multi-selection (the `is_background` single
-  source of truth and the path/batch selection ops). The pre-shift numbers still
-  stand in `docs/dev/layers-panel-program.md`; this file is the up-to-date
-  anchor.
+  box, a right-side lock badge, and one-undo-state live Opacity/Fill preview),
+  and the **management stage** (`layers-panel-management`: Merge
+  Down/Layers/Visible/Clipping Mask and Flatten, the New Layer/Group dialog and
+  Group from Layers, a first-class `Layer.background` flag with both
+  conversions, Layer via Copy/Cut, Select Similar/Linked and transient link
+  sets, Delete Hidden/Hide Layers, a minimal solid-fill layer kind with the
+  Rasterize subset, and the deferred drag-reorder drop rules with a dry-run
+  predicate).
+  The Layers-panel program therefore continues **by content, not by number**:
+  next is **layer styles / effects** (fx menu and badge, effect child rows, the
+  Layer Style dialog, effect rendering passes, and the `Fill`-after-effects
+  compositor change), then **smart objects / vector masks /
+  artboards-as-non-goal / layer comps**. The management stage's deliberate
+  inferred behavior and documented ceilings (rename↔background, the
+  clipping-coverage compositor gap, zero-layer Flatten, `select_similar`
+  excluding the active layer, fixed background/solid-fill colors, the `SoCo`
+  descriptor ceiling) are listed in
+  `openspec/changes/archive/…-layers-panel-management/design.md` §Residual. The
+  pre-shift numbers still stand in `docs/dev/layers-panel-program.md`; this file
+  is the up-to-date anchor.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

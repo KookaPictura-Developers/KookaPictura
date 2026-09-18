@@ -46,6 +46,7 @@ pub(super) fn pixel_layer(name: &str, w: u32, h: u32, rgb: (u8, u8, u8)) -> Laye
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
@@ -118,6 +119,7 @@ fn layered_document_composites_with_source_alpha() {
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }];
 
     let image = document_to_image(&doc, false);
@@ -167,6 +169,7 @@ fn invert_and_visibility_change_composite() {
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }];
 
     let before = document_to_image(&doc, false);
@@ -436,6 +439,7 @@ fn store_composite_stores_rgba_for_rgb_and_keeps_grayscale_plane() {
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }];
     let rendered = current_buffer(&gray, false);
     assert_eq!(rendered.channels, 4);

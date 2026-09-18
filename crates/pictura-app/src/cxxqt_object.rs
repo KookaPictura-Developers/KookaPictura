@@ -1,13 +1,12 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
 
-use crate::history::{History, Snapshot};
-use core::pin::Pin;
-use cxx_qt::CxxQtType;
+use crate::history::History;
 use cxx_qt_lib::QImage;
-use pictura_core::{Document, PsdRect};
+use pictura_core::Document;
 use pictura_paint::Stroke;
 use pictura_select::Selection;
+use std::collections::HashMap;
 
 mod helpers;
 mod helpers_composite;
@@ -15,6 +14,10 @@ mod impl_core;
 mod impl_filters;
 mod impl_history;
 mod impl_layers;
+mod impl_layers_create;
+mod impl_layers_merge;
+mod impl_layers_rasterize;
+mod impl_layers_select;
 mod impl_paint;
 mod impl_selection;
 mod impl_transform;
@@ -23,8 +26,6 @@ mod impl_transform;
 mod tests;
 #[cfg(test)]
 mod tests_impl;
-use helpers::*;
-use helpers_composite::*;
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -340,6 +341,11 @@ pub mod qobject {
         fn move_layer_to(self: Pin<&mut Self>, path: &QString, target: &QString, mode: i32)
             -> bool;
 
+        /// Dry-run of [`move_layer_to`]: whether the move would be accepted.
+        /// Reads the document only — no recomposite, no history state.
+        #[qinvokable]
+        fn can_move_layer_to(&self, path: &QString, target: &QString, mode: i32) -> bool;
+
         /// Set visibility on every path (always eligible per node). Returns the
         /// number of nodes changed; recomposites and records one undo state
         /// only when that count is non-zero.
@@ -432,6 +438,147 @@ pub mod qobject {
         /// new path or empty.
         #[qinvokable]
         fn add_group_in(self: Pin<&mut Self>, selection_path: &QString) -> QString;
+
+        /// Create a raster layer from the New Layer dialog directly above
+        /// `selection_path` (top of the stack when empty) with the chosen
+        /// name/color/blend/opacity/fill, optional mode-neutral fill, and
+        /// clipping flag. `blend_key` is a 4-byte PSD key. Recomposites and
+        /// records one "New Layer" state on success. Returns the new path, or
+        /// empty on an invalid blend key or without a document.
+        #[qinvokable]
+        fn new_layer_dialog(
+            self: Pin<&mut Self>,
+            selection_path: &QString,
+            name: &QString,
+            color: i32,
+            blend_key: &QString,
+            opacity: i32,
+            fill: i32,
+            neutral_fill: bool,
+            clipping: bool,
+        ) -> QString;
+
+        /// Create an empty group from the New Group dialog, carrying
+        /// name/color/blend/opacity. Records one "New Group" state.
+        #[qinvokable]
+        fn new_group_dialog(
+            self: Pin<&mut Self>,
+            selection_path: &QString,
+            name: &QString,
+            color: i32,
+            blend_key: &QString,
+            opacity: i32,
+        ) -> QString;
+
+        /// Wrap `paths` in one group carrying the dialog's name/color/blend/
+        /// opacity. Records one "Group from Layers" state.
+        #[qinvokable]
+        fn group_from_layers_dialog(
+            self: Pin<&mut Self>,
+            paths: &QStringList,
+            name: &QString,
+            color: i32,
+            blend_key: &QString,
+            opacity: i32,
+        ) -> QString;
+
+        /// Whether Merge Down / Merge Layers would apply to `paths`. Read-only.
+        #[qinvokable]
+        fn can_merge_layers(&self, paths: &QStringList) -> bool;
+
+        /// Whether Merge Clipping Mask would apply to `path`. Read-only.
+        #[qinvokable]
+        fn can_merge_clipping_mask(&self, path: &QString) -> bool;
+
+        /// Merge Down / Merge Layers for `paths` (one command, CS6 design D4).
+        /// Records one undo state; returns inputs replaced, 0 on refusal.
+        #[qinvokable]
+        fn merge_layers(self: Pin<&mut Self>, paths: &QStringList) -> i32;
+
+        /// Merge every eye-visible layer anchored on `path`; records one
+        /// "Merge Visible" state. Returns replaced, 0 on refusal.
+        #[qinvokable]
+        fn merge_visible(self: Pin<&mut Self>, path: &QString) -> i32;
+
+        /// Collapse the clipping group above `path`; records one
+        /// "Merge Clipping Mask" state. Returns replaced, 0 on refusal.
+        #[qinvokable]
+        fn merge_clipping_mask(self: Pin<&mut Self>, path: &QString) -> i32;
+
+        /// Flatten the tree into one opaque Background layer; records one
+        /// "Flatten Image" state. Returns replaced, 0 on refusal.
+        #[qinvokable]
+        fn flatten_image(self: Pin<&mut Self>) -> i32;
+
+        /// `Layer from Background…`: clear the flag and unlock `path`. Records
+        /// one "Layer from Background" state; false when not the Background.
+        #[qinvokable]
+        fn layer_from_background(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// `Background From Layer`: flag `path`, fill transparency with the
+        /// background color, and move it to the bottom. Records one state;
+        /// false for a group, adjustment, or existing Background.
+        #[qinvokable]
+        fn background_from_layer(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// `Layer via Copy` (`Ctrl+J`): copy the selection's pixels from `path`
+        /// into a new layer above it; records one "Layer via Copy" state.
+        #[qinvokable]
+        fn layer_via_copy(self: Pin<&mut Self>, path: &QString) -> QString;
+
+        /// `Layer via Cut` (`Shift+Ctrl+J`): as [`layer_via_copy`], clearing the
+        /// selected pixels from the source; records one "Layer via Cut" state.
+        #[qinvokable]
+        fn layer_via_cut(self: Pin<&mut Self>, path: &QString) -> QString;
+
+        /// Every layer matching `path`'s node class, adjustment kind, and blend
+        /// mode, in panel order. A view operation: no history.
+        #[qinvokable]
+        fn select_similar(&self, path: &QString) -> QStringList;
+
+        /// Every member of the link set containing `path`; empty when unlinked.
+        #[qinvokable]
+        fn select_linked(&self, path: &QString) -> QStringList;
+
+        /// Link (`on`) or unlink the listed layers, joining every set they touch.
+        #[qinvokable]
+        fn link_layers(self: Pin<&mut Self>, paths: &QStringList, on: bool) -> i32;
+
+        /// Hide the listed layers; records one "Hide Layers" state.
+        #[qinvokable]
+        fn hide_layers(self: Pin<&mut Self>, paths: &QStringList) -> i32;
+
+        /// Delete every effectively hidden layer; records one "Delete Hidden
+        /// Layers" state only when at least one is removed.
+        #[qinvokable]
+        fn delete_hidden_layers(self: Pin<&mut Self>) -> i32;
+
+        /// Append a solid-color fill layer for `rgba` (`0xAARRGGBB`) at the top
+        /// of the stack, recomposite, and record one "Color Fill" state on
+        /// success. Returns the new path, or empty without a document.
+        #[qinvokable]
+        fn add_solid_fill(self: Pin<&mut Self>, rgba: u32) -> QString;
+
+        /// Whether the layer at `path` is a decodable solid-color fill layer.
+        #[qinvokable]
+        fn layer_is_fill_content(&self, path: &QString) -> bool;
+
+        /// `Rasterize Fill Content`: bake the fill at `path` into pixels and
+        /// clear its fill data. Records one "Rasterize Fill Content" state on
+        /// success. Returns false (no state) for a non-decodable fill layer.
+        #[qinvokable]
+        fn rasterize_fill_content(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// `Rasterize Layer` on a fill-content layer. Records one "Rasterize
+        /// Layer" state on success. Returns false (no state) for any other kind.
+        #[qinvokable]
+        fn rasterize_layer(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// `Rasterize All Layers`: rasterize every fill-content layer, recording
+        /// one "Rasterize All Layers" state only when at least one was. Returns
+        /// how many were rasterized.
+        #[qinvokable]
+        fn rasterize_all_layers(self: Pin<&mut Self>) -> i32;
 
         /// Set layer `i` visibility, recomposite, and emit [`changed`].
         #[qinvokable]
@@ -813,6 +960,7 @@ pub struct PictureViewRust {
     content_revision: u64,
     gpu_compute: bool,
     display_dirty: bool,
+    link_sets: HashMap<String, u32>,
 }
 
 impl Default for PictureViewRust {
@@ -842,121 +990,7 @@ impl Default for PictureViewRust {
             content_revision: 0,
             gpu_compute: true,
             display_dirty: false,
+            link_sets: HashMap::new(),
         }
-    }
-}
-
-impl qobject::PictureView {
-    /// Snapshot the current state, capture it under `label`, and mark dirty.
-    ///
-    /// Callers must run their `recomposite`/`refresh_region` first, so the
-    /// captured document's composite is the current rendered image.
-    fn record(mut self: Pin<&mut Self>, label: &str) {
-        if let Some(snapshot) = self.snapshot() {
-            let mut rust = self.as_mut().rust_mut();
-            rust.history.capture(snapshot, label);
-            rust.dirty = true;
-            rust.content_revision = rust.content_revision.wrapping_add(1);
-        }
-    }
-
-    /// As [`record`], but without bumping `content_revision`.
-    ///
-    /// Only for moves of the topmost pixel layer, which leave the composite
-    /// below that layer unchanged, so a cached move-preview base stays valid.
-    fn record_move(mut self: Pin<&mut Self>, label: &str) {
-        if let Some(snapshot) = self.snapshot() {
-            let mut rust = self.as_mut().rust_mut();
-            rust.history.capture(snapshot, label);
-            rust.dirty = true;
-        }
-    }
-
-    fn snapshot(&self) -> Option<Snapshot> {
-        let rust = self.rust();
-        let doc = rust.doc.clone()?;
-        Some(Snapshot {
-            doc,
-            selection: rust.selection.clone(),
-        })
-    }
-
-    /// Composite only `rect`, patch the authoritative `doc.composite`, and emit
-    /// [`region_blitted`] with a rectangle-sized image.
-    ///
-    /// The source is the active stroke's working document while painting, else
-    /// the app document. While painting `doc.composite` is the pre-stroke base
-    /// and is left alone (refreshed by `end_paint`'s full recomposite). An empty
-    /// clamped rect is a no-op; the region path emits no `changed` and never
-    /// rebuilds the full image.
-    fn refresh_region(mut self: Pin<&mut Self>, rect: PsdRect) {
-        let gpu_compute = self.rust().gpu_compute;
-        let (region, painting) = {
-            let rust = self.rust();
-            let painting = rust.stroke.is_some();
-            let dims = rust
-                .stroke
-                .as_ref()
-                .map(|stroke| (stroke.document().width, stroke.document().height))
-                .or_else(|| rust.doc.as_ref().map(|doc| (doc.width, doc.height)));
-            (
-                dims.and_then(|(width, height)| clamp_region(rect, width, height)),
-                painting,
-            )
-        };
-        let Some((x0, y0, ..)) = region else {
-            return;
-        };
-        let region_image = {
-            let mut rust = self.as_mut().rust_mut();
-            let rust = &mut *rust;
-            let buffer = {
-                let source: &Document = if painting {
-                    rust.stroke.as_ref().unwrap().document()
-                } else if let Some(doc) = rust.doc.as_ref() {
-                    doc
-                } else {
-                    return;
-                };
-                pictura_render::composite_region_active(source, rect, gpu_compute).0
-            };
-            if buffer.width == 0 || buffer.height == 0 {
-                return;
-            }
-            if !painting {
-                if let Some(doc) = rust.doc.as_mut() {
-                    patch_composite_region(doc, &buffer, x0, y0);
-                }
-            }
-            rust.display_dirty = true;
-            buffer_to_image(&buffer)
-        };
-        self.region_blitted(region_image, x0, y0);
-    }
-
-    /// Refresh `image` from the current document and emit [`changed`].
-    ///
-    /// The full-document path for every mutation that does not report a dirty
-    /// rectangle; [`refresh_region`] is the incremental extension point.
-    fn recomposite(mut self: Pin<&mut Self>) {
-        let gpu_compute = self.rust().gpu_compute;
-        let rendered = self
-            .rust()
-            .doc
-            .as_ref()
-            .map(|doc| current_buffer(doc, gpu_compute));
-        let Some(rendered) = rendered else {
-            self.changed();
-            return;
-        };
-        {
-            let mut rust = self.as_mut().rust_mut();
-            if let Some(doc) = rust.doc.as_mut() {
-                store_composite(doc, &rendered);
-            }
-            rust.image = buffer_to_image(&rendered);
-            rust.display_dirty = false;
-        }
-        self.changed();
     }
 }

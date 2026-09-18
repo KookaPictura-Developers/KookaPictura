@@ -356,6 +356,10 @@ pub struct Layer {
     pub channels: Vec<Channel>,
     pub children: Vec<Layer>,
     pub is_group: bool,
+    /// First-class Background flag. PSD has no background bit; the codec infers
+    /// it from the bottom top-level non-group named `"Background"` and writes
+    /// that name back for a flagged layer (design D5).
+    pub background: bool,
 }
 
 impl Layer {
@@ -438,6 +442,7 @@ mod tests {
             }],
             children: Vec::new(),
             is_group: false,
+            background: false,
         };
         assert!(!pixel.is_group());
         assert_eq!(pixel.channels.len(), 1);
@@ -457,6 +462,7 @@ mod tests {
             channels: Vec::new(),
             children: vec![pixel],
             is_group: true,
+            background: false,
         };
         assert!(group.is_group());
         assert_eq!(group.children.len(), 1);
@@ -485,6 +491,7 @@ mod tests {
             channels: Vec::new(),
             children: Vec::new(),
             is_group: false,
+            background: false,
         };
         assert!(bare.mask.is_none());
 
@@ -553,6 +560,7 @@ mod tests {
             channels: Vec::new(),
             children: Vec::new(),
             is_group: true,
+            background: false,
         };
         assert!(layer.is_group());
     }
@@ -579,10 +587,16 @@ mod tests {
             channels: Vec::new(),
             children: Vec::new(),
             is_group: false,
+            background: false,
         };
         assert_eq!(layer.fill, 255);
         assert_eq!(layer.lock.bits(), 0);
         assert_eq!(layer.color, ColorLabel::None);
+        assert!(!layer.background, "background defaults to false");
+
+        let mut flagged = layer.clone();
+        flagged.background = true;
+        assert!(flagged.clone().background, "the flag is cloned");
     }
 
     #[test]

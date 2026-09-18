@@ -1,6 +1,10 @@
-use pictura_core::{BlendMode, Channel, ColorLabel, Document, Layer, LockFlags, PsdRect};
+use pictura_core::{
+    AdjustmentData, BlendMode, Channel, ColorLabel, Document, Layer, LockFlags, PsdRect,
+};
 
-use super::paths::{container_mut, container_of_mut, format_segments, parse_path, resolve_path};
+use super::paths::{
+    container_mut, container_of_mut, format_segments, parse_path, resolve_path, resolve_path_mut,
+};
 
 fn insertion_index(len: usize, above: i32) -> usize {
     if above < 0 {
@@ -54,6 +58,7 @@ pub(super) fn transparent_layer(width: u32, height: u32, name: &str) -> Layer {
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
@@ -79,6 +84,80 @@ pub(super) fn empty_group(name: &str) -> Layer {
         channels: Vec::new(),
         children: Vec::new(),
         is_group: true,
+        background: false,
+    }
+}
+
+/// The attributes of a New Layer / New Group dialog request (design D6).
+#[derive(Debug, Clone)]
+pub struct NewLayerSpec {
+    pub name: String,
+    pub color: ColorLabel,
+    pub blend: BlendMode,
+    pub opacity: u8,
+    pub fill: u8,
+    pub clipping: bool,
+    pub neutral_fill: bool,
+}
+
+impl Default for NewLayerSpec {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            color: ColorLabel::None,
+            blend: BlendMode::Normal,
+            opacity: 255,
+            fill: 255,
+            clipping: false,
+            neutral_fill: false,
+        }
+    }
+}
+
+/// The mode-neutral fill as straight-alpha RGBA, or `None` for the seven modes
+/// that lack the `Fill With (Mode)-Neutral Color` option.
+///
+/// See `docs/05-layers/blend-modes.md`: white for Darken/Multiply/Color
+/// Burn/Linear Burn/Darker Color/Divide, black for Lighten/Screen/Color
+/// Dodge/Linear Dodge (Add)/Lighter Color/Difference/Exclusion/Subtract, and
+/// 50 % gray for Overlay/Soft Light/Hard Light/Vivid Light/Linear Light/Pin
+/// Light. Normal, Dissolve, Hard Mix, Hue, Saturation, Color, and Luminosity
+/// are unlisted and default to transparent.
+pub fn neutral_color(mode: BlendMode) -> Option<[u8; 4]> {
+    use BlendMode::*;
+    Some(match mode {
+        Darken | Multiply | ColorBurn | LinearBurn | DarkerColor | Divide => [255, 255, 255, 255],
+        Lighten | Screen | ColorDodge | LinearDodge | LighterColor | Difference | Exclusion
+        | Subtract => [0, 0, 0, 255],
+        Overlay | SoftLight | HardLight | VividLight | LinearLight | PinLight => {
+            [128, 128, 128, 255]
+        }
+        Normal | Dissolve | HardMix | Hue | Saturation | Color | Luminosity | PassThrough => {
+            return None
+        }
+    })
+}
+
+/// Resolve a requested name, generating `Prefix N` when it is empty.
+fn resolved_name(doc: &Document, name: &str, prefix: &str) -> String {
+    if name.is_empty() {
+        next_layer_name(doc, prefix)
+    } else {
+        name.to_string()
+    }
+}
+
+/// Write a straight-alpha RGBA value into a full-rect layer's color channels.
+fn fill_neutral(layer: &mut Layer, rgba: [u8; 4]) {
+    for channel in &mut layer.channels {
+        let value = match channel.id {
+            0 => rgba[0],
+            1 => rgba[1],
+            2 => rgba[2],
+            -1 => rgba[3],
+            _ => continue,
+        };
+        channel.data.fill(value);
     }
 }
 
@@ -200,28 +279,168 @@ fn insert_node(doc: &mut Document, selection_path: &str, node: Layer) -> String 
 }
 
 /// Insert a transparent raster layer for `name` (generated when empty) using
-/// the tree-aware [`insert_node`] rule. Returns the new path, or empty for a
-/// zero-dimension document.
-pub fn add_layer_in(doc: &mut Document, selection_path: &str, name: &str) -> String {
+/// the tree-aware [`insert_node`] rule, applying `spec`'s attributes. Returns
+/// the new path, or empty for a zero-dimension document.
+pub fn add_layer_full(doc: &mut Document, selection_path: &str, spec: &NewLayerSpec) -> String {
     if doc.width == 0 || doc.height == 0 {
         return String::new();
     }
-    let name = if name.is_empty() {
-        next_layer_name(doc, "Layer")
-    } else {
-        name.to_string()
-    };
-    let layer = transparent_layer(doc.width, doc.height, &name);
+    let name = resolved_name(doc, &spec.name, "Layer");
+    let mut layer = transparent_layer(doc.width, doc.height, &name);
+    layer.color = spec.color;
+    layer.blend = spec.blend;
+    layer.opacity = spec.opacity;
+    layer.fill = spec.fill;
+    layer.clipping = spec.clipping;
+    if spec.neutral_fill {
+        if let Some(rgba) = neutral_color(spec.blend) {
+            fill_neutral(&mut layer, rgba);
+        }
+    }
     insert_node(doc, selection_path, layer)
+}
+
+/// Insert a solid-color fill-content layer at the [`insert_node`] rule.
+///
+/// The node is document-sized with no pixel channels; its content lives in an
+/// opaque `SoCo` block holding the 4-byte straight-alpha RGBA payload. Named
+/// `"Color Fill N"`. Returns the new path, or empty for a zero-dimension
+/// document. Fill layers carry an adjustment, so the merge check refuses them.
+pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -> String {
+    if doc.width == 0 || doc.height == 0 {
+        return String::new();
+    }
+    let name = next_layer_name(doc, "Color Fill");
+    let layer = Layer {
+        name,
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: doc.height as i32,
+            right: doc.width as i32,
+        },
+        blend: BlendMode::Normal,
+        opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: Some(AdjustmentData {
+            key: *b"SoCo",
+            data: rgba.to_vec(),
+        }),
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: false,
+        background: false,
+    };
+    insert_node(doc, selection_path, layer)
+}
+
+/// Insert an empty group for `name` (generated when empty) using the
+/// tree-aware [`insert_node`] rule. Groups ignore `fill`, `clipping`, and
+/// `neutral_fill`.
+pub fn add_group_full(doc: &mut Document, selection_path: &str, spec: &NewLayerSpec) -> String {
+    let name = resolved_name(doc, &spec.name, "Group");
+    let mut group = empty_group(&name);
+    group.color = spec.color;
+    group.blend = spec.blend;
+    group.opacity = spec.opacity;
+    insert_node(doc, selection_path, group)
+}
+
+/// Insert a transparent raster layer for `name` (generated when empty) using
+/// the tree-aware [`insert_node`] rule. Returns the new path, or empty for a
+/// zero-dimension document.
+pub fn add_layer_in(doc: &mut Document, selection_path: &str, name: &str) -> String {
+    let spec = NewLayerSpec {
+        name: name.to_string(),
+        ..NewLayerSpec::default()
+    };
+    add_layer_full(doc, selection_path, &spec)
 }
 
 /// Insert an empty group for `name` (generated when empty) using the
 /// tree-aware [`insert_node`] rule. Returns the new path.
 pub fn add_group_in(doc: &mut Document, selection_path: &str, name: &str) -> String {
-    let name = if name.is_empty() {
-        next_layer_name(doc, "Group")
-    } else {
-        name.to_string()
+    let spec = NewLayerSpec {
+        name: name.to_string(),
+        ..NewLayerSpec::default()
     };
-    insert_node(doc, selection_path, empty_group(&name))
+    add_group_full(doc, selection_path, &spec)
+}
+
+/// `Layer from Background…`: clear the Background flag and unlock all four
+/// locks on the layer at `path`. Refuses a non-background path (returns false,
+/// leaving the document unchanged).
+pub fn layer_from_background(doc: &mut Document, path: &str) -> bool {
+    let Some(layer) = resolve_path_mut(doc, path) else {
+        return false;
+    };
+    if !layer.background {
+        return false;
+    }
+    layer.background = false;
+    layer.lock = LockFlags::default();
+    true
+}
+
+/// `Background From Layer`: flag the node at `path` as the Background, make its
+/// fully transparent pixels opaque with the background color, and move it to
+/// the bottom of the document. Refuses a group, an adjustment/fill-content
+/// layer, or an already-background layer.
+//
+// ponytail: the background color is opaque white; plumb the toolbox's current
+// background color through the bridge when that state is exposed.
+pub fn background_from_layer(doc: &mut Document, path: &str) -> bool {
+    let Some(segments) = parse_path(path) else {
+        return false;
+    };
+    match resolve_path(doc, path) {
+        Some(layer) if !layer.is_group && layer.adjustment.is_none() && !layer.background => {}
+        _ => return false,
+    }
+    if let Some(layer) = resolve_path_mut(doc, path) {
+        opaque_transparency(layer, [255, 255, 255]);
+        layer.background = true;
+    }
+    let Some((container, index)) = container_mut(doc, &segments) else {
+        return false;
+    };
+    let node = container.remove(index);
+    doc.layers.insert(0, node);
+    true
+}
+
+/// Set every fully transparent pixel (`alpha == 0`) to `rgb` at full opacity,
+/// leaving partially transparent pixels alone.
+fn opaque_transparency(layer: &mut Layer, rgb: [u8; 3]) {
+    let Some(alpha_index) = layer.channels.iter().position(|channel| channel.id == -1) else {
+        return;
+    };
+    let transparent: Vec<usize> = layer.channels[alpha_index]
+        .data
+        .iter()
+        .enumerate()
+        .filter_map(|(index, &alpha)| (alpha == 0).then_some(index))
+        .collect();
+    if transparent.is_empty() {
+        return;
+    }
+    for channel in layer.channels.iter_mut() {
+        let value = match channel.id {
+            0 => rgb[0],
+            1 => rgb[1],
+            2 => rgb[2],
+            -1 => 255,
+            _ => continue,
+        };
+        for &index in &transparent {
+            if index < channel.data.len() {
+                channel.data[index] = value;
+            }
+        }
+    }
 }

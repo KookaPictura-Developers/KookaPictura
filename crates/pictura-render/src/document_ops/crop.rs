@@ -158,6 +158,7 @@ mod tests {
             ],
             children: Vec::new(),
             is_group: false,
+            background: false,
         }
     }
 
@@ -295,6 +296,7 @@ mod tests {
             channels: Vec::new(),
             children: Vec::new(),
             is_group: false,
+            background: false,
         }];
         let before = doc.clone();
         assert!(!translate_layer(&mut doc, 2, 2));

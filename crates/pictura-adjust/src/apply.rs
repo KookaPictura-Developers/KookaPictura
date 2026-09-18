@@ -35,5 +35,8 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
             desaturate(buf, n);
             Ok(())
         }
+        Adjustment::SolidFill(_) => Err(AdjustError::Unsupported(
+            "solid fill is composited, not applied destructively".into(),
+        )),
     }
 }

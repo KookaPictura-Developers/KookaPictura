@@ -1,6 +1,7 @@
 #include "layers_panel.h"
 
 #include "layers_panel_internal.h"
+#include "layer_new_dialog.h"
 
 #include <QtCore/QHash>
 #include <QtCore/QString>
@@ -28,6 +29,67 @@ void LayersPanel::addGroupAt(const QString& path)
     }
     clearSolo();
     const QString created = view_->add_group_in(path);
+    if (!created.isEmpty()) {
+        expandedPaths_.insert(created);
+        refresh();
+        selectPath(created);
+    }
+}
+
+void LayersPanel::openNewLayerDialog()
+{
+    if (!view_) {
+        return;
+    }
+    LayerNewSpec spec;
+    if (!LayerNewDialog::get(false, this, &spec)) {
+        return;
+    }
+    clearSolo();
+    const QString created = view_->new_layer_dialog(currentPath(), spec.name, spec.color, spec.blend,
+                                                    spec.opacity, 255, spec.neutralFill,
+                                                    spec.clipping);
+    if (!created.isEmpty()) {
+        refresh();
+        selectPath(created);
+    }
+}
+
+void LayersPanel::openNewGroupDialog()
+{
+    if (!view_) {
+        return;
+    }
+    LayerNewSpec spec;
+    if (!LayerNewDialog::get(true, this, &spec)) {
+        return;
+    }
+    clearSolo();
+    const QString created =
+        view_->new_group_dialog(currentPath(), spec.name, spec.color, spec.blend, spec.opacity);
+    if (!created.isEmpty()) {
+        expandedPaths_.insert(created);
+        refresh();
+        selectPath(created);
+    }
+}
+
+void LayersPanel::openGroupFromLayersDialog()
+{
+    if (!view_) {
+        return;
+    }
+    const QStringList paths = selectedPaths();
+    if (paths.isEmpty()) {
+        return;
+    }
+    LayerNewSpec spec;
+    if (!LayerNewDialog::get(true, this, &spec)) {
+        return;
+    }
+    clearSolo();
+    const QString created = view_->group_from_layers_dialog(paths, spec.name, spec.color, spec.blend,
+                                                            spec.opacity);
     if (!created.isEmpty()) {
         expandedPaths_.insert(created);
         refresh();

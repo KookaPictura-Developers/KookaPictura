@@ -159,9 +159,10 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 ///
 /// Supported keys: `nvrt`/`invr` (Invert, no payload), `post` (Posterize),
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
-/// record) and `hue2`/`hue ` (Hue/Saturation). Descriptor/custom payloads
-/// (`curv`, `expA`, `vibA`, `blwh`, `phfl`, `mixr`, `gdrm`, `selc`, `clrL`) are
-/// preserved on disk but not decoded here.
+/// record), `hue2`/`hue ` (Hue/Saturation), and `SoCo` (solid-color fill
+/// content with a 4-byte RGBA payload). Descriptor/custom payloads (`curv`,
+/// `expA`, `vibA`, `blwh`, `phfl`, `mixr`, `gdrm`, `selc`, `clrL`, and a real
+/// Photoshop `SoCo` descriptor) are preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -174,6 +175,12 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"brit" => decode_brightness_contrast(&data.data),
         b"levl" => decode_levels(&data.data),
         b"hue2" | b"hue " => decode_hue_saturation(&data.data),
+        // ponytail: our own 4-byte payload, not Photoshop's `'Clr '` descriptor;
+        // parse the descriptor when a real CS6 solid-fill baseline appears.
+        b"SoCo" => match data.data.as_slice() {
+            [r, g, b, a] => Some(Adjustment::SolidFill([*r, *g, *b, *a])),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -337,6 +344,12 @@ fn encode_short(key: [u8; 4], value: u16) -> AdjustmentData {
 /// the layer's mask/opacity/blend (Photoshop applies the adjustment to the
 /// backdrop and blends the adjusted result back).
 fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustment) {
+    // Fill content is generative: it adds color inside the layer's rect instead
+    // of transforming the backdrop, so it takes the normal-content path.
+    if let Adjustment::SolidFill(rgba) = adjustment {
+        composite_solid_fill(canvas, layer, *rgba);
+        return;
+    }
     let n = canvas.w * canvas.h;
     if n == 0 {
         return;
@@ -365,6 +378,32 @@ fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustm
                 buf.data[2 * n + i] as f32 / 255.0,
             ];
             blend_into(canvas, layer, x, y, cs, backdrop_alpha);
+        }
+    }
+}
+
+/// Composite a solid fill across the layer's rect (clamped to the canvas).
+///
+/// Unlike a destructive adjustment, every in-rect pixel is source content at
+/// the payload's alpha; the layer's mask, opacity, fill, and blend still apply
+/// through [`blend_into`]. Pixels outside the rect are untouched.
+fn composite_solid_fill(canvas: &mut Canvas, layer: &Layer, rgba: [u8; 4]) {
+    let x0 = layer.rect.left.max(0);
+    let y0 = layer.rect.top.max(0);
+    let x1 = layer.rect.right.min(canvas.w as i32);
+    let y1 = layer.rect.bottom.min(canvas.h as i32);
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    let cs = [
+        rgba[0] as f32 / 255.0,
+        rgba[1] as f32 / 255.0,
+        rgba[2] as f32 / 255.0,
+    ];
+    let src_a = rgba[3] as f32 / 255.0;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            blend_into(canvas, layer, x as usize, y as usize, cs, src_a);
         }
     }
 }

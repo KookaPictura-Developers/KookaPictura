@@ -515,6 +515,7 @@ fn grayscale_layer_replicates_channel() {
         }],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }];
     assert_eq!(px(&composite_rgba(&d), 0, 0), [120, 120, 120, 255]);
 }

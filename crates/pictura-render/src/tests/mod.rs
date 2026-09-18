@@ -8,6 +8,7 @@ use pictura_core::{
 mod adjustment;
 mod blend;
 mod composite;
+mod rasterize;
 
 fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
     PsdRect {
@@ -65,6 +66,7 @@ fn solid(
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
@@ -90,6 +92,7 @@ fn group(
         channels: Vec::new(),
         children,
         is_group: true,
+        background: false,
     }
 }
 
@@ -148,6 +151,7 @@ fn adjustment_layer(
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 

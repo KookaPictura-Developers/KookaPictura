@@ -75,18 +75,10 @@ pub fn flatten_rows(doc: &Document) -> Vec<(String, u32)> {
     rows
 }
 
-/// The M36 Background heuristic: top-level index 0, not a group, no adjustment
-/// data, and named exactly `"Background"`.
+/// Whether the layer at `path` carries the first-class Background flag (design
+/// D5). The flag is authoritative: position and name are irrelevant.
 pub fn is_background(doc: &Document, path: &str) -> bool {
-    let Some(segments) = parse_path(path) else {
-        return false;
-    };
-    if segments.len() != 1 || segments[0] != 0 {
-        return false;
-    }
-    resolve_path(doc, path).is_some_and(|layer| {
-        !layer.is_group && layer.adjustment.is_none() && layer.name == "Background"
-    })
+    resolve_path(doc, path).is_some_and(|layer| layer.background)
 }
 
 /// Resolve the mutable `children` vector holding the node at `segments` and the

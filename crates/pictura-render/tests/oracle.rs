@@ -118,6 +118,7 @@ fn layer(name: &str, blend: BlendMode, interleaved: &[u8], with_alpha: bool) -> 
         channels,
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
