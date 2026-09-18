@@ -5,11 +5,15 @@
 #include "layers_panel_internal.h"
 #include "percent_field.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QMetaObject>
 #include <QtCore/QModelIndex>
+#include <QtCore/QPoint>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtGui/QAction>
+#include <QtGui/QMouseEvent>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QToolButton>
@@ -114,21 +118,6 @@ void LayersPanel::setOptionsForTest(int size, int contents, bool expand)
         delegate_->setThumbnailSize(kThumbSizePx.at(thumbSizeIndex_));
     }
     persistOptions();
-}
-
-QStringList LayersPanel::panelMenuTextsForTest() const
-{
-    QStringList texts;
-    QMenu* menu = panelMenu_ ? panelMenu_->menu() : nullptr;
-    if (!menu) {
-        return texts;
-    }
-    for (QAction* action : menu->actions()) {
-        if (!action->isSeparator()) {
-            texts.push_back(action->text());
-        }
-    }
-    return texts;
 }
 
 QStringList LayersPanel::rowMenuTextsForTest()
@@ -262,6 +251,67 @@ void LayersPanel::setFilterAttributeForTest(const QString& attr, bool enabled)
 int LayersPanel::filterDimensionForTest() const
 {
     return filterBar_ ? filterBar_->dimensionIndexForTest() : -1;
+}
+
+bool LayersPanel::headerOrderOkForTest() const
+{
+    const auto y = [this](const QWidget* widget) {
+        return widget ? widget->mapTo(this, QPoint(0, 0)).y() : -1;
+    };
+    const int filterY = y(filterBar_);
+    const int opacityY = y(opacity_);
+    const int locksY = y(lockTransparency_);
+    const int treeY = y(tree_);
+    return filterY >= 0 && filterY < opacityY && opacityY < locksY && locksY < treeY;
+}
+
+bool LayersPanel::opacityLabelPresentForTest() const
+{
+    return findChild<QLabel*>(QStringLiteral("layersOpacityLabel")) != nullptr;
+}
+
+bool LayersPanel::fillLabelPresentForTest() const
+{
+    return findChild<QLabel*>(QStringLiteral("layersFillLabel")) != nullptr;
+}
+
+bool LayersPanel::hasPanelMenuButtonForTest() const
+{
+    return findChild<QToolButton*>(QStringLiteral("layersPanelMenu")) != nullptr;
+}
+
+bool LayersPanel::filterToggleOnForTest() const
+{
+    return filterBar_ && filterBar_->toggleOnForTest();
+}
+
+bool LayersPanel::filterToggleHasIconForTest() const
+{
+    return filterBar_ && filterBar_->toggleHasIconForTest();
+}
+
+int LayersPanel::eyeLeftForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return -1;
+    }
+    return delegate_->eyeRect(tree_->visualRect(index)).left();
+}
+
+bool LayersPanel::chevronClickExpandsForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !index.data(ExpandableRole).toBool() || !delegate_ || !tree_) {
+        return false;
+    }
+    const bool before = tree_->isExpanded(index);
+    const QPoint pos =
+        delegate_->chevronRect(tree_->visualRect(index), index.data(DepthRole).toInt()).center();
+    QMouseEvent press(QEvent::MouseButtonPress, pos, tree_->viewport()->mapToGlobal(pos),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return tree_->isExpanded(index) != before;
 }
 
 } // namespace pictura

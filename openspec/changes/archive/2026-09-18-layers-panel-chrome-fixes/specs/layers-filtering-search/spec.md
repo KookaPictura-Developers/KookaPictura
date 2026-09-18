@@ -1,8 +1,5 @@
-# layers-filtering-search Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change layers-filtering-search. Update Purpose after archive.
-## Requirements
 ### Requirement: Filter row and controls
 
 The Layers panel SHALL provide a filter/search row at the top of the header,
@@ -47,72 +44,6 @@ chosen the enabled toggle SHALL leave every row visible.
 - **WHEN** the panel is shown with the lightswitch on and no criterion chosen
 - **THEN** every layer row is visible
 
-### Requirement: Filter predicate
-
-The system SHALL match a layer against the active filter as follows. Name SHALL
-match as a case-insensitive substring of the layer or group name. Kind SHALL
-match when the layer's kind is one of the selected kinds, where the selectable
-kinds are exactly those the model exposes (pixel, adjustment, group,
-background). Mode SHALL match the layer's blend-mode key exactly. Color SHALL
-match the layer's color label index exactly. Attribute SHALL match one of
-Visible, Hidden, Locked, Has Mask, or Clipped against the row's state. Multiple
-active criteria SHALL be combined with AND, and the selected Kind values with
-OR. A dimension with no value selected or typed SHALL be inactive. A filter
-that matches no layer SHALL show an empty list without changing the document.
-
-#### Scenario: Name narrows to a substring [lfs_name]
-
-- **WHEN** the Name filter is enabled with `sky`
-- **THEN** only layers and groups whose names contain `sky` (case-insensitively)
-  are shown, and every other layer is hidden from the panel
-
-#### Scenario: Kind is a multi-select [lfs_kind]
-
-- **WHEN** the Kind filter has pixel and adjustment selected
-- **THEN** pixel and adjustment layers are shown and group and background layers
-  are hidden
-
-#### Scenario: Mode matches the blend key [lfs_mode]
-
-- **WHEN** the Mode filter is enabled with Multiply
-- **THEN** only layers whose blend mode is Multiply are shown
-
-#### Scenario: Color matches the label [lfs_color]
-
-- **WHEN** the Color filter is enabled with Red
-- **THEN** only layers whose color label is Red are shown
-
-#### Scenario: Criteria combine with AND [lfs_mode]
-
-- **WHEN** Name `shadow` and Mode Multiply are both active
-- **THEN** only layers matching both are shown
-
-#### Scenario: No match leaves the document unchanged [lfs_none]
-
-- **WHEN** the filter matches no layer
-- **THEN** the panel is empty, the document's layers and visibility are
-  unchanged, and toggling the filter off restores every row
-
-### Requirement: Ancestor promotion
-
-When a layer inside a group matches the filter, the panel SHALL show the group
-ancestors of that layer so the hierarchy stays navigable, even when the
-ancestors do not themselves match. Non-matching siblings SHALL remain hidden. A
-group shown only by ancestor promotion SHALL be treated as a container, not as a
-match: it SHALL be auto-expanded so its matching descendant is reachable.
-
-#### Scenario: A matching child keeps its group visible [lfs_ancestor]
-
-- **WHEN** a group contains one matching child and one non-matching child and
-  the filter is active
-- **THEN** the group row and the matching child are shown, and the non-matching
-  child is hidden
-
-#### Scenario: The promoted group auto-expands [lfs_ancestor]
-
-- **WHEN** the filter is activated and a collapsed group contains a match
-- **THEN** the group is expanded so the matching descendant is visible
-
 ### Requirement: View-only, live, and transient
 
 Filtering SHALL be a view-level predicate: it SHALL NOT mutate the document,
@@ -145,4 +76,3 @@ with no criterion active the reset shows the full tree.
 - **WHEN** the active document changes while a filter is active
 - **THEN** the filter returns to Kind/on with no criterion and the new
   document's full tree is shown
-

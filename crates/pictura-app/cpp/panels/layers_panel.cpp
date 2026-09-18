@@ -43,6 +43,7 @@
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QHeaderView>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QStyle>
@@ -125,51 +126,20 @@ LayersPanel::LayersPanel(QWidget* parent)
         blend_->addItem(QString::fromLatin1(entry.name), QString::fromLatin1(entry.key));
     }
     blend_->setEnabled(false);
+    controls->addWidget(blend_, 1);
+    auto* opacityLabel = new QLabel(tr("Opacity"), body);
+    opacityLabel->setObjectName(QStringLiteral("layersOpacityLabel"));
+    controls->addWidget(opacityLabel);
     opacity_ = new PercentField(body);
     opacity_->setObjectName(QStringLiteral("layersOpacityField"));
     opacity_->setEnabled(false);
     opacity_->setToolTip(tr("Opacity"));
-    fill_ = new PercentField(body);
-    fill_->setObjectName(QStringLiteral("layersFillField"));
-    fill_->setEnabled(false);
-    fill_->setToolTip(tr("Fill"));
-    panelMenu_ = new QToolButton(body);
-    panelMenu_->setObjectName(QStringLiteral("layersPanelMenu"));
-    panelMenu_->setPopupMode(QToolButton::InstantPopup);
-    panelMenu_->setAutoRaise(true);
-    panelMenu_->setIcon(QApplication::style()->standardIcon(QStyle::SP_TitleBarMenuButton));
-    panelMenu_->setToolTip(tr("Layers Panel Menu"));
-    controls->addWidget(blend_, 1);
     controls->addWidget(opacity_);
-    controls->addWidget(fill_);
-    controls->addWidget(panelMenu_);
     layout->addLayout(controls);
 
-    model_ = new LayersModel(this);
-    proxy_ = new LayersFilterProxyModel(model_, this);
-
-    tree_ = new QTreeView(body);
-    tree_->setModel(proxy_);
-    delegate_ = new LayerRowDelegate(tree_);
-    delegate_->setThumbnailSize(kThumbSizePx.at(thumbSizeIndex_));
-    tree_->setItemDelegate(delegate_);
-    tree_->setRootIsDecorated(true);
-    tree_->setItemsExpandable(true);
-    tree_->setExpandsOnDoubleClick(false);
-    tree_->setAllColumnsShowFocus(true);
-    tree_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    tree_->setUniformRowHeights(true);
-    tree_->setDragEnabled(false);
-    tree_->setHeaderHidden(true);
-    tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
-    tree_->viewport()->installEventFilter(this);
-    layout->addWidget(tree_, 1);
-
-    // The lock strip sits below the blend/opacity/fill strip. Each icon is one
-    // flag; "All" is the derived four-bit set. The panel reflects state, so
-    // toggling an individual flag off naturally unchecks "All".
+    // The lock strip sits directly above the layer list; Fill shares its row.
+    // Each icon is one flag; "All" is the derived four-bit set. The panel
+    // reflects state, so toggling an individual flag off unchecks "All".
     auto* locks = new QHBoxLayout();
     const auto makeLock = [this, body, locks](const QString& assetId, const QString& tooltip,
                                               const QString& flag) {
@@ -202,7 +172,41 @@ LayersPanel::LayersPanel(QWidget* parent)
                             QStringLiteral("nesting"));
     lockAll_ = makeLock(QStringLiteral("layers.lockAll"), tr("Lock All"),
                         QStringLiteral("all"));
+    locks->addStretch(1);
+    auto* fillLabel = new QLabel(tr("Fill"), body);
+    fillLabel->setObjectName(QStringLiteral("layersFillLabel"));
+    locks->addWidget(fillLabel);
+    fill_ = new PercentField(body);
+    fill_->setObjectName(QStringLiteral("layersFillField"));
+    fill_->setEnabled(false);
+    fill_->setToolTip(tr("Fill"));
+    locks->addWidget(fill_);
     layout->addLayout(locks);
+
+    model_ = new LayersModel(this);
+    proxy_ = new LayersFilterProxyModel(model_, this);
+
+    tree_ = new LayersTreeView(body);
+    tree_->setModel(proxy_);
+    delegate_ = new LayerRowDelegate(tree_);
+    delegate_->setThumbnailSize(kThumbSizePx.at(thumbSizeIndex_));
+    tree_->setItemDelegate(delegate_);
+    // The delegate draws the nesting indent and group chevron itself, so the
+    // eye stays anchored at the panel's left edge for every depth.
+    tree_->setRootIsDecorated(false);
+    tree_->setIndentation(0);
+    tree_->setItemsExpandable(true);
+    tree_->setExpandsOnDoubleClick(false);
+    tree_->setAllColumnsShowFocus(true);
+    tree_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    tree_->setUniformRowHeights(true);
+    tree_->setDragEnabled(false);
+    tree_->setHeaderHidden(true);
+    tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    tree_->viewport()->installEventFilter(this);
+    layout->addWidget(tree_, 1);
 
     auto* buttons = new QHBoxLayout();
     const auto stripIconButton = [body, buttons](const QString& objectName,
@@ -263,25 +267,6 @@ LayersPanel::LayersPanel(QWidget* parent)
     deleteButton->setToolTip(tr("Delete"));
     layout->addLayout(buttons);
 
-    // Panel menu: only commands M39 actually wires (no disabled placeholders).
-    auto* panelMenu = new QMenu(panelMenu_);
-    QAction* optionsAction = panelMenu->addAction(tr("Panel Options…"));
-    connect(optionsAction, &QAction::triggered, this, &LayersPanel::openPanelOptions);
-    panelMenu->addSeparator();
-    const auto addCommand = [this, panelMenu](const QString& text, auto fn) {
-        QAction* action = panelMenu->addAction(text);
-        connect(action, &QAction::triggered, this, fn);
-    };
-    addCommand(tr("New Layer"), [this] { addLayerAt(currentPath()); });
-    addCommand(tr("New Group"), [this] { addGroupAt(currentPath()); });
-    addCommand(tr("Duplicate Layer(s)"), [this] { duplicateSelection(); });
-    addCommand(tr("Delete Layer(s)"), [this] { deleteSelection(); });
-    addCommand(tr("Group Layers"), [this] { groupSelection(); });
-    addCommand(tr("Ungroup Layers"), [this] { ungroupSelection(); });
-    addCommand(tr("Move Layer Up"), [this] { moveCurrent(1); });
-    addCommand(tr("Move Layer Down"), [this] { moveCurrent(-1); });
-    panelMenu_->setMenu(panelMenu);
-
     connect(tree_->selectionModel(), &QItemSelectionModel::currentChanged, this,
             [this](const QModelIndex&, const QModelIndex&) { syncControls(); });
     connect(tree_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
@@ -339,11 +324,12 @@ void LayersPanel::setView(PictureView* view)
     // transient, so both reset.
     if (view_ != view) {
         clearSolo();
+        const LayerFilter defaultFilter{true};
         if (filterBar_) {
-            filterBar_->setFilter(LayerFilter{});
+            filterBar_->setFilter(defaultFilter);
         }
         if (proxy_) {
-            proxy_->setFilter(LayerFilter{});
+            proxy_->setFilter(defaultFilter);
         }
     }
     view_ = view;
@@ -409,7 +395,7 @@ void LayersPanel::refresh()
         }
     }
     expandedPaths_ = live;
-    if (proxy_->filter().enabled) {
+    if (proxy_->filter().enabled && proxy_->hasActiveCriteria()) {
         expandMatchingGroups();
     }
 
@@ -518,10 +504,17 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
     if (watched == tree_->viewport() && event->type() == QEvent::MouseButtonPress) {
         auto* mouse = static_cast<QMouseEvent*>(event);
         if (mouse->button() == Qt::LeftButton) {
-            const QModelIndex index = tree_->indexAt(mouse->position().toPoint());
-            if (index.isValid()
-                && delegate_->eyeRect(tree_->visualRect(index))
-                       .contains(mouse->position().toPoint())) {
+            const QPoint pos = mouse->position().toPoint();
+            const QModelIndex index = tree_->indexAt(pos);
+            if (index.isValid() && index.data(ExpandableRole).toBool()) {
+                const QRect chevron =
+                    delegate_->chevronRect(tree_->visualRect(index), index.data(DepthRole).toInt());
+                if (chevron.contains(pos)) {
+                    tree_->setExpanded(index, !tree_->isExpanded(index));
+                    return true;
+                }
+            }
+            if (index.isValid() && delegate_->eyeRect(tree_->visualRect(index)).contains(pos)) {
                 const QString path = pathForProxyIndex(index);
                 if (mouse->modifiers() & Qt::AltModifier) {
                     toggleSolo(path);
@@ -695,7 +688,7 @@ void LayersPanel::applyFilter(const LayerFilter& filter)
         return;
     }
     proxy_->setFilter(filter);
-    if (filter.enabled) {
+    if (filter.enabled && proxy_->hasActiveCriteria()) {
         expandMatchingGroups();
     } else {
         for (const QString& path : expandedPaths_) {

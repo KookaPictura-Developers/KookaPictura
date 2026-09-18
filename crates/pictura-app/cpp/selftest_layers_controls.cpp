@@ -94,6 +94,30 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (!lpcBitOk || !lpcRefuseOk || !lpcMoveOk || !lpcAllOk) {
             return pictura::selfTest().fail(200, "nesting lock");
         }
+
+        // lpc_chrome (210): header order and labels, no panel menu button, the
+        // filter lightswitch is on with an icon, the eye is left-anchored for a
+        // nested row, and clicking a group chevron expands it.
+        lpcPanel->setView(lpcNestView);
+        lpcPanel->refresh();
+        const bool chromeOrder = lpcPanel->headerOrderOkForTest();
+        const bool chromeLabels =
+            lpcPanel->opacityLabelPresentForTest() && lpcPanel->fillLabelPresentForTest();
+        const bool chromeNoMenu = !lpcPanel->hasPanelMenuButtonForTest();
+        const bool chromeSwitch =
+            lpcPanel->filterToggleOnForTest() && lpcPanel->filterToggleHasIconForTest();
+        const int eyeGroup = lpcPanel->eyeLeftForTest(lpcGroup);
+        const int eyeChild = lpcPanel->eyeLeftForTest(QStringLiteral("1/0"));
+        const bool chromeEye = eyeGroup >= 0 && eyeGroup == eyeChild;
+        const bool chromeChevron = lpcPanel->chevronClickExpandsForTest(lpcGroup);
+        ST_BEGIN("lpc_chrome");
+        ST_PASS("lpc_chrome order=%d labels=%d nomenu=%d toggle=%d eye=%d chevron=%d",
+                chromeOrder ? 1 : 0, chromeLabels ? 1 : 0, chromeNoMenu ? 1 : 0,
+                chromeSwitch ? 1 : 0, chromeEye ? 1 : 0, chromeChevron ? 1 : 0);
+        if (!chromeOrder || !chromeLabels || !chromeNoMenu || !chromeSwitch || !chromeEye
+            || !chromeChevron) {
+            return pictura::selfTest().fail(210, "panel chrome");
+        }
         frame.closeDocument(lpcNestDoc, false);
 
     return 0;

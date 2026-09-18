@@ -57,7 +57,6 @@ public:
     int thumbContentsForTest() const;
     bool expandNewEffectsForTest() const;
     void setOptionsForTest(int size, int contents, bool expand);
-    QStringList panelMenuTextsForTest() const;
     QStringList rowMenuTextsForTest();
     QStringList colorLabelTextsForTest();
     int lockButtonCountForTest() const;
@@ -65,6 +64,14 @@ public:
     int fillPercentForTest() const;
     void setOpacityPercentForTest(int pct);
     void setFillPercentForTest(int pct);
+    bool headerOrderOkForTest() const;
+    bool opacityLabelPresentForTest() const;
+    bool fillLabelPresentForTest() const;
+    bool hasPanelMenuButtonForTest() const;
+    bool filterToggleOnForTest() const;
+    bool filterToggleHasIconForTest() const;
+    int eyeLeftForTest(const QString& path) const;
+    bool chevronClickExpandsForTest(const QString& path);
 
     // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
     // one, updates the bar, and applies it to the proxy.
@@ -128,7 +135,6 @@ private:
     QToolButton* lockPosition_ = nullptr;
     QToolButton* lockNesting_ = nullptr;
     QToolButton* lockAll_ = nullptr;
-    QToolButton* panelMenu_ = nullptr;
     QSet<QString> expandedPaths_;
     bool thumbEntireDocument_ = true;
     int thumbSizeIndex_ = 2;

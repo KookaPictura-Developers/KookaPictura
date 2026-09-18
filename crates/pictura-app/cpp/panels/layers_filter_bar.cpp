@@ -1,7 +1,9 @@
 #include "layers_filter_bar.h"
 
+#include "icons.h"
 #include "layers_panel_internal.h"
 
+#include <QtCore/QSize>
 #include <QtCore/QVariant>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QHBoxLayout>
@@ -182,8 +184,10 @@ LayerFilterBar::LayerFilterBar(QWidget* parent)
     toggle_ = new QToolButton(this);
     toggle_->setObjectName(QStringLiteral("layersFilterToggle"));
     toggle_->setCheckable(true);
+    toggle_->setChecked(true);
     toggle_->setAutoRaise(true);
-    toggle_->setText(tr("Filter"));
+    toggle_->setIconSize(QSize(18, 18));
+    toggle_->setIcon(pictura::icon(QStringLiteral("layers.filterOn")));
     toggle_->setToolTip(tr("Enable Layer Filter"));
     layout->addWidget(toggle_);
 
@@ -191,7 +195,11 @@ LayerFilterBar::LayerFilterBar(QWidget* parent)
         stack_->setCurrentIndex(index);
         userChanged();
     });
-    connect(toggle_, &QToolButton::toggled, this, [this](bool) { userChanged(); });
+    connect(toggle_, &QToolButton::toggled, this, [this](bool on) {
+        toggle_->setIcon(pictura::icon(on ? QStringLiteral("layers.filterOn")
+                                          : QStringLiteral("layers.filterOff")));
+        userChanged();
+    });
     connect(name_, &QLineEdit::textChanged, this, [this](const QString&) { userChanged(); });
     for (QToolButton* button : kindButtons_) {
         connect(button, &QToolButton::toggled, this, [this](bool) { userChanged(); });
@@ -275,6 +283,16 @@ void LayerFilterBar::setFilter(const LayerFilter& filter)
 int LayerFilterBar::dimensionIndexForTest() const
 {
     return dimension_->currentIndex();
+}
+
+bool LayerFilterBar::toggleOnForTest() const
+{
+    return toggle_->isChecked();
+}
+
+bool LayerFilterBar::toggleHasIconForTest() const
+{
+    return !toggle_->icon().isNull();
 }
 
 void LayerFilterBar::setDimensionForTest(const QString& key)

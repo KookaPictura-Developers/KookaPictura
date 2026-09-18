@@ -24,6 +24,8 @@
     <file>icons/layers.clipMask.svg</file>
     <file>icons/layers.delete.svg</file>
     <file>icons/layers.fillAdjustment.svg</file>
+    <file>icons/layers.filterOff.svg</file>
+    <file>icons/layers.filterOn.svg</file>
     <file>icons/layers.fx.svg</file>
     <file>icons/layers.group.svg</file>
     <file>icons/layers.link.svg</file>
