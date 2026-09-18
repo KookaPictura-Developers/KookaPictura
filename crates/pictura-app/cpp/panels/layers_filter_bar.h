@@ -24,6 +24,8 @@ public:
 
     int dimensionIndexForTest() const;
     void setDimensionForTest(const QString& key);
+    bool toggleOnForTest() const;
+    bool toggleHasIconForTest() const;
 
 signals:
     void filterChanged(const LayerFilter& filter);

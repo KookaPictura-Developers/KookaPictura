@@ -2764,14 +2764,8 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             ST_FAIL(109, "row badges");
         }
 
-        // m39_menus (110): the panel and row menus carry exactly the wired
-        // commands (no unimplemented entry) and the eight color labels.
-        const QStringList expectedPanel = {
-            QStringLiteral("Panel Options…"), QStringLiteral("New Layer"),
-            QStringLiteral("New Group"), QStringLiteral("Duplicate Layer(s)"),
-            QStringLiteral("Delete Layer(s)"), QStringLiteral("Group Layers"),
-            QStringLiteral("Ungroup Layers"), QStringLiteral("Move Layer Up"),
-            QStringLiteral("Move Layer Down")};
+        // m39_menus (110): the row menu and color submenu carry exactly the
+        // wired commands (the panel-group widget menu owns the panel menu).
         const QStringList expectedRow = {
             QStringLiteral("Rename"), QStringLiteral("New Layer"), QStringLiteral("New Group"),
             QStringLiteral("Duplicate Layer(s)"), QStringLiteral("Delete Layer(s)"),
@@ -2782,12 +2776,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("None"), QStringLiteral("Red"), QStringLiteral("Orange"),
             QStringLiteral("Yellow"), QStringLiteral("Green"), QStringLiteral("Blue"),
             QStringLiteral("Violet"), QStringLiteral("Gray")};
-        const bool panelMenuOk = anatomyPanel->panelMenuTextsForTest() == expectedPanel;
         const bool rowMenuOk = anatomyPanel->rowMenuTextsForTest() == expectedRow;
         const bool colorMenuOk = anatomyPanel->colorLabelTextsForTest() == expectedColor;
         ST_BEGIN("menus_panel");
-        ST_PASS("menus panel=%d row=%d color=%d", panelMenuOk ? 1 : 0, rowMenuOk ? 1 : 0, colorMenuOk ? 1 : 0);
-        if (!panelMenuOk || !rowMenuOk || !colorMenuOk) {
+        ST_PASS("menus row=%d color=%d", rowMenuOk ? 1 : 0, colorMenuOk ? 1 : 0);
+        if (!rowMenuOk || !colorMenuOk) {
             ST_FAIL(110, "panel/row menus");
         }
 

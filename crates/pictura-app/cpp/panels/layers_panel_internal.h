@@ -27,6 +27,7 @@
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QStyledItemDelegate>
 #include <QtWidgets/QStyleOptionViewItem>
+#include <QtWidgets/QTreeView>
 
 #include <array>
 #include <memory>
@@ -355,6 +356,20 @@ private:
     QHash<QString, Node*> byPath_;
 };
 
+// A QTreeView that draws no branch indicators: the row delegate owns the
+// nesting indentation and the expand/collapse chevron, so the eye can stay
+// anchored at the panel's left edge.
+class LayersTreeView : public QTreeView {
+public:
+    explicit LayersTreeView(QWidget* parent = nullptr)
+        : QTreeView(parent)
+    {
+    }
+
+protected:
+    void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
+};
+
 class LayerRowDelegate : public QStyledItemDelegate {
 public:
     explicit LayerRowDelegate(QObject* parent = nullptr)
@@ -365,11 +380,24 @@ public:
     int thumbnailSize() const { return thumbnailSize_; }
     void setThumbnailSize(int size) { thumbnailSize_ = qMax(0, size); }
 
+    // Fixed eye gutter and per-level content indent, in row-local pixels.
+    static constexpr int kEyeColumn = 22;
+    static constexpr int kIndent = 14;
+    static constexpr int kChevronWidth = 14;
+
     /// The eye's hit-target inside a row's content rect (as painted).
     QRect eyeRect(const QRect& itemRect) const
     {
         const int width = qBound(12, itemRect.height(), 18);
         return QRect(itemRect.left() + 2, itemRect.top(), width, itemRect.height());
+    }
+
+    /// The expand/collapse chevron's hit-target for a row at `depth`.
+    QRect chevronRect(const QRect& itemRect, int depth) const
+    {
+        const int side = qMin(kChevronWidth, itemRect.height());
+        const int left = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent;
+        return QRect(left, itemRect.top() + (itemRect.height() - side) / 2, side, side);
     }
 
     QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
@@ -398,15 +426,24 @@ public:
         const bool selected = option.state & QStyle::State_Selected;
         const QPalette& palette = option.palette;
 
-        // Eye.
+        const int depth = index.data(DepthRole).toInt();
+        // Eye, anchored at the panel's left edge for every depth.
         const QRect eye = eyeRect(rect);
         paintEye(painter, eye, index.data(VisibleRole).toBool(), selected, palette);
 
-        // Thumbnail (pixel layer) or folder glyph (group). A clipped row draws
-        // its clipping-mask glyph just left of the thumbnail; a missing asset
-        // is simply omitted.
+        // Content (chevron, clipping glyph, thumbnail, name) is indented by
+        // depth from the fixed eye gutter; the chevron slot is always reserved
+        // so group and layer thumbnails align.
         const int thumb = qMax(0, thumbnailSize_);
-        int x = eye.right() + 3;
+        int x = rect.left() + kEyeColumn + qMax(0, depth) * kIndent;
+        if (index.data(ExpandableRole).toBool()) {
+            const auto* treeView = qobject_cast<const QTreeView*>(opt.widget);
+            const bool expanded = treeView && treeView->isExpanded(index);
+            paintChevron(painter, chevronRect(rect, depth), expanded,
+                         selected ? palette.color(QPalette::HighlightedText)
+                                  : palette.color(QPalette::Text));
+        }
+        x += kChevronWidth;
         if (index.data(ClippingRole).toBool()) {
             const int side = qMax(10, thumb > 0 ? thumb - 8 : 12);
             const QPixmap clip =
@@ -483,6 +520,28 @@ public:
     }
 
 private:
+    static void paintChevron(QPainter* painter, const QRect& rect, bool expanded,
+                             const QColor& color)
+    {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+        painter->setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        const QPointF c = QRectF(rect).center();
+        const qreal s = 3.0;
+        if (expanded) {
+            painter->drawLine(QPointF(c.x() - s, c.y() - s * 0.5),
+                              QPointF(c.x(), c.y() + s * 0.5));
+            painter->drawLine(QPointF(c.x(), c.y() + s * 0.5),
+                              QPointF(c.x() + s, c.y() - s * 0.5));
+        } else {
+            painter->drawLine(QPointF(c.x() - s * 0.5, c.y() - s),
+                              QPointF(c.x() + s * 0.5, c.y()));
+            painter->drawLine(QPointF(c.x() + s * 0.5, c.y()),
+                              QPointF(c.x() - s * 0.5, c.y() + s));
+        }
+        painter->restore();
+    }
+
     static void paintEye(QPainter* painter, const QRect& rect, bool visible, bool selected,
                          const QPalette& palette)
     {

@@ -94,7 +94,8 @@ void PercentField::applyUserValue(int pct)
 void PercentField::showPopup()
 {
     popup_->adjustSize();
-    popup_->move(arrow_->mapToGlobal(QPoint(0, arrow_->height())));
+    const int x = (width() - popup_->width()) / 2;
+    popup_->move(mapToGlobal(QPoint(x, height())));
     popup_->show();
 }
 

@@ -16,11 +16,12 @@ Snapshot for resuming after a context break. Update after each milestone.
   fresh-white-document regression; counted from `cargo test --workspace`, which
   includes the pre-existing ignored `pictura-render` doctest as the ninth).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
-  content-named `layers-panel-controls` and `layers-filtering-search` changes;
-  canonical specs are in `openspec/specs/` (62 specs, `validate --all --strict`
-  green), change history under `openspec/changes/archive/`; no change is open.
-  The next panel-program stage is **remaining layer management**, named by
-  content rather than a milestone number.
+  content-named `layers-panel-controls`, `layers-filtering-search`, and
+  `layers-panel-chrome-fixes` changes; canonical specs are in `openspec/specs/`
+  (62 specs, `validate --all --strict` green), change history under
+  `openspec/changes/archive/`; no change is open. The next panel-program stage is
+  **remaining layer management**, named by content rather than a milestone
+  number.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's
@@ -1565,6 +1566,32 @@ by self-test section is a deliberate later step, out of this pass.
   · 0 failed, file-size OK, guard OK, `openspec validate --all --strict` 62/62).
   Capability: ADD `layers-filtering-search`; no Rust change.
 
+- **layers-panel-chrome-fixes** (a UI-correction follow-up to the controls and
+  filter stages, named by content; OpenSpec change `layers-panel-chrome-fixes`,
+  archived). **Header order/labels:** the header now stacks the filter row, then
+  `[blend | Opacity label + field]`, then `[five locks | Fill label + field]`,
+  then the layer list, then the action strip, and the `PercentField` popup opens
+  centred under its field. **One menu entry point:** the panel's own Qt menu
+  button (`layersPanelMenu`) was removed; the panel-group widget menu (`▾`) is
+  the single path for the wired Layer commands, and the M39 menu self-test now
+  asserts only the row and colour menus. **Left-anchored rows:** a new
+  `LayersTreeView` suppresses the stock branch indicators; the tree runs at zero
+  indentation and the delegate anchors the eye at the panel's left edge for every
+  row, indenting the thumbnail/name by depth and drawing an expand/collapse
+  chevron for a group (the panel's event filter toggles expansion on a chevron
+  click, like the eye). **Filter lightswitch:** two independent-creation SVGs
+  (`layers.filterOn/Off`) back an icon toggle that starts **on**; with no
+  criterion the filter is inert, and the auto-expand-on-filter only runs when a
+  criterion is actually active (`hasActiveCriteria`), so an enabled empty filter
+  never expands every group. Self-test `lpc_chrome` (210) covers the order,
+  labels, removed menu button, on/with-icon toggle, left-anchored eye, and the
+  chevron click; the filter-reset test still passes with the reset now Kind/on.
+  Ceiling: the kind toggle labels elide at the narrow default width. Verified:
+  `TASK_ALLOWS_DOCS=1 bash scripts/verify-full.sh` → `verify-full: OK` (TOTAL 778
+  passed · 9 skipped · 0 failed, file-size OK, guard OK, `openspec validate --all
+  --strict` 62/62). Capability: MODIFIED `layers-panel` (+1 requirement, ~1) and
+  `layers-filtering-search` (~2); no Rust change.
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -1734,8 +1761,11 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   (`layers-panel-controls`: percent Opacity/Fill, the five-lock strip with the
   nesting lock, and the clipping row indicator) and the **filter/search stage**
   (`layers-filtering-search`: the six-dimension filter row with ancestor
-  promotion) have landed and archived. The Layers-panel program therefore
-  continues **by content, not by number**: next is **remaining management**
+  promotion) have landed and archived, followed by a **chrome pass**
+  (`layers-panel-chrome-fixes`: header order and labels, left-anchored eye with
+  a group chevron, and the filter lightswitch on by default). The Layers-panel
+  program therefore continues **by content, not by number**: next is
+  **remaining management**
   (rasterize/merge/flatten/link/select-similar/convert-background/
   layer-via-copy-cut, the New Layer/Group dialogs, and the deferred drag-reorder
   with its recorded drop rules), then **styles/effects**, then **smart objects /

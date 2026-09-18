@@ -26,6 +26,7 @@ public:
 
     void setFilter(const LayerFilter& filter);
     const LayerFilter& filter() const { return filter_; }
+    bool hasActiveCriteria() const;
     bool hasMatchingDescendant(const QModelIndex& sourceIndex) const;
 
     void setSourceModel(QAbstractItemModel* sourceModel) override;
@@ -34,7 +35,6 @@ protected:
     bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
 
 private:
-    bool hasActiveCriteria() const;
     bool rowMatches(const QModelIndex& sourceIndex) const;
 
     LayerFilter filter_;
