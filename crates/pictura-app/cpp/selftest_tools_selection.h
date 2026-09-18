@@ -21,7 +21,10 @@ class PicturaMainWindow;
 // nothing; tsc_layer_select_commands (258) selects/clears panel rows.
 // tsc_selection_ants (259) mirrors a committed marquee contour onto the canvas;
 // tsc_selection_ants_clear (260) proves Deselect clears it; and
-// tsc_selection_edges_toggle (261) hides/shows the edges without losing data.
+// tsc_selection_edges_toggle (261) hides/shows the edges without losing data;
+// tsc_marquee_preview (262) proves the live rubber band is shown during the drag
+// and replaced by the committed contour on release; tsc_ellipse_preview (263)
+// proves the elliptical rubber band is a multi-point ellipse, not a rectangle.
 // Returns 0 when all pass, otherwise the self-test failure code.
 int runToolsSelectionChecks(PicturaMainWindow& frame);
 } // namespace pictura
