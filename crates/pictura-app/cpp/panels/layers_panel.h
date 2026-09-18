@@ -22,6 +22,7 @@ class LayerRowDelegate;
 struct LayerFilter;
 class LayersFilterProxyModel;
 class LayersModel;
+class LayersTreeView;
 class PercentField;
 class PictureView;
 
@@ -72,6 +73,12 @@ public:
     bool filterToggleHasIconForTest() const;
     int eyeLeftForTest(const QString& path) const;
     bool chevronClickExpandsForTest(const QString& path);
+    QString opacityLabelTextForTest() const;
+    bool opacitySuffixPresentForTest() const;
+    bool lockIconsPresentForTest() const;
+    bool treeDragEnabledForTest() const;
+    bool moveForTest(const QString& path, const QString& target, int mode);
+    bool dropOnStripButtonForTest(const QString& buttonName, const QStringList& paths);
 
     // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
     // one, updates the bar, and applies it to the proxy.
@@ -126,7 +133,7 @@ private:
     LayersFilterProxyModel* proxy_ = nullptr;
     LayerFilterBar* filterBar_ = nullptr;
     LayerRowDelegate* delegate_ = nullptr;
-    QTreeView* tree_ = nullptr;
+    LayersTreeView* tree_ = nullptr;
     QComboBox* blend_ = nullptr;
     PercentField* opacity_ = nullptr;
     PercentField* fill_ = nullptr;

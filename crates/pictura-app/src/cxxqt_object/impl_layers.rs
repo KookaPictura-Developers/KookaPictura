@@ -419,6 +419,25 @@ impl qobject::PictureView {
         changed
     }
 
+    pub fn move_layer_to(
+        mut self: Pin<&mut Self>,
+        path: &QString,
+        target: &QString,
+        mode: i32,
+    ) -> bool {
+        let path = path.to_string();
+        let target = target.to_string();
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::move_path_to(doc, &path, &target, mode),
+            None => false,
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record("Move Layer");
+        }
+        changed
+    }
+
     pub fn set_layers_visible(mut self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32 {
         self.as_mut()
             .batch_changed(paths, "Set Visibility", |doc, paths| {

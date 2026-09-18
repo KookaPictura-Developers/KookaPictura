@@ -3,23 +3,26 @@
 #include <QtCore/QPoint>
 #include <QtWidgets/QWidget>
 
+class QLabel;
 class QLineEdit;
 class QSlider;
 class QToolButton;
 
 namespace pictura {
 
-// A 0..100 percentage field: a text box plus an arrow that opens a slider
-// popup. Pressing and dragging horizontally on the field scrubs the value.
-// `valueChanged` is emitted for user input only; `setValue` never feeds back.
+// A 0..100 percentage field: a leading label, a text box, a `%` suffix, and an
+// arrow that opens a slider popup. Pressing and dragging horizontally on the
+// label, the `%`, or the field scrubs the value. `valueChanged` is emitted for
+// user input only; `setValue` never feeds back.
 class PercentField : public QWidget {
     Q_OBJECT
 
 public:
-    explicit PercentField(QWidget* parent = nullptr);
+    explicit PercentField(const QString& label, QWidget* parent = nullptr);
 
     int value() const { return value_; }
     void setValue(int pct);
+    QString labelText() const;
 
 signals:
     void valueChanged(int pct);
@@ -32,7 +35,9 @@ private:
     void applyUserValue(int pct);
     void showPopup();
 
+    QLabel* label_ = nullptr;
     QLineEdit* edit_ = nullptr;
+    QLabel* suffix_ = nullptr;
     QToolButton* arrow_ = nullptr;
     QWidget* popup_ = nullptr;
     QSlider* slider_ = nullptr;

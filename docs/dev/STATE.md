@@ -9,19 +9,19 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **594 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **595 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
   fresh-white-document regression; counted from `cargo test --workspace`, which
   includes the pre-existing ignored `pictura-render` doctest as the ninth).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
-  content-named `layers-panel-controls`, `layers-filtering-search`, and
-  `layers-panel-chrome-fixes` changes; canonical specs are in `openspec/specs/`
-  (62 specs, `validate --all --strict` green), change history under
-  `openspec/changes/archive/`; no change is open. The next panel-program stage is
-  **remaining layer management**, named by content rather than a milestone
-  number.
+  content-named `layers-panel-controls`, `layers-filtering-search`,
+  `layers-panel-chrome-fixes`, and `layers-panel-row-interactions` changes;
+  canonical specs are in `openspec/specs/` (62 specs, `validate --all --strict`
+  green), change history under `openspec/changes/archive/`; no change is open.
+  The next panel-program stage is **remaining layer management**, named by
+  content rather than a milestone number.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's
@@ -1592,6 +1592,36 @@ by self-test section is a deliberate later step, out of this pass.
   --strict` 62/62). Capability: MODIFIED `layers-panel` (+1 requirement, ~1) and
   `layers-filtering-search` (~2); no Rust change.
 
+- **layers-panel-row-interactions** (a third UI pass on the Layers panel, named
+  by content; OpenSpec change `layers-panel-row-interactions`, archived).
+  **Percent fields:** `PercentField` now owns its text label and a `%` suffix,
+  and pressing/dragging the label or the `%` scrubs the value like the field.
+  **Semantic lock icons:** only `layers.lockAll` is a padlock; alpha is a
+  transparency checkerboard, paint a brush, position a move cross, nesting
+  nested squares. **Kind filter icons:** the Kind toggles are icon-only
+  (`layers.kindPixel/Adjustment/Group/Background`) with the kind name as
+  tooltip. **Eye and disclosure:** the visibility toggle is an eye SVG
+  (`layers.eyeOn/Off`) drawn slightly inset (`kEyeInset = 6`), and a group shows
+  `layers.disclosureRight`/`Down` at its indented position. **Drag and drop:**
+  `LayersTreeView` enables drag/drop, overrides `startDrag` to carry the current
+  row's path in `application/x-pictura-layer`, and resolves a drop to a target
+  path plus a mode (above/below/into); the panel's handler calls the new
+  `move_layer_to`. The path math lives in `pictura_render::move_path_to` (mode
+  0/1/2) with refusal rules for the Background, fully/nesting-locked sources, a
+  self or descendant drop, and an `Into` target that is not a group; the bridge
+  recomposites and records one `"Move Layer"` state. Dragging no longer starts a
+  rubber-band multi-selection, and dropping a row on the Delete / New Layer /
+  New Group strip buttons runs delete / duplicate / group on the dragged paths
+  (the buttons are drop targets with a `layerDropAction` property); mask/link/fx
+  stay inert. Self-tests `lpr_rows` (211), `lpr_drag` (212), `lpr_drop` (213)
+  plus the engine unit test `move_path_to_reparents_and_refuses`. Ceiling: only
+  the current row is dragged (a multi-selection drag moves one row; marked
+  `// ponytail:`). Verified: `TASK_ALLOWS_DOCS=1 bash scripts/verify-full.sh` →
+  `verify-full: OK` (TOTAL 779 passed · 9 skipped · 0 failed, file-size OK, guard
+  OK, `openspec validate --all --strict` 62/62); `cargo nextest run --workspace`
+  **595 passed, 8 skipped**. Capability: MODIFIED `layers-panel` (+2, ~1) and
+  `layers-filtering-search` (~1); no new dependency.
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -1763,7 +1793,9 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   (`layers-filtering-search`: the six-dimension filter row with ancestor
   promotion) have landed and archived, followed by a **chrome pass**
   (`layers-panel-chrome-fixes`: header order and labels, left-anchored eye with
-  a group chevron, and the filter lightswitch on by default). The Layers-panel
+  a group chevron, and the filter lightswitch on by default) and a **row pass**
+  (`layers-panel-row-interactions`: label scrub + `%`, semantic lock/eye/Kind
+  icons, and row drag-and-drop reorder plus drop-on-strip). The Layers-panel
   program therefore continues **by content, not by number**: next is
   **remaining management**
   (rasterize/merge/flatten/link/select-similar/convert-background/

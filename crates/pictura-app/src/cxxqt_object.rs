@@ -332,6 +332,14 @@ pub mod qobject {
         #[qinvokable]
         fn move_layer_path(self: Pin<&mut Self>, path: &QString, delta: i32) -> bool;
 
+        /// Move the node at `path` next to (or into) `target`: mode 0 = above,
+        /// 1 = below, 2 = into a group. An empty target means the document top.
+        /// Refuses the Background, fully/nesting-locked sources, a self or
+        /// descendant drop, and an `Into` target that is not a group.
+        #[qinvokable]
+        fn move_layer_to(self: Pin<&mut Self>, path: &QString, target: &QString, mode: i32)
+            -> bool;
+
         /// Set visibility on every path (always eligible per node). Returns the
         /// number of nodes changed; recomposites and records one undo state
         /// only when that count is non-zero.

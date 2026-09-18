@@ -117,12 +117,28 @@ LayerFilterBar::LayerFilterBar(QWidget* parent)
     auto* kindLayout = new QHBoxLayout(kindPage);
     kindLayout->setContentsMargins(0, 0, 0, 0);
     kindLayout->setSpacing(2);
+    const auto kindAsset = [](const QString& key) {
+        if (key == QLatin1String("pixel")) {
+            return QStringLiteral("layers.kindPixel");
+        }
+        if (key == QLatin1String("adjustment")) {
+            return QStringLiteral("layers.kindAdjustment");
+        }
+        if (key == QLatin1String("group")) {
+            return QStringLiteral("layers.kindGroup");
+        }
+        return QStringLiteral("layers.kindBackground");
+    };
     for (size_t i = 0; i < std::size(kKinds); ++i) {
         auto* button = new QToolButton(kindPage);
         button->setCheckable(true);
         button->setAutoRaise(true);
-        button->setText(tr(kKinds[i].name));
-        button->setProperty("kindKey", QString::fromLatin1(kKinds[i].key));
+        const QString key = QString::fromLatin1(kKinds[i].key);
+        button->setProperty("kindKey", key);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setIconSize(QSize(16, 16));
+        button->setIcon(pictura::icon(kindAsset(key)));
+        button->setToolTip(tr(kKinds[i].name));
         kindLayout->addWidget(button);
         kindButtons_[i] = button;
     }

@@ -306,3 +306,69 @@ pub fn move_path(doc: &mut Document, path: &str, delta: i32) -> bool {
     container.insert(target, layer);
     true
 }
+
+/// Move the node at `path` relative to `target`: mode `0` = above, `1` = below,
+/// `2` = into `target` (which must be a group). An empty target means the top of
+/// the document. Refuses the Background, a fully- or nesting-locked source, a
+/// malformed/unknown target, a drop onto the source or into its own descendant,
+/// and an `Into` target that is not a group.
+pub fn move_path_to(doc: &mut Document, path: &str, target: &str, mode: i32) -> bool {
+    let Some(src) = parse_path(path) else {
+        return false;
+    };
+    if is_background(doc, path) {
+        return false;
+    }
+    let locked = resolve_path(doc, path)
+        .is_some_and(|layer| layer.lock.is_all() || layer.lock.contains(LockFlags::NESTING));
+    if locked || resolve_path(doc, path).is_none() {
+        return false;
+    }
+    if !target.is_empty() && (target == path || target.starts_with(&format!("{path}/"))) {
+        return false;
+    }
+
+    let (dest_parent, dest_index): (Vec<usize>, Option<usize>) = if target.is_empty() {
+        (Vec::new(), None)
+    } else {
+        let Some(tgt) = parse_path(target) else {
+            return false;
+        };
+        if mode == 2 {
+            if !resolve_path(doc, target).is_some_and(|layer| layer.is_group) {
+                return false;
+            }
+            (tgt, None)
+        } else {
+            let (last, parent) = tgt.split_last().expect("non-empty");
+            (parent.to_vec(), Some(last + usize::from(mode == 0)))
+        }
+    };
+
+    let src_parent = src[..src.len() - 1].to_vec();
+    let src_index = *src.last().expect("non-empty");
+    let removed = {
+        let Some((container, index)) = container_mut(doc, &src) else {
+            return false;
+        };
+        container.remove(index)
+    };
+
+    let mut dest_index = dest_index;
+    if let Some(index) = dest_index.as_mut() {
+        if dest_parent == src_parent && *index > src_index {
+            *index -= 1;
+        }
+    }
+
+    let Some(container) = container_of_mut(doc, &dest_parent) else {
+        // Unreachable after the guards; re-insert rather than drop the node.
+        if let Some(container) = container_of_mut(doc, &src_parent) {
+            container.insert(src_index.min(container.len()), removed);
+        }
+        return false;
+    };
+    let at = dest_index.map_or(container.len(), |index| index.min(container.len()));
+    container.insert(at, removed);
+    true
+}

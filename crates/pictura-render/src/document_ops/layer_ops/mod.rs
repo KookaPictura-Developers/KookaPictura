@@ -15,7 +15,7 @@ pub use create::{
 };
 pub use paths::{flatten_rows, is_background, parent_path, resolve_path, resolve_path_mut};
 pub use properties::{
-    apply_visibility, delete_paths, duplicate_paths, group_paths, move_path, rename_path,
-    set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths,
-    set_visible_paths, ungroup_paths,
+    apply_visibility, delete_paths, duplicate_paths, group_paths, move_path, move_path_to,
+    rename_path, set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths,
+    set_opacity_paths, set_visible_paths, ungroup_paths,
 };

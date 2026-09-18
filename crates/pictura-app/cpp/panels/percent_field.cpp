@@ -4,6 +4,7 @@
 #include <QtGui/QIntValidator>
 #include <QtGui/QMouseEvent>
 #include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QToolButton>
@@ -11,14 +12,21 @@
 
 namespace pictura {
 
-PercentField::PercentField(QWidget* parent)
+PercentField::PercentField(const QString& label, QWidget* parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("percentField"));
 
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
+    layout->setSpacing(3);
+
+    label_ = new QLabel(label, this);
+    label_->setObjectName(QStringLiteral("percentLabel"));
+    // The label is a scrub handle, so it takes the field's cursor affordance.
+    label_->setCursor(Qt::SizeHorCursor);
+    label_->installEventFilter(this);
+    layout->addWidget(label_);
 
     edit_ = new QLineEdit(this);
     edit_->setObjectName(QStringLiteral("percentEdit"));
@@ -27,6 +35,13 @@ PercentField::PercentField(QWidget* parent)
     edit_->setFixedWidth(34);
     edit_->setText(QString::number(value_));
     edit_->installEventFilter(this);
+    layout->addWidget(edit_);
+
+    suffix_ = new QLabel(QStringLiteral("%"), this);
+    suffix_->setObjectName(QStringLiteral("percentSuffix"));
+    suffix_->setCursor(Qt::SizeHorCursor);
+    suffix_->installEventFilter(this);
+    layout->addWidget(suffix_);
 
     arrow_ = new QToolButton(this);
     arrow_->setObjectName(QStringLiteral("percentArrow"));
@@ -34,8 +49,6 @@ PercentField::PercentField(QWidget* parent)
     arrow_->setArrowType(Qt::DownArrow);
     arrow_->setFixedWidth(16);
     arrow_->setToolTip(tr("Slider"));
-
-    layout->addWidget(edit_);
     layout->addWidget(arrow_);
 
     popup_ = new QWidget(this, Qt::Popup);
@@ -54,6 +67,11 @@ PercentField::PercentField(QWidget* parent)
         }
     });
     connect(arrow_, &QToolButton::clicked, this, [this] { showPopup(); });
+}
+
+QString PercentField::labelText() const
+{
+    return label_ ? label_->text() : QString();
 }
 
 void PercentField::setValue(int pct)
@@ -101,7 +119,8 @@ void PercentField::showPopup()
 
 bool PercentField::eventFilter(QObject* watched, QEvent* event)
 {
-    if (watched != edit_) {
+    const bool isHandle = watched == label_ || watched == edit_ || watched == suffix_;
+    if (!isHandle) {
         return QWidget::eventFilter(watched, event);
     }
     if (event->type() == QEvent::MouseButtonPress) {

@@ -11,12 +11,20 @@ toggle. The dimension popup SHALL offer Name, Kind, Effect, Mode, Attribute, and
 Color, defaulting to Kind. Selecting a dimension SHALL swap the criteria control
 to that dimension's editor: Name is a free-text field, Kind is a set of toggle
 buttons (multi-select), and Effect, Mode, Attribute, and Color are value menus.
-The Effect dimension SHALL be present but disabled, with a "not implemented
-yet" tooltip, until layer effects exist; the other five dimensions SHALL work
-against the data the row projection already exposes. The toggle SHALL be shown
-as a lightswitch icon, SHALL default to on, and SHALL enable or disable the
-predicate without discarding the chosen dimension or criteria. With no criterion
-chosen the enabled toggle SHALL leave every row visible.
+Each Kind toggle button SHALL carry an icon for its kind — pixel, adjustment,
+group, or background — with the kind name as its tooltip. The Effect dimension
+SHALL be present but disabled, with a "not implemented yet" tooltip, until layer
+effects exist; the other five dimensions SHALL work against the data the row
+projection already exposes. The toggle SHALL be shown as a lightswitch icon,
+SHALL default to on, and SHALL enable or disable the predicate without
+discarding the chosen dimension or criteria. With no criterion chosen the
+enabled toggle SHALL leave every row visible.
+
+#### Scenario: The Kind buttons carry icons [lfs_row]
+
+- **WHEN** the Kind dimension is shown
+- **THEN** each of its toggle buttons displays a kind icon and its tooltip is
+  the kind name
 
 #### Scenario: The row defaults to the Kind dimension with the toggle on [lfs_row]
 
