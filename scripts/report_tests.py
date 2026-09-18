@@ -497,7 +497,7 @@ pictura self-test: SUITE core document_size
 pictura self-test: PASS core document_size 4000x4000
 pictura self-test: SKIP core gpu vk not available
 pictura self-test: FAIL: human failure line
-pictura self-test: FAIL m47 compact_shade 195 M47 compact shade
+pictura self-test: FAIL panel compact_shade 195 panel compact shade
 pictura self-test: SUMMARY passed=1 failed=1 skipped=1
 """
 
@@ -542,15 +542,15 @@ def run_self_check():
     suites, totals, failures, entries = parse_selftest(SELFTEST)
     assert suites["core"].passed == 1, suites
     assert suites["core"].skipped == 1, suites
-    assert suites["m47"].failed == 1, suites
+    assert suites["panel"].failed == 1, suites
     assert (totals.passed, totals.failed, totals.skipped) == (1, 1, 1), totals
     assert len(failures) == 1, failures
-    assert failures[0][0] == "m47::compact_shade (exit 195)", failures
-    assert failures[0][1] == "M47 compact shade", failures
+    assert failures[0][0] == "panel::compact_shade (exit 195)", failures
+    assert failures[0][1] == "panel compact shade", failures
     assert entries == [
         ("core", "document_size", "pass", "4000x4000"),
         ("core", "gpu", "skip", "vk not available"),
-        ("m47", "compact_shade", "fail", ""),
+        ("panel", "compact_shade", "fail", ""),
     ], entries
 
     suites, totals, failures, entries = merge_selftest_streams(

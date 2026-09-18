@@ -331,7 +331,7 @@ fn flatten_rows_is_topmost_first() {
 }
 
 #[test]
-fn is_background_uses_m36_heuristic() {
+fn is_background_uses_default_heuristic() {
     let doc = doc_with(vec![
         pixel_layer("Background", 4, 4, 0),
         pixel_layer("Layer 1", 4, 4, 1),

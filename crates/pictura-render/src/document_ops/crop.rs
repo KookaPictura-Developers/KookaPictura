@@ -339,7 +339,7 @@ mod tests {
 
         assert_eq!((buffer.width, buffer.height), (64, 64));
         eprintln!(
-            "m31 timing 4000^2 backend={backend:?} full={full_ms:.1}ms region64={region_ms:.3}ms"
+            "region timing 4000^2 backend={backend:?} full={full_ms:.1}ms region64={region_ms:.3}ms"
         );
     }
 }

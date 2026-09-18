@@ -605,12 +605,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
             // M17: Save As then open round-trips the new document's pixels.
             const QString savePath =
-                QDir::tempPath() + QStringLiteral("/kooka-pictura-m17-roundtrip.psd");
+                QDir::tempPath() + QStringLiteral("/kooka-pictura-roundtrip.psd");
             const QImage scratchImg = fresh->image();
             const bool saved = frame.saveActiveAs(savePath);
-            const bool reopenedM17 = frame.openPath(savePath);
+            const bool reopenedDoc = frame.openPath(savePath);
             pictura::PictureView* reloaded = frame.activeView();
-            const bool roundtrip = saved && reopenedM17 && reloaded && reloaded->has_document()
+            const bool roundtrip = saved && reopenedDoc && reloaded && reloaded->has_document()
                                    && reloaded->image() == scratchImg;
             ST_BEGIN("roundtrip");
             ST_PASS("roundtrip=%d", roundtrip ? 1 : 0);
@@ -842,8 +842,8 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // M20: layer property getters/setters round-trip and mark dirty.
             frame.openPath(psdPath);
             pictura::PictureView* propView = frame.activeView();
-            const int m20Count = propView ? propView->layer_count() : -1;
-            const int m20BaseOpacity = propView ? propView->layer_opacity(0) : -1;
+            const int layersCount = propView ? propView->layer_count() : -1;
+            const int baseOpacity = propView ? propView->layer_opacity(0) : -1;
             const bool renameOk =
                 propView && propView->set_layer_name(0, QStringLiteral("Renamed"));
             const bool renamedOk =
@@ -860,18 +860,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const int roundTripOpacity = propView ? propView->layer_opacity(0) : -1;
             const bool clampOk = propView && propView->set_layer_opacity(0, 9999);
             const int clampedOpacity = propView ? propView->layer_opacity(0) : -1;
-            ST_BEGIN("m20_layer_count");
-            ST_PASS("m20_layer count=%d name=%d blend=%d badblend=%d "
-                         "opacity=%d dirty=%d", m20Count,
+            ST_BEGIN("layer_count");
+            ST_PASS("layer count=%d name=%d blend=%d badblend=%d "
+                         "opacity=%d dirty=%d", layersCount,
                          renameOk && renamedOk ? 1 : 0,
                          blendOk && blendRoundTrip ? 1 : 0,
                          badBlendRejected ? 1 : 0,
                          roundTripOpacity,
                          dirtyAfterRename ? 1 : 0);
-            if (m20Count != 2 || !renameOk || !renamedOk || !dirtyAfterRename || !blendOk
+            if (layersCount != 2 || !renameOk || !renamedOk || !dirtyAfterRename || !blendOk
                 || !blendRoundTrip || !badBlendRejected || !opacityOk || roundTripOpacity != 128
                 || !clampOk || clampedOpacity != 255) {
-                ST_FAIL(50, "M20 layer properties wrong");
+                ST_FAIL(50, "layer properties wrong");
             }
 
             // M20: labeled history, jump restore, and named snapshots.
@@ -887,7 +887,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool histJump = propView && propView->history_jump(0);
             const bool histAtZero = propView && propView->history_index() == 0;
             const int restoredOpacity = propView ? propView->layer_opacity(0) : -1;
-            const bool opacityRestored = restoredOpacity == m20BaseOpacity;
+            const bool opacityRestored = restoredOpacity == baseOpacity;
             const bool histJumpBack = propView && propView->history_jump(histAfter - 1);
             const bool snapAdded =
                 propView && propView->history_add_snapshot(QStringLiteral("Checkpoint"));
@@ -895,8 +895,8 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool snapLabelOk =
                 propView && propView->history_snapshot_label(0) == QStringLiteral("Checkpoint");
             const bool snapRestored = propView && propView->history_restore_snapshot(0);
-            ST_BEGIN("m20_history_states");
-            ST_PASS("m20_history states=%d open_label=%d grew=%d "
+            ST_BEGIN("history_states");
+            ST_PASS("history states=%d open_label=%d grew=%d "
                          "jump=%d snapshot=%d", histBefore,
                          histOpenLabel ? 1 : 0,
                          histGrew ? 1 : 0,
@@ -905,7 +905,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             if (!histOpenLabel || !histMutated || !histGrew || !histTopLabel || !histAtTop
                 || !histJump || !histAtZero || !opacityRestored || !histJumpBack || !snapAdded
                 || snapCount < 1 || !snapLabelOk || !snapRestored) {
-                ST_FAIL(51, "M20 history wrong");
+                ST_FAIL(51, "history wrong");
             }
         }
         const bool docTabReorderOk = frame.reorderDocumentsForTest();
@@ -1047,32 +1047,32 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("window.panels.histogram"),
         };
         int panelsToggled = 0;
-        auto* m20Column = frame.panelColumn();
+        auto* layersColumn = frame.panelColumn();
         for (const QString& id : panelCommands) {
             QAction* action = frame.registry()->action(id);
             const QString objectName =
                 id.section(QLatin1Char('.'), -1) + QStringLiteral("Panel");
             QWidget* panel = frame.findChild<QWidget*>(objectName);
-            if (!action || !panel || !m20Column) {
+            if (!action || !panel || !layersColumn) {
                 continue;
             }
-            const bool before = m20Column->isPanelVisible(objectName);
+            const bool before = layersColumn->isPanelVisible(objectName);
             action->setChecked(!before);
             frame.registry()->dispatch(id);
-            const bool toggled = m20Column->isPanelVisible(objectName) != before;
-            action->setChecked(!m20Column->isPanelVisible(objectName));
+            const bool toggled = layersColumn->isPanelVisible(objectName) != before;
+            action->setChecked(!layersColumn->isPanelVisible(objectName));
             frame.registry()->dispatch(id);
-            const bool restored = m20Column->isPanelVisible(objectName) == before;
+            const bool restored = layersColumn->isPanelVisible(objectName) == before;
             if (toggled && restored) {
                 ++panelsToggled;
             }
         }
-        ST_BEGIN("m20_panels_registered");
-        ST_PASS("m20_panels registered=%d toggled=%d", panelsRegistered,
+        ST_BEGIN("panels_registered");
+        ST_PASS("panels registered=%d toggled=%d", panelsRegistered,
                      panelsToggled);
         if (panelsRegistered != expectedPanelDocks.size()
             || panelsToggled != panelCommands.size()) {
-            ST_FAIL(52, "M20 panels wrong");
+            ST_FAIL(52, "panels wrong");
         }
 
         // M21: painting. A fresh transparent document keeps these checks
@@ -1082,35 +1082,35 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                 QStringLiteral("transparent"));
         pictura::PictureView* pv = frame.activeView();
         if (!paintDoc || !pv) {
-            ST_FAIL(53, "M21 paint document");
+            ST_FAIL(53, "paint document");
         }
 
         // 53: a stroke marks pixels, dirties the document, and adds one state.
-        const int m21HistBefore = pv->history_count();
+        const int paintHistBefore = pv->history_count();
         pv->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 8, 100, 100, 0, 100, 100, 25,
                         QStringLiteral("normal"), false, false);
         pv->paint_dab(6, 16, 1.0);
         pv->paint_dab(12, 16, 1.0);
         pv->paint_dab(18, 16, 1.0);
         pv->paint_dab(24, 16, 1.0);
-        const bool m21Ended = pv->end_paint();
-        const QImage m21Stroke = pv->image();
-        int m21Painted = 0;
-        for (int y = 0; y < m21Stroke.height(); ++y) {
-            for (int x = 0; x < m21Stroke.width(); ++x) {
-                if (qAlpha(m21Stroke.pixel(x, y)) > 0) {
-                    ++m21Painted;
+        const bool paintEnded = pv->end_paint();
+        const QImage paintStroke = pv->image();
+        int paintPainted = 0;
+        for (int y = 0; y < paintStroke.height(); ++y) {
+            for (int x = 0; x < paintStroke.width(); ++x) {
+                if (qAlpha(paintStroke.pixel(x, y)) > 0) {
+                    ++paintPainted;
                 }
             }
         }
-        ST_BEGIN("m21_stroke_ended");
-        ST_PASS("m21_stroke ended=%d painted=%d dirty=%d hist=%d", m21Ended ? 1 : 0,
-                     m21Painted,
+        ST_BEGIN("stroke_ended");
+        ST_PASS("stroke ended=%d painted=%d dirty=%d hist=%d", paintEnded ? 1 : 0,
+                     paintPainted,
                      pv->is_dirty() ? 1 : 0,
                      pv->history_count());
-        if (!m21Ended || !pv->is_dirty() || pv->history_count() != m21HistBefore + 1
-            || m21Painted < 20) {
-            ST_FAIL(53, "M21 stroke wrong");
+        if (!paintEnded || !pv->is_dirty() || pv->history_count() != paintHistBefore + 1
+            || paintPainted < 20) {
+            ST_FAIL(53, "stroke wrong");
         }
 
         // 54: opacity caps one stroke and a second stroke adds coverage. A fresh
@@ -1120,7 +1120,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("transparent"));
         pv = frame.activeView();
         if (!opacityDoc || !pv) {
-            ST_FAIL(54, "M21 opacity document");
+            ST_FAIL(54, "opacity document");
         }
         pv->begin_paint(0xFF00FF00u, 0xFFFFFFFFu, 12, 100, 100, 0, 33, 100, 0,
                         QStringLiteral("normal"), false, false);
@@ -1128,18 +1128,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             pv->paint_dab(16, 16, 1.0);
         }
         pv->end_paint();
-        const int m21A1 = qAlpha(pv->sample_argb(16, 16));
+        const int paintA1 = qAlpha(pv->sample_argb(16, 16));
         pv->begin_paint(0xFF00FF00u, 0xFFFFFFFFu, 12, 100, 100, 0, 33, 100, 0,
                         QStringLiteral("normal"), false, false);
         for (int i = 0; i < 40; ++i) {
             pv->paint_dab(16, 16, 1.0);
         }
         pv->end_paint();
-        const int m21A2 = qAlpha(pv->sample_argb(16, 16));
-        ST_BEGIN("m21_opacity_a1");
-        ST_PASS("m21_opacity a1=%d a2=%d", m21A1, m21A2);
-        if (!(m21A1 >= 78 && m21A1 <= 92) || !(m21A2 > m21A1 && m21A2 < 255)) {
-            ST_FAIL(54, "M21 opacity wrong");
+        const int paintA2 = qAlpha(pv->sample_argb(16, 16));
+        ST_BEGIN("opacity_a1");
+        ST_PASS("opacity a1=%d a2=%d", paintA1, paintA2);
+        if (!(paintA1 >= 78 && paintA1 <= 92) || !(paintA2 > paintA1 && paintA2 < 255)) {
+            ST_FAIL(54, "opacity wrong");
         }
 
         // 55: Pencil edges are aliased; Brush edges are anti-aliased.
@@ -1206,25 +1206,25 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool pencilOk =
             pencilBegun && pencilEnded && pencilBinary && pencilCovered > 0;
         const bool brushOk = brushBegun && brushEnded && brushCovered > 0 && brushSoft;
-        ST_BEGIN("m21_aliased_pencil_ok");
-        ST_PASS("m21_aliased pencil_ok=%d brush_aa=%d", pencilOk ? 1 : 0, brushOk ? 1 : 0);
+        ST_BEGIN("aliased_pencil_ok");
+        ST_PASS("aliased pencil_ok=%d brush_aa=%d", pencilOk ? 1 : 0, brushOk ? 1 : 0);
         if (!pencilOk || !brushOk) {
-            ST_FAIL(55, "M21 aliasing wrong");
+            ST_FAIL(55, "aliasing wrong");
         }
 
         // 56: undo restores the touched pixels of the brush document.
-        const QImage m21Pre = brushView->image();
+        const QImage paintPre = brushView->image();
         brushView->begin_paint(0xFF0000FFu, 0xFFFFFFFFu, 10, 100, 100, 0, 100, 100, 25,
                                QStringLiteral("normal"), false, false);
         for (int x = 4; x <= 28; x += 2) {
             brushView->paint_dab(x, 20, 1.0);
         }
-        const bool m21Changed = brushView->end_paint() && brushView->image() != m21Pre;
-        const bool m21Restored = brushView->undo() && brushView->image() == m21Pre;
-        ST_BEGIN("m21_undo_changed");
-        ST_PASS("m21_undo changed=%d restored=%d", m21Changed ? 1 : 0, m21Restored ? 1 : 0);
-        if (!m21Changed || !m21Restored) {
-            ST_FAIL(56, "M21 undo wrong");
+        const bool paintChanged = brushView->end_paint() && brushView->image() != paintPre;
+        const bool paintRestored = brushView->undo() && brushView->image() == paintPre;
+        ST_BEGIN("undo_changed");
+        ST_PASS("undo changed=%d restored=%d", paintChanged ? 1 : 0, paintRestored ? 1 : 0);
+        if (!paintChanged || !paintRestored) {
+            ST_FAIL(56, "undo wrong");
         }
 
         // M22: the 15 Artistic filters. A fresh white document exercises each
@@ -1234,7 +1234,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                               QStringLiteral("white"));
         pictura::PictureView* av = frame.activeView();
         if (!artDoc || !av) {
-            ST_FAIL(57, "M22 artistic document");
+            ST_FAIL(57, "artistic document");
         }
 
         // 57: every Artistic kind maps, applies, and changes the image.
@@ -1255,19 +1255,19 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("underpainting"),
             QStringLiteral("watercolor"),
         };
-        int m22Applied = 0;
+        int artisticApplied = 0;
         for (const QString& kind : artisticKinds) {
             const QImage before = av->image();
             const bool ok = av->apply_filter(kind);
             if (ok && av->image() != before) {
-                ++m22Applied;
+                ++artisticApplied;
             }
         }
-        ST_BEGIN("m22_applied_applied");
-        ST_PASS("m22_applied applied=%d/%d", m22Applied,
+        ST_BEGIN("applied_applied");
+        ST_PASS("applied applied=%d/%d", artisticApplied,
                      static_cast<int>(artisticKinds.size()));
-        if (m22Applied != artisticKinds.size()) {
-            ST_FAIL(57, "M22 artistic apply wrong");
+        if (artisticApplied != artisticKinds.size()) {
+            ST_FAIL(57, "artistic apply wrong");
         }
 
         // 58: a fixed seed makes a stochastic Artistic filter deterministic
@@ -1276,28 +1276,28 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             av->undo();
         }
         av->apply_filter(QStringLiteral("film-grain"));
-        const QImage m22First = av->image();
+        const QImage artisticFirst = av->image();
         av->undo();
         av->apply_filter(QStringLiteral("film-grain"));
-        const bool m22Deterministic = av->image() == m22First;
-        ST_BEGIN("m22_deterministic");
-        ST_PASS("m22_deterministic=%d", m22Deterministic ? 1 : 0);
-        if (!m22Deterministic) {
-            ST_FAIL(58, "M22 artistic determinism wrong");
+        const bool artisticDeterministic = av->image() == artisticFirst;
+        ST_BEGIN("deterministic");
+        ST_PASS("deterministic=%d", artisticDeterministic ? 1 : 0);
+        if (!artisticDeterministic) {
+            ST_FAIL(58, "artistic determinism wrong");
         }
 
         // M25: the 29 new filter kinds. A clouds-filled document gives every
         // filter structured content; a pure-white source is a no-op for some.
-        const bool m25FilterDoc = frame.newDocument(QStringLiteral("M25Filters"), 32, 32,
+        const bool filterDoc = frame.newDocument(QStringLiteral("Filters"), 32, 32,
                                                     QStringLiteral("rgb"), 8,
                                                     QStringLiteral("white"));
-        pictura::PictureView* m25av = frame.activeView();
-        if (!m25FilterDoc || !m25av || !m25av->apply_filter(QStringLiteral("clouds"))) {
-            ST_FAIL(68, "M25 filter document");
+        pictura::PictureView* filterFamiliesActiveView = frame.activeView();
+        if (!filterDoc || !filterFamiliesActiveView || !filterFamiliesActiveView->apply_filter(QStringLiteral("clouds"))) {
+            ST_FAIL(68, "filter document");
         }
 
         // 68: every M25 kind maps, applies, and changes the image.
-        const QStringList m25Kinds = {
+        const QStringList filterFamiliesKinds = {
             QStringLiteral("accented-edges"),
             QStringLiteral("angled-strokes"),
             QStringLiteral("crosshatch"),
@@ -1328,234 +1328,234 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("texturizer"),
             QStringLiteral("oil-paint"),
         };
-        int m25Applied = 0;
-        for (const QString& kind : m25Kinds) {
-            const QImage before = m25av->image();
-            const bool ok = m25av->apply_filter(kind);
-            if (ok && m25av->image() != before) {
-                ++m25Applied;
+        int filterFamiliesApplied = 0;
+        for (const QString& kind : filterFamiliesKinds) {
+            const QImage before = filterFamiliesActiveView->image();
+            const bool ok = filterFamiliesActiveView->apply_filter(kind);
+            if (ok && filterFamiliesActiveView->image() != before) {
+                ++filterFamiliesApplied;
             }
             // Undo so every kind is compared against the same structured source
             // and the scratch history stays well under its 20-state cap.
-            m25av->undo();
+            filterFamiliesActiveView->undo();
         }
-        ST_BEGIN("m25_applied_applied");
-        ST_PASS("m25_applied applied=%d/%d", m25Applied,
-                     static_cast<int>(m25Kinds.size()));
-        if (m25Applied != m25Kinds.size()) {
-            ST_FAIL(68, "M25 filter apply wrong");
+        ST_BEGIN("filterFamilies_applied_applied");
+        ST_PASS("applied applied=%d/%d", filterFamiliesApplied,
+                     static_cast<int>(filterFamiliesKinds.size()));
+        if (filterFamiliesApplied != filterFamiliesKinds.size()) {
+            ST_FAIL(68, "filter apply wrong");
         }
 
         // 69: a fixed seed makes the seeded M25 filter deterministic across
         // undo and reapply.
-        m25av->apply_filter(QStringLiteral("grain"));
-        const QImage m25First = m25av->image();
-        m25av->undo();
-        m25av->apply_filter(QStringLiteral("grain"));
-        const bool m25Deterministic = m25av->image() == m25First;
-        ST_BEGIN("m25_deterministic");
-        ST_PASS("m25_deterministic=%d", m25Deterministic ? 1 : 0);
-        if (!m25Deterministic) {
-            ST_FAIL(69, "M25 filter determinism wrong");
+        filterFamiliesActiveView->apply_filter(QStringLiteral("grain"));
+        const QImage filterFamiliesFirst = filterFamiliesActiveView->image();
+        filterFamiliesActiveView->undo();
+        filterFamiliesActiveView->apply_filter(QStringLiteral("grain"));
+        const bool filterFamiliesDeterministic = filterFamiliesActiveView->image() == filterFamiliesFirst;
+        ST_BEGIN("filterFamilies_deterministic");
+        ST_PASS("deterministic=%d", filterFamiliesDeterministic ? 1 : 0);
+        if (!filterFamiliesDeterministic) {
+            ST_FAIL(69, "filter determinism wrong");
         }
 
         // M26: GPU-compute default/toggle and its persisted preference.
         // 70: default is on; the toggle flips to CPU and restores the backend.
-        pictura::PictureView* m26av = frame.activeView();
-        if (!m26av) {
-            ST_FAIL(70, "M26 no active view");
+        pictura::PictureView* gpuView = frame.activeView();
+        if (!gpuView) {
+            ST_FAIL(70, "no active view");
         }
-        const bool m26Avail = m26av->gpu_available();
-        const bool m26DefaultOn = m26av->gpu_compute();
-        const QString m26OnBackend = m26av->active_backend();
-        const bool m26OnOk = m26Avail ? m26OnBackend == QStringLiteral("GPU")
-                                      : m26OnBackend == QStringLiteral("CPU (no GPU)");
-        m26av->set_gpu_compute(false);
-        const bool m26OffCpu = m26av->active_backend() == QStringLiteral("CPU");
-        m26av->set_gpu_compute(true);
-        const bool m26Restored = m26av->active_backend() == m26OnBackend;
-        ST_BEGIN("m26_gpu_available");
-        ST_PASS("m26_gpu available=%d default_on=%d off_cpu=%d on_back=%d", m26Avail ? 1 : 0,
-                     m26DefaultOn ? 1 : 0,
-                     m26OffCpu ? 1 : 0,
-                     m26Restored ? 1 : 0);
-        if (!m26DefaultOn || !m26OnOk || !m26OffCpu || !m26Restored) {
-            ST_FAIL(70, "M26 gpu backend wrong");
+        const bool avail = gpuView->gpu_available();
+        const bool defaultOn = gpuView->gpu_compute();
+        const QString onBackend = gpuView->active_backend();
+        const bool onOk = avail ? onBackend == QStringLiteral("GPU")
+                                      : onBackend == QStringLiteral("CPU (no GPU)");
+        gpuView->set_gpu_compute(false);
+        const bool offCpu = gpuView->active_backend() == QStringLiteral("CPU");
+        gpuView->set_gpu_compute(true);
+        const bool gpuRestored = gpuView->active_backend() == onBackend;
+        ST_BEGIN("gpu_available");
+        ST_PASS("gpu available=%d default_on=%d off_cpu=%d on_back=%d", avail ? 1 : 0,
+                     defaultOn ? 1 : 0,
+                     offCpu ? 1 : 0,
+                     gpuRestored ? 1 : 0);
+        if (!defaultOn || !onOk || !offCpu || !gpuRestored) {
+            ST_FAIL(70, "gpu backend wrong");
         }
 
         // 71: the GPU preference round-trips through the session store, and a
         // fresh SessionState defaults to on.
-        const bool m26FramePref = m26av->gpu_compute();
-        pictura::SessionState m26State = pictura::loadSession();
-        m26State.gpuCompute = false;
-        const bool m26SavedOff = pictura::saveSession(m26State);
-        const bool m26OffRound = !pictura::loadSession().gpuCompute;
-        m26State.gpuCompute = true;
-        const bool m26SavedOn = pictura::saveSession(m26State);
-        const bool m26OnRound = pictura::loadSession().gpuCompute;
-        const bool m26Default = pictura::SessionState{}.gpuCompute;
-        m26State.gpuCompute = m26FramePref;
-        pictura::saveSession(m26State);
-        ST_BEGIN("m26_session_gpu_off");
-        ST_PASS("m26_session gpu_off=%d gpu_on=%d default=%d", (m26SavedOff && m26OffRound) ? 1 : 0,
-                     (m26SavedOn && m26OnRound) ? 1 : 0,
-                     m26Default ? 1 : 0);
-        if (!m26SavedOff || !m26OffRound || !m26SavedOn || !m26OnRound || !m26Default) {
-            ST_FAIL(71, "M26 session persistence wrong");
+        const bool framePref = gpuView->gpu_compute();
+        pictura::SessionState gpuState = pictura::loadSession();
+        gpuState.gpuCompute = false;
+        const bool savedOff = pictura::saveSession(gpuState);
+        const bool offRound = !pictura::loadSession().gpuCompute;
+        gpuState.gpuCompute = true;
+        const bool savedOn = pictura::saveSession(gpuState);
+        const bool onRound = pictura::loadSession().gpuCompute;
+        const bool gpuDefault = pictura::SessionState{}.gpuCompute;
+        gpuState.gpuCompute = framePref;
+        pictura::saveSession(gpuState);
+        ST_BEGIN("session_gpu_off");
+        ST_PASS("session gpu_off=%d gpu_on=%d default=%d", (savedOff && offRound) ? 1 : 0,
+                     (savedOn && onRound) ? 1 : 0,
+                     gpuDefault ? 1 : 0);
+        if (!savedOff || !offRound || !savedOn || !onRound || !gpuDefault) {
+            ST_FAIL(71, "session persistence wrong");
         }
 
         // M27: the GPU filter path. A supported filter must produce the same
         // image through the GPU and CPU backends (the accelerated kernels are
         // byte-exact), and the gpuCompute preference is restored afterwards.
         // 72: gaussian-blur is byte-identical through both backends.
-        pictura::PictureView* m27av = frame.activeView();
-        if (!m27av) {
-            ST_FAIL(72, "M27 no active view");
+        pictura::PictureView* gpuAccelView = frame.activeView();
+        if (!gpuAccelView) {
+            ST_FAIL(72, "no active view");
         }
-        m27av->set_gpu_compute(true);
-        m27av->apply_filter(QStringLiteral("gaussian-blur"));
-        const QImage m27Gpu = m27av->image();
-        m27av->undo();
-        m27av->set_gpu_compute(false);
-        m27av->apply_filter(QStringLiteral("gaussian-blur"));
-        const QImage m27Cpu = m27av->image();
-        m27av->set_gpu_compute(true);
-        const bool m27Identical = m27Gpu == m27Cpu;
-        ST_BEGIN("m27_filter_byte_identical");
-        ST_PASS("m27_filter byte_identical=%d", m27Identical ? 1 : 0);
-        if (!m27Identical) {
-            ST_FAIL(72, "M27 filter byte-identity wrong");
+        gpuAccelView->set_gpu_compute(true);
+        gpuAccelView->apply_filter(QStringLiteral("gaussian-blur"));
+        const QImage gpuAccelGpu = gpuAccelView->image();
+        gpuAccelView->undo();
+        gpuAccelView->set_gpu_compute(false);
+        gpuAccelView->apply_filter(QStringLiteral("gaussian-blur"));
+        const QImage cpu = gpuAccelView->image();
+        gpuAccelView->set_gpu_compute(true);
+        const bool gpuAccelIdentical = gpuAccelGpu == cpu;
+        ST_BEGIN("filter_byte_identical");
+        ST_PASS("filter byte_identical=%d", gpuAccelIdentical ? 1 : 0);
+        if (!gpuAccelIdentical) {
+            ST_FAIL(72, "filter byte-identity wrong");
         }
 
         // M28: the heavy deterministic kernels. Surface Blur and Median must
         // produce the same image through the GPU and CPU backends (the M28
         // kernels are byte-exact, like the M27 set).
         // 73: both kinds match across backends.
-        pictura::PictureView* m28av = frame.activeView();
-        if (!m28av) {
-            ST_FAIL(73, "M28 no active view");
+        pictura::PictureView* gpuHeavyView = frame.activeView();
+        if (!gpuHeavyView) {
+            ST_FAIL(73, "no active view");
         }
-        const QStringList m28Kinds = {
+        const QStringList gpuHeavyKinds = {
             QStringLiteral("surface-blur"),
             QStringLiteral("median"),
         };
-        m28av->set_gpu_compute(true);
-        QList<QImage> m28Gpu;
-        bool m28Heavy = true;
-        for (const QString& kind : m28Kinds) {
-            const QImage m28Before = m28av->image();
-            const bool m28Ok = m28av->apply_filter(kind);
-            const QImage m28After = m28av->image();
-            m28Heavy = m28Heavy && m28Ok && m28After != m28Before;
-            m28Gpu.append(m28After);
-            m28av->undo();
+        gpuHeavyView->set_gpu_compute(true);
+        QList<QImage> gpuHeavyGpu;
+        bool gpuHeavyHeavy = true;
+        for (const QString& kind : gpuHeavyKinds) {
+            const QImage gpuHeavyBefore = gpuHeavyView->image();
+            const bool gpuHeavyOk = gpuHeavyView->apply_filter(kind);
+            const QImage gpuHeavyAfter = gpuHeavyView->image();
+            gpuHeavyHeavy = gpuHeavyHeavy && gpuHeavyOk && gpuHeavyAfter != gpuHeavyBefore;
+            gpuHeavyGpu.append(gpuHeavyAfter);
+            gpuHeavyView->undo();
         }
-        m28av->set_gpu_compute(false);
-        for (int i = 0; i < m28Kinds.size(); ++i) {
-            const bool m28Ok = m28av->apply_filter(m28Kinds.at(i));
-            const QImage m28After = m28av->image();
-            m28Heavy = m28Heavy && m28Ok && m28After == m28Gpu.at(i);
+        gpuHeavyView->set_gpu_compute(false);
+        for (int i = 0; i < gpuHeavyKinds.size(); ++i) {
+            const bool gpuHeavyOk = gpuHeavyView->apply_filter(gpuHeavyKinds.at(i));
+            const QImage gpuHeavyAfter = gpuHeavyView->image();
+            gpuHeavyHeavy = gpuHeavyHeavy && gpuHeavyOk && gpuHeavyAfter == gpuHeavyGpu.at(i);
             // Keep the last CPU result applied: a dangling redo state would
             // shrink `canvas_move`'s history count.
-            if (i + 1 < m28Kinds.size()) {
-                m28av->undo();
+            if (i + 1 < gpuHeavyKinds.size()) {
+                gpuHeavyView->undo();
             }
         }
-        m28av->set_gpu_compute(true);
-        ST_BEGIN("m28_heavy_byte_identical");
-        ST_PASS("m28_heavy byte_identical=%d", m28Heavy ? 1 : 0);
-        if (!m28Heavy) {
-            ST_FAIL(73, "M28 heavy byte-identity wrong");
+        gpuHeavyView->set_gpu_compute(true);
+        ST_BEGIN("heavy_byte_identical");
+        ST_PASS("heavy byte_identical=%d", gpuHeavyHeavy ? 1 : 0);
+        if (!gpuHeavyHeavy) {
+            ST_FAIL(73, "heavy byte-identity wrong");
         }
 
         // M30: canvas transparency display and document-rect clipping.
         // 74: an all-transparent document reveals the checkerboard, and a moved
         // layer is cropped to the document rect (no red on the canvas area).
-        const bool m30Created = frame.newDocument(QStringLiteral("Alpha"), 64, 64,
+        const bool canvasCreated = frame.newDocument(QStringLiteral("Alpha"), 64, 64,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("transparent"));
-        pictura::ImageView* m30Canvas = frame.imageView();
-        if (!m30Created || !m30Canvas) {
-            ST_FAIL(74, "M30 transparent document");
+        pictura::ImageView* canvasCanvas = frame.imageView();
+        if (!canvasCreated || !canvasCanvas) {
+            ST_FAIL(74, "transparent document");
         }
-        const int m30DocIndex = frame.activeDocumentIndex();
-        if (m30Canvas->width() <= 0 || m30Canvas->height() <= 0) {
+        const int docIndex = frame.activeDocumentIndex();
+        if (canvasCanvas->width() <= 0 || canvasCanvas->height() <= 0) {
             frame.resize(800, 600);
             QApplication::processEvents();
         }
 
-        const QColor m30CanvasColor = m30Canvas->canvasColor();
-        const QColor m30A = pictura::ImageView::transparencyColorA();
-        const QColor m30B = pictura::ImageView::transparencyColorB();
-        const QRectF m30DocRect(m30Canvas->offset(),
-                                QSizeF(64.0 * m30Canvas->zoom(), 64.0 * m30Canvas->zoom()));
+        const QColor canvasCanvasColor = canvasCanvas->canvasColor();
+        const QColor canvasA = pictura::ImageView::transparencyColorA();
+        const QColor canvasB = pictura::ImageView::transparencyColorB();
+        const QRectF docRect(canvasCanvas->offset(),
+                                QSizeF(64.0 * canvasCanvas->zoom(), 64.0 * canvasCanvas->zoom()));
 
-        QImage m30Shot(m30Canvas->size(), QImage::Format_ARGB32);
-        m30Canvas->render(&m30Shot);
+        QImage shot(canvasCanvas->size(), QImage::Format_ARGB32);
+        canvasCanvas->render(&shot);
 
-        bool m30SawA = false;
-        bool m30SawB = false;
-        bool m30SawCanvas = false;
-        const QRect m30DocPx = m30DocRect.toAlignedRect();
-        for (int y = m30DocPx.top() + 2; y <= m30DocPx.bottom() - 2; y += 3) {
-            for (int x = m30DocPx.left() + 2; x <= m30DocPx.right() - 2; x += 3) {
-                if (x < 0 || y < 0 || x >= m30Shot.width() || y >= m30Shot.height()) {
+        bool sawA = false;
+        bool sawB = false;
+        bool sawCanvas = false;
+        const QRect docPx = docRect.toAlignedRect();
+        for (int y = docPx.top() + 2; y <= docPx.bottom() - 2; y += 3) {
+            for (int x = docPx.left() + 2; x <= docPx.right() - 2; x += 3) {
+                if (x < 0 || y < 0 || x >= shot.width() || y >= shot.height()) {
                     continue;
                 }
-                const QColor c = m30Shot.pixelColor(x, y);
-                if (c.rgb() == m30A.rgb()) {
-                    m30SawA = true;
-                } else if (c.rgb() == m30B.rgb()) {
-                    m30SawB = true;
-                } else if (c.rgb() == m30CanvasColor.rgb()) {
-                    m30SawCanvas = true;
+                const QColor c = shot.pixelColor(x, y);
+                if (c.rgb() == canvasA.rgb()) {
+                    sawA = true;
+                } else if (c.rgb() == canvasB.rgb()) {
+                    sawB = true;
+                } else if (c.rgb() == canvasCanvasColor.rgb()) {
+                    sawCanvas = true;
                 }
             }
         }
-        const QPoint m30OutsidePx = m30DocRect.topLeft().toPoint() - QPoint(4, 4);
-        const bool m30OutsideOk = m30OutsidePx.x() >= 0 && m30OutsidePx.y() >= 0
-                                  && m30OutsidePx.x() < m30Shot.width()
-                                  && m30OutsidePx.y() < m30Shot.height()
-                                  && m30Shot.pixelColor(m30OutsidePx).rgb() == m30CanvasColor.rgb();
-        const bool m30Checker = m30SawA && m30SawB && !m30SawCanvas && m30OutsideOk;
+        const QPoint outsidePx = docRect.topLeft().toPoint() - QPoint(4, 4);
+        const bool outsideOk = outsidePx.x() >= 0 && outsidePx.y() >= 0
+                                  && outsidePx.x() < shot.width()
+                                  && outsidePx.y() < shot.height()
+                                  && shot.pixelColor(outsidePx).rgb() == canvasCanvasColor.rgb();
+        const bool canvasChecker = sawA && sawB && !sawCanvas && outsideOk;
 
-        QImage m30Red(64, 64, QImage::Format_RGBA8888);
-        m30Red.fill(QColor(255, 0, 0));
-        m30Canvas->beginMovePreview(m30Canvas->image(), m30Red, QPointF(-32.0, -32.0), 1.0);
-        QImage m30ClipShot(m30Canvas->size(), QImage::Format_ARGB32);
-        m30Canvas->render(&m30ClipShot);
-        m30Canvas->endMovePreview();
+        QImage canvasRed(64, 64, QImage::Format_RGBA8888);
+        canvasRed.fill(QColor(255, 0, 0));
+        canvasCanvas->beginMovePreview(canvasCanvas->image(), canvasRed, QPointF(-32.0, -32.0), 1.0);
+        QImage clipShot(canvasCanvas->size(), QImage::Format_ARGB32);
+        canvasCanvas->render(&clipShot);
+        canvasCanvas->endMovePreview();
 
         // The layer at (-32,-32) covers the document's top-left quadrant; probe
         // the few pixels around the centre on the covered side.
-        const QPoint m30Centre = m30DocRect.center().toPoint();
-        bool m30CentreRed = false;
-        for (int dy = -2; dy <= 0 && !m30CentreRed; ++dy) {
-            for (int dx = -2; dx <= 0 && !m30CentreRed; ++dx) {
-                const QPoint q = m30Centre + QPoint(dx, dy);
-                if (q.x() >= 0 && q.y() >= 0 && q.x() < m30ClipShot.width()
-                    && q.y() < m30ClipShot.height()
-                    && m30ClipShot.pixelColor(q).rgb() == QColor(255, 0, 0).rgb()) {
-                    m30CentreRed = true;
+        const QPoint canvasCentre = docRect.center().toPoint();
+        bool centreRed = false;
+        for (int dy = -2; dy <= 0 && !centreRed; ++dy) {
+            for (int dx = -2; dx <= 0 && !centreRed; ++dx) {
+                const QPoint q = canvasCentre + QPoint(dx, dy);
+                if (q.x() >= 0 && q.y() >= 0 && q.x() < clipShot.width()
+                    && q.y() < clipShot.height()
+                    && clipShot.pixelColor(q).rgb() == QColor(255, 0, 0).rgb()) {
+                    centreRed = true;
                 }
             }
         }
-        const QPoint m30OverflowPx = m30DocRect.topLeft().toPoint() - QPoint(4, 4);
-        const bool m30OverflowOk = m30OverflowPx.x() >= 0 && m30OverflowPx.y() >= 0
-                                   && m30OverflowPx.x() < m30ClipShot.width()
-                                   && m30OverflowPx.y() < m30ClipShot.height()
-                                   && m30ClipShot.pixelColor(m30OverflowPx).rgb()
-                                          == m30CanvasColor.rgb();
-        const bool m30Clipped = m30CentreRed && m30OverflowOk;
+        const QPoint overflowPx = docRect.topLeft().toPoint() - QPoint(4, 4);
+        const bool overflowOk = overflowPx.x() >= 0 && overflowPx.y() >= 0
+                                   && overflowPx.x() < clipShot.width()
+                                   && overflowPx.y() < clipShot.height()
+                                   && clipShot.pixelColor(overflowPx).rgb()
+                                          == canvasCanvasColor.rgb();
+        const bool canvasClipped = centreRed && overflowOk;
 
-        ST_BEGIN("m30_canvas_checker");
-        ST_PASS("m30_canvas checker=%d clipped=%d", m30Checker ? 1 : 0,
-                     m30Clipped ? 1 : 0);
-        if (!m30Checker || !m30Clipped) {
-            ST_FAIL(74, "M30 transparency/clipping wrong");
+        ST_BEGIN("canvas_checker");
+        ST_PASS("canvas checker=%d clipped=%d", canvasChecker ? 1 : 0,
+                     canvasClipped ? 1 : 0);
+        if (!canvasChecker || !canvasClipped) {
+            ST_FAIL(74, "transparency/clipping wrong");
         }
         // Restore the previously active document so later checks are undisturbed.
-        frame.closeDocument(m30DocIndex, false);
+        frame.closeDocument(docIndex, false);
 
         // Full pixel-by-pixel equality, shared by the canvas checks.
         auto samePixels = [](const QImage& a, const QImage& b) {
@@ -1578,41 +1578,41 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // sample far outside the dirty union must be untouched, and undo must
         // restore the pre-move image.
         // 75: region move.
-        const bool m31Created = frame.newDocument(QStringLiteral("Region"), 32, 32,
+        const bool regionCreated = frame.newDocument(QStringLiteral("Region"), 32, 32,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("white"));
-        pictura::PictureView* m31View = frame.activeView();
-        if (!m31Created || !m31View) {
-            ST_FAIL(75, "M31 document");
+        pictura::PictureView* regionView = frame.activeView();
+        if (!regionCreated || !regionView) {
+            ST_FAIL(75, "document");
         }
-        const int m31DocIndex = frame.activeDocumentIndex();
-        const bool m31Grown =
-            m31View->resize_canvas(QStringLiteral("top-left"), 128, 128);
-        if (!m31Grown) {
-            ST_FAIL(75, "M31 canvas growth");
+        const int regionDocIndex = frame.activeDocumentIndex();
+        const bool regionGrown =
+            regionView->resize_canvas(QStringLiteral("top-left"), 128, 128);
+        if (!regionGrown) {
+            ST_FAIL(75, "canvas growth");
         }
-        const QImage m31Before = m31View->image();
-        const QRgb m31Src = m31Before.pixel(5, 5);         // inside the layer
-        const QRgb m31NewBefore = m31Before.pixel(38, 38); // shape's new home
-        const QRgb m31Far = m31Before.pixel(100, 100);     // outside dirty union
-        const bool m31Preview = m31View->begin_move_preview();
-        const bool m31Moved = m31View->commit_move(8, 8);
-        const QImage m31After = m31View->image();
-        const bool m31Appeared = m31After.pixel(38, 38) == m31Src
-                                 && m31NewBefore != m31Src;
-        const bool m31Vacated = m31After.pixel(2, 2) != m31Src;
-        const bool m31Outside = m31After.pixel(100, 100) == m31Far;
-        const bool m31Undone = m31View->undo() && m31View->image() == m31Before;
-        ST_BEGIN("m31_region_moved");
-        ST_PASS("m31_region moved=%d outside_unchanged=%d undo=%d", (m31Moved && m31Appeared && m31Vacated) ? 1 : 0,
-                     m31Outside ? 1 : 0,
-                     m31Undone ? 1 : 0);
-        if (!m31Preview || !m31Moved || !m31Appeared || !m31Vacated || !m31Outside
-            || !m31Undone) {
-            ST_FAIL(75, "M31 region move wrong");
+        const QImage regionBefore = regionView->image();
+        const QRgb regionSrc = regionBefore.pixel(5, 5);         // inside the layer
+        const QRgb newBefore = regionBefore.pixel(38, 38); // shape's new home
+        const QRgb regionFar = regionBefore.pixel(100, 100);     // outside dirty union
+        const bool regionPreview = regionView->begin_move_preview();
+        const bool regionMoved = regionView->commit_move(8, 8);
+        const QImage regionAfter = regionView->image();
+        const bool appeared = regionAfter.pixel(38, 38) == regionSrc
+                                 && newBefore != regionSrc;
+        const bool regionVacated = regionAfter.pixel(2, 2) != regionSrc;
+        const bool regionOutside = regionAfter.pixel(100, 100) == regionFar;
+        const bool regionUndone = regionView->undo() && regionView->image() == regionBefore;
+        ST_BEGIN("region_moved");
+        ST_PASS("region moved=%d outside_unchanged=%d undo=%d", (regionMoved && appeared && regionVacated) ? 1 : 0,
+                     regionOutside ? 1 : 0,
+                     regionUndone ? 1 : 0);
+        if (!regionPreview || !regionMoved || !appeared || !regionVacated || !regionOutside
+            || !regionUndone) {
+            ST_FAIL(75, "region move wrong");
         }
         // Leave the frame as M30 did: close the scratch document.
-        frame.closeDocument(m31DocIndex, false);
+        frame.closeDocument(regionDocIndex, false);
 
         // M31 large region: with the per-pixel blit budget gone, a canvas-sized
         // dirty union (a 1024² canvas moved by (1,1) makes `old ∪ new` the whole
@@ -1620,117 +1620,117 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // full-document recomposite. `regionBlitted` fires; `changed` (emitted
         // only by a full recomposite) does not. The on-screen canvas must still
         // equal a full recomposite.
-        const bool m31bCreated =
+        const bool regionAltCreated =
             frame.newDocument(QStringLiteral("RegionLarge"), 1024, 1024,
                               QStringLiteral("rgb"), 8, QStringLiteral("white"));
-        pictura::PictureView* m31bView = frame.activeView();
-        pictura::ImageView* m31bCanvas = frame.imageView();
-        if (!m31bCreated || !m31bView || !m31bCanvas) {
-            ST_FAIL(75, "M31 large document");
+        pictura::PictureView* regionAltView = frame.activeView();
+        pictura::ImageView* regionAltCanvas = frame.imageView();
+        if (!regionAltCreated || !regionAltView || !regionAltCanvas) {
+            ST_FAIL(75, "large document");
         }
-        const int m31bDocIndex = frame.activeDocumentIndex();
-        const QImage m31bBefore = m31bView->image();
-        const QRgb m31bOrigin = m31bBefore.pixel(0, 0);
-        int m31bRegionBlits = 0;
-        int m31bChanged = 0;
-        auto m31bRegionConn = QObject::connect(
-            m31bView, &pictura::PictureView::regionBlitted,
-            [&m31bRegionBlits](const QImage&, int, int) { ++m31bRegionBlits; });
-        auto m31bChangedConn = QObject::connect(
-            m31bView, &pictura::PictureView::changed, [&m31bChanged]() { ++m31bChanged; });
-        const bool m31bMoved = m31bView->commit_move(1, 1);
-        const QImage m31bBlitted = m31bCanvas->image();
-        QObject::disconnect(m31bRegionConn);
-        QObject::disconnect(m31bChangedConn);
+        const int regionAltDocIndex = frame.activeDocumentIndex();
+        const QImage regionAltBefore = regionAltView->image();
+        const QRgb regionAltOrigin = regionAltBefore.pixel(0, 0);
+        int regionAltRegionBlits = 0;
+        int regionAltChanged = 0;
+        auto regionAltRegionConn = QObject::connect(
+            regionAltView, &pictura::PictureView::regionBlitted,
+            [&regionAltRegionBlits](const QImage&, int, int) { ++regionAltRegionBlits; });
+        auto regionAltChangedConn = QObject::connect(
+            regionAltView, &pictura::PictureView::changed, [&regionAltChanged]() { ++regionAltChanged; });
+        const bool regionAltMoved = regionAltView->commit_move(1, 1);
+        const QImage regionAltBlitted = regionAltCanvas->image();
+        QObject::disconnect(regionAltRegionConn);
+        QObject::disconnect(regionAltChangedConn);
         // Force a full recomposite and compare the blitted canvas with it.
-        m31bView->set_gpu_compute(m31bView->gpu_compute());
-        const QImage m31bFull = m31bCanvas->image();
-        const bool m31bVacated = m31bBlitted.pixel(0, 0) != m31bOrigin;
-        const bool m31bRegionPath = m31bRegionBlits >= 1 && m31bChanged == 0;
-        const bool m31bCanvasSame = samePixels(m31bBlitted, m31bFull);
-        const bool m31bUndone = m31bView->undo() && m31bView->image() == m31bBefore;
-        ST_BEGIN("m31_region_large_moved");
-        ST_PASS("m31_region_large moved=%d vacated=%d undo=%d "
-                     "region=%d recomposite=%d canvas=%d", m31bMoved ? 1 : 0,
-                     m31bVacated ? 1 : 0,
-                     m31bUndone ? 1 : 0,
-                     m31bRegionPath ? 1 : 0,
-                     m31bChanged > 0 ? 1 : 0,
-                     m31bCanvasSame ? 1 : 0);
-        if (!m31bMoved || !m31bVacated || !m31bUndone || !m31bRegionPath || !m31bCanvasSame) {
-            ST_FAIL(75, "M31 large-region blit wrong");
+        regionAltView->set_gpu_compute(regionAltView->gpu_compute());
+        const QImage regionAltFull = regionAltCanvas->image();
+        const bool regionAltVacated = regionAltBlitted.pixel(0, 0) != regionAltOrigin;
+        const bool regionAltRegionPath = regionAltRegionBlits >= 1 && regionAltChanged == 0;
+        const bool regionAltCanvasSame = samePixels(regionAltBlitted, regionAltFull);
+        const bool regionAltUndone = regionAltView->undo() && regionAltView->image() == regionAltBefore;
+        ST_BEGIN("region_large_moved");
+        ST_PASS("region_large moved=%d vacated=%d undo=%d "
+                     "region=%d recomposite=%d canvas=%d", regionAltMoved ? 1 : 0,
+                     regionAltVacated ? 1 : 0,
+                     regionAltUndone ? 1 : 0,
+                     regionAltRegionPath ? 1 : 0,
+                     regionAltChanged > 0 ? 1 : 0,
+                     regionAltCanvasSame ? 1 : 0);
+        if (!regionAltMoved || !regionAltVacated || !regionAltUndone || !regionAltRegionPath || !regionAltCanvasSame) {
+            ST_FAIL(75, "large-region blit wrong");
         }
-        frame.closeDocument(m31bDocIndex, false);
+        frame.closeDocument(regionAltDocIndex, false);
 
         // M23: CS6 chrome. 59 stylesheet, 60 toolbox, 61 default dock groups.
-        int m23Levels = 0;
+        int chromeLevels = 0;
         for (int level = 0; level < pictura::Theme::kLevelCount; ++level) {
             if (!pictura::Theme::styleSheet(level).isEmpty()) {
-                ++m23Levels;
+                ++chromeLevels;
             }
         }
-        const bool m23Distinct =
+        const bool chromeDistinct =
             pictura::Theme::styleSheet(0) != pictura::Theme::styleSheet(3);
-        ST_BEGIN("m23_stylesheet_applied");
-        ST_PASS("m23_stylesheet applied=%d levels=%d distinct=%d", qApp->styleSheet().isEmpty() ? 0 : 1,
-                     m23Levels,
-                     m23Distinct ? 1 : 0);
-        if (qApp->styleSheet().isEmpty() || m23Levels != pictura::Theme::kLevelCount
-            || !m23Distinct) {
-            ST_FAIL(59, "M23 stylesheet wrong");
+        ST_BEGIN("stylesheet_applied");
+        ST_PASS("stylesheet applied=%d levels=%d distinct=%d", qApp->styleSheet().isEmpty() ? 0 : 1,
+                     chromeLevels,
+                     chromeDistinct ? 1 : 0);
+        if (qApp->styleSheet().isEmpty() || chromeLevels != pictura::Theme::kLevelCount
+            || !chromeDistinct) {
+            ST_FAIL(59, "stylesheet wrong");
         }
 
-        auto* m23Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        QDockWidget* m23Tools = m23Toolbox;
-        const QList<QToolButton*> m23SlotButtons =
-            m23Toolbox ? m23Toolbox->slotButtons() : QList<QToolButton*>();
-        const int m23Buttons =
-            m23Tools ? static_cast<int>(m23Tools->findChildren<QToolButton*>().size()) : 0;
-        QToolButton* m23Toggle = m23Tools
-            ? m23Tools->findChild<QToolButton*>(QStringLiteral("toolsColumnToggle"))
+        auto* chromeToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        QDockWidget* chromeTools = chromeToolbox;
+        const QList<QToolButton*> chromeSlotButtons =
+            chromeToolbox ? chromeToolbox->slotButtons() : QList<QToolButton*>();
+        const int chromeButtons =
+            chromeTools ? static_cast<int>(chromeTools->findChildren<QToolButton*>().size()) : 0;
+        QToolButton* chromeToggle = chromeTools
+            ? chromeTools->findChild<QToolButton*>(QStringLiteral("toolsColumnToggle"))
             : nullptr;
-        const bool m23ToggleDistinct =
-            m23Toggle != nullptr && !m23SlotButtons.contains(m23Toggle);
-        const bool m23Fgbg = m23Tools
-            && m23Tools->findChild<pictura::ForegroundBackgroundWidget*>() != nullptr;
-        ST_BEGIN("m23_toolbox_dock");
-        ST_PASS("m23_toolbox dock=%d buttons=%d toggle=%d fgbg=%d", m23Tools ? 1 : 0,
-                     m23Buttons,
-                     m23ToggleDistinct ? 1 : 0,
-                     m23Fgbg ? 1 : 0);
-        if (!m23Tools || m23Buttons != 25 || !m23ToggleDistinct || !m23Fgbg) {
-            ST_FAIL(60, "M23 toolbox wrong");
+        const bool toggleDistinct =
+            chromeToggle != nullptr && !chromeSlotButtons.contains(chromeToggle);
+        const bool chromeFgbg = chromeTools
+            && chromeTools->findChild<pictura::ForegroundBackgroundWidget*>() != nullptr;
+        ST_BEGIN("toolbox_dock");
+        ST_PASS("toolbox dock=%d buttons=%d toggle=%d fgbg=%d", chromeTools ? 1 : 0,
+                     chromeButtons,
+                     toggleDistinct ? 1 : 0,
+                     chromeFgbg ? 1 : 0);
+        if (!chromeTools || chromeButtons != 25 || !toggleDistinct || !chromeFgbg) {
+            ST_FAIL(60, "toolbox wrong");
         }
 
         // M24: CS6 right side. 61 default PanelColumn groups, 62 the new
         // panels, 63 the Window > Panels toggles (the icon rail was removed in
         // M41, so this now proves no PanelRail remains and the toggles work).
-        auto* m24Column = frame.panelColumn();
-        auto m24GroupOf = [m24Column](const char* name) {
-            return m24Column ? m24Column->groupOfForTest(QString::fromLatin1(name)) : QString();
+        auto* railColumn = frame.panelColumn();
+        auto groupOf = [railColumn](const char* name) {
+            return railColumn ? railColumn->groupOfForTest(QString::fromLatin1(name)) : QString();
         };
-        QWidget* m24Properties = frame.findChild<QWidget*>(QStringLiteral("propertiesPanel"));
-        int m24Groups = 0;
-        m24Groups += (!m24GroupOf("colorPanel").isEmpty()
-                      && m24GroupOf("colorPanel") == m24GroupOf("swatchesPanel")) ? 1 : 0;
-        m24Groups += (!m24GroupOf("colorPanel").isEmpty()
-                      && m24GroupOf("colorPanel") == m24GroupOf("stylesPanel")) ? 1 : 0;
-        m24Groups += (!m24GroupOf("layersPanel").isEmpty()
-                      && m24GroupOf("layersPanel") == m24GroupOf("channelsPanel")) ? 1 : 0;
-        m24Groups += (m24GroupOf("layersPanel") == m24GroupOf("pathsPanel")) ? 1 : 0;
-        m24Groups += (!m24GroupOf("navigatorPanel").isEmpty()
-                      && m24GroupOf("navigatorPanel") == m24GroupOf("histogramPanel")) ? 1 : 0;
-        m24Groups += (m24GroupOf("navigatorPanel") == m24GroupOf("infoPanel")) ? 1 : 0;
-        m24Groups += (!m24GroupOf("adjustmentsPanel").isEmpty()) ? 1 : 0;
-        m24Groups += (!m24GroupOf("historyPanel").isEmpty()
-                      && m24GroupOf("historyPanel") != m24GroupOf("actionsPanel")) ? 1 : 0;
-        ST_BEGIN("m24_groups_grouped");
-        ST_PASS("m24_groups grouped=%d/8", m24Groups);
-        if (m24Groups != 8) {
-            ST_FAIL(61, "M24 panel grouping wrong");
+        QWidget* railProperties = frame.findChild<QWidget*>(QStringLiteral("propertiesPanel"));
+        int railGroups = 0;
+        railGroups += (!groupOf("colorPanel").isEmpty()
+                      && groupOf("colorPanel") == groupOf("swatchesPanel")) ? 1 : 0;
+        railGroups += (!groupOf("colorPanel").isEmpty()
+                      && groupOf("colorPanel") == groupOf("stylesPanel")) ? 1 : 0;
+        railGroups += (!groupOf("layersPanel").isEmpty()
+                      && groupOf("layersPanel") == groupOf("channelsPanel")) ? 1 : 0;
+        railGroups += (groupOf("layersPanel") == groupOf("pathsPanel")) ? 1 : 0;
+        railGroups += (!groupOf("navigatorPanel").isEmpty()
+                      && groupOf("navigatorPanel") == groupOf("histogramPanel")) ? 1 : 0;
+        railGroups += (groupOf("navigatorPanel") == groupOf("infoPanel")) ? 1 : 0;
+        railGroups += (!groupOf("adjustmentsPanel").isEmpty()) ? 1 : 0;
+        railGroups += (!groupOf("historyPanel").isEmpty()
+                      && groupOf("historyPanel") != groupOf("actionsPanel")) ? 1 : 0;
+        ST_BEGIN("groups_grouped");
+        ST_PASS("groups grouped=%d/8", railGroups);
+        if (railGroups != 8) {
+            ST_FAIL(61, "panel grouping wrong");
         }
 
-        const QStringList m24PanelNames = {
+        const QStringList railPanelNames = {
             QStringLiteral("gradientsPanel"),
             QStringLiteral("patternsPanel"),
             QStringLiteral("propertiesPanel"),
@@ -1740,167 +1740,167 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("pathsPanel"),
             QStringLiteral("actionsPanel"),
         };
-        int m24Found = 0;
-        for (const QString& name : m24PanelNames) {
+        int railFound = 0;
+        for (const QString& name : railPanelNames) {
             if (frame.findChild<QWidget*>(name)) {
-                ++m24Found;
+                ++railFound;
             }
         }
-        int m24PropsEmpty = 0;
-        if (m24Properties) {
-            for (QLabel* label : m24Properties->findChildren<QLabel*>()) {
+        int propsEmpty = 0;
+        if (railProperties) {
+            for (QLabel* label : railProperties->findChildren<QLabel*>()) {
                 if (label->text().contains(QStringLiteral("No Properties"))) {
-                    m24PropsEmpty = 1;
+                    propsEmpty = 1;
                     break;
                 }
             }
         }
-        ST_BEGIN("m24_panels_found");
-        ST_PASS("m24_panels found=%d/8 properties_empty=%d", m24Found,
-                     m24PropsEmpty);
-        if (m24Found != 8 || m24PropsEmpty != 1) {
-            ST_FAIL(62, "M24 panels wrong");
+        ST_BEGIN("panels_found");
+        ST_PASS("panels found=%d/8 properties_empty=%d", railFound,
+                     propsEmpty);
+        if (railFound != 8 || propsEmpty != 1) {
+            ST_FAIL(62, "panels wrong");
         }
 
-        const QStringList m24RailCommands = {
+        const QStringList railCommands = {
             QStringLiteral("window.panels.history"),
             QStringLiteral("window.panels.actions"),
             QStringLiteral("window.panels.info"),
             QStringLiteral("window.panels.navigator"),
             QStringLiteral("window.panels.histogram"),
         };
-        int m24RailActions = 0;
-        for (const QString& id : m24RailCommands) {
+        int railActions = 0;
+        for (const QString& id : railCommands) {
             if (frame.registry()->action(id)) {
-                ++m24RailActions;
+                ++railActions;
             }
         }
-        int m24Toggled = 0;
-        if (m24Column) {
+        int railToggled = 0;
+        if (railColumn) {
             const QString command = QStringLiteral("window.panels.history");
             const QString panelName = QStringLiteral("historyPanel");
             QAction* action = frame.registry()->action(command);
-            const bool before = m24Column->isPanelVisible(panelName);
+            const bool before = railColumn->isPanelVisible(panelName);
             if (action) {
                 action->setChecked(!before);
                 frame.registry()->dispatch(command);
-                const bool shown = m24Column->isPanelVisible(panelName) != before;
+                const bool shown = railColumn->isPanelVisible(panelName) != before;
                 action->setChecked(before);
                 frame.registry()->dispatch(command);
-                const bool hidden = m24Column->isPanelVisible(panelName) == before;
-                m24Toggled = (shown && hidden) ? 1 : 0;
+                const bool hidden = railColumn->isPanelVisible(panelName) == before;
+                railToggled = (shown && hidden) ? 1 : 0;
             }
         }
-        const bool m24NoRail =
+        const bool noRail =
             frame.findChild<QToolBar*>(QStringLiteral("panelRail")) == nullptr;
-        ST_BEGIN("m24_rail_actions");
-        ST_PASS("m24_rail actions=%d toggled=%d norail=%d", m24RailActions,
-                     m24Toggled,
-                     m24NoRail ? 1 : 0);
-        if (m24RailActions < 5 || m24Toggled != 1 || !m24NoRail) {
-            ST_FAIL(63, "M24 rail wrong");
+        ST_BEGIN("rail_actions");
+        ST_PASS("rail actions=%d toggled=%d norail=%d", railActions,
+                     railToggled,
+                     noRail ? 1 : 0);
+        if (railActions < 5 || railToggled != 1 || !noRail) {
+            ST_FAIL(63, "rail wrong");
         }
 
         pictura::ImageView* canvas = frame.imageView();
         if (!canvas) {
-            ST_FAIL(64, "M25 no active canvas");
+            ST_FAIL(64, "no active canvas");
         }
 
         // 64: a freshly set image is centred, not pinned to the top-left.
         canvas->setImage(canvas->image());
-        const double m25Zoom = canvas->zoom();
-        const double m25Vw = canvas->width();
-        const double m25Vh = canvas->height();
-        const double m25Iw = canvas->image().width();
-        const double m25Ih = canvas->image().height();
-        const QPointF m25Expected((m25Vw - m25Iw * m25Zoom) / 2.0,
-                                  (m25Vh - m25Ih * m25Zoom) / 2.0);
-        const QPointF m25Actual = canvas->offset();
-        const bool m25Centred = std::abs(m25Actual.x() - m25Expected.x()) < 1e-6
-                                && std::abs(m25Actual.y() - m25Expected.y()) < 1e-6;
-        const bool m25Smaller = m25Iw < m25Vw && m25Ih < m25Vh;
-        const bool m25NotTopLeft = !m25Smaller || m25Actual != QPointF(0, 0);
+        const double filterFamiliesZoom = canvas->zoom();
+        const double vw = canvas->width();
+        const double filterFamiliesVh = canvas->height();
+        const double iw = canvas->image().width();
+        const double ih = canvas->image().height();
+        const QPointF filterFamiliesExpected((vw - iw * filterFamiliesZoom) / 2.0,
+                                  (filterFamiliesVh - ih * filterFamiliesZoom) / 2.0);
+        const QPointF filterFamiliesActual = canvas->offset();
+        const bool filterFamiliesCentred = std::abs(filterFamiliesActual.x() - filterFamiliesExpected.x()) < 1e-6
+                                && std::abs(filterFamiliesActual.y() - filterFamiliesExpected.y()) < 1e-6;
+        const bool smaller = iw < vw && ih < filterFamiliesVh;
+        const bool notTopLeft = !smaller || filterFamiliesActual != QPointF(0, 0);
         ST_BEGIN("canvas_centre_offset");
-        ST_PASS("canvas_centre offset=(%g,%g) zoom=%g", m25Actual.x(),
-                     m25Actual.y(),
-                     m25Zoom);
-        if (!m25Centred || !m25NotTopLeft || m25Zoom <= 0.0) {
-            ST_FAIL(64, "M25 centre wrong");
+        ST_PASS("canvas_centre offset=(%g,%g) zoom=%g", filterFamiliesActual.x(),
+                     filterFamiliesActual.y(),
+                     filterFamiliesZoom);
+        if (!filterFamiliesCentred || !notTopLeft || filterFamiliesZoom <= 0.0) {
+            ST_FAIL(64, "centre wrong");
         }
 
         // 65: middle-button drag pans regardless of the active tool.
-        const QPointF m25Before = canvas->offset();
-        QMouseEvent m25Press(QEvent::MouseButtonPress,
+        const QPointF filterFamiliesBefore = canvas->offset();
+        QMouseEvent filterFamiliesPress(QEvent::MouseButtonPress,
                              QPointF(200, 150),
                              canvas->mapToGlobal(QPoint(200, 150)),
                              Qt::MiddleButton,
                              Qt::MiddleButton,
                              Qt::NoModifier);
-        QApplication::sendEvent(canvas, &m25Press);
-        QMouseEvent m25Move(QEvent::MouseMove,
+        QApplication::sendEvent(canvas, &filterFamiliesPress);
+        QMouseEvent filterFamiliesMove(QEvent::MouseMove,
                             QPointF(230, 165),
                             canvas->mapToGlobal(QPoint(230, 165)),
                             Qt::NoButton,
                             Qt::MiddleButton,
                             Qt::NoModifier);
-        QApplication::sendEvent(canvas, &m25Move);
-        QMouseEvent m25Release(QEvent::MouseButtonRelease,
+        QApplication::sendEvent(canvas, &filterFamiliesMove);
+        QMouseEvent filterFamiliesRelease(QEvent::MouseButtonRelease,
                                QPointF(230, 165),
                                canvas->mapToGlobal(QPoint(230, 165)),
                                Qt::MiddleButton,
                                Qt::NoButton,
                                Qt::NoModifier);
-        QApplication::sendEvent(canvas, &m25Release);
-        const QPointF m25Delta = canvas->offset() - m25Before;
-        const bool m25Panned = std::abs(m25Delta.x() - 30.0) < 1e-6
-                               && std::abs(m25Delta.y() - 15.0) < 1e-6;
+        QApplication::sendEvent(canvas, &filterFamiliesRelease);
+        const QPointF filterFamiliesDelta = canvas->offset() - filterFamiliesBefore;
+        const bool panned = std::abs(filterFamiliesDelta.x() - 30.0) < 1e-6
+                               && std::abs(filterFamiliesDelta.y() - 15.0) < 1e-6;
         ST_BEGIN("canvas_middle_pan_delta");
-        ST_PASS("canvas_middle_pan delta=(%g,%g)", m25Delta.x(),
-                     m25Delta.y());
-        if (!m25Panned) {
-            ST_FAIL(65, "M25 middle pan wrong");
+        ST_PASS("canvas_middle_pan delta=(%g,%g)", filterFamiliesDelta.x(),
+                     filterFamiliesDelta.y());
+        if (!panned) {
+            ST_FAIL(65, "middle pan wrong");
         }
 
         // 66: a live move preview is transient; commit adds exactly one state.
-        pictura::PictureView* m25View = frame.activeView();
-        if (!m25View) {
-            ST_FAIL(66, "M25 move preview no document");
+        pictura::PictureView* filterFamiliesView = frame.activeView();
+        if (!filterFamiliesView) {
+            ST_FAIL(66, "move preview no document");
         }
-        const int m25HistBefore = m25View->history_count();
-        const QImage m25Pre = m25View->image();
-        const bool m25Previewed = m25View->move_preview(3, 2);
-        const bool m25PreviewChanged = m25View->image() != m25Pre;
-        const bool m25PreviewNoHistory = m25View->history_count() == m25HistBefore;
-        const bool m25Committed = m25View->commit_move();
-        const bool m25CommitHistory = m25View->history_count() == m25HistBefore + 1;
-        const bool m25Dirty = m25View->is_dirty();
-        m25View->undo();
-        const bool m25Undone = m25View->image() == m25Pre;
+        const int filterFamiliesHistBefore = filterFamiliesView->history_count();
+        const QImage filterFamiliesPre = filterFamiliesView->image();
+        const bool previewed = filterFamiliesView->move_preview(3, 2);
+        const bool previewChanged = filterFamiliesView->image() != filterFamiliesPre;
+        const bool previewNoHistory = filterFamiliesView->history_count() == filterFamiliesHistBefore;
+        const bool filterFamiliesCommitted = filterFamiliesView->commit_move();
+        const bool commitHistory = filterFamiliesView->history_count() == filterFamiliesHistBefore + 1;
+        const bool filterFamiliesDirty = filterFamiliesView->is_dirty();
+        filterFamiliesView->undo();
+        const bool filterFamiliesUndone = filterFamiliesView->image() == filterFamiliesPre;
         ST_BEGIN("canvas_move_preview");
-        ST_PASS("canvas_move preview=%d hist=%d undo=%d", m25Previewed ? 1 : 0,
-                     m25CommitHistory ? 1 : 0,
-                     m25Undone ? 1 : 0);
-        if (!m25Previewed || !m25PreviewChanged || !m25PreviewNoHistory
-            || !m25Committed || !m25CommitHistory || !m25Dirty || !m25Undone) {
-            ST_FAIL(66, "M25 move preview wrong");
+        ST_PASS("canvas_move preview=%d hist=%d undo=%d", previewed ? 1 : 0,
+                     commitHistory ? 1 : 0,
+                     filterFamiliesUndone ? 1 : 0);
+        if (!previewed || !previewChanged || !previewNoHistory
+            || !filterFamiliesCommitted || !commitHistory || !filterFamiliesDirty || !filterFamiliesUndone) {
+            ST_FAIL(66, "move preview wrong");
         }
 
         // 67: the drag-start cache (base + layer) must not touch history.
-        const int m25CacheHist = m25View->history_count();
-        const bool m25Began = m25View->begin_move_preview();
-        const bool m25BaseOk = !m25View->move_preview_base().isNull();
-        const bool m25LayerOk = !m25View->move_preview_layer().isNull();
-        const bool m25CacheHistOk = m25View->history_count() == m25CacheHist;
-        m25View->end_move_preview();
-        const bool m25HistUnchanged = m25View->history_count() == m25CacheHist;
+        const int cacheHist = filterFamiliesView->history_count();
+        const bool filterFamiliesBegan = filterFamiliesView->begin_move_preview();
+        const bool baseOk = !filterFamiliesView->move_preview_base().isNull();
+        const bool layerOk = !filterFamiliesView->move_preview_layer().isNull();
+        const bool cacheHistOk = filterFamiliesView->history_count() == cacheHist;
+        filterFamiliesView->end_move_preview();
+        const bool histUnchanged = filterFamiliesView->history_count() == cacheHist;
         ST_BEGIN("canvas_preview_cache_began");
         ST_PASS("canvas_preview_cache began=%d base=%d layer=%d "
-                     "hist_unchanged=%d", m25Began ? 1 : 0,
-                     m25BaseOk ? 1 : 0,
-                     m25LayerOk ? 1 : 0,
-                     (m25CacheHistOk && m25HistUnchanged) ? 1 : 0);
-        if (!m25Began || !m25BaseOk || !m25LayerOk || !m25CacheHistOk || !m25HistUnchanged) {
-            ST_FAIL(67, "M25 preview cache wrong");
+                     "hist_unchanged=%d", filterFamiliesBegan ? 1 : 0,
+                     baseOk ? 1 : 0,
+                     layerOk ? 1 : 0,
+                     (cacheHistOk && histUnchanged) ? 1 : 0);
+        if (!filterFamiliesBegan || !baseOk || !layerOk || !cacheHistOk || !histUnchanged) {
+            ST_FAIL(67, "preview cache wrong");
         }
 
         // 76: the present cache reuses the scaled document across repaints at a
@@ -1960,206 +1960,206 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // rectangle.
         // 77: the move-preview base equals the canvas with the layer hidden.
         // 78: a raster visibility toggle equals a full recomposite.
-        const bool m32Created = frame.newDocument(QStringLiteral("M32Region"), 32, 32,
+        const bool interactiveCreated = frame.newDocument(QStringLiteral("Region"), 32, 32,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("white"));
-        pictura::PictureView* m32View = frame.activeView();
-        if (!m32Created || !m32View) {
-            ST_FAIL(77, "M32 document");
+        pictura::PictureView* interactiveView = frame.activeView();
+        if (!interactiveCreated || !interactiveView) {
+            ST_FAIL(77, "document");
         }
-        const int m32DocIndex = frame.activeDocumentIndex();
-        if (!m32View->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
-            ST_FAIL(77, "M32 canvas growth");
+        const int interactiveDocIndex = frame.activeDocumentIndex();
+        if (!interactiveView->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
+            ST_FAIL(77, "canvas growth");
         }
-        const int m32k = m32View->topmost_pixel_layer_index();
-        if (m32k < 0) {
-            ST_FAIL(77, "M32 no pixel layer");
+        const int topLayer = interactiveView->topmost_pixel_layer_index();
+        if (topLayer < 0) {
+            ST_FAIL(77, "no pixel layer");
         }
         // Full pixel-by-pixel equality over the small (64x64) canvas.
-        const bool m32Began = m32View->begin_move_preview();
-        const QImage m32Base = m32View->move_preview_base();
-        m32View->set_layer_visible(m32k, false);
-        const QImage m32RegionHidden = m32View->image();
+        const bool interactiveBegan = interactiveView->begin_move_preview();
+        const QImage interactiveBase = interactiveView->move_preview_base();
+        interactiveView->set_layer_visible(topLayer, false);
+        const QImage regionHidden = interactiveView->image();
         // Force a full recomposite of the same document state.
-        m32View->set_gpu_compute(m32View->gpu_compute());
-        const QImage m32FullHidden = m32View->image();
-        const bool m32BaseSame = m32Began && !m32Base.isNull()
-                                 && samePixels(m32Base, m32RegionHidden);
-        const bool m32VisibilitySame = samePixels(m32RegionHidden, m32FullHidden);
-        m32View->set_layer_visible(m32k, true);
-        m32View->end_move_preview();
-        frame.closeDocument(m32DocIndex, false);
+        interactiveView->set_gpu_compute(interactiveView->gpu_compute());
+        const QImage fullHidden = interactiveView->image();
+        const bool baseSame = interactiveBegan && !interactiveBase.isNull()
+                                 && samePixels(interactiveBase, regionHidden);
+        const bool visibilitySame = samePixels(regionHidden, fullHidden);
+        interactiveView->set_layer_visible(topLayer, true);
+        interactiveView->end_move_preview();
+        frame.closeDocument(interactiveDocIndex, false);
 
-        ST_BEGIN("m32_region_preview_base");
-        ST_PASS("m32_region preview_base=%d visibility=%d", m32BaseSame ? 1 : 0,
-                     m32VisibilitySame ? 1 : 0);
-        if (!m32BaseSame) {
-            ST_FAIL(77, "M32 preview base wrong");
+        ST_BEGIN("region_preview_base");
+        ST_PASS("region preview_base=%d visibility=%d", baseSame ? 1 : 0,
+                     visibilitySame ? 1 : 0);
+        if (!baseSame) {
+            ST_FAIL(77, "preview base wrong");
         }
-        if (!m32VisibilitySame) {
-            ST_FAIL(78, "M32 visibility region wrong");
+        if (!visibilitySame) {
+            ST_FAIL(78, "visibility region wrong");
         }
 
         // M34: composite coherence and cheap undo/redo. A region-path move must
         // leave the stored document composite equal to the displayed image;
         // undo/redo restore from the snapshot composite; and a save after the
         // edit must write that composite to disk.
-        const bool m34Created = frame.newDocument(QStringLiteral("M34Coherent"), 32, 32,
+        const bool coherenceCreated = frame.newDocument(QStringLiteral("Coherent"), 32, 32,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("white"));
-        pictura::PictureView* m34View = frame.activeView();
-        if (!m34Created || !m34View) {
-            ST_FAIL(79, "M34 document");
+        pictura::PictureView* coherenceView = frame.activeView();
+        if (!coherenceCreated || !coherenceView) {
+            ST_FAIL(79, "document");
         }
-        const int m34DocIndex = frame.activeDocumentIndex();
-        const QImage m34Pre = m34View->image();
-        m34View->begin_move_preview();
-        const bool m34Moved = m34View->commit_move(4, 4);
-        const QImage m34Post = m34View->image();
-        const bool m34Composite =
-            m34Moved
-            && static_cast<unsigned>(m34View->composite_argb(6, 6))
-                   == static_cast<unsigned>(m34Post.pixel(6, 6))
-            && static_cast<unsigned>(m34View->composite_argb(2, 2))
-                   == static_cast<unsigned>(m34Post.pixel(2, 2));
-        const bool m34Undo = m34View->undo() && m34View->image() == m34Pre
-                             && m34View->redo() && m34View->image() == m34Post;
+        const int coherenceDocIndex = frame.activeDocumentIndex();
+        const QImage coherencePre = coherenceView->image();
+        coherenceView->begin_move_preview();
+        const bool coherenceMoved = coherenceView->commit_move(4, 4);
+        const QImage post = coherenceView->image();
+        const bool coherenceComposite =
+            coherenceMoved
+            && static_cast<unsigned>(coherenceView->composite_argb(6, 6))
+                   == static_cast<unsigned>(post.pixel(6, 6))
+            && static_cast<unsigned>(coherenceView->composite_argb(2, 2))
+                   == static_cast<unsigned>(post.pixel(2, 2));
+        const bool coherenceUndo = coherenceView->undo() && coherenceView->image() == coherencePre
+                             && coherenceView->redo() && coherenceView->image() == post;
 
         // A full-recomposite edit (add noise) changes the layer's colour; the
         // save must write that edited composite, not the pre-edit merged image.
-        const bool m34Filtered = m34View->apply_filter(QStringLiteral("add-noise"));
-        const QImage m34Edited = m34View->image();
-        const bool m34EditChanged = m34Edited != m34Post;
+        const bool coherenceFiltered = coherenceView->apply_filter(QStringLiteral("add-noise"));
+        const QImage coherenceEdited = coherenceView->image();
+        const bool editChanged = coherenceEdited != post;
 
-        const QString m34SavePath =
-            QDir::tempPath() + QStringLiteral("/kooka-pictura-m34-roundtrip.psd");
-        const bool m34Saved = frame.saveActiveAs(m34SavePath);
-        const bool m34Reopened = frame.openPath(m34SavePath);
-        pictura::PictureView* m34Reloaded = frame.activeView();
-        const bool m34Save =
-            m34Filtered && m34EditChanged && m34Saved && m34Reopened && m34Reloaded
-            && m34Reloaded->has_document()
-            && m34Reloaded->image() == m34Edited
-            && static_cast<unsigned>(m34Reloaded->composite_argb(6, 6))
-                   == static_cast<unsigned>(m34Edited.pixel(6, 6));
+        const QString coherenceSavePath =
+            QDir::tempPath() + QStringLiteral("/kooka-pictura-roundtrip.psd");
+        const bool coherenceSaved = frame.saveActiveAs(coherenceSavePath);
+        const bool coherenceReopened = frame.openPath(coherenceSavePath);
+        pictura::PictureView* coherenceReloaded = frame.activeView();
+        const bool coherenceSave =
+            coherenceFiltered && editChanged && coherenceSaved && coherenceReopened && coherenceReloaded
+            && coherenceReloaded->has_document()
+            && coherenceReloaded->image() == coherenceEdited
+            && static_cast<unsigned>(coherenceReloaded->composite_argb(6, 6))
+                   == static_cast<unsigned>(coherenceEdited.pixel(6, 6));
 
-        ST_BEGIN("m34_coherent_composite");
-        ST_PASS("m34_coherent composite=%d undo=%d save=%d", m34Composite ? 1 : 0,
-                     m34Undo ? 1 : 0,
-                     m34Save ? 1 : 0);
-        if (!m34Composite) {
-            ST_FAIL(79, "M34 composite coherence wrong");
+        ST_BEGIN("coherent_composite");
+        ST_PASS("coherent composite=%d undo=%d save=%d", coherenceComposite ? 1 : 0,
+                     coherenceUndo ? 1 : 0,
+                     coherenceSave ? 1 : 0);
+        if (!coherenceComposite) {
+            ST_FAIL(79, "composite coherence wrong");
         }
-        if (!m34Undo) {
-            ST_FAIL(80, "M34 undo/redo wrong");
+        if (!coherenceUndo) {
+            ST_FAIL(80, "undo/redo wrong");
         }
-        if (!m34Save) {
-            ST_FAIL(81, "M34 save round-trip wrong");
+        if (!coherenceSave) {
+            ST_FAIL(81, "save round-trip wrong");
         }
         frame.closeDocument(frame.activeDocumentIndex(), false);
-        frame.closeDocument(m34DocIndex, false);
+        frame.closeDocument(coherenceDocIndex, false);
 
         // M35: the C++ region-blit path. A region refresh emits regionBlitted
         // (not changed), ImageView::blitRegion overwrites the canvas, and the
         // on-screen canvas equals a full recomposite; image() rebuilds from the
         // composite while dirty; the present cache is invalidated then rebuilt.
         // 82: document; 83: blit equality; 84: present cache; 85: large region.
-        const bool m35Created = frame.newDocument(QStringLiteral("M35RegionBlit"), 32, 32,
+        const bool blitCreated = frame.newDocument(QStringLiteral("RegionBlit"), 32, 32,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("white"));
-        pictura::PictureView* m35View = frame.activeView();
-        pictura::ImageView* m35Canvas = frame.imageView();
-        if (!m35Created || !m35View || !m35Canvas) {
-            ST_FAIL(82, "M35 document");
+        pictura::PictureView* blitView = frame.activeView();
+        pictura::ImageView* blitCanvas = frame.imageView();
+        if (!blitCreated || !blitView || !blitCanvas) {
+            ST_FAIL(82, "document");
         }
-        const int m35DocIndex = frame.activeDocumentIndex();
-        if (!m35View->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
-            ST_FAIL(82, "M35 canvas growth");
+        const int blitDocIndex = frame.activeDocumentIndex();
+        if (!blitView->resize_canvas(QStringLiteral("top-left"), 64, 64)) {
+            ST_FAIL(82, "canvas growth");
         }
         // Warm the present cache; the second paint at the same zoom must reuse it.
-        QImage m35Warm(m35Canvas->size(), QImage::Format_ARGB32);
-        m35Canvas->render(&m35Warm);
-        m35Canvas->render(&m35Warm);
-        const bool m35ReuseBefore = !m35Canvas->presentCacheRebuiltOnLastPaint();
+        QImage blitWarm(blitCanvas->size(), QImage::Format_ARGB32);
+        blitCanvas->render(&blitWarm);
+        blitCanvas->render(&blitWarm);
+        const bool reuseBefore = !blitCanvas->presentCacheRebuiltOnLastPaint();
 
-        int m35RegionBlits = 0;
-        int m35Changed = 0;
-        auto m35RegionConn = QObject::connect(
-            m35View, &pictura::PictureView::regionBlitted,
-            [&m35RegionBlits](const QImage&, int, int) { ++m35RegionBlits; });
-        auto m35ChangedConn = QObject::connect(
-            m35View, &pictura::PictureView::changed, [&m35Changed]() { ++m35Changed; });
-        const bool m35Previewed = m35View->begin_move_preview();
-        const bool m35Moved = m35View->commit_move(4, 4);
-        const QImage m35Blitted = m35Canvas->image();
-        const QImage m35Rebuilt = m35View->image();
-        QObject::disconnect(m35RegionConn);
-        QObject::disconnect(m35ChangedConn);
+        int regionBlits = 0;
+        int blitChanged = 0;
+        auto regionConn = QObject::connect(
+            blitView, &pictura::PictureView::regionBlitted,
+            [&regionBlits](const QImage&, int, int) { ++regionBlits; });
+        auto changedConn = QObject::connect(
+            blitView, &pictura::PictureView::changed, [&blitChanged]() { ++blitChanged; });
+        const bool blitPreviewed = blitView->begin_move_preview();
+        const bool blitMoved = blitView->commit_move(4, 4);
+        const QImage blitBlitted = blitCanvas->image();
+        const QImage blitRebuilt = blitView->image();
+        QObject::disconnect(regionConn);
+        QObject::disconnect(changedConn);
 
-        QImage m35Shot(m35Canvas->size(), QImage::Format_ARGB32);
-        m35Canvas->render(&m35Shot);
-        const bool m35CacheRebuiltAfter = m35Canvas->presentCacheRebuiltOnLastPaint();
+        QImage blitShot(blitCanvas->size(), QImage::Format_ARGB32);
+        blitCanvas->render(&blitShot);
+        const bool cacheRebuiltAfter = blitCanvas->presentCacheRebuiltOnLastPaint();
 
         // Force a full recomposite and compare both the blitted canvas and the
         // rebuilt image with it.
-        m35View->set_gpu_compute(m35View->gpu_compute());
-        const QImage m35Full = m35Canvas->image();
-        const bool m35RegionPath = m35RegionBlits >= 1 && m35Changed == 0;
-        const bool m35CanvasSame = samePixels(m35Blitted, m35Full);
-        const bool m35RebuiltSame = samePixels(m35Rebuilt, m35Full);
-        const bool m35CacheOk = m35ReuseBefore && m35CacheRebuiltAfter;
-        ST_BEGIN("m35_region_blit_region");
-        ST_PASS("m35_region_blit region=%d changed=%d canvas=%d "
-                     "rebuilt=%d cache=%d", m35RegionPath ? 1 : 0,
-                     m35Changed > 0 ? 1 : 0,
-                     m35CanvasSame ? 1 : 0,
-                     m35RebuiltSame ? 1 : 0,
-                     m35CacheOk ? 1 : 0);
-        if (!m35Previewed || !m35Moved || !m35RegionPath || !m35CanvasSame || !m35RebuiltSame) {
-            ST_FAIL(83, "M35 region blit wrong");
+        blitView->set_gpu_compute(blitView->gpu_compute());
+        const QImage blitFull = blitCanvas->image();
+        const bool regionPath = regionBlits >= 1 && blitChanged == 0;
+        const bool canvasSame = samePixels(blitBlitted, blitFull);
+        const bool rebuiltSame = samePixels(blitRebuilt, blitFull);
+        const bool cacheOk = reuseBefore && cacheRebuiltAfter;
+        ST_BEGIN("region_blit_region");
+        ST_PASS("region_blit region=%d changed=%d canvas=%d "
+                     "rebuilt=%d cache=%d", regionPath ? 1 : 0,
+                     blitChanged > 0 ? 1 : 0,
+                     canvasSame ? 1 : 0,
+                     rebuiltSame ? 1 : 0,
+                     cacheOk ? 1 : 0);
+        if (!blitPreviewed || !blitMoved || !regionPath || !canvasSame || !rebuiltSame) {
+            ST_FAIL(83, "region blit wrong");
         }
-        if (!m35CacheOk) {
-            ST_FAIL(84, "M35 present cache wrong");
+        if (!cacheOk) {
+            ST_FAIL(84, "present cache wrong");
         }
-        frame.closeDocument(m35DocIndex, false);
+        frame.closeDocument(blitDocIndex, false);
 
         // M35 large region: a canvas-sized dirty union takes the C++ blit path
         // and does not recomposite the whole 1024² document.
-        const bool m35bCreated =
-            frame.newDocument(QStringLiteral("M35RegionLarge"), 1024, 1024,
+        const bool blitAltCreated =
+            frame.newDocument(QStringLiteral("RegionLarge"), 1024, 1024,
                               QStringLiteral("rgb"), 8, QStringLiteral("white"));
-        pictura::PictureView* m35bView = frame.activeView();
-        pictura::ImageView* m35bCanvas = frame.imageView();
-        if (!m35bCreated || !m35bView || !m35bCanvas) {
-            ST_FAIL(82, "M35 large document");
+        pictura::PictureView* blitAltView = frame.activeView();
+        pictura::ImageView* blitAltCanvas = frame.imageView();
+        if (!blitAltCreated || !blitAltView || !blitAltCanvas) {
+            ST_FAIL(82, "large document");
         }
-        const int m35bDocIndex = frame.activeDocumentIndex();
+        const int blitAltDocIndex = frame.activeDocumentIndex();
         // Run this pass on the CPU compositor to exercise the region-blit path
         // with the non-default backend (the earlier M35 pass used the default).
-        m35bView->set_gpu_compute(false);
-        int m35bRegionBlits = 0;
-        int m35bChanged = 0;
-        auto m35bRegionConn = QObject::connect(
-            m35bView, &pictura::PictureView::regionBlitted,
-            [&m35bRegionBlits](const QImage&, int, int) { ++m35bRegionBlits; });
-        auto m35bChangedConn = QObject::connect(
-            m35bView, &pictura::PictureView::changed, [&m35bChanged]() { ++m35bChanged; });
-        const bool m35bMoved = m35bView->commit_move(1, 1);
-        const QImage m35bBlitted = m35bCanvas->image();
-        QObject::disconnect(m35bRegionConn);
-        QObject::disconnect(m35bChangedConn);
-        m35bView->set_gpu_compute(m35bView->gpu_compute());
-        const QImage m35bFull = m35bCanvas->image();
-        const bool m35bRegionPath = m35bRegionBlits >= 1 && m35bChanged == 0;
-        const bool m35bCanvasSame = samePixels(m35bBlitted, m35bFull);
-        ST_BEGIN("m35_region_large_region");
-        ST_PASS("m35_region_large region=%d recomposite=%d canvas=%d", m35bRegionPath ? 1 : 0,
-                     m35bChanged > 0 ? 1 : 0,
-                     m35bCanvasSame ? 1 : 0);
-        if (!m35bMoved || !m35bRegionPath || !m35bCanvasSame) {
-            ST_FAIL(85, "M35 large-region blit wrong");
+        blitAltView->set_gpu_compute(false);
+        int blitAltRegionBlits = 0;
+        int blitAltChanged = 0;
+        auto blitAltRegionConn = QObject::connect(
+            blitAltView, &pictura::PictureView::regionBlitted,
+            [&blitAltRegionBlits](const QImage&, int, int) { ++blitAltRegionBlits; });
+        auto blitAltChangedConn = QObject::connect(
+            blitAltView, &pictura::PictureView::changed, [&blitAltChanged]() { ++blitAltChanged; });
+        const bool blitAltMoved = blitAltView->commit_move(1, 1);
+        const QImage blitAltBlitted = blitAltCanvas->image();
+        QObject::disconnect(blitAltRegionConn);
+        QObject::disconnect(blitAltChangedConn);
+        blitAltView->set_gpu_compute(blitAltView->gpu_compute());
+        const QImage blitAltFull = blitAltCanvas->image();
+        const bool blitAltRegionPath = blitAltRegionBlits >= 1 && blitAltChanged == 0;
+        const bool blitAltCanvasSame = samePixels(blitAltBlitted, blitAltFull);
+        ST_BEGIN("region_large_region");
+        ST_PASS("region_large region=%d recomposite=%d canvas=%d", blitAltRegionPath ? 1 : 0,
+                     blitAltChanged > 0 ? 1 : 0,
+                     blitAltCanvasSame ? 1 : 0);
+        if (!blitAltMoved || !blitAltRegionPath || !blitAltCanvasSame) {
+            ST_FAIL(85, "large-region blit wrong");
         }
-        frame.closeDocument(m35bDocIndex, false);
+        frame.closeDocument(blitAltDocIndex, false);
 
         // Move-preview base cache: warm prepare -> begin hit, base reused byte-for-byte, content change -> miss. 197: cache.
         const bool mpcCreated = frame.newDocument(QStringLiteral("MovePreviewCache"), 32, 32, QStringLiteral("rgb"), 8, QStringLiteral("white"));
@@ -2185,128 +2185,128 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         frame.closeDocument(frame.activeDocumentIndex(), false);
         // M36: layer attributes through the bridge — fill, lock, color, each one
         // history state and undoable. 86: fill; 87: lock; 88: color; 89: undo.
-        const bool m36Created = frame.newDocument(QStringLiteral("M36Attrs"), 16, 16,
+        const bool attrsCreated = frame.newDocument(QStringLiteral("Attrs"), 16, 16,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("white"));
-        pictura::PictureView* m36View = frame.activeView();
-        if (!m36Created || !m36View) {
-            ST_FAIL(86, "M36 document");
+        pictura::PictureView* attrsView = frame.activeView();
+        if (!attrsCreated || !attrsView) {
+            ST_FAIL(86, "document");
         }
-        const int m36DocIndex = frame.activeDocumentIndex();
-        const int m36HistBase = m36View->history_count();
-        const int m36FillBefore = m36View->layer_fill(0);
-        const bool m36FillSet = m36View->set_layer_fill(0, 128);
-        const int m36FillAfter = m36View->layer_fill(0);
-        const bool m36FillOk = m36FillBefore == 255 && m36FillSet && m36FillAfter == 128
-                               && m36View->history_count() == m36HistBase + 1;
-        const bool m36LockSet =
-            m36View->set_layer_lock(0, QStringLiteral("transparency"), true);
-        const int m36LockAfter = m36View->layer_lock(0);
-        const bool m36LockOk = m36LockSet && (m36LockAfter & 0x01) != 0
-                               && m36View->history_count() == m36HistBase + 2;
-        const int m36ColorBefore = m36View->layer_color(0);
-        const bool m36ColorSet = m36View->set_layer_color(0, 3);
-        const int m36ColorAfter = m36View->layer_color(0);
-        const bool m36ColorOk = m36ColorBefore == 0 && m36ColorSet && m36ColorAfter == 3
-                                && m36View->history_count() == m36HistBase + 3;
+        const int attrsDocIndex = frame.activeDocumentIndex();
+        const int histBase = attrsView->history_count();
+        const int fillBefore = attrsView->layer_fill(0);
+        const bool fillSet = attrsView->set_layer_fill(0, 128);
+        const int fillAfter = attrsView->layer_fill(0);
+        const bool fillOk = fillBefore == 255 && fillSet && fillAfter == 128
+                               && attrsView->history_count() == histBase + 1;
+        const bool lockSet =
+            attrsView->set_layer_lock(0, QStringLiteral("transparency"), true);
+        const int lockAfter = attrsView->layer_lock(0);
+        const bool lockOk = lockSet && (lockAfter & 0x01) != 0
+                               && attrsView->history_count() == histBase + 2;
+        const int colorBefore = attrsView->layer_color(0);
+        const bool colorSet = attrsView->set_layer_color(0, 3);
+        const int colorAfter = attrsView->layer_color(0);
+        const bool colorOk = colorBefore == 0 && colorSet && colorAfter == 3
+                                && attrsView->history_count() == histBase + 3;
         // Undo walks each edit back to its prior value; redo restores them.
-        const bool m36Undo = m36View->undo() && m36View->layer_color(0) == 0
-                             && m36View->undo() && m36View->layer_lock(0) == 0
-                             && m36View->undo() && m36View->layer_fill(0) == 255
-                             && m36View->redo() && m36View->redo() && m36View->redo()
-                             && m36View->layer_fill(0) == 128 && m36View->layer_color(0) == 3;
-        ST_BEGIN("m36_attrs_fill");
-        ST_PASS("m36_attrs fill=%d lock=%d color=%d undo=%d", m36FillOk ? 1 : 0,
-                     m36LockOk ? 1 : 0,
-                     m36ColorOk ? 1 : 0,
-                     m36Undo ? 1 : 0);
-        if (!m36FillOk) {
-            ST_FAIL(86, "M36 fill");
+        const bool attrsUndo = attrsView->undo() && attrsView->layer_color(0) == 0
+                             && attrsView->undo() && attrsView->layer_lock(0) == 0
+                             && attrsView->undo() && attrsView->layer_fill(0) == 255
+                             && attrsView->redo() && attrsView->redo() && attrsView->redo()
+                             && attrsView->layer_fill(0) == 128 && attrsView->layer_color(0) == 3;
+        ST_BEGIN("attrs_fill");
+        ST_PASS("attrs fill=%d lock=%d color=%d undo=%d", fillOk ? 1 : 0,
+                     lockOk ? 1 : 0,
+                     colorOk ? 1 : 0,
+                     attrsUndo ? 1 : 0);
+        if (!fillOk) {
+            ST_FAIL(86, "fill");
         }
-        if (!m36LockOk) {
-            ST_FAIL(87, "M36 lock");
+        if (!lockOk) {
+            ST_FAIL(87, "lock");
         }
-        if (!m36ColorOk) {
-            ST_FAIL(88, "M36 color");
+        if (!colorOk) {
+            ST_FAIL(88, "color");
         }
-        if (!m36Undo) {
-            ST_FAIL(89, "M36 undo restore");
+        if (!attrsUndo) {
+            ST_FAIL(89, "undo restore");
         }
-        frame.closeDocument(m36DocIndex, false);
+        frame.closeDocument(attrsDocIndex, false);
         // M37: layer creation and grouping. Each op is exactly one history
         // step; a transparent new layer leaves the composite unchanged, and
         // undo restores the original stack.
-        const bool m37Created = frame.newDocument(QStringLiteral("M37Create"), 16, 16,
+        const bool layerOpsCreated = frame.newDocument(QStringLiteral("Create"), 16, 16,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("white"));
-        pictura::PictureView* m37View = frame.activeView();
-        if (!m37Created || !m37View) {
-            ST_FAIL(90, "m37 no view");
+        pictura::PictureView* layerOpsView = frame.activeView();
+        if (!layerOpsCreated || !layerOpsView) {
+            ST_FAIL(90, "no view");
         }
-        const int m37DocIndex = frame.activeDocumentIndex();
-        const int m37BaseCount = m37View->layer_count();
-        const int m37HistBase = m37View->history_count();
+        const int layerOpsDocIndex = frame.activeDocumentIndex();
+        const int layerOpsBaseCount = layerOpsView->layer_count();
+        const int layerOpsHistBase = layerOpsView->history_count();
         // (a) New Layer: count grows by one and the transparent layer is inert.
-        const QImage m37Before = m37View->image();
-        const int m37Added = m37View->add_layer(-1);
-        const int m37AfterAdd = m37View->layer_count();
-        const bool m37AddOk = m37Added == m37BaseCount && m37AfterAdd == m37BaseCount + 1
-                              && m37View->image() == m37Before
-                              && m37View->history_count() == m37HistBase + 1;
+        const QImage layerOpsBefore = layerOpsView->image();
+        const int layerOpsAdded = layerOpsView->add_layer(-1);
+        const int afterAdd = layerOpsView->layer_count();
+        const bool addOk = layerOpsAdded == layerOpsBaseCount && afterAdd == layerOpsBaseCount + 1
+                              && layerOpsView->image() == layerOpsBefore
+                              && layerOpsView->history_count() == layerOpsHistBase + 1;
         // (b) New Group.
-        const int m37Group = m37View->add_group(-1);
-        const bool m37GroupOk = m37Group == m37AfterAdd
-                                && m37View->layer_count() == m37AfterAdd + 1
-                                && m37View->layer_kind(m37Group) == QStringLiteral("group")
-                                && m37View->history_count() == m37HistBase + 2;
+        const int layerOpsGroup = layerOpsView->add_group(-1);
+        const bool groupOk = layerOpsGroup == afterAdd
+                                && layerOpsView->layer_count() == afterAdd + 1
+                                && layerOpsView->layer_kind(layerOpsGroup) == QStringLiteral("group")
+                                && layerOpsView->history_count() == layerOpsHistBase + 2;
         // (c) Duplicate: count grows and the copy is named "<name> copy".
-        const int m37Dup = m37View->duplicate_layer(m37Added);
-        const QString m37DupName = m37Dup >= 0 ? m37View->layer_name(m37Dup) : QString();
-        const bool m37DupOk = m37Dup == m37Added + 1
-                              && m37View->layer_count() == m37AfterAdd + 2
-                              && m37DupName.endsWith(QStringLiteral(" copy"))
-                              && m37View->history_count() == m37HistBase + 3;
+        const int dup = layerOpsView->duplicate_layer(layerOpsAdded);
+        const QString dupName = dup >= 0 ? layerOpsView->layer_name(dup) : QString();
+        const bool dupOk = dup == layerOpsAdded + 1
+                              && layerOpsView->layer_count() == afterAdd + 2
+                              && dupName.endsWith(QStringLiteral(" copy"))
+                              && layerOpsView->history_count() == layerOpsHistBase + 3;
 
         // (d) Group then ungroup: the wrapped layer keeps its slot and the
         // ungrouped children splice back in order.
-        const int m37Wrapped = m37View->group_layer(m37Added);
-        const bool m37Grouped = m37Wrapped == m37Added
-                                && m37View->layer_kind(m37Wrapped) == QStringLiteral("group");
-        const bool m37Ungrouped = m37View->ungroup_layer(m37Wrapped)
-                                  && m37View->layer_kind(m37Wrapped) == QStringLiteral("pixel");
-        const bool m37UngroupOk = m37Grouped && m37Ungrouped
-                                  && m37View->history_count() == m37HistBase + 5;
+        const int layerOpsWrapped = layerOpsView->group_layer(layerOpsAdded);
+        const bool layerOpsGrouped = layerOpsWrapped == layerOpsAdded
+                                && layerOpsView->layer_kind(layerOpsWrapped) == QStringLiteral("group");
+        const bool layerOpsUngrouped = layerOpsView->ungroup_layer(layerOpsWrapped)
+                                  && layerOpsView->layer_kind(layerOpsWrapped) == QStringLiteral("pixel");
+        const bool ungroupOk = layerOpsGrouped && layerOpsUngrouped
+                                  && layerOpsView->history_count() == layerOpsHistBase + 5;
 
         // (e) Five undos restore the initial single-layer stack.
-        bool m37UndoOk = true;
+        bool undoOk = true;
         for (int i = 0; i < 5; ++i) {
-            m37UndoOk = m37UndoOk && m37View->undo();
+            undoOk = undoOk && layerOpsView->undo();
         }
-        m37UndoOk = m37UndoOk && m37View->layer_count() == m37BaseCount;
+        undoOk = undoOk && layerOpsView->layer_count() == layerOpsBaseCount;
 
-        ST_BEGIN("m37_create_new");
-        ST_PASS("m37_create new=%d group=%d duplicate=%d "
-                     "ungroup=%d undo=%d", m37AddOk ? 1 : 0,
-                     m37GroupOk ? 1 : 0,
-                     m37DupOk ? 1 : 0,
-                     m37UngroupOk ? 1 : 0,
-                     m37UndoOk ? 1 : 0);
-        if (!m37AddOk) {
-            ST_FAIL(90, "m37 add failed");
+        ST_BEGIN("create_new");
+        ST_PASS("create new=%d group=%d duplicate=%d "
+                     "ungroup=%d undo=%d", addOk ? 1 : 0,
+                     groupOk ? 1 : 0,
+                     dupOk ? 1 : 0,
+                     ungroupOk ? 1 : 0,
+                     undoOk ? 1 : 0);
+        if (!addOk) {
+            ST_FAIL(90, "add failed");
         }
-        if (!m37GroupOk) {
-            ST_FAIL(91, "m37 group failed");
+        if (!groupOk) {
+            ST_FAIL(91, "group failed");
         }
-        if (!m37DupOk) {
-            ST_FAIL(92, "m37 duplicate failed");
+        if (!dupOk) {
+            ST_FAIL(92, "duplicate failed");
         }
-        if (!m37UngroupOk) {
-            ST_FAIL(93, "m37 ungroup failed");
+        if (!ungroupOk) {
+            ST_FAIL(93, "ungroup failed");
         }
-        if (!m37UndoOk) {
-            ST_FAIL(94, "m37 undo failed");
+        if (!undoOk) {
+            ST_FAIL(94, "undo failed");
         }
-        frame.closeDocument(m37DocIndex, false);
+        frame.closeDocument(layerOpsDocIndex, false);
         // M38: the frozen 71-tool catalogue, its icons/cursors/hotspots, the
         // 23-slot toolbox, and the unimplemented-tool guard. Assets are
         // document-independent, so these run with or without a loaded PSD.
@@ -2360,22 +2360,22 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         probe.setActiveTool(pictura::ToolId::MagicWand);
         const bool guardOk = probe.activeTool() == guardBefore;
 
-        ST_BEGIN("m38_tools_icons");
-        ST_PASS("m38_tools icons=%d cursors=%d slots=%d guard=%d", iconsOk,
+        ST_BEGIN("tools_icons");
+        ST_PASS("tools icons=%d cursors=%d slots=%d guard=%d", iconsOk,
                      cursorsOk,
                      slotsOk,
                      guardOk ? 1 : 0);
         if (!iconsOk) {
-            ST_FAIL(95, "m38 tool icon missing=%s", missingToolIcon.toLocal8Bit().constData());
+            ST_FAIL(95, "tool icon missing=%s", missingToolIcon.toLocal8Bit().constData());
         }
         if (!cursorsOk) {
-            ST_FAIL(96, "m38 tool cursor missing=%s", missingToolCursor.toLocal8Bit().constData());
+            ST_FAIL(96, "tool cursor missing=%s", missingToolCursor.toLocal8Bit().constData());
         }
         if (!slotsOk) {
-            ST_FAIL(97, "m38 toolbox slots wrong");
+            ST_FAIL(97, "toolbox slots wrong");
         }
         if (!guardOk) {
-            ST_FAIL(98, "m38 unimplemented tool activated");
+            ST_FAIL(98, "unimplemented tool activated");
         }
         // M38 panels: the former rail icon ids now live on the PanelColumn
         // group tabs, plus the Layers action strip and the History snapshot
@@ -2385,127 +2385,127 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             return !actual.isNull() && !expected.isNull()
                    && actual.pixmap(20, 20).toImage() == expected.pixmap(20, 20).toImage();
         };
-        auto* m38Column = frame.panelColumn();
-        const QStringList m38RailTitles = {
+        auto* assetsColumn = frame.panelColumn();
+        const QStringList railTitles = {
             QStringLiteral("History"),
             QStringLiteral("Actions"),
             QStringLiteral("Info"),
             QStringLiteral("Navigator"),
             QStringLiteral("Histogram"),
         };
-        const QStringList m38RailIds = {
+        const QStringList railIds = {
             QStringLiteral("window.panels.history"),
             QStringLiteral("window.panels.actions"),
             QStringLiteral("window.panels.info"),
             QStringLiteral("window.panels.navigator"),
             QStringLiteral("window.panels.histogram"),
         };
-        int m38RailIcons = 0;
-        QString m38RailMissing;
-        for (int i = 0; i < m38RailTitles.size(); ++i) {
+        int railIcons = 0;
+        QString railMissing;
+        for (int i = 0; i < railTitles.size(); ++i) {
             bool matched = false;
-            if (m38Column) {
-                for (pictura::PanelGroup* group : m38Column->groups()) {
+            if (assetsColumn) {
+                for (pictura::PanelGroup* group : assetsColumn->groups()) {
                     if (group
-                        && sameIcon(group->titleIconForTest(m38RailTitles.at(i)),
-                                    pictura::icon(m38RailIds.at(i)))) {
+                        && sameIcon(group->titleIconForTest(railTitles.at(i)),
+                                    pictura::icon(railIds.at(i)))) {
                         matched = true;
                         break;
                     }
                 }
             }
             if (matched) {
-                ++m38RailIcons;
-            } else if (m38RailMissing.isEmpty()) {
-                m38RailMissing = m38RailIds.at(i);
+                ++railIcons;
+            } else if (railMissing.isEmpty()) {
+                railMissing = railIds.at(i);
             }
         }
-        const bool m38RailOk = m38Column && m38RailIcons == m38RailTitles.size();
+        const bool railOk = assetsColumn && railIcons == railTitles.size();
 
-        const QStringList m38StripIds = {
+        const QStringList stripIds = {
             QStringLiteral("link"),           QStringLiteral("fx"),
             QStringLiteral("mask"),           QStringLiteral("fillAdjustment"),
             QStringLiteral("group"),          QStringLiteral("newLayer"),
             QStringLiteral("delete")};
-        const QStringList m38StripObjectNames = {
+        const QStringList stripObjectNames = {
             QStringLiteral("layersStripLink"),   QStringLiteral("layersStripFx"),
             QStringLiteral("layersStripMask"),   QStringLiteral("layersStripFillAdjustment"),
             QStringLiteral("layersStripGroup"),  QStringLiteral("layersStripNewLayer"),
             QStringLiteral("layersStripDelete")};
         // link/fx/mask have icons but no behaviour yet.
-        const QSet<QString> m38StripDisabled = {
+        const QSet<QString> stripDisabled = {
             QStringLiteral("link"), QStringLiteral("fx"), QStringLiteral("mask")};
-        QWidget* m38Layers = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
-        int m38StripOk = 0;
-        QString m38StripWrong;
-        for (int i = 0; i < m38StripIds.size(); ++i) {
-            auto* button = m38Layers
-                ? m38Layers->findChild<QToolButton*>(m38StripObjectNames.at(i))
+        QWidget* assetsLayers = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
+        int stripOk = 0;
+        QString stripWrong;
+        for (int i = 0; i < stripIds.size(); ++i) {
+            auto* button = assetsLayers
+                ? assetsLayers->findChild<QToolButton*>(stripObjectNames.at(i))
                 : nullptr;
             const QIcon expected =
-                pictura::icon(QStringLiteral("layers.") + m38StripIds.at(i));
-            const bool disabled = m38StripDisabled.contains(m38StripIds.at(i));
+                pictura::icon(QStringLiteral("layers.") + stripIds.at(i));
+            const bool disabled = stripDisabled.contains(stripIds.at(i));
             if (button && sameIcon(button->icon(), expected)
                 && button->isEnabled() != disabled) {
-                ++m38StripOk;
-            } else if (m38StripWrong.isEmpty()) {
-                m38StripWrong = m38StripIds.at(i);
+                ++stripOk;
+            } else if (stripWrong.isEmpty()) {
+                stripWrong = stripIds.at(i);
             }
         }
-        const bool m38StripPass = m38StripOk == m38StripIds.size();
+        const bool stripPass = stripOk == stripIds.size();
 
-        QWidget* m38History = frame.findChild<QWidget*>(QStringLiteral("historyPanel"));
-        auto* m38Snapshot =
-            m38History ? m38History->findChild<QPushButton*>(QStringLiteral("snapshotButton"))
+        QWidget* assetsHistory = frame.findChild<QWidget*>(QStringLiteral("historyPanel"));
+        auto* assetsSnapshot =
+            assetsHistory ? assetsHistory->findChild<QPushButton*>(QStringLiteral("snapshotButton"))
                        : nullptr;
-        const bool m38HistoryOk =
-            m38Snapshot
-            && sameIcon(m38Snapshot->icon(), pictura::icon(QStringLiteral("history.snapshot")));
+        const bool historyOk =
+            assetsSnapshot
+            && sameIcon(assetsSnapshot->icon(), pictura::icon(QStringLiteral("history.snapshot")));
 
-        ST_BEGIN("m38_panels_rail");
-        ST_PASS("m38_panels rail=%d strip=%d history=%d", m38RailOk ? 1 : 0,
-                     m38StripPass ? 1 : 0,
-                     m38HistoryOk ? 1 : 0);
-        if (!m38RailOk) {
-            ST_FAIL(99, "m38 rail icon missing=%s", m38RailMissing.toLocal8Bit().constData());
+        ST_BEGIN("panels_rail");
+        ST_PASS("panels rail=%d strip=%d history=%d", railOk ? 1 : 0,
+                     stripPass ? 1 : 0,
+                     historyOk ? 1 : 0);
+        if (!railOk) {
+            ST_FAIL(99, "rail icon missing=%s", railMissing.toLocal8Bit().constData());
         }
-        if (!m38StripPass) {
-            ST_FAIL(100, "m38 strip button wrong=%s", m38StripWrong.toLocal8Bit().constData());
+        if (!stripPass) {
+            ST_FAIL(100, "strip button wrong=%s", stripWrong.toLocal8Bit().constData());
         }
-        if (!m38HistoryOk) {
-            ST_FAIL(101, "m38 snapshot icon wrong");
+        if (!historyOk) {
+            ST_FAIL(101, "snapshot icon wrong");
         }
         // M39: the layers panel's tree projection, multi-selection batches,
         // solo visibility, Tab rename, Panel Options, badges, menus, tooltips,
         // and the seven-button strip. A deterministic fixture is built through
         // the bridge; the panel is read through its M39 test hooks.
-        auto* m39Panel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
-        const bool m39Created = frame.newDocument(QStringLiteral("M39"), 16, 16,
+        auto* anatomyPanel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+        const bool anatomyCreated = frame.newDocument(QStringLiteral("PanelAnatomy"), 16, 16,
                                                   QStringLiteral("rgb"), 8,
                                                   QStringLiteral("white"));
-        pictura::PictureView* m39View = frame.activeView();
-        if (!m39Created || !m39View || !m39Panel) {
-            ST_FAIL(102, "M39 document/panel");
+        pictura::PictureView* anatomyView = frame.activeView();
+        if (!anatomyCreated || !anatomyView || !anatomyPanel) {
+            ST_FAIL(102, "document/panel");
         }
-        const int m39DocIndex = frame.activeDocumentIndex();
+        const int anatomyDocIndex = frame.activeDocumentIndex();
 
         // Fixture: a Background, a group "1" with two pixel children and a
         // nested group "1/2", and a masked adjustment layer "2" on top.
-        m39View->set_layer_name_path(QStringLiteral("0"), QStringLiteral("Background"));
-        const QString m39Group = m39View->add_group_in(QString());
-        const QString m39ChildA = m39View->add_layer_in(m39Group);
-        const QString m39ChildB = m39View->add_layer_in(m39Group);
-        const QString m39Nested = m39View->add_group_in(m39Group);
-        const QString m39NestedChild = m39View->add_layer_in(m39Nested);
-        m39View->select_all();
-        m39View->add_adjustment(QStringLiteral("invert"));
-        m39View->deselect();
-        m39Panel->setView(m39View);
-        m39Panel->refresh();
+        anatomyView->set_layer_name_path(QStringLiteral("0"), QStringLiteral("Background"));
+        const QString anatomyGroup = anatomyView->add_group_in(QString());
+        const QString childA = anatomyView->add_layer_in(anatomyGroup);
+        const QString childB = anatomyView->add_layer_in(anatomyGroup);
+        const QString anatomyNested = anatomyView->add_group_in(anatomyGroup);
+        const QString nestedChild = anatomyView->add_layer_in(anatomyNested);
+        anatomyView->select_all();
+        anatomyView->add_adjustment(QStringLiteral("invert"));
+        anatomyView->deselect();
+        anatomyPanel->setView(anatomyView);
+        anatomyPanel->refresh();
 
-        auto m39RowOf = [m39View](const QString& path) {
-            for (int i = 0; i < m39View->layer_row_count(); ++i) {
-                if (m39View->layer_row_path(i) == path) {
+        auto rowOf = [anatomyView](const QString& path) {
+            for (int i = 0; i < anatomyView->layer_row_count(); ++i) {
+                if (anatomyView->layer_row_path(i) == path) {
                     return i;
                 }
             }
@@ -2514,139 +2514,139 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         // 8.1 m39_tree (102-103): the depth-first, topmost-first projection,
         // the tree-aware add-inside-group paths, and a nested rename by path.
-        const QStringList m39TreePaths = {
+        const QStringList treePaths = {
             QStringLiteral("2"), QStringLiteral("1"), QStringLiteral("1/2"),
             QStringLiteral("1/2/0"), QStringLiteral("1/1"), QStringLiteral("1/0"),
             QStringLiteral("0")};
-        const int m39TreeDepths[] = {0, 0, 1, 2, 1, 1, 0};
-        const QStringList m39TreeKinds = {
+        const int treeDepths[] = {0, 0, 1, 2, 1, 1, 0};
+        const QStringList treeKinds = {
             QStringLiteral("adjustment"), QStringLiteral("group"), QStringLiteral("group"),
             QStringLiteral("pixel"), QStringLiteral("pixel"), QStringLiteral("pixel"),
             QStringLiteral("background")};
-        bool m39OrderOk = m39View->layer_row_count() == m39TreePaths.size();
-        for (int i = 0; m39OrderOk && i < m39TreePaths.size(); ++i) {
-            m39OrderOk = m39View->layer_row_path(i) == m39TreePaths.at(i)
-                         && m39View->layer_row_depth(i) == m39TreeDepths[i]
-                         && m39View->layer_row_kind(i) == m39TreeKinds.at(i);
+        bool orderOk = anatomyView->layer_row_count() == treePaths.size();
+        for (int i = 0; orderOk && i < treePaths.size(); ++i) {
+            orderOk = anatomyView->layer_row_path(i) == treePaths.at(i)
+                         && anatomyView->layer_row_depth(i) == treeDepths[i]
+                         && anatomyView->layer_row_kind(i) == treeKinds.at(i);
         }
-        const bool m39AddOk =
-            m39ChildA == QStringLiteral("1/0") && m39ChildB == QStringLiteral("1/1")
-            && m39Nested == QStringLiteral("1/2")
-            && m39NestedChild == QStringLiteral("1/2/0")
-            && m39View->layer_row_depth(m39RowOf(m39NestedChild)) == 2
-            && m39View->layer_row_expandable(m39RowOf(QStringLiteral("1")))
-            && m39View->layer_row_expandable(m39RowOf(m39Nested));
-        const int m39RenameBase = m39View->history_count();
-        const bool m39TreeRenameOk =
-            m39View->set_layer_name_path(QStringLiteral("1/1"), QStringLiteral("Nested"))
-            && m39View->layer_row_name(m39RowOf(QStringLiteral("1/1")))
+        const bool anatomyAddOk =
+            childA == QStringLiteral("1/0") && childB == QStringLiteral("1/1")
+            && anatomyNested == QStringLiteral("1/2")
+            && nestedChild == QStringLiteral("1/2/0")
+            && anatomyView->layer_row_depth(rowOf(nestedChild)) == 2
+            && anatomyView->layer_row_expandable(rowOf(QStringLiteral("1")))
+            && anatomyView->layer_row_expandable(rowOf(anatomyNested));
+        const int renameBase = anatomyView->history_count();
+        const bool treeRenameOk =
+            anatomyView->set_layer_name_path(QStringLiteral("1/1"), QStringLiteral("Nested"))
+            && anatomyView->layer_row_name(rowOf(QStringLiteral("1/1")))
                    == QStringLiteral("Nested")
-            && m39View->history_count() == m39RenameBase + 1
-            && !m39View->set_layer_name_path(QStringLiteral("1/9"), QStringLiteral("Bogus"))
-            && m39View->history_count() == m39RenameBase + 1;
-        ST_BEGIN("m39_tree_order");
-        ST_PASS("m39_tree order=%d add=%d rename=%d", m39OrderOk ? 1 : 0, m39AddOk ? 1 : 0, m39TreeRenameOk ? 1 : 0);
-        if (!m39OrderOk) {
-            ST_FAIL(102, "M39 projection order");
+            && anatomyView->history_count() == renameBase + 1
+            && !anatomyView->set_layer_name_path(QStringLiteral("1/9"), QStringLiteral("Bogus"))
+            && anatomyView->history_count() == renameBase + 1;
+        ST_BEGIN("tree_order");
+        ST_PASS("tree order=%d add=%d rename=%d", orderOk ? 1 : 0, anatomyAddOk ? 1 : 0, treeRenameOk ? 1 : 0);
+        if (!orderOk) {
+            ST_FAIL(102, "projection order");
         }
-        if (!m39AddOk || !m39TreeRenameOk) {
-            ST_FAIL(103, "M39 tree add/nested rename");
+        if (!anatomyAddOk || !treeRenameOk) {
+            ST_FAIL(103, "tree add/nested rename");
         }
 
         // 8.2 m39_multi (104-105): a batch is one undo step, the Background and
         // a group are skipped per node, and multi group/ungroup is one step.
-        const QString m39Bg = QStringLiteral("0");
-        const QString m39PixA = QStringLiteral("1/1");
-        const QString m39PixB = QStringLiteral("1/0");
-        const int m39BlendBase = m39View->history_count();
-        const int m39BlendChanged =
-            m39View->set_layers_blend(QStringList{m39PixA, m39PixB}, QStringLiteral("mul "));
-        const bool m39BatchOk =
-            m39BlendChanged == 2 && m39View->history_count() == m39BlendBase + 1
-            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("mul ")
-            && m39View->layer_row_blend(m39RowOf(m39PixB)) == QStringLiteral("mul ");
-        const bool m39BatchUndoOk =
-            m39View->undo()
-            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("norm")
-            && m39View->layer_row_blend(m39RowOf(m39PixB)) == QStringLiteral("norm")
-            && m39View->redo()
-            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("mul ");
+        const QString anatomyBg = QStringLiteral("0");
+        const QString pixA = QStringLiteral("1/1");
+        const QString pixB = QStringLiteral("1/0");
+        const int blendBase = anatomyView->history_count();
+        const int blendChanged =
+            anatomyView->set_layers_blend(QStringList{pixA, pixB}, QStringLiteral("mul "));
+        const bool batchOk =
+            blendChanged == 2 && anatomyView->history_count() == blendBase + 1
+            && anatomyView->layer_row_blend(rowOf(pixA)) == QStringLiteral("mul ")
+            && anatomyView->layer_row_blend(rowOf(pixB)) == QStringLiteral("mul ");
+        const bool batchUndoOk =
+            anatomyView->undo()
+            && anatomyView->layer_row_blend(rowOf(pixA)) == QStringLiteral("norm")
+            && anatomyView->layer_row_blend(rowOf(pixB)) == QStringLiteral("norm")
+            && anatomyView->redo()
+            && anatomyView->layer_row_blend(rowOf(pixA)) == QStringLiteral("mul ");
 
-        const int m39SkipBase = m39View->history_count();
-        const int m39BgChanged =
-            m39View->set_layers_blend(QStringList{m39Bg, m39PixA}, QStringLiteral("scrn"));
-        const int m39FillBase = m39View->history_count();
-        const int m39GroupFill = m39View->set_layers_fill(QStringList{m39Group, m39PixB}, 128);
-        const bool m39SkipOk =
-            m39BgChanged == 1 && m39FillBase == m39SkipBase + 1
-            && m39View->layer_row_blend(m39RowOf(m39Bg)) == QStringLiteral("norm")
-            && m39View->layer_row_blend(m39RowOf(m39PixA)) == QStringLiteral("scrn")
-            && m39GroupFill == 1 && m39View->history_count() == m39FillBase + 1
-            && m39View->layer_row_fill(m39RowOf(m39Group)) == 255
-            && m39View->layer_row_fill(m39RowOf(m39PixB)) == 128;
+        const int skipBase = anatomyView->history_count();
+        const int bgChanged =
+            anatomyView->set_layers_blend(QStringList{anatomyBg, pixA}, QStringLiteral("scrn"));
+        const int fillBase = anatomyView->history_count();
+        const int groupFill = anatomyView->set_layers_fill(QStringList{anatomyGroup, pixB}, 128);
+        const bool skipOk =
+            bgChanged == 1 && fillBase == skipBase + 1
+            && anatomyView->layer_row_blend(rowOf(anatomyBg)) == QStringLiteral("norm")
+            && anatomyView->layer_row_blend(rowOf(pixA)) == QStringLiteral("scrn")
+            && groupFill == 1 && anatomyView->history_count() == fillBase + 1
+            && anatomyView->layer_row_fill(rowOf(anatomyGroup)) == 255
+            && anatomyView->layer_row_fill(rowOf(pixB)) == 128;
 
-        const int m39GroupBase = m39View->history_count();
-        const QString m39Wrapped = m39View->group_layers(QStringList{m39PixA, m39PixB});
-        const bool m39GroupStepOk =
-            !m39Wrapped.isEmpty() && m39View->history_count() == m39GroupBase + 1;
-        const int m39UngroupBase = m39View->history_count();
-        const int m39Ungrouped = m39View->ungroup_layers(QStringList{m39Wrapped});
-        const bool m39UngroupOk =
-            m39Ungrouped == 1 && m39View->history_count() == m39UngroupBase + 1;
+        const int groupBase = anatomyView->history_count();
+        const QString anatomyWrapped = anatomyView->group_layers(QStringList{pixA, pixB});
+        const bool groupStepOk =
+            !anatomyWrapped.isEmpty() && anatomyView->history_count() == groupBase + 1;
+        const int ungroupBase = anatomyView->history_count();
+        const int anatomyUngrouped = anatomyView->ungroup_layers(QStringList{anatomyWrapped});
+        const bool anatomyUngroupOk =
+            anatomyUngrouped == 1 && anatomyView->history_count() == ungroupBase + 1;
 
-        ST_BEGIN("m39_multi_batch");
-        ST_PASS("m39_multi batch=%d skip=%d group=%d undo=%d", m39BatchOk ? 1 : 0, m39SkipOk ? 1 : 0,
-                     (m39GroupStepOk && m39UngroupOk) ? 1 : 0, m39BatchUndoOk ? 1 : 0);
-        if (!m39BatchOk || !m39SkipOk || !m39BatchUndoOk) {
-            ST_FAIL(104, "M39 multi-selection batch");
+        ST_BEGIN("multi_batch");
+        ST_PASS("multi batch=%d skip=%d group=%d undo=%d", batchOk ? 1 : 0, skipOk ? 1 : 0,
+                     (groupStepOk && anatomyUngroupOk) ? 1 : 0, batchUndoOk ? 1 : 0);
+        if (!batchOk || !skipOk || !batchUndoOk) {
+            ST_FAIL(104, "multi-selection batch");
         }
-        if (!m39GroupStepOk || !m39UngroupOk) {
-            ST_FAIL(105, "M39 multi group/ungroup");
+        if (!groupStepOk || !anatomyUngroupOk) {
+            ST_FAIL(105, "multi group/ungroup");
         }
 
         // 8.3 m39_solo (106): Alt-solo hides every other row, a second Alt
         // restores the exact prior per-row visibility, and undo restores.
-        const QString m39SoloHidden = QStringLiteral("1/1");
-        m39View->set_layers_visible(QStringList{m39SoloHidden}, false);
-        m39Panel->refresh();
-        QStringList m39PriorHidden;
-        for (int i = 0; i < m39View->layer_row_count(); ++i) {
-            if (!m39View->layer_row_visible(i)) {
-                m39PriorHidden.push_back(m39View->layer_row_path(i));
+        const QString soloHidden = QStringLiteral("1/1");
+        anatomyView->set_layers_visible(QStringList{soloHidden}, false);
+        anatomyPanel->refresh();
+        QStringList priorHidden;
+        for (int i = 0; i < anatomyView->layer_row_count(); ++i) {
+            if (!anatomyView->layer_row_visible(i)) {
+                priorHidden.push_back(anatomyView->layer_row_path(i));
             }
         }
-        const QString m39SoloPath = QStringLiteral("1/0");
-        m39Panel->toggleSoloForTest(m39SoloPath);
-        m39Panel->refresh();
-        bool m39SoloOk = true;
-        for (int i = 0; i < m39View->layer_row_count(); ++i) {
-            const QString path = m39View->layer_row_path(i);
-            const bool expected = path == m39SoloPath || path == m39Group;
-            m39SoloOk = m39SoloOk && m39View->layer_row_visible(i) == expected;
+        const QString soloPath = QStringLiteral("1/0");
+        anatomyPanel->toggleSoloForTest(soloPath);
+        anatomyPanel->refresh();
+        bool soloOk = true;
+        for (int i = 0; i < anatomyView->layer_row_count(); ++i) {
+            const QString path = anatomyView->layer_row_path(i);
+            const bool expected = path == soloPath || path == anatomyGroup;
+            soloOk = soloOk && anatomyView->layer_row_visible(i) == expected;
         }
-        const bool m39SoloUndo = m39View->undo();
-        m39Panel->refresh();
-        bool m39SoloUndoOk = m39SoloUndo;
-        for (int i = 0; i < m39View->layer_row_count(); ++i) {
-            m39SoloUndoOk = m39SoloUndoOk
-                            && m39View->layer_row_visible(i)
-                                   == !m39PriorHidden.contains(m39View->layer_row_path(i));
+        const bool soloUndo = anatomyView->undo();
+        anatomyPanel->refresh();
+        bool soloUndoOk = soloUndo;
+        for (int i = 0; i < anatomyView->layer_row_count(); ++i) {
+            soloUndoOk = soloUndoOk
+                            && anatomyView->layer_row_visible(i)
+                                   == !priorHidden.contains(anatomyView->layer_row_path(i));
         }
-        const bool m39SoloRedo = m39View->redo();
-        m39Panel->refresh();
-        m39Panel->toggleSoloForTest(m39Group);
-        m39Panel->refresh();
-        bool m39SoloRestoreOk = m39SoloRedo;
-        for (int i = 0; i < m39View->layer_row_count(); ++i) {
-            m39SoloRestoreOk =
-                m39SoloRestoreOk
-                && m39View->layer_row_visible(i)
-                       == !m39PriorHidden.contains(m39View->layer_row_path(i));
+        const bool soloRedo = anatomyView->redo();
+        anatomyPanel->refresh();
+        anatomyPanel->toggleSoloForTest(anatomyGroup);
+        anatomyPanel->refresh();
+        bool soloRestoreOk = soloRedo;
+        for (int i = 0; i < anatomyView->layer_row_count(); ++i) {
+            soloRestoreOk =
+                soloRestoreOk
+                && anatomyView->layer_row_visible(i)
+                       == !priorHidden.contains(anatomyView->layer_row_path(i));
         }
-        ST_BEGIN("m39_solo_solo");
-        ST_PASS("m39_solo solo=%d restore=%d undo=%d", m39SoloOk ? 1 : 0, m39SoloRestoreOk ? 1 : 0, m39SoloUndoOk ? 1 : 0);
-        if (!m39SoloOk || !m39SoloRestoreOk || !m39SoloUndoOk) {
-            ST_FAIL(106, "M39 solo visibility");
+        ST_BEGIN("solo_solo");
+        ST_PASS("solo solo=%d restore=%d undo=%d", soloOk ? 1 : 0, soloRestoreOk ? 1 : 0, soloUndoOk ? 1 : 0);
+        if (!soloOk || !soloRestoreOk || !soloUndoOk) {
+            ST_FAIL(106, "solo visibility");
         }
 
         // 8.4 m39_rename (107): Tab commits and moves down, Shift+Tab up, and
@@ -2655,11 +2655,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // makes QApplication::sendEvent to the editor unreliable, so the
         // delegate is invoked directly and the view still performs the move.
         QCoreApplication::processEvents();
-        m39Panel->refresh();
+        anatomyPanel->refresh();
         QCoreApplication::processEvents();
-        auto m39Edit = [m39Panel](const QString& path, const QString& text, int key) {
+        auto anatomyEdit = [anatomyPanel](const QString& path, const QString& text, int key) {
             QCoreApplication::processEvents();
-            if (!m39Panel->beginRenameForTest(path)) {
+            if (!anatomyPanel->beginRenameForTest(path)) {
                 return false;
             }
             QCoreApplication::processEvents();
@@ -2667,9 +2667,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // so findChild returns the editor the view currently has registered.
             QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
             QCoreApplication::processEvents();
-            auto* tree = m39Panel->findChild<QTreeView*>();
+            auto* tree = anatomyPanel->findChild<QTreeView*>();
             QLineEdit* editor = tree ? tree->viewport()->findChild<QLineEdit*>() : nullptr;
-            QObject* delegate = m39Panel->itemDelegateForTest();
+            QObject* delegate = anatomyPanel->itemDelegateForTest();
             if (!editor || !delegate) {
                 return false;
             }
@@ -2677,276 +2677,276 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier);
             delegate->eventFilter(editor, &event);
             QCoreApplication::processEvents();
-            m39Panel->refresh();
+            anatomyPanel->refresh();
             return true;
         };
-        const QString m39FirstRow = QStringLiteral("2");
-        const QString m39LastRow = QStringLiteral("0");
-        const bool m39DownSent = m39Edit(m39FirstRow, QStringLiteral("TopAdj"), Qt::Key_Tab);
-        const bool m39DownMoved =
-            m39DownSent
-            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("TopAdj")
-            && m39Panel->currentPath() == QStringLiteral("1");
+        const QString firstRow = QStringLiteral("2");
+        const QString lastRow = QStringLiteral("0");
+        const bool downSent = anatomyEdit(firstRow, QStringLiteral("TopAdj"), Qt::Key_Tab);
+        const bool downMoved =
+            downSent
+            && anatomyView->layer_row_name(rowOf(firstRow)) == QStringLiteral("TopAdj")
+            && anatomyPanel->currentPath() == QStringLiteral("1");
         // The commit is exactly one undoable step: one undo restores the prior
         // name and one redo reapplies it.
-        const bool m39DownUndoOk =
-            m39View->undo()
-            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("Invert")
-            && m39View->redo()
-            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("TopAdj");
-        const bool m39DownOk = m39DownMoved && m39DownUndoOk;
-        const bool m39UpOk =
-            m39Edit(m39LastRow, QStringLiteral("Bottom"), Qt::Key_Backtab)
-            && m39View->layer_row_name(m39RowOf(m39LastRow)) == QStringLiteral("Bottom")
-            && m39Panel->currentPath() == QStringLiteral("1");
-        const bool m39NoWrapFirst =
-            m39Edit(m39FirstRow, QStringLiteral("First"), Qt::Key_Backtab)
-            && m39View->layer_row_name(m39RowOf(m39FirstRow)) == QStringLiteral("First")
-            && m39Panel->currentPath() == m39FirstRow;
-        const bool m39NoWrapLast =
-            m39Edit(m39LastRow, QStringLiteral("Last"), Qt::Key_Tab)
-            && m39View->layer_row_name(m39RowOf(m39LastRow)) == QStringLiteral("Last")
-            && m39Panel->currentPath() == m39LastRow;
-        const bool m39NowrapOk = m39NoWrapFirst && m39NoWrapLast;
-        ST_BEGIN("m39_rename_down");
-        ST_PASS("m39_rename down=%d up=%d nowrap=%d", m39DownOk ? 1 : 0, m39UpOk ? 1 : 0, m39NowrapOk ? 1 : 0);
-        if (!m39DownOk || !m39UpOk || !m39NowrapOk) {
-            ST_FAIL(107, "M39 Tab rename");
+        const bool downUndoOk =
+            anatomyView->undo()
+            && anatomyView->layer_row_name(rowOf(firstRow)) == QStringLiteral("Invert")
+            && anatomyView->redo()
+            && anatomyView->layer_row_name(rowOf(firstRow)) == QStringLiteral("TopAdj");
+        const bool downOk = downMoved && downUndoOk;
+        const bool upOk =
+            anatomyEdit(lastRow, QStringLiteral("Bottom"), Qt::Key_Backtab)
+            && anatomyView->layer_row_name(rowOf(lastRow)) == QStringLiteral("Bottom")
+            && anatomyPanel->currentPath() == QStringLiteral("1");
+        const bool noWrapFirst =
+            anatomyEdit(firstRow, QStringLiteral("First"), Qt::Key_Backtab)
+            && anatomyView->layer_row_name(rowOf(firstRow)) == QStringLiteral("First")
+            && anatomyPanel->currentPath() == firstRow;
+        const bool noWrapLast =
+            anatomyEdit(lastRow, QStringLiteral("Last"), Qt::Key_Tab)
+            && anatomyView->layer_row_name(rowOf(lastRow)) == QStringLiteral("Last")
+            && anatomyPanel->currentPath() == lastRow;
+        const bool nowrapOk = noWrapFirst && noWrapLast;
+        ST_BEGIN("rename_down");
+        ST_PASS("rename down=%d up=%d nowrap=%d", downOk ? 1 : 0, upOk ? 1 : 0, nowrapOk ? 1 : 0);
+        if (!downOk || !upOk || !nowrapOk) {
+            ST_FAIL(107, "Tab rename");
         }
 
         // 8.5 m39_options (108): the defaults are Medium / Entire Document /
         // on, and a session save/load round-trip preserves a changed triple.
-        const pictura::SessionState m39Fresh = pictura::loadSession();
-        const bool m39DefaultsOk =
-            m39Fresh.layersThumbSize == 2 && m39Fresh.layersThumbContents == 0
-            && m39Fresh.layersExpandNewEffects
-            && m39Panel->thumbSizeIndexForTest() == 2
-            && m39Panel->thumbContentsForTest() == 0
-            && m39Panel->expandNewEffectsForTest();
-        m39Panel->setOptionsForTest(3, 1, false);
-        const pictura::SessionState m39Saved = pictura::loadSession();
-        auto* m39Reloaded = new pictura::LayersPanel();
-        const bool m39RoundtripOk =
-            m39Saved.layersThumbSize == 3 && m39Saved.layersThumbContents == 1
-            && !m39Saved.layersExpandNewEffects
-            && m39Reloaded->thumbSizeIndexForTest() == 3
-            && m39Reloaded->thumbContentsForTest() == 1
-            && !m39Reloaded->expandNewEffectsForTest();
-        delete m39Reloaded;
-        ST_BEGIN("m39_options_defaults");
-        ST_PASS("m39_options defaults=%d roundtrip=%d", m39DefaultsOk ? 1 : 0, m39RoundtripOk ? 1 : 0);
-        if (!m39DefaultsOk || !m39RoundtripOk) {
-            ST_FAIL(108, "M39 panel options");
+        const pictura::SessionState anatomyFresh = pictura::loadSession();
+        const bool defaultsOk =
+            anatomyFresh.layersThumbSize == 2 && anatomyFresh.layersThumbContents == 0
+            && anatomyFresh.layersExpandNewEffects
+            && anatomyPanel->thumbSizeIndexForTest() == 2
+            && anatomyPanel->thumbContentsForTest() == 0
+            && anatomyPanel->expandNewEffectsForTest();
+        anatomyPanel->setOptionsForTest(3, 1, false);
+        const pictura::SessionState anatomySaved = pictura::loadSession();
+        auto* anatomyReloaded = new pictura::LayersPanel();
+        const bool roundtripOk =
+            anatomySaved.layersThumbSize == 3 && anatomySaved.layersThumbContents == 1
+            && !anatomySaved.layersExpandNewEffects
+            && anatomyReloaded->thumbSizeIndexForTest() == 3
+            && anatomyReloaded->thumbContentsForTest() == 1
+            && !anatomyReloaded->expandNewEffectsForTest();
+        delete anatomyReloaded;
+        ST_BEGIN("options_defaults");
+        ST_PASS("options defaults=%d roundtrip=%d", defaultsOk ? 1 : 0, roundtripOk ? 1 : 0);
+        if (!defaultsOk || !roundtripOk) {
+            ST_FAIL(108, "panel options");
         }
 
         // 8.6 m39_badges (109): the mask and adjustment badge data reaches the
         // model. No bridge op creates a clipped layer, so `clip` verifies the
         // clip role is plumbed consistently (and the group expand indicator).
-        const bool m39BadgeMask =
-            m39View->layer_row_has_mask(m39RowOf(QStringLiteral("2")))
-            && m39Panel->rowHasMaskForTest(QStringLiteral("2"));
-        const bool m39BadgeFx =
-            m39View->layer_row_has_adjustment(m39RowOf(QStringLiteral("2")))
-            && m39Panel->rowHasAdjustmentForTest(QStringLiteral("2"));
-        bool m39BadgeClip = m39Panel->rowExpandableForTest(QStringLiteral("1"))
-                            && m39Panel->rowExpandableForTest(QStringLiteral("1/2"));
-        for (int i = 0; i < m39View->layer_row_count(); ++i) {
-            const QString path = m39View->layer_row_path(i);
-            m39BadgeClip = m39BadgeClip
-                           && m39Panel->rowClippingForTest(path)
-                                  == m39View->layer_row_clipping(i)
-                           && !m39Panel->rowClipBaseForTest(path);
+        const bool badgeMask =
+            anatomyView->layer_row_has_mask(rowOf(QStringLiteral("2")))
+            && anatomyPanel->rowHasMaskForTest(QStringLiteral("2"));
+        const bool badgeFx =
+            anatomyView->layer_row_has_adjustment(rowOf(QStringLiteral("2")))
+            && anatomyPanel->rowHasAdjustmentForTest(QStringLiteral("2"));
+        bool badgeClip = anatomyPanel->rowExpandableForTest(QStringLiteral("1"))
+                            && anatomyPanel->rowExpandableForTest(QStringLiteral("1/2"));
+        for (int i = 0; i < anatomyView->layer_row_count(); ++i) {
+            const QString path = anatomyView->layer_row_path(i);
+            badgeClip = badgeClip
+                           && anatomyPanel->rowClippingForTest(path)
+                                  == anatomyView->layer_row_clipping(i)
+                           && !anatomyPanel->rowClipBaseForTest(path);
         }
-        ST_BEGIN("m39_badges_mask");
-        ST_PASS("m39_badges mask=%d fx=%d clip=%d", m39BadgeMask ? 1 : 0, m39BadgeFx ? 1 : 0, m39BadgeClip ? 1 : 0);
-        if (!m39BadgeMask || !m39BadgeFx || !m39BadgeClip) {
-            ST_FAIL(109, "M39 row badges");
+        ST_BEGIN("badges_mask");
+        ST_PASS("badges mask=%d fx=%d clip=%d", badgeMask ? 1 : 0, badgeFx ? 1 : 0, badgeClip ? 1 : 0);
+        if (!badgeMask || !badgeFx || !badgeClip) {
+            ST_FAIL(109, "row badges");
         }
 
         // m39_menus (110): the panel and row menus carry exactly the wired
         // commands (no unimplemented entry) and the eight color labels.
-        const QStringList m39ExpectedPanel = {
+        const QStringList expectedPanel = {
             QStringLiteral("Panel Options…"), QStringLiteral("New Layer"),
             QStringLiteral("New Group"), QStringLiteral("Duplicate Layer(s)"),
             QStringLiteral("Delete Layer(s)"), QStringLiteral("Group Layers"),
             QStringLiteral("Ungroup Layers"), QStringLiteral("Move Layer Up"),
             QStringLiteral("Move Layer Down")};
-        const QStringList m39ExpectedRow = {
+        const QStringList expectedRow = {
             QStringLiteral("Rename"), QStringLiteral("New Layer"), QStringLiteral("New Group"),
             QStringLiteral("Duplicate Layer(s)"), QStringLiteral("Delete Layer(s)"),
             QStringLiteral("Group Layers"), QStringLiteral("Ungroup Layers"),
             QStringLiteral("Move Layer Up"), QStringLiteral("Move Layer Down"),
             QStringLiteral("Color Label")};
-        const QStringList m39ExpectedColor = {
+        const QStringList expectedColor = {
             QStringLiteral("None"), QStringLiteral("Red"), QStringLiteral("Orange"),
             QStringLiteral("Yellow"), QStringLiteral("Green"), QStringLiteral("Blue"),
             QStringLiteral("Violet"), QStringLiteral("Gray")};
-        const bool m39PanelMenuOk = m39Panel->panelMenuTextsForTest() == m39ExpectedPanel;
-        const bool m39RowMenuOk = m39Panel->rowMenuTextsForTest() == m39ExpectedRow;
-        const bool m39ColorMenuOk = m39Panel->colorLabelTextsForTest() == m39ExpectedColor;
-        ST_BEGIN("m39_menus_panel");
-        ST_PASS("m39_menus panel=%d row=%d color=%d", m39PanelMenuOk ? 1 : 0, m39RowMenuOk ? 1 : 0, m39ColorMenuOk ? 1 : 0);
-        if (!m39PanelMenuOk || !m39RowMenuOk || !m39ColorMenuOk) {
-            ST_FAIL(110, "M39 panel/row menus");
+        const bool panelMenuOk = anatomyPanel->panelMenuTextsForTest() == expectedPanel;
+        const bool rowMenuOk = anatomyPanel->rowMenuTextsForTest() == expectedRow;
+        const bool colorMenuOk = anatomyPanel->colorLabelTextsForTest() == expectedColor;
+        ST_BEGIN("menus_panel");
+        ST_PASS("menus panel=%d row=%d color=%d", panelMenuOk ? 1 : 0, rowMenuOk ? 1 : 0, colorMenuOk ? 1 : 0);
+        if (!panelMenuOk || !rowMenuOk || !colorMenuOk) {
+            ST_FAIL(110, "panel/row menus");
         }
 
         // m39_tooltip (111): every row's tooltip is "<name> (<kind>)".
-        const QString m39GroupTip = m39Panel->rowToolTipForTest(QStringLiteral("1"));
-        const QString m39PixelTip = m39Panel->rowToolTipForTest(QStringLiteral("1/1"));
-        const QString m39AdjTip = m39Panel->rowToolTipForTest(QStringLiteral("2"));
-        const bool m39TipOk =
-            m39GroupTip
+        const QString groupTip = anatomyPanel->rowToolTipForTest(QStringLiteral("1"));
+        const QString pixelTip = anatomyPanel->rowToolTipForTest(QStringLiteral("1/1"));
+        const QString adjTip = anatomyPanel->rowToolTipForTest(QStringLiteral("2"));
+        const bool tipOk =
+            groupTip
                 == QStringLiteral("%1 (group)")
-                       .arg(m39View->layer_row_name(m39RowOf(QStringLiteral("1"))))
-            && m39PixelTip
+                       .arg(anatomyView->layer_row_name(rowOf(QStringLiteral("1"))))
+            && pixelTip
                    == QStringLiteral("%1 (pixel)")
-                          .arg(m39View->layer_row_name(m39RowOf(QStringLiteral("1/1"))))
-            && m39AdjTip
+                          .arg(anatomyView->layer_row_name(rowOf(QStringLiteral("1/1"))))
+            && adjTip
                    == QStringLiteral("%1 (adjustment)")
-                          .arg(m39View->layer_row_name(m39RowOf(QStringLiteral("2"))));
-        ST_BEGIN("m39_tooltip_ok");
-        ST_PASS("m39_tooltip ok=%d", m39TipOk ? 1 : 0);
-        if (!m39TipOk) {
-            ST_FAIL(111, "M39 row tooltip");
+                          .arg(anatomyView->layer_row_name(rowOf(QStringLiteral("2"))));
+        ST_BEGIN("tooltip_ok");
+        ST_PASS("tooltip ok=%d", tipOk ? 1 : 0);
+        if (!tipOk) {
+            ST_FAIL(111, "row tooltip");
         }
 
         // m39_strip (112): exactly the seven CS6 strip buttons, no Move text
         // buttons (reordering lives in the menus).
-        const QStringList m39StripNames = {
+        const QStringList stripNames = {
             QStringLiteral("layersStripLink"), QStringLiteral("layersStripFx"),
             QStringLiteral("layersStripMask"), QStringLiteral("layersStripFillAdjustment"),
             QStringLiteral("layersStripGroup"), QStringLiteral("layersStripNewLayer"),
             QStringLiteral("layersStripDelete")};
-        QWidget* m39Dock = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
-        int m39StripFound = 0;
-        for (const QString& name : m39StripNames) {
-            if (m39Dock && m39Dock->findChild<QToolButton*>(name)) {
-                ++m39StripFound;
+        QWidget* anatomyDock = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
+        int stripFound = 0;
+        for (const QString& name : stripNames) {
+            if (anatomyDock && anatomyDock->findChild<QToolButton*>(name)) {
+                ++stripFound;
             }
         }
-        bool m39NoMoveButtons = true;
-        if (m39Dock) {
-            const QList<QAbstractButton*> m39Buttons =
-                m39Dock->findChildren<QAbstractButton*>();
-            for (QAbstractButton* button : m39Buttons) {
+        bool noMoveButtons = true;
+        if (anatomyDock) {
+            const QList<QAbstractButton*> anatomyButtons =
+                anatomyDock->findChildren<QAbstractButton*>();
+            for (QAbstractButton* button : anatomyButtons) {
                 if (button->text().contains(QStringLiteral("Move"))) {
-                    m39NoMoveButtons = false;
+                    noMoveButtons = false;
                 }
             }
         }
-        const bool m39StripOk =
-            m39StripFound == m39StripNames.size() && m39NoMoveButtons;
-        ST_BEGIN("m39_strip_seven");
-        ST_PASS("m39_strip seven=%d", m39StripOk ? 1 : 0);
-        if (!m39StripOk) {
-            ST_FAIL(112, "M39 action strip");
+        const bool anatomyStripOk =
+            stripFound == stripNames.size() && noMoveButtons;
+        ST_BEGIN("strip_seven");
+        ST_PASS("strip seven=%d", anatomyStripOk ? 1 : 0);
+        if (!anatomyStripOk) {
+            ST_FAIL(112, "action strip");
         }
         // M40: the tools panel — one/two columns, the flyout indicator, opening,
         // and keys, Shift-key cycling, the standalone dock, and session v4.
         // Exit codes 113–119.
-        auto* m40Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        const QList<QToolButton*> m40Slots =
-            m40Toolbox ? m40Toolbox->slotButtons() : QList<QToolButton*>();
+        auto* toolsPanelToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        const QList<QToolButton*> toolsPanelSlots =
+            toolsPanelToolbox ? toolsPanelToolbox->slotButtons() : QList<QToolButton*>();
 
         // m40_columns (113/114): default one column; two columns reflow the 23
         // slots row-major and widen the dock; toggling back restores one column;
         // the colour control and the Screen Mode button stay below the slots in
         // both layouts.
         QCoreApplication::processEvents();
-        auto m40PinnedBelow = [m40Toolbox, &m40Slots]() {
-            if (!m40Toolbox || m40Slots.isEmpty()) {
+        auto pinnedBelow = [toolsPanelToolbox, &toolsPanelSlots]() {
+            if (!toolsPanelToolbox || toolsPanelSlots.isEmpty()) {
                 return false;
             }
             int slotBottom = 0;
-            for (QToolButton* button : m40Slots) {
+            for (QToolButton* button : toolsPanelSlots) {
                 slotBottom = qMax(
-                    slotBottom, button->mapTo(m40Toolbox, QPoint(0, button->height())).y());
+                    slotBottom, button->mapTo(toolsPanelToolbox, QPoint(0, button->height())).y());
             }
-            auto* fgbg = m40Toolbox->findChild<pictura::ForegroundBackgroundWidget*>();
+            auto* fgbg = toolsPanelToolbox->findChild<pictura::ForegroundBackgroundWidget*>();
             auto* screenMode =
-                m40Toolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton"));
+                toolsPanelToolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton"));
             return fgbg != nullptr && screenMode != nullptr
-                   && fgbg->mapTo(m40Toolbox, QPoint(0, 0)).y() > slotBottom
-                   && screenMode->mapTo(m40Toolbox, QPoint(0, 0)).y() > slotBottom;
+                   && fgbg->mapTo(toolsPanelToolbox, QPoint(0, 0)).y() > slotBottom
+                   && screenMode->mapTo(toolsPanelToolbox, QPoint(0, 0)).y() > slotBottom;
         };
-        const bool m40Default =
-            m40Toolbox != nullptr && m40Toolbox->columns() == 1 && m40Slots.size() == 23;
-        const int m40Min1 = m40Toolbox ? m40Toolbox->minimumWidth() : 0;
-        const int m40Width1 = m40Toolbox ? m40Toolbox->width() : 0;
-        const bool m40Pinned1 = m40PinnedBelow();
-        if (m40Toolbox) {
-            m40Toolbox->setColumns(2);
+        const bool toolsPanelDefault =
+            toolsPanelToolbox != nullptr && toolsPanelToolbox->columns() == 1 && toolsPanelSlots.size() == 23;
+        const int toolsPanelMin1 = toolsPanelToolbox ? toolsPanelToolbox->minimumWidth() : 0;
+        const int toolsPanelWidth1 = toolsPanelToolbox ? toolsPanelToolbox->width() : 0;
+        const bool pinned1 = pinnedBelow();
+        if (toolsPanelToolbox) {
+            toolsPanelToolbox->setColumns(2);
         }
         QCoreApplication::processEvents();
-        const int m40Min2 = m40Toolbox ? m40Toolbox->minimumWidth() : 0;
-        const int m40Width2 = m40Toolbox ? m40Toolbox->width() : 0;
-        bool m40RowMajor = m40Slots.size() == 23;
-        for (int i = 0; i + 2 < m40Slots.size() && m40RowMajor; ++i) {
-            const QPoint a = m40Slots.at(i)->mapTo(m40Toolbox, QPoint(0, 0));
-            const QPoint b = m40Slots.at(i + 2)->mapTo(m40Toolbox, QPoint(0, 0));
+        const int toolsPanelMin2 = toolsPanelToolbox ? toolsPanelToolbox->minimumWidth() : 0;
+        const int toolsPanelWidth2 = toolsPanelToolbox ? toolsPanelToolbox->width() : 0;
+        bool rowMajor = toolsPanelSlots.size() == 23;
+        for (int i = 0; i + 2 < toolsPanelSlots.size() && rowMajor; ++i) {
+            const QPoint a = toolsPanelSlots.at(i)->mapTo(toolsPanelToolbox, QPoint(0, 0));
+            const QPoint b = toolsPanelSlots.at(i + 2)->mapTo(toolsPanelToolbox, QPoint(0, 0));
             if (a.x() != b.x() || a.y() >= b.y()) {
-                m40RowMajor = false;
+                rowMajor = false;
             }
         }
-        for (int i = 0; i + 1 < m40Slots.size() && m40RowMajor; i += 2) {
-            const QPoint a = m40Slots.at(i)->mapTo(m40Toolbox, QPoint(0, 0));
-            const QPoint b = m40Slots.at(i + 1)->mapTo(m40Toolbox, QPoint(0, 0));
+        for (int i = 0; i + 1 < toolsPanelSlots.size() && rowMajor; i += 2) {
+            const QPoint a = toolsPanelSlots.at(i)->mapTo(toolsPanelToolbox, QPoint(0, 0));
+            const QPoint b = toolsPanelSlots.at(i + 1)->mapTo(toolsPanelToolbox, QPoint(0, 0));
             if (a.y() != b.y() || a.x() >= b.x()) {
-                m40RowMajor = false;
+                rowMajor = false;
             }
         }
-        const bool m40Pinned2 = m40PinnedBelow();
-        if (m40Toolbox) {
-            m40Toolbox->setColumns(1);
+        const bool pinned2 = pinnedBelow();
+        if (toolsPanelToolbox) {
+            toolsPanelToolbox->setColumns(1);
         }
         QCoreApplication::processEvents();
-        const bool m40Restored = m40Toolbox != nullptr && m40Toolbox->columns() == 1;
-        const bool m40Widened = m40Min2 > m40Min1 && m40Width2 >= m40Width1;
-        const bool m40ColumnsOk = m40Default && m40Restored && m40RowMajor && m40Widened;
-        const bool m40PinnedOk = m40Pinned1 && m40Pinned2;
-        ST_BEGIN("m40_columns_default");
-        ST_PASS("m40_columns default=%d two=%d pinned=%d", m40Default ? 1 : 0,
-                     (m40Restored && m40RowMajor && m40Widened) ? 1 : 0,
-                     m40PinnedOk ? 1 : 0);
-        if (!m40ColumnsOk) {
-            ST_FAIL(113, "M40 column layout");
+        const bool toolsPanelRestored = toolsPanelToolbox != nullptr && toolsPanelToolbox->columns() == 1;
+        const bool toolsPanelWidened = toolsPanelMin2 > toolsPanelMin1 && toolsPanelWidth2 >= toolsPanelWidth1;
+        const bool columnsOk = toolsPanelDefault && toolsPanelRestored && rowMajor && toolsPanelWidened;
+        const bool pinnedOk = pinned1 && pinned2;
+        ST_BEGIN("columns_default");
+        ST_PASS("columns default=%d two=%d pinned=%d", toolsPanelDefault ? 1 : 0,
+                     (toolsPanelRestored && rowMajor && toolsPanelWidened) ? 1 : 0,
+                     pinnedOk ? 1 : 0);
+        if (!columnsOk) {
+            ST_FAIL(113, "column layout");
         }
-        if (!m40PinnedOk) {
-            ST_FAIL(114, "M40 pinned controls");
+        if (!pinnedOk) {
+            ST_FAIL(114, "pinned controls");
         }
 
         // m40_flyout (115): a multi-member group shows the triangle and opens a
         // menu of its members at the button's bottom edge; a single-member group
         // shows no triangle.
-        const bool m40TriMulti = m40Toolbox && m40Toolbox->hasFlyoutTriangleForTest(2);
-        const bool m40SingleTri = m40Toolbox && m40Toolbox->hasFlyoutTriangleForTest(1);
-        const bool m40TriSingle = m40Toolbox && !m40SingleTri;
-        bool m40MenuActions = false;
-        if (m40Toolbox) {
-            const QList<QAction*> actions = m40Toolbox->slotMenuActionsForTest(2);
+        const bool triMulti = toolsPanelToolbox && toolsPanelToolbox->hasFlyoutTriangleForTest(2);
+        const bool singleTri = toolsPanelToolbox && toolsPanelToolbox->hasFlyoutTriangleForTest(1);
+        const bool triSingle = toolsPanelToolbox && !singleTri;
+        bool menuActions = false;
+        if (toolsPanelToolbox) {
+            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(2);
             QList<pictura::ToolId> members;
             for (pictura::ToolId id : pictura::allToolIds()) {
                 if (pictura::toolInfo(id).group == 2) {
                     members << id;
                 }
             }
-            m40MenuActions = actions.size() == members.size() && !members.isEmpty();
-            for (int i = 0; m40MenuActions && i < members.size(); ++i) {
+            menuActions = actions.size() == members.size() && !members.isEmpty();
+            for (int i = 0; menuActions && i < members.size(); ++i) {
                 const pictura::ToolInfo& info = pictura::toolInfo(members.at(i));
                 if (actions.at(i)->text() != QString::fromLatin1(info.label)
                     || actions.at(i)->isEnabled() != info.implemented) {
-                    m40MenuActions = false;
+                    menuActions = false;
                 }
             }
         }
-        bool m40Below = false;
-        if (m40Toolbox) {
-            m40Toolbox->openSlotFlyoutForTest(2);
+        bool toolsPanelBelow = false;
+        if (toolsPanelToolbox) {
+            toolsPanelToolbox->openSlotFlyoutForTest(2);
             QCoreApplication::processEvents();
-            QMenu* menu = m40Toolbox->slotMenuForTest(2);
-            QToolButton* button = m40Slots.value(1);
+            QMenu* menu = toolsPanelToolbox->slotMenuForTest(2);
+            QToolButton* button = toolsPanelSlots.value(1);
             if (menu && button && menu->isVisible()) {
-                m40Below = menu->pos().y()
+                toolsPanelBelow = menu->pos().y()
                            == button->mapToGlobal(QPoint(0, button->height())).y();
             }
             if (menu) {
@@ -2954,47 +2954,47 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 QCoreApplication::processEvents();
             }
         }
-        const bool m40FlyoutOk = m40TriMulti && m40TriSingle && m40MenuActions && m40Below;
-        ST_BEGIN("m40_flyout_tri");
-        ST_PASS("m40_flyout tri=%d/%d menu=%d below=%d", m40TriMulti ? 1 : 0,
-                     m40SingleTri ? 1 : 0,
-                     m40MenuActions ? 1 : 0,
-                     m40Below ? 1 : 0);
-        if (!m40FlyoutOk) {
-            ST_FAIL(115, "M40 flyout");
+        const bool flyoutOk = triMulti && triSingle && menuActions && toolsPanelBelow;
+        ST_BEGIN("flyout_tri");
+        ST_PASS("flyout tri=%d/%d menu=%d below=%d", triMulti ? 1 : 0,
+                     singleTri ? 1 : 0,
+                     menuActions ? 1 : 0,
+                     toolsPanelBelow ? 1 : 0);
+        if (!flyoutOk) {
+            ST_FAIL(115, "flyout");
         }
 
         // m40_keys (116): every flyout action carries the group's letter, visible
         // in the context menu; a disabled member stays disabled, keeps its tooltip
         // and still shows the key.
-        bool m40KeysShown = m40Toolbox != nullptr;
-        bool m40KeysDisabled = false;
-        if (m40Toolbox) {
-            const QList<QAction*> actions = m40Toolbox->slotMenuActionsForTest(8);
+        bool keysShown = toolsPanelToolbox != nullptr;
+        bool keysDisabled = false;
+        if (toolsPanelToolbox) {
+            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(8);
             for (QAction* action : actions) {
                 const bool keyShown =
                     action->shortcut() == QKeySequence(QStringLiteral("B"))
                     && action->isShortcutVisibleInContextMenu();
                 if (!keyShown) {
-                    m40KeysShown = false;
+                    keysShown = false;
                 }
                 if (!action->isEnabled()) {
                     const bool disabledOk =
                         action->shortcut() == QKeySequence(QStringLiteral("B"))
                         && action->toolTip().contains(QStringLiteral("not implemented yet"));
-                    m40KeysDisabled = m40KeysDisabled || disabledOk;
+                    keysDisabled = keysDisabled || disabledOk;
                     if (!disabledOk) {
-                        m40KeysShown = false;
+                        keysShown = false;
                     }
                 }
             }
         }
-        const bool m40KeysOk = m40KeysShown && m40KeysDisabled;
-        ST_BEGIN("m40_keys_shown");
-        ST_PASS("m40_keys shown=%d disabled=%d", m40KeysShown ? 1 : 0,
-                     m40KeysDisabled ? 1 : 0);
-        if (!m40KeysOk) {
-            ST_FAIL(116, "M40 flyout keys");
+        const bool keysOk = keysShown && keysDisabled;
+        ST_BEGIN("keys_shown");
+        ST_PASS("keys shown=%d disabled=%d", keysShown ? 1 : 0,
+                     keysDisabled ? 1 : 0);
+        if (!keysOk) {
+            ST_FAIL(116, "flyout keys");
         }
 
         // m40_shift (117): drive the real QShortcut path by synthesizing a key
@@ -3004,36 +3004,36 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // cycles.
         frame.activateWindow();
         QCoreApplication::processEvents();
-        auto m40SendKey = [&frame](int key, Qt::KeyboardModifiers mods, const QString& text) {
+        auto sendKey = [&frame](int key, Qt::KeyboardModifiers mods, const QString& text) {
             QKeyEvent event(QEvent::KeyPress, key, mods, text);
             QApplication::sendEvent(&frame, &event);
         };
         frame.setActiveTool(pictura::ToolId::Move);
         QCoreApplication::processEvents();
-        m40SendKey(Qt::Key_B, Qt::NoModifier, QStringLiteral("b"));
-        const bool m40Plain = frame.activeTool() == pictura::ToolId::Brush;
-        m40SendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
-        const bool m40Shift = frame.activeTool() == pictura::ToolId::Pencil;
-        m40SendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
-        const bool m40Wrap = frame.activeTool() == pictura::ToolId::Brush;
-        m40SendKey(Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
-        const bool m40NoImpl = frame.activeTool() == pictura::ToolId::Brush;
-        if (m40Toolbox) {
-            m40Toolbox->setShiftKeyForToolSwitch(false);
+        sendKey(Qt::Key_B, Qt::NoModifier, QStringLiteral("b"));
+        const bool toolsPanelPlain = frame.activeTool() == pictura::ToolId::Brush;
+        sendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
+        const bool toolsPanelShift = frame.activeTool() == pictura::ToolId::Pencil;
+        sendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
+        const bool toolsPanelWrap = frame.activeTool() == pictura::ToolId::Brush;
+        sendKey(Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
+        const bool noImpl = frame.activeTool() == pictura::ToolId::Brush;
+        if (toolsPanelToolbox) {
+            toolsPanelToolbox->setShiftKeyForToolSwitch(false);
         }
-        m40SendKey(Qt::Key_B, Qt::NoModifier, QStringLiteral("b"));
-        const bool m40Off = frame.activeTool() == pictura::ToolId::Pencil;
-        if (m40Toolbox) {
-            m40Toolbox->setShiftKeyForToolSwitch(true);
+        sendKey(Qt::Key_B, Qt::NoModifier, QStringLiteral("b"));
+        const bool toolsPanelOff = frame.activeTool() == pictura::ToolId::Pencil;
+        if (toolsPanelToolbox) {
+            toolsPanelToolbox->setShiftKeyForToolSwitch(true);
         }
-        const bool m40ShiftOk = m40Plain && m40Shift && m40Wrap && m40NoImpl && m40Off;
-        ST_BEGIN("m40_shift_plain");
-        ST_PASS("m40_shift plain=%d shift=%d noimpl=%d off=%d", m40Plain ? 1 : 0,
-                     (m40Shift && m40Wrap) ? 1 : 0,
-                     m40NoImpl ? 1 : 0,
-                     m40Off ? 1 : 0);
-        if (!m40ShiftOk) {
-            ST_FAIL(117, "M40 shift cycling");
+        const bool shiftOk = toolsPanelPlain && toolsPanelShift && toolsPanelWrap && noImpl && toolsPanelOff;
+        ST_BEGIN("shift_plain");
+        ST_PASS("shift plain=%d shift=%d noimpl=%d off=%d", toolsPanelPlain ? 1 : 0,
+                     (toolsPanelShift && toolsPanelWrap) ? 1 : 0,
+                     noImpl ? 1 : 0,
+                     toolsPanelOff ? 1 : 0);
+        if (!shiftOk) {
+            ST_FAIL(117, "shift cycling");
         }
 
         // m40_dock (118): M45 T2 restricts the allowed sides to left/right again
@@ -3042,178 +3042,178 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // this asserts the Tools dock carries no tab group after the frame's
         // re-dock fallback runs (`tabifiedDockWidgets` is empty without a
         // companion).
-        QDockWidget* m40Dock = m40Toolbox;
-        const bool m40Areas =
-            m40Dock
-            && m40Dock->allowedAreas()
+        QDockWidget* toolsPanelDock = toolsPanelToolbox;
+        const bool toolsPanelAreas =
+            toolsPanelDock
+            && toolsPanelDock->allowedAreas()
                    == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-        const bool m40Features =
-            m40Dock
-            && m40Dock->features()
+        const bool toolsPanelFeatures =
+            toolsPanelDock
+            && toolsPanelDock->features()
                    == (QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
                        | QDockWidget::DockWidgetClosable);
         frame.ensureToolsNotTabified();
         QCoreApplication::processEvents();
-        const bool m40NoTab = m40Dock && frame.tabifiedDockWidgets(m40Dock).isEmpty();
-        const bool m40DockOk = m40Areas && m40Features && m40NoTab;
-        ST_BEGIN("m40_dock_areas");
-        ST_PASS("m40_dock areas=%d feat=%d no_tab=%d", m40Areas ? 1 : 0,
-                     m40Features ? 1 : 0,
-                     m40NoTab ? 1 : 0);
-        if (!m40DockOk) {
-            ST_FAIL(118, "M40 standalone dock");
+        const bool noTab = toolsPanelDock && frame.tabifiedDockWidgets(toolsPanelDock).isEmpty();
+        const bool dockOk = toolsPanelAreas && toolsPanelFeatures && noTab;
+        ST_BEGIN("dock_areas");
+        ST_PASS("dock areas=%d feat=%d no_tab=%d", toolsPanelAreas ? 1 : 0,
+                     toolsPanelFeatures ? 1 : 0,
+                     noTab ? 1 : 0);
+        if (!dockOk) {
+            ST_FAIL(118, "standalone dock");
         }
 
         // m40_session (119): the two v4 fields round-trip, and a store lacking
         // them loads the defaults (one column, Shift required).
-        pictura::SessionState m40State = pictura::loadSession();
-        m40State.toolsColumns = 2;
-        m40State.useShiftKeyForToolSwitch = false;
-        const bool m40Saved = pictura::saveSession(m40State);
-        const pictura::SessionState m40Reloaded = pictura::loadSession();
-        const bool m40Roundtrip = m40Saved && m40Reloaded.toolsColumns == 2
-                                  && !m40Reloaded.useShiftKeyForToolSwitch;
-        bool m40Defaults = false;
+        pictura::SessionState toolsPanelState = pictura::loadSession();
+        toolsPanelState.toolsColumns = 2;
+        toolsPanelState.useShiftKeyForToolSwitch = false;
+        const bool toolsPanelSaved = pictura::saveSession(toolsPanelState);
+        const pictura::SessionState toolsPanelReloaded = pictura::loadSession();
+        const bool toolsPanelRoundtrip = toolsPanelSaved && toolsPanelReloaded.toolsColumns == 2
+                                  && !toolsPanelReloaded.useShiftKeyForToolSwitch;
+        bool toolsPanelDefaults = false;
         {
             QFile store(pictura::sessionFilePath());
             if (store.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
                 store.write("{\"schemaVersion\":3,\"brightnessLevel\":2}");
                 store.close();
             }
-            const pictura::SessionState m40Missing = pictura::loadSession();
-            m40Defaults =
-                m40Missing.toolsColumns == 1 && m40Missing.useShiftKeyForToolSwitch;
+            const pictura::SessionState toolsPanelMissing = pictura::loadSession();
+            toolsPanelDefaults =
+                toolsPanelMissing.toolsColumns == 1 && toolsPanelMissing.useShiftKeyForToolSwitch;
         }
-        ST_BEGIN("m40_session_roundtrip");
-        ST_PASS("m40_session roundtrip=%d defaults=%d", m40Roundtrip ? 1 : 0,
-                     m40Defaults ? 1 : 0);
-        if (!m40Roundtrip || !m40Defaults) {
-            ST_FAIL(119, "M40 session v4");
+        ST_BEGIN("session_roundtrip");
+        ST_PASS("session roundtrip=%d defaults=%d", toolsPanelRoundtrip ? 1 : 0,
+                     toolsPanelDefaults ? 1 : 0);
+        if (!toolsPanelRoundtrip || !toolsPanelDefaults) {
+            ST_FAIL(119, "session v4");
         }
         // M41: the panel column — top tabs, the width toggle, the iconic strip
         // with its Qt::Popup flyout, the seven-item tab menu, minimize vs
         // collapse-to-icons, and the content-fit Tools panel. Exit codes
         // 120–124 and 130.
-        auto* m41Column = frame.panelColumn();
+        auto* panelColumnColumn = frame.panelColumn();
 
         // m41_tabs (120): every group's tabs are North, a single-panel group
         // still has its one tab, and no group-title label widget exists.
-        bool m41TabsNorth = m41Column != nullptr;
-        bool m41SingleTab = false;
-        bool m41NoLabel = true;
-        if (m41Column) {
-            for (pictura::PanelGroup* group : m41Column->groups()) {
+        bool tabsNorth = panelColumnColumn != nullptr;
+        bool singleTab = false;
+        bool noLabel = true;
+        if (panelColumnColumn) {
+            for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                 if (group->tabPositionForTest() != static_cast<int>(QTabWidget::North)) {
-                    m41TabsNorth = false;
+                    tabsNorth = false;
                 }
                 if (group->titleCountForTest() == 1
                     && !group->titleTextsForTest().value(0).isEmpty()) {
-                    m41SingleTab = true;
+                    singleTab = true;
                 }
                 if (group->groupLabelForTest()) {
-                    m41NoLabel = false;
+                    noLabel = false;
                 }
             }
         }
-        const bool m41TabsOk = m41Column && m41TabsNorth && m41SingleTab && m41NoLabel;
-        ST_BEGIN("m41_tabs_tabs");
-        ST_PASS("m41_tabs tabs=north single=%d nolabel=%d", m41SingleTab ? 1 : 0,
-                     m41NoLabel ? 1 : 0);
-        if (!m41TabsOk) {
-            ST_FAIL(120, "M41 top tabs");
+        const bool tabsOk = panelColumnColumn && tabsNorth && singleTab && noLabel;
+        ST_BEGIN("tabs_tabs");
+        ST_PASS("tabs tabs=north single=%d nolabel=%d", singleTab ? 1 : 0,
+                     noLabel ? 1 : 0);
+        if (!tabsOk) {
+            ST_FAIL(120, "top tabs");
         }
 
         // m41_width (121): the `panelColumnToggle` flips normal/iconic, the
         // column has no hard minimum, and it is scrollable.
-        QToolButton* m41Toggle = m41Column ? m41Column->panelColumnToggleForTest() : nullptr;
-        const bool m41ToggleExists =
-            m41Toggle && m41Toggle->objectName() == QStringLiteral("panelColumnToggle");
-        const bool m41ModeBefore = m41Column && m41Column->railMode();
-        if (m41Toggle) {
-            m41Toggle->click();
+        QToolButton* panelColumnToggle2 = panelColumnColumn ? panelColumnColumn->panelColumnToggleForTest() : nullptr;
+        const bool toggleExists =
+            panelColumnToggle2 && panelColumnToggle2->objectName() == QStringLiteral("panelColumnToggle");
+        const bool modeBefore = panelColumnColumn && panelColumnColumn->railMode();
+        if (panelColumnToggle2) {
+            panelColumnToggle2->click();
             QCoreApplication::processEvents();
         }
-        const bool m41Flipped = m41Column && m41Column->railMode() != m41ModeBefore;
-        if (m41Toggle) {
-            m41Toggle->click();
+        const bool panelColumnFlipped = panelColumnColumn && panelColumnColumn->railMode() != modeBefore;
+        if (panelColumnToggle2) {
+            panelColumnToggle2->click();
             QCoreApplication::processEvents();
         }
-        const bool m41ModeRestored = m41Column && m41Column->railMode() == m41ModeBefore;
+        const bool modeRestored = panelColumnColumn && panelColumnColumn->railMode() == modeBefore;
         // M42 amends this check to the new normal-mode width floor: the column
         // now enforces a bounded content-derived minimum width (so it cannot be
         // squeezed to nothing) while keeping no height minimum and staying
         // scrollable.
-        const int m41MinFloor = m41Column ? m41Column->minimumWidthForTest() : 0;
-        const bool m41NoMin = m41Column && m41MinFloor >= 160 && m41MinFloor <= 400
-                              && m41Column->minimumHeight() == 0;
-        const bool m41Scroll = m41Column && m41Column->scrollableForTest();
-        const bool m41WidthOk =
-            m41ToggleExists && m41Flipped && m41ModeRestored && m41NoMin && m41Scroll;
-        ST_BEGIN("m41_width_toggle");
-        ST_PASS("m41_width toggle=%d modes=%d min=%d scroll=%d", m41ToggleExists ? 1 : 0,
-                     (m41Flipped && m41ModeRestored) ? 1 : 0,
-                     m41NoMin ? 1 : 0,
-                     m41Scroll ? 1 : 0);
-        if (!m41WidthOk) {
-            ST_FAIL(121, "M41 column width toggle");
+        const int minFloor = panelColumnColumn ? panelColumnColumn->minimumWidthForTest() : 0;
+        const bool noMin = panelColumnColumn && minFloor >= 160 && minFloor <= 400
+                              && panelColumnColumn->minimumHeight() == 0;
+        const bool panelColumnScroll = panelColumnColumn && panelColumnColumn->scrollableForTest();
+        const bool widthOk =
+            toggleExists && panelColumnFlipped && modeRestored && noMin && panelColumnScroll;
+        ST_BEGIN("width_toggle");
+        ST_PASS("width toggle=%d modes=%d min=%d scroll=%d", toggleExists ? 1 : 0,
+                     (panelColumnFlipped && modeRestored) ? 1 : 0,
+                     noMin ? 1 : 0,
+                     panelColumnScroll ? 1 : 0);
+        if (!widthOk) {
+            ST_FAIL(121, "column width toggle");
         }
 
         // m41_iconic (122): iconic mode shows the icon strip with a divider,
         // widening shows the labels, an icon opens a visible Qt::Popup flyout,
         // and closing it restores the panel to its group.
-        if (m41Column) {
-            m41Column->setRailMode(true);
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(true);
             QCoreApplication::processEvents();
         }
-        const bool m41Strip = m41Column && m41Column->iconStripVisibleForTest();
-        const bool m41Dividers = m41Column && m41Column->dividerCountForTest() >= 1;
+        const bool panelColumnStrip = panelColumnColumn && panelColumnColumn->iconStripVisibleForTest();
+        const bool panelColumnDividers = panelColumnColumn && panelColumnColumn->dividerCountForTest() >= 1;
         // Widening the column past the label threshold shows the panel labels.
         // A temporary minimum forces the splitter to give the column the width.
-        if (m41Column) {
-            m41Column->setMinimumWidth(320);
+        if (panelColumnColumn) {
+            panelColumnColumn->setMinimumWidth(320);
             QCoreApplication::processEvents();
         }
-        const bool m41Labels = m41Column && m41Column->iconLabelsShownForTest();
-        if (m41Column) {
-            m41Column->setMinimumWidth(0);
+        const bool panelColumnLabels = panelColumnColumn && panelColumnColumn->iconLabelsShownForTest();
+        if (panelColumnColumn) {
+            panelColumnColumn->setMinimumWidth(0);
             QCoreApplication::processEvents();
         }
-        const bool m41Opened =
-            m41Column && m41Column->openIconFlyoutForTest(QStringLiteral("layersPanel"));
-        for (int i = 0; i < 20 && !(m41Column && m41Column->iconFlyoutVisibleForTest()); ++i) {
+        const bool panelColumnOpened =
+            panelColumnColumn && panelColumnColumn->openIconFlyoutForTest(QStringLiteral("layersPanel"));
+        for (int i = 0; i < 20 && !(panelColumnColumn && panelColumnColumn->iconFlyoutVisibleForTest()); ++i) {
             QCoreApplication::processEvents();
         }
-        const bool m41Popup = m41Opened && m41Column && m41Column->iconFlyoutVisibleForTest();
-        auto* m41Flyout = m41Column
-            ? m41Column->findChild<QWidget*>(QStringLiteral("panelIconFlyout"))
+        const bool panelColumnPopup = panelColumnOpened && panelColumnColumn && panelColumnColumn->iconFlyoutVisibleForTest();
+        auto* panelColumnFlyout = panelColumnColumn
+            ? panelColumnColumn->findChild<QWidget*>(QStringLiteral("panelIconFlyout"))
             : nullptr;
-        if (m41Flyout) {
-            m41Flyout->close();
+        if (panelColumnFlyout) {
+            panelColumnFlyout->close();
             QCoreApplication::processEvents();
         }
-        pictura::PanelGroup* m41LayerGroup =
-            m41Column ? m41Column->groupForPanel(QStringLiteral("layersPanel")) : nullptr;
-        const bool m41Restore =
-            m41LayerGroup && m41LayerGroup->containsPanel(QStringLiteral("layersPanel"));
-        if (m41Column) {
-            m41Column->setRailMode(false);
+        pictura::PanelGroup* panelColumnLayerGroup =
+            panelColumnColumn ? panelColumnColumn->groupForPanel(QStringLiteral("layersPanel")) : nullptr;
+        const bool panelColumnRestore =
+            panelColumnLayerGroup && panelColumnLayerGroup->containsPanel(QStringLiteral("layersPanel"));
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
             QCoreApplication::processEvents();
         }
-        const bool m41IconicOk = m41Strip && m41Dividers && m41Labels && m41Popup && m41Restore;
-        ST_BEGIN("m41_iconic_strip");
-        ST_PASS("m41_iconic strip=%d dividers=%d labels=%d popup=%d "
-                     "restore=%d", m41Strip ? 1 : 0,
-                     m41Dividers ? 1 : 0,
-                     m41Labels ? 1 : 0,
-                     m41Popup ? 1 : 0,
-                     m41Restore ? 1 : 0);
-        if (!m41IconicOk) {
-            ST_FAIL(122, "M41 iconic strip");
+        const bool iconicOk = panelColumnStrip && panelColumnDividers && panelColumnLabels && panelColumnPopup && panelColumnRestore;
+        ST_BEGIN("iconic_strip");
+        ST_PASS("iconic strip=%d dividers=%d labels=%d popup=%d "
+                     "restore=%d", panelColumnStrip ? 1 : 0,
+                     panelColumnDividers ? 1 : 0,
+                     panelColumnLabels ? 1 : 0,
+                     panelColumnPopup ? 1 : 0,
+                     panelColumnRestore ? 1 : 0);
+        if (!iconicOk) {
+            ST_FAIL(122, "iconic strip");
         }
 
         // m41_menu (123): the seven tab-menu items in exact order, both
         // checkables toggle, and `Interface Options…` fires the signal.
-        const QStringList m41ExpectedMenu = {
+        const QStringList expectedMenu = {
             QStringLiteral("Close"),
             QStringLiteral("Close Panel Group"),
             QStringLiteral("Minimize"),
@@ -3222,109 +3222,109 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("Auto-Show Hidden Panels"),
             QStringLiteral("Interface Options\u2026"),
         };
-        const QStringList m41Menu =
-            m41Column ? m41Column->tabMenuActionsForTest() : QStringList();
-        const bool m41MenuOrder = m41Menu == m41ExpectedMenu;
-        bool m41Check = m41Column != nullptr;
-        if (m41Column) {
-            const bool a0 = m41Column->autoCollapseIconicForTest();
-            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
-            const bool a1 = m41Column->autoCollapseIconicForTest();
-            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
-            const bool a2 = m41Column->autoCollapseIconicForTest();
-            const bool b0 = m41Column->autoShowHiddenForTest();
-            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
-            const bool b1 = m41Column->autoShowHiddenForTest();
-            m41Column->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
-            const bool b2 = m41Column->autoShowHiddenForTest();
-            m41Check = a1 != a0 && a2 == a0 && b1 != b0 && b2 == b0;
+        const QStringList panelColumnMenu =
+            panelColumnColumn ? panelColumnColumn->tabMenuActionsForTest() : QStringList();
+        const bool menuOrder = panelColumnMenu == expectedMenu;
+        bool panelColumnCheck = panelColumnColumn != nullptr;
+        if (panelColumnColumn) {
+            const bool a0 = panelColumnColumn->autoCollapseIconicForTest();
+            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
+            const bool a1 = panelColumnColumn->autoCollapseIconicForTest();
+            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
+            const bool a2 = panelColumnColumn->autoCollapseIconicForTest();
+            const bool b0 = panelColumnColumn->autoShowHiddenForTest();
+            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
+            const bool b1 = panelColumnColumn->autoShowHiddenForTest();
+            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
+            const bool b2 = panelColumnColumn->autoShowHiddenForTest();
+            panelColumnCheck = a1 != a0 && a2 == a0 && b1 != b0 && b2 == b0;
         }
-        bool m41OptionsFired = false;
-        if (m41Column) {
-            QObject::connect(m41Column, &pictura::PanelColumn::interfaceOptionsRequested,
-                             m41Column, [&m41OptionsFired]() { m41OptionsFired = true; });
-            m41Column->triggerTabMenuForTest(QStringLiteral("Interface Options\u2026"));
+        bool optionsFired = false;
+        if (panelColumnColumn) {
+            QObject::connect(panelColumnColumn, &pictura::PanelColumn::interfaceOptionsRequested,
+                             panelColumnColumn, [&optionsFired]() { optionsFired = true; });
+            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Interface Options\u2026"));
         }
-        const bool m41MenuOk =
-            m41Menu.size() == 7 && m41MenuOrder && m41Check && m41OptionsFired;
-        ST_BEGIN("m41_menu_count");
-        ST_PASS("m41_menu count=%d order=%d check=%d", m41Menu.size(),
-                     m41MenuOrder ? 1 : 0,
-                     m41Check ? 1 : 0);
-        if (!m41MenuOk) {
-            ST_FAIL(123, "M41 tab menu");
+        const bool menuOk =
+            panelColumnMenu.size() == 7 && menuOrder && panelColumnCheck && optionsFired;
+        ST_BEGIN("menu_count");
+        ST_PASS("menu count=%d order=%d check=%d", panelColumnMenu.size(),
+                     menuOrder ? 1 : 0,
+                     panelColumnCheck ? 1 : 0);
+        if (!menuOk) {
+            ST_FAIL(123, "tab menu");
         }
 
         // m41_minimize (124): minimize hides the content but keeps the tab bar,
         // restores, and collapse-to-icons is a distinct state.
-        pictura::PanelGroup* m41MinGroup =
-            m41Column ? m41Column->groupForPanel(QStringLiteral("layersPanel")) : nullptr;
-        bool m41Min = false;
-        bool m41Content = false;
-        bool m41MinRestore = false;
-        bool m41Icons = false;
-        if (m41MinGroup) {
-            m41MinGroup->setMinimizedForTest(true);
+        pictura::PanelGroup* minGroup =
+            panelColumnColumn ? panelColumnColumn->groupForPanel(QStringLiteral("layersPanel")) : nullptr;
+        bool panelColumnMin = false;
+        bool panelColumnContent = false;
+        bool minRestore = false;
+        bool panelColumnIcons = false;
+        if (minGroup) {
+            minGroup->setMinimizedForTest(true);
             QCoreApplication::processEvents();
-            m41Min = m41MinGroup->isMinimizedForTest();
-            m41Content = m41MinGroup->contentHiddenForTest()
-                         && m41MinGroup->tabBarVisibleForTest();
-            m41MinGroup->setMinimizedForTest(false);
+            panelColumnMin = minGroup->isMinimizedForTest();
+            panelColumnContent = minGroup->contentHiddenForTest()
+                         && minGroup->tabBarVisibleForTest();
+            minGroup->setMinimizedForTest(false);
             QCoreApplication::processEvents();
-            m41MinRestore = !m41MinGroup->isMinimizedForTest()
-                            && !m41MinGroup->contentHiddenForTest();
-            m41MinGroup->setCollapsedToIconsForTest(true);
+            minRestore = !minGroup->isMinimizedForTest()
+                            && !minGroup->contentHiddenForTest();
+            minGroup->setCollapsedToIconsForTest(true);
             QCoreApplication::processEvents();
-            m41Icons = m41MinGroup->isCollapsedToIconsForTest()
-                       && !m41MinGroup->isMinimizedForTest();
-            m41MinGroup->setCollapsedToIconsForTest(false);
+            panelColumnIcons = minGroup->isCollapsedToIconsForTest()
+                       && !minGroup->isMinimizedForTest();
+            minGroup->setCollapsedToIconsForTest(false);
             QCoreApplication::processEvents();
         }
-        const bool m41MinimizeOk = m41Min && m41Content && m41MinRestore && m41Icons;
-        ST_BEGIN("m41_minimize_min");
-        ST_PASS("m41_minimize min=%d content=%d restore=%d icons=%d", m41Min ? 1 : 0,
-                     m41Content ? 1 : 0,
-                     m41MinRestore ? 1 : 0,
-                     m41Icons ? 1 : 0);
-        if (!m41MinimizeOk) {
-            ST_FAIL(124, "M41 minimize");
+        const bool minimizeOk = panelColumnMin && panelColumnContent && minRestore && panelColumnIcons;
+        ST_BEGIN("minimize_min");
+        ST_PASS("minimize min=%d content=%d restore=%d icons=%d", panelColumnMin ? 1 : 0,
+                     panelColumnContent ? 1 : 0,
+                     minRestore ? 1 : 0,
+                     panelColumnIcons ? 1 : 0);
+        if (!minimizeOk) {
+            ST_FAIL(124, "minimize");
         }
 
         // m41_tools (130): no `Tools` title, content-fit widths, and the
         // foreground/background widget fits within the current column width in
         // both column counts.
-        auto* m41Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        const bool m41Title = m41Toolbox && m41Toolbox->titleTextForTest().isEmpty();
-        bool m41Min1 = false;
-        bool m41Min2 = false;
-        bool m41Fit = false;
-        if (m41Toolbox) {
-            m41Toolbox->setColumns(1);
+        auto* panelColumnToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        const bool panelColumnTitle = panelColumnToolbox && panelColumnToolbox->titleTextForTest().isEmpty();
+        bool panelColumnMin1 = false;
+        bool panelColumnMin2 = false;
+        bool panelColumnFit = false;
+        if (panelColumnToolbox) {
+            panelColumnToolbox->setColumns(1);
             QCoreApplication::processEvents();
-            const int min1 = m41Toolbox->minimumWidth();
-            const int content1 = m41Toolbox->contentWidthForTest();
-            const int fg1 = m41Toolbox->foregroundBackgroundWidthForTest();
-            const int width1 = m41Toolbox->width();
-            m41Toolbox->setColumns(2);
+            const int min1 = panelColumnToolbox->minimumWidth();
+            const int content1 = panelColumnToolbox->contentWidthForTest();
+            const int fg1 = panelColumnToolbox->foregroundBackgroundWidthForTest();
+            const int width1 = panelColumnToolbox->width();
+            panelColumnToolbox->setColumns(2);
             QCoreApplication::processEvents();
-            const int min2 = m41Toolbox->minimumWidth();
-            const int content2 = m41Toolbox->contentWidthForTest();
-            const int fg2 = m41Toolbox->foregroundBackgroundWidthForTest();
-            const int width2 = m41Toolbox->width();
-            m41Toolbox->setColumns(1);
+            const int min2 = panelColumnToolbox->minimumWidth();
+            const int content2 = panelColumnToolbox->contentWidthForTest();
+            const int fg2 = panelColumnToolbox->foregroundBackgroundWidthForTest();
+            const int width2 = panelColumnToolbox->width();
+            panelColumnToolbox->setColumns(1);
             QCoreApplication::processEvents();
-            m41Min1 = min1 > 0 && min1 >= content1;
-            m41Min2 = min2 > min1 && min2 >= content2;
-            m41Fit = fg1 <= width1 && fg2 <= width2 && fg1 <= min1 && fg2 <= min2;
+            panelColumnMin1 = min1 > 0 && min1 >= content1;
+            panelColumnMin2 = min2 > min1 && min2 >= content2;
+            panelColumnFit = fg1 <= width1 && fg2 <= width2 && fg1 <= min1 && fg2 <= min2;
         }
-        const bool m41ToolsOk = m41Title && m41Min1 && m41Min2 && m41Fit;
-        ST_BEGIN("m41_tools_title");
-        ST_PASS("m41_tools title=%d min1=%d min2=%d fit=%d", m41Title ? 1 : 0,
-                     m41Min1 ? 1 : 0,
-                     m41Min2 ? 1 : 0,
-                     m41Fit ? 1 : 0);
-        if (!m41ToolsOk) {
-            ST_FAIL(130, "M41 tools panel");
+        const bool toolsOk = panelColumnTitle && panelColumnMin1 && panelColumnMin2 && panelColumnFit;
+        ST_BEGIN("tools_title");
+        ST_PASS("tools title=%d min1=%d min2=%d fit=%d", panelColumnTitle ? 1 : 0,
+                     panelColumnMin1 ? 1 : 0,
+                     panelColumnMin2 ? 1 : 0,
+                     panelColumnFit ? 1 : 0);
+        if (!toolsOk) {
+            ST_FAIL(130, "tools panel");
         }
 
         // m41_drag (126): a tab reorders within its group, a tab regroups into
@@ -3332,105 +3332,105 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // group, and the thick blue indicator is drawn at the candidate
         // position and cleared afterwards. Every step drives the column's real
         // begin/update/commit drag path.
-        bool m41DragReorder = false;
-        bool m41DragRegroup = false;
-        bool m41DragInsert = false;
-        bool m41DragIndicator = false;
-        bool m41DragClear = false;
-        if (m41Column) {
+        bool dragReorder = false;
+        bool dragRegroup = false;
+        bool dragInsert = false;
+        bool dragIndicator = false;
+        bool dragClear = false;
+        if (panelColumnColumn) {
             // Give the column a normal width so the group tab bars are inside
             // the scroll viewport; the default splitter share is icon-strip
             // narrow under xvfb.
-            m41Column->setMinimumWidth(360);
+            panelColumnColumn->setMinimumWidth(360);
             QCoreApplication::processEvents();
             // Reorder: move the second Layers tab to the front of its own bar.
             pictura::PanelGroup* reorderGroup =
-                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
             if (reorderGroup && reorderGroup->titleCountForTest() >= 2) {
                 const QStringList before = reorderGroup->titleTextsForTest();
                 const QString moving = reorderGroup->panels().at(1)->objectName();
-                m41Column->ensureGroupVisibleForTest(moving);
+                panelColumnColumn->ensureGroupVisibleForTest(moving);
                 QCoreApplication::processEvents();
                 const QPoint target = reorderGroup->tabInsertionGlobalPointForTest(0);
-                m41Column->beginTabDragForTest(moving);
-                m41Column->dragToForTest(target);
-                const bool visible = m41Column->dropIndicatorVisibleForTest();
-                const QRect geometry = m41Column->dropIndicatorGeometryForTest();
+                panelColumnColumn->beginTabDragForTest(moving);
+                panelColumnColumn->dragToForTest(target);
+                const bool visible = panelColumnColumn->dropIndicatorVisibleForTest();
+                const QRect geometry = panelColumnColumn->dropIndicatorGeometryForTest();
                 const bool vertical = geometry.height() > geometry.width() && geometry.height() > 0
                                       && geometry.width() == 3;
-                m41Column->dropForTest(target);
+                panelColumnColumn->dropForTest(target);
                 const QStringList after = reorderGroup->titleTextsForTest();
-                m41DragReorder = !before.isEmpty() && after != before
+                dragReorder = !before.isEmpty() && after != before
                                  && after.value(0) == before.value(1);
-                m41DragIndicator = visible && vertical;
-                m41DragClear = !m41Column->dropIndicatorVisibleForTest();
+                dragIndicator = visible && vertical;
+                dragClear = !panelColumnColumn->dropIndicatorVisibleForTest();
             }
 
             // Regroup: append the Styles tab to the Layers group.
             pictura::PanelGroup* colorGroup =
-                m41Column->groupForPanel(QStringLiteral("stylesPanel"));
+                panelColumnColumn->groupForPanel(QStringLiteral("stylesPanel"));
             pictura::PanelGroup* layerGroup =
-                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
             if (colorGroup && layerGroup && colorGroup != layerGroup) {
                 const int targetIndex = layerGroup->titleCountForTest();
-                m41Column->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
+                panelColumnColumn->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
                 QCoreApplication::processEvents();
                 const QPoint target = layerGroup->tabInsertionGlobalPointForTest(targetIndex);
-                m41Column->beginTabDragForTest(QStringLiteral("stylesPanel"));
-                m41Column->dragToForTest(target);
-                m41Column->dropForTest(target);
-                m41DragRegroup =
+                panelColumnColumn->beginTabDragForTest(QStringLiteral("stylesPanel"));
+                panelColumnColumn->dragToForTest(target);
+                panelColumnColumn->dropForTest(target);
+                dragRegroup =
                     layerGroup->containsPanel(QStringLiteral("stylesPanel"))
                     && !colorGroup->containsPanel(QStringLiteral("stylesPanel"))
-                    && m41Column->groupForPanel(QStringLiteral("stylesPanel")) == layerGroup;
+                    && panelColumnColumn->groupForPanel(QStringLiteral("stylesPanel")) == layerGroup;
             }
 
             // Insert: drop Histogram into the gap between two groups, which
             // must create a new one-panel group at that boundary.
             pictura::PanelGroup* navGroup =
-                m41Column->groupForPanel(QStringLiteral("histogramPanel"));
-            if (navGroup && m41Column->groups().size() >= 2) {
-                const int groupCount = m41Column->groups().size();
-                const QPoint target = m41Column->boundaryPointForTest(1);
-                m41Column->beginTabDragForTest(QStringLiteral("histogramPanel"));
-                m41Column->dragToForTest(target);
-                const bool visible = m41Column->dropIndicatorVisibleForTest();
-                const QRect geometry = m41Column->dropIndicatorGeometryForTest();
+                panelColumnColumn->groupForPanel(QStringLiteral("histogramPanel"));
+            if (navGroup && panelColumnColumn->groups().size() >= 2) {
+                const int groupCount = panelColumnColumn->groups().size();
+                const QPoint target = panelColumnColumn->boundaryPointForTest(1);
+                panelColumnColumn->beginTabDragForTest(QStringLiteral("histogramPanel"));
+                panelColumnColumn->dragToForTest(target);
+                const bool visible = panelColumnColumn->dropIndicatorVisibleForTest();
+                const QRect geometry = panelColumnColumn->dropIndicatorGeometryForTest();
                 const bool horizontal = geometry.width() > geometry.height()
                                         && geometry.height() == 3;
-                m41Column->dropForTest(target);
+                panelColumnColumn->dropForTest(target);
                 pictura::PanelGroup* inserted =
-                    m41Column->groupForPanel(QStringLiteral("histogramPanel"));
-                m41DragInsert = m41Column->groups().size() == groupCount + 1 && inserted
+                    panelColumnColumn->groupForPanel(QStringLiteral("histogramPanel"));
+                dragInsert = panelColumnColumn->groups().size() == groupCount + 1 && inserted
                                 && inserted->titleCountForTest() == 1
                                 && inserted->containsPanel(QStringLiteral("histogramPanel"));
-                m41DragClear = m41DragClear && visible && horizontal
-                               && !m41Column->dropIndicatorVisibleForTest();
+                dragClear = dragClear && visible && horizontal
+                               && !panelColumnColumn->dropIndicatorVisibleForTest();
             }
         }
-        const bool m41DragOk = m41DragReorder && m41DragRegroup && m41DragInsert
-                               && m41DragIndicator && m41DragClear;
-        ST_BEGIN("m41_drag_reorder");
-        ST_PASS("m41_drag reorder=%d regroup=%d insert=%d indicator=%d "
-                     "clear=%d", m41DragReorder ? 1 : 0,
-                     m41DragRegroup ? 1 : 0,
-                     m41DragInsert ? 1 : 0,
-                     m41DragIndicator ? 1 : 0,
-                     m41DragClear ? 1 : 0);
-        if (!m41DragOk) {
-            ST_FAIL(126, "M41 drag and drop");
+        const bool dragOk = dragReorder && dragRegroup && dragInsert
+                               && dragIndicator && dragClear;
+        ST_BEGIN("drag_reorder");
+        ST_PASS("drag reorder=%d regroup=%d insert=%d indicator=%d "
+                     "clear=%d", dragReorder ? 1 : 0,
+                     dragRegroup ? 1 : 0,
+                     dragInsert ? 1 : 0,
+                     dragIndicator ? 1 : 0,
+                     dragClear ? 1 : 0);
+        if (!dragOk) {
+            ST_FAIL(126, "drag and drop");
         }
 
         // m41_tearoff (127): tearing a group off the column creates a visible
         // `panelFloat` holding the group's panels, and re-docking returns them
         // to the column at the drop index and leaves no float behind.
-        bool m41TearFloat = false;
-        bool m41TearPanels = false;
-        bool m41Redock = false;
-        bool m41TearEmpty = false;
-        if (m41Column) {
+        bool tearFloat = false;
+        bool tearPanels = false;
+        bool panelColumnRedock = false;
+        bool tearEmpty = false;
+        if (panelColumnColumn) {
             pictura::PanelGroup* source =
-                m41Column->groupForPanel(QStringLiteral("histogramPanel"));
+                panelColumnColumn->groupForPanel(QStringLiteral("histogramPanel"));
             QStringList expected;
             if (source) {
                 for (QWidget* panel : source->panels()) {
@@ -3439,123 +3439,123 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
             }
-            const int groupCount = m41Column->groups().size();
-            m41TearFloat = source
-                           && m41Column->tearOffForTest(source->objectName())
-                           && m41Column->floatCountForTest() == 1;
-            if (m41TearFloat) {
-                m41TearPanels = m41Column->floatPanelNamesForTest(0) == expected
+            const int groupCount = panelColumnColumn->groups().size();
+            tearFloat = source
+                           && panelColumnColumn->tearOffForTest(source->objectName())
+                           && panelColumnColumn->floatCountForTest() == 1;
+            if (tearFloat) {
+                tearPanels = panelColumnColumn->floatPanelNamesForTest(0) == expected
                                 && !expected.isEmpty()
-                                && !m41Column->groupForPanel(QStringLiteral("histogramPanel"));
-                const bool redocked = m41Column->redockForTest(0, 1);
+                                && !panelColumnColumn->groupForPanel(QStringLiteral("histogramPanel"));
+                const bool redocked = panelColumnColumn->redockForTest(0, 1);
                 pictura::PanelGroup* back =
-                    m41Column->groupForPanel(QStringLiteral("histogramPanel"));
-                m41Redock = redocked && back
+                    panelColumnColumn->groupForPanel(QStringLiteral("histogramPanel"));
+                panelColumnRedock = redocked && back
                             && back->containsPanel(QStringLiteral("histogramPanel"))
-                            && m41Column->groups().size() == groupCount;
-                m41TearEmpty = m41Column->floatCountForTest() == 0;
+                            && panelColumnColumn->groups().size() == groupCount;
+                tearEmpty = panelColumnColumn->floatCountForTest() == 0;
             }
         }
-        const bool m41TearoffOk = m41TearFloat && m41TearPanels && m41Redock && m41TearEmpty;
-        ST_BEGIN("m41_tearoff_float");
-        ST_PASS("m41_tearoff float=%d panels=%d redock=%d empty=%d", m41TearFloat ? 1 : 0,
-                     m41TearPanels ? 1 : 0,
-                     m41Redock ? 1 : 0,
-                     m41TearEmpty ? 1 : 0);
-        if (!m41TearoffOk) {
-            ST_FAIL(127, "M41 tear-off and re-dock");
+        const bool tearoffOk = tearFloat && tearPanels && panelColumnRedock && tearEmpty;
+        ST_BEGIN("tearoff_float");
+        ST_PASS("tearoff float=%d panels=%d redock=%d empty=%d", tearFloat ? 1 : 0,
+                     tearPanels ? 1 : 0,
+                     panelColumnRedock ? 1 : 0,
+                     tearEmpty ? 1 : 0);
+        if (!tearoffOk) {
+            ST_FAIL(127, "tear-off and re-dock");
         }
-        if (m41Column) {
-            m41Column->setMinimumWidth(0);
+        if (panelColumnColumn) {
+            panelColumnColumn->setMinimumWidth(0);
             QCoreApplication::processEvents();
         }
 
         // m41_prefs (125): the Preferences dialog has exactly General and
         // Interface, opens from the command path and from Interface Options…,
         // and its checkboxes drive the toolbox and the column and persist.
-        pictura::PreferencesDialog* m41Prefs = nullptr;
-        bool m41PrefsPages = false;
-        bool m41PrefsOpen = false;
-        bool m41PrefsRoundtrip = false;
-        bool m41PrefsShift = false;
-        bool m41PrefsIconic = false;
+        pictura::PreferencesDialog* prefs = nullptr;
+        bool prefsPages = false;
+        bool prefsOpen = false;
+        bool prefsRoundtrip = false;
+        bool prefsShift = false;
+        bool prefsIconic = false;
         if (QAction* general = frame.registry()->action(
                 QString::fromLatin1(pictura::command_ids::EditPreferencesGeneral))) {
             general->trigger();
             QCoreApplication::processEvents();
         }
-        m41Prefs = frame.preferencesDialog();
-        const bool m41OpenedGeneral =
-            m41Prefs && m41Prefs->isVisible()
-            && m41Prefs->currentPageForTest() == QStringLiteral("General");
-        if (m41Column) {
-            m41Column->triggerTabMenuForTest(QStringLiteral("Interface Options\u2026"));
+        prefs = frame.preferencesDialog();
+        const bool openedGeneral =
+            prefs && prefs->isVisible()
+            && prefs->currentPageForTest() == QStringLiteral("General");
+        if (panelColumnColumn) {
+            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Interface Options\u2026"));
             QCoreApplication::processEvents();
         }
-        const bool m41OpenedInterface =
-            m41Prefs && m41Prefs->isVisible()
-            && m41Prefs->currentPageForTest() == QStringLiteral("Interface");
-        m41PrefsPages =
-            m41Prefs
-            && m41Prefs->pagesForTest()
+        const bool openedInterface =
+            prefs && prefs->isVisible()
+            && prefs->currentPageForTest() == QStringLiteral("Interface");
+        prefsPages =
+            prefs
+            && prefs->pagesForTest()
                    == QStringList({QStringLiteral("General"), QStringLiteral("Interface")});
-        m41PrefsOpen = m41OpenedGeneral && m41OpenedInterface;
-        if (m41Prefs) {
+        prefsOpen = openedGeneral && openedInterface;
+        if (prefs) {
             auto* prefsToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-            const bool shiftToggled = m41Prefs->setCheckboxForTest(
+            const bool shiftToggled = prefs->setCheckboxForTest(
                 QStringLiteral("useShiftKeyForToolSwitch"), false);
             QCoreApplication::processEvents();
-            m41PrefsShift = shiftToggled && prefsToolbox
+            prefsShift = shiftToggled && prefsToolbox
                             && !prefsToolbox->shiftKeyForToolSwitch();
             frame.saveSession();
-            m41PrefsRoundtrip = !pictura::loadSession().useShiftKeyForToolSwitch;
-            m41Prefs->setCheckboxForTest(QStringLiteral("useShiftKeyForToolSwitch"), true);
+            prefsRoundtrip = !pictura::loadSession().useShiftKeyForToolSwitch;
+            prefs->setCheckboxForTest(QStringLiteral("useShiftKeyForToolSwitch"), true);
             QCoreApplication::processEvents();
             frame.saveSession();
-            m41Prefs->setCheckboxForTest(QStringLiteral("autoCollapseIconic"), true);
+            prefs->setCheckboxForTest(QStringLiteral("autoCollapseIconic"), true);
             QCoreApplication::processEvents();
-            m41PrefsIconic = m41Column && m41Column->autoCollapseIconicForTest();
-            m41Prefs->setCheckboxForTest(QStringLiteral("autoCollapseIconic"), false);
+            prefsIconic = panelColumnColumn && panelColumnColumn->autoCollapseIconicForTest();
+            prefs->setCheckboxForTest(QStringLiteral("autoCollapseIconic"), false);
             QCoreApplication::processEvents();
-            m41Prefs->close();
+            prefs->close();
         }
-        const bool m41PrefsOk = m41PrefsPages && m41PrefsOpen && m41PrefsRoundtrip
-                                && m41PrefsShift && m41PrefsIconic;
-        ST_BEGIN("m41_prefs_pages");
-        ST_PASS("m41_prefs pages=%d open=%d roundtrip=%d shift=%d "
-                     "iconic=%d", m41Prefs ? m41Prefs->pagesForTest().size() : 0,
-                     m41PrefsOpen ? 1 : 0,
-                     m41PrefsRoundtrip ? 1 : 0,
-                     m41PrefsShift ? 1 : 0,
-                     m41PrefsIconic ? 1 : 0);
-        if (!m41PrefsOk) {
-            ST_FAIL(125, "M41 preferences dialog");
+        const bool prefsOk = prefsPages && prefsOpen && prefsRoundtrip
+                                && prefsShift && prefsIconic;
+        ST_BEGIN("prefs_pages");
+        ST_PASS("prefs pages=%d open=%d roundtrip=%d shift=%d "
+                     "iconic=%d", prefs ? prefs->pagesForTest().size() : 0,
+                     prefsOpen ? 1 : 0,
+                     prefsRoundtrip ? 1 : 0,
+                     prefsShift ? 1 : 0,
+                     prefsIconic ? 1 : 0);
+        if (!prefsOk) {
+            ST_FAIL(125, "preferences dialog");
         }
 
         // m41_session (128): the v5 fields round-trip through the real
         // save/load path, a schema-4 store loads the v5 defaults and keeps its
         // own keys, an unknown key survives a rewrite, and per-group panel
         // visibility/order/minimized/collapsed are saved and restored.
-        if (m41Column) {
-            m41Column->setAutoCollapseIconic(true);
-            m41Column->setAutoShowHidden(true);
-            m41Column->setRailMode(true);
+        if (panelColumnColumn) {
+            panelColumnColumn->setAutoCollapseIconic(true);
+            panelColumnColumn->setAutoShowHidden(true);
+            panelColumnColumn->setRailMode(true);
         }
         frame.saveSession();
-        pictura::SessionState m41Reloaded = pictura::loadSession();
-        pictura::SessionState m41WidthState = pictura::loadSession();
-        m41WidthState.panelRailMode = QStringLiteral("normal");
-        m41WidthState.railWidth = 260;
-        pictura::saveSession(m41WidthState);
-        const bool m41WidthRound = pictura::loadSession().railWidth == 260;
-        const bool m41V5 = !m41Reloaded.panelGroups.isEmpty()
-                           && m41Reloaded.schemaVersion >= 5
-                           && m41Reloaded.panelRailMode == QStringLiteral("iconic")
-                           && m41Reloaded.autoCollapseIconic && m41Reloaded.autoShowHidden
-                           && m41WidthRound;
+        pictura::SessionState panelColumnReloaded = pictura::loadSession();
+        pictura::SessionState widthState = pictura::loadSession();
+        widthState.panelRailMode = QStringLiteral("normal");
+        widthState.railWidth = 260;
+        pictura::saveSession(widthState);
+        const bool widthRound = pictura::loadSession().railWidth == 260;
+        const bool panelColumnV5 = !panelColumnReloaded.panelGroups.isEmpty()
+                           && panelColumnReloaded.schemaVersion >= 5
+                           && panelColumnReloaded.panelRailMode == QStringLiteral("iconic")
+                           && panelColumnReloaded.autoCollapseIconic && panelColumnReloaded.autoShowHidden
+                           && widthRound;
 
-        bool m41Defaults = false;
-        bool m41V4 = false;
+        bool panelColumnDefaults = false;
+        bool panelColumnV4 = false;
         {
             QFile store(pictura::sessionFilePath());
             if (store.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -3564,12 +3564,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 store.close();
             }
             const pictura::SessionState v4 = pictura::loadSession();
-            m41Defaults = v4.panelRailMode == QStringLiteral("normal") && v4.railWidth == 0
+            panelColumnDefaults = v4.panelRailMode == QStringLiteral("normal") && v4.railWidth == 0
                           && !v4.autoCollapseIconic && !v4.autoShowHidden;
-            m41V4 = v4.toolsColumns == 2 && !v4.useShiftKeyForToolSwitch;
+            panelColumnV4 = v4.toolsColumns == 2 && !v4.useShiftKeyForToolSwitch;
         }
 
-        bool m41Unknown = false;
+        bool panelColumnUnknown = false;
         {
             QFile store(pictura::sessionFilePath());
             if (store.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -3581,16 +3581,16 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QFile read(pictura::sessionFilePath());
             if (read.open(QIODevice::ReadOnly)) {
                 const QByteArray rewritten = read.readAll();
-                m41Unknown = rewritten.contains("unknownKey")
+                panelColumnUnknown = rewritten.contains("unknownKey")
                              && rewritten.contains("keep-me");
             }
         }
 
-        bool m41Panels = false;
-        if (m41Column) {
-            pictura::PanelGroup* m41PanelGroup =
-                m41Column->groupForPanel(QStringLiteral("layersPanel"));
-            if (m41PanelGroup) {
+        bool panelColumnPanels = false;
+        if (panelColumnColumn) {
+            pictura::PanelGroup* panelGroup =
+                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
+            if (panelGroup) {
                 auto panelNames = [](pictura::PanelGroup* group) {
                     QStringList names;
                     for (QWidget* panel : group->panels()) {
@@ -3600,139 +3600,139 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                     return names;
                 };
-                const QJsonArray m41Baseline = m41Column->savePanelState();
-                QStringList m41Order = panelNames(m41PanelGroup);
-                if (m41Order.size() >= 2) {
-                    m41Order.move(0, m41Order.size() - 1);
-                    m41PanelGroup->setPanelOrder(m41Order);
+                const QJsonArray baseline = panelColumnColumn->savePanelState();
+                QStringList panelColumnOrder = panelNames(panelGroup);
+                if (panelColumnOrder.size() >= 2) {
+                    panelColumnOrder.move(0, panelColumnOrder.size() - 1);
+                    panelGroup->setPanelOrder(panelColumnOrder);
                 }
-                m41PanelGroup->setMinimizedForTest(true);
-                m41Column->showPanel(QStringLiteral("channelsPanel"), false);
+                panelGroup->setMinimizedForTest(true);
+                panelColumnColumn->showPanel(QStringLiteral("channelsPanel"), false);
                 QCoreApplication::processEvents();
-                const QJsonArray m41Mutated = m41Column->savePanelState();
-                m41Column->restorePanelState(m41Baseline);
-                const bool m41BackToBaseline =
-                    !m41Column->groupForPanel(QStringLiteral("layersPanel"))->isMinimizedForTest()
-                    && m41Column->isPanelVisible(QStringLiteral("channelsPanel"));
-                m41Column->restorePanelState(m41Mutated);
-                pictura::PanelGroup* m41Restored =
-                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
-                m41Panels = m41BackToBaseline && m41Restored
-                            && m41Restored->isMinimizedForTest()
-                            && !m41Column->isPanelVisible(QStringLiteral("channelsPanel"))
-                            && panelNames(m41Restored) == m41Order;
+                const QJsonArray panelColumnMutated = panelColumnColumn->savePanelState();
+                panelColumnColumn->restorePanelState(baseline);
+                const bool backToBaseline =
+                    !panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"))->isMinimizedForTest()
+                    && panelColumnColumn->isPanelVisible(QStringLiteral("channelsPanel"));
+                panelColumnColumn->restorePanelState(panelColumnMutated);
+                pictura::PanelGroup* panelColumnRestored =
+                    panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
+                panelColumnPanels = backToBaseline && panelColumnRestored
+                            && panelColumnRestored->isMinimizedForTest()
+                            && !panelColumnColumn->isPanelVisible(QStringLiteral("channelsPanel"))
+                            && panelNames(panelColumnRestored) == panelColumnOrder;
             }
-            m41Column->setAutoCollapseIconic(false);
-            m41Column->setAutoShowHidden(false);
-            m41Column->setRailMode(false);
+            panelColumnColumn->setAutoCollapseIconic(false);
+            panelColumnColumn->setAutoShowHidden(false);
+            panelColumnColumn->setRailMode(false);
             QCoreApplication::processEvents();
         }
-        const bool m41SessionOk =
-            m41V5 && m41Defaults && m41V4 && m41Unknown && m41Panels;
-        ST_BEGIN("m41_session_v5");
-        ST_PASS("m41_session v5=%d defaults=%d v4=%d unknown=%d "
-                     "panels=%d", m41V5 ? 1 : 0,
-                     m41Defaults ? 1 : 0,
-                     m41V4 ? 1 : 0,
-                     m41Unknown ? 1 : 0,
-                     m41Panels ? 1 : 0);
-        if (!m41SessionOk) {
-            ST_FAIL(128, "M41 session v5");
+        const bool panelColumnSessionOk =
+            panelColumnV5 && panelColumnDefaults && panelColumnV4 && panelColumnUnknown && panelColumnPanels;
+        ST_BEGIN("session_v5");
+        ST_PASS("session v5=%d defaults=%d v4=%d unknown=%d "
+                     "panels=%d", panelColumnV5 ? 1 : 0,
+                     panelColumnDefaults ? 1 : 0,
+                     panelColumnV4 ? 1 : 0,
+                     panelColumnUnknown ? 1 : 0,
+                     panelColumnPanels ? 1 : 0);
+        if (!panelColumnSessionOk) {
+            ST_FAIL(128, "session v5");
         }
         // M42 Phase A: the column's normal-mode minimum width and smallest-width
         // compact transition, the bigger strip and tool icons, the fg/bg swap
         // control and `X` key, the menu-bar clearance + stale-layout guard, and
         // the floated Tools dock geometry. Exit codes 131, 132, 137, 138, 139.
-        auto* m42Toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        auto* panelMenusToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
 
         // m42_minwidth (131): normal mode enforces a bounded content-derived
         // minimum width (no height minimum, still scrollable); entering iconic
         // lands at the smallest strip width and leaving restores the prior width.
-        int m42NormalMin = 0;
-        int m42IconicMin = 0;
-        bool m42NormalWidth = false;
-        bool m42IconicSmall = false;
-        bool m42RestoredWidth = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
+        int normalMin = 0;
+        int iconicMin = 0;
+        bool normalWidth = false;
+        bool iconicSmall = false;
+        bool restoredWidth = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
             QCoreApplication::processEvents();
-            m42NormalMin = m41Column->minimumWidthForTest();
-            m42NormalWidth = m42NormalMin >= 180 && m42NormalMin <= 400
-                             && m41Column->minimumHeight() == 0
-                             && m41Column->scrollableForTest();
-            const int before = m41Column->width();
-            m41Column->setRailMode(true);
+            normalMin = panelColumnColumn->minimumWidthForTest();
+            normalWidth = normalMin >= 180 && normalMin <= 400
+                             && panelColumnColumn->minimumHeight() == 0
+                             && panelColumnColumn->scrollableForTest();
+            const int before = panelColumnColumn->width();
+            panelColumnColumn->setRailMode(true);
             QCoreApplication::processEvents();
-            m42IconicMin = m41Column->minimumWidthForTest();
-            m42IconicSmall = m42IconicMin > 0 && m42IconicMin < m42NormalMin
-                             && m41Column->width() <= m42IconicMin + 8;
-            m41Column->setRailMode(false);
+            iconicMin = panelColumnColumn->minimumWidthForTest();
+            iconicSmall = iconicMin > 0 && iconicMin < normalMin
+                             && panelColumnColumn->width() <= iconicMin + 8;
+            panelColumnColumn->setRailMode(false);
             QCoreApplication::processEvents();
-            m42RestoredWidth = m41Column->minimumWidthForTest() == m42NormalMin
-                               && m41Column->width() >= m42NormalMin
-                               && (before <= 0 || m41Column->width() >= before - 4);
+            restoredWidth = panelColumnColumn->minimumWidthForTest() == normalMin
+                               && panelColumnColumn->width() >= normalMin
+                               && (before <= 0 || panelColumnColumn->width() >= before - 4);
         }
-        const bool m42MinWidthOk =
-            m42NormalWidth && m42IconicSmall && m42RestoredWidth;
-        ST_BEGIN("m42_minwidth_normal");
-        ST_PASS("m42_minwidth normal=%d iconic=%d restored=%d "
-                     "min=%d strip=%d", m42NormalWidth ? 1 : 0,
-                     m42IconicSmall ? 1 : 0,
-                     m42RestoredWidth ? 1 : 0,
-                     m42NormalMin,
-                     m42IconicMin);
-        if (!m42MinWidthOk) {
-            ST_FAIL(131, "M42 column minimum width");
+        const bool minWidthOk =
+            normalWidth && iconicSmall && restoredWidth;
+        ST_BEGIN("minwidth_normal");
+        ST_PASS("minwidth normal=%d iconic=%d restored=%d "
+                     "min=%d strip=%d", normalWidth ? 1 : 0,
+                     iconicSmall ? 1 : 0,
+                     restoredWidth ? 1 : 0,
+                     normalMin,
+                     iconicMin);
+        if (!minWidthOk) {
+            ST_FAIL(131, "column minimum width");
         }
 
         // m42_iconic (132): the iconic-strip buttons and their pixmap are larger
         // than M41 (24 button / 16 pixmap), and iconic mode reports a strip
         // narrower than the normal-mode floor. Active/pressed look and flyout are
         // Phase C and are not asserted here.
-        bool m42IconBig = false;
-        bool m42IconSmallest = false;
-        if (m41Column) {
-            m41Column->setRailMode(true);
+        bool iconBig = false;
+        bool iconSmallest = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(true);
             QCoreApplication::processEvents();
             QToolButton* stripButton =
-                m41Column->findChild<QToolButton*>(QStringLiteral("panelIcon_layersPanel"));
+                panelColumnColumn->findChild<QToolButton*>(QStringLiteral("panelIcon_layersPanel"));
             if (!stripButton) {
-                for (QToolButton* candidate : m41Column->findChildren<QToolButton*>()) {
+                for (QToolButton* candidate : panelColumnColumn->findChildren<QToolButton*>()) {
                     if (candidate->objectName().startsWith(QStringLiteral("panelIcon_"))) {
                         stripButton = candidate;
                         break;
                     }
                 }
             }
-            m42IconBig = stripButton && stripButton->minimumWidth() >= 28
+            iconBig = stripButton && stripButton->minimumWidth() >= 28
                          && stripButton->iconSize().width() >= 20;
-            m42IconSmallest = m41Column->minimumWidthForTest() < 180
-                              && m41Column->iconStripVisibleForTest();
-            m41Column->setRailMode(false);
+            iconSmallest = panelColumnColumn->minimumWidthForTest() < 180
+                              && panelColumnColumn->iconStripVisibleForTest();
+            panelColumnColumn->setRailMode(false);
             QCoreApplication::processEvents();
         }
-        const bool m42IconicOk = m42IconBig && m42IconSmallest;
-        ST_BEGIN("m42_iconic_bigger");
-        ST_PASS("m42_iconic bigger=%d smallest=%d", m42IconBig ? 1 : 0,
-                     m42IconSmallest ? 1 : 0);
-        if (!m42IconicOk) {
-            ST_FAIL(132, "M42 iconic strip");
+        const bool panelMenusIconicOk = iconBig && iconSmallest;
+        ST_BEGIN("iconic_bigger");
+        ST_PASS("iconic bigger=%d smallest=%d", iconBig ? 1 : 0,
+                     iconSmallest ? 1 : 0);
+        if (!panelMenusIconicOk) {
+            ST_FAIL(132, "iconic strip");
         }
 
         // m42_fgbg (137): the swap control exists as a real hit target, clicking
         // it exchanges fg/bg, and the `X` key swaps too (`X` is unassigned in the
         // tool letter catalogue).
-        bool m42SwapControl = false;
-        bool m42SwapClick = false;
-        bool m42SwapKey = false;
-        if (m42Toolbox) {
-            auto* fgbg = m42Toolbox->foregroundBackgroundForTest();
+        bool swapControl = false;
+        bool swapClick = false;
+        bool swapKey = false;
+        if (panelMenusToolbox) {
+            auto* fgbg = panelMenusToolbox->foregroundBackgroundForTest();
             if (fgbg) {
                 const QColor fg0 = fgbg->foregroundForTest();
                 const QColor bg0 = fgbg->backgroundForTest();
                 const int count0 = fgbg->swapCountForTest();
                 const QRect swap = fgbg->swapRectForTest();
-                m42SwapControl = swap.isValid() && swap.width() > 0 && swap.height() > 0
+                swapControl = swap.isValid() && swap.width() > 0 && swap.height() > 0
                                  && fgbg->rect().contains(swap);
                 const QPoint local = swap.center();
                 QMouseEvent press(QEvent::MouseButtonPress, QPointF(local),
@@ -3740,7 +3740,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                   Qt::LeftButton, Qt::NoModifier);
                 QApplication::sendEvent(fgbg, &press);
                 QCoreApplication::processEvents();
-                m42SwapClick = fgbg->swapCountForTest() == count0 + 1
+                swapClick = fgbg->swapCountForTest() == count0 + 1
                                && fgbg->foregroundForTest() == bg0
                                && fgbg->backgroundForTest() == fg0;
                 const int count1 = fgbg->swapCountForTest();
@@ -3752,25 +3752,25 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                  QStringLiteral("x"));
                 QApplication::sendEvent(&frame, &xEvent);
                 QCoreApplication::processEvents();
-                m42SwapKey = fgbg->swapCountForTest() == count1 + 1
+                swapKey = fgbg->swapCountForTest() == count1 + 1
                              && fgbg->foregroundForTest() == bg1
                              && fgbg->backgroundForTest() == fg1;
             }
         }
-        const bool m42FgbgOk = m42SwapControl && m42SwapClick && m42SwapKey;
-        ST_BEGIN("m42_fgbg_control");
-        ST_PASS("m42_fgbg control=%d click=%d key=%d", m42SwapControl ? 1 : 0,
-                     m42SwapClick ? 1 : 0,
-                     m42SwapKey ? 1 : 0);
-        if (!m42FgbgOk) {
-            ST_FAIL(137, "M42 fg/bg swap");
+        const bool fgbgOk = swapControl && swapClick && swapKey;
+        ST_BEGIN("fgbg_control");
+        ST_PASS("fgbg control=%d click=%d key=%d", swapControl ? 1 : 0,
+                     swapClick ? 1 : 0,
+                     swapKey ? 1 : 0);
+        if (!fgbgOk) {
+            ST_FAIL(137, "fg/bg swap");
         }
 
         // m42_menubar (138): no visible child widget's global geometry overlaps
         // the menu-bar rect, and a persisted layout from another chrome revision
         // is discarded instead of restored.
-        bool m42MenuClear = frame.menuBar() != nullptr;
-        QString m42MenuOffender;
+        bool menuClear = frame.menuBar() != nullptr;
+        QString menuOffender;
         if (QMenuBar* bar = frame.menuBar()) {
             QCoreApplication::processEvents();
             const QRect barRect(bar->mapToGlobal(QPoint(0, 0)), bar->size());
@@ -3781,9 +3781,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 const QRect childRect(child->mapToGlobal(QPoint(0, 0)), child->size());
                 if (childRect.intersects(barRect)) {
-                    m42MenuClear = false;
-                    if (m42MenuOffender.isEmpty()) {
-                        m42MenuOffender = child->objectName().isEmpty()
+                    menuClear = false;
+                    if (menuOffender.isEmpty()) {
+                        menuOffender = child->objectName().isEmpty()
                                               ? QString::fromLatin1(
                                                     child->metaObject()->className())
                                               : child->objectName();
@@ -3791,215 +3791,215 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
             }
         }
-        const bool m42StaleDiscarded =
+        const bool staleDiscarded =
             !frame.restoreStoredLayout(QByteArrayLiteral("stale-layout"),
                                        frame.layoutRevisionForTest() - 1);
         frame.saveSession();
-        const bool m42RevisionSaved =
+        const bool revisionSaved =
             pictura::loadSession().layoutRevision == frame.layoutRevisionForTest();
-        const bool m42MenubarOk = m42MenuClear && m42StaleDiscarded && m42RevisionSaved;
-        ST_BEGIN("m42_menubar_clear");
-        ST_PASS("m42_menubar clear=%d stale=%d rev=%d", m42MenuClear ? 1 : 0,
-                     m42StaleDiscarded ? 1 : 0,
-                     m42RevisionSaved ? 1 : 0);
-        if (!m42MenubarOk) {
-            ST_FAIL(138, "M42 menu-bar overlay=%s", m42MenuOffender.toLocal8Bit().constData());
+        const bool menubarOk = menuClear && staleDiscarded && revisionSaved;
+        ST_BEGIN("menubar_clear");
+        ST_PASS("menubar clear=%d stale=%d rev=%d", menuClear ? 1 : 0,
+                     staleDiscarded ? 1 : 0,
+                     revisionSaved ? 1 : 0);
+        if (!menubarOk) {
+            ST_FAIL(138, "menu-bar overlay=%s", menuOffender.toLocal8Bit().constData());
         }
 
         // m42_tools (139): the slot/screen-mode icons are larger than M40 (30
         // button / 20 pixmap), the one- and two-column minimum widths equal the
         // content width exactly, and a floated dock's body hugs its content
         // height (stretch 0, no leftover vertical space).
-        bool m42ToolIcons = false;
-        bool m42ToolTight = false;
-        bool m42ToolFloat = false;
-        int m42ToolMin1 = 0;
-        int m42ToolContent1 = 0;
-        int m42ToolMin2 = 0;
-        int m42ToolContent2 = 0;
-        if (m42Toolbox) {
-            m42Toolbox->setColumns(1);
+        bool toolIcons = false;
+        bool toolTight = false;
+        bool toolFloat = false;
+        int toolMin1 = 0;
+        int toolContent1 = 0;
+        int toolMin2 = 0;
+        int toolContent2 = 0;
+        if (panelMenusToolbox) {
+            panelMenusToolbox->setColumns(1);
             QCoreApplication::processEvents();
-            const QList<QToolButton*> m42Slots = m42Toolbox->slotButtons();
-            m42ToolIcons = !m42Slots.isEmpty();
-            for (QToolButton* button : m42Slots) {
+            const QList<QToolButton*> panelMenusSlots = panelMenusToolbox->slotButtons();
+            toolIcons = !panelMenusSlots.isEmpty();
+            for (QToolButton* button : panelMenusSlots) {
                 if (button->minimumWidth() < 32 || button->iconSize().width() < 22) {
-                    m42ToolIcons = false;
+                    toolIcons = false;
                 }
             }
             auto* screenMode =
-                m42Toolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton"));
+                panelMenusToolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton"));
             if (screenMode && !screenMode->icon().isNull()
                 && (screenMode->minimumWidth() < 32
                     || screenMode->iconSize().width() < 22)) {
-                m42ToolIcons = false;
+                toolIcons = false;
             }
 
-            m42ToolMin1 = m42Toolbox->minimumWidth();
-            m42ToolContent1 = m42Toolbox->contentWidthForTest();
-            m42Toolbox->setColumns(2);
+            toolMin1 = panelMenusToolbox->minimumWidth();
+            toolContent1 = panelMenusToolbox->contentWidthForTest();
+            panelMenusToolbox->setColumns(2);
             QCoreApplication::processEvents();
-            m42ToolMin2 = m42Toolbox->minimumWidth();
-            m42ToolContent2 = m42Toolbox->contentWidthForTest();
-            m42ToolTight = m42ToolMin1 > 0 && m42ToolMin1 == m42ToolContent1
-                           && m42ToolMin2 == m42ToolContent2 && m42ToolMin2 > m42ToolMin1;
+            toolMin2 = panelMenusToolbox->minimumWidth();
+            toolContent2 = panelMenusToolbox->contentWidthForTest();
+            toolTight = toolMin1 > 0 && toolMin1 == toolContent1
+                           && toolMin2 == toolContent2 && toolMin2 > toolMin1;
 
-            if (!m42Toolbox->isFloating()) {
-                m42Toolbox->setFloating(true);
+            if (!panelMenusToolbox->isFloating()) {
+                panelMenusToolbox->setFloating(true);
                 QCoreApplication::processEvents();
                 QCoreApplication::processEvents();
-                const int bodyHeight = m42Toolbox->bodyHeightForTest();
-                const int hintHeight = m42Toolbox->bodySizeHintHeightForTest();
-                m42ToolFloat = m42Toolbox->bodyStretchForTest() == 0
+                const int bodyHeight = panelMenusToolbox->bodyHeightForTest();
+                const int hintHeight = panelMenusToolbox->bodySizeHintHeightForTest();
+                toolFloat = panelMenusToolbox->bodyStretchForTest() == 0
                                && hintHeight > 0 && bodyHeight <= hintHeight + 8;
-                m42Toolbox->setFloating(false);
+                panelMenusToolbox->setFloating(false);
                 QCoreApplication::processEvents();
             }
-            m42Toolbox->setColumns(1);
+            panelMenusToolbox->setColumns(1);
             QCoreApplication::processEvents();
         }
-        const bool m42ToolsOk = m42ToolIcons && m42ToolTight && m42ToolFloat;
-        ST_BEGIN("m42_tools_icons");
-        ST_PASS("m42_tools icons=%d tight=%d float=%d "
-                     "min1=%d content1=%d min2=%d content2=%d", m42ToolIcons ? 1 : 0,
-                     m42ToolTight ? 1 : 0,
-                     m42ToolFloat ? 1 : 0,
-                     m42ToolMin1,
-                     m42ToolContent1,
-                     m42ToolMin2,
-                     m42ToolContent2);
-        if (!m42ToolsOk) {
-            ST_FAIL(139, "M42 tools geometry");
+        const bool panelMenusToolsOk = toolIcons && toolTight && toolFloat;
+        ST_BEGIN("panelMenus_tools_icons");
+        ST_PASS("tools icons=%d tight=%d float=%d "
+                     "min1=%d content1=%d min2=%d content2=%d", toolIcons ? 1 : 0,
+                     toolTight ? 1 : 0,
+                     toolFloat ? 1 : 0,
+                     toolMin1,
+                     toolContent1,
+                     toolMin2,
+                     toolContent2);
+        if (!panelMenusToolsOk) {
+            ST_FAIL(139, "tools geometry");
         }
 
         // m42_dragstrip (133): a strip icon reorders within the strip and the
         // order persists, and dropping a strip icon on the normal-mode group
         // stack moves the panel into that group. The strip drop indicator is
         // drawn and cleared. Both paths drive the real begin/update/commit drag.
-        bool m42StripReorder = false;
-        bool m42StripMove = false;
-        bool m42StripIndicator = false;
-        bool m42StripClear = false;
-        if (m41Column) {
-            m41Column->setMinimumWidth(360);
-            m41Column->setRailMode(true);
+        bool stripReorder = false;
+        bool stripMove = false;
+        bool stripIndicator = false;
+        bool stripClear = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setMinimumWidth(360);
+            panelColumnColumn->setRailMode(true);
             QCoreApplication::processEvents();
-            const QStringList m42StripBefore = m41Column->stripOrderForTest();
-            int m42StripMoveIndex = -1;
-            for (int i = 1; i < m42StripBefore.size(); ++i) {
-                const QString sameGroup = m41Column->groupOfForTest(m42StripBefore.at(i));
+            const QStringList stripBefore = panelColumnColumn->stripOrderForTest();
+            int stripMoveIndex = -1;
+            for (int i = 1; i < stripBefore.size(); ++i) {
+                const QString sameGroup = panelColumnColumn->groupOfForTest(stripBefore.at(i));
                 if (!sameGroup.isEmpty()
-                    && sameGroup == m41Column->groupOfForTest(m42StripBefore.at(i - 1))) {
-                    m42StripMoveIndex = i;
+                    && sameGroup == panelColumnColumn->groupOfForTest(stripBefore.at(i - 1))) {
+                    stripMoveIndex = i;
                     break;
                 }
             }
-            if (m42StripMoveIndex > 0) {
-                const QString moving = m42StripBefore.at(m42StripMoveIndex);
+            if (stripMoveIndex > 0) {
+                const QString moving = stripBefore.at(stripMoveIndex);
                 const QPoint target =
-                    m41Column->stripInsertionPointForTest(m42StripMoveIndex - 1);
-                m41Column->beginStripDragForTest(moving);
+                    panelColumnColumn->stripInsertionPointForTest(stripMoveIndex - 1);
+                panelColumnColumn->beginStripDragForTest(moving);
                 QCoreApplication::processEvents();
-                m41Column->dragToForTest(target);
-                m42StripIndicator =
-                    m41Column->dropIndicatorVisibleForTest()
-                    && m41Column->stripDropIndexForTest() == m42StripMoveIndex - 1;
-                m41Column->dropForTest(target);
-                const QStringList after = m41Column->stripOrderForTest();
-                m42StripReorder = after != m42StripBefore
-                                 && after.value(m42StripMoveIndex - 1) == moving;
-                m42StripClear = !m41Column->dropIndicatorVisibleForTest();
+                panelColumnColumn->dragToForTest(target);
+                stripIndicator =
+                    panelColumnColumn->dropIndicatorVisibleForTest()
+                    && panelColumnColumn->stripDropIndexForTest() == stripMoveIndex - 1;
+                panelColumnColumn->dropForTest(target);
+                const QStringList after = panelColumnColumn->stripOrderForTest();
+                stripReorder = after != stripBefore
+                                 && after.value(stripMoveIndex - 1) == moving;
+                stripClear = !panelColumnColumn->dropIndicatorVisibleForTest();
             }
 
-            pictura::PanelGroup* m42DestGroup =
-                m41Column->groupForPanel(QStringLiteral("layersPanel"));
-            if (!m42DestGroup && !m41Column->groups().isEmpty()) {
-                m42DestGroup = m41Column->groups().first();
+            pictura::PanelGroup* panelMenusDestGroup =
+                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
+            if (!panelMenusDestGroup && !panelColumnColumn->groups().isEmpty()) {
+                panelMenusDestGroup = panelColumnColumn->groups().first();
             }
-            QString m42DestPanel;
-            if (m42DestGroup) {
-                for (QWidget* panel : m42DestGroup->visiblePanels()) {
+            QString destPanel;
+            if (panelMenusDestGroup) {
+                for (QWidget* panel : panelMenusDestGroup->visiblePanels()) {
                     if (panel) {
-                        m42DestPanel = panel->objectName();
+                        destPanel = panel->objectName();
                         break;
                     }
                 }
             }
-            QString m42SourcePanel;
-            for (pictura::PanelGroup* group : m41Column->groups()) {
-                if (!group || group == m42DestGroup) {
+            QString sourcePanel;
+            for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
+                if (!group || group == panelMenusDestGroup) {
                     continue;
                 }
                 for (QWidget* panel : group->visiblePanels()) {
                     if (panel) {
-                        m42SourcePanel = panel->objectName();
+                        sourcePanel = panel->objectName();
                         break;
                     }
                 }
-                if (!m42SourcePanel.isEmpty()) {
+                if (!sourcePanel.isEmpty()) {
                     break;
                 }
             }
-            if (!m42SourcePanel.isEmpty() && !m42DestPanel.isEmpty()) {
+            if (!sourcePanel.isEmpty() && !destPanel.isEmpty()) {
                 const bool moved =
-                    m41Column->dropStripOnGroupForTest(m42SourcePanel, m42DestPanel);
-                m42StripMove = moved
-                               && m41Column->groupForPanel(m42SourcePanel) == m42DestGroup
-                               && !m41Column->railMode();
+                    panelColumnColumn->dropStripOnGroupForTest(sourcePanel, destPanel);
+                stripMove = moved
+                               && panelColumnColumn->groupForPanel(sourcePanel) == panelMenusDestGroup
+                               && !panelColumnColumn->railMode();
             }
-            m41Column->setRailMode(false);
-            m41Column->setMinimumWidth(0);
+            panelColumnColumn->setRailMode(false);
+            panelColumnColumn->setMinimumWidth(0);
             QCoreApplication::processEvents();
         }
-        const bool m42DragStripOk =
-            m42StripReorder && m42StripMove && m42StripIndicator && m42StripClear;
-        ST_BEGIN("m42_dragstrip_reorder");
-        ST_PASS("m42_dragstrip reorder=%d move=%d indicator=%d "
-                     "clear=%d", m42StripReorder ? 1 : 0,
-                     m42StripMove ? 1 : 0,
-                     m42StripIndicator ? 1 : 0,
-                     m42StripClear ? 1 : 0);
-        if (!m42DragStripOk) {
-            ST_FAIL(133, "M42 strip drag");
+        const bool dragStripOk =
+            stripReorder && stripMove && stripIndicator && stripClear;
+        ST_BEGIN("dragstrip_reorder");
+        ST_PASS("dragstrip reorder=%d move=%d indicator=%d "
+                     "clear=%d", stripReorder ? 1 : 0,
+                     stripMove ? 1 : 0,
+                     stripIndicator ? 1 : 0,
+                     stripClear ? 1 : 0);
+        if (!dragStripOk) {
+            ST_FAIL(133, "strip drag");
         }
 
         // m42_flyout (134): the flyout opens on the inner side of the right-hand
         // column, its header names the panel and carries the close chevron, the
         // open icon renders active, and closing clears the active state.
-        bool m42FlyoutSide = false;
-        bool m42FlyoutActive = false;
-        bool m42FlyoutGroup = false;
-        bool m42FlyoutClose = false;
-        if (m41Column) {
-            m41Column->setRailMode(true);
+        bool flyoutSide = false;
+        bool flyoutActive = false;
+        bool flyoutGroup = false;
+        bool flyoutClose = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(true);
             QCoreApplication::processEvents();
-            m42FlyoutSide = m41Column->flyoutSideForTest() == QStringLiteral("left");
+            flyoutSide = panelColumnColumn->flyoutSideForTest() == QStringLiteral("left");
             const bool opened =
-                m41Column->openIconFlyoutForTest(QStringLiteral("layersPanel"));
-            for (int i = 0; i < 20 && !m41Column->iconFlyoutVisibleForTest(); ++i) {
+                panelColumnColumn->openIconFlyoutForTest(QStringLiteral("layersPanel"));
+            for (int i = 0; i < 20 && !panelColumnColumn->iconFlyoutVisibleForTest(); ++i) {
                 QCoreApplication::processEvents();
             }
-            m42FlyoutActive = opened && m41Column->iconFlyoutVisibleForTest()
-                              && m41Column->activeIconNameForTest()
+            flyoutActive = opened && panelColumnColumn->iconFlyoutVisibleForTest()
+                              && panelColumnColumn->activeIconNameForTest()
                                      == QStringLiteral("layersPanel");
-            m42FlyoutGroup =
-                m41Column->flyoutHeaderTitleForTest() == QStringLiteral("Layers")
-                && m41Column->flyoutHeaderCloseForTest();
-            const bool closed = m41Column->triggerFlyoutCloseForTest();
-            m42FlyoutClose = closed && !m41Column->iconFlyoutVisibleForTest()
-                             && m41Column->activeIconNameForTest().isEmpty();
-            m41Column->setRailMode(false);
+            flyoutGroup =
+                panelColumnColumn->flyoutHeaderTitleForTest() == QStringLiteral("Layers")
+                && panelColumnColumn->flyoutHeaderCloseForTest();
+            const bool closed = panelColumnColumn->triggerFlyoutCloseForTest();
+            flyoutClose = closed && !panelColumnColumn->iconFlyoutVisibleForTest()
+                             && panelColumnColumn->activeIconNameForTest().isEmpty();
+            panelColumnColumn->setRailMode(false);
             QCoreApplication::processEvents();
         }
-        const bool m42FlyoutOk =
-            m42FlyoutSide && m42FlyoutActive && m42FlyoutGroup && m42FlyoutClose;
-        ST_BEGIN("m42_flyout_side");
-        ST_PASS("m42_flyout side=%d active=%d group=%d close=%d", m42FlyoutSide ? 1 : 0,
-                     m42FlyoutActive ? 1 : 0,
-                     m42FlyoutGroup ? 1 : 0,
-                     m42FlyoutClose ? 1 : 0);
-        if (!m42FlyoutOk) {
-            ST_FAIL(134, "M42 compact flyout");
+        const bool panelMenusFlyoutOk =
+            flyoutSide && flyoutActive && flyoutGroup && flyoutClose;
+        ST_BEGIN("flyout_side");
+        ST_PASS("flyout side=%d active=%d group=%d close=%d", flyoutSide ? 1 : 0,
+                     flyoutActive ? 1 : 0,
+                     flyoutGroup ? 1 : 0,
+                     flyoutClose ? 1 : 0);
+        if (!panelMenusFlyoutOk) {
+            ST_FAIL(134, "compact flyout");
         }
 
         // m42_widgetmenu (135): each group's tab header carries a per-widget
@@ -4007,219 +4007,219 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // per-panel, not per-group; unimplemented entries are disabled with the
         // "<label> — not implemented yet" tooltip; `Close`/`Close Panel Group`
         // stay off it; the Layers `Panel Options…` entry is enabled and wired.
-        bool m42WmButton = false;
-        bool m42WmPerPanel = false;
-        bool m42WmDisabled = false;
-        bool m42WmNoClose = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
-            m41Column->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
+        bool wmButton = false;
+        bool wmPerPanel = false;
+        bool wmDisabled = false;
+        bool wmNoClose = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
+            panelColumnColumn->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
             QCoreApplication::processEvents();
-            pictura::PanelGroup* m42WmLayerGroup =
-                m41Column->groupForPanel(QStringLiteral("layersPanel"));
-            if (m42WmLayerGroup) {
-                m41Column->showPanel(QStringLiteral("layersPanel"), true);
+            pictura::PanelGroup* wmLayerGroup =
+                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
+            if (wmLayerGroup) {
+                panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
                 QCoreApplication::processEvents();
-                QToolButton* m42WmBtnPtr = m42WmLayerGroup->headerMenuButtonForTest();
-                QToolButton* m42WmHooked = m41Column->widgetMenuButtonForTest(
-                    m42WmLayerGroup->objectName());
-                m42WmButton = m42WmBtnPtr && m42WmHooked == m42WmBtnPtr
-                              && m42WmBtnPtr->isVisible()
-                              && m42WmLayerGroup->headerMenuAtRightForTest();
+                QToolButton* wmBtnPtr = wmLayerGroup->headerMenuButtonForTest();
+                QToolButton* wmHooked = panelColumnColumn->widgetMenuButtonForTest(
+                    wmLayerGroup->objectName());
+                wmButton = wmBtnPtr && wmHooked == wmBtnPtr
+                              && wmBtnPtr->isVisible()
+                              && wmLayerGroup->headerMenuAtRightForTest();
 
-                const QStringList m42WmLayerTexts =
-                    m42WmLayerGroup->panelMenuTextsForTest();
-                m41Column->showPanel(QStringLiteral("channelsPanel"), true);
+                const QStringList wmLayerTexts =
+                    wmLayerGroup->panelMenuTextsForTest();
+                panelColumnColumn->showPanel(QStringLiteral("channelsPanel"), true);
                 QCoreApplication::processEvents();
-                const QStringList m42WmChannelTexts =
-                    m42WmLayerGroup->panelMenuTextsForTest();
-                const bool m42WmFollows =
-                    m42WmLayerGroup->headerMenuButtonForTest()
-                    && m42WmLayerGroup->headerMenuButtonForTest()->objectName()
+                const QStringList wmChannelTexts =
+                    wmLayerGroup->panelMenuTextsForTest();
+                const bool wmFollows =
+                    wmLayerGroup->headerMenuButtonForTest()
+                    && wmLayerGroup->headerMenuButtonForTest()->objectName()
                            == QStringLiteral("panelWidgetMenu_channelsPanel");
-                const QStringList m42WmColorTexts =
-                    m41Column->widgetMenuTextsForTest(QStringLiteral("colorPanel"));
-                const bool m42WmFirstsDiffer = !m42WmLayerTexts.isEmpty()
-                                               && !m42WmChannelTexts.isEmpty()
-                                               && !m42WmColorTexts.isEmpty()
-                                               && m42WmLayerTexts.first()
-                                                      != m42WmChannelTexts.first()
-                                               && m42WmLayerTexts.first()
-                                                      != m42WmColorTexts.first();
-                m41Column->showPanel(QStringLiteral("layersPanel"), true);
+                const QStringList wmColorTexts =
+                    panelColumnColumn->widgetMenuTextsForTest(QStringLiteral("colorPanel"));
+                const bool wmFirstsDiffer = !wmLayerTexts.isEmpty()
+                                               && !wmChannelTexts.isEmpty()
+                                               && !wmColorTexts.isEmpty()
+                                               && wmLayerTexts.first()
+                                                      != wmChannelTexts.first()
+                                               && wmLayerTexts.first()
+                                                      != wmColorTexts.first();
+                panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
                 QCoreApplication::processEvents();
-                const bool m42WmOptions =
-                    m42WmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Panel Options…"));
-                m42WmPerPanel = m42WmFollows && m42WmFirstsDiffer && m42WmOptions;
+                const bool wmOptions =
+                    wmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Panel Options…"));
+                wmPerPanel = wmFollows && wmFirstsDiffer && wmOptions;
 
-                const bool m42WmCopyDisabled =
-                    !m42WmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Copy CSS"));
-                const bool m42WmBlendDisabled = !m42WmLayerGroup->panelMenuEnabledForTest(
+                const bool wmCopyDisabled =
+                    !wmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Copy CSS"));
+                const bool wmBlendDisabled = !wmLayerGroup->panelMenuEnabledForTest(
                     QStringLiteral("Blending Options…"));
-                const bool m42WmTriggerBlocked = !m41Column->triggerWidgetMenuForTest(
+                const bool wmTriggerBlocked = !panelColumnColumn->triggerWidgetMenuForTest(
                     QStringLiteral("layersPanel"), QStringLiteral("Copy CSS"));
-                m42WmDisabled =
-                    m42WmCopyDisabled && m42WmBlendDisabled && m42WmTriggerBlocked
-                    && m42WmLayerGroup->panelMenuToolTipForTest(QStringLiteral("Copy CSS"))
+                wmDisabled =
+                    wmCopyDisabled && wmBlendDisabled && wmTriggerBlocked
+                    && wmLayerGroup->panelMenuToolTipForTest(QStringLiteral("Copy CSS"))
                            == QStringLiteral("Copy CSS — not implemented yet");
             }
-            m42WmNoClose = m41Column->widgetMenuHasCloseForTest(QStringLiteral("layersPanel"))
-                           && m41Column->widgetMenuHasCloseForTest(
+            wmNoClose = panelColumnColumn->widgetMenuHasCloseForTest(QStringLiteral("layersPanel"))
+                           && panelColumnColumn->widgetMenuHasCloseForTest(
                                QStringLiteral("channelsPanel"))
-                           && m41Column->widgetMenuHasCloseForTest(
+                           && panelColumnColumn->widgetMenuHasCloseForTest(
                                QStringLiteral("colorPanel"))
-                           && m41Column->widgetMenuHasCloseForTest(
+                           && panelColumnColumn->widgetMenuHasCloseForTest(
                                QStringLiteral("historyPanel"));
         }
-        const bool m42WmOk = m42WmButton && m42WmPerPanel && m42WmDisabled && m42WmNoClose;
-        ST_BEGIN("m42_widgetmenu_button");
-        ST_PASS("m42_widgetmenu button=%d perpanel=%d disabled=%d "
-                     "noclose=%d", m42WmButton ? 1 : 0,
-                     m42WmPerPanel ? 1 : 0,
-                     m42WmDisabled ? 1 : 0,
-                     m42WmNoClose ? 1 : 0);
-        if (!m42WmOk) {
-            ST_FAIL(135, "M42 per-widget menu");
+        const bool wmOk = wmButton && wmPerPanel && wmDisabled && wmNoClose;
+        ST_BEGIN("widgetmenu_button");
+        ST_PASS("widgetmenu button=%d perpanel=%d disabled=%d "
+                     "noclose=%d", wmButton ? 1 : 0,
+                     wmPerPanel ? 1 : 0,
+                     wmDisabled ? 1 : 0,
+                     wmNoClose ? 1 : 0);
+        if (!wmOk) {
+            ST_FAIL(135, "per-widget menu");
         }
 
         // m42_float_overlay (136): a torn-off group is an in-window child
         // overlay (never a top-level window), a move toward or past the main
         // window edge is clamped inside the central area, and the group
         // re-docks and the overlay disappears.
-        bool m42FloatChild = false;
-        bool m42FloatClamped = false;
-        bool m42FloatMove = false;
-        bool m42FloatRedock = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
+        bool floatChild = false;
+        bool floatClamped = false;
+        bool floatMove = false;
+        bool floatRedock = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
             QCoreApplication::processEvents();
-            pictura::PanelGroup* m42FloatGroup =
-                m41Column->groupForPanel(QStringLiteral("colorPanel"));
-            if (!m42FloatGroup) {
-                m42FloatGroup = m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            pictura::PanelGroup* floatGroup =
+                panelColumnColumn->groupForPanel(QStringLiteral("colorPanel"));
+            if (!floatGroup) {
+                floatGroup = panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
             }
-            if (!m42FloatGroup && !m41Column->groups().isEmpty()) {
-                m42FloatGroup = m41Column->groups().first();
+            if (!floatGroup && !panelColumnColumn->groups().isEmpty()) {
+                floatGroup = panelColumnColumn->groups().first();
             }
-            QString m42FloatPanel;
-            if (m42FloatGroup) {
-                for (QWidget* panel : m42FloatGroup->panels()) {
+            QString floatPanel;
+            if (floatGroup) {
+                for (QWidget* panel : floatGroup->panels()) {
                     if (panel) {
-                        m42FloatPanel = panel->objectName();
+                        floatPanel = panel->objectName();
                         break;
                     }
                 }
             }
-            if (!m42FloatPanel.isEmpty()) {
-                const bool m42FloatTore = m41Column->tearOffForTest(m42FloatPanel);
+            if (!floatPanel.isEmpty()) {
+                const bool floatTore = panelColumnColumn->tearOffForTest(floatPanel);
                 for (int i = 0; i < 20; ++i) {
                     QCoreApplication::processEvents();
                 }
-                m42FloatChild = m42FloatTore && m41Column->floatCountForTest() == 1
-                                && !m41Column->floatIsWindowForTest(0)
-                                && !m41Column->groupForPanel(m42FloatPanel);
-                if (m42FloatChild) {
-                    const QRect m42FloatHost = m41Column->floatHostRectForTest();
-                    const QRect m42FloatBefore = m41Column->floatGeometryForTest(0);
-                    const bool m42FloatPastBr = m41Column->floatClampedForTest(
-                        0, m42FloatHost.bottomRight() + QPoint(400, 400));
-                    const QRect m42FloatAfterBr = m41Column->floatGeometryForTest(0);
-                    const bool m42FloatPastTl = m41Column->floatClampedForTest(
-                        0, m42FloatHost.topLeft() - QPoint(400, 400));
-                    const QRect m42FloatAfterTl = m41Column->floatGeometryForTest(0);
-                    m42FloatClamped = m42FloatPastBr && m42FloatPastTl;
-                    m42FloatMove = m42FloatAfterBr.topLeft() != m42FloatBefore.topLeft()
-                                   && m42FloatAfterTl.topLeft() != m42FloatAfterBr.topLeft();
-                    if (m42FloatClamped) {
-                        const bool m42FloatRedocked = m41Column->redockForTest(0, 1);
+                floatChild = floatTore && panelColumnColumn->floatCountForTest() == 1
+                                && !panelColumnColumn->floatIsWindowForTest(0)
+                                && !panelColumnColumn->groupForPanel(floatPanel);
+                if (floatChild) {
+                    const QRect floatHost = panelColumnColumn->floatHostRectForTest();
+                    const QRect floatBefore = panelColumnColumn->floatGeometryForTest(0);
+                    const bool floatPastBr = panelColumnColumn->floatClampedForTest(
+                        0, floatHost.bottomRight() + QPoint(400, 400));
+                    const QRect floatAfterBr = panelColumnColumn->floatGeometryForTest(0);
+                    const bool floatPastTl = panelColumnColumn->floatClampedForTest(
+                        0, floatHost.topLeft() - QPoint(400, 400));
+                    const QRect floatAfterTl = panelColumnColumn->floatGeometryForTest(0);
+                    floatClamped = floatPastBr && floatPastTl;
+                    floatMove = floatAfterBr.topLeft() != floatBefore.topLeft()
+                                   && floatAfterTl.topLeft() != floatAfterBr.topLeft();
+                    if (floatClamped) {
+                        const bool floatRedocked = panelColumnColumn->redockForTest(0, 1);
                         for (int i = 0; i < 20; ++i) {
                             QCoreApplication::processEvents();
                         }
-                        m42FloatRedock = m42FloatRedocked
-                                         && m41Column->floatCountForTest() == 0
-                                         && m41Column->groupForPanel(m42FloatPanel);
+                        floatRedock = floatRedocked
+                                         && panelColumnColumn->floatCountForTest() == 0
+                                         && panelColumnColumn->groupForPanel(floatPanel);
                     }
                 }
             }
         }
-        const bool m42FloatOk =
-            m42FloatChild && m42FloatClamped && m42FloatMove && m42FloatRedock;
-        ST_BEGIN("m42_float_overlay_child");
-        ST_PASS("m42_float_overlay child=%d clipped=%d move=%d "
-                     "redock=%d", m42FloatChild ? 1 : 0,
-                     m42FloatClamped ? 1 : 0,
-                     m42FloatMove ? 1 : 0,
-                     m42FloatRedock ? 1 : 0);
-        if (!m42FloatOk) {
-            ST_FAIL(136, "M42 in-window float overlay");
+        const bool floatOk =
+            floatChild && floatClamped && floatMove && floatRedock;
+        ST_BEGIN("float_overlay_child");
+        ST_PASS("float_overlay child=%d clipped=%d move=%d "
+                     "redock=%d", floatChild ? 1 : 0,
+                     floatClamped ? 1 : 0,
+                     floatMove ? 1 : 0,
+                     floatRedock ? 1 : 0);
+        if (!floatOk) {
+            ST_FAIL(136, "in-window float overlay");
         }
         // M43 Phase A: tab-vs-group drag + one-panel float (140), panel tab
         // colours (141), corner button at minimum width (142), one-panel float
         // re-dock (146), Tools fixed width (147), compact icon size (148),
         // strict inner-side flyout (149), and the `D` default-colours reset
         // (150). Exit codes 140-150.
-        auto m43Pump = [](int n) {
+        auto multicolumnPump = [](int n) {
             for (int i = 0; i < n; ++i) {
                 QCoreApplication::processEvents();
             }
         };
-        auto m43DropPanelOnGroup = [&](const QString& panel, const QString& targetPanel) {
-            if (!m41Column) {
+        auto dropPanelOnGroup = [&](const QString& panel, const QString& targetPanel) {
+            if (!panelColumnColumn) {
                 return false;
             }
-            pictura::PanelGroup* dest = m41Column->groupForPanel(targetPanel);
+            pictura::PanelGroup* dest = panelColumnColumn->groupForPanel(targetPanel);
             if (!dest) {
                 return false;
             }
-            m41Column->ensureGroupVisibleForTest(targetPanel);
-            m43Pump(4);
-            if (!m41Column->beginTabDragForTest(panel)) {
+            panelColumnColumn->ensureGroupVisibleForTest(targetPanel);
+            multicolumnPump(4);
+            if (!panelColumnColumn->beginTabDragForTest(panel)) {
                 return false;
             }
             const QPoint target = dest->tabInsertionGlobalPointForTest(0);
-            m41Column->dragToForTest(target);
-            const bool dropped = m41Column->dropForTest(target);
-            m43Pump(4);
+            panelColumnColumn->dragToForTest(target);
+            const bool dropped = panelColumnColumn->dropForTest(target);
+            multicolumnPump(4);
             return dropped;
         };
 
         // m43_tabdrag (140): a tab drag that leaves the column floats only that
         // panel; an empty-header drag floats the whole group; and a tab drag out
         // of a float moves only that panel, leaving the rest in the old float.
-        bool m43TabPanel = false;
-        bool m43GroupPanel = false;
-        bool m43FloatPanel = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
-            m41Column->setMinimumWidth(360);
-            m41Column->setPreferredWidth(360);
-            m43Pump(6);
+        bool tabPanel = false;
+        bool groupPanel = false;
+        bool multicolumnFloatPanel = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
+            panelColumnColumn->setMinimumWidth(360);
+            panelColumnColumn->setPreferredWidth(360);
+            multicolumnPump(6);
 
             pictura::PanelGroup* layersGroup =
-                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
             if (layersGroup && layersGroup->titleCountForTest() >= 3) {
                 const int layersBefore = layersGroup->titleCountForTest();
-                const int before = m41Column->floatCountForTest();
+                const int before = panelColumnColumn->floatCountForTest();
                 const bool tore =
-                    m41Column->tearOffPanelForTest(QStringLiteral("channelsPanel"));
-                m43Pump(4);
+                    panelColumnColumn->tearOffPanelForTest(QStringLiteral("channelsPanel"));
+                multicolumnPump(4);
                 const QStringList names =
-                    m41Column->floatPanelNamesForTest(m41Column->floatCountForTest() - 1);
-                m43TabPanel = tore && m41Column->floatCountForTest() == before + 1
+                    panelColumnColumn->floatPanelNamesForTest(panelColumnColumn->floatCountForTest() - 1);
+                tabPanel = tore && panelColumnColumn->floatCountForTest() == before + 1
                               && names.size() == 1
                               && names.first() == QStringLiteral("channelsPanel")
                               && layersGroup->titleCountForTest() == layersBefore - 1
                               && layersGroup->containsPanel(QStringLiteral("layersPanel"))
                               && !layersGroup->containsPanel(QStringLiteral("channelsPanel"));
-                if (m43TabPanel) {
-                    m43DropPanelOnGroup(QStringLiteral("channelsPanel"),
+                if (tabPanel) {
+                    dropPanelOnGroup(QStringLiteral("channelsPanel"),
                                         QStringLiteral("layersPanel"));
                 }
             }
 
             QStringList layersPanels;
             pictura::PanelGroup* groupFloatGroup =
-                m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
             if (groupFloatGroup) {
                 for (QWidget* panel : groupFloatGroup->panels()) {
                     if (panel) {
@@ -4227,57 +4227,57 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
             }
-            const int beforeGroup = m41Column->floatCountForTest();
+            const int beforeGroup = panelColumnColumn->floatCountForTest();
             const bool groupTore = !layersPanels.isEmpty() && layersPanels.size() >= 2
-                                   && m41Column->tearOffForTest(QStringLiteral("layersPanel"));
-            m43Pump(4);
+                                   && panelColumnColumn->tearOffForTest(QStringLiteral("layersPanel"));
+            multicolumnPump(4);
             const QStringList groupNames =
-                m41Column->floatPanelNamesForTest(m41Column->floatCountForTest() - 1);
-            m43GroupPanel = groupTore && m41Column->floatCountForTest() == beforeGroup + 1
+                panelColumnColumn->floatPanelNamesForTest(panelColumnColumn->floatCountForTest() - 1);
+            groupPanel = groupTore && panelColumnColumn->floatCountForTest() == beforeGroup + 1
                             && groupNames == layersPanels
-                            && !m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                            && !panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
 
-            if (m43GroupPanel) {
-                const int beforeFloat = m41Column->floatCountForTest();
-                const bool tore = m41Column->beginTabDragForTest(QStringLiteral("channelsPanel"));
+            if (groupPanel) {
+                const int beforeFloat = panelColumnColumn->floatCountForTest();
+                const bool tore = panelColumnColumn->beginTabDragForTest(QStringLiteral("channelsPanel"));
                 const QPoint outside =
-                    m41Column->mapToGlobal(QPoint(-40, m41Column->height() / 2));
-                m41Column->dragToForTest(outside);
-                m41Column->dropForTest(outside);
-                m43Pump(4);
-                const int after = m41Column->floatCountForTest();
-                const QStringList newest = m41Column->floatPanelNamesForTest(after - 1);
-                const QStringList original = m41Column->floatPanelNamesForTest(beforeFloat - 1);
-                m43FloatPanel = tore && after == beforeFloat + 1 && newest.size() == 1
+                    panelColumnColumn->mapToGlobal(QPoint(-40, panelColumnColumn->height() / 2));
+                panelColumnColumn->dragToForTest(outside);
+                panelColumnColumn->dropForTest(outside);
+                multicolumnPump(4);
+                const int after = panelColumnColumn->floatCountForTest();
+                const QStringList newest = panelColumnColumn->floatPanelNamesForTest(after - 1);
+                const QStringList original = panelColumnColumn->floatPanelNamesForTest(beforeFloat - 1);
+                multicolumnFloatPanel = tore && after == beforeFloat + 1 && newest.size() == 1
                                 && newest.first() == QStringLiteral("channelsPanel")
                                 && original.size() == layersPanels.size() - 1
                                 && !original.contains(QStringLiteral("channelsPanel"));
             }
 
             // Clean up so later checks see a docked column.
-            for (int i = 0; i < 8 && m41Column->floatCountForTest() > 0; ++i) {
-                if (!m41Column->redockForTest(0, 0)) {
+            for (int i = 0; i < 8 && panelColumnColumn->floatCountForTest() > 0; ++i) {
+                if (!panelColumnColumn->redockForTest(0, 0)) {
                     break;
                 }
-                m43Pump(4);
+                multicolumnPump(4);
             }
         }
-        const bool m43TabDragOk = m43TabPanel && m43GroupPanel && m43FloatPanel;
-        ST_BEGIN("m43_tabdrag_tab");
-        ST_PASS("m43_tabdrag tab=%d group=%d floatpanel=%d", m43TabPanel ? 1 : 0,
-                     m43GroupPanel ? 1 : 0,
-                     m43FloatPanel ? 1 : 0);
-        if (!m43TabDragOk) {
-            ST_FAIL(140, "M43 tab vs group drag");
+        const bool tabDragOk = tabPanel && groupPanel && multicolumnFloatPanel;
+        ST_BEGIN("tabdrag_tab");
+        ST_PASS("tabdrag tab=%d group=%d floatpanel=%d", tabPanel ? 1 : 0,
+                     groupPanel ? 1 : 0,
+                     multicolumnFloatPanel ? 1 : 0);
+        if (!tabDragOk) {
+            ST_FAIL(140, "tab vs group drag");
         }
 
         // m43_tabcolors (141): the panel tab bar is named `panelTabBar`; its
         // selected tab uses the widget surface `${window}` colour and its
         // inactive tab uses the darker `${base}` (which differs); the document
         // tab bar is not the scoped one, so it keeps the unscoped rules.
-        bool m43ColorsActive = false;
-        bool m43ColorsInactive = false;
-        bool m43ColorsDiffer = false;
+        bool colorsActive = false;
+        bool colorsInactive = false;
+        bool colorsDiffer = false;
         {
             const QString ss = qApp->styleSheet();
             const QColor base = qApp->palette().color(QPalette::Base);
@@ -4292,383 +4292,383 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool docUnscoped =
                 docBar && docBar->objectName() != QStringLiteral("panelTabBar");
             pictura::PanelGroup* anyGroup =
-                m41Column && !m41Column->groups().isEmpty() ? m41Column->groups().first() : nullptr;
+                panelColumnColumn && !panelColumnColumn->groups().isEmpty() ? panelColumnColumn->groups().first() : nullptr;
             const bool panelNamed =
                 anyGroup && anyGroup->tabBar()
                 && anyGroup->tabBar()->objectName() == QStringLiteral("panelTabBar");
-            m43ColorsActive = ss.contains(activeRule);
-            m43ColorsInactive = ss.contains(inactiveRule);
-            m43ColorsDiffer = m43ColorsActive && m43ColorsInactive && baseHex != windowHex
+            colorsActive = ss.contains(activeRule);
+            colorsInactive = ss.contains(inactiveRule);
+            colorsDiffer = colorsActive && colorsInactive && baseHex != windowHex
                               && docUnscoped && panelNamed;
         }
-        const bool m43TabColorsOk = m43ColorsActive && m43ColorsInactive && m43ColorsDiffer;
-        ST_BEGIN("m43_tabcolors_active");
-        ST_PASS("m43_tabcolors active=%d inactive=%d differ=%d", m43ColorsActive ? 1 : 0,
-                     m43ColorsInactive ? 1 : 0,
-                     m43ColorsDiffer ? 1 : 0);
-        if (!m43TabColorsOk) {
-            ST_FAIL(141, "M43 panel tab colours");
+        const bool tabColorsOk = colorsActive && colorsInactive && colorsDiffer;
+        ST_BEGIN("tabcolors_active");
+        ST_PASS("tabcolors active=%d inactive=%d differ=%d", colorsActive ? 1 : 0,
+                     colorsInactive ? 1 : 0,
+                     colorsDiffer ? 1 : 0);
+        if (!tabColorsOk) {
+            ST_FAIL(141, "panel tab colours");
         }
 
         // m43_corner (142): at the column minimum width the `▾` corner button is
         // fully inside the header row and the tab bar elides instead of forcing
         // width.
-        bool m43CornerVisible = false;
-        bool m43CornerElide = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
-            m41Column->showPanel(QStringLiteral("layersPanel"), true);
+        bool cornerVisible = false;
+        bool cornerElide = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
+            panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
             // Toggle through iconic mode so `updateMinimumWidth` recomputes the
             // content-derived normal minimum (clearing any test-set width).
-            m41Column->setRailMode(true);
-            m43Pump(2);
-            m41Column->setRailMode(false);
-            m43Pump(4);
-            pictura::PanelGroup* lg = m41Column->groupForPanel(QStringLiteral("layersPanel"));
+            panelColumnColumn->setRailMode(true);
+            multicolumnPump(2);
+            panelColumnColumn->setRailMode(false);
+            multicolumnPump(4);
+            pictura::PanelGroup* lg = panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
             if (lg) {
-                m41Column->setPreferredWidth(m41Column->minimumWidthForTest());
-                m43Pump(6);
+                panelColumnColumn->setPreferredWidth(panelColumnColumn->minimumWidthForTest());
+                multicolumnPump(6);
                 QToolButton* corner = lg->headerMenuButtonForTest();
                 QTabBar* bar = lg->tabBar();
-                m43CornerElide = bar && bar->elideMode() == Qt::ElideRight && !bar->expanding();
-                m43CornerVisible = corner && corner->isVisible()
+                cornerElide = bar && bar->elideMode() == Qt::ElideRight && !bar->expanding();
+                cornerVisible = corner && corner->isVisible()
                                    && lg->headerMenuAtRightForTest()
                                    && corner->mapToGlobal(QPoint(0, 0)).x()
                                           >= lg->mapToGlobal(QPoint(0, 0)).x();
             }
         }
-        const bool m43CornerOk = m43CornerVisible && m43CornerElide;
-        ST_BEGIN("m43_corner_visible");
-        ST_PASS("m43_corner visible=%d elide=%d", m43CornerVisible ? 1 : 0,
-                     m43CornerElide ? 1 : 0);
-        if (!m43CornerOk) {
-            ST_FAIL(142, "M43 corner button");
+        const bool cornerOk = cornerVisible && cornerElide;
+        ST_BEGIN("corner_visible");
+        ST_PASS("corner visible=%d elide=%d", cornerVisible ? 1 : 0,
+                     cornerElide ? 1 : 0);
+        if (!cornerOk) {
+            ST_FAIL(142, "corner button");
         }
 
         // m43_newcolumn (143): a panel dropped at the left or right workspace
         // edge, or beside the Tools dock, allocates a new PanelColumn on that
         // side; moving the panel back into the primary column empties and
         // removes the new column. All drops run the real resolve/commit path.
-        bool m43NewLeft = false;
-        bool m43NewRight = false;
-        bool m43NewTools = false;
-        bool m43NewRemoved = false;
+        bool newLeft = false;
+        bool newRight = false;
+        bool newTools = false;
+        bool newRemoved = false;
         {
-            const QString m43NewPanel = QStringLiteral("stylesPanel");
-            auto m43TrySide = [&](const QString& side, bool& flag) {
+            const QString newPanel = QStringLiteral("stylesPanel");
+            auto trySide = [&](const QString& side, bool& flag) {
                 const int before = frame.panelColumnCountForTest();
-                const bool created = frame.newColumnDropForTest(m43NewPanel, side);
-                pictura::PanelColumn* destination = frame.columnForPanel(m43NewPanel);
+                const bool created = frame.newColumnDropForTest(newPanel, side);
+                pictura::PanelColumn* destination = frame.columnForPanel(newPanel);
                 const bool placed = created && destination && destination != frame.panelColumn()
                                     && frame.panelColumnCountForTest() == before + 1;
-                const bool back = frame.dropIntoGroupForTest(m43NewPanel,
+                const bool back = frame.dropIntoGroupForTest(newPanel,
                                                              QStringLiteral("colorPanel"), -1);
                 const bool removed = back && frame.panelColumnCountForTest() == before;
                 flag = placed && removed;
-                m43NewRemoved = m43NewRemoved || removed;
+                newRemoved = newRemoved || removed;
             };
-            m43TrySide(QStringLiteral("left"), m43NewLeft);
-            m43TrySide(QStringLiteral("right"), m43NewRight);
-            m43TrySide(QStringLiteral("tools"), m43NewTools);
+            trySide(QStringLiteral("left"), newLeft);
+            trySide(QStringLiteral("right"), newRight);
+            trySide(QStringLiteral("tools"), newTools);
         }
-        const bool m43NewColumnOk = m43NewLeft && m43NewRight && m43NewTools && m43NewRemoved;
-        ST_BEGIN("m43_newcolumn_left");
-        ST_PASS("m43_newcolumn left=%d right=%d tools=%d removed=%d", m43NewLeft ? 1 : 0,
-                     m43NewRight ? 1 : 0,
-                     m43NewTools ? 1 : 0,
-                     m43NewRemoved ? 1 : 0);
-        if (!m43NewColumnOk) {
-            ST_FAIL(143, "M43 new column drop");
+        const bool newColumnOk = newLeft && newRight && newTools && newRemoved;
+        ST_BEGIN("newcolumn_left");
+        ST_PASS("newcolumn left=%d right=%d tools=%d removed=%d", newLeft ? 1 : 0,
+                     newRight ? 1 : 0,
+                     newTools ? 1 : 0,
+                     newRemoved ? 1 : 0);
+        if (!newColumnOk) {
+            ST_FAIL(143, "new column drop");
         }
 
         // m43_intogroup (144): dropping a panel inside another group inserts it
         // as a tab at the requested index, in normal mode and in compact mode.
-        bool m43IntoNormal = false;
-        bool m43IntoCompact = false;
-        bool m43IntoIndex = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
-            m43Pump(4);
+        bool intoNormal = false;
+        bool intoCompact = false;
+        bool intoIndex = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
+            multicolumnPump(4);
             // A target group whose second panel is stable at runtime (earlier
             // checks reorder the groups), never the panel's own group.
-            QString m43IntoTarget;
-            for (pictura::PanelGroup* group : m41Column->groups()) {
+            QString intoTarget;
+            for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                 if (group && group->panels().size() >= 2
                     && !group->containsPanel(QStringLiteral("swatchesPanel"))) {
-                    m43IntoTarget = group->panels().at(1)->objectName();
+                    intoTarget = group->panels().at(1)->objectName();
                     break;
                 }
             }
-            if (!m43IntoTarget.isEmpty()) {
+            if (!intoTarget.isEmpty()) {
                 const bool moved = frame.dropIntoGroupForTest(
-                    QStringLiteral("swatchesPanel"), m43IntoTarget, 1);
-                pictura::PanelGroup* dest = m41Column->groupForPanel(m43IntoTarget);
+                    QStringLiteral("swatchesPanel"), intoTarget, 1);
+                pictura::PanelGroup* dest = panelColumnColumn->groupForPanel(intoTarget);
                 const bool atIndex =
                     dest && dest->indexOfPanel(QStringLiteral("swatchesPanel")) == 1;
-                m43IntoNormal = moved && atIndex;
-                m43IntoIndex = atIndex;
+                intoNormal = moved && atIndex;
+                intoIndex = atIndex;
                 frame.dropIntoGroupForTest(QStringLiteral("swatchesPanel"),
                                            QStringLiteral("colorPanel"), 1);
 
-                m41Column->setRailMode(true);
-                m43Pump(6);
+                panelColumnColumn->setRailMode(true);
+                multicolumnPump(6);
                 const bool movedCompact = frame.dropIntoGroupForTest(
-                    QStringLiteral("swatchesPanel"), m43IntoTarget);
+                    QStringLiteral("swatchesPanel"), intoTarget);
                 pictura::PanelGroup* destCompact =
-                    m41Column->groupForPanel(m43IntoTarget);
+                    panelColumnColumn->groupForPanel(intoTarget);
                 const bool atIndexCompact =
                     destCompact
                     && destCompact->indexOfPanel(QStringLiteral("swatchesPanel")) == 1;
-                m43IntoCompact = movedCompact && atIndexCompact;
-                m43IntoIndex = m43IntoIndex && atIndexCompact;
-                m41Column->setRailMode(false);
-                m43Pump(4);
+                intoCompact = movedCompact && atIndexCompact;
+                intoIndex = intoIndex && atIndexCompact;
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(4);
                 frame.dropIntoGroupForTest(QStringLiteral("swatchesPanel"),
                                            QStringLiteral("colorPanel"), 1);
-                m43Pump(4);
+                multicolumnPump(4);
             }
         }
-        const bool m43IntoGroupOk = m43IntoNormal && m43IntoCompact && m43IntoIndex;
-        ST_BEGIN("m43_intogroup_normal");
-        ST_PASS("m43_intogroup normal=%d compact=%d index=%d", m43IntoNormal ? 1 : 0,
-                     m43IntoCompact ? 1 : 0,
-                     m43IntoIndex ? 1 : 0);
-        if (!m43IntoGroupOk) {
-            ST_FAIL(144, "M43 into-group drop");
+        const bool intoGroupOk = intoNormal && intoCompact && intoIndex;
+        ST_BEGIN("intogroup_normal");
+        ST_PASS("intogroup normal=%d compact=%d index=%d", intoNormal ? 1 : 0,
+                     intoCompact ? 1 : 0,
+                     intoIndex ? 1 : 0);
+        if (!intoGroupOk) {
+            ST_FAIL(144, "into-group drop");
         }
 
         // m43_boundary (145): dropping a panel above or below a group inserts a
         // fresh one-panel group at that boundary, in normal mode and compact.
-        bool m43Above = false;
-        bool m43Below = false;
-        bool m43BoundaryCompact = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
-            m43Pump(4);
+        bool multicolumnAbove = false;
+        bool multicolumnBelow = false;
+        bool boundaryCompact = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
+            multicolumnPump(4);
             {
-                m43Above = frame.dropBoundaryForTest(
+                multicolumnAbove = frame.dropBoundaryForTest(
                     QStringLiteral("channelsPanel"), QStringLiteral("navigatorPanel"), true);
                 frame.dropIntoGroupForTest(QStringLiteral("channelsPanel"),
                                            QStringLiteral("layersPanel"), -1);
             }
             {
-                m43Below = frame.dropBoundaryForTest(
+                multicolumnBelow = frame.dropBoundaryForTest(
                     QStringLiteral("pathsPanel"), QStringLiteral("layersPanel"), false);
                 frame.dropIntoGroupForTest(QStringLiteral("pathsPanel"),
                                            QStringLiteral("layersPanel"), -1);
             }
-            m41Column->setRailMode(true);
-            m43Pump(6);
-            m43BoundaryCompact = frame.dropBoundaryForTest(
+            panelColumnColumn->setRailMode(true);
+            multicolumnPump(6);
+            boundaryCompact = frame.dropBoundaryForTest(
                 QStringLiteral("channelsPanel"), QStringLiteral("adjustmentsPanel"), true);
-            m41Column->setRailMode(false);
-            m43Pump(4);
+            panelColumnColumn->setRailMode(false);
+            multicolumnPump(4);
             frame.dropIntoGroupForTest(QStringLiteral("channelsPanel"),
                                        QStringLiteral("layersPanel"), -1);
-            m43Pump(4);
+            multicolumnPump(4);
         }
-        const bool m43BoundaryOk = m43Above && m43Below && m43BoundaryCompact;
-        ST_BEGIN("m43_boundary_above");
-        ST_PASS("m43_boundary above=%d below=%d compact=%d", m43Above ? 1 : 0,
-                     m43Below ? 1 : 0,
-                     m43BoundaryCompact ? 1 : 0);
-        if (!m43BoundaryOk) {
-            ST_FAIL(145, "M43 boundary drop");
+        const bool boundaryOk = multicolumnAbove && multicolumnBelow && boundaryCompact;
+        ST_BEGIN("boundary_above");
+        ST_PASS("boundary above=%d below=%d compact=%d", multicolumnAbove ? 1 : 0,
+                     multicolumnBelow ? 1 : 0,
+                     boundaryCompact ? 1 : 0);
+        if (!boundaryOk) {
+            ST_FAIL(145, "boundary drop");
         }
 
         // m43_singlefloat (146): a one-panel float carries only its panel, and
         // re-docking it restores the full group with the other panels.
-        bool m43SinglePanel = false;
-        bool m43SingleRedock = false;
-        if (m41Column) {
-            m41Column->setRailMode(false);
-            m41Column->setMinimumWidth(360);
-            m41Column->setPreferredWidth(360);
-            m43Pump(6);
+        bool singlePanel = false;
+        bool singleRedock = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(false);
+            panelColumnColumn->setMinimumWidth(360);
+            panelColumnColumn->setPreferredWidth(360);
+            multicolumnPump(6);
             pictura::PanelGroup* navGroup =
-                m41Column->groupForPanel(QStringLiteral("navigatorPanel"));
+                panelColumnColumn->groupForPanel(QStringLiteral("navigatorPanel"));
             const int navCount = navGroup ? navGroup->titleCountForTest() : 0;
-            const int before = m41Column->floatCountForTest();
+            const int before = panelColumnColumn->floatCountForTest();
             const bool tore =
-                m41Column->tearOffPanelForTest(QStringLiteral("infoPanel"));
-            m43Pump(4);
+                panelColumnColumn->tearOffPanelForTest(QStringLiteral("infoPanel"));
+            multicolumnPump(4);
             const QStringList names =
-                m41Column->floatPanelNamesForTest(m41Column->floatCountForTest() - 1);
-            m43SinglePanel = tore && navCount >= 2 && navGroup
+                panelColumnColumn->floatPanelNamesForTest(panelColumnColumn->floatCountForTest() - 1);
+            singlePanel = tore && navCount >= 2 && navGroup
                              && names.size() == 1
                              && names.first() == QStringLiteral("infoPanel")
                              && navGroup->containsPanel(QStringLiteral("navigatorPanel"))
                              && !navGroup->containsPanel(QStringLiteral("infoPanel"));
-            if (m43SinglePanel) {
-                m43DropPanelOnGroup(QStringLiteral("infoPanel"),
+            if (singlePanel) {
+                dropPanelOnGroup(QStringLiteral("infoPanel"),
                                     QStringLiteral("navigatorPanel"));
                 pictura::PanelGroup* restored =
-                    m41Column->groupForPanel(QStringLiteral("infoPanel"));
-                m43SingleRedock = restored == navGroup
-                                  && m41Column->floatCountForTest() == before
+                    panelColumnColumn->groupForPanel(QStringLiteral("infoPanel"));
+                singleRedock = restored == navGroup
+                                  && panelColumnColumn->floatCountForTest() == before
                                   && navGroup->titleCountForTest() == navCount;
             }
             // Safety cleanup.
-            for (int i = 0; i < 8 && m41Column->floatCountForTest() > 0; ++i) {
-                if (!m41Column->redockForTest(0, 0)) {
+            for (int i = 0; i < 8 && panelColumnColumn->floatCountForTest() > 0; ++i) {
+                if (!panelColumnColumn->redockForTest(0, 0)) {
                     break;
                 }
-                m43Pump(4);
+                multicolumnPump(4);
             }
         }
-        const bool m43SingleFloatOk = m43SinglePanel && m43SingleRedock;
-        ST_BEGIN("m43_singlefloat_panel");
-        ST_PASS("m43_singlefloat panel=%d redock=%d", m43SinglePanel ? 1 : 0,
-                     m43SingleRedock ? 1 : 0);
-        if (!m43SingleFloatOk) {
-            ST_FAIL(146, "M43 single-panel float");
+        const bool singleFloatOk = singlePanel && singleRedock;
+        ST_BEGIN("singlefloat_panel");
+        ST_PASS("singlefloat panel=%d redock=%d", singlePanel ? 1 : 0,
+                     singleRedock ? 1 : 0);
+        if (!singleFloatOk) {
+            ST_FAIL(146, "single-panel float");
         }
 
         // m43_tools (147): the Tools dock width is fixed to its content width in
         // one and two columns and while floating, and a resize/separator attempt
         // cannot change it.
-        bool m43ToolMin1 = false;
-        bool m43ToolMin2 = false;
-        bool m43ToolFloat = false;
-        bool m43ToolLocked = false;
-        int m43ToolsContent1 = 0;
-        int m43ToolsContent2 = 0;
-        if (m42Toolbox) {
-            m42Toolbox->setColumns(1);
-            m43Pump(4);
-            m43ToolsContent1 = m42Toolbox->contentWidthForTest();
-            m43ToolMin1 = m42Toolbox->minimumWidth() == m43ToolsContent1
-                          && m42Toolbox->maximumWidth() == m43ToolsContent1
-                          && m42Toolbox->width() == m43ToolsContent1;
-            m42Toolbox->setColumns(2);
-            m43Pump(4);
-            m43ToolsContent2 = m42Toolbox->contentWidthForTest();
-            m43ToolMin2 = m42Toolbox->minimumWidth() == m43ToolsContent2
-                          && m42Toolbox->maximumWidth() == m43ToolsContent2
-                          && m42Toolbox->width() == m43ToolsContent2
-                          && m43ToolsContent2 > m43ToolsContent1;
-            m42Toolbox->resize(m43ToolsContent2 + 60, m42Toolbox->height());
-            m43Pump(4);
-            m43ToolLocked = m42Toolbox->width() == m43ToolsContent2;
-            if (!m42Toolbox->isFloating()) {
-                m42Toolbox->setFloating(true);
-                m43Pump(4);
-                m43ToolFloat = m42Toolbox->minimumWidth() == m43ToolsContent2
-                               && m42Toolbox->maximumWidth() == m43ToolsContent2
-                               && m42Toolbox->width() == m43ToolsContent2
-                               && m42Toolbox->bodyStretchForTest() == 0;
-                m42Toolbox->setFloating(false);
-                m43Pump(4);
+        bool multicolumnToolMin1 = false;
+        bool multicolumnToolMin2 = false;
+        bool multicolumnToolFloat = false;
+        bool toolLocked = false;
+        int toolsContent1 = 0;
+        int toolsContent2 = 0;
+        if (panelMenusToolbox) {
+            panelMenusToolbox->setColumns(1);
+            multicolumnPump(4);
+            toolsContent1 = panelMenusToolbox->contentWidthForTest();
+            multicolumnToolMin1 = panelMenusToolbox->minimumWidth() == toolsContent1
+                          && panelMenusToolbox->maximumWidth() == toolsContent1
+                          && panelMenusToolbox->width() == toolsContent1;
+            panelMenusToolbox->setColumns(2);
+            multicolumnPump(4);
+            toolsContent2 = panelMenusToolbox->contentWidthForTest();
+            multicolumnToolMin2 = panelMenusToolbox->minimumWidth() == toolsContent2
+                          && panelMenusToolbox->maximumWidth() == toolsContent2
+                          && panelMenusToolbox->width() == toolsContent2
+                          && toolsContent2 > toolsContent1;
+            panelMenusToolbox->resize(toolsContent2 + 60, panelMenusToolbox->height());
+            multicolumnPump(4);
+            toolLocked = panelMenusToolbox->width() == toolsContent2;
+            if (!panelMenusToolbox->isFloating()) {
+                panelMenusToolbox->setFloating(true);
+                multicolumnPump(4);
+                multicolumnToolFloat = panelMenusToolbox->minimumWidth() == toolsContent2
+                               && panelMenusToolbox->maximumWidth() == toolsContent2
+                               && panelMenusToolbox->width() == toolsContent2
+                               && panelMenusToolbox->bodyStretchForTest() == 0;
+                panelMenusToolbox->setFloating(false);
+                multicolumnPump(4);
             } else {
-                m43ToolFloat = m42Toolbox->minimumWidth() == m43ToolsContent2
-                               && m42Toolbox->maximumWidth() == m43ToolsContent2;
+                multicolumnToolFloat = panelMenusToolbox->minimumWidth() == toolsContent2
+                               && panelMenusToolbox->maximumWidth() == toolsContent2;
             }
-            m42Toolbox->setColumns(1);
-            m43Pump(4);
+            panelMenusToolbox->setColumns(1);
+            multicolumnPump(4);
         }
-        const bool m43ToolsOk = m43ToolMin1 && m43ToolMin2 && m43ToolFloat && m43ToolLocked;
-        ST_BEGIN("m43_tools_min1");
-        ST_PASS("m43_tools min1=%d min2=%d float=%d locked=%d "
-                     "content1=%d content2=%d", m43ToolMin1 ? 1 : 0,
-                     m43ToolMin2 ? 1 : 0,
-                     m43ToolFloat ? 1 : 0,
-                     m43ToolLocked ? 1 : 0,
-                     m43ToolsContent1,
-                     m43ToolsContent2);
-        if (!m43ToolsOk) {
-            ST_FAIL(147, "M43 tools fixed width");
+        const bool multicolumnToolsOk = multicolumnToolMin1 && multicolumnToolMin2 && multicolumnToolFloat && toolLocked;
+        ST_BEGIN("tools_min1");
+        ST_PASS("tools min1=%d min2=%d float=%d locked=%d "
+                     "content1=%d content2=%d", multicolumnToolMin1 ? 1 : 0,
+                     multicolumnToolMin2 ? 1 : 0,
+                     multicolumnToolFloat ? 1 : 0,
+                     toolLocked ? 1 : 0,
+                     toolsContent1,
+                     toolsContent2);
+        if (!multicolumnToolsOk) {
+            ST_FAIL(147, "tools fixed width");
         }
 
         // m43_icon (148): the compact strip button and pixmap are larger than
         // M42 (30/20).
-        bool m43IconBigger = false;
-        if (m41Column) {
-            m41Column->setRailMode(true);
-            m43Pump(4);
-            QToolButton* strip = m41Column->findChild<QToolButton*>(
+        bool iconBigger = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(true);
+            multicolumnPump(4);
+            QToolButton* strip = panelColumnColumn->findChild<QToolButton*>(
                 QStringLiteral("panelIcon_layersPanel"));
             if (!strip) {
-                for (QToolButton* candidate : m41Column->findChildren<QToolButton*>()) {
+                for (QToolButton* candidate : panelColumnColumn->findChildren<QToolButton*>()) {
                     if (candidate->objectName().startsWith(QStringLiteral("panelIcon_"))) {
                         strip = candidate;
                         break;
                     }
                 }
             }
-            m43IconBigger = strip && strip->width() >= 34 && strip->iconSize().width() >= 24;
-            m41Column->setRailMode(false);
-            m43Pump(4);
+            iconBigger = strip && strip->width() >= 34 && strip->iconSize().width() >= 24;
+            panelColumnColumn->setRailMode(false);
+            multicolumnPump(4);
         }
-        ST_BEGIN("m43_icon_bigger");
-        ST_PASS("m43_icon bigger=%d", m43IconBigger ? 1 : 0);
-        if (!m43IconBigger) {
-            ST_FAIL(148, "M43 compact icon size");
+        ST_BEGIN("icon_bigger");
+        ST_PASS("icon bigger=%d", iconBigger ? 1 : 0);
+        if (!iconBigger) {
+            ST_FAIL(148, "compact icon size");
         }
 
         // m43_flyout (149): the flyout meets the clicked button's actual edge on
         // the inner side and never overlaps or crosses to the outer side.
-        bool m43FlyoutInner = false;
-        bool m43FlyoutNoOverlap = false;
-        if (m41Column) {
-            m41Column->setRailMode(true);
-            m43Pump(4);
-            QToolButton* button = m41Column->findChild<QToolButton*>(
+        bool flyoutInner = false;
+        bool flyoutNoOverlap = false;
+        if (panelColumnColumn) {
+            panelColumnColumn->setRailMode(true);
+            multicolumnPump(4);
+            QToolButton* button = panelColumnColumn->findChild<QToolButton*>(
                 QStringLiteral("panelIcon_layersPanel"));
             const QRect buttonRect =
                 button ? QRect(button->mapToGlobal(QPoint(0, 0)), button->size()) : QRect();
             const bool opened =
-                m41Column->openIconFlyoutForTest(QStringLiteral("layersPanel"));
-            m43Pump(8);
-            const QRect fly = m41Column->iconFlyoutGeometryForTest();
-            const QString side = m41Column->flyoutSideForTest();
-            m43FlyoutInner = opened && button && fly.isValid()
+                panelColumnColumn->openIconFlyoutForTest(QStringLiteral("layersPanel"));
+            multicolumnPump(8);
+            const QRect fly = panelColumnColumn->iconFlyoutGeometryForTest();
+            const QString side = panelColumnColumn->flyoutSideForTest();
+            flyoutInner = opened && button && fly.isValid()
                              && (side == QStringLiteral("left")
                                      ? fly.right() < buttonRect.left()
                                      : fly.left() > buttonRect.right());
-            m43FlyoutNoOverlap = button && fly.isValid() && !fly.intersects(buttonRect);
-            m41Column->triggerFlyoutCloseForTest();
-            m43Pump(4);
-            m41Column->setRailMode(false);
-            m43Pump(4);
+            flyoutNoOverlap = button && fly.isValid() && !fly.intersects(buttonRect);
+            panelColumnColumn->triggerFlyoutCloseForTest();
+            multicolumnPump(4);
+            panelColumnColumn->setRailMode(false);
+            multicolumnPump(4);
         }
-        const bool m43FlyoutOk = m43FlyoutInner && m43FlyoutNoOverlap;
-        ST_BEGIN("m43_flyout_inner");
-        ST_PASS("m43_flyout inner=%d nooverlap=%d", m43FlyoutInner ? 1 : 0,
-                     m43FlyoutNoOverlap ? 1 : 0);
-        if (!m43FlyoutOk) {
-            ST_FAIL(149, "M43 inner-side flyout");
+        const bool multicolumnFlyoutOk = flyoutInner && flyoutNoOverlap;
+        ST_BEGIN("flyout_inner");
+        ST_PASS("flyout inner=%d nooverlap=%d", flyoutInner ? 1 : 0,
+                     flyoutNoOverlap ? 1 : 0);
+        if (!multicolumnFlyoutOk) {
+            ST_FAIL(149, "inner-side flyout");
         }
 
         // m43_dreset (150): `D` resets the foreground to black and the
         // background to white (`X` stays the swap).
-        bool m43DResetFg = false;
-        bool m43DResetBg = false;
-        if (m42Toolbox) {
-            auto* fgbg = m42Toolbox->foregroundBackgroundForTest();
+        bool dResetFg = false;
+        bool dResetBg = false;
+        if (panelMenusToolbox) {
+            auto* fgbg = panelMenusToolbox->foregroundBackgroundForTest();
             if (fgbg) {
-                m42Toolbox->swapForegroundBackground();
+                panelMenusToolbox->swapForegroundBackground();
                 if (fgbg->foregroundForTest() == QColor(Qt::black)
                     && fgbg->backgroundForTest() == QColor(Qt::white)) {
-                    m42Toolbox->swapForegroundBackground();
+                    panelMenusToolbox->swapForegroundBackground();
                 }
                 const bool dirty = fgbg->foregroundForTest() != QColor(Qt::black)
                                    || fgbg->backgroundForTest() != QColor(Qt::white);
                 frame.activateWindow();
-                m43Pump(2);
+                multicolumnPump(2);
                 QKeyEvent dEvent(QEvent::KeyPress, Qt::Key_D, Qt::NoModifier,
                                  QStringLiteral("d"));
                 QApplication::sendEvent(&frame, &dEvent);
-                m43Pump(4);
-                m43DResetFg = fgbg->foregroundForTest() == QColor(Qt::black);
-                m43DResetBg = fgbg->backgroundForTest() == QColor(Qt::white) && dirty;
+                multicolumnPump(4);
+                dResetFg = fgbg->foregroundForTest() == QColor(Qt::black);
+                dResetBg = fgbg->backgroundForTest() == QColor(Qt::white) && dirty;
             }
         }
-        const bool m43DResetOk = m43DResetFg && m43DResetBg;
-        ST_BEGIN("m43_dreset_fg");
-        ST_PASS("m43_dreset fg=%d bg=%d", m43DResetFg ? 1 : 0,
-                     m43DResetBg ? 1 : 0);
-        if (!m43DResetOk) {
-            ST_FAIL(150, "M43 default-colours reset");
+        const bool dResetOk = dResetFg && dResetBg;
+        ST_BEGIN("dreset_fg");
+        ST_PASS("dreset fg=%d bg=%d", dResetFg ? 1 : 0,
+                     dResetBg ? 1 : 0);
+        if (!dResetOk) {
+            ST_FAIL(150, "default-colours reset");
         }
 
         // m43_session (151): the v6 store carries the per-column layout. A
@@ -4676,49 +4676,49 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // (sides, order, nested groups) and re-applies to the same column
         // count; a v5 flat store loads as one right-hand column; an unknown key
         // survives a rewrite.
-        bool m43SessionV6 = false;
-        bool m43SessionColumns = false;
-        bool m43SessionV5 = false;
-        bool m43SessionRound = false;
-        bool m43SessionUnknown = false;
+        bool sessionV6 = false;
+        bool sessionColumns = false;
+        bool sessionV5 = false;
+        bool sessionRound = false;
+        bool sessionUnknown = false;
         {
-            const bool m43Made = frame.newColumnDropForTest(QStringLiteral("stylesPanel"),
+            const bool multicolumnMade = frame.newColumnDropForTest(QStringLiteral("stylesPanel"),
                                                             QStringLiteral("left"));
             frame.saveSession();
-            const pictura::SessionState m43Loaded = pictura::loadSession();
-            m43SessionV6 = m43Loaded.schemaVersion == 6;
+            const pictura::SessionState multicolumnLoaded = pictura::loadSession();
+            sessionV6 = multicolumnLoaded.schemaVersion == 6;
 
-            bool m43HasLeft = false;
-            bool m43HasRight = false;
-            bool m43LeftStyles = false;
-            for (const QJsonValue& value : m43Loaded.panelColumns) {
+            bool hasLeft = false;
+            bool hasRight = false;
+            bool leftStyles = false;
+            for (const QJsonValue& value : multicolumnLoaded.panelColumns) {
                 const QJsonObject column = value.toObject();
                 const QString side = column.value(QStringLiteral("side")).toString();
                 if (side == QStringLiteral("left")) {
-                    m43HasLeft = true;
+                    hasLeft = true;
                     const QJsonArray groups =
                         column.value(QStringLiteral("groups")).toArray();
                     for (const QJsonValue& group : groups) {
                         const QJsonArray order =
                             group.toObject().value(QStringLiteral("order")).toArray();
                         if (order.contains(QStringLiteral("stylesPanel"))) {
-                            m43LeftStyles = true;
+                            leftStyles = true;
                         }
                     }
                 } else if (side == QStringLiteral("right")) {
-                    m43HasRight = true;
+                    hasRight = true;
                 }
             }
-            m43SessionColumns = m43Made && m43Loaded.panelColumns.size() == 2 && m43HasLeft
-                                && m43HasRight && m43LeftStyles;
+            sessionColumns = multicolumnMade && multicolumnLoaded.panelColumns.size() == 2 && hasLeft
+                                && hasRight && leftStyles;
 
             // Re-run the real startup restore path and check the rebuilt columns.
-            frame.applyPanelSessionForTest(m43Loaded);
-            m43Pump(8);
-            pictura::PanelColumn* m43Restored =
+            frame.applyPanelSessionForTest(multicolumnLoaded);
+            multicolumnPump(8);
+            pictura::PanelColumn* multicolumnRestored =
                 frame.columnForPanel(QStringLiteral("stylesPanel"));
-            m43SessionRound = frame.panelColumnCountForTest() == 2 && m43Restored
-                              && frame.sideOf(m43Restored) == pictura::PanelSide::Left
+            sessionRound = frame.panelColumnCountForTest() == 2 && multicolumnRestored
+                              && frame.sideOf(multicolumnRestored) == pictura::PanelSide::Left
                               && frame.panelColumnSideForTest(0) == QStringLiteral("left");
 
             // A v5 store (no `panelColumns`) migrates to one right-hand column.
@@ -4731,45 +4731,45 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                 "\"collapsed\":false}]}");
                     store.close();
                 }
-                const pictura::SessionState m43V5 = pictura::loadSession();
-                m43SessionV5 =
-                    m43V5.panelColumns.size() == 1
-                    && m43V5.panelColumns.first().toObject().value(
+                const pictura::SessionState multicolumnV5 = pictura::loadSession();
+                sessionV5 =
+                    multicolumnV5.panelColumns.size() == 1
+                    && multicolumnV5.panelColumns.first().toObject().value(
                            QStringLiteral("side")).toString() == QStringLiteral("right")
-                    && !m43V5.panelGroups.isEmpty();
+                    && !multicolumnV5.panelGroups.isEmpty();
             }
 
             // An unknown key survives a load-then-write rewrite.
             {
                 QFile store(pictura::sessionFilePath());
                 if (store.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-                    store.write("{\"schemaVersion\":6,\"unknownM43Key\":\"keep-me\"}");
+                    store.write("{\"schemaVersion\":6,\"unknownSessionKey\":\"keep-me\"}");
                     store.close();
                 }
                 frame.saveSession();
                 QFile read(pictura::sessionFilePath());
                 if (read.open(QIODevice::ReadOnly)) {
                     const QByteArray rewritten = read.readAll();
-                    m43SessionUnknown = rewritten.contains("unknownM43Key")
+                    sessionUnknown = rewritten.contains("unknownSessionKey")
                                         && rewritten.contains("keep-me");
                 }
             }
 
             // Collapse back to the default single right-hand column.
             frame.applyPanelSessionForTest(pictura::SessionState{});
-            m43Pump(6);
+            multicolumnPump(6);
         }
-        const bool m43SessionOk = m43SessionV6 && m43SessionColumns && m43SessionV5
-                                  && m43SessionRound && m43SessionUnknown;
-        ST_BEGIN("m43_session_v6");
-        ST_PASS("m43_session v6=%d v5=%d columns=%d roundtrip=%d "
-                     "unknown=%d", m43SessionV6 ? 1 : 0,
-                     m43SessionV5 ? 1 : 0,
-                     m43SessionColumns ? 1 : 0,
-                     m43SessionRound ? 1 : 0,
-                     m43SessionUnknown ? 1 : 0);
-        if (!m43SessionOk) {
-            ST_FAIL(151, "M43 session v6");
+        const bool multicolumnSessionOk = sessionV6 && sessionColumns && sessionV5
+                                  && sessionRound && sessionUnknown;
+        ST_BEGIN("session_v6");
+        ST_PASS("session v6=%d v5=%d columns=%d roundtrip=%d "
+                     "unknown=%d", sessionV6 ? 1 : 0,
+                     sessionV5 ? 1 : 0,
+                     sessionColumns ? 1 : 0,
+                     sessionRound ? 1 : 0,
+                     sessionUnknown ? 1 : 0);
+        if (!multicolumnSessionOk) {
+            ST_FAIL(151, "session v6");
         }
 
         // m44_newdoc (153): E1. A newly created white document must present
@@ -4777,34 +4777,34 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // recomposite, is uniformly opaque white and the canvas already holds
         // it. Pins the regression where the M0.5 GPU smoke probe wrote its demo
         // gradient into the document's display image.
-        const int m44DocsBefore = frame.documentCount();
-        const bool m44Made = frame.newDocument(QStringLiteral("M44 White"), 32, 24,
+        const int docsBefore = frame.documentCount();
+        const bool themeMade = frame.newDocument(QStringLiteral("White"), 32, 24,
                                                QStringLiteral("rgb"), 8,
                                                QStringLiteral("white"));
-        pictura::PictureView* m44View = frame.activeView();
-        const QImage m44Image = m44View ? m44View->image() : QImage();
-        pictura::ImageView* m44Canvas = frame.imageView();
-        const QImage m44CanvasImage = m44Canvas ? m44Canvas->image() : QImage();
-        bool m44Uniform = m44Made && m44View && !m44Image.isNull();
-        if (m44Uniform) {
-            const QRgb m44First = m44Image.pixel(0, 0);
-            for (int y = 0; y < m44Image.height() && m44Uniform; ++y) {
-                for (int x = 0; x < m44Image.width(); ++x) {
-                    if (m44Image.pixel(x, y) != m44First) {
-                        m44Uniform = false;
+        pictura::PictureView* themeView = frame.activeView();
+        const QImage themeImage = themeView ? themeView->image() : QImage();
+        pictura::ImageView* themeCanvas = frame.imageView();
+        const QImage canvasImage = themeCanvas ? themeCanvas->image() : QImage();
+        bool themeUniform = themeMade && themeView && !themeImage.isNull();
+        if (themeUniform) {
+            const QRgb themeFirst = themeImage.pixel(0, 0);
+            for (int y = 0; y < themeImage.height() && themeUniform; ++y) {
+                for (int x = 0; x < themeImage.width(); ++x) {
+                    if (themeImage.pixel(x, y) != themeFirst) {
+                        themeUniform = false;
                         break;
                     }
                 }
             }
         }
-        const bool m44White = m44Uniform && m44Image.pixel(0, 0) == 0xFFFFFFFFu;
-        const bool m44Immediate = m44White && m44CanvasImage == m44Image;
-        const bool m44NewdocOk = m44Made && m44Image.width() == 32 && m44Image.height() == 24
-                                  && m44White && m44Uniform && m44Immediate;
-        ST_BEGIN("m44_newdoc_white");
-        ST_PASS("m44_newdoc white=%d uniform=%d immediate=%d", m44White ? 1 : 0, m44Uniform ? 1 : 0, m44Immediate ? 1 : 0);
-        if (!m44NewdocOk) {
-            ST_FAIL(153, "M44 new-document render");
+        const bool themeWhite = themeUniform && themeImage.pixel(0, 0) == 0xFFFFFFFFu;
+        const bool themeImmediate = themeWhite && canvasImage == themeImage;
+        const bool newdocOk = themeMade && themeImage.width() == 32 && themeImage.height() == 24
+                                  && themeWhite && themeUniform && themeImmediate;
+        ST_BEGIN("newdoc_white");
+        ST_PASS("newdoc white=%d uniform=%d immediate=%d", themeWhite ? 1 : 0, themeUniform ? 1 : 0, themeImmediate ? 1 : 0);
+        if (!newdocOk) {
+            ST_FAIL(153, "new-document render");
         }
         frame.closeDocument(frame.documentCount() - 1, false);
         // M44 Phase B (154, 155, 156, 159, 161, 164, 165, 166): panel chrome,
@@ -4812,48 +4812,48 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // property (icon pixmap, tab index, QSS/palette colour, elided text,
         // splitter handle width) rather than only that a stylesheet exists.
         {
-            const QString m44Sheet = qApp->styleSheet();
-            const QColor m44Window = qApp->palette().color(QPalette::Window);
-            const QString m44WindowHex = m44Window.name(QColor::HexRgb);
-            const QString m44BaseHex = qApp->palette().color(QPalette::Base).name(QColor::HexRgb);
-            const QString m44BorderHex = m44Window.darker(135).name(QColor::HexRgb);
-            const QString m44BorderWidth = QString::number(pictura::Theme::kPanelBorderWidth);
+            const QString sheet = qApp->styleSheet();
+            const QColor themeWindow = qApp->palette().color(QPalette::Window);
+            const QString themeWindowHex = themeWindow.name(QColor::HexRgb);
+            const QString themeBaseHex = qApp->palette().color(QPalette::Base).name(QColor::HexRgb);
+            const QString borderHex = themeWindow.darker(135).name(QColor::HexRgb);
+            const QString borderWidth = QString::number(pictura::Theme::kPanelBorderWidth);
 
             // 154: the collapse toggle shows the action's target icon, not the
             // inverted one (collapse-to-icons in normal, expand in iconic).
-            bool m44ChevronsMode = false;
-            bool m44ChevronsTarget = false;
-            if (m41Column) {
-                const QImage m44CollapseIcon =
+            bool chevronsMode = false;
+            bool chevronsTarget = false;
+            if (panelColumnColumn) {
+                const QImage collapseIcon =
                     pictura::icon(QStringLiteral("panel.columnsTwo")).pixmap(16, 16).toImage();
-                const QImage m44ExpandIcon =
+                const QImage expandIcon =
                     pictura::icon(QStringLiteral("panel.columnsOne")).pixmap(16, 16).toImage();
-                m41Column->setRailMode(false);
-                m43Pump(2);
-                QToolButton* m44Toggle = m41Column->panelColumnToggleForTest();
-                m44ChevronsMode =
-                    m44Toggle && m44Toggle->icon().pixmap(16, 16).toImage() == m44CollapseIcon;
-                m41Column->setRailMode(true);
-                m43Pump(2);
-                m44ChevronsTarget =
-                    m44Toggle && m44Toggle->icon().pixmap(16, 16).toImage() == m44ExpandIcon;
-                m41Column->setRailMode(false);
-                m43Pump(2);
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(2);
+                QToolButton* themeToggle = panelColumnColumn->panelColumnToggleForTest();
+                chevronsMode =
+                    themeToggle && themeToggle->icon().pixmap(16, 16).toImage() == collapseIcon;
+                panelColumnColumn->setRailMode(true);
+                multicolumnPump(2);
+                chevronsTarget =
+                    themeToggle && themeToggle->icon().pixmap(16, 16).toImage() == expandIcon;
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(2);
             }
-            ST_BEGIN("m44_chevrons_mode");
-            ST_PASS("m44_chevrons mode=%d target=%d", m44ChevronsMode ? 1 : 0, m44ChevronsTarget ? 1 : 0);
-            if (!(m44ChevronsMode && m44ChevronsTarget)) {
-                ST_FAIL(154, "M44 collapse chevrons");
+            ST_BEGIN("chevrons_mode");
+            ST_PASS("chevrons mode=%d target=%d", chevronsMode ? 1 : 0, chevronsTarget ? 1 : 0);
+            if (!(chevronsMode && chevronsTarget)) {
+                ST_FAIL(154, "collapse chevrons");
             }
 
             // 155: a restored layout leaves the first visible panel active, not
             // the last (the old path made each shown panel current in turn).
-            bool m44DefaultActive = m41Column != nullptr;
-            int m44ActiveGroups = 0;
-            if (m41Column) {
-                m41Column->restorePanelState(m41Column->savePanelState());
-                m43Pump(2);
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+            bool defaultActive = panelColumnColumn != nullptr;
+            int activeGroups = 0;
+            if (panelColumnColumn) {
+                panelColumnColumn->restorePanelState(panelColumnColumn->savePanelState());
+                multicolumnPump(2);
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (!group) {
                         continue;
                     }
@@ -4861,145 +4861,145 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     if (first < 0) {
                         continue;
                     }
-                    ++m44ActiveGroups;
+                    ++activeGroups;
                     if (group->currentTabIndexForTest() != first) {
-                        m44DefaultActive = false;
+                        defaultActive = false;
                     }
                 }
-                m44DefaultActive = m44DefaultActive && m44ActiveGroups > 0;
+                defaultActive = defaultActive && activeGroups > 0;
             }
-            ST_BEGIN("m44_defaultactive_first");
-            ST_PASS("m44_defaultactive first=%d", m44DefaultActive ? 1 : 0);
-            if (!m44DefaultActive) {
-                ST_FAIL(155, "M44 default active panel");
+            ST_BEGIN("defaultactive_first");
+            ST_PASS("defaultactive first=%d", defaultActive ? 1 : 0);
+            if (!defaultActive) {
+                ST_FAIL(155, "default active panel");
             }
 
             // 156: the active panel tab matches the widget surface (`window`),
             // the inactive tab is the darker `base`, and neither uses the other.
-            const bool m44TabSelected =
-                m44Sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ")
-                                  + m44WindowHex)
-                && m44Sheet.contains(
+            const bool tabSelected =
+                sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ")
+                                  + themeWindowHex)
+                && sheet.contains(
                     QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ")
-                    + m44WindowHex);
-            const bool m44TabInactive =
-                m44Sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab { background: ")
-                                  + m44BaseHex);
-            const bool m44TabDiffer =
-                m44TabSelected && m44TabInactive && m44WindowHex != m44BaseHex;
-            ST_BEGIN("m44_tabswap_selected");
-            ST_PASS("m44_tabswap selected=%d unselected=%d differ=%d", m44TabSelected ? 1 : 0,
-                         m44TabInactive ? 1 : 0,
-                         m44TabDiffer ? 1 : 0);
-            if (!m44TabDiffer) {
-                ST_FAIL(156, "M44 panel tab colours");
+                    + themeWindowHex);
+            const bool tabInactive =
+                sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab { background: ")
+                                  + themeBaseHex);
+            const bool tabDiffer =
+                tabSelected && tabInactive && themeWindowHex != themeBaseHex;
+            ST_BEGIN("tabswap_selected");
+            ST_PASS("tabswap selected=%d unselected=%d differ=%d", tabSelected ? 1 : 0,
+                         tabInactive ? 1 : 0,
+                         tabDiffer ? 1 : 0);
+            if (!tabDiffer) {
+                ST_FAIL(156, "panel tab colours");
             }
 
             // 159: the inter-group splitter handle is thicker and darker grey.
-            const bool m44DividerThick =
-                m41Column && m41Column->groupDividerWidthForTest()
+            const bool dividerThick =
+                panelColumnColumn && panelColumnColumn->groupDividerWidthForTest()
                                  >= pictura::Theme::kGroupDividerWidth;
-            const bool m44DividerDark = m44Sheet.contains(
+            const bool dividerDark = sheet.contains(
                 QStringLiteral("QSplitter#panelColumnSplitter::handle { background: ")
-                + m44BorderHex);
-            ST_BEGIN("m44_divider_thick");
-            ST_PASS("m44_divider thick=%d dark=%d", m44DividerThick ? 1 : 0, m44DividerDark ? 1 : 0);
-            if (!(m44DividerThick && m44DividerDark)) {
-                ST_FAIL(159, "M44 group divider");
+                + borderHex);
+            ST_BEGIN("divider_thick");
+            ST_PASS("divider thick=%d dark=%d", dividerThick ? 1 : 0, dividerDark ? 1 : 0);
+            if (!(dividerThick && dividerDark)) {
+                ST_FAIL(159, "group divider");
             }
 
             // 161: the compact-strip group divider is dark grey, not white.
-            bool m44CompactDividerDark = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m43Pump(4);
-                m44CompactDividerDark =
-                    m41Column->dividerCountForTest() > 0
-                    && m44Sheet.contains(QStringLiteral("QFrame#panelIconDivider { background: ")
-                                         + m44BorderHex)
-                    && m44BorderHex != QStringLiteral("#ffffff");
-                m41Column->setRailMode(false);
-                m43Pump(2);
+            bool compactDividerDark = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                multicolumnPump(4);
+                compactDividerDark =
+                    panelColumnColumn->dividerCountForTest() > 0
+                    && sheet.contains(QStringLiteral("QFrame#panelIconDivider { background: ")
+                                         + borderHex)
+                    && borderHex != QStringLiteral("#ffffff");
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(2);
             }
-            ST_BEGIN("m44_compactdivider_dark");
-            ST_PASS("m44_compactdivider dark=%d", m44CompactDividerDark ? 1 : 0);
-            if (!m44CompactDividerDark) {
-                ST_FAIL(161, "M44 compact divider");
+            ST_BEGIN("compactdivider_dark");
+            ST_PASS("compactdivider dark=%d", compactDividerDark ? 1 : 0);
+            if (!compactDividerDark) {
+                ST_FAIL(161, "compact divider");
             }
 
             // 164: at a strip width with room only beyond the icon button, the
             // label appears and its text is elided to that width.
-            bool m44ElidePartial = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m41Column->showPanel(QStringLiteral("layersPanel"), true);
-                m43Pump(4);
-                pictura::PanelGroup* m44Layers =
-                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
-                const QString m44FullTitle =
-                    m44Layers ? m44Layers->titleForPanel(QStringLiteral("layersPanel"))
+            bool elidePartial = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
+                multicolumnPump(4);
+                pictura::PanelGroup* themeLayers =
+                    panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
+                const QString fullTitle =
+                    themeLayers ? themeLayers->titleForPanel(QStringLiteral("layersPanel"))
                               : QString();
-                m41Column->setIconStripWidthForTest(64);
-                const QString m44Shown =
-                    m41Column->stripLabelTextForTest(QStringLiteral("layersPanel"));
-                const bool m44Visible =
-                    m41Column->stripLabelVisibleForTest(QStringLiteral("layersPanel"));
-                m44ElidePartial = m44Visible && !m44FullTitle.isEmpty() && !m44Shown.isEmpty()
-                                  && m44Shown.size() < m44FullTitle.size()
-                                  && m44Shown.contains(QChar(0x2026));
-                m41Column->setRailMode(false);
-                m43Pump(2);
+                panelColumnColumn->setIconStripWidthForTest(64);
+                const QString themeShown =
+                    panelColumnColumn->stripLabelTextForTest(QStringLiteral("layersPanel"));
+                const bool themeVisible =
+                    panelColumnColumn->stripLabelVisibleForTest(QStringLiteral("layersPanel"));
+                elidePartial = themeVisible && !fullTitle.isEmpty() && !themeShown.isEmpty()
+                                  && themeShown.size() < fullTitle.size()
+                                  && themeShown.contains(QChar(0x2026));
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(2);
             }
-            ST_BEGIN("m44_elide_partial");
-            ST_PASS("m44_elide partial=%d", m44ElidePartial ? 1 : 0);
-            if (!m44ElidePartial) {
-                ST_FAIL(164, "M44 strip label elide");
+            ST_BEGIN("elide_partial");
+            ST_PASS("elide partial=%d", elidePartial ? 1 : 0);
+            if (!elidePartial) {
+                ST_FAIL(164, "strip label elide");
             }
 
             // 165: the document tab strip has a dark grey right border and no
             // extra top border (the options bar above already draws one).
-            QTabBar* m44DocBar = frame.findChild<QTabBar*>(QStringLiteral("documentTabBar"));
-            const bool m44FileRight =
-                m44DocBar
-                && m44Sheet.contains(QStringLiteral("QTabBar#documentTabBar { border-right: ")
-                                     + m44BorderWidth + QStringLiteral("px solid ") + m44BorderHex);
-            const bool m44FileNoTop =
-                m44Sheet.contains(
+            QTabBar* themeDocBar = frame.findChild<QTabBar*>(QStringLiteral("documentTabBar"));
+            const bool fileRight =
+                themeDocBar
+                && sheet.contains(QStringLiteral("QTabBar#documentTabBar { border-right: ")
+                                     + borderWidth + QStringLiteral("px solid ") + borderHex);
+            const bool fileNoTop =
+                sheet.contains(
                     QStringLiteral("QTabWidget#documentTabs::pane { border-top: 0; }"))
-                && m44Sheet.contains(
-                    QStringLiteral("QTabBar#documentTabBar { border-right: ") + m44BorderWidth
-                    + QStringLiteral("px solid ") + m44BorderHex
+                && sheet.contains(
+                    QStringLiteral("QTabBar#documentTabBar { border-right: ") + borderWidth
+                    + QStringLiteral("px solid ") + borderHex
                     + QStringLiteral("; border-top: 0; }"));
-            ST_BEGIN("m44_filebar_right");
-            ST_PASS("m44_filebar right=%d notop=%d", m44FileRight ? 1 : 0, m44FileNoTop ? 1 : 0);
-            if (!(m44FileRight && m44FileNoTop)) {
-                ST_FAIL(165, "M44 document tab strip borders");
+            ST_BEGIN("filebar_right");
+            ST_PASS("filebar right=%d notop=%d", fileRight ? 1 : 0, fileNoTop ? 1 : 0);
+            if (!(fileRight && fileNoTop)) {
+                ST_FAIL(165, "document tab strip borders");
             }
 
             // 166: Tools, normal widget panels, and the compact strip share the
             // darker grey border; flyout and float use the same palette.
-            const QString m44BorderRule =
-                m44BorderWidth + QStringLiteral("px solid ") + m44BorderHex;
-            const bool m44PanelTools =
-                m44Sheet.contains(QStringLiteral("QDockWidget#toolsPanel { border: ")
-                                  + m44BorderRule + QStringLiteral("; }"));
-            const bool m44PanelNormal =
-                m44Sheet.contains(QStringLiteral("QTabWidget#panelGroupTabs { border: ")
-                                  + m44BorderRule + QStringLiteral("; }"));
-            const bool m44PanelCompact =
-                m44Sheet.contains(QStringLiteral("QWidget#panelColumnIconStrip { border: ")
-                                  + m44BorderRule + QStringLiteral("; }"));
-            const bool m44PanelParity =
-                m44Sheet.contains(QStringLiteral("QWidget#panelFloat { background: ")
-                                  + m44WindowHex)
-                && m44Sheet.contains(QStringLiteral("QWidget#panelIconFlyout { background: ")
-                                     + m44WindowHex);
-            ST_BEGIN("m44_panelborder_tools");
-            ST_PASS("m44_panelborder tools=%d panel=%d compact=%d", m44PanelTools ? 1 : 0,
-                         m44PanelNormal ? 1 : 0,
-                         m44PanelCompact ? 1 : 0);
-            if (!(m44PanelTools && m44PanelNormal && m44PanelCompact && m44PanelParity)) {
-                ST_FAIL(166, "M44 panel borders");
+            const QString borderRule =
+                borderWidth + QStringLiteral("px solid ") + borderHex;
+            const bool panelTools =
+                sheet.contains(QStringLiteral("QDockWidget#toolsPanel { border: ")
+                                  + borderRule + QStringLiteral("; }"));
+            const bool panelNormal =
+                sheet.contains(QStringLiteral("QTabWidget#panelGroupTabs { border: ")
+                                  + borderRule + QStringLiteral("; }"));
+            const bool panelCompact =
+                sheet.contains(QStringLiteral("QWidget#panelColumnIconStrip { border: ")
+                                  + borderRule + QStringLiteral("; }"));
+            const bool panelParity =
+                sheet.contains(QStringLiteral("QWidget#panelFloat { background: ")
+                                  + themeWindowHex)
+                && sheet.contains(QStringLiteral("QWidget#panelIconFlyout { background: ")
+                                     + themeWindowHex);
+            ST_BEGIN("panelborder_tools");
+            ST_PASS("panelborder tools=%d panel=%d compact=%d", panelTools ? 1 : 0,
+                         panelNormal ? 1 : 0,
+                         panelCompact ? 1 : 0);
+            if (!(panelTools && panelNormal && panelCompact && panelParity)) {
+                ST_FAIL(166, "panel borders");
             }
         }
         // M44 Phase C (157, 158, 160, 162, 163): float-drag continuation,
@@ -5009,216 +5009,216 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // 157: a widget-tab float drag stays active after the float is
             // created, tracks the cursor, and only the release commits it. The
             // source group must survive so its tab bar keeps the mouse grab.
-            bool m44FdActive = false;
-            bool m44FdFollows = false;
-            bool m44FdRelease = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m41Column->showPanel(QStringLiteral("historyPanel"), true);
-                m43Pump(8);
-                pictura::PanelGroup* m44FdGroup =
-                    m41Column->groupForPanel(QStringLiteral("historyPanel"));
-                if (m44FdGroup && m44FdGroup->titleCountForTest() == 1) {
-                    const int before = m41Column->floatCountForTest();
+            bool fdActive = false;
+            bool fdFollows = false;
+            bool fdRelease = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelColumnColumn->showPanel(QStringLiteral("historyPanel"), true);
+                multicolumnPump(8);
+                pictura::PanelGroup* fdGroup =
+                    panelColumnColumn->groupForPanel(QStringLiteral("historyPanel"));
+                if (fdGroup && fdGroup->titleCountForTest() == 1) {
+                    const int before = panelColumnColumn->floatCountForTest();
                     const QPoint outsideA =
-                        m41Column->mapToGlobal(QPoint(-60, m41Column->height() / 3));
+                        panelColumnColumn->mapToGlobal(QPoint(-60, panelColumnColumn->height() / 3));
                     const QPoint outsideB =
-                        m41Column->mapToGlobal(QPoint(-60, (m41Column->height() * 2) / 3));
+                        panelColumnColumn->mapToGlobal(QPoint(-60, (panelColumnColumn->height() * 2) / 3));
                     const bool began =
-                        m41Column->beginTabDragForTest(QStringLiteral("historyPanel"));
-                    m41Column->dragToForTest(outsideA);
-                    m43Pump(8);
-                    const bool floated = m41Column->floatCountForTest() == before + 1;
-                    const QRect g1 = m41Column->floatGeometryForTest(before);
-                    m44FdActive = began && floated && m41Column->dragActiveForTest()
-                                  && m41Column->dragSourceGroupAliveForTest();
-                    m41Column->dragToForTest(outsideB);
-                    m43Pump(8);
-                    const QRect g2 = m41Column->floatGeometryForTest(before);
-                    m44FdFollows = m41Column->dragActiveForTest() && g1.isValid()
+                        panelColumnColumn->beginTabDragForTest(QStringLiteral("historyPanel"));
+                    panelColumnColumn->dragToForTest(outsideA);
+                    multicolumnPump(8);
+                    const bool floated = panelColumnColumn->floatCountForTest() == before + 1;
+                    const QRect g1 = panelColumnColumn->floatGeometryForTest(before);
+                    fdActive = began && floated && panelColumnColumn->dragActiveForTest()
+                                  && panelColumnColumn->dragSourceGroupAliveForTest();
+                    panelColumnColumn->dragToForTest(outsideB);
+                    multicolumnPump(8);
+                    const QRect g2 = panelColumnColumn->floatGeometryForTest(before);
+                    fdFollows = panelColumnColumn->dragActiveForTest() && g1.isValid()
                                    && g2.isValid() && g2.topLeft() != g1.topLeft()
-                                   && m41Column->floatCountForTest() == before + 1;
-                    const bool dropped = m41Column->dropForTest(outsideB);
-                    m43Pump(8);
-                    m44FdRelease = dropped && !m41Column->dragActiveForTest();
-                    for (int i = 0; i < 8 && m41Column->floatCountForTest() > 0; ++i) {
-                        if (!m41Column->redockForTest(0, 0)) {
+                                   && panelColumnColumn->floatCountForTest() == before + 1;
+                    const bool dropped = panelColumnColumn->dropForTest(outsideB);
+                    multicolumnPump(8);
+                    fdRelease = dropped && !panelColumnColumn->dragActiveForTest();
+                    for (int i = 0; i < 8 && panelColumnColumn->floatCountForTest() > 0; ++i) {
+                        if (!panelColumnColumn->redockForTest(0, 0)) {
                             break;
                         }
-                        m43Pump(4);
+                        multicolumnPump(4);
                     }
                 }
             }
-            ST_BEGIN("m44_floatdrag_active");
-            ST_PASS("m44_floatdrag active=%d follows=%d release=%d", m44FdActive ? 1 : 0,
-                         m44FdFollows ? 1 : 0,
-                         m44FdRelease ? 1 : 0);
-            if (!(m44FdActive && m44FdFollows && m44FdRelease)) {
-                ST_FAIL(157, "M44 float drag continuation");
+            ST_BEGIN("floatdrag_active");
+            ST_PASS("floatdrag active=%d follows=%d release=%d", fdActive ? 1 : 0,
+                         fdFollows ? 1 : 0,
+                         fdRelease ? 1 : 0);
+            if (!(fdActive && fdFollows && fdRelease)) {
+                ST_FAIL(157, "float drag continuation");
             }
 
             // 160: the compact flyout shares the docked widget's scoped
             // style/container (no per-host inline stylesheet).
-            bool m44PsParity = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m43Pump(6);
+            bool psParity = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                multicolumnPump(6);
                 const bool opened =
-                    m41Column->openIconFlyoutForTest(QStringLiteral("layersPanel"));
-                m43Pump(10);
-                m44PsParity = opened && m41Column->iconFlyoutVisibleForTest()
-                              && m41Column->popupStyleParityForTest(
+                    panelColumnColumn->openIconFlyoutForTest(QStringLiteral("layersPanel"));
+                multicolumnPump(10);
+                psParity = opened && panelColumnColumn->iconFlyoutVisibleForTest()
+                              && panelColumnColumn->popupStyleParityForTest(
                                      QStringLiteral("layersPanel"));
-                m41Column->triggerFlyoutCloseForTest();
-                m43Pump(6);
-                m41Column->setRailMode(false);
-                m43Pump(4);
+                panelColumnColumn->triggerFlyoutCloseForTest();
+                multicolumnPump(6);
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(4);
             }
-            ST_BEGIN("m44_popupstyle_parity");
-            ST_PASS("m44_popupstyle parity=%d", m44PsParity ? 1 : 0);
-            if (!m44PsParity) {
-                ST_FAIL(160, "M44 popup style parity");
+            ST_BEGIN("popupstyle_parity");
+            ST_PASS("popupstyle parity=%d", psParity ? 1 : 0);
+            if (!psParity) {
+                ST_FAIL(160, "popup style parity");
             }
 
             // 162: compact drop placement. Onto a group inserts there; on the
             // inter-group divider, above the top, and below the bottom create a
             // fresh one-panel group at that boundary.
-            bool m44CdInto = false;
-            bool m44CdBetween = false;
-            bool m44CdAbove = false;
-            bool m44CdBelow = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m43Pump(8);
+            bool cdInto = false;
+            bool cdBetween = false;
+            bool cdAbove = false;
+            bool cdBelow = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                multicolumnPump(8);
 
-                const QString m44IntoSource = QStringLiteral("swatchesPanel");
-                const QString m44IntoTarget = QStringLiteral("layersPanel");
-                pictura::PanelGroup* m44IntoTargetGroup =
-                    m41Column->groupForPanel(m44IntoTarget);
-                if (m44IntoTargetGroup
-                    && m41Column->groupForPanel(m44IntoSource) != m44IntoTargetGroup) {
+                const QString intoSource = QStringLiteral("swatchesPanel");
+                const QString themeIntoTarget = QStringLiteral("layersPanel");
+                pictura::PanelGroup* intoTargetGroup =
+                    panelColumnColumn->groupForPanel(themeIntoTarget);
+                if (intoTargetGroup
+                    && panelColumnColumn->groupForPanel(intoSource) != intoTargetGroup) {
                     const QPoint intoPoint =
-                        m41Column->stripEntryPointForTest(m44IntoTarget, 0);
-                    const bool began = m41Column->beginStripDragForTest(m44IntoSource);
-                    m41Column->dragToForTest(intoPoint);
-                    const bool dropped = m41Column->dropForTest(intoPoint);
-                    m43Pump(8);
-                    m44CdInto = began && dropped
-                                && m41Column->groupForPanel(m44IntoSource)
-                                       == m44IntoTargetGroup;
+                        panelColumnColumn->stripEntryPointForTest(themeIntoTarget, 0);
+                    const bool began = panelColumnColumn->beginStripDragForTest(intoSource);
+                    panelColumnColumn->dragToForTest(intoPoint);
+                    const bool dropped = panelColumnColumn->dropForTest(intoPoint);
+                    multicolumnPump(8);
+                    cdInto = began && dropped
+                                && panelColumnColumn->groupForPanel(intoSource)
+                                       == intoTargetGroup;
                 }
 
-                if (m41Column->compactStripGroupOrderForTest().size() >= 2) {
-                    const QString m44Between = QStringLiteral("channelsPanel");
-                    pictura::PanelGroup* m44Before =
-                        m41Column->groupForPanel(m44Between);
+                if (panelColumnColumn->compactStripGroupOrderForTest().size() >= 2) {
+                    const QString themeBetween = QStringLiteral("channelsPanel");
+                    pictura::PanelGroup* themeBefore =
+                        panelColumnColumn->groupForPanel(themeBetween);
                     const QPoint betweenPoint =
-                        m41Column->compactStripBoundaryPointForTest(1);
-                    const bool began = m41Column->beginStripDragForTest(m44Between);
-                    m41Column->dragToForTest(betweenPoint);
-                    const bool dropped = m41Column->dropForTest(betweenPoint);
-                    m43Pump(8);
+                        panelColumnColumn->compactStripBoundaryPointForTest(1);
+                    const bool began = panelColumnColumn->beginStripDragForTest(themeBetween);
+                    panelColumnColumn->dragToForTest(betweenPoint);
+                    const bool dropped = panelColumnColumn->dropForTest(betweenPoint);
+                    multicolumnPump(8);
                     pictura::PanelGroup* landed =
-                        m41Column->groupForPanel(m44Between);
-                    m44CdBetween = began && dropped && landed && landed != m44Before
+                        panelColumnColumn->groupForPanel(themeBetween);
+                    cdBetween = began && dropped && landed && landed != themeBefore
                                    && landed->titleCountForTest() == 1;
                 }
 
                 {
-                    const QString m44Above = QStringLiteral("pathsPanel");
+                    const QString themeAbove = QStringLiteral("pathsPanel");
                     const QPoint abovePoint =
-                        m41Column->compactStripBoundaryPointForTest(0);
-                    const bool began = m41Column->beginStripDragForTest(m44Above);
-                    m41Column->dragToForTest(abovePoint);
-                    const bool dropped = m41Column->dropForTest(abovePoint);
-                    m43Pump(8);
+                        panelColumnColumn->compactStripBoundaryPointForTest(0);
+                    const bool began = panelColumnColumn->beginStripDragForTest(themeAbove);
+                    panelColumnColumn->dragToForTest(abovePoint);
+                    const bool dropped = panelColumnColumn->dropForTest(abovePoint);
+                    multicolumnPump(8);
                     const QStringList order =
-                        m41Column->compactStripGroupOrderForTest();
+                        panelColumnColumn->compactStripGroupOrderForTest();
                     pictura::PanelGroup* landed =
-                        m41Column->groupForPanel(m44Above);
-                    m44CdAbove = began && dropped && landed
+                        panelColumnColumn->groupForPanel(themeAbove);
+                    cdAbove = began && dropped && landed
                                  && landed->titleCountForTest() == 1 && !order.isEmpty()
                                  && order.first() == landed->objectName();
                 }
 
                 {
-                    const QString m44Below = QStringLiteral("histogramPanel");
+                    const QString themeBelow = QStringLiteral("histogramPanel");
                     const int count =
-                        m41Column->compactStripGroupOrderForTest().size();
+                        panelColumnColumn->compactStripGroupOrderForTest().size();
                     const QPoint belowPoint =
-                        m41Column->compactStripBoundaryPointForTest(count);
-                    const bool began = m41Column->beginStripDragForTest(m44Below);
-                    m41Column->dragToForTest(belowPoint);
-                    const bool dropped = m41Column->dropForTest(belowPoint);
-                    m43Pump(8);
+                        panelColumnColumn->compactStripBoundaryPointForTest(count);
+                    const bool began = panelColumnColumn->beginStripDragForTest(themeBelow);
+                    panelColumnColumn->dragToForTest(belowPoint);
+                    const bool dropped = panelColumnColumn->dropForTest(belowPoint);
+                    multicolumnPump(8);
                     const QStringList order =
-                        m41Column->compactStripGroupOrderForTest();
+                        panelColumnColumn->compactStripGroupOrderForTest();
                     pictura::PanelGroup* landed =
-                        m41Column->groupForPanel(m44Below);
-                    m44CdBelow = began && dropped && landed
+                        panelColumnColumn->groupForPanel(themeBelow);
+                    cdBelow = began && dropped && landed
                                  && landed->titleCountForTest() == 1 && !order.isEmpty()
                                  && order.last() == landed->objectName();
                 }
 
-                m41Column->setRailMode(false);
-                m43Pump(4);
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(4);
             }
-            ST_BEGIN("m44_compactdrop_into");
-            ST_PASS("m44_compactdrop into=%d between=%d above=%d "
-                         "below=%d", m44CdInto ? 1 : 0,
-                         m44CdBetween ? 1 : 0,
-                         m44CdAbove ? 1 : 0,
-                         m44CdBelow ? 1 : 0);
-            if (!(m44CdInto && m44CdBetween && m44CdAbove && m44CdBelow)) {
-                ST_FAIL(162, "M44 compact drop");
+            ST_BEGIN("compactdrop_into");
+            ST_PASS("compactdrop into=%d between=%d above=%d "
+                         "below=%d", cdInto ? 1 : 0,
+                         cdBetween ? 1 : 0,
+                         cdAbove ? 1 : 0,
+                         cdBelow ? 1 : 0);
+            if (!(cdInto && cdBetween && cdAbove && cdBelow)) {
+                ST_FAIL(162, "compact drop");
             }
 
             // 163: every compact group carries a dots grip and dragging it moves
             // the whole group to a new boundary.
-            bool m44DhDots = false;
-            bool m44DhGroup = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m43Pump(8);
-                const QStringList order = m41Column->compactStripGroupOrderForTest();
+            bool dhDots = false;
+            bool dhGroup = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                multicolumnPump(8);
+                const QStringList order = panelColumnColumn->compactStripGroupOrderForTest();
                 if (order.size() >= 2) {
                     const QString first = order.first();
-                    m44DhDots = m41Column->dragHandleForTest(first) != nullptr;
-                    if (m44DhDots) {
+                    dhDots = panelColumnColumn->dragHandleForTest(first) != nullptr;
+                    if (dhDots) {
                         const int count =
-                            m41Column->compactStripGroupOrderForTest().size();
+                            panelColumnColumn->compactStripGroupOrderForTest().size();
                         const QPoint to =
-                            m41Column->compactStripBoundaryPointForTest(count);
-                        const bool began = m41Column->beginGroupGripDragForTest(first);
-                        m41Column->dragToForTest(to);
-                        const bool dropped = m41Column->dropForTest(to);
-                        m43Pump(8);
+                            panelColumnColumn->compactStripBoundaryPointForTest(count);
+                        const bool began = panelColumnColumn->beginGroupGripDragForTest(first);
+                        panelColumnColumn->dragToForTest(to);
+                        const bool dropped = panelColumnColumn->dropForTest(to);
+                        multicolumnPump(8);
                         const QStringList after =
-                            m41Column->compactStripGroupOrderForTest();
-                        m44DhGroup = began && dropped && after.size() == order.size()
+                            panelColumnColumn->compactStripGroupOrderForTest();
+                        dhGroup = began && dropped && after.size() == order.size()
                                      && after != order && after.last() == first;
                     }
                 }
-                m41Column->setRailMode(false);
-                m43Pump(4);
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(4);
             }
-            ST_BEGIN("m44_draghandle_dots");
-            ST_PASS("m44_draghandle dots=%d groupdrag=%d", m44DhDots ? 1 : 0, m44DhGroup ? 1 : 0);
-            if (!(m44DhDots && m44DhGroup)) {
-                ST_FAIL(163, "M44 compact drag handle");
+            ST_BEGIN("draghandle_dots");
+            ST_PASS("draghandle dots=%d groupdrag=%d", dhDots ? 1 : 0, dhGroup ? 1 : 0);
+            if (!(dhDots && dhGroup)) {
+                ST_FAIL(163, "compact drag handle");
             }
 
             // 158: a widget column docks at the toolbar side, beside another
             // column, and at the workspace edge; the Tools dock now allows only
             // the left/right sides (M45 T2) and its floating height is pinned
             // (T1/T2/W5).
-            bool m44DsToolbar = false;
-            bool m44DsColumn = false;
-            bool m44DsWorkspace = false;
-            bool m44DsFloat = false;
-            if (m40Toolbox && m41Column) {
-                m41Column->setRailMode(false);
-                m43Pump(8);
+            bool dsToolbar = false;
+            bool dsColumn = false;
+            bool dsWorkspace = false;
+            bool dsFloat = false;
+            if (toolsPanelToolbox && panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                multicolumnPump(8);
                 const int baseCount = frame.panelColumnCountForTest();
 
                 const bool ws =
@@ -5227,7 +5227,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 const bool wsBack =
                     ws && frame.dropIntoGroupForTest(QStringLiteral("stylesPanel"),
                                                      QStringLiteral("colorPanel"), -1);
-                m44DsWorkspace =
+                dsWorkspace =
                     ws && wsBack && frame.panelColumnCountForTest() == baseCount;
 
                 const bool tb =
@@ -5236,7 +5236,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 const bool tbBack =
                     tb && frame.dropIntoGroupForTest(QStringLiteral("gradientsPanel"),
                                                      QStringLiteral("colorPanel"), -1);
-                m44DsToolbar =
+                dsToolbar =
                     tb && tbBack && frame.panelColumnCountForTest() == baseCount;
 
                 const bool madeAnchor =
@@ -5252,36 +5252,36 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                   QStringLiteral("colorPanel"), -1)
                     && frame.dropIntoGroupForTest(QStringLiteral("patternsPanel"),
                                                   QStringLiteral("colorPanel"), -1);
-                m44DsColumn = madeAnchor && beside && besideBack
+                dsColumn = madeAnchor && beside && besideBack
                               && frame.panelColumnCountForTest() == baseCount;
 
                 const bool areas =
-                    m40Toolbox->allowedAreas()
+                    toolsPanelToolbox->allowedAreas()
                     == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-                const bool wasFloating = m40Toolbox->isFloating();
+                const bool wasFloating = toolsPanelToolbox->isFloating();
                 if (!wasFloating) {
-                    m40Toolbox->setFloating(true);
-                    m43Pump(8);
+                    toolsPanelToolbox->setFloating(true);
+                    multicolumnPump(8);
                 }
-                const int floatH = m40Toolbox->floatHeightForTest();
-                m40Toolbox->resize(m40Toolbox->width(), floatH + 80);
-                m43Pump(8);
-                const bool locked = m40Toolbox->floatHeightLockedForTest()
-                                    && m40Toolbox->height() == floatH;
+                const int floatH = toolsPanelToolbox->floatHeightForTest();
+                toolsPanelToolbox->resize(toolsPanelToolbox->width(), floatH + 80);
+                multicolumnPump(8);
+                const bool locked = toolsPanelToolbox->floatHeightLockedForTest()
+                                    && toolsPanelToolbox->height() == floatH;
                 if (!wasFloating) {
-                    m40Toolbox->setFloating(false);
-                    m43Pump(8);
+                    toolsPanelToolbox->setFloating(false);
+                    multicolumnPump(8);
                 }
-                m44DsFloat = areas && locked;
+                dsFloat = areas && locked;
             }
-            ST_BEGIN("m44_docksides_toolbar");
-            ST_PASS("m44_docksides toolbar=%d column=%d workspace=%d "
-                         "float=%d", m44DsToolbar ? 1 : 0,
-                         m44DsColumn ? 1 : 0,
-                         m44DsWorkspace ? 1 : 0,
-                         m44DsFloat ? 1 : 0);
-            if (!(m44DsToolbar && m44DsColumn && m44DsWorkspace && m44DsFloat)) {
-                ST_FAIL(158, "M44 any-side docking");
+            ST_BEGIN("docksides_toolbar");
+            ST_PASS("docksides toolbar=%d column=%d workspace=%d "
+                         "float=%d", dsToolbar ? 1 : 0,
+                         dsColumn ? 1 : 0,
+                         dsWorkspace ? 1 : 0,
+                         dsFloat ? 1 : 0);
+            if (!(dsToolbar && dsColumn && dsWorkspace && dsFloat)) {
+                ST_FAIL(158, "any-side docking");
             }
         }
         // M45 Phase A (167-169): the Tools toolbar content sizing, left/right-only
@@ -5290,57 +5290,57 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         {
             // 167: both axes are content-derived in one and two columns and
             // stable across a 1->2->1 toggle; neither axis is cut or over-tall.
-            bool m45One = false;
-            bool m45Two = false;
-            bool m45Stable = false;
-            int m45W1 = 0;
-            int m45H1 = 0;
-            int m45W2 = 0;
-            int m45H2 = 0;
-            if (m40Toolbox) {
-                m40Toolbox->setColumns(1);
-                m43Pump(8);
-                m45W1 = m40Toolbox->width();
-                m45H1 = m40Toolbox->height();
-                const int cw1 = m40Toolbox->contentWidthForTest();
-                const int ch1 = m40Toolbox->contentHeightForTest();
-                m45One = cw1 > 0 && ch1 > 0 && m45W1 == cw1 && m45H1 == ch1
-                         && m40Toolbox->minimumWidth() == cw1
-                         && m40Toolbox->maximumWidth() == cw1
-                         && m40Toolbox->minimumHeight() == ch1
-                         && m40Toolbox->maximumHeight() == ch1;
-                m40Toolbox->setColumns(2);
-                m43Pump(8);
-                m45W2 = m40Toolbox->width();
-                m45H2 = m40Toolbox->height();
-                const int cw2 = m40Toolbox->contentWidthForTest();
-                const int ch2 = m40Toolbox->contentHeightForTest();
-                m45Two = cw2 > cw1 && ch2 > 0 && ch2 < ch1 && m45W2 == cw2 && m45H2 == ch2;
-                m40Toolbox->setColumns(1);
-                m43Pump(8);
-                m45Stable = m40Toolbox->width() == cw1 && m40Toolbox->height() == ch1;
+            bool panelFixOne = false;
+            bool panelFixTwo = false;
+            bool panelFixStable = false;
+            int panelFixW1 = 0;
+            int panelFixH1 = 0;
+            int panelFixW2 = 0;
+            int panelFixH2 = 0;
+            if (toolsPanelToolbox) {
+                toolsPanelToolbox->setColumns(1);
+                multicolumnPump(8);
+                panelFixW1 = toolsPanelToolbox->width();
+                panelFixH1 = toolsPanelToolbox->height();
+                const int cw1 = toolsPanelToolbox->contentWidthForTest();
+                const int ch1 = toolsPanelToolbox->contentHeightForTest();
+                panelFixOne = cw1 > 0 && ch1 > 0 && panelFixW1 == cw1 && panelFixH1 == ch1
+                         && toolsPanelToolbox->minimumWidth() == cw1
+                         && toolsPanelToolbox->maximumWidth() == cw1
+                         && toolsPanelToolbox->minimumHeight() == ch1
+                         && toolsPanelToolbox->maximumHeight() == ch1;
+                toolsPanelToolbox->setColumns(2);
+                multicolumnPump(8);
+                panelFixW2 = toolsPanelToolbox->width();
+                panelFixH2 = toolsPanelToolbox->height();
+                const int cw2 = toolsPanelToolbox->contentWidthForTest();
+                const int ch2 = toolsPanelToolbox->contentHeightForTest();
+                panelFixTwo = cw2 > cw1 && ch2 > 0 && ch2 < ch1 && panelFixW2 == cw2 && panelFixH2 == ch2;
+                toolsPanelToolbox->setColumns(1);
+                multicolumnPump(8);
+                panelFixStable = toolsPanelToolbox->width() == cw1 && toolsPanelToolbox->height() == ch1;
             }
-            ST_BEGIN("m45_tools_sizing_one");
-            ST_PASS("m45_tools_sizing one=%d two=%d stable=%d "
-                         "w1=%d h1=%d w2=%d h2=%d", m45One ? 1 : 0, m45Two ? 1 : 0, m45Stable ? 1 : 0, m45W1, m45H1,
-                         m45W2, m45H2);
-            if (!(m45One && m45Two && m45Stable)) {
-                ST_FAIL(167, "M45 tools sizing");
+            ST_BEGIN("tools_sizing_one");
+            ST_PASS("tools_sizing one=%d two=%d stable=%d "
+                         "w1=%d h1=%d w2=%d h2=%d", panelFixOne ? 1 : 0, panelFixTwo ? 1 : 0, panelFixStable ? 1 : 0, panelFixW1, panelFixH1,
+                         panelFixW2, panelFixH2);
+            if (!(panelFixOne && panelFixTwo && panelFixStable)) {
+                ST_FAIL(167, "tools sizing");
             }
         }
 
         {
             // 168: the Tools dock allows left/right only; top and bottom refused.
-            const Qt::DockWidgetAreas m45Areas =
-                m40Toolbox ? m40Toolbox->allowedAreas() : Qt::NoDockWidgetArea;
-            const bool m45Left = m45Areas.testFlag(Qt::LeftDockWidgetArea);
-            const bool m45Right = m45Areas.testFlag(Qt::RightDockWidgetArea);
-            const bool m45NoTop = !m45Areas.testFlag(Qt::TopDockWidgetArea)
-                                  && !m45Areas.testFlag(Qt::BottomDockWidgetArea);
-            ST_BEGIN("m45_tools_sides_left");
-            ST_PASS("m45_tools_sides left=%d right=%d notop=%d", m45Left ? 1 : 0, m45Right ? 1 : 0, m45NoTop ? 1 : 0);
-            if (!(m45Left && m45Right && m45NoTop)) {
-                ST_FAIL(168, "M45 tools sides");
+            const Qt::DockWidgetAreas panelFixAreas =
+                toolsPanelToolbox ? toolsPanelToolbox->allowedAreas() : Qt::NoDockWidgetArea;
+            const bool panelFixLeft = panelFixAreas.testFlag(Qt::LeftDockWidgetArea);
+            const bool panelFixRight = panelFixAreas.testFlag(Qt::RightDockWidgetArea);
+            const bool noTop = !panelFixAreas.testFlag(Qt::TopDockWidgetArea)
+                                  && !panelFixAreas.testFlag(Qt::BottomDockWidgetArea);
+            ST_BEGIN("tools_sides_left");
+            ST_PASS("tools_sides left=%d right=%d notop=%d", panelFixLeft ? 1 : 0, panelFixRight ? 1 : 0, noTop ? 1 : 0);
+            if (!(panelFixLeft && panelFixRight && noTop)) {
+                ST_FAIL(168, "tools sides");
             }
         }
 
@@ -5348,14 +5348,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // 169: the floating Tools panel docks to the left of the primary
             // widget column and to the right of a dynamically created one, with
             // the single indicator shown, through the column grammar.
-            const bool m45BesideLeft =
+            const bool besideLeft =
                 frame.toolboxBesideColumnForTest(QStringLiteral("left"), false);
-            const bool m45BesideRight =
+            const bool besideRight =
                 frame.toolboxBesideColumnForTest(QStringLiteral("right"), true);
-            ST_BEGIN("m45_tools_beside_column_left");
-            ST_PASS("m45_tools_beside_column left=%d right=%d", m45BesideLeft ? 1 : 0, m45BesideRight ? 1 : 0);
-            if (!(m45BesideLeft && m45BesideRight)) {
-                ST_FAIL(169, "M45 tools beside column");
+            ST_BEGIN("tools_beside_column_left");
+            ST_PASS("tools_beside_column left=%d right=%d", besideLeft ? 1 : 0, besideRight ? 1 : 0);
+            if (!(besideLeft && besideRight)) {
+                ST_FAIL(169, "tools beside column");
             }
         }
         // M45 Phase B (170-177): the widget-panel drop indicator is rendered
@@ -5366,18 +5366,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // check pumps the event loop bounded and forces layout so geometry is
         // real offscreen.
         {
-            auto m45Pump = [](int n) {
+            auto panelFixPump = [](int n) {
                 for (int i = 0; i < n; ++i) {
                     QCoreApplication::processEvents();
                 }
             };
             // A visible panel in the primary column that is not in `exclude`.
-            auto m45OtherPanel = [&](pictura::PanelGroup* exclude,
+            auto otherPanel = [&](pictura::PanelGroup* exclude,
                                      const QString& alsoExclude) -> QString {
-                if (!m41Column) {
+                if (!panelColumnColumn) {
                     return QString();
                 }
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (!group || group == exclude || !group->isVisible()
                         || group->titleCountForTest() == 0) {
                         continue;
@@ -5390,13 +5390,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 return QString();
             };
-            auto m45CollapseDynamics = [&]() {
+            auto collapseDynamics = [&]() {
                 // Geometry-independent teardown: move every dynamic column's
                 // groups (and their panels) back into the primary column, then
                 // drop the empty columns. Keeps the tested resolve/commit path
                 // untouched without depending on a drop's pixel geometry.
                 for (pictura::PanelColumn* column : frame.panelColumns()) {
-                    if (!column || column == m41Column) {
+                    if (!column || column == panelColumnColumn) {
                         continue;
                     }
                     const QList<pictura::PanelGroup*> groups = column->groups();
@@ -5406,25 +5406,25 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                         }
                         if (pictura::PanelGroup* taken =
                                 column->takeGroup(group->objectName())) {
-                            m41Column->adoptGroup(taken);
+                            panelColumnColumn->adoptGroup(taken);
                         }
                     }
                     frame.removeColumnIfEmpty(column);
                 }
-                m45Pump(6);
+                panelFixPump(6);
             };
 
             // 170: the line follows the resolved target's side in the owning
             // (destination) column, never the drag's source column.
-            bool m45SideLeft = false;
-            bool m45SideRight = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m45Pump(4);
+            bool sideLeft = false;
+            bool sideRight = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
                 pictura::PanelColumn* dest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 pictura::PanelGroup* dg = nullptr;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && group->isVisible() && group->titleCountForTest() == 1) {
                         dg = group;
                         break;
@@ -5432,66 +5432,66 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 if (dest && dg) {
                     const QString seedName = dg->objectName();
-                    if (pictura::PanelGroup* taken = m41Column->takeGroup(seedName)) {
+                    if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(seedName)) {
                         dest->adoptGroup(taken);
                     }
                 }
                 if (dest) {
-                    m41Column->setPreferredWidth(180);
+                    panelColumnColumn->setPreferredWidth(180);
                     dest->setPreferredWidth(420);
-                    m45Pump(6);
+                    panelFixPump(6);
                 }
-                const QString srcA = m45OtherPanel(dg, QString());
-                const QString srcB = m45OtherPanel(dg, srcA);
-                if (dest && dest != m41Column && dg && !srcA.isEmpty() && !srcB.isEmpty()) {
+                const QString srcA = otherPanel(dg, QString());
+                const QString srcB = otherPanel(dg, srcA);
+                if (dest && dest != panelColumnColumn && dg && !srcA.isEmpty() && !srcB.isEmpty()) {
                     // Append one panel (right side), then insert the other
                     // between the first two tabs (left side); both points are
                     // interior to the target bar, so they exercise the
                     // cross-column target rather than a column-edge anchor.
                     const int endR = dg->titleCountForTest();
                     const QPoint rightPoint = dg->tabInsertionGlobalPointForTest(endR);
-                    m41Column->beginTabDragForTest(srcA);
-                    m41Column->dragToForTest(rightPoint);
+                    panelColumnColumn->beginTabDragForTest(srcA);
+                    panelColumnColumn->dragToForTest(rightPoint);
                     const QRect rg = dest->dropIndicatorGlobalGeometryForTest();
-                    m45SideRight = dest->dropIndicatorVisibleForTest()
-                                   && !m41Column->dropIndicatorVisibleForTest() && rg.isValid()
+                    sideRight = dest->dropIndicatorVisibleForTest()
+                                   && !panelColumnColumn->dropIndicatorVisibleForTest() && rg.isValid()
                                    && qAbs(rg.center().x() - rightPoint.x()) <= 8;
-                    m41Column->dropForTest(rightPoint);
-                    m45Pump(4);
-                    m45SideRight = m45SideRight && dest->groupForPanel(srcA) == dg
+                    panelColumnColumn->dropForTest(rightPoint);
+                    panelFixPump(4);
+                    sideRight = sideRight && dest->groupForPanel(srcA) == dg
                                    && dg->indexOfPanel(srcA) == endR;
 
                     const QPoint leftPoint = dg->tabInsertionGlobalPointForTest(1);
-                    m41Column->beginTabDragForTest(srcB);
-                    m41Column->dragToForTest(leftPoint);
+                    panelColumnColumn->beginTabDragForTest(srcB);
+                    panelColumnColumn->dragToForTest(leftPoint);
                     const QRect lg = dest->dropIndicatorGlobalGeometryForTest();
-                    m45SideLeft = dest->dropIndicatorVisibleForTest()
-                                  && !m41Column->dropIndicatorVisibleForTest() && lg.isValid()
+                    sideLeft = dest->dropIndicatorVisibleForTest()
+                                  && !panelColumnColumn->dropIndicatorVisibleForTest() && lg.isValid()
                                   && qAbs(lg.center().x() - leftPoint.x()) <= 8;
-                    m41Column->dropForTest(leftPoint);
-                    m45Pump(4);
-                    m45SideLeft = m45SideLeft && dest->groupForPanel(srcB) == dg
+                    panelColumnColumn->dropForTest(leftPoint);
+                    panelFixPump(4);
+                    sideLeft = sideLeft && dest->groupForPanel(srcB) == dg
                                   && dg->indexOfPanel(srcB) == 1;
                 }
-                m45CollapseDynamics();
+                collapseDynamics();
             }
-            ST_BEGIN("m45_indicator_side_left");
-            ST_PASS("m45_indicator_side left=%d right=%d", m45SideLeft ? 1 : 0, m45SideRight ? 1 : 0);
-            if (!(m45SideLeft && m45SideRight)) {
-                ST_FAIL(170, "M45 indicator side");
+            ST_BEGIN("indicator_side_left");
+            ST_PASS("indicator_side left=%d right=%d", sideLeft ? 1 : 0, sideRight ? 1 : 0);
+            if (!(sideLeft && sideRight)) {
+                ST_FAIL(170, "indicator side");
             }
 
             // 171: a cross-column IntoGroup drop shows the line in the target
             // column (shown) and lands the panel there (placed).
-            bool m45CrossShown = false;
-            bool m45CrossPlaced = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m45Pump(4);
+            bool crossShown = false;
+            bool crossPlaced = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
                 pictura::PanelColumn* dest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 pictura::PanelGroup* dg = nullptr;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && group->isVisible() && group->titleCountForTest() == 1) {
                         dg = group;
                         break;
@@ -5499,45 +5499,45 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 if (dest && dg) {
                     const QString seedName = dg->objectName();
-                    if (pictura::PanelGroup* taken = m41Column->takeGroup(seedName)) {
+                    if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(seedName)) {
                         dest->adoptGroup(taken);
                     }
                 }
                 if (dest) {
-                    m41Column->setPreferredWidth(180);
+                    panelColumnColumn->setPreferredWidth(180);
                     dest->setPreferredWidth(420);
-                    m45Pump(6);
+                    panelFixPump(6);
                 }
-                const QString src = m45OtherPanel(dg, QString());
-                if (dest && dest != m41Column && dg && !src.isEmpty()) {
+                const QString src = otherPanel(dg, QString());
+                if (dest && dest != panelColumnColumn && dg && !src.isEmpty()) {
                     const QPoint p = dg->tabInsertionGlobalPointForTest(
                         dg->titleCountForTest());
-                    m41Column->beginTabDragForTest(src);
-                    m41Column->dragToForTest(p);
-                    m45CrossShown = dest->dropIndicatorVisibleForTest()
-                                    && !m41Column->dropIndicatorVisibleForTest();
-                    m41Column->dropForTest(p);
-                    m45Pump(4);
-                    m45CrossPlaced = dest->groupForPanel(src) == dg;
+                    panelColumnColumn->beginTabDragForTest(src);
+                    panelColumnColumn->dragToForTest(p);
+                    crossShown = dest->dropIndicatorVisibleForTest()
+                                    && !panelColumnColumn->dropIndicatorVisibleForTest();
+                    panelColumnColumn->dropForTest(p);
+                    panelFixPump(4);
+                    crossPlaced = dest->groupForPanel(src) == dg;
                 }
-                m45CollapseDynamics();
+                collapseDynamics();
             }
-            ST_BEGIN("m45_indicator_cross_column_shown");
-            ST_PASS("m45_indicator_cross_column shown=%d placed=%d", m45CrossShown ? 1 : 0, m45CrossPlaced ? 1 : 0);
-            if (!(m45CrossShown && m45CrossPlaced)) {
-                ST_FAIL(171, "M45 cross-column indicator");
+            ST_BEGIN("indicator_cross_column_shown");
+            ST_PASS("indicator_cross_column shown=%d placed=%d", crossShown ? 1 : 0, crossPlaced ? 1 : 0);
+            if (!(crossShown && crossPlaced)) {
+                ST_FAIL(171, "cross-column indicator");
             }
 
             // 172: the rightmost tab insertion draws at that tab's index, not
             // the leftmost edge, and the panel lands last.
-            bool m45Rightmost = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m41Column->setPreferredWidth(420);
-                m45Pump(6);
+            bool panelFixRightmost = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelColumnColumn->setPreferredWidth(420);
+                panelFixPump(6);
                 pictura::PanelGroup* target =
-                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
-                const QString src = m45OtherPanel(target, QString());
+                    panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
+                const QString src = otherPanel(target, QString());
                 if (target && target->titleCountForTest() >= 1 && !src.isEmpty()) {
                     const int end = target->titleCountForTest();
                     const QPoint p = target->tabInsertionGlobalPointForTest(end);
@@ -5548,39 +5548,39 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                    QPoint(target->tabInsertionX(end - 1), 0))
                                                    .x()
                                              : 0;
-                    m41Column->beginTabDragForTest(src);
-                    m41Column->dragToForTest(p);
-                    const QRect g = m41Column->dropIndicatorGlobalGeometryForTest();
-                    m45Rightmost = m41Column->dropIndicatorVisibleForTest() && g.isValid()
+                    panelColumnColumn->beginTabDragForTest(src);
+                    panelColumnColumn->dragToForTest(p);
+                    const QRect g = panelColumnColumn->dropIndicatorGlobalGeometryForTest();
+                    panelFixRightmost = panelColumnColumn->dropIndicatorVisibleForTest() && g.isValid()
                                    && qAbs(g.center().x() - p.x()) <= 8
                                    && g.center().x() >= lastLeft
                                    && g.center().x() > firstLeft;
-                    m41Column->dropForTest(p);
-                    m45Pump(4);
-                    m45Rightmost = m45Rightmost && target->indexOfPanel(src) == end
-                                   && m41Column->groupForPanel(src) == target;
+                    panelColumnColumn->dropForTest(p);
+                    panelFixPump(4);
+                    panelFixRightmost = panelFixRightmost && target->indexOfPanel(src) == end
+                                   && panelColumnColumn->groupForPanel(src) == target;
                 }
             }
-            ST_BEGIN("m45_indicator_rightmost_tab_rightmost");
-            ST_PASS("m45_indicator_rightmost_tab rightmost=%d", m45Rightmost ? 1 : 0);
-            if (!m45Rightmost) {
-                ST_FAIL(172, "M45 rightmost-tab indicator");
+            ST_BEGIN("indicator_rightmost_tab_rightmost");
+            ST_PASS("indicator_rightmost_tab rightmost=%d", panelFixRightmost ? 1 : 0);
+            if (!panelFixRightmost) {
+                ST_FAIL(172, "rightmost-tab indicator");
             }
 
             // 173: a dynamic column emptied by a close path and by a move path
             // is removed; a closed panel is rehomed so it can be shown again.
-            bool m45Closed = false;
-            bool m45Moved = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m45Pump(4);
+            bool panelFixClosed = false;
+            bool panelFixMoved = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
                 // closed: a dynamic column whose group is closed is removed;
                 // the hidden group is rehomed so the panel can be shown again.
                 const int beforeClose = frame.panelColumnCountForTest();
                 pictura::PanelColumn* closeDest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 pictura::PanelGroup* closeGroup = nullptr;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && group->isVisible() && group->titleCountForTest() == 1
                         && group->objectName() != QStringLiteral("panelGroup_layersPanel")) {
                         closeGroup = group;
@@ -5589,26 +5589,26 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 if (closeDest && closeGroup) {
                     const QString closeName = closeGroup->objectName();
-                    if (pictura::PanelGroup* taken = m41Column->takeGroup(closeName)) {
+                    if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(closeName)) {
                         closeDest->adoptGroup(taken);
                     }
                     const QString closePanel = closeGroup->panels().isEmpty()
                                                    ? QString()
                                                    : closeGroup->panels().first()->objectName();
-                    m45Pump(6);
+                    panelFixPump(6);
                     closeDest->closeGroup(closeGroup);
-                    m45Pump(6);
-                    m45Closed = frame.panelColumnCountForTest() == beforeClose
+                    panelFixPump(6);
+                    panelFixClosed = frame.panelColumnCountForTest() == beforeClose
                                 && !closePanel.isEmpty()
-                                && m41Column->groupForPanel(closePanel) != nullptr;
+                                && panelColumnColumn->groupForPanel(closePanel) != nullptr;
                 }
                 // moved: a dynamic column whose panel is moved out through the
                 // real drag path empties and is removed.
                 const int beforeMove = frame.panelColumnCountForTest();
                 pictura::PanelColumn* moveDest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 pictura::PanelGroup* moveGroup = nullptr;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && group->isVisible() && group->titleCountForTest() == 1
                         && group->objectName() != QStringLiteral("panelGroup_layersPanel")) {
                         moveGroup = group;
@@ -5617,107 +5617,107 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 if (moveDest && moveGroup) {
                     const QString moveName = moveGroup->objectName();
-                    if (pictura::PanelGroup* taken = m41Column->takeGroup(moveName)) {
+                    if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(moveName)) {
                         moveDest->adoptGroup(taken);
                     }
                     const QString movePanel = moveGroup->panels().isEmpty()
                                                   ? QString()
                                                   : moveGroup->panels().first()->objectName();
-                    m41Column->setPreferredWidth(420);
-                    m45Pump(6);
+                    panelColumnColumn->setPreferredWidth(420);
+                    panelFixPump(6);
                     const bool back =
                         frame.dropIntoGroupForTest(movePanel, QStringLiteral("colorPanel"), -1);
-                    m45Pump(6);
-                    m45Moved = back && frame.panelColumnCountForTest() == beforeMove;
+                    panelFixPump(6);
+                    panelFixMoved = back && frame.panelColumnCountForTest() == beforeMove;
                 }
-                m45CollapseDynamics();
+                collapseDynamics();
             }
-            ST_BEGIN("m45_empty_column_removed_closed");
-            ST_PASS("m45_empty_column_removed closed=%d moved=%d", m45Closed ? 1 : 0, m45Moved ? 1 : 0);
-            if (!(m45Closed && m45Moved)) {
-                ST_FAIL(173, "M45 empty column removed");
+            ST_BEGIN("empty_column_removed_closed");
+            ST_PASS("empty_column_removed closed=%d moved=%d", panelFixClosed ? 1 : 0, panelFixMoved ? 1 : 0);
+            if (!(panelFixClosed && panelFixMoved)) {
+                ST_FAIL(173, "empty column removed");
             }
 
             // 174: minimize collapses the group to its tab-bar height with the
             // content hidden and the tab menu reading `Expand Panel`.
-            bool m45MinHeight = false;
-            bool m45MinContent = false;
-            bool m45MinLabel = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m41Column->showPanel(QStringLiteral("layersPanel"), true);
-                m41Column->setPreferredWidth(360);
-                m45Pump(8);
+            bool minHeight = false;
+            bool minContent = false;
+            bool minLabel = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
+                panelColumnColumn->setPreferredWidth(360);
+                panelFixPump(8);
                 pictura::PanelGroup* g =
-                    m41Column->groupForPanel(QStringLiteral("layersPanel"));
+                    panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
                 if (g) {
                     g->setMinimizedForTest(false);
-                    m45Pump(8);
+                    panelFixPump(8);
                     const int expanded = g->height();
                     const int barH = g->tabBar() ? g->tabBar()->sizeHint().height() : 24;
                     g->setMinimizedForTest(true);
                     g->updateGeometry();
-                    m41Column->updateGeometry();
-                    m45Pump(16);
+                    panelColumnColumn->updateGeometry();
+                    panelFixPump(16);
                     const int collapsed = g->height();
-                    m45MinHeight = expanded > barH + 4 && collapsed > 0
+                    minHeight = expanded > barH + 4 && collapsed > 0
                                    && collapsed <= barH + 6 && collapsed < expanded
                                    && g->maximumHeight() <= barH + 4;
-                    m45MinContent = g->contentHiddenForTest();
-                    const QStringList texts = m41Column->tabMenuActionsForTest(g->objectName());
-                    m45MinLabel = texts.size() == 7
+                    minContent = g->contentHiddenForTest();
+                    const QStringList texts = panelColumnColumn->tabMenuActionsForTest(g->objectName());
+                    minLabel = texts.size() == 7
                                   && texts.value(2) == QStringLiteral("Expand Panel");
                     g->setMinimizedForTest(false);
                     g->updateGeometry();
-                    m45Pump(8);
+                    panelFixPump(8);
                 }
             }
-            ST_BEGIN("m45_minimize_collapse_height");
-            ST_PASS("m45_minimize_collapse height=%d content=%d "
-                         "label=%d", m45MinHeight ? 1 : 0, m45MinContent ? 1 : 0, m45MinLabel ? 1 : 0);
-            if (!(m45MinHeight && m45MinContent && m45MinLabel)) {
-                ST_FAIL(174, "M45 minimize collapse");
+            ST_BEGIN("minimize_collapse_height");
+            ST_PASS("minimize_collapse height=%d content=%d "
+                         "label=%d", minHeight ? 1 : 0, minContent ? 1 : 0, minLabel ? 1 : 0);
+            if (!(minHeight && minContent && minLabel)) {
+                ST_FAIL(174, "minimize collapse");
             }
 
             // 175: a bottom-boundary insert draws the horizontal line at the
             // last group's bottom edge and lands a new last group.
-            bool m45Bottom = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m45Pump(4);
-                const QString src = m45OtherPanel(nullptr, QString());
-                const QPoint p = m41Column->boundaryPointForTest(1000);
+            bool panelFixBottom = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
+                const QString src = otherPanel(nullptr, QString());
+                const QPoint p = panelColumnColumn->boundaryPointForTest(1000);
                 if (!src.isEmpty() && !p.isNull()) {
-                    m41Column->beginTabDragForTest(src);
-                    m41Column->dragToForTest(p);
-                    const QRect g = m41Column->dropIndicatorGeometryForTest();
+                    panelColumnColumn->beginTabDragForTest(src);
+                    panelColumnColumn->dragToForTest(p);
+                    const QRect g = panelColumnColumn->dropIndicatorGeometryForTest();
                     const bool horiz =
                         g.isValid() && g.width() > g.height() && g.height() == 3;
-                    m41Column->dropForTest(p);
-                    m45Pump(6);
-                    pictura::PanelGroup* landed = m41Column->groupForPanel(src);
-                    m45Bottom = horiz && g.center().y() > m41Column->height() / 2 && landed
+                    panelColumnColumn->dropForTest(p);
+                    panelFixPump(6);
+                    pictura::PanelGroup* landed = panelColumnColumn->groupForPanel(src);
+                    panelFixBottom = horiz && g.center().y() > panelColumnColumn->height() / 2 && landed
                                 && landed->titleCountForTest() == 1;
                 }
             }
-            ST_BEGIN("m45_indicator_bottom_bottom");
-            ST_PASS("m45_indicator_bottom bottom=%d", m45Bottom ? 1 : 0);
-            if (!m45Bottom) {
-                ST_FAIL(175, "M45 bottom indicator");
+            ST_BEGIN("indicator_bottom_bottom");
+            ST_PASS("indicator_bottom bottom=%d", panelFixBottom ? 1 : 0);
+            if (!panelFixBottom) {
+                ST_FAIL(175, "bottom indicator");
             }
 
             // 176: the column never clips — the tab text elides, the corner
             // button keeps its width, and the column is wide enough that no
             // horizontal scrollbar is ever needed (policy off).
-            bool m45NoClipElide = false;
-            bool m45NoClipScroll = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m45Pump(4);
+            bool noClipElide = false;
+            bool noClipScroll = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
                 bool any = false;
                 bool elide = true;
                 bool corner = true;
-                for (pictura::PanelGroup* g : m41Column->groups()) {
+                for (pictura::PanelGroup* g : panelColumnColumn->groups()) {
                     if (!g || !g->isVisible()) {
                         continue;
                     }
@@ -5727,29 +5727,29 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                             && !bar->expanding();
                     corner = corner && g->headerCornerWidthForTest() > 0;
                 }
-                m45NoClipElide = any && elide && corner;
-                m45NoClipScroll = m41Column->horizontalScrollPolicyForTest()
+                noClipElide = any && elide && corner;
+                noClipScroll = panelColumnColumn->horizontalScrollPolicyForTest()
                                   == static_cast<int>(Qt::ScrollBarAlwaysOff);
             }
-            ST_BEGIN("m45_no_clip_elide");
-            ST_PASS("m45_no_clip elide=%d scroll=%d", m45NoClipElide ? 1 : 0, m45NoClipScroll ? 1 : 0);
-            if (!(m45NoClipElide && m45NoClipScroll)) {
-                ST_FAIL(176, "M45 no clip");
+            ST_BEGIN("no_clip_elide");
+            ST_PASS("no_clip elide=%d scroll=%d", noClipElide ? 1 : 0, noClipScroll ? 1 : 0);
+            if (!(noClipElide && noClipScroll)) {
+                ST_FAIL(176, "no clip");
             }
 
             // 177: every normal-mode widget column shares one minimum-width
             // floor and cannot vanish when resized to it.
-            bool m45FloorShared = false;
-            bool m45FloorNotGone = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m45Pump(2);
-                m41Column->setRailMode(false);
-                m45Pump(4);
+            bool floorShared = false;
+            bool floorNotGone = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                panelFixPump(2);
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
                 pictura::PanelColumn* dest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 pictura::PanelGroup* seed = nullptr;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && group->isVisible() && group->titleCountForTest() == 1) {
                         seed = group;
                         break;
@@ -5757,34 +5757,34 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 if (dest && seed) {
                     const QString seedName = seed->objectName();
-                    if (pictura::PanelGroup* taken = m41Column->takeGroup(seedName)) {
+                    if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(seedName)) {
                         dest->adoptGroup(taken);
                     }
                 }
-                if (dest && dest != m41Column) {
-                    const int floor = m41Column->minimumWidthFloorForTest();
-                    const int minA = m41Column->minimumWidthForTest();
+                if (dest && dest != panelColumnColumn) {
+                    const int floor = panelColumnColumn->minimumWidthFloorForTest();
+                    const int minA = panelColumnColumn->minimumWidthForTest();
                     const int minB = dest->minimumWidthForTest();
-                    m45FloorShared = floor > 0 && minA == floor && minB == floor;
+                    floorShared = floor > 0 && minA == floor && minB == floor;
                     dest->setPreferredWidth(floor);
-                    m41Column->setPreferredWidth(floor);
-                    m45Pump(8);
-                    m45FloorNotGone = minA > 0 && !m41Column->isHidden()
-                                      && !dest->isHidden() && m41Column->width() >= floor;
-                    m45CollapseDynamics();
+                    panelColumnColumn->setPreferredWidth(floor);
+                    panelFixPump(8);
+                    floorNotGone = minA > 0 && !panelColumnColumn->isHidden()
+                                      && !dest->isHidden() && panelColumnColumn->width() >= floor;
+                    collapseDynamics();
                 }
             }
-            ST_BEGIN("m45_min_width_floor_shared");
-            ST_PASS("m45_min_width_floor shared=%d notgone=%d", m45FloorShared ? 1 : 0, m45FloorNotGone ? 1 : 0);
-            if (!(m45FloorShared && m45FloorNotGone)) {
-                ST_FAIL(177, "M45 min width floor");
+            ST_BEGIN("min_width_floor_shared");
+            ST_PASS("min_width_floor shared=%d notgone=%d", floorShared ? 1 : 0, floorNotGone ? 1 : 0);
+            if (!(floorShared && floorNotGone)) {
+                ST_FAIL(177, "min width floor");
             }
         }
         // M45 Phase C (178-179): the compact popup hosts the whole PanelGroup
         // (all tabs, clicked panel active) and restores it exactly once on close
         // (C1); a whole-group compact drag draws above the drag-handle dots (C2).
         {
-            auto m45Pump = [](int n) {
+            auto panelFixPump = [](int n) {
                 for (int i = 0; i < n; ++i) {
                     QCoreApplication::processEvents();
                 }
@@ -5793,93 +5793,93 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // 178: the popup contains the full group's tabs, the clicked panel
             // is current, it is the very same widget as the docked group (shared
             // style/container), and closing restores it exactly once.
-            bool m45PopupTabs = false;
-            bool m45PopupActive = false;
-            bool m45PopupParity = false;
-            bool m45PopupRestore = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m45Pump(6);
+            bool popupTabs = false;
+            bool popupActive = false;
+            bool popupParity = false;
+            bool popupRestore = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                panelFixPump(6);
                 // The Layers group carries three tabs (Layers/Channels/Paths),
                 // so clicking Channels proves the whole group is hosted.
                 const QString clicked = QStringLiteral("channelsPanel");
-                pictura::PanelGroup* group = m41Column->groupForPanel(clicked);
+                pictura::PanelGroup* group = panelColumnColumn->groupForPanel(clicked);
                 if (group) {
                     group->setCurrentPanel(QStringLiteral("layersPanel"));
-                    m45Pump(2);
+                    panelFixPump(2);
                     const QStringList expectedTitles = group->titles();
                     const int expectedCount = group->titleCountForTest();
-                    const bool opened = m41Column->openIconFlyoutForTest(clicked);
-                    m45Pump(10);
-                    pictura::PanelGroup* hosted = m41Column->iconFlyoutGroupForTest();
-                    m45PopupTabs = opened && hosted == group && group->isVisible()
+                    const bool opened = panelColumnColumn->openIconFlyoutForTest(clicked);
+                    panelFixPump(10);
+                    pictura::PanelGroup* hosted = panelColumnColumn->iconFlyoutGroupForTest();
+                    popupTabs = opened && hosted == group && group->isVisible()
                                    && hosted->titleCountForTest() == expectedCount
                                    && hosted->titles() == expectedTitles;
-                    m45PopupActive = hosted && hosted->currentPanelName() == clicked;
-                    m45PopupParity = m41Column->iconFlyoutVisibleForTest()
-                                     && m41Column->popupStyleParityForTest(clicked);
-                    const bool closed = m41Column->triggerFlyoutCloseForTest();
-                    m45Pump(10);
+                    popupActive = hosted && hosted->currentPanelName() == clicked;
+                    popupParity = panelColumnColumn->iconFlyoutVisibleForTest()
+                                     && panelColumnColumn->popupStyleParityForTest(clicked);
+                    const bool closed = panelColumnColumn->triggerFlyoutCloseForTest();
+                    panelFixPump(10);
                     int occurrences = 0;
-                    for (pictura::PanelGroup* cand : m41Column->groups()) {
+                    for (pictura::PanelGroup* cand : panelColumnColumn->groups()) {
                         if (cand == group) {
                             ++occurrences;
                         }
                     }
                     QWidget* parent = group->parentWidget();
-                    m45PopupRestore =
-                        closed && !m41Column->iconFlyoutVisibleForTest()
-                        && m41Column->iconFlyoutGroupForTest() == nullptr
+                    popupRestore =
+                        closed && !panelColumnColumn->iconFlyoutVisibleForTest()
+                        && panelColumnColumn->iconFlyoutGroupForTest() == nullptr
                         && occurrences == 1 && parent
                         && parent->objectName() == QStringLiteral("panelColumnSplitter")
                         && group->titleCountForTest() == expectedCount
                         && group->currentPanelName() == clicked
-                        && m41Column->groupForPanel(clicked) == group;
+                        && panelColumnColumn->groupForPanel(clicked) == group;
                 }
-                m41Column->setRailMode(false);
-                m45Pump(4);
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
             }
-            ST_BEGIN("m45_popup_group_tabs");
-            ST_PASS("m45_popup_group tabs=%d active=%d parity=%d "
-                         "restore=%d", m45PopupTabs ? 1 : 0, m45PopupActive ? 1 : 0, m45PopupParity ? 1 : 0,
-                         m45PopupRestore ? 1 : 0);
-            if (!(m45PopupTabs && m45PopupActive && m45PopupParity && m45PopupRestore)) {
-                ST_FAIL(178, "M45 popup group");
+            ST_BEGIN("popup_group_tabs");
+            ST_PASS("popup_group tabs=%d active=%d parity=%d "
+                         "restore=%d", popupTabs ? 1 : 0, popupActive ? 1 : 0, popupParity ? 1 : 0,
+                         popupRestore ? 1 : 0);
+            if (!(popupTabs && popupActive && popupParity && popupRestore)) {
+                ST_FAIL(178, "popup group");
             }
 
             // 179: dragging a whole group in compact mode shows the placement
             // line above the group's drag-handle grip (at its insertion
             // boundary), never inside the group below the dots.
-            bool m45CompactAbove = false;
-            if (m41Column) {
-                m41Column->setRailMode(true);
-                m45Pump(8);
-                const QStringList order = m41Column->compactStripGroupOrderForTest();
+            bool compactAbove = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(true);
+                panelFixPump(8);
+                const QStringList order = panelColumnColumn->compactStripGroupOrderForTest();
                 const QString first = order.isEmpty() ? QString() : order.first();
-                QWidget* grip = first.isEmpty() ? nullptr : m41Column->dragHandleForTest(first);
-                const QPoint boundary = m41Column->compactStripBoundaryPointForTest(0);
+                QWidget* grip = first.isEmpty() ? nullptr : panelColumnColumn->dragHandleForTest(first);
+                const QPoint boundary = panelColumnColumn->compactStripBoundaryPointForTest(0);
                 const bool began =
-                    !first.isEmpty() && m41Column->beginGroupGripDragForTest(first);
-                m41Column->dragToForTest(boundary);
-                const QRect indicator = m41Column->dropIndicatorGeometryForTest();
-                const QRect indicatorGlobal = m41Column->dropIndicatorGlobalGeometryForTest();
+                    !first.isEmpty() && panelColumnColumn->beginGroupGripDragForTest(first);
+                panelColumnColumn->dragToForTest(boundary);
+                const QRect indicator = panelColumnColumn->dropIndicatorGeometryForTest();
+                const QRect indicatorGlobal = panelColumnColumn->dropIndicatorGlobalGeometryForTest();
                 const QRect gripGlobal =
                     grip ? QRect(grip->mapToGlobal(QPoint(0, 0)), grip->size()) : QRect();
-                m45CompactAbove =
+                compactAbove =
                     began && grip && boundary != QPoint() && indicator.isValid()
                     && indicator.width() > indicator.height()
                     && indicatorGlobal.isValid() && gripGlobal.isValid()
                     && indicatorGlobal.center().y() <= gripGlobal.top()
                     && qAbs(indicatorGlobal.center().y() - boundary.y()) <= 3;
-                m41Column->cancelDragForTest();
-                m45Pump(6);
-                m41Column->setRailMode(false);
-                m45Pump(4);
+                panelColumnColumn->cancelDragForTest();
+                panelFixPump(6);
+                panelColumnColumn->setRailMode(false);
+                panelFixPump(4);
             }
-            ST_BEGIN("m45_compact_group_line_above");
-            ST_PASS("m45_compact_group_line above=%d", m45CompactAbove ? 1 : 0);
-            if (!m45CompactAbove) {
-                ST_FAIL(179, "M45 compact group line");
+            ST_BEGIN("compact_group_line_above");
+            ST_PASS("compact_group_line above=%d", compactAbove ? 1 : 0);
+            if (!compactAbove) {
+                ST_FAIL(179, "compact group line");
             }
         }
 
@@ -5888,17 +5888,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // empty-column lifecycle. Each drives the real resolved DropTarget
         // geometry (not just the helper) and restores the layout afterwards.
         {
-            auto m46Pump = [](int n) {
+            auto toolbarFixPump = [](int n) {
                 for (int i = 0; i < n; ++i) {
                     QCoreApplication::processEvents();
                 }
             };
-            auto m46OtherPanel = [&](pictura::PanelGroup* exclude,
+            auto toolbarFixOtherPanel = [&](pictura::PanelGroup* exclude,
                                      const QString& alsoExclude) -> QString {
-                if (!m41Column) {
+                if (!panelColumnColumn) {
                     return QString();
                 }
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (!group || group == exclude || !group->isVisible()
                         || group->titleCountForTest() == 0) {
                         continue;
@@ -5911,9 +5911,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 return QString();
             };
-            auto m46CollapseDynamics = [&]() {
+            auto toolbarFixCollapseDynamics = [&]() {
                 for (pictura::PanelColumn* column : frame.panelColumns()) {
-                    if (!column || column == m41Column) {
+                    if (!column || column == panelColumnColumn) {
                         continue;
                     }
                     const QList<pictura::PanelGroup*> groups = column->groups();
@@ -5923,37 +5923,37 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                         }
                         if (pictura::PanelGroup* taken =
                                 column->takeGroup(group->objectName())) {
-                            m41Column->adoptGroup(taken);
+                            panelColumnColumn->adoptGroup(taken);
                         }
                     }
                     frame.removeColumnIfEmpty(column);
                 }
-                if (m41Column) {
-                    m41Column->show();
+                if (panelColumnColumn) {
+                    panelColumnColumn->show();
                 }
-                m46Pump(6);
+                toolbarFixPump(6);
             };
 
             // 180: a group with a hidden tab maps the rightmost insertion over
             // the visible tabs, so the line draws at the right visible tab (not
             // the far left) and the dropped panel lands at that index.
-            bool m46HiddenShown = false;
-            bool m46HiddenPlaced = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m41Column->setPreferredWidth(180);
-                m46Pump(6);
+            bool hiddenShown = false;
+            bool hiddenPlaced = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelColumnColumn->setPreferredWidth(180);
+                toolbarFixPump(6);
                 pictura::PanelColumn* dest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 pictura::PanelGroup* dg = nullptr;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && group->isVisible() && group->titleCountForTest() >= 3) {
                         dg = group;
                         break;
                     }
                 }
                 if (!dg) {
-                    for (pictura::PanelGroup* group : m41Column->groups()) {
+                    for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                         if (group && group->isVisible()
                             && group->titleCountForTest() >= 2) {
                             dg = group;
@@ -5963,17 +5963,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 if (dest && dg) {
                     const QString seedName = dg->objectName();
-                    if (pictura::PanelGroup* taken = m41Column->takeGroup(seedName)) {
+                    if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(seedName)) {
                         dest->adoptGroup(taken);
                     }
                 }
                 if (dest) {
-                    m41Column->setPreferredWidth(180);
+                    panelColumnColumn->setPreferredWidth(180);
                     dest->setPreferredWidth(300);
-                    m46Pump(6);
+                    toolbarFixPump(6);
                 }
-                const QString src = m46OtherPanel(nullptr, QString());
-                if (dest && dest != m41Column && dg && !src.isEmpty()) {
+                const QString src = toolbarFixOtherPanel(nullptr, QString());
+                if (dest && dest != panelColumnColumn && dg && !src.isEmpty()) {
                     QString hiddenName;
                     const QList<QWidget*> panels = dg->panels();
                     if (!panels.isEmpty()) {
@@ -5981,7 +5981,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                     const bool hid =
                         !hiddenName.isEmpty() && dg->setPanelVisible(hiddenName, false);
-                    m46Pump(4);
+                    toolbarFixPump(4);
                     const bool invariant =
                         dg->titleCountForTest() > dg->visibleTitles().size();
                     const int end = dg->titleCountForTest();
@@ -5989,50 +5989,50 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     QTabBar* bar = dg->tabBar();
                     const int barCenter =
                         bar ? bar->mapToGlobal(QPoint(0, 0)).x() + bar->width() / 2 : -1;
-                    m41Column->beginTabDragForTest(src);
-                    m41Column->dragToForTest(p);
+                    panelColumnColumn->beginTabDragForTest(src);
+                    panelColumnColumn->dragToForTest(p);
                     const QRect g = dest->dropIndicatorGlobalGeometryForTest();
-                    m46HiddenShown = hid && invariant && dest->dropIndicatorVisibleForTest()
-                                     && !m41Column->dropIndicatorVisibleForTest()
+                    hiddenShown = hid && invariant && dest->dropIndicatorVisibleForTest()
+                                     && !panelColumnColumn->dropIndicatorVisibleForTest()
                                      && g.isValid() && g.center().x() >= barCenter
                                      && qAbs(g.center().x() - p.x()) <= 8;
-                    m41Column->dropForTest(p);
-                    m46Pump(4);
-                    m46HiddenPlaced =
+                    panelColumnColumn->dropForTest(p);
+                    toolbarFixPump(4);
+                    hiddenPlaced =
                         dg->indexOfPanel(src) == end && dest->groupForPanel(src) == dg;
                     if (!hiddenName.isEmpty()) {
                         dg->setPanelVisible(hiddenName, true);
                     }
                 }
-                m46CollapseDynamics();
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m46_indicator_hidden_tab_shown");
-            ST_PASS("m46_indicator_hidden_tab shown=%d placed=%d", m46HiddenShown ? 1 : 0, m46HiddenPlaced ? 1 : 0);
-            if (!(m46HiddenShown && m46HiddenPlaced)) {
-                ST_FAIL(180, "M46 hidden-tab indicator");
+            ST_BEGIN("indicator_hidden_tab_shown");
+            ST_PASS("indicator_hidden_tab shown=%d placed=%d", hiddenShown ? 1 : 0, hiddenPlaced ? 1 : 0);
+            if (!(hiddenShown && hiddenPlaced)) {
+                ST_FAIL(180, "hidden-tab indicator");
             }
 
             // 181: a cross-column drop onto a group body (and between two groups)
             // draws the line in the target column and lands the panel there.
-            bool m46CrossShown = false;
-            bool m46CrossPlaced = false;
-            bool m46BoundaryShown = false;
-            bool m46BoundaryPlaced = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m41Column->setPreferredWidth(180);
-                m46Pump(6);
+            bool toolbarFixCrossShown = false;
+            bool toolbarFixCrossPlaced = false;
+            bool boundaryShown = false;
+            bool boundaryPlaced = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelColumnColumn->setPreferredWidth(180);
+                toolbarFixPump(6);
                 pictura::PanelColumn* dest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 QList<pictura::PanelGroup*> destGroups;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (destGroups.size() >= 2) {
                         break;
                     }
                     if (group && group->isVisible()) {
                         const QString nm = group->objectName();
                         if (dest) {
-                            if (pictura::PanelGroup* taken = m41Column->takeGroup(nm)) {
+                            if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(nm)) {
                                 dest->adoptGroup(taken);
                                 destGroups << taken;
                             }
@@ -6040,75 +6040,75 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
                 if (dest) {
-                    m41Column->setPreferredWidth(180);
+                    panelColumnColumn->setPreferredWidth(180);
                     dest->setPreferredWidth(180);
-                    m46Pump(6);
+                    toolbarFixPump(6);
                 }
                 pictura::PanelGroup* bg =
                     destGroups.isEmpty() ? nullptr : destGroups.first();
-                const QString src = m46OtherPanel(nullptr, QString());
-                if (dest && dest != m41Column && bg && !src.isEmpty()) {
+                const QString src = toolbarFixOtherPanel(nullptr, QString());
+                if (dest && dest != panelColumnColumn && bg && !src.isEmpty()) {
                     const QRect barRect = bg->tabBarGlobalRect();
                     const QRect groupRect(bg->mapToGlobal(QPoint(0, 0)), bg->size());
                     const QPoint body(groupRect.center().x(),
                                       (barRect.bottom() + groupRect.bottom()) / 2);
-                    m41Column->beginTabDragForTest(src);
-                    m41Column->dragToForTest(body);
-                    m46CrossShown = dest->dropIndicatorVisibleForTest()
-                                    && !m41Column->dropIndicatorVisibleForTest();
-                    m41Column->dropForTest(body);
-                    m46Pump(6);
-                    m46CrossPlaced = dest->groupForPanel(src) != nullptr;
+                    panelColumnColumn->beginTabDragForTest(src);
+                    panelColumnColumn->dragToForTest(body);
+                    toolbarFixCrossShown = dest->dropIndicatorVisibleForTest()
+                                    && !panelColumnColumn->dropIndicatorVisibleForTest();
+                    panelColumnColumn->dropForTest(body);
+                    toolbarFixPump(6);
+                    toolbarFixCrossPlaced = dest->groupForPanel(src) != nullptr;
                 }
                 if (dest && destGroups.size() >= 2) {
                     pictura::PanelGroup* g0 = destGroups.at(0);
                     pictura::PanelGroup* g1 = destGroups.at(1);
-                    const QString src2 = m46OtherPanel(nullptr, QString());
+                    const QString src2 = toolbarFixOtherPanel(nullptr, QString());
                     if (g0 && g1 && !src2.isEmpty()) {
                         const QRect r0(g0->mapToGlobal(QPoint(0, 0)), g0->size());
                         const QRect r1(g1->mapToGlobal(QPoint(0, 0)), g1->size());
                         const QPoint boundary(r0.center().x(),
                                              (r0.bottom() + r1.top()) / 2);
-                        m41Column->beginTabDragForTest(src2);
-                        m41Column->dragToForTest(boundary);
-                        m46BoundaryShown = dest->dropIndicatorVisibleForTest()
-                                           && !m41Column->dropIndicatorVisibleForTest();
-                        m41Column->dropForTest(boundary);
-                        m46Pump(6);
-                        m46BoundaryPlaced = dest->groupForPanel(src2) != nullptr;
+                        panelColumnColumn->beginTabDragForTest(src2);
+                        panelColumnColumn->dragToForTest(boundary);
+                        boundaryShown = dest->dropIndicatorVisibleForTest()
+                                           && !panelColumnColumn->dropIndicatorVisibleForTest();
+                        panelColumnColumn->dropForTest(boundary);
+                        toolbarFixPump(6);
+                        boundaryPlaced = dest->groupForPanel(src2) != nullptr;
                     }
                 }
-                m46CollapseDynamics();
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m46_indicator_cross_body_shown");
-            ST_PASS("m46_indicator_cross_body shown=%d placed=%d "
-                         "boundary_shown=%d boundary_placed=%d", m46CrossShown ? 1 : 0, m46CrossPlaced ? 1 : 0,
-                         m46BoundaryShown ? 1 : 0, m46BoundaryPlaced ? 1 : 0);
-            if (!(m46CrossShown && m46CrossPlaced && m46BoundaryShown
-                  && m46BoundaryPlaced)) {
-                ST_FAIL(181, "M46 cross-column indicator");
+            ST_BEGIN("indicator_cross_body_shown");
+            ST_PASS("indicator_cross_body shown=%d placed=%d "
+                         "boundary_shown=%d boundary_placed=%d", toolbarFixCrossShown ? 1 : 0, toolbarFixCrossPlaced ? 1 : 0,
+                         boundaryShown ? 1 : 0, boundaryPlaced ? 1 : 0);
+            if (!(toolbarFixCrossShown && toolbarFixCrossPlaced && boundaryShown
+                  && boundaryPlaced)) {
+                ST_FAIL(181, "cross-column indicator");
             }
 
             // 182: the bottom-boundary line is clamped inside the scroll
             // viewport so none of it is drawn past the visible area. Use a
             // fresh column with one group so the group fills the viewport and
             // its bottom is a reachable BelowGroup boundary.
-            bool m46BottomInside = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m46Pump(4);
+            bool bottomInside = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                toolbarFixPump(4);
                 pictura::PanelColumn* dest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 if (dest) {
-                    for (pictura::PanelGroup* group : m41Column->groups()) {
+                    for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                         if (group && group->isVisible() && !group->visibleTitles().isEmpty()) {
-                            if (pictura::PanelGroup* taken = m41Column->takeGroup(group->objectName())) {
+                            if (pictura::PanelGroup* taken = panelColumnColumn->takeGroup(group->objectName())) {
                                 dest->adoptGroup(taken);
                             }
                             break;
                         }
                     }
-                    m46Pump(6);
+                    toolbarFixPump(6);
                     QString src;
                     for (pictura::PanelGroup* group : dest->groups()) {
                         if (group && group->isVisible() && !group->visibleTitles().isEmpty()) {
@@ -6122,34 +6122,34 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                         dest->dragToForTest(p);
                         const QRect g = dest->dropIndicatorGeometryForTest();
                         const int vh = dest->scrollViewportHeightForTest();
-                        m46BottomInside =
+                        bottomInside =
                             g.isValid() && vh > 0 && g.top() >= 0 && g.bottom() <= vh;
                         dest->dropForTest(p);
-                        m46Pump(6);
+                        toolbarFixPump(6);
                     }
                 }
-                m46CollapseDynamics();
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m46_indicator_bottom_inside_inside");
-            ST_PASS("m46_indicator_bottom_inside inside=%d", m46BottomInside ? 1 : 0);
-            if (!m46BottomInside) {
-                ST_FAIL(182, "M46 bottom inside viewport");
+            ST_BEGIN("indicator_bottom_inside_inside");
+            ST_PASS("indicator_bottom_inside inside=%d", bottomInside ? 1 : 0);
+            if (!bottomInside) {
+                ST_FAIL(182, "bottom inside viewport");
             }
 
             // 183: a real title-bar press still drives the floating Tools drag
             // after Qt's dock mouse grab reroutes move/release to the dock.
-            bool m46ToolsMoved = false;
-            bool m46ToolsFinished = false;
+            bool toolsMoved = false;
+            bool toolsFinished = false;
             if (auto* tb =
                     frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"))) {
                 auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
                 if (cs && cs->indexOf(tb) >= 0) {
                     frame.addDockWidget(Qt::LeftDockWidgetArea, tb);
-                    m46Pump(6);
+                    toolbarFixPump(6);
                 }
                 if (!tb->isFloating()) {
                     tb->setFloating(true);
-                    m46Pump(6);
+                    toolbarFixPump(6);
                 }
                 int moved = 0;
                 int finished = 0;
@@ -6172,140 +6172,140 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     QMouseEvent move(QEvent::MouseMove, dockLocal, dockGlobal, Qt::NoButton,
                                      Qt::LeftButton, Qt::NoModifier);
                     QCoreApplication::sendEvent(tb, &move);
-                    m46ToolsMoved = moved > 0;
+                    toolsMoved = moved > 0;
                     QMouseEvent release(QEvent::MouseButtonRelease, dockLocal, dockGlobal,
                                         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
                     QCoreApplication::sendEvent(tb, &release);
-                    m46ToolsFinished = finished > 0;
+                    toolsFinished = finished > 0;
                 }
                 QObject::disconnect(c1);
                 QObject::disconnect(c2);
                 tb->setFloating(false);
-                m46Pump(6);
+                toolbarFixPump(6);
             }
-            ST_BEGIN("m46_tools_gesture_moved");
-            ST_PASS("m46_tools_gesture moved=%d finished=%d", m46ToolsMoved ? 1 : 0, m46ToolsFinished ? 1 : 0);
-            if (!(m46ToolsMoved && m46ToolsFinished)) {
-                ST_FAIL(183, "M46 tools gesture");
+            ST_BEGIN("tools_gesture_moved");
+            ST_PASS("tools_gesture moved=%d finished=%d", toolsMoved ? 1 : 0, toolsFinished ? 1 : 0);
+            if (!(toolsMoved && toolsFinished)) {
+                ST_FAIL(183, "tools gesture");
             }
 
             // 184: neither splitter collapses a pane, and the column cannot be
             // squeezed away below its shared floor.
-            bool m46NoCollapse = false;
-            bool m46ColumnKept = false;
-            if (m41Column) {
+            bool noCollapse = false;
+            bool columnKept = false;
+            if (panelColumnColumn) {
                 auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
-                auto* gs = m41Column->findChild<QSplitter*>(
+                auto* gs = panelColumnColumn->findChild<QSplitter*>(
                     QStringLiteral("panelColumnSplitter"));
-                m46NoCollapse = cs && gs && !cs->childrenCollapsible()
+                noCollapse = cs && gs && !cs->childrenCollapsible()
                                 && !gs->childrenCollapsible();
-                m41Column->show();
-                m41Column->setPreferredWidth(1);
-                m46Pump(6);
-                m46ColumnKept = m41Column->isVisible()
-                                && m41Column->width() >= m41Column->minimumWidthForTest();
+                panelColumnColumn->show();
+                panelColumnColumn->setPreferredWidth(1);
+                toolbarFixPump(6);
+                columnKept = panelColumnColumn->isVisible()
+                                && panelColumnColumn->width() >= panelColumnColumn->minimumWidthForTest();
             }
-            ST_BEGIN("m46_splitter_nocollapse_nocollapse");
-            ST_PASS("m46_splitter_nocollapse nocollapse=%d kept=%d", m46NoCollapse ? 1 : 0, m46ColumnKept ? 1 : 0);
-            if (!(m46NoCollapse && m46ColumnKept)) {
-                ST_FAIL(184, "M46 splitter no collapse");
+            ST_BEGIN("splitter_nocollapse_nocollapse");
+            ST_PASS("splitter_nocollapse nocollapse=%d kept=%d", noCollapse ? 1 : 0, columnKept ? 1 : 0);
+            if (!(noCollapse && columnKept)) {
+                ST_FAIL(184, "splitter no collapse");
             }
 
             // 185: minimizing a group whose content minimum exceeds its tab bar
             // clamps the group to the tab-bar height and hides the content.
-            bool m46MinTall = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m41Column->setPreferredWidth(360);
-                m41Column->showPanel(QStringLiteral("colorPanel"), true);
-                m46Pump(8);
+            bool minTall = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                panelColumnColumn->setPreferredWidth(360);
+                panelColumnColumn->showPanel(QStringLiteral("colorPanel"), true);
+                toolbarFixPump(8);
                 pictura::PanelGroup* g =
-                    m41Column->groupForPanel(QStringLiteral("colorPanel"));
+                    panelColumnColumn->groupForPanel(QStringLiteral("colorPanel"));
                 if (!g) {
-                    g = m41Column->groupForPanel(QStringLiteral("swatchesPanel"));
+                    g = panelColumnColumn->groupForPanel(QStringLiteral("swatchesPanel"));
                 }
                 if (g) {
                     g->setMinimizedForTest(false);
-                    m46Pump(8);
+                    toolbarFixPump(8);
                     g->setMinimizedForTest(true);
                     g->updateGeometry();
-                    m41Column->updateGeometry();
-                    m46Pump(16);
+                    panelColumnColumn->updateGeometry();
+                    toolbarFixPump(16);
                     const int barH = g->tabBar() ? g->tabBar()->sizeHint().height() : 24;
-                    m46MinTall = g->height() <= barH + 6 && g->contentHiddenForTest();
+                    minTall = g->height() <= barH + 6 && g->contentHiddenForTest();
                     g->setMinimizedForTest(false);
                     g->updateGeometry();
-                    m46Pump(8);
+                    toolbarFixPump(8);
                 }
             }
-            ST_BEGIN("m46_minimize_tall_height");
-            ST_PASS("m46_minimize_tall height=%d", m46MinTall ? 1 : 0);
-            if (!m46MinTall) {
-                ST_FAIL(185, "M46 minimize tall group");
+            ST_BEGIN("minimize_tall_height");
+            ST_PASS("minimize_tall height=%d", minTall ? 1 : 0);
+            if (!minTall) {
+                ST_FAIL(185, "minimize tall group");
             }
 
             // 186: the primary column hides when its last visible panel closes
             // and re-shows on the next Window-menu show.
-            bool m46PrimaryHide = false;
-            bool m46PrimaryShow = false;
-            if (m41Column) {
-                const bool wasVisible = m41Column->isVisible();
-                const QList<pictura::PanelGroup*> groups = m41Column->groups();
+            bool primaryHide = false;
+            bool primaryShow = false;
+            if (panelColumnColumn) {
+                const bool wasVisible = panelColumnColumn->isVisible();
+                const QList<pictura::PanelGroup*> groups = panelColumnColumn->groups();
                 for (pictura::PanelGroup* g : groups) {
                     if (g) {
-                        m41Column->closeGroup(g);
+                        panelColumnColumn->closeGroup(g);
                     }
                 }
-                m46Pump(8);
-                m46PrimaryHide = !m41Column->isVisible();
-                m41Column->showPanel(QStringLiteral("layersPanel"), true);
-                m46Pump(8);
-                m46PrimaryShow = m41Column->isVisible()
-                                 && m41Column->groupForPanel(QStringLiteral("layersPanel"))
+                toolbarFixPump(8);
+                primaryHide = !panelColumnColumn->isVisible();
+                panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
+                toolbarFixPump(8);
+                primaryShow = panelColumnColumn->isVisible()
+                                 && panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"))
                                         != nullptr;
-                if (!wasVisible || !m41Column->isVisible()) {
-                    m41Column->show();
+                if (!wasVisible || !panelColumnColumn->isVisible()) {
+                    panelColumnColumn->show();
                 }
             }
-            ST_BEGIN("m46_primary_empty_hide");
-            ST_PASS("m46_primary_empty hide=%d show=%d", m46PrimaryHide ? 1 : 0, m46PrimaryShow ? 1 : 0);
-            if (!(m46PrimaryHide && m46PrimaryShow)) {
-                ST_FAIL(186, "M46 primary empty");
+            ST_BEGIN("primary_empty_hide");
+            ST_PASS("primary_empty hide=%d show=%d", primaryHide ? 1 : 0, primaryShow ? 1 : 0);
+            if (!(primaryHide && primaryShow)) {
+                ST_FAIL(186, "primary empty");
             }
 
             // M47 (187-195): empty-column-after-float, ghost-group hiding,
             // compact icon float, compact grip group creation, no horizontal
             // scroll, fixed iconic width, Tools pane hosting, float close, and
             // compact chrome shading. Exit codes 187-195.
-            auto m47FirstVisiblePanel = [](pictura::PanelGroup* group) -> QString {
+            auto firstVisiblePanel = [](pictura::PanelGroup* group) -> QString {
                 if (!group) {
                     return QString();
                 }
                 const QList<QWidget*> visible = group->visiblePanels();
                 return visible.isEmpty() ? QString() : visible.first()->objectName();
             };
-            auto m47ShowPrimary = [&]() {
-                m41Column->setRailMode(false);
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+            auto showPrimary = [&]() {
+                panelColumnColumn->setRailMode(false);
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (!group) {
                         continue;
                     }
                     for (QWidget* panel : group->panels()) {
                         if (panel) {
-                            m41Column->showPanel(panel->objectName(), true);
+                            panelColumnColumn->showPanel(panel->objectName(), true);
                         }
                     }
                 }
-                m46Pump(8);
+                toolbarFixPump(8);
             };
-            auto m47AdoptOneInto = [&](pictura::PanelColumn* dest) -> bool {
+            auto adoptOneInto = [&](pictura::PanelColumn* dest) -> bool {
                 if (!dest) {
                     return false;
                 }
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && !group->visiblePanels().isEmpty()) {
                         if (pictura::PanelGroup* taken =
-                                m41Column->takeGroup(group->objectName())) {
+                                panelColumnColumn->takeGroup(group->objectName())) {
                             dest->adoptGroup(taken);
                             return true;
                         }
@@ -6313,18 +6313,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
                 return false;
             };
-            auto m47CloseAllFloats = [&]() {
-                for (int i = 0; i < 24 && m41Column->floatCountForTest() > 0; ++i) {
-                    const int count = m41Column->floatCountForTest();
+            auto closeAllFloats = [&]() {
+                for (int i = 0; i < 24 && panelColumnColumn->floatCountForTest() > 0; ++i) {
+                    const int count = panelColumnColumn->floatCountForTest();
                     // M47: a re-homed float's close callback is repointed at the
                     // primary, so closing tears the overlay down; fall back to a
                     // re-dock only if a float refuses to close.
-                    if (!m41Column->closeFloatForTest(0)
-                        && !m41Column->redockForTest(0, 0)) {
-                        m41Column->cancelDragForTest();
+                    if (!panelColumnColumn->closeFloatForTest(0)
+                        && !panelColumnColumn->redockForTest(0, 0)) {
+                        panelColumnColumn->cancelDragForTest();
                     }
-                    m46Pump(4);
-                    if (m41Column->floatCountForTest() >= count) {
+                    toolbarFixPump(4);
+                    if (panelColumnColumn->floatCountForTest() >= count) {
                         break;
                     }
                 }
@@ -6333,31 +6333,31 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // 187: the last group of a dynamic column is torn off and left
             // floating; the now-empty column is removed and its float is
             // re-homed to the primary (still live and re-dockable).
-            bool m47EmptyGone = false;
-            bool m47EmptyFloat = false;
-            bool m47EmptyPrimary = false;
-            if (m41Column) {
-                m47ShowPrimary();
-                m47CloseAllFloats();
-                const int floatsBefore = m41Column->floatCountForTest();
+            bool emptyGone = false;
+            bool emptyFloat = false;
+            bool emptyPrimary = false;
+            if (panelColumnColumn) {
+                showPrimary();
+                closeAllFloats();
+                const int floatsBefore = panelColumnColumn->floatCountForTest();
                 const int before = frame.panelColumnCountForTest();
                 pictura::PanelColumn* dest =
-                    frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
+                    frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                 pictura::PanelGroup* destGroup = nullptr;
                 if (dest) {
-                    for (pictura::PanelGroup* group : m41Column->groups()) {
+                    for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                         if (group && !group->visiblePanels().isEmpty()) {
                             if (pictura::PanelGroup* taken =
-                                    m41Column->takeGroup(group->objectName())) {
+                                    panelColumnColumn->takeGroup(group->objectName())) {
                                 dest->adoptGroup(taken);
                                 destGroup = taken;
                             }
                             break;
                         }
                     }
-                    m46Pump(6);
+                    toolbarFixPump(6);
                 }
-                const QString adoptPanel = m47FirstVisiblePanel(destGroup);
+                const QString adoptPanel = firstVisiblePanel(destGroup);
                 if (dest && !adoptPanel.isEmpty()) {
                     // A point over the source column's own header is outside its
                     // scroll viewport (and resolves to no sibling), so the drag
@@ -6367,82 +6367,82 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     dest->beginGroupDragForTest(adoptPanel);
                     dest->dragToForTest(outside);
                     dest->dropForTest(outside);
-                    m46Pump(8);
+                    toolbarFixPump(8);
                 }
-                m47EmptyGone = dest && frame.panelColumnCountForTest() == before;
-                m47EmptyFloat = m41Column->floatCountForTest() == floatsBefore + 1;
-                m47EmptyPrimary = frame.panelColumn() == m41Column && m41Column->isVisible();
+                emptyGone = dest && frame.panelColumnCountForTest() == before;
+                emptyFloat = panelColumnColumn->floatCountForTest() == floatsBefore + 1;
+                emptyPrimary = frame.panelColumn() == panelColumnColumn && panelColumnColumn->isVisible();
                 // A float re-homed by the removal must close through the primary
                 // (its close callback is repointed), not strand the overlay.
-                const bool m47RehomedCloses =
-                    m41Column->closeFloatForTest(0)
-                    && m41Column->floatCountForTest() == floatsBefore;
-                m47EmptyFloat = m47EmptyFloat && m47RehomedCloses;
-                m47CloseAllFloats();
-                m46CollapseDynamics();
+                const bool rehomedCloses =
+                    panelColumnColumn->closeFloatForTest(0)
+                    && panelColumnColumn->floatCountForTest() == floatsBefore;
+                emptyFloat = emptyFloat && rehomedCloses;
+                closeAllFloats();
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_empty_after_float_gone");
-            ST_PASS("m47_empty_after_float gone=%d float=%d "
-                         "primary=%d", m47EmptyGone ? 1 : 0, m47EmptyFloat ? 1 : 0,
-                         m47EmptyPrimary ? 1 : 0);
-            if (!(m47EmptyGone && m47EmptyFloat && m47EmptyPrimary)) {
-                ST_FAIL(187, "M47 empty after float");
+            ST_BEGIN("empty_after_float_gone");
+            ST_PASS("empty_after_float gone=%d float=%d "
+                         "primary=%d", emptyGone ? 1 : 0, emptyFloat ? 1 : 0,
+                         emptyPrimary ? 1 : 0);
+            if (!(emptyGone && emptyFloat && emptyPrimary)) {
+                ST_FAIL(187, "empty after float");
             }
 
             // 188: moving the last visible tab out of a group hides the emptied
             // group (no ghost shell) while its hidden panel stays reachable and
             // re-showable.
-            bool m47GhostHidden = false;
-            bool m47GhostFound = false;
-            bool m47GhostShown = false;
-            if (m41Column) {
-                m47ShowPrimary();
+            bool ghostHidden = false;
+            bool ghostFound = false;
+            bool ghostShown = false;
+            if (panelColumnColumn) {
+                showPrimary();
                 pictura::PanelGroup* ghost =
-                    m41Column->groupForPanel(QStringLiteral("adjustmentsPanel"));
+                    panelColumnColumn->groupForPanel(QStringLiteral("adjustmentsPanel"));
                 pictura::PanelGroup* groupTarget =
-                    m41Column->groupForPanel(QStringLiteral("colorPanel"));
+                    panelColumnColumn->groupForPanel(QStringLiteral("colorPanel"));
                 if (ghost && groupTarget && ghost != groupTarget
                     && ghost->titleCountForTest() >= 2) {
                     ghost->setPanelVisible(QStringLiteral("propertiesPanel"), false);
-                    m46Pump(4);
-                    const QString last = m47FirstVisiblePanel(ghost);
+                    toolbarFixPump(4);
+                    const QString last = firstVisiblePanel(ghost);
                     const QPoint p = groupTarget->tabInsertionGlobalPointForTest(0);
                     const bool began =
-                        !last.isEmpty() && m41Column->beginTabDragForTest(last);
-                    m41Column->dragToForTest(p);
-                    const bool dropped = m41Column->dropForTest(p);
-                    m46Pump(8);
-                    m47GhostHidden = began && dropped && !ghost->isVisible();
-                    m47GhostFound =
-                        m41Column->groupForPanel(QStringLiteral("propertiesPanel")) == ghost;
-                    m41Column->showPanel(QStringLiteral("propertiesPanel"), true);
-                    m46Pump(8);
-                    m47GhostShown =
+                        !last.isEmpty() && panelColumnColumn->beginTabDragForTest(last);
+                    panelColumnColumn->dragToForTest(p);
+                    const bool dropped = panelColumnColumn->dropForTest(p);
+                    toolbarFixPump(8);
+                    ghostHidden = began && dropped && !ghost->isVisible();
+                    ghostFound =
+                        panelColumnColumn->groupForPanel(QStringLiteral("propertiesPanel")) == ghost;
+                    panelColumnColumn->showPanel(QStringLiteral("propertiesPanel"), true);
+                    toolbarFixPump(8);
+                    ghostShown =
                         ghost->isVisible()
-                        && m41Column->groupForPanel(QStringLiteral("propertiesPanel")) == ghost;
+                        && panelColumnColumn->groupForPanel(QStringLiteral("propertiesPanel")) == ghost;
                 }
-                m46CollapseDynamics();
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_ghost_group_hidden");
-            ST_PASS("m47_ghost_group hidden=%d found=%d shown=%d", m47GhostHidden ? 1 : 0, m47GhostFound ? 1 : 0,
-                         m47GhostShown ? 1 : 0);
-            if (!(m47GhostHidden && m47GhostFound && m47GhostShown)) {
-                ST_FAIL(188, "M47 ghost group");
+            ST_BEGIN("ghost_group_hidden");
+            ST_PASS("ghost_group hidden=%d found=%d shown=%d", ghostHidden ? 1 : 0, ghostFound ? 1 : 0,
+                         ghostShown ? 1 : 0);
+            if (!(ghostHidden && ghostFound && ghostShown)) {
+                ST_FAIL(188, "ghost group");
             }
             // 189: a real press+move on a compact strip icon tears the panel
             // into a float that survives the (now non-rebuilding) strip and
             // commits on release.
-            bool m47IconDrag = false;
-            bool m47IconFloat = false;
-            bool m47IconReleased = false;
-            if (m41Column) {
-                m47ShowPrimary();
-                m47CloseAllFloats();
-                const int floatsBefore = m41Column->floatCountForTest();
-                m41Column->setRailMode(true);
-                m46Pump(8);
+            bool iconDrag = false;
+            bool iconFloat = false;
+            bool iconReleased = false;
+            if (panelColumnColumn) {
+                showPrimary();
+                closeAllFloats();
+                const int floatsBefore = panelColumnColumn->floatCountForTest();
+                panelColumnColumn->setRailMode(true);
+                toolbarFixPump(8);
                 QToolButton* button = nullptr;
-                for (QToolButton* candidate : m41Column->findChildren<QToolButton*>()) {
+                for (QToolButton* candidate : panelColumnColumn->findChildren<QToolButton*>()) {
                     if (candidate
                         && candidate->objectName().startsWith(QStringLiteral("panelIcon_"))
                         && candidate->isVisible()) {
@@ -6451,7 +6451,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
                 const QPoint outside =
-                    m41Column->mapToGlobal(QPoint(-40, m41Column->height() / 2));
+                    panelColumnColumn->mapToGlobal(QPoint(-40, panelColumnColumn->height() / 2));
                 if (button) {
                     const QPoint local = button->rect().center();
                     const QPointF localF(local);
@@ -6463,37 +6463,37 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     QMouseEvent move(QEvent::MouseMove, outsideF, outsideF, Qt::NoButton,
                                      Qt::LeftButton, Qt::NoModifier);
                     QCoreApplication::sendEvent(button, &move);
-                    m46Pump(4);
-                    m47IconDrag = m41Column->dragActiveForTest();
-                    m47IconFloat = m41Column->floatCountForTest() == floatsBefore + 1;
+                    toolbarFixPump(4);
+                    iconDrag = panelColumnColumn->dragActiveForTest();
+                    iconFloat = panelColumnColumn->floatCountForTest() == floatsBefore + 1;
                     QMouseEvent release(QEvent::MouseButtonRelease, outsideF, outsideF,
                                         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
                     QCoreApplication::sendEvent(button, &release);
-                    m46Pump(8);
-                    m47IconReleased = !m41Column->dragActiveForTest();
+                    toolbarFixPump(8);
+                    iconReleased = !panelColumnColumn->dragActiveForTest();
                 }
-                m47CloseAllFloats();
-                m41Column->setRailMode(false);
-                m46Pump(6);
-                m46CollapseDynamics();
+                closeAllFloats();
+                panelColumnColumn->setRailMode(false);
+                toolbarFixPump(6);
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_compact_icon_float_drag");
-            ST_PASS("m47_compact_icon_float drag=%d float=%d "
-                         "released=%d", m47IconDrag ? 1 : 0, m47IconFloat ? 1 : 0,
-                         m47IconReleased ? 1 : 0);
-            if (!(m47IconDrag && m47IconFloat && m47IconReleased)) {
-                ST_FAIL(189, "M47 compact icon float");
+            ST_BEGIN("compact_icon_float_drag");
+            ST_PASS("compact_icon_float drag=%d float=%d "
+                         "released=%d", iconDrag ? 1 : 0, iconFloat ? 1 : 0,
+                         iconReleased ? 1 : 0);
+            if (!(iconDrag && iconFloat && iconReleased)) {
+                ST_FAIL(189, "compact icon float");
             }
             // 190: a single compact panel dropped on a group's grip creates a
             // new group immediately above (before) that group.
-            bool m47GripGroup = false;
-            if (m41Column) {
-                m47ShowPrimary();
-                m41Column->setRailMode(true);
-                m46Pump(8);
+            bool gripGroup = false;
+            if (panelColumnColumn) {
+                showPrimary();
+                panelColumnColumn->setRailMode(true);
+                toolbarFixPump(8);
                 pictura::PanelGroup* groupTarget = nullptr;
                 QString src;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (!group || group->visiblePanels().isEmpty()) {
                         continue;
                     }
@@ -6504,104 +6504,104 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     }
                 }
                 if (groupTarget && !src.isEmpty()) {
-                    QWidget* grip = m41Column->dragHandleForTest(groupTarget->objectName());
-                    const int targetIndex = m41Column->groups().indexOf(groupTarget);
+                    QWidget* grip = panelColumnColumn->dragHandleForTest(groupTarget->objectName());
+                    const int targetIndex = panelColumnColumn->groups().indexOf(groupTarget);
                     if (grip && targetIndex >= 0) {
                         const QPoint gripCenter = grip->mapToGlobal(grip->rect().center());
-                        const bool began = m41Column->beginTabDragForTest(src);
-                        m41Column->dragToForTest(gripCenter);
-                        const bool dropped = m41Column->dropForTest(gripCenter);
-                        m46Pump(8);
-                        pictura::PanelGroup* landed = m41Column->groupForPanel(src);
+                        const bool began = panelColumnColumn->beginTabDragForTest(src);
+                        panelColumnColumn->dragToForTest(gripCenter);
+                        const bool dropped = panelColumnColumn->dropForTest(gripCenter);
+                        toolbarFixPump(8);
+                        pictura::PanelGroup* landed = panelColumnColumn->groupForPanel(src);
                         const int landedIndex =
-                            landed ? m41Column->groups().indexOf(landed) : -1;
-                        const int targetNow = m41Column->groups().indexOf(groupTarget);
-                        m47GripGroup = began && dropped && landed && landed != groupTarget
+                            landed ? panelColumnColumn->groups().indexOf(landed) : -1;
+                        const int targetNow = panelColumnColumn->groups().indexOf(groupTarget);
+                        gripGroup = began && dropped && landed && landed != groupTarget
                                        && landedIndex == targetIndex
                                        && targetNow == targetIndex + 1;
                     }
                 }
-                m41Column->setRailMode(false);
-                m46Pump(6);
-                m46CollapseDynamics();
+                panelColumnColumn->setRailMode(false);
+                toolbarFixPump(6);
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_compact_grip_group_above");
-            ST_PASS("m47_compact_grip_group above=%d", m47GripGroup ? 1 : 0);
-            if (!m47GripGroup) {
-                ST_FAIL(190, "M47 compact grip group");
+            ST_BEGIN("compact_grip_group_above");
+            ST_PASS("compact_grip_group above=%d", gripGroup ? 1 : 0);
+            if (!gripGroup) {
+                ST_FAIL(190, "compact grip group");
             }
             // 191: the column never scrolls horizontally, even at its minimum
             // width, because the shared floor keeps the content visible.
-            bool m47HScrollOff = false;
-            bool m47HScrollZero = false;
-            if (m41Column) {
-                m41Column->setRailMode(false);
-                m46Pump(4);
-                m47HScrollOff = m41Column->horizontalScrollPolicyForTest()
+            bool hScrollOff = false;
+            bool hScrollZero = false;
+            if (panelColumnColumn) {
+                panelColumnColumn->setRailMode(false);
+                toolbarFixPump(4);
+                hScrollOff = panelColumnColumn->horizontalScrollPolicyForTest()
                                 == static_cast<int>(Qt::ScrollBarAlwaysOff);
-                m41Column->setPreferredWidth(m41Column->minimumWidthForTest());
-                m46Pump(8);
-                m47HScrollZero = m41Column->horizontalScrollRangeForTest() == 0;
-                m46CollapseDynamics();
+                panelColumnColumn->setPreferredWidth(panelColumnColumn->minimumWidthForTest());
+                toolbarFixPump(8);
+                hScrollZero = panelColumnColumn->horizontalScrollRangeForTest() == 0;
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_no_hscroll_off");
-            ST_PASS("m47_no_hscroll off=%d range=%d", m47HScrollOff ? 1 : 0, m47HScrollZero ? 1 : 0);
-            if (!(m47HScrollOff && m47HScrollZero)) {
-                ST_FAIL(191, "M47 no hscroll");
+            ST_BEGIN("no_hscroll_off");
+            ST_PASS("no_hscroll off=%d range=%d", hScrollOff ? 1 : 0, hScrollZero ? 1 : 0);
+            if (!(hScrollOff && hScrollZero)) {
+                ST_FAIL(191, "no hscroll");
             }
             // 192: an iconic column is fixed to its strip width and a preferred
             // width change cannot grow it; leaving iconic clears the maximum.
-            bool m47IconicWidth = false;
-            bool m47IconicMax = false;
-            bool m47IconicNoGrow = false;
-            bool m47IconicExit = false;
-            if (m41Column) {
-                m47ShowPrimary();
-                m41Column->setRailMode(true);
-                m46Pump(8);
-                const int stripMin = m41Column->minimumWidthForTest();
-                const int iconicWidth = m41Column->width();
-                m47IconicWidth = stripMin > 0 && stripMin <= 60 && iconicWidth == stripMin;
-                m47IconicMax = m41Column->maximumWidth() == m41Column->minimumWidth();
-                m41Column->setPreferredWidth(400);
-                m46Pump(8);
-                m47IconicNoGrow = m41Column->width() <= stripMin;
-                m41Column->setRailMode(false);
-                m46Pump(8);
-                m47IconicExit = m41Column->maximumWidth() > stripMin;
-                m46CollapseDynamics();
+            bool interactionIconicWidth = false;
+            bool iconicMax = false;
+            bool iconicNoGrow = false;
+            bool iconicExit = false;
+            if (panelColumnColumn) {
+                showPrimary();
+                panelColumnColumn->setRailMode(true);
+                toolbarFixPump(8);
+                const int stripMin = panelColumnColumn->minimumWidthForTest();
+                const int iconicWidth = panelColumnColumn->width();
+                interactionIconicWidth = stripMin > 0 && stripMin <= 60 && iconicWidth == stripMin;
+                iconicMax = panelColumnColumn->maximumWidth() == panelColumnColumn->minimumWidth();
+                panelColumnColumn->setPreferredWidth(400);
+                toolbarFixPump(8);
+                iconicNoGrow = panelColumnColumn->width() <= stripMin;
+                panelColumnColumn->setRailMode(false);
+                toolbarFixPump(8);
+                iconicExit = panelColumnColumn->maximumWidth() > stripMin;
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_iconic_fixed_width_width");
-            ST_PASS("m47_iconic_fixed_width width=%d max=%d "
-                         "nogrow=%d exit=%d", m47IconicWidth ? 1 : 0, m47IconicMax ? 1 : 0,
-                         m47IconicNoGrow ? 1 : 0, m47IconicExit ? 1 : 0);
-            if (!(m47IconicWidth && m47IconicMax && m47IconicNoGrow && m47IconicExit)) {
-                ST_FAIL(192, "M47 iconic fixed width");
+            ST_BEGIN("iconic_fixed_width_width");
+            ST_PASS("iconic_fixed_width width=%d max=%d "
+                         "nogrow=%d exit=%d", interactionIconicWidth ? 1 : 0, iconicMax ? 1 : 0,
+                         iconicNoGrow ? 1 : 0, iconicExit ? 1 : 0);
+            if (!(interactionIconicWidth && iconicMax && iconicNoGrow && iconicExit)) {
+                ST_FAIL(192, "iconic fixed width");
             }
             // 193: the Tools panel is dropped between two widget columns and is
             // hosted as a fixed-width central-splitter pane at that index.
-            bool m47ToolsResolved = false;
-            bool m47ToolsPane = false;
-            bool m47ToolsIndex = false;
+            bool toolsResolved = false;
+            bool toolsPane = false;
+            bool toolsIndex = false;
             if (auto* toolbox =
                     frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"))) {
                 auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
                 if (cs) {
                     if (cs->indexOf(toolbox) >= 0) {
                         frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                        m46Pump(6);
+                        toolbarFixPump(6);
                     }
-                    m47ShowPrimary();
+                    showPrimary();
                     pictura::PanelColumn* c1 =
-                        frame.createPanelColumn(pictura::PanelSide::Right, m41Column);
-                    m46Pump(6);
-                    m47AdoptOneInto(c1);
-                    m46Pump(6);
+                        frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
+                    toolbarFixPump(6);
+                    adoptOneInto(c1);
+                    toolbarFixPump(6);
                     pictura::PanelColumn* c2 =
                         c1 ? frame.createPanelColumn(pictura::PanelSide::Right, c1) : nullptr;
-                    m46Pump(6);
-                    m47AdoptOneInto(c2);
-                    m46Pump(8);
+                    toolbarFixPump(6);
+                    adoptOneInto(c2);
+                    toolbarFixPump(8);
                     if (c1 && c2) {
                         const QRect r1(c1->mapToGlobal(QPoint(0, 0)), c1->size());
                         const QRect r2(c2->mapToGlobal(QPoint(0, 0)), c2->size());
@@ -6617,71 +6617,71 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                             anchorIndex < 0 ? -1
                                             : (side == 0 ? anchorIndex : anchorIndex + 1);
                         const bool committed = frame.commitToolboxDrop(between);
-                        m47ToolsResolved = resolved && anchor != nullptr;
-                        m47ToolsPane = committed && toolbox->isSplitterPane()
+                        toolsResolved = resolved && anchor != nullptr;
+                        toolsPane = committed && toolbox->isSplitterPane()
                                        && cs->indexOf(toolbox) >= 0;
-                        m47ToolsIndex = expected >= 0 && cs->indexOf(toolbox) == expected;
+                        toolsIndex = expected >= 0 && cs->indexOf(toolbox) == expected;
                     }
                     frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
                     toolbox->setSplitterPane(false);
-                    m46Pump(6);
+                    toolbarFixPump(6);
                 }
-                m46CollapseDynamics();
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_tools_pane_resolved");
-            ST_PASS("m47_tools_pane resolved=%d pane=%d index=%d", m47ToolsResolved ? 1 : 0, m47ToolsPane ? 1 : 0,
-                         m47ToolsIndex ? 1 : 0);
-            if (!(m47ToolsResolved && m47ToolsPane && m47ToolsIndex)) {
-                ST_FAIL(193, "M47 tools pane");
+            ST_BEGIN("tools_pane_resolved");
+            ST_PASS("tools_pane resolved=%d pane=%d index=%d", toolsResolved ? 1 : 0, toolsPane ? 1 : 0,
+                         toolsIndex ? 1 : 0);
+            if (!(toolsResolved && toolsPane && toolsIndex)) {
+                ST_FAIL(193, "tools pane");
             }
             // 194: a floating group shows a visible close control; closing it
             // removes the overlay, hides the group's panels, and keeps the group
             // restorable in a column.
-            bool m47FloatCloseBtn = false;
-            bool m47FloatClosed = false;
-            bool m47FloatRestore = false;
-            if (m41Column) {
-                m47ShowPrimary();
-                m47CloseAllFloats();
+            bool floatCloseBtn = false;
+            bool floatClosed = false;
+            bool floatRestore = false;
+            if (panelColumnColumn) {
+                showPrimary();
+                closeAllFloats();
                 pictura::PanelGroup* floater = nullptr;
-                for (pictura::PanelGroup* group : m41Column->groups()) {
+                for (pictura::PanelGroup* group : panelColumnColumn->groups()) {
                     if (group && !group->visiblePanels().isEmpty()) {
                         floater = group;
                         break;
                     }
                 }
-                const QString hiddenName = m47FirstVisiblePanel(floater);
+                const QString hiddenName = firstVisiblePanel(floater);
                 if (floater && !hiddenName.isEmpty()) {
-                    const bool torn = m41Column->tearOffForTest(floater->objectName());
-                    m46Pump(8);
-                    QToolButton* close = m41Column->floatCountForTest() == 1
-                                             ? m41Column->floatCloseButtonForTest(0)
+                    const bool torn = panelColumnColumn->tearOffForTest(floater->objectName());
+                    toolbarFixPump(8);
+                    QToolButton* close = panelColumnColumn->floatCountForTest() == 1
+                                             ? panelColumnColumn->floatCloseButtonForTest(0)
                                              : nullptr;
-                    m47FloatCloseBtn = torn && close && close->isVisible();
-                    const bool clicked = m41Column->closeFloatForTest(0);
-                    m46Pump(8);
-                    pictura::PanelGroup* back = m41Column->groupForPanel(hiddenName);
-                    m47FloatClosed = clicked && m41Column->floatCountForTest() == 0
+                    floatCloseBtn = torn && close && close->isVisible();
+                    const bool clicked = panelColumnColumn->closeFloatForTest(0);
+                    toolbarFixPump(8);
+                    pictura::PanelGroup* back = panelColumnColumn->groupForPanel(hiddenName);
+                    floatClosed = clicked && panelColumnColumn->floatCountForTest() == 0
                                      && back != nullptr && !back->isVisible();
                     if (back) {
-                        m41Column->showPanel(hiddenName, true);
-                        m46Pump(6);
-                        m47FloatRestore = back->isVisible();
+                        panelColumnColumn->showPanel(hiddenName, true);
+                        toolbarFixPump(6);
+                        floatRestore = back->isVisible();
                     }
                 }
-                m46CollapseDynamics();
+                toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("m47_float_close_button");
-            ST_PASS("m47_float_close button=%d closed=%d "
-                         "restore=%d", m47FloatCloseBtn ? 1 : 0, m47FloatClosed ? 1 : 0,
-                         m47FloatRestore ? 1 : 0);
-            if (!(m47FloatCloseBtn && m47FloatClosed && m47FloatRestore)) {
-                ST_FAIL(194, "M47 float close");
+            ST_BEGIN("float_close_button");
+            ST_PASS("float_close button=%d closed=%d "
+                         "restore=%d", floatCloseBtn ? 1 : 0, floatClosed ? 1 : 0,
+                         floatRestore ? 1 : 0);
+            if (!(floatCloseBtn && floatClosed && floatRestore)) {
+                ST_FAIL(194, "float close");
             }
             // 195: the compact group container uses the panel surface shade and
             // its drag dots are dark gray, not the near-white window text.
-            bool m47Shade = false;
-            bool m47Dots = false;
+            bool interactionShade = false;
+            bool interactionDots = false;
             {
                 const QString ss = qApp->styleSheet();
                 const QColor windowColor = qApp->palette().color(QPalette::Window);
@@ -6689,23 +6689,23 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     qApp->palette().color(QPalette::Disabled, QPalette::WindowText);
                 const QString windowHex = windowColor.name(QColor::HexRgb);
                 const QString disabledHex = disabledColor.name(QColor::HexRgb);
-                m47Shade = ss.contains(
+                interactionShade = ss.contains(
                     QStringLiteral("QWidget#panelIconGroup { background: ") + windowHex);
                 const int grip = ss.indexOf(QStringLiteral("QWidget#panelIconGroupGrip {"));
                 if (grip >= 0) {
                     const int end = ss.indexOf(QLatin1Char('}'), grip);
                     const QString rule = ss.mid(grip, end - grip);
-                    m47Dots = rule.contains(QStringLiteral("color: ") + disabledHex);
+                    interactionDots = rule.contains(QStringLiteral("color: ") + disabledHex);
                 }
             }
-            ST_BEGIN("m47_compact_shade_shade");
-            ST_PASS("m47_compact_shade shade=%d dots=%d", m47Shade ? 1 : 0, m47Dots ? 1 : 0);
-            if (!(m47Shade && m47Dots)) {
-                ST_FAIL(195, "M47 compact shade");
+            ST_BEGIN("compact_shade_shade");
+            ST_PASS("compact_shade shade=%d dots=%d", interactionShade ? 1 : 0, interactionDots ? 1 : 0);
+            if (!(interactionShade && interactionDots)) {
+                ST_FAIL(195, "compact shade");
             }
         }
 
-        frame.closeDocument(m39DocIndex, false);
+        frame.closeDocument(anatomyDocIndex, false);
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {

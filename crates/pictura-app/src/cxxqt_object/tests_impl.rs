@@ -11,7 +11,7 @@ use pictura_select::Selection;
 /// 27.3 ms respectively (release, RTX 3090, per the M35 brief).
 #[test]
 #[ignore = "4000x4000 region profile; run explicitly with --ignored --nocapture"]
-fn m35_region_refresh_profile_4000() {
+fn region_refresh_profile_4000() {
     let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![
         pixel_layer("base", 4000, 4000, (30, 60, 90)),
@@ -35,7 +35,7 @@ fn m35_region_refresh_profile_4000() {
         let _ = buffer_to_image(&buffer);
         let convert = t.elapsed();
         println!(
-            "m35 region_refresh_profile side={side} composite={:.2}ms patch={:.2}ms \
+            "region_refresh_profile side={side} composite={:.2}ms patch={:.2}ms \
              convert={:.2}ms total={:.2}ms (old per-pixel blit: 512->7.36ms, 1024->27.3ms)",
             composite.as_secs_f64() * 1000.0,
             patch.as_secs_f64() * 1000.0,
@@ -43,7 +43,7 @@ fn m35_region_refresh_profile_4000() {
             (composite + patch + convert).as_secs_f64() * 1000.0,
         );
     }
-    println!("m35 region_refresh_profile backend: {backend:?}");
+    println!("region_refresh_profile backend: {backend:?}");
 }
 
 #[test]
@@ -405,8 +405,8 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
 }
 
 #[test]
-fn filter_from_kind_maps_m25_kinds() {
-    const M25_KINDS: [&str; 29] = [
+fn filter_from_kind_maps_family_kinds() {
+    const FILTER_FAMILY_KINDS: [&str; 29] = [
         "accented-edges",
         "angled-strokes",
         "crosshatch",
@@ -437,7 +437,7 @@ fn filter_from_kind_maps_m25_kinds() {
         "texturizer",
         "oil-paint",
     ];
-    for kind in M25_KINDS {
+    for kind in FILTER_FAMILY_KINDS {
         assert!(filter_from_kind(kind).is_some(), "{kind} should map");
     }
     assert_eq!(filter_from_kind("bogus"), None);
@@ -835,10 +835,10 @@ fn move_profile_1024() {
 /// (`buffer_to_image(&snapshot.doc.composite)`) against the same helpers.
 #[test]
 #[ignore = "4000x4000 undo profile; run explicitly with --ignored --nocapture"]
-fn m34_undo_profile_4000() {
+fn undo_profile_4000() {
     let ms = |label: &str, d: std::time::Duration| {
         println!(
-            "m34 undo_profile {label} 4000x4000: {:.2} ms",
+            "undo_profile {label} 4000x4000: {:.2} ms",
             d.as_secs_f64() * 1000.0
         );
     };
@@ -878,5 +878,5 @@ fn m34_undo_profile_4000() {
     );
     ms("History::capture(clone)", t.elapsed());
 
-    println!("m34 undo_profile composite_active backend: {backend:?}");
+    println!("undo_profile composite_active backend: {backend:?}");
 }

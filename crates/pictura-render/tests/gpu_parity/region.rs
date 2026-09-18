@@ -236,6 +236,6 @@ fn region_vs_full_timing_4000() {
     } else {
         "n/a".into()
     };
-    eprintln!("M31 timing 4000²: region 512×512 {region_ms} ms vs full {full_ms} ms ({ratio})");
+    eprintln!("region timing 4000²: region 512×512 {region_ms} ms vs full {full_ms} ms ({ratio})");
     drop(full);
 }

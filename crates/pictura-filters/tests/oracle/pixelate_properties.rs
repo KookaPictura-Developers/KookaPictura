@@ -9,7 +9,7 @@ use crate::common::test_image_buffer;
 /// The measured deltas against the closest operators are in the mapping table.
 /// See also the module unit tests for the same filters.
 #[test]
-fn m8_no_equivalent_filters_properties() {
+fn no_equivalent_filters_properties() {
     let original = test_image_buffer();
 
     // Crystallize: seed-deterministic and piecewise constant; a flat field is
