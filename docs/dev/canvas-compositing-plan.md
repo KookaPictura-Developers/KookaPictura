@@ -227,9 +227,15 @@ the full composite. OpenSpec change `m33-composite-throughput` (MODIFIED
   host zero buffer;
 - parity plus an `#[ignore]` phase-timing profile.
 
-All five preserve output byte-for-byte (0 LSB). Deferred: resident per-layer GPU
-source buffers across a composite session (needs content versioning) and
-shader-side planar output (removes the de-interleave entirely).
+All five preserve output byte-for-byte (0 LSB). **A2 — shader-side planar
+output (shipped).** A follow-up to M33 removes the host de-interleave entirely:
+`PLANAR_SHADER` (`cs_planar`) de-interleaves the packed RGBA canvas into four
+byte planes in one storage buffer, and `read_canvas` copies each plane's `n`
+bytes into the planar `PixelBuffer`; `to_pixel_buffer` remains only for the
+profile micro-benchmark. Byte-identical (`gpu_parity` green); measured 4000²
+(2 RGB layers, release, RTX 3090) `readback` ~41 ms → ~27–32 ms, total ~130 ms →
+~117–131 ms. Deferred: resident per-layer GPU source buffers across a composite
+session (needs content versioning).
 
 ### GPU-resident zero-copy present via Qt Quick (deferred; was planned as M34)
 
@@ -292,10 +298,10 @@ per-tile diffs removes both the latency and the memory. Needs its own design
 
 Deferred from M33. The remaining full-composite cost is the per-composite
 source/mask **upload** (~128 MB + 16 MB at 4000²), not the dispatch (~0.2 ms) or
-the ~38 ms readback; keeping a layer's source planes resident on the GPU across a
-composite session would remove it, but needs content versioning to detect a
-changed layer. A shader-side planar output would also remove the ~32 ms readback
-de-interleave.
+the ~27–32 ms readback; keeping a layer's source planes resident on the GPU
+across a composite session would remove it, but needs content versioning to
+detect a changed layer. (The shader-side planar output shipped as the M33 A2
+follow-up above.)
 
 ### M38 — 256² GPU tiles + LRU + seam gutters + mipmaps (Graphite-style, deferred)
 

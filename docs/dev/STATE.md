@@ -711,6 +711,19 @@ by self-test section is a deliberate later step, out of this pass.
   **541 tests, 0 failed, 5 ignored** (was 539, 3 ignored); `openspec validate
   --all --strict` 60/60; the M33 change MODIFIES `gpu-compositing` only (no new
   capability → **59** after archive).
+- **M33 follow-up — A2: shader-side planar output** (direct continuation of the
+  M33 deferred item; no OpenSpec change, no new capability). A second compute
+  shader (`crates/pictura-render/src/gpu/shader.rs` `PLANAR_SHADER`, entry
+  `cs_planar`) de-interleaves the packed RGBA canvas into four byte planes in one
+  storage buffer (`backend.rs` `PlanarResources`, cached in `Devices` via
+  `planar_resources()`), and `Gpu::read_canvas` copies each plane's `n` bytes
+  into the planar `PixelBuffer` instead of gathering a channel per pixel.
+  `to_pixel_buffer` stays (`#[cfg(test)]`) for the profile micro-benchmark.
+  Byte-identical: the 20 `gpu_parity` tests pass. Measured 4000² (2 RGB layers,
+  release, RTX 3090): `readback` **~41 ms → ~27–32 ms**, `total` **~130 ms →
+  ~117–131 ms** (the GPU planarize dispatch and the 64 MB plane stream are
+  bandwidth-bound; the host gather is gone). `cargo test --workspace` **592
+  tests, 0 failed, 9 ignored** (unchanged); self-test stderr byte-identical.
 - **M36 — layer attributes end-to-end** (the first milestone of the Layers-panel
   program; see `docs/dev/layers-panel-program.md`). `pictura_core::Layer` gained
   `fill: u8` (default 255), `lock: LockFlags` (newtype, `TRANSPARENCY|PIXELS|
@@ -1782,12 +1795,12 @@ small, app-local region-blit slice landed as M35 above):
   path.
 - **History copy-on-write / tile diffs** — the history capture still clones
   the whole document (~60 ms per state at 4000², and holds up to 20 states).
-- **Resident per-layer GPU source buffers and shader-side planar output** —
-  deferred from M33. Keeping a layer's source plane resident on the GPU across a
-  composite session needs content versioning to detect a changed layer; the
-  remaining composite cost is the per-composite upload (~128 MB + 16 MB at
-  4000²), which residency would remove. A shader-side planar output would remove
-  the ~32 ms readback de-interleave.
+- **Resident per-layer GPU source buffers** — deferred from M33; the
+  shader-side planar output landed as the M33 A2 follow-up above. Keeping a
+  layer's source plane resident on the GPU across a composite session needs
+  content versioning to detect a changed layer; the remaining composite cost is
+  the per-composite upload (~128 MB + 16 MB at 4000²), which residency would
+  remove.
 - **Transparency grid preferences** — M30's checkerboard is fixed at an 8 px
   Light (`#FFFFFF`/`#CCCCCC`) grid; the `Transparency & Gamut` preferences pane
   (grid size None/Small/Medium/Large, colour sets Light/Medium/Dark/Red/Custom),

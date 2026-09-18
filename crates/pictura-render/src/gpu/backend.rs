@@ -5,7 +5,7 @@ use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
 
 use crate::{channel, decode_adjustment, mask_alpha, sample};
 
-use super::shader::SHADER;
+use super::shader::{PLANAR_SHADER, SHADER};
 use super::{adjustment_params, mode_id, storage_entry, GpuError, NO_ADJ};
 
 /// Bind-group layout and compute pipeline, both size-independent (buffer sizes
@@ -58,6 +58,54 @@ impl ComputeResources {
     }
 }
 
+/// Bind-group layout and compute pipeline for the planar readback pass. Like
+/// [`ComputeResources`] it is size-independent (the canvas and planar sizes and
+/// the grid stride travel as bindings), so created once per device.
+struct PlanarResources {
+    pipeline: wgpu::ComputePipeline,
+    layout: wgpu::BindGroupLayout,
+}
+
+impl PlanarResources {
+    fn new(device: &wgpu::Device) -> Self {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("pictura-planar-layout"),
+            entries: &[
+                storage_entry(0, true),
+                storage_entry(1, false),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("pictura-planar"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(PLANAR_SHADER)),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("pictura-planar"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pictura-planar"),
+            layout: Some(&pipeline_layout),
+            module: &module,
+            entry_point: Some("cs_planar"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        Self { pipeline, layout }
+    }
+}
+
 /// Keeps the wgpu objects that own the raw device alive for the process.
 pub(super) struct Devices {
     _instance: wgpu::Instance,
@@ -65,12 +113,18 @@ pub(super) struct Devices {
     device: wgpu::Device,
     queue: wgpu::Queue,
     resources: OnceLock<ComputeResources>,
+    planar: OnceLock<PlanarResources>,
 }
 
 impl Devices {
     fn resources(&'static self) -> &'static ComputeResources {
         self.resources
             .get_or_init(|| ComputeResources::new(&self.device))
+    }
+
+    fn planar_resources(&'static self) -> &'static PlanarResources {
+        self.planar
+            .get_or_init(|| PlanarResources::new(&self.device))
     }
 }
 
@@ -108,6 +162,7 @@ async fn request_device() -> Option<Devices> {
         device,
         queue,
         resources: OnceLock::new(),
+        planar: OnceLock::new(),
     })
 }
 
@@ -147,6 +202,7 @@ pub(super) struct Gpu {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
     res: &'static ComputeResources,
+    planar: &'static PlanarResources,
     params: wgpu::Buffer,
     /// Region origin in document pixels.
     x0: u32,
@@ -184,6 +240,7 @@ impl Gpu {
             device,
             queue,
             res: shared.resources(),
+            planar: shared.planar_resources(),
             params,
             x0,
             y0,
@@ -419,7 +476,67 @@ impl Gpu {
     }
 
     pub(super) fn read_canvas(&self, canvas: &wgpu::Buffer) -> Result<PixelBuffer, GpuError> {
-        let size = u64::from(self.n) * 4;
+        // De-interleave on the GPU: the planar pass writes four byte planes into
+        // one storage buffer, so the host copies plane slices instead of
+        // gathering a channel per pixel. `pw` words per plane (word-aligned by
+        // construction); bytes past `n` in the last word of a plane are padding.
+        let n = self.n;
+        let pw = n.div_ceil(4);
+        let size = u64::from(pw) * 16;
+        let planar = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pictura-planar"),
+            size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let params = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pictura-planar-params"),
+            size: 12,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let (gx, gy) = grid_2d(
+            pw,
+            self.device.limits().max_compute_workgroups_per_dimension,
+        )
+        .expect("Gpu::new rejected a canvas past the 2-D workgroup limit");
+        let params_data = [n.to_le_bytes(), pw.to_le_bytes(), (gx * 64).to_le_bytes()].concat();
+        self.queue.write_buffer(&params, 0, &params_data);
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("pictura-planar"),
+            layout: &self.planar.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: canvas.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: planar.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params.as_entire_binding(),
+                },
+            ],
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("pictura-planar"),
+            });
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("pictura-planar"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.planar.pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.dispatch_workgroups(gx, gy, 1);
+        }
+        self.queue.submit(Some(encoder.finish()));
+
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-readback"),
             size,
@@ -431,7 +548,7 @@ impl Gpu {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("pictura-readback"),
             });
-        encoder.copy_buffer_to_buffer(canvas, 0, &staging, 0, size);
+        encoder.copy_buffer_to_buffer(&planar, 0, &staging, 0, size);
         self.queue.submit(Some(encoder.finish()));
 
         let slice = staging.slice(..);
@@ -444,9 +561,15 @@ impl Gpu {
             .map_err(|_| GpuError::Readback)?
             .map_err(|_| GpuError::Readback)?;
 
-        // De-interleave straight from the mapped slice: no host packed RGBA Vec.
+        // Each plane is `pw` words; copy exactly `n` bytes of it into the
+        // planar `PixelBuffer`, ignoring the tail padding.
         let mapped = slice.get_mapped_range().map_err(|_| GpuError::Readback)?;
-        let out = self.to_pixel_buffer(&mapped);
+        let plane = pw as usize * 4;
+        let n = n as usize;
+        let mut out = PixelBuffer::new(self.w, self.h, 4);
+        for c in 0..4 {
+            out.data[c * n..c * n + n].copy_from_slice(&mapped[c * plane..c * plane + n]);
+        }
         drop(mapped);
         staging.unmap();
         Ok(out)
@@ -455,7 +578,10 @@ impl Gpu {
     /// De-interleave packed RGBA8 readback into the planar straight-alpha
     /// `PixelBuffer`, identical in shape to `composite_rgba`. Each LE `u32`
     /// unpacked and masked into four channels is a pure byte permutation, so
-    /// walking 4-byte chunks writes the same bytes.
+    /// walking 4-byte chunks writes the same bytes. The live readback now
+    /// planarizes on the GPU; this host gather stays for the profile micro-
+    /// benchmark and as the retained reference.
+    #[cfg(test)]
     pub(super) fn to_pixel_buffer(&self, packed: &[u8]) -> PixelBuffer {
         let plane = self.n as usize;
         let mut out = PixelBuffer::new(self.w, self.h, 4);

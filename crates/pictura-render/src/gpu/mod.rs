@@ -623,8 +623,9 @@ mod tests {
         println!("gpu_phase read_submit_poll_map {:.3} ms", phase_ms(t));
 
         // Standalone de-interleave micro-benchmark on a synthetic packed buffer;
-        // it is not part of the composite total (which de-interleaves in
-        // `read_canvas`, printed as `readback` below).
+        // it is not part of the composite total (whose de-interleave is now the
+        // GPU planar pass plus plane copies in `read_canvas`, printed as
+        // `readback` below). Kept to measure the retained host gather.
         let packed = vec![0u8; gpu.n as usize * 4];
         let t = Instant::now();
         let _ = gpu.to_pixel_buffer(&packed);
