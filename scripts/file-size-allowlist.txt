@@ -14,7 +14,6 @@ crates/pictura-render/src/lib.rs 1793
 crates/pictura-render/src/gpu.rs 1722
 crates/pictura-codec/src/lib.rs 1646
 crates/pictura-filters/tests/oracle.rs 1540
-crates/pictura-app/cpp/panels/layers_panel.cpp 1511
 crates/pictura-render/src/document_ops/layer_ops.rs 1315
 crates/pictura-render/src/gpu_filter.rs 1284
 crates/pictura-filters/src/lib.rs 1121
