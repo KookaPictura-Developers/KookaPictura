@@ -3,6 +3,7 @@
 
 #include "commands.h"
 #include "frame.h"
+#include "icons.h"
 #include "image_view.h"
 #include "panels/layers_panel.h"
 #include "tools.h"
@@ -585,6 +586,152 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
                 ellipseCommitted ? 1 : 0);
         if (ellipsePoints <= 6 || !ellipseCommitted) {
             return pictura::selfTest().fail(263, "ellipse live preview");
+        }
+
+        // tsc_cursor_modifiers (264): the marquee cursor assets swap to the
+        // `.add` / `.remove` variant under Shift / Alt; other tools are
+        // unaffected by the modifiers.
+        const QString marqueeNone = tools->cursorIdForModifiersForTest(
+            pictura::ToolId::Marquee, int(Qt::NoModifier));
+        const QString marqueeAdd = tools->cursorIdForModifiersForTest(
+            pictura::ToolId::Marquee, int(Qt::ShiftModifier));
+        const QString marqueeRemove = tools->cursorIdForModifiersForTest(
+            pictura::ToolId::Marquee, int(Qt::AltModifier));
+        const QString ellipseAdd = tools->cursorIdForModifiersForTest(
+            pictura::ToolId::EllipticalMarquee, int(Qt::ShiftModifier));
+        const QString ellipseRemove = tools->cursorIdForModifiersForTest(
+            pictura::ToolId::EllipticalMarquee, int(Qt::AltModifier));
+        const QString lassoShift = tools->cursorIdForModifiersForTest(
+            pictura::ToolId::Lasso, int(Qt::ShiftModifier));
+        const bool cursorMods = marqueeNone == QStringLiteral("tool.marquee")
+            && marqueeAdd == QStringLiteral("tool.marquee.add")
+            && marqueeRemove == QStringLiteral("tool.marquee.remove")
+            && ellipseAdd == QStringLiteral("tool.ellipticalmarquee.add")
+            && ellipseRemove == QStringLiteral("tool.ellipticalmarquee.remove")
+            && lassoShift == QStringLiteral("tool.lasso");
+        ST_BEGIN("tsc_cursor_modifiers");
+        ST_PASS("tsc_cursor_modifiers none=%s add=%s remove=%s elladd=%s ellrem=%s lasso=%s",
+                qPrintable(marqueeNone), qPrintable(marqueeAdd), qPrintable(marqueeRemove),
+                qPrintable(ellipseAdd), qPrintable(ellipseRemove), qPrintable(lassoShift));
+        if (!cursorMods) {
+            return pictura::selfTest().fail(264, "modifier cursor mapping");
+        }
+
+        // tsc_polygon_preview_open (265): after two Polygonal Lasso clicks the
+        // rubber band is an open polyline with no committed contour; a closing
+        // double-click commits and swaps the preview for the marching ants.
+        frame.setActiveTool(pictura::ToolId::PolygonalLasso);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setFeather(0.0);
+        antsView->deselect();
+        const auto polyPreviewClick = [antsCanvas](qreal x, qreal y) {
+            antsCanvas->mousePressed(QPointF(x, y), Qt::LeftButton, int(Qt::NoModifier));
+            antsCanvas->mouseReleased(QPointF(x, y));
+        };
+        polyPreviewClick(2, 2);
+        polyPreviewClick(12, 2);
+        const bool previewOpen = antsCanvas->hasSelectionPreviewForTest()
+            && antsCanvas->selectionPreviewOpenForTest()
+            && !antsCanvas->hasSelectionContourForTest();
+        polyPreviewClick(12, 12);
+        polyPreviewClick(12, 12);
+        const bool previewCommitted = antsView->has_selection()
+            && antsCanvas->hasSelectionContourForTest()
+            && !antsCanvas->hasSelectionPreviewForTest();
+        ST_BEGIN("tsc_polygon_preview_open");
+        ST_PASS("tsc_polygon_preview_open open=%d committed=%d loops=%d",
+                previewOpen ? 1 : 0, previewCommitted ? 1 : 0,
+                antsCanvas->selectionContourLoopCountForTest());
+        if (!previewOpen || !previewCommitted) {
+            return pictura::selfTest().fail(265, "polygon open preview");
+        }
+
+        // tsc_lasso_hotspot (266): the lasso cursors' arrow-tip hotspot is
+        // (2,2) and the rendered pixmap is non-null.
+        const pictura::ToolInfo& lassoInfo = pictura::toolInfo(pictura::ToolId::Lasso);
+        const pictura::ToolInfo& polygonInfo = pictura::toolInfo(pictura::ToolId::PolygonalLasso);
+        const pictura::ToolInfo& magneticInfo = pictura::toolInfo(pictura::ToolId::MagneticLasso);
+        const bool lassoHotspot = lassoInfo.hotspotX == 2 && lassoInfo.hotspotY == 2
+            && polygonInfo.hotspotX == 2 && polygonInfo.hotspotY == 2
+            && magneticInfo.hotspotX == 2 && magneticInfo.hotspotY == 2;
+        const bool lassoCursor =
+            !pictura::cursor(QStringLiteral("tool.lasso"), 2, 2).pixmap().isNull();
+        ST_BEGIN("tsc_lasso_hotspot");
+        ST_PASS("tsc_lasso_hotspot hotspot=%d cursor=%d", lassoHotspot ? 1 : 0,
+                lassoCursor ? 1 : 0);
+        if (!lassoHotspot || !lassoCursor) {
+            return pictura::selfTest().fail(266, "lasso hotspot");
+        }
+
+        // tsc_move_selection (267): pressing inside a live selection and
+        // dragging moves the committed outline by the drag delta (same size),
+        // records exactly one "Move Selection" state, and shows no replacement
+        // rubber band; the live contour tracks the translated mask.
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setFeather(0.0);
+        antsView->deselect();
+        const bool moveSeed = antsView->select_rect(2, 2, 5, 5, QStringLiteral("new"), 0.0);
+        const int moveBase = antsView->history_count();
+        antsCanvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::NoModifier));
+        antsCanvas->mouseMoved(QPointF(6, 6));
+        const bool movePreviewLive = antsView->selection_bounds() == QStringLiteral("4 4 5 5")
+            && !antsCanvas->hasSelectionPreviewForTest();
+        antsCanvas->mouseReleased(QPointF(6, 6));
+        const bool moveCommitted = antsView->has_selection()
+            && antsView->history_count() == moveBase + 1
+            && antsView->history_label(moveBase) == QStringLiteral("Move Selection");
+        const bool moveBounds = antsView->selection_bounds() == QStringLiteral("4 4 5 5");
+        const bool moveOutline = antsCanvas->hasSelectionContourForTest()
+            && antsCanvas->selectionContourLoopCountForTest() == 1
+            && !antsCanvas->hasSelectionPreviewForTest();
+        ST_BEGIN("tsc_move_selection");
+        ST_PASS("tsc_move_selection seed=%d live=%d committed=%d bounds=%s outline=%d",
+                moveSeed ? 1 : 0, movePreviewLive ? 1 : 0, moveCommitted ? 1 : 0,
+                qPrintable(antsView->selection_bounds()), moveOutline ? 1 : 0);
+        if (!moveSeed || !movePreviewLive || !moveCommitted || !moveBounds || !moveOutline) {
+            return pictura::selfTest().fail(267, "move selection");
+        }
+
+        // tsc_move_selection_noop (268): a press inside with no drag records
+        // nothing and leaves the selection byte-identical.
+        antsView->deselect();
+        const bool noopSeed = antsView->select_rect(3, 3, 6, 6, QStringLiteral("new"), 0.0);
+        const int noopBase = antsView->history_count();
+        const QString noopBounds = antsView->selection_bounds();
+        antsCanvas->mousePressed(QPointF(5, 5), Qt::LeftButton, int(Qt::NoModifier));
+        antsCanvas->mouseReleased(QPointF(5, 5));
+        const bool noopClean = antsView->history_count() == noopBase
+            && antsView->selection_bounds() == noopBounds;
+        ST_BEGIN("tsc_move_selection_noop");
+        ST_PASS("tsc_move_selection_noop seed=%d clean=%d bounds=%s", noopSeed ? 1 : 0,
+                noopClean ? 1 : 0, qPrintable(antsView->selection_bounds()));
+        if (!noopSeed || !noopClean) {
+            return pictura::selfTest().fail(268, "move selection noop");
+        }
+
+        // tsc_translate_clip (269): moving a selection toward the document edge
+        // clips it through the bridge; the committed bounds shrink to the
+        // on-canvas remainder and the outline reflects the clipped mask.
+        antsView->deselect();
+        const bool clipSeed = antsView->select_rect(0, 0, 5, 5, QStringLiteral("new"), 0.0);
+        const int clipBase = antsView->history_count();
+        antsCanvas->mousePressed(QPointF(2, 2), Qt::LeftButton, int(Qt::NoModifier));
+        antsCanvas->mouseMoved(QPointF(-1, -1));
+        antsCanvas->mouseReleased(QPointF(-1, -1));
+        const bool clipCommitted = antsView->has_selection()
+            && antsView->history_count() == clipBase + 1;
+        const QString clipBounds = antsView->selection_bounds();
+        const int clipPx = antsView->selection_count();
+        const bool clipOutline = antsCanvas->hasSelectionContourForTest()
+            && antsCanvas->selectionContourLoopCountForTest() == 1;
+        ST_BEGIN("tsc_translate_clip");
+        ST_PASS("tsc_translate_clip seed=%d committed=%d bounds=%s px=%d outline=%d",
+                clipSeed ? 1 : 0, clipCommitted ? 1 : 0, qPrintable(clipBounds), clipPx,
+                clipOutline ? 1 : 0);
+        if (!clipSeed || !clipCommitted || clipBounds != QStringLiteral("0 0 2 2")
+            || clipPx != 4 || !clipOutline) {
+            return pictura::selfTest().fail(269, "translate clip");
         }
         frame.closeDocument(antsDoc, false);
 

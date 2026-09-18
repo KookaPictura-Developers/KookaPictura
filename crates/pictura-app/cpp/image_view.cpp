@@ -247,9 +247,10 @@ void ImageView::setSelectionEdgesVisible(bool on)
     update();
 }
 
-void ImageView::setSelectionPreview(const QList<QPolygonF>& loops)
+void ImageView::setSelectionPreview(const QList<QPolygonF>& loops, bool closed)
 {
     previewContours_ = loops;
+    selectionPreviewClosed_ = closed;
     updateAntsTimer();
     update();
 }
@@ -257,6 +258,7 @@ void ImageView::setSelectionPreview(const QList<QPolygonF>& loops)
 void ImageView::clearSelectionPreview()
 {
     previewContours_.clear();
+    selectionPreviewClosed_ = true;
     updateAntsTimer();
     update();
 }
@@ -416,17 +418,26 @@ void ImageView::paintEvent(QPaintEvent*)
 
     if (!previewContours_.isEmpty()) {
         // Live tool rubber band as marching ants, so the selection reads during
-        // the drag exactly as it will once committed.
+        // the drag exactly as it will once committed. An open preview (Polygonal
+        // Lasso) is a polyline: no phantom closing edge until it commits.
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QPen(Qt::white, 0));
         for (const QPolygonF& loop : previewContours_) {
-            painter.drawPolygon(loop);
+            if (selectionPreviewClosed_) {
+                painter.drawPolygon(loop);
+            } else {
+                painter.drawPolyline(loop);
+            }
         }
         QPen ants(Qt::black, 0, Qt::DashLine);
         ants.setDashOffset(antsPhase_);
         painter.setPen(ants);
         for (const QPolygonF& loop : previewContours_) {
-            painter.drawPolygon(loop);
+            if (selectionPreviewClosed_) {
+                painter.drawPolygon(loop);
+            } else {
+                painter.drawPolyline(loop);
+            }
         }
     }
 

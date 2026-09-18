@@ -156,6 +156,10 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     // picture view without a `changed` emission, so refresh the overlay directly.
     connect(tools_, &ToolController::selectionCommitted, this,
             &PicturaMainWindow::refreshSelectionOverlay);
+    // A live move-selection drag also stays silent, so its translated contour
+    // is refreshed from the dedicated preview signal.
+    connect(tools_, &ToolController::selectionPreviewChanged, this,
+            &PicturaMainWindow::refreshSelectionOverlay);
 
     if (colorState_) {
         tools_->setForeground(colorState_->foreground());

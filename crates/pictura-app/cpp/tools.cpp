@@ -7,6 +7,7 @@
 
 #include <QtCore/QDebug>
 #include <QtCore/QElapsedTimer>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QPainterPath>
 #include <QtWidgets/QApplication>
 
@@ -30,14 +31,14 @@ const ToolInfo kToolTable[] = {
     {ToolId::EllipticalMarquee, "ellipticalmarquee", "Elliptical Marquee", QLatin1Char('M'),
      Qt::CrossCursor, "Elliptical Marquee: drag to select an ellipse", 2, true, 12, 12},
     {ToolId::Lasso, "lasso", "Lasso", QLatin1Char('L'), Qt::CrossCursor,
-     "Lasso: drag around a region to select", 3, true, 12, 12},
+     "Lasso: drag around a region to select", 3, true, 2, 2},
     {ToolId::PolygonalLasso, "polygonallasso", "Polygonal Lasso", QLatin1Char('L'),
      Qt::CrossCursor, "Polygonal Lasso: click vertices, close on the first vertex or double-click",
-     3, true, 12, 12},
+     3, true, 2, 2},
     {ToolId::MagneticLasso, "magneticlasso", "Magnetic Lasso", QLatin1Char('L'),
      Qt::CrossCursor,
      "Magnetic Lasso: not implemented yet (no edge map or fastening-point tracker)", 3, false,
-     12, 12},
+     2, 2},
     {ToolId::MagicWand, "magicwand", "Magic Wand", QLatin1Char('W'), Qt::CrossCursor,
      "Magic Wand: click to select by colour, combining with the current selection", 4, true, 12,
      12},
@@ -192,6 +193,21 @@ QString toolIdName(ToolId id)
         (index >= 0 && index < kToolCount) ? kToolTable[index].name : kToolTable[0].name);
 }
 
+QString toolCursorId(ToolId id, Qt::KeyboardModifiers mods)
+{
+    const QString base = QStringLiteral("tool.") + toolIdName(id);
+    if (id != ToolId::Marquee && id != ToolId::EllipticalMarquee) {
+        return base;
+    }
+    if (mods.testFlag(Qt::ShiftModifier)) {
+        return base + QStringLiteral(".add");
+    }
+    if (mods.testFlag(Qt::AltModifier)) {
+        return base + QStringLiteral(".remove");
+    }
+    return base;
+}
+
 QList<QChar> toolShortcutKeys()
 {
     QList<QChar> keys;
@@ -296,6 +312,8 @@ void ToolController::setActiveTool(ToolId id)
     }
     dragging_ = false;
     dragCommitted_ = false;
+    cancelSelectionMove();
+    cursorOverSelection_ = false;
     if (canvas_ && canvas_->movePreviewActive()) {
         canvas_->endMovePreview();
         if (v) {
@@ -424,6 +442,8 @@ void ToolController::unbindCanvas()
     }
     dragging_ = false;
     dragCommitted_ = false;
+    cancelSelectionMove();
+    cursorOverSelection_ = false;
 }
 
 void ToolController::warmMovePreview()
@@ -449,16 +469,35 @@ void ToolController::applyToolPolicy()
         return;
     }
     canvas_->setPanEnabled(active_ == ToolId::Hand);
-    const ToolInfo& info = toolInfo(active_);
-    const QCursor toolCursor =
-        cursor(QStringLiteral("tool.") + toolIdName(active_), info.hotspotX, info.hotspotY);
-    canvas_->setCursor(
-        toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
+    refreshCursor();
     if (active_ == ToolId::Move) {
         warmMovePreview();
     } else {
         warmValid_ = false;
     }
+}
+
+void ToolController::refreshCursor()
+{
+    if (!canvas_) {
+        return;
+    }
+    if ((movingSelection_ || cursorOverSelection_) && isSelectionTool(active_)) {
+        const QCursor moveCursor = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
+        if (!moveCursor.pixmap().isNull()) {
+            canvas_->setCursor(moveCursor);
+            return;
+        }
+    }
+    const ToolInfo& info = toolInfo(active_);
+    const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
+    const QCursor toolCursor = cursor(toolCursorId(active_, mods), info.hotspotX, info.hotspotY);
+    canvas_->setCursor(toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
+}
+
+QString ToolController::cursorIdForModifiersForTest(ToolId id, int mods) const
+{
+    return toolCursorId(id, Qt::KeyboardModifiers(mods));
 }
 
 void ToolController::handlePressed(const QPointF& imagePos, int button, int modifiers)
@@ -467,6 +506,9 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         return;
     }
     PictureView* v = view();
+    if (isSelectionTool(active_) && maybeBeginSelectionMove(v, imagePos)) {
+        return;
+    }
 
     switch (active_) {
     case ToolId::Hand:
@@ -611,7 +653,7 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         polygonClock_.restart();
         v->lasso_add_point(qRound(imagePos.x()), qRound(imagePos.y()));
         if (canvas_) {
-            canvas_->setSelectionPreview({polygonPoints_});
+            canvas_->setSelectionPreview({polygonPoints_}, false);
         }
         return;
     }
@@ -642,10 +684,15 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
 
 void ToolController::handleMoved(const QPointF& imagePos)
 {
+    updateSelectionHover(imagePos);
     if (!dragging_ && !polygonInProgress_) {
         return;
     }
     PictureView* v = view();
+    if (movingSelection_) {
+        dragSelectionMove(imagePos);
+        return;
+    }
 
     switch (active_) {
     case ToolId::Move: {
@@ -677,9 +724,7 @@ void ToolController::handleMoved(const QPointF& imagePos)
         return;
     case ToolId::PolygonalLasso:
         if (polygonInProgress_ && canvas_) {
-            QPolygonF preview = polygonPoints_;
-            preview << imagePos;
-            canvas_->setSelectionPreview({preview});
+            canvas_->setSelectionPreview({polygonPoints_}, false);
         }
         return;
     case ToolId::QuickSelection:
@@ -709,6 +754,11 @@ void ToolController::handleReleased(const QPointF& imagePos)
     }
     dragging_ = false;
     PictureView* v = view();
+
+    if (movingSelection_) {
+        releaseSelectionMove(imagePos);
+        return;
+    }
 
     switch (active_) {
     case ToolId::Move: {

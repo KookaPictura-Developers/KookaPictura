@@ -24,7 +24,15 @@ class PicturaMainWindow;
 // tsc_selection_edges_toggle (261) hides/shows the edges without losing data;
 // tsc_marquee_preview (262) proves the live rubber band is shown during the drag
 // and replaced by the committed contour on release; tsc_ellipse_preview (263)
-// proves the elliptical rubber band is a multi-point ellipse, not a rectangle.
+// proves the elliptical rubber band is a multi-point ellipse, not a rectangle;
+// tsc_cursor_modifiers (264) maps Shift/Alt to the marquee add/remove cursors;
+// tsc_polygon_preview_open (265) keeps the Polygonal Lasso rubber band an open
+// polyline until it commits; tsc_lasso_hotspot (266) pins the lasso cursors'
+// (2,2) arrow-tip hotspot and a non-null rendered pixmap;
+// tsc_move_selection (267) drags from inside a selection and shifts the
+// committed outline by the drag delta with one "Move Selection" history state;
+// tsc_move_selection_noop (268) records nothing for a zero-delta press;
+// tsc_translate_clip (269) clips a translated selection at the document edge.
 // Returns 0 when all pass, otherwise the self-test failure code.
 int runToolsSelectionChecks(PicturaMainWindow& frame);
 } // namespace pictura

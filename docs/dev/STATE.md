@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **649 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **652 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -1877,6 +1877,17 @@ paths go through `refresh()`. `View > Show > Selection Edges` is wired as a
 per-canvas toggle (default on). `apply_selection` deliberately does not emit
 `changed()` (Quick Selection would repaint per mouse-move); only the released
 commit refreshes the overlay.
+
+A selection UX pass followed: the options bar packs left (`addStretch` per page)
+with icon selection-mode buttons and a leading tool-icon + presets-chevron button;
+the marquee/elliptical tools use a crosshair reticle cursor with Shift `+` / Alt
+`-` variants; the lasso tools gained a top-left arrowhead (hotspot `(2,2)`); the
+polygonal lasso previews an open polyline through clicked vertices only (no
+rubber band to the cursor, no phantom closing edge) and commits on close; and
+dragging inside an existing selection with a marquee/lasso tool now moves the
+selection outline (arrow + small-marquee cursor) instead of starting a new
+selection, recorded as one `Move Selection` state (`Selection::translate`).
+Presets, pixel-content moves, and the deferred tools remain future work.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

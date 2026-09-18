@@ -121,6 +121,11 @@ QString selectionModeString(SelectionMode mode);
 // `tool.<name>` icon and cursor ids.
 QString toolIdName(ToolId id);
 
+// Cursor asset id for a tool under the given modifiers. The marquee tools swap
+// to the `.add` / `.remove` variants for Shift / Alt; every other tool keeps
+// its plain `tool.<name>` asset.
+QString toolCursorId(ToolId id, Qt::KeyboardModifiers mods);
+
 // The distinct slot letters in catalogue order, and the group a letter maps to
 // (0 when no tool carries it). Every letter maps to exactly one group.
 QList<QChar> toolShortcutKeys();
@@ -136,6 +141,11 @@ public:
 
     ToolId activeTool() const { return active_; }
     void setActiveTool(ToolId id);
+
+    // Re-apply the active tool's cursor using the live keyboard modifiers
+    // (Shift / Alt select the marquee add / remove cursor variants).
+    void refreshCursor();
+    QString cursorIdForModifiersForTest(ToolId id, int mods) const;
 
     SelectionMode combineMode() const { return mode_; }
     void setCombineMode(SelectionMode mode);
@@ -201,11 +211,20 @@ signals:
     void activeToolChanged(ToolId id);
     void foregroundSampled(const QColor& color);
     void selectionCommitted();
+    // The selection mask moved during a move-from-inside drag; the view changed
+    // without a `changed` emission, so the overlay must be refreshed directly.
+    void selectionPreviewChanged();
 
 private:
     void applyToolPolicy();
     void warmMovePreview();
     PictureView* view() const;
+    static bool isSelectionTool(ToolId id);
+    bool maybeBeginSelectionMove(PictureView* v, const QPointF& imagePos);
+    void cancelSelectionMove();
+    void updateSelectionHover(const QPointF& imagePos);
+    void dragSelectionMove(const QPointF& imagePos);
+    void releaseSelectionMove(const QPointF& imagePos);
     void handlePressed(const QPointF& imagePos, int button, int modifiers);
     void handleMoved(const QPointF& imagePos);
     void handleReleased(const QPointF& imagePos);
@@ -241,6 +260,8 @@ private:
 
     bool dragging_ = false;
     bool dragCommitted_ = false;
+    bool movingSelection_ = false;
+    bool cursorOverSelection_ = false;
     QPointF anchor_;
     QPointF last_;
     QPointF totalDelta_;

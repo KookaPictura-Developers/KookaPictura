@@ -86,10 +86,16 @@ public:
     // Live selection preview while a tool drags (the rubber band). Drawn with the
     // same animated marching-ants pen as a committed selection, and replaced by
     // the committed contour on release. Not affected by the Selection Edges
-    // toggle: the user is actively defining the selection. Empty clears.
-    void setSelectionPreview(const QList<QPolygonF>& loops);
+    // toggle: the user is actively defining the selection. Empty clears. When
+    // `closed` is false the loops are drawn as open polylines (the Polygonal
+    // Lasso rubber band must not show a phantom closing edge).
+    void setSelectionPreview(const QList<QPolygonF>& loops, bool closed = true);
     void clearSelectionPreview();
     bool hasSelectionPreviewForTest() const { return !previewContours_.isEmpty(); }
+    bool selectionPreviewOpenForTest() const
+    {
+        return !previewContours_.isEmpty() && !selectionPreviewClosed_;
+    }
     int selectionPreviewLoopCountForTest() const { return previewContours_.size(); }
     int selectionPreviewPointCountForTest() const
     {
@@ -156,6 +162,7 @@ private:
 
     QList<QPolygonF> selectionContours_;
     QList<QPolygonF> previewContours_;
+    bool selectionPreviewClosed_ = true;
     bool selectionEdgesVisible_ = true;
     int antsPhase_ = 0;
     QTimer* antsTimer_ = nullptr;
