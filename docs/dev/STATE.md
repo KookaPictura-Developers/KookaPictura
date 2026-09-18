@@ -24,12 +24,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   change `m45-panel-fixes` is **implemented and verified** (archive/commit
   deferred); **M46** layer filtering/search is next.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
-  composite keyed by `content_revision` + topmost-layer index + clamped rect,
-  and `ToolController::applyToolPolicy` warms it when Move is selected or the
-  canvas rebinds. The fresh-compute path is byte-identical to before; the
-  `move_preview_cache` self-test (exit 197) covers hit, byte-identical reuse,
-  and miss-after-content-change. Moves (`translate_layer`, `commit_move`) and
-  history restore bump/reuse the revision so the cache cannot go stale.
+  composite keyed by `content_revision` + topmost-layer index. The base is the
+  document with the topmost layer hidden, which does not depend on that layer's
+  position, so a committed move leaves it valid (`record_move` deliberately does
+  not bump `content_revision`) and the next press is a pure cache hit. The
+  earlier key also included the layer's clamped rect, which threw the base away
+  on every drag and forced a 140–200 ms region recomposite (GPU device + layer
+  upload + 64 MB clone + convert) on the next press. `applyToolPolicy` warms it
+  when Move is selected or the canvas rebinds. The `move_preview_cache` self-test
+  (exit 197) covers hit, byte-identical reuse, hit-after-commit, and
+  miss-after-content-change; the fresh-compute path stays byte-identical.
+- Drag-start latency probe: `ImageView` records the press-handler, OS
+  press→move, post-handler→move, and move→paint gaps and prints a `[press-trace]`
+  line to stderr when a drag start exceeds one frame (or always with
+  `PICTURA_PRESS_TRACE=1`); `ToolController` logs `[move-press]` with the cache
+  hit flag and `begin_move_preview` time. This is what located the replaced cache
+  key above.
 - Mouse-move no longer pulls the composite across the FFI:
   `PictureView::document_width()` / `document_height()` read `doc.width` /
   `doc.height` directly, so `InfoPanel::refresh()` (called on every
