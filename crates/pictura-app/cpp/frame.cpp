@@ -51,6 +51,7 @@
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QStatusBar>
+#include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
@@ -76,6 +77,15 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     tabs_->tabBar()->setObjectName(QStringLiteral("documentTabBar"));
     tabs_->setTabsClosable(true);
     tabs_->setMovable(true);
+    // docs_ is indexed in lockstep with the tab order (activeDocumentIndex,
+    // viewAt, removeDocument), so a dragged tab must move its DocEntry too.
+    // QTabBar::tabMoved(from, to) mirrors QList::move(from, to), and Qt keeps
+    // the current tab current across the move.
+    connect(tabs_->tabBar(), &QTabBar::tabMoved, this, [this](int from, int to) {
+        if (from >= 0 && from < docs_.size() && to >= 0 && to < docs_.size()) {
+            docs_.move(from, to);
+        }
+    });
     tabs_->setDocumentMode(true);
 
     // The document area and the panel columns share the central widget through
@@ -749,6 +759,30 @@ void PicturaMainWindow::applyBrightness(int level)
 {
     brightnessLevel_ = Theme::clampLevel(level);
     Theme::apply(brightnessLevel_);
+}
+
+bool PicturaMainWindow::reorderDocumentsForTest()
+{
+    if (!tabs_ || !tabs_->tabBar()) {
+        return false;
+    }
+    newDocument(QStringLiteral("ReorderA"), 4, 3, QStringLiteral("rgb"), 8,
+                QStringLiteral("white"));
+    newDocument(QStringLiteral("ReorderB"), 4, 3, QStringLiteral("rgb"), 8,
+                QStringLiteral("white"));
+    const int from = docs_.size() - 2;
+    const int to = docs_.size() - 1;
+    if (from < 0) {
+        return false;
+    }
+    PictureView* a = viewAt(from);
+    PictureView* b = viewAt(to);
+    const QString nameA = documentName(from);
+    const bool activeBefore = viewAt(activeDocumentIndex()) == b;
+    tabs_->tabBar()->moveTab(from, to);
+    QCoreApplication::processEvents();
+    return activeBefore && a && b && viewAt(from) == b && viewAt(to) == a
+           && documentName(to) == nameA && viewAt(activeDocumentIndex()) == b;
 }
 
 } // namespace pictura

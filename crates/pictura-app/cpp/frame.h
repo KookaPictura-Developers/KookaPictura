@@ -56,6 +56,10 @@ public:
     CommandRegistry* registry() const { return registry_; }
     ImageView* imageView() const;       // active canvas, or nullptr with no document
     PictureView* activeView() const;    // active document, or nullptr
+    // Creates two documents and drags the last tab before its neighbour through
+    // the real tab bar; returns whether docs_, viewAt and the active view stayed
+    // aligned with the new visual order.
+    bool reorderDocumentsForTest();
     QStringList topLevelMenuTitles() const;
     bool registerPanel(QWidget* panel, Qt::DockWidgetArea area);
     const QSet<QString>& panelObjectNames() const { return panelNames_; }

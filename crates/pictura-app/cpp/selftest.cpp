@@ -1009,6 +1009,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 return 51;
             }
         }
+        const bool docTabReorderOk = frame.reorderDocumentsForTest();
+        std::fprintf(stderr, "pictura self-test: doc_tab_reorder aligned=%d\n",
+                     docTabReorderOk ? 1 : 0);
+        std::fflush(stderr);
+        if (!docTabReorderOk) {
+            std::fprintf(stderr, "pictura self-test: FAIL: document tab reorder desync\n");
+            return 196;
+        }
 
         // M19: every documented asset id resolves from the Qt resource
         // bundle; unknown ids must be inert rather than crash. Assets are
@@ -6879,7 +6887,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 std::fprintf(stderr, "pictura self-test: FAIL: M47 ghost group\n");
                 return 188;
             }
-
             // 189: a real press+move on a compact strip icon tears the panel
             // into a float that survives the (now non-rebuilding) strip and
             // commits on release.
@@ -6938,7 +6945,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 std::fprintf(stderr, "pictura self-test: FAIL: M47 compact icon float\n");
                 return 189;
             }
-
             // 190: a single compact panel dropped on a group's grip creates a
             // new group immediately above (before) that group.
             bool m47GripGroup = false;
@@ -6987,7 +6993,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 std::fprintf(stderr, "pictura self-test: FAIL: M47 compact grip group\n");
                 return 190;
             }
-
             // 191: the column never scrolls horizontally, even at its minimum
             // width, because the shared floor keeps the content visible.
             bool m47HScrollOff = false;
@@ -7010,7 +7015,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 std::fprintf(stderr, "pictura self-test: FAIL: M47 no hscroll\n");
                 return 191;
             }
-
             // 192: an iconic column is fixed to its strip width and a preferred
             // width change cannot grow it; leaving iconic clears the maximum.
             bool m47IconicWidth = false;
@@ -7043,7 +7047,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 std::fprintf(stderr, "pictura self-test: FAIL: M47 iconic fixed width\n");
                 return 192;
             }
-
             // 193: the Tools panel is dropped between two widget columns and is
             // hosted as a fixed-width central-splitter pane at that index.
             bool m47ToolsResolved = false;
@@ -7103,7 +7106,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 std::fprintf(stderr, "pictura self-test: FAIL: M47 tools pane\n");
                 return 193;
             }
-
             // 194: a floating group shows a visible close control; closing it
             // removes the overlay, hides the group's panels, and keeps the group
             // restorable in a column.
@@ -7151,7 +7153,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 std::fprintf(stderr, "pictura self-test: FAIL: M47 float close\n");
                 return 194;
             }
-
             // 195: the compact group container uses the panel surface shade and
             // its drag dots are dark gray, not the near-white window text.
             bool m47Shade = false;
@@ -7183,7 +7184,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
 
         frame.closeDocument(m39DocIndex, false);
-
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();
         if (!canvas) {

@@ -219,6 +219,16 @@ by self-test section is a deliberate later step, out of this pass.
   self-tests exit 0, `guard.sh` OK. OpenSpec change `m17-document-lifecycle`
   (capabilities `document-lifecycle`, `document-tabs`; MODIFIED
   `application-shell`), archived.
+  **Bug fixed (document tab reorder):** the document `QTabWidget` was movable
+  but nothing connected `QTabBar::tabMoved`, so dragging a tab left `docs_` in
+  the old order while `tabs_->currentIndex()`, `viewAt` and `removeDocument`
+  indexed the new one — the wrong document became active, closed, or returned.
+  `frame.cpp` now connects `tabMoved(from,to)` to `docs_.move(from,to)` (guarded
+  by valid indices); Qt keeps the dragged-to-current tab current, so the active
+  document is unchanged. Regression: self-test exit **196**
+  `doc_tab_reorder aligned=1` (`PicturaMainWindow::reorderDocumentsForTest`),
+  which also exercises `viewAt`/`documentName`/`activeDocumentIndex` after the
+  move.
 - **M18** — Toolbox and core tools. Engine: `pictura-select` gains
   `Selection::{rect,ellipse,polygon}` coverage rasterizers and
   `CombineMode {New,Add,Subtract,Intersect}` + `combine_with`; `pictura-render`
