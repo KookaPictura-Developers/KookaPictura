@@ -5,12 +5,9 @@
 //! closed (`docs/dev/m11-distort2.md`), so the models below are approximations.
 
 use pictura_core::PixelBuffer;
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaCha8Rng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
-use crate::kernel::clamp_index;
+use crate::kernel::{clamp_index, to_u8, unit_f64};
 use crate::{validate, FilterError, ZigZagStyle};
 
 /// Radial displacement about the image center.
@@ -160,15 +157,6 @@ fn sample(plane: &[u8], w: usize, h: usize, x: f64, y: f64) -> f64 {
     let p01 = plane[yi1 * w + xi] as f64;
     let p11 = plane[yi1 * w + xi1] as f64;
     (p00 * (1.0 - fx) + p10 * fx) * (1.0 - fy) + (p01 * (1.0 - fx) + p11 * fx) * fy
-}
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits (as in `noise.rs`).
-fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
-
-fn to_u8(v: f64) -> u8 {
-    v.round().clamp(0.0, 255.0) as u8
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use crate::{TextureOptions, TextureSurface};
 ///
 /// ponytail: a stateless coordinate hash, so no canvas-sized field is ever
 /// materialized; swap in a real gradient-noise lattice if the mottling bands.
-fn hash2(seed: u64, x: i64, y: i64) -> f64 {
+pub(crate) fn hash2(seed: u64, x: i64, y: i64) -> f64 {
     let mut h = seed;
     h = h.wrapping_add((x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
     h = h.wrapping_add((y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F));
@@ -22,7 +22,7 @@ fn hash2(seed: u64, x: i64, y: i64) -> f64 {
 }
 
 /// Bilinear-interpolated value noise over the integer lattice.
-fn lattice(x: f64, y: f64, seed: u64) -> f64 {
+pub(crate) fn lattice(x: f64, y: f64, seed: u64) -> f64 {
     let (xi, yi) = (x.floor(), y.floor());
     let (xf, yf) = (x - xi, y - yi);
     let u = xf * xf * (3.0 - 2.0 * xf);

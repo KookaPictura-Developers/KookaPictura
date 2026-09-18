@@ -6,6 +6,13 @@ pub fn luma(r: f64, g: f64, b: f64) -> f64 {
     LUMA[0] * r + LUMA[1] * g + LUMA[2] * b
 }
 
+/// Rec.601 luma plane for a planar 3/4-channel buffer.
+pub(crate) fn luma_plane(data: &[u8], n: usize) -> Vec<f64> {
+    (0..n)
+        .map(|i| luma(data[i] as f64, data[n + i] as f64, data[2 * n + i] as f64))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

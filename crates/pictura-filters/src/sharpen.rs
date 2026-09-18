@@ -4,27 +4,28 @@
 
 use pictura_core::PixelBuffer;
 
-use crate::kernel::{clamp_index, gaussian_blur_planes, sigma_from_radius};
+use crate::kernel::{clamp_index, convolve3x3_planes, gaussian_blur_planes, sigma_from_radius};
 use crate::{validate, FilterError};
 
 /// Gradient magnitude above which Sharpen Edges applies the high-pass gain.
 /// The filter has no controls, so the gate is a fixed ~8-level edge.
 const EDGE_GRADIENT_THRESHOLD: i32 = 8;
 
-const SHARPEN_KERNEL: [[i32; 3]; 3] = [[0, -1, 0], [-1, 5, -1], [0, -1, 0]];
-const SHARPEN_MORE_KERNEL: [[i32; 3]; 3] = [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]];
+const SHARPEN_KERNEL: [[f64; 3]; 3] = [[0.0, -1.0, 0.0], [-1.0, 5.0, -1.0], [0.0, -1.0, 0.0]];
+const SHARPEN_MORE_KERNEL: [[f64; 3]; 3] =
+    [[-1.0, -1.0, -1.0], [-1.0, 9.0, -1.0], [-1.0, -1.0, -1.0]];
 
 /*** public filters ***/
 
 pub fn sharpen(buf: &mut PixelBuffer) -> Result<(), FilterError> {
     validate(buf)?;
-    apply_kernel(buf, &SHARPEN_KERNEL);
+    convolve3x3_planes(buf, &SHARPEN_KERNEL, 1.0);
     Ok(())
 }
 
 pub fn sharpen_more(buf: &mut PixelBuffer) -> Result<(), FilterError> {
     validate(buf)?;
-    apply_kernel(buf, &SHARPEN_MORE_KERNEL);
+    convolve3x3_planes(buf, &SHARPEN_MORE_KERNEL, 1.0);
     Ok(())
 }
 
@@ -101,30 +102,6 @@ pub fn unsharp_mask(
 }
 
 /*** internals ***/
-
-fn apply_kernel(buf: &mut PixelBuffer, kernel: &[[i32; 3]; 3]) {
-    let w = buf.width as usize;
-    let h = buf.height as usize;
-    let n = w * h;
-    let planes = (buf.channels as usize).min(3);
-    for c in 0..planes {
-        let base = c * n;
-        let src = buf.data[base..base + n].to_vec();
-        for y in 0..h {
-            for x in 0..w {
-                let mut acc = 0i32;
-                for (ky, row) in kernel.iter().enumerate() {
-                    let sy = clamp_index(y as isize + ky as isize - 1, h);
-                    for (kx, &kv) in row.iter().enumerate() {
-                        let sx = clamp_index(x as isize + kx as isize - 1, w);
-                        acc += kv * src[sy * w + sx] as i32;
-                    }
-                }
-                buf.data[base + y * w + x] = acc.clamp(0, 255) as u8;
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

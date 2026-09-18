@@ -13,7 +13,7 @@ use rand_chacha::{
     ChaCha8Rng,
 };
 
-use crate::{validate, FilterError};
+use crate::{kernel::unit_f64, validate, FilterError};
 
 /// Clouds: base lattice cells across the image.
 const CLOUD_CELLS: f64 = 8.0;
@@ -24,11 +24,6 @@ const GAIN: f64 = 0.5;
 /// Fibers: horizontal cell density as a fraction of `strength` (fibers run
 /// along x), roughened further by Variance.
 const FIBER_X_FREQ: f64 = 0.05;
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits (same as `noise::unit_f64`).
-fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
 
 fn smoothstep(t: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)

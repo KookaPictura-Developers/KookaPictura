@@ -4,20 +4,10 @@
 //! Adobe's exact generator models are closed (`docs/dev/m9-distort.md`).
 
 use pictura_core::PixelBuffer;
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaCha8Rng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
-use crate::kernel::clamp_index;
+use crate::kernel::{bilinear, invalid, to_u8, unit_f64, Edge};
 use crate::{validate, FilterError, RippleSize, WaveType};
-
-/// Edge policy for a source coordinate that falls outside the image.
-#[derive(Clone, Copy)]
-enum Edge {
-    Clamp,
-    Wrap,
-}
 
 /// Periodic sinusoidal displacement; `size` sets the spatial frequency.
 /// `amount` is in `-999..=999`, `0` is a bit-exact no-op. Clamp-to-edge.
@@ -50,7 +40,7 @@ pub fn ripple(buf: &mut PixelBuffer, amount: f64, size: RippleSize) -> Result<()
             let dy = amp * (phase * x as f64).sin();
             for c in 0..planes {
                 let plane = &src[c * n..c * n + n];
-                let v = sample(plane, w, h, x as f64 + dx, y as f64 + dy, Edge::Clamp);
+                let v = bilinear(plane, w, h, x as f64 + dx, y as f64 + dy, Edge::Clamp);
                 buf.data[c * n + y * w + x] = to_u8(v);
             }
         }
@@ -105,16 +95,12 @@ pub fn wave(
         for (x, &(dx, dy)) in offs.iter().enumerate() {
             for c in 0..planes {
                 let plane = &src[c * n..c * n + n];
-                let v = sample(plane, w, h, x as f64 + dx, y as f64 + dy, edge);
+                let v = bilinear(plane, w, h, x as f64 + dx, y as f64 + dy, edge);
                 buf.data[c * n + y * w + x] = to_u8(v);
             }
         }
     }
     Ok(())
-}
-
-fn invalid(msg: String) -> FilterError {
-    FilterError::InvalidParams(msg)
 }
 
 fn validate_wave(
@@ -147,28 +133,6 @@ fn validate_wave(
     Ok(())
 }
 
-/// Bilinear sample at `(x, y)` under `edge`.
-fn sample(plane: &[u8], w: usize, h: usize, x: f64, y: f64, edge: Edge) -> f64 {
-    let x0 = x.floor();
-    let y0 = y.floor();
-    let (fx, fy) = (x - x0, y - y0);
-    let (i0, j0) = (x0 as isize, y0 as isize);
-    let (xi, xi1) = (idx(i0, w, edge), idx(i0 + 1, w, edge));
-    let (yi, yi1) = (idx(j0, h, edge), idx(j0 + 1, h, edge));
-    let p00 = plane[yi * w + xi] as f64;
-    let p10 = plane[yi * w + xi1] as f64;
-    let p01 = plane[yi1 * w + xi] as f64;
-    let p11 = plane[yi1 * w + xi1] as f64;
-    (p00 * (1.0 - fx) + p10 * fx) * (1.0 - fy) + (p01 * (1.0 - fx) + p11 * fx) * fy
-}
-
-fn idx(i: isize, n: usize, edge: Edge) -> usize {
-    match edge {
-        Edge::Clamp => clamp_index(i, n),
-        Edge::Wrap => i.rem_euclid(n as isize) as usize,
-    }
-}
-
 fn shape(kind: WaveType, theta: f64) -> f64 {
     let u = theta.rem_euclid(std::f64::consts::TAU);
     match kind {
@@ -182,15 +146,6 @@ fn shape(kind: WaveType, theta: f64) -> f64 {
             }
         }
     }
-}
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits (as in `noise.rs`).
-fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
-
-fn to_u8(v: f64) -> u8 {
-    v.round().clamp(0.0, 255.0) as u8
 }
 
 #[cfg(test)]

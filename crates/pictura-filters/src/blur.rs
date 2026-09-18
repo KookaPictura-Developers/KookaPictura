@@ -5,7 +5,7 @@
 
 use pictura_core::PixelBuffer;
 
-use crate::kernel::{clamp_index, gaussian_blur_planes, sigma_from_radius};
+use crate::kernel::{clamp_index, convolve3x3_planes, gaussian_blur_planes, sigma_from_radius};
 use crate::luma::luma;
 use crate::{validate, FilterError, Quality, RadialMethod};
 
@@ -161,7 +161,7 @@ pub fn average(buf: &mut PixelBuffer) -> Result<(), FilterError> {
 
 pub fn simple(buf: &mut PixelBuffer, more: bool) -> Result<(), FilterError> {
     validate(buf)?;
-    let kernel = [1.0, 2.0, 1.0, 2.0, 4.0, 2.0, 1.0, 2.0, 1.0];
+    let kernel = [[1.0, 2.0, 1.0], [2.0, 4.0, 2.0], [1.0, 2.0, 1.0]];
     for _ in 0..if more { 3 } else { 1 } {
         convolve3x3_planes(buf, &kernel, 16.0);
     }
@@ -243,30 +243,6 @@ fn bilinear(plane: &[u8], w: usize, h: usize, x: f64, y: f64) -> f64 {
     let p01 = plane[yi1 * w + xi] as f64;
     let p11 = plane[yi1 * w + xi1] as f64;
     (p00 * (1.0 - fx) + p10 * fx) * (1.0 - fy) + (p01 * (1.0 - fx) + p11 * fx) * fy
-}
-
-fn convolve3x3_planes(buf: &mut PixelBuffer, kernel: &[f64; 9], norm: f64) {
-    let w = buf.width as usize;
-    let h = buf.height as usize;
-    let n = w * h;
-    let planes = (buf.channels as usize).min(3);
-    for c in 0..planes {
-        let base = c * n;
-        let src = buf.data[base..base + n].to_vec();
-        for y in 0..h {
-            for x in 0..w {
-                let mut acc = 0f64;
-                for ky in -1isize..=1 {
-                    let sy = clamp_index(y as isize + ky, h);
-                    for kx in -1isize..=1 {
-                        let sx = clamp_index(x as isize + kx, w);
-                        acc += kernel[((ky + 1) * 3 + (kx + 1)) as usize] * src[sy * w + sx] as f64;
-                    }
-                }
-                buf.data[base + y * w + x] = (acc / norm).round().clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
 }
 
 fn box_blur_planes(buf: &mut PixelBuffer, radius: u32) {

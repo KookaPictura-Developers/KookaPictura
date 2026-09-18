@@ -7,60 +7,15 @@
 //! gating, and every deliberate shortcut carries a `ponytail:` note.
 
 use pictura_core::PixelBuffer;
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaCha8Rng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
 use crate::artistic::{noise, reduce};
-use crate::kernel::clamp_index;
-use crate::luma::luma;
+use crate::kernel::{box_mean, clamp_index, unit_f64};
+use crate::luma::luma_plane;
 use crate::{validate, FilterError, StrokeDirection};
 
 /// Sobel magnitude of a full black-to-white step; normalizes edge responses.
 const EDGE_MAX: f64 = 1020.0;
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits.
-fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
-
-fn luma_plane(data: &[u8], n: usize) -> Vec<f64> {
-    (0..n)
-        .map(|i| luma(data[i] as f64, data[n + i] as f64, data[2 * n + i] as f64))
-        .collect()
-}
-
-/// Separable box mean with clamp-to-edge, for smoothness merges.
-fn box_mean(src: &[f64], w: usize, h: usize, radius: usize) -> Vec<f64> {
-    if radius == 0 {
-        return src.to_vec();
-    }
-    let mut tmp = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sx = clamp_index(x as isize + d as isize - radius as isize, w);
-                s += src[y * w + sx];
-            }
-            tmp[y * w + x] = s;
-        }
-    }
-    let area = ((2 * radius + 1) * (2 * radius + 1)) as f64;
-    let mut out = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sy = clamp_index(y as isize + d as isize - radius as isize, h);
-                s += tmp[sy * w + x];
-            }
-            out[y * w + x] = s / area;
-        }
-    }
-    out
-}
 
 /// Widening pass: each sample takes the max of its `(2*radius+1)^2` window.
 ///

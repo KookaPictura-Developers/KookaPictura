@@ -2,13 +2,12 @@ use pictura_core::PixelBuffer;
 use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
 use crate::artistic::{noise, reduce, texture};
-use crate::kernel::clamp_index;
+use crate::kernel::{clamp_index, unit_f64};
 use crate::luma::luma;
 use crate::{validate, BrushType, FilterError, TextureOptions};
 
 use super::common::{
-    apply_surface, apply_surface_options, box_sum, paint_daub, stroke_angles, unit_f64,
-    validate_brush,
+    apply_surface, apply_surface_options, box_sum, paint_daub, stroke_angles, validate_brush,
 };
 
 /// Paint Daubs: oriented daubs on a `brush_size`-related grid, each filled with

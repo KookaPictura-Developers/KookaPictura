@@ -5,15 +5,8 @@
 
 use pictura_core::PixelBuffer;
 
-use crate::kernel::clamp_index;
+use crate::kernel::{bilinear, invalid, to_u8, Edge};
 use crate::{validate, FilterError, PolarKind, ShearFill};
-
-/// Edge policy for a source coordinate that falls outside the image.
-#[derive(Clone, Copy)]
-enum Edge {
-    Clamp,
-    Wrap,
-}
 
 /// Rectangular ⇄ polar transform about the center: `RectangularToPolar` turns a
 /// horizontal source line into a constant-radius ring; `PolarToRectangular` is
@@ -49,7 +42,7 @@ pub fn polar_coordinates(buf: &mut PixelBuffer, kind: PolarKind) -> Result<(), F
             };
             for c in 0..planes {
                 let plane = &src[c * n..c * n + n];
-                let v = sample(plane, w, h, sx, sy, Edge::Clamp);
+                let v = bilinear(plane, w, h, sx, sy, Edge::Clamp);
                 buf.data[c * n + y * w + x] = to_u8(v);
             }
         }
@@ -88,7 +81,7 @@ pub fn shear(
             let sy = y as f64 - shift;
             for c in 0..planes {
                 let plane = &src[c * n..c * n + n];
-                let v = sample(plane, w, h, x as f64, sy, edge);
+                let v = bilinear(plane, w, h, x as f64, sy, edge);
                 buf.data[c * n + y * w + x] = to_u8(v);
             }
         }
@@ -139,36 +132,6 @@ fn interp(curve: &[(f64, f64)], t: f64) -> f64 {
         }
     }
     last.1
-}
-
-/// Bilinear sample at `(x, y)` under `edge`.
-fn sample(plane: &[u8], w: usize, h: usize, x: f64, y: f64, edge: Edge) -> f64 {
-    let x0 = x.floor();
-    let y0 = y.floor();
-    let (fx, fy) = (x - x0, y - y0);
-    let (i0, j0) = (x0 as isize, y0 as isize);
-    let (xi, xi1) = (idx(i0, w, edge), idx(i0 + 1, w, edge));
-    let (yi, yi1) = (idx(j0, h, edge), idx(j0 + 1, h, edge));
-    let p00 = plane[yi * w + xi] as f64;
-    let p10 = plane[yi * w + xi1] as f64;
-    let p01 = plane[yi1 * w + xi] as f64;
-    let p11 = plane[yi1 * w + xi1] as f64;
-    (p00 * (1.0 - fx) + p10 * fx) * (1.0 - fy) + (p01 * (1.0 - fx) + p11 * fx) * fy
-}
-
-fn idx(i: isize, n: usize, edge: Edge) -> usize {
-    match edge {
-        Edge::Clamp => clamp_index(i, n),
-        Edge::Wrap => i.rem_euclid(n as isize) as usize,
-    }
-}
-
-fn invalid(msg: String) -> FilterError {
-    FilterError::InvalidParams(msg)
-}
-
-fn to_u8(v: f64) -> u8 {
-    v.round().clamp(0.0, 255.0) as u8
 }
 
 #[cfg(test)]

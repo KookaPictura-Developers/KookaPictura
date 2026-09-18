@@ -8,83 +8,10 @@ use pictura_core::PixelBuffer;
 
 use crate::artistic::noise;
 use crate::artistic::reduce;
-use crate::artistic::texture::emboss;
-use crate::kernel::clamp_index;
-use crate::luma::luma;
+use crate::artistic::texture::{emboss, lattice};
+use crate::kernel::{box_mean, clamp_index};
+use crate::luma::luma_plane;
 use crate::{validate, FilterError, LightDirection};
-
-/// Rec.601 luma plane for a planar 3/4-channel buffer.
-fn luma_plane(data: &[u8], n: usize) -> Vec<f64> {
-    (0..n)
-        .map(|i| luma(data[i] as f64, data[n + i] as f64, data[2 * n + i] as f64))
-        .collect()
-}
-
-/// Separable box mean with clamp-to-edge, for the smoothness radii.
-///
-/// ponytail: duplicated from `sketch::relief` (private there) instead of
-/// widening `kernel` for seven call sites; move it if a third family needs it.
-fn blur_field(src: &[f64], w: usize, h: usize, radius: usize) -> Vec<f64> {
-    if radius == 0 {
-        return src.to_vec();
-    }
-    let mut tmp = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sx = clamp_index(x as isize + d as isize - radius as isize, w);
-                s += src[y * w + sx];
-            }
-            tmp[y * w + x] = s;
-        }
-    }
-    let area = ((2 * radius + 1) * (2 * radius + 1)) as f64;
-    let mut out = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sy = clamp_index(y as isize + d as isize - radius as isize, h);
-                s += tmp[sy * w + x];
-            }
-            out[y * w + x] = s / area;
-        }
-    }
-    out
-}
-
-/// Integer-hash sample in `0..1`, deterministic from `(seed, x, y)`.
-///
-/// ponytail: stateless coordinate hash (same model as `artistic::texture`), so
-/// the fibre lattice never materializes a canvas-sized field.
-fn hash2(seed: u64, x: i64, y: i64) -> f64 {
-    let mut h = seed;
-    h = h.wrapping_add((x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-    h = h.wrapping_add((y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F));
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xC4CE_B9FE_1A85_EC53);
-    h ^= h >> 33;
-    (h >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
-
-/// Bilinear-interpolated value noise over the integer lattice.
-fn lattice(x: f64, y: f64, seed: u64) -> f64 {
-    let (xi, yi) = (x.floor(), y.floor());
-    let (xf, yf) = (x - xi, y - yi);
-    let u = xf * xf * (3.0 - 2.0 * xf);
-    let v = yf * yf * (3.0 - 2.0 * yf);
-    let (ix, iy) = (xi as i64, yi as i64);
-    let a = hash2(seed, ix, iy);
-    let b = hash2(seed, ix + 1, iy);
-    let c = hash2(seed, ix, iy + 1);
-    let d = hash2(seed, ix + 1, iy + 1);
-    let top = a + (b - a) * u;
-    let bot = c + (d - c) * u;
-    top + (bot - top) * v
-}
 
 /// Note Paper: Emboss + Grain. The luminance is a height field lit from the top
 /// and perturbed by the seeded surface grain; the result is achromatic paper.
@@ -222,7 +149,7 @@ pub fn plaster(
     let h = buf.height as usize;
     let planes = (buf.channels as usize).min(3);
     let field = luma_plane(&buf.data, n);
-    let smooth = blur_field(&field, w, h, smoothness as usize / 3);
+    let smooth = box_mean(&field, w, h, smoothness as usize / 3);
     let balance = (image_balance as f64 / 50.0 - 0.5) * 0.5;
 
     for y in 0..h {
@@ -287,7 +214,7 @@ pub fn reticulation(
     let planes = (buf.channels as usize).min(3);
     let field = luma_plane(&buf.data, n);
     let fine = noise::value_noise(w, h, seed);
-    let clump = blur_field(&fine, w, h, 1 + density as usize / 12);
+    let clump = box_mean(&fine, w, h, 1 + density as usize / 12);
     let black_cut = black_level as f64 / 50.0 * 0.6;
     let white_cut = 1.0 - white_level as f64 / 50.0 * 0.6;
     let span = (white_cut - black_cut).max(0.1);
@@ -340,7 +267,7 @@ pub fn stamp(
     let h = buf.height as usize;
     let planes = (buf.channels as usize).min(3);
     let field = luma_plane(&buf.data, n);
-    let smooth = blur_field(&field, w, h, smoothness as usize / 8);
+    let smooth = box_mean(&field, w, h, smoothness as usize / 8);
     let threshold = 200.0 - light_dark_balance as f64 / 50.0 * 160.0;
 
     for (i, &s) in smooth.iter().enumerate() {
@@ -389,7 +316,7 @@ pub fn torn_edges(
     let h = buf.height as usize;
     let planes = (buf.channels as usize).min(3);
     let field = luma_plane(&buf.data, n);
-    let smooth = blur_field(&field, w, h, smoothness as usize / 3);
+    let smooth = box_mean(&field, w, h, smoothness as usize / 3);
     let cut = 0.25 + image_balance as f64 / 50.0 * 0.5;
     let gain = 0.8 + contrast as f64 / 25.0 * 2.0;
 

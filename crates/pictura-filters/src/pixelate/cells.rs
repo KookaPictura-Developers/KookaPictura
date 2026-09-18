@@ -4,23 +4,15 @@
 //! bit-reproducible; alpha is never touched.
 
 use pictura_core::PixelBuffer;
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaCha8Rng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
-use crate::kernel::clamp_index;
+use crate::kernel::{clamp_index, unit_f64};
 use crate::{validate, FilterError};
 
 const MIN_CELL: u32 = 3;
 const MAX_CELL: u32 = 300;
 const MIN_RADIUS: u32 = 4;
 const MAX_RADIUS: u32 = 127;
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits (same as `noise::unit_f64`).
-fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
 
 fn check_cell_size(cell_size: u32) -> Result<(), FilterError> {
     if (MIN_CELL..=MAX_CELL).contains(&cell_size) {

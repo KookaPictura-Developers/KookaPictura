@@ -7,12 +7,12 @@
 //! below are documented approximations, not verified parity.
 
 use pictura_core::PixelBuffer;
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaCha8Rng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
-use crate::{kernel::clamp_index, validate, FilterError, NoiseDistribution};
+use crate::{
+    kernel::{clamp_index, unit_f64},
+    validate, FilterError, NoiseDistribution,
+};
 
 /// 8-bit full scale; Add Noise Amount is a percentage of it (`FILT-030`).
 const FULL_SCALE: f64 = 255.0;
@@ -157,11 +157,6 @@ pub fn despeckle(buf: &mut PixelBuffer) -> Result<(), FilterError> {
         }
     }
     Ok(())
-}
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits.
-fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
 /// One standard normal sample via Box–Muller (`u1` in `(0, 1]` avoids `ln(0)`).

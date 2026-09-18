@@ -6,25 +6,17 @@
 //! `seed: u64` and are bit-repeatable; alpha is never modified.
 
 use pictura_core::PixelBuffer;
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaCha8Rng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
 use crate::artistic::noise::value_noise;
 use crate::artistic::reduce::clamp_u8;
 use crate::artistic::texture::{emboss, surface_height, texture_options_valid};
-use crate::kernel::clamp_index;
+use crate::kernel::{clamp_index, unit_f64};
 use crate::luma::luma;
 use crate::{validate, FilterError, GrainType, TextureOptions};
 
 /// Craquelure takes no seed, but its crack network must be repeatable.
 const CRAQUELURE_SEED: u64 = 0x0C7A_9F3E_5B12_34D6;
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits.
-fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
 
 fn in_range(name: &str, v: u8, lo: u8, hi: u8) -> Result<(), FilterError> {
     if (lo..=hi).contains(&v) {

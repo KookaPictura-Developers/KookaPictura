@@ -1,16 +1,8 @@
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaCha8Rng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
 use crate::artistic::{reduce, texture};
-use crate::kernel::clamp_index;
+use crate::kernel::{clamp_index, unit_f64};
 use crate::{FilterError, TextureOptions, TextureSurface};
-
-/// One uniform `f64` in `[0, 1)` from 53 random bits.
-pub(crate) fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
 
 /// Separable box sum over `(2*radius+1)^2` with clamp-to-edge. Not normalized:
 /// callers divide by the window area when they want a mean.

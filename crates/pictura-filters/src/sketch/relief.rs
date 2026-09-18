@@ -9,47 +9,9 @@ use pictura_core::PixelBuffer;
 use crate::artistic::noise;
 use crate::artistic::reduce;
 use crate::artistic::texture::{emboss, surface_height, texture_options_valid};
-use crate::kernel::clamp_index;
-use crate::luma::luma;
+use crate::kernel::{box_mean, clamp_index};
+use crate::luma::luma_plane;
 use crate::{validate, FilterError, HalftoneType, LightDirection, StrokeDirection, TextureOptions};
-
-/// Rec.601 luma plane for a planar 3/4-channel buffer.
-fn luma_plane(data: &[u8], n: usize) -> Vec<f64> {
-    (0..n)
-        .map(|i| luma(data[i] as f64, data[n + i] as f64, data[2 * n + i] as f64))
-        .collect()
-}
-
-/// Separable box mean with clamp-to-edge, for the smoothness radii.
-fn blur_field(src: &[f64], w: usize, h: usize, radius: usize) -> Vec<f64> {
-    if radius == 0 {
-        return src.to_vec();
-    }
-    let mut tmp = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sx = clamp_index(x as isize + d as isize - radius as isize, w);
-                s += src[y * w + sx];
-            }
-            tmp[y * w + x] = s;
-        }
-    }
-    let area = ((2 * radius + 1) * (2 * radius + 1)) as f64;
-    let mut out = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sy = clamp_index(y as isize + d as isize - radius as isize, h);
-                s += tmp[sy * w + x];
-            }
-            out[y * w + x] = s / area;
-        }
-    }
-    out
-}
 
 /// Bas Relief: luminance as a height field, lit by the shared directional
 /// gradient. Recessed (dark) response lerps toward `foreground`, raised (light)
@@ -82,7 +44,7 @@ pub fn bas_relief(
     let h = buf.height as usize;
     let planes = (buf.channels as usize).min(3);
     let field = luma_plane(&buf.data, n);
-    let smooth = blur_field(&field, w, h, smoothness as usize / 3);
+    let smooth = box_mean(&field, w, h, smoothness as usize / 3);
     let scale = detail as f64 / 255.0;
 
     for y in 0..h {
@@ -254,7 +216,7 @@ pub fn chrome(buf: &mut PixelBuffer, detail: u8, smoothness: u8) -> Result<(), F
     let h = buf.height as usize;
     let planes = (buf.channels as usize).min(3);
     let field = luma_plane(&buf.data, n);
-    let smooth = blur_field(&field, w, h, smoothness as usize / 2);
+    let smooth = box_mean(&field, w, h, smoothness as usize / 2);
     let sharp = 0.3 + detail as f64 / 10.0 * 0.9;
 
     for y in 0..h {
