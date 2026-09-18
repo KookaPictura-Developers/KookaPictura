@@ -224,8 +224,19 @@ pub fn composite_active(doc: &Document, gpu_enabled: bool) -> (PixelBuffer, Back
 /// No adjustment: the ordinary blend/source-over dispatch.
 const NO_ADJ: (u32, i32, i32, i32) = (0, 0, 0, 0);
 
-fn is_cpu_only(mode: BlendMode) -> bool {
-    matches!(mode, BlendMode::Dissolve)
+/// A COMPUTE-visible storage-buffer bind-group layout entry, shared by the
+/// compositor and filter pipelines (both alias their storage as `array<u32>`).
+pub(crate) fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only },
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
 }
 
 /// Map a decoded adjustment to the shader's kind id plus up to three integer
@@ -260,7 +271,7 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
                 return Err(GpuError::UnsupportedAdjustment);
             }
         }
-        if is_cpu_only(layer.blend) {
+        if matches!(layer.blend, BlendMode::Dissolve) {
             return Err(GpuError::UnsupportedMode(layer.blend));
         }
         for child in &layer.children {

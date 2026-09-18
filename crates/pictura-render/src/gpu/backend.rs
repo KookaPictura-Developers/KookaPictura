@@ -6,7 +6,7 @@ use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
 use crate::{channel, decode_adjustment, mask_alpha, sample};
 
 use super::shader::SHADER;
-use super::{adjustment_params, mode_id, GpuError, NO_ADJ};
+use super::{adjustment_params, mode_id, storage_entry, GpuError, NO_ADJ};
 
 /// Bind-group layout and compute pipeline, both size-independent (buffer sizes
 /// travel as bindings), so created once per shared device instead of rebuilt on
@@ -730,18 +730,5 @@ const PACKED_SRC: SrcLayout = SrcLayout {
 fn pad_to_4(data: &mut Vec<u8>) {
     while !data.len().is_multiple_of(4) {
         data.push(0);
-    }
-}
-
-fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::COMPUTE,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Storage { read_only },
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
     }
 }

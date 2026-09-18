@@ -7,6 +7,7 @@ use super::{
     MODE_MORPH_V, MODE_MOTION, MODE_OIL_AGG, MODE_OIL_HEIGHT, MODE_OIL_LUMA, MODE_OIL_SHADE,
     MODE_SEP_H, MODE_SEP_V, MODE_SURFACE,
 };
+use crate::gpu::storage_entry;
 
 pub(super) fn run(
     device: &wgpu::Device,
@@ -446,19 +447,6 @@ impl FilterResources {
             cache: None,
         });
         Self { pipeline, layout }
-    }
-}
-
-fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::COMPUTE,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Storage { read_only },
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
     }
 }
 
