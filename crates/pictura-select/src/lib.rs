@@ -219,11 +219,11 @@ impl Selection {
         Ok(())
     }
 
-    /// Combine `other` into `self` with `mode` and return the result.
+    /// Combine `other` into `self` with `mode`.
     ///
     /// Same-size masks are merged in place; a mismatched `other` can only
     /// replace (`New`), since the boolean ops have no shared canvas.
-    pub fn combine_with(&mut self, other: &Selection, mode: CombineMode) -> Selection {
+    pub fn combine_with(&mut self, other: &Selection, mode: CombineMode) {
         if self.width == other.width
             && self.height == other.height
             && self.data.len() == other.data.len()
@@ -232,7 +232,6 @@ impl Selection {
         } else if matches!(mode, CombineMode::New) {
             *self = other.clone();
         }
-        self.clone()
     }
 
     pub fn invert(&self) -> Selection {
@@ -767,24 +766,24 @@ mod tests {
         let count = |s: &Selection| s.data.iter().filter(|&&v| v > 0).count();
 
         let mut new = a.clone();
-        let out = new.combine_with(&b, CombineMode::New);
-        assert_eq!(count(&out), 9, "New replaces");
-        assert_eq!(out, b);
+        new.combine_with(&b, CombineMode::New);
+        assert_eq!(count(&new), 9, "New replaces");
+        assert_eq!(new, b);
 
         let mut add = a.clone();
-        let out = add.combine_with(&b, CombineMode::Add);
-        assert_eq!(count(&out), 14, "Add is union");
+        add.combine_with(&b, CombineMode::Add);
+        assert_eq!(count(&add), 14, "Add is union");
 
         let mut sub = a.clone();
-        let out = sub.combine_with(&b, CombineMode::Subtract);
-        assert_eq!(count(&out), 5, "Subtract removes the overlap");
+        sub.combine_with(&b, CombineMode::Subtract);
+        assert_eq!(count(&sub), 5, "Subtract removes the overlap");
 
         let mut inter = a.clone();
-        let out = inter.combine_with(&b, CombineMode::Intersect);
-        assert_eq!(count(&out), 4, "Intersect is the overlap");
-        assert_eq!(out.data[5], 255);
-        assert_eq!(out.data[10], 255);
-        assert_eq!(out.data[0], 0);
+        inter.combine_with(&b, CombineMode::Intersect);
+        assert_eq!(count(&inter), 4, "Intersect is the overlap");
+        assert_eq!(inter.data[5], 255);
+        assert_eq!(inter.data[10], 255);
+        assert_eq!(inter.data[0], 0);
     }
 
     #[test]
