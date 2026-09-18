@@ -5,13 +5,5 @@
 # split along class/concern seams, remove their entry, and never raise a
 # recorded LOC — a file that grows is a violation.
 crates/pictura-app/cpp/selftest.cpp 7212
-crates/pictura-filters/src/artistic/filters.rs 2322
-crates/pictura-adjust/src/lib.rs 1825
-crates/pictura-render/src/lib.rs 1793
-crates/pictura-render/src/gpu.rs 1722
-crates/pictura-codec/src/lib.rs 1646
 crates/pictura-filters/tests/oracle.rs 1540
-crates/pictura-render/src/document_ops/layer_ops.rs 1315
-crates/pictura-render/src/gpu_filter.rs 1284
-crates/pictura-filters/src/lib.rs 1121
 crates/pictura-render/tests/gpu_parity.rs 1016
