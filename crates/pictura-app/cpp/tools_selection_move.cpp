@@ -12,7 +12,8 @@ namespace pictura {
 
 bool ToolController::isSelectionTool(ToolId id)
 {
-    return id == ToolId::Marquee || id == ToolId::EllipticalMarquee || id == ToolId::Lasso;
+    return id == ToolId::Marquee || id == ToolId::EllipticalMarquee || id == ToolId::Lasso
+        || id == ToolId::PolygonalLasso;
 }
 
 bool ToolController::maybeBeginSelectionMove(PictureView* v, const QPointF& imagePos)
@@ -22,6 +23,7 @@ bool ToolController::maybeBeginSelectionMove(PictureView* v, const QPointF& imag
         || !v->begin_selection_move()) {
         return false;
     }
+    contentMove_ = false;
     movingSelection_ = true;
     dragging_ = true;
     dragCommitted_ = false;
@@ -30,8 +32,24 @@ bool ToolController::maybeBeginSelectionMove(PictureView* v, const QPointF& imag
     return true;
 }
 
+void ToolController::beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate)
+{
+    if (!v || !v->begin_selection_move()) {
+        return;
+    }
+    contentMove_ = true;
+    contentDuplicate_ = duplicate;
+    movingSelection_ = true;
+    dragging_ = true;
+    dragCommitted_ = false;
+    anchor_ = last_ = imagePos;
+    refreshCursor();
+}
+
 void ToolController::cancelSelectionMove()
 {
+    contentMove_ = false;
+    contentDuplicate_ = false;
     if (!movingSelection_) {
         return;
     }
@@ -72,6 +90,21 @@ void ToolController::releaseSelectionMove(const QPointF& imagePos)
     PictureView* v = view();
     const int dx = qRound(imagePos.x() - anchor_.x());
     const int dy = qRound(imagePos.y() - anchor_.y());
+    if (contentMove_) {
+        contentMove_ = false;
+        if (v && (dx != 0 || dy != 0)) {
+            if (v->move_selection_content(dx, dy, contentDuplicate_)) {
+                emit selectionCommitted();
+            } else {
+                v->cancel_selection_move();
+            }
+        } else if (v) {
+            v->cancel_selection_move();
+        }
+        contentDuplicate_ = false;
+        refreshCursor();
+        return;
+    }
     if (v && (dx != 0 || dy != 0)) {
         if (v->preview_selection_move(dx, dy) && v->commit_selection_move()) {
             emit selectionCommitted();

@@ -89,13 +89,14 @@ public:
     // toggle: the user is actively defining the selection. Empty clears. When
     // `closed` is false the loops are drawn as open polylines (the Polygonal
     // Lasso rubber band must not show a phantom closing edge).
-    void setSelectionPreview(const QList<QPolygonF>& loops, bool closed = true);
+    void setSelectionPreview(const QList<QPolygonF>& loops, bool closed = true, bool solid = false);
     void clearSelectionPreview();
     bool hasSelectionPreviewForTest() const { return !previewContours_.isEmpty(); }
     bool selectionPreviewOpenForTest() const
     {
         return !previewContours_.isEmpty() && !selectionPreviewClosed_;
     }
+    bool selectionPreviewSolidForTest() const { return selectionPreviewSolid_; }
     int selectionPreviewLoopCountForTest() const { return previewContours_.size(); }
     int selectionPreviewPointCountForTest() const
     {
@@ -109,6 +110,12 @@ public:
     void setMovePreviewDelta(const QPointF& delta);
     void endMovePreview();
     bool movePreviewActive() const { return movePreviewActive_; }
+
+    // Live marquee size readout ("W x H"), painted as a tooltip offset from the
+    // mapped cursor. Empty text or clearDragSizeHint() hides it.
+    void setDragSizeHint(const QString& text, const QPointF& imagePos);
+    void clearDragSizeHint();
+    bool hasDragSizeHintForTest() const { return dragSizeActive_ && !dragSizeText_.isEmpty(); }
 
     // Test hooks for the internal present cache.
     bool presentCacheRebuiltOnLastPaint() const { return presentCacheRebuiltLastPaint_; }
@@ -163,6 +170,7 @@ private:
     QList<QPolygonF> selectionContours_;
     QList<QPolygonF> previewContours_;
     bool selectionPreviewClosed_ = true;
+    bool selectionPreviewSolid_ = false;
     bool selectionEdgesVisible_ = true;
     int antsPhase_ = 0;
     QTimer* antsTimer_ = nullptr;
@@ -177,6 +185,10 @@ private:
     QPointF moveLayerPos_;
     QPointF moveDelta_;
     double moveOpacity_ = 1.0;
+
+    QString dragSizeText_;
+    QPointF dragSizeImagePos_;
+    bool dragSizeActive_ = false;
 
     // Drag-start latency probe: reports the press -> handler -> first move ->
     // paint gaps to stderr when a drag start exceeds one frame, or always when

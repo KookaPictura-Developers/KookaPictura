@@ -82,8 +82,7 @@ pub mod qobject {
         #[qinvokable]
         fn is_dirty(&self) -> bool;
 
-        /// Path the document was last opened from or saved to; empty when
-        /// untitled.
+        /// Path the document was last opened from or saved to; empty when untitled.
         #[qinvokable]
         fn file_path(&self) -> QString;
 
@@ -112,8 +111,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_count(&self) -> i32;
 
-        /// Index of the topmost pixel layer (neither a group nor an adjustment),
-        /// or -1 when there is none.
+        /// Index of the topmost pixel layer (neither a group nor an adjustment), or -1 when there is none.
         #[qinvokable]
         fn topmost_pixel_layer_index(&self) -> i32;
 
@@ -399,9 +397,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_layers_color(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 
-        /// Solo visibility: set exactly `paths` visible and every other node
-        /// invisible, recording one undo state under `label`. Returns the
-        /// number of nodes changed.
+        /// Solo visibility: set exactly `paths` visible and every other node invisible; records one state under `label`.
         #[qinvokable]
         fn apply_visibility(self: Pin<&mut Self>, paths: &QStringList, label: &QString) -> i32;
 
@@ -639,6 +635,10 @@ pub mod qobject {
         #[qinvokable]
         fn cancel_selection_move(self: Pin<&mut Self>) -> bool;
 
+        /// Move selected pixels by `(dx, dy)`; `duplicate` copies to a new layer. One undo state.
+        #[qinvokable]
+        fn move_selection_content(self: Pin<&mut Self>, dx: i32, dy: i32, duplicate: bool) -> bool;
+
         /// Apply `op` (`border`/`smooth`/`expand`/`contract`/`feather`) to the
         /// selection by `amount`; one undo state on success, none on refusal.
         #[qinvokable]
@@ -668,8 +668,7 @@ pub mod qobject {
         #[qinvokable]
         fn select_all_layers(&self) -> QStringList;
 
-        /// Rectangle at `(x, y)`, softened by `feather` px (0-250). `mode` is
-        /// `"new"`, `"add"`, `"subtract"`, or `"intersect"`. False without a doc.
+        /// Rectangle at `(x, y)`, softened by `feather` px (0-250). `mode` is `"new"`, `"add"`, `"subtract"`, or `"intersect"`; false without a doc.
         #[qinvokable]
         fn select_rect(
             self: Pin<&mut Self>,
@@ -721,15 +720,12 @@ pub mod qobject {
         #[qinvokable]
         fn crop(self: Pin<&mut Self>, x: i32, y: i32, w: i32, h: i32) -> bool;
 
-        /// Move the topmost pixel layer by `(dx, dy)`, recomposite, and emit
-        /// [`changed`]. Returns false without a pixel layer.
+        /// Move the topmost pixel layer by `(dx, dy)`, recomposite, and emit [`changed`]; false without a pixel layer.
         #[qinvokable]
         fn translate_layer(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
 
-        /// Shift the topmost pixel layer by `(dx, dy)` for a live drag preview:
-        /// recomposite and emit [`changed`] but DO NOT add history or mark dirty.
-        /// Returns false without a raster layer or for a zero delta.
-        /// ponytail: slow path, retained for the self-test.
+        /// Preview-move the topmost pixel layer by `(dx, dy)`: recomposite and emit
+        /// [`changed`] without history or dirty. `ponytail:` slow path for the self-test.
         #[qinvokable]
         fn move_preview(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
 

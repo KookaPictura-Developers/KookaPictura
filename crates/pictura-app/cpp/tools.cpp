@@ -489,6 +489,16 @@ void ToolController::refreshCursor()
             return;
         }
     }
+    PictureView* hoverView = view();
+    if (isSelectionTool(active_)
+        && QGuiApplication::queryKeyboardModifiers().testFlag(Qt::ControlModifier) && hoverView
+        && hoverView->has_selection()) {
+        const QCursor ctrlCursor = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
+        if (!ctrlCursor.pixmap().isNull()) {
+            canvas_->setCursor(ctrlCursor);
+            return;
+        }
+    }
     const ToolInfo& info = toolInfo(active_);
     const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
     const QCursor toolCursor = cursor(toolCursorId(active_, mods), info.hotspotX, info.hotspotY);
@@ -506,8 +516,20 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         return;
     }
     PictureView* v = view();
-    if (isSelectionTool(active_) && maybeBeginSelectionMove(v, imagePos)) {
-        return;
+    const Qt::KeyboardModifiers mods = Qt::KeyboardModifiers(modifiers);
+    if (isSelectionTool(active_)) {
+        const bool ctrl = mods.testFlag(Qt::ControlModifier);
+        const bool shift = mods.testFlag(Qt::ShiftModifier);
+        const bool alt = mods.testFlag(Qt::AltModifier);
+        const bool inside = v && v->has_selection()
+            && v->selection_coverage(qRound(imagePos.x()), qRound(imagePos.y())) > 0;
+        if (ctrl && inside) {
+            beginContentMove(v, imagePos, alt);
+            return;
+        }
+        if (!shift && !alt && maybeBeginSelectionMove(v, imagePos)) {
+            return;
+        }
     }
 
     switch (active_) {
@@ -517,7 +539,6 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         if (!canvas_) {
             return;
         }
-        const Qt::KeyboardModifiers mods = Qt::KeyboardModifiers(modifiers);
         if (mods.testFlag(Qt::ControlModifier) || mods.testFlag(Qt::AltModifier)) {
             canvas_->zoomOut();
         } else {
@@ -553,6 +574,10 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
     }
     case ToolId::Move: {
         if (!v) {
+            return;
+        }
+        if (v->has_selection()) {
+            beginContentMove(v, imagePos, mods.testFlag(Qt::AltModifier));
             return;
         }
         QElapsedTimer pressClock;
@@ -601,13 +626,14 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         if (!v) {
             return;
         }
+        dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
         dragging_ = true;
         dragCommitted_ = false;
         anchor_ = last_ = imagePos;
         updateMarqueeOverlay(imagePos);
         return;
     case ToolId::Lasso:
-        if (!v || !v->begin_lasso(selectionModeString(mode_))) {
+        if (!v || !v->begin_lasso(selectionModeString(dragMode_))) {
             return;
         }
         dragging_ = true;
@@ -640,7 +666,8 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
             return;
         }
         if (!polygonInProgress_) {
-            if (!v->begin_lasso(selectionModeString(mode_))) {
+            dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
+            if (!v->begin_lasso(selectionModeString(dragMode_))) {
                 return;
             }
             polygonInProgress_ = true;
@@ -653,7 +680,7 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         polygonClock_.restart();
         v->lasso_add_point(qRound(imagePos.x()), qRound(imagePos.y()));
         if (canvas_) {
-            canvas_->setSelectionPreview({polygonPoints_}, false);
+            canvas_->setSelectionPreview({polygonPoints_}, false, /*solid=*/true);
         }
         return;
     }
@@ -661,9 +688,10 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         if (!v) {
             return;
         }
+        dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
         const bool committed = v->magic_wand(qRound(imagePos.x()), qRound(imagePos.y()),
                                              tolerance_, contiguous_,
-                                             selectionModeString(mode_));
+                                             selectionModeString(dragMode_));
         if (committed) {
             emit selectionCommitted();
         }
@@ -673,9 +701,10 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         if (!v) {
             return;
         }
+        dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
         dragging_ = true;
         dragCommitted_ = v->quick_select(qRound(imagePos.x()), qRound(imagePos.y()), tolerance_,
-                                         selectionModeString(mode_));
+                                         selectionModeString(dragMode_));
         return;
     default:
         return;
@@ -724,7 +753,9 @@ void ToolController::handleMoved(const QPointF& imagePos)
         return;
     case ToolId::PolygonalLasso:
         if (polygonInProgress_ && canvas_) {
-            canvas_->setSelectionPreview({polygonPoints_}, false);
+            QPolygonF preview = polygonPoints_;
+            preview << imagePos;
+            canvas_->setSelectionPreview({preview}, false, /*solid=*/true);
         }
         return;
     case ToolId::QuickSelection:
@@ -732,7 +763,7 @@ void ToolController::handleMoved(const QPointF& imagePos)
             return;
         }
         if (v->quick_select(qRound(imagePos.x()), qRound(imagePos.y()), tolerance_,
-                            selectionModeString(mode_))) {
+                            selectionModeString(dragMode_))) {
             dragCommitted_ = true;
         }
         return;
@@ -777,16 +808,18 @@ void ToolController::handleReleased(const QPointF& imagePos)
     }
     case ToolId::Marquee:
     case ToolId::EllipticalMarquee: {
-        const QRect rect = marqueeDragRect(anchor_, imagePos);
+        const QRect rect =
+            marqueeDragRect(anchor_, imagePos, QGuiApplication::queryKeyboardModifiers());
         const bool shaped = v && rect.width() > 0 && rect.height() > 0;
         const bool committed = shaped
             && (active_ == ToolId::EllipticalMarquee
                     ? v->select_ellipse(rect.x(), rect.y(), rect.width(), rect.height(),
-                                        selectionModeString(mode_), feather_)
+                                        selectionModeString(dragMode_), feather_)
                     : v->select_rect(rect.x(), rect.y(), rect.width(), rect.height(),
-                                     selectionModeString(mode_), feather_));
+                                     selectionModeString(dragMode_), feather_));
         if (canvas_) {
             canvas_->clearSelectionPreview();
+            canvas_->clearDragSizeHint();
         }
         if (committed) {
             emit selectionCommitted();
@@ -834,71 +867,6 @@ void ToolController::handleReleased(const QPointF& imagePos)
     default:
         return;
     }
-}
-
-void ToolController::updateDragOverlay(const QPointF& imagePos)
-{
-    if (!canvas_) {
-        return;
-    }
-    canvas_->setOverlayPolygon(QPolygonF(QRectF(dragRect(anchor_, imagePos))));
-}
-
-void ToolController::updateMarqueeOverlay(const QPointF& imagePos)
-{
-    if (!canvas_) {
-        return;
-    }
-    const QRect rect = marqueeDragRect(anchor_, imagePos);
-    if (rect.width() <= 0 || rect.height() <= 0) {
-        canvas_->clearSelectionPreview();
-        return;
-    }
-    if (active_ == ToolId::EllipticalMarquee) {
-        // Preview the actual ellipse, not its bounding rectangle.
-        QPainterPath path;
-        path.addEllipse(QRectF(rect));
-        canvas_->setSelectionPreview({path.toFillPolygon()});
-    } else {
-        canvas_->setSelectionPreview({QPolygonF(QRectF(rect))});
-    }
-}
-
-// Style constrains the drag geometry before rasterisation: Normal follows the
-// drag; Fixed Ratio keeps the entered width:height; Fixed Size is centred on
-// the mousedown (the shape-selection spec's wording).
-QRect ToolController::marqueeDragRect(const QPointF& a, const QPointF& b) const
-{
-    if (marqueeStyle_ == MarqueeStyle::FixedSize) {
-        const int w = fixedSizeW_;
-        const int h = fixedSizeH_;
-        return QRect(qRound(a.x()) - w / 2, qRound(a.y()) - h / 2, w, h);
-    }
-    if (marqueeStyle_ == MarqueeStyle::FixedRatio) {
-        const double ratio = fixedRatioW_ / fixedRatioH_;
-        const double dx = b.x() - a.x();
-        const double dy = b.y() - a.y();
-        double w = std::abs(dx);
-        double h = std::abs(dy);
-        if (ratio > 0.0) {
-            if (h <= 0.0 || w / ratio >= h) {
-                h = w / ratio;
-            } else {
-                w = h * ratio;
-            }
-        }
-        const int left = dx >= 0.0 ? qRound(a.x()) : qRound(a.x() - w);
-        const int top = dy >= 0.0 ? qRound(a.y()) : qRound(a.y() - h);
-        return QRect(left, top, qRound(w), qRound(h));
-    }
-    return dragRect(a, b);
-}
-
-QRect ToolController::dragRect(const QPointF& a, const QPointF& b)
-{
-    const QRectF rect = QRectF(a, b).normalized();
-    return QRect(qRound(rect.left()), qRound(rect.top()), qRound(rect.width()),
-                 qRound(rect.height()));
 }
 
 bool ToolController::commitPolygonLasso()

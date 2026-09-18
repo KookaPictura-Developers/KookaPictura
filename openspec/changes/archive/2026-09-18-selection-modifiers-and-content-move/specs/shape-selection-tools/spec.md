@@ -1,65 +1,4 @@
-# shape-selection-tools Specification
-
-## Purpose
-TBD - created by archiving change m18-toolbox-tools. Update Purpose after archive.
-## Requirements
-### Requirement: Rectangular and elliptical marquee
-The system SHALL create a selection from a dragged rectangle (Rectangular
-Marquee) or ellipse (Elliptical Marquee) whose bounds are the drag rectangle. At
-least one pixel covered at the pixel centre SHALL be selected. Both tools SHALL
-be enabled in the toolbox, SHALL support New, Add, Subtract, and Intersect
-combine modes, and SHALL apply a tool-time Feather radius (0-250 px, decimal) to
-the rasterised shape before combining. The Style option SHALL constrain the drag
-geometry before rasterisation: Normal follows the drag, Fixed Ratio keeps the
-entered width-to-height ratio, and Fixed Size places the entered pixel size
-centred on the mousedown. Anti-alias SHALL be offered only for the Elliptical
-Marquee; because the engine rasteriser is binary, the control SHALL be visible
-but disabled with a reason rather than silently ignored. Fixed-ratio and
-fixed-size defaults, and non-pixel size units, are inferred and MAY be deferred.
-
-#### Scenario: Drag a rectangular selection
-- **WHEN** the Rectangular Marquee tool is dragged from one point to another
-- **THEN** the selection covers the dragged rectangle
-
-#### Scenario: Drag an elliptical selection
-- **WHEN** the Elliptical Marquee tool is dragged from one point to another
-- **THEN** the selection covers the ellipse inscribed in the dragged rectangle
-
-#### Scenario: Tool-time feather softens the boundary
-- **WHEN** the Elliptical Marquee is dragged with Feather greater than zero
-- **THEN** the committed selection has boundary pixels strictly between 0 and 255
-
-#### Scenario: Fixed ratio constrains the geometry
-- **WHEN** Style is Fixed Ratio with a 2:1 ratio and the tool is dragged
-- **THEN** the committed selection's width-to-height ratio is 2 within 1 px
-
-#### Scenario: Fixed size ignores the drag extent
-- **WHEN** Style is Fixed Size with a 100x50 size and the tool is dragged any distance
-- **THEN** the committed selection is 100x50 centred on the mousedown
-
-#### Scenario: Anti-alias is honest about the ceiling
-- **WHEN** the Elliptical Marquee options are inspected
-- **THEN** the Anti-alias control is visible and disabled with a reason that the rasteriser is binary
-
-### Requirement: Lasso selection
-The system SHALL create a selection from a freehand closed polygon traced by the
-Lasso tool, filling the polygon's interior with even-odd winding.
-
-#### Scenario: Lasso a region
-- **WHEN** the Lasso tool is dragged around a region and released
-- **THEN** the selection covers the polygon interior
-
-#### Scenario: Lasso needs three points
-- **WHEN** a lasso drag produces fewer than three points
-- **THEN** no selection is created
-
-### Requirement: Quick Selection
-The system SHALL grow a selection around the cursor while the Quick Selection
-tool is dragged, as a per-point flood selection with the current tolerance.
-
-#### Scenario: Drag grows the selection
-- **WHEN** the Quick Selection tool is dragged across a flat-coloured region
-- **THEN** the selection grows to cover pixels within the tolerance of the points sampled
+## MODIFIED Requirements
 
 ### Requirement: Selection combine modes
 The system SHALL support New, Add, Subtract, and Intersect combine modes for the
@@ -109,18 +48,6 @@ remain the default when no modifier is held.
 - **WHEN** there is no selection and a selection tool is dragged with Alt held
 - **THEN** the modifier chooses the from-centre geometry when applicable and the committed selection is created as New, not subtracted
 
-### Requirement: Selection bounds overlay
-The system SHALL show a rubber-band overlay for the selection being dragged and
-SHALL expose the committed selection's integer bounds.
-
-#### Scenario: Rubber band during the drag
-- **WHEN** a selection tool is being dragged
-- **THEN** an outline of the in-progress region is drawn over the canvas
-
-#### Scenario: Committed selection bounds
-- **WHEN** a selection has been committed
-- **THEN** its bounding rectangle can be queried
-
 ### Requirement: Polygonal Lasso
 The system SHALL provide an enabled Polygonal Lasso tool that builds a selection
 from clicked vertices: each click appends a vertex, the in-progress path SHALL
@@ -154,42 +81,7 @@ document selection unchanged.
 - **WHEN** Escape is pressed during a polygonal trace
 - **THEN** the in-progress path is discarded and the document selection is unchanged
 
-### Requirement: Selection tool options bars
-The system SHALL show context-sensitive options for each enabled selection tool:
-combine mode (New/Add/Subtract/Intersect) and Feather for the marquee and lasso
-tools, Tolerance and Contiguous for the Magic Wand, and mode plus Tolerance for
-Quick Selection. Options that the engine does not model SHALL be visible and
-disabled with a stated reason: Anti-alias for the ellipse, lasso, and wand;
-Sample All Layers for the wand and Quick Selection; and Auto-Enhance for Quick
-Selection. Quick Selection SHALL offer New, Add, and Subtract only, with no
-Intersect mode.
-
-#### Scenario: The wand options bar exposes the engine parameters
-- **WHEN** the Magic Wand tool is active
-- **THEN** the options bar shows combine mode, Tolerance, Contiguous, Anti-alias, and Sample All Layers
-
-#### Scenario: Contiguous switches the wand mode
-- **WHEN** Contiguous is unchecked and the wand clicks a colour region
-- **THEN** every matching pixel in the image is selected, not only the connected region
-
-#### Scenario: Unmodelled options are disabled with a reason
-- **WHEN** the wand or Quick Selection options bar is shown
-- **THEN** Anti-alias, Sample All Layers, and Auto-Enhance are disabled and carry a reason
-
-#### Scenario: Quick Selection has no Intersect
-- **WHEN** the Quick Selection options bar is shown
-- **THEN** only New, Add, and Subtract are present
-
-### Requirement: Deferred selection tools stay visible and disabled
-The Magnetic Lasso SHALL remain visible in the Lasso tool group but disabled,
-with a documented reason that the engine has no edge-map or fastening-point
-tracker. Enabling the Elliptical Marquee, Polygonal Lasso, and Magic Wand MUST
-NOT change the disabled state of the Magnetic Lasso or any other unimplemented
-tool.
-
-#### Scenario: Magnetic Lasso cannot be activated
-- **WHEN** the user attempts to activate the Magnetic Lasso
-- **THEN** the tool is not activated and the active tool is unchanged
+## ADDED Requirements
 
 ### Requirement: Marquee modifier constraints and size readout
 While a Rectangular or Elliptical Marquee drag is active, holding Shift SHALL
@@ -235,4 +127,3 @@ canvas SHALL show the move cursor even before the pointer enters the selection.
 #### Scenario: Ctrl previews the content move
 - **WHEN** a selection exists and Ctrl is pressed with a selection tool active
 - **THEN** the move cursor is shown even if the pointer is outside the selection
-

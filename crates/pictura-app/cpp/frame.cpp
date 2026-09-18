@@ -661,7 +661,9 @@ void PicturaMainWindow::closeEvent(QCloseEvent* event)
 
 void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
 {
-    if (tools_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+    if (tools_
+        && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt
+            || event->key() == Qt::Key_Control)) {
         tools_->refreshCursor();
     }
     if (!event->isAutoRepeat()
@@ -689,7 +691,9 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
 
 void PicturaMainWindow::keyReleaseEvent(QKeyEvent* event)
 {
-    if (tools_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+    if (tools_
+        && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt
+            || event->key() == Qt::Key_Control)) {
         tools_->refreshCursor();
     }
     QMainWindow::keyReleaseEvent(event);

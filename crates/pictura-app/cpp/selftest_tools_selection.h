@@ -32,7 +32,16 @@ class PicturaMainWindow;
 // tsc_move_selection (267) drags from inside a selection and shifts the
 // committed outline by the drag delta with one "Move Selection" history state;
 // tsc_move_selection_noop (268) records nothing for a zero-delta press;
-// tsc_translate_clip (269) clips a translated selection at the document edge.
+// tsc_translate_clip (269) clips a translated selection at the document edge;
+// tsc_quick_modes (270) maps Shift/Alt/both to Add/Subtract/Intersect and keeps
+// New when nothing is selected; tsc_marquee_geometry (271) squares the drag
+// under Shift and centres it under Alt; tsc_view_preview_hooks (272) pins mouse
+// tracking, the solid/open preview flags, and the drag size hint round-trip;
+// tsc_polygon_cursor_band (273) shows the clicked vertices plus the live cursor
+// in an open solid rubber band; tsc_content_move (274) cuts and translates the
+// selected pixels in one state; tsc_content_duplicate (275) Alt-copies them to
+// a new layer; tsc_quick_mode_drag (276) drives an Add combine through the real
+// marquee drag path.
 // Returns 0 when all pass, otherwise the self-test failure code.
 int runToolsSelectionChecks(PicturaMainWindow& frame);
 } // namespace pictura
