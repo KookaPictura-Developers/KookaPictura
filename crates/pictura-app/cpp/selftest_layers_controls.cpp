@@ -238,6 +238,18 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (!pvNoCheck) {
             return pictura::selfTest().fail(217, "row eye");
         }
+
+        // lpr_slider (218): clicking the groove jumps the handle to that point
+        // (not a page step) and holding the button tracks the cursor.
+        const int sliderJump = pvPanel->dragOpacitySliderForTest(750, 750);
+        const int sliderDrag = pvPanel->dragOpacitySliderForTest(100, 800);
+        const bool sliderJumpOk = sliderJump >= 55 && sliderJump <= 95;
+        const bool sliderDragOk = sliderDrag >= 60 && sliderDrag <= 95;
+        ST_BEGIN("lpr_slider");
+        ST_PASS("lpr_slider jump=%d drag=%d", sliderJump, sliderDrag);
+        if (!sliderJumpOk || !sliderDragOk) {
+            return pictura::selfTest().fail(218, "slider jump");
+        }
         frame.closeDocument(pvDoc, false);
 
     return 0;

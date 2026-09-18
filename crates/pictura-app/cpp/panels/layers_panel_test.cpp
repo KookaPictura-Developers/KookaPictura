@@ -19,6 +19,7 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
+#include <QtWidgets/QSlider>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QTreeView>
 
@@ -355,6 +356,35 @@ bool LayersPanel::opacityValueFitsForTest() const
     const int needed = edit->fontMetrics().horizontalAdvance(QStringLiteral("100"))
         + suffix->fontMetrics().horizontalAdvance(QStringLiteral("%"));
     return edit->width() >= needed;
+}
+
+int LayersPanel::dragOpacitySliderForTest(int fromX1000, int toX1000)
+{
+    if (!opacity_) {
+        return -1;
+    }
+    auto* slider = opacity_->findChild<QSlider*>();
+    if (!slider) {
+        return -1;
+    }
+    const int width = qMax(qMax(1, slider->minimumWidth()), slider->width());
+    const auto at = [width](int fraction) {
+        return qBound(0, width * fraction / 1000, width - 1);
+    };
+    const int y = qMax(1, slider->height()) / 2;
+    const QPoint from(at(fromX1000), y);
+    QMouseEvent press(QEvent::MouseButtonPress, from, slider->mapToGlobal(from),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(slider, &press);
+    const QPoint to(at(toX1000), y);
+    QMouseEvent move(QEvent::MouseMove, to, slider->mapToGlobal(to), Qt::NoButton,
+                     Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(slider, &move);
+    const int value = opacity_->value();
+    QMouseEvent release(QEvent::MouseButtonRelease, to, slider->mapToGlobal(to),
+                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(slider, &release);
+    return value;
 }
 
 int LayersPanel::lockBadgeLeftForTest(const QString& path) const

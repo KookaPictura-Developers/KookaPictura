@@ -7,10 +7,70 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QStyle>
+#include <QtWidgets/QStyleOptionSlider>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
 
 namespace pictura {
+
+namespace {
+
+// A horizontal slider that jumps to the clicked point and then tracks the
+// cursor while held; the stock QSlider only page-steps on a groove click.
+class JumpSlider : public QSlider {
+public:
+    using QSlider::QSlider;
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        if (event->button() == Qt::LeftButton) {
+            setSliderDown(true);
+            setValue(valueAt(event->position().toPoint()));
+            event->accept();
+            return;
+        }
+        QSlider::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override
+    {
+        if (isSliderDown()) {
+            setValue(valueAt(event->position().toPoint()));
+            event->accept();
+            return;
+        }
+        QSlider::mouseMoveEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override
+    {
+        if (event->button() == Qt::LeftButton && isSliderDown()) {
+            setValue(valueAt(event->position().toPoint()));
+            setSliderDown(false);
+            event->accept();
+            return;
+        }
+        QSlider::mouseReleaseEvent(event);
+    }
+
+private:
+    int valueAt(const QPoint& pos) const
+    {
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        const QRect groove =
+            style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderGroove, this);
+        const QRect handle =
+            style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this);
+        const int span = qMax(1, groove.width() - handle.width());
+        const int offset = pos.x() - groove.x() - handle.width() / 2;
+        return QStyle::sliderValueFromPosition(minimum(), maximum(), offset, span);
+    }
+};
+
+} // namespace
 
 PercentField::PercentField(const QString& label, QWidget* parent)
     : QWidget(parent)
@@ -58,7 +118,7 @@ PercentField::PercentField(const QString& label, QWidget* parent)
     popup_ = new QWidget(this, Qt::Popup);
     auto* popupLayout = new QVBoxLayout(popup_);
     popupLayout->setContentsMargins(6, 6, 6, 6);
-    slider_ = new QSlider(Qt::Horizontal, popup_);
+    slider_ = new JumpSlider(Qt::Horizontal, popup_);
     slider_->setRange(0, 100);
     slider_->setValue(value_);
     slider_->setMinimumWidth(120);

@@ -77,6 +77,7 @@ public:
     bool opacitySuffixPresentForTest() const;
     bool opacitySuffixInsideEditForTest() const;
     bool opacityValueFitsForTest() const;
+    int dragOpacitySliderForTest(int fromX1000, int toX1000);
     int lockBadgeLeftForTest(const QString& path) const;
     bool rowCheckStateForTest(const QString& path) const;
     bool lockIconsPresentForTest() const;
