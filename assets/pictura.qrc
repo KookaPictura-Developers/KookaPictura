@@ -23,11 +23,19 @@
     <file>icons/image.rotate90cw.svg</file>
     <file>icons/layers.clipMask.svg</file>
     <file>icons/layers.delete.svg</file>
+    <file>icons/layers.disclosureDown.svg</file>
+    <file>icons/layers.disclosureRight.svg</file>
+    <file>icons/layers.eyeOff.svg</file>
+    <file>icons/layers.eyeOn.svg</file>
     <file>icons/layers.fillAdjustment.svg</file>
     <file>icons/layers.filterOff.svg</file>
     <file>icons/layers.filterOn.svg</file>
     <file>icons/layers.fx.svg</file>
     <file>icons/layers.group.svg</file>
+    <file>icons/layers.kindAdjustment.svg</file>
+    <file>icons/layers.kindBackground.svg</file>
+    <file>icons/layers.kindGroup.svg</file>
+    <file>icons/layers.kindPixel.svg</file>
     <file>icons/layers.link.svg</file>
     <file>icons/layers.lockAll.svg</file>
     <file>icons/layers.lockAlpha.svg</file>

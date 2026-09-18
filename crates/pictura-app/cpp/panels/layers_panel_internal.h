@@ -25,15 +25,23 @@
 #include <QtGui/QPixmap>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QStyle>
+#include <QtCore/QMimeData>
+#include <QtGui/QDrag>
+#include <QtGui/QDragEnterEvent>
+#include <QtGui/QDropEvent>
 #include <QtWidgets/QStyledItemDelegate>
 #include <QtWidgets/QStyleOptionViewItem>
 #include <QtWidgets/QTreeView>
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <vector>
 
 namespace pictura {
+
+/// MIME type carrying dragged layer paths between the tree and the strip buttons.
+inline constexpr char kLayerMimeType[] = "application/x-pictura-layer";
 
 // One bridge row, as read by refresh(). The model owns a tree of these.
 struct LayerRow {
@@ -356,18 +364,108 @@ private:
     QHash<QString, Node*> byPath_;
 };
 
-// A QTreeView that draws no branch indicators: the row delegate owns the
-// nesting indentation and the expand/collapse chevron, so the eye can stay
-// anchored at the panel's left edge.
+// A QTreeView that draws no branch indicators (the row delegate owns the
+// nesting indentation and the disclosure icon, so the eye stays anchored at the
+// panel's left edge) and that owns a self-contained layer drag/drop gesture: a
+// drag carries the current row's path and a drop resolves the row under the
+// cursor to a target path plus a mode (0 above, 1 below, 2 into).
 class LayersTreeView : public QTreeView {
 public:
     explicit LayersTreeView(QWidget* parent = nullptr)
         : QTreeView(parent)
     {
+        setDragEnabled(true);
+        setAcceptDrops(true);
+        setDropIndicatorShown(true);
+        setDragDropMode(QAbstractItemView::DragDrop);
+        setDefaultDropAction(Qt::MoveAction);
+    }
+
+    void setDragPathsProvider(std::function<QStringList()> provider)
+    {
+        dragPaths_ = std::move(provider);
+    }
+    void setPathResolver(std::function<QString(const QModelIndex&)> resolver)
+    {
+        pathForIndex_ = std::move(resolver);
+    }
+    void setDropHandler(std::function<bool(const QString&, const QString&, int)> handler)
+    {
+        dropHandler_ = std::move(handler);
     }
 
 protected:
     void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
+
+    void startDrag(Qt::DropActions) override
+    {
+        if (!dragPaths_) {
+            return;
+        }
+        const QStringList paths = dragPaths_();
+        if (paths.isEmpty()) {
+            return;
+        }
+        auto* mime = new QMimeData();
+        mime->setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
+        auto* drag = new QDrag(this);
+        drag->setMimeData(mime);
+        drag->exec(Qt::MoveAction);
+    }
+
+    void dragEnterEvent(QDragEnterEvent* event) override
+    {
+        if (event->mimeData()->hasFormat(kLayerMimeType)) {
+            event->acceptProposedAction();
+        } else {
+            QTreeView::dragEnterEvent(event);
+        }
+    }
+
+    void dragMoveEvent(QDragMoveEvent* event) override
+    {
+        QTreeView::dragMoveEvent(event);
+        if (event->mimeData()->hasFormat(kLayerMimeType)) {
+            event->acceptProposedAction();
+        }
+    }
+
+    void dropEvent(QDropEvent* event) override
+    {
+        if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropHandler_ || !pathForIndex_) {
+            QTreeView::dropEvent(event);
+            return;
+        }
+        const QModelIndex index = indexAt(event->position().toPoint());
+        const QString target = index.isValid() ? pathForIndex_(index) : QString();
+        int mode = 0;
+        switch (dropIndicatorPosition()) {
+        case QAbstractItemView::BelowItem:
+            mode = 1;
+            break;
+        case QAbstractItemView::OnItem:
+            mode = 2;
+            break;
+        default:
+            mode = 0;
+            break;
+        }
+        const QStringList dragged =
+            QString::fromUtf8(event->mimeData()->data(kLayerMimeType))
+                .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        // ponytail: only the current row is dragged; a multi-row drag would need
+        // path re-sequencing as each move shifts the survivors.
+        if (!dragged.isEmpty()) {
+            dropHandler_(dragged.first(), target, mode);
+        }
+        event->setDropAction(Qt::MoveAction);
+        event->accept();
+    }
+
+private:
+    std::function<QStringList()> dragPaths_;
+    std::function<QString(const QModelIndex&)> pathForIndex_;
+    std::function<bool(const QString&, const QString&, int)> dropHandler_;
 };
 
 class LayerRowDelegate : public QStyledItemDelegate {
@@ -381,15 +479,16 @@ public:
     void setThumbnailSize(int size) { thumbnailSize_ = qMax(0, size); }
 
     // Fixed eye gutter and per-level content indent, in row-local pixels.
-    static constexpr int kEyeColumn = 22;
+    static constexpr int kEyeInset = 6;
+    static constexpr int kEyeColumn = 26;
     static constexpr int kIndent = 14;
-    static constexpr int kChevronWidth = 14;
+    static constexpr int kChevronWidth = 16;
 
     /// The eye's hit-target inside a row's content rect (as painted).
     QRect eyeRect(const QRect& itemRect) const
     {
-        const int width = qBound(12, itemRect.height(), 18);
-        return QRect(itemRect.left() + 2, itemRect.top(), width, itemRect.height());
+        const int width = qBound(14, itemRect.height(), 20);
+        return QRect(itemRect.left() + kEyeInset, itemRect.top(), width, itemRect.height());
     }
 
     /// The expand/collapse chevron's hit-target for a row at `depth`.
@@ -427,21 +526,22 @@ public:
         const QPalette& palette = option.palette;
 
         const int depth = index.data(DepthRole).toInt();
-        // Eye, anchored at the panel's left edge for every depth.
-        const QRect eye = eyeRect(rect);
-        paintEye(painter, eye, index.data(VisibleRole).toBool(), selected, palette);
+        // Eye icon, anchored at the panel's left edge for every depth.
+        paintAsset(painter, eyeRect(rect),
+                   index.data(VisibleRole).toBool() ? QStringLiteral("layers.eyeOn")
+                                                    : QStringLiteral("layers.eyeOff"));
 
-        // Content (chevron, clipping glyph, thumbnail, name) is indented by
-        // depth from the fixed eye gutter; the chevron slot is always reserved
-        // so group and layer thumbnails align.
+        // Content (disclosure, clipping glyph, thumbnail, name) is indented by
+        // depth from the fixed eye gutter; the disclosure slot is always
+        // reserved so group and layer thumbnails align.
         const int thumb = qMax(0, thumbnailSize_);
         int x = rect.left() + kEyeColumn + qMax(0, depth) * kIndent;
         if (index.data(ExpandableRole).toBool()) {
             const auto* treeView = qobject_cast<const QTreeView*>(opt.widget);
             const bool expanded = treeView && treeView->isExpanded(index);
-            paintChevron(painter, chevronRect(rect, depth), expanded,
-                         selected ? palette.color(QPalette::HighlightedText)
-                                  : palette.color(QPalette::Text));
+            paintAsset(painter, chevronRect(rect, depth),
+                       expanded ? QStringLiteral("layers.disclosureDown")
+                                : QStringLiteral("layers.disclosureRight"));
         }
         x += kChevronWidth;
         if (index.data(ClippingRole).toBool()) {
@@ -520,51 +620,12 @@ public:
     }
 
 private:
-    static void paintChevron(QPainter* painter, const QRect& rect, bool expanded,
-                             const QColor& color)
+    static void paintAsset(QPainter* painter, const QRect& rect, const QString& assetId)
     {
-        painter->save();
-        painter->setRenderHint(QPainter::Antialiasing, true);
-        painter->setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        const QPointF c = QRectF(rect).center();
-        const qreal s = 3.0;
-        if (expanded) {
-            painter->drawLine(QPointF(c.x() - s, c.y() - s * 0.5),
-                              QPointF(c.x(), c.y() + s * 0.5));
-            painter->drawLine(QPointF(c.x(), c.y() + s * 0.5),
-                              QPointF(c.x() + s, c.y() - s * 0.5));
-        } else {
-            painter->drawLine(QPointF(c.x() - s * 0.5, c.y() - s),
-                              QPointF(c.x() + s * 0.5, c.y()));
-            painter->drawLine(QPointF(c.x() + s * 0.5, c.y()),
-                              QPointF(c.x() - s * 0.5, c.y() + s));
+        const QPixmap pixmap = pictura::icon(assetId).pixmap(rect.size());
+        if (!pixmap.isNull()) {
+            painter->drawPixmap(rect, pixmap);
         }
-        painter->restore();
-    }
-
-    static void paintEye(QPainter* painter, const QRect& rect, bool visible, bool selected,
-                         const QPalette& palette)
-    {
-        painter->save();
-        painter->setRenderHint(QPainter::Antialiasing, true);
-        QColor color =
-            selected ? palette.color(QPalette::HighlightedText) : palette.color(QPalette::Text);
-        if (!visible) {
-            color.setAlpha(90);
-        }
-        painter->setPen(QPen(color, 1.4));
-        painter->setBrush(Qt::NoBrush);
-        const QRectF eye = QRectF(rect).adjusted(2, rect.height() * 0.28, -2,
-                                                 -rect.height() * 0.28);
-        painter->drawEllipse(eye);
-        if (visible) {
-            const qreal radius = qMin(eye.width(), eye.height()) * 0.25;
-            painter->setBrush(color);
-            painter->drawEllipse(eye.center(), radius, radius);
-        } else {
-            painter->drawLine(eye.topLeft(), eye.bottomRight());
-        }
-        painter->restore();
     }
 
     int thumbnailSize_ = 24;

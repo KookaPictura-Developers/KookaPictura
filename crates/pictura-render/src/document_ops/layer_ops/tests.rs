@@ -625,3 +625,59 @@ fn nesting_lock_refuses_grouping_but_allows_reorder() {
     );
     assert_eq!(doc, before, "document unchanged");
 }
+
+#[test]
+fn move_path_to_reparents_and_refuses() {
+    fn sample() -> Document {
+        let mut group = empty_group("Group");
+        group.children = vec![pixel_layer("A", 4, 4, 1), pixel_layer("B", 4, 4, 2)];
+        doc_with(vec![
+            pixel_layer("Background", 4, 4, 0),
+            group,
+            pixel_layer("top", 4, 4, 3),
+        ])
+    }
+
+    // Into a group appends as its topmost child.
+    let mut doc = sample();
+    assert!(move_path_to(&mut doc, "2", "1", 2));
+    assert_eq!(doc.layers.len(), 2);
+    assert_eq!(doc.layers[1].children.len(), 3);
+    assert_eq!(doc.layers[1].children[2].name, "top");
+
+    // Below a sibling reorders within the container.
+    let mut doc = sample();
+    assert!(move_path_to(&mut doc, "1/1", "1/0", 1));
+    let names: Vec<_> = doc.layers[1]
+        .children
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["B", "A"]);
+
+    // Above a sibling (A ends on top of B in the bottom-first stack).
+    let mut doc = sample();
+    assert!(move_path_to(&mut doc, "1/0", "1/1", 0));
+    let names: Vec<_> = doc.layers[1]
+        .children
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["B", "A"]);
+
+    // Self-drop, descendant-drop, and Background are refused unchanged.
+    let mut doc = sample();
+    let before = doc.clone();
+    assert!(!move_path_to(&mut doc, "1/0", "1/0", 0));
+    assert!(!move_path_to(&mut doc, "1", "1/0", 0));
+    assert!(!move_path_to(&mut doc, "0", "2", 2));
+    assert!(!move_path_to(&mut doc, "2", "1/0", 2), "Into a non-group");
+    assert_eq!(doc, before);
+
+    // A locked or nesting-locked source is refused.
+    let mut doc = sample();
+    doc.layers[2].lock = LockFlags::all();
+    assert!(!move_path_to(&mut doc, "2", "1", 2));
+    doc.layers[2].lock = LockFlags::default().with(LockFlags::NESTING, true);
+    assert!(!move_path_to(&mut doc, "2", "1", 2));
+}

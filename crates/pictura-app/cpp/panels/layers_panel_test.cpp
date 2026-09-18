@@ -7,17 +7,22 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QMetaObject>
+#include <QtCore/QMimeData>
 #include <QtCore/QModelIndex>
 #include <QtCore/QPoint>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtGui/QAction>
+#include <QtGui/QDragEnterEvent>
+#include <QtGui/QDropEvent>
 #include <QtGui/QMouseEvent>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QTreeView>
+
+#include <array>
 
 #include <functional>
 
@@ -267,12 +272,12 @@ bool LayersPanel::headerOrderOkForTest() const
 
 bool LayersPanel::opacityLabelPresentForTest() const
 {
-    return findChild<QLabel*>(QStringLiteral("layersOpacityLabel")) != nullptr;
+    return opacity_ && !opacity_->labelText().isEmpty();
 }
 
 bool LayersPanel::fillLabelPresentForTest() const
 {
-    return findChild<QLabel*>(QStringLiteral("layersFillLabel")) != nullptr;
+    return fill_ && !fill_->labelText().isEmpty();
 }
 
 bool LayersPanel::hasPanelMenuButtonForTest() const
@@ -312,6 +317,57 @@ bool LayersPanel::chevronClickExpandsForTest(const QString& path)
                       Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(tree_->viewport(), &press);
     return tree_->isExpanded(index) != before;
+}
+
+QString LayersPanel::opacityLabelTextForTest() const
+{
+    return opacity_ ? opacity_->labelText() : QString();
+}
+
+bool LayersPanel::opacitySuffixPresentForTest() const
+{
+    return opacity_ && opacity_->findChild<QLabel*>(QStringLiteral("percentSuffix")) != nullptr;
+}
+
+bool LayersPanel::lockIconsPresentForTest() const
+{
+    const std::array<QToolButton*, 5> buttons = {
+        lockTransparency_, lockPixels_, lockPosition_, lockNesting_, lockAll_};
+    for (QToolButton* button : buttons) {
+        if (!button || button->icon().isNull()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool LayersPanel::treeDragEnabledForTest() const
+{
+    return tree_ && tree_->dragEnabled() && tree_->acceptDrops();
+}
+
+bool LayersPanel::moveForTest(const QString& path, const QString& target, int mode)
+{
+    return view_ && view_->move_layer_to(path, target, mode);
+}
+
+bool LayersPanel::dropOnStripButtonForTest(const QString& buttonName, const QStringList& paths)
+{
+    auto* button = findChild<QToolButton*>(buttonName);
+    if (!button) {
+        return false;
+    }
+    QMimeData mime;
+    mime.setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
+    const QPointF local(5, 5);
+    QDragEnterEvent enter(local.toPoint(), Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(button, &enter);
+    if (!enter.isAccepted()) {
+        return false;
+    }
+    QDropEvent drop(local, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(button, &drop);
+    return drop.isAccepted();
 }
 
 } // namespace pictura

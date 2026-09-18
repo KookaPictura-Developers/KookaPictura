@@ -50,7 +50,7 @@ pub mod document_ops;
 pub use document_ops::{
     add_group, add_group_in, add_layer, add_layer_in, apply_visibility, crop_document,
     delete_paths, duplicate_layer, duplicate_paths, flatten_rows, flip_document, group_layer,
-    group_paths, is_background, move_path, next_layer_name, parent_path, rename_path,
+    group_paths, is_background, move_path, move_path_to, next_layer_name, parent_path, rename_path,
     resize_canvas_document, resize_document, resolve_path, resolve_path_mut, rotate_document,
     set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths,
     set_visible_paths, translate_layer, translate_layer_active, translate_layer_rect,

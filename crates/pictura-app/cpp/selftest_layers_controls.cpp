@@ -118,7 +118,55 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             || !chromeChevron) {
             return pictura::selfTest().fail(210, "panel chrome");
         }
+
+        // lpr_rows (211): the percent label and % suffix, the semantic lock
+        // icons, and drag enabled on the tree.
+        const bool rowsLabel = lpcPanel->opacityLabelTextForTest() == QStringLiteral("Opacity");
+        const bool rowsPercent = lpcPanel->opacitySuffixPresentForTest();
+        const bool rowsLocks = lpcPanel->lockIconsPresentForTest();
+        const bool rowsDrag = lpcPanel->treeDragEnabledForTest();
+        ST_BEGIN("lpr_rows");
+        ST_PASS("lpr_rows label=%d percent=%d locks=%d drag=%d", rowsLabel ? 1 : 0,
+                rowsPercent ? 1 : 0, rowsLocks ? 1 : 0, rowsDrag ? 1 : 0);
+        if (!rowsLabel || !rowsPercent || !rowsLocks || !rowsDrag) {
+            return pictura::selfTest().fail(211, "row widgets");
+        }
+
+        // lpr_drag (212): a reorder is one undo step.
+        const int dragBase = lpcNestView->history_count();
+        const bool dragged =
+            lpcPanel->moveForTest(QStringLiteral("1/0"), QStringLiteral("1/1"), 0);
+        const bool dragOk = dragged && lpcNestView->history_count() == dragBase + 1;
+        ST_BEGIN("lpr_drag");
+        ST_PASS("lpr_drag moved=%d", dragOk ? 1 : 0);
+        if (!dragOk) {
+            return pictura::selfTest().fail(212, "drag reorder");
+        }
         frame.closeDocument(lpcNestDoc, false);
+
+        // lpr_drop (213): dropping a row on Delete removes it in one step.
+        const bool dropCreated = frame.newDocument(QStringLiteral("DropCtl"), 16, 16,
+                                                   QStringLiteral("rgb"), 8,
+                                                   QStringLiteral("white"));
+        pictura::PictureView* dropView = frame.activeView();
+        if (!dropCreated || !dropView) {
+            return pictura::selfTest().fail(213, "drop fixture");
+        }
+        const int dropDoc = frame.activeDocumentIndex();
+        lpcPanel->setView(dropView);
+        lpcPanel->refresh();
+        const int dropRows = dropView->layer_row_count();
+        const int dropBase = dropView->history_count();
+        const bool dropped = lpcPanel->dropOnStripButtonForTest(QStringLiteral("layersStripDelete"),
+                                                                {QStringLiteral("0")});
+        const bool dropOk = dropped && dropView->layer_row_count() == dropRows - 1
+            && dropView->history_count() == dropBase + 1;
+        ST_BEGIN("lpr_drop");
+        ST_PASS("lpr_drop dropped=%d", dropOk ? 1 : 0);
+        if (!dropOk) {
+            return pictura::selfTest().fail(213, "drop on delete");
+        }
+        frame.closeDocument(dropDoc, false);
 
     return 0;
 }

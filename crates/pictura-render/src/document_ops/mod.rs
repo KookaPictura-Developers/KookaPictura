@@ -12,9 +12,9 @@ pub use crop::{crop_document, translate_layer, translate_layer_active, translate
 pub use layer_ops::{
     add_group, add_group_in, add_layer, add_layer_in, apply_visibility, delete_paths,
     duplicate_layer, duplicate_paths, flatten_rows, group_layer, group_paths, is_background,
-    move_path, next_layer_name, parent_path, rename_path, resolve_path, resolve_path_mut,
-    set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths,
-    set_visible_paths, ungroup_layer, ungroup_paths,
+    move_path, move_path_to, next_layer_name, parent_path, rename_path, resolve_path,
+    resolve_path_mut, set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths,
+    set_opacity_paths, set_visible_paths, ungroup_layer, ungroup_paths,
 };
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;

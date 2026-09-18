@@ -15,6 +15,7 @@
 #include <QtCore/QHash>
 #include <QtCore/QItemSelection>
 #include <QtCore/QItemSelectionModel>
+#include <QtCore/QMimeData>
 #include <QtCore/QModelIndex>
 #include <QtCore/QPoint>
 #include <QtCore/QSet>
@@ -26,6 +27,8 @@
 #include <QtCore/QVector>
 #include <QtGui/QAction>
 #include <QtGui/QColor>
+#include <QtGui/QDragEnterEvent>
+#include <QtGui/QDropEvent>
 #include <QtGui/QFont>
 #include <QtGui/QIcon>
 #include <QtGui/QImage>
@@ -127,10 +130,7 @@ LayersPanel::LayersPanel(QWidget* parent)
     }
     blend_->setEnabled(false);
     controls->addWidget(blend_, 1);
-    auto* opacityLabel = new QLabel(tr("Opacity"), body);
-    opacityLabel->setObjectName(QStringLiteral("layersOpacityLabel"));
-    controls->addWidget(opacityLabel);
-    opacity_ = new PercentField(body);
+    opacity_ = new PercentField(tr("Opacity"), body);
     opacity_->setObjectName(QStringLiteral("layersOpacityField"));
     opacity_->setEnabled(false);
     opacity_->setToolTip(tr("Opacity"));
@@ -173,10 +173,7 @@ LayersPanel::LayersPanel(QWidget* parent)
     lockAll_ = makeLock(QStringLiteral("layers.lockAll"), tr("Lock All"),
                         QStringLiteral("all"));
     locks->addStretch(1);
-    auto* fillLabel = new QLabel(tr("Fill"), body);
-    fillLabel->setObjectName(QStringLiteral("layersFillLabel"));
-    locks->addWidget(fillLabel);
-    fill_ = new PercentField(body);
+    fill_ = new PercentField(tr("Fill"), body);
     fill_->setObjectName(QStringLiteral("layersFillField"));
     fill_->setEnabled(false);
     fill_->setToolTip(tr("Fill"));
@@ -201,11 +198,20 @@ LayersPanel::LayersPanel(QWidget* parent)
     tree_->setSelectionBehavior(QAbstractItemView::SelectRows);
     tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     tree_->setUniformRowHeights(true);
-    tree_->setDragEnabled(false);
     tree_->setHeaderHidden(true);
     tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     tree_->setContextMenuPolicy(Qt::CustomContextMenu);
     tree_->viewport()->installEventFilter(this);
+    // Self-contained layer drag/drop: the tree resolves the drop to a target
+    // path + mode and the panel turns it into one reparent/move undo step.
+    tree_->setDragPathsProvider([this] {
+        const QString path = currentPath();
+        return path.isEmpty() ? QStringList{} : QStringList{path};
+    });
+    tree_->setPathResolver([this](const QModelIndex& index) { return pathForProxyIndex(index); });
+    tree_->setDropHandler([this](const QString& dragged, const QString& target, int mode) {
+        return view_ && view_->move_layer_to(dragged, target, mode);
+    });
     layout->addWidget(tree_, 1);
 
     auto* buttons = new QHBoxLayout();
@@ -258,13 +264,22 @@ LayersPanel::LayersPanel(QWidget* parent)
 
     auto* newGroupButton =
         stripIconButton(QStringLiteral("layersStripGroup"), QStringLiteral("layers.group"));
-    newGroupButton->setToolTip(tr("New Group"));
+    newGroupButton->setToolTip(tr("New Group — drop a layer here to group it"));
+    newGroupButton->setProperty("layerDropAction", QStringLiteral("group"));
+    newGroupButton->setAcceptDrops(true);
+    newGroupButton->installEventFilter(this);
     auto* newLayerButton =
         stripIconButton(QStringLiteral("layersStripNewLayer"), QStringLiteral("layers.newLayer"));
-    newLayerButton->setToolTip(tr("New Layer"));
+    newLayerButton->setToolTip(tr("New Layer — drop a layer here to duplicate it"));
+    newLayerButton->setProperty("layerDropAction", QStringLiteral("duplicate"));
+    newLayerButton->setAcceptDrops(true);
+    newLayerButton->installEventFilter(this);
     auto* deleteButton =
         stripIconButton(QStringLiteral("layersStripDelete"), QStringLiteral("layers.delete"));
-    deleteButton->setToolTip(tr("Delete"));
+    deleteButton->setToolTip(tr("Delete — drop a layer here to delete it"));
+    deleteButton->setProperty("layerDropAction", QStringLiteral("delete"));
+    deleteButton->setAcceptDrops(true);
+    deleteButton->installEventFilter(this);
     layout->addLayout(buttons);
 
     connect(tree_->selectionModel(), &QItemSelectionModel::currentChanged, this,
@@ -501,6 +516,36 @@ QStringList LayersPanel::selectedPaths() const
 
 bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
 {
+    if (auto* button = qobject_cast<QToolButton*>(watched)) {
+        const QString dropAction = button->property("layerDropAction").toString();
+        if (!dropAction.isEmpty()) {
+            if (event->type() == QEvent::DragEnter) {
+                auto* drag = static_cast<QDragEnterEvent*>(event);
+                if (drag->mimeData()->hasFormat(kLayerMimeType)) {
+                    drag->acceptProposedAction();
+                    return true;
+                }
+            } else if (event->type() == QEvent::Drop) {
+                auto* drop = static_cast<QDropEvent*>(event);
+                if (drop->mimeData()->hasFormat(kLayerMimeType)) {
+                    const QStringList paths =
+                        QString::fromUtf8(drop->mimeData()->data(kLayerMimeType))
+                            .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                    if (view_ && !paths.isEmpty()) {
+                        if (dropAction == QLatin1String("delete")) {
+                            view_->delete_layers(paths);
+                        } else if (dropAction == QLatin1String("duplicate")) {
+                            view_->duplicate_layers(paths);
+                        } else if (dropAction == QLatin1String("group")) {
+                            view_->group_layers(paths);
+                        }
+                    }
+                    drop->acceptProposedAction();
+                    return true;
+                }
+            }
+        }
+    }
     if (watched == tree_->viewport() && event->type() == QEvent::MouseButtonPress) {
         auto* mouse = static_cast<QMouseEvent*>(event);
         if (mouse->button() == Qt::LeftButton) {
