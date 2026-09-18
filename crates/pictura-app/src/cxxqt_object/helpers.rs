@@ -52,12 +52,13 @@ pub(super) fn is_background_layer(doc: &Document, i: i32) -> bool {
     pictura_render::is_background(doc, &i.to_string())
 }
 /// Map a lock-strip flag name to its [`LockFlags`] bit. `"all"` is the derived
-/// three-bit set; anything else is `None`.
+/// four-bit set; anything else is `None`.
 pub(super) fn lock_bit(flag: &str) -> Option<u8> {
     match flag {
         "transparency" => Some(LockFlags::TRANSPARENCY),
         "pixels" => Some(LockFlags::PIXELS),
         "position" => Some(LockFlags::POSITION),
+        "nesting" => Some(LockFlags::NESTING),
         "all" => Some(LockFlags::all().bits()),
         _ => None,
     }

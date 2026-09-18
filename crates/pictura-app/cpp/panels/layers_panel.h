@@ -12,7 +12,6 @@ class QComboBox;
 class QEvent;
 class QMenu;
 class QModelIndex;
-class QSpinBox;
 class QToolButton;
 class QTreeView;
 
@@ -20,6 +19,7 @@ namespace pictura {
 
 class LayerRowDelegate;
 class LayersModel;
+class PercentField;
 class PictureView;
 
 class LayersPanel : public QWidget {
@@ -57,6 +57,11 @@ public:
     QStringList panelMenuTextsForTest() const;
     QStringList rowMenuTextsForTest();
     QStringList colorLabelTextsForTest();
+    int lockButtonCountForTest() const;
+    int opacityPercentForTest() const;
+    int fillPercentForTest() const;
+    void setOpacityPercentForTest(int pct);
+    void setFillPercentForTest(int pct);
 
     // Phase D: run a wired Layers per-widget menu entry by its action id.
     // Returns false for ids this panel does not own.
@@ -96,11 +101,12 @@ private:
     LayerRowDelegate* delegate_ = nullptr;
     QTreeView* tree_ = nullptr;
     QComboBox* blend_ = nullptr;
-    QSpinBox* opacity_ = nullptr;
-    QSpinBox* fill_ = nullptr;
+    PercentField* opacity_ = nullptr;
+    PercentField* fill_ = nullptr;
     QToolButton* lockTransparency_ = nullptr;
     QToolButton* lockPixels_ = nullptr;
     QToolButton* lockPosition_ = nullptr;
+    QToolButton* lockNesting_ = nullptr;
     QToolButton* lockAll_ = nullptr;
     QToolButton* panelMenu_ = nullptr;
     QSet<QString> expandedPaths_;

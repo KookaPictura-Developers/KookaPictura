@@ -416,7 +416,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             }
             b"lspf" if data.len() >= 4 => {
                 let value = u32::from_be_bytes(data[0..4].try_into().unwrap());
-                lock = lock_from_bits(value as u8 & 0x07);
+                lock = lock_from_bits(value as u8 & 0x0F);
             }
             b"lclr" if data.len() >= 2 => {
                 let value = u16::from_be_bytes(data[0..2].try_into().unwrap());
@@ -477,13 +477,14 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     })
 }
 
-/// Build [`LockFlags`] from the three `lspf`/record `flags` low bits. The
+/// Build [`LockFlags`] from the four `lspf`/record `flags` low bits. The
 /// newtype has no public bit constructor, so set each lock explicitly.
 fn lock_from_bits(bits: u8) -> LockFlags {
     LockFlags::default()
         .with(LockFlags::TRANSPARENCY, bits & LockFlags::TRANSPARENCY != 0)
         .with(LockFlags::PIXELS, bits & LockFlags::PIXELS != 0)
         .with(LockFlags::POSITION, bits & LockFlags::POSITION != 0)
+        .with(LockFlags::NESTING, bits & LockFlags::NESTING != 0)
 }
 
 /// Decode a `'luni'` tagged block: a `u32` UTF-16 code-unit count followed by

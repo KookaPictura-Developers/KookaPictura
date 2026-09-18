@@ -299,7 +299,7 @@ impl ColorLabel {
     }
 }
 
-/// The three CS6 layer locks. A `u8` bit set, not an enum.
+/// The four CS6 layer locks. A `u8` bit set, not an enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LockFlags(u8);
 
@@ -307,6 +307,7 @@ impl LockFlags {
     pub const TRANSPARENCY: u8 = 0x01;
     pub const PIXELS: u8 = 0x02;
     pub const POSITION: u8 = 0x04;
+    pub const NESTING: u8 = 0x08;
 
     pub const fn bits(self) -> u8 {
         self.0
@@ -324,13 +325,13 @@ impl LockFlags {
         }
     }
 
-    /// All three lockable bits (the panel's "Lock All" toggle).
+    /// All four lockable bits (the panel's "Lock All" toggle).
     pub fn all() -> LockFlags {
-        LockFlags(0x01 | 0x02 | 0x04)
+        LockFlags(0x01 | 0x02 | 0x04 | 0x08)
     }
 
     pub fn is_all(self) -> bool {
-        self.0 & 0x07 == 0x07
+        self.0 & 0x0F == 0x0F
     }
 }
 
@@ -598,7 +599,7 @@ mod tests {
 
     #[test]
     fn lock_flags_bits_contains_with_and_all() {
-        assert_eq!(LockFlags::all().bits(), 0x07);
+        assert_eq!(LockFlags::all().bits(), 0x0F);
         assert!(LockFlags::all().is_all());
         assert!(!LockFlags::default().is_all());
         let t = LockFlags::default().with(LockFlags::TRANSPARENCY, true);
@@ -608,5 +609,9 @@ mod tests {
         assert_eq!(t.with(LockFlags::TRANSPARENCY, false).bits(), 0);
         assert!(LockFlags::all().contains(LockFlags::PIXELS));
         assert!(LockFlags::all().contains(LockFlags::POSITION));
+        assert!(LockFlags::all().contains(LockFlags::NESTING));
+        let n = LockFlags::default().with(LockFlags::NESTING, true);
+        assert!(n.contains(LockFlags::NESTING));
+        assert!(!n.is_all());
     }
 }

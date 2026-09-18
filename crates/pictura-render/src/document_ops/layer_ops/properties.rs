@@ -1,4 +1,4 @@
-use pictura_core::{BlendMode, ColorLabel, Document, Layer};
+use pictura_core::{BlendMode, ColorLabel, Document, Layer, LockFlags};
 
 use super::create::{empty_group, next_layer_name};
 use super::paths::{
@@ -194,8 +194,8 @@ pub fn duplicate_paths(doc: &mut Document, paths: &[&str]) -> Vec<String> {
 
 /// Wrap the selection in one new group inserted at the topmost selected node's
 /// position. Refuses the whole operation (`None`) when the paths span more than
-/// one container, or any is the Background or fully locked. Returns the new
-/// group's path.
+/// one container, or any is the Background, fully locked, or nesting locked.
+/// Returns the new group's path.
 pub fn group_paths(doc: &mut Document, paths: &[&str]) -> Option<String> {
     let selected = selected_paths(doc, paths, true);
     let (first, _) = selected.first()?;
@@ -208,7 +208,8 @@ pub fn group_paths(doc: &mut Document, paths: &[&str]) -> Option<String> {
     }
     for (_, path) in &selected {
         if is_background(doc, path)
-            || resolve_path(doc, path).is_some_and(|layer| layer.lock.is_all())
+            || resolve_path(doc, path)
+                .is_some_and(|layer| layer.lock.is_all() || layer.lock.contains(LockFlags::NESTING))
         {
             return None;
         }
@@ -245,7 +246,8 @@ pub fn group_paths(doc: &mut Document, paths: &[&str]) -> Option<String> {
 }
 
 /// Splice each listed group's children into its container. Skips non-groups,
-/// the Background, and fully-locked nodes. Returns the number of groups changed.
+/// the Background, fully-locked nodes, and nesting-locked nodes. Returns the
+/// number of groups changed.
 pub fn ungroup_paths(doc: &mut Document, paths: &[&str]) -> usize {
     let selected = selected_paths(doc, paths, false);
     let mut changed = 0;
@@ -253,7 +255,7 @@ pub fn ungroup_paths(doc: &mut Document, paths: &[&str]) -> usize {
         let Some(layer) = resolve_path(doc, &path) else {
             continue;
         };
-        if !layer.is_group || layer.lock.is_all() {
+        if !layer.is_group || layer.lock.is_all() || layer.lock.contains(LockFlags::NESTING) {
             continue;
         }
         let Some((container, index)) = container_mut(doc, &segments) else {
