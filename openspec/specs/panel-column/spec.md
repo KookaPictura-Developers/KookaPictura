@@ -184,18 +184,24 @@ flyout SHALL open on the inner side of the column: to the left of the strip when
 the column is on the right, and to the right of the strip when the column is on
 the left. The icon whose flyout is open SHALL render in the active/pressed
 state. The flyout SHALL close on click-away and SHALL NOT steal focus
-permanently. The strip width SHALL be a stored value and SHALL be user-resizable.
-The strip icon button and pixmap sizes SHALL be larger than the M42 sizes. The
-flyout placement SHALL be derived from the actual button geometry and SHALL
-clamp only the inner-side coordinate, so the flyout can never cross to the outer
-side of the column. The compact strip SHALL show each group's icon buttons as
-one visual unit, and SHALL expose a small drag-handle affordance above each
-group that drags the whole group. The divider between compact groups SHALL be
-dark grey, not white. Strip labels SHALL elide and appear as soon as any room
+permanently. The strip width SHALL be fixed while the column is iconic, so a
+neighbouring pane's splitter handle drag SHALL NOT resize it. The strip icon
+button and pixmap sizes SHALL be larger than the M42 sizes. The flyout placement
+SHALL be derived from the actual button geometry and SHALL clamp only the
+inner-side coordinate, so the flyout can never cross to the outer side of the
+column. The compact strip SHALL show each group's icon buttons as one visual
+unit, and SHALL expose a small drag-handle affordance above each group that
+drags the whole group. The divider between compact groups SHALL be dark grey,
+not white; the group container SHALL use the panel surface shade and the drag
+dots SHALL be dark gray. Strip labels SHALL elide and appear as soon as any room
 exists, rather than only once the full label width is available. A drop onto or
 very close above/below a compact group SHALL insert into that group at that
-place, and a drop between groups, above the top group, or below the bottom group
-SHALL create a new group at that boundary.
+place; a drop on a group's drag-handle grip SHALL create a new group directly
+above that group; and a drop between groups, above the top group, or below the
+bottom group SHALL create a new group at that boundary. Pressing and dragging a
+compact icon SHALL tear that panel into a floating overlay that follows the
+cursor until the mouse button is released and is committed on release, exactly
+like a tab or group drag.
 
 #### Scenario: Iconic mode collapses to a strip [m41_iconic]
 
@@ -214,12 +220,6 @@ SHALL create a new group at that boundary.
 - **THEN** the popup hosts the whole `PanelGroup` with all of the group's tabs,
   the clicked panel is current, and the group is restored to its column position
   when the popup closes
-
-#### Scenario: The popup, docked, and floating presentations have no parity differences [m45_popup_group]
-
-- **WHEN** the same group is presented docked, in a compact popup, and floating
-- **THEN** all three present the same `PanelGroup` with the same tabs, styling,
-  and behaviour
 
 #### Scenario: The flyout opens on the inner side [m42_flyout]
 
@@ -242,16 +242,6 @@ SHALL create a new group at that boundary.
 
 - **WHEN** a panel icon's flyout is open
 - **THEN** that icon renders in the active/pressed state
-
-#### Scenario: The flyout is group-styled with a header close button [m42_flyout]
-
-- **WHEN** a panel icon's flyout is shown
-- **THEN** it presents the group's tab bar and content and a close affordance
-
-#### Scenario: The flyout closes on click-away [m41_iconic]
-
-- **WHEN** a popup flyout is open and the user clicks outside it
-- **THEN** the flyout closes
 
 #### Scenario: The compact flyout matches the docked widget [m44_popupstyle]
 
@@ -285,6 +275,24 @@ SHALL create a new group at that boundary.
 
 - **WHEN** the compact drag-handle above a group's icons is dragged
 - **THEN** the whole group is dragged, not a single icon
+
+#### Scenario: A compact icon drag follows the cursor [m47_compact_icon_float]
+
+- **WHEN** a compact strip icon is pressed and dragged away from the strip
+- **THEN** a floating overlay appears and follows the cursor until release, and
+  the release commits the drop
+
+#### Scenario: A compact panel drop on the grip creates a group above [m47_compact_grip_group]
+
+- **WHEN** a single compact panel is dropped on a group's drag-handle grip
+- **THEN** a new one-panel group is created directly above that group
+
+#### Scenario: An iconic column is not resized by its neighbour [m47_iconic_fixed_width]
+
+- **WHEN** a normal column and an iconic column are adjacent and the splitter
+  handle between them is dragged
+- **THEN** the iconic column keeps its strip width and only the normal column
+  resizes
 
 ### Requirement: Panel tab context menu
 
@@ -369,7 +377,10 @@ SHALL keep following the cursor, exactly like a group or column drag, and SHALL
 only be committed or re-docked on release. A whole widget column SHALL be
 draggable to any side of the Tools toolbar, of another widget panel or column,
 and of the workspace. Every drop that moves the last panel or group out of a
-dynamic column SHALL leave no empty column behind.
+widget column SHALL leave no empty column behind, and this SHALL apply to the
+primary column as well as to drop-created columns: when the last visible panel is
+removed or moved out, the column SHALL be torn down, and a later drop or
+`Window`-menu show SHALL recreate a host column rather than leaving a bare strip.
 
 #### Scenario: A tab reorders within its group [m41_drag]
 
@@ -418,6 +429,12 @@ dynamic column SHALL leave no empty column behind.
 - **THEN** the float keeps following the cursor, and it is committed or re-docked
   only on release
 
+#### Scenario: The primary column is removed when its last panel closes [m46_primary_empty]
+
+- **WHEN** the primary widget column's last visible panel is closed or moved out
+- **THEN** the column is removed, and a later show or drop recreates a host
+  column instead of leaving a bare empty strip
+
 ### Requirement: Drop insertion indicator
 
 During any panel drag the target column or group SHALL draw a thick blue
@@ -429,14 +446,17 @@ is cancelled. The M41/M42 indicator look SHALL be kept. The indicator SHALL be
 positioned from the same resolved `DropTarget` the commit uses, in the column
 that owns that target, so the line and the drop can never disagree: a drop on
 the right of a group's tab bar SHALL draw the line at that tab index on the
-right; a drop into another column's group SHALL draw the line in that target
-column; a drop as the rightmost tab SHALL draw the line at the rightmost tab
-position and not at the far left; a drop at the bottom boundary SHALL draw the
-line at the bottom of the last visible group; and a whole-group drag in compact
-mode SHALL draw the line above the group's drag-handle dots, not inside the
-group below them. The same single indicator SHALL mark any-side docking targets
-beside the Tools toolbar, beside another widget panel or column, and beside the
-workspace.
+right, including when the group has hidden tabs so the index maps past them; a
+drop into another column's group, group body, or group boundary SHALL draw the
+line in that target column; a drop as the rightmost tab SHALL draw the line at
+the rightmost tab position and not at the far left; a drop at the bottom boundary
+SHALL draw the line at the bottom of the last visible group, clamped inside the
+scroll viewport so the line is never entirely clipped; and a whole-group drag in
+compact mode SHALL draw the line above the group's drag-handle dots, not inside
+the group below them. The column that owns a new-column line SHALL be the column
+adjacent to the workspace edge the new column will occupy, not the drag source.
+The same single indicator SHALL mark any-side docking targets beside the Tools
+toolbar, beside another widget panel or column, and beside the workspace.
 
 #### Scenario: The blue line marks the target boundary [m41_drop]
 
@@ -465,10 +485,17 @@ workspace.
 - **THEN** the blue line is drawn on the right at the resolved insertion index,
   and the committed drop lands at that same index
 
+#### Scenario: A group with hidden tabs still draws the right line [m46_indicator_hidden_tab]
+
+- **WHEN** a tab is dragged onto the right side of a group that contains a hidden
+  tab
+- **THEN** the blue line is drawn at the right insertion position and the drop
+  lands at that same index
+
 #### Scenario: A cross-column drop shows the indicator in the target column [m45_indicator_cross_column]
 
-- **WHEN** a tab is dragged from one widget column into a group of another
-  widget column
+- **WHEN** a tab is dragged from one widget column onto another widget column's
+  tab bar, group body, or group boundary
 - **THEN** the blue line is drawn in the target column at the resolved insertion
   point, and the committed drop places the tab there
 
@@ -481,7 +508,8 @@ workspace.
 #### Scenario: The bottom-boundary drop draws the line at the bottom [m45_indicator_bottom]
 
 - **WHEN** a group or panel is dragged to the bottom boundary of the column
-- **THEN** the blue line is drawn at the bottom of the last visible group
+- **THEN** the blue line is drawn inside the scroll viewport at the bottom of the
+  last visible group, not clipped below it
 
 #### Scenario: The compact group drag draws the line above the dots [m45_compact_group_line]
 
@@ -580,37 +608,29 @@ order.
 
 ### Requirement: Floating panel overlay
 
-A torn-off panel or group SHALL float as a child overlay inside the main window,
-not as an operating-system top-level window. The overlay SHALL move with its tab
-bar within the main window, SHALL be clipped to the main window's bounds so it
-cannot be dragged outside them, SHALL render above the columns and the canvas,
-and SHALL re-dock into the panel column when dropped back on it. A single-panel
-float SHALL hold only its one panel and a group float its group; the float's own
-tab bar SHALL route a tab drag to a one-panel move and its empty header to a
-group move. The overlay SHALL NOT appear as its own window in the window manager
-or task list.
+A group torn off a column SHALL float in an in-window overlay that follows the
+cursor and re-docks on release, and the overlay SHALL be able to cross and be
+placed around the docked or pane-hosted Tools panel without being clamped at the
+central widget's edge. The overlay SHALL show a close control at the rightmost
+side of its header; closing SHALL hide the group's panels while keeping the
+group restorable from `Window > Panels`, then remove the overlay.
 
-#### Scenario: A torn-off group is an in-window overlay [m42_float_overlay]
+#### Scenario: A torn-off group floats and re-docks [m41_tearoff]
 
-- **WHEN** a group is torn off the column
-- **THEN** it floats as a child overlay inside the main window and does not open
-  a separate operating-system window
+- **WHEN** a group is dragged out of a column and dropped back on a column
+- **THEN** it floats in an in-window overlay and re-docks
 
-#### Scenario: The overlay is clipped to the main window [m42_float_overlay]
+#### Scenario: A floating group can be closed [m47_float_close]
 
-- **WHEN** the floating overlay is dragged toward the main window's edge
-- **THEN** it stays within the main window's bounds and is not drawn outside it
+- **WHEN** a floating group's header close control is activated
+- **THEN** the overlay is removed, its panels are hidden, and the group is still
+  present in a column so `Window > Panels` can restore it
 
-#### Scenario: The overlay re-docks on drop [m42_float_overlay]
+#### Scenario: The overlay can cross the Tools panel [m47_float_over_tools]
 
-- **WHEN** the floating overlay is dropped back on the column
-- **THEN** the group re-docks into the column and the overlay disappears
-
-#### Scenario: A one-panel float carries only its panel [m43_singlefloat]
-
-- **WHEN** a tab drag tears off one panel
-- **THEN** the float contains that panel only, and re-docking it restores the
-  group with the other panels
+- **WHEN** a group is dragged toward the docked Tools panel
+- **THEN** the overlay follows the cursor over the Tools panel instead of
+  stopping at the central area edge
 
 ### Requirement: Per-widget panel header action menu
 
@@ -836,12 +856,15 @@ SHALL be the first visible panel.
 ### Requirement: Panel column minimum width and no clipping
 
 Every widget column in `normal` mode SHALL enforce a single shared minimum width
-floor, equal for all widget columns, so no column can be resized below it or
-disappear. The column SHALL NOT clip or hide its content on the right: when the
-available width is less than the content needs, the column SHALL elide its tab
-text, scroll horizontally, and keep the header corner action button inside the
-header rather than cutting either off. The iconic strip SHALL keep its own
-narrow minimum separate from the shared normal-mode floor.
+floor, equal for all widget columns, large enough that the column's content is
+always fully visible horizontally, so no column can be resized below it or
+disappear and no column ever displays a horizontal scrollbar or hides content on
+its right edge. The floor SHALL be derived from the column content's minimum
+size plus the scroll chrome, capped at a sane maximum, and SHALL be applied to
+the column so a wider column — not internal scrolling — is what keeps content
+visible. The column SHALL elide its tab text and keep the header corner action
+button inside the header rather than cutting either off. The iconic strip SHALL
+keep its own narrow, fixed minimum separate from the shared normal-mode floor.
 
 #### Scenario: All widget columns share one minimum width [m45_min_width_floor]
 
@@ -850,10 +873,29 @@ narrow minimum separate from the shared normal-mode floor.
 - **THEN** every normal-mode column reports the same shared floor and none can be
   resized below it or vanish
 
-#### Scenario: The right side is never clipped [m45_no_clip]
+#### Scenario: A column never horizontally scrolls or clips its content [m47_no_hscroll]
 
 - **WHEN** a widget column is at its minimum width
-- **THEN** its tab text elides, its corner action button is inside the header,
-  and any content wider than the column is reachable by scrolling rather than
-  cut off
+- **THEN** its horizontal scrollbar policy is off, its content fits within the
+  viewport, and no right-side content is hidden
+
+### Requirement: Empty columns and ghost groups are cleaned up
+
+A column that has no group with visible content SHALL be removed (dynamic) or
+hidden (primary host) after a drop, even while it owns a live floating overlay;
+before removal its floats SHALL be re-homed to the primary column so they stay
+re-dockable. A group whose tabs are all hidden SHALL be hidden rather than left
+as a visible but un-grabbable shell, and SHALL remain restorable from
+`Window > Panels`.
+
+#### Scenario: The source column disappears after its last group floats [m47_empty_after_float]
+
+- **WHEN** the last group of a dynamic column is dragged out and left floating
+- **THEN** the empty source column is removed and the float remains re-dockable
+
+#### Scenario: A group with no visible tabs is hidden [m47_ghost_group]
+
+- **WHEN** the last visible tab of a group is moved elsewhere
+- **THEN** the emptied group is hidden instead of showing an empty tab bar, and
+  its hidden panels can be re-shown from `Window > Panels`
 

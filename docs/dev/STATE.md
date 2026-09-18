@@ -15,14 +15,12 @@ Snapshot for resuming after a context break. Update after each milestone.
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
   fresh-white-document regression; counted from `cargo test --workspace`, which
   includes the pre-existing ignored `pictura-render` doctest as the ninth).
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M43 archived; canonical specs are
-  in `openspec/specs/` (60 specs, `validate --all --strict` green), change
-  history under `openspec/changes/archive/`. The headless/CI/build-speed
-  infrastructure change `ci-headless-and-speedup` is **archived** (not part of
-  the panels program). The M44 panel/theme polish change `m44-panel-theme-polish`
-  is **implemented and verified** (archive/commit deferred); the M45 panel-fixes
-  change `m45-panel-fixes` is **implemented and verified** (archive/commit
-  deferred); **M46** layer filtering/search is next.
+- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived; canonical specs are
+  in `openspec/specs/` (61 specs, `validate --all --strict` green), change
+  history under `openspec/changes/archive/`. The M44/M45 panel changes and the
+  M46/M47 panel toolbar/interaction fixes are **archived**; no change is open.
+  The next panel-program stage is **layer filtering/search**, named by content
+  (`layers-filtering-search`) rather than a milestone number.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's
@@ -1591,9 +1589,9 @@ complete.
 - Oracles: don't fake tolerances. Where ImageMagick/Photoshop semantics diverge,
   reclassify as "no faithful equivalent" and use property/known-value tests.
 
-## Next: panels program (M46–M49), canvas perf series deferred
+## Next: panels program (remaining stages), canvas perf series deferred
 
-### Panels program (M36–M49) — M36–M41 done; M42–M45 panel refinements/multicolumn/polish/fixes done; M46 layer filtering/search next
+### Panels program — panel/column/toolbar work done; layer filtering/search next
 
 The CS6 Layers panel program's research, gap analysis, and staged plan live in
 `docs/dev/layers-panel-program.md`. **M36 — layer attributes end-to-end** (change
@@ -1671,24 +1669,34 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   the one-formula Tools sizing and left/right-only beside-column pane, the shared
   minimum-width floor with no clipping, and the whole-group compact popup. It is
   **implemented and independently verified** (see the milestone entry above).
-  Because the M40/M41/M42/M43/M44/M45 interruptions claim six numbers the
-  Layers-panel program had reserved, that program shifts by **six**: **M46**
-  layer filtering/search (the six-dimension
-  filter/search row) is next, **M47** remaining management
+  The M40/M41/M42/M43/M44/M45 interruptions claimed six numbers the Layers-panel
+  program had reserved. Two further user-requested panel-fix changes then took
+  **M46** (`m46-panel-toolbar-fixes`) and **M47**
+  (`m47-panel-interaction-fixes`): drop-indicator geometry, cross-column commit
+  routing, the floating-Tools drag across Qt's dock mouse grab, primary-column
+  removal, minimize min-height clamping, empty/ghost-column cleanup, compact
+  float drag and group creation, the shared content floor with no horizontal
+  scroll, the Tools central-splitter pane, and the floating close button. Both
+  are implemented, independently verified, and **archived**
+  (`openspec/changes/archive/2026-09-18-m46-panel-toolbar-fixes/` and
+  `…-m47-panel-interaction-fixes/`). The Layers-panel program therefore continues
+  **by content, not by number**: next is **layer filtering/search** (the
+  six-dimension filter/search row), then **remaining management**
   (rasterize/merge/flatten/link/select-similar/convert-background/
   layer-via-copy-cut, the New Layer/Group dialogs, and the deferred drag-reorder
-  with its recorded drop rules), **M48** styles/effects, and **M49** smart
-  objects / vector masks / artboards-as-non-goal / layer comps. M36's confirmed
-  ceilings — the `layer_kind` `"background"` name+index heuristic and the forced
-  type/shape locks — land in M47, and M37's single-layer grouping
-  limit was lifted by M39's multi-selection (the `is_background` single source of
-  truth and the path/batch selection ops). The pre-shift numbers still stand in
-  `docs/dev/layers-panel-program.md`; this file is the up-to-date anchor.
+  with its recorded drop rules), then **styles/effects**, then **smart objects /
+  vector masks / artboards-as-non-goal / layer comps**. M36's confirmed ceilings
+  — the `layer_kind` `"background"` name+index heuristic and the forced
+  type/shape locks — land with the management stage, and M37's single-layer
+  grouping limit was lifted by M39's multi-selection (the `is_background` single
+  source of truth and the path/batch selection ops). The pre-shift numbers still
+  stand in `docs/dev/layers-panel-program.md`; this file is the up-to-date
+  anchor.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read
 > those tracks by name (history COW, resident GPU sources, 256² tiles), not by
-> number; they are deferred until after M49.
+> number; they are deferred until after the panel program.
 
 M31 removed the full composite and readback from every move and paint
 (dirty-rect compositing), M32 removed it from the move-preview base and the
