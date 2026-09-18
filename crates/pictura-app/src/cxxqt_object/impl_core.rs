@@ -1,3 +1,4 @@
+use super::helpers::*;
 use super::helpers_composite::*;
 use super::qobject;
 use crate::history::{History, Snapshot};
@@ -95,6 +96,7 @@ impl qobject::PictureView {
             channels,
             children: Vec::new(),
             is_group: false,
+            background: false,
         });
         let gpu_compute = self.rust().gpu_compute;
         let rendered = current_buffer(&doc, gpu_compute);
@@ -303,5 +305,121 @@ impl super::PictureViewRust {
         self.move_y = 0;
         self.move_opacity = 0;
         self.display_dirty = false;
+        self.link_sets.clear();
+    }
+}
+
+impl qobject::PictureView {
+    /// Snapshot the current state, capture it under `label`, and mark dirty.
+    ///
+    /// Callers must run their `recomposite`/`refresh_region` first, so the
+    /// captured document's composite is the current rendered image.
+    pub(super) fn record(mut self: Pin<&mut Self>, label: &str) {
+        if let Some(snapshot) = self.snapshot() {
+            let mut rust = self.as_mut().rust_mut();
+            rust.history.capture(snapshot, label);
+            rust.dirty = true;
+            rust.content_revision = rust.content_revision.wrapping_add(1);
+        }
+    }
+
+    /// As [`record`], but without bumping `content_revision`.
+    ///
+    /// Only for moves of the topmost pixel layer, which leave the composite
+    /// below that layer unchanged, so a cached move-preview base stays valid.
+    pub(super) fn record_move(mut self: Pin<&mut Self>, label: &str) {
+        if let Some(snapshot) = self.snapshot() {
+            let mut rust = self.as_mut().rust_mut();
+            rust.history.capture(snapshot, label);
+            rust.dirty = true;
+        }
+    }
+
+    pub(super) fn snapshot(&self) -> Option<Snapshot> {
+        let rust = self.rust();
+        let doc = rust.doc.clone()?;
+        Some(Snapshot {
+            doc,
+            selection: rust.selection.clone(),
+        })
+    }
+
+    /// Composite only `rect`, patch the authoritative `doc.composite`, and emit
+    /// [`region_blitted`] with a rectangle-sized image.
+    ///
+    /// The source is the active stroke's working document while painting, else
+    /// the app document. While painting `doc.composite` is the pre-stroke base
+    /// and is left alone (refreshed by `end_paint`'s full recomposite). An empty
+    /// clamped rect is a no-op; the region path emits no `changed` and never
+    /// rebuilds the full image.
+    pub(super) fn refresh_region(mut self: Pin<&mut Self>, rect: PsdRect) {
+        let gpu_compute = self.rust().gpu_compute;
+        let (region, painting) = {
+            let rust = self.rust();
+            let painting = rust.stroke.is_some();
+            let dims = rust
+                .stroke
+                .as_ref()
+                .map(|stroke| (stroke.document().width, stroke.document().height))
+                .or_else(|| rust.doc.as_ref().map(|doc| (doc.width, doc.height)));
+            (
+                dims.and_then(|(width, height)| clamp_region(rect, width, height)),
+                painting,
+            )
+        };
+        let Some((x0, y0, ..)) = region else {
+            return;
+        };
+        let region_image = {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            let buffer = {
+                let source: &Document = if painting {
+                    rust.stroke.as_ref().unwrap().document()
+                } else if let Some(doc) = rust.doc.as_ref() {
+                    doc
+                } else {
+                    return;
+                };
+                pictura_render::composite_region_active(source, rect, gpu_compute).0
+            };
+            if buffer.width == 0 || buffer.height == 0 {
+                return;
+            }
+            if !painting {
+                if let Some(doc) = rust.doc.as_mut() {
+                    patch_composite_region(doc, &buffer, x0, y0);
+                }
+            }
+            rust.display_dirty = true;
+            buffer_to_image(&buffer)
+        };
+        self.region_blitted(region_image, x0, y0);
+    }
+
+    /// Refresh `image` from the current document and emit [`changed`].
+    ///
+    /// The full-document path for every mutation that does not report a dirty
+    /// rectangle; [`refresh_region`] is the incremental extension point.
+    pub(super) fn recomposite(mut self: Pin<&mut Self>) {
+        let gpu_compute = self.rust().gpu_compute;
+        let rendered = self
+            .rust()
+            .doc
+            .as_ref()
+            .map(|doc| current_buffer(doc, gpu_compute));
+        let Some(rendered) = rendered else {
+            self.changed();
+            return;
+        };
+        {
+            let mut rust = self.as_mut().rust_mut();
+            if let Some(doc) = rust.doc.as_mut() {
+                store_composite(doc, &rendered);
+            }
+            rust.image = buffer_to_image(&rendered);
+            rust.display_dirty = false;
+        }
+        self.changed();
     }
 }

@@ -266,22 +266,27 @@ void addDefaultCommands(CommandRegistry& registry) {
     // Layer
     registry.add(command_ids::LayerNewLayer, {"Layer", "New", "Layer"}, QStringLiteral("Layer"),
                  QKeySequence(QStringLiteral("Shift+Ctrl+N")), true);
-    leaf(registry, {"Layer", "New", "Layer from Background…"},
-         QStringLiteral("Layer from Background…"));
+    registry.add(command_ids::LayerNewLayerFromBackground,
+                 {"Layer", "New", "Layer from Background…"},
+                 QStringLiteral("Layer from Background…"), QKeySequence(), true);
     registry.add(command_ids::LayerNewGroup, {"Layer", "New", "Group…"}, QStringLiteral("Group…"),
                  QKeySequence(), true);
-    leaf(registry, {"Layer", "New", "Group from Layers…"}, QStringLiteral("Group from Layers…"));
-    leaf(registry, {"Layer", "New", "Layer via Copy"}, QStringLiteral("Layer via Copy"),
-         QStringLiteral("Ctrl+J"));
-    leaf(registry, {"Layer", "New", "Layer via Cut"}, QStringLiteral("Layer via Cut"),
-         QStringLiteral("Shift+Ctrl+J"));
-    leaf(registry, {"Layer", "New", "Background From Layer"},
-         QStringLiteral("Background From Layer"));
+    registry.add(command_ids::LayerNewGroupFromLayers, {"Layer", "New", "Group from Layers…"},
+                 QStringLiteral("Group from Layers…"), QKeySequence(), true);
+    registry.add(command_ids::LayerNewLayerViaCopy, {"Layer", "New", "Layer via Copy"},
+                 QStringLiteral("Layer via Copy"), QKeySequence(QStringLiteral("Ctrl+J")), true);
+    registry.add(command_ids::LayerNewLayerViaCut, {"Layer", "New", "Layer via Cut"},
+                 QStringLiteral("Layer via Cut"),
+                 QKeySequence(QStringLiteral("Shift+Ctrl+J")), true);
+    registry.add(command_ids::LayerNewBackgroundFromLayer,
+                 {"Layer", "New", "Background From Layer"},
+                 QStringLiteral("Background From Layer"), QKeySequence(), true);
     registry.addSeparator({"Layer"});
     registry.add(command_ids::LayerDuplicateLayer, {"Layer", "Duplicate Layer…"},
                  QStringLiteral("Duplicate Layer…"), QKeySequence(), true);
     leaf(registry, {"Layer", "Delete Layer"}, QStringLiteral("Delete Layer"));
-    leaf(registry, {"Layer", "Delete Hidden Layers"}, QStringLiteral("Delete Hidden Layers"));
+    registry.add(command_ids::LayerDeleteHiddenLayers, {"Layer", "Delete Hidden Layers"},
+                 QStringLiteral("Delete Hidden Layers"), QKeySequence(), true);
     registry.addSeparator({"Layer"});
     leaf(registry, {"Layer", "Layer Style", "Blending Options…"},
          QStringLiteral("Blending Options…"));
@@ -311,7 +316,8 @@ void addDefaultCommands(CommandRegistry& registry) {
          QStringLiteral("Disable Filter Mask"));
     leaf(registry, {"Layer", "Smart Filter", "Delete Filter Mask"},
          QStringLiteral("Delete Filter Mask"));
-    leaf(registry, {"Layer", "New Fill Layer", "Solid Color…"}, QStringLiteral("Solid Color…"));
+    registry.add(command_ids::LayerNewFillSolidColor, {"Layer", "New Fill Layer", "Solid Color…"},
+                 QStringLiteral("Solid Color…"), QKeySequence(), true);
     leaf(registry, {"Layer", "New Fill Layer", "Gradient…"}, QStringLiteral("Gradient…"));
     leaf(registry, {"Layer", "New Fill Layer", "Pattern…"}, QStringLiteral("Pattern…"));
     leaf(registry, {"Layer", "New Adjustment Layer", "Brightness/Contrast"},
@@ -380,10 +386,20 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Video Layers", "Replace Footage"}, QStringLiteral("Replace Footage"));
     leaf(registry, {"Layer", "Video Layers", "Interpret Footage"},
          QStringLiteral("Interpret Footage"));
+    // Rasterize: only Fill Content and Layer have a model kind to rasterize.
+    // Type, Shape, Vector Mask, Smart Object, Layer Style, Video, and 3D stay
+    // disabled because their layer kinds do not exist; `All Layers` is the
+    // document-wide fill rasterizer.
     leaf(registry, {"Layer", "Rasterize", "Type"}, QStringLiteral("Type"));
     leaf(registry, {"Layer", "Rasterize", "Shape"}, QStringLiteral("Shape"));
-    leaf(registry, {"Layer", "Rasterize", "Fill Content"}, QStringLiteral("Fill Content"));
-    leaf(registry, {"Layer", "Rasterize", "Layer"}, QStringLiteral("Layer"));
+    leaf(registry, {"Layer", "Rasterize", "Vector Mask"}, QStringLiteral("Vector Mask"));
+    leaf(registry, {"Layer", "Rasterize", "Smart Object"}, QStringLiteral("Smart Object"));
+    registry.add(command_ids::LayerRasterizeFillContent, {"Layer", "Rasterize", "Fill Content"},
+                 QStringLiteral("Fill Content"), QKeySequence(), true);
+    registry.add(command_ids::LayerRasterizeLayer, {"Layer", "Rasterize", "Layer"},
+                 QStringLiteral("Layer"), QKeySequence(), true);
+    registry.add(command_ids::LayerRasterizeAllLayers, {"Layer", "Rasterize", "All Layers"},
+                 QStringLiteral("All Layers"), QKeySequence(), true);
     leaf(registry, {"Layer", "Rasterize", "Layer Style"}, QStringLiteral("Layer Style"));
     leaf(registry, {"Layer", "Rasterize", "Video"}, QStringLiteral("Video"));
     leaf(registry, {"Layer", "Rasterize", "3D"}, QStringLiteral("3D"));
@@ -393,7 +409,16 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::LayerUngroupLayers, {"Layer", "Ungroup Layers"},
                  QStringLiteral("Ungroup Layers"),
                  QKeySequence(QStringLiteral("Shift+Ctrl+G")), true);
-    leaf(registry, {"Layer", "Hide Layers"}, QStringLiteral("Hide Layers"));
+    registry.add(command_ids::LayerHideLayers, {"Layer", "Hide Layers"},
+                 QStringLiteral("Hide Layers"), QKeySequence(), true);
+    registry.add(command_ids::LayerSelectSimilar, {"Layer", "Select Similar Layers"},
+                 QStringLiteral("Select Similar Layers"), QKeySequence(), true);
+    registry.add(command_ids::LayerLinkLayers, {"Layer", "Link Layers"},
+                 QStringLiteral("Link Layers"), QKeySequence(), true);
+    registry.add(command_ids::LayerUnlinkLayers, {"Layer", "Unlink Layers"},
+                 QStringLiteral("Unlink Layers"), QKeySequence(), true);
+    registry.add(command_ids::LayerSelectLinked, {"Layer", "Select Linked Layers"},
+                 QStringLiteral("Select Linked Layers"), QKeySequence(), true);
     leaf(registry, {"Layer", "Arrange", "Bring to Front"}, QStringLiteral("Bring to Front"),
          QStringLiteral("Shift+Ctrl+]"));
     leaf(registry, {"Layer", "Arrange", "Bring Forward"}, QStringLiteral("Bring Forward"),
@@ -424,10 +449,15 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Distribute", "Right"}, QStringLiteral("Right"));
     leaf(registry, {"Layer", "Lock All Layers In Group…"},
          QStringLiteral("Lock All Layers In Group…"));
-    leaf(registry, {"Layer", "Merge Layers"}, QStringLiteral("Merge Layers"), QStringLiteral("Ctrl+E"));
-    leaf(registry, {"Layer", "Merge Visible"}, QStringLiteral("Merge Visible"),
-         QStringLiteral("Shift+Ctrl+E"));
-    leaf(registry, {"Layer", "Flatten Image"}, QStringLiteral("Flatten Image"));
+    registry.add(command_ids::LayerMergeLayers, {"Layer", "Merge Layers"},
+                 QStringLiteral("Merge Layers"), QKeySequence(QStringLiteral("Ctrl+E")), true);
+    registry.add(command_ids::LayerMergeVisible, {"Layer", "Merge Visible"},
+                 QStringLiteral("Merge Visible"), QKeySequence(QStringLiteral("Shift+Ctrl+E")),
+                 true);
+    registry.add(command_ids::LayerFlattenImage, {"Layer", "Flatten Image"},
+                 QStringLiteral("Flatten Image"), QKeySequence(), true);
+    registry.add(command_ids::LayerMergeClippingMask, {"Layer", "Merge Clipping Mask"},
+                 QStringLiteral("Merge Clipping Mask"), QKeySequence(), true);
     leaf(registry, {"Layer", "Matting", "Defringe…"}, QStringLiteral("Defringe…"));
     leaf(registry, {"Layer", "Matting", "Remove Black Matte"}, QStringLiteral("Remove Black Matte"));
     leaf(registry, {"Layer", "Matting", "Remove White Matte"}, QStringLiteral("Remove White Matte"));

@@ -42,6 +42,13 @@ public:
     /// Frozen path of the selected row, or empty when nothing is selected.
     QString currentPath() const;
 
+    /// Frozen paths of every selected row (empty when nothing is selected).
+    QStringList selectedPaths() const;
+
+    /// Replace the panel selection with `paths`, making `current` the current
+    /// row (falling back to the first when `current` is not among them).
+    void selectPaths(const QStringList& paths, const QString& current);
+
     // Self-test hooks (M39). Read the projected model and menus, drive solo and
     // inline rename, and expose the Panel Options values without synthetic
     // mouse/key input.
@@ -83,6 +90,7 @@ public:
     bool lockIconsPresentForTest() const;
     bool treeDragEnabledForTest() const;
     bool moveForTest(const QString& path, const QString& target, int mode);
+    bool canMoveForTest(const QString& path, const QString& target, int mode);
     bool dropOnStripButtonForTest(const QString& buttonName, const QStringList& paths);
 
     // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
@@ -99,6 +107,12 @@ public:
     // Returns false for ids this panel does not own.
     bool performPanelMenuAction(const QString& actionId);
 
+    // Open the New Layer / New Group / Group from Layers dialogs. The frame's
+    // Layer > New menu and the panel's Alt-click route here; no-op without a view.
+    void openNewLayerDialog();
+    void openNewGroupDialog();
+    void openGroupFromLayersDialog();
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -106,8 +120,6 @@ private:
     void syncControls();
     void selectLayer(int index);
     void selectPath(const QString& path);
-    void selectPaths(const QStringList& paths, const QString& current);
-    QStringList selectedPaths() const;
     void showContextMenu(const QPoint& pos);
     void populateRowMenu(QMenu& menu, const QString& path, int color);
     void showEyeMenu(const QPoint& pos, const QModelIndex& index);

@@ -376,6 +376,7 @@ mod tests {
             channels,
             children: Vec::new(),
             is_group: false,
+            background: false,
         }
     }
 
@@ -528,6 +529,7 @@ mod tests {
             ],
             children: Vec::new(),
             is_group: false,
+            background: false,
         }
     }
 

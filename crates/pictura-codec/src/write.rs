@@ -37,16 +37,26 @@ fn flatten(layers: &[Layer]) -> Vec<OutRecord<'_>> {
             Frame::Visit(layer) => out.push(OutRecord {
                 layer: Some(layer),
                 section: 0,
-                name: &layer.name,
+                name: record_name(layer),
             }),
             Frame::Group(layer) => out.push(OutRecord {
                 layer: Some(layer),
                 section: SECTION_OPEN_FOLDER,
-                name: &layer.name,
+                name: record_name(layer),
             }),
         }
     }
     out
+}
+
+/// A flagged layer is written under the PSD `"Background"` name convention
+/// (design D5); the flag itself has no PSD bit.
+fn record_name(layer: &Layer) -> &str {
+    if layer.background {
+        "Background"
+    } else {
+        &layer.name
+    }
 }
 
 fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
@@ -181,6 +191,7 @@ fn empty_layer(name: &str) -> Layer {
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 

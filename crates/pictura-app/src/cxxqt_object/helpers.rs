@@ -44,6 +44,7 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,
+        background: false,
     })
 }
 /// Delegates to the shared M36 Background heuristic in `pictura-render`, so the

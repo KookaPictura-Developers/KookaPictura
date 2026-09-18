@@ -104,7 +104,7 @@ constexpr std::array<BlendEntry, 27> kBlends{{
     {"fdiv", "Divide"},
     {"hue ", "Hue"},
     {"sat ", "Saturation"},
-    {"col ", "Color"},
+    {"colr", "Color"},
     {"lum ", "Luminosity"},
 }};
 
@@ -384,6 +384,12 @@ public:
     {
         dropHandler_ = std::move(handler);
     }
+    // Dry-run predicate consulted before a drop is highlighted or committed.
+    // Returns true when the (dragged, target, mode) move is acceptable.
+    void setDropValidator(std::function<bool(const QString&, const QString&, int)> validator)
+    {
+        dropValidator_ = std::move(validator);
+    }
 
 protected:
     void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
@@ -415,9 +421,24 @@ protected:
 
     void dragMoveEvent(QDragMoveEvent* event) override
     {
+        if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropValidator_ || !pathForIndex_) {
+            QTreeView::dragMoveEvent(event);
+            return;
+        }
+        // Let Qt resolve the row under the cursor and its drop position first;
+        // then veto invalid targets so the indicator only marks a legal drop.
         QTreeView::dragMoveEvent(event);
-        if (event->mimeData()->hasFormat(kLayerMimeType)) {
+        int mode = 0;
+        const QString target = dropTargetFor(event->position().toPoint(), &mode);
+        const QStringList dragged =
+            QString::fromUtf8(event->mimeData()->data(kLayerMimeType))
+                .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        if (!dragged.isEmpty() && dropValidator_(dragged.first(), target, mode)) {
+            setDropIndicatorShown(true);
             event->acceptProposedAction();
+        } else {
+            setDropIndicatorShown(false);
+            event->ignore();
         }
     }
 
@@ -427,36 +448,46 @@ protected:
             QTreeView::dropEvent(event);
             return;
         }
-        const QModelIndex index = indexAt(event->position().toPoint());
-        const QString target = index.isValid() ? pathForIndex_(index) : QString();
         int mode = 0;
-        switch (dropIndicatorPosition()) {
-        case QAbstractItemView::BelowItem:
-            mode = 1;
-            break;
-        case QAbstractItemView::OnItem:
-            mode = 2;
-            break;
-        default:
-            mode = 0;
-            break;
-        }
+        const QString target = dropTargetFor(event->position().toPoint(), &mode);
         const QStringList dragged =
             QString::fromUtf8(event->mimeData()->data(kLayerMimeType))
                 .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         // ponytail: only the current row is dragged; a multi-row drag would need
         // path re-sequencing as each move shifts the survivors.
-        if (!dragged.isEmpty()) {
-            dropHandler_(dragged.first(), target, mode);
+        if (dragged.isEmpty() || (dropValidator_ && !dropValidator_(dragged.first(), target, mode))) {
+            event->ignore();
+            return;
         }
+        dropHandler_(dragged.first(), target, mode);
         event->setDropAction(Qt::MoveAction);
         event->accept();
     }
 
 private:
+    // Resolve the drop row under `pos` to a target path plus mode (0 above,
+    // 1 below, 2 into an item); an invalid index is the empty-root target.
+    QString dropTargetFor(const QPoint& pos, int* mode) const
+    {
+        const QModelIndex index = indexAt(pos);
+        switch (dropIndicatorPosition()) {
+        case QAbstractItemView::BelowItem:
+            *mode = 1;
+            break;
+        case QAbstractItemView::OnItem:
+            *mode = 2;
+            break;
+        default:
+            *mode = 0;
+            break;
+        }
+        return index.isValid() ? pathForIndex_(index) : QString();
+    }
+
     std::function<QStringList()> dragPaths_;
     std::function<QString(const QModelIndex&)> pathForIndex_;
     std::function<bool(const QString&, const QString&, int)> dropHandler_;
+    std::function<bool(const QString&, const QString&, int)> dropValidator_;
 };
 
 class LayerRowDelegate : public QStyledItemDelegate {

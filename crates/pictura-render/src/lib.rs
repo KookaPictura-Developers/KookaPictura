@@ -48,13 +48,18 @@ pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 
 pub mod document_ops;
 pub use document_ops::{
-    add_group, add_group_in, add_layer, add_layer_in, apply_visibility, crop_document,
-    delete_paths, duplicate_layer, duplicate_paths, flatten_rows, flip_document, group_layer,
-    group_paths, is_background, move_path, move_path_to, next_layer_name, parent_path, rename_path,
+    add_group, add_group_full, add_group_in, add_layer, add_layer_full, add_layer_in,
+    add_solid_fill, apply_visibility, background_from_layer, can_merge_scope, can_merge_target,
+    can_move_path_to, crop_document, delete_hidden_layers, delete_paths, duplicate_layer,
+    duplicate_paths, flatten, flatten_rows, flip_document, group_layer, group_paths, is_background,
+    is_fill_content_layer, is_visible_in_panel, layer_from_background, layer_via_copy,
+    layer_via_cut, merge_scope, move_path, move_path_to, neutral_color, next_layer_name,
+    parent_path, rasterize_all_fill_content, rasterize_fill_content, rename_path,
     resize_canvas_document, resize_document, resolve_path, resolve_path_mut, rotate_document,
-    set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths,
-    set_visible_paths, translate_layer, translate_layer_active, translate_layer_rect,
-    ungroup_layer, ungroup_paths,
+    select_similar, set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths,
+    set_opacity_paths, set_visible_paths, translate_layer, translate_layer_active,
+    translate_layer_rect, ungroup_layer, ungroup_paths, MergeError, MergeOutcome, MergeScope,
+    NewLayerSpec,
 };
 
 pub use pictura_ops::{Anchor, Resample};

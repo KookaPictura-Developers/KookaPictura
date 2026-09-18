@@ -60,6 +60,18 @@ fn decode_adjustment_subset_and_unknown() {
 }
 
 #[test]
+fn solid_fill_decodes_only_the_four_byte_payload() {
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"SoCo", vec![10, 20, 30, 40])),
+        Some(Adjustment::SolidFill([10, 20, 30, 40]))
+    );
+    // A real Photoshop `'Clr '` descriptor is preserved on disk but not decoded.
+    for payload in [vec![], vec![1, 2, 3], vec![1, 2, 3, 4, 5]] {
+        assert_eq!(decode_adjustment(&adjdata(*b"SoCo", payload)), None);
+    }
+}
+
+#[test]
 fn encode_decode_round_trips() {
     assert_eq!(
         decode_adjustment(&encode_invert()),

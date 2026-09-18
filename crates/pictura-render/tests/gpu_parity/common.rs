@@ -94,6 +94,7 @@ pub(crate) fn layer(
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
@@ -119,6 +120,7 @@ pub(crate) fn group(name: &str, blend: BlendMode, opacity: u8, children: Vec<Lay
         channels: Vec::new(),
         children,
         is_group: true,
+        background: false,
     }
 }
 
@@ -174,6 +176,7 @@ pub(crate) fn adjustment_layer(name: &str, adjustment: AdjustmentData) -> Layer 
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
@@ -221,6 +224,7 @@ pub(crate) fn large_layer(w: u32, h: u32, seed: u32, blend: BlendMode) -> Layer 
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 

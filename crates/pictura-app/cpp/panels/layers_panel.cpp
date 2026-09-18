@@ -212,6 +212,9 @@ LayersPanel::LayersPanel(QWidget* parent)
     tree_->setDropHandler([this](const QString& dragged, const QString& target, int mode) {
         return view_ && view_->move_layer_to(dragged, target, mode);
     });
+    tree_->setDropValidator([this](const QString& dragged, const QString& target, int mode) {
+        return view_ && view_->can_move_layer_to(dragged, target, mode);
+    });
     layout->addWidget(tree_, 1);
 
     auto* buttons = new QHBoxLayout();
@@ -245,6 +248,15 @@ LayersPanel::LayersPanel(QWidget* parent)
     addButton->setPopupMode(QToolButton::InstantPopup);
     addButton->setToolTip(tr("New Fill / Adjustment Layer"));
     auto* menu = new QMenu(addButton);
+    // ponytail: opaque black; the toolbox foreground swatch is C++-only and not
+    // yet plumbed to the bridge. Swap in the live color when it is.
+    QAction* solidFill = menu->addAction(tr("Solid Color…"));
+    connect(solidFill, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->add_solid_fill(0xff000000u);
+        }
+    });
+    menu->addSeparator();
     const QStringList kinds = {
         QStringLiteral("invert"),
         QStringLiteral("posterize"),
@@ -343,8 +355,20 @@ LayersPanel::LayersPanel(QWidget* parent)
     });
     connect(tree_, &QTreeView::customContextMenuRequested, this,
             &LayersPanel::showContextMenu);
-    connect(newGroupButton, &QToolButton::clicked, this, [this] { addGroupAt(currentPath()); });
-    connect(newLayerButton, &QToolButton::clicked, this, [this] { addLayerAt(currentPath()); });
+    connect(newGroupButton, &QToolButton::clicked, this, [this] {
+        if (QApplication::keyboardModifiers().testFlag(Qt::AltModifier)) {
+            openNewGroupDialog();
+        } else {
+            addGroupAt(currentPath());
+        }
+    });
+    connect(newLayerButton, &QToolButton::clicked, this, [this] {
+        if (QApplication::keyboardModifiers().testFlag(Qt::AltModifier)) {
+            openNewLayerDialog();
+        } else {
+            addLayerAt(currentPath());
+        }
+    });
     connect(deleteButton, &QToolButton::clicked, this, [this] { deleteSelection(); });
 }
 

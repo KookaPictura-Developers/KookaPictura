@@ -132,13 +132,13 @@ void LayersPanel::addColorLabelActions(QMenu* menu, int currentLabel)
 bool LayersPanel::performPanelMenuAction(const QString& actionId)
 {
     if (actionId == QLatin1String("newLayer")) {
-        addLayerAt(currentPath());
+        openNewLayerDialog();
     } else if (actionId == QLatin1String("duplicate")) {
         duplicateSelection();
     } else if (actionId == QLatin1String("delete")) {
         deleteSelection();
     } else if (actionId == QLatin1String("newGroup")) {
-        addGroupAt(currentPath());
+        openNewGroupDialog();
     } else if (actionId == QLatin1String("group")) {
         groupSelection();
     } else if (actionId == QLatin1String("ungroup")) {
@@ -150,10 +150,49 @@ bool LayersPanel::performPanelMenuAction(const QString& actionId)
                 view_->set_layers_visible(paths, false);
             }
         }
+    } else if (actionId == QLatin1String("deleteHidden")) {
+        if (view_) {
+            view_->delete_hidden_layers();
+        }
+    } else if (actionId == QLatin1String("link")) {
+        if (view_) {
+            const QStringList paths = selectedPaths();
+            if (!paths.isEmpty()) {
+                view_->link_layers(paths, true);
+            }
+        }
+    } else if (actionId == QLatin1String("selectLinked")) {
+        if (view_) {
+            const QString path = currentPath();
+            if (!path.isEmpty()) {
+                selectPaths(view_->select_linked(path), path);
+            }
+        }
     } else if (actionId == QLatin1String("moveUp")) {
         moveCurrent(1);
     } else if (actionId == QLatin1String("moveDown")) {
         moveCurrent(-1);
+    } else if (actionId == QLatin1String("mergeDown") || actionId == QLatin1String("mergeVisible")
+               || actionId == QLatin1String("mergeClippingMask")) {
+        if (view_) {
+            const QStringList paths = selectedPaths();
+            const QString path = currentPath();
+            if (actionId == QLatin1String("mergeDown")) {
+                if (!paths.isEmpty()) {
+                    view_->merge_layers(paths);
+                }
+            } else if (actionId == QLatin1String("mergeVisible")) {
+                if (!path.isEmpty()) {
+                    view_->merge_visible(path);
+                }
+            } else if (!path.isEmpty()) {
+                view_->merge_clipping_mask(path);
+            }
+        }
+    } else if (actionId == QLatin1String("flatten")) {
+        if (view_) {
+            view_->flatten_image();
+        }
     } else if (actionId == QLatin1String("panelOptions")) {
         openPanelOptions();
     } else if (actionId.startsWith(QLatin1String("adjustment:"))) {

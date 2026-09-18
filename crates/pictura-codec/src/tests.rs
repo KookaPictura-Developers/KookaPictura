@@ -234,6 +234,7 @@ fn pixel(name: &str, r: PsdRect, color_channels: u8, blend: BlendMode, opacity: 
         channels,
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
@@ -262,6 +263,7 @@ fn round_trip_layers_group_and_mask() {
         channels: Vec::new(),
         children: vec![green, blue],
         is_group: true,
+        background: false,
     };
 
     let mut masked = pixel("Masked", rect(2, 2, 6, 6), 3, BlendMode::Overlay, 255);
@@ -317,6 +319,7 @@ fn pass_through_group_round_trips() {
         channels: Vec::new(),
         children: vec![child],
         is_group: true,
+        background: false,
     }];
 
     let bytes = write_psd(&doc).unwrap();
@@ -372,6 +375,7 @@ fn adjustment_layers_round_trip_key_and_bytes() {
             channels: Vec::new(),
             children: Vec::new(),
             is_group: false,
+            background: false,
         });
     }
     doc.layers = layers;
@@ -386,6 +390,80 @@ fn adjustment_layers_round_trip_key_and_bytes() {
         assert_eq!(&adj.key, key);
         assert_eq!(&adj.data, data);
     }
+}
+
+#[test]
+fn solid_fill_layer_round_trips_its_payload() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    for (i, b) in doc.composite.data.iter_mut().enumerate() {
+        *b = (i % 251) as u8;
+    }
+    let fill = Layer {
+        name: "Color Fill 1".into(),
+        rect: rect(0, 0, 4, 4),
+        blend: BlendMode::Normal,
+        opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: Some(AdjustmentData {
+            key: *b"SoCo",
+            data: vec![10, 20, 30, 255],
+        }),
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: false,
+        background: false,
+    };
+    doc.layers = vec![fill];
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc);
+    let adj = back.layers[0]
+        .adjustment
+        .as_ref()
+        .expect("the SoCo block round-trips");
+    assert_eq!(&adj.key, b"SoCo");
+    assert_eq!(adj.data, [10, 20, 30, 255]);
+}
+
+#[test]
+fn descriptor_shaped_soco_is_preserved_verbatim() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    for (i, b) in doc.composite.data.iter_mut().enumerate() {
+        *b = (i * 3 + 1) as u8;
+    }
+    // A real `'Clr '` descriptor is longer than the 4-byte subset; the codec
+    // must carry it unchanged rather than interpreting it.
+    let descriptor = vec![0u8, 0, 0, 0, 0, 1, 8, 66, 73, 77, 67, 108, 114, 32];
+    doc.layers = vec![Layer {
+        name: "Descriptor Fill".into(),
+        rect: rect(0, 0, 0, 0),
+        blend: BlendMode::Normal,
+        opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: Some(AdjustmentData {
+            key: *b"SoCo",
+            data: descriptor.clone(),
+        }),
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: false,
+        background: false,
+    }];
+
+    let bytes = write_psd(&doc).unwrap();
+    let back = read_psd(&bytes).unwrap();
+    assert_eq!(back, doc);
+    assert_eq!(back.layers[0].adjustment.as_ref().unwrap().data, descriptor);
 }
 
 #[test]
@@ -474,6 +552,7 @@ fn default_document() -> Document {
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,
+        background: false,
     };
     let group = Layer {
         name: "Group".to_string(),
@@ -496,6 +575,7 @@ fn default_document() -> Document {
             128,
         )],
         is_group: true,
+        background: false,
     };
     doc.layers = vec![masked, adj, group];
     doc
@@ -546,6 +626,31 @@ fn nesting_lock_bit_round_trips_through_lspf() {
     assert!(back.layers[0].lock.contains(LockFlags::NESTING));
     assert_eq!(back.layers[0].lock.bits(), 0x08);
     assert_eq!(back, doc, "whole document round-trips");
+}
+
+#[test]
+fn background_flag_round_trips_and_is_derived_on_read() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut background = pixel("Background", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255);
+    background.background = true;
+    doc.layers = vec![
+        background,
+        pixel("top", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255),
+    ];
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert!(back.layers[0].background, "the bottom flag round-trips");
+    assert_eq!(back, doc);
+
+    // A flagged layer under any name is written as `"Background"`, and the
+    // reader derives the flag from the bottom position and that name.
+    let mut renamed = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut layer = pixel("Base", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255);
+    layer.background = true;
+    renamed.layers = vec![layer];
+    let back = read_psd(&write_psd(&renamed).unwrap()).unwrap();
+    assert_eq!(back.layers[0].name, "Background");
+    assert!(back.layers[0].background);
 }
 
 /// Assemble a 1x1 RGB PSD with one channel-less layer whose record carries

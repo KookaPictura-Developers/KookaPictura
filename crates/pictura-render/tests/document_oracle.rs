@@ -72,6 +72,7 @@ fn pixel_layer(name: &str, r: PsdRect, mask: Option<LayerMask>) -> Layer {
         ],
         children: Vec::new(),
         is_group: false,
+        background: false,
     }
 }
 
@@ -91,6 +92,7 @@ fn group(name: &str, children: Vec<Layer>) -> Layer {
         channels: Vec::new(),
         children,
         is_group: true,
+        background: false,
     }
 }
 

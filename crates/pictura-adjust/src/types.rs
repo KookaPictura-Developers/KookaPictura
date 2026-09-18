@@ -115,4 +115,8 @@ pub enum Adjustment {
     Posterize(u8),
     Threshold(u8),
     Desaturate,
+    /// Solid-color fill content (`SoCo`): straight-alpha RGBA. This is not a
+    /// destructive adjustment; the renderer composites it generatively (see
+    /// `pictura-render`'s `composite_adjustment`), and [`apply`] refuses it.
+    SolidFill([u8; 4]),
 }

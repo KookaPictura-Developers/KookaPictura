@@ -192,6 +192,7 @@ impl qobject::PictureView {
             false
         };
         if changed {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Reorder Layer");
         }
@@ -210,6 +211,7 @@ impl qobject::PictureView {
             }
         };
         if created >= 0 {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("New Layer");
         }
@@ -228,6 +230,7 @@ impl qobject::PictureView {
             }
         };
         if created >= 0 {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("New Group");
         }
@@ -240,6 +243,7 @@ impl qobject::PictureView {
             None => -1,
         };
         if created >= 0 {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Duplicate Layer");
         }
@@ -252,6 +256,7 @@ impl qobject::PictureView {
             None => -1,
         };
         if created >= 0 {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Group Layers");
         }
@@ -264,6 +269,7 @@ impl qobject::PictureView {
             None => false,
         };
         if changed {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Ungroup Layers");
         }
@@ -413,6 +419,7 @@ impl qobject::PictureView {
             None => false,
         };
         if changed {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Move Layer");
         }
@@ -432,10 +439,20 @@ impl qobject::PictureView {
             None => false,
         };
         if changed {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Move Layer");
         }
         changed
+    }
+
+    pub fn can_move_layer_to(&self, path: &QString, target: &QString, mode: i32) -> bool {
+        let path = path.to_string();
+        let target = target.to_string();
+        match self.rust().doc.as_ref() {
+            Some(doc) => pictura_render::can_move_path_to(doc, &path, &target, mode),
+            None => false,
+        }
     }
 
     pub fn set_layers_visible(mut self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32 {
@@ -582,8 +599,13 @@ impl qobject::PictureView {
     }
 
     pub fn delete_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> i32 {
-        self.as_mut()
-            .batch_changed(paths, "Delete Layers", pictura_render::delete_paths)
+        let changed =
+            self.as_mut()
+                .batch_changed(paths, "Delete Layers", pictura_render::delete_paths);
+        if changed > 0 {
+            self.as_mut().clear_link_sets();
+        }
+        changed
     }
 
     pub fn duplicate_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> QStringList {
@@ -594,6 +616,7 @@ impl qobject::PictureView {
             None => Vec::new(),
         };
         if !created.is_empty() {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Duplicate Layer");
         }
@@ -609,6 +632,7 @@ impl qobject::PictureView {
         };
         match created {
             Some(path) => {
+                self.as_mut().clear_link_sets();
                 self.as_mut().recomposite();
                 self.as_mut().record("Group Layers");
                 QString::from(path.as_str())
@@ -618,8 +642,13 @@ impl qobject::PictureView {
     }
 
     pub fn ungroup_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> i32 {
-        self.as_mut()
-            .batch_changed(paths, "Ungroup Layers", pictura_render::ungroup_paths)
+        let changed =
+            self.as_mut()
+                .batch_changed(paths, "Ungroup Layers", pictura_render::ungroup_paths);
+        if changed > 0 {
+            self.as_mut().clear_link_sets();
+        }
+        changed
     }
 
     pub fn add_layer_in(mut self: Pin<&mut Self>, selection_path: &QString) -> QString {
@@ -628,6 +657,7 @@ impl qobject::PictureView {
             None => String::new(),
         };
         if !created.is_empty() {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("New Layer");
         }
@@ -640,6 +670,7 @@ impl qobject::PictureView {
             None => String::new(),
         };
         if !created.is_empty() {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("New Group");
         }
@@ -659,6 +690,7 @@ impl qobject::PictureView {
             false
         };
         if removed {
+            self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
             self.as_mut().record("Delete Layer");
         }
@@ -715,7 +747,7 @@ impl qobject::PictureView {
     /// Shared batch mutation wrapper: apply `op` to every listed path, then
     /// recomposite and record `label` iff the change count is non-zero. A
     /// zero-change batch records nothing and emits no `changed` (M34/M39).
-    fn batch_changed(
+    pub(super) fn batch_changed(
         mut self: Pin<&mut Self>,
         paths: &QStringList,
         label: &str,

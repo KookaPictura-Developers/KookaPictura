@@ -423,6 +423,11 @@ bool LayersPanel::moveForTest(const QString& path, const QString& target, int mo
     return view_ && view_->move_layer_to(path, target, mode);
 }
 
+bool LayersPanel::canMoveForTest(const QString& path, const QString& target, int mode)
+{
+    return view_ && view_->can_move_layer_to(path, target, mode);
+}
+
 bool LayersPanel::dropOnStripButtonForTest(const QString& buttonName, const QStringList& paths)
 {
     auto* button = findChild<QToolButton*>(buttonName);

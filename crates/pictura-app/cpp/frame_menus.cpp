@@ -228,19 +228,27 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::SelectDeselect,
                                   [this]() { return activeView() && activeView()->has_document(); });
 
-    // M37: layer creation and grouping. The target is the active document's
-    // current layer — the Layers panel's selected row, -1 when none.
+    // M37: layer creation and grouping. Layer…/Group… open the modal dialog,
+    // whose accept step places the node above the selection; Group from Layers…
+    // wraps the panel selection. The remaining commands target the active
+    // document's current layer — the Layers panel's selected row, -1 when none.
     // ponytail: one current layer; M38's multi-selection upgrades these to
     // per-selection operations.
     registry_->setHandler(command_ids::LayerNewLayer, [this]() {
-        if (PictureView* view = activeView()) {
-            view->add_layer(layersPanel_ ? layersPanel_->currentLayer() : -1);
+        if (layersPanel_) {
+            layersPanel_->openNewLayerDialog();
             refresh();
         }
     });
     registry_->setHandler(command_ids::LayerNewGroup, [this]() {
-        if (PictureView* view = activeView()) {
-            view->add_group(layersPanel_ ? layersPanel_->currentLayer() : -1);
+        if (layersPanel_) {
+            layersPanel_->openNewGroupDialog();
+            refresh();
+        }
+    });
+    registry_->setHandler(command_ids::LayerNewGroupFromLayers, [this]() {
+        if (layersPanel_) {
+            layersPanel_->openGroupFromLayersDialog();
             refresh();
         }
     });
@@ -268,6 +276,277 @@ void PicturaMainWindow::registerHandlers()
         registry_->setEnabledProvider(id,
                                       [this]() { return activeView() && activeView()->has_document(); });
     }
+    registry_->setEnabledProvider(command_ids::LayerNewGroupFromLayers, [this]() {
+        return activeView() && activeView()->has_document() && layersPanel_
+            && !layersPanel_->selectedPaths().isEmpty();
+    });
+
+    // Merge and flatten. Merge Down and Merge Layers share one id (design D4):
+    // one selected path merges down, several merge the selection.
+    registry_->setHandler(command_ids::LayerMergeLayers, [this]() {
+        PictureView* view = activeView();
+        const QStringList paths = layersPanel_ ? layersPanel_->selectedPaths() : QStringList{};
+        if (view && !paths.isEmpty() && view->merge_layers(paths) > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerMergeLayers, [this]() {
+        PictureView* view = activeView();
+        return view && view->has_document() && layersPanel_
+            && view->can_merge_layers(layersPanel_->selectedPaths());
+    });
+
+    registry_->setHandler(command_ids::LayerMergeVisible, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (view && !path.isEmpty() && view->merge_visible(path) > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerMergeVisible, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || !view->has_document() || path.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < view->layer_row_count(); ++i) {
+            if (view->layer_row_path(i) == path) {
+                return view->layer_row_visible(i);
+            }
+        }
+        return false;
+    });
+
+    registry_->setHandler(command_ids::LayerMergeClippingMask, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (view && !path.isEmpty() && view->merge_clipping_mask(path) > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerMergeClippingMask, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        return view && view->has_document() && !path.isEmpty()
+            && view->can_merge_clipping_mask(path);
+    });
+
+    registry_->setHandler(command_ids::LayerFlattenImage, [this]() {
+        PictureView* view = activeView();
+        if (view && view->flatten_image() > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerFlattenImage,
+                                  [this]() { return activeView() && activeView()->has_document(); });
+
+    // Background conversion. The applicable kind gates each command: "Layer
+    // from Background…" needs the Background; "Background From Layer" needs a
+    // raster pixel layer (groups and adjustment/fill layers are refused).
+    auto currentLayerKind = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty()) {
+            return QString();
+        }
+        for (int i = 0; i < view->layer_row_count(); ++i) {
+            if (view->layer_row_path(i) == path) {
+                return view->layer_row_kind(i);
+            }
+        }
+        return QString();
+    };
+    registry_->setHandler(command_ids::LayerNewLayerFromBackground, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (view && !path.isEmpty() && view->layer_from_background(path)) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerNewLayerFromBackground,
+                                  [currentLayerKind]() {
+                                      return currentLayerKind() == QStringLiteral("background");
+                                  });
+    registry_->setHandler(command_ids::LayerNewBackgroundFromLayer, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (view && !path.isEmpty() && view->background_from_layer(path)) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerNewBackgroundFromLayer, [currentLayerKind]() {
+        return currentLayerKind() == QStringLiteral("pixel");
+    });
+
+    // Layer via Copy / Cut. Both need an active selection and an active layer
+    // (the panel's current row, which the bridge resolves).
+    const auto layerVia = [this](bool cut) {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty()) {
+            return;
+        }
+        const QString created =
+            cut ? view->layer_via_cut(path) : view->layer_via_copy(path);
+        if (!created.isEmpty()) {
+            refresh();
+        }
+    };
+    registry_->setHandler(command_ids::LayerNewLayerViaCopy, [layerVia]() { layerVia(false); });
+    registry_->setHandler(command_ids::LayerNewLayerViaCut, [layerVia]() { layerVia(true); });
+    for (const char* id : {command_ids::LayerNewLayerViaCopy, command_ids::LayerNewLayerViaCut}) {
+        registry_->setEnabledProvider(id, [this]() {
+            return activeView() && activeView()->has_document() && activeView()->has_selection()
+                && layersPanel_ && !layersPanel_->currentPath().isEmpty();
+        });
+    }
+
+    // Select Similar/Linked and Link/Unlink. A Select command pushes the matched
+    // paths back into the panel so the result becomes the panel selection; Link
+    // and Unlink only touch the transient link sets. None records history.
+    registry_->setHandler(command_ids::LayerSelectSimilar, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty()) {
+            return;
+        }
+        const QStringList matched = view->select_similar(path);
+        if (layersPanel_) {
+            layersPanel_->selectPaths(matched, path);
+        }
+        refresh();
+    });
+    registry_->setEnabledProvider(command_ids::LayerSelectSimilar, [this]() {
+        return activeView() && activeView()->has_document() && layersPanel_
+            && !layersPanel_->currentPath().isEmpty();
+    });
+
+    registry_->setHandler(command_ids::LayerSelectLinked, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty()) {
+            return;
+        }
+        const QStringList linked = view->select_linked(path);
+        if (layersPanel_) {
+            layersPanel_->selectPaths(linked, path);
+        }
+        refresh();
+    });
+    registry_->setEnabledProvider(command_ids::LayerSelectLinked, [this]() {
+        return activeView() && activeView()->has_document() && layersPanel_
+            && !layersPanel_->currentPath().isEmpty();
+    });
+
+    registry_->setHandler(command_ids::LayerLinkLayers, [this]() {
+        PictureView* view = activeView();
+        const QStringList paths = layersPanel_ ? layersPanel_->selectedPaths() : QStringList{};
+        if (view && !paths.isEmpty()) {
+            view->link_layers(paths, true);
+        }
+    });
+    registry_->setHandler(command_ids::LayerUnlinkLayers, [this]() {
+        PictureView* view = activeView();
+        const QStringList paths = layersPanel_ ? layersPanel_->selectedPaths() : QStringList{};
+        if (view && !paths.isEmpty()) {
+            view->link_layers(paths, false);
+        }
+    });
+    for (const char* id : {command_ids::LayerLinkLayers, command_ids::LayerUnlinkLayers}) {
+        registry_->setEnabledProvider(id, [this]() {
+            return activeView() && activeView()->has_document() && layersPanel_
+                && !layersPanel_->selectedPaths().isEmpty();
+        });
+    }
+
+    // Delete Hidden Layers needs only a document (it records nothing when
+    // nothing is hidden); Hide Layers needs a selection.
+    registry_->setHandler(command_ids::LayerDeleteHiddenLayers, [this]() {
+        PictureView* view = activeView();
+        if (view && view->delete_hidden_layers() > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerDeleteHiddenLayers,
+                                  [this]() { return activeView() && activeView()->has_document(); });
+
+    registry_->setHandler(command_ids::LayerHideLayers, [this]() {
+        PictureView* view = activeView();
+        const QStringList paths = layersPanel_ ? layersPanel_->selectedPaths() : QStringList{};
+        if (view && !paths.isEmpty() && view->hide_layers(paths) > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerHideLayers, [this]() {
+        return activeView() && activeView()->has_document() && layersPanel_
+            && !layersPanel_->selectedPaths().isEmpty();
+    });
+
+    // Solid-color fill creation. The color is the frame's foreground, which is
+    // not yet plumbed from the toolbox swatch, so it resolves to opaque black.
+    registry_->setHandler(command_ids::LayerNewFillSolidColor, [this]() {
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        const QColor fg = foregroundColor();
+        const unsigned int argb = fg.isValid() ? fg.rgba() : 0xff000000u;
+        if (!view->add_solid_fill(argb).isEmpty()) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerNewFillSolidColor,
+                                  [this]() { return activeView() && activeView()->has_document(); });
+
+    // Rasterize. Fill Content and Layer both need a current fill-content layer;
+    // All Layers needs a document with at least one. Type/Shape/Layer Style/
+    // Video/3D have no handler and stay disabled (their kinds do not exist).
+    const auto currentFillPath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty() || !view->layer_is_fill_content(path)) {
+            return QString();
+        }
+        return path;
+    };
+    registry_->setHandler(command_ids::LayerRasterizeFillContent, [this, currentFillPath]() {
+        if (PictureView* view = activeView()) {
+            const QString path = currentFillPath();
+            if (!path.isEmpty() && view->rasterize_fill_content(path)) {
+                refresh();
+            }
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerRasterizeFillContent,
+                                  [currentFillPath]() { return !currentFillPath().isEmpty(); });
+    registry_->setHandler(command_ids::LayerRasterizeLayer, [this, currentFillPath]() {
+        if (PictureView* view = activeView()) {
+            const QString path = currentFillPath();
+            if (!path.isEmpty() && view->rasterize_layer(path)) {
+                refresh();
+            }
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerRasterizeLayer,
+                                  [currentFillPath]() { return !currentFillPath().isEmpty(); });
+    registry_->setHandler(command_ids::LayerRasterizeAllLayers, [this]() {
+        PictureView* view = activeView();
+        if (view && view->rasterize_all_layers() > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerRasterizeAllLayers, [this]() {
+        PictureView* view = activeView();
+        if (!view || !view->has_document()) {
+            return false;
+        }
+        for (int i = 0; i < view->layer_row_count(); ++i) {
+            if (view->layer_is_fill_content(view->layer_row_path(i))) {
+                return true;
+            }
+        }
+        return false;
+    });
 
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {

@@ -159,6 +159,7 @@ mod tests {
             ],
             children: Vec::new(),
             is_group: false,
+            background: false,
         }
     }
 

@@ -24,10 +24,12 @@ pub(crate) const DIVIDER_NAME: &str = "</Layer group>";
 ///
 /// The brief's list plus the spellings Photoshop actually writes: Invert is
 /// `nvrt` (not `invr`) and the legacy Hue/Saturation key is `hue ` alongside
-/// `hue2`. Both spellings are accepted on read.
-pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 17] = [
+/// `hue2`. Both spellings are accepted on read. `SoCo` is solid-color fill
+/// content: it is preserved verbatim here, and only `pictura-render` decodes
+/// the 4-byte subset it understands.
+pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 18] = [
     *b"levl", *b"curv", *b"brit", *b"expA", *b"vibA", *b"hue2", *b"hue ", *b"blwh", *b"phfl",
-    *b"mixr", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc", *b"clrL",
+    *b"mixr", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc", *b"clrL", *b"SoCo",
 ];
 
 pub(crate) fn is_adjustment_key(key: &[u8; 4]) -> bool {

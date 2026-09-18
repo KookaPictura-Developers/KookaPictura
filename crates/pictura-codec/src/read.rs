@@ -307,7 +307,19 @@ fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<
         return Err(PsdError::Invalid("layer records exceed layer info".into()));
     }
     r.pos = info_end;
-    Ok(build_tree(raws))
+    let mut layers = build_tree(raws);
+    derive_background(&mut layers);
+    Ok(layers)
+}
+
+/// PSD has no background bit: the bottom top-level, non-group layer named
+/// `"Background"` is the Background (design D5, marked inferred).
+fn derive_background(layers: &mut [Layer]) {
+    if let Some(bottom) = layers.first_mut() {
+        if !bottom.is_group && bottom.name == "Background" {
+            bottom.background = true;
+        }
+    }
 }
 
 fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError> {
@@ -470,6 +482,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             channels: Vec::new(),
             children: Vec::new(),
             is_group: false,
+            background: false,
         },
         channel_ids,
         channel_lens,

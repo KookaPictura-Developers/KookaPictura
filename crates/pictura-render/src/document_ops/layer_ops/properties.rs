@@ -1,9 +1,10 @@
 use pictura_core::{BlendMode, ColorLabel, Document, Layer, LockFlags};
 
 use super::create::{empty_group, next_layer_name};
+use super::merge::is_visible_in_panel;
 use super::paths::{
-    container_mut, container_of_mut, edit_paths, format_segments, is_background, parse_path,
-    resolve_path, resolve_path_mut, selected_paths, unique,
+    container_mut, container_of_mut, edit_paths, flatten_rows, format_segments, is_background,
+    parse_path, resolve_path, resolve_path_mut, selected_paths, unique,
 };
 
 /// Set the eye on every listed path (the Background included). Returns the
@@ -170,6 +171,61 @@ pub fn delete_paths(doc: &mut Document, paths: &[&str]) -> usize {
     changed
 }
 
+/// Delete every layer whose effective visibility is off (its own eye and every
+/// ancestor's), counting a hidden group and its nested hidden descendants as
+/// one removal. Returns the number of nodes removed; a tree with no hidden
+/// layer is left untouched. *(match inferred: CS6 does not state the nested
+/// count or the Background/locked exemptions inherited from [`delete_paths`].)*
+pub fn delete_hidden_layers(doc: &mut Document) -> usize {
+    let hidden: Vec<String> = flatten_rows(doc)
+        .into_iter()
+        .filter(|(path, _)| !is_visible_in_panel(doc, path))
+        .map(|(path, _)| path)
+        .collect();
+    if hidden.is_empty() {
+        return 0;
+    }
+    let refs: Vec<&str> = hidden.iter().map(String::as_str).collect();
+    delete_paths(doc, &refs)
+}
+
+/// The paths of every layer matching the layer at `path`, in panel
+/// (depth-first, topmost-first) order and excluding the reference itself.
+///
+/// The match key is inferred (CS6's exact "similar" attributes are unsourced):
+/// the same node class (group, adjustment, background, or pixel), for
+/// adjustments the same PSD adjustment key, and the same blend mode. An
+/// unknown path matches nothing.
+pub fn select_similar(doc: &Document, path: &str) -> Vec<String> {
+    let Some(reference) = resolve_path(doc, path) else {
+        return Vec::new();
+    };
+    let key = match_key(reference);
+    flatten_rows(doc)
+        .into_iter()
+        .filter(|(candidate, _)| candidate != path)
+        .filter(|(candidate, _)| {
+            resolve_path(doc, candidate).is_some_and(|layer| match_key(layer) == key)
+        })
+        .map(|(candidate, _)| candidate)
+        .collect()
+}
+
+/// The [`select_similar`] match key: `(class, adjustment key, blend mode)`.
+fn match_key(layer: &Layer) -> (u8, [u8; 4], BlendMode) {
+    let class = if layer.is_group {
+        0
+    } else if layer.adjustment.is_some() {
+        1
+    } else if layer.background {
+        2
+    } else {
+        3
+    };
+    let adjustment = layer.adjustment.as_ref().map_or([0; 4], |data| data.key);
+    (class, adjustment, layer.blend)
+}
+
 /// Deep-clone every listed node directly above itself, naming each copy
 /// `"<name> copy"`. Eligible everywhere (Background and locked included).
 /// Returns the new paths.
@@ -270,12 +326,19 @@ pub fn ungroup_paths(doc: &mut Document, paths: &[&str]) -> usize {
     changed
 }
 
-/// Rename the node at `path`. No refusal rule; returns false for a path that
-/// does not resolve.
+/// Rename the node at `path`. The Background flag follows the PSD name+position
+/// convention in-session: the bottom top-level non-group renamed to
+/// `"Background"` becomes the Background, any other rename clears the flag.
+/// Returns false for a path that does not resolve.
 pub fn rename_path(doc: &mut Document, path: &str, name: &str) -> bool {
+    let Some(segments) = parse_path(path) else {
+        return false;
+    };
     match resolve_path_mut(doc, path) {
         Some(layer) => {
             layer.name = name.to_string();
+            layer.background =
+                segments.len() == 1 && segments[0] == 0 && !layer.is_group && name == "Background";
             true
         }
         None => false,
@@ -307,6 +370,79 @@ pub fn move_path(doc: &mut Document, path: &str, delta: i32) -> bool {
     true
 }
 
+/// Whether the container at `parent` still resolves after the node at
+/// (`src_parent`, `src_index`) is removed. Mirrors the post-removal
+/// `container_of_mut` lookup in [`move_path_to`], so the dry run and the
+/// mutation agree on unknown-target refusals.
+fn container_exists_after_removal(
+    doc: &Document,
+    parent: &[usize],
+    src_parent: &[usize],
+    src_index: usize,
+) -> bool {
+    let mut layers = &doc.layers;
+    for depth in 0..parent.len() {
+        let index = if &parent[..depth] == src_parent && parent[depth] >= src_index {
+            parent[depth] + 1
+        } else {
+            parent[depth]
+        };
+        let Some(layer) = layers.get(index) else {
+            return false;
+        };
+        layers = &layer.children;
+    }
+    true
+}
+
+/// Resolve where a `move_path_to` candidate would land: the destination parent
+/// container and the insertion index (`None` = append). `None` means the move is
+/// refused. `move_path_to` (mutation) and `can_move_path_to` (dry run) both
+/// route through this, so the two can never diverge.
+fn move_path_to_dest(
+    doc: &Document,
+    path: &str,
+    target: &str,
+    mode: i32,
+) -> Option<(Vec<usize>, Option<usize>)> {
+    let src = parse_path(path)?;
+    if is_background(doc, path) {
+        return None;
+    }
+    let layer = resolve_path(doc, path)?;
+    if layer.lock.is_all() || layer.lock.contains(LockFlags::NESTING) {
+        return None;
+    }
+    if !target.is_empty() && (target == path || target.starts_with(&format!("{path}/"))) {
+        return None;
+    }
+    if target.is_empty() {
+        return Some((Vec::new(), None));
+    }
+    let tgt = parse_path(target)?;
+    let (dest_parent, dest_index) = if mode == 2 {
+        if !resolve_path(doc, target).is_some_and(|layer| layer.is_group) {
+            return None;
+        }
+        (tgt, None)
+    } else {
+        let (last, parent) = tgt.split_last()?;
+        (parent.to_vec(), Some(last + usize::from(mode == 0)))
+    };
+    let src_parent = &src[..src.len() - 1];
+    let src_index = *src.last().expect("non-empty");
+    if !container_exists_after_removal(doc, &dest_parent, src_parent, src_index) {
+        return None;
+    }
+    Some((dest_parent, dest_index))
+}
+
+/// Dry-run form of [`move_path_to`]: whether the move would be accepted. Performs
+/// the same guards and never mutates the document.
+pub fn can_move_path_to(doc: &Document, path: &str, target: &str, mode: i32) -> bool {
+    move_path_to_dest(doc, path, target, mode).is_some()
+}
+
 /// Move the node at `path` relative to `target`: mode `0` = above, `1` = below,
 /// `2` = into `target` (which must be a group). An empty target means the top of
 /// the document. Refuses the Background, a fully- or nesting-locked source, a
@@ -316,33 +452,8 @@ pub fn move_path_to(doc: &mut Document, path: &str, target: &str, mode: i32) -> 
     let Some(src) = parse_path(path) else {
         return false;
     };
-    if is_background(doc, path) {
+    let Some((dest_parent, dest_index)) = move_path_to_dest(doc, path, target, mode) else {
         return false;
-    }
-    let locked = resolve_path(doc, path)
-        .is_some_and(|layer| layer.lock.is_all() || layer.lock.contains(LockFlags::NESTING));
-    if locked || resolve_path(doc, path).is_none() {
-        return false;
-    }
-    if !target.is_empty() && (target == path || target.starts_with(&format!("{path}/"))) {
-        return false;
-    }
-
-    let (dest_parent, dest_index): (Vec<usize>, Option<usize>) = if target.is_empty() {
-        (Vec::new(), None)
-    } else {
-        let Some(tgt) = parse_path(target) else {
-            return false;
-        };
-        if mode == 2 {
-            if !resolve_path(doc, target).is_some_and(|layer| layer.is_group) {
-                return false;
-            }
-            (tgt, None)
-        } else {
-            let (last, parent) = tgt.split_last().expect("non-empty");
-            (parent.to_vec(), Some(last + usize::from(mode == 0)))
-        }
     };
 
     let src_parent = src[..src.len() - 1].to_vec();
