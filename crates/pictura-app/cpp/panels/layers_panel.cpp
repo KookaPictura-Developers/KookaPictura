@@ -1,5 +1,7 @@
 #include "layers_panel.h"
 
+#include "layers_filter_bar.h"
+#include "layers_filter_proxy.h"
 #include "layers_panel_internal.h"
 
 #include "icons.h"
@@ -52,47 +54,13 @@
 #include <QtWidgets/QWidget>
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <utility>
 
 namespace pictura {
 
 namespace {
-
-struct BlendEntry {
-    const char* key;
-    const char* name;
-};
-
-constexpr std::array<BlendEntry, 27> kBlends{{
-    {"norm", "Normal"},
-    {"diss", "Dissolve"},
-    {"dark", "Darken"},
-    {"mul ", "Multiply"},
-    {"idiv", "Color Burn"},
-    {"lbrn", "Linear Burn"},
-    {"dkCl", "Darker Color"},
-    {"lite", "Lighten"},
-    {"scrn", "Screen"},
-    {"div ", "Color Dodge"},
-    {"lddg", "Linear Dodge (Add)"},
-    {"lgCl", "Lighter Color"},
-    {"over", "Overlay"},
-    {"sLit", "Soft Light"},
-    {"hLit", "Hard Light"},
-    {"vLit", "Vivid Light"},
-    {"lLit", "Linear Light"},
-    {"pLit", "Pin Light"},
-    {"hMix", "Hard Mix"},
-    {"diff", "Difference"},
-    {"smud", "Exclusion"},
-    {"fsub", "Subtract"},
-    {"fdiv", "Divide"},
-    {"hue ", "Hue"},
-    {"sat ", "Saturation"},
-    {"col ", "Color"},
-    {"lum ", "Luminosity"},
-}};
 
 // CS6 sheet colors (PSD `lclr`), index 1..7; 0 is no label.
 QColor labelColor(int label)
@@ -148,6 +116,9 @@ LayersPanel::LayersPanel(QWidget* parent)
     expandNewEffects_ = session.layersExpandNewEffects;
     thumbEntireDocument_ = thumbContents_ == 0;
 
+    filterBar_ = new LayerFilterBar(body);
+    layout->addWidget(filterBar_);
+
     auto* controls = new QHBoxLayout();
     blend_ = new QComboBox(body);
     for (const BlendEntry& entry : kBlends) {
@@ -175,9 +146,10 @@ LayersPanel::LayersPanel(QWidget* parent)
     layout->addLayout(controls);
 
     model_ = new LayersModel(this);
+    proxy_ = new LayersFilterProxyModel(model_, this);
 
     tree_ = new QTreeView(body);
-    tree_->setModel(model_);
+    tree_->setModel(proxy_);
     delegate_ = new LayerRowDelegate(tree_);
     delegate_->setThumbnailSize(kThumbSizePx.at(thumbSizeIndex_));
     tree_->setItemDelegate(delegate_);
@@ -315,14 +287,15 @@ LayersPanel::LayersPanel(QWidget* parent)
     connect(tree_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             [this](const QItemSelection&, const QItemSelection&) { syncControls(); });
     connect(tree_, &QTreeView::expanded, this, [this](const QModelIndex& index) {
-        const QString path = model_->pathForIndex(index);
+        const QString path = pathForProxyIndex(index);
         if (!path.isEmpty()) {
             expandedPaths_.insert(path);
         }
     });
     connect(tree_, &QTreeView::collapsed, this, [this](const QModelIndex& index) {
-        expandedPaths_.remove(model_->pathForIndex(index));
+        expandedPaths_.remove(pathForProxyIndex(index));
     });
+    connect(filterBar_, &LayerFilterBar::filterChanged, this, &LayersPanel::applyFilter);
     connect(blend_, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (syncing_ || !view_) {
             return;
@@ -362,9 +335,16 @@ void LayersPanel::setView(PictureView* view)
     if (viewConnection_) {
         QObject::disconnect(viewConnection_);
     }
-    // A different view means a document switch: solo paths are stale.
+    // A different view means a document switch: solo paths and the filter are
+    // transient, so both reset.
     if (view_ != view) {
         clearSolo();
+        if (filterBar_) {
+            filterBar_->setFilter(LayerFilter{});
+        }
+        if (proxy_) {
+            proxy_->setFilter(LayerFilter{});
+        }
     }
     view_ = view;
     model_->setView(view);
@@ -413,27 +393,34 @@ void LayersPanel::refresh()
     }
     model_->setRows(std::move(rows));
 
-    // Restore expansion by path; drop paths the structural change invalidated.
-    // Iterate a copy: `expand()` emits `expanded`, which re-inserts into the set.
+    // Restore expansion by path; keep a path the filter hid (the document still
+    // has it) so toggling the filter off restores its expansion. Iterate a copy:
+    // `expand()` emits `expanded`, which re-inserts into the set.
     const QSet<QString> previousExpansion = expandedPaths_;
     QSet<QString> live;
     for (const QString& path : previousExpansion) {
-        const QModelIndex index = model_->indexForPath(path);
+        if (!model_->indexForPath(path).isValid()) {
+            continue;
+        }
+        live.insert(path);
+        const QModelIndex index = proxyIndexForPath(path);
         if (index.isValid()) {
             tree_->expand(index);
-            live.insert(path);
         }
     }
     expandedPaths_ = live;
+    if (proxy_->filter().enabled) {
+        expandMatchingGroups();
+    }
 
     if (!selected.isEmpty()) {
         selectPaths(selected, selectedPath);
     }
-    if (!tree_->currentIndex().isValid() && model_->rowCount() > 0) {
-        tree_->setCurrentIndex(model_->index(0, 0));
+    if (!tree_->currentIndex().isValid() && proxy_->rowCount() > 0) {
+        tree_->setCurrentIndex(proxy_->index(0, 0));
     }
     if (wasEditing) {
-        const QModelIndex editIndex = model_->indexForPath(selectedPath);
+        const QModelIndex editIndex = proxyIndexForPath(selectedPath);
         if (editIndex.isValid()) {
             tree_->setCurrentIndex(editIndex);
             tree_->edit(editIndex);
@@ -455,7 +442,7 @@ int LayersPanel::currentLayer() const
 
 QString LayersPanel::currentPath() const
 {
-    return model_ ? model_->pathForIndex(tree_->currentIndex()) : QString();
+    return pathForProxyIndex(tree_->currentIndex());
 }
 
 void LayersPanel::selectLayer(int index)
@@ -471,7 +458,7 @@ void LayersPanel::selectPath(const QString& path)
     if (path.isEmpty()) {
         return;
     }
-    const QModelIndex index = model_->indexForPath(path);
+    const QModelIndex index = proxyIndexForPath(path);
     if (index.isValid()) {
         tree_->setCurrentIndex(index);
     }
@@ -486,7 +473,7 @@ void LayersPanel::selectPaths(const QStringList& paths, const QString& current)
     QModelIndex first;
     QModelIndex currentIndex;
     for (const QString& path : paths) {
-        const QModelIndex index = model_->indexForPath(path);
+        const QModelIndex index = proxyIndexForPath(path);
         if (!index.isValid()) {
             continue;
         }
@@ -518,7 +505,7 @@ QStringList LayersPanel::selectedPaths() const
     }
     const QModelIndexList rows = tree_->selectionModel()->selectedRows(0);
     for (const QModelIndex& index : rows) {
-        const QString path = model_->pathForIndex(index);
+        const QString path = pathForProxyIndex(index);
         if (!path.isEmpty()) {
             paths.push_back(path);
         }
@@ -535,7 +522,7 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             if (index.isValid()
                 && delegate_->eyeRect(tree_->visualRect(index))
                        .contains(mouse->position().toPoint())) {
-                const QString path = model_->pathForIndex(index);
+                const QString path = pathForProxyIndex(index);
                 if (mouse->modifiers() & Qt::AltModifier) {
                     toggleSolo(path);
                     return true;
@@ -663,6 +650,62 @@ void LayersPanel::persistOptions()
     state.layersExpandNewEffects = expandNewEffects_;
     state.schemaVersion = 3;
     pictura::saveSession(state);
+}
+
+QModelIndex LayersPanel::proxyIndexForPath(const QString& path) const
+{
+    if (!proxy_ || !model_) {
+        return {};
+    }
+    return proxy_->mapFromSource(model_->indexForPath(path));
+}
+
+QString LayersPanel::pathForProxyIndex(const QModelIndex& index) const
+{
+    if (!model_ || !index.isValid()) {
+        return {};
+    }
+    return model_->pathForIndex(proxy_->mapToSource(index));
+}
+
+void LayersPanel::expandMatchingGroups()
+{
+    std::function<void(const QModelIndex&)> walk = [this, &walk](const QModelIndex& parent) {
+        const int rows = model_->rowCount(parent);
+        for (int row = 0; row < rows; ++row) {
+            const QModelIndex child = model_->index(row, 0, parent);
+            if (model_->rowCount(child) == 0) {
+                continue;
+            }
+            if (proxy_->hasMatchingDescendant(child)) {
+                const QModelIndex proxyIndex = proxyIndexForPath(child.data(PathRole).toString());
+                if (proxyIndex.isValid()) {
+                    tree_->expand(proxyIndex);
+                }
+            }
+            walk(child);
+        }
+    };
+    walk(QModelIndex());
+}
+
+void LayersPanel::applyFilter(const LayerFilter& filter)
+{
+    if (!proxy_) {
+        return;
+    }
+    proxy_->setFilter(filter);
+    if (filter.enabled) {
+        expandMatchingGroups();
+    } else {
+        for (const QString& path : expandedPaths_) {
+            const QModelIndex index = proxyIndexForPath(path);
+            if (index.isValid()) {
+                tree_->expand(index);
+            }
+        }
+    }
+    syncControls();
 }
 
 } // namespace pictura

@@ -16,11 +16,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   fresh-white-document regression; counted from `cargo test --workspace`, which
   includes the pre-existing ignored `pictura-render` doctest as the ninth).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
-  content-named `layers-panel-controls` change; canonical specs are in
-  `openspec/specs/` (61 specs, `validate --all --strict` green), change history
-  under `openspec/changes/archive/`; no change is open. The next panel-program
-  stage is **layer filtering/search**, named by content
-  (`layers-filtering-search`) rather than a milestone number.
+  content-named `layers-panel-controls` and `layers-filtering-search` changes;
+  canonical specs are in `openspec/specs/` (62 specs, `validate --all --strict`
+  green), change history under `openspec/changes/archive/`; no change is open.
+  The next panel-program stage is **remaining layer management**, named by
+  content rather than a milestone number.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's
@@ -1538,6 +1538,33 @@ by self-test section is a deliberate later step, out of this pass.
   failed, file-size OK, guard OK, `openspec validate --all --strict` 61/61).
   Capability: MODIFIED `layers-panel`; no new capability.
 
+- **layers-filtering-search** (the Layers-panel program's filter/search stage,
+  named by content; OpenSpec change `layers-filtering-search`, archived). The
+  panel gained the CS6 filter/search row above the blend/opacity header: a
+  dimension popup (Name, Kind, Effect, Mode, Attribute, Color; default Kind), a
+  criteria stack, and an on/off switch. A new `LayersFilterProxyModel`
+  (`layers_filter_proxy.{h,cpp}`) wraps the tree model and accepts a row when it
+  matches or when any descendant matches (ancestor promotion); Name is a
+  case-insensitive substring, Kind a multi-select over the model's kinds, Mode a
+  blend key, Color a label index, and Attribute one of Visible/Hidden/Locked/Has
+  Mask/Clipped; active criteria AND and Kind values OR. The Effect dimension is
+  present but disabled until layer styles exist. The panel now uses the proxy as
+  its view model, with `proxyIndexForPath`/`pathForProxyIndex` mapping selection,
+  expansion, rename, and eye hit-tests; activation auto-expands promoted groups
+  and toggling off restores the prior expansion. Filtering is view-only — no
+  history state, never serialized — and resets to Kind/off on a document switch.
+  New `layers_filter_bar.{h,cpp}`; the shared blend table moved to
+  `layers_panel_internal.h`; theme QSS added. Self-tests `lfs_name` (201),
+  `lfs_kind` (202), `lfs_mode` (203), `lfs_color` (204), `lfs_none` (205),
+  `lfs_ancestor` (206), `lfs_toggle` (207), `lfs_live` (208), `lfs_reset` (209)
+  live in a new `selftest_layers_filter.cpp`, keeping `selftest.cpp` at 6730.
+  Ceiling: Kind offers only the kinds the model has (pixel, adjustment, group,
+  background) and Effect is inert until the styles stage; the ancestry scan is
+  O(subtree) per row (`// ponytail:` in the proxy). Verified: `TASK_ALLOWS_DOCS=1
+  bash scripts/verify-full.sh` → `verify-full: OK` (TOTAL 777 passed · 9 skipped
+  · 0 failed, file-size OK, guard OK, `openspec validate --all --strict` 62/62).
+  Capability: ADD `layers-filtering-search`; no Rust change.
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -1705,10 +1732,10 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   (`openspec/changes/archive/2026-09-18-m46-panel-toolbar-fixes/` and
   `…-m47-panel-interaction-fixes/`). The **controls stage**
   (`layers-panel-controls`: percent Opacity/Fill, the five-lock strip with the
-  nesting lock, and the clipping row indicator) has landed and archived. The
-  Layers-panel program therefore continues **by content, not by number**: next
-  is **layer filtering/search** (the six-dimension filter/search row), then
-  **remaining management**
+  nesting lock, and the clipping row indicator) and the **filter/search stage**
+  (`layers-filtering-search`: the six-dimension filter row with ancestor
+  promotion) have landed and archived. The Layers-panel program therefore
+  continues **by content, not by number**: next is **remaining management**
   (rasterize/merge/flatten/link/select-similar/convert-background/
   layer-via-copy-cut, the New Layer/Group dialogs, and the deferred drag-reorder
   with its recorded drop rules), then **styles/effects**, then **smart objects /

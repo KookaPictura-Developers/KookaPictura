@@ -229,6 +229,14 @@ QWidget#percentField QToolButton:disabled { color: ${disabledText}; }
 QWidget#percentField QSlider::groove:horizontal { height: 4px; background: ${border}; border-radius: 2px; }
 QWidget#percentField QSlider::handle:horizontal { width: 10px; margin: -4px 0; background: ${buttonText}; border-radius: 3px; }
 
+QWidget#layersFilterBar { background: ${window}; border-bottom: 1px solid ${border}; }
+QWidget#layersFilterBar QComboBox, QWidget#layersFilterBar QLineEdit { background: ${base}; color: ${text}; border: 1px solid ${border}; border-radius: 2px; padding: 1px 2px; }
+QWidget#layersFilterBar QComboBox:disabled, QWidget#layersFilterBar QLineEdit:disabled { color: ${disabledText}; }
+QWidget#layersFilterBar QToolButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 2px 4px; }
+QWidget#layersFilterBar QToolButton:hover { background: ${hover}; border-color: ${highlight}; }
+QWidget#layersFilterBar QToolButton:checked { background: ${pressed}; border-color: ${highlight}; }
+QWidget#layersFilterBar QToolButton#layersFilterToggle:checked { background: ${highlight}; color: ${highlightedText}; }
+
 QPushButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 4px 10px; }
 QPushButton:hover { background: ${hover}; }
 QPushButton:pressed { background: ${pressed}; }

@@ -56,6 +56,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest.cpp
     crates/pictura-app/cpp/selftest_report.cpp
     crates/pictura-app/cpp/selftest_layers_controls.cpp
+    crates/pictura-app/cpp/selftest_layers_filter.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
     crates/pictura-app/cpp/command_tree.cpp
@@ -71,6 +72,8 @@ add_executable(pictura
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
     crates/pictura-app/cpp/panels/layers_panel.cpp
+    crates/pictura-app/cpp/panels/layers_filter_proxy.cpp
+    crates/pictura-app/cpp/panels/layers_filter_bar.cpp
     crates/pictura-app/cpp/panels/layers_panel_actions.cpp
     crates/pictura-app/cpp/panels/layers_panel_menu.cpp
     crates/pictura-app/cpp/panels/layers_panel_test.cpp
@@ -104,7 +107,10 @@ add_executable(pictura
     crates/pictura-app/cpp/icons.h
     crates/pictura-app/cpp/frame.h
     crates/pictura-app/cpp/selftest_layers_controls.h
+    crates/pictura-app/cpp/selftest_layers_filter.h
     crates/pictura-app/cpp/panels/layers_panel.h
+    crates/pictura-app/cpp/panels/layers_filter_proxy.h
+    crates/pictura-app/cpp/panels/layers_filter_bar.h
     crates/pictura-app/cpp/panels/percent_field.h
     crates/pictura-app/cpp/panels/history_panel.h
     crates/pictura-app/cpp/panels/navigator_panel.h

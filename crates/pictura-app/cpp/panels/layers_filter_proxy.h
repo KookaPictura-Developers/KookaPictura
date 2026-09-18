@@ -1,0 +1,43 @@
+#pragma once
+
+#include <QtCore/QAbstractItemModel>
+#include <QtCore/QModelIndex>
+#include <QtCore/QSet>
+#include <QtCore/QSortFilterProxyModel>
+#include <QtCore/QString>
+
+namespace pictura {
+
+struct LayerFilter {
+    bool enabled = false;
+    QString name;
+    QSet<QString> kinds;
+    QString mode;
+    int color = -1;
+    QString attribute;
+};
+
+class LayersFilterProxyModel : public QSortFilterProxyModel {
+    Q_OBJECT
+
+public:
+    explicit LayersFilterProxyModel(QAbstractItemModel* source = nullptr,
+                                    QObject* parent = nullptr);
+
+    void setFilter(const LayerFilter& filter);
+    const LayerFilter& filter() const { return filter_; }
+    bool hasMatchingDescendant(const QModelIndex& sourceIndex) const;
+
+    void setSourceModel(QAbstractItemModel* sourceModel) override;
+
+protected:
+    bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
+
+private:
+    bool hasActiveCriteria() const;
+    bool rowMatches(const QModelIndex& sourceIndex) const;
+
+    LayerFilter filter_;
+};
+
+} // namespace pictura
