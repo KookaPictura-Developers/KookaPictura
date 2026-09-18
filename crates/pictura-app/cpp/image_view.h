@@ -124,8 +124,6 @@ private:
     QPolygonF overlayPolygon_;
 
     PresentCache presentCache_;
-    PresentCache moveBaseCache_;
-    PresentCache moveLayerCache_;
     bool presentCacheRebuiltLastPaint_ = false;
     bool presentCacheEnabledForTest_ = true;
 
