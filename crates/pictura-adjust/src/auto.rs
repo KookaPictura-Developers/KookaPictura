@@ -117,7 +117,7 @@ pub(crate) fn snap_neutral_midtones(buf: &mut PixelBuffer, n: usize) {
         sums[2] / count as f64,
     ];
     let target = (means[0] + means[1] + means[2]) / 3.0;
-    if target <= 0.0 {
+    if target <= 0.0 || target >= 255.0 {
         return;
     }
     for (c, plane) in [r, g, b].into_iter().enumerate() {

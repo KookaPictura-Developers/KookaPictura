@@ -77,12 +77,16 @@ fn channel_mut(layer: &mut Layer, id: i16) -> Option<&mut [u8]> {
         .map(|c| c.data.as_mut_slice())
 }
 
-/// Mask coverage at a document pixel. `255` when there is no mask; outside the
-/// mask rect (or with no decoded data) the mask's `default_color` applies.
+/// Mask coverage at a document pixel. `255` when there is no mask or the mask
+/// is disabled; outside the mask rect (or with no decoded data) the mask's
+/// `default_color` applies.
 fn coverage(mask: Option<&LayerMask>, x: i32, y: i32) -> u8 {
     let Some(mask) = mask else {
         return 255;
     };
+    if mask.disabled {
+        return 255;
+    }
     let (mw, mh) = (mask.rect.width(), mask.rect.height());
     let (mx, my) = (x - mask.rect.left, y - mask.rect.top);
     if mw <= 0 || mh <= 0 || mx < 0 || my < 0 || mx >= mw || my >= mh {
@@ -218,6 +222,33 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn disabled_mask_reports_full_coverage() {
+        let mask = LayerMask {
+            rect: rect(0, 0, 4, 4),
+            default_color: 0,
+            disabled: true,
+            flags: 0,
+            data: Some(vec![0u8; 16]),
+        };
+        assert_eq!(
+            coverage(Some(&mask), 0, 0),
+            255,
+            "disabled mask must not gate"
+        );
+        assert_eq!(coverage(Some(&mask), 3, 3), 255);
+
+        let enabled = LayerMask {
+            disabled: false,
+            ..mask
+        };
+        assert_eq!(
+            coverage(Some(&enabled), 1, 1),
+            0,
+            "enabled mask still gates"
+        );
     }
 
     #[test]

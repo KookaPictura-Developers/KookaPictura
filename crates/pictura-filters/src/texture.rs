@@ -90,7 +90,7 @@ fn cell_means(data: &[u8], n: usize, planes: usize, assign: &[usize]) -> (Vec<[f
     let means = acc
         .iter()
         .zip(&cnt)
-        .map(|(a, &k)| std::array::from_fn(|c| a[c] as f64 / k as f64))
+        .map(|(a, &k)| std::array::from_fn(|c| a[c] as f64 / k.max(1) as f64))
         .collect();
     (means, cnt)
 }
@@ -795,6 +795,18 @@ mod tests {
         assert_ne!(
             default_surface.data, lit.data,
             "light direction must matter"
+        );
+    }
+
+    #[test]
+    fn cell_means_empty_cell_is_finite() {
+        let data = [10u8, 20, 30, 40, 50, 60];
+        let assign = [0usize, 2];
+        let (means, cnt) = cell_means(&data, 2, 3, &assign);
+        assert_eq!(cnt, vec![1, 0, 1], "cell 1 must have no pixels");
+        assert!(
+            means.iter().all(|m| m.iter().all(|v| v.is_finite())),
+            "an empty cell mean must not be NaN: {means:?}"
         );
     }
 

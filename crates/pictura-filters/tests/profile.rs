@@ -372,6 +372,7 @@ fn filters() -> Vec<(&'static str, Filter)> {
     ]
 }
 
+#[ignore = "1024x1024 all-kernel profile; run explicitly with --ignored --nocapture"]
 #[test]
 fn filter_profile_1024() {
     let base = structured_rgb(SIZE);

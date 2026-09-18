@@ -87,11 +87,11 @@ impl Selection {
             return sel;
         }
         for py in 0..height as i32 {
-            if py < y || py >= y + h {
+            if py < y || py >= y.saturating_add(h) {
                 continue;
             }
             for px in 0..width as i32 {
-                if px >= x && px < x + w {
+                if px >= x && px < x.saturating_add(w) {
                     sel.data[py as usize * width as usize + px as usize] = 255;
                 }
             }
@@ -718,6 +718,12 @@ mod tests {
         assert_eq!(clipped.data[0], 255);
         assert_eq!(clipped.data[7], 255);
         assert_eq!(clipped.data[8], 0);
+    }
+
+    #[test]
+    fn rect_extreme_coords_do_not_overflow() {
+        let s = Selection::rect(4, 4, 1, 1, i32::MAX, i32::MAX);
+        assert_eq!(s.data.iter().filter(|&&v| v > 0).count(), 9);
     }
 
     #[test]
