@@ -29,6 +29,9 @@ failed=$(grep -cE 'FAILED' "$log" || true)
 echo "total_passed=$total_passed failed=$failed"
 [ "$failed" -eq 0 ] || { echo "test: FAILED"; exit 1; }
 
+echo "== file-size =="
+bash scripts/check-file-size.sh
+
 echo "== guard =="
 bash scripts/guard.sh
 

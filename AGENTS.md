@@ -97,6 +97,11 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
    ceiling.
 8. **Escalate, don't guess.** If a spec is ambiguous or a dependency/toolchain
    decision is needed, stop and report the blocker rather than inventing scope.
+9. **File size.** Target under **800 LOC**, hard cap **1000**, enforced by
+   `scripts/check-file-size.sh`. When a file approaches the cap, split it along
+   class/concern seams with pure moves (no behavior change): C++ classes may
+   span several `.cpp` translation units, Rust modules become submodule
+   directories.
 
 ## Anti-patterns
 

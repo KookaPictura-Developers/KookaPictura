@@ -1,0 +1,22 @@
+# Files over the 1000-LOC hard cap (scripts/check-file-size.sh).
+#
+# One entry per line: <repo-relative-path> <current LOC>. Blank lines and
+# lines starting with '#' are ignored. This list only shrinks: as files are
+# split along class/concern seams, remove their entry, and never raise a
+# recorded LOC — a file that grows is a violation.
+crates/pictura-app/cpp/main.cpp 7320
+crates/pictura-app/src/cxxqt_object.rs 5217
+crates/pictura-app/cpp/panels/panel_column.cpp 2828
+crates/pictura-filters/src/artistic/filters.rs 2322
+crates/pictura-app/cpp/frame.cpp 2245
+crates/pictura-adjust/src/lib.rs 1825
+crates/pictura-render/src/lib.rs 1793
+crates/pictura-render/src/gpu.rs 1722
+crates/pictura-codec/src/lib.rs 1646
+crates/pictura-filters/tests/oracle.rs 1540
+crates/pictura-app/cpp/panels/layers_panel.cpp 1511
+crates/pictura-render/src/document_ops/layer_ops.rs 1315
+crates/pictura-render/src/gpu_filter.rs 1284
+crates/pictura-filters/src/lib.rs 1121
+crates/pictura-app/cpp/panels/panel_group.cpp 1095
+crates/pictura-render/tests/gpu_parity.rs 1016
