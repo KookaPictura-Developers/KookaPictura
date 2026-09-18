@@ -55,9 +55,9 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include "interop.h"
-
 #include "selftest.h"
 #include "selftest_layers_controls.h"
+#include "selftest_layers_filter.h"
 
 int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 pictura::PicturaMainWindow& frame, pictura::PictureView* view,
@@ -6705,7 +6705,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(195, "compact shade");
             }
         }
-        if (const int lpc = pictura::runLayersControlsChecks(frame); lpc != 0) { return lpc; }
+        if (const int lpc = pictura::runLayersControlsChecks(frame); lpc != 0) { return lpc; } if (const int lfs = pictura::runLayersFilterChecks(frame); lfs != 0) { return lfs; }
         frame.closeDocument(anatomyDocIndex, false);
         // Re-acquire for the trailing transform check.
         canvas = frame.imageView();

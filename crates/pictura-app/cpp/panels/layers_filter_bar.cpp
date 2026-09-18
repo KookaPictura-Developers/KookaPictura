@@ -1,0 +1,292 @@
+#include "layers_filter_bar.h"
+
+#include "layers_panel_internal.h"
+
+#include <QtCore/QVariant>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLineEdit>
+#include <QtWidgets/QStackedWidget>
+#include <QtWidgets/QToolButton>
+#include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/QSizePolicy>
+
+#include <iterator>
+
+namespace pictura {
+
+namespace {
+
+struct Dimension {
+    const char* key;
+    const char* name;
+};
+
+constexpr Dimension kDimensions[] = {
+    {"name", "Name"},
+    {"kind", "Kind"},
+    {"effect", "Effect"},
+    {"mode", "Mode"},
+    {"attribute", "Attribute"},
+    {"color", "Color"},
+};
+
+struct KindOption {
+    const char* key;
+    const char* name;
+};
+
+constexpr KindOption kKinds[] = {
+    {"pixel", "Pixel"},
+    {"adjustment", "Adjustment"},
+    {"group", "Group"},
+    {"background", "Background"},
+};
+
+struct AttributeOption {
+    const char* key;
+    const char* name;
+};
+
+constexpr AttributeOption kAttributes[] = {
+    {"visible", "Visible"},
+    {"hidden", "Hidden"},
+    {"locked", "Locked"},
+    {"mask", "Has Mask"},
+    {"clipped", "Clipped"},
+};
+
+struct ColorOption {
+    int label;
+    const char* name;
+};
+
+constexpr ColorOption kColors[] = {
+    {-1, "None"},
+    {1, "Red"},
+    {2, "Orange"},
+    {3, "Yellow"},
+    {4, "Green"},
+    {5, "Blue"},
+    {6, "Violet"},
+    {7, "Gray"},
+};
+
+QWidget* makePage(QWidget* parent)
+{
+    return new QWidget(parent);
+}
+
+} // namespace
+
+LayerFilterBar::LayerFilterBar(QWidget* parent)
+    : QWidget(parent)
+{
+    setObjectName(QStringLiteral("layersFilterBar"));
+    // The criteria pages carry long combo entries; ignoring the size hint keeps
+    // the row from forcing a wide minimum on the panel.
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+
+    auto* layout = new QHBoxLayout(this);
+    layout->setContentsMargins(2, 1, 2, 1);
+    layout->setSpacing(3);
+
+    dimension_ = new QComboBox(this);
+    dimension_->setObjectName(QStringLiteral("layersFilterDimension"));
+    for (const Dimension& entry : kDimensions) {
+        dimension_->addItem(tr(entry.name), QString::fromLatin1(entry.key));
+    }
+    dimension_->setCurrentIndex(dimension_->findData(QStringLiteral("kind")));
+    layout->addWidget(dimension_);
+
+    stack_ = new QStackedWidget(this);
+    stack_->setObjectName(QStringLiteral("layersFilterCriteria"));
+    stack_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+
+    auto* namePage = makePage(stack_);
+    auto* nameLayout = new QHBoxLayout(namePage);
+    nameLayout->setContentsMargins(0, 0, 0, 0);
+    name_ = new QLineEdit(namePage);
+    name_->setPlaceholderText(tr("Name"));
+    nameLayout->addWidget(name_);
+    stack_->addWidget(namePage);
+
+    auto* kindPage = makePage(stack_);
+    auto* kindLayout = new QHBoxLayout(kindPage);
+    kindLayout->setContentsMargins(0, 0, 0, 0);
+    kindLayout->setSpacing(2);
+    for (size_t i = 0; i < std::size(kKinds); ++i) {
+        auto* button = new QToolButton(kindPage);
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        button->setText(tr(kKinds[i].name));
+        button->setProperty("kindKey", QString::fromLatin1(kKinds[i].key));
+        kindLayout->addWidget(button);
+        kindButtons_[i] = button;
+    }
+    kindLayout->addStretch(1);
+    stack_->addWidget(kindPage);
+
+    auto* effectPage = makePage(stack_);
+    auto* effectLayout = new QHBoxLayout(effectPage);
+    effectLayout->setContentsMargins(0, 0, 0, 0);
+    effect_ = new QComboBox(effectPage);
+    effect_->addItem(tr("Drop Shadow"));
+    effect_->addItem(tr("Inner Shadow"));
+    effect_->addItem(tr("Outer Glow"));
+    effect_->addItem(tr("Inner Glow"));
+    effect_->addItem(tr("Bevel and Emboss"));
+    effect_->addItem(tr("Satin"));
+    effect_->addItem(tr("Color Overlay"));
+    effect_->addItem(tr("Gradient Overlay"));
+    effect_->addItem(tr("Pattern Overlay"));
+    effect_->addItem(tr("Stroke"));
+    effect_->setEnabled(false);
+    effect_->setToolTip(tr("Layer effects — not implemented yet"));
+    effectLayout->addWidget(effect_);
+    stack_->addWidget(effectPage);
+
+    auto* modePage = makePage(stack_);
+    auto* modeLayout = new QHBoxLayout(modePage);
+    modeLayout->setContentsMargins(0, 0, 0, 0);
+    mode_ = new QComboBox(modePage);
+    for (const BlendEntry& entry : kBlends) {
+        mode_->addItem(QString::fromLatin1(entry.name), QString::fromLatin1(entry.key));
+    }
+    modeLayout->addWidget(mode_);
+    stack_->addWidget(modePage);
+
+    auto* attributePage = makePage(stack_);
+    auto* attributeLayout = new QHBoxLayout(attributePage);
+    attributeLayout->setContentsMargins(0, 0, 0, 0);
+    attribute_ = new QComboBox(attributePage);
+    for (const AttributeOption& entry : kAttributes) {
+        attribute_->addItem(tr(entry.name), QString::fromLatin1(entry.key));
+    }
+    attributeLayout->addWidget(attribute_);
+    stack_->addWidget(attributePage);
+
+    auto* colorPage = makePage(stack_);
+    auto* colorLayout = new QHBoxLayout(colorPage);
+    colorLayout->setContentsMargins(0, 0, 0, 0);
+    color_ = new QComboBox(colorPage);
+    for (const ColorOption& entry : kColors) {
+        color_->addItem(tr(entry.name), entry.label);
+    }
+    colorLayout->addWidget(color_);
+    stack_->addWidget(colorPage);
+
+    stack_->setCurrentIndex(dimension_->currentIndex());
+    layout->addWidget(stack_, 1);
+
+    toggle_ = new QToolButton(this);
+    toggle_->setObjectName(QStringLiteral("layersFilterToggle"));
+    toggle_->setCheckable(true);
+    toggle_->setAutoRaise(true);
+    toggle_->setText(tr("Filter"));
+    toggle_->setToolTip(tr("Enable Layer Filter"));
+    layout->addWidget(toggle_);
+
+    connect(dimension_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        stack_->setCurrentIndex(index);
+        userChanged();
+    });
+    connect(toggle_, &QToolButton::toggled, this, [this](bool) { userChanged(); });
+    connect(name_, &QLineEdit::textChanged, this, [this](const QString&) { userChanged(); });
+    for (QToolButton* button : kindButtons_) {
+        connect(button, &QToolButton::toggled, this, [this](bool) { userChanged(); });
+    }
+    connect(mode_, &QComboBox::currentIndexChanged, this, [this](int) { userChanged(); });
+    connect(attribute_, &QComboBox::currentIndexChanged, this, [this](int) { userChanged(); });
+    connect(color_, &QComboBox::currentIndexChanged, this, [this](int) { userChanged(); });
+}
+
+QString LayerFilterBar::activeDimension() const
+{
+    return dimension_->currentData().toString();
+}
+
+LayerFilter LayerFilterBar::buildFilter() const
+{
+    LayerFilter filter;
+    filter.enabled = toggle_->isChecked();
+    const QString dimension = activeDimension();
+    if (dimension == QLatin1String("name")) {
+        filter.name = name_->text();
+    } else if (dimension == QLatin1String("kind")) {
+        for (QToolButton* button : kindButtons_) {
+            if (button->isChecked()) {
+                filter.kinds.insert(button->property("kindKey").toString());
+            }
+        }
+    } else if (dimension == QLatin1String("mode")) {
+        filter.mode = mode_->currentData().toString();
+    } else if (dimension == QLatin1String("attribute")) {
+        filter.attribute = attribute_->currentData().toString();
+    } else if (dimension == QLatin1String("color")) {
+        filter.color = color_->currentData().toInt();
+    } else if (dimension == QLatin1String("effect")) {
+        filter.enabled = false;
+    }
+    return filter;
+}
+
+void LayerFilterBar::userChanged()
+{
+    if (syncing_) {
+        return;
+    }
+    filter_ = buildFilter();
+    emit filterChanged(filter_);
+}
+
+void LayerFilterBar::setFilter(const LayerFilter& filter)
+{
+    syncing_ = true;
+    filter_ = filter;
+    toggle_->setChecked(filter.enabled);
+    name_->setText(filter.name);
+    for (QToolButton* button : kindButtons_) {
+        button->setChecked(filter.kinds.contains(button->property("kindKey").toString()));
+    }
+    mode_->setCurrentIndex(qMax(0, mode_->findData(filter.mode)));
+    attribute_->setCurrentIndex(qMax(0, attribute_->findData(filter.attribute)));
+    color_->setCurrentIndex(qMax(0, color_->findData(filter.color)));
+
+    int dimension = dimension_->findData(QStringLiteral("kind"));
+    if (filter.enabled) {
+        if (!filter.name.isEmpty()) {
+            dimension = dimension_->findData(QStringLiteral("name"));
+        } else if (!filter.mode.isEmpty()) {
+            dimension = dimension_->findData(QStringLiteral("mode"));
+        } else if (!filter.attribute.isEmpty()) {
+            dimension = dimension_->findData(QStringLiteral("attribute"));
+        } else if (filter.color >= 0) {
+            dimension = dimension_->findData(QStringLiteral("color"));
+        }
+    }
+    if (dimension >= 0) {
+        dimension_->setCurrentIndex(dimension);
+        stack_->setCurrentIndex(dimension);
+    }
+    syncing_ = false;
+}
+
+int LayerFilterBar::dimensionIndexForTest() const
+{
+    return dimension_->currentIndex();
+}
+
+void LayerFilterBar::setDimensionForTest(const QString& key)
+{
+    const int index = dimension_->findData(key);
+    if (index < 0) {
+        return;
+    }
+    syncing_ = true;
+    dimension_->setCurrentIndex(index);
+    stack_->setCurrentIndex(index);
+    syncing_ = false;
+}
+
+} // namespace pictura

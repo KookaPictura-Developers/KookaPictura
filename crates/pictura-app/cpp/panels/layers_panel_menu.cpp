@@ -53,7 +53,7 @@ void LayersPanel::showContextMenu(const QPoint& pos)
         showEyeMenu(pos, index);
         return;
     }
-    const QString path = model_->pathForIndex(index);
+    const QString path = pathForProxyIndex(index);
     if (path.isEmpty()) {
         return;
     }
@@ -70,7 +70,7 @@ void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color)
 {
     QAction* rename = menu.addAction(tr("Rename"));
     connect(rename, &QAction::triggered, this, [this, path] {
-        const QModelIndex target = model_->indexForPath(path);
+        const QModelIndex target = proxyIndexForPath(path);
         if (target.isValid()) {
             tree_->setCurrentIndex(target);
             tree_->edit(target);
@@ -95,7 +95,7 @@ void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color)
 
 void LayersPanel::showEyeMenu(const QPoint& pos, const QModelIndex& index)
 {
-    const QString path = model_->pathForIndex(index);
+    const QString path = pathForProxyIndex(index);
     QMenu menu(tree_);
     QAction* only = menu.addAction(tr("Show/Hide This Layer Only"));
     connect(only, &QAction::triggered, this, [this, path] { toggleSolo(path); });

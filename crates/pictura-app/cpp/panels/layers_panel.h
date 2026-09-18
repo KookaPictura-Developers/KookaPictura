@@ -17,7 +17,10 @@ class QTreeView;
 
 namespace pictura {
 
+class LayerFilterBar;
 class LayerRowDelegate;
+struct LayerFilter;
+class LayersFilterProxyModel;
 class LayersModel;
 class PercentField;
 class PictureView;
@@ -63,6 +66,16 @@ public:
     void setOpacityPercentForTest(int pct);
     void setFillPercentForTest(int pct);
 
+    // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
+    // one, updates the bar, and applies it to the proxy.
+    QStringList visiblePathsForTest() const;
+    void setFilterNameForTest(const QString& name, bool enabled);
+    void setFilterKindForTest(const QStringList& kinds, bool enabled);
+    void setFilterModeForTest(const QString& key, bool enabled);
+    void setFilterColorForTest(int label, bool enabled);
+    void setFilterAttributeForTest(const QString& attr, bool enabled);
+    int filterDimensionForTest() const;
+
     // Phase D: run a wired Layers per-widget menu entry by its action id.
     // Returns false for ids this panel does not own.
     bool performPanelMenuAction(const QString& actionId);
@@ -83,6 +96,11 @@ private:
     void openPanelOptions();
     void persistOptions();
 
+    void applyFilter(const LayerFilter& filter);
+    void expandMatchingGroups();
+    QModelIndex proxyIndexForPath(const QString& path) const;
+    QString pathForProxyIndex(const QModelIndex& index) const;
+
     void addLayerAt(const QString& path);
     void addGroupAt(const QString& path);
     void duplicateSelection();
@@ -98,6 +116,8 @@ private:
 
     PictureView* view_ = nullptr;
     LayersModel* model_ = nullptr;
+    LayersFilterProxyModel* proxy_ = nullptr;
+    LayerFilterBar* filterBar_ = nullptr;
     LayerRowDelegate* delegate_ = nullptr;
     QTreeView* tree_ = nullptr;
     QComboBox* blend_ = nullptr;
