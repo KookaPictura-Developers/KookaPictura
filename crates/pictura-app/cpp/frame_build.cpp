@@ -1,60 +1,4 @@
-#include "frame.h"
-
-#include "commands.h"
-#include "dialogs.h"
-#include "icons.h"
-#include "image_view.h"
-#include "new_document_dialog.h"
-#include "options_bar.h"
-#include "panels/color_panel.h"
-#include "panels/histogram_panel.h"
-#include "panels/history_panel.h"
-#include "panels/info_panel.h"
-#include "panels/layers_panel.h"
-#include "panels/navigator_panel.h"
-#include "panels/panel_column.h"
-#include "panels/panel_group.h"
-#include "panels/placeholder_panel.h"
-#include "panels/swatches_panel.h"
-#include "preferences_dialog.h"
-#include "session.h"
-#include "theme.h"
-#include "toolbox.h"
-#include "tools.h"
-
-#include "pictura_app/src/cxxqt_object.cxxqt.h"
-
-#include <QtCore/QFileInfo>
-#include <QtCore/QCoreApplication>
-#include <QtCore/QJsonArray>
-#include <QtCore/QJsonObject>
-#include <QtCore/QRect>
-#include <QtCore/QSignalBlocker>
-#include <QtCore/QTimer>
-#include <QtGui/QAction>
-#include <QtGui/QActionGroup>
-#include <QtGui/QCloseEvent>
-#include <QtGui/QColor>
-#include <QtGui/QKeyEvent>
-#include <QtGui/QKeySequence>
-#include <QtGui/QShortcut>
-#include <QtWidgets/QComboBox>
-#include <QtWidgets/QDockWidget>
-#include <QtWidgets/QFileDialog>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QListWidget>
-#include <QtWidgets/QMenu>
-#include <QtWidgets/QMenuBar>
-#include <QtWidgets/QMessageBox>
-#include <QtWidgets/QPushButton>
-#include <QtWidgets/QSpinBox>
-#include <QtWidgets/QSplitter>
-#include <QtWidgets/QStatusBar>
-#include <QtWidgets/QTabWidget>
-#include <QtWidgets/QToolButton>
-#include <QtWidgets/QVBoxLayout>
-#include <QtWidgets/QWidget>
+#include "frame_includes.h"
 
 namespace pictura {
 
@@ -379,10 +323,6 @@ void PicturaMainWindow::buildStatusBar()
     bar->addWidget(backendLabel_);
     bar->addWidget(hintLabel_);
 
-    auto* readout = new QAction(this);
-    readout->setObjectName(QStringLiteral("statusReadout"));
-    readout->setData(QStringLiteral("sizes"));
-
     auto* optionsButton = new QToolButton(bar);
     optionsButton->setArrowType(Qt::DownArrow);
     optionsButton->setPopupMode(QToolButton::InstantPopup);
@@ -396,8 +336,8 @@ void PicturaMainWindow::buildStatusBar()
         option->setData(key);
         option->setChecked(key == QStringLiteral("sizes"));
         group->addAction(option);
-        connect(option, &QAction::triggered, this, [this, readout, key]() {
-            readout->setData(key);
+        connect(option, &QAction::triggered, this, [this, key]() {
+            statusReadout_ = key;
             updateStatus();
         });
     }

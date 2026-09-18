@@ -1,61 +1,6 @@
-#include "frame.h"
+#include "frame_includes.h"
 
-#include "commands.h"
-#include "dialogs.h"
-#include "icons.h"
-#include "image_view.h"
-#include "new_document_dialog.h"
-#include "options_bar.h"
-#include "panels/color_panel.h"
-#include "panels/histogram_panel.h"
-#include "panels/history_panel.h"
-#include "panels/info_panel.h"
-#include "panels/layers_panel.h"
-#include "panels/navigator_panel.h"
-#include "panels/panel_column.h"
-#include "panels/panel_group.h"
-#include "panels/placeholder_panel.h"
-#include "panels/swatches_panel.h"
-#include "preferences_dialog.h"
-#include "session.h"
-#include "theme.h"
-#include "toolbox.h"
-#include "tools.h"
-
-#include "pictura_app/src/cxxqt_object.cxxqt.h"
-
-#include <QtCore/QFileInfo>
-#include <QtCore/QCoreApplication>
-#include <QtCore/QJsonArray>
-#include <QtCore/QJsonObject>
-#include <QtCore/QRect>
-#include <QtCore/QSignalBlocker>
-#include <QtCore/QTimer>
-#include <QtGui/QAction>
-#include <QtGui/QActionGroup>
-#include <QtGui/QCloseEvent>
-#include <QtGui/QColor>
-#include <QtGui/QKeyEvent>
-#include <QtGui/QKeySequence>
-#include <QtGui/QShortcut>
-#include <QtWidgets/QComboBox>
-#include <QtWidgets/QDockWidget>
-#include <QtWidgets/QFileDialog>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QListWidget>
-#include <QtWidgets/QMenu>
-#include <QtWidgets/QMenuBar>
-#include <QtWidgets/QMessageBox>
-#include <QtWidgets/QPushButton>
-#include <QtWidgets/QSpinBox>
-#include <QtWidgets/QSplitter>
-#include <QtWidgets/QStatusBar>
 #include <QtWidgets/QTabBar>
-#include <QtWidgets/QTabWidget>
-#include <QtWidgets/QToolButton>
-#include <QtWidgets/QVBoxLayout>
-#include <QtWidgets/QWidget>
 
 namespace pictura {
 
@@ -726,9 +671,7 @@ void PicturaMainWindow::updateStatus()
         PictureView* view = activeView();
         if (view && view->has_document()) {
             const QImage image = view->image();
-            const QAction* readout = findChild<QAction*>(QStringLiteral("statusReadout"));
-            const QString mode = readout ? readout->data().toString() : QStringLiteral("sizes");
-            if (mode == QStringLiteral("dimensions")) {
+            if (statusReadout_ == QStringLiteral("dimensions")) {
                 text = QStringLiteral("W %1  H %2").arg(image.width()).arg(image.height());
             } else {
                 text = QStringLiteral("%1 × %2 px").arg(image.width()).arg(image.height());

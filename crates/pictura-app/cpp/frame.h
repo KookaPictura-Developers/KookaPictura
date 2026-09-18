@@ -236,6 +236,7 @@ private:
     QLabel* sizeLabel_ = nullptr;
     QLabel* hintLabel_ = nullptr;
     QLabel* backendLabel_ = nullptr;
+    QString statusReadout_ = QStringLiteral("sizes");
     QColor foreground_;
     QSet<QString> panelNames_;
     QStringList recent_;
