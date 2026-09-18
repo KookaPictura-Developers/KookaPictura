@@ -652,6 +652,16 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
         commitCrop();
         return;
     }
+    if (!event->isAutoRepeat()
+        && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+        && tools_ && tools_->activeTool() == ToolId::PolygonalLasso) {
+        tools_->commitPolygonLasso();
+        return;
+    }
+    if (!event->isAutoRepeat() && event->key() == Qt::Key_Escape && tools_
+        && tools_->cancelPolygonLasso()) {
+        return;
+    }
     if (!event->isAutoRepeat() && event->key() == Qt::Key_F) {
         cycleScreenMode(!(event->modifiers() & Qt::ShiftModifier));
         return;

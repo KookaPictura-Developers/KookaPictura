@@ -164,8 +164,9 @@ bool LayersPanel::performPanelMenuAction(const QString& actionId)
     } else if (actionId == QLatin1String("selectLinked")) {
         if (view_) {
             const QString path = currentPath();
-            if (!path.isEmpty()) {
-                selectPaths(view_->select_linked(path), path);
+            const QStringList linked = path.isEmpty() ? QStringList() : view_->select_linked(path);
+            if (!linked.isEmpty()) {
+                selectPaths(linked, path);
             }
         }
     } else if (actionId == QLatin1String("moveUp")) {

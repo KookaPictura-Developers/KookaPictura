@@ -3,6 +3,7 @@
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QSpinBox>
@@ -49,9 +50,13 @@ OptionsBar::OptionsBar(ToolController* controller, QWidget* parent)
 QWidget* OptionsBar::buildPage(ToolId id)
 {
     switch (id) {
-    case ToolId::Marquee:
     case ToolId::Lasso:
-        return buildCombinePage(id, false);
+    case ToolId::PolygonalLasso:
+    case ToolId::Marquee:
+    case ToolId::EllipticalMarquee:
+        return buildSelectionPage(id);
+    case ToolId::MagicWand:
+        return buildWandPage(id);
     case ToolId::QuickSelection:
         return buildCombinePage(id, true);
     case ToolId::Brush:
@@ -74,9 +79,92 @@ QWidget* OptionsBar::buildCombinePage(ToolId id, bool withTolerance)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
 
+    // Quick Selection has no Intersect mode in CS6.
+    addModeButtons(layout, page, id != ToolId::QuickSelection);
+
+    if (withTolerance && controller_) {
+        layout->addWidget(new QLabel(QStringLiteral("Tolerance"), page));
+        auto* spin = new QSpinBox(page);
+        spin->setRange(0, 255);
+        spin->setValue(controller_->tolerance());
+        layout->addWidget(spin);
+        connect(spin, &QSpinBox::valueChanged, this,
+                [this](int value) { controller_->setTolerance(value); });
+    }
+
+    if (id == ToolId::QuickSelection) {
+        // ponytail: the brush pop-up and Refine Edge are deferred; Sample All
+        // Layers and Auto-Enhance have no engine behind them, so they are shown
+        // checked but disabled rather than as silent no-ops.
+        auto* sample = new QCheckBox(QStringLiteral("Sample All Layers"), page);
+        sample->setChecked(true);
+        sample->setEnabled(false);
+        sample->setToolTip(
+            QStringLiteral("Not modelled: the wand samples the visible composite."));
+        layout->addWidget(sample);
+        auto* enhance = new QCheckBox(QStringLiteral("Auto-Enhance"), page);
+        enhance->setChecked(true);
+        enhance->setEnabled(false);
+        enhance->setToolTip(
+            QStringLiteral("Not modelled: Quick Selection has no edge-flow refinement."));
+        layout->addWidget(enhance);
+    }
+
+    return page;
+}
+
+QWidget* OptionsBar::buildWandPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
+
+    addModeButtons(layout, page, true);
+
+    layout->addWidget(new QLabel(QStringLiteral("Tolerance"), page));
+    auto* tolerance = new QSpinBox(page);
+    tolerance->setRange(0, 255);
+    tolerance->setValue(controller_ ? controller_->tolerance() : 32);
+    layout->addWidget(tolerance);
+    if (controller_) {
+        connect(tolerance, &QSpinBox::valueChanged, this,
+                [this](int value) { controller_->setTolerance(value); });
+    }
+
+    auto* contiguous = new QCheckBox(QStringLiteral("Contiguous"), page);
+    contiguous->setChecked(controller_ ? controller_->contiguous() : true);
+    layout->addWidget(contiguous);
+    if (controller_) {
+        connect(contiguous, &QCheckBox::toggled, this,
+                [this](bool on) { controller_->setContiguous(on); });
+    }
+
+    // ponytail: the engine rasteriser is binary (pixel-centre) and the wand
+    // samples the visible composite; both controls stay visible but disabled.
+    auto* antiAlias = new QCheckBox(QStringLiteral("Anti-alias"), page);
+    antiAlias->setChecked(controller_ ? controller_->antiAlias() : true);
+    antiAlias->setEnabled(false);
+    antiAlias->setToolTip(
+        QStringLiteral("Not modelled: the selection rasteriser is binary (pixel-centre)."));
+    layout->addWidget(antiAlias);
+    auto* sample = new QCheckBox(QStringLiteral("Sample All Layers"), page);
+    sample->setChecked(controller_ ? controller_->sampleAllLayers() : true);
+    sample->setEnabled(false);
+    sample->setToolTip(QStringLiteral("Not modelled: the wand samples the visible composite."));
+    layout->addWidget(sample);
+
+    return page;
+}
+
+void OptionsBar::addModeButtons(QHBoxLayout* layout, QWidget* page, bool withIntersect)
+{
     auto* group = new QButtonGroup(page);
     group->setExclusive(true);
     for (const ModeButton& modeButton : kModes) {
+        if (!withIntersect && modeButton.mode == SelectionMode::Intersect) {
+            continue;
+        }
         auto* button = new QToolButton(page);
         button->setText(QString::fromLatin1(modeButton.label));
         button->setCheckable(true);
@@ -88,15 +176,115 @@ QWidget* OptionsBar::buildCombinePage(ToolId id, bool withTolerance)
                     [this, modeButton]() { controller_->setCombineMode(modeButton.mode); });
         }
     }
+}
 
-    if (withTolerance && controller_) {
-        layout->addWidget(new QLabel(QStringLiteral("Tolerance"), page));
-        auto* spin = new QSpinBox(page);
-        spin->setRange(0, 255);
-        spin->setValue(controller_->tolerance());
-        layout->addWidget(spin);
-        connect(spin, &QSpinBox::valueChanged, this,
-                [this](int value) { controller_->setTolerance(value); });
+QWidget* OptionsBar::buildSelectionPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
+
+    addModeButtons(layout, page, true);
+
+    layout->addWidget(new QLabel(QStringLiteral("Feather"), page));
+    auto* feather = new QDoubleSpinBox(page);
+    feather->setRange(0.0, 250.0);
+    feather->setDecimals(1);
+    feather->setSuffix(QStringLiteral(" px"));
+    feather->setValue(controller_ ? controller_->feather() : 0.0);
+    layout->addWidget(feather);
+    if (controller_) {
+        connect(feather, &QDoubleSpinBox::valueChanged, this,
+                [this](double value) { controller_->setFeather(value); });
+    }
+
+    const bool isMarquee = id == ToolId::Marquee || id == ToolId::EllipticalMarquee;
+    if (isMarquee) {
+        layout->addWidget(new QLabel(QStringLiteral("Style"), page));
+        auto* styleCombo = new QComboBox(page);
+        styleCombo->addItem(QStringLiteral("Normal"), int(MarqueeStyle::Normal));
+        styleCombo->addItem(QStringLiteral("Fixed Ratio"), int(MarqueeStyle::FixedRatio));
+        styleCombo->addItem(QStringLiteral("Fixed Size"), int(MarqueeStyle::FixedSize));
+        layout->addWidget(styleCombo);
+
+        // ponytail: 1:1 and 100x100 are inferred defaults (CS6 Help does not
+        // state shipped values); the in/cm unit combo is deferred, so size is px.
+        auto* ratioBox = new QWidget(page);
+        auto* ratioLayout = new QHBoxLayout(ratioBox);
+        ratioLayout->setContentsMargins(0, 0, 0, 0);
+        auto* ratioW = new QDoubleSpinBox(ratioBox);
+        ratioW->setRange(0.1, 100.0);
+        ratioW->setDecimals(1);
+        ratioW->setValue(controller_ ? controller_->fixedRatioWidth() : 1.0);
+        auto* ratioH = new QDoubleSpinBox(ratioBox);
+        ratioH->setRange(0.1, 100.0);
+        ratioH->setDecimals(1);
+        ratioH->setValue(controller_ ? controller_->fixedRatioHeight() : 1.0);
+        ratioLayout->addWidget(ratioW);
+        ratioLayout->addWidget(new QLabel(QStringLiteral(":"), ratioBox));
+        ratioLayout->addWidget(ratioH);
+        ratioBox->setToolTip(
+            QStringLiteral("Inferred default 1:1; CS6 Help does not state shipped values."));
+        layout->addWidget(ratioBox);
+
+        auto* sizeBox = new QWidget(page);
+        auto* sizeLayout = new QHBoxLayout(sizeBox);
+        sizeLayout->setContentsMargins(0, 0, 0, 0);
+        auto* sizeW = new QSpinBox(sizeBox);
+        sizeW->setRange(1, 10000);
+        sizeW->setValue(controller_ ? controller_->fixedSizeWidth() : 100);
+        auto* sizeH = new QSpinBox(sizeBox);
+        sizeH->setRange(1, 10000);
+        sizeH->setValue(controller_ ? controller_->fixedSizeHeight() : 100);
+        sizeLayout->addWidget(sizeW);
+        sizeLayout->addWidget(new QLabel(QStringLiteral("x"), sizeBox));
+        sizeLayout->addWidget(sizeH);
+        sizeBox->setToolTip(
+            QStringLiteral("Inferred default 100x100 px; non-pixel units are deferred."));
+        layout->addWidget(sizeBox);
+
+        if (controller_) {
+            connect(ratioW, &QDoubleSpinBox::valueChanged, this, [this, ratioH](double v) {
+                controller_->setFixedRatio(v, ratioH->value());
+            });
+            connect(ratioH, &QDoubleSpinBox::valueChanged, this, [this, ratioW](double v) {
+                controller_->setFixedRatio(ratioW->value(), v);
+            });
+            connect(sizeW, &QSpinBox::valueChanged, this,
+                    [this, sizeH](int v) { controller_->setFixedSize(v, sizeH->value()); });
+            connect(sizeH, &QSpinBox::valueChanged, this,
+                    [this, sizeW](int v) { controller_->setFixedSize(sizeW->value(), v); });
+        }
+
+        const auto applyStyleVisibility = [ratioBox, sizeBox](int style) {
+            ratioBox->setVisible(style == int(MarqueeStyle::FixedRatio));
+            sizeBox->setVisible(style == int(MarqueeStyle::FixedSize));
+        };
+        const int initialStyle =
+            controller_ ? int(controller_->marqueeStyle()) : int(MarqueeStyle::Normal);
+        styleCombo->setCurrentIndex(styleCombo->findData(initialStyle));
+        applyStyleVisibility(initialStyle);
+        if (controller_) {
+            connect(styleCombo, &QComboBox::currentIndexChanged, this,
+                    [this, styleCombo, applyStyleVisibility](int) {
+                        const int style = styleCombo->currentData().toInt();
+                        controller_->setMarqueeStyle(static_cast<MarqueeStyle>(style));
+                        applyStyleVisibility(style);
+                    });
+        }
+    }
+
+    if (id != ToolId::Marquee) {
+        // ponytail: the engine rasterises at the pixel centre (binary coverage);
+        // a fractional-coverage rasteriser is new engine work, so the control is
+        // visible but disabled rather than a silent no-op.
+        auto* antiAlias = new QCheckBox(QStringLiteral("Anti-alias"), page);
+        antiAlias->setChecked(true);
+        antiAlias->setEnabled(false);
+        antiAlias->setToolTip(QStringLiteral(
+            "Not modelled: the selection rasteriser is binary (pixel-centre)."));
+        layout->addWidget(antiAlias);
     }
 
     return page;

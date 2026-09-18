@@ -228,6 +228,8 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::SelectDeselect,
                                   [this]() { return activeView() && activeView()->has_document(); });
 
+    registerSelectHandlers();
+
     // M37: layer creation and grouping. Layer…/Group… open the modal dialog,
     // whose accept step places the node above the selection; Group from Layers…
     // wraps the panel selection. The remaining commands target the active

@@ -5,6 +5,7 @@
 #include "tools.h"
 
 class QStackedWidget;
+class QHBoxLayout;
 
 namespace pictura {
 
@@ -23,7 +24,10 @@ public:
 private:
     QWidget* buildPage(ToolId id);
     QWidget* buildCombinePage(ToolId id, bool withTolerance);
+    QWidget* buildSelectionPage(ToolId id);
+    QWidget* buildWandPage(ToolId id);
     QWidget* buildPaintPage(ToolId id);
+    void addModeButtons(QHBoxLayout* layout, QWidget* page, bool withIntersect);
 
     ToolController* controller_ = nullptr;
     QStackedWidget* stack_ = nullptr;

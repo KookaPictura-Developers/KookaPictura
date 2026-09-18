@@ -155,7 +155,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // selected quadrant. Wand the red top-left, Invert it, and require
             // the blue bottom-right to be untouched. Clean up afterwards so the
             // full-frame checks below see the original stack.
-            const bool wand = view->magic_wand(2, 2, 10);
+            const bool wand = view->magic_wand(2, 2, 10, true, QStringLiteral("new"));
             const bool hasSelection = view->has_selection();
             const int selectedPx = view->selection_count();
             ST_BEGIN("magic_wand");
@@ -254,7 +254,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             // that quadrant, apply the fixed-seed Add Noise, and require the
             // selected quadrant to change while the rest is bit-identical.
             view->deselect();
-            const bool filterWand = view->magic_wand(6, 6, 10);
+            const bool filterWand = view->magic_wand(6, 6, 10, true, QStringLiteral("new"));
             const bool filterSelected = view->has_selection();
             const int filterSelectedPx = view->selection_count();
             ST_BEGIN("filter_wand");
@@ -690,23 +690,23 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                               QStringLiteral("white"));
             pictura::PictureView* toolView = frame.activeView();
             const bool rectSel =
-                toolView && toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
+                toolView && toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"), 0.0);
             const int rectPx = toolView ? toolView->selection_count() : -1;
             const bool ellipseSel =
-                toolView && toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"));
+                toolView && toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"), 0.0);
             const int ellipsePx = toolView ? toolView->selection_count() : -1;
             if (toolView) {
-                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("add"));
+                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("add"), 0.0);
             }
             const bool addIdempotent = toolView && toolView->selection_count() == ellipsePx;
             if (toolView) {
-                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"));
-                toolView->select_rect(2, 2, 1, 1, QStringLiteral("intersect"));
+                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"), 0.0);
+                toolView->select_rect(2, 2, 1, 1, QStringLiteral("intersect"), 0.0);
             }
             const bool centreInside = toolView && toolView->selection_count() == 1;
             if (toolView) {
-                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"));
-                toolView->select_rect(0, 0, 1, 1, QStringLiteral("intersect"));
+                toolView->select_ellipse(0, 0, 4, 4, QStringLiteral("new"), 0.0);
+                toolView->select_rect(0, 0, 1, 1, QStringLiteral("intersect"), 0.0);
             }
             const bool cornerOutside = toolView && toolView->selection_count() == 0;
             ST_BEGIN("marquee_rect");
@@ -725,21 +725,21 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
             // M18: combine modes union/subtract/intersect on the 8x8 canvas.
             if (toolView) {
-                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
+                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"), 0.0);
             }
             const int newPx = toolView ? toolView->selection_count() : -1;
             if (toolView) {
-                toolView->select_rect(2, 2, 4, 4, QStringLiteral("add"));
+                toolView->select_rect(2, 2, 4, 4, QStringLiteral("add"), 0.0);
             }
             const int addPx = toolView ? toolView->selection_count() : -1;
             if (toolView) {
-                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
-                toolView->select_rect(1, 1, 2, 2, QStringLiteral("subtract"));
+                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"), 0.0);
+                toolView->select_rect(1, 1, 2, 2, QStringLiteral("subtract"), 0.0);
             }
             const int subPx = toolView ? toolView->selection_count() : -1;
             if (toolView) {
-                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"));
-                toolView->select_rect(2, 2, 4, 4, QStringLiteral("intersect"));
+                toolView->select_rect(0, 0, 4, 4, QStringLiteral("new"), 0.0);
+                toolView->select_rect(2, 2, 4, 4, QStringLiteral("intersect"), 0.0);
             }
             const int interPx = toolView ? toolView->selection_count() : -1;
             ST_BEGIN("combine_new");
@@ -761,7 +761,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolView->lasso_add_point(6, 6);
                 toolView->lasso_add_point(1, 6);
             }
-            const bool lassoEnded = toolView && toolView->end_lasso();
+            const bool lassoEnded = toolView && toolView->end_lasso(0.0);
             const int lassoPx = toolView ? toolView->selection_count() : -1;
             const bool shortStarted =
                 toolView && toolView->begin_lasso(QStringLiteral("new"));
@@ -769,7 +769,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolView->lasso_add_point(1, 1);
                 toolView->lasso_add_point(6, 1);
             }
-            const bool shortEnded = toolView && toolView->end_lasso();
+            const bool shortEnded = toolView && toolView->end_lasso(0.0);
             const bool shortUnchanged = toolView && toolView->selection_count() == lassoPx;
             ST_BEGIN("lasso_start");
             ST_PASS("lasso start=%d end=%d px=%d short_end=%d "
@@ -2358,7 +2358,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::MagicWand);
+        probe.setActiveTool(pictura::ToolId::MagneticLasso);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");

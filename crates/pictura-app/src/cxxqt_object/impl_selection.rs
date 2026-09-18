@@ -3,54 +3,240 @@ use super::helpers_composite::*;
 use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QString, QStringList};
+use pictura_core::Channel;
 use pictura_select::{CombineMode, Selection};
 
 impl qobject::PictureView {
     pub fn select_all(mut self: Pin<&mut Self>) {
         let dims = self.rust().doc.as_ref().map(|d| (d.width, d.height));
         if let Some((w, h)) = dims {
-            self.as_mut().rust_mut().selection = Some(Selection::all(w, h));
+            {
+                let mut rust = self.as_mut().rust_mut();
+                if let Some(prev) = rust.selection.take() {
+                    if prev.data.iter().any(|&v| v > 0) {
+                        rust.deselected_selection = Some(prev);
+                    }
+                }
+                rust.selection = Some(Selection::all(w, h));
+            }
             self.as_mut().record("Select All");
             self.changed();
         }
     }
 
     pub fn deselect(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().selection = None;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            if let Some(prev) = rust.selection.take() {
+                rust.deselected_selection = Some(prev);
+            }
+        }
         self.as_mut().record("Deselect");
         self.changed();
     }
 
-    pub fn magic_wand(mut self: Pin<&mut Self>, x: i32, y: i32, tolerance: i32) -> bool {
-        let picked = {
+    /// Restore the last deselected selection. Refuses (no history) without a
+    /// stored selection or when its dimensions no longer match the document.
+    pub fn reselect(mut self: Pin<&mut Self>) -> bool {
+        let restored = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            match rust.deselected_selection.as_ref() {
+                Some(sel) if sel.width == doc.width && sel.height == doc.height => sel.clone(),
+                _ => return false,
+            }
+        };
+        self.as_mut().rust_mut().selection = Some(restored);
+        self.as_mut().recomposite();
+        self.as_mut().record("Reselect");
+        true
+    }
+
+    pub fn has_deselected_selection(&self) -> bool {
+        self.rust().deselected_selection.is_some()
+    }
+
+    pub fn invert_selection(mut self: Pin<&mut Self>) -> bool {
+        let inverted = self.rust().selection.as_ref().map(Selection::invert);
+        let Some(inverted) = inverted else {
+            return false;
+        };
+        self.as_mut().rust_mut().selection = Some(inverted);
+        self.as_mut().recomposite();
+        self.as_mut().record("Inverse Selection");
+        true
+    }
+
+    /// `border` width 1-200, `smooth`/`expand`/`contract` radius 1-100,
+    /// `feather` radius >0 (clamped to 250). Zero/unknown amounts refuse
+    /// (no history).
+    pub fn modify_selection(mut self: Pin<&mut Self>, op: &QString, amount: f64) -> bool {
+        if !amount.is_finite() {
+            return false;
+        }
+        let op = op.to_string();
+        let label = match op.as_str() {
+            "border" => "Border Selection",
+            "smooth" => "Smooth Selection",
+            "expand" => "Expand Selection",
+            "contract" => "Contract Selection",
+            "feather" => "Feather Selection",
+            _ => return false,
+        };
+        let modified = {
+            let rust = self.rust();
+            let Some(sel) = rust.selection.as_ref() else {
+                return false;
+            };
+            let radius = amount.round();
+            match op.as_str() {
+                "border" => (radius >= 1.0).then(|| sel.border(radius as u32)),
+                "smooth" => (radius >= 1.0).then(|| sel.smooth(radius as u32)),
+                "expand" => (radius >= 1.0).then(|| sel.expand(radius as u32)),
+                "contract" => (radius >= 1.0).then(|| sel.contract(radius as u32)),
+                "feather" => (amount > 0.0).then(|| sel.feather(amount)),
+                _ => None,
+            }
+        };
+        let Some(modified) = modified else {
+            return false;
+        };
+        self.as_mut().rust_mut().selection = Some(modified);
+        self.as_mut().recomposite();
+        self.as_mut().record(label);
+        true
+    }
+
+    pub fn grow_selection(mut self: Pin<&mut Self>, tolerance: i32) -> bool {
+        let grown = {
+            let rust = self.rust();
+            let (Some(doc), Some(sel)) = (rust.doc.as_ref(), rust.selection.as_ref()) else {
+                return false;
+            };
+            let tolerance = tolerance.clamp(0, 255) as u8;
+            match pictura_select::grow(sel, &current_buffer(doc, rust.gpu_compute), tolerance) {
+                Ok(selection) => selection,
+                Err(_) => return false,
+            }
+        };
+        self.as_mut().rust_mut().selection = Some(grown);
+        self.as_mut().recomposite();
+        self.as_mut().record("Grow Selection");
+        true
+    }
+
+    pub fn similar_selection(mut self: Pin<&mut Self>, tolerance: i32) -> bool {
+        let matched = {
+            let rust = self.rust();
+            let (Some(doc), Some(sel)) = (rust.doc.as_ref(), rust.selection.as_ref()) else {
+                return false;
+            };
+            let tolerance = tolerance.clamp(0, 255) as u8;
+            match pictura_select::similar(sel, &current_buffer(doc, rust.gpu_compute), tolerance) {
+                Ok(selection) => selection,
+                Err(_) => return false,
+            }
+        };
+        self.as_mut().rust_mut().selection = Some(matched);
+        self.as_mut().recomposite();
+        self.as_mut().record("Similar Selection");
+        true
+    }
+
+    /// Append the coverage as a document extra channel. The dialog `name` is
+    /// accepted but not stored: `Channel` has only `id`.
+    // ponytail: names map positionally to `Alpha N` = channels[N-1]; add a
+    // `Channel.name` field only if PSD round-tripping of names is required.
+    pub fn save_selection(mut self: Pin<&mut Self>, _name: &QString) -> bool {
+        let saved = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(sel) = rust.selection.clone() else {
+                return false;
+            };
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            let id = doc.channels.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+            doc.channels.push(sel.to_channel(id));
+            true
+        };
+        if saved {
+            self.as_mut().record("Save Selection");
+        }
+        saved
+    }
+
+    pub fn load_selection(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        let loaded = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            selection_from_named_channel(&doc.channels, doc.width, doc.height, &name.to_string())
+        };
+        let Some(selection) = loaded else {
+            return false;
+        };
+        self.as_mut().rust_mut().selection = Some(selection);
+        self.as_mut().recomposite();
+        self.as_mut().record("Load Selection");
+        true
+    }
+
+    pub fn selection_channel_count(&self) -> i32 {
+        self.rust()
+            .doc
+            .as_ref()
+            .map_or(0, |d| d.channels.len() as i32)
+    }
+
+    /// Every layer row path in panel order (depth-first, topmost-first).
+    pub fn select_all_layers(&self) -> QStringList {
+        self.rust()
+            .doc
+            .as_ref()
+            .map(|doc| {
+                pictura_render::flatten_rows(doc)
+                    .into_iter()
+                    .map(|(path, _)| QString::from(path))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn magic_wand(
+        mut self: Pin<&mut Self>,
+        x: i32,
+        y: i32,
+        tolerance: i32,
+        contiguous: bool,
+        mode: &QString,
+    ) -> bool {
+        let shape = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
                 return false;
             };
             if x < 0 || y < 0 {
-                None
-            } else {
-                let tolerance = tolerance.clamp(0, 255) as u8;
-                pictura_select::magic_wand(
-                    &current_buffer(doc, rust.gpu_compute),
-                    x as u32,
-                    y as u32,
-                    tolerance,
-                    true,
-                )
-                .ok()
+                return false;
+            }
+            let tolerance = tolerance.clamp(0, 255) as u8;
+            match pictura_select::magic_wand(
+                &current_buffer(doc, rust.gpu_compute),
+                x as u32,
+                y as u32,
+                tolerance,
+                contiguous,
+            ) {
+                Ok(selection) => selection,
+                Err(_) => return false,
             }
         };
-        match picked {
-            Some(selection) => {
-                self.as_mut().rust_mut().selection = Some(selection);
-                self.as_mut().record("Magic Wand");
-                self.changed();
-                true
-            }
-            None => false,
-        }
+        let mode = combine_mode_from(&mode.to_string());
+        self.as_mut().apply_selection(shape, mode)
     }
 
     pub fn has_selection(&self) -> bool {
@@ -64,20 +250,45 @@ impl qobject::PictureView {
             .map_or(0, |s| s.data.iter().filter(|&&v| v > 0).count() as i32)
     }
 
+    /// Coverage byte at `(x, y)` (0 outside, 255 fully inside, intermediate on
+    /// a feathered edge). 0 without a document/selection or out of bounds.
+    pub fn selection_coverage(&self, x: i32, y: i32) -> i32 {
+        let rust = self.rust();
+        let Some(sel) = rust.selection.as_ref() else {
+            return 0;
+        };
+        if x < 0 || y < 0 || x as u32 >= sel.width || y as u32 >= sel.height {
+            return 0;
+        }
+        sel.data[y as usize * sel.width as usize + x as usize] as i32
+    }
+
     /// Merge a document-sized `shape` into the current selection with `mode`,
     /// capturing history and emitting [`changed`]. Returns false without a doc.
+    ///
+    /// A New-mode commit that replaces a non-empty selection stores the old one
+    /// as the `reselect` memory; every other commit clears it.
     fn apply_selection(mut self: Pin<&mut Self>, shape: Selection, mode: CombineMode) -> bool {
         {
             let mut rust = self.as_mut().rust_mut();
             if rust.doc.is_none() {
                 return false;
             }
-            let mut base = rust
-                .selection
-                .take()
-                .unwrap_or_else(|| Selection::none(shape.width, shape.height));
-            base.combine_with(&shape, mode);
-            rust.selection = Some(base);
+            let previous = rust.selection.take();
+            let replaced = matches!(mode, CombineMode::New)
+                && previous
+                    .as_ref()
+                    .is_some_and(|s| s.data.iter().any(|&v| v > 0));
+            if replaced {
+                rust.deselected_selection = previous;
+                rust.selection = Some(shape);
+            } else {
+                rust.deselected_selection = None;
+                let mut base =
+                    previous.unwrap_or_else(|| Selection::none(shape.width, shape.height));
+                base.combine_with(&shape, mode);
+                rust.selection = Some(base);
+            }
         }
         self.as_mut().recomposite();
         self.as_mut().record("Selection");
@@ -91,13 +302,14 @@ impl qobject::PictureView {
         w: i32,
         h: i32,
         mode: &QString,
+        feather: f64,
     ) -> bool {
         let shape = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
                 return false;
             };
-            Selection::rect(doc.width, doc.height, x, y, w, h)
+            Selection::rect(doc.width, doc.height, x, y, w, h).feather(feather)
         };
         let mode = combine_mode_from(&mode.to_string());
         self.as_mut().apply_selection(shape, mode)
@@ -110,13 +322,14 @@ impl qobject::PictureView {
         w: i32,
         h: i32,
         mode: &QString,
+        feather: f64,
     ) -> bool {
         let shape = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
                 return false;
             };
-            Selection::ellipse(doc.width, doc.height, x, y, w, h)
+            Selection::ellipse(doc.width, doc.height, x, y, w, h).feather(feather)
         };
         let mode = combine_mode_from(&mode.to_string());
         self.as_mut().apply_selection(shape, mode)
@@ -136,7 +349,7 @@ impl qobject::PictureView {
         self.as_mut().rust_mut().pending_lasso.push((x, y));
     }
 
-    pub fn end_lasso(mut self: Pin<&mut Self>) -> bool {
+    pub fn end_lasso(mut self: Pin<&mut Self>, feather: f64) -> bool {
         let shape = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
@@ -145,7 +358,7 @@ impl qobject::PictureView {
             if rust.pending_lasso.len() < 3 {
                 return false;
             }
-            Selection::polygon(doc.width, doc.height, &rust.pending_lasso)
+            Selection::polygon(doc.width, doc.height, &rust.pending_lasso).feather(feather)
         };
         let mode = combine_mode_from(&self.rust().pending_lasso_mode);
         if !self.as_mut().apply_selection(shape, mode) {
@@ -155,6 +368,12 @@ impl qobject::PictureView {
         rust.pending_lasso.clear();
         rust.pending_lasso_mode.clear();
         true
+    }
+
+    pub fn cancel_lasso(mut self: Pin<&mut Self>) {
+        let mut rust = self.as_mut().rust_mut();
+        rust.pending_lasso.clear();
+        rust.pending_lasso_mode.clear();
     }
 
     pub fn quick_select(
@@ -232,5 +451,56 @@ impl qobject::PictureView {
             return QString::default();
         };
         QString::from(format!("{x0} {y0} {} {}", x1 - x0 + 1, y1 - y0 + 1))
+    }
+}
+
+/// The zero-based `doc.channels` index for a dialog label `"Alpha N"`.
+///
+/// Names are positional because [`Channel`] has no name field; anything that is
+/// not exactly `"Alpha N"` (N >= 1) resolves to `None`.
+fn parse_channel_name(name: &str) -> Option<usize> {
+    let n: usize = name.strip_prefix("Alpha ")?.trim().parse().ok()?;
+    n.checked_sub(1)
+}
+
+/// The selection stored in the named extra channel, or `None` for an unknown
+/// name or a channel whose byte length is not `width * height`.
+fn selection_from_named_channel(
+    channels: &[Channel],
+    width: u32,
+    height: u32,
+    name: &str,
+) -> Option<Selection> {
+    let channel = channels.get(parse_channel_name(name)?)?;
+    Selection::from_channel(channel, width, height).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn channel(id: i16, len: usize) -> Channel {
+        Channel {
+            id,
+            data: vec![7; len],
+        }
+    }
+
+    #[test]
+    fn channel_name_maps_positionally() {
+        assert_eq!(parse_channel_name("Alpha 1"), Some(0));
+        assert_eq!(parse_channel_name("Alpha 3"), Some(2));
+        assert_eq!(parse_channel_name("Alpha 0"), None);
+        assert_eq!(parse_channel_name("alpha 1"), None);
+        assert_eq!(parse_channel_name("Alpha x"), None);
+        assert_eq!(parse_channel_name(""), None);
+    }
+
+    #[test]
+    fn wrong_length_channel_is_refused() {
+        let channels = [channel(1, 3)];
+        assert!(selection_from_named_channel(&channels, 2, 2, "Alpha 1").is_none());
+        assert!(selection_from_named_channel(&channels, 1, 3, "Alpha 1").is_some());
+        assert!(selection_from_named_channel(&channels, 2, 2, "Alpha 2").is_none());
     }
 }

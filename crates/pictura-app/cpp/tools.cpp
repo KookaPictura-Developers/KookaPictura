@@ -7,12 +7,19 @@
 
 #include <QtCore/QDebug>
 #include <QtCore/QElapsedTimer>
+#include <QtWidgets/QApplication>
 
 #include <algorithm>
+#include <cmath>
 
 namespace pictura {
 
 namespace {
+
+// Document-space radius for the Polygonal Lasso close-click and for treating a
+// second rapid press as a double-click. Document pixels, so it shrinks visually
+// when zoomed out.
+constexpr double kPolygonCloseRadius = 6.0;
 
 const ToolInfo kToolTable[] = {
     {ToolId::Move, "move", "Move", QLatin1Char('V'), Qt::SizeAllCursor,
@@ -20,15 +27,19 @@ const ToolInfo kToolTable[] = {
     {ToolId::Marquee, "marquee", "Rectangular Marquee", QLatin1Char('M'), Qt::CrossCursor,
      "Marquee: drag to select a rectangle", 2, true, 12, 12},
     {ToolId::EllipticalMarquee, "ellipticalmarquee", "Elliptical Marquee", QLatin1Char('M'),
-     Qt::CrossCursor, "Elliptical Marquee: not implemented yet", 2, false, 12, 12},
+     Qt::CrossCursor, "Elliptical Marquee: drag to select an ellipse", 2, true, 12, 12},
     {ToolId::Lasso, "lasso", "Lasso", QLatin1Char('L'), Qt::CrossCursor,
      "Lasso: drag around a region to select", 3, true, 12, 12},
     {ToolId::PolygonalLasso, "polygonallasso", "Polygonal Lasso", QLatin1Char('L'),
-     Qt::CrossCursor, "Polygonal Lasso: not implemented yet", 3, false, 12, 12},
+     Qt::CrossCursor, "Polygonal Lasso: click vertices, close on the first vertex or double-click",
+     3, true, 12, 12},
     {ToolId::MagneticLasso, "magneticlasso", "Magnetic Lasso", QLatin1Char('L'),
-     Qt::CrossCursor, "Magnetic Lasso: not implemented yet", 3, false, 12, 12},
+     Qt::CrossCursor,
+     "Magnetic Lasso: not implemented yet (no edge map or fastening-point tracker)", 3, false,
+     12, 12},
     {ToolId::MagicWand, "magicwand", "Magic Wand", QLatin1Char('W'), Qt::CrossCursor,
-     "Magic Wand: not implemented yet", 4, false, 12, 12},
+     "Magic Wand: click to select by colour, combining with the current selection", 4, true, 12,
+     12},
     {ToolId::QuickSelection, "quickselection", "Quick Selection", QLatin1Char('W'),
      Qt::CrossCursor, "Quick Selection: drag to grow a selection", 4, true, 12, 12},
     {ToolId::Crop, "crop", "Crop", QLatin1Char('C'), Qt::CrossCursor,
@@ -241,9 +252,9 @@ const QList<ToolId>& allToolIds()
 const QList<ToolId>& implementedToolIds()
 {
     static const QList<ToolId> ids = {
-        ToolId::Move,   ToolId::Marquee, ToolId::Lasso, ToolId::QuickSelection,
-        ToolId::Crop,   ToolId::Eyedropper, ToolId::Hand, ToolId::Zoom,
-        ToolId::Brush,  ToolId::Pencil,
+        ToolId::Move,   ToolId::Marquee, ToolId::EllipticalMarquee, ToolId::Lasso,
+        ToolId::PolygonalLasso, ToolId::MagicWand, ToolId::QuickSelection, ToolId::Crop,
+        ToolId::Eyedropper, ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
     };
     return ids;
 }
@@ -277,6 +288,7 @@ void ToolController::setActiveTool(ToolId id)
         return;
     }
     active_ = id;
+    cancelPolygonLasso();
     PictureView* v = view();
     if (v && v->is_painting()) {
         v->cancel_paint();
@@ -298,10 +310,31 @@ void ToolController::setActiveTool(ToolId id)
 
 void ToolController::setCombineMode(SelectionMode mode) { mode_ = mode; }
 
+void ToolController::setMarqueeStyle(MarqueeStyle style) { marqueeStyle_ = style; }
+
+void ToolController::setFeather(double feather)
+{
+    feather_ = feather > 0.0 ? std::min(feather, 250.0) : 0.0;
+}
+
+void ToolController::setFixedRatio(double width, double height)
+{
+    fixedRatioW_ = width > 0.0 ? width : 1.0;
+    fixedRatioH_ = height > 0.0 ? height : 1.0;
+}
+
+void ToolController::setFixedSize(int width, int height)
+{
+    fixedSizeW_ = std::max(width, 1);
+    fixedSizeH_ = std::max(height, 1);
+}
+
 void ToolController::setTolerance(int tolerance)
 {
     tolerance_ = std::clamp(tolerance, 0, 255);
 }
+
+void ToolController::setContiguous(bool on) { contiguous_ = on; }
 
 int ToolController::brushSize() const { return brushSize_; }
 
@@ -519,13 +552,14 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         updateDragOverlay(imagePos);
         return;
     case ToolId::Marquee:
+    case ToolId::EllipticalMarquee:
         if (!v) {
             return;
         }
         dragging_ = true;
         dragCommitted_ = false;
         anchor_ = last_ = imagePos;
-        updateDragOverlay(imagePos);
+        updateMarqueeOverlay(imagePos);
         return;
     case ToolId::Lasso:
         if (!v || !v->begin_lasso(selectionModeString(mode_))) {
@@ -540,6 +574,56 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
             canvas_->setOverlayPolygon(lassoPolygon_);
         }
         return;
+    case ToolId::PolygonalLasso: {
+        if (!v) {
+            return;
+        }
+        const double firstDist = polygonPoints_.isEmpty()
+            ? 1e9
+            : std::hypot(imagePos.x() - polygonPoints_.first().x(),
+                         imagePos.y() - polygonPoints_.first().y());
+        const double lastDist = polygonClock_.isValid()
+            ? std::hypot(imagePos.x() - lastPolygonPress_.x(),
+                         imagePos.y() - lastPolygonPress_.y())
+            : 1e9;
+        const bool closeClick = polygonInProgress_ && firstDist <= kPolygonCloseRadius;
+        const bool doubleClick = polygonInProgress_ && polygonClock_.isValid()
+            && polygonClock_.elapsed() <= QApplication::doubleClickInterval()
+            && lastDist <= kPolygonCloseRadius;
+        if (closeClick || doubleClick) {
+            closePolygonLasso();
+            return;
+        }
+        if (!polygonInProgress_) {
+            if (!v->begin_lasso(selectionModeString(mode_))) {
+                return;
+            }
+            polygonInProgress_ = true;
+            polygonPoints_.clear();
+        }
+        // ponytail: CS6's Shift 45-degree segment snap is deferred; a plain
+        // click adds the vertex at the pointer.
+        polygonPoints_ << imagePos;
+        lastPolygonPress_ = imagePos;
+        polygonClock_.restart();
+        v->lasso_add_point(qRound(imagePos.x()), qRound(imagePos.y()));
+        if (canvas_) {
+            canvas_->setOverlayPolygon(polygonPoints_);
+        }
+        return;
+    }
+    case ToolId::MagicWand: {
+        if (!v) {
+            return;
+        }
+        const bool committed = v->magic_wand(qRound(imagePos.x()), qRound(imagePos.y()),
+                                             tolerance_, contiguous_,
+                                             selectionModeString(mode_));
+        if (committed) {
+            emit selectionCommitted();
+        }
+        return;
+    }
     case ToolId::QuickSelection:
         if (!v) {
             return;
@@ -555,7 +639,7 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
 
 void ToolController::handleMoved(const QPointF& imagePos)
 {
-    if (!dragging_) {
+    if (!dragging_ && !polygonInProgress_) {
         return;
     }
     PictureView* v = view();
@@ -570,6 +654,10 @@ void ToolController::handleMoved(const QPointF& imagePos)
         return;
     }
     case ToolId::Marquee:
+    case ToolId::EllipticalMarquee:
+        last_ = imagePos;
+        updateMarqueeOverlay(imagePos);
+        return;
     case ToolId::Crop:
         last_ = imagePos;
         updateDragOverlay(imagePos);
@@ -582,6 +670,13 @@ void ToolController::handleMoved(const QPointF& imagePos)
         lassoPolygon_ << imagePos;
         if (canvas_) {
             canvas_->setOverlayPolygon(lassoPolygon_);
+        }
+        return;
+    case ToolId::PolygonalLasso:
+        if (polygonInProgress_ && canvas_) {
+            QPolygonF preview = polygonPoints_;
+            preview << imagePos;
+            canvas_->setOverlayPolygon(preview);
         }
         return;
     case ToolId::QuickSelection:
@@ -627,12 +722,16 @@ void ToolController::handleReleased(const QPointF& imagePos)
         }
         return;
     }
-    case ToolId::Marquee: {
-        const QRect rect = dragRect(anchor_, imagePos);
-        const bool committed =
-            v && rect.width() > 0 && rect.height() > 0
-            && v->select_rect(rect.x(), rect.y(), rect.width(), rect.height(),
-                              selectionModeString(mode_));
+    case ToolId::Marquee:
+    case ToolId::EllipticalMarquee: {
+        const QRect rect = marqueeDragRect(anchor_, imagePos);
+        const bool shaped = v && rect.width() > 0 && rect.height() > 0;
+        const bool committed = shaped
+            && (active_ == ToolId::EllipticalMarquee
+                    ? v->select_ellipse(rect.x(), rect.y(), rect.width(), rect.height(),
+                                        selectionModeString(mode_), feather_)
+                    : v->select_rect(rect.x(), rect.y(), rect.width(), rect.height(),
+                                     selectionModeString(mode_), feather_));
         if (canvas_) {
             canvas_->clearOverlay();
         }
@@ -642,7 +741,7 @@ void ToolController::handleReleased(const QPointF& imagePos)
         return;
     }
     case ToolId::Lasso: {
-        const bool committed = v && v->end_lasso();
+        const bool committed = v && v->end_lasso(feather_);
         lassoPolygon_.clear();
         if (canvas_) {
             canvas_->clearOverlay();
@@ -692,11 +791,95 @@ void ToolController::updateDragOverlay(const QPointF& imagePos)
     canvas_->setOverlayPolygon(QPolygonF(QRectF(dragRect(anchor_, imagePos))));
 }
 
+void ToolController::updateMarqueeOverlay(const QPointF& imagePos)
+{
+    if (!canvas_) {
+        return;
+    }
+    canvas_->setOverlayPolygon(QPolygonF(QRectF(marqueeDragRect(anchor_, imagePos))));
+}
+
+// Style constrains the drag geometry before rasterisation: Normal follows the
+// drag; Fixed Ratio keeps the entered width:height; Fixed Size is centred on
+// the mousedown (the shape-selection spec's wording).
+QRect ToolController::marqueeDragRect(const QPointF& a, const QPointF& b) const
+{
+    if (marqueeStyle_ == MarqueeStyle::FixedSize) {
+        const int w = fixedSizeW_;
+        const int h = fixedSizeH_;
+        return QRect(qRound(a.x()) - w / 2, qRound(a.y()) - h / 2, w, h);
+    }
+    if (marqueeStyle_ == MarqueeStyle::FixedRatio) {
+        const double ratio = fixedRatioW_ / fixedRatioH_;
+        const double dx = b.x() - a.x();
+        const double dy = b.y() - a.y();
+        double w = std::abs(dx);
+        double h = std::abs(dy);
+        if (ratio > 0.0) {
+            if (h <= 0.0 || w / ratio >= h) {
+                h = w / ratio;
+            } else {
+                w = h * ratio;
+            }
+        }
+        const int left = dx >= 0.0 ? qRound(a.x()) : qRound(a.x() - w);
+        const int top = dy >= 0.0 ? qRound(a.y()) : qRound(a.y() - h);
+        return QRect(left, top, qRound(w), qRound(h));
+    }
+    return dragRect(a, b);
+}
+
 QRect ToolController::dragRect(const QPointF& a, const QPointF& b)
 {
     const QRectF rect = QRectF(a, b).normalized();
     return QRect(qRound(rect.left()), qRound(rect.top()), qRound(rect.width()),
                  qRound(rect.height()));
+}
+
+bool ToolController::commitPolygonLasso()
+{
+    if (!polygonInProgress_) {
+        return false;
+    }
+    closePolygonLasso();
+    return true;
+}
+
+bool ToolController::cancelPolygonLasso()
+{
+    if (!polygonInProgress_) {
+        return false;
+    }
+    polygonInProgress_ = false;
+    polygonPoints_.clear();
+    polygonClock_.invalidate();
+    if (canvas_) {
+        canvas_->clearOverlay();
+    }
+    PictureView* v = view();
+    if (v) {
+        v->cancel_lasso();
+    }
+    return true;
+}
+
+void ToolController::closePolygonLasso()
+{
+    PictureView* v = view();
+    const bool enough = polygonPoints_.size() >= 3;
+    const bool committed = enough && v && v->end_lasso(feather_);
+    if (v && !committed) {
+        v->cancel_lasso();
+    }
+    polygonInProgress_ = false;
+    polygonPoints_.clear();
+    polygonClock_.invalidate();
+    if (canvas_) {
+        canvas_->clearOverlay();
+    }
+    if (committed) {
+        emit selectionCommitted();
+    }
 }
 
 bool ToolController::commitCrop()

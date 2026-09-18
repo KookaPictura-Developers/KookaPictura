@@ -1,13 +1,6 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
 
-use crate::history::History;
-use cxx_qt_lib::QImage;
-use pictura_core::Document;
-use pictura_paint::Stroke;
-use pictura_select::Selection;
-use std::collections::HashMap;
-
 mod helpers;
 mod helpers_composite;
 mod impl_core;
@@ -21,6 +14,9 @@ mod impl_layers_select;
 mod impl_paint;
 mod impl_selection;
 mod impl_transform;
+mod state;
+
+pub use state::PictureViewRust;
 
 #[cfg(test)]
 mod tests;
@@ -592,11 +588,16 @@ pub mod qobject {
         #[qinvokable]
         fn deselect(self: Pin<&mut Self>);
 
-        /// Flood-select the region around `(x, y)` within `tolerance` (0-255),
-        /// recomposite, and emit [`changed`]. Returns false without a document
-        /// or when the point is out of bounds.
+        /// Flood-select around `(x, y)` within `tolerance`, combining per `mode`.
         #[qinvokable]
-        fn magic_wand(self: Pin<&mut Self>, x: i32, y: i32, tolerance: i32) -> bool;
+        fn magic_wand(
+            self: Pin<&mut Self>,
+            x: i32,
+            y: i32,
+            tolerance: i32,
+            contiguous: bool,
+            mode: &QString,
+        ) -> bool;
 
         /// Whether a selection is currently active.
         #[qinvokable]
@@ -606,9 +607,53 @@ pub mod qobject {
         #[qinvokable]
         fn selection_count(&self) -> i32;
 
-        /// Replace/combine the selection with the `w`×`h` rectangle at `(x, y)`.
-        /// `mode` is `"new"`, `"add"`, `"subtract"`, or `"intersect"` (unknown
-        /// means `"new"`). Returns false without a document.
+        /// Selection coverage byte (0-255) at `(x, y)`; 0 when none/out of bounds.
+        #[qinvokable]
+        fn selection_coverage(&self, x: i32, y: i32) -> i32;
+
+        /// Restore the most recently deselected selection; one undo state.
+        #[qinvokable]
+        fn reselect(self: Pin<&mut Self>) -> bool;
+
+        /// Whether a deselected selection is stored for [`reselect`].
+        #[qinvokable]
+        fn has_deselected_selection(&self) -> bool;
+
+        /// Replace the selection with its complement; one undo state.
+        #[qinvokable]
+        fn invert_selection(self: Pin<&mut Self>) -> bool;
+
+        /// Apply `op` (`border`/`smooth`/`expand`/`contract`/`feather`) to the
+        /// selection by `amount`; one undo state on success, none on refusal.
+        #[qinvokable]
+        fn modify_selection(self: Pin<&mut Self>, op: &QString, amount: f64) -> bool;
+
+        /// Grow the selection to adjacent similar pixels within `tolerance`.
+        #[qinvokable]
+        fn grow_selection(self: Pin<&mut Self>, tolerance: i32) -> bool;
+
+        /// Add every similar composite pixel within `tolerance`.
+        #[qinvokable]
+        fn similar_selection(self: Pin<&mut Self>, tolerance: i32) -> bool;
+
+        /// Append the current selection to `doc.channels` as coverage.
+        #[qinvokable]
+        fn save_selection(self: Pin<&mut Self>, name: &QString) -> bool;
+
+        /// Restore a selection from the named extra channel (`Alpha N`).
+        #[qinvokable]
+        fn load_selection(self: Pin<&mut Self>, name: &QString) -> bool;
+
+        /// Number of document extra channels (saved selections).
+        #[qinvokable]
+        fn selection_channel_count(&self) -> i32;
+
+        /// Every layer row path in panel order; read-only, no history.
+        #[qinvokable]
+        fn select_all_layers(&self) -> QStringList;
+
+        /// Rectangle at `(x, y)`, softened by `feather` px (0-250). `mode` is
+        /// `"new"`, `"add"`, `"subtract"`, or `"intersect"`. False without a doc.
         #[qinvokable]
         fn select_rect(
             self: Pin<&mut Self>,
@@ -617,11 +662,10 @@ pub mod qobject {
             w: i32,
             h: i32,
             mode: &QString,
+            feather: f64,
         ) -> bool;
 
-        /// Replace/combine the selection with the ellipse inscribed in the
-        /// `w`×`h` rectangle at `(x, y)`. `mode` as [`select_rect`]. Returns
-        /// false without a document.
+        /// Ellipse in the `w`×`h` rect; `feather` px (0-250); `mode` as select_rect.
         #[qinvokable]
         fn select_ellipse(
             self: Pin<&mut Self>,
@@ -630,26 +674,24 @@ pub mod qobject {
             w: i32,
             h: i32,
             mode: &QString,
+            feather: f64,
         ) -> bool;
 
-        /// Start a lasso selection with `mode` as [`select_rect`], clearing any
-        /// pending points. Returns false without a document.
+        /// Start a lasso selection with `mode` as [`select_rect`], clearing pending points.
         #[qinvokable]
         fn begin_lasso(self: Pin<&mut Self>, mode: &QString) -> bool;
 
         /// Append a point to the pending lasso path.
         #[qinvokable]
         fn lasso_add_point(self: Pin<&mut Self>, x: i32, y: i32);
-
-        /// Fill the pending lasso polygon and combine it with the current
-        /// selection. Returns false without a document or fewer than three
-        /// points, leaving the pending state untouched.
+        /// Fill the pending lasso polygon softened by `feather` px; false with <3 points.
         #[qinvokable]
-        fn end_lasso(self: Pin<&mut Self>) -> bool;
+        fn end_lasso(self: Pin<&mut Self>, feather: f64) -> bool;
+        /// Discard any pending lasso path without touching the selection.
+        #[qinvokable]
+        fn cancel_lasso(self: Pin<&mut Self>);
 
-        /// Flood-select around `(x, y)` within `tolerance` (0-255) and combine
-        /// it with the current selection using `mode` as [`select_rect`].
-        /// Returns false without a document or when the point is out of bounds.
+        /// Flood-select around `(x, y)` within `tolerance` and combine per `mode`.
         #[qinvokable]
         fn quick_select(
             self: Pin<&mut Self>,
@@ -659,9 +701,7 @@ pub mod qobject {
             mode: &QString,
         ) -> bool;
 
-        /// Crop the document to the `w`×`h` rectangle at `(x, y)`, clearing the
-        /// selection, then recomposite and emit [`changed`]. Returns false
-        /// without a document or when the rect misses the canvas.
+        /// Crop to the `w`×`h` rect at `(x, y)`, clear the selection, recomposite.
         #[qinvokable]
         fn crop(self: Pin<&mut Self>, x: i32, y: i32, w: i32, h: i32) -> bool;
 
@@ -931,66 +971,5 @@ pub mod qobject {
         /// Active backend label: `"GPU"`, `"CPU"`, or `"CPU (no GPU)"`.
         #[qinvokable]
         fn active_backend(&self) -> QString;
-    }
-}
-
-/// Backing Rust state for [`qobject::PictureView`].
-pub struct PictureViewRust {
-    image: QImage,
-    doc: Option<Document>,
-    selection: Option<Selection>,
-    history: History,
-    path: Option<String>,
-    dirty: bool,
-    interop: Option<crate::gpu::InteropState>,
-    pending_lasso: Vec<(i32, i32)>,
-    pending_lasso_mode: String,
-    stroke: Option<Stroke>,
-    stroke_label: String,
-    move_base: Option<QImage>,
-    move_layer: Option<QImage>,
-    move_x: i32,
-    move_y: i32,
-    move_opacity: i32,
-    move_prepared_revision: u64,
-    move_prepared_layer: i32,
-    move_preview_cache_hit: bool,
-    opacity_preview_changed: bool,
-    fill_preview_changed: bool,
-    content_revision: u64,
-    gpu_compute: bool,
-    display_dirty: bool,
-    link_sets: HashMap<String, u32>,
-}
-
-impl Default for PictureViewRust {
-    fn default() -> Self {
-        Self {
-            image: QImage::default(),
-            doc: None,
-            selection: None,
-            history: History::default(),
-            path: None,
-            dirty: false,
-            interop: None,
-            pending_lasso: Vec::new(),
-            pending_lasso_mode: String::new(),
-            stroke: None,
-            stroke_label: String::new(),
-            move_base: None,
-            move_layer: None,
-            move_x: 0,
-            move_y: 0,
-            move_opacity: 0,
-            move_prepared_revision: 0,
-            move_prepared_layer: -1,
-            move_preview_cache_hit: false,
-            opacity_preview_changed: false,
-            fill_preview_changed: false,
-            content_revision: 0,
-            gpu_compute: true,
-            display_dirty: false,
-            link_sets: HashMap::new(),
-        }
     }
 }

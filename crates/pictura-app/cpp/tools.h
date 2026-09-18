@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QList>
 #include <QtCore/QMetaType>
 #include <QtCore/QObject>
@@ -95,6 +96,7 @@ enum class ToolId {
     Zoom
 };
 enum class SelectionMode { New, Add, Subtract, Intersect };
+enum class MarqueeStyle { Normal, FixedRatio, FixedSize };
 
 struct ToolInfo {
     ToolId id;
@@ -138,8 +140,27 @@ public:
     SelectionMode combineMode() const { return mode_; }
     void setCombineMode(SelectionMode mode);
 
+    MarqueeStyle marqueeStyle() const { return marqueeStyle_; }
+    void setMarqueeStyle(MarqueeStyle style);
+
+    double feather() const { return feather_; }
+    void setFeather(double feather);
+
+    double fixedRatioWidth() const { return fixedRatioW_; }
+    double fixedRatioHeight() const { return fixedRatioH_; }
+    void setFixedRatio(double width, double height);
+
+    int fixedSizeWidth() const { return fixedSizeW_; }
+    int fixedSizeHeight() const { return fixedSizeH_; }
+    void setFixedSize(int width, int height);
+
     int tolerance() const { return tolerance_; }
     void setTolerance(int tolerance);
+
+    bool contiguous() const { return contiguous_; }
+    void setContiguous(bool on);
+    bool antiAlias() const { return antiAlias_; }
+    bool sampleAllLayers() const { return sampleAllLayers_; }
 
     int brushSize() const;
     void setBrushSize(int size);
@@ -170,6 +191,12 @@ public:
     QRect pendingCropRect() const { return pendingCrop_; }
     bool commitCrop();
 
+    // Polygonal Lasso interaction state. `commitPolygonLasso` closes the
+    // in-progress path (Enter); `cancelPolygonLasso` discards it (Esc) and
+    // returns whether anything was discarded.
+    bool commitPolygonLasso();
+    bool cancelPolygonLasso();
+
 signals:
     void activeToolChanged(ToolId id);
     void foregroundSampled(const QColor& color);
@@ -183,13 +210,25 @@ private:
     void handleMoved(const QPointF& imagePos);
     void handleReleased(const QPointF& imagePos);
     void updateDragOverlay(const QPointF& imagePos);
+    void updateMarqueeOverlay(const QPointF& imagePos);
+    void closePolygonLasso();
+    QRect marqueeDragRect(const QPointF& a, const QPointF& b) const;
     static QRect dragRect(const QPointF& a, const QPointF& b);
 
     ImageView* canvas_ = nullptr;
     std::function<PictureView*()> viewProvider_;
     ToolId active_ = ToolId::Move;
     SelectionMode mode_ = SelectionMode::New;
+    MarqueeStyle marqueeStyle_ = MarqueeStyle::Normal;
+    double feather_ = 0.0;
+    double fixedRatioW_ = 1.0;
+    double fixedRatioH_ = 1.0;
+    int fixedSizeW_ = 100;
+    int fixedSizeH_ = 100;
     int tolerance_ = 32;
+    bool contiguous_ = true;
+    bool antiAlias_ = true;
+    bool sampleAllLayers_ = true;
 
     int brushSize_ = 12;
     int brushHardness_ = 100;
@@ -206,6 +245,10 @@ private:
     QPointF last_;
     QPointF totalDelta_;
     QPolygonF lassoPolygon_;
+    QPolygonF polygonPoints_;
+    QPointF lastPolygonPress_;
+    QElapsedTimer polygonClock_;
+    bool polygonInProgress_ = false;
     QRect pendingCrop_;
     bool hasPendingCrop_ = false;
 
