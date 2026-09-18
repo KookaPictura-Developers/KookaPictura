@@ -25,16 +25,7 @@ impl qobject::PictureView {
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = loaded;
-        view.selection = None;
-        view.history = History::default();
-        view.stroke = None;
-        view.stroke_label.clear();
-        view.move_base = None;
-        view.move_layer = None;
-        view.move_x = 0;
-        view.move_y = 0;
-        view.move_opacity = 0;
-        view.display_dirty = false;
+        view.reset_edit_state();
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -112,16 +103,7 @@ impl qobject::PictureView {
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = Some(doc);
-        view.selection = None;
-        view.history = History::default();
-        view.stroke = None;
-        view.stroke_label.clear();
-        view.move_base = None;
-        view.move_layer = None;
-        view.move_x = 0;
-        view.move_y = 0;
-        view.move_opacity = 0;
-        view.display_dirty = false;
+        view.reset_edit_state();
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -197,19 +179,7 @@ impl qobject::PictureView {
     }
 
     pub fn composite_argb(&self, x: i32, y: i32) -> u32 {
-        let rust = self.rust();
-        let Some(doc) = rust.doc.as_ref() else {
-            return 0;
-        };
-        let image = buffer_to_image(&doc.composite);
-        if x < 0 || y < 0 || x >= image.width() || y >= image.height() {
-            return 0;
-        }
-        let color = image.pixel_color(x, y);
-        ((color.alpha() as u32) << 24)
-            | ((color.red() as u32) << 16)
-            | ((color.green() as u32) << 8)
-            | (color.blue() as u32)
+        self.sample_argb(x, y)
     }
 
     /// M0.5 GPU smoke probe: offscreen-render the demo gradient and report
@@ -298,5 +268,23 @@ impl qobject::PictureView {
         } else {
             QString::from("CPU")
         }
+    }
+}
+
+impl super::PictureViewRust {
+    /// Reset the per-edit transient state shared by `open` and `new_document`:
+    /// drop the selection, history, in-progress stroke, and move-preview drag.
+    /// The caller assigns `image`/`doc` before calling.
+    fn reset_edit_state(&mut self) {
+        self.selection = None;
+        self.history = History::default();
+        self.stroke = None;
+        self.stroke_label.clear();
+        self.move_base = None;
+        self.move_layer = None;
+        self.move_x = 0;
+        self.move_y = 0;
+        self.move_opacity = 0;
+        self.display_dirty = false;
     }
 }

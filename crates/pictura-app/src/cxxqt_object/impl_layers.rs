@@ -79,22 +79,10 @@ impl qobject::PictureView {
         let Some(mode) = BlendMode::from_psd_key([bytes[0], bytes[1], bytes[2], bytes[3]]) else {
             return false;
         };
-        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
-            match doc.layers.get_mut(i as usize) {
-                Some(layer) => {
-                    layer.blend = mode;
-                    true
-                }
-                None => false,
-            }
-        } else {
-            false
-        };
-        if changed {
-            self.as_mut().recomposite();
-            self.as_mut().record("Blend Mode");
-        }
-        changed
+        self.as_mut().mutate_layer(i, "Blend Mode", |layer, _| {
+            layer.blend = mode;
+            true
+        })
     }
 
     pub fn layer_opacity(&self, i: i32) -> i32 {
@@ -103,27 +91,15 @@ impl qobject::PictureView {
 
     pub fn set_layer_opacity(mut self: Pin<&mut Self>, i: i32, value: i32) -> bool {
         let value = value.clamp(0, 255) as u8;
-        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
-            let background = is_background_layer(doc, i);
-            match doc.layers.get_mut(i as usize) {
-                Some(layer) => {
-                    if background || layer.lock.is_all() {
-                        false
-                    } else {
-                        layer.opacity = value;
-                        true
-                    }
+        self.as_mut()
+            .mutate_layer(i, "Opacity", |layer, background| {
+                if background || layer.lock.is_all() {
+                    false
+                } else {
+                    layer.opacity = value;
+                    true
                 }
-                None => false,
-            }
-        } else {
-            false
-        };
-        if changed {
-            self.as_mut().recomposite();
-            self.as_mut().record("Opacity");
-        }
-        changed
+            })
     }
 
     pub fn layer_fill(&self, i: i32) -> i32 {
@@ -132,27 +108,15 @@ impl qobject::PictureView {
 
     pub fn set_layer_fill(mut self: Pin<&mut Self>, i: i32, value: i32) -> bool {
         let value = value.clamp(0, 255) as u8;
-        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
-            let background = is_background_layer(doc, i);
-            match doc.layers.get_mut(i as usize) {
-                Some(layer) => {
-                    if layer.is_group || background || layer.lock.is_all() {
-                        false
-                    } else {
-                        layer.fill = value;
-                        true
-                    }
+        self.as_mut()
+            .mutate_layer(i, "Fill Opacity", |layer, background| {
+                if layer.is_group || background || layer.lock.is_all() {
+                    false
+                } else {
+                    layer.fill = value;
+                    true
                 }
-                None => false,
-            }
-        } else {
-            false
-        };
-        if changed {
-            self.as_mut().recomposite();
-            self.as_mut().record("Fill Opacity");
-        }
-        changed
+            })
     }
 
     pub fn layer_lock(&self, i: i32) -> i32 {
@@ -163,29 +127,16 @@ impl qobject::PictureView {
         let Some(bit) = lock_bit(flag.to_string().as_str()) else {
             return false;
         };
-        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
-            let background = is_background_layer(doc, i);
-            match doc.layers.get_mut(i as usize) {
-                // ponytail: no type/shape layers yet, so nothing forces a lock;
-                // the "cannot unlock a forced lock" rule is M37's.
-                Some(layer) => {
-                    if background {
-                        false
-                    } else {
-                        layer.lock = layer.lock.with(bit, on);
-                        true
-                    }
-                }
-                None => false,
+        // ponytail: no type/shape layers yet, so nothing forces a lock;
+        // the "cannot unlock a forced lock" rule is M37's.
+        self.as_mut().mutate_layer(i, "Lock", |layer, background| {
+            if background {
+                false
+            } else {
+                layer.lock = layer.lock.with(bit, on);
+                true
             }
-        } else {
-            false
-        };
-        if changed {
-            self.as_mut().recomposite();
-            self.as_mut().record("Lock");
-        }
-        changed
+        })
     }
 
     pub fn layer_color(&self, i: i32) -> i32 {
@@ -196,27 +147,15 @@ impl qobject::PictureView {
         if !(0..=7).contains(&value) {
             return false;
         }
-        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
-            let background = is_background_layer(doc, i);
-            match doc.layers.get_mut(i as usize) {
-                Some(layer) => {
-                    if background {
-                        false
-                    } else {
-                        layer.color = ColorLabel::from_byte(value as u8);
-                        true
-                    }
+        self.as_mut()
+            .mutate_layer(i, "Layer Color", |layer, background| {
+                if background {
+                    false
+                } else {
+                    layer.color = ColorLabel::from_byte(value as u8);
+                    true
                 }
-                None => false,
-            }
-        } else {
-            false
-        };
-        if changed {
-            self.as_mut().recomposite();
-            self.as_mut().record("Layer Color");
-        }
-        changed
+            })
     }
 
     pub fn set_layer_name(mut self: Pin<&mut Self>, i: i32, name: &QString) -> bool {
@@ -634,6 +573,32 @@ impl qobject::PictureView {
 
     fn layer(&self, i: i32) -> Option<&Layer> {
         self.rust().doc.as_ref()?.layers.get(i as usize)
+    }
+
+    /// Shared single-layer mutation wrapper: resolve layer `i`, apply `f` (with
+    /// whether it is the Background), then recomposite and record `label` iff
+    /// `f` reports a change. A missing document or out-of-range index records
+    /// nothing and returns false.
+    fn mutate_layer(
+        mut self: Pin<&mut Self>,
+        i: i32,
+        label: &str,
+        f: impl FnOnce(&mut Layer, bool) -> bool,
+    ) -> bool {
+        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+            let background = is_background_layer(doc, i);
+            match doc.layers.get_mut(i as usize) {
+                Some(layer) => f(layer, background),
+                None => false,
+            }
+        } else {
+            false
+        };
+        if changed {
+            self.as_mut().recomposite();
+            self.as_mut().record(label);
+        }
+        changed
     }
 
     /// Resolve flat row `i` to its document, path, depth, and layer, or `None`
