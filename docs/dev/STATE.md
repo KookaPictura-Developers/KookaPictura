@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **652 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **655 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -1888,6 +1888,30 @@ dragging inside an existing selection with a marquee/lasso tool now moves the
 selection outline (arrow + small-marquee cursor) instead of starting a new
 selection, recorded as one `Move Selection` state (`Selection::translate`).
 Presets, pixel-content moves, and the deferred tools remain future work.
+
+A modifiers-and-content-move pass then closed the Photoshop gap. Combine quick
+keys are decided at the first press and locked for the gesture: Shift = Add, Alt
+= Subtract, Shift+Alt = Intersect, but only when a selection already exists
+(otherwise the options-bar mode applies); `ToolController::selectionModeForModifiers`
+maps them and `dragMode_` carries the result through the commit. The Rectangular
+and Elliptical Marquee constrain the Normal drag — Shift squares/circles it, Alt
+treats the press point as the centre — and a floating `W x H` readout follows the
+cursor (`ImageView::setDragSizeHint`). The Polygonal Lasso preview is now a solid,
+open rubber band from the first vertex through the clicks to the live cursor (the
+`solid` flag on `setSelectionPreview`); the cursor segment is preview-only. The
+canvas enables mouse tracking so the move-selection cursor appears on hover, and
+Ctrl over a selection shows it too. Moving selected pixels is real:
+`pictura_render::move_selection_content` reuses `layer_via_copy`/`layer_via_cut`,
+translates the new layer, and merges it back down (or leaves it as a new layer
+when duplicating); the bridge records one `Move Selection` state. The Move tool
+moves the selected pixels (Alt duplicates to a new layer) whenever a selection
+exists, and a selection tool with Ctrl does the same (Ctrl+Alt duplicates) while
+a plain drag keeps moving only the outline. Content-move drags preview the moving
+selection outline, not the pixels (`ponytail:` the masked base composite is the
+upgrade), and the target layer is still the topmost pixel layer, matching the
+existing Move tool. Self-tests `tsc_quick_modes` (270) through
+`tsc_quick_mode_drag` (276) cover the mapping, geometry, view hooks, polygon band,
+and the move/duplicate wiring.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

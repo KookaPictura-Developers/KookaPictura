@@ -118,6 +118,50 @@ impl qobject::PictureView {
         true
     }
 
+    /// Move (or, with `duplicate`, copy to a new layer) the pixels covered by the
+    /// selection origin, offset by `(dx, dy)`. One "Move Selection" state; false
+    /// (no state) on a zero offset, missing doc/selection, or engine refusal.
+    pub fn move_selection_content(
+        mut self: Pin<&mut Self>,
+        dx: i32,
+        dy: i32,
+        duplicate: bool,
+    ) -> bool {
+        if dx == 0 && dy == 0 {
+            return false;
+        }
+        let prepared = {
+            let rust = self.rust();
+            let (Some(doc), Some(selection)) = (
+                rust.doc.as_ref(),
+                rust.selection_move_origin
+                    .clone()
+                    .or_else(|| rust.selection.clone()),
+            ) else {
+                return false;
+            };
+            let Some(index) = topmost_pixel_layer_index(doc) else {
+                return false;
+            };
+            (format!("{index}"), selection_to_mask(&selection, doc))
+        };
+        let (path, mask) = prepared;
+        let moved = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::move_selection_content(doc, &path, &mask, dx, dy, duplicate)
+        };
+        if !moved {
+            return false;
+        }
+        self.as_mut().rust_mut().selection_move_origin = None;
+        self.as_mut().recomposite();
+        self.as_mut().record("Move Selection");
+        true
+    }
+
     /// `border` width 1-200, `smooth`/`expand`/`contract` radius 1-100,
     /// `feather` radius >0 (clamped to 250). Zero/unknown amounts refuse
     /// (no history).

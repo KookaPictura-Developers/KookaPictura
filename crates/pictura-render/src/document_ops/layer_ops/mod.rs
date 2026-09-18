@@ -7,6 +7,7 @@ mod create;
 mod merge;
 #[cfg(test)]
 mod merge_tests;
+mod move_content;
 mod paths;
 mod properties;
 mod rasterize;
@@ -23,6 +24,7 @@ pub use merge::{
     can_merge_scope, can_merge_target, flatten, is_visible_in_panel, merge_scope, MergeError,
     MergeOutcome, MergeScope,
 };
+pub use move_content::move_selection_content;
 pub use paths::{flatten_rows, is_background, parent_path, resolve_path, resolve_path_mut};
 pub use properties::{
     apply_visibility, can_move_path_to, delete_hidden_layers, delete_paths, duplicate_paths,

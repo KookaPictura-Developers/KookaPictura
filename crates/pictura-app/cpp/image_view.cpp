@@ -3,6 +3,7 @@
 #include <QtCore/QDebug>
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
+#include <QtGui/QFontMetrics>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
@@ -57,6 +58,7 @@ ImageView::ImageView(QWidget* parent)
 {
     setMinimumSize(320, 240);
     setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
     antsTimer_ = new QTimer(this);
     antsTimer_->setInterval(120);
     connect(antsTimer_, &QTimer::timeout, this, [this]() {
@@ -247,10 +249,11 @@ void ImageView::setSelectionEdgesVisible(bool on)
     update();
 }
 
-void ImageView::setSelectionPreview(const QList<QPolygonF>& loops, bool closed)
+void ImageView::setSelectionPreview(const QList<QPolygonF>& loops, bool closed, bool solid)
 {
     previewContours_ = loops;
     selectionPreviewClosed_ = closed;
+    selectionPreviewSolid_ = solid;
     updateAntsTimer();
     update();
 }
@@ -259,6 +262,7 @@ void ImageView::clearSelectionPreview()
 {
     previewContours_.clear();
     selectionPreviewClosed_ = true;
+    selectionPreviewSolid_ = false;
     updateAntsTimer();
     update();
 }
@@ -300,6 +304,22 @@ void ImageView::endMovePreview()
     moveLayer_ = QImage();
     moveDelta_ = QPointF();
     moveOpacity_ = 1.0;
+    update();
+}
+
+void ImageView::setDragSizeHint(const QString& text, const QPointF& imagePos)
+{
+    dragSizeText_ = text;
+    dragSizeImagePos_ = imagePos;
+    dragSizeActive_ = !text.isEmpty();
+    update();
+}
+
+void ImageView::clearDragSizeHint()
+{
+    dragSizeText_.clear();
+    dragSizeImagePos_ = QPointF();
+    dragSizeActive_ = false;
     update();
 }
 
@@ -417,9 +437,10 @@ void ImageView::paintEvent(QPaintEvent*)
     }
 
     if (!previewContours_.isEmpty()) {
-        // Live tool rubber band as marching ants, so the selection reads during
-        // the drag exactly as it will once committed. An open preview (Polygonal
-        // Lasso) is a polyline: no phantom closing edge until it commits.
+        // Live tool rubber band, so the selection reads during the drag exactly
+        // as it will once committed. An open preview (Polygonal Lasso) is a
+        // polyline: no phantom closing edge until it commits. A solid preview
+        // draws white then black with no dash offset.
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QPen(Qt::white, 0));
         for (const QPolygonF& loop : previewContours_) {
@@ -429,9 +450,12 @@ void ImageView::paintEvent(QPaintEvent*)
                 painter.drawPolyline(loop);
             }
         }
-        QPen ants(Qt::black, 0, Qt::DashLine);
-        ants.setDashOffset(antsPhase_);
-        painter.setPen(ants);
+        QPen secondPen(Qt::black, 0,
+                       selectionPreviewSolid_ ? Qt::SolidLine : Qt::DashLine);
+        if (!selectionPreviewSolid_) {
+            secondPen.setDashOffset(antsPhase_);
+        }
+        painter.setPen(secondPen);
         for (const QPolygonF& loop : previewContours_) {
             if (selectionPreviewClosed_) {
                 painter.drawPolygon(loop);
@@ -439,6 +463,33 @@ void ImageView::paintEvent(QPaintEvent*)
                 painter.drawPolyline(loop);
             }
         }
+    }
+
+    if (dragSizeActive_ && !dragSizeText_.isEmpty()) {
+        painter.save();
+        painter.resetTransform();
+        painter.setClipping(false);
+        const QPointF widgetPos = dragSizeImagePos_ * zoom_ + offset_;
+        QFont font = painter.font();
+        font.setPointSize(10);
+        painter.setFont(font);
+        const QFontMetrics fm(painter.font());
+        QRectF boxRect(widgetPos + QPointF(14, 14),
+                       fm.boundingRect(dragSizeText_).size() + QSize(10, 10));
+        if (boxRect.right() > rect().right()) {
+            boxRect.moveRight(rect().right());
+        }
+        if (boxRect.bottom() > rect().bottom()) {
+            boxRect.moveBottom(rect().bottom());
+        }
+        boxRect.moveLeft(std::max(boxRect.left(), qreal(rect().left())));
+        boxRect.moveTop(std::max(boxRect.top(), qreal(rect().top())));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 200));
+        painter.drawRoundedRect(boxRect, 3, 3);
+        painter.setPen(Qt::white);
+        painter.drawText(boxRect, Qt::AlignCenter, dragSizeText_);
+        painter.restore();
     }
 
     if (pressTrace_.armed) {

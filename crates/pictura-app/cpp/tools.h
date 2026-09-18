@@ -201,6 +201,12 @@ public:
     QRect pendingCropRect() const { return pendingCrop_; }
     bool commitCrop();
 
+    static SelectionMode selectionModeForModifiers(SelectionMode base, Qt::KeyboardModifiers mods,
+                                                   bool hasExistingSelection);
+    QRect marqueeRectForTest(const QPointF& a, const QPointF& b, int mods) const;
+    int dragModeForTest() const { return static_cast<int>(dragMode_); }
+    bool contentMoveActiveForTest() const { return contentMove_; }
+
     // Polygonal Lasso interaction state. `commitPolygonLasso` closes the
     // in-progress path (Enter); `cancelPolygonLasso` discards it (Esc) and
     // returns whether anything was discarded.
@@ -221,6 +227,7 @@ private:
     PictureView* view() const;
     static bool isSelectionTool(ToolId id);
     bool maybeBeginSelectionMove(PictureView* v, const QPointF& imagePos);
+    void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate);
     void cancelSelectionMove();
     void updateSelectionHover(const QPointF& imagePos);
     void dragSelectionMove(const QPointF& imagePos);
@@ -231,13 +238,14 @@ private:
     void updateDragOverlay(const QPointF& imagePos);
     void updateMarqueeOverlay(const QPointF& imagePos);
     void closePolygonLasso();
-    QRect marqueeDragRect(const QPointF& a, const QPointF& b) const;
+    QRect marqueeDragRect(const QPointF& a, const QPointF& b, Qt::KeyboardModifiers mods) const;
     static QRect dragRect(const QPointF& a, const QPointF& b);
 
     ImageView* canvas_ = nullptr;
     std::function<PictureView*()> viewProvider_;
     ToolId active_ = ToolId::Move;
     SelectionMode mode_ = SelectionMode::New;
+    SelectionMode dragMode_ = SelectionMode::New;
     MarqueeStyle marqueeStyle_ = MarqueeStyle::Normal;
     double feather_ = 0.0;
     double fixedRatioW_ = 1.0;
@@ -261,6 +269,8 @@ private:
     bool dragging_ = false;
     bool dragCommitted_ = false;
     bool movingSelection_ = false;
+    bool contentMove_ = false;
+    bool contentDuplicate_ = false;
     bool cursorOverSelection_ = false;
     QPointF anchor_;
     QPointF last_;

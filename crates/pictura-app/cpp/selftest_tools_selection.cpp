@@ -11,10 +11,12 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include <QtCore/QPointF>
+#include <QtCore/QRectF>
 #include <QtCore/QString>
 #include <QtCore/Qt>
 #include <QtGui/QAction>
 #include <QtGui/QKeyEvent>
+#include <QtGui/QPolygonF>
 #include <QtWidgets/QApplication>
 
 int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
@@ -734,6 +736,189 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(269, "translate clip");
         }
         frame.closeDocument(antsDoc, false);
+
+        // tsc_quick_modes (270): the effective combine mode is decided from the
+        // live modifiers once per gesture. Shift adds, Alt subtracts, both
+        // intersect; with no modifier the options-bar base is kept, and no
+        // existing selection is always New.
+        const bool quickModes =
+            pictura::ToolController::selectionModeForModifiers(
+                pictura::SelectionMode::New, Qt::NoModifier, false)
+                == pictura::SelectionMode::New
+            && pictura::ToolController::selectionModeForModifiers(
+                   pictura::SelectionMode::New, Qt::ShiftModifier, true)
+                == pictura::SelectionMode::Add
+            && pictura::ToolController::selectionModeForModifiers(
+                   pictura::SelectionMode::New, Qt::AltModifier, true)
+                == pictura::SelectionMode::Subtract
+            && pictura::ToolController::selectionModeForModifiers(
+                   pictura::SelectionMode::New, Qt::ShiftModifier | Qt::AltModifier, true)
+                == pictura::SelectionMode::Intersect
+            && pictura::ToolController::selectionModeForModifiers(
+                   pictura::SelectionMode::New, Qt::ShiftModifier, false)
+                == pictura::SelectionMode::New
+            && pictura::ToolController::selectionModeForModifiers(
+                   pictura::SelectionMode::Add, Qt::NoModifier, false)
+                == pictura::SelectionMode::Add
+            && pictura::ToolController::selectionModeForModifiers(
+                   pictura::SelectionMode::Subtract, Qt::NoModifier, true)
+                == pictura::SelectionMode::Subtract;
+        ST_BEGIN("tsc_quick_modes");
+        ST_PASS("tsc_quick_modes mapped=%d", quickModes ? 1 : 0);
+        if (!quickModes) {
+            return pictura::selfTest().fail(270, "modifier combine mapping");
+        }
+
+        // tsc_marquee_geometry (271): a Normal marquee squares the drag under
+        // Shift, centres it on the press point under Alt, and does both together.
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        const QPointF geoA(10, 10);
+        const QPointF geoB(30, 20);
+        const QRect geoNone = tools->marqueeRectForTest(geoA, geoB, int(Qt::NoModifier));
+        const QRect geoShift = tools->marqueeRectForTest(geoA, geoB, int(Qt::ShiftModifier));
+        const QRect geoAlt = tools->marqueeRectForTest(geoA, geoB, int(Qt::AltModifier));
+        const QRect geoBoth = tools->marqueeRectForTest(
+            geoA, geoB, int(Qt::ShiftModifier | Qt::AltModifier));
+        const bool marqueeGeometry = geoNone == QRect(10, 10, 20, 10)
+            && geoShift == QRect(10, 10, 20, 20) && geoAlt == QRect(-10, 0, 40, 20)
+            && geoBoth == QRect(-10, -10, 40, 40);
+        ST_BEGIN("tsc_marquee_geometry");
+        ST_PASS("tsc_marquee_geometry none=%d,%d,%d,%d shift=%d,%d,%d,%d alt=%d,%d,%d,%d "
+                "both=%d,%d,%d,%d",
+                geoNone.x(), geoNone.y(), geoNone.width(), geoNone.height(), geoShift.x(),
+                geoShift.y(), geoShift.width(), geoShift.height(), geoAlt.x(), geoAlt.y(),
+                geoAlt.width(), geoAlt.height(), geoBoth.x(), geoBoth.y(), geoBoth.width(),
+                geoBoth.height());
+        if (!marqueeGeometry) {
+            return pictura::selfTest().fail(271, "marquee geometry");
+        }
+
+        // tsc_view_preview_hooks (272): the canvas receives hover moves, and the
+        // solid/open preview flags and the drag size hint round-trip. The
+        // ToolSelection document was closed above, taking the old canvas with
+        // it, so recreate a live fixture and rebind the view and canvas first.
+        const bool contentCreated = frame.newDocument(QStringLiteral("ToolSelection"), 16, 16,
+                                                      QStringLiteral("rgb"), 8,
+                                                      QStringLiteral("white"));
+        ellipseView = frame.activeView();
+        ellipseCanvas = frame.imageView();
+        if (!contentCreated || !ellipseView || !ellipseCanvas) {
+            return pictura::selfTest().fail(272, "content move fixture");
+        }
+        const bool viewTracking = ellipseCanvas->hasMouseTracking();
+        ellipseCanvas->setSelectionPreview({QPolygonF(QRectF(0, 0, 2, 2))}, false, true);
+        const bool viewPreview = ellipseCanvas->hasSelectionPreviewForTest()
+            && ellipseCanvas->selectionPreviewOpenForTest()
+            && ellipseCanvas->selectionPreviewSolidForTest();
+        ellipseCanvas->clearSelectionPreview();
+        const bool viewPreviewCleared = !ellipseCanvas->selectionPreviewSolidForTest();
+        ellipseCanvas->setDragSizeHint(QStringLiteral("12 x 34"), QPointF(5, 5));
+        const bool viewSizeHint = ellipseCanvas->hasDragSizeHintForTest();
+        ellipseCanvas->clearDragSizeHint();
+        const bool viewSizeHintCleared = !ellipseCanvas->hasDragSizeHintForTest();
+        ST_BEGIN("tsc_view_preview_hooks");
+        ST_PASS("tsc_view_preview_hooks tracking=%d preview=%d cleared=%d sizehint=%d "
+                "hintcleared=%d",
+                viewTracking ? 1 : 0, viewPreview ? 1 : 0, viewPreviewCleared ? 1 : 0,
+                viewSizeHint ? 1 : 0, viewSizeHintCleared ? 1 : 0);
+        if (!viewTracking || !viewPreview || !viewPreviewCleared || !viewSizeHint
+            || !viewSizeHintCleared) {
+            return pictura::selfTest().fail(272, "canvas preview hooks");
+        }
+
+        // tsc_polygon_cursor_band (273): after two Polygonal Lasso clicks the
+        // open solid rubber band carries the clicked vertices plus the live
+        // cursor; cancelling drops it without committing.
+        frame.setActiveTool(pictura::ToolId::PolygonalLasso);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        ellipseView->deselect();
+        const auto bandClick = [ellipseCanvas](qreal x, qreal y) {
+            ellipseCanvas->mousePressed(QPointF(x, y), Qt::LeftButton, int(Qt::NoModifier));
+            ellipseCanvas->mouseReleased(QPointF(x, y));
+        };
+        bandClick(2, 2);
+        bandClick(12, 2);
+        ellipseCanvas->mouseMoved(QPointF(12, 12));
+        const bool bandOpen = ellipseCanvas->hasSelectionPreviewForTest()
+            && ellipseCanvas->selectionPreviewOpenForTest()
+            && ellipseCanvas->selectionPreviewSolidForTest();
+        const int bandPoints = ellipseCanvas->selectionPreviewPointCountForTest();
+        const bool bandCancelled =
+            tools->cancelPolygonLasso() && !ellipseCanvas->hasSelectionPreviewForTest();
+        ST_BEGIN("tsc_polygon_cursor_band");
+        ST_PASS("tsc_polygon_cursor_band open=%d points=%d cancelled=%d", bandOpen ? 1 : 0,
+                bandPoints, bandCancelled ? 1 : 0);
+        if (!bandOpen || bandPoints != 3 || !bandCancelled) {
+            return pictura::selfTest().fail(273, "polygon cursor band");
+        }
+
+        // tsc_content_move (274): with the Move tool a drag from inside a
+        // selection cuts the covered pixels, translates them, and merges back
+        // down under one "Move Selection" state without changing layer count.
+        frame.setActiveTool(pictura::ToolId::Move);
+        ellipseView->deselect();
+        const bool cmSeed = ellipseView->select_rect(4, 4, 4, 4, QStringLiteral("new"), 0.0);
+        const int cmLayers = ellipseView->select_all_layers().size();
+        const int cmBase = ellipseView->history_count();
+        ellipseCanvas->mousePressed(QPointF(5, 5), Qt::LeftButton, int(Qt::NoModifier));
+        ellipseCanvas->mouseMoved(QPointF(7, 7));
+        ellipseCanvas->mouseReleased(QPointF(7, 7));
+        const bool cmCommitted = cmSeed && ellipseView->history_count() == cmBase + 1
+            && ellipseView->history_label(cmBase) == QStringLiteral("Move Selection");
+        const bool cmBounds = ellipseView->selection_bounds() == QStringLiteral("6 6 4 4");
+        const bool cmLayersKept = ellipseView->select_all_layers().size() == cmLayers;
+        ST_BEGIN("tsc_content_move");
+        ST_PASS("tsc_content_move seed=%d committed=%d bounds=%s layers=%d kept=%d",
+                cmSeed ? 1 : 0, cmCommitted ? 1 : 0,
+                qPrintable(ellipseView->selection_bounds()),
+                ellipseView->select_all_layers().size(), cmLayersKept ? 1 : 0);
+        if (!cmSeed || !cmCommitted || !cmBounds || !cmLayersKept) {
+            return pictura::selfTest().fail(274, "content move");
+        }
+
+        // tsc_content_duplicate (275): Alt with the Move tool copies the covered
+        // pixels to a new layer instead of cutting, so the layer count grows by
+        // one under the same "Move Selection" state.
+        frame.setActiveTool(pictura::ToolId::Move);
+        ellipseView->deselect();
+        const bool dupSeed = ellipseView->select_rect(4, 4, 4, 4, QStringLiteral("new"), 0.0);
+        const int dupLayers = ellipseView->select_all_layers().size();
+        const int dupBase = ellipseView->history_count();
+        ellipseCanvas->mousePressed(QPointF(5, 5), Qt::LeftButton, int(Qt::AltModifier));
+        ellipseCanvas->mouseMoved(QPointF(7, 7));
+        ellipseCanvas->mouseReleased(QPointF(7, 7));
+        const bool dupCommitted = dupSeed && ellipseView->history_count() == dupBase + 1
+            && ellipseView->history_label(dupBase) == QStringLiteral("Move Selection");
+        const bool dupLayerAdded = ellipseView->select_all_layers().size() == dupLayers + 1;
+        ST_BEGIN("tsc_content_duplicate");
+        ST_PASS("tsc_content_duplicate seed=%d committed=%d layers=%d added=%d",
+                dupSeed ? 1 : 0, dupCommitted ? 1 : 0,
+                ellipseView->select_all_layers().size(), dupLayerAdded ? 1 : 0);
+        if (!dupSeed || !dupCommitted || !dupLayerAdded) {
+            return pictura::selfTest().fail(275, "content duplicate");
+        }
+
+        // tsc_quick_mode_drag (276): a Shift press drives the real marquee drag
+        // path in Add mode, so the committed bounds are the union of the seeded
+        // selection and the dragged rectangle (not a New replacement).
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        ellipseView->deselect();
+        const bool qmSeed = ellipseView->select_rect(2, 2, 4, 4, QStringLiteral("new"), 0.0);
+        const int qmBase = ellipseView->history_count();
+        ellipseCanvas->mousePressed(QPointF(8, 8), Qt::LeftButton, int(Qt::ShiftModifier));
+        ellipseCanvas->mouseMoved(QPointF(11, 11));
+        ellipseCanvas->mouseReleased(QPointF(11, 11));
+        const bool qmAdded = qmSeed && ellipseView->has_selection()
+            && ellipseView->history_count() == qmBase + 1
+            && ellipseView->selection_bounds() == QStringLiteral("2 2 9 9");
+        ST_BEGIN("tsc_quick_mode_drag");
+        ST_PASS("tsc_quick_mode_drag seed=%d added=%d bounds=%s", qmSeed ? 1 : 0,
+                qmAdded ? 1 : 0, qPrintable(ellipseView->selection_bounds()));
+        if (!qmSeed || !qmAdded) {
+            return pictura::selfTest().fail(276, "quick mode drag");
+        }
 
     return 0;
 }
