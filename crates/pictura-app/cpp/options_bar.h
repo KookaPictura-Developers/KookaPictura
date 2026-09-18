@@ -6,6 +6,7 @@
 
 class QStackedWidget;
 class QHBoxLayout;
+class QToolButton;
 
 namespace pictura {
 
@@ -28,6 +29,7 @@ private:
     QWidget* buildWandPage(ToolId id);
     QWidget* buildPaintPage(ToolId id);
     void addModeButtons(QHBoxLayout* layout, QWidget* page, bool withIntersect);
+    QToolButton* toolButton(ToolId id, QWidget* parent);
 
     ToolController* controller_ = nullptr;
     QStackedWidget* stack_ = nullptr;

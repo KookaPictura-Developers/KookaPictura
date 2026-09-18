@@ -97,6 +97,7 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/panel_column_drag.cpp
     crates/pictura-app/cpp/panels/panel_column_test.cpp
     crates/pictura-app/cpp/tools.cpp
+    crates/pictura-app/cpp/tools_selection_move.cpp
     crates/pictura-app/cpp/toolbox.cpp
     crates/pictura-app/cpp/options_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp

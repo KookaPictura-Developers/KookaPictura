@@ -50,6 +50,10 @@
     <file>icons/panel.columnsTwo.svg</file>
     <file>icons/select.all.svg</file>
     <file>icons/select.deselect.svg</file>
+    <file>icons/select.mode.add.svg</file>
+    <file>icons/select.mode.intersect.svg</file>
+    <file>icons/select.mode.new.svg</file>
+    <file>icons/select.mode.subtract.svg</file>
     <file>icons/tool.addanchorpoint.svg</file>
     <file>icons/tool.arthistorybrush.svg</file>
     <file>icons/tool.backgrounderaser.svg</file>
@@ -157,6 +161,7 @@
     <file>icons/window.panels.toolPresets.svg</file>
     <file>icons/window.panels.tools.svg</file>
     <file>icons/window.panels.typeStyles.svg</file>
+    <file>cursors/cursor.moveSelection.svg</file>
     <file>cursors/tool.addanchorpoint.svg</file>
     <file>cursors/tool.arthistorybrush.svg</file>
     <file>cursors/tool.backgrounderaser.svg</file>
@@ -180,6 +185,8 @@
     <file>cursors/tool.directselection.svg</file>
     <file>cursors/tool.dodge.svg</file>
     <file>cursors/tool.ellipse.svg</file>
+    <file>cursors/tool.ellipticalmarquee.add.svg</file>
+    <file>cursors/tool.ellipticalmarquee.remove.svg</file>
     <file>cursors/tool.ellipticalmarquee.svg</file>
     <file>cursors/tool.eraser.svg</file>
     <file>cursors/tool.eyedropper.svg</file>
@@ -195,6 +202,8 @@
     <file>cursors/tool.magiceraser.svg</file>
     <file>cursors/tool.magicwand.svg</file>
     <file>cursors/tool.magneticlasso.svg</file>
+    <file>cursors/tool.marquee.add.svg</file>
+    <file>cursors/tool.marquee.remove.svg</file>
     <file>cursors/tool.marquee.svg</file>
     <file>cursors/tool.mixerbrush.svg</file>
     <file>cursors/tool.move.svg</file>

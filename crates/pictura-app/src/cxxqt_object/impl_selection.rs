@@ -70,6 +70,54 @@ impl qobject::PictureView {
         true
     }
 
+    /// Capture the current selection as the origin of a move-selection drag.
+    /// Refuses (false) without a selection.
+    pub fn begin_selection_move(mut self: Pin<&mut Self>) -> bool {
+        let Some(origin) = self.rust().selection.clone() else {
+            return false;
+        };
+        self.as_mut().rust_mut().selection_move_origin = Some(origin);
+        true
+    }
+
+    /// Set the selection to the origin translated by `(dx, dy)`. No history and
+    /// no `changed` emission: the tool drives the overlay. False without a drag.
+    pub fn preview_selection_move(mut self: Pin<&mut Self>, dx: i32, dy: i32) -> bool {
+        let moved = {
+            let rust = self.rust();
+            let Some(origin) = rust.selection_move_origin.as_ref() else {
+                return false;
+            };
+            origin.translate(dx, dy)
+        };
+        self.as_mut().rust_mut().selection = Some(moved);
+        true
+    }
+
+    /// Commit the move: one "Move Selection" state when the mask actually moved,
+    /// nothing when it lands on the origin. Clears the origin.
+    pub fn commit_selection_move(mut self: Pin<&mut Self>) -> bool {
+        let origin = self.as_mut().rust_mut().selection_move_origin.take();
+        let Some(origin) = origin else {
+            return false;
+        };
+        if self.rust().selection.as_ref() == Some(&origin) {
+            return false;
+        }
+        self.as_mut().record("Move Selection");
+        self.changed();
+        true
+    }
+
+    /// Restore the origin selection and drop the drag. No history.
+    pub fn cancel_selection_move(mut self: Pin<&mut Self>) -> bool {
+        let Some(origin) = self.as_mut().rust_mut().selection_move_origin.take() else {
+            return false;
+        };
+        self.as_mut().rust_mut().selection = Some(origin);
+        true
+    }
+
     /// `border` width 1-200, `smooth`/`expand`/`contract` radius 1-100,
     /// `feather` radius >0 (clamped to 250). Zero/unknown amounts refuse
     /// (no history).

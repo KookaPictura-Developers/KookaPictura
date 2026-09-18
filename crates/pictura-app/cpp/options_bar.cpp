@@ -1,11 +1,15 @@
 #include "options_bar.h"
 
+#include "icons.h"
+
+#include <QtGui/QAction>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QMenu>
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QToolButton>
@@ -17,13 +21,14 @@ namespace {
 struct ModeButton {
     SelectionMode mode;
     const char* label;
+    const char* icon;
 };
 
 const ModeButton kModes[] = {
-    {SelectionMode::New, "New"},
-    {SelectionMode::Add, "Add"},
-    {SelectionMode::Subtract, "Subtract"},
-    {SelectionMode::Intersect, "Intersect"},
+    {SelectionMode::New, "New selection", "select.mode.new"},
+    {SelectionMode::Add, "Add to selection", "select.mode.add"},
+    {SelectionMode::Subtract, "Subtract from selection", "select.mode.subtract"},
+    {SelectionMode::Intersect, "Intersect with selection", "select.mode.intersect"},
 };
 
 } // namespace
@@ -66,7 +71,8 @@ QWidget* OptionsBar::buildPage(ToolId id)
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
         layout->setContentsMargins(4, 2, 4, 2);
-        layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
+        layout->addWidget(toolButton(id, page));
+        layout->addStretch(1);
         return page;
     }
     }
@@ -77,7 +83,7 @@ QWidget* OptionsBar::buildCombinePage(ToolId id, bool withTolerance)
     auto* page = new QWidget(stack_);
     auto* layout = new QHBoxLayout(page);
     layout->setContentsMargins(4, 2, 4, 2);
-    layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
+    layout->addWidget(toolButton(id, page));
 
     // Quick Selection has no Intersect mode in CS6.
     addModeButtons(layout, page, id != ToolId::QuickSelection);
@@ -110,6 +116,7 @@ QWidget* OptionsBar::buildCombinePage(ToolId id, bool withTolerance)
         layout->addWidget(enhance);
     }
 
+    layout->addStretch(1);
     return page;
 }
 
@@ -118,7 +125,7 @@ QWidget* OptionsBar::buildWandPage(ToolId id)
     auto* page = new QWidget(stack_);
     auto* layout = new QHBoxLayout(page);
     layout->setContentsMargins(4, 2, 4, 2);
-    layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
+    layout->addWidget(toolButton(id, page));
 
     addModeButtons(layout, page, true);
 
@@ -152,8 +159,9 @@ QWidget* OptionsBar::buildWandPage(ToolId id)
     sample->setChecked(controller_ ? controller_->sampleAllLayers() : true);
     sample->setEnabled(false);
     sample->setToolTip(QStringLiteral("Not modelled: the wand samples the visible composite."));
-    layout->addWidget(sample);
+        layout->addWidget(sample);
 
+    layout->addStretch(1);
     return page;
 }
 
@@ -166,7 +174,10 @@ void OptionsBar::addModeButtons(QHBoxLayout* layout, QWidget* page, bool withInt
             continue;
         }
         auto* button = new QToolButton(page);
-        button->setText(QString::fromLatin1(modeButton.label));
+        button->setIcon(icon(QString::fromLatin1(modeButton.icon)));
+        button->setIconSize(QSize(18, 18));
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setToolTip(QString::fromLatin1(modeButton.label));
         button->setCheckable(true);
         button->setChecked(controller_ && controller_->combineMode() == modeButton.mode);
         group->addButton(button);
@@ -183,7 +194,7 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
     auto* page = new QWidget(stack_);
     auto* layout = new QHBoxLayout(page);
     layout->setContentsMargins(4, 2, 4, 2);
-    layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
+    layout->addWidget(toolButton(id, page));
 
     addModeButtons(layout, page, true);
 
@@ -287,6 +298,7 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
         layout->addWidget(antiAlias);
     }
 
+    layout->addStretch(1);
     return page;
 }
 
@@ -295,7 +307,7 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
     auto* page = new QWidget(stack_);
     auto* layout = new QHBoxLayout(page);
     layout->setContentsMargins(4, 2, 4, 2);
-    layout->addWidget(new QLabel(QString::fromLatin1(toolInfo(id).label), page));
+    layout->addWidget(toolButton(id, page));
 
     auto addSpin = [&](const QString& label, int lo, int hi, int value,
                        void (ToolController::*setter)(int)) {
@@ -343,7 +355,23 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
         layout->addWidget(check);
     }
 
+    layout->addStretch(1);
     return page;
+}
+
+QToolButton* OptionsBar::toolButton(ToolId id, QWidget* parent)
+{
+    auto* button = new QToolButton(parent);
+    button->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));
+    button->setIconSize(QSize(18, 18));
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    button->setToolTip(QString::fromLatin1(toolInfo(id).label));
+    auto* menu = new QMenu(button);
+    QAction* presets = menu->addAction(QStringLiteral("Presets (coming soon)"));
+    presets->setEnabled(false);
+    button->setMenu(menu);
+    button->setPopupMode(QToolButton::InstantPopup);
+    return button;
 }
 
 void OptionsBar::showTool(ToolId id)

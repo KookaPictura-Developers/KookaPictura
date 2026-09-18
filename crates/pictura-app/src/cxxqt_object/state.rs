@@ -13,6 +13,9 @@ pub struct PictureViewRust {
     /// CS6 "last deselected" memory: the selection replaced by Deselect or a
     /// New-mode commit. Restored by `reselect`.
     pub(super) deselected_selection: Option<Selection>,
+    /// Selection captured at the start of a move-selection drag; `None` when no
+    /// drag is active. Restored by `cancel_selection_move`.
+    pub(super) selection_move_origin: Option<Selection>,
     pub(super) history: History,
     pub(super) path: Option<String>,
     pub(super) dirty: bool,
@@ -44,6 +47,7 @@ impl Default for PictureViewRust {
             doc: None,
             selection: None,
             deselected_selection: None,
+            selection_move_origin: None,
             history: History::default(),
             path: None,
             dirty: false,

@@ -661,6 +661,9 @@ void PicturaMainWindow::closeEvent(QCloseEvent* event)
 
 void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
 {
+    if (tools_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+        tools_->refreshCursor();
+    }
     if (!event->isAutoRepeat()
         && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
         && tools_ && tools_->activeTool() == ToolId::Crop) {
@@ -682,6 +685,14 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
         return;
     }
     QMainWindow::keyPressEvent(event);
+}
+
+void PicturaMainWindow::keyReleaseEvent(QKeyEvent* event)
+{
+    if (tools_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+        tools_->refreshCursor();
+    }
+    QMainWindow::keyReleaseEvent(event);
 }
 
 void PicturaMainWindow::updateStatus()
