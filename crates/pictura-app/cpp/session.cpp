@@ -14,12 +14,16 @@ namespace pictura {
 
 namespace {
 
+// The state file is tiny JSON; anything larger is corrupt or hostile, so it is
+// not read into memory.
+constexpr qint64 kMaxSessionBytes = 1024 * 1024;
+
 // The existing store's top-level object, or empty when missing/corrupt. Used by
 // the load-then-write save so keys this build does not know survive a rewrite.
 QJsonObject readStoreObject()
 {
     QFile file(sessionFilePath());
-    if (!file.open(QIODevice::ReadOnly)) {
+    if (!file.open(QIODevice::ReadOnly) || file.size() > kMaxSessionBytes) {
         return {};
     }
     QJsonParseError error{};
@@ -47,7 +51,7 @@ SessionState loadSession()
     SessionState state;
 
     QFile file(sessionFilePath());
-    if (!file.open(QIODevice::ReadOnly)) {
+    if (!file.open(QIODevice::ReadOnly) || file.size() > kMaxSessionBytes) {
         return state;
     }
 

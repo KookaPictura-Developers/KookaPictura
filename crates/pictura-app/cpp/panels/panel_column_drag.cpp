@@ -855,16 +855,17 @@ bool PanelColumn::applyNewColumnDrop(PanelSide side, PanelColumn* anchor)
     }
     PanelGroup* source = dragGroup_;
     PanelGroup* payload = source;
+    QWidget* takenPanel = nullptr;
+    QString takenTitle;
+    QIcon takenIcon;
+    int takenIndex = -1;
     if (dragIsPanel_ && !dragPanel_.isEmpty()) {
-        QString title;
-        QIcon iconValue;
-        int panelIndex = -1;
-        QWidget* panel = source->takePanel(dragPanel_, &title, &iconValue, &panelIndex);
-        if (!panel) {
+        takenPanel = source->takePanel(dragPanel_, &takenTitle, &takenIcon, &takenIndex);
+        if (!takenPanel) {
             return false;
         }
         payload = new PanelGroup(this);
-        payload->addPanel(panel, title, iconValue);
+        payload->addPanel(takenPanel, takenTitle, takenIcon);
         panelVisible_[dragPanel_] = true;
     }
     // A whole group is detached from this column's stack; a floating group is
@@ -882,7 +883,17 @@ bool PanelColumn::applyNewColumnDrop(PanelSide side, PanelColumn* anchor)
     }
     PanelColumn* destination = frame->createPanelColumn(side, anchor);
     if (!destination) {
-        if (index >= 0) {
+        if (takenPanel) {
+            // No column to adopt the panel: put it back in the stack it was
+            // lifted from so a failed drop neither orphans nor loses it. The
+            // source group is the original one (createFloat may have swapped
+            // dragGroup_ for a transient one-panel float that commitDrop tears
+            // down after this returns).
+            PanelGroup* home = dragSourceGroup_ ? dragSourceGroup_ : source;
+            home->insertPanel(takenPanel, takenTitle, takenIcon,
+                              qBound(0, takenIndex, home->titleCountForTest()));
+            payload->deleteLater();
+        } else if (index >= 0) {
             insertGroupAt(source, qBound(0, dragOriginalIndex_, groups_.size()));
         }
         return false;
