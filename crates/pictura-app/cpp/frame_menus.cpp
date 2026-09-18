@@ -108,7 +108,6 @@ void PicturaMainWindow::registerHandlers()
 {
     registry_->setHandler(command_ids::FileNew, [this]() { showNewDocumentDialog(); });
     registry_->setHandler(command_ids::FileOpen, [this]() { showOpenDialog(); });
-    registry_->setEnabledProvider(command_ids::FileOpen, []() { return true; });
 
     registry_->setHandler(command_ids::FileSave, [this]() { saveActive(); });
     registry_->setHandler(command_ids::FileSaveAs, [this]() {

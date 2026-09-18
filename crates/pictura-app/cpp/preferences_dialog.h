@@ -26,7 +26,6 @@ public:
 
     // Select `page` (a no-op when unknown) and show non-modally.
     void openOn(const QString& page);
-    void showPage(const QString& page);
 
     void setShiftKeyForToolSwitch(bool on);
     void setAutoCollapseIconic(bool on);
@@ -46,6 +45,7 @@ signals:
     void brightnessLevelChanged(int level);
 
 private:
+    void showPage(const QString& page);
     QCheckBox* makeCheckbox(const QString& key, const QString& label, QWidget* page);
     QCheckBox* checkbox(const QString& key) const;
     int pageIndex(const QString& name) const;

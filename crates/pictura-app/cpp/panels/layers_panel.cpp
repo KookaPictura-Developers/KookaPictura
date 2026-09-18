@@ -117,16 +117,6 @@ QColor labelColor(int label)
     }
 }
 
-QString blendName(const QString& key)
-{
-    for (const BlendEntry& entry : kBlends) {
-        if (key == QLatin1String(entry.key)) {
-            return QString::fromLatin1(entry.name);
-        }
-    }
-    return key;
-}
-
 } // namespace
 
 QString layerTooltip(const LayerRow& layer)

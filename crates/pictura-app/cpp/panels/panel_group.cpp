@@ -198,21 +198,6 @@ bool PanelGroup::containsPanel(const QString& objectName) const
     return false;
 }
 
-bool PanelGroup::removePanel(const QString& objectName)
-{
-    for (int i = 0; i < tabs_->count(); ++i) {
-        QWidget* panel = tabs_->widget(i);
-        if (panel && panel->objectName() == objectName) {
-            tabs_->removeTab(i);
-            if (collapsedToIcons_) {
-                rebuildIconRow();
-            }
-            return true;
-        }
-    }
-    return false;
-}
-
 bool PanelGroup::setPanelVisible(const QString& objectName, bool visible)
 {
     for (int i = 0; i < tabs_->count(); ++i) {
@@ -482,40 +467,6 @@ QToolButton* PanelGroup::makeIconButton(const QIcon& icon, const QString& title,
         emit panelActivated(objectName, button->mapToGlobal(QPoint(button->width(), 0)));
     });
     return button;
-}
-
-QWidget* PanelGroup::detachPanel(const QString& objectName)
-{
-    for (int i = 0; i < tabs_->count(); ++i) {
-        QWidget* panel = tabs_->widget(i);
-        if (panel && panel->objectName() == objectName) {
-            detached_.panel = panel;
-            detached_.title = tabs_->tabText(i);
-            detached_.icon = tabs_->tabIcon(i);
-            detached_.index = i;
-            tabs_->removeTab(i);
-            if (collapsedToIcons_) {
-                rebuildIconRow();
-            }
-            return panel;
-        }
-    }
-    return nullptr;
-}
-
-bool PanelGroup::attachPanel(const QString& objectName)
-{
-    if (!detached_.panel || detached_.panel->objectName() != objectName) {
-        return false;
-    }
-    const int index = qBound(0, detached_.index, tabs_->count());
-    tabs_->insertTab(index, detached_.panel, detached_.icon, detached_.title);
-    tabs_->setTabToolTip(index, detached_.title);
-    detached_ = {};
-    if (collapsedToIcons_) {
-        rebuildIconRow();
-    }
-    return true;
 }
 
 bool PanelGroup::eventFilter(QObject* watched, QEvent* event)

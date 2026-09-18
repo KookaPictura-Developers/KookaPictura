@@ -35,7 +35,6 @@ public:
     QList<QWidget*> panels() const;
     QList<QWidget*> visiblePanels() const;
     bool containsPanel(const QString& objectName) const;
-    bool removePanel(const QString& objectName);
     bool setPanelVisible(const QString& objectName, bool visible);
     QString currentPanelName() const;
     // M45 C1: make the named panel the active tab (the compact popup opens the
@@ -70,11 +69,6 @@ public:
     void setMinimized(bool minimized);
     bool isCollapsedToIcons() const { return collapsedToIcons_; }
     void setCollapsedToIcons(bool collapsed);
-
-    // Detach/attach the current panel for a `Qt::Popup` flyout. The panel is
-    // removed from the tab stack while detached and reinserted at its index.
-    QWidget* detachPanel(const QString& objectName);
-    bool attachPanel(const QString& objectName);
 
     // M44: make the first visible panel current (a stored layout used to leave
     // the last visible panel active after `setPanelVisible` walked the tabs).
@@ -158,13 +152,6 @@ private:
     bool dragging_ = false;
     QPoint pressGlobal_;
     QString pressedPanel_;
-
-    struct Detached {
-        QWidget* panel = nullptr;
-        QString title;
-        QIcon icon;
-        int index = 0;
-    } detached_;
 };
 
 } // namespace pictura

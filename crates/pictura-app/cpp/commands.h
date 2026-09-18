@@ -97,7 +97,6 @@ public:
     void addSeparator(const QStringList& path);
 
     void setHandler(const QString& id, std::function<void()> handler);
-    bool hasHandler(const QString& id) const;
 
     // Extra enablement predicate for `id`; combined with `implemented` and the
     // presence of a handler.
@@ -122,6 +121,8 @@ public:
     QStringList topLevelTitles() const;
 
 private:
+    bool hasHandler(const QString& id) const;
+
     struct Entry {
         CommandSpec spec;
         QAction* action = nullptr;

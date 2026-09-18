@@ -73,7 +73,6 @@ private:
     void paintSwatch(QPushButton* button, const QColor& color, bool active);
 
     ColorState* state_ = nullptr;
-    bool activeForeground_ = true;
     QSlider* rgb_[3] = {nullptr, nullptr, nullptr};
     QSlider* hsb_[3] = {nullptr, nullptr, nullptr};
     QLabel* rgbValue_[3] = {nullptr, nullptr, nullptr};

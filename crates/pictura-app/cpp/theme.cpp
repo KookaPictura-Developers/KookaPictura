@@ -197,7 +197,6 @@ QWidget#panelColumnContainer { border: ${borderWidth}px solid ${border}; }
 QWidget#panelColumnIconStrip { border: ${borderWidth}px solid ${border}; }
 QDockWidget#toolsPanel { border: ${borderWidth}px solid ${border}; }
 QWidget#panelIconFlyout { background: ${window}; border: ${borderWidth}px solid ${border}; }
-QWidget#panelFlyoutHeader { background: ${window}; border-bottom: ${borderWidth}px solid ${border}; }
 QWidget#panelFloat { background: ${window}; border: ${borderWidth}px solid ${border}; }
 
 QTabWidget::tab-bar { alignment: left; }
