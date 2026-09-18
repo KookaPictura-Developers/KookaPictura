@@ -2395,12 +2395,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool mpcHit = mpcCreated && mpcView && mpcView->prepare_move_preview() && mpcView->begin_move_preview() && mpcView->move_preview_cache_hit();
         const QImage mpcBase = mpcView ? mpcView->move_preview_base() : QImage();
         const bool mpcReuse = mpcView && mpcView->begin_move_preview() && mpcView->move_preview_cache_hit() && !mpcBase.isNull() && samePixels(mpcBase, mpcView->move_preview_base());
-        if (mpcView) mpcView->set_layer_visible(0, false);
+        const bool mpcAfterMove = mpcView && mpcView->commit_move(1, 1) && mpcView->begin_move_preview() && mpcView->move_preview_cache_hit(); if (mpcView) mpcView->set_layer_visible(0, false);
         const bool mpcMiss = mpcView && mpcView->begin_move_preview() && !mpcView->move_preview_cache_hit();
         if (mpcView) mpcView->end_move_preview();
-        std::fprintf(stderr, "pictura self-test: move_preview_cache hit=%d reuse=%d miss=%d\n", mpcHit ? 1 : 0, mpcReuse ? 1 : 0, mpcMiss ? 1 : 0);
+        std::fprintf(stderr, "pictura self-test: move_preview_cache hit=%d reuse=%d after_move=%d miss=%d\n", mpcHit ? 1 : 0, mpcReuse ? 1 : 0, mpcAfterMove ? 1 : 0, mpcMiss ? 1 : 0);
         std::fflush(stderr);
-        if (!mpcHit || !mpcReuse || !mpcMiss) { std::fprintf(stderr, "pictura self-test: FAIL: move preview cache wrong\n"); return 197; }
+        if (!mpcHit || !mpcReuse || !mpcAfterMove || !mpcMiss) { std::fprintf(stderr, "pictura self-test: FAIL: move preview cache wrong\n"); return 197; }
         frame.closeDocument(frame.activeDocumentIndex(), false);
         // Document size accessors: match full-image dims, then track a resize. 198: size.
         const bool dsCreated = frame.newDocument(QStringLiteral("DocSize"), 20, 12, QStringLiteral("rgb"), 8, QStringLiteral("white"));
