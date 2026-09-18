@@ -18,5 +18,4 @@ crates/pictura-app/cpp/panels/layers_panel.cpp 1511
 crates/pictura-render/src/document_ops/layer_ops.rs 1315
 crates/pictura-render/src/gpu_filter.rs 1284
 crates/pictura-filters/src/lib.rs 1121
-crates/pictura-app/cpp/panels/panel_group.cpp 1095
 crates/pictura-render/tests/gpu_parity.rs 1016

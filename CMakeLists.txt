@@ -71,6 +71,8 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/histogram_panel.cpp
     crates/pictura-app/cpp/panels/placeholder_panel.cpp
     crates/pictura-app/cpp/panels/panel_group.cpp
+    crates/pictura-app/cpp/panels/panel_group_menu.cpp
+    crates/pictura-app/cpp/panels/panel_group_test.cpp
     crates/pictura-app/cpp/panels/panel_column.cpp
     crates/pictura-app/cpp/tools.cpp
     crates/pictura-app/cpp/toolbox.cpp
