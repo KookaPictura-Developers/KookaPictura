@@ -213,6 +213,16 @@ update this file.
 
 ## 10. Reproduction / inspection commands
 
+`scripts/report_tests.py` prints every test by name under its package (Rust) or
+suite (app self-test), in run order, with a status glyph: `✓` green passed, `✗`
+red failed, `○` yellow skipped/ignored. A passing self-test check appends its
+`detail` from the `PASS` token, aligned and dimmed. Each layer keeps its suite
+counts, subtotal, the `TOTAL` line, and the `FAILURES` section; the process
+still exits non-zero on any failure. Pass `-q`/`--quiet` (alias `--summary`) for
+the old counts-only output — suites, subtotals, `TOTAL`, and `FAILURES` with no
+per-test lines. `--color auto|always|never` controls ANSI: `never` emits none,
+`always` emits it even when piped.
+
 ```bash
 # Fast local gate (fmt, clippy, unified report, file-size, guard, openspec):
 bash scripts/verify-fast.sh
@@ -226,6 +236,9 @@ bash scripts/test-report.sh [auto|always|never]
 # Reporter only, against captured logs (writes nothing):
 python3 scripts/report_tests.py --junit target/nextest/default/junit.xml \
     --doctests <log> --selftest <log> --color never
+
+# Counts only (no per-test lines) for CI/log-tight use:
+python3 scripts/report_tests.py --quiet --junit target/nextest/default/junit.xml
 
 # The parser's runnable check:
 python3 scripts/report_tests.py --self-check

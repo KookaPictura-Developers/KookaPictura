@@ -64,9 +64,15 @@ def _node_message(node):
 
 
 def parse_junit(xml_text):
-    """Return ({package: Counts}, [(test_id, message)])."""
+    """Return ({package: Counts}, entries, [(test_id, message)]).
+
+    ``entries`` is ``[(package, test_name, status, detail)]`` in document order;
+    ``status`` is ``"pass"``/``"skip"``/``"fail"``. Skipped cases carry the
+    ``"(ignored)"`` detail.
+    """
     root = ET.fromstring(xml_text)
     suites = {}
+    entries = []
     failures = []
     for testsuite in root.iter("testsuite"):
         name = testsuite.get("name") or ""
@@ -75,18 +81,22 @@ def parse_junit(xml_text):
         cases = testsuite.findall("testcase")
         if cases:
             for case in cases:
+                test_name = case.get("name") or "?"
                 bad = case.find("failure")
                 if bad is None:
                     bad = case.find("error")
                 if bad is not None:
                     counts.failed += 1
                     container = case.get("classname") or name
-                    tid = f"{container}::{case.get('name') or '?'}"
+                    tid = f"{container}::{test_name}"
                     failures.append((tid, _node_message(bad)))
+                    entries.append((package, test_name, "fail", ""))
                 elif case.find("skipped") is not None:
                     counts.skipped += 1
+                    entries.append((package, test_name, "skip", "(ignored)"))
                 else:
                     counts.passed += 1
+                    entries.append((package, test_name, "pass", ""))
         else:
             tests = int(testsuite.get("tests") or 0)
             failed = int(testsuite.get("failures") or 0) + int(
@@ -96,7 +106,7 @@ def parse_junit(xml_text):
             counts.passed += max(tests - failed - skipped, 0)
             counts.failed += failed
             counts.skipped += skipped
-    return suites, failures
+    return suites, entries, failures
 
 
 def parse_doctests(text):
@@ -153,11 +163,14 @@ def parse_selftest_stream(text):
         if len(parts) < 2:
             continue
         key = (parts[0], parts[1])
-        record = {"status": keyword, "code": "", "message": ""}
-        if keyword == "FAIL" and len(parts) == 3:
-            tail = parts[2].split(None, 1)
-            record["code"] = tail[0]
-            record["message"] = tail[1] if len(tail) == 2 else ""
+        tail = parts[2] if len(parts) == 3 else ""
+        record = {"status": keyword, "code": "", "message": "", "detail": ""}
+        if keyword == "FAIL" and tail:
+            bits = tail.split(None, 1)
+            record["code"] = bits[0]
+            record["message"] = bits[1] if len(bits) == 2 else ""
+        elif keyword in ("PASS", "SKIP"):
+            record["detail"] = tail
         if key not in checks:
             order.append(key)
         checks[key] = record
@@ -170,7 +183,8 @@ def merge_selftest_streams(texts):
     A check present in several runs is counted once; the last stream's status
     wins. Layer totals come from the SUMMARY only when a single stream is
     supplied, otherwise they are recomputed from the merged unique checks.
-    Returns ({suite: Counts}, totals, [(label, message)]).
+    Returns ({suite: Counts}, totals, [(label, message)], entries) where
+    ``entries`` is ``[(suite, name, status, detail)]`` in stream order.
     """
     order = []
     merged = {}
@@ -184,6 +198,7 @@ def merge_selftest_streams(texts):
             merged[key] = checks[key]
 
     suites = {}
+    entries = []
     failures = []
     for key in order:
         suite, name = key
@@ -192,10 +207,13 @@ def merge_selftest_streams(texts):
         status = record["status"]
         if status == "PASS":
             counts.passed += 1
+            entries.append((suite, name, "pass", record["detail"]))
         elif status == "SKIP":
             counts.skipped += 1
+            entries.append((suite, name, "skip", record["detail"]))
         else:
             counts.failed += 1
+            entries.append((suite, name, "fail", ""))
             label = f"{suite}::{name}"
             if record["code"]:
                 label += f" (exit {record['code']})"
@@ -205,11 +223,11 @@ def merge_selftest_streams(texts):
         totals = summaries[0]
     else:
         totals = sum_counts(suites)
-    return suites, totals, failures
+    return suites, totals, failures, entries
 
 
 def parse_selftest(text):
-    """Return ({suite: Counts}, totals, failures) for a single stream."""
+    """Return ({suite: Counts}, totals, failures, entries) for one stream."""
     return merge_selftest_streams([text])
 
 
@@ -226,6 +244,20 @@ def _counts_dot(counts):
     return f"{counts.passed} passed \u00b7 {counts.skipped} skipped \u00b7 {counts.failed} failed"
 
 
+def _counts_brief(counts):
+    parts = [f"{counts.passed} passed"]
+    if counts.skipped:
+        parts.append(f"{counts.skipped} skipped")
+    if counts.failed:
+        parts.append(f"{counts.failed} failed")
+    return " \u00b7 ".join(parts)
+
+
+PASS_GLYPH = "\u2713"
+FAIL_GLYPH = "\u2717"
+SKIP_GLYPH = "\u25cb"
+
+
 def _style(text, code, color):
     if not color:
         return text
@@ -233,18 +265,51 @@ def _style(text, code, color):
 
 
 class Layer:
-    def __init__(self, title, suites=None, totals=None, single=False):
+    def __init__(self, title, suites=None, totals=None, single=False, entries=None):
         self.title = title
         self.suites = suites or {}
         self.totals = totals if totals is not None else sum_counts(self.suites)
         self.single = single
+        self.entries = entries or []
 
     def empty(self):
         return self.totals.total() == 0 and not self.suites
 
 
-def render(layers, failures, color):
-    visible = [layer for layer in layers if not layer.empty()]
+def _test_lines(tests, color):
+    if not tests:
+        return []
+    width = max(len(name) for name, _, _ in tests)
+    lines = []
+    for name, status, detail in tests:
+        if status == "pass":
+            line = f"    {_style(PASS_GLYPH, '32', color)} {name}"
+            if detail:
+                line += " " * (width - len(name) + 2) + _style(detail, "2", color)
+        elif status == "skip":
+            line = f"    {_style(SKIP_GLYPH, '33', color)} {name}"
+            if detail:
+                line += f" {detail}"
+        else:
+            line = f"    {_style(FAIL_GLYPH, '31', color)} {name}"
+        lines.append(line)
+    return lines
+
+
+def _failure_lines(failures, color):
+    lines = []
+    if failures:
+        lines.append("")
+        lines.append(_style("FAILURES", "1;31", color))
+        for index, (label, message) in enumerate(failures, 1):
+            lines.append(f"  {index}) {label}")
+            body = message if message.strip() else "(no message)"
+            for line in body.splitlines():
+                lines.append(f"       {line}")
+    return lines
+
+
+def _render_summary(visible, failures, color):
     labels = []
     for layer in visible:
         labels.extend(layer.suites)
@@ -268,15 +333,40 @@ def render(layers, failures, color):
         lines.append(f"  {'subtotal':<{width}}{_counts_dot(layer.totals)}")
     lines.append(RULE)
     lines.append(_style(f"TOTAL  {_counts_dot(totals)}", "1", color))
+    lines.extend(_failure_lines(failures, color))
+    return "\n".join(lines)
 
-    if failures:
-        lines.append("")
-        lines.append(_style("FAILURES", "1;31", color))
-        for index, (label, message) in enumerate(failures, 1):
-            lines.append(f"  {index}) {label}")
-            body = message if message.strip() else "(no message)"
-            for line in body.splitlines():
-                lines.append(f"       {line}")
+
+def render(layers, failures, color, show_tests=True):
+    visible = [layer for layer in layers if not layer.empty()]
+    if not show_tests:
+        return _render_summary(visible, failures, color)
+
+    lines = [_style("pictura test report", "1", color), RULE]
+    totals = Counts()
+    last = len(visible) - 1
+    for index, layer in enumerate(visible):
+        totals.add(layer.totals)
+        if layer.single:
+            lines.append(
+                _style(f"{layer.title} ({_counts_compact(layer.totals)})", "1", color)
+            )
+        else:
+            lines.append(
+                _style(f"{layer.title} \u2014 {_counts_brief(layer.totals)}", "1", color)
+            )
+            by_suite = {}
+            for suite, name, status, detail in layer.entries:
+                by_suite.setdefault(suite, []).append((name, status, detail))
+            for suite, counts in layer.suites.items():
+                lines.append(f"  {suite} ({_counts_compact(counts)})")
+                lines.extend(_test_lines(by_suite.get(suite, []), color))
+            lines.append(f"  subtotal {_counts_brief(layer.totals)}")
+        if index != last:
+            lines.append("")
+    lines.append(RULE)
+    lines.append(_style(f"TOTAL  {_counts_dot(totals)}", "1", color))
+    lines.extend(_failure_lines(failures, color))
     return "\n".join(lines)
 
 
@@ -297,11 +387,11 @@ def build_layers(args, errors):
         text = _read(args.junit, errors)
         if text is not None:
             try:
-                suites, junit_failures = parse_junit(text)
+                suites, entries, junit_failures = parse_junit(text)
             except ET.ParseError as exc:
                 errors.append(f"{args.junit}: invalid JUnit XML: {exc}")
             else:
-                layers.append(Layer("Rust suites (nextest)", suites))
+                layers.append(Layer("Rust tests (nextest)", suites, entries=entries))
                 failures.extend(junit_failures)
 
     if args.selftest:
@@ -311,10 +401,10 @@ def build_layers(args, errors):
             if text is not None:
                 texts.append(text)
         if texts:
-            suites, totals, selftest_failures = merge_selftest_streams(texts)
+            suites, totals, selftest_failures, entries = merge_selftest_streams(texts)
             if suites or totals.total():
                 layers.append(
-                    Layer("App self-test (offscreen Qt)", suites, totals)
+                    Layer("App self-test (offscreen Qt)", suites, totals, entries=entries)
                 )
             failures.extend(selftest_failures)
 
@@ -358,6 +448,14 @@ def _parse_args(argv):
         "--color", choices=("auto", "always", "never"), default="auto"
     )
     parser.add_argument("--no-color", action="store_true")
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        "--summary",
+        action="store_true",
+        dest="quiet",
+        help="counts only: suites, subtotals, TOTAL, FAILURES (no per-test lines)",
+    )
     parser.add_argument("--self-check", action="store_true")
     return parser.parse_args(argv)
 
@@ -415,18 +513,21 @@ pictura self-test: SUMMARY passed=1 failed=1 skipped=0
 
 
 def run_self_check():
-    suites, failures = parse_junit(PASS_JUNIT)
+    suites, entries, failures = parse_junit(PASS_JUNIT)
     assert suites["pictura-core"].passed == 2, suites
     assert suites["pictura-codec"].passed == 1, suites
     assert not failures, failures
+    assert [e[1] for e in entries] == ["a", "b", "oracle::x"], entries
 
-    suites, failures = parse_junit(FAIL_JUNIT)
+    suites, entries, failures = parse_junit(FAIL_JUNIT)
     assert suites["pictura-codec"].failed == 1, suites
     assert suites["pictura-codec"].skipped == 1, suites
     assert suites["pictura-codec"].passed == 0, suites
     assert len(failures) == 1, failures
     assert failures[0][0] == "pictura-codec::oracle::bad", failures
     assert "assertion" in failures[0][1], failures
+    assert entries[0][1:] == ("oracle::skipped", "skip", "(ignored)"), entries
+    assert entries[1][1:] == ("oracle::bad", "fail", ""), entries
 
     counts, failures, seen = parse_doctests(DOCTEST_OK)
     assert seen and counts.passed == 3 and counts.failed == 0, (counts, failures)
@@ -438,7 +539,7 @@ def run_self_check():
     _, _, seen = parse_doctests("no summary here")
     assert not seen
 
-    suites, totals, failures = parse_selftest(SELFTEST)
+    suites, totals, failures, entries = parse_selftest(SELFTEST)
     assert suites["core"].passed == 1, suites
     assert suites["core"].skipped == 1, suites
     assert suites["m47"].failed == 1, suites
@@ -446,18 +547,26 @@ def run_self_check():
     assert len(failures) == 1, failures
     assert failures[0][0] == "m47::compact_shade (exit 195)", failures
     assert failures[0][1] == "M47 compact shade", failures
+    assert entries == [
+        ("core", "document_size", "pass", "4000x4000"),
+        ("core", "gpu", "skip", "vk not available"),
+        ("m47", "compact_shade", "fail", ""),
+    ], entries
 
-    suites, totals, failures = merge_selftest_streams([SELFTEST_BARE, SELFTEST_PSD])
+    suites, totals, failures, entries = merge_selftest_streams(
+        [SELFTEST_BARE, SELFTEST_PSD]
+    )
     assert (totals.passed, totals.failed, totals.skipped) == (2, 1, 0), totals
     assert suites["core"].total() == 3, suites
     assert len(failures) == 1, failures
     assert failures[0][0] == "core::shared (exit 7)", failures
     assert failures[0][1] == "boom", failures
+    assert [e[1] for e in entries] == ["shared", "only_bare", "only_psd"], entries
 
-    suites, totals, _ = merge_selftest_streams([SELFTEST_BARE])
+    suites, totals, _, _ = merge_selftest_streams([SELFTEST_BARE])
     assert (totals.passed, totals.failed, totals.skipped) == (2, 0, 0), totals
 
-    _, _, human = parse_selftest(
+    _, _, human, _ = parse_selftest(
         "pictura self-test: document_size=4000\npictura self-test: FAIL: nope"
     )
     assert not human, human
@@ -466,8 +575,29 @@ def run_self_check():
     assert exit_code([("x", "")], []) == 1
     assert exit_code([], ["e"]) == 1
 
-    layer = [Layer("Rust suites (nextest)", {"pictura-core": Counts(2)})]
-    assert "\x1b[" not in render(layer, [], False), "color never leaked ANSI"
+    layer = [
+        Layer(
+            "Rust tests (nextest)",
+            {"pictura-core": Counts(2, 0, 1)},
+            entries=[
+                ("pictura-core", "tests::known_pass", "pass", "detail=1"),
+                ("pictura-core", "tests::known_skip", "skip", "(ignored)"),
+            ],
+        )
+    ]
+    listing = render(layer, [], False)
+    assert "tests::known_pass" in listing, listing
+    assert PASS_GLYPH in listing, listing
+    assert "tests::known_skip" in listing and SKIP_GLYPH in listing, listing
+    assert "\x1b[" not in listing, "color never leaked ANSI"
+
+    failed = render(layer, [("pictura-core::bad", "boom")], False)
+    assert "FAILURES" in failed and "pictura-core::bad" in failed, failed
+
+    quiet = render(layer, [], False, show_tests=False)
+    assert "tests::known_pass" not in quiet, quiet
+    assert "pictura-core" in quiet and "subtotal" in quiet, quiet
+
     assert "\x1b[" in render(layer, [], True), "color always missing ANSI"
 
     print("report_tests.py: self-check OK")
@@ -482,7 +612,7 @@ def main(argv=None):
     errors = []
     layers, failures = build_layers(args, errors)
     color = _color_enabled("never" if args.no_color else args.color)
-    sys.stdout.write(render(layers, failures, color) + "\n")
+    sys.stdout.write(render(layers, failures, color, not args.quiet) + "\n")
     for error in errors:
         print(f"report_tests.py: error: {error}", file=sys.stderr)
     return exit_code(failures, errors)
