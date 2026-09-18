@@ -505,30 +505,43 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::SelectDeselect, {"Select", "Deselect"}, QStringLiteral("Deselect"),
                  QKeySequence(QStringLiteral("Ctrl+D")), true);
     registry.addSeparator({"Select"});
-    leaf(registry, {"Select", "Reselect"}, QStringLiteral("Reselect"), QStringLiteral("Shift+Ctrl+D"));
-    leaf(registry, {"Select", "Inverse"}, QStringLiteral("Inverse"), QStringLiteral("Shift+Ctrl+I"));
+    registry.add(command_ids::SelectReselect, {"Select", "Reselect"}, QStringLiteral("Reselect"),
+                 QKeySequence(QStringLiteral("Shift+Ctrl+D")), true);
+    registry.add(command_ids::SelectInverse, {"Select", "Inverse"}, QStringLiteral("Inverse"),
+                 QKeySequence(QStringLiteral("Shift+Ctrl+I")), true);
     registry.addSeparator({"Select"});
-    leaf(registry, {"Select", "All Layers"}, QStringLiteral("All Layers"), QStringLiteral("Ctrl+Alt+A"));
-    leaf(registry, {"Select", "Deselect Layers"}, QStringLiteral("Deselect Layers"));
-    leaf(registry, {"Select", "Similar Layers"}, QStringLiteral("Similar Layers"));
+    registry.add(command_ids::SelectAllLayers, {"Select", "All Layers"},
+                 QStringLiteral("All Layers"), QKeySequence(QStringLiteral("Ctrl+Alt+A")), true);
+    registry.add(command_ids::SelectDeselectLayers, {"Select", "Deselect Layers"},
+                 QStringLiteral("Deselect Layers"), QKeySequence(), true);
+    registry.add(command_ids::SelectSimilarLayers, {"Select", "Similar Layers"},
+                 QStringLiteral("Similar Layers"), QKeySequence(), true);
     registry.addSeparator({"Select"});
     leaf(registry, {"Select", "Color Range…"}, QStringLiteral("Color Range…"));
     leaf(registry, {"Select", "Refine Edge…"}, QStringLiteral("Refine Edge…"),
          QStringLiteral("Ctrl+Alt+R"));
     registry.addSeparator({"Select"});
-    leaf(registry, {"Select", "Modify", "Border…"}, QStringLiteral("Border…"));
-    leaf(registry, {"Select", "Modify", "Smooth…"}, QStringLiteral("Smooth…"));
-    leaf(registry, {"Select", "Modify", "Expand…"}, QStringLiteral("Expand…"));
-    leaf(registry, {"Select", "Modify", "Contract…"}, QStringLiteral("Contract…"));
-    leaf(registry, {"Select", "Modify", "Feather…"}, QStringLiteral("Feather…"),
-         QStringLiteral("Shift+F6"));
+    registry.add(command_ids::SelectModifyBorder, {"Select", "Modify", "Border…"},
+                 QStringLiteral("Border…"), QKeySequence(), true);
+    registry.add(command_ids::SelectModifySmooth, {"Select", "Modify", "Smooth…"},
+                 QStringLiteral("Smooth…"), QKeySequence(), true);
+    registry.add(command_ids::SelectModifyExpand, {"Select", "Modify", "Expand…"},
+                 QStringLiteral("Expand…"), QKeySequence(), true);
+    registry.add(command_ids::SelectModifyContract, {"Select", "Modify", "Contract…"},
+                 QStringLiteral("Contract…"), QKeySequence(), true);
+    registry.add(command_ids::SelectModifyFeather, {"Select", "Modify", "Feather…"},
+                 QStringLiteral("Feather…"), QKeySequence(QStringLiteral("Shift+F6")), true);
     registry.addSeparator({"Select"});
-    leaf(registry, {"Select", "Grow"}, QStringLiteral("Grow"));
-    leaf(registry, {"Select", "Similar"}, QStringLiteral("Similar"));
+    registry.add(command_ids::SelectGrow, {"Select", "Grow"}, QStringLiteral("Grow"),
+                 QKeySequence(), true);
+    registry.add(command_ids::SelectSimilar, {"Select", "Similar"}, QStringLiteral("Similar"),
+                 QKeySequence(), true);
     registry.addSeparator({"Select"});
     leaf(registry, {"Select", "Transform Selection"}, QStringLiteral("Transform Selection"));
-    leaf(registry, {"Select", "Save Selection…"}, QStringLiteral("Save Selection…"));
-    leaf(registry, {"Select", "Load Selection…"}, QStringLiteral("Load Selection…"));
+    registry.add(command_ids::SelectSave, {"Select", "Save Selection…"},
+                 QStringLiteral("Save Selection…"), QKeySequence(), true);
+    registry.add(command_ids::SelectLoad, {"Select", "Load Selection…"},
+                 QStringLiteral("Load Selection…"), QKeySequence(), true);
 
     // Filter
     leaf(registry, {"Filter", "Last Filter"}, QStringLiteral("Last Filter"), QStringLiteral("Ctrl+F"));

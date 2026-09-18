@@ -1,5 +1,6 @@
 #include "selftest_layers_controls.h"
 #include "selftest_report.h"
+#include "selftest_tools_selection.h"
 
 #include "commands.h"
 #include "frame.h"
@@ -585,7 +586,7 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(229, "via copy fixture");
         }
         const int vcDoc = frame.activeDocumentIndex();
-        vcView->select_rect(0, 0, 2, 4, QStringLiteral("new"));
+        vcView->select_rect(0, 0, 2, 4, QStringLiteral("new"), 0.0);
         const int vcBase = vcView->history_count();
         const QString vcPath = vcView->layer_via_copy(QStringLiteral("0"));
         const QImage vcCopy = vcView->layer_thumbnail(1, 4);
@@ -614,7 +615,7 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(230, "via cut fixture");
         }
         const int vcutDoc = frame.activeDocumentIndex();
-        vcutView->select_rect(0, 0, 2, 4, QStringLiteral("new"));
+        vcutView->select_rect(0, 0, 2, 4, QStringLiteral("new"), 0.0);
         const int vcutBase = vcutView->history_count();
         const QString vcutPath = vcutView->layer_via_cut(QStringLiteral("0"));
         const QImage vcutCopy = vcutView->layer_thumbnail(1, 4);
@@ -989,6 +990,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(241, "group from layers");
         }
         frame.closeDocument(gflDoc, false);
+
+        if (const int sts = pictura::runToolsSelectionChecks(frame); sts != 0) { return sts; }
 
     return 0;
 }

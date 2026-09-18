@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **642 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **644 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -18,8 +18,9 @@ Snapshot for resuming after a context break. Update after each milestone.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
-  `layers-panel-control-polish`, and `layers-panel-management` changes;
-  canonical specs are in `openspec/specs/` (63 specs, `validate --all --strict`
+  `layers-panel-control-polish`, `layers-panel-management`, and
+  `selection-tools-and-menu` changes;
+  canonical specs are in `openspec/specs/` (64 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
   content rather than a milestone number.
@@ -1849,6 +1850,19 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   `openspec/changes/archive/…-layers-panel-management/design.md` §Residual. The
   pre-shift numbers still stand in `docs/dev/layers-panel-program.md`; this file
   is the up-to-date anchor.
+
+The **selection tools** `selection-tools-and-menu` change is also landed and
+archived: Elliptical Marquee (plus marquee Anti-alias/Feather/Style options),
+Polygonal Lasso (click-vertex, close on first vertex/double-click/Enter, Esc
+cancels, Feather), Magic Wand (Tolerance, Contiguous global/contiguous, combine
+modes), and the whole Select menu — Reselect, Inverse, Modify
+(Border/Smooth/Expand/Contract/Feather), Grow, Similar, Save/Load Selection to
+an alpha channel, and All/Deselect/Similar Layers — mostly wiring the existing
+`pictura-select` engine. Magnetic Lasso, Color Range, Refine Edge, and Transform
+Selection are deliberately deferred and left visible-but-disabled; the anti-alias
+and Sample-All-Layers options are honest disabled controls. The residual ceilings
+are recorded in `openspec/changes/archive/…-selection-tools-and-menu/design.md`
+§Residual.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

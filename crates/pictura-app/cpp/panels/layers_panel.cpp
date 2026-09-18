@@ -509,7 +509,11 @@ void LayersPanel::selectPath(const QString& path)
 
 void LayersPanel::selectPaths(const QStringList& paths, const QString& current)
 {
-    if (!model_ || paths.isEmpty()) {
+    if (!model_ || !tree_ || !tree_->selectionModel()) {
+        return;
+    }
+    if (paths.isEmpty()) {
+        tree_->selectionModel()->clearSelection();
         return;
     }
     QItemSelection selection;
