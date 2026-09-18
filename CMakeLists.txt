@@ -77,6 +77,11 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/panel_group_menu.cpp
     crates/pictura-app/cpp/panels/panel_group_test.cpp
     crates/pictura-app/cpp/panels/panel_column.cpp
+    crates/pictura-app/cpp/panels/panel_float.cpp
+    crates/pictura-app/cpp/panels/panel_column_iconic.cpp
+    crates/pictura-app/cpp/panels/panel_column_menu.cpp
+    crates/pictura-app/cpp/panels/panel_column_drag.cpp
+    crates/pictura-app/cpp/panels/panel_column_test.cpp
     crates/pictura-app/cpp/tools.cpp
     crates/pictura-app/cpp/toolbox.cpp
     crates/pictura-app/cpp/options_bar.cpp
