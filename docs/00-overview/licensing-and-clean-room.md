@@ -144,6 +144,10 @@ licensing of Qt6 itself, which affects linking and distribution strategy (see
 either GPL compliance or a commercial Qt license; dynamic linking under LGPL has
 notices and relinking obligations. *Counsel review required before distribution.*
 
+> Practical notes for the dynamic-linking case — generated notices, source
+> offer, relink mechanics, and the current dependency audit — live in
+> [`../dev/licensing-compliance-notes.md`](../dev/licensing-compliance-notes.md).
+
 ## Data-model impact
 
 `None` directly. Two preservation rules already stated in `ARCH-002` also serve
