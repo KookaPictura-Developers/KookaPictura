@@ -37,21 +37,6 @@
 
 namespace pictura {
 
-QStringList PanelColumn::groupTitlesForTest() const
-{
-    QStringList out;
-    for (PanelGroup* group : groups_) {
-        if (!group) {
-            continue;
-        }
-        const QStringList visible = group->visibleTitles();
-        if (!visible.isEmpty()) {
-            out << visible.join(QStringLiteral(" | "));
-        }
-    }
-    return out;
-}
-
 QString PanelColumn::groupOfForTest(const QString& objectName) const
 {
     PanelGroup* group = groupForPanel(objectName);

@@ -95,14 +95,12 @@ public:
     void setCollapsedToIconsForTest(bool collapsed) { setCollapsedToIcons(collapsed); }
     bool contentHiddenForTest() const;
     bool tabBarVisibleForTest() const;
-    bool iconRowVisibleForTest() const;
     // M44 default-active check: the current tab index and the first visible one.
     int currentTabIndexForTest() const;
     int firstVisibleTabIndexForTest() const;
 
     // Phase D: the per-widget header action button and its per-panel menu.
     QToolButton* headerMenuButtonForTest() const { return headerButton_; }
-    bool floatCloseVisibleForTest() const;
     bool headerMenuAtRightForTest() const;
     QStringList panelMenuTextsForTest() const;
     bool panelMenuEnabledForTest(const QString& text) const;

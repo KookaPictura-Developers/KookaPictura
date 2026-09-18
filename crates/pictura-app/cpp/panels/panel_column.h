@@ -123,7 +123,6 @@ public:
     void restorePanelState(const QJsonArray& state);
 
     // Test hooks.
-    QStringList groupTitlesForTest() const;
     QString groupOfForTest(const QString& objectName) const;
     bool scrollableForTest() const;
     int minimumWidthForTest() const;

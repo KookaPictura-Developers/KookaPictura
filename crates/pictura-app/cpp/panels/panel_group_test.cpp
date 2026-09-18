@@ -18,11 +18,6 @@ int PanelGroup::headerCornerWidthForTest() const
     return width;
 }
 
-bool PanelGroup::floatCloseVisibleForTest() const
-{
-    return floatCloseButton_ && floatCloseButton_->isVisible();
-}
-
 QPoint PanelGroup::tabInsertionGlobalPointForTest(int index) const
 {
     QTabBar* bar = tabBar();
@@ -70,11 +65,6 @@ bool PanelGroup::contentHiddenForTest() const
 bool PanelGroup::tabBarVisibleForTest() const
 {
     return tabs_->tabBar() && tabs_->tabBar()->isVisible();
-}
-
-bool PanelGroup::iconRowVisibleForTest() const
-{
-    return iconRow_ && iconRow_->isVisible();
 }
 
 int PanelGroup::firstVisibleTabIndexForTest() const
