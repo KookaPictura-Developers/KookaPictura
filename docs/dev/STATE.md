@@ -1868,7 +1868,10 @@ The committed selection edge is drawn as **marching ants**: `pictura-select::con
 extracts the 50 %-coverage boundary as chained lattice polylines (bbox-scoped, with
 a Select-All short-circuit), `PictureView::selection_contour()` serializes them, and
 `ImageView` paints them as an animated black dash over a white line in the document
-transform. Tool commits reach the canvas through the now-connected
+transform. A tool drag shows the same marching-ants outline live as a selection
+preview (`ImageView::setSelectionPreview`, the ellipse tool previewing the actual
+ellipse, not its bounding box), replaced by the committed contour on release. Tool
+commits reach the canvas through the now-connected
 `ToolController::selectionCommitted` → `refreshSelectionOverlay()`; menu/`changed`
 paths go through `refresh()`. `View > Show > Selection Edges` is wired as a
 per-canvas toggle (default on). `apply_selection` deliberately does not emit

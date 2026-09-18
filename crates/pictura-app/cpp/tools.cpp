@@ -7,6 +7,7 @@
 
 #include <QtCore/QDebug>
 #include <QtCore/QElapsedTimer>
+#include <QtGui/QPainterPath>
 #include <QtWidgets/QApplication>
 
 #include <algorithm>
@@ -303,6 +304,7 @@ void ToolController::setActiveTool(ToolId id)
     }
     if (canvas_) {
         canvas_->clearOverlay();
+        canvas_->clearSelectionPreview();
     }
     applyToolPolicy();
     emit activeToolChanged(id);
@@ -412,6 +414,7 @@ void ToolController::unbindCanvas()
         }
     }
     canvas_->clearOverlay();
+    canvas_->clearSelectionPreview();
     canvas_ = nullptr;
     warmView_ = nullptr;
     warmValid_ = false;
@@ -571,7 +574,7 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         lassoPolygon_.clear();
         lassoPolygon_ << imagePos;
         if (canvas_) {
-            canvas_->setOverlayPolygon(lassoPolygon_);
+            canvas_->setSelectionPreview({lassoPolygon_});
         }
         return;
     case ToolId::PolygonalLasso: {
@@ -608,7 +611,7 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         polygonClock_.restart();
         v->lasso_add_point(qRound(imagePos.x()), qRound(imagePos.y()));
         if (canvas_) {
-            canvas_->setOverlayPolygon(polygonPoints_);
+            canvas_->setSelectionPreview({polygonPoints_});
         }
         return;
     }
@@ -669,14 +672,14 @@ void ToolController::handleMoved(const QPointF& imagePos)
         v->lasso_add_point(qRound(imagePos.x()), qRound(imagePos.y()));
         lassoPolygon_ << imagePos;
         if (canvas_) {
-            canvas_->setOverlayPolygon(lassoPolygon_);
+            canvas_->setSelectionPreview({lassoPolygon_});
         }
         return;
     case ToolId::PolygonalLasso:
         if (polygonInProgress_ && canvas_) {
             QPolygonF preview = polygonPoints_;
             preview << imagePos;
-            canvas_->setOverlayPolygon(preview);
+            canvas_->setSelectionPreview({preview});
         }
         return;
     case ToolId::QuickSelection:
@@ -733,7 +736,7 @@ void ToolController::handleReleased(const QPointF& imagePos)
                     : v->select_rect(rect.x(), rect.y(), rect.width(), rect.height(),
                                      selectionModeString(mode_), feather_));
         if (canvas_) {
-            canvas_->clearOverlay();
+            canvas_->clearSelectionPreview();
         }
         if (committed) {
             emit selectionCommitted();
@@ -744,7 +747,7 @@ void ToolController::handleReleased(const QPointF& imagePos)
         const bool committed = v && v->end_lasso(feather_);
         lassoPolygon_.clear();
         if (canvas_) {
-            canvas_->clearOverlay();
+            canvas_->clearSelectionPreview();
         }
         if (committed) {
             emit selectionCommitted();
@@ -753,7 +756,7 @@ void ToolController::handleReleased(const QPointF& imagePos)
     }
     case ToolId::QuickSelection:
         if (canvas_) {
-            canvas_->clearOverlay();
+            canvas_->clearSelectionPreview();
         }
         if (dragCommitted_) {
             emit selectionCommitted();
@@ -796,7 +799,19 @@ void ToolController::updateMarqueeOverlay(const QPointF& imagePos)
     if (!canvas_) {
         return;
     }
-    canvas_->setOverlayPolygon(QPolygonF(QRectF(marqueeDragRect(anchor_, imagePos))));
+    const QRect rect = marqueeDragRect(anchor_, imagePos);
+    if (rect.width() <= 0 || rect.height() <= 0) {
+        canvas_->clearSelectionPreview();
+        return;
+    }
+    if (active_ == ToolId::EllipticalMarquee) {
+        // Preview the actual ellipse, not its bounding rectangle.
+        QPainterPath path;
+        path.addEllipse(QRectF(rect));
+        canvas_->setSelectionPreview({path.toFillPolygon()});
+    } else {
+        canvas_->setSelectionPreview({QPolygonF(QRectF(rect))});
+    }
 }
 
 // Style constrains the drag geometry before rasterisation: Normal follows the
@@ -854,7 +869,7 @@ bool ToolController::cancelPolygonLasso()
     polygonPoints_.clear();
     polygonClock_.invalidate();
     if (canvas_) {
-        canvas_->clearOverlay();
+        canvas_->clearSelectionPreview();
     }
     PictureView* v = view();
     if (v) {
@@ -875,7 +890,7 @@ void ToolController::closePolygonLasso()
     polygonPoints_.clear();
     polygonClock_.invalidate();
     if (canvas_) {
-        canvas_->clearOverlay();
+        canvas_->clearSelectionPreview();
     }
     if (committed) {
         emit selectionCommitted();

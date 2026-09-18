@@ -549,6 +549,43 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
         if (!antsHidden || !antsShown) {
             return pictura::selfTest().fail(261, "selection edges toggle");
         }
+
+        // tsc_marquee_preview (262): the marquee shows a live selection preview
+        // (marching ants) during the drag, then the committed contour replaces
+        // it on release.
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        antsView->deselect();
+        antsCanvas->mousePressed(QPointF(2, 2), Qt::LeftButton, int(Qt::NoModifier));
+        antsCanvas->mouseMoved(QPointF(9, 9));
+        const bool previewDuring = antsCanvas->hasSelectionPreviewForTest()
+            && antsCanvas->selectionPreviewLoopCountForTest() == 1
+            && !antsCanvas->hasSelectionContourForTest();
+        antsCanvas->mouseReleased(QPointF(9, 9));
+        const bool previewReplaced = !antsCanvas->hasSelectionPreviewForTest()
+            && antsCanvas->hasSelectionContourForTest();
+        ST_BEGIN("tsc_marquee_preview");
+        ST_PASS("tsc_marquee_preview during=%d replaced=%d", previewDuring ? 1 : 0,
+                previewReplaced ? 1 : 0);
+        if (!previewDuring || !previewReplaced) {
+            return pictura::selfTest().fail(262, "marquee live preview");
+        }
+
+        // tsc_ellipse_preview (263): the elliptical rubber band previews the
+        // ellipse itself (a many-pointed polygon), not its bounding rectangle.
+        frame.setActiveTool(pictura::ToolId::EllipticalMarquee);
+        antsView->deselect();
+        antsCanvas->mousePressed(QPointF(2, 2), Qt::LeftButton, int(Qt::NoModifier));
+        antsCanvas->mouseMoved(QPointF(13, 13));
+        const int ellipsePoints = antsCanvas->selectionPreviewPointCountForTest();
+        antsCanvas->mouseReleased(QPointF(13, 13));
+        const bool ellipseCommitted = antsCanvas->hasSelectionContourForTest()
+            && !antsCanvas->hasSelectionPreviewForTest();
+        ST_BEGIN("tsc_ellipse_preview");
+        ST_PASS("tsc_ellipse_preview points=%d committed=%d", ellipsePoints,
+                ellipseCommitted ? 1 : 0);
+        if (ellipsePoints <= 6 || !ellipseCommitted) {
+            return pictura::selfTest().fail(263, "ellipse live preview");
+        }
         frame.closeDocument(antsDoc, false);
 
     return 0;

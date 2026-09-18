@@ -247,12 +247,28 @@ void ImageView::setSelectionEdgesVisible(bool on)
     update();
 }
 
+void ImageView::setSelectionPreview(const QList<QPolygonF>& loops)
+{
+    previewContours_ = loops;
+    updateAntsTimer();
+    update();
+}
+
+void ImageView::clearSelectionPreview()
+{
+    previewContours_.clear();
+    updateAntsTimer();
+    update();
+}
+
 void ImageView::updateAntsTimer()
 {
-    const bool run = !selectionContours_.isEmpty() && selectionEdgesVisible_ && isVisible();
-    if (run && !antsTimer_->isActive()) {
+    const bool run = (!selectionContours_.isEmpty() && selectionEdgesVisible_)
+                     || !previewContours_.isEmpty();
+    const bool active = run && isVisible();
+    if (active && !antsTimer_->isActive()) {
         antsTimer_->start();
-    } else if (!run && antsTimer_->isActive()) {
+    } else if (!active && antsTimer_->isActive()) {
         antsTimer_->stop();
     }
 }
@@ -394,6 +410,22 @@ void ImageView::paintEvent(QPaintEvent*)
         ants.setDashOffset(antsPhase_);
         painter.setPen(ants);
         for (const QPolygonF& loop : selectionContours_) {
+            painter.drawPolygon(loop);
+        }
+    }
+
+    if (!previewContours_.isEmpty()) {
+        // Live tool rubber band as marching ants, so the selection reads during
+        // the drag exactly as it will once committed.
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(Qt::white, 0));
+        for (const QPolygonF& loop : previewContours_) {
+            painter.drawPolygon(loop);
+        }
+        QPen ants(Qt::black, 0, Qt::DashLine);
+        ants.setDashOffset(antsPhase_);
+        painter.setPen(ants);
+        for (const QPolygonF& loop : previewContours_) {
             painter.drawPolygon(loop);
         }
     }

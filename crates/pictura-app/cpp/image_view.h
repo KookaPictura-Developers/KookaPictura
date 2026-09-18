@@ -83,6 +83,19 @@ public:
     bool hasSelectionContourForTest() const { return !selectionContours_.isEmpty(); }
     int selectionContourLoopCountForTest() const { return selectionContours_.size(); }
 
+    // Live selection preview while a tool drags (the rubber band). Drawn with the
+    // same animated marching-ants pen as a committed selection, and replaced by
+    // the committed contour on release. Not affected by the Selection Edges
+    // toggle: the user is actively defining the selection. Empty clears.
+    void setSelectionPreview(const QList<QPolygonF>& loops);
+    void clearSelectionPreview();
+    bool hasSelectionPreviewForTest() const { return !previewContours_.isEmpty(); }
+    int selectionPreviewLoopCountForTest() const { return previewContours_.size(); }
+    int selectionPreviewPointCountForTest() const
+    {
+        return previewContours_.isEmpty() ? 0 : previewContours_.first().size();
+    }
+
     // Move-tool live preview: draw a cached base plus the moved layer at a live
     // image-space offset, so the drag never composites the document.
     void beginMovePreview(const QImage& base, const QImage& layer, const QPointF& layerPos,
@@ -142,6 +155,7 @@ private:
     QPolygonF overlayPolygon_;
 
     QList<QPolygonF> selectionContours_;
+    QList<QPolygonF> previewContours_;
     bool selectionEdgesVisible_ = true;
     int antsPhase_ = 0;
     QTimer* antsTimer_ = nullptr;
