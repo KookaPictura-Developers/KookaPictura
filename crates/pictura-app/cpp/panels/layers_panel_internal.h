@@ -238,8 +238,6 @@ public:
             return row.name;
         case Qt::ToolTipRole:
             return layerTooltip(row);
-        case Qt::CheckStateRole:
-            return row.visible ? Qt::Checked : Qt::Unchecked;
         case PathRole:
             return row.path;
         case DepthRole:
@@ -292,13 +290,6 @@ public:
         Node* node = index.isValid() ? static_cast<Node*>(index.internalPointer()) : nullptr;
         if (!node || !view_) {
             return false;
-        }
-        if (role == Qt::CheckStateRole) {
-            const bool visible = value.toInt() == Qt::Checked;
-            if (visible == node->row.visible) {
-                return false;
-            }
-            return view_->set_layers_visible(QStringList{node->row.path}, visible) > 0;
         }
         if (role == Qt::EditRole) {
             const QString name = value.toString().trimmed();
@@ -491,6 +482,14 @@ public:
         return QRect(itemRect.left() + kEyeInset, itemRect.top(), width, itemRect.height());
     }
 
+    /// The lock badge's rect at a row's right edge (as painted).
+    QRect lockRect(const QRect& itemRect) const
+    {
+        const int side = qMax(12, thumbnailSize() > 0 ? thumbnailSize() : 16);
+        return QRect(itemRect.right() - 3 - side,
+                     itemRect.top() + (itemRect.height() - side) / 2, side, side);
+    }
+
     /// The expand/collapse chevron's hit-target for a row at `depth`.
     QRect chevronRect(const QRect& itemRect, int depth) const
     {
@@ -571,11 +570,21 @@ public:
         }
         x += thumb + 4;
 
-        // Right-aligned badges: fx at the far edge, the mask thumbnail to its
-        // left. A null icon/thumbnail is omitted.
+        // Right-aligned badges: the lock badge at the far edge, then fx, then
+        // the mask thumbnail. A null icon/thumbnail is omitted.
         int right = rect.right() - 3;
         const QIcon fxIcon = pictura::icon(QStringLiteral("layers.fx"));
         const int badge = qMax(12, thumb > 0 ? thumb : 16);
+        if (index.data(LockRole).toInt() != 0) {
+            const QPixmap lockPix =
+                pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge);
+            if (!lockPix.isNull()) {
+                painter->drawPixmap(
+                    QRect(right - badge, rect.top() + (height - badge) / 2, badge, badge),
+                    lockPix);
+                right -= badge + 3;
+            }
+        }
         if (index.data(HasAdjustmentRole).toBool() && !fxIcon.isNull()) {
             const QPixmap badgePix = fxIcon.pixmap(badge, badge);
             if (!badgePix.isNull()) {

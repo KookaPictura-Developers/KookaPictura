@@ -37,11 +37,10 @@ PercentField::PercentField(const QString& label, QWidget* parent)
     edit_->installEventFilter(this);
     layout->addWidget(edit_);
 
-    suffix_ = new QLabel(QStringLiteral("%"), this);
+    suffix_ = new QLabel(QStringLiteral("%"), edit_);
     suffix_->setObjectName(QStringLiteral("percentSuffix"));
     suffix_->setCursor(Qt::SizeHorCursor);
     suffix_->installEventFilter(this);
-    layout->addWidget(suffix_);
 
     arrow_ = new QToolButton(this);
     arrow_->setObjectName(QStringLiteral("percentArrow"));
@@ -66,7 +65,10 @@ PercentField::PercentField(const QString& label, QWidget* parent)
             applyUserValue(pct);
         }
     });
+    connect(slider_, &QSlider::sliderReleased, this, [this] { commitPending(); });
+    popup_->installEventFilter(this);
     connect(arrow_, &QToolButton::clicked, this, [this] { showPopup(); });
+    layoutSuffix();
 }
 
 QString PercentField::labelText() const
@@ -92,6 +94,7 @@ void PercentField::commitEdit()
         return;
     }
     applyUserValue(pct);
+    commitPending();
 }
 
 void PercentField::applyUserValue(int pct)
@@ -107,6 +110,26 @@ void PercentField::applyUserValue(int pct)
     slider_->setValue(value_);
     syncing_ = false;
     emit valueChanged(value_);
+    pending_ = true;
+}
+
+void PercentField::commitPending()
+{
+    if (pending_) {
+        pending_ = false;
+        emit valueCommitted(value_);
+    }
+}
+
+void PercentField::layoutSuffix()
+{
+    if (!suffix_ || !edit_) {
+        return;
+    }
+    suffix_->adjustSize();
+    edit_->setTextMargins(0, 0, suffix_->sizeHint().width() + 6, 0);
+    suffix_->move(edit_->width() - suffix_->width() - 4,
+                  (edit_->height() - suffix_->height()) / 2);
 }
 
 void PercentField::showPopup()
@@ -119,6 +142,13 @@ void PercentField::showPopup()
 
 bool PercentField::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == edit_ && event->type() == QEvent::Resize) {
+        layoutSuffix();
+        return QWidget::eventFilter(watched, event);
+    }
+    if (watched == popup_ && event->type() == QEvent::Hide) {
+        commitPending();
+    }
     const bool isHandle = watched == label_ || watched == edit_ || watched == suffix_;
     if (!isHandle) {
         return QWidget::eventFilter(watched, event);
@@ -143,6 +173,7 @@ bool PercentField::eventFilter(QObject* watched, QEvent* event)
         }
     } else if (event->type() == QEvent::MouseButtonRelease && scrubbing_) {
         scrubbing_ = false;
+        commitPending();
         return true;
     }
     return QWidget::eventFilter(watched, event);

@@ -75,6 +75,9 @@ public:
     bool chevronClickExpandsForTest(const QString& path);
     QString opacityLabelTextForTest() const;
     bool opacitySuffixPresentForTest() const;
+    bool opacitySuffixInsideEditForTest() const;
+    int lockBadgeLeftForTest(const QString& path) const;
+    bool rowCheckStateForTest(const QString& path) const;
     bool lockIconsPresentForTest() const;
     bool treeDragEnabledForTest() const;
     bool moveForTest(const QString& path, const QString& target, int mode);

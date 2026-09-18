@@ -329,6 +329,33 @@ bool LayersPanel::opacitySuffixPresentForTest() const
     return opacity_ && opacity_->findChild<QLabel*>(QStringLiteral("percentSuffix")) != nullptr;
 }
 
+bool LayersPanel::opacitySuffixInsideEditForTest() const
+{
+    if (!opacity_) {
+        return false;
+    }
+    auto* edit = opacity_->findChild<QLineEdit*>(QStringLiteral("percentEdit"));
+    auto* suffix = opacity_->findChild<QLabel*>(QStringLiteral("percentSuffix"));
+    if (!edit || !suffix) {
+        return false;
+    }
+    return edit->rect().contains(QRect(suffix->mapTo(edit, QPoint(0, 0)), suffix->size()));
+}
+
+int LayersPanel::lockBadgeLeftForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || index.data(LockRole).toInt() == 0 || !delegate_ || !tree_) {
+        return -1;
+    }
+    return delegate_->lockRect(tree_->visualRect(index)).left();
+}
+
+bool LayersPanel::rowCheckStateForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(Qt::CheckStateRole).isValid();
+}
+
 bool LayersPanel::lockIconsPresentForTest() const
 {
     const std::array<QToolButton*, 5> buttons = {

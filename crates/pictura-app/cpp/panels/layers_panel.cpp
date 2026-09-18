@@ -311,7 +311,16 @@ LayersPanel::LayersPanel(QWidget* parent)
         }
         const QStringList paths = selectedPaths();
         if (!paths.isEmpty()) {
-            view_->set_layers_opacity(paths, qRound(pct * 255.0 / 100.0));
+            view_->preview_layers_opacity(paths, qRound(pct * 255.0 / 100.0));
+        }
+    });
+    connect(opacity_, &PercentField::valueCommitted, this, [this](int pct) {
+        if (syncing_ || !view_) {
+            return;
+        }
+        const QStringList paths = selectedPaths();
+        if (!paths.isEmpty()) {
+            view_->commit_layers_opacity(paths, qRound(pct * 255.0 / 100.0));
         }
     });
     connect(fill_, &PercentField::valueChanged, this, [this](int pct) {
@@ -320,7 +329,16 @@ LayersPanel::LayersPanel(QWidget* parent)
         }
         const QStringList paths = selectedPaths();
         if (!paths.isEmpty()) {
-            view_->set_layers_fill(paths, qRound(pct * 255.0 / 100.0));
+            view_->preview_layers_fill(paths, qRound(pct * 255.0 / 100.0));
+        }
+    });
+    connect(fill_, &PercentField::valueCommitted, this, [this](int pct) {
+        if (syncing_ || !view_) {
+            return;
+        }
+        const QStringList paths = selectedPaths();
+        if (!paths.isEmpty()) {
+            view_->commit_layers_fill(paths, qRound(pct * 255.0 / 100.0));
         }
     });
     connect(tree_, &QTreeView::customContextMenuRequested, this,

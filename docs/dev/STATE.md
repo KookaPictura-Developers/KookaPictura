@@ -17,7 +17,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   includes the pre-existing ignored `pictura-render` doctest as the ninth).
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
-  `layers-panel-chrome-fixes`, and `layers-panel-row-interactions` changes;
+  `layers-panel-chrome-fixes`, `layers-panel-row-interactions`, and
+  `layers-panel-control-polish` changes;
   canonical specs are in `openspec/specs/` (62 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **remaining layer management**, named by
@@ -1622,6 +1623,30 @@ by self-test section is a deliberate later step, out of this pass.
   **595 passed, 8 skipped**. Capability: MODIFIED `layers-panel` (+2, ~1) and
   `layers-filtering-search` (~1); no new dependency.
 
+- **layers-panel-control-polish** (a fourth UI pass; OpenSpec change
+  `layers-panel-control-polish`, archived). Four fixes. **Eye only:** the model
+  stops reporting `Qt::CheckStateRole`, so a row paints no native checkbox next
+  to the eye; the eye stays the sole visibility control. **`%` inside:** the
+  PercentField suffix is reparented onto the value `QLineEdit`, a right text
+  margin is reserved, and it is repositioned on resize, so the sign sits in the
+  box. **Lock badge:** `LayerRowDelegate::lockRect` plus a `layers.lockAll` badge
+  painted at the row's right edge (before fx/mask) whenever `LockRole != 0`.
+  **Preview vs commit:** new bridge `preview_layers_opacity`/`commit_layers_opacity`
+  and `preview_layers_fill`/`commit_layers_fill` (new `opacity_preview_changed`/
+  `fill_preview_changed` flags) mirror the move-tool split; `PercentField` emits
+  `valueChanged` during a scrub/slider drag and one `valueCommitted` on release
+  (or text `editingFinished`, or popup hide), so a drag previews live and adds a
+  single undo state. `set_layers_*`/`set_layer_*` are untouched. Ceiling: the
+  preview flag is sticky, so a drag that returns exactly to its start value still
+  records one redundant state (marked `// ponytail:`). Self-tests `lpc_preview`
+  (214), `lpr_percent` (215), `lpc_lockbadge` (216), `lpr_eye` (217) in
+  `selftest_layers_controls.cpp`. Verified independently: `TASK_ALLOWS_DOCS=1 bash
+  scripts/verify-full.sh` → `verify-full: OK` (TOTAL 786 passed · 9 skipped · 0
+  failed, file-size OK, guard OK, `openspec validate --all --strict` 63 items
+  while the change was open); `cargo nextest run --workspace` **595 passed, 8
+  skipped**; app self-test **153 passed, 0 failed**. Capability: MODIFIED
+  `layers-panel` (4 requirements).
+
 ## Canvas viewport & performance (post-M24 pass)
 
 Not an OpenSpec capability — a correctness/performance pass; the intended
@@ -1793,9 +1818,12 @@ fixed-width Tools dock, the `D` colour reset, and session **v6**
   (`layers-filtering-search`: the six-dimension filter row with ancestor
   promotion) have landed and archived, followed by a **chrome pass**
   (`layers-panel-chrome-fixes`: header order and labels, left-anchored eye with
-  a group chevron, and the filter lightswitch on by default) and a **row pass**
+  a group chevron, and the filter lightswitch on by default), a **row pass**
   (`layers-panel-row-interactions`: label scrub + `%`, semantic lock/eye/Kind
-  icons, and row drag-and-drop reorder plus drop-on-strip). The Layers-panel
+  icons, and row drag-and-drop reorder plus drop-on-strip), and a **control
+  polish pass** (`layers-panel-control-polish`: eye-only rows, `%` inside the
+  box, a right-side lock badge, and one-undo-state live Opacity/Fill preview).
+  The Layers-panel
   program therefore continues **by content, not by number**: next is
   **remaining management**
   (rasterize/merge/flatten/link/select-similar/convert-background/

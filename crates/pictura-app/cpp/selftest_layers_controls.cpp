@@ -168,5 +168,75 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         }
         frame.closeDocument(dropDoc, false);
 
+        // lpc_preview (214): a preview stream adds no history and one commit
+        // adds exactly one state for the finished edit.
+        const bool pvCreated = frame.newDocument(QStringLiteral("PreviewCtl"), 16, 16,
+                                                 QStringLiteral("rgb"), 8,
+                                                 QStringLiteral("white"));
+        pictura::PictureView* pvView = frame.activeView();
+        auto* pvPanel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+        if (!pvCreated || !pvView || !pvPanel) {
+            return pictura::selfTest().fail(214, "preview fixture");
+        }
+        const int pvDoc = frame.activeDocumentIndex();
+        pvPanel->setView(pvView);
+        pvView->select_all();
+        pvPanel->refresh();
+        const int pvBase = pvView->history_count();
+        pvView->preview_layers_opacity(QStringList{QStringLiteral("0")}, 100);
+        pvView->preview_layers_opacity(QStringList{QStringLiteral("0")}, 200);
+        pvView->preview_layers_opacity(QStringList{QStringLiteral("0")}, 50);
+        const bool pvNoHistory = pvView->history_count() == pvBase;
+        const bool pvValueOk = pvView->layer_opacity(0) == 50;
+        pvView->commit_layers_opacity(QStringList{QStringLiteral("0")}, 50);
+        const bool pvCommitOk = pvView->history_count() == pvBase + 1;
+        const int pvFillBase = pvView->history_count();
+        pvView->preview_layers_fill(QStringList{QStringLiteral("0")}, 77);
+        pvView->commit_layers_fill(QStringList{QStringLiteral("0")}, 77);
+        const bool pvFillOk = pvView->history_count() == pvFillBase + 1;
+        const int pvSetBase = pvView->history_count();
+        pvView->set_layers_opacity(QStringList{QStringLiteral("0")}, 200);
+        const bool pvSetOk = pvView->history_count() == pvSetBase + 1;
+        ST_BEGIN("lpc_preview");
+        ST_PASS("lpc_preview nohist=%d value=%d commit=%d fill=%d set=%d",
+                pvNoHistory ? 1 : 0, pvValueOk ? 1 : 0, pvCommitOk ? 1 : 0,
+                pvFillOk ? 1 : 0, pvSetOk ? 1 : 0);
+        if (!pvNoHistory || !pvValueOk || !pvCommitOk || !pvFillOk || !pvSetOk) {
+            return pictura::selfTest().fail(214, "preview commit");
+        }
+
+        // lpr_percent (215): the `%` renders inside the value box.
+        const bool pvSuffix = pvPanel->opacitySuffixInsideEditForTest();
+        ST_BEGIN("lpr_percent");
+        ST_PASS("lpr_percent inside=%d", pvSuffix ? 1 : 0);
+        if (!pvSuffix) {
+            return pictura::selfTest().fail(215, "percent suffix");
+        }
+
+        // lpc_lockbadge (216): an unlocked row has no badge; locking draws one
+        // at the right edge, right of the eye.
+        const bool pvUnlocked = pvPanel->lockBadgeLeftForTest(QStringLiteral("0")) == -1;
+        pvView->set_layers_lock(QStringList{QStringLiteral("0")},
+                                QStringLiteral("transparency"), true);
+        pvPanel->refresh();
+        const int pvBadge = pvPanel->lockBadgeLeftForTest(QStringLiteral("0"));
+        const int pvEye = pvPanel->eyeLeftForTest(QStringLiteral("0"));
+        const bool pvBadgeOk = pvUnlocked && pvBadge >= 0 && pvBadge > pvEye;
+        ST_BEGIN("lpc_lockbadge");
+        ST_PASS("lpc_lockbadge unlocked=%d badge=%d eye=%d", pvUnlocked ? 1 : 0, pvBadge, pvEye);
+        if (!pvBadgeOk) {
+            return pictura::selfTest().fail(216, "lock badge");
+        }
+
+        // lpr_eye (217): the model exposes no check state; the eye is the only
+        // visibility control.
+        const bool pvNoCheck = !pvPanel->rowCheckStateForTest(QStringLiteral("0"));
+        ST_BEGIN("lpr_eye");
+        ST_PASS("lpr_eye nocheck=%d", pvNoCheck ? 1 : 0);
+        if (!pvNoCheck) {
+            return pictura::selfTest().fail(217, "row eye");
+        }
+        frame.closeDocument(pvDoc, false);
+
     return 0;
 }
