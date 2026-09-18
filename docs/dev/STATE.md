@@ -30,6 +30,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   `move_preview_cache` self-test (exit 197) covers hit, byte-identical reuse,
   and miss-after-content-change. Moves (`translate_layer`, `commit_move`) and
   history restore bump/reuse the revision so the cache cannot go stale.
+- Mouse-move no longer pulls the composite across the FFI:
+  `PictureView::document_width()` / `document_height()` read `doc.width` /
+  `doc.height` directly, so `InfoPanel::refresh()` (called on every
+  `ImageView::mouseMoved`) and `PicturaMainWindow::updateStatus()` no longer pay
+  a full ~64 MB `image()` copy for a size readout. `InfoPanel` still samples the
+  hovered pixel through the O(1) `sample_argb`. The `document_size` self-test
+  (exit 198) asserts the accessors equal `image()` and track a `resize_canvas`.
+  The histogram panel still pulls `image()` because it bins the pixels; the
+  document load/switch paths (`addDocument`, `refresh`) still pull it to fill the
+  canvas.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
 

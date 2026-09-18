@@ -169,6 +169,22 @@ impl qobject::PictureView {
         self.rust().doc.is_some()
     }
 
+    pub fn document_width(&self) -> i32 {
+        self.rust()
+            .doc
+            .as_ref()
+            .map(|d| d.width as i32)
+            .unwrap_or(0)
+    }
+
+    pub fn document_height(&self) -> i32 {
+        self.rust()
+            .doc
+            .as_ref()
+            .map(|d| d.height as i32)
+            .unwrap_or(0)
+    }
+
     pub fn sample_argb(&self, x: i32, y: i32) -> u32 {
         let rust = self.rust();
         let Some(doc) = rust.doc.as_ref() else {

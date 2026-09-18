@@ -4,7 +4,6 @@
 
 #include <QtCore/QtGlobal>
 #include <QtGui/QColor>
-#include <QtGui/QImage>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QWidget>
@@ -49,14 +48,15 @@ void InfoPanel::refresh()
         return;
     }
 
-    const QImage image = view_->image();
-    sizeLabel_->setText(QStringLiteral("%1 × %2").arg(image.width()).arg(image.height()));
+    const int width = view_->document_width();
+    const int height = view_->document_height();
+    sizeLabel_->setText(QStringLiteral("%1 × %2").arg(width).arg(height));
 
     const int x = qRound(cursor_.x());
     const int y = qRound(cursor_.y());
     positionLabel_->setText(QStringLiteral("%1, %2").arg(x).arg(y));
 
-    if (x >= 0 && y >= 0 && x < image.width() && y < image.height()) {
+    if (x >= 0 && y >= 0 && x < width && y < height) {
         const QColor color = QColor::fromRgba(QRgb(view_->sample_argb(x, y)));
         colorLabel_->setText(QStringLiteral("%1  rgb(%2, %3, %4)")
                                  .arg(color.name().toUpper())

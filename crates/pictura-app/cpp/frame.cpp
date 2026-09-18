@@ -670,11 +670,12 @@ void PicturaMainWindow::updateStatus()
         QString text = QStringLiteral("—");
         PictureView* view = activeView();
         if (view && view->has_document()) {
-            const QImage image = view->image();
+            const int width = view->document_width();
+            const int height = view->document_height();
             if (statusReadout_ == QStringLiteral("dimensions")) {
-                text = QStringLiteral("W %1  H %2").arg(image.width()).arg(image.height());
+                text = QStringLiteral("W %1  H %2").arg(width).arg(height);
             } else {
-                text = QStringLiteral("%1 × %2 px").arg(image.width()).arg(image.height());
+                text = QStringLiteral("%1 × %2 px").arg(width).arg(height);
             }
         }
         sizeLabel_->setText(text);

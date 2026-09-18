@@ -101,6 +101,16 @@ pub mod qobject {
         #[qinvokable]
         fn has_document(&self) -> bool;
 
+        /// Width of the loaded document in pixels (0 when none). Reads the
+        /// document directly without materializing or copying any image.
+        #[qinvokable]
+        fn document_width(&self) -> i32;
+
+        /// Height of the loaded document in pixels (0 when none). Reads the
+        /// document directly without materializing or copying any image.
+        #[qinvokable]
+        fn document_height(&self) -> i32;
+
         /// Number of top-level layers in the loaded document (0 when none).
         #[qinvokable]
         fn layer_count(&self) -> i32;

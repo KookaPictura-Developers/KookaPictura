@@ -2402,6 +2402,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         std::fflush(stderr);
         if (!mpcHit || !mpcReuse || !mpcMiss) { std::fprintf(stderr, "pictura self-test: FAIL: move preview cache wrong\n"); return 197; }
         frame.closeDocument(frame.activeDocumentIndex(), false);
+        // Document size accessors: match full-image dims, then track a resize. 198: size.
+        const bool dsCreated = frame.newDocument(QStringLiteral("DocSize"), 20, 12, QStringLiteral("rgb"), 8, QStringLiteral("white"));
+        pictura::PictureView* dsView = frame.activeView();
+        const bool dsMatch = dsCreated && dsView && dsView->document_width() == dsView->image().width() && dsView->document_height() == dsView->image().height();
+        const bool dsResized = dsView && dsView->resize_canvas(QStringLiteral("top-left"), 30, 18) && dsView->document_width() == 30 && dsView->document_height() == 18 && dsView->document_width() == dsView->image().width() && dsView->document_height() == dsView->image().height();
+        std::fprintf(stderr, "pictura self-test: document_size match=%d resized=%d\n", dsMatch ? 1 : 0, dsResized ? 1 : 0); std::fflush(stderr);
+        if (!dsMatch || !dsResized) { std::fprintf(stderr, "pictura self-test: FAIL: document size wrong\n"); return 198; }
+        frame.closeDocument(frame.activeDocumentIndex(), false);
         // M36: layer attributes through the bridge — fill, lock, color, each one
         // history state and undoable. 86: fill; 87: lock; 88: color; 89: undo.
         const bool m36Created = frame.newDocument(QStringLiteral("M36Attrs"), 16, 16,
@@ -2415,32 +2423,27 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         const int m36DocIndex = frame.activeDocumentIndex();
         const int m36HistBase = m36View->history_count();
-
         const int m36FillBefore = m36View->layer_fill(0);
         const bool m36FillSet = m36View->set_layer_fill(0, 128);
         const int m36FillAfter = m36View->layer_fill(0);
         const bool m36FillOk = m36FillBefore == 255 && m36FillSet && m36FillAfter == 128
                                && m36View->history_count() == m36HistBase + 1;
-
         const bool m36LockSet =
             m36View->set_layer_lock(0, QStringLiteral("transparency"), true);
         const int m36LockAfter = m36View->layer_lock(0);
         const bool m36LockOk = m36LockSet && (m36LockAfter & 0x01) != 0
                                && m36View->history_count() == m36HistBase + 2;
-
         const int m36ColorBefore = m36View->layer_color(0);
         const bool m36ColorSet = m36View->set_layer_color(0, 3);
         const int m36ColorAfter = m36View->layer_color(0);
         const bool m36ColorOk = m36ColorBefore == 0 && m36ColorSet && m36ColorAfter == 3
                                 && m36View->history_count() == m36HistBase + 3;
-
         // Undo walks each edit back to its prior value; redo restores them.
         const bool m36Undo = m36View->undo() && m36View->layer_color(0) == 0
                              && m36View->undo() && m36View->layer_lock(0) == 0
                              && m36View->undo() && m36View->layer_fill(0) == 255
                              && m36View->redo() && m36View->redo() && m36View->redo()
                              && m36View->layer_fill(0) == 128 && m36View->layer_color(0) == 3;
-
         std::fprintf(stderr, "pictura self-test: m36_attrs fill=%d lock=%d color=%d undo=%d\n",
                      m36FillOk ? 1 : 0,
                      m36LockOk ? 1 : 0,
@@ -2478,7 +2481,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const int m37DocIndex = frame.activeDocumentIndex();
         const int m37BaseCount = m37View->layer_count();
         const int m37HistBase = m37View->history_count();
-
         // (a) New Layer: count grows by one and the transparent layer is inert.
         const QImage m37Before = m37View->image();
         const int m37Added = m37View->add_layer(-1);
@@ -2486,14 +2488,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool m37AddOk = m37Added == m37BaseCount && m37AfterAdd == m37BaseCount + 1
                               && m37View->image() == m37Before
                               && m37View->history_count() == m37HistBase + 1;
-
         // (b) New Group.
         const int m37Group = m37View->add_group(-1);
         const bool m37GroupOk = m37Group == m37AfterAdd
                                 && m37View->layer_count() == m37AfterAdd + 1
                                 && m37View->layer_kind(m37Group) == QStringLiteral("group")
                                 && m37View->history_count() == m37HistBase + 2;
-
         // (c) Duplicate: count grows and the copy is named "<name> copy".
         const int m37Dup = m37View->duplicate_layer(m37Added);
         const QString m37DupName = m37Dup >= 0 ? m37View->layer_name(m37Dup) : QString();
