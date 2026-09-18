@@ -346,7 +346,7 @@ PanelGroup::PanelGroup(QWidget* parent)
     floatCloseButton_->setAutoRaise(true);
     floatCloseButton_->setFixedSize(kHeaderButtonSize, kHeaderButtonSize);
     floatCloseButton_->setToolTip(tr("Close"));
-    floatCloseButton_->setIcon(icon(QStringLiteral("panel.closeChevron")));
+    floatCloseButton_->setIcon(icon(QStringLiteral("panel.close")));
     floatCloseButton_->setVisible(false);
     cornerLayout->addWidget(floatCloseButton_);
 
