@@ -1464,6 +1464,17 @@ by self-test section is a deliberate later step, out of this pass.
   warnings` clean; `cargo test --workspace` **592 tests, 0 failed, 9 ignored**
   (up from 589/7; the raw ignored count rose 8→9 with the newly-ignored M25
   `filter_profile_1024`).
+- **Post-M47 cleanup pass, part 2** (follow-up to the above; commits
+  `f0b3205`, `3dabab9`). `pictura-filters/src/filter.rs` (919 LOC) split into a
+  facade plus `filter/types.rs` (`Filter` enum) and `filter/apply.rs`
+  (`apply()`); `Selection::combine_with` now mutates in place and returns `()`
+  (the clone-return was unused by its sole caller); the panel tab-menu labels
+  come from one `tabMenuTexts(bool)` source instead of a duplicated array;
+  `gSharedFloor` is recomputed from live columns instead of only growing (M45
+  shared-floor semantics preserved); the layers row build is two-pass so a
+  forward-referenced parent resolves instead of silently rooting; and the
+  write-only `PanelGroup::defaultIconic` / `PanelColumn::isDynamic` flags are
+  gone. All self-test stderr unchanged (code 196 unaffected).
 
 ## Canvas viewport & performance (post-M24 pass)
 

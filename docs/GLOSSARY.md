@@ -776,7 +776,7 @@ The `Type` column is one of:
 | Selection::all | code | A selection with full 255 coverage everywhere. | crates/pictura-select/src/lib.rs:74 |
 | Selection::border | code | Band centred on the current edge (roughly half in and half out). | crates/pictura-select/src/lib.rs:280 |
 | Selection::combine | code | Combines `other` into `self` with `op` (same dimensions required). | crates/pictura-select/src/lib.rs:187 |
-| Selection::combine_with | code | Combines `other` into `self` with `mode` and returns the result. Same-size masks merge in place; a mismatched `other` can only replace (`New`), since the boolean ops have no shared canvas. | crates/pictura-select/src/lib.rs:226 |
+| Selection::combine_with | code | Combines `other` into `self` with `mode` in place. Same-size masks merge in place; a mismatched `other` can only replace (`New`), since the boolean ops have no shared canvas. | crates/pictura-select/src/lib.rs:226 |
 | Selection::contract | code | Erodes the coverage. radius 0 is identity, clamped to 1..=100. | crates/pictura-select/src/lib.rs:271 |
 | Selection::ellipse | code | The ellipse inscribed in the `w`x`h` rectangle at `(x, y)`; a pixel is inside when its centre is. Clipped to the canvas. | crates/pictura-select/src/lib.rs:105 |
 | Selection::expand | code | Dilates the coverage. radius 0 is identity, clamped to 1..=100. | crates/pictura-select/src/lib.rs:262 |
