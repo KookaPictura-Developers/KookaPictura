@@ -377,12 +377,31 @@ void ToolController::unbindCanvas()
     }
     canvas_->clearOverlay();
     canvas_ = nullptr;
+    warmView_ = nullptr;
+    warmValid_ = false;
     PictureView* v = view();
     if (v && v->is_painting()) {
         v->cancel_paint();
     }
     dragging_ = false;
     dragCommitted_ = false;
+}
+
+void ToolController::warmMovePreview()
+{
+    PictureView* v = view();
+    if (!v) {
+        warmValid_ = false;
+        return;
+    }
+    if (!v->prepare_move_preview()) {
+        warmValid_ = false;
+        return;
+    }
+    warmBase_ = v->move_preview_base();
+    warmLayer_ = v->move_preview_layer();
+    warmView_ = v;
+    warmValid_ = !warmBase_.isNull();
 }
 
 void ToolController::applyToolPolicy()
@@ -397,10 +416,9 @@ void ToolController::applyToolPolicy()
     canvas_->setCursor(
         toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
     if (active_ == ToolId::Move) {
-        PictureView* v = view();
-        if (v) {
-            v->prepare_move_preview();
-        }
+        warmMovePreview();
+    } else {
+        warmValid_ = false;
     }
 }
 
@@ -452,7 +470,7 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
         return;
     }
-    case ToolId::Move:
+    case ToolId::Move: {
         if (!v || !v->begin_move_preview()) {
             return;
         }
@@ -461,12 +479,19 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         anchor_ = last_ = imagePos;
         totalDelta_ = QPointF();
         if (canvas_) {
-            canvas_->beginMovePreview(
-                v->move_preview_base(), v->move_preview_layer(),
-                QPointF(v->move_preview_x(), v->move_preview_y()),
-                v->move_preview_opacity() / 255.0);
+            const bool reuse = warmValid_ && warmView_ == v && v->move_preview_cache_hit();
+            if (!reuse) {
+                warmBase_ = v->move_preview_base();
+                warmLayer_ = v->move_preview_layer();
+                warmView_ = v;
+                warmValid_ = !warmBase_.isNull();
+            }
+            canvas_->beginMovePreview(warmBase_, warmLayer_,
+                                      QPointF(v->move_preview_x(), v->move_preview_y()),
+                                      v->move_preview_opacity() / 255.0);
         }
         return;
+    }
     case ToolId::Crop:
         if (!v) {
             return;

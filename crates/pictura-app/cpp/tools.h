@@ -8,6 +8,7 @@
 #include <QtCore/QString>
 #include <QtCore/Qt>
 #include <QtGui/QColor>
+#include <QtGui/QImage>
 #include <QtGui/QPolygonF>
 
 #include <functional>
@@ -176,6 +177,7 @@ signals:
 
 private:
     void applyToolPolicy();
+    void warmMovePreview();
     PictureView* view() const;
     void handlePressed(const QPointF& imagePos, int button, int modifiers);
     void handleMoved(const QPointF& imagePos);
@@ -206,6 +208,11 @@ private:
     QPolygonF lassoPolygon_;
     QRect pendingCrop_;
     bool hasPendingCrop_ = false;
+
+    PictureView* warmView_ = nullptr;
+    QImage warmBase_;
+    QImage warmLayer_;
+    bool warmValid_ = false;
 };
 
 } // namespace pictura
