@@ -5,10 +5,12 @@ The roadmap is `docs/dev/psd-support-roadmap.md`; the behavioral specs are
 `docs/06-filters/camera-raw-filter.md` (`FILT-100`) and
 `docs/10-workflow-io/camera-raw-workflow.md` (`WF-012`).
 
-Scope decision (2026-09-19): support the **a reference build** model of Camera Raw in PSD.
-CS6 ACR is not available to make reference files, so the CS6 raw-as-Smart-Object
-`crs:` path is documented but is not the acceptance target. The CC Camera Raw
-Filter is.
+Scope decision (2026-09-19): the settings-model target is the **earliest CC**
+Camera Raw Filter (Photoshop CC v14 / ACR 8 / process version PV2012). The CC
+2021 fixture 02 is a later-CC file used to prove byte-preserving round-trip, not
+the settings authority. CS6 ACR is not available to make reference files, so the
+CS6 raw-as-Smart-Object `crs:` path is documented and preserve-only, not the
+acceptance target.
 
 This is an extension, not a change to CS6 parity. `FILT-100` still records that
 `Filter > Camera Raw Filter` is post-CS6, so it stays outside the CS6 menu model;
@@ -56,7 +58,13 @@ per filter in `filterFXList`.
 ## `Fltr` key map
 
 Short keys, grouped by the `FILT-100` tab they drive. Values observed in
-fixture 02.
+fixture 02. The modeled set targets the earliest CC Camera Raw Filter (ACR 8 /
+PV2012); keys added by later CC releases are preserved and not modeled.
+
+`filterID` 2683 is assumed stable across CC, but it is unverified for the
+earliest CC build because there is no such fixture.
+
+### Modeled (earliest CC / PV2012)
 
 | Group | Keys | Notes |
 |---|---|---|
@@ -72,7 +80,12 @@ fixture 02.
 | Lens | `LPEn`, `MDis`, `VigA`, `PerV`, `PerH`, `PerR`, `PerS`, `PerA`, `PerU`, `PerX`, `PerY`, `DfPA`, `DPHL`, `DPPH`, `DfGA`, `DPGL`, `DPGH` | profile enable, manual distortion, vignette, perspective, defringe |
 | Effects | `GRNA`, `GRNS`, `GRNF`, `PCVA`, `PCVM`, `PCVF`, `PCVR`, `PCVS`, `PCVH` | grain plus post-crop vignette |
 | Camera calibration | `CamP`, `CP_D`, `PrVe` | `CamP` Embedded, `CP_D` profile digest |
-| CC-only | `Dhze`, `Upri`, `GuUr`, `Rtch`, `REye`, `LCs ` | Dehaze -14; Upright stored as XMP strings |
+
+### Preserved, not modeled (later CC)
+
+| Group | Keys | Notes |
+|---|---|---|
+| Later CC | `Dhze`, `Upri`, `GuUr`, `Rtch`, `REye`, `LCs ` | Dehaze -14; Upright stored as XMP strings |
 
 ## Open items
 

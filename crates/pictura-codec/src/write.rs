@@ -130,7 +130,7 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
                 channels.len()
             )));
         }
-        write_record(&mut info, record, &channels);
+        write_record(&mut info, record, &channels, doc.width, doc.height);
         channel_data.push(channels);
     }
 
@@ -146,7 +146,13 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
     Ok(info)
 }
 
-fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, OutChannel)]) {
+fn write_record(
+    out: &mut Vec<u8>,
+    record: &OutRecord,
+    channels: &[(i16, OutChannel)],
+    doc_width: u32,
+    doc_height: u32,
+) {
     match record.layer {
         Some(layer) => {
             out.extend_from_slice(&layer.rect.top.to_be_bytes());
@@ -181,7 +187,14 @@ fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, OutChan
             out.push(0); // filler
 
             let mut extra = Vec::new();
-            write_extra(&mut extra, layer, record.name, record.section);
+            write_extra(
+                &mut extra,
+                layer,
+                record.name,
+                record.section,
+                doc_width,
+                doc_height,
+            );
             out.extend_from_slice(&(extra.len() as u32).to_be_bytes());
             out.extend_from_slice(&extra);
         }
@@ -201,6 +214,8 @@ fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, OutChan
                 &empty_layer(record.name),
                 record.name,
                 record.section,
+                doc_width,
+                doc_height,
             );
             out.extend_from_slice(&(extra.len() as u32).to_be_bytes());
             out.extend_from_slice(&extra);
@@ -235,7 +250,14 @@ fn empty_layer(name: &str) -> Layer {
     }
 }
 
-fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
+fn write_extra(
+    out: &mut Vec<u8>,
+    layer: &Layer,
+    name: &str,
+    section: u32,
+    doc_width: u32,
+    doc_height: u32,
+) {
     match &layer.mask {
         Some(mask) => {
             // Mask block: rect (4×i32) + default colour + flags + preserved tail.
@@ -287,6 +309,11 @@ fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
     for block in &layer.extra_blocks {
         write_tag(out, &block.key, &block.data);
     }
+    // An embedded smart object with no preserved config block is authored here.
+    if let Some(so) = crate::smart_writer::should_author(layer) {
+        let data = crate::smart_writer::author_sold_block(so, layer, doc_width, doc_height);
+        write_tag(out, b"SoLd", &data);
+    }
     if out.len() % 2 == 1 {
         out.push(0);
     }
@@ -303,7 +330,7 @@ fn write_pascal(out: &mut Vec<u8>, name: &str) {
     }
 }
 
-fn write_tag(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8]) {
+pub(crate) fn write_tag(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(b"8BIM");
     out.extend_from_slice(key);
     out.extend_from_slice(&(data.len() as u32).to_be_bytes());
@@ -376,21 +403,25 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&(doc.image_resources.len() as u32).to_be_bytes());
     out.extend_from_slice(&doc.image_resources);
 
-    if doc.layers.is_empty()
-        && doc.global_layer_mask.is_empty()
-        && doc.layer_section_extra.is_empty()
-    {
+    // Authored smart objects append a document-level linked-record block; the
+    // preserved trailing bytes stay untouched, so an existing file is unchanged.
+    let mut extra = doc.layer_section_extra.clone();
+    let authoring = crate::smart_writer::collect_authoring(&doc.layers);
+    if !authoring.is_empty() {
+        extra.extend_from_slice(&crate::smart_writer::author_lnk2_bytes(&authoring));
+    }
+
+    if doc.layers.is_empty() && doc.global_layer_mask.is_empty() && extra.is_empty() {
         out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
     } else {
         let info = write_layer_info(doc)?;
-        let section_len =
-            4 + info.len() + 4 + doc.global_layer_mask.len() + doc.layer_section_extra.len();
+        let section_len = 4 + info.len() + 4 + doc.global_layer_mask.len() + extra.len();
         out.extend_from_slice(&(section_len as u32).to_be_bytes());
         out.extend_from_slice(&(info.len() as u32).to_be_bytes());
         out.extend_from_slice(&info);
         out.extend_from_slice(&(doc.global_layer_mask.len() as u32).to_be_bytes());
         out.extend_from_slice(&doc.global_layer_mask);
-        out.extend_from_slice(&doc.layer_section_extra);
+        out.extend_from_slice(&extra);
     }
 
     out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());

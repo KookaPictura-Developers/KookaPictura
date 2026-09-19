@@ -6,14 +6,20 @@ but nothing resolves or owns them, so a Photoshop-authored smart object cannot
 be read, its Camera Raw settings cannot be surfaced or edited, and a PSD we
 write cannot be relied on to reopen in Photoshop with the object intact.
 
-Scope decision (2026-09-19): target the **a reference build** model, matching the
-Photoshop files we can produce. Two Camera Raw storage models exist. A raw opened
-as a Smart Object stores `crs:` XMP in the embedded payload (CS6 path, no
-reference file). A Camera Raw Filter applied as a smart filter stores its
-settings in the smart object's `SoLd` descriptor under
-`filterFX.filterFXList[].Fltr` with `filterID` 2683 (CC path, confirmed by
-`assets/test_with_smart_object02.psd`). The CC filter path is the acceptance
-target.
+Scope decision (2026-09-19): smart objects are **Photoshop CS6 → current CC**,
+covered as tolerant read plus byte-preserving round-trip. The only available
+reference fixture is a Photoshop **a reference build** file, so we make **no
+validated-parity claim** at the CS6 end or the earliest-CC end; behavior that is
+unproven for a version is stated as such. Two Camera Raw storage models exist. A
+raw opened as a Smart Object stores `crs:` XMP in the embedded payload (CS6 path,
+no reference file: preserve-only, not modeled or edited). A Camera Raw Filter
+applied as a smart filter stores its settings in the smart object's `SoLd`
+descriptor under `filterFX.filterFXList[].Fltr` with `filterID` 2683; the
+settings model targets the **earliest CC** Camera Raw Filter (Photoshop CC v14,
+ACR 8, process version PV2012), and later-CC keys are preserved, not modeled.
+Round-trip re-emits the input descriptor's own form (`SoLE` stays `SoLE`);
+authoring a new object emits `SoLd` (outer version 4, descriptor block version
+16) so CS6 can reopen it.
 
 Roadmap P2.5, gaps G13/G14/G15/G16/G17. Fixture findings are recorded in
 `docs/dev/camera-raw-cc-notes.md`.
@@ -26,14 +32,17 @@ Roadmap P2.5, gaps G13/G14/G15/G16/G17. Fixture findings are recorded in
   layer to source.
 - `read_psd` resolves a smart-object layer to its embedded source payload,
   filename, and filetype instead of leaving the blocks anonymous.
-- `write_psd` re-emits a resolved smart object byte-faithfully, and authors a
-  valid config descriptor plus linked source record with a matching `uuid` when
-  given an embedded source.
+- `write_psd` re-emits a resolved smart object byte-faithfully, preserving the
+  input descriptor's own form (`SoLE` stays `SoLE`), and authors a `SoLd`
+  descriptor (outer version 4, descriptor block version 16, CS6-readable) plus a
+  linked source record with a matching `uuid` when given an embedded source.
 - The model gains a smart-filter view: the layer's `filterFX` list and its
   `Fltr` options, plus the document `FEid`/`FXid` and filter mask `FMsk` blocks.
-  A Camera Raw Filter (`filterID` 2683) exposes its settings.
-- The Camera Raw Filter settings round-trip: read, edit, and write the `Fltr`
-  descriptor keys without dropping the ones we do not model.
+  A Camera Raw Filter (`filterID` 2683) exposes its earliest-CC (ACR 8 / PV2012)
+  settings; later-CC keys are preserved.
+- The Camera Raw Filter settings round-trip: read, edit, and write the
+  earliest-CC `Fltr` descriptor keys without dropping the ones we do not model.
+  `crs:` XMP is preserved-only and is never modeled or edited.
 - A fixture-driven round-trip oracle is defined over both supplied Photoshop
   PSDs.
 - **BREAKING**: none at the API-consumer level; `Layer` gains an optional field
