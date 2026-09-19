@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **829 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
+- Test suite: **870 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -30,8 +30,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
   `solid-color-fill-descriptor`, `gradient-fill-layer`,
   `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
-  `free-transform-mode`, `psb-write`, and `color-balance-adjustment-decode`
-  changes;
+   `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`, and
+   `pattern-fill-layer` changes;
   canonical specs are in `openspec/specs/` (74 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -111,7 +111,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   and the `Layer > New Fill Layer > Gradient…` command author a black-to-white
   Linear fill; C++ self-test codes 286/287. Ceilings: colour-noise gradients
   (`ClNs`), transparency stops, midpoint, non-linear interpolation, and non-RGB
-  are ignored; pattern fill (`PtFl`) remains deferred.
+  are ignored.
 - RLE write (roadmap P3/G12, archived `2026-09-19-psd-rle-write`): `write_psd`
   now PackBits-encodes the merged composite (color + document extra channels),
   layer color channels, and the raster mask (compression 1), instead of raw.
@@ -258,6 +258,19 @@ Snapshot for resuming after a context break. Update after each milestone.
   (code 293). The engine op (`Adjustment::ColorBalance`) already existed — only
   PSD decode/encode and app wiring were added. Remaining P3 adjustment keys:
   `curv`, `mixr`, `selc`, `clrL`, and version-3 `phfl`.
+- Pattern fill layers (roadmap P3/G8, archived `2026-09-19-pattern-fill-layer`):
+  the `PtFl` pattern-fill descriptor and the document `Patt`/`Pat2`/`Pat3`
+  pattern library are decoded (`pictura-codec::decode_patterns`), pattern-fill
+  layers composite as tiled content (`pictura-render::composite_pattern_fill`)
+  and are rasterizable, and `PtFl` joined `ADJUSTMENT_KEYS` so a real block is
+  recognized instead of dropped to `extra_blocks`. Missing or unsupported
+  patterns fall back to a grey placeholder; authoring (`Layer > New Fill Layer >
+  Pattern…`) is deferred. The change brought security hardening: `pictura-codec`'s
+  `inflate` now bounds ZIP/Deflate channel decompression to the expected plane
+  size (a crafted pattern/channel can no longer balloon memory), and pattern
+  parsing has a mode-derived channel-count gate and a pixel cap. Remaining P3:
+  `curv`, `mixr`, `selc`, `clrL`, `phfl` v3, layer effects (`lfx2`/`lrFX`), text,
+  vector masks.
 
 ## Commands
 
