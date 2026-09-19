@@ -6,7 +6,7 @@ use crate::color::{
 };
 use crate::common::{map_float, validate};
 use crate::tonal::{
-    brightness_contrast, curves, desaturate, exposure, levels, posterize, threshold,
+    brightness_contrast, curves, desaturate, exposure, gradient_map, levels, posterize, threshold,
 };
 use crate::types::{AdjustError, Adjustment};
 
@@ -35,6 +35,7 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
             desaturate(buf, n);
             Ok(())
         }
+        Adjustment::GradientMap(p) => gradient_map(p, buf, n),
         Adjustment::SolidFill(_) => Err(AdjustError::Unsupported(
             "solid fill is composited, not applied destructively".into(),
         )),

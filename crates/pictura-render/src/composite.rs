@@ -1,6 +1,6 @@
 use pictura_adjust::{
-    Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, HueSaturationParams,
-    LevelsParams, PhotoFilterParams, VibranceParams,
+    Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, GradientMapParams,
+    GradientStop, HueSaturationParams, LevelsParams, PhotoFilterParams, VibranceParams,
 };
 use pictura_codec::DescValue;
 use pictura_core::{
@@ -320,11 +320,12 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// Supported keys: `nvrt`/`invr` (Invert, no payload), `post` (Posterize),
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
-/// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2), and
-/// `SoCo` (solid-color fill content with a 4-byte RGBA payload).
-/// Descriptor/custom payloads (`curv`, `mixr`, `gdrm`, `selc`, `clrL`, a
-/// version-3 `phfl`, and a real Photoshop `SoCo` descriptor) are preserved on
-/// disk but not decoded here.
+/// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2),
+/// `grdm` (Gradient Map, versions 1/3), and `SoCo` (solid-color fill content
+/// with a 4-byte RGBA payload).
+/// Descriptor/custom payloads (`curv`, `mixr`, `selc`, `clrL`, a version-3
+/// `phfl`, and a real Photoshop `SoCo` descriptor) are preserved on disk but
+/// not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -341,6 +342,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"phfl" => decode_photo_filter(&data.data),
         b"vibA" => decode_vibrance(&data.data),
         b"blwh" => decode_black_white(&data.data),
+        b"gdrm" | b"grdm" => decode_gradient_map(&data.data),
         // ponytail: our own 4-byte payload, not Photoshop's `'Clr '` descriptor;
         // parse the descriptor when a real CS6 solid-fill baseline appears.
         b"SoCo" => match data.data.as_slice() {
@@ -582,6 +584,57 @@ fn desc_long_or(obj: &DescValue, key: &[u8], default: f64) -> Option<f64> {
     }
 }
 
+/// `grdm`: the legacy Gradient Map struct (psd-tools `GradientMap`). Layout:
+/// `u16` version (1 or 3), `u8` reverse, `u8` dither, a `4`-byte method when
+/// version 3, a unicode name (`u32` UTF-16 char count + data), a `u16` colour
+/// stop count, then each stop: `u32` location, `u32` midpoint, `u16` mode, four
+/// `u16` colour components, `2` pad bytes. Everything after the colour stops
+/// (transparency stops and the trailing gradient fields) is ignored.
+///
+/// ponytail: the first three components are the only colour read, reduced with
+/// `>> 8` so `65535` maps to `255`; midpoint bias, dither, opacity stops, and
+/// non-RGB colour models are not modelled.
+fn decode_gradient_map(d: &[u8]) -> Option<Adjustment> {
+    let version = be_u16(d, 0)?;
+    if version != 1 && version != 3 {
+        return None;
+    }
+    let reverse = *d.get(2)? != 0;
+    let _dither = *d.get(3)?;
+    let mut at = if version == 3 { 8 } else { 4 };
+    let name_chars = be_u32(d, at)? as usize;
+    at += 4 + name_chars * 2;
+    let count = be_u16(d, at)?;
+    at += 2;
+    if count < 2 {
+        return None;
+    }
+    let mut stops = Vec::with_capacity(count as usize);
+    let mut previous: Option<u16> = None;
+    for _ in 0..count {
+        let location = be_u32(d, at)?;
+        if location > 4096 {
+            return None;
+        }
+        let location = location as u16;
+        if previous.is_some_and(|p| location <= p) {
+            return None;
+        }
+        previous = Some(location);
+        let color = [
+            (be_u16(d, at + 10)? >> 8) as u8,
+            (be_u16(d, at + 12)? >> 8) as u8,
+            (be_u16(d, at + 14)? >> 8) as u8,
+        ];
+        stops.push(GradientStop { location, color });
+        at += 20;
+    }
+    Some(Adjustment::GradientMap(GradientMapParams {
+        stops,
+        reverse,
+    }))
+}
+
 // --- Encoders for the same subset ------------------------------------------
 //
 // These build the raw `AdjustmentData` the decoder above reads, so the app can
@@ -672,6 +725,49 @@ pub fn encode_photo_filter(
     data.extend_from_slice(&[0u8; 3]);
     AdjustmentData {
         key: *b"phfl",
+        data,
+    }
+}
+
+/// `grdm`: the version-1 Gradient Map block. Writes the reverse flag, dither 0,
+/// an empty unicode name, the supplied stops (8-bit colours scaled to the
+/// 16-bit storage scale), zero transparency stops, and psd-tools' trailing
+/// defaults, padded to a 4-byte boundary.
+pub fn encode_gradient_map(stops: &[GradientStop], reverse: bool) -> AdjustmentData {
+    let mut data = Vec::new();
+    data.extend_from_slice(&1u16.to_be_bytes());
+    data.push(u8::from(reverse));
+    data.push(0);
+    data.extend_from_slice(&0u32.to_be_bytes()); // empty unicode name
+    data.extend_from_slice(&(stops.len() as u16).to_be_bytes());
+    for stop in stops {
+        data.extend_from_slice(&(stop.location as u32).to_be_bytes());
+        data.extend_from_slice(&50u32.to_be_bytes()); // midpoint
+        data.extend_from_slice(&0u16.to_be_bytes()); // mode
+        for c in stop.color {
+            let v = (c as u16) * 257; // inverse of the decoder's `>> 8`
+            data.extend_from_slice(&v.to_be_bytes());
+        }
+        data.extend_from_slice(&0u16.to_be_bytes()); // alpha
+        data.extend_from_slice(&[0, 0]); // stop pad
+    }
+    data.extend_from_slice(&0u16.to_be_bytes()); // transparency stop count
+    data.extend_from_slice(&2u16.to_be_bytes()); // expansion
+    data.extend_from_slice(&0u16.to_be_bytes()); // interpolation
+    data.extend_from_slice(&32u16.to_be_bytes()); // length
+    data.extend_from_slice(&0u16.to_be_bytes()); // mode
+    data.extend_from_slice(&0u32.to_be_bytes()); // random seed
+    data.extend_from_slice(&0u16.to_be_bytes()); // show transparency
+    data.extend_from_slice(&0u16.to_be_bytes()); // use vector color
+    data.extend_from_slice(&0u32.to_be_bytes()); // roughness
+    data.extend_from_slice(&0u16.to_be_bytes()); // color model
+    data.extend_from_slice(&[0u8; 16]); // min/max colour (4H each)
+    data.extend_from_slice(&[0, 0]); // dummy
+    while data.len() % 4 != 0 {
+        data.push(0);
+    }
+    AdjustmentData {
+        key: *b"grdm",
         data,
     }
 }

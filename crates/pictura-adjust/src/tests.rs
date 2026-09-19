@@ -714,6 +714,160 @@ fn color_balance_validation() {
     .is_err());
 }
 
+// --- Gradient Map ------------------------------------------------------
+
+fn bw_stops() -> Vec<GradientStop> {
+    vec![
+        GradientStop {
+            location: 0,
+            color: [0, 0, 0],
+        },
+        GradientStop {
+            location: 4096,
+            color: [255, 255, 255],
+        },
+    ]
+}
+
+#[test]
+fn gradient_map_black_white_identity_on_greys() {
+    let mut b = ramp_rgb(0, 255, 256);
+    let orig = b.clone();
+    apply(
+        &Adjustment::GradientMap(GradientMapParams {
+            stops: bw_stops(),
+            reverse: false,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    for i in 0..256 {
+        for c in 0..3 {
+            let d = px3(&b, i)[c] as i16 - px3(&orig, i)[c] as i16;
+            assert!(d.abs() <= 1, "grey {i} channel {c} drifted by {d}");
+        }
+    }
+}
+
+#[test]
+fn gradient_map_reverse_flips() {
+    let mut b = buf3(2, 1, &[[0, 0, 0], [255, 255, 255]]);
+    apply(
+        &Adjustment::GradientMap(GradientMapParams {
+            stops: bw_stops(),
+            reverse: true,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(px3(&b, 0), [255, 255, 255], "black maps near white");
+    assert_eq!(px3(&b, 1), [0, 0, 0], "white maps near black");
+}
+
+#[test]
+fn gradient_map_interior_stop_is_honored() {
+    let stops = vec![
+        GradientStop {
+            location: 0,
+            color: [0, 0, 0],
+        },
+        GradientStop {
+            location: 2048,
+            color: [255, 0, 0],
+        },
+        GradientStop {
+            location: 4096,
+            color: [255, 255, 255],
+        },
+    ];
+    // A mid-grey samples just past location 2048, so it reads the red interior
+    // stop instead of the grey the two outer stops alone would give.
+    let mut b = buf3(1, 1, &[[128, 128, 128]]);
+    apply(
+        &Adjustment::GradientMap(GradientMapParams {
+            stops,
+            reverse: false,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    let out = px3(&b, 0);
+    assert!(
+        out[0] > 240,
+        "mid grey should be near the red stop: {out:?}"
+    );
+    assert!(out[1] < 12 && out[2] < 12, "not a grey blend: {out:?}");
+}
+
+#[test]
+fn gradient_map_clamps_outside_stops() {
+    let stops = vec![
+        GradientStop {
+            location: 1024,
+            color: [0, 0, 255],
+        },
+        GradientStop {
+            location: 3072,
+            color: [255, 255, 0],
+        },
+    ];
+    let mut b = buf3(3, 1, &[[0, 0, 0], [32, 32, 32], [255, 255, 255]]);
+    apply(
+        &Adjustment::GradientMap(GradientMapParams {
+            stops,
+            reverse: false,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(px3(&b, 0), [0, 0, 255], "below first stop clamps");
+    assert_eq!(px3(&b, 1), [0, 0, 255], "still below first stop clamps");
+    assert_eq!(px3(&b, 2), [255, 255, 0], "above last stop clamps");
+}
+
+#[test]
+fn gradient_map_rejects_invalid_stops() {
+    let mut b = buf3(1, 1, &[[10, 10, 10]]);
+    let one = GradientMapParams {
+        stops: vec![GradientStop {
+            location: 0,
+            color: [0, 0, 0],
+        }],
+        reverse: false,
+    };
+    assert!(apply(&Adjustment::GradientMap(one), &mut b).is_err());
+
+    let decreasing = GradientMapParams {
+        stops: vec![
+            GradientStop {
+                location: 4096,
+                color: [0, 0, 0],
+            },
+            GradientStop {
+                location: 0,
+                color: [255, 255, 255],
+            },
+        ],
+        reverse: false,
+    };
+    assert!(apply(&Adjustment::GradientMap(decreasing), &mut b).is_err());
+
+    let out_of_range = GradientMapParams {
+        stops: vec![
+            GradientStop {
+                location: 0,
+                color: [0, 0, 0],
+            },
+            GradientStop {
+                location: 5000,
+                color: [255, 255, 255],
+            },
+        ],
+        reverse: false,
+    };
+    assert!(apply(&Adjustment::GradientMap(out_of_range), &mut b).is_err());
+}
+
 // --- Auto --------------------------------------------------------------
 
 #[test]
@@ -827,6 +981,19 @@ fn alpha_is_never_modified() {
         Adjustment::Posterize(4),
         Adjustment::Threshold(128),
         Adjustment::Desaturate,
+        Adjustment::GradientMap(GradientMapParams {
+            stops: vec![
+                GradientStop {
+                    location: 0,
+                    color: [0, 0, 0],
+                },
+                GradientStop {
+                    location: 4096,
+                    color: [255, 255, 255],
+                },
+            ],
+            reverse: false,
+        }),
     ];
     for a in adjustments {
         let mut b = base.clone();

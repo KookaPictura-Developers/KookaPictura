@@ -30,7 +30,7 @@ and `Layer.adjustment: Option<AdjustmentData>`, and MUST NOT depend on
 
 `pictura-codec` SHALL recognise the adjustment additional-layer-info keys
 (`levl`, `curv`, `brit`, `expA`, `vibA`, `hue2`, `hue `, `blwh`, `phfl`, `mixr`,
-`gdrm`, `invr`, `nvrt`, `post`, `thrs`, `selc`, `clrL`) and SHALL store each
+`grdm`, `invr`, `nvrt`, `post`, `thrs`, `selc`, `clrL`) and SHALL store each
 block's key and payload bytes verbatim in `AdjustmentData`. On write it MUST emit
 the same key and payload bytes it read, so a document with adjustment layers
 round-trips byte-for-byte and unknown payload fields are not lost.

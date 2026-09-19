@@ -22,6 +22,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("masked.psd", 8, 8, ColorMode::Rgb),
     ("gray.psd", 8, 8, ColorMode::Grayscale),
     ("adjustment.psd", 8, 8, ColorMode::Rgb),
+    ("gradient_map.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -173,6 +174,30 @@ fn adjustment_layers_preserve_key_and_bytes() {
     );
 
     // Round-trip through pictura-codec: whole document, including adjustments.
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc);
+}
+
+/// The Gradient Map fixture: the psd-tools-authored `grdm` block survives read
+/// and whole-document round-trip unchanged.
+#[test]
+fn gradient_map_layer_preserves_key_and_bytes() {
+    let doc = load("gradient_map.psd");
+    let names: Vec<&str> = doc.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["Base", "Gradient Map"]);
+
+    let gm = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Gradient Map")
+        .and_then(|l| l.adjustment.as_ref())
+        .expect("gradient map adjustment block");
+    assert_eq!(gm.key, *b"grdm");
+    assert_eq!(gm.data.len(), 140, "psd-tools version-1 grdm payload");
+    assert_eq!(&gm.data[0..2], &[0, 1], "version 1");
+    assert_eq!(gm.data[2], 0, "not reversed");
+    assert_eq!(gm.data[3], 0, "not dithered");
+
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back, doc);
 }

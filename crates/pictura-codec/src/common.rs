@@ -29,9 +29,10 @@ pub(crate) const DIVIDER_NAME: &str = "</Layer group>";
 /// `hue2`. Both spellings are accepted on read. `SoCo` is solid-color fill
 /// content: it is preserved verbatim here, and only `pictura-render` decodes
 /// the 4-byte subset it understands.
-pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 18] = [
+pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 19] = [
     *b"levl", *b"curv", *b"brit", *b"expA", *b"vibA", *b"hue2", *b"hue ", *b"blwh", *b"phfl",
-    *b"mixr", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc", *b"clrL", *b"SoCo",
+    *b"mixr", *b"grdm", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc", *b"clrL",
+    *b"SoCo",
 ];
 
 pub(crate) fn is_adjustment_key(key: &[u8; 4]) -> bool {
