@@ -636,6 +636,17 @@ pub mod qobject {
         #[qinvokable]
         fn layer_smart_object_state(&self, path: &QString) -> QString;
 
+        /// Whether `path` resolves to a layer carrying a non-empty embedded
+        /// payload to export. Read-only; mutates nothing.
+        #[qinvokable]
+        fn layer_can_export_smart_object_contents(&self, path: &QString) -> bool;
+
+        /// `Export Contents…`: write the embedded source of the smart object at
+        /// `path` to `dest` byte-for-byte. Read-only, so it records no history
+        /// state; true only when the write succeeds.
+        #[qinvokable]
+        fn export_smart_object_contents(&self, path: &QString, dest: &QString) -> bool;
+
         /// Set layer `i` visibility, recomposite, and emit [`changed`].
         #[qinvokable]
         fn set_layer_visible(self: Pin<&mut Self>, i: i32, visible: bool);

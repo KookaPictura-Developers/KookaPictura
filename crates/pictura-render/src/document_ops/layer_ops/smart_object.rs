@@ -89,6 +89,25 @@ pub fn can_replace_smart_object_contents(doc: &Document, path: &str) -> bool {
     })
 }
 
+/// Read the embedded source bytes of the smart-object layer at `path`.
+///
+/// Returns `Some(payload.clone())` only when the layer is not a group, has no
+/// adjustment data, and its `smart_object` has a non-empty payload; every other
+/// target returns `None`. Pure read: never mutates the document.
+pub fn smart_object_source_bytes(doc: &Document, path: &str) -> Option<Vec<u8>> {
+    resolve_path(doc, path).and_then(|layer| {
+        if layer.is_group || layer.adjustment.is_some() {
+            return None;
+        }
+        layer
+            .smart_object
+            .as_ref()
+            .and_then(|so| so.payload.as_ref())
+            .filter(|p| !p.is_empty())
+            .cloned()
+    })
+}
+
 /// Replace the embedded source of the smart-object layer at `path`.
 ///
 /// Returns `false` without mutating the document when the target is ineligible

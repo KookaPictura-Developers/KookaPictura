@@ -60,9 +60,9 @@ pub use document_ops::{
     rasterize_fill_content, rasterize_smart_object, rename_path, replace_smart_object_contents,
     resize_canvas_document, resize_document, resolve_path, resolve_path_mut, rotate_document,
     select_similar, set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths,
-    set_opacity_paths, set_visible_paths, translate_layer, translate_layer_active,
-    translate_layer_rect, ungroup_layer, ungroup_paths, MergeError, MergeOutcome, MergeScope,
-    NewLayerSpec,
+    set_opacity_paths, set_visible_paths, smart_object_source_bytes, translate_layer,
+    translate_layer_active, translate_layer_rect, ungroup_layer, ungroup_paths, MergeError,
+    MergeOutcome, MergeScope, NewLayerSpec,
 };
 
 pub use pictura_ops::{Anchor, Resample};

@@ -642,6 +642,43 @@ void PicturaMainWindow::registerHandlers()
                                       return !currentReplaceableSmartPath().isEmpty();
                                   });
 
+    // Export Contents needs the current layer to carry a non-empty embedded
+    // payload. Export only reads the document, so nothing is refreshed.
+    const auto currentExportableSmartPath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty() || !view->layer_can_export_smart_object_contents(path)) {
+            return QString();
+        }
+        return path;
+    };
+    registry_->setHandler(command_ids::LayerSmartObjectExportContents,
+                          [this, currentExportableSmartPath]() {
+                              PictureView* view = activeView();
+                              const QString path = currentExportableSmartPath();
+                              if (!view || path.isEmpty()) {
+                                  return;
+                              }
+                              QString dest = QFileDialog::getSaveFileName(
+                                  this, tr("Export Contents"), activeFilePath(),
+                                  QStringLiteral("Photoshop files (*.psd)"));
+                              if (dest.isEmpty()) {
+                                  return;
+                              }
+                              if (QFileInfo(dest).suffix().isEmpty()) {
+                                  dest += QStringLiteral(".psd");
+                              }
+                              if (!view->export_smart_object_contents(path, dest)) {
+                                  QMessageBox::warning(
+                                      this, tr("Export Contents"),
+                                      tr("Could not export the smart object contents."));
+                              }
+                          });
+    registry_->setEnabledProvider(command_ids::LayerSmartObjectExportContents,
+                                  [currentExportableSmartPath]() {
+                                      return !currentExportableSmartPath().isEmpty();
+                                  });
+
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {
             canvas->zoomIn();
