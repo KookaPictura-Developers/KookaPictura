@@ -104,9 +104,11 @@ decodes, encodes, and rasterizes (archived
 descriptor now decodes to `Adjustment::GradientFill`, composites generatively for
 all five kinds, is fill content for rasterize, and authors through
 `encode_gradient_fill` and `Layer > New Fill Layer > Gradient…` (archived
-`2026-09-19-gradient-fill-layer`). Remaining: `curv`, `mixr`, version-3 `phfl`,
-`selc`, `clrL`, and the effect/text/vector kinds (pattern fill `PtFl`,
-`lfx2`/`lrFX`, text, vector masks).
+`2026-09-19-gradient-fill-layer`). Color Balance (`blnc`) now decodes to nine
+`i16` shifts plus a luminosity byte and encodes too, with an Adjustments panel
+entry (archived `2026-09-19-color-balance-adjustment-decode`). Remaining: `curv`,
+`mixr`, version-3 `phfl`, `selc`, `clrL`, and the effect/text/vector kinds
+(pattern fill `PtFl`, `lfx2`/`lrFX`, text, vector masks).
 **Curves (`curv`) is deferred**: the model is single-composite versus
 Photoshop's per-channel curves, and the legacy channel-bitmap order is
 ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:

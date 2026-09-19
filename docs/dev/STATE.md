@@ -9,14 +9,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **826 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
+- Test suite: **829 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
   fresh-white-document regression; counted from `cargo nextest run --workspace`,
   which excludes the pre-existing ignored `pictura-render` doctest that
   `cargo test --workspace` reports as the ninth skip). The
-  C++ self-test reports **228 passed, 0 failed, 0 skipped**.
+  C++ self-test reports **229 passed, 0 failed, 0 skipped**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -30,7 +30,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
   `solid-color-fill-descriptor`, `gradient-fill-layer`,
   `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
-  `free-transform-mode`, and `psb-write` changes;
+  `free-transform-mode`, `psb-write`, and `color-balance-adjustment-decode`
+  changes;
   canonical specs are in `openspec/specs/` (74 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -247,6 +248,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   re-frame; a small PSB is preserved as a PSB via `is_psb`; and opening a
   >30 000 PSB through the app is still capped by the import probe budget
   (`probe.rs`, 30 000), a distinct follow-up.
+- Color Balance adjustment decode (roadmap P3/G8, archived
+  `2026-09-19-color-balance-adjustment-decode`): `blnc` is now a recognized
+  adjustment key; `pictura-render` exposes `decode_color_balance` (nine `i16`
+  shifts plus a luminosity byte, each in `-100..=100`, pad ignored) and
+  `encode_color_balance` (clamps to range). The app maps kind `color-balance` to
+  the neutral Photoshop default (all-zero shifts, preserve-luminosity on) and the
+  Adjustments panel offers `Color Balance`; C++ self-test `lpr_color_balance`
+  (code 293). The engine op (`Adjustment::ColorBalance`) already existed — only
+  PSD decode/encode and app wiring were added. Remaining P3 adjustment keys:
+  `curv`, `mixr`, `selc`, `clrL`, and version-3 `phfl`.
 
 ## Commands
 
