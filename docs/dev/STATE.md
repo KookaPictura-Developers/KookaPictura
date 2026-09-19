@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **708 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **714 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -21,7 +21,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `layers-panel-control-polish`, `layers-panel-management`,
   `selection-tools-and-menu`, `psd-interop-compression`,
   `psd-opaque-preservation`, `psd-smart-object-roundtrip`,
-  `smart-object-source-render`, and `adjustment-payload-decode` changes;
+  `smart-object-source-render`, `adjustment-payload-decode`, and
+  `psd-rle-write` changes;
   canonical specs are in `openspec/specs/` (70 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -58,6 +59,14 @@ Snapshot for resuming after a context break. Update after each milestone.
   payloads are a no-op. Deferred because the schema is not confidently groundable
   or the op is missing: `phfl` (colour-space conversion), `mixr` (layout), `curv`
   (list/format), `selc`/`clrL`/`gdrm`, and a real `SoCo` descriptor.
+- RLE write (roadmap P3/G12, archived `2026-09-19-psd-rle-write`): `write_psd`
+  now PackBits-encodes the merged composite (color + document extra channels),
+  layer color channels, and the raster mask (compression 1), instead of raw.
+  Preserved `Layer.raw_channels` and all unmodeled blocks stay byte-for-byte.
+  The byte golden `crates/pictura-codec/tests/fixtures/default_before.psd` was
+  regenerated for the RLE output (`default_document_matches_rle_golden`); the
+  P2 lossless-open→save guarantee is unaffected because only engine-encoded
+  channel compression changes. ZIP **write** is still missing.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's

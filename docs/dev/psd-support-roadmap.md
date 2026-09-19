@@ -40,7 +40,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G9 | PSB write missing; write caps at 30 000 px, always version 1 | `write.rs` | Cannot save PSB / huge docs |
 | G10 | Unknown blend key aborts the whole file | `read.rs` `from_psd_key(...).ok_or` | Open blocker |
 | G11 | Absent merged composite ("Maximize Compatibility" off) unhandled | `read.rs` reads compression unconditionally | Open blocker |
-| G12 | Write always raw; no RLE/ZIP output | `write.rs` | Files much larger than Photoshop's |
+| G12 | ~~Write always raw~~ RLE write shipped; ZIP output still absent | `write.rs` | RLE composite/layer channels/mask now default; ZIP write still missing |
 | G13 | Smart objects are preserved opaquely but not modeled: no embedded-source node, so a smart object cannot be resolved, rendered, or re-edited | P2 holds `SoLd`/`SoLE`/`plLd` and `lnkD`/`lnk2`/`lnk3` bytes; nothing consumes them | Open blocker for Camera Raw |
 | G14 | No writer for a valid smart-object pair: the `SoLd`/`SoLE` config descriptor, its `lnkD`/`lnk2`/`lnk3` source record, and the matching `uuid` that links them | `write_psd` re-emits preserved bytes but cannot author a new smart object | Open blocker for raw interop |
 | G15 | Camera Raw settings are not read or written. Two storage models: `crs:` XMP for a raw opened as a Smart Object, and the `SoLd.filterFX[].Fltr` descriptor for a Camera Raw Filter smart filter | settings are preserved opaquely only; no edit round-trip | Open blocker for Camera Raw |
@@ -94,7 +94,10 @@ rect (stored merged composite preferred, layers fallback; nearest-neighbour;
 and `blwh` (Black & White) now decode to `pictura-adjust` ops; `curv`, `phfl`,
 `mixr`, `selc`, `clrL`, `gdrm`, and a real `SoCo` descriptor remain (ungrounded
 schema or missing op). Remaining P3: those keys, the fill/effect/text/vector
-kinds, and write RLE by default (G12).
+kinds, and write RLE by default (G12). **RLE write is shipped** (archived
+`2026-09-19-psd-rle-write`): the merged composite (color + document extra
+channels), layer color channels, and the raster mask are PackBits-encoded;
+preserved verbatim channels stay byte-for-byte. ZIP write remains.
 
 **P4 — Color modes and depth.**
 Indexed/Bitmap/CMYK/Lab/Multichannel/Duotone (G2) and 16/32-bit (G4) through

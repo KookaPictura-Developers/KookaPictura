@@ -14,29 +14,27 @@ struct OutRecord<'a> {
     name: &'a str,
 }
 
-/// A layer channel to emit: engine-encoded pixels get a compression header,
-/// while a preserved raw channel is an already-complete on-disk stream.
+/// A layer channel to emit. Both variants are a complete on-disk stream
+/// (compression word included): `Encoded` is engine-authored PackBits RLE,
+/// `Verbatim` is a preserved `Layer.raw_channels` stream re-emitted unchanged.
 enum OutChannel {
     Encoded(Vec<u8>),
     Verbatim(Vec<u8>),
 }
 
 impl OutChannel {
-    fn declared_len(&self) -> u32 {
+    fn bytes(&self) -> &[u8] {
         match self {
-            OutChannel::Encoded(data) => 2 + data.len() as u32,
-            OutChannel::Verbatim(data) => data.len() as u32,
+            OutChannel::Encoded(data) | OutChannel::Verbatim(data) => data,
         }
     }
 
+    fn declared_len(&self) -> u32 {
+        self.bytes().len() as u32
+    }
+
     fn write(&self, out: &mut Vec<u8>) {
-        match self {
-            OutChannel::Encoded(data) => {
-                out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
-                out.extend_from_slice(data);
-            }
-            OutChannel::Verbatim(data) => out.extend_from_slice(data),
-        }
+        out.extend_from_slice(self.bytes());
     }
 }
 
@@ -98,8 +96,13 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
     for record in &records {
         let mut channels: Vec<(i16, OutChannel)> = Vec::new();
         if let Some(layer) = record.layer {
+            let layer_w = layer.rect.width().max(0) as usize;
+            let layer_h = layer.rect.height().max(0) as usize;
             for channel in &layer.channels {
-                channels.push((channel.id, OutChannel::Encoded(channel.data.clone())));
+                channels.push((
+                    channel.id,
+                    OutChannel::Encoded(rle_channel(layer_w, layer_h, &channel.data)?),
+                ));
             }
             for channel in &layer.raw_channels {
                 channels.push((channel.id, OutChannel::Verbatim(channel.data.clone())));
@@ -121,7 +124,7 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
                     }
                     None => vec![mask.default_color; pixels],
                 };
-                channels.push((-2, OutChannel::Encoded(data)));
+                channels.push((-2, OutChannel::Encoded(rle_channel(width, height, &data)?)));
             }
         }
         if channels.len() > MAX_CHANNELS as usize {
@@ -350,6 +353,86 @@ fn luni_data(name: &str) -> Vec<u8> {
     data
 }
 
+// ---------------------------------------------------------------------------
+// PackBits RLE encoding
+// ---------------------------------------------------------------------------
+
+/// Append one PackBits-encoded scanline to `out`. Runs of three or more equal
+/// bytes become a repeat packet (control `1 - n`, then the byte); all other
+/// bytes become literal packets of up to 128. The split is fixed, so repeated
+/// writes are byte-identical.
+fn encode_packbits_row(row: &[u8], out: &mut Vec<u8>) {
+    let mut i = 0;
+    while i < row.len() {
+        let mut run = 1;
+        while i + run < row.len() && row[i + run] == row[i] && run < 128 {
+            run += 1;
+        }
+        if run >= 3 {
+            out.push((1 - run as i32) as i8 as u8);
+            out.push(row[i]);
+            i += run;
+            continue;
+        }
+        let start = i;
+        let mut end = i;
+        while end < row.len() && end - start < 128 {
+            if end + 2 < row.len() && row[end] == row[end + 1] && row[end] == row[end + 2] {
+                break;
+            }
+            end += 1;
+        }
+        out.push((end - start - 1) as u8);
+        out.extend_from_slice(&row[start..end]);
+        i = end;
+    }
+}
+
+/// Encode `planes` (each `width * height`, plane-major) into one RLE payload:
+/// all 2-byte scanline byte counts first (plane-major, then row-major), then the
+/// packed rows in the same order. The compression word is not included.
+pub(crate) fn encode_scanlines(
+    planes: &[&[u8]],
+    width: usize,
+    height: usize,
+) -> Result<Vec<u8>, PsdError> {
+    let plane_len = width
+        .checked_mul(height)
+        .ok_or_else(|| PsdError::Invalid("RLE plane size overflow".into()))?;
+    let mut counts = Vec::with_capacity(planes.len() * height * 2);
+    let mut rows = Vec::new();
+    for plane in planes {
+        if plane.len() != plane_len {
+            return Err(PsdError::Invalid("RLE plane length mismatch".into()));
+        }
+        for row in 0..height {
+            let start = row * width;
+            let mut packed = Vec::new();
+            encode_packbits_row(&plane[start..start + width], &mut packed);
+            // PSB's 4-byte counts are where a wider limit is needed; the PSD
+            // maximum width (30 000) cannot reach the u16 limit. ponytail: PSD only.
+            if packed.len() > u16::MAX as usize {
+                return Err(PsdError::Invalid(
+                    "RLE scanline exceeds u16 byte count".into(),
+                ));
+            }
+            counts.extend_from_slice(&(packed.len() as u16).to_be_bytes());
+            rows.extend_from_slice(&packed);
+        }
+    }
+    counts.extend_from_slice(&rows);
+    Ok(counts)
+}
+
+/// The complete on-disk layer-channel stream for one engine-encoded plane: the
+/// compression word, the count table, then the packed rows.
+fn rle_channel(width: usize, height: usize, plane: &[u8]) -> Result<Vec<u8>, PsdError> {
+    let mut out = Vec::with_capacity(2 + plane.len());
+    out.extend_from_slice(&COMPRESSION_RLE.to_be_bytes());
+    out.extend_from_slice(&encode_scanlines(&[plane], width, height)?);
+    Ok(out)
+}
+
 /// Serialize a [`Document`]'s composite image and layer tree into a valid PSD.
 pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
     if doc.depth != BitDepth::Eight {
@@ -424,10 +507,18 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
         out.extend_from_slice(&extra);
     }
 
-    out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
-    out.extend_from_slice(&doc.composite.data);
-    for channel in &doc.channels {
-        out.extend_from_slice(&channel.data);
+    out.extend_from_slice(&COMPRESSION_RLE.to_be_bytes());
+    let mut planes: Vec<&[u8]> = Vec::with_capacity(channels);
+    for c in 0..color_channels {
+        planes.push(&doc.composite.data[c * plane..(c + 1) * plane]);
     }
+    for channel in &doc.channels {
+        planes.push(&channel.data);
+    }
+    out.extend_from_slice(&encode_scanlines(
+        &planes,
+        doc.width as usize,
+        doc.height as usize,
+    )?);
     Ok(out)
 }

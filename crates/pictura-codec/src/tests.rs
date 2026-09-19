@@ -1,6 +1,8 @@
 use super::*;
 
-use crate::common::{COMPRESSION_RAW, COMPRESSION_ZIP, COMPRESSION_ZIP_PREDICTION};
+use crate::common::{
+    COMPRESSION_RAW, COMPRESSION_RLE, COMPRESSION_ZIP, COMPRESSION_ZIP_PREDICTION,
+};
 use pictura_core::*;
 
 fn header(version: u16, channels: u16, width: u32, height: u32, mode: u16) -> Vec<u8> {
@@ -601,8 +603,7 @@ fn layer_with_too_many_channels_is_rejected() {
 
 // -- M36: lspf / lclr / iOpa -------------------------------------------
 
-/// The fixed default document captured before M36; its serialization must
-/// stay byte-identical because every new tag is omitted at its default.
+/// The fixed default document used for the serialization golden.
 fn default_document() -> Document {
     let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
     for (i, b) in doc.composite.data.iter_mut().enumerate() {
@@ -667,14 +668,92 @@ fn default_document() -> Document {
 }
 
 #[test]
-fn default_document_bytes_are_unchanged() {
+fn default_document_matches_rle_golden() {
     let bytes = write_psd(&default_document()).unwrap();
-    let before = include_bytes!("../tests/fixtures/default_before.psd");
+    let golden = include_bytes!("../tests/fixtures/default_before.psd");
     assert_eq!(
         bytes.as_slice(),
-        before.as_slice(),
-        "default documents must serialize byte-identically to the original baseline"
+        golden.as_slice(),
+        "default documents must serialize byte-identically to the PackBits-RLE baseline"
     );
+}
+
+// -- PackBits RLE write -------------------------------------------------
+
+#[test]
+fn encode_rle_round_trips() {
+    let cases: &[(usize, usize, &[u8])] = &[
+        (5, 3, &[9; 15]),
+        (4, 1, &[1, 2, 3, 4]),
+        (1, 1, &[7]),
+        (0, 0, &[]),
+    ];
+    for &(w, h, plane) in cases {
+        let payload = crate::write::encode_scanlines(&[plane], w, h).unwrap();
+        let decoded = crate::read::decode_rle_channel(&payload, w, h, false).unwrap();
+        assert_eq!(decoded, plane, "w={w} h={h}");
+    }
+
+    // Widths past the 128-byte packet boundary and a run longer than one
+    // repeat packet can hold.
+    for plane in [
+        &(0..258).map(|i| (i % 7) as u8).collect::<Vec<u8>>(),
+        &vec![5u8; 300],
+    ] {
+        let payload = crate::write::encode_scanlines(&[plane], plane.len(), 1).unwrap();
+        let decoded = crate::read::decode_rle_channel(&payload, plane.len(), 1, false).unwrap();
+        assert_eq!(&decoded, plane);
+    }
+}
+
+#[test]
+fn written_composite_declares_rle() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    for (i, b) in doc.composite.data.iter_mut().enumerate() {
+        *b = (i * 11 + 3) as u8;
+    }
+    let bytes = write_psd(&doc).unwrap();
+    // Header (26) + empty color-mode-data (4) + empty image-resources (4) +
+    // empty layer/mask section (4) precede the image-data compression word.
+    let compression = u16::from_be_bytes([bytes[38], bytes[39]]);
+    assert_eq!(
+        compression, COMPRESSION_RLE,
+        "composite declares PackBits RLE"
+    );
+    assert_eq!(read_psd(&bytes).unwrap(), doc, "RLE composite round-trips");
+}
+
+#[test]
+fn rle_is_smaller_for_compressible_image() {
+    let mut doc = Document::new(64, 64, ColorMode::Rgb, BitDepth::Eight);
+    doc.composite.data.fill(200);
+    let bytes = write_psd(&doc).unwrap();
+    // A raw write would carry 3*64*64 = 12 288 composite bytes; the whole RLE
+    // file must be smaller than just those pixels.
+    assert!(
+        bytes.len() < doc.composite.data.len(),
+        "uniform composite should RLE-compress: {} >= {}",
+        bytes.len(),
+        doc.composite.data.len()
+    );
+}
+
+#[test]
+fn verbatim_channels_stay_unchanged() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut layer = pixel("RawHold", rect(0, 0, 2, 2), 3, BlendMode::Normal, 255);
+    let stream = vec![0u8, 3, 1, 2, 3, 0xFF, 0xFE];
+    layer.raw_channels = vec![RawChannel {
+        id: -3,
+        data: stream.clone(),
+    }];
+    doc.layers = vec![layer];
+
+    let bytes = write_psd(&doc).unwrap();
+    let back = read_psd(&bytes).unwrap();
+    assert_eq!(back.layers[0].raw_channels.len(), 1);
+    assert_eq!(back.layers[0].raw_channels[0].data, stream);
+    assert_eq!(back, doc, "document with a preserved channel round-trips");
 }
 
 #[test]

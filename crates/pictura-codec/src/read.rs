@@ -686,7 +686,7 @@ fn read_channel_data(
     }
 }
 
-fn decode_rle_channel(
+pub(crate) fn decode_rle_channel(
     payload: &[u8],
     width: usize,
     height: usize,

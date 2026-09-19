@@ -231,6 +231,133 @@ print(psd.composite().getchannel("A").tobytes().hex())
     );
 }
 
+/// The independent oracle decodes both the RLE composite section and
+/// engine-encoded layer channels: psd-tools must recover the exact pixels.
+#[test]
+fn psd_tools_reads_rle_composite_and_layer() {
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+
+    let mut doc = Document::new(4, 2, ColorMode::Rgb, BitDepth::Eight);
+    let composite: Vec<u8> = (0..24).map(|i| (i * 7 + 1) as u8).collect();
+    doc.composite.data = composite.clone();
+    let planes: Vec<Vec<u8>> = (0..4u8)
+        .map(|c| (0..8).map(|i| c * 20 + i).collect())
+        .collect();
+    doc.layers = vec![Layer {
+        name: "Rle".into(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 2,
+            right: 4,
+        },
+        blend: BlendMode::Normal,
+        opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: None,
+        channels: vec![
+            Channel {
+                id: 0,
+                data: planes[0].clone(),
+            },
+            Channel {
+                id: 1,
+                data: planes[1].clone(),
+            },
+            Channel {
+                id: 2,
+                data: planes[2].clone(),
+            },
+            Channel {
+                id: -1,
+                data: planes[3].clone(),
+            },
+        ],
+        children: Vec::new(),
+        is_group: false,
+        background: false,
+        ..Default::default()
+    }];
+
+    let dir = scratch_dir("psd-rle-read");
+    let path = dir.join("rle.psd");
+    std::fs::write(&path, write_psd(&doc).unwrap()).unwrap();
+
+    let script = r#"
+import sys
+import numpy as np
+from psd_tools import PSDImage
+psd = PSDImage.open(sys.argv[1], lazy=False)
+arr = np.array(psd.composite().convert("RGB"))
+print(arr[:, :, 0].tobytes().hex())
+print(arr[:, :, 1].tobytes().hex())
+print(arr[:, :, 2].tobytes().hex())
+print(np.round(psd[0].numpy()[:, :, 0] * 255).astype(np.uint8).tobytes().hex())
+"#;
+    let out = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        out.status.success(),
+        "psd-tools failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let got: Vec<&str> = stdout.lines().map(str::trim).collect();
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    assert_eq!(got[0], hex(&composite[0..8]), "composite R plane");
+    assert_eq!(got[1], hex(&composite[8..16]), "composite G plane");
+    assert_eq!(got[2], hex(&composite[16..24]), "composite B plane");
+    assert_eq!(got[3], hex(&planes[0]), "layer R channel");
+}
+
+/// ImageMagick opens a written RLE document and reports its dimensions.
+#[test]
+fn imagemagick_reads_written_rle() {
+    if Command::new("magick").arg("-version").output().is_err() {
+        eprintln!("skipping: `magick` not on PATH");
+        return;
+    }
+
+    let mut doc = Document::new(4, 2, ColorMode::Rgb, BitDepth::Eight);
+    for (i, b) in doc.composite.data.iter_mut().enumerate() {
+        *b = (i * 7 + 1) as u8;
+    }
+
+    let dir = scratch_dir("psd-rle-magick");
+    let path = dir.join("rle.psd");
+    std::fs::write(&path, write_psd(&doc).unwrap()).unwrap();
+
+    let out = Command::new("magick")
+        .arg("identify")
+        .arg("-format")
+        .arg("%wx%h")
+        .arg(&path)
+        .output()
+        .expect("run magick");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        out.status.success(),
+        "magick failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "4x2");
+}
+
 /// M36: the independent oracle reads back the `lspf`/`lclr`/`iOpa` tags with
 /// the values the model set.
 #[test]
