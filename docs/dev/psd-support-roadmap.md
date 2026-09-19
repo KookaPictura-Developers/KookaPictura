@@ -85,7 +85,7 @@ Shipped as the archived change `2026-09-19-psd-smart-object-roundtrip`.
 
 **P3 — Render preserved data.** *(in progress)*
 Decode the remaining adjustment descriptors and real fill descriptors (G8);
-gradient fill layers; layer effects (`lfx2`/`lrFX`); text; vector masks.
+gradient fill layers; layer effects (`lfx2` Drop Shadow); text; vector masks.
 **Smart-object source rendering is shipped** (archived
 `2026-09-19-smart-object-source-render`): an `Embedded` smart object with no
 raster proxy is rendered by decoding its payload and sampling it into the layer
@@ -110,9 +110,14 @@ entry (archived `2026-09-19-color-balance-adjustment-decode`). Pattern fill
 (`PtFl`) now decodes to `Adjustment::PatternFill`, taking its pixels from the
 document `Patt`/`Pat2`/`Pat3` pattern library (`pictura-codec::decode_patterns`)
 and compositing as tiled content, and is fill content for rasterize (archived
-`2026-09-19-pattern-fill-layer`). Remaining: `curv`,
-`mixr`, version-3 `phfl`, `selc`, `clrL`, and the effect/text/vector kinds
-(`lfx2`/`lrFX`, text, vector masks).
+`2026-09-19-pattern-fill-layer`). Layer effects (`lfx2`) now decode the
+object-based **Drop Shadow** (`DrSh`) and composite it behind the layer content
+on the CPU, with the GPU falling back to CPU (archived
+`2026-09-19-layer-effects-drop-shadow`); the other effect kinds — the legacy
+`lrFX` block and the remaining `lfx2` effects (Inner Shadow, glows, bevel, satin,
+overlays, stroke) — are deferred. Remaining: `curv`,
+`mixr`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
+(text, vector masks).
 **Curves (`curv`) is deferred**: the model is single-composite versus
 Photoshop's per-channel curves, and the legacy channel-bitmap order is
 ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:
