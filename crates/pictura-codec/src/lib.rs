@@ -12,8 +12,9 @@
 //!   file with no merged composite ("Maximize Compatibility" off) yields a
 //!   zeroed composite instead of a truncation error.
 //! - Write: emit a valid PSD whose layer section round-trips through
-//!   [`read_psd`], using raw channel data and `'luni'`/`'lsct'` tagged blocks,
-//!   and re-emit every preserved verbatim block so an open→save loses nothing.
+//!   [`read_psd`], using PackBits RLE channel data and `'luni'`/`'lsct'` tagged
+//!   blocks, and re-emit every preserved verbatim block so an open→save loses
+//!   nothing.
 //! - Anything outside the supported subset returns [`PsdError::Unsupported`],
 //!   never a panic.
 
