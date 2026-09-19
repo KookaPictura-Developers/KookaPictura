@@ -52,6 +52,17 @@ void PicturaMainWindow::registerHandlers()
 {
     registry_->setHandler(command_ids::FileNew, [this]() { showNewDocumentDialog(); });
     registry_->setHandler(command_ids::FileOpen, [this]() { showOpenDialog(); });
+    registry_->setHandler(command_ids::FilePlace, [this]() {
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Place"), QString(), QStringLiteral("Photoshop files (*.psd *.psb)"));
+        if (!path.isEmpty() && !view->place_smart_object(path).isEmpty()) {
+            refresh();
+        }
+    });
 
     registry_->setHandler(command_ids::FileSave, [this]() { saveActive(); });
     registry_->setHandler(command_ids::FileSaveAs, [this]() {
@@ -107,7 +118,7 @@ void PicturaMainWindow::registerHandlers()
 
     auto hasDocument = [this]() { return documentCount() > 0; };
     for (const char* id : {command_ids::FileSave, command_ids::FileSaveAs, command_ids::FileClose,
-                           command_ids::FileCloseAll}) {
+                           command_ids::FileCloseAll, command_ids::FilePlace}) {
         registry_->setEnabledProvider(id, hasDocument);
     }
     registry_->setEnabledProvider(command_ids::FileRevert,

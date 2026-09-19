@@ -57,7 +57,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::FileRevert, {"File", "Revert…"}, QStringLiteral("Revert…"),
                  QKeySequence(QStringLiteral("F12")), true);
     registry.addSeparator({"File"});
-    leaf(registry, {"File", "Place…"}, QStringLiteral("Place…"));
+    registry.add(command_ids::FilePlace, {"File", "Place…"}, QStringLiteral("Place…"),
+                 QKeySequence(), true);
     leaf(registry, {"File", "Import", "Variable Data Sets"}, QStringLiteral("Variable Data Sets"));
     leaf(registry, {"File", "Import", "WIA Support"}, QStringLiteral("WIA Support"));
     leaf(registry, {"File", "Export", "Data Sets As Files…"}, QStringLiteral("Data Sets As Files…"));
