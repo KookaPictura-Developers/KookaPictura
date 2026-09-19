@@ -149,6 +149,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }
     }
 
@@ -198,6 +199,7 @@ mod tests {
                     .map(|i| if i % w < w / 2 { 255 } else { 0 })
                     .collect(),
             ),
+            ..Default::default()
         };
 
         apply_filter(
@@ -233,6 +235,7 @@ mod tests {
             disabled: true,
             flags: 0,
             data: Some(vec![0u8; 16]),
+            ..Default::default()
         };
         assert_eq!(
             coverage(Some(&mask), 0, 0),

@@ -31,6 +31,7 @@ fn groups_and_masks_match_cpu() {
         disabled: false,
         flags: 0,
         data: Some((0..SIZE * SIZE).map(|i| (i * 37 % 256) as u8).collect()),
+        ..Default::default()
     });
     let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![base_layer(), masked];
@@ -68,6 +69,7 @@ fn groups_and_masks_match_cpu() {
                 .map(|i| (255 - i * 11 % 256) as u8)
                 .collect(),
         ),
+        ..Default::default()
     });
     let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![base_layer(), adj];

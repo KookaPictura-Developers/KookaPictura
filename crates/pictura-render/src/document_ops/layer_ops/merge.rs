@@ -598,6 +598,7 @@ fn pixel_result(
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -643,6 +644,7 @@ fn opaque_white_layer(width: u32, height: u32) -> Layer {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 

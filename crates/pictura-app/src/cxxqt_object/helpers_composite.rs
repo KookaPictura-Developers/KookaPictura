@@ -124,6 +124,7 @@ pub(super) fn selection_to_mask(selection: &Selection, doc: &Document) -> LayerM
         disabled: false,
         flags: 0,
         data: Some(selection.data.clone()),
+        ..Default::default()
     }
 }
 /// The buffer a wand samples: the composited layer stack when present,

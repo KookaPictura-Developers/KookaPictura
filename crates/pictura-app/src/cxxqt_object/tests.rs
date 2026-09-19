@@ -47,6 +47,7 @@ pub(super) fn pixel_layer(name: &str, w: u32, h: u32, rgb: (u8, u8, u8)) -> Laye
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -120,6 +121,7 @@ fn layered_document_composites_with_source_alpha() {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }];
 
     let image = document_to_image(&doc, false);
@@ -170,6 +172,7 @@ fn invert_and_visibility_change_composite() {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }];
 
     let before = document_to_image(&doc, false);
@@ -228,6 +231,7 @@ fn row_thumbnails_respect_contents_and_masks() {
         disabled: false,
         flags: 0,
         data: Some(vec![0, 128, 255, 64]),
+        ..Default::default()
     };
     let mask_image = mask_thumbnail_image(&mask, 4).expect("mask thumbnail");
     assert_eq!((mask_image.width(), mask_image.height()), (4, 4));
@@ -323,6 +327,7 @@ fn layer_visibility_region_bounds_raster_and_bounded_adjustments() {
         disabled,
         flags: 0,
         data,
+        ..Default::default()
     };
 
     // An adjustment with an enabled, data-carrying, zero-default mask is
@@ -440,6 +445,7 @@ fn store_composite_stores_rgba_for_rgb_and_keeps_grayscale_plane() {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }];
     let rendered = current_buffer(&gray, false);
     assert_eq!(rendered.channels, 4);

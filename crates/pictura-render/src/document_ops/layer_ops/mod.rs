@@ -13,6 +13,8 @@ mod properties;
 mod rasterize;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_via;
 mod via;
 
 pub use create::{

@@ -160,6 +160,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }
     }
 
@@ -243,6 +244,7 @@ mod tests {
             disabled: false,
             flags: 0,
             data: Some(vec![128; 16]),
+            ..Default::default()
         };
         let mut doc = sample_doc();
         doc.layers[0] = pixel_layer("masked", full(4, 4), Some(mask));

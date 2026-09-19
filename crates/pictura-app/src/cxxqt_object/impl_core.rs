@@ -97,6 +97,7 @@ impl qobject::PictureView {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         });
         let gpu_compute = self.rust().gpu_compute;
         let rendered = current_buffer(&doc, gpu_compute);

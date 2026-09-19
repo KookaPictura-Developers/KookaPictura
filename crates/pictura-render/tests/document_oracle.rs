@@ -73,6 +73,7 @@ fn pixel_layer(name: &str, r: PsdRect, mask: Option<LayerMask>) -> Layer {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -93,6 +94,7 @@ fn group(name: &str, children: Vec<Layer>) -> Layer {
         children,
         is_group: true,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -107,6 +109,7 @@ fn sample_doc() -> Document {
         disabled: false,
         flags: 0,
         data: Some(plane(10, 8)),
+        ..Default::default()
     };
     doc.layers = vec![
         pixel_layer("base", rect(0, 0, 4, 6), None),

@@ -27,6 +27,7 @@ fn solid_fill_respects_opacity_and_mask() {
             disabled: false,
             flags: 0,
             data: Some(vec![255, 0]),
+            ..Default::default()
         });
     }
     let out = composite_rgba(&d);

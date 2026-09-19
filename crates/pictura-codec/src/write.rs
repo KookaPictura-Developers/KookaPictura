@@ -14,6 +14,32 @@ struct OutRecord<'a> {
     name: &'a str,
 }
 
+/// A layer channel to emit: engine-encoded pixels get a compression header,
+/// while a preserved raw channel is an already-complete on-disk stream.
+enum OutChannel {
+    Encoded(Vec<u8>),
+    Verbatim(Vec<u8>),
+}
+
+impl OutChannel {
+    fn declared_len(&self) -> u32 {
+        match self {
+            OutChannel::Encoded(data) => 2 + data.len() as u32,
+            OutChannel::Verbatim(data) => data.len() as u32,
+        }
+    }
+
+    fn write(&self, out: &mut Vec<u8>) {
+        match self {
+            OutChannel::Encoded(data) => {
+                out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
+                out.extend_from_slice(data);
+            }
+            OutChannel::Verbatim(data) => out.extend_from_slice(data),
+        }
+    }
+}
+
 fn flatten(layers: &[Layer]) -> Vec<OutRecord<'_>> {
     enum Frame<'a> {
         Visit(&'a Layer),
@@ -68,12 +94,15 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
     let mut info = Vec::new();
     info.extend_from_slice(&(records.len() as i16).to_be_bytes());
 
-    let mut channel_data: Vec<Vec<(i16, Vec<u8>)>> = Vec::with_capacity(records.len());
+    let mut channel_data: Vec<Vec<(i16, OutChannel)>> = Vec::with_capacity(records.len());
     for record in &records {
-        let mut channels: Vec<(i16, Vec<u8>)> = Vec::new();
+        let mut channels: Vec<(i16, OutChannel)> = Vec::new();
         if let Some(layer) = record.layer {
             for channel in &layer.channels {
-                channels.push((channel.id, channel.data.clone()));
+                channels.push((channel.id, OutChannel::Encoded(channel.data.clone())));
+            }
+            for channel in &layer.raw_channels {
+                channels.push((channel.id, OutChannel::Verbatim(channel.data.clone())));
             }
             if let Some(mask) = &layer.mask {
                 let width = mask.rect.width().max(0) as usize;
@@ -92,7 +121,7 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
                     }
                     None => vec![mask.default_color; pixels],
                 };
-                channels.push((-2, data));
+                channels.push((-2, OutChannel::Encoded(data)));
             }
         }
         if channels.len() > MAX_CHANNELS as usize {
@@ -106,9 +135,8 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
     }
 
     for channels in &channel_data {
-        for (_, data) in channels {
-            info.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
-            info.extend_from_slice(data);
+        for (_, channel) in channels {
+            channel.write(&mut info);
         }
     }
 
@@ -118,7 +146,7 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
     Ok(info)
 }
 
-fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, Vec<u8>)]) {
+fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, OutChannel)]) {
     match record.layer {
         Some(layer) => {
             out.extend_from_slice(&layer.rect.top.to_be_bytes());
@@ -126,12 +154,23 @@ fn write_record(out: &mut Vec<u8>, record: &OutRecord, channels: &[(i16, Vec<u8>
             out.extend_from_slice(&layer.rect.bottom.to_be_bytes());
             out.extend_from_slice(&layer.rect.right.to_be_bytes());
             out.extend_from_slice(&(channels.len() as u16).to_be_bytes());
-            for (id, data) in channels {
+            for (id, channel) in channels {
                 out.extend_from_slice(&id.to_be_bytes());
-                out.extend_from_slice(&((2 + data.len()) as u32).to_be_bytes());
+                out.extend_from_slice(&channel.declared_len().to_be_bytes());
             }
             out.extend_from_slice(b"8BIM");
-            out.extend_from_slice(&layer.blend.to_psd_key());
+            // Preserve an unrecognized blend key; a recognized key rides along
+            // only while it still matches the mode, so a changed mode wins.
+            let blend_key = layer
+                .blend_key
+                .filter(|k| match BlendMode::from_psd_key(*k) {
+                    // An unknown key is the only representation of its mode, so
+                    // it survives while the mode is still the Normal fallback.
+                    None => layer.blend == BlendMode::Normal,
+                    Some(mode) => mode == layer.blend,
+                })
+                .unwrap_or_else(|| layer.blend.to_psd_key());
+            out.extend_from_slice(&blend_key);
             out.push(layer.opacity);
             out.push(u8::from(layer.clipping));
             let mut record_flags = if layer.visible { 0 } else { 0x02 };
@@ -192,14 +231,15 @@ fn empty_layer(name: &str) -> Layer {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 
 fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
     match &layer.mask {
         Some(mask) => {
-            // Mask block: rect (4×i32) + default colour + flags.
-            out.extend_from_slice(&18u32.to_be_bytes());
+            // Mask block: rect (4×i32) + default colour + flags + preserved tail.
+            out.extend_from_slice(&(18u32 + mask.extra.len() as u32).to_be_bytes());
             out.extend_from_slice(&mask.rect.top.to_be_bytes());
             out.extend_from_slice(&mask.rect.left.to_be_bytes());
             out.extend_from_slice(&mask.rect.bottom.to_be_bytes());
@@ -207,11 +247,13 @@ fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
             out.push(mask.default_color);
             let flags = (mask.flags & !0x02) | if mask.disabled { 0x02 } else { 0 };
             out.push(flags);
+            out.extend_from_slice(&mask.extra);
         }
         None => out.extend_from_slice(&0u32.to_be_bytes()),
     }
-    // Blending ranges: empty.
-    out.extend_from_slice(&0u32.to_be_bytes());
+    // Layer blending ranges, re-emitted verbatim (empty for engine documents).
+    out.extend_from_slice(&(layer.blending_ranges.len() as u32).to_be_bytes());
+    out.extend_from_slice(&layer.blending_ranges);
     write_pascal(out, name);
     write_tag(out, b"luni", &luni_data(name));
     // M36 layer attributes, each omitted at its default so default documents
@@ -240,6 +282,10 @@ fn write_extra(out: &mut Vec<u8>, layer: &Layer, name: &str, section: u32) {
         lsct.extend_from_slice(b"8BIM");
         lsct.extend_from_slice(&layer.blend.to_psd_key());
         write_tag(out, b"lsct", &lsct);
+    }
+    // Unmodeled tagged blocks, re-emitted in encounter order.
+    for block in &layer.extra_blocks {
+        write_tag(out, &block.key, &block.data);
     }
     if out.len() % 2 == 1 {
         out.push(0);
@@ -325,18 +371,26 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&doc.width.to_be_bytes());
     out.extend_from_slice(&8u16.to_be_bytes()); // depth
     out.extend_from_slice(&mode_code.to_be_bytes());
-    out.extend_from_slice(&0u32.to_be_bytes()); // empty color mode data
-    out.extend_from_slice(&0u32.to_be_bytes()); // empty image resources
+    out.extend_from_slice(&(doc.color_mode_data.len() as u32).to_be_bytes());
+    out.extend_from_slice(&doc.color_mode_data);
+    out.extend_from_slice(&(doc.image_resources.len() as u32).to_be_bytes());
+    out.extend_from_slice(&doc.image_resources);
 
-    if doc.layers.is_empty() {
+    if doc.layers.is_empty()
+        && doc.global_layer_mask.is_empty()
+        && doc.layer_section_extra.is_empty()
+    {
         out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
     } else {
         let info = write_layer_info(doc)?;
-        let section_len = 4 + info.len() + 4; // layer info length + global mask length
+        let section_len =
+            4 + info.len() + 4 + doc.global_layer_mask.len() + doc.layer_section_extra.len();
         out.extend_from_slice(&(section_len as u32).to_be_bytes());
         out.extend_from_slice(&(info.len() as u32).to_be_bytes());
         out.extend_from_slice(&info);
-        out.extend_from_slice(&0u32.to_be_bytes()); // empty global layer mask
+        out.extend_from_slice(&(doc.global_layer_mask.len() as u32).to_be_bytes());
+        out.extend_from_slice(&doc.global_layer_mask);
+        out.extend_from_slice(&doc.layer_section_extra);
     }
 
     out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());

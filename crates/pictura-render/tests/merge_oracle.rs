@@ -67,6 +67,7 @@ fn layer(name: &str, interleaved: &[u8], with_alpha: bool) -> Layer {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 

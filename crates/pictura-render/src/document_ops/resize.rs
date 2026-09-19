@@ -140,6 +140,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }
     }
 
@@ -151,6 +152,7 @@ mod tests {
             disabled: false,
             flags: 0,
             data: Some(vec![128; 16]),
+            ..Default::default()
         };
         doc.layers = vec![
             pixel_layer("full", rect(0, 0, 4, 4), None),

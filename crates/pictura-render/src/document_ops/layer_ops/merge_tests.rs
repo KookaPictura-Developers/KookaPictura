@@ -63,6 +63,7 @@ fn solid(name: &str, bounds: PsdRect, r: u8, g: u8, b: u8, a: u8) -> Layer {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -90,6 +91,7 @@ fn group(name: &str, children: Vec<Layer>) -> Layer {
         children,
         is_group: true,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -370,6 +372,7 @@ fn flatten_removes_groups_and_masks() {
         disabled: false,
         flags: 0,
         data: Some(vec![128; 16]),
+        ..Default::default()
     });
     let doc_group = group("grp", vec![masked]);
     let mut doc = doc_with(4, 4, vec![doc_group]);

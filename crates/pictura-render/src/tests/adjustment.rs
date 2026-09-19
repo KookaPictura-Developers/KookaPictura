@@ -186,6 +186,7 @@ fn adjustment_layer_mask_and_opacity_gate() {
         disabled: false,
         flags: 0,
         data: Some(vec![255, 0]),
+        ..Default::default()
     });
     let out = composite_rgba(&doc(2, 1, vec![base, masked]));
     assert_eq!(rgb(&out, 0, 0), [155, 155, 155], "unmasked pixel inverts");
