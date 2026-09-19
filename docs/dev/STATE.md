@@ -9,14 +9,12 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **870 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
-  the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
-  M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
-  newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
-  fresh-white-document regression; counted from `cargo nextest run --workspace`,
-  which excludes the pre-existing ignored `pictura-render` doctest that
-  `cargo test --workspace` reports as the ninth skip). The
-  C++ self-test reports **229 passed, 0 failed, 0 skipped**.
+- Test suite: **891 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+  `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
+  the `composite_profile_*` pair, and `filter_profile_1024`; counted from
+  `cargo nextest run --workspace`, which excludes the pre-existing ignored
+  `pictura-render` doctest that `cargo test --workspace` reports as the ninth
+  skip). The C++ self-test reports **229 passed, 0 failed, 0 skipped**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -30,12 +28,13 @@ Snapshot for resuming after a context break. Update after each milestone.
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
   `solid-color-fill-descriptor`, `gradient-fill-layer`,
   `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
-   `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`, and
-   `pattern-fill-layer` changes;
-  canonical specs are in `openspec/specs/` (74 specs, `validate --all --strict`
-  green), change history under `openspec/changes/archive/`; no change is open.
-  The next panel-program stage is **layer styles / effects**, named by
-  content rather than a milestone number.
+   `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
+   `pattern-fill-layer`, and `layer-effects-drop-shadow` changes;
+   canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
+   green), change history under `openspec/changes/archive/`; no change is open.
+   The panel-program stage **layer styles / effects** is under way:
+   `layer-effects-drop-shadow` ships Drop Shadow, and the other effect kinds are
+   deferred.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
@@ -271,6 +270,24 @@ Snapshot for resuming after a context break. Update after each milestone.
   parsing has a mode-derived channel-count gate and a pixel cap. Remaining P3:
   `curv`, `mixr`, `selc`, `clrL`, `phfl` v3, layer effects (`lfx2`/`lrFX`), text,
   vector masks.
+- Layer effects — Drop Shadow (roadmap P3/G6, archived
+  `2026-09-19-layer-effects-drop-shadow`): the object-based effects `lfx2`
+  descriptor is now decoded for a **Drop Shadow**
+  (`pictura-render::layer_effects::decode_drop_shadow`), and a layer with an
+  enabled present shadow composites it behind its content, offset by
+  `Distance`/`Angle`, with a `Spread` dilate, a Gaussian `Size`, and the shadow
+  colour/opacity/blend, shaped by the layer mask. The matte follows pixel alpha,
+  fill coverage (`SoCo`/`GdFl`/`PtFl`), or a channel-less smart source. The GPU
+  rejects the document and falls back to the CPU
+  (`GpuError::UnsupportedLayerEffect`). A psd-tools-authored `drop_shadow.psd`
+  fixture proves decode + round-trip + rendering. Ceilings: only Drop Shadow
+  (other effects, legacy `lrFX`, group/adjustment-layer effects, `Scale
+  Effects`, knock-out application, and a GPU shader are deferred); the
+  global-light resource (id 1037) is not decoded (the stored local angle is
+  used); a canvas-filling layer at the maximum `Size` is O(canvas·size). The
+  change also did a pure move: the blend-mode math moved out of `composite.rs`
+  into `blend.rs` and the source-over blend was factored into a `blend_parts`
+  helper (behaviour unchanged), keeping `composite.rs` under the cap.
 
 ## Commands
 
