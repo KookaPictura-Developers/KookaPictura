@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **917 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **942 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -29,8 +29,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `solid-color-fill-descriptor`, `gradient-fill-layer`,
   `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
     `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
-    `pattern-fill-layer`, `layer-effects-drop-shadow`, and
-    `layer-effects-outer-glow` changes;
+    `pattern-fill-layer`, `layer-effects-drop-shadow`,
+    `layer-effects-outer-glow`, and `layer-effects-inner-shadow` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is under way:
@@ -300,6 +300,19 @@ Snapshot for resuming after a context break. Update after each milestone.
   Ceilings: `Precise` technique renders as `Softer`; range/contour/noise/jitter/
   anti-alias/gradient-mode glows and a GPU shader are deferred; the global-light
   resource is still not decoded.
+- Layer effects — Inner Shadow (roadmap P3/G6, archived
+  `2026-09-19-layer-effects-inner-shadow`): the object-based `lfx2` **Inner
+  Shadow** (`IrSh`) is now decoded and composited — an interior matte
+  (`M · blurred(offset, erode)` confined to the content), `Distance`/`Angle`
+  offset, `Choke` (`Ckmt`) erode then Gaussian `Size`, colour/opacity/blend
+  (default Multiply, black, 75), composited above the content; the GPU rejects an
+  enabled+present inner shadow (`UnsupportedLayerEffect`) and falls back to CPU;
+  a psd-tools-authored `inner_shadow.psd` fixture proves decode/round-trip/
+  render. `composite.rs` now runs a below-content and an above-content effects
+  pass (drop shadow/outer glow below, inner shadow above); the split was verified
+  byte-identical to the single-pass composite. Ceilings: `knocks_out`
+  (`layerConceals`) is decoded but inert; contour/noise/anti-alias, the
+  global-light resource, and a GPU shader are deferred.
 
 ## Commands
 
