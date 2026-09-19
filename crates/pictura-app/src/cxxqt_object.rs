@@ -11,6 +11,7 @@ mod impl_layers_create;
 mod impl_layers_merge;
 mod impl_layers_rasterize;
 mod impl_layers_select;
+mod impl_layers_smart_object;
 mod impl_paint;
 mod impl_selection;
 mod impl_transform;
@@ -571,6 +572,24 @@ pub mod qobject {
         /// how many were rasterized.
         #[qinvokable]
         fn rasterize_all_layers(self: Pin<&mut Self>) -> i32;
+
+        /// Whether `path` resolves to a convertible raster pixel layer: not a
+        /// group, adjustment, Background, or already-smart layer with a
+        /// positive rect. Read-only; mutates nothing.
+        #[qinvokable]
+        fn layer_can_convert_to_smart_object(&self, path: &QString) -> bool;
+
+        /// `Convert to Smart Object`: author an embedded source from `path`'s
+        /// raster and attach it, keeping the raster proxy. Records one
+        /// "Convert to Smart Object" state on success; false (no state) for an
+        /// ineligible target.
+        #[qinvokable]
+        fn convert_to_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// Self-test probe: `<kind>:<payload-len>` for `path`'s smart object,
+        /// or empty when the layer has none. Read-only.
+        #[qinvokable]
+        fn layer_smart_object_state(&self, path: &QString) -> QString;
 
         /// Set layer `i` visibility, recomposite, and emit [`changed`].
         #[qinvokable]

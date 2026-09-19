@@ -143,6 +143,10 @@ NUL, `mod_time` 0.0, `lock_state` 0.
 **Scope.** Smart objects are CS6→current CC: tolerant read plus byte-preserving
 write, proven only on the a reference build fixture. The Camera Raw settings model targets
 the earliest CC Camera Raw Filter (ACR 8 / PV2012); `crs:` stays preserve-only.
+The app exposes `Layer > Smart Objects > Convert to Smart Object` for a raster
+layer (archived `2026-09-19-convert-to-smart-object`): it keeps the raster proxy
+and authors the embedded `SoLd`/`lnk2`; Rasterize Smart Object, Edit Contents,
+and Replace Contents are deferred.
 
 Double-clicking the layer reopens ACR from the stored source and settings. CS6
 supports embedded objects only; linked objects (`lnkE`, external paths) are CC

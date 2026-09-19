@@ -38,6 +38,9 @@ class PicturaMainWindow;
 // a non-group, onto a descendant, or onto self, all without history.
 // lpr_group_from_layers (241) groups two pixel layers under one group carrying
 // the dialog's name/color/blend/opacity in one undo step.
+// lpr_smart_object_convert (277) converts a raster pixel layer into an embedded
+// smart object that keeps its raster proxy, survives save→load, and refuses a
+// group or the Background without history.
 // Returns 0 when all pass, otherwise the self-test failure code.
 int runLayersControlsChecks(PicturaMainWindow& frame);
 } // namespace pictura
