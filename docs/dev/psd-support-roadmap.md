@@ -94,8 +94,11 @@ rect (stored merged composite preferred, layers fallback; nearest-neighbour;
 `pictura-adjust` ops (archived `2026-09-19-adjustment-payload-decode`), and
 `phfl` (Photo Filter, version 2) now decodes and encodes too (archived
 `2026-09-19-photo-filter-adjustment-decode`) with an encoder and an Adjustments
-panel `Photo Filter` entry. Remaining: `curv`, `mixr`, version-3 `phfl`, `selc`,
-`clrL`, `gdrm`, and a real `SoCo` descriptor (ungrounded schema or missing op).
+panel `Photo Filter` entry. Gradient Map (`grdm`) now decodes to
+`Adjustment::GradientMap` and encodes too (archived
+`2026-09-19-gradient-map-adjustment-decode`) with an encoder and an Adjustments
+panel `Gradient Map` entry. Remaining: `curv`, `mixr`, version-3 `phfl`, `selc`,
+`clrL`, and a real `SoCo` descriptor (ungrounded schema or missing op).
 **Curves (`curv`) is deferred**: the model is single-composite versus
 Photoshop's per-channel curves, and the legacy channel-bitmap order is
 ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:

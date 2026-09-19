@@ -17,7 +17,7 @@ Depends on M4-A (`pictura-adjust`). Spec: `docs/05-layers/adjustment-layers.md`,
   ```
 - `pictura-codec` reads/writes the adjustment additional-layer-info block
   (`'levl'`, `'curv'`, `'brit'`, `'expA'`, `'vibA'`, `'hue2'`, `'blwh'`, `'phfl'`,
-  `'mixr'`, `'gdrm'`, `'invr'`, `'post'`, `'thrs'`, `'selc'`, `'clrL'`) and keeps
+  `'mixr'`, `'grdm'`, `'invr'`, `'post'`, `'thrs'`, `'selc'`, `'clrL'`) and keeps
   the bytes verbatim.
 - `pictura-render` depends on `pictura-adjust` and **decodes** an
   `AdjustmentData` into an `Adjustment` for the subset it understands. Unknown or
