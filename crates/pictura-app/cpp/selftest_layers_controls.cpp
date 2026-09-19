@@ -7,6 +7,7 @@
 #include "frame.h"
 #include "layer_new_dialog.h"
 #include "panels/layers_panel.h"
+#include "panels/panel_column.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
@@ -1006,6 +1007,47 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int lso = pictura::runLayersExportSmartObjectChecks(frame); lso != 0) { return lso; }
 
         if (const int sts = pictura::runToolsSelectionChecks(frame); sts != 0) { return sts; }
+
+        // lpr_photo_filter (283): a photo-filter adjustment layer is reported
+        // as an adjustment and warms the composite (red exceeds blue at a
+        // sampled pixel).
+        {
+            const bool pflCreated = frame.newDocument(QStringLiteral("PhotoFilterCtl"), 4, 4,
+                                                      QStringLiteral("rgb"), 8,
+                                                      QStringLiteral("white"));
+            pictura::PictureView* pflView = frame.activeView();
+            if (!pflCreated || !pflView) {
+                return pictura::selfTest().fail(283, "photo filter fixture");
+            }
+            const int pflDoc = frame.activeDocumentIndex();
+            const unsigned int pflBefore = pflView->sample_argb(1, 1);
+            const bool pflAdded = pflView->add_adjustment(QStringLiteral("photo-filter"));
+            const bool pflAdjustment =
+                pflView->layer_kind(pflView->layer_count() - 1) == QStringLiteral("adjustment");
+            const unsigned int pflAfter = pflView->sample_argb(1, 1);
+            const bool pflWarm = qRed(pflAfter) > qBlue(pflAfter);
+            const bool pflChanged = pflAfter != pflBefore;
+            ST_BEGIN("lpr_photo_filter");
+            ST_PASS("lpr_photo_filter added=%d adjustment=%d before=%08x after=%08x warm=%d",
+                    pflAdded ? 1 : 0, pflAdjustment ? 1 : 0, pflBefore, pflAfter,
+                    pflWarm ? 1 : 0);
+            if (!pflAdded || !pflAdjustment || !pflChanged || !pflWarm) {
+                return pictura::selfTest().fail(283, "photo filter adjustment");
+            }
+            frame.closeDocument(pflDoc, false);
+        }
+
+        // adjustments_photo_filter_menu (284): the Adjustments panel menu offers
+        // the `Photo Filter` row wired to `adjustment:photo-filter`.
+        const pictura::PanelColumn* adjColumn = frame.panelColumn();
+        const bool adjPF = adjColumn
+            && adjColumn->widgetMenuTextsForTest(QStringLiteral("adjustmentsPanel"))
+                   .contains(QStringLiteral("Photo Filter"));
+        ST_BEGIN("adjustments_photo_filter_menu");
+        ST_PASS("adjustments_photo_filter_menu row=%d", adjPF ? 1 : 0);
+        if (!adjPF) {
+            return pictura::selfTest().fail(284, "adjustments photo filter menu");
+        }
 
     return 0;
 }

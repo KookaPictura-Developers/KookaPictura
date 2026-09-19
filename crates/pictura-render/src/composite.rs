@@ -1,6 +1,6 @@
 use pictura_adjust::{
     Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, HueSaturationParams,
-    LevelsParams, VibranceParams,
+    LevelsParams, PhotoFilterParams, VibranceParams,
 };
 use pictura_codec::DescValue;
 use pictura_core::{
@@ -320,10 +320,11 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// Supported keys: `nvrt`/`invr` (Invert, no payload), `post` (Posterize),
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
-/// (Vibrance), `blwh` (Black & White), and `SoCo` (solid-color fill content
-/// with a 4-byte RGBA payload). Descriptor/custom payloads (`curv`, `phfl`,
-/// `mixr`, `gdrm`, `selc`, `clrL`, and a real Photoshop `SoCo` descriptor) are
-/// preserved on disk but not decoded here.
+/// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2), and
+/// `SoCo` (solid-color fill content with a 4-byte RGBA payload).
+/// Descriptor/custom payloads (`curv`, `mixr`, `gdrm`, `selc`, `clrL`, a
+/// version-3 `phfl`, and a real Photoshop `SoCo` descriptor) are preserved on
+/// disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -337,6 +338,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"levl" => decode_levels(&data.data),
         b"hue2" | b"hue " => decode_hue_saturation(&data.data),
         b"expA" => decode_exposure(&data.data),
+        b"phfl" => decode_photo_filter(&data.data),
         b"vibA" => decode_vibrance(&data.data),
         b"blwh" => decode_black_white(&data.data),
         // ponytail: our own 4-byte payload, not Photoshop's `'Clr '` descriptor;
@@ -361,6 +363,11 @@ fn be_i16(d: &[u8], at: usize) -> Option<i16> {
 fn be_f32(d: &[u8], at: usize) -> Option<f32> {
     let s = d.get(at..at + 4)?;
     Some(f32::from_be_bytes([s[0], s[1], s[2], s[3]]))
+}
+
+fn be_u32(d: &[u8], at: usize) -> Option<u32> {
+    let s = d.get(at..at + 4)?;
+    Some(u32::from_be_bytes([s[0], s[1], s[2], s[3]]))
 }
 
 /// `brit`: brightness (i16), contrast (i16), mean (i16), lab_only (u8), pad.
@@ -449,6 +456,37 @@ fn decode_exposure(d: &[u8]) -> Option<Adjustment> {
         exposure,
         offset,
         gamma,
+    }))
+}
+
+/// `phfl` (version 2): `u16` version, `u16` colour space (ignored), four `u16`
+/// colour components (first three = R, G, B; fourth ignored), `u32` density,
+/// `u8` luminosity. A colour space other than RGB is decoded as RGB.
+///
+/// ponytail: the block length is flexible — only the 17 field bytes are read, so
+/// an unpadded 17–19 byte payload still decodes while 20-byte writers round-trip.
+///
+/// ponytail: version 3 stores three `u32` CIE XYZ values and needs an XYZ→sRGB
+/// transform that is not groundable here; it stays a no-op until a real CS6
+/// `phfl` baseline exists.
+fn decode_photo_filter(d: &[u8]) -> Option<Adjustment> {
+    if be_u16(d, 0)? != 2 {
+        return None;
+    }
+    let component = |at: usize| -> Option<u8> {
+        let v = be_u16(d, at)?;
+        (v <= 255).then_some(v as u8)
+    };
+    let color = [component(4)?, component(6)?, component(8)?];
+    let density = be_u32(d, 12)?;
+    if density > 100 {
+        return None;
+    }
+    let preserve_luminosity = *d.get(16)? != 0;
+    Some(Adjustment::PhotoFilter(PhotoFilterParams {
+        color,
+        density: density as f64,
+        preserve_luminosity,
     }))
 }
 
@@ -609,6 +647,31 @@ pub fn encode_hue_saturation(hue: i16, saturation: i16, lightness: i16) -> Adjus
     data.extend_from_slice(&[0u8; 84]);
     AdjustmentData {
         key: *b"hue2",
+        data,
+    }
+}
+
+/// `phfl`: the version-2 fixed struct the decoder reads. `density` clamps to
+/// `0..=100`; the colour space and fourth component are zero, and three pad
+/// bytes round the block to 20.
+pub fn encode_photo_filter(
+    color: [u8; 3],
+    density: f64,
+    preserve_luminosity: bool,
+) -> AdjustmentData {
+    let density = density.clamp(0.0, 100.0).round() as u32;
+    let mut data = Vec::with_capacity(20);
+    data.extend_from_slice(&2u16.to_be_bytes());
+    data.extend_from_slice(&0u16.to_be_bytes());
+    for c in color {
+        data.extend_from_slice(&(c as u16).to_be_bytes());
+    }
+    data.extend_from_slice(&0u16.to_be_bytes());
+    data.extend_from_slice(&density.to_be_bytes());
+    data.push(u8::from(preserve_luminosity));
+    data.extend_from_slice(&[0u8; 3]);
+    AdjustmentData {
+        key: *b"phfl",
         data,
     }
 }

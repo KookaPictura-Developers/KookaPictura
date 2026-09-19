@@ -218,6 +218,7 @@ const QList<MenuRow>& rowsForPanel(const QString& panel)
              imp(QStringLiteral("Brightness-Contrast"),
                  QStringLiteral("adjustment:brightness-contrast")),
              imp(QStringLiteral("Hue-Saturation"), QStringLiteral("adjustment:hue-saturation")),
+             imp(QStringLiteral("Photo Filter"), QStringLiteral("adjustment:photo-filter")),
              dis(QStringLiteral("Add Mask by Default"), true),
              chk(QStringLiteral("Clip to Layer")),
          }},

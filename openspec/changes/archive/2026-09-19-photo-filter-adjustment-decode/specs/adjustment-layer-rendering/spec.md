@@ -1,8 +1,5 @@
-# adjustment-layer-rendering Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change adjustment-payload-decode. Update Purpose after archive.
-## Requirements
 ### Requirement: Committed adjustment payloads decode to typed parameters
 
 `decode_adjustment` SHALL decode the committed PSD adjustment payloads into the
@@ -64,63 +61,6 @@ and the colour space SHALL be ignored.
 - **WHEN** a `phfl` payload has version 3
 - **THEN** `decode_adjustment` returns `None`
 
-### Requirement: Descriptor payloads are parsed with the shared codec DOM
-
-The descriptor-based payloads SHALL be parsed with the `pictura-codec`
-descriptor DOM. `crates/pictura-codec/src/lib.rs` SHALL expose a public
-`read_descriptor(bytes: &[u8]) -> Result<DescValue, PsdError>` built on the
-existing descriptor reader, and `pictura-render` SHALL use it rather than a
-second descriptor parser. The existing `camera_raw_options` entry point SHALL
-continue to decode Camera Raw `Fltr` options unchanged.
-
-#### Scenario: Descriptor keys are read through the shared DOM
-
-- **WHEN** a `vibA` or `blwh` payload is decoded
-- **THEN** its version-16 descriptor is parsed by `pictura-codec::read_descriptor`
-
-#### Scenario: Camera Raw options still decode
-
-- **WHEN** `pictura_codec::camera_raw_options` is called on a Camera Raw `Fltr` buffer
-- **THEN** it returns the same `DescValue` it returned before this change
-
-#### Scenario: Truncated descriptor is an error, not a panic
-
-- **WHEN** a descriptor payload is truncated
-- **THEN** `read_descriptor` returns a `PsdError` and the renderer turns it into `None`
-
-### Requirement: Existing decoded keys are unchanged
-
-The renderer SHALL keep decoding the keys it already understood
-(`nvrt`/`invr`, `post`, `thrs`, `brit`, `levl`, `hue2`/`hue `, and the 4-byte
-`SoCo`) with their current payload layouts and current `Adjustment` values.
-
-#### Scenario: Existing keys still decode
-
-- **WHEN** an `nvrt`, `post`, `thrs`, `brit`, `levl`, `hue2`, or 4-byte `SoCo` payload is decoded
-- **THEN** it yields the same `Adjustment` as before this change
-
-#### Scenario: Unknown key is still a no-op
-
-- **WHEN** a payload key is not a committed or existing key
-- **THEN** `decode_adjustment` returns `None` and the composite leaves the backdrop unchanged
-
-### Requirement: A decoded adjustment renders as a non-no-op composite
-
-The renderer SHALL composite a document containing an adjustment layer whose
-payload is one of the committed keys without decoding the payload to `None`, and
-the resulting backdrop SHALL differ from the same document with the adjustment
-layer absent.
-
-#### Scenario: Committed adjustment changes the composite
-
-- **WHEN** a document has an adjustment layer whose payload is a well-formed committed key over a non-uniform backdrop
-- **THEN** the composited result differs from the backdrop-only composite
-
-#### Scenario: Masked-out layer stays a no-op
-
-- **WHEN** such a layer's mask hides the whole canvas
-- **THEN** the composite equals the backdrop-only composite
-
 ### Requirement: Deferred adjustment payloads remain no-ops
 
 The renderer SHALL return `None` from `decode_adjustment` for the deferred
@@ -142,6 +82,8 @@ their layers SHALL leave the backdrop unchanged.
 
 - **WHEN** a document contains an adjustment layer with a deferred payload over a backdrop
 - **THEN** the composite equals the backdrop-only composite
+
+## ADDED Requirements
 
 ### Requirement: Photo Filter payloads encode and round-trip
 
@@ -186,4 +128,3 @@ per-pixel luminance close to the backdrop when luminosity is preserved.
 
 - **WHEN** a well-formed Photo Filter adjustment layer is composited over a non-uniform backdrop
 - **THEN** the result differs from the backdrop-only composite, red exceeds blue, and each pixel's luminance is within tolerance of the backdrop
-
