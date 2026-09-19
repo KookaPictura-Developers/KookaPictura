@@ -321,11 +321,10 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
 /// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2),
-/// `grdm` (Gradient Map, versions 1/3), and `SoCo` (solid-color fill content
-/// with a 4-byte RGBA payload).
-/// Descriptor/custom payloads (`curv`, `mixr`, `selc`, `clrL`, a version-3
-/// `phfl`, and a real Photoshop `SoCo` descriptor) are preserved on disk but
-/// not decoded here.
+/// `grdm` (Gradient Map, versions 1/3), and `SoCo` (solid-color fill content,
+/// either the 4-byte in-house RGBA tuple or the standard Photoshop descriptor).
+/// Descriptor/custom payloads (`curv`, `mixr`, `selc`, `clrL`, and a version-3
+/// `phfl`) are preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -343,14 +342,37 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"vibA" => decode_vibrance(&data.data),
         b"blwh" => decode_black_white(&data.data),
         b"gdrm" | b"grdm" => decode_gradient_map(&data.data),
-        // ponytail: our own 4-byte payload, not Photoshop's `'Clr '` descriptor;
-        // parse the descriptor when a real CS6 solid-fill baseline appears.
         b"SoCo" => match data.data.as_slice() {
             [r, g, b, a] => Some(Adjustment::SolidFill([*r, *g, *b, *a])),
-            _ => None,
+            _ => decode_solid_fill(&data.data),
         },
         _ => None,
     }
+}
+
+/// `SoCo`: the standard Photoshop solid-color fill descriptor. A version-16
+/// `DescriptorBlock` whose `Clr ` object carries `Rd  `/`Grn `/`Bl  ` `doub`
+/// values on the `0..=255` scale; each is rounded and clamped, and alpha is
+/// forced to 255 (the descriptor has none). Missing key, wrong type,
+/// non-finite value, or a parse error is `None`, never a panic.
+fn decode_solid_fill(d: &[u8]) -> Option<Adjustment> {
+    let obj = pictura_codec::read_descriptor(d).ok()?;
+    let clr = desc_item(&obj, b"Clr ")?;
+    if !matches!(clr, DescValue::Object { .. }) {
+        return None;
+    }
+    let component = |key: &[u8]| -> Option<u8> {
+        match desc_item(clr, key) {
+            Some(DescValue::Double(c)) if c.is_finite() => Some(c.round().clamp(0.0, 255.0) as u8),
+            _ => None,
+        }
+    };
+    Some(Adjustment::SolidFill([
+        component(b"Rd  ")?,
+        component(b"Grn ")?,
+        component(b"Bl  ")?,
+        255,
+    ]))
 }
 
 fn be_u16(d: &[u8], at: usize) -> Option<u16> {
@@ -726,6 +748,30 @@ pub fn encode_photo_filter(
     AdjustmentData {
         key: *b"phfl",
         data,
+    }
+}
+
+/// `SoCo`: the standard Photoshop solid-color fill descriptor. `Clr ` is an
+/// `RGBC` object carrying the three components as `doub` values on the
+/// `0..=255` scale. The descriptor has no alpha, so authored fills are opaque.
+pub fn encode_solid_color_fill(color: [u8; 3]) -> AdjustmentData {
+    let clr = DescValue::Object {
+        name: String::new(),
+        class_id: b"RGBC".to_vec(),
+        items: [b"Rd  ", b"Grn ", b"Bl  "]
+            .into_iter()
+            .zip(color)
+            .map(|(key, c)| (key.to_vec(), DescValue::Double(c as f64)))
+            .collect(),
+    };
+    let desc = DescValue::Object {
+        name: String::new(),
+        class_id: b"SoCo".to_vec(),
+        items: vec![(b"Clr ".to_vec(), clr)],
+    };
+    AdjustmentData {
+        key: *b"SoCo",
+        data: pictura_codec::write_descriptor(&desc),
     }
 }
 

@@ -307,8 +307,10 @@ no history state.
 
 The system SHALL provide a `Rasterize` submenu. `Fill Content` SHALL be
 implemented: for a solid fill-content layer (a layer whose opaque adjustment
-block is a fill content key with a decodable payload) it SHALL render the fill
-content to a full-layer pixel node and clear the fill/adjustment data.
+block is the `SoCo` fill-content key and whose payload decodes to
+`Adjustment::SolidFill`, in either the 4-byte in-house form or the standard
+Photoshop descriptor) it SHALL render the fill content to a full-layer pixel
+node and clear the fill/adjustment data.
 `Rasterize Layer` SHALL rasterize the active layer only when it is a fill-content
 layer, and SHALL otherwise refuse without changing the document. `Rasterize All
 Layers` SHALL rasterize every fill-content layer in the document. The `Type`,
@@ -323,6 +325,13 @@ rasterization SHALL recomposite and record exactly one undo state.
 - **WHEN** Rasterize Fill Content runs on a solid fill-content layer
 - **THEN** the layer becomes a pixel layer holding the rendered fill, its fill /
   adjustment data is cleared, and the change is one undo step
+
+#### Scenario: A descriptor-form fill is rasterizable
+
+- **WHEN** Rasterize Fill Content runs on a layer whose `SoCo` payload is the
+  standard Photoshop descriptor
+- **THEN** the layer becomes a pixel layer holding the descriptor's colour and
+  the change is one undo step
 
 #### Scenario: A kind-less variant stays disabled
 

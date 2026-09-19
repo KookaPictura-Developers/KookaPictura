@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use pictura_codec::{read_psd, write_psd};
+use pictura_codec::{read_descriptor, read_psd, write_psd, DescValue};
 use pictura_core::{
     BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LockFlags, PsdRect,
 };
@@ -23,6 +23,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("gray.psd", 8, 8, ColorMode::Grayscale),
     ("adjustment.psd", 8, 8, ColorMode::Rgb),
     ("gradient_map.psd", 8, 8, ColorMode::Rgb),
+    ("solid_fill.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -197,6 +198,54 @@ fn gradient_map_layer_preserves_key_and_bytes() {
     assert_eq!(&gm.data[0..2], &[0, 1], "version 1");
     assert_eq!(gm.data[2], 0, "not reversed");
     assert_eq!(gm.data[3], 0, "not dithered");
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc);
+}
+
+/// The solid-color fill fixture: the psd-tools-authored `SoCo` descriptor
+/// survives read and whole-document round-trip, with the expected `Clr `
+/// `RGBC` doubles.
+#[test]
+fn solid_fill_layer_preserves_descriptor() {
+    let doc = load("solid_fill.psd");
+    let names: Vec<&str> = doc.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["Base", "Solid Fill"]);
+
+    let adj = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Solid Fill")
+        .and_then(|l| l.adjustment.as_ref())
+        .expect("solid fill adjustment block");
+    assert_eq!(adj.key, *b"SoCo");
+
+    let desc = read_descriptor(&adj.data).expect("version-16 descriptor");
+    let DescValue::Object { items, .. } = desc else {
+        panic!("top level is an object");
+    };
+    let clr = items
+        .iter()
+        .find(|(k, _)| k.as_slice() == b"Clr ")
+        .map(|(_, v)| v)
+        .expect("Clr item");
+    let DescValue::Object {
+        class_id, items, ..
+    } = clr
+    else {
+        panic!("Clr is an object");
+    };
+    assert_eq!(class_id, b"RGBC");
+    let get = |key: &[u8]| {
+        items
+            .iter()
+            .find(|(k, _)| k.as_slice() == key)
+            .map(|(_, v)| v)
+            .expect("component")
+    };
+    assert_eq!(get(b"Rd  "), &DescValue::Double(10.0));
+    assert_eq!(get(b"Grn "), &DescValue::Double(20.0));
+    assert_eq!(get(b"Bl  "), &DescValue::Double(30.0));
 
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back, doc);

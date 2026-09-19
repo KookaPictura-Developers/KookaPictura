@@ -14,6 +14,24 @@ fn solid_fill_composites_over_transparency() {
 }
 
 #[test]
+fn authored_solid_fill_is_version16_descriptor() {
+    let mut d = doc(2, 2, Vec::new());
+    let path = add_solid_fill(&mut d, "", [10, 200, 30, 255]);
+    let layer = resolve_path(&d, &path).unwrap();
+    let data = layer.adjustment.as_ref().expect("SoCo block");
+    assert_eq!(data.key, *b"SoCo");
+    assert_eq!(&data.data[0..4], &[0, 0, 0, 16], "version-16 header");
+    assert_eq!(
+        decode_adjustment(data),
+        Some(Adjustment::SolidFill([10, 200, 30, 255]))
+    );
+
+    let out = composite_rgba(&d);
+    assert_eq!(rgb(&out, 0, 0), [10, 200, 30]);
+    assert_eq!(px(&out, 0, 0)[3], 255);
+}
+
+#[test]
 fn solid_fill_respects_opacity_and_mask() {
     let mut d = doc(2, 1, Vec::new());
     let path = add_solid_fill(&mut d, "", [50, 100, 150, 255]);
@@ -43,7 +61,7 @@ fn solid_fill_respects_opacity_and_mask() {
 #[test]
 fn rasterize_bakes_color_and_clears_fill() {
     let mut d = doc(2, 2, Vec::new());
-    let path = add_solid_fill(&mut d, "", [1, 2, 3, 200]);
+    let path = add_solid_fill(&mut d, "", [1, 2, 3, 255]);
     let name = resolve_path(&d, &path).unwrap().name.clone();
 
     assert!(rasterize_fill_content(&mut d, &path));
@@ -53,15 +71,52 @@ fn rasterize_bakes_color_and_clears_fill() {
     assert_eq!(crate::channel(layer, 0).unwrap(), &[1, 1, 1, 1]);
     assert_eq!(crate::channel(layer, 1).unwrap(), &[2, 2, 2, 2]);
     assert_eq!(crate::channel(layer, 2).unwrap(), &[3, 3, 3, 3]);
-    assert_eq!(crate::channel(layer, -1).unwrap(), &[200, 200, 200, 200]);
+    assert_eq!(crate::channel(layer, -1).unwrap(), &[255, 255, 255, 255]);
 
     // The baked pixels composite to the same color the generative fill showed.
     let out = composite_rgba(&d);
     assert_eq!(rgb(&out, 1, 1), [1, 2, 3]);
-    assert_eq!(px(&out, 1, 1)[3], 200);
+    assert_eq!(px(&out, 1, 1)[3], 255);
 
     // A second run has no fill data left, so it refuses.
     assert!(!rasterize_fill_content(&mut d, &path));
+}
+
+#[test]
+fn rasterize_bakes_non_opaque_in_house_fill() {
+    // The 4-byte in-house tuple carries alpha; the descriptor form does not.
+    let mut d = doc(
+        2,
+        2,
+        vec![adjustment_layer(
+            "soco",
+            *b"SoCo",
+            vec![10, 20, 30, 200],
+            255,
+            None,
+        )],
+    );
+    resolve_path_mut(&mut d, "0").unwrap().rect = full(2, 2);
+
+    assert!(rasterize_fill_content(&mut d, "0"));
+    let layer = resolve_path(&d, "0").unwrap();
+    assert!(layer.adjustment.is_none(), "fill data is cleared");
+    assert_eq!(crate::channel(layer, 0).unwrap(), &[10, 10, 10, 10]);
+    assert_eq!(crate::channel(layer, 1).unwrap(), &[20, 20, 20, 20]);
+    assert_eq!(crate::channel(layer, 2).unwrap(), &[30, 30, 30, 30]);
+    assert_eq!(
+        crate::channel(layer, -1).unwrap(),
+        &[200, 200, 200, 200],
+        "baked alpha is the tuple's alpha"
+    );
+}
+
+#[test]
+fn rasterize_refuses_group_without_mutating() {
+    let mut d = doc(2, 2, vec![group("g", BlendMode::Normal, 255, None, vec![])]);
+    let before = d.clone();
+    assert!(!rasterize_fill_content(&mut d, "0"));
+    assert_eq!(d, before, "refusal leaves the document unchanged");
 }
 
 #[test]
@@ -89,8 +144,8 @@ fn rasterize_refuses_non_fill_targets() {
     );
     assert!(!rasterize_fill_content(&mut adj_doc, "0"));
 
-    // A descriptor-shaped SoCo (not the 4-byte subset) refuses.
-    let mut descriptor = doc(
+    // A 6-byte non-descriptor SoCo is not decodable.
+    let mut garbage = doc(
         2,
         2,
         vec![adjustment_layer(
@@ -101,10 +156,26 @@ fn rasterize_refuses_non_fill_targets() {
             None,
         )],
     );
-    assert!(!is_fill_content_layer(
+    assert!(!is_fill_content_layer(resolve_path(&garbage, "0").unwrap()));
+    assert!(!rasterize_fill_content(&mut garbage, "0"));
+
+    // A valid descriptor-form SoCo is fill content and rasterizes.
+    let mut fill = adjustment_layer(
+        "soco",
+        *b"SoCo",
+        encode_solid_color_fill([4, 5, 6]).data,
+        255,
+        None,
+    );
+    fill.rect = full(2, 2);
+    let mut descriptor = doc(2, 2, vec![fill]);
+    assert!(is_fill_content_layer(
         resolve_path(&descriptor, "0").unwrap()
     ));
-    assert!(!rasterize_fill_content(&mut descriptor, "0"));
+    assert!(rasterize_fill_content(&mut descriptor, "0"));
+    let layer = resolve_path(&descriptor, "0").unwrap();
+    assert_eq!(crate::channel(layer, 0).unwrap(), &[4, 4, 4, 4]);
+    assert_eq!(crate::channel(layer, -1).unwrap(), &[255, 255, 255, 255]);
 
     // A 3-byte SoCo is not decodable either.
     let mut short = doc(

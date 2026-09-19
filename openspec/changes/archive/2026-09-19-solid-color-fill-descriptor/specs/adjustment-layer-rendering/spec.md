@@ -1,8 +1,5 @@
-# adjustment-layer-rendering Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change adjustment-payload-decode. Update Purpose after archive.
-## Requirements
 ### Requirement: Committed adjustment payloads decode to typed parameters
 
 `decode_adjustment` SHALL decode the committed PSD adjustment payloads into the
@@ -103,63 +100,6 @@ four stored components.
 - **WHEN** a `phfl` payload has version 3
 - **THEN** `decode_adjustment` returns `None`
 
-### Requirement: Descriptor payloads are parsed with the shared codec DOM
-
-The descriptor-based payloads SHALL be parsed with the `pictura-codec`
-descriptor DOM. `crates/pictura-codec/src/lib.rs` SHALL expose a public
-`read_descriptor(bytes: &[u8]) -> Result<DescValue, PsdError>` built on the
-existing descriptor reader, and `pictura-render` SHALL use it rather than a
-second descriptor parser. The existing `camera_raw_options` entry point SHALL
-continue to decode Camera Raw `Fltr` options unchanged.
-
-#### Scenario: Descriptor keys are read through the shared DOM
-
-- **WHEN** a `vibA` or `blwh` payload is decoded
-- **THEN** its version-16 descriptor is parsed by `pictura-codec::read_descriptor`
-
-#### Scenario: Camera Raw options still decode
-
-- **WHEN** `pictura_codec::camera_raw_options` is called on a Camera Raw `Fltr` buffer
-- **THEN** it returns the same `DescValue` it returned before this change
-
-#### Scenario: Truncated descriptor is an error, not a panic
-
-- **WHEN** a descriptor payload is truncated
-- **THEN** `read_descriptor` returns a `PsdError` and the renderer turns it into `None`
-
-### Requirement: Existing decoded keys are unchanged
-
-The renderer SHALL keep decoding the keys it already understood
-(`nvrt`/`invr`, `post`, `thrs`, `brit`, `levl`, `hue2`/`hue `, and the 4-byte
-`SoCo`) with their current payload layouts and current `Adjustment` values.
-
-#### Scenario: Existing keys still decode
-
-- **WHEN** an `nvrt`, `post`, `thrs`, `brit`, `levl`, `hue2`, or 4-byte `SoCo` payload is decoded
-- **THEN** it yields the same `Adjustment` as before this change
-
-#### Scenario: Unknown key is still a no-op
-
-- **WHEN** a payload key is not a committed or existing key
-- **THEN** `decode_adjustment` returns `None` and the composite leaves the backdrop unchanged
-
-### Requirement: A decoded adjustment renders as a non-no-op composite
-
-The renderer SHALL composite a document containing an adjustment layer whose
-payload is one of the committed keys without decoding the payload to `None`, and
-the resulting backdrop SHALL differ from the same document with the adjustment
-layer absent.
-
-#### Scenario: Committed adjustment changes the composite
-
-- **WHEN** a document has an adjustment layer whose payload is a well-formed committed key over a non-uniform backdrop
-- **THEN** the composited result differs from the backdrop-only composite
-
-#### Scenario: Masked-out layer stays a no-op
-
-- **WHEN** such a layer's mask hides the whole canvas
-- **THEN** the composite equals the backdrop-only composite
-
 ### Requirement: Deferred adjustment payloads remain no-ops
 
 The renderer SHALL return `None` from `decode_adjustment` for the deferred
@@ -177,94 +117,7 @@ unchanged.
 - **WHEN** a document contains an adjustment layer with a deferred payload over a backdrop
 - **THEN** the composite equals the backdrop-only composite
 
-### Requirement: Photo Filter payloads encode and round-trip
-
-`pictura-render` SHALL expose `encode_photo_filter(color: [u8; 3], density:
-f64, preserve_luminosity: bool) -> AdjustmentData` that builds the version-2
-`phfl` block `decode_adjustment` reads. The encoder SHALL clamp `density` to
-`0..=100` and clamp each colour component to `0..=255`, so its output always
-decodes. `decode_adjustment` on the encoder's output SHALL equal
-`Adjustment::PhotoFilter` with the input colour, the clamped density, and the
-input luminosity flag.
-
-#### Scenario: Encoded Photo Filter decodes back
-
-- **WHEN** `encode_photo_filter([255, 180, 80], 25.0, true)` is passed to `decode_adjustment`
-- **THEN** it returns `Adjustment::PhotoFilter` with `color` `[255, 180, 80]`, `density` `25.0`, and `preserve_luminosity` true
-
-#### Scenario: Out-of-range density is clamped
-
-- **WHEN** `encode_photo_filter` is called with a density above 100 or below 0
-- **THEN** the encoded density is clamped into `0..=100` and the block still decodes
-
-### Requirement: The app can create a Photo Filter adjustment layer
-
-The app SHALL map the adjustment kind `photo-filter` to a `phfl` adjustment
-layer carrying a warming filter at density 25 with luminosity preservation, and
-the Adjustments panel menu SHALL offer a `Photo Filter` entry that dispatches
-`adjustment:photo-filter`. Compositing such a layer over a non-uniform backdrop
-SHALL change the result and SHALL warm it (red above blue) while keeping the
-per-pixel luminance close to the backdrop when luminosity is preserved.
-
-#### Scenario: The photo-filter kind becomes an adjustment layer
-
-- **WHEN** the app adds an adjustment layer of kind `photo-filter`
-- **THEN** the new layer carries a `phfl` block and is reported as an adjustment layer
-
-#### Scenario: The panel menu offers Photo Filter
-
-- **WHEN** the Adjustments panel menu is built
-- **THEN** it contains a `Photo Filter` row dispatching `adjustment:photo-filter`
-
-#### Scenario: A Photo Filter layer warms and preserves luminosity
-
-- **WHEN** a well-formed Photo Filter adjustment layer is composited over a non-uniform backdrop
-- **THEN** the result differs from the backdrop-only composite, red exceeds blue, and each pixel's luminance is within tolerance of the backdrop
-
-### Requirement: Gradient Map payloads encode and round-trip
-
-`pictura-render` SHALL expose `encode_gradient_map(stops: &[GradientStop],
-reverse: bool) -> AdjustmentData` that builds the version-1 `grdm` block
-`decode_adjustment` reads. The encoder SHALL write the reverse flag, a unicode
-name, the supplied colour stops with their 8-bit colours scaled to the 16-bit
-storage scale, zero transparency stops, and the trailing gradient fields with
-psd-tools' defaults, padded to a 4-byte boundary. `decode_adjustment` on the
-encoder's output for a valid stop list SHALL equal
-`Adjustment::GradientMap` with the same stops and `reverse` flag.
-
-#### Scenario: Encoded Gradient Map decodes back
-
-- **WHEN** `encode_gradient_map` is called with stops at location 0 colour `[0, 0, 0]` and location 4096 colour `[255, 255, 255]` and `reverse` false
-- **THEN** `decode_adjustment` returns `Adjustment::GradientMap` with those two stops and `reverse` false
-
-#### Scenario: The reverse flag round-trips
-
-- **WHEN** `encode_gradient_map` is called with `reverse` true
-- **THEN** the decoded `GradientMapParams.reverse` is true
-
-### Requirement: The app can create a Gradient Map adjustment layer
-
-The app SHALL map the adjustment kind `gradient-map` to a `grdm` adjustment
-layer carrying a black-to-white gradient with reverse off, and the Adjustments
-panel menu SHALL offer a `Gradient Map` entry that dispatches
-`adjustment:gradient-map`. Compositing such a layer over a non-uniform backdrop
-SHALL change the result by mapping the backdrop's luminance through the
-gradient.
-
-#### Scenario: The gradient-map kind becomes an adjustment layer
-
-- **WHEN** the app adds an adjustment layer of kind `gradient-map`
-- **THEN** the new layer carries a `grdm` block and is reported as an adjustment layer
-
-#### Scenario: The panel menu offers Gradient Map
-
-- **WHEN** the Adjustments panel menu is built
-- **THEN** it contains a `Gradient Map` row dispatching `adjustment:gradient-map`
-
-#### Scenario: A Gradient Map layer changes the composite
-
-- **WHEN** a black-to-white Gradient Map adjustment layer is composited over a non-uniform backdrop
-- **THEN** the result differs from the backdrop-only composite
+## ADDED Requirements
 
 ### Requirement: Solid-color fill payloads encode and round-trip
 
@@ -300,4 +153,3 @@ carries no alpha, an authored fill layer SHALL be opaque.
 
 - **WHEN** a layer carries a 4-byte `SoCo` payload
 - **THEN** `decode_adjustment` returns `Adjustment::SolidFill` with its four stored components
-

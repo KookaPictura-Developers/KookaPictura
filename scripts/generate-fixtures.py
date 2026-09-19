@@ -28,6 +28,7 @@ from psd_tools.psd.adjustments import (
     TransparencyStop,
 )
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
+from psd_tools.psd.descriptor import Descriptor, DescriptorBlock, Double
 from psd_tools.psd.layer_and_mask import ChannelDataList
 from psd_tools.psd.tagged_blocks import TaggedBlock
 
@@ -179,6 +180,37 @@ def gradient_map() -> PSDImage:
     return psd
 
 
+def solid_fill() -> PSDImage:
+    """RGB, a Base pixel layer plus a SoCo tagged fill layer.
+
+    The tagged-block key is ``SoCo``, but psd-tools' ``DescriptorBlock`` keeps
+    its own default class id, so the serialized top-level descriptor class is
+    ``null``. pictura's encoder writes ``SoCo`` as the class id, which psd-tools
+    accepts identically.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    data = DescriptorBlock(
+        Descriptor(
+            {
+                b"Clr ": Descriptor(
+                    {
+                        b"Rd  ": Double(10.0),
+                        b"Grn ": Double(20.0),
+                        b"Bl  ": Double(30.0),
+                    },
+                    classID=b"RGBC",
+                )
+            },
+            classID=b"SoCo",
+        )
+    )
+    _adj_layer(psd, Tag.SOLID_COLOR_SHEET_SETTING, "Solid Fill", data)
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -186,6 +218,7 @@ FIXTURES = {
     "gray.psd": gray,
     "adjustment.psd": adjustment,
     "gradient_map.psd": gradient_map,
+    "solid_fill.psd": solid_fill,
 }
 
 

@@ -124,15 +124,94 @@ fn decode_adjustment_subset_and_unknown() {
 }
 
 #[test]
-fn solid_fill_decodes_only_the_four_byte_payload() {
+fn solid_fill_decodes_both_payload_forms() {
+    // The in-house 4-byte straight-alpha tuple is unchanged.
     assert_eq!(
         decode_adjustment(&adjdata(*b"SoCo", vec![10, 20, 30, 40])),
         Some(Adjustment::SolidFill([10, 20, 30, 40]))
     );
-    // A real Photoshop `'Clr '` descriptor is preserved on disk but not decoded.
+    // The standard descriptor decodes with alpha forced to 255.
+    assert_eq!(
+        decode_adjustment(&encode_solid_color_fill([10, 20, 30])),
+        Some(Adjustment::SolidFill([10, 20, 30, 255]))
+    );
+
+    // A non-4-byte, non-descriptor payload is a no-op.
     for payload in [vec![], vec![1, 2, 3], vec![1, 2, 3, 4, 5]] {
         assert_eq!(decode_adjustment(&adjdata(*b"SoCo", payload)), None);
     }
+    // A descriptor missing `Clr ` is a no-op.
+    let no_clr = write_descriptor(&desc_object("", b"SoCo", vec![]));
+    assert_eq!(decode_adjustment(&adjdata(*b"SoCo", no_clr)), None);
+    // A `Clr ` object with a wrong-typed component is a no-op.
+    let wrong_type = write_descriptor(&desc_object(
+        "",
+        b"SoCo",
+        vec![(
+            b"Clr ".to_vec(),
+            desc_object(
+                "",
+                b"RGBC",
+                vec![
+                    (b"Rd  ".to_vec(), DescValue::Long(10)),
+                    (b"Grn ".to_vec(), DescValue::Double(20.0)),
+                    (b"Bl  ".to_vec(), DescValue::Double(30.0)),
+                ],
+            ),
+        )],
+    ));
+    assert_eq!(decode_adjustment(&adjdata(*b"SoCo", wrong_type)), None);
+    // A non-finite component is a no-op.
+    let non_finite = write_descriptor(&desc_object(
+        "",
+        b"SoCo",
+        vec![(
+            b"Clr ".to_vec(),
+            desc_object(
+                "",
+                b"RGBC",
+                vec![
+                    (b"Rd  ".to_vec(), DescValue::Double(f64::NAN)),
+                    (b"Grn ".to_vec(), DescValue::Double(20.0)),
+                    (b"Bl  ".to_vec(), DescValue::Double(30.0)),
+                ],
+            ),
+        )],
+    ));
+    assert_eq!(decode_adjustment(&adjdata(*b"SoCo", non_finite)), None);
+}
+
+#[test]
+fn encoded_solid_fill_is_version16_descriptor() {
+    let encoded = encode_solid_color_fill([10, 20, 30]);
+    assert_eq!(encoded.key, *b"SoCo");
+    assert_eq!(
+        decode_adjustment(&encoded),
+        Some(Adjustment::SolidFill([10, 20, 30, 255]))
+    );
+
+    let desc = pictura_codec::read_descriptor(&encoded.data).expect("version-16 descriptor");
+    let DescValue::Object { items, .. } = desc else {
+        panic!("top level is an object");
+    };
+    let clr = items
+        .iter()
+        .find(|(k, _)| k.as_slice() == b"Clr ")
+        .map(|(_, v)| v)
+        .expect("Clr item");
+    let DescValue::Object { items, .. } = clr else {
+        panic!("Clr is an object");
+    };
+    let get = |key: &[u8]| {
+        items
+            .iter()
+            .find(|(k, _)| k.as_slice() == key)
+            .map(|(_, v)| v)
+            .expect("component")
+    };
+    assert_eq!(get(b"Rd  "), &DescValue::Double(10.0));
+    assert_eq!(get(b"Grn "), &DescValue::Double(20.0));
+    assert_eq!(get(b"Bl  "), &DescValue::Double(30.0));
 }
 
 #[test]
@@ -661,6 +740,37 @@ fn grdm_decodes_versions_and_rejects_malformed() {
 }
 
 #[test]
+fn descriptor_solid_fill_layer_composites_to_its_color() {
+    let mut fill = adjustment_layer(
+        "fill",
+        *b"SoCo",
+        encode_solid_color_fill([10, 20, 30]).data,
+        255,
+        None,
+    );
+    fill.rect = full(2, 2);
+    let out = composite_rgba(&doc(2, 2, vec![fill]));
+    assert_eq!(rgb(&out, 0, 0), [10, 20, 30]);
+    assert_eq!(rgb(&out, 1, 1), [10, 20, 30]);
+    assert_eq!(px(&out, 1, 1)[3], 255, "descriptor fills are opaque");
+}
+
+#[test]
+fn fixture_solid_fill_decodes_descriptor() {
+    let bytes = include_bytes!("../../../pictura-codec/tests/fixtures/solid_fill.psd");
+    let d = pictura_codec::read_psd(bytes).expect("fixture parses");
+    let fill = d
+        .layers
+        .iter()
+        .find(|l| l.name == "Solid Fill")
+        .expect("Solid Fill layer");
+    assert_eq!(
+        decode_adjustment(fill.adjustment.as_ref().expect("SoCo block")),
+        Some(Adjustment::SolidFill([10, 20, 30, 255]))
+    );
+}
+
+#[test]
 fn deferred_keys_still_none() {
     for key in [*b"curv", *b"mixr", *b"selc", *b"clrL"] {
         assert_eq!(
@@ -680,9 +790,6 @@ fn deferred_keys_still_none() {
         None,
         "version-3 phfl is deferred"
     );
-    // A real Photoshop `'Clr '` descriptor on `SoCo` is still undecoded.
-    let descriptor = write_descriptor(&desc_object("", b"null", vec![]));
-    assert_eq!(decode_adjustment(&adjdata(*b"SoCo", descriptor)), None);
 }
 
 #[test]

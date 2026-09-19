@@ -1,6 +1,4 @@
-use pictura_core::{
-    AdjustmentData, BlendMode, Channel, ColorLabel, Document, Layer, LockFlags, PsdRect,
-};
+use pictura_core::{BlendMode, Channel, ColorLabel, Document, Layer, LockFlags, PsdRect};
 
 use super::paths::{
     container_mut, container_of_mut, format_segments, parse_path, resolve_path, resolve_path_mut,
@@ -305,8 +303,8 @@ pub fn add_layer_full(doc: &mut Document, selection_path: &str, spec: &NewLayerS
 /// Insert a solid-color fill-content layer at the [`insert_node`] rule.
 ///
 /// The node is document-sized with no pixel channels; its content lives in an
-/// opaque `SoCo` block holding the 4-byte straight-alpha RGBA payload. Named
-/// `"Color Fill N"`. Returns the new path, or empty for a zero-dimension
+/// opaque `SoCo` block holding the standard Photoshop version-16 descriptor.
+/// Named `"Color Fill N"`. Returns the new path, or empty for a zero-dimension
 /// document. Fill layers carry an adjustment, so the merge check refuses them.
 pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -> String {
     if doc.width == 0 || doc.height == 0 {
@@ -329,10 +327,9 @@ pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -
         clipping: false,
         visible: true,
         mask: None,
-        adjustment: Some(AdjustmentData {
-            key: *b"SoCo",
-            data: rgba.to_vec(),
-        }),
+        // ponytail: SoCo descriptor is RGB-only, alpha is dropped (app callers
+        // pass 0xFF); thread alpha through if a non-opaque fill is ever needed.
+        adjustment: Some(crate::encode_solid_color_fill([rgba[0], rgba[1], rgba[2]])),
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,
