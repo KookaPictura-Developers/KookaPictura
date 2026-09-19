@@ -31,6 +31,7 @@ not hand-edit these files.
 | `pattern_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Pattern Fill` (`PtFl`) descriptor fill layer referencing a 2x2 RGB pattern in the `Patt` block |
 | `pattern_fill_16bit.psd` | RGB | 8x8 | same, but the `Patt` pattern planes are 16-bit (the decoder skips them) |
 | `drop_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Shadowed` layer carrying an `lfx2` `DrSh` drop shadow |
+| `outer_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glowing` layer carrying an `lfx2` `OrGl` outer glow |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -235,6 +236,44 @@ drsh = Descriptor({
 layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
     key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
     data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"DrSh": drsh},
+                          classID=Klass.Null))
+```
+
+`outer_glow.psd` is authored by the `outer_glow()` builder: the same `Base`
+pixel layer plus a 4x4 `Glowing` pixel layer whose record carries an `lfx2`
+`DescriptorBlock2`. Its top-level object has `masterFXSwitch` and an `OrGl`
+object whose keys mirror psd-tools' `OuterGlow` accessors (`Md  `, `Clr `/`RGBC`,
+`Opct`, `GlwT` (`BETE`/`PrBL`), `Ckmt`, `blur`, `Nose`, `ShdN`, `Inpr`, `AntA`,
+`TrnS`). Spread is `Ckmt`, not `ShdN` (psd-tools' `OuterGlow.spread` reads the
+jitter key and is wrong).
+
+```python
+from psd_tools.psd.descriptor import (
+    Bool, Descriptor, DescriptorBlock2, Double, Enumerated, String, UnitFloat,
+)
+from psd_tools.terminology import Enum, Key, Klass, Unit
+
+orgl = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"scrn"),
+    Key.Color: Descriptor(
+        {b"Rd  ": Double(40.0), b"Grn ": Double(80.0), b"Bl  ": Double(120.0)},
+        classID=b"RGBC"),
+    Key.Opacity: UnitFloat(60.0, Unit.Percent),
+    Key.GlowTechnique: Enumerated(b"BETE", b"PrBL"),
+    Key.ChokeMatte: UnitFloat(20.0, Unit.Pixels),
+    Key.Blur: UnitFloat(10.0, Unit.Pixels),
+    Key.Noise: UnitFloat(0.0, Unit.Percent),
+    Key.ShadingNoise: UnitFloat(0.0, Unit.Percent),
+    Key.InputRange: UnitFloat(50.0, Unit.Percent),
+    Key.AntiAlias: Bool(True),
+    Key.TransferSpec: Descriptor({Key.Name: String("Linear")}, classID=b"TrnS"),
+}, classID=b"OrGl")
+
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"OrGl": orgl},
                           classID=Klass.Null))
 ```
 
