@@ -35,6 +35,11 @@ pub mod qobject {
 
         include!("cxx-qt-lib/qstringlist.h");
         type QStringList = cxx_qt_lib::QStringList;
+
+        include!("decode_image.h");
+        /// Decode `data` with Qt to tightly packed RGBA8888 and report the
+        /// decoded size; empty with zero dimensions when Qt cannot read it.
+        fn decode_image_rgba(data: &[u8], width: &mut i32, height: &mut i32) -> Vec<u8>;
     }
 
     extern "RustQt" {
@@ -56,6 +61,13 @@ pub mod qobject {
         /// back to a generated test image when the file is missing or unsupported.
         #[qinvokable]
         fn open(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// `File > Open` for a common raster image: read `path`, probe and decode
+        /// it with Qt, and replace the view with an untitled RGB/8-bit document
+        /// holding the decoded pixels. Records one "Open" state and marks the view
+        /// unmodified; `false` without mutating on any refusal.
+        #[qinvokable]
+        fn open_image(self: Pin<&mut Self>, path: &QString) -> bool;
 
         /// `File > Open As Smart Object…`: open `path` as a new untitled
         /// document whose sole layer is that PSD/PSB source as an embedded
@@ -606,6 +618,13 @@ pub mod qobject {
         /// file is unreadable or not a PSD/PSB document.
         #[qinvokable]
         fn place_smart_object(self: Pin<&mut Self>, file_path: &QString) -> QString;
+
+        /// `File > Place…` for a common raster image: read `file_path`, probe and
+        /// decode it with Qt, append a native-size raster layer, convert it into
+        /// an embedded smart object, recomposite, and record one "Place" state.
+        /// Returns the new layer's path, or empty recording nothing on refusal.
+        #[qinvokable]
+        fn place_image(self: Pin<&mut Self>, file_path: &QString) -> QString;
 
         /// Whether `path` resolves to a rasterizable smart-object layer: not a
         /// group, no adjustment data, and a typed smart object. Read-only.

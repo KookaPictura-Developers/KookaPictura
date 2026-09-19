@@ -21,6 +21,7 @@
 mod common;
 mod descriptor;
 mod error;
+mod probe;
 mod read;
 mod smart_filter;
 mod smart_object;
@@ -28,12 +29,15 @@ mod smart_writer;
 mod write;
 
 #[cfg(test)]
+mod probe_tests;
+#[cfg(test)]
 mod smart_writer_tests;
 #[cfg(test)]
 mod tests;
 
 pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;
+pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
 pub use read::read_psd;
 pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;

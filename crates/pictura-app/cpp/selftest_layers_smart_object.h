@@ -28,7 +28,10 @@ class PicturaMainWindow;
 // layer without adding a tab. lpr_edit_smart_object_session (289) closes an
 // editor and checks its session temp file is gone, then closes the origin and
 // checks the orphaned editor stays open as an untitled tab with its session
-// temp dropped.
+// temp dropped. lpr_image_import (290) opens a raster image as an untitled
+// one-layer document in one "Open" state, places it as a topmost smart object
+// in one "Place" state, and refuses an unrecognized or over-budget file without
+// adding a state.
 int runLayersSmartObjectConvertChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectRasterizeChecks(PicturaMainWindow& frame);
 int runLayersPlaceSmartObjectChecks(PicturaMainWindow& frame);
@@ -37,4 +40,5 @@ int runLayersOpenSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersExportSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersEditSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersEditSmartObjectSessionChecks(PicturaMainWindow& frame);
+int runImageImportChecks(PicturaMainWindow& frame);
 } // namespace pictura

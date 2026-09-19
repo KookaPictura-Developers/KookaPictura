@@ -166,6 +166,10 @@ public:
     bool newDocument(const QString& name, int width, int height, const QString& mode,
                      int depth, const QString& background);
     bool openPath(const QString& path);
+    bool openImagePath(const QString& path);
+    // True when `path`'s suffix routes to the native PSD/PSB reader rather than
+    // the Qt image decode edge.
+    static bool isNativeDocumentPath(const QString& path);
     bool openAsSmartObjectPath(const QString& path);
     bool editSmartObjectContents(const QString& layerPath);
     bool saveActive();

@@ -39,6 +39,42 @@ impl qobject::PictureView {
         ok
     }
 
+    /// `File > Open` for a raster image: read `path`, probe and decode it with
+    /// Qt, and replace the view with an untitled RGB/8-bit document holding the
+    /// decoded pixels. Records one "Open" state, leaves the view's path empty,
+    /// and marks it unmodified; `false` without mutating on any refusal.
+    pub fn open_image(self: Pin<&mut Self>, path: &QString) -> bool {
+        let path = path.to_string();
+        let name = std::path::Path::new(&path)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some((rgba, width, height)) =
+            std::fs::read(&path).ok().as_deref().and_then(decode_import)
+        else {
+            return false;
+        };
+        let mut doc = Document::from_rgba(&name, width, height, &rgba);
+        let gpu_compute = self.rust().gpu_compute;
+        let rendered = current_buffer(&doc, gpu_compute);
+        store_composite(&mut doc, &rendered);
+        let image = buffer_to_image(&rendered);
+        let mut view = self.rust_mut();
+        view.image = image;
+        view.doc = Some(doc);
+        view.reset_edit_state();
+        let initial = view.doc.as_ref().map(|doc| Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        });
+        if let Some(snapshot) = initial {
+            view.history.capture(snapshot, "Open");
+        }
+        view.path = None;
+        view.dirty = false;
+        true
+    }
+
     /// `File > Open As Smart Object…`: read `path`, decode it as a PSD/PSB
     /// source, and replace the view with a new untitled document whose sole
     /// layer is that source as an embedded smart object. Records one

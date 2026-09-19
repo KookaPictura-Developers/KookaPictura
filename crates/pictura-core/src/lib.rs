@@ -115,6 +115,70 @@ impl Document {
             layer_section_extra: Vec::new(),
         }
     }
+
+    /// Build an RGB/8-bit document from packed RGBA8888 bytes (one pixel per
+    /// four bytes, byte order R, G, B, A).
+    ///
+    /// The composite is a 4-plane RGBA [`PixelBuffer`] and the document holds
+    /// exactly one pixel layer named `name`, both seeded from `rgba`. A buffer
+    /// shorter than `width * height * 4` leaves the missing pixels transparent
+    /// instead of panicking.
+    pub fn from_rgba(name: &str, width: u32, height: u32, rgba: &[u8]) -> Document {
+        let plane = width as usize * height as usize;
+        let mut doc = Document::new(width, height, ColorMode::Rgb, BitDepth::Eight);
+        let mut composite = vec![0u8; plane * 4];
+        let mut channels = vec![
+            Channel {
+                id: 0,
+                data: vec![0; plane],
+            },
+            Channel {
+                id: 1,
+                data: vec![0; plane],
+            },
+            Channel {
+                id: 2,
+                data: vec![0; plane],
+            },
+            Channel {
+                id: -1,
+                data: vec![0; plane],
+            },
+        ];
+        for i in 0..plane {
+            let at = i * 4;
+            if at + 4 > rgba.len() {
+                break;
+            }
+            for (c, value) in [
+                (0, rgba[at]),
+                (1, rgba[at + 1]),
+                (2, rgba[at + 2]),
+                (3, rgba[at + 3]),
+            ] {
+                channels[c].data[i] = value;
+                composite[c * plane + i] = value;
+            }
+        }
+        doc.composite = PixelBuffer {
+            width,
+            height,
+            channels: 4,
+            data: composite,
+        };
+        doc.layers.push(Layer {
+            name: name.to_string(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: height as i32,
+                right: width as i32,
+            },
+            channels,
+            ..Default::default()
+        });
+        doc
+    }
 }
 
 impl Default for Document {
@@ -794,5 +858,70 @@ mod tests {
         let n = LockFlags::default().with(LockFlags::NESTING, true);
         assert!(n.contains(LockFlags::NESTING));
         assert!(!n.is_all());
+    }
+
+    fn channel(layer: &Layer, id: i16) -> &[u8] {
+        &layer
+            .channels
+            .iter()
+            .find(|c| c.id == id)
+            .expect("channel present")
+            .data
+    }
+
+    #[test]
+    fn from_rgba_sets_size_mode_depth_and_one_layer() {
+        let doc = Document::from_rgba("photo", 2, 3, &[0u8; 24]);
+        assert_eq!((doc.width, doc.height), (2, 3));
+        assert_eq!(doc.mode, ColorMode::Rgb);
+        assert_eq!(doc.depth, BitDepth::Eight);
+        assert_eq!(doc.composite.channels, 4);
+        assert_eq!(doc.layers.len(), 1);
+        let layer = &doc.layers[0];
+        assert_eq!(layer.name, "photo");
+        assert_eq!(
+            (
+                layer.rect.top,
+                layer.rect.left,
+                layer.rect.bottom,
+                layer.rect.right
+            ),
+            (0, 0, 3, 2)
+        );
+        assert!(layer.smart_object.is_none());
+        assert!(layer.adjustment.is_none());
+        assert!(!layer.is_group);
+        assert_eq!(
+            layer.channels.iter().map(|c| c.id).collect::<Vec<_>>(),
+            vec![0, 1, 2, -1]
+        );
+    }
+
+    #[test]
+    fn from_rgba_preserves_rgba_including_alpha() {
+        // 2x1: pixel 0 red opaque, pixel 1 green half-alpha.
+        let rgba = [255, 0, 0, 255, 0, 255, 0, 128];
+        let doc = Document::from_rgba("px", 2, 1, &rgba);
+        let layer = &doc.layers[0];
+        assert_eq!(channel(layer, 0), &[255, 0]);
+        assert_eq!(channel(layer, 1), &[0, 255]);
+        assert_eq!(channel(layer, 2), &[0, 0]);
+        assert_eq!(channel(layer, -1), &[255, 128]);
+        let plane = 2;
+        assert_eq!(&doc.composite.data[0..2], &[255, 0]);
+        assert_eq!(&doc.composite.data[plane..plane + 2], &[0, 255]);
+        assert_eq!(&doc.composite.data[3 * plane..3 * plane + 2], &[255, 128]);
+    }
+
+    #[test]
+    fn from_rgba_short_buffer_does_not_panic() {
+        let doc = Document::from_rgba("short", 2, 2, &[1, 2, 3, 4, 5]);
+        assert_eq!(doc.layers.len(), 1);
+        let layer = &doc.layers[0];
+        assert_eq!(channel(layer, 0)[0], 1);
+        assert_eq!(channel(layer, -1)[0], 4);
+        assert_eq!(channel(layer, 0)[1], 0, "missing pixels stay transparent");
+        assert_eq!(channel(layer, -1)[3], 0);
+        assert_eq!(doc.composite.data.len(), 16);
     }
 }

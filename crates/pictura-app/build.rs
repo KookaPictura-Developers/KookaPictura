@@ -35,8 +35,16 @@ fn main() {
         }
     }
 
-    CxxQtBuilder::new()
-        .qt_module("Gui")
-        .files(["src/cxxqt_object.rs"])
-        .build();
+    // `cpp/` holds hand-written headers (e.g. `decode_image.h`) included by the
+    // cxx bridge, so the generated C++ glue can find them. The `.cpp` files
+    // themselves are compiled and linked by CMake, not here.
+    unsafe {
+        CxxQtBuilder::new()
+            .qt_module("Gui")
+            .files(["src/cxxqt_object.rs"])
+            .cc_builder(|cc| {
+                cc.include("cpp");
+            })
+            .build();
+    }
 }

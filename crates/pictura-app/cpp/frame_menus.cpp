@@ -65,9 +65,17 @@ void PicturaMainWindow::registerHandlers()
         if (!view) {
             return;
         }
-        const QString path = QFileDialog::getOpenFileName(
-            this, tr("Place"), QString(), QStringLiteral("Photoshop files (*.psd *.psb)"));
-        if (!path.isEmpty() && !view->place_smart_object(path).isEmpty()) {
+        const QString filter = QStringLiteral(
+            "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff *.webp);;"
+            "Photoshop files (*.psd *.psb);;All files (*)");
+        const QString path = QFileDialog::getOpenFileName(this, tr("Place"), QString(), filter);
+        if (path.isEmpty()) {
+            return;
+        }
+        const bool psd = PicturaMainWindow::isNativeDocumentPath(path);
+        const QString created =
+            psd ? view->place_smart_object(path) : view->place_image(path);
+        if (!created.isEmpty()) {
             refresh();
         }
     });

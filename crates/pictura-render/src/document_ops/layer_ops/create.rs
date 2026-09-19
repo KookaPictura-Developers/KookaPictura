@@ -340,6 +340,70 @@ pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -
     insert_node(doc, selection_path, layer)
 }
 
+/// Append a native-size raster pixel layer at the top of `doc.layers` from
+/// packed RGBA8888 bytes, returning its path via [`format_segments`].
+///
+/// Mirrors [`add_solid_fill`]'s construction: the layer is named `name`, sized
+/// `(0, 0, width, height)` (not the document), visible, Normal, opaque, with
+/// planar channels `0`, `1`, `2`, `-1`. It changes no existing layer and no
+/// document state, and returns an empty string for a zero dimension.
+pub fn add_raster_layer_from_rgba(
+    doc: &mut Document,
+    name: &str,
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+) -> String {
+    if width == 0 || height == 0 {
+        return String::new();
+    }
+    // ponytail: channels are always 0,1,2,-1, so placing a color image into a
+    // Grayscale document renders red-as-gray; map to the document mode if needed.
+    let plane = width as usize * height as usize;
+    let mut channels = vec![
+        Channel {
+            id: 0,
+            data: vec![0; plane],
+        },
+        Channel {
+            id: 1,
+            data: vec![0; plane],
+        },
+        Channel {
+            id: 2,
+            data: vec![0; plane],
+        },
+        Channel {
+            id: -1,
+            data: vec![0; plane],
+        },
+    ];
+    for i in 0..plane {
+        let at = i * 4;
+        if at + 4 > rgba.len() {
+            break;
+        }
+        channels[0].data[i] = rgba[at];
+        channels[1].data[i] = rgba[at + 1];
+        channels[2].data[i] = rgba[at + 2];
+        channels[3].data[i] = rgba[at + 3];
+    }
+    let layer = Layer {
+        name: name.to_string(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: height as i32,
+            right: width as i32,
+        },
+        channels,
+        ..Default::default()
+    };
+    let index = doc.layers.len();
+    doc.layers.push(layer);
+    format_segments(&[index])
+}
+
 /// Insert a gradient fill-content layer at the [`insert_node`] rule.
 ///
 /// The node is document-sized with no pixel channels; its content lives in an
