@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **671 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **692 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -18,12 +18,25 @@ Snapshot for resuming after a context break. Update after each milestone.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
-  `layers-panel-control-polish`, `layers-panel-management`, and
-  `selection-tools-and-menu` changes;
-  canonical specs are in `openspec/specs/` (64 specs, `validate --all --strict`
+  `layers-panel-control-polish`, `layers-panel-management`,
+  `selection-tools-and-menu`, `psd-interop-compression`,
+  `psd-opaque-preservation`, and `psd-smart-object-roundtrip` changes;
+  canonical specs are in `openspec/specs/` (68 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
   content rather than a milestone number.
+- PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
+  read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
+  smart-object model and the Camera Raw Filter view on top of the preserved
+  blocks: `SmartObject`/`SmartFilter` in `pictura-core`, `descriptor.rs`
+  (Photoshop descriptor DOM), `smart_object.rs` (resolve `SoLd`/`SoLE`/`lnk*`),
+  `smart_filter.rs` (`set_camera_raw_option` preserving object class identity),
+  and `smart_writer.rs` (author `SoLd` v4 + embedded `lnk2`). It covers smart
+  objects CS6→current CC by *tolerant read + byte-preserving write*, proven only
+  on the a reference build fixtures `assets/test_with_smart_object0{1,2}.psd`; the Camera
+  Raw settings model targets the earliest CC (ACR 8 / PV2012) `Fltr` key set,
+  later-CC keys preserved, and `crs:` XMP is preserve-only. A CS6/earliest-CC
+  fixture and the manual Photoshop reopen are deferred follow-ups.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's

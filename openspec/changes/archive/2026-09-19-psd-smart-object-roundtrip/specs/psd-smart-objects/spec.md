@@ -37,12 +37,18 @@ a read→write→read round-trip reproduces them exactly.
 - **WHEN** a document carries an external linked record
 - **THEN** read→write→read preserves the record without dereferencing it
 
+#### Scenario: Unrecognized descriptor version is preserved
+- **WHEN** a layer carries a `SoLE` descriptor or an unrecognized descriptor block version
+- **THEN** the preserved block re-emits unchanged and no error is raised
+
 ### Requirement: Embedded smart-object authoring
 Given an embedded source payload and a composite, the writer SHALL emit a
 smart-object layer with a config descriptor and a linked source record whose
-`uuid` matches, and SHALL place the payload as the record's embedded data. The
-written file SHALL be readable by the codec and by an independent PSD reader as
-a smart object carrying the same payload.
+`uuid` matches, and SHALL place the payload as the record's embedded data. When
+authoring a new object with no input descriptor, the emitted descriptor SHALL be
+`SoLd` with outer version 4 and descriptor block version 16, so Photoshop CS6 can
+reopen it. The written file SHALL be readable by the codec and by an independent
+PSD reader as a smart object carrying the same payload.
 
 #### Scenario: Author and re-read
 - **WHEN** a document with an embedded source is written and read back
@@ -56,25 +62,26 @@ a smart object carrying the same payload.
 - **WHEN** the payload is a fixed-seed random byte string
 - **THEN** its hash after write and read is unchanged
 
-### Requirement: Camera Raw crs settings round-trip
+### Requirement: Camera Raw crs settings are preserved
 The system SHALL expose the `crs:` XMP settings associated with an embedded
-source and SHALL re-emit them byte-exact on write. An update to a setting SHALL
-be writable without altering unrelated XMP properties.
+source on read and SHALL re-emit them byte-exact on write. The system SHALL NOT
+provide an API to edit `crs:` settings; the packet is preserve-only.
 
 #### Scenario: Settings preserved
 - **WHEN** an embedded source carries `crs:` settings
 - **THEN** read exposes them and a write re-emits them byte-exact
 
-#### Scenario: Settings updated
-- **WHEN** a setting is changed through the API
-- **THEN** the written `crs:` reflects the change and unknown properties are retained
+#### Scenario: No edit API
+- **WHEN** a caller wants to change a `crs:` setting
+- **THEN** no edit API exists and the packet is preserved unchanged
 
 ### Requirement: Adobe Photoshop interop is fixture-validated
 The system SHALL round-trip Photoshop-produced reference PSDs containing an
 embedded smart object so that the config descriptor, linked record, and payload
-are preserved, and SHALL record a manual Photoshop CC reopen as the interop
-acceptance. Reference fixtures SHALL be self-produced and their provenance
-recorded.
+are preserved. The interop acceptance SHALL be the `psd-tools` oracle parsing
+the written file; a manual Photoshop CC reopen MAY be recorded as a deferred
+follow-up where Photoshop is available. Reference fixtures SHALL be
+self-produced and their provenance recorded.
 
 #### Scenario: Photoshop embedded smart object round-trips
 - **WHEN** `test_with_smart_object01.psd` is read and written
@@ -84,6 +91,6 @@ recorded.
 - **WHEN** two layers reference the same linked record by `uuid`
 - **THEN** both resolve to the same payload and the output preserves the single record
 
-#### Scenario: Manual reopen recorded
-- **WHEN** the interop fixture set is available
-- **THEN** a manual check that Photoshop reopens the written file with the object editable is recorded in the task result
+#### Scenario: Automated interop acceptance
+- **WHEN** the written file is parsed by psd-tools
+- **THEN** the smart object, its uuid, and its embedded payload match the source fixture

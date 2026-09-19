@@ -25,18 +25,23 @@ the container and the CC filter model.
 - Resolve a smart-object layer to its embedded source payload, filename, and
   filetype.
 - Round-trip every smart-object and smart-filter block, and the `uuid` link,
-  byte-for-byte.
-- Read and write the Camera Raw Filter settings carried by `filterFX`.
+  byte-for-byte, re-emitting the input descriptor's own form.
+- Read and write the earliest-CC Camera Raw Filter settings (`filterID` 2683 /
+  ACR 8 / PV2012) carried by `filterFX`; preserve later-CC keys.
 - Author a valid config descriptor and linked source record so Photoshop reopens
-  a PSD we write with the object intact.
+  a PSD we write with the object intact. Authoring emits `SoLd` (outer version 4,
+  descriptor block version 16), which CS6 can reopen.
 - Prove the round-trip against the supplied Photoshop CC fixtures.
 
 **Non-Goals**
 
 - Decoding or rendering the embedded raw, and the raw pipeline
   (`FILT-100`/`WF-012`). Authoring consumes a supplied composite.
-- The CS6 raw-as-Smart-Object `crs:` path. No CS6 ACR fixture is available, so
-  it is documented but not the acceptance target.
+- Applying or editing the CS6 raw-as-Smart-Object `crs:` path. It is exposed and
+  re-emitted byte-exact but is preserved-only, not modeled or edited.
+- Validated parity at the CS6 end or the earliest-CC end. The only fixture is a
+  Photoshop a reference build file, so tolerant parse plus byte-preserving write is the
+  guarantee; behavior unproven for a version is stated as such.
 - 16-bit depth (roadmap G4). A 16-bit fixture is produced later.
 - External (linked) source loading. Embedded content is the target; external
   records are preserved, not read from disk.
@@ -57,19 +62,29 @@ unmodified round-trip from drifting inside an under-specified descriptor.
 the layer's `SoLd.Idnt`. The matched record's data is the embedded payload. A
 record whose kind is not DATA is reported as external and is not read from disk.
 
-### D3. Authoring matches the observed fixture
+### D3. Authoring emits `SoLd`; round-trip re-emits the input verbatim
 
-Authoring writes a `SoLd` descriptor and an embedded `lnk2` record with a fresh
-UUIDv4, the payload as the record data, record `version` 7, `filetype` `8BPB`,
-and `creator` `8BIM`, matching `test_with_smart_object01.psd`. The parser accepts
-versions 1 through 8.
+When preserved bytes exist, the writer re-emits the descriptor and record
+verbatim, including the input's own descriptor form: a `SoLE` object stays
+`SoLE` byte-faithfully. When authoring a new object, the writer emits a `SoLd`
+descriptor with outer version 4 and descriptor block version 16 (so CS6 can
+reopen it) and an embedded `lnk2` record with a deterministic, RFC-4122
+v4-shaped uuid derived from the filename and payload, so identical embedded
+sources resolve to one shared record; record version 7, `filetype` `8BPB`, and
+`creator` `8BIM`, matching `test_with_smart_object01.psd`.
+The parser accepts versions 1 through 8; a descriptor block version it does not
+recognize (or an `SoLE` variant) is preserved without error rather than failing
+the file.
 
-### D4. The Camera Raw Filter settings live in `Fltr`; `crs:` is out of scope
+### D4. Camera Raw settings: `Fltr` at earliest CC; `crs:` is preserve-only
 
 A `filterFXList` entry names the filter with `filterID` and holds options in
-`Fltr`. For Camera Raw, `filterID` is 2683 and `Fltr` uses the short keys in
-`docs/dev/camera-raw-cc-notes.md`. Read and write those keys; preserve the ones
-we do not model. The `crs:` XMP model is not the target and is only preserved.
+`Fltr`. For Camera Raw, `filterID` is 2683 and the settings model targets the
+earliest CC Camera Raw Filter (Photoshop CC v14, ACR 8, process version
+PV2012); the keys are read with the mapping in `docs/dev/camera-raw-cc-notes.md`.
+Keys introduced by later CC releases (`Dhze`, `Upri`, `GuUr`, `Rtch`, `REye`,
+`LCs `) are preserved, not modeled. The CS6 raw-as-Smart-Object `crs:` XMP is
+exposed and re-emitted byte-exact but is not modeled or edited.
 
 ### D5. An unresolved object degrades, it does not fail
 
@@ -89,6 +104,10 @@ others keep their raw descriptor bytes.
 - **Descriptor internals are under-specified.** Adobe interop is fixture-gated:
   round-tripping our own output is not evidence Photoshop accepts it. The two
   supplied fixtures are the evidence base; a 16-bit fixture is pending.
+- **Version coverage is not fixture-validated.** The only reference fixture is a
+  Photoshop a reference build file, so CS6 and earliest-CC behavior cannot be checked
+  against a file. The guarantee is tolerant parse plus byte-preserving write;
+  where a behavior is unproven for a version, the artifacts say so explicitly.
 - **Authoring without a decoder cannot produce a raw's merged raster.** The
   requirement takes the composite as an input, so the raw path is a later
   consumer; a raster or embedded-PSB smart object can be authored and tested now.

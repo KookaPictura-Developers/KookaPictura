@@ -18,14 +18,28 @@
 //!   never a panic.
 
 mod common;
+mod descriptor;
 mod error;
 mod read;
+mod smart_filter;
 mod smart_object;
+mod smart_writer;
 mod write;
 
 #[cfg(test)]
+mod smart_writer_tests;
+#[cfg(test)]
 mod tests;
 
+pub use descriptor::DescValue;
 pub use error::PsdError;
 pub use read::read_psd;
+pub use smart_filter::set_camera_raw_option;
 pub use write::write_psd;
+
+/// Read a Camera Raw Filter's `Fltr` options from a
+/// [`pictura_core::SmartFilter::options`] byte buffer.
+pub fn camera_raw_options(options: &[u8]) -> Result<DescValue, PsdError> {
+    let mut reader = common::Reader::new(options);
+    descriptor::read_descriptor(&mut reader)
+}

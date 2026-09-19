@@ -68,16 +68,19 @@ Shipped as `2026-09-19-psd-opaque-preservation`; the document-level tagged block
 (the smart-object source records) and per-layer config descriptors it preserves
 are what P2.5 consumes.
 
-**P2.5 — Smart objects, Camera Raw Filter, and Adobe round-trip.**
+**P2.5 — Smart objects, Camera Raw Filter, and Adobe round-trip.** *(shipped)*
 Own what P2 preserves. Model an embedded smart object (source bytes, filename,
 filetype, config descriptor, and the `uuid` linking layer to source) on top of
 the preserved blocks (G13), and author a valid `SoLd`/`SoLE` pair and its
 `lnkD`/`lnk2`/`lnk3` record (G14). For Camera Raw, support the CC smart-filter
 model: `SoLd.filterFX[].Fltr` with `filterID` 2683, plus the document `FEid` and
-`FMsk` blocks, read and written as settings (G15/G17). Scope is a reference build level,
-matching the files we can produce; CS6 ACR is not available and is not the
-acceptance target. Prove the round-trip against the supplied Photoshop fixtures
-(G16). Tracked as `openspec/changes/psd-smart-object-roundtrip`.
+`FMsk` blocks, read and written as settings (G15/G17). Smart objects are
+CS6→current CC (tolerant read plus byte-preserving write, proven only on the CC
+2021 fixture). The Camera Raw settings model targets the earliest CC Camera Raw
+Filter (ACR 8 / PV2012); `crs:` stays preserve-only. The round-trip is proven
+against the supplied Photoshop fixtures (G16) by the `psd-tools` oracle; a
+manual Photoshop reopen and a CS6/earliest-CC fixture are deferred follow-ups.
+Shipped as the archived change `2026-09-19-psd-smart-object-roundtrip`.
 
 **P3 — Render preserved data.**
 Decode the remaining adjustment descriptors and real fill descriptors (G8);
@@ -126,9 +129,9 @@ NUL, `mod_time` 0.0, `lock_state` 0.
   `DfP*`; effects `GRNA`/`GRNS`/`GRNF` and `PCV*`; calibration `CamP`/`CP_D`/
   `PrVe`. `Dhze` (Dehaze) and `Upri`/`GuUr` (Upright XMP) are CC-only.
 
-**Scope.** a reference build level, matching the files we can produce. CS6 ACR is not
-available to make reference files, so the CS6 raw-as-Smart-Object `crs:` path is
-documented but not the acceptance target. The CC Camera Raw Filter is.
+**Scope.** Smart objects are CS6→current CC: tolerant read plus byte-preserving
+write, proven only on the a reference build fixture. The Camera Raw settings model targets
+the earliest CC Camera Raw Filter (ACR 8 / PV2012); `crs:` stays preserve-only.
 
 Double-clicking the layer reopens ACR from the stored source and settings. CS6
 supports embedded objects only; linked objects (`lnkE`, external paths) are CC

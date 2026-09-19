@@ -305,6 +305,19 @@ pub enum SmartObjectKind {
     Unresolved,
 }
 
+/// A typed view of one smart filter in a layer's `filterFX` list.
+///
+/// `options` is the canonical re-serialization of the filter's `Fltr`
+/// descriptor. The preserved `SoLd` descriptor bytes remain the source of truth
+/// for re-emission, so this view is ignored while they exist.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SmartFilter {
+    pub filter_id: i32,
+    pub name: String,
+    pub enabled: bool,
+    pub options: Vec<u8>,
+}
+
 /// A typed view of a layer's embedded/linked smart object, derived on read.
 ///
 /// The raw config descriptor and the document-level linked record are preserved
@@ -327,6 +340,9 @@ pub struct SmartObject {
     pub payload: Option<Vec<u8>>,
     /// The `crs:` XMP packet found in an embedded payload, if any.
     pub crs_xmp: Option<Vec<u8>>,
+    /// Smart filters derived from the descriptor's `filterFX` list. The raw
+    /// `config_descriptor` bytes remain the source of truth for re-emission.
+    pub smart_filters: Vec<SmartFilter>,
 }
 
 /// A raster layer mask. `data` is `None` until the channel image is decoded.

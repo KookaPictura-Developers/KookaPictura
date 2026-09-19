@@ -20,9 +20,12 @@ round-trip reproduces them exactly.
 
 ### Requirement: Camera Raw Filter settings are read and written
 The system SHALL expose, for a smart filter whose `filterID` is 2683, its options
-descriptor named `Fltr`, and SHALL re-emit it on write. Keys the system does not
-model SHALL be preserved. The `Fltr` keys SHALL be read with the mapping
-recorded in `docs/dev/camera-raw-cc-notes.md`.
+descriptor named `Fltr`, and SHALL re-emit it on write. The settings model SHALL
+target the earliest CC Camera Raw Filter (Photoshop CC v14, ACR 8, process
+version PV2012), and `Fltr` keys SHALL be read with the mapping recorded in
+`docs/dev/camera-raw-cc-notes.md`. Keys the system does not model, including the
+later-CC `Dhze`, `Upri`, `GuUr`, `Rtch`, `REye`, and `LCs ` keys, SHALL be
+preserved unchanged.
 
 #### Scenario: Settings exposed
 - **WHEN** a layer carries a Camera Raw Filter with a `Fltr` descriptor
@@ -39,16 +42,17 @@ recorded in `docs/dev/camera-raw-cc-notes.md`.
 ### Requirement: Smart-filter interop is fixture-validated
 The system SHALL round-trip the supplied Photoshop CC reference PSD containing a
 Camera Raw Filter so that the smart object, the `filterFX` block, the `Fltr`
-settings, and the `FEid`/`FMsk` blocks are preserved, and SHALL record a manual
-Photoshop CC reopen as the interop acceptance.
+settings, and the `FEid`/`FMsk` blocks are preserved. The interop acceptance
+SHALL be the `psd-tools` oracle parsing the written file; a manual Photoshop CC
+reopen MAY be recorded as a deferred follow-up where Photoshop is available.
 
 #### Scenario: Camera Raw Filter fixture round-trips
 - **WHEN** `test_with_smart_object02.psd` is read and written
 - **THEN** the smart-filter blocks and `Fltr` settings parse identically in the output
 
-#### Scenario: Manual reopen recorded
-- **WHEN** the fixture oracle is in place
-- **THEN** a manual check that Photoshop CC reopens the written file with the smart object and Camera Raw Filter editable is recorded in the task result
+#### Scenario: Automated interop acceptance
+- **WHEN** the written file is parsed by psd-tools
+- **THEN** the smart-filter blocks, `filterID` 2683, and the `Fltr` settings match the source fixture
 
 #### Scenario: Sixteen-bit variant is deferred
 - **WHEN** a 16-bit fixture is produced

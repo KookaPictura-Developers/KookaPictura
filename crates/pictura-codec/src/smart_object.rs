@@ -6,9 +6,11 @@
 //! view and degrades to [`SmartObjectKind::Unresolved`] rather than failing a
 //! file whose smart-object data is malformed but preserved.
 
-use pictura_core::{Layer, LayerBlock, SmartObject, SmartObjectKind};
+use pictura_core::{Layer, LayerBlock, SmartFilter, SmartObject, SmartObjectKind};
 
 use crate::common::Reader;
+use crate::descriptor::DescValue;
+use crate::descriptor::{self, get_object_item, read_unicode_string, skip_descriptor_block};
 use crate::error::PsdError;
 
 /// One record from a document-level `lnkD`/`lnk2`/`lnk3`/`lnkE` list.
@@ -43,12 +45,25 @@ fn resolve_layer(layer: &mut Layer, records: &[LinkedRecord]) {
 fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartObject> {
     let block = find_config_block(&layer.extra_blocks)?;
     let raw = block.data.clone();
-    let uuid = config_uuid(block).ok()?;
-    let uuid = uuid.trim_end_matches('\0').to_string();
+    let (uuid, smart_filters) = match &block.key {
+        b"SoLd" | b"SoLE" => {
+            let DescValue::Object { items, .. } = read_layer_data_descriptor(&raw).ok()? else {
+                return None;
+            };
+            let uuid = match get_object_item(&items, b"Idnt") {
+                Some(DescValue::Text(id)) => id.trim_end_matches('\0').to_string(),
+                _ => return None,
+            };
+            (uuid, parse_filter_fx(&items))
+        }
+        b"plLd" | b"PlLd" => (read_placed_layer_uuid(&raw).ok()?, Vec::new()),
+        _ => return None,
+    };
 
     let mut so = SmartObject {
         uuid: uuid.clone(),
         config_descriptor: raw,
+        smart_filters,
         ..Default::default()
     };
     let Some(record) = records.iter().find(|r| r.uuid == uuid) else {
@@ -71,20 +86,56 @@ fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartOb
     Some(so)
 }
 
+/// Build the typed `SmartFilter` list from a parsed `SoLd`/`SoLE` descriptor:
+/// `filterFX` (Object) -> `filterFXList` (List of Objects) -> one entry each.
+fn parse_filter_fx(items: &[(Vec<u8>, DescValue)]) -> Vec<SmartFilter> {
+    let Some(DescValue::Object {
+        items: filter_fx, ..
+    }) = get_object_item(items, b"filterFX")
+    else {
+        return Vec::new();
+    };
+    let Some(DescValue::List(list)) = get_object_item(filter_fx, b"filterFXList") else {
+        return Vec::new();
+    };
+    list.iter()
+        .filter_map(|value| {
+            let DescValue::Object { items: item, .. } = value else {
+                return None;
+            };
+            let filter_id = match get_object_item(item, b"filterID") {
+                Some(DescValue::Long(id)) => *id,
+                _ => 0,
+            };
+            let name =
+                match get_object_item(item, b"Nm  ").or_else(|| get_object_item(item, b"name")) {
+                    Some(DescValue::Text(name)) => name.trim_end_matches('\0').to_string(),
+                    _ => String::new(),
+                };
+            let enabled = match get_object_item(item, b"enab") {
+                Some(DescValue::Bool(enabled)) => *enabled,
+                _ => true,
+            };
+            let options = match get_object_item(item, b"Fltr") {
+                Some(value) => descriptor::write_descriptor(value),
+                None => Vec::new(),
+            };
+            Some(SmartFilter {
+                filter_id,
+                name,
+                enabled,
+                options,
+            })
+        })
+        .collect()
+}
+
 /// The config tagged block, preferring the modern descriptors over the legacy
 /// placed-layer one (matching psd-tools' lookup order).
 fn find_config_block(blocks: &[LayerBlock]) -> Option<&LayerBlock> {
     [b"SoLd", b"SoLE", b"plLd", b"PlLd"]
         .into_iter()
         .find_map(|key| blocks.iter().find(|b| &b.key == key))
-}
-
-fn config_uuid(block: &LayerBlock) -> Result<String, PsdError> {
-    match &block.key {
-        b"SoLd" | b"SoLE" => read_layer_data_uuid(&block.data),
-        b"plLd" | b"PlLd" => read_placed_layer_uuid(&block.data),
-        _ => Err(PsdError::Unsupported("smart-object config key".into())),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,30 +246,12 @@ fn parse_linked_layer(data: &[u8]) -> Result<LinkedRecord, PsdError> {
 // Layer config descriptors
 // ---------------------------------------------------------------------------
 
-/// `SoLd`/`SoLE`: `soLD` + version + a `DescriptorBlock`; the uuid is the
-/// `Idnt` string item.
-fn read_layer_data_uuid(data: &[u8]) -> Result<String, PsdError> {
+/// `SoLd`/`SoLE`: `soLD` + outer version + a version-16 `DescriptorBlock`.
+fn read_layer_data_descriptor(data: &[u8]) -> Result<DescValue, PsdError> {
     let mut r = Reader::new(data);
     let _kind = r.take(4)?;
     let _version = r.u32()?;
-    let version = r.u32()?;
-    if version != 16 {
-        return Err(PsdError::Unsupported(format!(
-            "descriptor block version {version}"
-        )));
-    }
-    read_unicode_string(&mut r)?; // name
-    read_length_and_key(&mut r)?; // classID
-    let count = r.u32()?;
-    for _ in 0..count {
-        let key = read_length_and_key(&mut r)?;
-        let ostype = arr4(r.take(4)?);
-        if key == b"Idnt" && &ostype == b"TEXT" {
-            return read_unicode_string(&mut r);
-        }
-        skip_descriptor_value(&mut r, ostype)?;
-    }
-    Err(PsdError::Invalid("SoLd has no Idnt".into()))
+    descriptor::read_descriptor(&mut r)
 }
 
 /// Legacy `plLd`/`PlLd`: `plcL` + version + a Pascal (MacRoman) uuid.
@@ -229,143 +262,12 @@ fn read_placed_layer_uuid(data: &[u8]) -> Result<String, PsdError> {
     read_pascal_string(&mut r)
 }
 
-// ---------------------------------------------------------------------------
-// Descriptor primitives
-// ---------------------------------------------------------------------------
-
-/// Skip a `DescriptorBlock`: a version-16 header then a descriptor body.
-fn skip_descriptor_block(r: &mut Reader) -> Result<(), PsdError> {
-    let version = r.u32()?;
-    if version != 16 {
-        return Err(PsdError::Unsupported(format!(
-            "descriptor block version {version}"
-        )));
-    }
-    skip_descriptor_body(r)
-}
-
-fn skip_descriptor_body(r: &mut Reader) -> Result<(), PsdError> {
-    read_unicode_string(r)?; // name
-    read_length_and_key(r)?; // classID
-    let count = r.u32()?;
-    for _ in 0..count {
-        read_length_and_key(r)?; // item key
-        let ostype = arr4(r.take(4)?);
-        skip_descriptor_value(r, ostype)?;
-    }
-    Ok(())
-}
-
-fn skip_descriptor_value(r: &mut Reader, ostype: [u8; 4]) -> Result<(), PsdError> {
-    match ostype.as_slice() {
-        b"Objc" | b"GlbO" => skip_descriptor_body(r),
-        b"obj " => skip_list(r),
-        b"VlLs" => skip_list(r),
-        b"doub" => r.skip(8),
-        b"UntF" => r.skip(12),
-        b"UnFl" => {
-            r.skip(4)?;
-            let n = r.u32()? as usize;
-            r.skip(n.checked_mul(8).ok_or_else(overflow)?)
-        }
-        b"TEXT" => {
-            read_unicode_string(r)?;
-            Ok(())
-        }
-        b"enum" => {
-            read_length_and_key(r)?;
-            read_length_and_key(r)?;
-            Ok(())
-        }
-        b"long" | b"indx" | b"Idnt" => r.skip(4),
-        b"comp" => r.skip(8),
-        b"bool" => r.skip(1),
-        b"type" | b"GlbC" | b"Clss" => {
-            read_unicode_string(r)?;
-            read_length_and_key(r)?;
-            Ok(())
-        }
-        b"alis" | b"tdta" | b"Pth " => {
-            let n = r.u32()? as usize;
-            r.skip(n)
-        }
-        b"ObAr" => {
-            r.skip(4)?;
-            skip_descriptor_body(r)
-        }
-        b"prop" => {
-            read_unicode_string(r)?;
-            read_length_and_key(r)?;
-            read_length_and_key(r)?;
-            Ok(())
-        }
-        b"Enmr" => {
-            read_unicode_string(r)?;
-            read_length_and_key(r)?;
-            read_length_and_key(r)?;
-            read_length_and_key(r)?;
-            Ok(())
-        }
-        b"rele" => {
-            read_unicode_string(r)?;
-            read_length_and_key(r)?;
-            r.skip(4)
-        }
-        b"name" => {
-            read_unicode_string(r)?;
-            read_length_and_key(r)?;
-            read_unicode_string(r)?;
-            Ok(())
-        }
-        _ => Err(PsdError::Unsupported(format!(
-            "descriptor ostype {:?}",
-            String::from_utf8_lossy(&ostype)
-        ))),
-    }
-}
-
-/// A reference/list value: a count, then repeated (ostype, value) pairs.
-fn skip_list(r: &mut Reader) -> Result<(), PsdError> {
-    let count = r.u32()?;
-    for _ in 0..count {
-        let ostype = arr4(r.take(4)?);
-        skip_descriptor_value(r, ostype)?;
-    }
-    Ok(())
-}
-
-/// Descriptor key: a `u32` length; a zero length means the following 4 bytes
-/// are an interned term key.
-fn read_length_and_key(r: &mut Reader) -> Result<Vec<u8>, PsdError> {
-    let len = r.u32()? as usize;
-    let n = if len == 0 { 4 } else { len };
-    Ok(r.take(n)?.to_vec())
-}
-
-/// UTF-16BE string with a `u32` code-unit count.
-fn read_unicode_string(r: &mut Reader) -> Result<String, PsdError> {
-    let count = r.u32()? as usize;
-    let bytes = count.checked_mul(2).ok_or_else(overflow)?;
-    let data = r.take(bytes)?;
-    let units: Vec<u16> = data
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|c| u16::from_be_bytes([c[0], c[1]]))
-        .collect();
-    Ok(String::from_utf16_lossy(&units))
-}
-
 /// Pascal string (length byte + bytes). MacRoman high bytes are approximated as
 /// lossy UTF-8, which is exact for the ASCII uuids and filenames here.
 fn read_pascal_string(r: &mut Reader) -> Result<String, PsdError> {
     let len = r.u8()? as usize;
     let data = r.take(len)?;
     Ok(String::from_utf8_lossy(data).into_owned())
-}
-
-fn overflow() -> PsdError {
-    PsdError::Invalid("smart-object size overflow".into())
 }
 
 fn arr4(s: &[u8]) -> [u8; 4] {
@@ -557,6 +459,26 @@ mod tests {
     }
 
     #[test]
+    fn embedded_payload_with_crs_xmp_is_exposed() {
+        let uuid = "12345678-1234-1234-1234-123456789abc";
+        let xmp = b"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF \
+xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description \
+crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
+        let record = linked_layer(b"liFD", 7, uuid, "raw.psb", xmp);
+        let section = tagged(b"lnk2", &linked_list(&[record]));
+
+        let mut layers = vec![config_layer(uuid)];
+        resolve_smart_objects(&mut layers, &section);
+        let so = layers[0].smart_object.as_ref().expect("resolved");
+        assert_eq!(so.kind, SmartObjectKind::Embedded);
+        let crs = so.crs_xmp.as_ref().expect("crs xmp is exposed");
+        assert!(
+            crs.windows(4).any(|window| window == b"crs:"),
+            "the packet carries a crs: property"
+        );
+    }
+
+    #[test]
     fn malformed_record_degrades_without_panic() {
         assert!(parse_linked_layers(&[0, 0, 0, 0, 0, 0, 0, 5, 1, 2, 3]).is_err());
         let section = tagged(b"lnk2", &[0, 0, 0, 0, 0, 0, 0, 5, 1, 2, 3]);
@@ -584,6 +506,7 @@ mod tests {
         assert_eq!(&so.filetype, b"8BPB");
         assert_eq!(&so.creator, b"8BIM");
         assert!(!so.config_descriptor.is_empty());
+        assert!(so.smart_filters.is_empty(), "fixture 01 has no filterFX");
 
         let payload = so.payload.as_ref().expect("embedded payload");
         assert_eq!(payload.len(), 1_048_576);
@@ -606,5 +529,80 @@ mod tests {
         assert_eq!(so2.uuid, so.uuid);
         assert_eq!(so2.kind, SmartObjectKind::Embedded);
         assert_eq!(fnv1a(so2.payload.as_ref().unwrap()), 0xac0d_7ee0_9994_eda1);
+    }
+
+    #[test]
+    fn fixture_config_descriptor_survives_write() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/test_with_smart_object01.psd");
+        let Ok(bytes) = std::fs::read(&path) else {
+            eprintln!("skipping: {} not found", path.display());
+            return;
+        };
+        let doc = crate::read_psd(&bytes).expect("fixture parses");
+        let original = doc
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("smart object resolved")
+            .config_descriptor
+            .clone();
+
+        let back = crate::read_psd(&crate::write_psd(&doc).expect("fixture writes"))
+            .expect("written fixture re-reads");
+        let reread = back
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("smart object survives a write")
+            .config_descriptor
+            .clone();
+        assert_eq!(reread, original, "config descriptor bytes are unchanged");
+    }
+
+    #[test]
+    fn fixture_camera_raw_filter_options_parse() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/test_with_smart_object02.psd");
+        let Ok(bytes) = std::fs::read(&path) else {
+            eprintln!("skipping: {} not found", path.display());
+            return;
+        };
+        let doc = crate::read_psd(&bytes).expect("fixture parses");
+        let so = doc
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1 copy")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("smart object resolved");
+
+        assert_eq!(so.smart_filters.len(), 1, "exactly one smart filter");
+        let filter = &so.smart_filters[0];
+        assert_eq!(filter.filter_id, 2683);
+        assert_eq!(filter.name, "Camera Raw Filter");
+        assert!(filter.enabled);
+        assert!(!filter.options.is_empty());
+
+        let DescValue::Object { items, .. } =
+            crate::camera_raw_options(&filter.options).expect("Fltr parses")
+        else {
+            panic!("Fltr is an object");
+        };
+        assert!(matches!(
+            get_object_item(&items, b"Ex12"),
+            Some(DescValue::Double(_))
+        ));
+        assert_eq!(get_object_item(&items, b"Cr12"), Some(&DescValue::Long(12)));
+        assert_eq!(
+            get_object_item(&items, b"Temp"),
+            Some(&DescValue::Long(-30))
+        );
+        assert_eq!(get_object_item(&items, b"Vibr"), Some(&DescValue::Long(13)));
+        assert_eq!(
+            get_object_item(&items, b"Dhze"),
+            Some(&DescValue::Long(-14))
+        );
     }
 }
