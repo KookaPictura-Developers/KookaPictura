@@ -89,12 +89,18 @@ gradient/pattern fill layers; layer effects (`lfx2`/`lrFX`); text; vector masks.
 `2026-09-19-smart-object-source-render`): an `Embedded` smart object with no
 raster proxy is rendered by decoding its payload and sampling it into the layer
 rect (stored merged composite preferred, layers fallback; nearest-neighbour;
-`Trnf`/warp deferred). **Adjustment payload decoding is partly shipped** (archived
-`2026-09-19-adjustment-payload-decode`): `expA` (Exposure), `vibA` (Vibrance),
-and `blwh` (Black & White) now decode to `pictura-adjust` ops; `curv`, `phfl`,
-`mixr`, `selc`, `clrL`, `gdrm`, and a real `SoCo` descriptor remain (ungrounded
-schema or missing op). Remaining P3: those keys, the fill/effect/text/vector
-kinds, and write RLE by default (G12). **RLE write is shipped** (archived
+`Trnf`/warp deferred). **Adjustment payload decoding is partly shipped**: `expA`
+(Exposure), `vibA` (Vibrance), and `blwh` (Black & White) decode to
+`pictura-adjust` ops (archived `2026-09-19-adjustment-payload-decode`), and
+`phfl` (Photo Filter, version 2) now decodes and encodes too (archived
+`2026-09-19-photo-filter-adjustment-decode`) with an encoder and an Adjustments
+panel `Photo Filter` entry. Remaining: `curv`, `mixr`, version-3 `phfl`, `selc`,
+`clrL`, `gdrm`, and a real `SoCo` descriptor (ungrounded schema or missing op).
+**Curves (`curv`) is deferred**: the model is single-composite versus
+Photoshop's per-channel curves, and the legacy channel-bitmap order is
+ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:
+those keys, the fill/effect/text/vector kinds, and write RLE by default (G12).
+**RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
 channels), layer color channels, and the raster mask are PackBits-encoded;
 preserved verbatim channels stay byte-for-byte. ZIP write remains.
