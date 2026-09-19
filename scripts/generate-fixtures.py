@@ -572,6 +572,59 @@ def inner_shadow() -> PSDImage:
     return psd
 
 
+def inner_glow() -> PSDImage:
+    """RGB, a Base pixel layer plus an `IrGl` inner-glow pixel layer.
+
+    The effect is the standard object-based `lfx2` `DescriptorBlock2`: a
+    top-level `masterFXSwitch` and an `IrGl` object whose keys mirror psd-tools'
+    `InnerGlow` accessors. The source is `glwS` typeID `IGSr` (value `SrcE`); the
+    technique is `GlwT` `BETE`/`SfBL`. `Ckmt` is the choke (an erode).
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Glow", left=0, top=0
+    )
+    irgl = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.Mode: Enumerated(b"BlnM", b"scrn"),
+            Key.Color: Descriptor(
+                {
+                    b"Rd  ": Double(255.0),
+                    b"Grn ": Double(255.0),
+                    b"Bl  ": Double(255.0),
+                },
+                classID=b"RGBC",
+            ),
+            Key.Opacity: UnitFloat(75.0, Unit.Percent),
+            Key.GlowTechnique: Enumerated(b"BETE", b"SfBL"),
+            Key.ChokeMatte: UnitFloat(0.0, Unit.Percent),
+            Key.Blur: UnitFloat(5.0, Unit.Pixels),
+            Key.InnerGlowSource: Enumerated(b"IGSr", b"SrcE"),
+            Key.Noise: UnitFloat(0.0, Unit.Percent),
+            Key.ShadingNoise: UnitFloat(0.0, Unit.Percent),
+            Key.InputRange: UnitFloat(50.0, Unit.Percent),
+            Key.AntiAlias: Bool(True),
+            Key.TransferSpec: Descriptor(
+                {Key.Name: String("Linear")}, classID=b"TrnS"
+            ),
+        },
+        classID=b"IrGl",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"IrGl": irgl}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -586,6 +639,7 @@ FIXTURES = {
     "drop_shadow.psd": drop_shadow,
     "outer_glow.psd": outer_glow,
     "inner_shadow.psd": inner_shadow,
+    "inner_glow.psd": inner_glow,
 }
 
 

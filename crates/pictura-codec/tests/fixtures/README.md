@@ -33,6 +33,7 @@ not hand-edit these files.
 | `drop_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Shadowed` layer carrying an `lfx2` `DrSh` drop shadow |
 | `outer_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glowing` layer carrying an `lfx2` `OrGl` outer glow |
 | `inner_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Inner` layer carrying an `lfx2` `IrSh` inner shadow |
+| `inner_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glow` layer carrying an `lfx2` `IrGl` inner glow |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -312,6 +313,46 @@ irsh = Descriptor({
 layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
     key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
     data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"IrSh": irsh},
+                          classID=Klass.Null))
+```
+
+`inner_glow.psd` is authored by the `inner_glow()` builder: the same `Base`
+pixel layer plus a 4x4 `Glow` pixel layer whose record carries an `lfx2`
+`DescriptorBlock2`. Its top-level object has `masterFXSwitch` and an `IrGl`
+object whose keys mirror psd-tools' `InnerGlow` accessors (`Md  `, `Clr `/`RGBC`,
+`Opct`, `GlwT` (`BETE`/`SfBL`), `Ckmt` as the choke, `blur`, `glwS`, `Nose`,
+`ShdN`, `Inpr`, `AntA`, `TrnS`). The Source key is `glwS` with enum typeID
+`IGSr` (value `SrcE`), not the `BETE` technique typeID. The decoder also accepts
+the legacy/mis-authored `IGsr` spelling leniently.
+
+```python
+from psd_tools.psd.descriptor import (
+    Bool, Descriptor, DescriptorBlock2, Double, Enumerated, String, UnitFloat,
+)
+from psd_tools.terminology import Enum, Key, Klass, Unit
+
+irgl = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"scrn"),
+    Key.Color: Descriptor(
+        {b"Rd  ": Double(255.0), b"Grn ": Double(255.0), b"Bl  ": Double(255.0)},
+        classID=b"RGBC"),
+    Key.Opacity: UnitFloat(75.0, Unit.Percent),
+    Key.GlowTechnique: Enumerated(b"BETE", b"SfBL"),
+    Key.ChokeMatte: UnitFloat(0.0, Unit.Percent),
+    Key.Blur: UnitFloat(5.0, Unit.Pixels),
+    Key.InnerGlowSource: Enumerated(b"IGSr", b"SrcE"),
+    Key.Noise: UnitFloat(0.0, Unit.Percent),
+    Key.ShadingNoise: UnitFloat(0.0, Unit.Percent),
+    Key.InputRange: UnitFloat(50.0, Unit.Percent),
+    Key.AntiAlias: Bool(True),
+    Key.TransferSpec: Descriptor({Key.Name: String("Linear")}, classID=b"TrnS"),
+}, classID=b"IrGl")
+
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"IrGl": irgl},
                           classID=Klass.Null))
 ```
 

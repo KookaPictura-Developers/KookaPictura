@@ -293,6 +293,11 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         {
             return Err(GpuError::UnsupportedLayerEffect);
         }
+        if crate::layer_effects::decode_inner_glow(layer)
+            .is_some_and(|glow| glow.enabled && glow.present)
+        {
+            return Err(GpuError::UnsupportedLayerEffect);
+        }
         if let Some(data) = &layer.adjustment {
             let supported =
                 decode_adjustment(data).is_some_and(|adj| adjustment_params(&adj).is_some());

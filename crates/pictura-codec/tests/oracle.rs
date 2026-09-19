@@ -31,6 +31,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("drop_shadow.psd", 8, 8, ColorMode::Rgb),
     ("outer_glow.psd", 8, 8, ColorMode::Rgb),
     ("inner_shadow.psd", 8, 8, ColorMode::Rgb),
+    ("inner_glow.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -1367,3 +1368,6 @@ mod outer_glow;
 
 #[path = "oracle/inner_shadow.rs"]
 mod inner_shadow;
+
+#[path = "oracle/inner_glow.rs"]
+mod inner_glow;
