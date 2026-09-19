@@ -85,7 +85,7 @@ Shipped as the archived change `2026-09-19-psd-smart-object-roundtrip`.
 
 **P3 — Render preserved data.** *(in progress)*
 Decode the remaining adjustment descriptors and real fill descriptors (G8);
-gradient/pattern fill layers; layer effects (`lfx2`/`lrFX`); text; vector masks.
+gradient fill layers; layer effects (`lfx2`/`lrFX`); text; vector masks.
 **Smart-object source rendering is shipped** (archived
 `2026-09-19-smart-object-source-render`): an `Embedded` smart object with no
 raster proxy is rendered by decoding its payload and sampling it into the layer
@@ -106,9 +106,13 @@ all five kinds, is fill content for rasterize, and authors through
 `encode_gradient_fill` and `Layer > New Fill Layer > Gradient…` (archived
 `2026-09-19-gradient-fill-layer`). Color Balance (`blnc`) now decodes to nine
 `i16` shifts plus a luminosity byte and encodes too, with an Adjustments panel
-entry (archived `2026-09-19-color-balance-adjustment-decode`). Remaining: `curv`,
+entry (archived `2026-09-19-color-balance-adjustment-decode`). Pattern fill
+(`PtFl`) now decodes to `Adjustment::PatternFill`, taking its pixels from the
+document `Patt`/`Pat2`/`Pat3` pattern library (`pictura-codec::decode_patterns`)
+and compositing as tiled content, and is fill content for rasterize (archived
+`2026-09-19-pattern-fill-layer`). Remaining: `curv`,
 `mixr`, version-3 `phfl`, `selc`, `clrL`, and the effect/text/vector kinds
-(pattern fill `PtFl`, `lfx2`/`lrFX`, text, vector masks).
+(`lfx2`/`lrFX`, text, vector masks).
 **Curves (`curv`) is deferred**: the model is single-composite versus
 Photoshop's per-channel curves, and the legacy channel-bitmap order is
 ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:
