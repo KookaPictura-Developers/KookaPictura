@@ -76,6 +76,9 @@ pub enum GpuError {
     UnsupportedMode(BlendMode),
     /// An adjustment layer with no GPU implementation is present in the stack.
     UnsupportedAdjustment,
+    /// A channel-less smart-object layer is present: it renders from its
+    /// embedded source, which the GPU has no path for.
+    UnsupportedSmartObject,
 }
 
 impl fmt::Display for GpuError {
@@ -86,6 +89,9 @@ impl fmt::Display for GpuError {
             GpuError::Readback => write!(f, "GPU readback failed"),
             GpuError::UnsupportedMode(m) => write!(f, "blend mode {m:?} is CPU-only"),
             GpuError::UnsupportedAdjustment => write!(f, "adjustment kind is CPU-only"),
+            GpuError::UnsupportedSmartObject => {
+                write!(f, "channel-less smart-object source is CPU-only")
+            }
         }
     }
 }
@@ -274,6 +280,9 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         if matches!(layer.blend, BlendMode::Dissolve) {
             return Err(GpuError::UnsupportedMode(layer.blend));
         }
+        if layer.smart_object.is_some() && !layer.channels.iter().any(|c| c.id == 0) {
+            return Err(GpuError::UnsupportedSmartObject);
+        }
         for child in &layer.children {
             walk(child)?;
         }
@@ -326,6 +335,7 @@ mod tests {
     use super::*;
     use pictura_core::{
         BitDepth, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags, PsdRect,
+        SmartObject, SmartObjectKind,
     };
     use std::time::Instant;
 
@@ -497,6 +507,57 @@ mod tests {
             assemble_mask(region, &l),
             assemble_mask_per_pixel(region, &l, r)
         );
+    }
+
+    #[test]
+    fn channel_less_smart_object_falls_back_to_cpu() {
+        let (w, h) = (2u32, 2u32);
+        let n = (w * h) as usize;
+        let mut source = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+        for i in 0..n {
+            source.composite.data[i] = 10;
+            source.composite.data[n + i] = 20;
+            source.composite.data[2 * n + i] = 30;
+        }
+        let payload = pictura_codec::write_psd(&source).expect("payload writes");
+
+        let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![Layer {
+            name: "placed".into(),
+            rect: px_rect(w, h),
+            channels: Vec::new(),
+            smart_object: Some(SmartObject {
+                filename: "source.psd".into(),
+                kind: SmartObjectKind::Embedded,
+                payload: Some(payload),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+
+        // `check_supported` rejects the stack before any device is touched, so
+        // this holds on a device-less host too.
+        assert!(matches!(
+            composite_gpu(&doc),
+            Err(GpuError::UnsupportedSmartObject)
+        ));
+
+        // The caller falls back to the CPU oracle, which renders the embedded
+        // source rather than the channel-less layer's opaque black.
+        let (out, backend) = composite_active(&doc, true);
+        assert_eq!(backend, Backend::Cpu);
+        for i in 0..n {
+            assert_eq!(
+                [
+                    out.data[i],
+                    out.data[n + i],
+                    out.data[2 * n + i],
+                    out.data[3 * n + i]
+                ],
+                [10, 20, 30, 255],
+                "pixel {i}"
+            );
+        }
     }
 
     fn profile_layer(n: u32, seed: u32, blend: BlendMode) -> Layer {

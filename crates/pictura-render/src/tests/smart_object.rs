@@ -637,3 +637,92 @@ fn rasterize_drops_preserved_config_and_linked_record_round_trip() {
     assert!(reread.layers[0].smart_object.is_none());
     assert!(!section_has_uuid(&reread.layer_section_extra, &uuid));
 }
+
+#[test]
+fn place_appends_topmost_channel_less_embedded_object() {
+    let payload = write_psd(&solid_doc(2, 2, [10, 20, 30])).expect("source writes");
+    let base = solid("Base", full(4, 4), (0, 0, 0), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![base.clone()]);
+
+    let path = place_smart_object(&mut d, "source.psd", &payload).expect("places");
+
+    assert_eq!(path, "1");
+    assert_eq!(d.layers.len(), 2);
+    let layer = &d.layers[1];
+    assert_eq!(layer.name, "source.psd");
+    assert_eq!(layer.rect, rect(0, 0, 2, 2));
+    assert!(layer.channels.is_empty());
+    assert!(layer.visible);
+    assert_eq!(layer.blend, BlendMode::Normal);
+    assert_eq!(layer.opacity, 255);
+    assert_eq!(layer.fill, 255);
+    let so = layer.smart_object.as_ref().expect("smart object");
+    assert_eq!(so.kind, SmartObjectKind::Embedded);
+    assert_eq!(so.payload.as_deref(), Some(payload.as_slice()));
+    assert_eq!(so.filename, "source.psd");
+    assert_eq!(so.filetype, *b"8BPB");
+    assert_eq!(so.creator, *b"8BIM");
+    assert_eq!(d.layers[0], base);
+}
+
+#[test]
+fn placed_source_renders_inside_its_rect() {
+    let payload = write_psd(&solid_doc(2, 2, [10, 20, 30])).expect("source writes");
+    let base = solid("Base", full(4, 4), (0, 0, 0), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![base]);
+    place_smart_object(&mut d, "source.psd", &payload).expect("places");
+
+    let out = composite_rgba(&d);
+    assert_close(&out, 0, 0, [10, 20, 30, 255]);
+    assert_close(&out, 1, 1, [10, 20, 30, 255]);
+    assert_close(&out, 2, 2, [0, 0, 0, 255]);
+    assert_close(&out, 3, 3, [0, 0, 0, 255]);
+}
+
+#[test]
+fn placed_source_larger_than_canvas_clips() {
+    let payload = write_psd(&solid_doc(8, 8, [7, 8, 9])).expect("source writes");
+    let base = solid("Base", full(4, 4), (0, 0, 0), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![base]);
+    place_smart_object(&mut d, "big.psd", &payload).expect("places");
+
+    let out = composite_rgba(&d);
+    assert_eq!((out.width, out.height), (4, 4));
+    for y in 0..4 {
+        for x in 0..4 {
+            assert_close(&out, x, y, [7, 8, 9, 255]);
+        }
+    }
+}
+
+#[test]
+fn placed_layer_round_trips() {
+    let payload = write_psd(&solid_doc(2, 2, [10, 20, 30])).expect("source writes");
+    let base = solid("Base", full(4, 4), (0, 0, 0), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![base]);
+    place_smart_object(&mut d, "source.psd", &payload).expect("places");
+    let placed = d.layers[1]
+        .smart_object
+        .as_ref()
+        .unwrap()
+        .payload
+        .clone()
+        .unwrap();
+
+    let bytes = write_psd(&d).expect("host writes");
+    let back = read_psd(&bytes).expect("host reads");
+    let so = back.layers[1].smart_object.as_ref().expect("resolved");
+    assert_eq!(so.kind, SmartObjectKind::Embedded);
+    assert_eq!(so.payload.as_deref(), Some(placed.as_slice()));
+}
+
+#[test]
+fn place_refuses_malformed_source() {
+    let base = solid("Base", full(4, 4), (0, 0, 0), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![base]);
+    let before = d.clone();
+
+    assert_eq!(place_smart_object(&mut d, "bad.psd", &[0, 1, 2, 3]), None);
+
+    assert_eq!(d, before);
+}

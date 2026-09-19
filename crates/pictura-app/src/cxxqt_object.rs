@@ -586,6 +586,13 @@ pub mod qobject {
         #[qinvokable]
         fn convert_to_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
 
+        /// `File > Place…`: read `file_path`, decode it as a PSD/PSB source, and
+        /// append it as a topmost channel-less embedded smart-object layer.
+        /// Records one "Place" state on success; empty and no state when the
+        /// file is unreadable or not a PSD/PSB document.
+        #[qinvokable]
+        fn place_smart_object(self: Pin<&mut Self>, file_path: &QString) -> QString;
+
         /// Whether `path` resolves to a rasterizable smart-object layer: not a
         /// group, no adjustment data, and a typed smart object. Read-only.
         #[qinvokable]

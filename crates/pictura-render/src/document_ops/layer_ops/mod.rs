@@ -38,6 +38,6 @@ pub use properties::{
 pub use rasterize::{is_fill_content_layer, rasterize_all_fill_content, rasterize_fill_content};
 pub use smart_object::{
     can_convert_to_smart_object, can_rasterize_smart_object, convert_to_smart_object,
-    rasterize_smart_object,
+    place_smart_object, rasterize_smart_object,
 };
 pub use via::{layer_via_copy, layer_via_cut};

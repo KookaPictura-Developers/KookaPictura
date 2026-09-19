@@ -10,6 +10,7 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtGui/QAction>
 #include <QtGui/QImage>
 
@@ -1098,6 +1099,62 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(241, "group from layers");
         }
         frame.closeDocument(gflDoc, false);
+
+        // lpr_place_smart_object (279): placing a PSD file appends a channel-less
+        // embedded smart-object layer that renders the source, in one undo state;
+        // a malformed file refuses without changing the document.
+        const bool plSrcCreated = frame.newDocument(QStringLiteral("PlaceSource"), 4, 4,
+                                                    QStringLiteral("rgb"), 8,
+                                                    QStringLiteral("white"));
+        pictura::PictureView* plSrcView = frame.activeView();
+        if (!plSrcCreated || !plSrcView) {
+            return pictura::selfTest().fail(279, "place source fixture");
+        }
+        const int plSrcDoc = frame.activeDocumentIndex();
+        const QString plSourcePath =
+            QDir::tempPath() + QStringLiteral("/kooka-pictura-place-source.psd");
+        const bool plSourceSaved = frame.saveActiveAs(plSourcePath);
+        frame.closeDocument(plSrcDoc, false);
+
+        const bool plCreated = frame.newDocument(QStringLiteral("PlaceCtl"), 4, 4,
+                                                 QStringLiteral("rgb"), 8,
+                                                 QStringLiteral("transparent"));
+        pictura::PictureView* plView = frame.activeView();
+        if (!plCreated || !plView) {
+            return pictura::selfTest().fail(279, "place fixture");
+        }
+        const int plDoc = frame.activeDocumentIndex();
+        const int plBase = plView->history_count();
+        const int plRows = plView->layer_row_count();
+        const unsigned int plBefore = plView->sample_argb(0, 0);
+        const QString plPath = plView->place_smart_object(plSourcePath);
+        const bool plPlaced = !plPath.isEmpty() && plView->layer_row_count() == plRows + 1
+            && plView->history_count() == plBase + 1
+            && plView->sample_argb(0, 0) == 0xffffffffu
+            && plView->sample_argb(0, 0) != plBefore
+            && plView->layer_smart_object_state(plPath).startsWith(QStringLiteral("embedded:"));
+        const QString plBadPath =
+            QDir::tempPath() + QStringLiteral("/kooka-pictura-place-bad.psd");
+        QFile plBad(plBadPath);
+        if (plBad.open(QIODevice::WriteOnly)) {
+            plBad.write("not a psd");
+        }
+        plBad.close();
+        const int plBadBase = plView->history_count();
+        const QString plRefused = plView->place_smart_object(plBadPath);
+        const bool plRefusedOk = plRefused.isEmpty()
+            && plView->history_count() == plBadBase
+            && plView->layer_row_count() == plRows + 1;
+        ST_BEGIN("lpr_place_smart_object");
+        ST_PASS("lpr_place_smart_object saved=%d path=%s pixel=%08x before=%08x refuse=%d",
+                plSourceSaved ? 1 : 0, qPrintable(plPath), plView->sample_argb(0, 0), plBefore,
+                plRefusedOk ? 1 : 0);
+        if (!plSourceSaved || !plPlaced || !plRefusedOk) {
+            return pictura::selfTest().fail(279, "place smart object");
+        }
+        QFile::remove(plSourcePath);
+        QFile::remove(plBadPath);
+        frame.closeDocument(plDoc, false);
 
         if (const int sts = pictura::runToolsSelectionChecks(frame); sts != 0) { return sts; }
 

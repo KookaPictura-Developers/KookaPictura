@@ -17,8 +17,8 @@ pub use layer_ops::{
     flatten, flatten_rows, group_layer, group_paths, is_background, is_fill_content_layer,
     is_visible_in_panel, layer_from_background, layer_via_copy, layer_via_cut, merge_scope,
     move_path, move_path_to, move_selection_content, neutral_color, next_layer_name, parent_path,
-    rasterize_all_fill_content, rasterize_fill_content, rasterize_smart_object, rename_path,
-    resolve_path, resolve_path_mut, select_similar, set_blend_paths, set_color_paths,
+    place_smart_object, rasterize_all_fill_content, rasterize_fill_content, rasterize_smart_object,
+    rename_path, resolve_path, resolve_path_mut, select_similar, set_blend_paths, set_color_paths,
     set_fill_paths, set_lock_paths, set_opacity_paths, set_visible_paths, ungroup_layer,
     ungroup_paths, MergeError, MergeOutcome, MergeScope, NewLayerSpec,
 };

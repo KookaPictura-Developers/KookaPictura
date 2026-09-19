@@ -22,6 +22,7 @@ inline constexpr char FileNew[] = "file.new";
 inline constexpr char FileSave[] = "file.save";
 inline constexpr char FileSaveAs[] = "file.saveAs";
 inline constexpr char FileRevert[] = "file.revert";
+inline constexpr char FilePlace[] = "file.place";
 inline constexpr char FileClose[] = "file.close";
 inline constexpr char FileCloseAll[] = "file.closeAll";
 inline constexpr char FileExit[] = "file.exit";

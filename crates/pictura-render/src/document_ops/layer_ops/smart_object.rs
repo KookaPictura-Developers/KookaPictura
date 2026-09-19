@@ -6,9 +6,11 @@
 //! proxy), so rendering is unchanged; a layer with a proxy is drawn from the
 //! proxy and the embedded source is only decoded for a channel-less layer.
 
-use pictura_core::{BitDepth, Channel, Document, PsdRect, SmartObject, SmartObjectKind};
+use pictura_core::{
+    BitDepth, BlendMode, Channel, Document, Layer, PsdRect, SmartObject, SmartObjectKind,
+};
 
-use super::paths::{resolve_path, resolve_path_mut};
+use super::paths::{format_segments, resolve_path, resolve_path_mut};
 
 /// Whether `path` resolves to a single convertible raster pixel layer: not a
 /// group, no adjustment data, not the Background, no existing smart object, and
@@ -72,6 +74,42 @@ pub fn convert_to_smart_object(doc: &mut Document, path: &str) -> bool {
         ..Default::default()
     });
     true
+}
+
+/// Place a PSD/PSB file as a new topmost embedded smart-object layer.
+///
+/// Decodes `bytes` with [`pictura_codec::read_psd`]; returns `None` without
+/// mutating the document when they do not parse. On success appends a
+/// channel-less layer named `filename`, sized to the decoded document at
+/// `(0, 0)`, carrying an embedded [`SmartObject`] whose payload is `bytes`, and
+/// returns the new layer's path.
+pub fn place_smart_object(doc: &mut Document, filename: &str, bytes: &[u8]) -> Option<String> {
+    let decoded = pictura_codec::read_psd(bytes).ok()?;
+    let index = doc.layers.len();
+    doc.layers.push(Layer {
+        name: filename.to_string(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: decoded.height as i32,
+            right: decoded.width as i32,
+        },
+        blend: BlendMode::Normal,
+        opacity: 255,
+        fill: 255,
+        visible: true,
+        channels: Vec::new(),
+        smart_object: Some(SmartObject {
+            kind: SmartObjectKind::Embedded,
+            payload: Some(bytes.to_vec()),
+            filename: filename.to_string(),
+            filetype: *b"8BPB",
+            creator: *b"8BIM",
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    Some(format_segments(&[index]))
 }
 
 /// Whether `path` resolves to a rasterizable smart-object layer: not a group,

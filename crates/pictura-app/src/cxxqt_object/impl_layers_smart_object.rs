@@ -36,6 +36,29 @@ impl qobject::PictureView {
         changed
     }
 
+    /// `File > Place…`: read `file_path`, decode it as a PSD/PSB source, and
+    /// append it as a topmost channel-less embedded smart-object layer. Records
+    /// one "Place" state on success; empty (no state) when the file is missing,
+    /// unreadable, or not a PSD/PSB document.
+    pub fn place_smart_object(mut self: Pin<&mut Self>, file_path: &QString) -> QString {
+        let path = file_path.to_string();
+        let name = std::path::Path::new(&path)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let created = match (std::fs::read(&path), self.as_mut().rust_mut().doc.as_mut()) {
+            (Ok(bytes), Some(doc)) => pictura_render::place_smart_object(doc, &name, &bytes),
+            _ => None,
+        };
+        let Some(created) = created else {
+            return QString::default();
+        };
+        self.as_mut().clear_link_sets();
+        self.as_mut().recomposite();
+        self.as_mut().record("Place");
+        QString::from(created.as_str())
+    }
+
     /// Whether `path` resolves to a rasterizable smart-object layer. Read-only.
     pub fn layer_can_rasterize_smart_object(&self, path: &QString) -> bool {
         self.rust()
