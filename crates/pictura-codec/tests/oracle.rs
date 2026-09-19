@@ -28,6 +28,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("gradient_fill.psd", 8, 8, ColorMode::Rgb),
     ("pattern_fill.psd", 8, 8, ColorMode::Rgb),
     ("pattern_fill_16bit.psd", 8, 8, ColorMode::Rgb),
+    ("drop_shadow.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -394,6 +395,85 @@ fn pattern_fill_16bit_pattern_is_skipped() {
 
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back, doc, "the whole document round-trips");
+}
+
+/// The drop-shadow fixture: the psd-tools-authored `lfx2` object-based effects
+/// block survives read and whole-document round-trip, and psd-tools reads the
+/// effect back as a `DropShadow` with the authored values.
+#[test]
+fn drop_shadow_layer_preserves_effect_block() {
+    let doc = load("drop_shadow.psd");
+    let layer = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Shadowed")
+        .expect("Shadowed layer");
+    let block = layer
+        .extra_block(b"lfx2")
+        .expect("lfx2 is preserved in extra_blocks");
+    assert!(block.data.len() > 8, "DescriptorBlock2 payload");
+    assert_eq!(&block.data[0..4], &[0, 0, 0, 1], "version 1");
+    assert_eq!(&block.data[4..8], &[0, 0, 0, 16], "data version 16");
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc, "the whole document round-trips");
+    assert!(
+        back.layers
+            .iter()
+            .find(|l| l.name == "Shadowed")
+            .and_then(|l| l.extra_block(b"lfx2"))
+            .is_some(),
+        "lfx2 survives a round-trip"
+    );
+
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+    let dir = scratch_dir("psd-drop-shadow");
+    let path = dir.join("drop_shadow.psd");
+    std::fs::write(
+        &path,
+        std::fs::read(fixture_dir().join("drop_shadow.psd")).unwrap(),
+    )
+    .unwrap();
+
+    let script = r#"
+import sys
+from psd_tools import PSDImage
+psd = PSDImage.open(sys.argv[1], lazy=False)
+layer = [l for l in psd if l.name == "Shadowed"][0]
+effect = layer.effects.items[0]
+print(type(effect).__name__)
+print(1 if effect.enabled else 0)
+print(1 if effect.present else 0)
+print(effect.opacity)
+print(effect.blend_mode.decode())
+print(int(round(effect.distance)))
+print(int(round(effect.size)))
+print(1 if effect.use_global_light else 0)
+print(1 if effect.layer_knocks_out else 0)
+"#;
+    let out = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        out.status.success(),
+        "psd-tools failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let got: Vec<&str> = stdout.lines().map(str::trim).collect();
+    assert_eq!(
+        got,
+        ["DropShadow", "1", "1", "75.0", "mul", "5", "5", "0", "0",],
+        "psd-tools reads the authored DrSh effect; stdout={stdout}"
+    );
 }
 
 /// Extra/alpha channels: a PSD written by `pictura-codec` with one extra plane

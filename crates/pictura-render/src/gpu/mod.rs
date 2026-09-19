@@ -79,6 +79,8 @@ pub enum GpuError {
     /// A channel-less smart-object layer is present: it renders from its
     /// embedded source, which the GPU has no path for.
     UnsupportedSmartObject,
+    /// A visible layer carries an enabled object-based layer effect.
+    UnsupportedLayerEffect,
 }
 
 impl fmt::Display for GpuError {
@@ -91,6 +93,9 @@ impl fmt::Display for GpuError {
             GpuError::UnsupportedAdjustment => write!(f, "adjustment kind is CPU-only"),
             GpuError::UnsupportedSmartObject => {
                 write!(f, "channel-less smart-object source is CPU-only")
+            }
+            GpuError::UnsupportedLayerEffect => {
+                write!(f, "layer effect is CPU-only")
             }
         }
     }
@@ -269,6 +274,14 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
     fn walk(layer: &Layer) -> Result<(), GpuError> {
         if !layer.visible {
             return Ok(());
+        }
+        // The effect check wins over the adjustment check: a fill layer with an
+        // enabled shadow must report `UnsupportedLayerEffect`, not
+        // `UnsupportedAdjustment`.
+        if crate::layer_effects::decode_drop_shadow(layer)
+            .is_some_and(|shadow| shadow.enabled && shadow.present)
+        {
+            return Err(GpuError::UnsupportedLayerEffect);
         }
         if let Some(data) = &layer.adjustment {
             let supported =

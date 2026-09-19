@@ -27,6 +27,7 @@
 //! is not implemented. Exact pass-through parity is limited to the 255/no-mask
 //! case (see the test below).
 
+mod blend;
 mod composite;
 pub(crate) use composite::{channel, mask_alpha, render_smart_source, sample};
 pub use composite::{
@@ -41,6 +42,9 @@ pub use color_balance::encode_color_balance;
 
 mod fill;
 pub use fill::encode_gradient_fill;
+
+pub mod layer_effects;
+pub use layer_effects::{decode_drop_shadow, DropShadow};
 
 pub mod gpu;
 pub use gpu::{

@@ -596,6 +596,11 @@ impl Layer {
     pub fn is_group(&self) -> bool {
         self.is_group
     }
+
+    /// The preserved additional-layer-information block keyed `key`, if any.
+    pub fn extra_block(&self, key: &[u8; 4]) -> Option<&LayerBlock> {
+        self.extra_blocks.iter().find(|b| &b.key == key)
+    }
 }
 
 #[cfg(test)]
@@ -644,6 +649,22 @@ mod tests {
         assert_eq!(BlendMode::from_psd_key(*b"zzzz"), None);
         assert_eq!(BlendMode::from_psd_key(*b"nrml"), None);
         assert_eq!(BlendMode::from_psd_key(*b"pas "), None);
+    }
+
+    #[test]
+    fn extra_block_finds_present_key_and_none_for_absent() {
+        let layer = Layer {
+            extra_blocks: vec![LayerBlock {
+                key: *b"lfx2",
+                data: vec![1, 2, 3, 4],
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            layer.extra_block(b"lfx2").map(|b| b.data.as_slice()),
+            Some(&[1, 2, 3, 4][..])
+        );
+        assert!(layer.extra_block(b"SoLd").is_none());
     }
 
     #[test]
