@@ -9,14 +9,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **773 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
+- Test suite: **787 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
   fresh-white-document regression; counted from `cargo nextest run --workspace`,
   which excludes the pre-existing ignored `pictura-render` doctest that
   `cargo test --workspace` reports as the ninth skip). The
-  C++ self-test reports **225 passed, 0 failed, 0 skipped**.
+  C++ self-test reports **226 passed, 0 failed, 0 skipped**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -28,9 +28,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   `place-smart-object`, `replace-smart-object-contents`,
   `open-as-smart-object`, `export-smart-object-contents`,
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
-  `solid-color-fill-descriptor`, `gradient-fill-layer`, and
-  `edit-smart-object-contents` changes;
-  canonical specs are in `openspec/specs/` (71 specs, `validate --all --strict`
+  `solid-color-fill-descriptor`, `gradient-fill-layer`,
+  `edit-smart-object-contents`, and `image-import` changes;
+  canonical specs are in `openspec/specs/` (72 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
   content rather than a milestone number.
@@ -179,6 +179,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   canvas.
 - The C++ app needs **Qt6::Svg** (`Qt6Svg` CMake package) alongside the other Qt
   modules; icons and cursors render through `QSvgRenderer`.
+- Image import (non-PSD Open/Place, archived `2026-09-19-image-import`):
+  `File > Open` and `File > Place…` accept raster images (PNG/JPEG/GIF/BMP/TIFF/
+  WebP) beside the native PSD/PSB path. Qt decodes at the app boundary to packed
+  RGBA8888 (`decode_image_rgba`), so the engine stays Qt-free. A pure
+  `pictura-codec::probe_image` header probe + `ImageBudget` guards the edge
+  (recognized headers are dimension/allocation pre-checked, unknown containers
+  deferred to Qt with a cap on the actual decoded allocation). New
+  `Document::from_rgba` and `add_raster_layer_from_rgba` build engine structures
+  from pixels; `place_image` reuses `convert_to_smart_object` (baked proxy,
+  embedded PSD source) so Place keeps its one-undo-state contract. PSD/PSB never
+  leaves the native `read_psd` path. The modified capability is
+  `smart-object-layer-actions`'s Place filter; `image-import` is the new
+  capability; C++ self-test `lpr_image_import` (code 290). Ceilings
+  (`// ponytail:`): original-file-bytes fidelity is deferred (Export Contents
+  yields the authored proxy), frame 0 only, no ICC/EXIF, and a colour image
+  placed into a Grayscale document renders red-as-gray. Remaining phases: OS file
+  drag-and-drop, then free transform on place.
 
 ## Commands
 
