@@ -288,3 +288,57 @@ int pictura::runLayersOpenSmartObjectChecks(pictura::PicturaMainWindow& frame)
     frame.closeDocument(frame.activeDocumentIndex(), false);
     return 0;
 }
+
+int pictura::runLayersExportSmartObjectChecks(pictura::PicturaMainWindow& frame)
+{
+    // lpr_export_smart_object_contents (282): exporting a smart object's
+    // embedded source writes the payload bytes to the chosen file and adds no
+    // history state; a non-smart layer refuses and writes nothing.
+    const bool expCreated = frame.newDocument(QStringLiteral("ExportSmartCtl"), 4, 4,
+                                              QStringLiteral("rgb"), 8,
+                                              QStringLiteral("white"));
+    pictura::PictureView* expView = frame.activeView();
+    if (!expCreated || !expView) {
+        return pictura::selfTest().fail(282, "export smart object fixture");
+    }
+    const int expDoc = frame.activeDocumentIndex();
+    const QString expPath = expView->add_solid_fill(0xff2244aau);
+    expView->rasterize_fill_content(expPath);
+    const bool expConverted = expView->convert_to_smart_object(expPath);
+    const bool expCan = expView->layer_can_export_smart_object_contents(expPath);
+    const int expBase = expView->history_count();
+    const QString expDest =
+        QDir::tempPath() + QStringLiteral("/kooka-pictura-smart-object-export.psd");
+    const bool expExported = expView->export_smart_object_contents(expPath, expDest);
+    const int expHistoryDelta = expView->history_count() - expBase;
+    QFile expFile(expDest);
+    bool expRead = expFile.open(QIODevice::ReadOnly);
+    const QByteArray expBytes = expRead ? expFile.readAll() : QByteArray();
+    expFile.close();
+    const bool expPsd = expBytes.size() > 4 && expBytes.startsWith("8BPS");
+    const bool expHistory = expHistoryDelta == 0;
+
+    const QString expPlain = expView->add_solid_fill(0xff22cc44u);
+    const bool expPlainCan = !expView->layer_can_export_smart_object_contents(expPlain);
+    const int expPlainBase = expView->history_count();
+    const QString expPlainDest =
+        QDir::tempPath() + QStringLiteral("/kooka-pictura-smart-object-export-plain.psd");
+    const bool expRefused = !expView->export_smart_object_contents(expPlain, expPlainDest)
+        && !QFile::exists(expPlainDest) && expView->history_count() == expPlainBase;
+
+    const bool expOk = expConverted && expCan && expExported && expPsd && expHistory
+        && expPlainCan && expRefused;
+    ST_BEGIN("lpr_export_smart_object_contents");
+    ST_PASS("lpr_export_smart_object_contents convert=%d can=%d export=%d psd=%d bytes=%d "
+            "history=%d plain=%d refuse=%d",
+            expConverted ? 1 : 0, expCan ? 1 : 0, expExported ? 1 : 0, expPsd ? 1 : 0,
+            expBytes.size(), expHistoryDelta, expPlainCan ? 1 : 0,
+            expRefused ? 1 : 0);
+    if (!expOk) {
+        return pictura::selfTest().fail(282, "export smart object contents");
+    }
+    QFile::remove(expDest);
+    QFile::remove(expPlainDest);
+    frame.closeDocument(expDoc, false);
+    return 0;
+}

@@ -3,11 +3,11 @@
 namespace pictura {
 class PicturaMainWindow;
 
-// Runs the Layers-panel smart-object checks. Four entry points rather than one
-// because the checks are interleaved with unrelated Layers-panel checks inside
-// runLayersControlsChecks, and the self-test token order must not change when
-// the blocks move out of that translation unit. Each returns 0 when its check
-// passes, otherwise the self-test failure code.
+// Runs the Layers-panel smart-object checks. Several entry points rather than
+// one because the checks are interleaved with unrelated Layers-panel checks
+// inside runLayersControlsChecks, and the self-test token order must not change
+// when the blocks move out of that translation unit. Each returns 0 when its
+// check passes, otherwise the self-test failure code.
 //
 // lpr_smart_object_convert (277) converts a raster pixel layer into an embedded
 // smart object that keeps its raster proxy, survives save→load, and refuses a
@@ -20,9 +20,13 @@ class PicturaMainWindow;
 // malformed file without a state. lpr_open_as_smart_object (281) opens a
 // written PSD as an untitled document holding exactly one embedded smart-object
 // layer and refuses a malformed file without adding a tab.
+// lpr_export_smart_object_contents (282) writes an embedded smart object's
+// source to a file byte-for-byte without adding history and refuses a non-smart
+// layer.
 int runLayersSmartObjectConvertChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectRasterizeChecks(PicturaMainWindow& frame);
 int runLayersPlaceSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectReplaceChecks(PicturaMainWindow& frame);
 int runLayersOpenSmartObjectChecks(PicturaMainWindow& frame);
+int runLayersExportSmartObjectChecks(PicturaMainWindow& frame);
 } // namespace pictura

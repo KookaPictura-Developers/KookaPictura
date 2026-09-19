@@ -21,7 +21,8 @@ pub use layer_ops::{
     rasterize_all_fill_content, rasterize_fill_content, rasterize_smart_object, rename_path,
     replace_smart_object_contents, resolve_path, resolve_path_mut, select_similar, set_blend_paths,
     set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths, set_visible_paths,
-    ungroup_layer, ungroup_paths, MergeError, MergeOutcome, MergeScope, NewLayerSpec,
+    smart_object_source_bytes, ungroup_layer, ungroup_paths, MergeError, MergeOutcome, MergeScope,
+    NewLayerSpec,
 };
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;

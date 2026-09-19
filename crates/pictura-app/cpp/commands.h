@@ -82,6 +82,7 @@ inline constexpr char LayerRasterizeAllLayers[] = "layer.rasterize.allLayers";
 inline constexpr char LayerRasterizeSmartObject[] = "layer.rasterize.smartObject";
 inline constexpr char LayerSmartObjectConvertTo[] = "layer.smartObject.convertTo";
 inline constexpr char LayerSmartObjectReplaceContents[] = "layer.smartObject.replaceContents";
+inline constexpr char LayerSmartObjectExportContents[] = "layer.smartObject.exportContents";
 inline constexpr char ViewZoomIn[] = "view.zoomIn";
 inline constexpr char ViewZoomOut[] = "view.zoomOut";
 inline constexpr char ViewFitOnScreen[] = "view.fitOnScreen";

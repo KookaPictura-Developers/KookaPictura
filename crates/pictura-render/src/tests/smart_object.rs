@@ -990,3 +990,71 @@ fn open_as_smart_object_builds_one_embedded_layer() {
 fn open_as_smart_object_refuses_malformed_source() {
     assert!(open_as_smart_object("bad", &[0, 1, 2, 3]).is_none());
 }
+
+#[test]
+fn source_bytes_returns_placed_payload_unchanged() {
+    let payload = write_psd(&solid_doc(2, 2, [10, 20, 30])).expect("source writes");
+    let base = solid("Base", full(4, 4), (0, 0, 0), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![base]);
+    let path = place_smart_object(&mut d, "source.psd", &payload).expect("places");
+    let before = d.clone();
+
+    assert_eq!(smart_object_source_bytes(&d, &path), Some(payload));
+    assert_eq!(d, before);
+}
+
+#[test]
+fn source_bytes_refuses_ineligible_targets() {
+    let valid = payload_of([1, 2, 3]);
+
+    let plain = doc(
+        4,
+        4,
+        vec![solid(
+            "Raster",
+            full(4, 4),
+            (1, 2, 3),
+            255,
+            BlendMode::Normal,
+            255,
+        )],
+    );
+    assert_eq!(smart_object_source_bytes(&plain, "0"), None);
+
+    let grouped = doc(
+        4,
+        4,
+        vec![{
+            let mut g = group("G", BlendMode::Normal, 255, None, vec![]);
+            g.smart_object = Some(embedded(valid.clone()));
+            g
+        }],
+    );
+    assert_eq!(smart_object_source_bytes(&grouped, "0"), None);
+
+    let adjustment = doc(
+        4,
+        4,
+        vec![{
+            let mut a = adjustment_layer("Adj", *b"inv ", vec![0], 255, None);
+            a.smart_object = Some(embedded(valid.clone()));
+            a
+        }],
+    );
+    assert_eq!(smart_object_source_bytes(&adjustment, "0"), None);
+
+    let empty = doc(
+        4,
+        4,
+        vec![smart_layer(
+            "smart",
+            full(4, 4),
+            embedded(Vec::new()),
+            Vec::new(),
+        )],
+    );
+    assert_eq!(smart_object_source_bytes(&empty, "0"), None);
+
+    assert_eq!(smart_object_source_bytes(&plain, "99"), None);
+    assert_eq!(smart_object_source_bytes(&plain, "bad"), None);
+}

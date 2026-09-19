@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **736 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **741 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -23,8 +23,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `psd-opaque-preservation`, `psd-smart-object-roundtrip`,
   `smart-object-source-render`, `adjustment-payload-decode`, and
   `psd-rle-write`, `convert-to-smart-object`, `rasterize-smart-object`,
-  `place-smart-object`, `replace-smart-object-contents`, and
-  `open-as-smart-object` changes;
+  `place-smart-object`, `replace-smart-object-contents`,
+  `open-as-smart-object`, and `export-smart-object-contents` changes;
   canonical specs are in `openspec/specs/` (71 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -89,7 +89,10 @@ Snapshot for resuming after a context break. Update after each milestone.
   `selftest_layers_controls.cpp` from the 1200 cap to 1009. `File > Open As Smart
   Object…` (archived `2026-09-19-open-as-smart-object`) opens a PSD/PSB as a new
   untitled document (path `None`, so Save cannot overwrite the source) with one
-  embedded smart-object layer. Deferred: Edit Contents, linked objects.
+  embedded smart-object layer. `Layer > Smart Objects > Export Contents…`
+  (archived `2026-09-19-export-smart-object-contents`) writes the stored payload
+  byte-for-byte to a file and records no history state. Deferred: Edit Contents
+  (needs a cross-document editing session), linked objects.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's

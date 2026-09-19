@@ -140,4 +140,62 @@ impl qobject::PictureView {
             .unwrap_or_default();
         QString::from(state.as_str())
     }
+
+    /// Whether `path` resolves to a layer carrying a non-empty embedded payload.
+    /// Read-only.
+    pub fn layer_can_export_smart_object_contents(&self, path: &QString) -> bool {
+        self.rust().doc.as_ref().is_some_and(|doc| {
+            pictura_render::smart_object_source_bytes(doc, &path.to_string()).is_some()
+        })
+    }
+
+    /// `Export Contents…`: write the embedded source of the smart object at
+    /// `path` to `dest` byte-for-byte. Read-only: records no history state,
+    /// clears no link sets, and does not recomposite. Returns true only when the
+    /// write succeeds.
+    pub fn export_smart_object_contents(&self, path: &QString, dest: &QString) -> bool {
+        let Some(bytes) = self
+            .rust()
+            .doc
+            .as_ref()
+            .and_then(|doc| pictura_render::smart_object_source_bytes(doc, &path.to_string()))
+        else {
+            return false;
+        };
+        write_source_to_path(&dest.to_string(), &bytes)
+    }
+}
+
+/// Write `bytes` to `dest` byte-for-byte, returning true only when the write
+/// succeeds.
+pub(crate) fn write_source_to_path(dest: &str, bytes: &[u8]) -> bool {
+    std::fs::write(dest, bytes).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_source_to_path;
+
+    #[test]
+    fn write_source_to_path_reports_success_and_failure() {
+        let bytes = b"source-payload-bytes";
+        let dest = std::env::temp_dir().join(format!(
+            "kooka-pictura-write-source-{}.bin",
+            std::process::id()
+        ));
+        let dest = dest.to_string_lossy().into_owned();
+        assert!(write_source_to_path(&dest, bytes));
+        assert_eq!(std::fs::read(&dest).expect("read back"), bytes);
+        std::fs::remove_file(&dest).expect("cleanup");
+
+        let bad = std::env::temp_dir()
+            .join(format!(
+                "kooka-pictura-missing-dir-{}/nested/out.bin",
+                std::process::id()
+            ))
+            .to_string_lossy()
+            .into_owned();
+        assert!(!write_source_to_path(&bad, bytes));
+        assert!(!std::path::Path::new(&bad).exists());
+    }
 }
