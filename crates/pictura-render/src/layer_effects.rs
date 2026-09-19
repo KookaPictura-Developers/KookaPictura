@@ -1,8 +1,10 @@
-//! Object-based layer effects: the `lfx2` Drop Shadow and Outer Glow.
+//! Object-based layer effects: the `lfx2` Drop Shadow, Outer Glow and Inner
+//! Shadow.
 //!
 //! A layer's effects live in the `lfx2` additional-layer-information block as a
-//! `DescriptorBlock2`: the top-level `DrSh` object holds the drop shadow and the
-//! `OrGl` object holds the outer glow. This slice decodes and renders both.
+//! `DescriptorBlock2`: the top-level `DrSh` object holds the drop shadow, the
+//! `OrGl` object holds the outer glow, and the `IrSh` object holds the inner
+//! shadow. This slice decodes and renders all three.
 //!
 //! ponytail: the effective angle is the stored `lagl`, not the document
 //! global-light resource (1037), which this crate does not decode; `uglg` is
@@ -18,6 +20,15 @@
 //! dilate of radius `round(spread / 100 * size)` (not Photoshop's spread-then-
 //! blur split), and the exterior is the multiplicative `1 - matte` rather than
 //! Photoshop's exact knock-out equation.
+//!
+//! An inner shadow composites **above** the layer content (interior-only): it is
+//! the offset, choke-eroded and blurred inverted matte multiplied by the content
+//! matte. ponytail: `knocks_out` (`layerConceals`) is decoded but inert — the
+//! confinement is unconditional; the interior effect blends against the
+//! layer-over-backdrop result rather than an isolated content buffer, so
+//! `Blend Interior Effects As Group` is not modelled; contour (`TrnS`), noise
+//! (`Nose`) and anti-alias (`AntA`) are ignored; and the effective angle is the
+//! stored `lagl`, not the global-light resource.
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
@@ -29,6 +40,7 @@ use crate::composite::{blend_parts, channel, desc_item, mask_alpha, Canvas};
 const MAX_OPACITY: f32 = 100.0;
 const MAX_DISTANCE: f32 = 30_000.0;
 const MAX_SPREAD: f32 = 100.0;
+const MAX_CHOKE: f32 = 100.0;
 const MAX_SIZE: f32 = 250.0;
 
 /// The typed drop shadow decoded from a layer's `lfx2` block.
@@ -76,6 +88,28 @@ pub struct OuterGlow {
     /// Pixels, Gaussian radius, `0..=250`.
     pub size: f32,
     pub technique: GlowTechnique,
+}
+
+/// The typed inner shadow decoded from a layer's `lfx2` block.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InnerShadow {
+    pub enabled: bool,
+    pub present: bool,
+    pub blend_mode: BlendMode,
+    pub color: [u8; 3],
+    /// Percent, `0..=100`.
+    pub opacity: f32,
+    /// The stored local angle in degrees (`lagl`).
+    pub angle_deg: f32,
+    /// Pixels, `0..=30000`.
+    pub distance: f32,
+    /// Percent, `0..=100` (`Ckmt`, Photoshop's stored key for Choke, an erode).
+    pub choke: f32,
+    /// Pixels, Gaussian radius, `0..=250`.
+    pub size: f32,
+    pub use_global_angle: bool,
+    /// `layerConceals`, decoded for symmetry with `DropShadow`; no render effect.
+    pub knocks_out: bool,
 }
 
 /// Decode a layer's `lfx2` Outer Glow.
@@ -177,6 +211,50 @@ pub fn decode_drop_shadow(layer: &Layer) -> Option<DropShadow> {
     })
 }
 
+/// Decode a layer's `lfx2` Inner Shadow.
+///
+/// A missing `lfx2`, a missing or wrongly-typed `IrSh`, an unknown data version,
+/// a wrong-typed or non-finite value, or a parse error is `None`. Never panics.
+pub fn decode_inner_shadow(layer: &Layer) -> Option<InnerShadow> {
+    let data = &layer.extra_block(b"lfx2")?.data;
+    let body = data.get(4..)?;
+    let obj = pictura_codec::read_descriptor(body).ok()?;
+    let irsh = desc_item(&obj, b"IrSh")?;
+    let DescValue::Object { class_id, .. } = irsh else {
+        return None;
+    };
+    if class_id.as_slice() != b"IrSh" {
+        return None;
+    }
+    let blend_mode = match desc_item(irsh, b"Md  ") {
+        None => BlendMode::Multiply,
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
+            .as_slice()
+            .try_into()
+            .ok()
+            .and_then(BlendMode::from_psd_key)
+            .unwrap_or(BlendMode::Multiply),
+        Some(_) => return None,
+    };
+    let color = match desc_item(irsh, b"Clr ") {
+        None => [0, 0, 0],
+        Some(value) => decode_color(value)?,
+    };
+    Some(InnerShadow {
+        enabled: bool_or(irsh, b"enab", false)?,
+        present: bool_or(irsh, b"present", false)?,
+        blend_mode,
+        color,
+        opacity: num_clamped(irsh, b"Opct", 75.0, 0.0, MAX_OPACITY)?,
+        angle_deg: num_or(irsh, b"lagl", 120.0)?,
+        distance: num_clamped(irsh, b"Dstn", 5.0, 0.0, MAX_DISTANCE)?,
+        choke: num_clamped(irsh, b"Ckmt", 0.0, 0.0, MAX_CHOKE)?,
+        size: num_clamped(irsh, b"blur", 5.0, 0.0, MAX_SIZE)?,
+        use_global_angle: bool_or(irsh, b"uglg", true)?,
+        knocks_out: bool_or(irsh, b"layerConceals", true)?,
+    })
+}
+
 /// Read a numeric key as `f32`. A value that is non-finite as an `f64`, or
 /// finite as an `f64` but overflows to infinity as an `f32`, is rejected.
 fn num_or(obj: &DescValue, key: &[u8], default: f32) -> Option<f32> {
@@ -246,6 +324,20 @@ pub(crate) fn composite_layer_effects(canvas: &mut Canvas, layer: &Layer, doc: &
     if let Some(glow) = decode_outer_glow(layer) {
         if glow.enabled && glow.present {
             composite_outer_glow(canvas, layer, doc, &glow);
+        }
+    }
+}
+
+/// Composite a layer's enabled, present inner shadow into the running canvas
+/// **after** the layer's own content. Groups and destructive adjustment layers
+/// are skipped, matching the below-content pass.
+pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
+    if layer.is_group || is_destructive_adjustment(layer) {
+        return;
+    }
+    if let Some(shadow) = decode_inner_shadow(layer) {
+        if shadow.enabled && shadow.present {
+            composite_inner_shadow(canvas, layer, doc, &shadow);
         }
     }
 }
@@ -432,6 +524,107 @@ fn composite_outer_glow(canvas: &mut Canvas, layer: &Layer, doc: &Document, glow
     }
 }
 
+/// Build the masked content matte `M` over the padded source region, form the
+/// inverted matte `1 - M`, erode it by the choke radius, blur it by the size,
+/// then composite `M · blurred(x - dx, y - dy) · opacity` above the content over
+/// `source` only (a sample outside the built region is the exterior value `1`).
+///
+/// ponytail: a canvas-filling layer with the maximum `size` still costs
+/// O(canvas · size) because the blur is a naive separable kernel; the common
+/// small-layer and crafted off-canvas cases are bounded. The choke maps to a
+/// min-filter erode of radius `round(choke / 100 · size)`.
+fn composite_inner_shadow(
+    canvas: &mut Canvas,
+    layer: &Layer,
+    doc: &Document,
+    shadow: &InnerShadow,
+) {
+    let (w, h) = (canvas.w as i32, canvas.h as i32);
+    if w == 0 || h == 0 {
+        return;
+    }
+    let source = clip_rect(layer, w, h);
+    if rect_empty(source) {
+        return;
+    }
+    // Clamp again: a hand-built `InnerShadow` may not have gone through decode.
+    let distance = clamp_finite(shadow.distance, MAX_DISTANCE) as f64;
+    let angle = if shadow.angle_deg.is_finite() {
+        shadow.angle_deg as f64
+    } else {
+        0.0
+    };
+    let theta = angle.to_radians();
+    let dx = -distance * theta.cos();
+    let dy = distance * theta.sin();
+    let choke = clamp_finite(shadow.choke, MAX_CHOKE) as f64;
+    let size = clamp_finite(shadow.size, MAX_SIZE) as f64;
+    let erode_radius = (choke / 100.0 * size).round() as i64;
+    let blur_support = if size > 0.0 {
+        (3.0 * pictura_filters::kernel::sigma_from_radius(size)).ceil() as i64
+    } else {
+        0
+    };
+    // Content can only be non-zero inside `source`; erode and blur spread the
+    // inverted matte by at most `reach`, so it is built over `padded` only.
+    let padded = pad_rect(source, erode_radius + blur_support, w, h);
+    if rect_empty(padded) {
+        return;
+    }
+    let (px0, py0, px1, py1) = padded;
+    let pw = (px1 - px0) as usize;
+    let ph = (py1 - py0) as usize;
+    let mut matte = content_matte(layer, doc, padded);
+    for y in py0..py1 {
+        for x in px0..px1 {
+            matte[(y - py0) as usize * pw + (x - px0) as usize] *=
+                mask_alpha(layer, x, y) as f32 / 255.0;
+        }
+    }
+    if matte.iter().all(|&v| v <= 0.0) {
+        return;
+    }
+    let inverted: Vec<f32> = matte.iter().map(|&m| 1.0 - m).collect();
+    let eroded = if erode_radius > 0 {
+        erode_matte(&inverted, pw, ph, erode_radius)
+    } else {
+        inverted
+    };
+    let blurred = blur_matte(&eroded, pw, ph, size);
+    let color = [
+        shadow.color[0] as f32 / 255.0,
+        shadow.color[1] as f32 / 255.0,
+        shadow.color[2] as f32 / 255.0,
+    ];
+    let opacity = clamp_finite(shadow.opacity, MAX_OPACITY) / 100.0;
+    let ox = dx.round() as i64;
+    let oy = dy.round() as i64;
+    for y in source.1..source.3 {
+        for x in source.0..source.2 {
+            let sx = x as i64 - ox - px0 as i64;
+            let sy = y as i64 - oy - py0 as i64;
+            let b = if sx >= 0 && sy >= 0 && sx < pw as i64 && sy < ph as i64 {
+                blurred[sy as usize * pw + sx as usize]
+            } else {
+                // Beyond the built region there is no content, so `1 - M = 1`.
+                1.0
+            };
+            let m = matte[(y - py0) as usize * pw + (x - px0) as usize];
+            let alpha = m * b * opacity;
+            if alpha > 0.0 {
+                blend_parts(
+                    canvas,
+                    x as usize,
+                    y as usize,
+                    color,
+                    alpha,
+                    shadow.blend_mode,
+                );
+            }
+        }
+    }
+}
+
 /// A non-negative, finite value no greater than `max` (`0.0` when non-finite).
 fn clamp_finite(value: f32, max: f32) -> f32 {
     if value.is_finite() {
@@ -544,6 +737,43 @@ fn axis_max(src: &[f32], w: usize, h: usize, r: i64, horizontal: bool) -> Vec<f3
                 let mut v = f32::NEG_INFINITY;
                 for k in lo..=hi {
                     v = v.max(src[k * w + x]);
+                }
+                out[y as usize * w + x] = v;
+            }
+        }
+    }
+    out
+}
+
+/// Grayscale erosion (min filter) of radius `r`, separable over the box window.
+/// Choke shrinks the inverted matte before the blur, narrowing the shadow.
+fn erode_matte(src: &[f32], w: usize, h: usize, r: i64) -> Vec<f32> {
+    let horizontal = axis_min(src, w, h, r, true);
+    axis_min(&horizontal, w, h, r, false)
+}
+
+fn axis_min(src: &[f32], w: usize, h: usize, r: i64, horizontal: bool) -> Vec<f32> {
+    let mut out = vec![0.0f32; src.len()];
+    if horizontal {
+        for y in 0..h {
+            for x in 0..w as i64 {
+                let lo = (x - r).max(0) as usize;
+                let hi = (x + r).min(w as i64 - 1) as usize;
+                let mut v = f32::INFINITY;
+                for k in lo..=hi {
+                    v = v.min(src[y * w + k]);
+                }
+                out[y * w + x as usize] = v;
+            }
+        }
+    } else {
+        for x in 0..w {
+            for y in 0..h as i64 {
+                let lo = (y - r).max(0) as usize;
+                let hi = (y + r).min(h as i64 - 1) as usize;
+                let mut v = f32::INFINITY;
+                for k in lo..=hi {
+                    v = v.min(src[k * w + x]);
                 }
                 out[y as usize * w + x] = v;
             }
