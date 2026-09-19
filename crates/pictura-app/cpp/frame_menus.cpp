@@ -689,6 +689,28 @@ void PicturaMainWindow::registerHandlers()
                                       return !currentExportableSmartPath().isEmpty();
                                   });
 
+    // Edit Contents needs the current layer to be an embedded PSD/PSB source,
+    // so it can open as an ordinary document in an untitled editor tab.
+    const auto currentEditableSmartPath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty() || !view->layer_can_edit_smart_object_contents(path)) {
+            return QString();
+        }
+        return path;
+    };
+    registry_->setHandler(command_ids::LayerSmartObjectEditContents,
+                          [this, currentEditableSmartPath]() {
+                              const QString path = currentEditableSmartPath();
+                              if (!path.isEmpty() && editSmartObjectContents(path)) {
+                                  refresh();
+                              }
+                          });
+    registry_->setEnabledProvider(command_ids::LayerSmartObjectEditContents,
+                                  [currentEditableSmartPath]() {
+                                      return !currentEditableSmartPath().isEmpty();
+                                  });
+
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {
             canvas->zoomIn();

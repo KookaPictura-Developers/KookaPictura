@@ -1008,6 +1008,10 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
 
         if (const int lso = pictura::runLayersExportSmartObjectChecks(frame); lso != 0) { return lso; }
 
+        if (const int lso = pictura::runLayersEditSmartObjectChecks(frame); lso != 0) { return lso; }
+
+        if (const int lso = pictura::runLayersEditSmartObjectSessionChecks(frame); lso != 0) { return lso; }
+
         if (const int sts = pictura::runToolsSelectionChecks(frame); sts != 0) { return sts; }
 
         // lpr_photo_filter (283): a photo-filter adjustment layer is reported

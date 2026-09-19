@@ -637,6 +637,23 @@ pub mod qobject {
             file_path: &QString,
         ) -> bool;
 
+        /// `Edit Contents`: apply the edited `file_path` as the embedded source
+        /// of the smart object at `path`, sharing `replace_smart_object_contents`'s
+        /// engine path. Records one "Edit Contents" state on success; false (no
+        /// state) on the same refusals.
+        #[qinvokable]
+        fn commit_smart_object_edit(
+            self: Pin<&mut Self>,
+            path: &QString,
+            file_path: &QString,
+        ) -> bool;
+
+        /// Whether `path` resolves to a smart-object layer whose embedded
+        /// payload parses as a PSD/PSB document, i.e. it can be opened as an
+        /// in-app editor. Read-only; mutates nothing.
+        #[qinvokable]
+        fn layer_can_edit_smart_object_contents(&self, path: &QString) -> bool;
+
         /// Self-test probe: `<kind>:<payload-len>` for `path`'s smart object,
         /// or empty when the layer has none. Read-only.
         #[qinvokable]

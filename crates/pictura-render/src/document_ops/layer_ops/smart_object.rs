@@ -108,6 +108,19 @@ pub fn smart_object_source_bytes(doc: &Document, path: &str) -> Option<Vec<u8>> 
     })
 }
 
+/// Whether `path` resolves to a smart-object layer whose embedded payload
+/// parses as a PSD/PSB document, i.e. it can be opened as an in-app editor.
+///
+/// Pure read: never mutates the document. Requires the same eligible shape as
+/// [`can_replace_smart_object_contents`] (non-group, non-adjustment, `Embedded`,
+/// non-empty payload); a non-`Embedded` object, or a non-empty payload that is
+/// not a parseable PSD/PSB (a placed JPEG), returns `false`.
+pub fn can_edit_smart_object_contents(doc: &Document, path: &str) -> bool {
+    can_replace_smart_object_contents(doc, path)
+        && smart_object_source_bytes(doc, path)
+            .is_some_and(|bytes| pictura_codec::read_psd(&bytes).is_ok())
+}
+
 /// Replace the embedded source of the smart-object layer at `path`.
 ///
 /// Returns `false` without mutating the document when the target is ineligible

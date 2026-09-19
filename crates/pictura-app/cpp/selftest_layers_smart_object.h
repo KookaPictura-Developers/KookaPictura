@@ -22,11 +22,19 @@ class PicturaMainWindow;
 // layer and refuses a malformed file without adding a tab.
 // lpr_export_smart_object_contents (282) writes an embedded smart object's
 // source to a file byte-for-byte without adding history and refuses a non-smart
-// layer.
+// layer. lpr_edit_smart_object_contents (288) opens an editable source as a new
+// untitled editor tab, commits the edited source in one "Edit Contents" state on
+// Save, leaves a discarded editor's origin unchanged, and refuses a non-smart
+// layer without adding a tab. lpr_edit_smart_object_session (289) closes an
+// editor and checks its session temp file is gone, then closes the origin and
+// checks the orphaned editor stays open as an untitled tab with its session
+// temp dropped.
 int runLayersSmartObjectConvertChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectRasterizeChecks(PicturaMainWindow& frame);
 int runLayersPlaceSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectReplaceChecks(PicturaMainWindow& frame);
 int runLayersOpenSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersExportSmartObjectChecks(PicturaMainWindow& frame);
+int runLayersEditSmartObjectChecks(PicturaMainWindow& frame);
+int runLayersEditSmartObjectSessionChecks(PicturaMainWindow& frame);
 } // namespace pictura

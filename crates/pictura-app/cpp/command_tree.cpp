@@ -376,7 +376,9 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QStringLiteral("Convert to Smart Object"), QKeySequence(), true);
     leaf(registry, {"Layer", "Smart Objects", "New Smart Object via Copy"},
          QStringLiteral("New Smart Object via Copy"));
-    leaf(registry, {"Layer", "Smart Objects", "Edit Contents"}, QStringLiteral("Edit Contents"));
+    registry.add(command_ids::LayerSmartObjectEditContents,
+                 {"Layer", "Smart Objects", "Edit Contents"},
+                 QStringLiteral("Edit Contents"), QKeySequence(), true);
     registry.add(command_ids::LayerSmartObjectExportContents,
                  {"Layer", "Smart Objects", "Export Contents…"},
                  QStringLiteral("Export Contents…"), QKeySequence(), true);

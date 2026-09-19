@@ -342,3 +342,154 @@ int pictura::runLayersExportSmartObjectChecks(pictura::PicturaMainWindow& frame)
     frame.closeDocument(expDoc, false);
     return 0;
 }
+
+int pictura::runLayersEditSmartObjectChecks(pictura::PicturaMainWindow& frame)
+{
+    // lpr_edit_smart_object_contents (288): Edit Contents opens an editable
+    // smart object's source as a new untitled editor tab without touching the
+    // origin; saving that tab commits the edited source in exactly one
+    // "Edit Contents" history state and leaves the editor open and clean;
+    // discarding a second editor leaves the origin unchanged; a non-editable
+    // target refuses and adds no tab.
+    const bool editCreated = frame.newDocument(QStringLiteral("EditSmartCtl"), 4, 4,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+    pictura::PictureView* editView = frame.activeView();
+    if (!editCreated || !editView) {
+        return pictura::selfTest().fail(288, "edit smart object fixture");
+    }
+    const int editOriginDoc = frame.activeDocumentIndex();
+    const QString editPath = editView->add_solid_fill(0xff2244aau);
+    editView->rasterize_fill_content(editPath);
+    const bool editConverted = editView->convert_to_smart_object(editPath);
+    const bool editCan = editView->layer_can_edit_smart_object_contents(editPath);
+    const int editOriginHistory = editView->history_count();
+    const unsigned int editOriginPixel = editView->sample_argb(0, 0);
+    const int editDocsBase = frame.documentCount();
+
+    const bool editOpened = frame.editSmartObjectContents(editPath);
+    pictura::PictureView* editEditor = frame.activeView();
+    const bool editAdded = editOpened && frame.documentCount() == editDocsBase + 1
+        && editEditor && editEditor != editView;
+    const bool editUntitled = editEditor && frame.documentPath(editDocsBase).isEmpty();
+    const bool editDecoded = editEditor && editEditor->has_document()
+        && editEditor->layer_row_count() == 1
+        && editEditor->layer_smart_object_state(QStringLiteral("0")).isEmpty();
+    const bool editOriginUntouched = editView->history_count() == editOriginHistory
+        && editView->sample_argb(0, 0) == editOriginPixel;
+
+    const QString editFill = editEditor ? editEditor->add_solid_fill(0xff22cc44u) : QString();
+    const bool editModified = editEditor && !editFill.isEmpty()
+        && editEditor->rasterize_fill_content(editFill);
+    const bool editSaved = frame.saveActive();
+    const unsigned int editCommitPixel = editView->sample_argb(0, 0);
+    const bool editCommitted = editCommitPixel == 0xff22cc44u;
+    const bool editOneState = editView->history_count() == editOriginHistory + 1;
+    const bool editLabel = editView->history_label(editOriginHistory)
+        == QStringLiteral("Edit Contents");
+    const bool editClean = editEditor && !editEditor->is_dirty();
+    const bool editStillOpen = frame.documentCount() == editDocsBase + 1;
+
+    frame.setActiveDocumentIndex(editOriginDoc);
+    const int editHistoryAfterSave = editView->history_count();
+    const unsigned int editPixelAfterSave = editView->sample_argb(0, 0);
+    const bool editOpened2 = frame.editSmartObjectContents(editPath);
+    pictura::PictureView* editEditor2 = frame.activeView();
+    if (editOpened2 && editEditor2) {
+        const QString editFill2 = editEditor2->add_solid_fill(0xff000000u);
+        editEditor2->rasterize_fill_content(editFill2);
+    }
+    const bool editDiscarded = frame.closeDocument(frame.activeDocumentIndex(), false);
+    const bool editDiscardNoop = editView->history_count() == editHistoryAfterSave
+        && editView->sample_argb(0, 0) == editPixelAfterSave;
+
+    frame.setActiveDocumentIndex(editOriginDoc);
+    const QString editPlain = editView->add_solid_fill(0xffffffffu);
+    const bool editPlainCan = !editView->layer_can_edit_smart_object_contents(editPlain);
+    const int editRefuseDocs = frame.documentCount();
+    const bool editRefused = !frame.editSmartObjectContents(editPlain);
+    const bool editNoTab = frame.documentCount() == editRefuseDocs;
+
+    const bool editOk = editConverted && editCan && editOpened && editAdded && editUntitled
+        && editDecoded && editOriginUntouched && editModified && editSaved && editCommitted
+        && editOneState && editLabel && editClean && editStillOpen && editDiscarded
+        && editDiscardNoop && editPlainCan && editRefused && editNoTab;
+    ST_BEGIN("lpr_edit_smart_object_contents");
+    ST_PASS("lpr_edit_smart_object_contents can=%d open=%d added=%d untitled=%d decoded=%d "
+            "origin=%d saved=%d pixel=%08x state=%d label=%s clean=%d discard=%d plain=%d "
+            "refuse=%d notab=%d",
+            editCan ? 1 : 0, editOpened ? 1 : 0, editAdded ? 1 : 0, editUntitled ? 1 : 0,
+            editDecoded ? 1 : 0, editOriginUntouched ? 1 : 0, editSaved ? 1 : 0,
+            editCommitPixel, editOneState ? 1 : 0,
+            qPrintable(editView->history_label(editOriginHistory)), editClean ? 1 : 0,
+            editDiscardNoop ? 1 : 0, editPlainCan ? 1 : 0, editRefused ? 1 : 0,
+            editNoTab ? 1 : 0);
+    if (!editOk) {
+        return pictura::selfTest().fail(288, "edit smart object contents");
+    }
+    frame.closeDocument(editDocsBase, false);
+    frame.closeDocument(editOriginDoc, false);
+    return 0;
+}
+
+int pictura::runLayersEditSmartObjectSessionChecks(pictura::PicturaMainWindow& frame)
+{
+    // lpr_edit_smart_object_session (289): closing an Edit Contents editor
+    // removes its session and temporary file; closing the origin first drops the
+    // session temp and leaves the orphaned editor open as an untitled tab.
+    const bool sesCreated = frame.newDocument(QStringLiteral("EditSessionCtl"), 4, 4,
+                                              QStringLiteral("rgb"), 8,
+                                              QStringLiteral("white"));
+    pictura::PictureView* sesOrigin = frame.activeView();
+    if (!sesCreated || !sesOrigin) {
+        return pictura::selfTest().fail(289, "edit session fixture");
+    }
+    const int sesOriginDoc = frame.activeDocumentIndex();
+    const QString sesPath = sesOrigin->add_solid_fill(0xff2244aau);
+    sesOrigin->rasterize_fill_content(sesPath);
+    const bool sesConverted = sesOrigin->convert_to_smart_object(sesPath);
+
+    // Closing the editor drops its session and temp file.
+    const int sesDocs = frame.documentCount();
+    const bool sesOpened = frame.editSmartObjectContents(sesPath);
+    pictura::PictureView* sesEditor = frame.activeView();
+    const int sesEditorDoc = frame.activeDocumentIndex();
+    const QString sesTemp = sesEditor ? sesEditor->file_path() : QString();
+    const bool sesTempLive = !sesTemp.isEmpty() && QFile::exists(sesTemp);
+    const bool sesClosed = frame.closeDocument(sesEditorDoc, false);
+    const bool sesTempGone = !sesTemp.isEmpty() && !QFile::exists(sesTemp);
+    const bool sesDocsBack = frame.documentCount() == sesDocs;
+
+    // Closing the origin drops the session temp and orphans the editor as an
+    // untitled tab with an empty document path.
+    const bool sesOpened2 = frame.editSmartObjectContents(sesPath);
+    pictura::PictureView* sesOrphan = frame.activeView();
+    const QString sesOrphanTemp = sesOrphan ? sesOrphan->file_path() : QString();
+    const bool sesOrphanUntitled =
+        sesOrphan && frame.documentPath(frame.activeDocumentIndex()).isEmpty();
+    const bool sesOrphanTempLive = !sesOrphanTemp.isEmpty() && QFile::exists(sesOrphanTemp);
+    frame.setActiveDocumentIndex(sesOriginDoc);
+    const bool sesOriginClosed = frame.closeDocument(sesOriginDoc, false);
+    const int sesOrphanDoc = sesDocs - 1;
+    const bool sesOrphanKept = frame.documentCount() == sesDocs
+        && frame.viewAt(sesOrphanDoc) == sesOrphan
+        && frame.documentPath(sesOrphanDoc).isEmpty();
+    const bool sesOrphanTempGone = !sesOrphanTemp.isEmpty() && !QFile::exists(sesOrphanTemp);
+    const bool sesOrphanClosed = frame.closeDocument(sesOrphanDoc, false);
+
+    const bool sesOk = sesConverted && sesOpened && sesTempLive && sesClosed && sesTempGone
+        && sesDocsBack && sesOpened2 && sesOrphanUntitled && sesOrphanTempLive
+        && sesOriginClosed && sesOrphanKept && sesOrphanTempGone && sesOrphanClosed;
+    ST_BEGIN("lpr_edit_smart_object_session");
+    ST_PASS("lpr_edit_smart_object_session convert=%d open=%d temp=%d closed=%d tempgone=%d "
+            "docsback=%d open2=%d untitled=%d originclosed=%d kept=%d orphantempgone=%d "
+            "closed2=%d",
+            sesConverted ? 1 : 0, sesOpened ? 1 : 0, sesTempLive ? 1 : 0, sesClosed ? 1 : 0,
+            sesTempGone ? 1 : 0, sesDocsBack ? 1 : 0, sesOpened2 ? 1 : 0,
+            sesOrphanUntitled ? 1 : 0, sesOriginClosed ? 1 : 0, sesOrphanKept ? 1 : 0,
+            sesOrphanTempGone ? 1 : 0, sesOrphanClosed ? 1 : 0);
+    if (!sesOk) {
+        return pictura::selfTest().fail(289, "edit smart object session");
+    }
+    return 0;
+}
