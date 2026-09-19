@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **891 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **917 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -28,9 +28,10 @@ Snapshot for resuming after a context break. Update after each milestone.
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
   `solid-color-fill-descriptor`, `gradient-fill-layer`,
   `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
-   `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
-   `pattern-fill-layer`, and `layer-effects-drop-shadow` changes;
-   canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
+    `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
+    `pattern-fill-layer`, `layer-effects-drop-shadow`, and
+    `layer-effects-outer-glow` changes;
+    canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is under way:
    `layer-effects-drop-shadow` ships Drop Shadow, and the other effect kinds are
@@ -288,6 +289,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   change also did a pure move: the blend-mode math moved out of `composite.rs`
   into `blend.rs` and the source-over blend was factored into a `blend_parts`
   helper (behaviour unchanged), keeping `composite.rs` under the cap.
+- Layer effects — Outer Glow (roadmap P3/G6, archived
+  `2026-09-19-layer-effects-outer-glow`): the object-based `lfx2` **Outer Glow**
+  (`OrGl`) is now decoded and composited — exterior matte (`1 − matte`),
+  `Spread` (`Ckmt`) dilate then Gaussian `Size`, colour/opacity/blend (default
+  Screen, `#FFFFBE`, opacity 75, size 5, Softer), composited behind the content
+  through the same bbox/early-out pipeline as Drop Shadow; the GPU rejects an
+  enabled+present glow (`UnsupportedLayerEffect`) and falls back to CPU; a
+  psd-tools-authored `outer_glow.psd` fixture proves decode/round-trip/render.
+  Ceilings: `Precise` technique renders as `Softer`; range/contour/noise/jitter/
+  anti-alias/gradient-mode glows and a GPU shader are deferred; the global-light
+  resource is still not decoded.
 
 ## Commands
 
