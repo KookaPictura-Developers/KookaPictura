@@ -2,13 +2,23 @@
 #include "selftest_report.h"
 
 #include "frame.h"
+#include "image_view.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QMimeData>
+#include <QtCore/QUrl>
 #include <QtGui/QColor>
+#include <QtGui/QDragEnterEvent>
+#include <QtGui/QDropEvent>
 #include <QtGui/QImage>
+#include <QtWidgets/QMenuBar>
+#include <QtWidgets/QTabBar>
+#include <QtWidgets/QTabWidget>
+#include <QtWidgets/QToolBar>
 
 int pictura::runLayersSmartObjectConvertChecks(pictura::PicturaMainWindow& frame)
 {
@@ -610,5 +620,211 @@ int pictura::runImageImportChecks(pictura::PicturaMainWindow& frame)
     QFile::remove(badPath);
     QFile::remove(bigPath);
     frame.closeDocument(frame.activeDocumentIndex(), false);
+    return 0;
+}
+
+namespace {
+
+struct DropResult {
+    bool enter = false;
+    bool drop = false;
+};
+
+// Send a synthesized DragEnter/Drop pair to `target`. The router is installed as
+// an event filter, so a direct send runs it without a platform drag.
+DropResult sendDrop(QWidget* target, QMimeData& mime)
+{
+    const QPointF pos(4, 4);
+    QDragEnterEvent enter(pos.toPoint(), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &enter);
+    QDropEvent drop(pos, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &drop);
+    return DropResult{enter.isAccepted(), drop.isAccepted()};
+}
+
+} // namespace
+
+int pictura::runFileDropChecks(pictura::PicturaMainWindow& frame)
+{
+    // lpr_file_drop (291): a file drag on a document canvas places one topmost
+    // object per file with one "Place" state each; the same drag on the tab
+    // strip, menu bar, or options bar opens one tab per file; a URL-less or
+    // all-directory drag is never consumed and a regular but undecodable file
+    // changes nothing; with no document open the document area opens tabs.
+    const QString pngA = QDir::tempPath() + QStringLiteral("/kooka-pictura-drop-a.png");
+    const QString pngB = QDir::tempPath() + QStringLiteral("/kooka-pictura-drop-b.png");
+    const QString badPath = QDir::tempPath() + QStringLiteral("/kooka-pictura-drop-bad.png");
+    const QString psdPath = QDir::tempPath() + QStringLiteral("/kooka-pictura-drop.psd");
+    const QString psdExport =
+        QDir::tempPath() + QStringLiteral("/kooka-pictura-drop-export.psd");
+    QImage dropA(2, 2, QImage::Format_RGBA8888);
+    dropA.fill(QColor(255, 0, 0, 255));
+    QImage dropB(2, 2, QImage::Format_RGBA8888);
+    dropB.fill(QColor(0, 0, 255, 255));
+    const bool saved = dropA.save(pngA, "PNG") && dropB.save(pngB, "PNG");
+    QFile badFile(badPath);
+    if (badFile.open(QIODevice::WriteOnly)) {
+        badFile.write("not an image");
+    }
+    badFile.close();
+    if (!saved) {
+        return pictura::selfTest().fail(291, "file drop fixture");
+    }
+
+    // A small native PSD fixture: both routes must send it to the native
+    // place_smart_object/openPath branch, not the Qt image edge.
+    const bool psdSrcCreated = frame.newDocument(QStringLiteral("FileDropPsdSrc"), 2, 2,
+                                                 QStringLiteral("rgb"), 8,
+                                                 QStringLiteral("white"));
+    pictura::PictureView* psdSrcView = frame.activeView();
+    if (!psdSrcCreated || !psdSrcView) {
+        return pictura::selfTest().fail(291, "file drop psd fixture");
+    }
+    psdSrcView->rasterize_fill_content(psdSrcView->add_solid_fill(0xff3366ccu));
+    const bool psdSaved = frame.saveActiveAs(psdPath);
+    frame.closeDocument(frame.activeDocumentIndex(), false);
+    QFile psdFile(psdPath);
+    const bool psdRead = psdFile.open(QIODevice::ReadOnly);
+    const QByteArray psdBytes = psdRead ? psdFile.readAll() : QByteArray();
+    psdFile.close();
+    if (!psdSaved || psdBytes.isEmpty()) {
+        return pictura::selfTest().fail(291, "file drop psd fixture");
+    }
+
+    const bool placeCreated = frame.newDocument(QStringLiteral("FileDropPlace"), 4, 4,
+                                                QStringLiteral("rgb"), 8,
+                                                QStringLiteral("white"));
+    pictura::PictureView* placeView = frame.activeView();
+    pictura::ImageView* placeCanvas = frame.imageView();
+    if (!placeCreated || !placeView || !placeCanvas) {
+        return pictura::selfTest().fail(291, "file drop canvas fixture");
+    }
+    const int placeRows = placeView->layer_row_count();
+    const int placeBase = placeView->history_count();
+    QMimeData placeMime;
+    placeMime.setUrls({QUrl::fromLocalFile(pngA), QUrl::fromLocalFile(pngB)});
+    const DropResult place = sendDrop(placeCanvas, placeMime);
+    const QString placeTop = placeView->layer_row_path(0);
+    const QString placeNext = placeView->layer_row_count() > 1 ? placeView->layer_row_path(1)
+                                                               : QString();
+    const bool placed = place.enter && place.drop
+        && placeView->layer_row_count() == placeRows + 2
+        && placeView->history_count() == placeBase + 2
+        && placeView->history_label(placeBase) == QStringLiteral("Place")
+        && placeView->history_label(placeBase + 1) == QStringLiteral("Place")
+        && !placeNext.isEmpty()
+        && placeView->layer_smart_object_state(placeTop).startsWith(QStringLiteral("embedded:"))
+        && placeView->layer_smart_object_state(placeNext).startsWith(QStringLiteral("embedded:"));
+
+    // One supported file plus one undecodable file: the good file places, the bad
+    // file records nothing and leaves the rest of the document untouched.
+    const int mixedRows = placeView->layer_row_count();
+    const int mixedBase = placeView->history_count();
+    QMimeData mixedMime;
+    mixedMime.setUrls({QUrl::fromLocalFile(pngA), QUrl::fromLocalFile(badPath)});
+    const DropResult mixed = sendDrop(placeCanvas, mixedMime);
+    const bool mixedPlaced = mixed.enter && mixed.drop
+        && placeView->layer_row_count() == mixedRows + 1
+        && placeView->history_count() == mixedBase + 1
+        && placeView->history_label(mixedBase) == QStringLiteral("Place");
+
+    // A PSD on the canvas stays native: place_smart_object embeds the original
+    // file bytes verbatim, so the exported payload must equal the source file.
+    const int psdRows = placeView->layer_row_count();
+    const int psdBase = placeView->history_count();
+    QMimeData psdMime;
+    psdMime.setUrls({QUrl::fromLocalFile(psdPath)});
+    const DropResult psdPlace = sendDrop(placeCanvas, psdMime);
+    const QString psdLayer = psdPlace.drop ? placeView->layer_row_path(0) : QString();
+    const bool psdPlaced = psdPlace.enter && psdPlace.drop && !psdLayer.isEmpty()
+        && placeView->layer_row_count() == psdRows + 1
+        && placeView->history_count() == psdBase + 1
+        && placeView->history_label(psdBase) == QStringLiteral("Place")
+        && placeView->layer_smart_object_state(psdLayer).startsWith(QStringLiteral("embedded:"));
+    const bool psdExported = psdPlaced
+        && placeView->export_smart_object_contents(psdLayer, psdExport);
+    QFile psdExportFile(psdExport);
+    const bool psdExportRead = psdExportFile.open(QIODevice::ReadOnly);
+    const QByteArray psdPayload = psdExportRead ? psdExportFile.readAll() : QByteArray();
+    psdExportFile.close();
+    const bool psdNative = psdExported && psdPayload == psdBytes;
+
+    auto* bar = frame.findChild<QTabBar*>(QStringLiteral("documentTabBar"));
+    auto* optionsBar = frame.findChild<QToolBar*>(QStringLiteral("optionsBar"));
+    const int openBase = frame.documentCount();
+    QMimeData barMime;
+    barMime.setUrls({QUrl::fromLocalFile(pngA), QUrl::fromLocalFile(pngB)});
+    QMimeData menuMime;
+    menuMime.setUrls({QUrl::fromLocalFile(pngB)});
+    QMimeData optionsMime;
+    optionsMime.setUrls({QUrl::fromLocalFile(pngA)});
+    const DropResult barDrop = bar ? sendDrop(bar, barMime) : DropResult{};
+    const DropResult menuDrop = sendDrop(frame.menuBar(), menuMime);
+    const DropResult optionsDrop = optionsBar ? sendDrop(optionsBar, optionsMime) : DropResult{};
+    const bool opened = bar && optionsBar && barDrop.enter && barDrop.drop && menuDrop.enter
+        && menuDrop.drop && optionsDrop.enter && optionsDrop.drop
+        && frame.documentCount() == openBase + 4;
+
+    // A PSD on the tab strip stays native: openPath keeps the file path on the
+    // tab, while the Qt image edge would leave it untitled.
+    const int psdOpenBase = frame.documentCount();
+    QMimeData psdBarMime;
+    psdBarMime.setUrls({QUrl::fromLocalFile(psdPath)});
+    const DropResult psdBarDrop = bar ? sendDrop(bar, psdBarMime) : DropResult{};
+    const bool psdOpened = bar && psdBarDrop.enter && psdBarDrop.drop
+        && frame.documentCount() == psdOpenBase + 1
+        && frame.documentPath(frame.activeDocumentIndex()) == psdPath;
+
+    const int guardDocs = frame.documentCount();
+    QMimeData internalMime;
+    internalMime.setData(QStringLiteral("application/x-pictura-internal"),
+                         QByteArrayLiteral("x"));
+    QMimeData dirMime;
+    dirMime.setUrls({QUrl::fromLocalFile(QDir::tempPath())});
+    QMimeData badMime;
+    badMime.setUrls({QUrl::fromLocalFile(badPath)});
+    const DropResult internalDrop = sendDrop(bar, internalMime);
+    const DropResult dirDrop = sendDrop(bar, dirMime);
+    const DropResult badDrop = sendDrop(bar, badMime);
+    pictura::PictureView* guardView = frame.activeView();
+    const int guardRows = guardView ? guardView->layer_row_count() : -1;
+    const int guardHistory = guardView ? guardView->history_count() : -1;
+    QMimeData badPlaceMime;
+    badPlaceMime.setUrls({QUrl::fromLocalFile(badPath)});
+    const DropResult badPlace = sendDrop(frame.imageView(), badPlaceMime);
+    const bool ignored = !internalDrop.enter && !internalDrop.drop && !dirDrop.enter
+        && !dirDrop.drop && badDrop.enter && badDrop.drop && badPlace.enter && badPlace.drop
+        && frame.documentCount() == guardDocs && guardView
+        && guardView->layer_row_count() == guardRows
+        && guardView->history_count() == guardHistory;
+
+    while (frame.documentCount() > 0) {
+        frame.closeDocument(0, false);
+    }
+    auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
+    QMimeData noDocMime;
+    noDocMime.setUrls({QUrl::fromLocalFile(pngA), QUrl::fromLocalFile(pngB)});
+    const DropResult noDoc = tabs ? sendDrop(tabs, noDocMime) : DropResult{};
+    const bool fallback = tabs && noDoc.enter && noDoc.drop && frame.documentCount() == 2;
+
+    const bool ok = placed && mixedPlaced && psdNative && opened && psdOpened && ignored
+        && fallback;
+    const int endDocs = frame.documentCount();
+    while (frame.documentCount() > 0) {
+        frame.closeDocument(0, false);
+    }
+    QFile::remove(pngA);
+    QFile::remove(pngB);
+    QFile::remove(badPath);
+    QFile::remove(psdPath);
+    QFile::remove(psdExport);
+    ST_BEGIN("lpr_file_drop");
+    ST_PASS("lpr_file_drop place=%d mixed=%d psd_native=%d open=%d psd_open=%d ignore=%d "
+            "fallback=%d docs=%d",
+            placed ? 1 : 0, mixedPlaced ? 1 : 0, psdNative ? 1 : 0, opened ? 1 : 0,
+            psdOpened ? 1 : 0, ignored ? 1 : 0, fallback ? 1 : 0, endDocs);
+    if (!ok) {
+        return pictura::selfTest().fail(291, "file drop routing");
+    }
     return 0;
 }

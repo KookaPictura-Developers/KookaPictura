@@ -283,6 +283,7 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     });
 
     optionsBar_ = new OptionsBar(tools_, this);
+    optionsBar_->setObjectName(QStringLiteral("optionsBar"));
     addToolBar(optionsBar_);
 
     connect(tools_, &ToolController::activeToolChanged, this, [this](ToolId id) {

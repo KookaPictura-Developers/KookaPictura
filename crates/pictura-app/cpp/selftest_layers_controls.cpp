@@ -1146,5 +1146,7 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             }
         }
 
+        if (const int fd = pictura::runFileDropChecks(frame); fd != 0) { return fd; }
+
     return 0;
 }

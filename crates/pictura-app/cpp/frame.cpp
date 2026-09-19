@@ -1,5 +1,7 @@
 #include "frame_includes.h"
 
+#include "file_drop_router.h"
+
 #include <QtCore/QTemporaryDir>
 #include <QtWidgets/QTabBar>
 
@@ -68,6 +70,17 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     buildPanels();
     buildTools(state.toolsColumns, state.useShiftKeyForToolSwitch);
     buildStatusBar();
+    // Route OS file drops by target: a document canvas places into the active
+    // document, every other target opens a new tab. Enabling drops is what makes
+    // each widget a drop target; per-canvas install happens in addDocument.
+    fileDropRouter_ = new FileDropRouter(this);
+    for (QWidget* target :
+         {static_cast<QWidget*>(tabs_), static_cast<QWidget*>(tabs_->tabBar()),
+          static_cast<QWidget*>(menuBar()), static_cast<QWidget*>(optionsBar_),
+          static_cast<QWidget*>(this)}) {
+        target->setAcceptDrops(true);
+        target->installEventFilter(fileDropRouter_);
+    }
     applyBrightness(state.brightnessLevel);
     applyPanelSession(state);
     // Persist every column change through the same path as the Window toggles,
@@ -261,6 +274,10 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
         entry.path = path;
     }
     entry.canvas = new ImageView(this);
+    if (fileDropRouter_) {
+        entry.canvas->setAcceptDrops(true);
+        entry.canvas->installEventFilter(fileDropRouter_);
+    }
     if (view->has_document()) {
         entry.canvas->setImage(view->image());
     } else {

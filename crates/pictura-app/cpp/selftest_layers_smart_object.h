@@ -31,7 +31,10 @@ class PicturaMainWindow;
 // temp dropped. lpr_image_import (290) opens a raster image as an untitled
 // one-layer document in one "Open" state, places it as a topmost smart object
 // in one "Place" state, and refuses an unrecognized or over-budget file without
-// adding a state.
+// adding a state. lpr_file_drop (291) drops files on a canvas (place, one object
+// per file), the tab strip, the menu bar, the options bar, and the empty
+// document area (open, one tab per file), and leaves a URL-less, all-directory,
+// or undecodable drag without effect.
 int runLayersSmartObjectConvertChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectRasterizeChecks(PicturaMainWindow& frame);
 int runLayersPlaceSmartObjectChecks(PicturaMainWindow& frame);
@@ -41,4 +44,5 @@ int runLayersExportSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersEditSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersEditSmartObjectSessionChecks(PicturaMainWindow& frame);
 int runImageImportChecks(PicturaMainWindow& frame);
+int runFileDropChecks(PicturaMainWindow& frame);
 } // namespace pictura

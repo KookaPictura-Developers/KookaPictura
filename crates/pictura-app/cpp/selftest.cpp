@@ -6700,8 +6700,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         if (const int lpc = pictura::runLayersControlsChecks(frame); lpc != 0) { return lpc; } if (const int lfs = pictura::runLayersFilterChecks(frame); lfs != 0) { return lfs; }
         frame.closeDocument(anatomyDocIndex, false);
-        // Re-acquire for the trailing transform check.
+        // Re-acquire the canvas; create a document if the suites left none open.
         canvas = frame.imageView();
+        if (!canvas) {
+            frame.newDocument(QStringLiteral("TransformProbe"), 16, 16, QStringLiteral("rgb"), 8,
+                              QStringLiteral("white"));
+            canvas = frame.imageView();
+        }
         if (!canvas) {
             ST_FAIL(38, "no active canvas");
         }
