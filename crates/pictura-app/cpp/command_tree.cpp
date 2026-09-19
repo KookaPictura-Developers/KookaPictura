@@ -377,8 +377,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Smart Objects", "Edit Contents"}, QStringLiteral("Edit Contents"));
     leaf(registry, {"Layer", "Smart Objects", "Export Contents…"},
          QStringLiteral("Export Contents…"));
-    leaf(registry, {"Layer", "Smart Objects", "Replace Contents…"},
-         QStringLiteral("Replace Contents…"));
+    registry.add(command_ids::LayerSmartObjectReplaceContents,
+                 {"Layer", "Smart Objects", "Replace Contents…"},
+                 QStringLiteral("Replace Contents…"), QKeySequence(), true);
     leaf(registry, {"Layer", "Smart Objects", "Rasterize"}, QStringLiteral("Rasterize"));
     leaf(registry, {"Layer", "Smart Objects", "Stack Mode"}, QStringLiteral("Stack Mode"));
     leaf(registry, {"Layer", "Video Layers", "New Blank Video Layer"},

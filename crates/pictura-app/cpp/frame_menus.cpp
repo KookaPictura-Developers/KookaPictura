@@ -605,6 +605,35 @@ void PicturaMainWindow::registerHandlers()
                                       return !currentRasterizableSmartPath().isEmpty();
                                   });
 
+    // Replace Contents needs the current layer to be a replaceable smart object.
+    const auto currentReplaceableSmartPath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty() || !view->layer_can_replace_smart_object_contents(path)) {
+            return QString();
+        }
+        return path;
+    };
+    registry_->setHandler(command_ids::LayerSmartObjectReplaceContents,
+                          [this, currentReplaceableSmartPath]() {
+                              PictureView* view = activeView();
+                              const QString path = currentReplaceableSmartPath();
+                              if (!view || path.isEmpty()) {
+                                  return;
+                              }
+                              const QString file = QFileDialog::getOpenFileName(
+                                  this, tr("Replace Contents"), QString(),
+                                  QStringLiteral("Photoshop files (*.psd *.psb)"));
+                              if (!file.isEmpty()
+                                  && view->replace_smart_object_contents(path, file)) {
+                                  refresh();
+                              }
+                          });
+    registry_->setEnabledProvider(command_ids::LayerSmartObjectReplaceContents,
+                                  [currentReplaceableSmartPath]() {
+                                      return !currentReplaceableSmartPath().isEmpty();
+                                  });
+
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {
             canvas->zoomIn();

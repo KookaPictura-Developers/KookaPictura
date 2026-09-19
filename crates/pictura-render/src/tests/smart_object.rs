@@ -96,6 +96,12 @@ fn assert_all_alpha_zero(buf: &PixelBuffer) {
     }
 }
 
+fn hash(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| {
+        (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
 #[test]
 fn embedded_source_renders_without_proxy() {
     let layer = smart_layer(
@@ -725,4 +731,229 @@ fn place_refuses_malformed_source() {
     assert_eq!(place_smart_object(&mut d, "bad.psd", &[0, 1, 2, 3]), None);
 
     assert_eq!(d, before);
+}
+
+#[test]
+fn replace_swaps_source_and_drops_preserved_blocks() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../assets/test_with_smart_object01.psd");
+    let Ok(bytes) = std::fs::read(&path) else {
+        eprintln!("skipping: {} not found", path.display());
+        return;
+    };
+    let mut d = read_psd(&bytes).expect("fixture parses");
+    let index = (0..d.layers.len())
+        .find(|&i| can_replace_smart_object_contents(&d, &i.to_string()))
+        .expect("a replaceable smart object");
+    let path = index.to_string();
+    d.layers[index].mask = Some(LayerMask {
+        rect: rect(0, 0, 2, 2),
+        default_color: 0,
+        disabled: true,
+        flags: 0,
+        data: Some(vec![0, 64, 128, 255]),
+        extra: Vec::new(),
+    });
+    d.layers[index].color = ColorLabel::Violet;
+    d.layers[index].lock = LockFlags::default()
+        .with(LockFlags::TRANSPARENCY, true)
+        .with(LockFlags::POSITION, true);
+    let before = d.layers[index].clone();
+    let old_uuid = before.smart_object.as_ref().unwrap().uuid.clone();
+    assert!(!old_uuid.is_empty());
+    assert!(section_has_uuid(&d.layer_section_extra, &old_uuid));
+    assert!(before.extra_blocks.iter().any(|b| &b.key == b"SoLd"));
+    assert!(before.smart_object.as_ref().unwrap().payload.is_some());
+
+    let new_payload = payload_of([10, 20, 30]);
+    let new_hash = hash(&new_payload);
+    assert!(can_replace_smart_object_contents(&d, &path));
+    assert!(replace_smart_object_contents(
+        &mut d,
+        &path,
+        "replacement.psd",
+        &new_payload
+    ));
+
+    let after = &d.layers[index];
+    let so = after.smart_object.as_ref().expect("still smart");
+    assert_eq!(so.payload.as_deref(), Some(new_payload.as_slice()));
+    assert_eq!(hash(so.payload.as_deref().unwrap()), new_hash);
+    read_psd(so.payload.as_deref().unwrap()).expect("payload parses");
+    assert_eq!(so.filename, "replacement.psd");
+    assert_eq!(so.filetype, *b"8BPB");
+    assert_eq!(so.creator, *b"8BIM");
+    assert!(so.uuid.is_empty());
+    assert!(after.channels.is_empty());
+    assert_eq!(after.name, before.name);
+    assert_eq!(after.rect, before.rect);
+    assert_eq!(after.blend, before.blend);
+    assert_eq!(after.opacity, before.opacity);
+    assert_eq!(after.fill, before.fill);
+    assert_eq!(after.mask, before.mask);
+    assert_eq!(after.color, before.color);
+    assert_eq!(after.lock, before.lock);
+    assert_eq!(
+        after.mask.as_ref().and_then(|m| m.data.as_deref()),
+        Some(&[0, 64, 128, 255][..])
+    );
+    assert!(!after
+        .extra_blocks
+        .iter()
+        .any(|b| matches!(&b.key, b"SoLd" | b"SoLE" | b"plLd" | b"PlLd")));
+    assert!(!section_has_uuid(&d.layer_section_extra, &old_uuid));
+
+    let out = composite_rgba(&d);
+    let cx = ((before.rect.left + before.rect.right) / 2).max(0) as u32;
+    let cy = ((before.rect.top + before.rect.bottom) / 2).max(0) as u32;
+    assert_close(&out, cx, cy, [10, 20, 30, 255]);
+
+    let saved = write_psd(&d).expect("replaced document writes");
+    let back = read_psd(&saved).expect("replaced document reads");
+    let reread = back.layers[index].smart_object.as_ref().expect("resolves");
+    assert_eq!(reread.kind, SmartObjectKind::Embedded);
+    assert_eq!(hash(reread.payload.as_deref().unwrap()), new_hash);
+}
+
+#[test]
+fn replace_refuses_ineligible_and_malformed_targets() {
+    let valid = payload_of([1, 2, 3]);
+
+    let mut plain = doc(
+        4,
+        4,
+        vec![solid(
+            "Raster",
+            full(4, 4),
+            (1, 2, 3),
+            255,
+            BlendMode::Normal,
+            255,
+        )],
+    );
+    let before = plain.clone();
+    assert!(!can_replace_smart_object_contents(&plain, "0"));
+    assert!(!replace_smart_object_contents(
+        &mut plain, "0", "x.psd", &valid
+    ));
+    assert_eq!(plain, before);
+
+    let mut grouped = doc(
+        4,
+        4,
+        vec![{
+            let mut g = group("G", BlendMode::Normal, 255, None, vec![]);
+            g.smart_object = Some(embedded(valid.clone()));
+            g
+        }],
+    );
+    let before = grouped.clone();
+    assert!(!replace_smart_object_contents(
+        &mut grouped,
+        "0",
+        "x.psd",
+        &valid
+    ));
+    assert_eq!(grouped, before);
+
+    let mut adjustment = doc(
+        4,
+        4,
+        vec![{
+            let mut a = adjustment_layer("Adj", *b"inv ", vec![0], 255, None);
+            a.smart_object = Some(embedded(valid.clone()));
+            a
+        }],
+    );
+    let before = adjustment.clone();
+    assert!(!replace_smart_object_contents(
+        &mut adjustment,
+        "0",
+        "x.psd",
+        &valid
+    ));
+    assert_eq!(adjustment, before);
+
+    let mut empty = doc(
+        4,
+        4,
+        vec![smart_layer(
+            "smart",
+            full(4, 4),
+            embedded(Vec::new()),
+            Vec::new(),
+        )],
+    );
+    let before = empty.clone();
+    assert!(!can_replace_smart_object_contents(&empty, "0"));
+    assert!(!replace_smart_object_contents(
+        &mut empty, "0", "x.psd", &valid
+    ));
+    assert_eq!(empty, before);
+
+    let mut smart = doc(
+        4,
+        4,
+        vec![smart_layer(
+            "smart",
+            full(4, 4),
+            embedded(valid.clone()),
+            Vec::new(),
+        )],
+    );
+    let before = smart.clone();
+    assert!(can_replace_smart_object_contents(&smart, "0"));
+    assert!(!replace_smart_object_contents(
+        &mut smart,
+        "0",
+        "x.psd",
+        &[0, 1, 2, 3]
+    ));
+    assert_eq!(smart, before);
+
+    let before = smart.clone();
+    assert!(!replace_smart_object_contents(
+        &mut smart, "99", "x.psd", &valid
+    ));
+    assert!(!replace_smart_object_contents(
+        &mut smart, "bad", "x.psd", &valid
+    ));
+    assert_eq!(smart, before);
+}
+
+#[test]
+fn replace_clears_proxy_and_renders_new_source() {
+    let mut d = doc(
+        4,
+        4,
+        vec![solid(
+            "Raster",
+            full(4, 4),
+            (10, 20, 30),
+            255,
+            BlendMode::Normal,
+            255,
+        )],
+    );
+    assert!(convert_to_smart_object(&mut d, "0"));
+    assert!(d.layers[0].channels.iter().any(|c| c.id == 0));
+    let before_comp = composite_rgba(&d);
+    assert!(can_replace_smart_object_contents(&d, "0"));
+
+    let new_payload = payload_of([200, 100, 50]);
+    assert!(replace_smart_object_contents(
+        &mut d,
+        "0",
+        "new.psd",
+        &new_payload
+    ));
+
+    assert!(d.layers[0].channels.is_empty());
+    let so = d.layers[0].smart_object.as_ref().unwrap();
+    assert_eq!(so.payload.as_deref(), Some(new_payload.as_slice()));
+    assert_eq!(so.filename, "new.psd");
+    assert!(so.uuid.is_empty());
+    let after_comp = composite_rgba(&d);
+    assert_ne!(after_comp.data, before_comp.data);
+    assert_close(&after_comp, 0, 0, [200, 100, 50, 255]);
 }

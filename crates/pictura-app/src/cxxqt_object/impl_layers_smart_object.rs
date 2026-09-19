@@ -59,6 +59,41 @@ impl qobject::PictureView {
         QString::from(created.as_str())
     }
 
+    /// Whether `path` resolves to a replaceable smart-object layer. Read-only.
+    pub fn layer_can_replace_smart_object_contents(&self, path: &QString) -> bool {
+        self.rust().doc.as_ref().is_some_and(|doc| {
+            pictura_render::can_replace_smart_object_contents(doc, &path.to_string())
+        })
+    }
+
+    /// `Replace Contents…`: read `file_path`, swap the embedded source of the
+    /// smart object at `path`, and keep the layer's transform. Records one
+    /// "Replace Contents" state on success; false (no state) when the file is
+    /// unreadable, not a PSD/PSB document, or the target is ineligible.
+    pub fn replace_smart_object_contents(
+        mut self: Pin<&mut Self>,
+        path: &QString,
+        file_path: &QString,
+    ) -> bool {
+        let file = file_path.to_string();
+        let name = std::path::Path::new(&file)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let changed = match (std::fs::read(&file), self.as_mut().rust_mut().doc.as_mut()) {
+            (Ok(bytes), Some(doc)) => {
+                pictura_render::replace_smart_object_contents(doc, &path.to_string(), &name, &bytes)
+            }
+            _ => false,
+        };
+        if changed {
+            self.as_mut().clear_link_sets();
+            self.as_mut().recomposite();
+            self.as_mut().record("Replace Contents");
+        }
+        changed
+    }
+
     /// Whether `path` resolves to a rasterizable smart-object layer. Read-only.
     pub fn layer_can_rasterize_smart_object(&self, path: &QString) -> bool {
         self.rust()

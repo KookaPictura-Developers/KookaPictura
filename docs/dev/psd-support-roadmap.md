@@ -150,8 +150,11 @@ embedded `SoLd`/`lnk2`. `Layer > Rasterize > Smart Object` (archived
 channels and drops the preserved `SoLd`/`SoLE`/`plLd` block and its document
 `lnk*` record (`pictura-codec::remove_linked_source`). `File > Place…` (archived
 `2026-09-19-place-smart-object`) inserts a PSD/PSB as a channel-less top
-smart-object layer that renders from its embedded source. Edit Contents,
-Replace Contents, `Open As Smart Object`, and linked objects are deferred.
+smart-object layer that renders from its embedded source. `Layer > Smart
+Objects > Replace Contents…` (archived `2026-09-19-replace-smart-object-contents`)
+swaps the embedded source while preserving the layer's transform and re-authors
+a fresh link on save. Edit Contents, `Open As Smart Object`, and linked objects
+are deferred.
 
 Double-clicking the layer reopens ACR from the stored source and settings. CS6
 supports embedded objects only; linked objects (`lnkE`, external paths) are CC
