@@ -69,6 +69,7 @@ add_executable(pictura
     crates/pictura-app/cpp/preferences_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/icons.cpp
+    crates/pictura-app/cpp/file_drop_router.cpp
     crates/pictura-app/cpp/frame.cpp
     crates/pictura-app/cpp/frame_columns.cpp
     crates/pictura-app/cpp/frame_session.cpp
@@ -113,6 +114,7 @@ add_executable(pictura
     crates/pictura-app/cpp/preferences_dialog.h
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/icons.h
+    crates/pictura-app/cpp/file_drop_router.h
     crates/pictura-app/cpp/frame.h
     crates/pictura-app/cpp/selftest_layers_controls.h
     crates/pictura-app/cpp/selftest_layers_smart_object.h

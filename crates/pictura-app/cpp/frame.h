@@ -26,6 +26,7 @@ namespace pictura {
 class CommandRegistry;
 class ColorPanel;
 class ColorState;
+class FileDropRouter;
 class HistogramPanel;
 class HistoryPanel;
 class ImageView;
@@ -228,6 +229,7 @@ private:
     QList<DocEntry> docs_;
     QList<SmartObjectEditSession> editSessions_;
     QTabWidget* tabs_ = nullptr;
+    FileDropRouter* fileDropRouter_ = nullptr;
     QSplitter* centerSplitter_ = nullptr;
     QTimer* panelRefreshTimer_ = nullptr;
     CommandRegistry* registry_ = nullptr;
