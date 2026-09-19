@@ -52,6 +52,7 @@ fn fresh_white_document(w: u32, h: u32) -> Document {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }];
     doc
 }

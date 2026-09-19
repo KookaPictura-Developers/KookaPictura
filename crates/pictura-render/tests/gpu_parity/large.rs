@@ -104,6 +104,7 @@ fn document_past_2d_product_limit_returns_too_large() {
         composite: PixelBuffer::new(0, 0, 3),
         layers: Vec::new(),
         channels: Vec::new(),
+        ..Default::default()
     };
     assert!(matches!(composite_gpu(&doc), Err(GpuError::TooLarge)));
 }

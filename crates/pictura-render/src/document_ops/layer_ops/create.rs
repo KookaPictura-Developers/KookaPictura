@@ -59,6 +59,7 @@ pub(super) fn transparent_layer(width: u32, height: u32, name: &str) -> Layer {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -85,6 +86,7 @@ pub(super) fn empty_group(name: &str) -> Layer {
         children: Vec::new(),
         is_group: true,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -335,6 +337,7 @@ pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     };
     insert_node(doc, selection_path, layer)
 }

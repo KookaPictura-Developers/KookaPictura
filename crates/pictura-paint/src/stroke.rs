@@ -417,6 +417,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         });
         doc
     }
@@ -703,6 +704,7 @@ mod tests {
             children: Vec::new(),
             is_group: true,
             background: false,
+            ..Default::default()
         });
         assert!(matches!(
             Stroke::begin(&doc, StrokeConfig::default()),

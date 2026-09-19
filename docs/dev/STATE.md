@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **665 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **671 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -1926,6 +1926,24 @@ holds. psd-tools' writer only emits raw/RLE, so the differential oracle
 psd-tools' *decoder* to agree byte-for-byte with `read_psd`. Remaining PSD gaps
 (color modes, 16/32-bit, image resources/ICC/metadata, effects/smart
 objects/text, PSB write, write-side RLE/ZIP) are tracked in the roadmap.
+
+PSD interop phase P2 (`psd-opaque-preservation`) made an open→save round trip
+lossless for everything the engine does not interpret. `Document` now carries
+the raw color-mode-data and image-resource sections, the global layer mask, and
+the trailing layer-section bytes; `Layer` carries its original blend key (only
+when unrecognized), blending ranges, unknown additional-layer-info tagged blocks,
+and unmodeled channels (the `-3` real user mask and any other id outside
+`-2..=2`); `LayerMask` carries the mask block bytes past the fixed fields. The
+codec captures them on read and re-emits them verbatim on write, so ICC/EXIF/XMP
+resources, resolution, effects/smart-object/text blocks, and vector-mask channels
+are preserved even though the engine cannot render them yet. A recognized blend
+key is not stored, so a constructed document still equals one read from disk, and
+engine-created documents keep empty storage — `write_psd` output for them is
+byte-identical (the `default_before.psd` golden holds). The model change touched
+~160 struct literals across the workspace via `..Default::default()`, and
+`layer_ops/tests.rs` was split (`tests_via.rs`) to stay under the size cap; the
+independent oracle proves a psd-tools-authored fixture round-trips
+whole-`Document`-equal and that psd-tools still opens our re-emitted resources.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

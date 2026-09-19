@@ -119,6 +119,7 @@ fn fill_255_is_byte_identical_to_pre_change_composites() {
         disabled: false,
         flags: 0,
         data: Some(vec![0, 255]),
+        ..Default::default()
     });
     let masked_out = composite_rgba(&doc(1, 2, vec![masked]));
     assert_eq!(px(&masked_out, 0, 0), [0, 0, 0, 0]);
@@ -180,6 +181,7 @@ fn fill_255_is_byte_identical_to_pre_change_composites() {
         disabled: false,
         flags: 0,
         data: Some(vec![255, 0]),
+        ..Default::default()
     });
     let adj_out = composite_rgba(&doc(2, 1, vec![base, adj]));
     assert_eq!(rgb(&adj_out, 0, 0), [155, 155, 155]);
@@ -243,6 +245,7 @@ fn masked_layer_zeroes_masked_alpha() {
         disabled: false,
         flags: 0,
         data: Some(vec![0, 255]),
+        ..Default::default()
     });
     let _ = lw;
     let d = doc(1, 2, vec![top]);
@@ -267,6 +270,7 @@ fn disabled_mask_is_ignored() {
         disabled: true,
         flags: 0x02,
         data: Some(vec![0]),
+        ..Default::default()
     });
     let d = doc(1, 1, vec![top]);
     assert_eq!(px(&composite_rgba(&d), 0, 0), [255, 0, 0, 255]);
@@ -516,6 +520,7 @@ fn grayscale_layer_replicates_channel() {
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }];
     assert_eq!(px(&composite_rgba(&d), 0, 0), [120, 120, 120, 255]);
 }

@@ -159,6 +159,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }
     }
 
@@ -218,6 +219,7 @@ mod tests {
             disabled: false,
             flags: 0,
             data: Some(vec![128; 16]),
+            ..Default::default()
         };
         let mut doc = sample_doc();
         doc.layers[0] = pixel_layer("masked", full(4, 4), Some(mask));
@@ -266,6 +268,7 @@ mod tests {
             disabled: false,
             flags: 0,
             data: Some(vec![128; 16]),
+            ..Default::default()
         };
         doc.layers[0] = pixel_layer("masked", full(4, 4), Some(mask));
 
@@ -297,6 +300,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }];
         let before = doc.clone();
         assert!(!translate_layer(&mut doc, 2, 2));

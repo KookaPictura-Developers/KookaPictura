@@ -97,6 +97,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }
     }
 
@@ -113,6 +114,7 @@ mod tests {
             disabled: false,
             flags: 0,
             data: Some(data),
+            ..Default::default()
         }
     }
 
@@ -178,6 +180,7 @@ mod tests {
             disabled: false,
             flags: 0,
             data: None,
+            ..Default::default()
         };
         let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
         let before = doc.clone();

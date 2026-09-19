@@ -119,6 +119,7 @@ fn layer(name: &str, blend: BlendMode, interleaved: &[u8], with_alpha: bool) -> 
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 

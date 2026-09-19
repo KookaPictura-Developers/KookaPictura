@@ -48,6 +48,7 @@ fn region_scenes() -> Vec<(&'static str, Document)> {
         disabled: false,
         flags: 0,
         data: Some((0..SIZE * SIZE).map(|i| (i * 37 % 256) as u8).collect()),
+        ..Default::default()
     });
     let mut masked = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
     masked.layers = vec![base_layer(), masked_layer];

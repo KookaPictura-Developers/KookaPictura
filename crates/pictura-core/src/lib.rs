@@ -82,6 +82,15 @@ pub struct Document {
     /// Document-level extra channels (saved selections / spot channels), which
     /// live after the color channels in the PSD image-data section.
     pub channels: Vec<Channel>,
+    /// Verbatim color-mode-data section bytes, preserved for lossless re-save.
+    pub color_mode_data: Vec<u8>,
+    /// Verbatim image-resource section bytes, preserved for lossless re-save.
+    pub image_resources: Vec<u8>,
+    /// Global layer mask payload, preserved verbatim for lossless re-save.
+    pub global_layer_mask: Vec<u8>,
+    /// Bytes after the global layer mask up to the layer-section end, preserved
+    /// verbatim for lossless re-save.
+    pub layer_section_extra: Vec<u8>,
 }
 
 impl Document {
@@ -95,7 +104,17 @@ impl Document {
             composite: PixelBuffer::new(width, height, channels),
             layers: Vec::new(),
             channels: Vec::new(),
+            color_mode_data: Vec::new(),
+            image_resources: Vec::new(),
+            global_layer_mask: Vec::new(),
+            layer_section_extra: Vec::new(),
         }
+    }
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Document::new(0, 0, ColorMode::Rgb, BitDepth::Eight)
     }
 }
 
@@ -255,6 +274,22 @@ pub struct AdjustmentData {
     pub data: Vec<u8>,
 }
 
+/// An additional-layer-info tagged block the engine does not model, preserved
+/// verbatim for lossless re-save.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LayerBlock {
+    pub key: [u8; 4],
+    pub data: Vec<u8>,
+}
+
+/// A layer channel the engine does not decode, stored as its full on-disk
+/// stream including the 2-byte compression header for verbatim re-emit.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RawChannel {
+    pub id: i16,
+    pub data: Vec<u8>,
+}
+
 /// A raster layer mask. `data` is `None` until the channel image is decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayerMask {
@@ -263,6 +298,27 @@ pub struct LayerMask {
     pub disabled: bool,
     pub flags: u8,
     pub data: Option<Vec<u8>>,
+    /// Mask block bytes after the fixed 18-byte header, preserved verbatim for
+    /// lossless re-save.
+    pub extra: Vec<u8>,
+}
+
+impl Default for LayerMask {
+    fn default() -> Self {
+        Self {
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+            },
+            default_color: 0,
+            disabled: false,
+            flags: 0,
+            data: None,
+            extra: Vec::new(),
+        }
+    }
 }
 
 /// PSD `lclr` sheet color. Values match psd-tools `SheetColorType`.
@@ -360,6 +416,48 @@ pub struct Layer {
     /// it from the bottom top-level non-group named `"Background"` and writes
     /// that name back for a flagged layer (design D5).
     pub background: bool,
+    /// Raw blend-mode key, stored only when it does not map to a known
+    /// [`BlendMode`], preserved for lossless re-save.
+    pub blend_key: Option<[u8; 4]>,
+    /// Raw blending-ranges block bytes, preserved verbatim for lossless re-save.
+    pub blending_ranges: Vec<u8>,
+    /// Additional-layer-info tagged blocks the engine does not model, preserved
+    /// verbatim for lossless re-save.
+    pub extra_blocks: Vec<LayerBlock>,
+    /// Layer channels the engine does not decode, kept as full on-disk streams
+    /// for verbatim re-emit.
+    pub raw_channels: Vec<RawChannel>,
+}
+
+impl Default for Layer {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+            },
+            blend: BlendMode::Normal,
+            opacity: 255,
+            fill: 255,
+            lock: LockFlags::default(),
+            color: ColorLabel::None,
+            clipping: false,
+            visible: true,
+            mask: None,
+            adjustment: None,
+            channels: Vec::new(),
+            children: Vec::new(),
+            is_group: false,
+            background: false,
+            blend_key: None,
+            blending_ranges: Vec::new(),
+            extra_blocks: Vec::new(),
+            raw_channels: Vec::new(),
+        }
+    }
 }
 
 impl Layer {
@@ -443,6 +541,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         };
         assert!(!pixel.is_group());
         assert_eq!(pixel.channels.len(), 1);
@@ -463,6 +562,7 @@ mod tests {
             children: vec![pixel],
             is_group: true,
             background: false,
+            ..Default::default()
         };
         assert!(group.is_group());
         assert_eq!(group.children.len(), 1);
@@ -492,6 +592,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         };
         assert!(bare.mask.is_none());
 
@@ -502,6 +603,7 @@ mod tests {
                 disabled: false,
                 flags: 0,
                 data: Some(vec![255; 4]),
+                ..Default::default()
             }),
             ..bare
         };
@@ -561,6 +663,7 @@ mod tests {
             children: Vec::new(),
             is_group: true,
             background: false,
+            ..Default::default()
         };
         assert!(layer.is_group());
     }
@@ -588,6 +691,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         };
         assert_eq!(layer.fill, 255);
         assert_eq!(layer.lock.bits(), 0);

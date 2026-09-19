@@ -49,14 +49,14 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         c => return Err(PsdError::Unsupported(format!("color mode {c}"))),
     };
 
-    // Color mode data section: 4-byte length + opaque bytes (skipped).
+    // Color mode data section: 4-byte length + opaque bytes, kept verbatim.
     let color_mode_len = r.u32()? as usize;
-    r.skip(color_mode_len)?;
-    // Image resources section: 4-byte length + opaque bytes (skipped).
+    let color_mode_data = r.take(color_mode_len)?.to_vec();
+    // Image resources section: 4-byte length + opaque bytes, kept verbatim.
     let resources_len = r.u32()? as usize;
-    r.skip(resources_len)?;
+    let image_resources = r.take(resources_len)?.to_vec();
     // Layer and mask information section: 4-byte length (8 in PSB).
-    let layers = read_layer_section(&mut r, is_psb)?;
+    let (layers, global_layer_mask, layer_section_extra) = read_layer_section(&mut r, is_psb)?;
 
     // "Maximize Compatibility" off: a layered file may end after the layer
     // section with no merged composite. A file with no layers at all and no
@@ -70,6 +70,10 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             composite: PixelBuffer::new(width, height, mode.color_channels()),
             layers,
             channels: Vec::new(),
+            color_mode_data,
+            image_resources,
+            global_layer_mask,
+            layer_section_extra,
         });
     }
 
@@ -106,6 +110,10 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         composite,
         layers,
         channels,
+        color_mode_data,
+        image_resources,
+        global_layer_mask,
+        layer_section_extra,
     })
 }
 
@@ -260,14 +268,17 @@ struct RawLayer {
     section: Option<u32>,
 }
 
-fn read_layer_section(r: &mut Reader, is_psb: bool) -> Result<Vec<Layer>, PsdError> {
+/// `(layers, global_layer_mask, layer_section_extra)` read from the section.
+type LayerSection = (Vec<Layer>, Vec<u8>, Vec<u8>);
+
+fn read_layer_section(r: &mut Reader, is_psb: bool) -> Result<LayerSection, PsdError> {
     let section_len = if is_psb {
         r.u64()? as usize
     } else {
         r.u32()? as usize
     };
     if section_len == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
     }
     let section_end = r
         .pos
@@ -295,17 +306,18 @@ fn read_layer_section(r: &mut Reader, is_psb: bool) -> Result<Vec<Layer>, PsdErr
         r.pos = info_end;
     }
 
-    // Global layer mask info: 4-byte length + opaque bytes (skipped).
+    // Global layer mask info: 4-byte length + opaque bytes, kept verbatim.
     let global_len = r.u32()? as usize;
-    r.skip(global_len)?;
+    let global_layer_mask = r.take(global_len)?.to_vec();
     if r.pos > section_end {
         return Err(PsdError::Invalid(
             "global layer mask exceeds section".into(),
         ));
     }
-    // Remaining bytes are additional layer information; not needed in M1.
-    r.pos = section_end;
-    Ok(layers)
+    // Remaining bytes are trailing global additional-layer information.
+    let extra_len = section_end - r.pos;
+    let layer_section_extra = r.take(extra_len)?.to_vec();
+    Ok((layers, global_layer_mask, layer_section_extra))
 }
 
 fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<Layer>, PsdError> {
@@ -327,8 +339,18 @@ fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<
         });
 
         let mut channels = Vec::new();
+        let mut raw_channels = Vec::new();
         let mut mask_data = None;
         for (&id, &len) in raw.channel_ids.iter().zip(raw.channel_lens.iter()) {
+            // Channels outside the modeled set (notably -3, the real user mask)
+            // keep their full on-disk stream, compression header included.
+            if !matches!(id, -2..=2) {
+                raw_channels.push(RawChannel {
+                    id,
+                    data: r.take(len)?.to_vec(),
+                });
+                continue;
+            }
             // The user layer mask channel (-2) is sized by the mask rect, which
             // may differ from the layer rect.
             let (w, h) = if id == -2 {
@@ -339,13 +361,11 @@ fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<
             let data = read_channel_data(r, len, w, h, is_psb)?;
             match id {
                 -2 => mask_data = Some(data),
-                // Real user mask (-3) belongs to the vector/real mask path, out
-                // of M1 scope; its bytes are consumed but not modelled.
-                -3 => {}
                 _ => channels.push(Channel { id, data }),
             }
         }
         raw.layer.channels = channels;
+        raw.layer.raw_channels = raw_channels;
         if let Some(data) = mask_data {
             match raw.layer.mask.as_mut() {
                 Some(mask) => mask.data = Some(data),
@@ -356,6 +376,7 @@ fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<
                         disabled: false,
                         flags: 0,
                         data: Some(data),
+                        ..Default::default()
                     });
                 }
             }
@@ -410,9 +431,16 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     }
     let mut key = [0u8; 4];
     key.copy_from_slice(r.take(4)?);
-    // An unrecognized key degrades to Normal rather than failing the file; the
-    // raw value is not preserved yet.
-    let mut blend = BlendMode::from_psd_key(key).unwrap_or(BlendMode::Normal);
+    // An unrecognized key degrades to Normal and is preserved verbatim; a
+    // recognized mode already round-trips through BlendMode.
+    let mut blend_key = None;
+    let mut blend = match BlendMode::from_psd_key(key) {
+        Some(mode) => mode,
+        None => {
+            blend_key = Some(key);
+            BlendMode::Normal
+        }
+    };
 
     let opacity = r.u8()?;
     let clipping = r.u8()? != 0;
@@ -448,12 +476,13 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             disabled: mask_flags & 0x02 != 0,
             flags: mask_flags,
             data: None,
+            extra: bytes.get(18..).unwrap_or(&[]).to_vec(),
         });
     }
 
-    // Layer blending ranges (opaque).
+    // Layer blending ranges, kept verbatim for lossless re-save.
     let ranges_len = er.u32()? as usize;
-    er.skip(ranges_len)?;
+    let blending_ranges = er.take(ranges_len)?.to_vec();
 
     // Legacy Pascal name, padded so (length byte + chars) is a multiple of 4.
     let name_len = er.u8()? as usize;
@@ -466,6 +495,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     // and the adjustment block for adjustment layers (stored verbatim).
     let mut section = None;
     let mut adjustment = None;
+    let mut extra_blocks = Vec::new();
     while er.remaining() >= 12 {
         let mut tag_sig = [0u8; 4];
         tag_sig.copy_from_slice(er.take(4)?);
@@ -511,13 +541,24 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
                 }
             }
             b"lsct" => {}
-            k if is_adjustment_key(k) && adjustment.is_none() => {
-                adjustment = Some(AdjustmentData {
-                    key: tag_key,
-                    data: data.to_vec(),
-                });
+            k if is_adjustment_key(k) => {
+                if adjustment.is_none() {
+                    adjustment = Some(AdjustmentData {
+                        key: tag_key,
+                        data: data.to_vec(),
+                    });
+                } else {
+                    // A second adjustment key is not modeled twice; keep it raw.
+                    extra_blocks.push(LayerBlock {
+                        key: tag_key,
+                        data: data.to_vec(),
+                    });
+                }
             }
-            _ => {}
+            _ => extra_blocks.push(LayerBlock {
+                key: tag_key,
+                data: data.to_vec(),
+            }),
         }
     }
 
@@ -543,6 +584,10 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             children: Vec::new(),
             is_group: false,
             background: false,
+            blend_key,
+            blending_ranges,
+            extra_blocks,
+            raw_channels: Vec::new(),
         },
         channel_ids,
         channel_lens,

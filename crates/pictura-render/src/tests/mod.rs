@@ -67,6 +67,7 @@ fn solid(
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -93,6 +94,7 @@ fn group(
         children,
         is_group: true,
         background: false,
+        ..Default::default()
     }
 }
 
@@ -152,6 +154,7 @@ fn adjustment_layer(
         children: Vec::new(),
         is_group: false,
         background: false,
+        ..Default::default()
     }
 }
 

@@ -377,6 +377,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }
     }
 
@@ -471,6 +472,7 @@ mod tests {
             disabled: true,
             flags: 0,
             data: Some(ramp(n, 5)),
+            ..Default::default()
         });
         assert!(!mask_has_data(&l));
         let r = mask_influence_rect(region, &l);
@@ -487,6 +489,7 @@ mod tests {
             disabled: false,
             flags: 0,
             data: Some(ramp(n, 5)),
+            ..Default::default()
         });
         assert!(mask_has_data(&l));
         let r = mask_influence_rect(region, &l);
@@ -530,6 +533,7 @@ mod tests {
             children: Vec::new(),
             is_group: false,
             background: false,
+            ..Default::default()
         }
     }
 
