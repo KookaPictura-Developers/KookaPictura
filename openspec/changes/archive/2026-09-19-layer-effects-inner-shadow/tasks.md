@@ -1,0 +1,45 @@
+## 1. Inner shadow decoder
+
+- [x] 1.1 Add `InnerShadow { enabled, present, blend_mode, color, opacity, angle_deg, distance, choke, size, use_global_angle, knocks_out }` to `crates/pictura-render/src/layer_effects.rs`, beside `DropShadow` and `OuterGlow`.
+- [x] 1.2 Add `pub fn decode_inner_shadow(layer: &Layer) -> Option<InnerShadow>` mirroring `decode_drop_shadow`: take the `lfx2` block via `Layer::extra_block`, require at least `8` bytes, hand `&data[4..]` to `pictura_codec::read_descriptor`, require the top-level object, find `IrSh` (an `Objc` with class id `IrSh`), and decode `enab`, `present`, `Md  ` (blend enum via `BlendMode::from_psd_key`, default/missing/unknown → Multiply), `Clr `/`RGBC` `Rd `/`Grn `/`Bl  `, `Opct`, `uglg`, `lagl`, `Dstn`, `Ckmt` as `choke`, `blur` as `size`, and `layerConceals` as `knocks_out`. Accept `UnitFloat` or `Double` for numeric keys and apply the D2 defaults. Any parse error, unknown data version, wrong type, a non-`BlnM` blend typeID, a non-`RGBC` colour, or a non-finite value (including a finite `f64` that overflows `f32`) returns `None`; a finite out-of-range numeric is clamped (`opacity`/`choke` `0..=100`, `distance` `0..=30000`, `size` `0..=250`); never panic.
+- [x] 1.3 Re-export `InnerShadow` from `crates/pictura-render/src/lib.rs`; extend the module `ponytail:` ceiling comment for the inert `knocks_out`, the interior-above-content composite order, and the ignored contour/noise/anti-alias.
+- [x] 1.4 Add decoder unit tests in `crates/pictura-render/src/tests/layer_effects/inner_shadow.rs` using `pictura_codec::write_descriptor` with a `DescriptorBlock2` header (`1u32`, `16u32`): a full `IrSh` decodes to the expected `InnerShadow` including `Ckmt` as `choke`; a minimal `IrSh` takes the defaults (Multiply, black, opacity 75, angle 120, distance 5, choke 0, size 5, use-global-angle true, knocks-out true); a `doub` (non-unit) numeric decodes; missing `lfx2`, missing `IrSh`, wrong data version, wrong-typed `Md  `, wrong `Md  ` typeID, non-`RGBC` `Clr `, non-finite `blur`, and a truncated block each return `None` without panicking; `blur`/`Dstn`/`Ckmt` `1e30` clamp and `1e300` rejects.
+
+## 2. Renderer: interior composite above the content
+
+- [x] 2.1 Split the effect call site in `crates/pictura-render/src/composite.rs`: keep the existing below-content pass (Drop Shadow, Outer Glow) before the layer content, and add an above-content pass after the group/adjustment/pixels/smart branches that composites the Inner Shadow for a visible non-group, non-destructive-adjustment layer.
+- [x] 2.2 Add `erode_matte(src, w, h, r)` to `layer_effects.rs`, mirroring `dilate_matte` with an `axis_min` pass (an `f32::INFINITY` seed and a min window) and no-op at `r <= 0`.
+- [x] 2.3 Add `composite_inner_shadow(canvas, layer, doc, shadow)` to `layer_effects.rs`, reusing `content_matte`, `clip_rect`, `pad_rect`, `blur_matte`, `clamp_finite` and `blend_parts`: build the masked content matte `M` over `S = layer.rect ∩ canvas` padded by `round(choke/100 · size) + Gaussian support`; form `1 − M`; erode it by `round(choke/100 · size)`; Gaussian-blur it by `size`; composite over `S ∩ canvas` only, with per-pixel alpha `M(x,y) · blurred(x − dx, y − dy) · opacity/100` (a sample outside the built region is `1`), the shadow colour, and the effect's own `blend_mode`; `dx = -distance·cos(angle)`, `dy = +distance·sin(angle)`. Early-out on an empty source, an all-zero matte, or an empty output region; clamp the numerics again so a hand-built `InnerShadow` cannot panic; never panic.
+- [x] 2.4 Make `composite_layer_effects` (or a sibling above-content entry point) decode `decode_inner_shadow` and call `composite_inner_shadow` only from the above-content pass; keep the group and destructive-adjustment skips shared with the shadow and glow.
+- [x] 2.5 Add render tests in `tests/layer_effects/inner_shadow.rs`: the shadow is interior only and every exterior pixel is byte-identical to no effect; at `angle_deg` 0 the right interior edge is darkened and the left interior edge is unchanged; `distance` widens the darkened interior band; a positive `choke` covers no more interior pixels than `choke` 0; `size` 6 transitions across more pixels than `size` 0; `opacity` 50 with a red `colour` over white content is a red tint; a mask hides the shadow where zero and keeps it where 255; a small layer with a large `size` leaves outside-the-rect pixels byte-identical; a crafted huge `choke`/`size`/`distance` renders as a bounded no-op without panic; a disabled or not-present shadow is byte-identical to no effect; the matte-source cases (solid fill follows payload alpha, pattern fill confined to the fill, channel-less smart object covers the rect) and the edge cases (opacity 0 no-op, off-canvas/zero-area no-op) mirror the shadow and glow suites.
+
+## 3. GPU fallback
+
+- [x] 3.1 Extend `check_supported`'s `walk` in `crates/pictura-render/src/gpu/mod.rs` so a visible layer whose `decode_inner_shadow` is enabled and present also returns `GpuError::UnsupportedLayerEffect` before dispatch, ahead of the adjustment check. Keep disabled/absent/malformed effects from rejecting the document, and do not add a new error variant.
+- [x] 3.2 Add tests: `composite_gpu` on an inner-shadow document returns `UnsupportedLayerEffect` without panicking, `composite_gpu_or_cpu` equals `composite_rgba`, and a disabled or not-present shadow does not produce the error.
+
+## 4. Fixture and oracle
+
+- [x] 4.1 Add an `inner_shadow()` builder to `scripts/generate-fixtures.py`: a `Base` pixel layer plus an `Inner` pixel layer whose record carries `DescriptorBlock2(Descriptor({ masterFXSwitch: Bool(True), IrSh: Descriptor({ enab, present, showInDialog, Md  : Enumerated(b"BlnM", b"mul "), Clr : Descriptor(RGBC, Rd /Grn /Bl  doubles), Opct: UnitFloat(75.0, Percent), uglg: Bool(False), lagl: UnitFloat(120.0, Angle), Dstn: UnitFloat(5.0, Pixels), Ckmt: UnitFloat(0.0, Percent), blur: UnitFloat(5.0, Pixels), AntA: Bool(True), TrnS: Descriptor(Linear, classID=b"TrnS"), Nose: UnitFloat(0.0, Percent) }, classID=b"IrSh") }, classID=Klass.Null))` under `Tag.OBJECT_BASED_EFFECTS_LAYER_INFO`. Register `"inner_shadow.psd": inner_shadow` in `FIXTURES`; omit `layerConceals` (Inner Shadow has no such control).
+- [x] 4.2 Regenerate with `python3 scripts/generate-fixtures.py`, add `crates/pictura-codec/tests/fixtures/inner_shadow.psd`, and confirm the existing fixtures are byte-identical (`git status`).
+- [x] 4.3 Register the fixture in the codec `FIXTURES` table and add an oracle test in `crates/pictura-codec/tests/oracle.rs`: the `lfx2` key is present in `extra_blocks` with version 1 / data version 16, the whole `Document` round-trips through `write_psd`/`read_psd` with `lfx2` preserved, and a self-skipping psd-tools check reads the layer's effect as `InnerShadow` asserting `enabled`, `present`, `opacity`, `blend_mode`, `choke`, `size`, `angle`, `distance` and colour (there is no `layer_knocks_out` property).
+- [x] 4.4 Add a render test that loads `inner_shadow.psd` with `include_bytes!`, asserts `decode_inner_shadow` yields the authored parameters, and composites a shadow that differs from the no-effect composite.
+- [x] 4.5 Update `crates/pictura-codec/tests/fixtures/README.md`: the contents row and an `inner_shadow()` snippet.
+
+## 5. App
+
+- [x] 5.1 Confirm no production app change is needed: the canvas composites through `pictura_render::composite_rgba` / `composite_active`, which now render the shadow. Do not add an authoring command, panel, or `CMakeLists.txt` entry. No C++ self-test check is added.
+
+## 6. Verification fixes
+
+- [x] 6.1 Bound every decoded numeric to its documented range (`opacity`/`choke` `0..=100`, `distance` `0..=30000`, `size` `0..=250`), re-check `is_finite()` after the `f32` cast, and clamp again in `composite_inner_shadow` so a hand-built `InnerShadow` cannot panic the erode/blur.
+- [x] 6.2 Confirm the interior confinement (`M` factor) leaves every exterior pixel byte-identical, that the mask folds into `M` before the inversion, and that a pixel-layer's missing `-1` alpha still yields `M = 1` inside the rect.
+- [x] 6.3 Confirm the bbox confinement: a small layer with a large `size`/`distance` leaves outside-the-rect pixels byte-identical and completes within a generous wall-clock bound; a canvas-filling layer remains the documented `O(canvas · size)` ceiling.
+- [x] 6.4 Keep `layer_effects.rs` under its 1200 LOC cap; keep `tests/layer_effects/inner_shadow.rs` under 1400 and declare it from `tests/layer_effects.rs` beside `outer_glow`.
+
+## 7. Gates
+
+- [x] 7.1 `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo nextest run --workspace`, `cargo test --workspace --doc`.
+- [ ] 7.2 `bash scripts/verify-fast.sh` and a headless self-test; record counts.
+- [x] 7.3 `openspec validate layer-effects-inner-shadow --strict` and `openspec validate --all --strict`.
+- [ ] 7.4 Commit with the new golden fixture; state the fixture addition in the commit message. Update `docs/dev/STATE.md` separately under `TASK-ALLOWS-DOCS` if the milestone anchor is advanced.

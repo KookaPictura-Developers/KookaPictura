@@ -32,6 +32,7 @@ not hand-edit these files.
 | `pattern_fill_16bit.psd` | RGB | 8x8 | same, but the `Patt` pattern planes are 16-bit (the decoder skips them) |
 | `drop_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Shadowed` layer carrying an `lfx2` `DrSh` drop shadow |
 | `outer_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glowing` layer carrying an `lfx2` `OrGl` outer glow |
+| `inner_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Inner` layer carrying an `lfx2` `IrSh` inner shadow |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -274,6 +275,43 @@ orgl = Descriptor({
 layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
     key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
     data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"OrGl": orgl},
+                          classID=Klass.Null))
+```
+
+`inner_shadow.psd` is authored by the `inner_shadow()` builder: the same `Base`
+pixel layer plus a 4x4 `Inner` pixel layer whose record carries an `lfx2`
+`DescriptorBlock2`. Its top-level object has `masterFXSwitch` and an `IrSh`
+object whose keys mirror psd-tools' `InnerShadow` accessors (`Md  `, `Clr `/`RGBC`,
+`Opct`, `uglg`, `lagl`, `Dstn`, `Ckmt` as the choke, `blur`, `TrnS`, `AntA`,
+`Nose`). There is no `layerConceals` key: Inner Shadow has no knock-out control.
+
+```python
+from psd_tools.psd.descriptor import (
+    Bool, Descriptor, DescriptorBlock2, Double, Enumerated, String, UnitFloat,
+)
+from psd_tools.terminology import Enum, Key, Klass, Unit
+
+irsh = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Color: Descriptor(
+        {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
+        classID=b"RGBC"),
+    Key.Opacity: UnitFloat(75.0, Unit.Percent),
+    Key.UseGlobalAngle: Bool(False),
+    Key.LocalLightingAngle: UnitFloat(120.0, Unit.Angle),
+    Key.Distance: UnitFloat(5.0, Unit.Pixels),
+    Key.ChokeMatte: UnitFloat(0.0, Unit.Percent),
+    Key.Blur: UnitFloat(5.0, Unit.Pixels),
+    Key.TransferSpec: Descriptor({Key.Name: String("Linear")}, classID=b"TrnS"),
+    Key.AntiAlias: Bool(True),
+    Key.Noise: UnitFloat(0.0, Unit.Percent),
+}, classID=b"IrSh")
+
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"IrSh": irsh},
                           classID=Klass.Null))
 ```
 

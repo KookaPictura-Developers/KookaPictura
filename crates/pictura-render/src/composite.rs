@@ -70,7 +70,8 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
     if !layer.visible {
         return;
     }
-    // An enabled layer effect renders behind the layer's own content.
+    // The below-content effects (drop shadow, outer glow) render behind the
+    // layer's own content.
     crate::layer_effects::composite_layer_effects(canvas, layer, doc);
     if layer.is_group {
         // True pass-through: recurse children straight onto the running canvas
@@ -103,6 +104,8 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             composite_pixels(canvas, layer, doc);
         }
     }
+    // The above-content effect (inner shadow) renders over the layer's content.
+    crate::layer_effects::composite_layer_effects_above(canvas, layer, doc);
 }
 
 fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
