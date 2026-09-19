@@ -9,12 +9,13 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **741 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **743 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
   fresh-white-document regression; counted from `cargo test --workspace`, which
-  includes the pre-existing ignored `pictura-render` doctest as the ninth).
+  includes the pre-existing ignored `pictura-render` doctest as the ninth). The
+  C++ self-test reports **220 passed, 0 failed, 0 skipped**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -24,7 +25,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `smart-object-source-render`, `adjustment-payload-decode`, and
   `psd-rle-write`, `convert-to-smart-object`, `rasterize-smart-object`,
   `place-smart-object`, `replace-smart-object-contents`,
-  `open-as-smart-object`, and `export-smart-object-contents` changes;
+  `open-as-smart-object`, `export-smart-object-contents`, and
+  `photo-filter-adjustment-decode` changes;
   canonical specs are in `openspec/specs/` (71 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -61,6 +63,19 @@ Snapshot for resuming after a context break. Update after each milestone.
   payloads are a no-op. Deferred because the schema is not confidently groundable
   or the op is missing: `phfl` (colour-space conversion), `mixr` (layout), `curv`
   (list/format), `selc`/`clrL`/`gdrm`, and a real `SoCo` descriptor.
+- Photo Filter adjustment decoding (roadmap P3/G8, archived
+  `2026-09-19-photo-filter-adjustment-decode`): a version-2 `phfl` payload now
+  decodes to `PhotoFilterParams` (R, G, B taken from the first three of the four
+  `u16` colour components, `u32` density in `0..=100`, `u8` luminosity), and
+  `pictura-render` exposes `encode_photo_filter` so the app can author one. The
+  app maps the `photo-filter` kind to a warming layer (density 25, luminosity
+  preserved) and the Adjustments panel menu offers a `Photo Filter` entry
+  (`adjustment:photo-filter`). Only version 2 is decoded; a truncated payload, a
+  version-3 `phfl` (CIE XYZ), a component above 255, or a density above 100 stays
+  a no-op. **Curves (`curv`) is deferred**: the model is single-composite versus
+  Photoshop's per-channel curves, and the legacy channel-bitmap order is
+  ungrounded (no real Photoshop fixture has any adjustment key). `mixr` (layout)
+  remains deferred too.
 - RLE write (roadmap P3/G12, archived `2026-09-19-psd-rle-write`): `write_psd`
   now PackBits-encodes the merged composite (color + document extra channels),
   layer color channels, and the raster mask (compression 1), instead of raw.
