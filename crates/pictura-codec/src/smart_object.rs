@@ -242,6 +242,83 @@ fn parse_linked_layer(data: &[u8]) -> Result<LinkedRecord, PsdError> {
     })
 }
 
+/// Rebuild the preserved top-level tagged blocks without the linked-source
+/// record(s) whose Pascal uuid equals `uuid`.
+///
+/// Every non-matched block is copied byte-for-byte (padding included); a
+/// matched `lnkD`/`lnk2`/`lnk3`/`lnkE` block is re-emitted with the same key, a
+/// recomputed length, and even padding. A malformed block is copied verbatim.
+/// Returns `Some` only when at least one record was removed, `None` otherwise
+/// (so the caller's bytes are left untouched).
+pub fn remove_linked_source(layer_section_extra: &[u8], uuid: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(layer_section_extra.len());
+    let mut removed = false;
+    let mut r = Reader::new(layer_section_extra);
+    while r.remaining() >= 12 {
+        let start = r.pos;
+        let Ok(sig) = r.take(4) else { break };
+        if sig != b"8BIM" {
+            r.pos = start;
+            break;
+        }
+        let Ok(key) = r.take(4) else {
+            r.pos = start;
+            break;
+        };
+        let Ok(len) = r.u32() else {
+            r.pos = start;
+            break;
+        };
+        let Ok(data) = r.take(len as usize) else {
+            r.pos = start;
+            break;
+        };
+        if len % 2 == 1 && r.skip(1).is_err() {
+            r.pos = start;
+            break;
+        }
+        let end = r.pos;
+        if matches!(key, b"lnkD" | b"lnk2" | b"lnk3" | b"lnkE") {
+            if let Some(kept) = remove_linked_records(data, uuid) {
+                crate::write::write_tag(&mut out, &arr4(key), &kept);
+                removed = true;
+                continue;
+            }
+        }
+        out.extend_from_slice(&layer_section_extra[start..end]);
+    }
+    if r.remaining() > 0 {
+        out.extend_from_slice(&layer_section_extra[r.pos..]);
+    }
+    removed.then_some(out)
+}
+
+/// Drop every record whose uuid equals `uuid` from a linked-layer list, keeping
+/// the surviving records' exact bytes. `None` when the list is malformed or
+/// nothing matched, so the caller can copy the whole block verbatim.
+fn remove_linked_records(data: &[u8], uuid: &str) -> Option<Vec<u8>> {
+    let records = parse_linked_layers(data).ok()?;
+    if !records.iter().any(|record| record.uuid == uuid) {
+        return None;
+    }
+    let mut r = Reader::new(data);
+    let mut out = Vec::with_capacity(data.len());
+    for record in &records {
+        let start = r.pos;
+        let len = r.u64().ok()? as usize;
+        r.take(len).ok()?;
+        let pad = (4 - len % 4) % 4;
+        r.skip(pad).ok()?;
+        if record.uuid != uuid {
+            out.extend_from_slice(&data[start..r.pos]);
+        }
+    }
+    if r.remaining() > 0 {
+        out.extend_from_slice(&data[r.pos..]);
+    }
+    Some(out)
+}
+
 // ---------------------------------------------------------------------------
 // Layer config descriptors
 // ---------------------------------------------------------------------------
@@ -483,6 +560,54 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
         assert!(parse_linked_layers(&[0, 0, 0, 0, 0, 0, 0, 5, 1, 2, 3]).is_err());
         let section = tagged(b"lnk2", &[0, 0, 0, 0, 0, 0, 0, 5, 1, 2, 3]);
         assert!(collect_linked_records(&section).is_empty());
+    }
+
+    #[test]
+    fn remove_linked_source_drops_one_record_and_preserves_the_rest() {
+        let keep = "11111111-2222-3333-4444-555555555555";
+        let drop = "99999999-8888-7777-6666-555555555555";
+        let record_keep = linked_layer(b"liFD", 7, keep, "keep.psb", b"keep");
+        let record_drop = linked_layer(b"liFD", 7, drop, "drop.psb", b"drop!");
+        let unrelated = tagged(b"abcd", b"unrelated-bytes");
+        let section = [
+            tagged(b"lnk2", &linked_list(&[record_keep.clone(), record_drop])),
+            unrelated.clone(),
+        ]
+        .concat();
+
+        let cleaned = remove_linked_source(&section, drop).expect("a record was removed");
+        let expected = [tagged(b"lnk2", &linked_list(&[record_keep])), unrelated].concat();
+        assert_eq!(
+            cleaned, expected,
+            "survivor and unrelated block are byte-preserved"
+        );
+
+        assert!(
+            !cleaned.windows(drop.len()).any(|w| w == drop.as_bytes()),
+            "the removed uuid no longer appears"
+        );
+        let records = collect_linked_records(&cleaned);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].uuid, keep);
+
+        assert_eq!(remove_linked_source(&section, "no-such-uuid"), None);
+    }
+
+    #[test]
+    fn remove_linked_source_copies_a_malformed_block_verbatim() {
+        let drop = "99999999-8888-7777-6666-555555555555";
+        let malformed = tagged(b"lnk2", &[0, 0, 0, 0, 0, 0, 0, 5, 1, 2, 3]);
+        let good = tagged(
+            b"lnk2",
+            &linked_list(&[linked_layer(b"liFD", 7, drop, "drop.psb", b"drop")]),
+        );
+        let section = [malformed.clone(), good].concat();
+
+        let cleaned = remove_linked_source(&section, drop).expect("the good block changed");
+        assert!(
+            cleaned.starts_with(&malformed),
+            "a malformed block is copied byte-for-byte"
+        );
     }
 
     #[test]

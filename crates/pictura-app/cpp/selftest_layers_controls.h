@@ -40,7 +40,9 @@ class PicturaMainWindow;
 // the dialog's name/color/blend/opacity in one undo step.
 // lpr_smart_object_convert (277) converts a raster pixel layer into an embedded
 // smart object that keeps its raster proxy, survives save→load, and refuses a
-// group or the Background without history.
+// group or the Background without history. lpr_smart_object_rasterize (278)
+// consumes that object back into a plain pixel layer with the same composite,
+// drops it across save→load, and refuses a non-smart layer without history.
 // Returns 0 when all pass, otherwise the self-test failure code.
 int runLayersControlsChecks(PicturaMainWindow& frame);
 } // namespace pictura

@@ -1,6 +1,10 @@
 use super::*;
 use pictura_codec::{read_psd, write_psd};
-use pictura_core::{SmartObject, SmartObjectKind};
+use pictura_core::{Channel, LayerBlock, SmartObject, SmartObjectKind};
+
+fn section_has_uuid(bytes: &[u8], uuid: &str) -> bool {
+    !uuid.is_empty() && bytes.windows(uuid.len()).any(|w| w == uuid.as_bytes())
+}
 
 fn solid_doc(w: u32, h: u32, rgb: [u8; 3]) -> Document {
     let n = (w * h) as usize;
@@ -427,4 +431,209 @@ fn grayscale_layer_converts_to_grayscale_source() {
     let embedded = read_psd(&payload).expect("payload reads");
     assert_eq!(embedded.mode, ColorMode::Grayscale);
     assert!(embedded.composite.data.iter().all(|&b| b == 128));
+}
+
+#[test]
+fn rasterize_keeps_proxy_channels_and_drops_config() {
+    let mut layer = solid(
+        "Raster",
+        full(4, 4),
+        (10, 20, 30),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    layer.smart_object = Some(embedded(payload_of([1, 2, 3])));
+    layer.extra_blocks = vec![LayerBlock {
+        key: *b"SoLd",
+        data: vec![9, 9, 9, 9],
+    }];
+    let mut d = doc(4, 4, vec![layer]);
+    let before = d.clone();
+    let before_comp = composite_rgba(&d);
+
+    assert!(can_rasterize_smart_object(&d, "0"));
+    assert!(rasterize_smart_object(&mut d, "0"));
+
+    assert_eq!(d.layers[0].channels, before.layers[0].channels);
+    assert!(d.layers[0].smart_object.is_none());
+    assert!(!d.layers[0].extra_blocks.iter().any(|b| &b.key == b"SoLd"));
+    assert!(!can_rasterize_smart_object(&d, "0"));
+    assert_eq!(composite_rgba(&d), before_comp);
+}
+
+#[test]
+fn rasterize_materializes_source_into_channels() {
+    let layer = smart_layer(
+        "smart",
+        full(4, 4),
+        embedded(payload_of([255, 0, 0])),
+        Vec::new(),
+    );
+    let mut d = doc(4, 4, vec![layer]);
+    let before_comp = composite_rgba(&d);
+
+    assert!(can_rasterize_smart_object(&d, "0"));
+    assert!(rasterize_smart_object(&mut d, "0"));
+
+    let channel = |id: i16| d.layers[0].channels.iter().find(|c| c.id == id).unwrap();
+    assert_eq!(channel(0).data, vec![255u8; 16]);
+    assert_eq!(channel(1).data, vec![0u8; 16]);
+    assert_eq!(channel(2).data, vec![0u8; 16]);
+    assert_eq!(channel(-1).data, vec![255u8; 16]);
+    assert!(d.layers[0].smart_object.is_none());
+    assert_eq!(composite_rgba(&d), before_comp);
+}
+
+#[test]
+fn rasterize_refuses_ineligible_targets() {
+    let mut plain = doc(
+        4,
+        4,
+        vec![solid(
+            "Raster",
+            full(4, 4),
+            (1, 2, 3),
+            255,
+            BlendMode::Normal,
+            255,
+        )],
+    );
+    let before = plain.clone();
+    assert!(!can_rasterize_smart_object(&plain, "0"));
+    assert!(!rasterize_smart_object(&mut plain, "0"));
+    assert!(!rasterize_smart_object(&mut plain, "bad"));
+    assert_eq!(plain, before);
+
+    let mut grouped = doc(
+        4,
+        4,
+        vec![{
+            let mut g = group("G", BlendMode::Normal, 255, None, vec![]);
+            g.smart_object = Some(embedded(payload_of([1, 2, 3])));
+            g
+        }],
+    );
+    let before = grouped.clone();
+    assert!(!can_rasterize_smart_object(&grouped, "0"));
+    assert!(!rasterize_smart_object(&mut grouped, "0"));
+    assert_eq!(grouped, before);
+
+    let mut adjustment = doc(
+        4,
+        4,
+        vec![{
+            let mut a = adjustment_layer("Adj", *b"inv ", vec![0], 255, None);
+            a.smart_object = Some(embedded(payload_of([1, 2, 3])));
+            a
+        }],
+    );
+    let before = adjustment.clone();
+    assert!(!can_rasterize_smart_object(&adjustment, "0"));
+    assert!(!rasterize_smart_object(&mut adjustment, "0"));
+    assert_eq!(adjustment, before);
+
+    let undecodable = smart_layer("smart", full(4, 4), embedded(vec![0, 1, 2]), Vec::new());
+    let mut d = doc(4, 4, vec![undecodable]);
+    let before = d.clone();
+    assert!(can_rasterize_smart_object(&d, "0"));
+    assert!(!rasterize_smart_object(&mut d, "0"));
+    assert_eq!(d, before);
+
+    let empty = smart_layer("smart", full(4, 4), embedded(Vec::new()), Vec::new());
+    let mut d = doc(4, 4, vec![empty]);
+    let before = d.clone();
+    assert!(!rasterize_smart_object(&mut d, "0"));
+    assert_eq!(d, before);
+}
+
+#[test]
+fn oversized_rect_source_is_clipped_to_canvas() {
+    let layer = smart_layer(
+        "smart",
+        rect(0, 0, 100, 100),
+        embedded(payload_of([7, 8, 9])),
+        Vec::new(),
+    );
+    let out = composite_rgba(&doc(4, 4, vec![layer]));
+    for y in 0..4 {
+        for x in 0..4 {
+            assert_close(&out, x, y, [7, 8, 9, 255]);
+        }
+    }
+
+    // The output buffer is bounded by the requested region, not the layer rect.
+    let so = embedded(payload_of([7, 8, 9]));
+    let buf = render_smart_source(&so, rect(-50, -50, 100_000, 100_000), rect(0, 0, 4, 4))
+        .expect("region renders");
+    assert_eq!((buf.width, buf.height), (4, 4));
+}
+
+#[test]
+fn rasterize_preserves_layout_fields() {
+    let mut layer = smart_layer(
+        "smart",
+        rect(-1, -2, 4, 5),
+        embedded(payload_of([255, 0, 0])),
+        Vec::new(),
+    );
+    layer.blend = BlendMode::Multiply;
+    layer.opacity = 200;
+    layer.fill = 128;
+    layer.mask = Some(LayerMask::default());
+    let mut d = doc(8, 8, vec![layer]);
+    let before = d.layers[0].clone();
+
+    assert!(rasterize_smart_object(&mut d, "0"));
+
+    let after = &d.layers[0];
+    assert_eq!(after.name, before.name);
+    assert_eq!(after.rect, before.rect);
+    assert_eq!(after.blend, before.blend);
+    assert_eq!(after.opacity, before.opacity);
+    assert_eq!(after.fill, before.fill);
+    assert_eq!(after.mask, before.mask);
+    assert!(after.smart_object.is_none());
+}
+
+#[test]
+fn rasterize_drops_preserved_config_and_linked_record_round_trip() {
+    let layer = solid(
+        "Raster",
+        full(4, 4),
+        (10, 20, 30),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut d = doc(4, 4, vec![layer]);
+    assert!(convert_to_smart_object(&mut d, "0"));
+    let saved = write_psd(&d).expect("first write");
+
+    let mut back = read_psd(&saved).expect("first read");
+    let uuid = back.layers[0]
+        .smart_object
+        .as_ref()
+        .expect("resolved")
+        .uuid
+        .clone();
+    assert_eq!(uuid.len(), 36);
+    assert!(back.layers[0]
+        .extra_blocks
+        .iter()
+        .any(|b| &b.key == b"SoLd"));
+    assert!(section_has_uuid(&back.layer_section_extra, &uuid));
+
+    assert!(rasterize_smart_object(&mut back, "0"));
+    assert!(back.layers[0].smart_object.is_none());
+    assert!(!back.layers[0]
+        .extra_blocks
+        .iter()
+        .any(|b| matches!(&b.key, b"SoLd" | b"SoLE" | b"plLd" | b"PlLd")));
+    assert!(!section_has_uuid(&back.layer_section_extra, &uuid));
+
+    let resaved = write_psd(&back).expect("second write");
+    let reread = read_psd(&resaved).expect("second read");
+    assert!(reread.layers[0].smart_object.is_none());
+    assert!(!section_has_uuid(&reread.layer_section_extra, &uuid));
 }

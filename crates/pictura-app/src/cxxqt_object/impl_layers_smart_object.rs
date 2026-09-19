@@ -36,6 +36,31 @@ impl qobject::PictureView {
         changed
     }
 
+    /// Whether `path` resolves to a rasterizable smart-object layer. Read-only.
+    pub fn layer_can_rasterize_smart_object(&self, path: &QString) -> bool {
+        self.rust()
+            .doc
+            .as_ref()
+            .is_some_and(|doc| pictura_render::can_rasterize_smart_object(doc, &path.to_string()))
+    }
+
+    /// `Rasterize Smart Object`: consume the object at `path`, keeping its raster
+    /// proxy (or materializing the embedded source), and drop the preserved
+    /// blocks. Records one "Rasterize Smart Object" state on success; false (no
+    /// state) for an ineligible target.
+    pub fn rasterize_smart_object(mut self: Pin<&mut Self>, path: &QString) -> bool {
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::rasterize_smart_object(doc, &path.to_string()),
+            None => false,
+        };
+        if changed {
+            self.as_mut().clear_link_sets();
+            self.as_mut().recomposite();
+            self.as_mut().record("Rasterize Smart Object");
+        }
+        changed
+    }
+
     /// Self-test probe: `<kind>:<payload-len>` for `path`'s smart object, or
     /// empty when the layer has none. Read-only.
     pub fn layer_smart_object_state(&self, path: &QString) -> QString {
