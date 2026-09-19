@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **808 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
+- Test suite: **826 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -29,8 +29,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `open-as-smart-object`, `export-smart-object-contents`,
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
   `solid-color-fill-descriptor`, `gradient-fill-layer`,
-  `edit-smart-object-contents`, `image-import`, `file-drop-routing`, and
-  `free-transform-mode` changes;
+  `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
+  `free-transform-mode`, and `psb-write` changes;
   canonical specs are in `openspec/specs/` (74 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -223,6 +223,30 @@ Snapshot for resuming after a context break. Update after each milestone.
   session (cancel keeps the `"Place"` state). C++ self-test code 292. Ceilings:
   bilinear-only, no skew/distort/perspective/warp. This completes the place/drop
   program (image import + OS file drop + free transform).
+- PSB **write** (roadmap P5/G9, archived `2026-09-19-psb-write`): `write_psd`
+  now emits a version-2 PSB when `Document.is_psb` is set or either dimension
+  exceeds 30 000, and a new `write_psb` always forces a PSB; both share one
+  container writer and accept dimensions up to 300 000, above which the write
+  returns `PsdError::Unsupported`. The PSB container widens the layer-and-mask
+  section length, the layer-info length, and each per-channel data length to
+  `u64`, and the RLE scanline byte-count table entries to `u32`; the global
+  layer-mask info length stays `u32`. The bundled correctness fixes it required:
+  PSB "big key" additional-layer-info blocks (`lnk2`/`lnk3`/`lnkE`,
+  `Lr16`/`Lr32`/`Layr`, `LMsk`, `Alph`, `FMsk`, `PxSD`, `pths`,
+  `Mtrn`/`Mt16`/`Mt32`, `cinf`, `extd`/`extn`, `artd`, `FXid`/`FEid`/`FELS`)
+  carry an 8-byte length in a PSB (`common::is_psb_big_key`, mirroring
+  psd-tools' `_BIG_KEYS`); per-layer tagged blocks declare an even length with
+  the pad inside it, while document-level blocks declare the exact length and are
+  padded externally to 4 (`reframe_document_extra` re-frames a preserved
+  document-level block to the output container's width); and `iOpa` is written as
+  a 4-byte `[fill, 0, 0, 0]` block. `Document` gained `is_psb` (set by the
+  reader, false for new documents) and the reader gained the matching big-key
+  widths. Proven by the psd-tools oracle: an authored-smart-object PSB, a
+  reframed PSD→PSB big key, and odd/non-multiple-of-4 block framing all decode.
+  Ceilings: an `8B64` document-level signature is normalized to `8BIM` on
+  re-frame; a small PSB is preserved as a PSB via `is_psb`; and opening a
+  >30 000 PSB through the app is still capped by the import probe budget
+  (`probe.rs`, 30 000), a distinct follow-up.
 
 ## Commands
 
