@@ -290,6 +290,45 @@ pub struct RawChannel {
     pub data: Vec<u8>,
 }
 
+/// How a smart object's source is linked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SmartObjectKind {
+    /// `liFD`: the source bytes are embedded in the document.
+    Embedded,
+    /// `liFE`: the source is an external path; never read from disk.
+    External,
+    /// `liFA`: an alias link.
+    Alias,
+    /// A config descriptor exists but no matching linked record was found (or
+    /// its parse failed). The preserved bytes remain the source of truth.
+    #[default]
+    Unresolved,
+}
+
+/// A typed view of a layer's embedded/linked smart object, derived on read.
+///
+/// The raw config descriptor and the document-level linked record are preserved
+/// separately and remain the source of truth for re-emission; this view only
+/// exposes what the engine can resolve.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SmartObject {
+    /// The `Idnt`/`PlLd` uuid that links the layer config to its record.
+    pub uuid: String,
+    /// Original filename, with any trailing NUL stripped.
+    pub filename: String,
+    /// 4-byte file-type code stored in the record (e.g. `8BPB`).
+    pub filetype: [u8; 4],
+    /// 4-byte creator code stored in the record (e.g. `8BIM`).
+    pub creator: [u8; 4],
+    pub kind: SmartObjectKind,
+    /// Raw `SoLd`/`SoLE`/`plLd`/`PlLd` block data, kept verbatim.
+    pub config_descriptor: Vec<u8>,
+    /// Embedded source bytes; `Some` only for [`SmartObjectKind::Embedded`].
+    pub payload: Option<Vec<u8>>,
+    /// The `crs:` XMP packet found in an embedded payload, if any.
+    pub crs_xmp: Option<Vec<u8>>,
+}
+
 /// A raster layer mask. `data` is `None` until the channel image is decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayerMask {
@@ -427,6 +466,8 @@ pub struct Layer {
     /// Layer channels the engine does not decode, kept as full on-disk streams
     /// for verbatim re-emit.
     pub raw_channels: Vec<RawChannel>,
+    /// Derived embedded/linked smart-object view; `None` for ordinary layers.
+    pub smart_object: Option<SmartObject>,
 }
 
 impl Default for Layer {
@@ -456,6 +497,7 @@ impl Default for Layer {
             blending_ranges: Vec::new(),
             extra_blocks: Vec::new(),
             raw_channels: Vec::new(),
+            smart_object: None,
         }
     }
 }
