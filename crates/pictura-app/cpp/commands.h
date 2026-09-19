@@ -31,6 +31,7 @@ inline constexpr char EditUndo[] = "edit.undo";
 inline constexpr char EditRedo[] = "edit.redo";
 inline constexpr char EditStepBackward[] = "edit.stepBackward";
 inline constexpr char EditStepForward[] = "edit.stepForward";
+inline constexpr char EditFreeTransform[] = "edit.freeTransform";
 inline constexpr char EditPreferencesGeneral[] = "edit.preferences.general";
 inline constexpr char EditPreferencesInterface[] = "edit.preferences.interface";
 inline constexpr char ImageRotate90Cw[] = "image.rotate90cw";

@@ -352,7 +352,11 @@ the display name from its base name, and invoke the engine operation on the
 current document. On success only, the invoked bridge SHALL clear the link sets,
 recomposite, record exactly one history state labelled `"Place"`, and return the
 new layer path. On refusal the bridge SHALL return an empty string, record no
-history state, and leave the document unchanged.
+history state, and leave the document unchanged. After a successful place the
+application SHALL select the new layer and start a Free Transform session on it
+as defined by the `free-transform` capability; cancelling that session SHALL
+leave the placed layer where it landed and MUST NOT remove or roll back the
+`"Place"` history state.
 
 #### Scenario: Success records one state and returns the layer path
 
@@ -363,6 +367,11 @@ history state, and leave the document unchanged.
 
 - **WHEN** the command runs with a supported raster image and an open document
 - **THEN** exactly one history state labelled `"Place"` is added, a new smart-object layer is appended, and the image-import bridge returns the new layer's path
+
+#### Scenario: A successful place starts a transform session
+
+- **WHEN** the command places a supported image and returns the new layer path
+- **THEN** a Free Transform session begins on the new layer and the `"Place"` history state remains recorded
 
 #### Scenario: Refusal records nothing
 

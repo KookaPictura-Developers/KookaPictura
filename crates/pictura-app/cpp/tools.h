@@ -213,6 +213,14 @@ public:
     bool commitPolygonLasso();
     bool cancelPolygonLasso();
 
+    // Free Transform session. `beginFreeTransform` starts a session on `path`
+    // and shows its overlay; commit/cancel end it. While a session is active
+    // normal tool input is suspended and routed to the session.
+    bool beginFreeTransform(const QString& path);
+    void commitFreeTransform();
+    void cancelFreeTransform();
+    bool transformSessionActive() const;
+
 signals:
     void activeToolChanged(ToolId id);
     void foregroundSampled(const QColor& color);
@@ -240,6 +248,9 @@ private:
     void closePolygonLasso();
     QRect marqueeDragRect(const QPointF& a, const QPointF& b, Qt::KeyboardModifiers mods) const;
     static QRect dragRect(const QPointF& a, const QPointF& b);
+
+    void updateTransformOverlay(PictureView* v);
+    void setTransformCursor(const QPointF& imagePos);
 
     ImageView* canvas_ = nullptr;
     std::function<PictureView*()> viewProvider_;
@@ -287,6 +298,9 @@ private:
     QImage warmBase_;
     QImage warmLayer_;
     bool warmValid_ = false;
+
+    bool transformDragging_ = false;
+    int transformHandle_ = -1;
 };
 
 } // namespace pictura

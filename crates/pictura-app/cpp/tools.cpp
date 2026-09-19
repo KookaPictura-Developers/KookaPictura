@@ -320,6 +320,14 @@ void ToolController::setActiveTool(ToolId id)
             v->end_move_preview();
         }
     }
+    if (v && v->transform_session_active()) {
+        v->cancel_transform();
+        transformDragging_ = false;
+        transformHandle_ = -1;
+        if (canvas_) {
+            canvas_->clearTransformPreview();
+        }
+    }
     if (canvas_) {
         canvas_->clearOverlay();
         canvas_->clearSelectionPreview();
@@ -415,6 +423,10 @@ void ToolController::bindCanvas(ImageView* canvas)
     connect(canvas_, &ImageView::mousePressed, this, &ToolController::handlePressed);
     connect(canvas_, &ImageView::mouseMoved, this, &ToolController::handleMoved);
     connect(canvas_, &ImageView::mouseReleased, this, &ToolController::handleReleased);
+    connect(canvas_, &ImageView::transformCommitRequested, this,
+            &ToolController::commitFreeTransform);
+    connect(canvas_, &ImageView::transformCancelRequested, this,
+            &ToolController::cancelFreeTransform);
     applyToolPolicy();
 }
 
@@ -431,6 +443,11 @@ void ToolController::unbindCanvas()
             previewView->end_move_preview();
         }
     }
+    if (canvas_->transformPreviewActive()) {
+        canvas_->clearTransformPreview();
+    }
+    transformDragging_ = false;
+    transformHandle_ = -1;
     canvas_->clearOverlay();
     canvas_->clearSelectionPreview();
     canvas_ = nullptr;
@@ -468,7 +485,11 @@ void ToolController::applyToolPolicy()
     if (!canvas_) {
         return;
     }
-    canvas_->setPanEnabled(active_ == ToolId::Hand);
+    const bool session = transformSessionActive();
+    canvas_->setPanEnabled(!session && active_ == ToolId::Hand);
+    if (session) {
+        return;
+    }
     refreshCursor();
     if (active_ == ToolId::Move) {
         warmMovePreview();
@@ -517,6 +538,19 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
     }
     PictureView* v = view();
     const Qt::KeyboardModifiers mods = Qt::KeyboardModifiers(modifiers);
+    if (v && v->transform_session_active()) {
+        const double z = canvas_ ? canvas_->zoom() : 1.0;
+        const int hit = v->transform_press(imagePos.x(), imagePos.y(), z,
+                                           mods.testFlag(Qt::ShiftModifier),
+                                           mods.testFlag(Qt::AltModifier));
+        if (hit >= 0) {
+            transformDragging_ = true;
+            transformHandle_ = hit;
+            updateTransformOverlay(v);
+            setTransformCursor(imagePos);
+        }
+        return;
+    }
     if (isSelectionTool(active_)) {
         const bool ctrl = mods.testFlag(Qt::ControlModifier);
         const bool shift = mods.testFlag(Qt::ShiftModifier);
@@ -713,6 +747,17 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
 
 void ToolController::handleMoved(const QPointF& imagePos)
 {
+    if (transformSessionActive()) {
+        PictureView* v = view();
+        const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
+        if (transformDragging_ && v && canvas_) {
+            v->transform_move(imagePos.x(), imagePos.y(), canvas_->zoom(),
+                              mods.testFlag(Qt::ShiftModifier), mods.testFlag(Qt::AltModifier));
+            updateTransformOverlay(v);
+        }
+        setTransformCursor(imagePos);
+        return;
+    }
     updateSelectionHover(imagePos);
     if (!dragging_ && !polygonInProgress_) {
         return;
@@ -780,6 +825,16 @@ void ToolController::handleMoved(const QPointF& imagePos)
 
 void ToolController::handleReleased(const QPointF& imagePos)
 {
+    if (transformSessionActive()) {
+        if (transformDragging_) {
+            transformDragging_ = false;
+            transformHandle_ = -1;
+            if (PictureView* v = view()) {
+                v->transform_release();
+            }
+        }
+        return;
+    }
     if (!dragging_) {
         return;
     }
@@ -913,6 +968,107 @@ void ToolController::closePolygonLasso()
     if (committed) {
         emit selectionCommitted();
     }
+}
+
+bool ToolController::beginFreeTransform(const QString& path)
+{
+    PictureView* v = view();
+    if (!v || path.isEmpty() || !v->begin_free_transform(path)) {
+        return false;
+    }
+    transformDragging_ = false;
+    transformHandle_ = -1;
+    if (canvas_) {
+        canvas_->beginTransformPreview(v->move_preview_base(), v->move_preview_layer(),
+                                      QPointF(v->move_preview_x(), v->move_preview_y()),
+                                      v->move_preview_opacity() / 255.0);
+        updateTransformOverlay(v);
+        canvas_->setPanEnabled(false);
+        canvas_->setFocus();
+    }
+    return true;
+}
+
+bool ToolController::transformSessionActive() const
+{
+    PictureView* v = view();
+    return v && v->transform_session_active();
+}
+
+void ToolController::updateTransformOverlay(PictureView* v)
+{
+    if (!canvas_ || !v) {
+        return;
+    }
+    canvas_->setTransformQuad(v->transform_quad());
+    canvas_->setTransformPreview(v->transform_scale_x(), v->transform_scale_y(),
+                                 v->transform_angle(), v->transform_dx(), v->transform_dy());
+}
+
+void ToolController::setTransformCursor(const QPointF& imagePos)
+{
+    PictureView* v = view();
+    if (!canvas_ || !v) {
+        return;
+    }
+    const int hit = v->transform_hit_test(imagePos.x(), imagePos.y(), canvas_->zoom());
+    switch (hit) {
+    case 0:
+    case 2:
+        canvas_->setCursor(Qt::SizeFDiagCursor);
+        break;
+    case 1:
+    case 3:
+        canvas_->setCursor(Qt::SizeBDiagCursor);
+        break;
+    case 4:
+    case 6:
+        canvas_->setCursor(Qt::SizeVerCursor);
+        break;
+    case 5:
+    case 7:
+        canvas_->setCursor(Qt::SizeHorCursor);
+        break;
+    case 9:
+        canvas_->setCursor(transformDragging_ ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
+        break;
+    case 8:
+        canvas_->setCursor(Qt::CrossCursor);
+        break;
+    default:
+        canvas_->setCursor(Qt::ArrowCursor);
+        break;
+    }
+}
+
+void ToolController::commitFreeTransform()
+{
+    PictureView* v = view();
+    if (!v || !v->transform_session_active()) {
+        return;
+    }
+    v->commit_transform();
+    transformDragging_ = false;
+    transformHandle_ = -1;
+    if (canvas_) {
+        canvas_->clearTransformPreview();
+    }
+    applyToolPolicy();
+}
+
+void ToolController::cancelFreeTransform()
+{
+    PictureView* v = view();
+    if (!v || !v->transform_session_active()) {
+        return;
+    }
+    v->cancel_transform();
+    transformDragging_ = false;
+    transformHandle_ = -1;
+    if (canvas_) {
+        canvas_->clearTransformPreview();
+    }
+    applyToolPolicy();
 }
 
 bool ToolController::commitCrop()

@@ -1014,6 +1014,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
 
         if (const int lso = pictura::runImageImportChecks(frame); lso != 0) { return lso; }
 
+        if (const int ft = pictura::runFreeTransformChecks(frame); ft != 0) { return ft; }
+
         if (const int sts = pictura::runToolsSelectionChecks(frame); sts != 0) { return sts; }
 
         // lpr_photo_filter (283): a photo-filter adjustment layer is reported

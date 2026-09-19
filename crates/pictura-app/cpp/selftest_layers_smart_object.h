@@ -45,4 +45,10 @@ int runLayersEditSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersEditSmartObjectSessionChecks(PicturaMainWindow& frame);
 int runImageImportChecks(PicturaMainWindow& frame);
 int runFileDropChecks(PicturaMainWindow& frame);
+// lpr_free_transform (292): a canvas drop enters a Free Transform session on the
+// placed layer; a corner-scale gesture commits in exactly one "Free Transform"
+// state with a changed rect; a second session rotates and cancels
+// byte-identically with history unchanged; a group, an adjustment layer, and the
+// Background refuse both the predicate and a session begin.
+int runFreeTransformChecks(PicturaMainWindow& frame);
 } // namespace pictura
