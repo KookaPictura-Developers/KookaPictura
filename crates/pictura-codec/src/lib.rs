@@ -20,6 +20,7 @@
 mod common;
 mod error;
 mod read;
+mod smart_object;
 mod write;
 
 #[cfg(test)]

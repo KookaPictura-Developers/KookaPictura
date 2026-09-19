@@ -56,7 +56,10 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     let resources_len = r.u32()? as usize;
     let image_resources = r.take(resources_len)?.to_vec();
     // Layer and mask information section: 4-byte length (8 in PSB).
-    let (layers, global_layer_mask, layer_section_extra) = read_layer_section(&mut r, is_psb)?;
+    let (mut layers, global_layer_mask, layer_section_extra) = read_layer_section(&mut r, is_psb)?;
+    // Derive the smart-object view from the preserved bytes; a malformed
+    // descriptor or linked-layer record degrades to Unresolved (design D5).
+    crate::smart_object::resolve_smart_objects(&mut layers, &layer_section_extra);
 
     // "Maximize Compatibility" off: a layered file may end after the layer
     // section with no merged composite. A file with no layers at all and no
@@ -588,6 +591,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             blending_ranges,
             extra_blocks,
             raw_channels: Vec::new(),
+            smart_object: None,
         },
         channel_ids,
         channel_lens,
