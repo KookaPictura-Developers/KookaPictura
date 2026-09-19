@@ -142,6 +142,7 @@ fn adjustment_layers_preserve_key_and_bytes() {
             "Threshold",
             "BrightnessContrast",
             "Levels",
+            "PhotoFilter",
         ]
     );
 
@@ -163,6 +164,13 @@ fn adjustment_layers_preserve_key_and_bytes() {
     let levl = find("Levels").adjustment.as_ref().unwrap();
     assert_eq!(levl.key, *b"levl");
     assert_eq!(levl.data.len(), 292);
+    let phfl = find("PhotoFilter").adjustment.as_ref().unwrap();
+    assert_eq!(phfl.key, *b"phfl");
+    assert_eq!(
+        phfl.data,
+        [0, 2, 0, 0, 0, 255, 0, 180, 0, 80, 0, 0, 0, 0, 0, 25, 1, 0, 0, 0,],
+        "version 2, sRGB (255,180,80), density 25, luminosity"
+    );
 
     // Round-trip through pictura-codec: whole document, including adjustments.
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();

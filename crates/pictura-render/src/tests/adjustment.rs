@@ -1,5 +1,5 @@
 use super::*;
-use pictura_adjust::{BlackWhiteParams, ExposureParams, VibranceParams};
+use pictura_adjust::{BlackWhiteParams, ExposureParams, PhotoFilterParams, VibranceParams};
 use pictura_codec::{write_descriptor, DescValue};
 
 fn exposure_payload(exposure: f32, offset: f32, gamma: f32) -> Vec<u8> {
@@ -7,6 +7,18 @@ fn exposure_payload(exposure: f32, offset: f32, gamma: f32) -> Vec<u8> {
     data.extend_from_slice(&exposure.to_be_bytes());
     data.extend_from_slice(&offset.to_be_bytes());
     data.extend_from_slice(&gamma.to_be_bytes());
+    data
+}
+
+fn phfl_payload(version: u16, components: [u16; 4], density: u32, luminosity: u8) -> Vec<u8> {
+    let mut data = version.to_be_bytes().to_vec();
+    data.extend_from_slice(&0u16.to_be_bytes());
+    for c in components {
+        data.extend_from_slice(&c.to_be_bytes());
+    }
+    data.extend_from_slice(&density.to_be_bytes());
+    data.push(luminosity);
+    data.extend_from_slice(&[0, 0, 0]);
     data
 }
 
@@ -119,6 +131,14 @@ fn encode_decode_round_trips() {
             lightness: 30,
         }))
     );
+    assert_eq!(
+        decode_adjustment(&encode_photo_filter([255, 180, 80], 25.0, true)),
+        Some(Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [255, 180, 80],
+            density: 25.0,
+            preserve_luminosity: true,
+        }))
+    );
 
     // Byte formats match the psd-tools fixtures (`H2x`, `3HBx`).
     assert_eq!(encode_invert().key, *b"nvrt");
@@ -131,6 +151,13 @@ fn encode_decode_round_trips() {
     );
     assert_eq!(encode_hue_saturation(10, 20, 30).data.len(), 100);
     assert_eq!(encode_hue_saturation(10, 20, 30).data[0..2], [0, 2]);
+    let phfl = encode_photo_filter([255, 180, 80], 25.0, true);
+    assert_eq!(phfl.key, *b"phfl");
+    assert_eq!(phfl.data.len(), 20);
+    assert_eq!(
+        phfl.data,
+        [0, 2, 0, 0, 0, 255, 0, 180, 0, 80, 0, 0, 0, 0, 0, 25, 1, 0, 0, 0]
+    );
 
     // Out-of-range inputs are clamped to what the decoder accepts.
     assert_eq!(
@@ -147,6 +174,22 @@ fn encode_decode_round_trips() {
             brightness: 150,
             contrast: -50,
             use_legacy: false,
+        }))
+    );
+    assert_eq!(
+        decode_adjustment(&encode_photo_filter([255, 180, 80], 150.0, false)),
+        Some(Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [255, 180, 80],
+            density: 100.0,
+            preserve_luminosity: false,
+        }))
+    );
+    assert_eq!(
+        decode_adjustment(&encode_photo_filter([255, 180, 80], -5.0, false)),
+        Some(Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [255, 180, 80],
+            density: 0.0,
+            preserve_luminosity: false,
         }))
     );
 }
@@ -412,14 +455,81 @@ fn blwh_decodes_descriptor() {
 }
 
 #[test]
+fn phfl_decodes_version_two() {
+    let payload = phfl_payload(2, [255, 180, 80, 0], 25, 1);
+    assert_eq!(payload.len(), 20);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"phfl", payload.clone())),
+        Some(Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [255, 180, 80],
+            density: 25.0,
+            preserve_luminosity: true,
+        }))
+    );
+    // The fourth component and colour space are ignored, and luminosity is a
+    // boolean.
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"phfl", phfl_payload(2, [1, 2, 3, 999], 0, 0))),
+        Some(Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [1, 2, 3],
+            density: 0.0,
+            preserve_luminosity: false,
+        }))
+    );
+
+    // Fewer than the 17 field bytes is a no-op, never an error.
+    for cut in 0..17 {
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"phfl", payload[..cut].to_vec())),
+            None,
+            "cut {cut}"
+        );
+    }
+    // Version 3 (CIE XYZ), a component above 255, and density above 100 are
+    // all rejected.
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"phfl", phfl_payload(3, [0, 0, 0, 0], 25, 1))),
+        None,
+        "version must be 2"
+    );
+    assert_eq!(
+        decode_adjustment(&adjdata(
+            *b"phfl",
+            phfl_payload(2, [256, 180, 80, 0], 25, 1)
+        )),
+        None,
+        "component must be 0..=255"
+    );
+    assert_eq!(
+        decode_adjustment(&adjdata(
+            *b"phfl",
+            phfl_payload(2, [255, 180, 80, 0], 101, 1)
+        )),
+        None,
+        "density must be 0..=100"
+    );
+}
+
+#[test]
 fn deferred_keys_still_none() {
-    for key in [*b"curv", *b"phfl", *b"mixr", *b"selc", *b"clrL", *b"gdrm"] {
+    for key in [*b"curv", *b"mixr", *b"selc", *b"clrL", *b"gdrm"] {
         assert_eq!(
             decode_adjustment(&adjdata(key, vec![1, 2, 3, 4])),
             None,
             "deferred key {key:?}"
         );
     }
+    // Version-3 `phfl` (three u32 CIE XYZ values) is still deferred.
+    let mut v3 = 3u16.to_be_bytes().to_vec();
+    v3.extend_from_slice(&[0u8; 12]);
+    v3.extend_from_slice(&25u32.to_be_bytes());
+    v3.push(1);
+    v3.extend_from_slice(&[0, 0, 0]);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"phfl", v3)),
+        None,
+        "version-3 phfl is deferred"
+    );
     // A real Photoshop `'Clr '` descriptor on `SoCo` is still undecoded.
     let descriptor = write_descriptor(&desc_object("", b"null", vec![]));
     assert_eq!(decode_adjustment(&adjdata(*b"SoCo", descriptor)), None);
@@ -489,4 +599,60 @@ fn decoded_adjustment_changes_backdrop() {
         adjusted.data, plain.data,
         "a decoded expA adjustment layer must change the backdrop"
     );
+}
+
+#[test]
+fn photo_filter_layer_warms_and_preserves_luminance() {
+    // Non-uniform backdrop: two different neutral grays.
+    let base = solid(
+        "base",
+        full(2, 1),
+        (120, 120, 120),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let patch = solid(
+        "patch",
+        rect(0, 0, 1, 1),
+        (80, 80, 80),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 1, vec![base.clone(), patch.clone()]));
+    let filtered = composite_rgba(&doc(
+        2,
+        1,
+        vec![
+            base,
+            patch,
+            adjustment_layer(
+                "photo-filter",
+                *b"phfl",
+                encode_photo_filter([255, 180, 80], 25.0, true).data,
+                255,
+                None,
+            ),
+        ],
+    ));
+    assert_ne!(
+        filtered.data, plain.data,
+        "a Photo Filter layer must change the backdrop"
+    );
+    for x in 0..2 {
+        let got = rgb(&filtered, x, 0);
+        assert!(
+            got[0] > got[2],
+            "warming filter must give red > blue: {got:?}"
+        );
+        let before = rgb(&plain, x, 0);
+        let luma = |c: [u8; 3]| 0.299 * c[0] as f64 + 0.587 * c[1] as f64 + 0.114 * c[2] as f64;
+        assert!(
+            (luma(got) - luma(before)).abs() <= 2.0,
+            "luminance must be preserved at {x}: {:?} -> {:?}",
+            before,
+            got
+        );
+    }
 }

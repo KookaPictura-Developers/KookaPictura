@@ -24,21 +24,24 @@ not hand-edit these files.
 | `group.psd` | RGB | 8x8 | group `Group A` containing `Inner Green`, `Inner Yellow` |
 | `masked.psd` | RGB | 8x8 | `Masked` with a raster layer mask |
 | `gray.psd` | Grayscale | 8x8 | `Gray` |
-| `adjustment.psd` | RGB | 8x8 | `Base` pixel layer + adjustment layers `Invert`, `Posterize`, `Threshold`, `BrightnessContrast`, `Levels` |
+| `adjustment.psd` | RGB | 8x8 | `Base` pixel layer + adjustment layers `Invert`, `Posterize`, `Threshold`, `BrightnessContrast`, `Levels`, `PhotoFilter` |
 
-`adjustment.psd` is also authored by `psd-tools`. psd-tools has no high-level
-adjustment-layer constructor, so each adjustment layer is a pixel layer with its
-channels stripped and an `8BIM` adjustment tagged block (`nvrt`, `post`, `thrs`,
-`brit`, `levl`) set on the layer record:
+`adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
+`scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
+constructor, so each adjustment layer is a pixel layer with its channels
+stripped and an `8BIM` adjustment tagged block (`nvrt`, `post`, `thrs`, `brit`,
+`levl`, `phfl`) set on the layer record:
 
 ```python
 from PIL import Image
 from psd_tools import PSDImage
-from psd_tools.psd.tagged_blocks import TaggedBlock
+from psd_tools.constants import Tag
+from psd_tools.psd.adjustments import (
+    BrightnessContrast, LevelRecord, Levels, PhotoFilter,
+)
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
 from psd_tools.psd.layer_and_mask import ChannelDataList
-from psd_tools.constants import Tag
-from psd_tools.psd.adjustments import BrightnessContrast, Levels, LevelRecord
+from psd_tools.psd.tagged_blocks import TaggedBlock
 
 def adj(psd, key, name, data):
     layer = psd.create_pixel_layer(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), name=name)
@@ -59,6 +62,9 @@ adj(psd, Tag.BRIGHTNESS_AND_CONTRAST, "BrightnessContrast",
     BrightnessContrast(brightness=10, contrast=20, mean=0, lab_only=0))
 recs = [LevelRecord(5, 250, 10, 240, 120)] * 29
 adj(psd, Tag.LEVELS, "Levels", Levels(version=2, extra_version=None, items=recs))
+adj(psd, Tag.PHOTO_FILTER, "PhotoFilter",
+    PhotoFilter(version=2, color_space=0,
+                color_components=(255, 180, 80, 0), density=25, luminosity=1))
 psd.save("adjustment.psd")
 ```
 
