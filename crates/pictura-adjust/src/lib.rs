@@ -24,5 +24,5 @@ pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, CurvesParams, ExposureParams, GradientFillParams,
     GradientKind, GradientMapParams, GradientStop, HueSaturationParams, LevelsParams,
-    PhotoFilterParams, VibranceParams,
+    PatternFillParams, PhotoFilterParams, VibranceParams,
 };

@@ -188,6 +188,54 @@ fn rasterize_refuses_non_fill_targets() {
 }
 
 #[test]
+fn pattern_fill_is_fill_content_and_rasterizes_to_tiles() {
+    let mut doc = pattern_fixture_doc();
+    assert!(is_fill_content_layer(resolve_path(&doc, "1").unwrap()));
+
+    let before = composite_rgba(&doc);
+    assert!(rasterize_fill_content(&mut doc, "1"));
+    let layer = resolve_path(&doc, "1").unwrap();
+    assert!(layer.adjustment.is_none(), "fill data is cleared");
+
+    let red = crate::channel(layer, 0).unwrap();
+    for y in 0..8usize {
+        for x in 0..8usize {
+            assert_eq!(
+                red[y * 8 + x],
+                FIXTURE_TILE[y % 2][x % 2][0],
+                "baked red at ({x}, {y})"
+            );
+        }
+    }
+    assert_eq!(
+        crate::channel(layer, -1).unwrap(),
+        &[255u8; 64],
+        "the pattern's opaque alpha bakes in"
+    );
+
+    // The baked pixels composite to the same tiling the generative fill showed.
+    let after = composite_rgba(&doc);
+    assert_eq!(after.data, before.data);
+}
+
+#[test]
+fn pattern_fill_with_missing_pattern_rasterizes_to_placeholder() {
+    let mut doc = pattern_fixture_doc();
+    resolve_path_mut(&mut doc, "1").unwrap().adjustment = Some(ptfl(&PatternFillParams {
+        pattern_id: "not-installed".into(),
+        scale: 100.0,
+        link_with_layer: true,
+        origin: (0, 0),
+    }));
+
+    assert!(rasterize_fill_content(&mut doc, "1"));
+    let layer = resolve_path(&doc, "1").unwrap();
+    assert!(layer.adjustment.is_none(), "fill data is cleared");
+    assert_eq!(crate::channel(layer, 0).unwrap(), &[128u8; 64]);
+    assert_eq!(crate::channel(layer, -1).unwrap(), &[255u8; 64]);
+}
+
+#[test]
 fn rasterize_all_counts_fill_layers() {
     let mut d = doc(
         2,

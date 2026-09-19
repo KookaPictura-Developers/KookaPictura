@@ -26,6 +26,8 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("gradient_map.psd", 8, 8, ColorMode::Rgb),
     ("solid_fill.psd", 8, 8, ColorMode::Rgb),
     ("gradient_fill.psd", 8, 8, ColorMode::Rgb),
+    ("pattern_fill.psd", 8, 8, ColorMode::Rgb),
+    ("pattern_fill_16bit.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -314,6 +316,84 @@ fn gradient_fill_layer_preserves_descriptor() {
 
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back, doc);
+}
+
+/// The pattern fill fixture: the psd-tools-authored `PtFl` descriptor and the
+/// `Patt` tagged block's pixels survive read and whole-document round-trip.
+#[test]
+fn pattern_fill_layer_preserves_descriptor_and_pattern() {
+    fn get<'a>(obj: &'a DescValue, key: &[u8]) -> Option<&'a DescValue> {
+        let DescValue::Object { items, .. } = obj else {
+            return None;
+        };
+        items
+            .iter()
+            .find(|(k, _)| k.as_slice() == key)
+            .map(|(_, v)| v)
+    }
+
+    let doc = load("pattern_fill.psd");
+    let names: Vec<&str> = doc.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["Base", "Pattern Fill"]);
+
+    let adj = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Pattern Fill")
+        .and_then(|l| l.adjustment.as_ref())
+        .expect("pattern fill adjustment block");
+    assert_eq!(
+        adj.key, *b"PtFl",
+        "the PtFl block is routed to layer.adjustment"
+    );
+
+    let desc = read_descriptor(&adj.data).expect("version-16 descriptor");
+    let ptrn = get(&desc, b"Ptrn").expect("Ptrn object");
+    assert_eq!(
+        get(ptrn, b"Idnt"),
+        Some(&DescValue::Text("pictura-pattern\0".into())),
+        "the descriptor references the pattern by id"
+    );
+
+    let patterns = pictura_codec::decode_patterns(&doc);
+    assert_eq!(patterns.len(), 1, "one Patt pattern");
+    assert_eq!(patterns[0].pattern_id, "pictura-pattern");
+    assert_eq!((patterns[0].width, patterns[0].height), (2, 2));
+    assert_eq!(
+        patterns[0].rgba,
+        vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,],
+        "row-major red, green / blue, white"
+    );
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc, "the whole document round-trips");
+    assert_eq!(
+        pictura_codec::decode_patterns(&back),
+        patterns,
+        "the Patt pixels survive a round-trip"
+    );
+}
+
+/// The 16-bit pattern fixture: the `PtFl` block is still recognised, but the
+/// 16-bit pattern planes are skipped (not misdecoded as 8-bit pixels), and the
+/// document still round-trips.
+#[test]
+fn pattern_fill_16bit_pattern_is_skipped() {
+    let doc = load("pattern_fill_16bit.psd");
+    let adj = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Pattern Fill 16")
+        .and_then(|l| l.adjustment.as_ref())
+        .expect("pattern fill adjustment block");
+    assert_eq!(adj.key, *b"PtFl");
+    assert!(
+        pictura_codec::decode_patterns(&doc).is_empty(),
+        "16-bit pattern planes are skipped"
+    );
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc, "the whole document round-trips");
 }
 
 /// Extra/alpha channels: a PSD written by `pictura-codec` with one extra plane

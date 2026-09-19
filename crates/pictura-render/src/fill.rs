@@ -11,9 +11,11 @@
 //! custom-stop approximation. Raise these one at a time when a fixture shows a
 //! real gap.
 
-use pictura_adjust::{Adjustment, GradientFillParams, GradientKind, GradientStop};
-use pictura_codec::DescValue;
-use pictura_core::{AdjustmentData, Layer};
+use pictura_adjust::{
+    Adjustment, GradientFillParams, GradientKind, GradientStop, PatternFillParams,
+};
+use pictura_codec::{DescValue, PatternPixels};
+use pictura_core::{AdjustmentData, Document, Layer};
 
 use crate::composite::{blend_into, desc_item, Canvas};
 
@@ -58,6 +60,65 @@ pub fn decode_gradient_fill(d: &[u8]) -> Option<Adjustment> {
         angle_deg,
         scale,
     }))
+}
+
+/// The decoded `PtFl` descriptor, or `None` when it is not a pattern fill this
+/// crate understands. Never panics; every failure is a no-op.
+pub fn decode_pattern_fill(d: &[u8]) -> Option<Adjustment> {
+    let obj = pictura_codec::read_descriptor(d).ok()?;
+    if !matches!(obj, DescValue::Object { .. }) {
+        return None;
+    }
+    let ptrn = desc_item(&obj, b"Ptrn")?;
+    let DescValue::Object { class_id, .. } = ptrn else {
+        return None;
+    };
+    if class_id.as_slice() != b"Ptrn" {
+        return None;
+    }
+    let pattern_id = match desc_item(ptrn, b"Idnt") {
+        Some(DescValue::Text(id)) => id.trim_end_matches('\0').to_string(),
+        _ => return None,
+    };
+    let scale = match desc_item(&obj, b"Scl ") {
+        Some(DescValue::Double(v)) => *v as f32,
+        Some(DescValue::UnitFloat { value, .. }) => *value as f32,
+        Some(_) => return None,
+        None => 100.0,
+    };
+    if !scale.is_finite() {
+        return None;
+    }
+    let link_with_layer = match desc_item(&obj, b"Algn") {
+        Some(DescValue::Bool(b)) => *b,
+        Some(_) => return None,
+        None => true,
+    };
+    Some(Adjustment::PatternFill(PatternFillParams {
+        pattern_id,
+        scale,
+        link_with_layer,
+        origin: decode_origin(&obj)?,
+    }))
+}
+
+/// The optional `phase` `Pnt ` object's `Hrzn`/`Vrtc` doubles as an integer
+/// pixel origin; absent is `(0, 0)`.
+fn decode_origin(obj: &DescValue) -> Option<(i32, i32)> {
+    let Some(phase) = desc_item(obj, b"phase") else {
+        return Some((0, 0));
+    };
+    if !matches!(phase, DescValue::Object { .. }) {
+        return None;
+    }
+    let axis = |key: &[u8]| -> Option<i32> {
+        match desc_item(phase, key) {
+            None => Some(0),
+            Some(DescValue::Double(v)) if v.is_finite() => Some(v.round() as i32),
+            Some(_) => None,
+        }
+    };
+    Some((axis(b"Hrzn")?, axis(b"Vrtc")?))
 }
 
 fn decode_kind(value: &[u8]) -> Option<GradientKind> {
@@ -362,4 +423,151 @@ pub(crate) fn composite_gradient_fill(
             );
         }
     }
+}
+
+/// Fallback when a pattern id is not in the document's decoded pattern library:
+/// a missing pattern, or one the decoder skipped (a non-RGB mode, a non-8-bit
+/// plane, or a malformed rectangle). It composites an opaque 50 %-grey tile so
+/// the layer is visible rather than a no-op. The docs describe a
+/// placeholder-or-last-known plus a warning; this uses the grey placeholder and
+/// has no warning surface.
+/// ponytail: no warning surface in the render crate, and no last-known pattern
+/// retained; add them when one exists. Ceiling, not an intended parity claim.
+const PATTERN_PLACEHOLDER: [u8; 4] = [128, 128, 128, 255];
+
+/// A tile sampler over a decoded pattern (or the placeholder).
+///
+/// The tile is `tw × th` pixels; the source is sampled nearest-neighbour, which
+/// is exact at scale 100.
+///
+/// ponytail: scale != 100 uses nearest-neighbour rather than CS6's resample
+/// filter; non-RGB pattern modes and 16/32-bit planes never reach here (the
+/// codec skips them, so the placeholder renders); `phase`/origin is inferred
+/// from the layer-style convention and unverified for `PtFl`.
+struct Tile<'a> {
+    rgba: &'a [u8],
+    pw: i64,
+    ph: i64,
+    tw: i64,
+    th: i64,
+    link: bool,
+    origin: (i32, i32),
+}
+
+impl Tile<'_> {
+    /// The pattern pixel for canvas pixel `(cx, cy)` of a rect at
+    /// `(rect_left, rect_top)`.
+    fn sample(&self, cx: i32, cy: i32, rect_left: i32, rect_top: i32) -> [u8; 4] {
+        let sx_base = if self.link { cx - rect_left } else { cx } as i64;
+        let sy_base = if self.link { cy - rect_top } else { cy } as i64;
+        let sx = (sx_base - self.origin.0 as i64).rem_euclid(self.tw);
+        let sy = (sy_base - self.origin.1 as i64).rem_euclid(self.th);
+        let px = ((sx as f64 / self.tw as f64) * self.pw as f64).floor() as i64;
+        let py = ((sy as f64 / self.th as f64) * self.ph as f64).floor() as i64;
+        let px = px.clamp(0, self.pw - 1) as usize;
+        let py = py.clamp(0, self.ph - 1) as usize;
+        let i = (py * self.pw as usize + px) * 4;
+        [
+            self.rgba[i],
+            self.rgba[i + 1],
+            self.rgba[i + 2],
+            self.rgba[i + 3],
+        ]
+    }
+}
+
+/// Build the tile for `params`, resolving the pattern in the document's decoded
+/// pattern set (the placeholder when absent).
+fn tile_for<'a>(pattern: Option<&'a PatternPixels>, params: &PatternFillParams) -> Tile<'a> {
+    let Some(pattern) = pattern else {
+        return Tile {
+            rgba: &PATTERN_PLACEHOLDER,
+            pw: 1,
+            ph: 1,
+            tw: 1,
+            th: 1,
+            link: params.link_with_layer,
+            origin: params.origin,
+        };
+    };
+    let scale = if params.scale.is_finite() {
+        params.scale as f64
+    } else {
+        100.0
+    };
+    let tw = (pattern.width as f64 * scale / 100.0).round().max(1.0) as i64;
+    let th = (pattern.height as f64 * scale / 100.0).round().max(1.0) as i64;
+    Tile {
+        rgba: &pattern.rgba,
+        pw: pattern.width as i64,
+        ph: pattern.height as i64,
+        tw: tw.max(1),
+        th: th.max(1),
+        link: params.link_with_layer,
+        origin: params.origin,
+    }
+}
+
+/// Composite a pattern fill across the layer's rect (clamped to the canvas),
+/// tiling through [`blend_into`] so the layer's mask, opacity, fill, and blend
+/// apply and pixels outside the rect are untouched.
+pub(crate) fn composite_pattern_fill(
+    canvas: &mut Canvas,
+    layer: &Layer,
+    doc: &Document,
+    params: &PatternFillParams,
+) {
+    let x0 = layer.rect.left.max(0);
+    let y0 = layer.rect.top.max(0);
+    let x1 = layer.rect.right.min(canvas.w as i32);
+    let y1 = layer.rect.bottom.min(canvas.h as i32);
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    // ponytail: the pattern library is decoded once per pattern-fill layer;
+    // thread a shared decode through the composite if re-parsing ever shows up.
+    let patterns = pictura_codec::decode_patterns(doc);
+    let pattern = patterns.iter().find(|p| p.pattern_id == params.pattern_id);
+    let tile = tile_for(pattern, params);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let c = tile.sample(x, y, layer.rect.left, layer.rect.top);
+            blend_into(
+                canvas,
+                layer,
+                x as usize,
+                y as usize,
+                [
+                    c[0] as f32 / 255.0,
+                    c[1] as f32 / 255.0,
+                    c[2] as f32 / 255.0,
+                ],
+                c[3] as f32 / 255.0,
+            );
+        }
+    }
+}
+
+/// Bake the tiled pattern (or placeholder) for a rect into row-major RGBA, for
+/// fill-content rasterization. Shares [`Tile`] with the compositor; the caller
+/// decodes the pattern library once.
+pub(crate) fn pattern_tile_rgba(
+    patterns: &[PatternPixels],
+    params: &PatternFillParams,
+    rect_left: i32,
+    rect_top: i32,
+    w: i32,
+    h: i32,
+) -> Vec<[u8; 4]> {
+    let pattern = patterns.iter().find(|p| p.pattern_id == params.pattern_id);
+    let tile = tile_for(pattern, params);
+    let w = w.max(0);
+    let h = h.max(0);
+    let mut out = Vec::with_capacity(w as usize * h as usize);
+    for ly in 0..h {
+        for lx in 0..w {
+            out.push(tile.sample(rect_left + lx, rect_top + ly, rect_left, rect_top));
+        }
+    }
+    out
 }

@@ -13,8 +13,9 @@ matching `pictura_adjust::Adjustment` variant: `expA` to
 `Adjustment::PhotoFilter(PhotoFilterParams)`, `grdm` to
 `Adjustment::GradientMap(GradientMapParams)`, `blnc` to
 `Adjustment::ColorBalance(ColorBalanceParams)`, `SoCo` to
-`Adjustment::SolidFill([u8; 4])`, and `GdFl` to
-`Adjustment::GradientFill(GradientFillParams)`. The fixed structs `expA` and
+`Adjustment::SolidFill([u8; 4])`, `GdFl` to
+`Adjustment::GradientFill(GradientFillParams)`, and `PtFl` to
+`Adjustment::PatternFill(PatternFillParams)`. The fixed structs `expA` and
 `phfl` SHALL be read as a `u16` version followed by fixed-width fields. The
 descriptor payloads `vibA` and `blwh` SHALL be read as a 4-byte descriptor
 version equal to 16 followed by a descriptor object whose keys carry the slider
@@ -48,7 +49,13 @@ stop in the `Clrs` list SHALL be an object whose `Clr ` `RGBC` object carries
 `Lctn` value is a `doub` or `long` in `0..=4096`. Stops SHALL be kept in stored
 order. When present, the top-level `Rvrs` `bool` SHALL be the reverse flag and
 the `Scl ` `doub` SHALL be the scale percent; absent, they SHALL default to false
-and 100.
+and 100. A `PtFl` payload SHALL be read as a version-16 descriptor whose `Ptrn`
+object (class `Ptrn`) carries the pattern id in its `Idnt` text and whose
+top-level `Scl ` value (`doub` or unit float) is the scale percent and whose
+`Algn` `bool` is the Link With Layer flag; a missing or wrong-typed
+`Ptrn`/`Idnt`, a non-finite scale, or a malformed descriptor SHALL decode to
+`None`. The pattern id SHALL have trailing NUL bytes stripped; an absent `Scl `
+SHALL default to 100 and an absent `Algn` SHALL default to true.
 
 #### Scenario: Exposure payload decodes to ExposureParams
 
@@ -95,6 +102,16 @@ and 100.
 - **WHEN** a `GdFl` descriptor has a finite `Angl`, a `Type` kind, and a `Grad` `Grdn` object whose `GrdF` is `CstS` and whose `Clrs` list holds two `RGBC` stops with strictly increasing `Lctn` in `0..=4096`
 - **THEN** `decode_adjustment` returns `Adjustment::GradientFill` whose `kind` is the decoded kind, whose `angle_deg` is the `Angl` value, whose `reverse` is false and `scale` is 100 when absent, and whose `stops` carry those locations and colours
 
+#### Scenario: Pattern fill payload decodes to PatternFill
+
+- **WHEN** a `PtFl` descriptor has a `Ptrn` object whose `Idnt` is a pattern id, a finite `Scl `, and an `Algn` flag
+- **THEN** `decode_adjustment` returns `Adjustment::PatternFill` whose `pattern_id` is the id with trailing NULs stripped, whose `scale` is the `Scl ` value, and whose `link_with_layer` is the `Algn` value
+
+#### Scenario: Pattern fill defaults are applied
+
+- **WHEN** a `PtFl` descriptor carries a `Ptrn`/`Idnt` but no `Scl ` or `Algn`
+- **THEN** the decoded `PatternFill` has `scale` 100 and `link_with_layer` true
+
 #### Scenario: Every gradient fill kind decodes
 
 - **WHEN** the `Type` enum is `Lnr `, `Rdl `, `Angl`, `Rflc`, or `Dmnd`
@@ -103,6 +120,11 @@ and 100.
 #### Scenario: Malformed gradient fill descriptor is a no-op
 
 - **WHEN** a `GdFl` payload does not parse as a descriptor object, carries a colour-noise `GrdF` (`ClNs`), lacks `Angl`/`Type`/`Grad`/`Clrs`, has fewer than two stops, has non-increasing or out-of-range stop locations, or carries a non-finite angle or colour component
+- **THEN** `decode_adjustment` returns `None` and does not panic
+
+#### Scenario: Malformed pattern fill descriptor is a no-op
+
+- **WHEN** a `PtFl` payload does not parse as a descriptor object, lacks a `Ptrn` object, has a missing or wrong-typed `Idnt`, or has a non-finite `Scl `
 - **THEN** `decode_adjustment` returns `None` and does not panic
 
 #### Scenario: Malformed exposure payload is a no-op
@@ -472,4 +494,104 @@ shifts are not all zero SHALL change the composite over a non-uniform backdrop.
 
 - **WHEN** a Color Balance adjustment layer with a non-zero midtone shift is composited over a non-uniform backdrop
 - **THEN** the result differs from the backdrop-only composite
+
+### Requirement: The document pattern library is decoded from the Patt resource
+
+`pictura-codec` SHALL expose `decode_patterns(&Document) -> Vec<PatternPixels>`
+that decodes the document's Patterns resource into row-major RGBA pattern
+pixels carrying each pattern's id, width, and height. The resource SHALL be read
+from the `Patt`, `Pat2`, and `Pat3` additional-layer-information tagged blocks
+in the Layer and Mask Information section (preserved in
+`Document.layer_section_extra`), NOT from `Document.image_resources` (image
+resource 1039 is the ICC profile). Each block SHALL be parsed as a `Patterns`
+list of length-prefixed version-1 patterns: image mode, width/height point,
+Unicode name, Pascal pattern id, and a `VirtualMemoryArrayList` whose
+`num_channels + 2` channel arrays are each decoded with the existing 8-bit
+channel decompression. The written colour channels SHALL be the pattern colour
+(the first written channel replicated for a grayscale pattern and the first
+three taken as R, G, B for an RGB pattern), and a written channel in the alpha
+region SHALL be the pattern's transparency with 255 when absent. Only 8-bit
+planes SHALL be decoded: a written channel whose declared depth or pixel depth
+is not 8 SHALL cause the pattern to be skipped. An RGB pattern SHALL have
+exactly three written colour planes and a grayscale pattern exactly one; a
+pattern with a missing or extra colour plane, or whose declared rectangle
+disagrees with its written channel rectangles or exceeds a bounded pixel cap,
+SHALL be skipped. A malformed or unrecognised block SHALL be skipped, keeping
+the patterns parsed so far, and the decoder SHALL NOT panic or allocate without
+bound.
+
+#### Scenario: A Patt block decodes to pattern pixels
+
+- **WHEN** a document carries a `Patt` tagged block with a version-1 RGB pattern whose channels hold known 8-bit planes
+- **THEN** `decode_patterns` returns one `PatternPixels` with that pattern's id, size, and RGBA pixels in row-major order
+
+#### Scenario: A grayscale pattern replicates its single channel
+
+- **WHEN** a pattern's image mode is Grayscale with one written colour channel
+- **THEN** the decoded pixel's R, G, and B components all equal that channel
+
+#### Scenario: A malformed Patt block is skipped
+
+- **WHEN** a `Patt` block is truncated or one pattern's channel list is malformed
+- **THEN** `decode_patterns` returns the patterns parsed before the failure and does not panic
+
+#### Scenario: Non-8-bit pattern planes are skipped
+
+- **WHEN** a `Patt` block's written channel declares a depth or pixel depth other than 8
+- **THEN** `decode_patterns` skips that pattern and returns the patterns parsed before it, without decoding the plane or panicking
+
+#### Scenario: A crafted oversized pattern rectangle is skipped
+
+- **WHEN** a pattern's declared rectangle is inconsistent with its written channel rectangles or exceeds the decoder's pixel cap
+- **THEN** `decode_patterns` skips the pattern without an unbounded allocation and does not panic
+
+#### Scenario: The trailing alpha slot is the pattern transparency
+
+- **WHEN** both slots of a pattern's two-slot alpha region are written
+- **THEN** the decoded alpha is the last written slot, matching psd-tools' trailing-plane rule
+
+#### Scenario: A pattern with a missing colour plane is skipped
+
+- **WHEN** an RGB pattern does not have exactly three written colour planes, or a grayscale pattern does not have exactly one
+- **THEN** `decode_patterns` skips it rather than filling the absent channel with zero
+
+### Requirement: Pattern fill layers render by tiling the document pattern
+
+`decode_adjustment` SHALL cause the renderer to composite a `PtFl` pattern fill
+(`Adjustment::PatternFill`) by tiling the referenced pattern over the layer's
+rectangle clamped to the canvas, blending
+each in-rect sample at the pattern's alpha through the normal layer path, so the
+layer's mask, opacity, fill, and blend mode apply and pixels outside the
+rectangle are untouched. The pattern SHALL be resolved by `pattern_id` from the
+document's decoded pattern pixels. The tile SHALL use the params' `scale`
+(percent; the tile is resampled when the scale is not 100),
+`link_with_layer` (the tile is anchored at the layer's top-left when set and at
+the document origin when clear) and `origin` (a pixel offset added to the
+sample). When no decoded pattern matches `pattern_id`, the layer SHALL composite
+a grey placeholder over its rectangle rather than a no-op, and SHALL NOT panic.
+
+#### Scenario: A pattern fill layer tiles its pattern
+
+- **WHEN** a layer references a 2x2 RGB pattern at scale 100 with Link With Layer on and is composited over a backdrop
+- **THEN** the in-rect pixels repeat the 2x2 tile and the result differs from the backdrop-only composite
+
+#### Scenario: Adjacent tile cells differ
+
+- **WHEN** the composite is sampled at horizontally adjacent in-rect pixels and again one tile width across
+- **THEN** the adjacent pixels carry different tile colours and the pixel one tile width across repeats the first
+
+#### Scenario: Link With Layer anchors the tile to the layer rect
+
+- **WHEN** `link_with_layer` is true and the layer rectangle starts at a non-zero offset
+- **THEN** the tile's first cell is aligned with the layer rectangle's top-left, so the pattern moves with the layer
+
+#### Scenario: A missing pattern falls back to the placeholder
+
+- **WHEN** a layer's `pattern_id` does not match any pattern decoded from the document
+- **THEN** the in-rect composite is the opaque grey placeholder and the composite is not a no-op
+
+#### Scenario: A masked-out pattern fill is a no-op
+
+- **WHEN** a pattern fill layer's mask hides the whole canvas
+- **THEN** the composite equals the backdrop-only composite
 

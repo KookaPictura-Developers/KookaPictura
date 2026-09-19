@@ -1010,7 +1010,21 @@ fn alpha_is_never_modified() {
             angle_deg: 0.0,
             scale: 100.0,
         }),
+        Adjustment::PatternFill(PatternFillParams {
+            pattern_id: "pictura-pattern".into(),
+            scale: 100.0,
+            link_with_layer: true,
+            origin: (0, 0),
+        }),
+        Adjustment::SolidFill([10, 20, 30, 40]),
     ];
+    // One entry per `Adjustment` variant: the 16 destructive ones plus the three
+    // refused fills (`SolidFill`, `GradientFill`, `PatternFill`).
+    assert_eq!(
+        adjustments.len(),
+        19,
+        "every Adjustment variant is exercised"
+    );
     for a in adjustments {
         let mut b = base.clone();
         match apply(&a, &mut b) {
@@ -1055,6 +1069,48 @@ fn apply_refuses_gradient_fill_without_mutating() {
     assert_eq!(
         buf, before,
         "a refused gradient fill leaves the buffer unchanged"
+    );
+}
+
+#[test]
+fn apply_refuses_pattern_fill_without_mutating() {
+    let mut buf = buf3(
+        2,
+        2,
+        &[[10, 20, 30], [40, 50, 60], [70, 80, 90], [100, 110, 120]],
+    );
+    let before = buf.clone();
+    let params = PatternFillParams {
+        pattern_id: "pictura-pattern".into(),
+        scale: 50.0,
+        link_with_layer: false,
+        origin: (3, 4),
+    };
+    assert!(matches!(
+        apply(&Adjustment::PatternFill(params), &mut buf),
+        Err(AdjustError::Unsupported(_))
+    ));
+    assert_eq!(
+        buf, before,
+        "a refused pattern fill leaves the buffer unchanged"
+    );
+}
+
+#[test]
+fn apply_refuses_solid_fill_without_mutating() {
+    let mut buf = buf3(
+        2,
+        2,
+        &[[10, 20, 30], [40, 50, 60], [70, 80, 90], [100, 110, 120]],
+    );
+    let before = buf.clone();
+    assert!(matches!(
+        apply(&Adjustment::SolidFill([1, 2, 3, 200]), &mut buf),
+        Err(AdjustError::Unsupported(_))
+    ));
+    assert_eq!(
+        buf, before,
+        "a refused solid fill leaves the buffer unchanged"
     );
 }
 

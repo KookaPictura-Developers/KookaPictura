@@ -1,5 +1,6 @@
 use super::*;
 use pictura_adjust::{Adjustment, BrightnessContrastParams, HueSaturationParams, LevelsParams};
+use pictura_codec::{write_descriptor, DescValue};
 use pictura_core::{
     AdjustmentData, BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer,
     LayerMask, LockFlags, PixelBuffer, PsdRect,
@@ -9,6 +10,7 @@ mod adjustment;
 mod blend;
 mod composite;
 mod gradient_fill;
+mod pattern_fill;
 mod raster_import;
 mod rasterize;
 mod smart_object;
@@ -164,4 +166,56 @@ fn adjustment_layer(
 fn rgb(buf: &PixelBuffer, x: u32, y: u32) -> [u8; 3] {
     let p = px(buf, x, y);
     [p[0], p[1], p[2]]
+}
+
+/// The psd-tools-authored pattern fixture: a `Patt` block with a 2x2 RGB
+/// pattern (`pictura-pattern`) plus a document-sized `PtFl` layer referencing
+/// it.
+const PATTERN_FIXTURE: &[u8] =
+    include_bytes!("../../../pictura-codec/tests/fixtures/pattern_fill.psd");
+
+fn pattern_fixture_doc() -> Document {
+    pictura_codec::read_psd(PATTERN_FIXTURE).expect("pattern_fill.psd parses")
+}
+
+/// The fixture pattern's 2x2 cells, row-major: red, green / blue, white.
+const FIXTURE_TILE: [[[u8; 3]; 2]; 2] =
+    [[[255, 0, 0], [0, 255, 0]], [[0, 0, 255], [255, 255, 255]]];
+
+/// A `PtFl` descriptor for `params`, encoded the way the renderer decodes it.
+fn ptfl(params: &PatternFillParams) -> AdjustmentData {
+    let ptrn = DescValue::Object {
+        name: String::new(),
+        class_id: b"Ptrn".to_vec(),
+        items: vec![(
+            b"Idnt".to_vec(),
+            DescValue::Text(format!("{}\0", params.pattern_id)),
+        )],
+    };
+    let mut items = vec![
+        (b"Ptrn".to_vec(), ptrn),
+        (b"Scl ".to_vec(), DescValue::Double(params.scale as f64)),
+        (b"Algn".to_vec(), DescValue::Bool(params.link_with_layer)),
+    ];
+    if params.origin != (0, 0) {
+        items.push((
+            b"phase".to_vec(),
+            DescValue::Object {
+                name: String::new(),
+                class_id: b"Pnt ".to_vec(),
+                items: vec![
+                    (b"Hrzn".to_vec(), DescValue::Double(params.origin.0 as f64)),
+                    (b"Vrtc".to_vec(), DescValue::Double(params.origin.1 as f64)),
+                ],
+            },
+        ));
+    }
+    adjdata(
+        *b"PtFl",
+        write_descriptor(&DescValue::Object {
+            name: String::new(),
+            class_id: b"PtFl".to_vec(),
+            items,
+        }),
+    )
 }

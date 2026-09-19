@@ -307,19 +307,22 @@ no history state.
 
 The system SHALL provide a `Rasterize` submenu. `Fill Content` SHALL be
 implemented: for a fill-content layer (a layer whose opaque adjustment block is
-a fill-content key — `SoCo` or `GdFl` — and whose payload decodes to
-`Adjustment::SolidFill` or `Adjustment::GradientFill`) it SHALL render the fill
-content to a full-layer pixel node and clear the fill/adjustment data. A solid
-fill SHALL bake its decoded colour across the layer rect; a gradient fill SHALL
-bake the generated five-kind ramp with opaque alpha across the layer rect.
-`Rasterize Layer` SHALL rasterize the active layer only when it is a fill-content
-layer, and SHALL otherwise refuse without changing the document. `Rasterize All
-Layers` SHALL rasterize every fill-content layer in the document. The `Type`,
-`Shape`, `Vector Mask`, `Smart Object`, `Video`, and `3D` variants SHALL remain
-visible and disabled, with a documented reason that those layer kinds do not
-exist in the model. A rasterization whose content is not decodable SHALL be
-disabled and SHALL refuse without changing the document, and every applied
-rasterization SHALL recomposite and record exactly one undo state.
+a fill-content key — `SoCo`, `GdFl`, or `PtFl` — and whose payload decodes to
+`Adjustment::SolidFill`, `Adjustment::GradientFill`, or
+`Adjustment::PatternFill`) it SHALL render the fill content to a full-layer
+pixel node and clear the fill/adjustment data. A solid fill SHALL bake its
+decoded colour across the layer rect; a gradient fill SHALL bake the generated
+five-kind ramp with opaque alpha across the layer rect; a pattern fill SHALL
+bake the pattern the document's `Patt` resource tiles over the layer rect (with
+the pattern's own alpha, or the grey placeholder when the referenced pattern is
+absent or was skipped as non-8-bit/malformed). `Rasterize Layer` SHALL rasterize the active layer only when
+it is a fill-content layer, and SHALL otherwise refuse without changing the
+document. `Rasterize All Layers` SHALL rasterize every fill-content layer in the
+document. The `Type`, `Shape`, `Vector Mask`, `Smart Object`, `Video`, and `3D`
+variants SHALL remain visible and disabled, with a documented reason that those
+layer kinds do not exist in the model. A rasterization whose content is not
+decodable SHALL be disabled and SHALL refuse without changing the document, and
+every applied rasterization SHALL recomposite and record exactly one undo state.
 
 #### Scenario: Fill Content becomes pixels
 
@@ -341,6 +344,20 @@ rasterization SHALL recomposite and record exactly one undo state.
 - **THEN** the layer becomes a pixel layer holding the generated gradient over
   its rect, its fill / adjustment data is cleared, and the change is one undo
   step
+
+#### Scenario: A pattern fill is rasterizable
+
+- **WHEN** Rasterize Fill Content runs on a layer whose `PtFl` payload decodes to
+  `Adjustment::PatternFill`
+- **THEN** the layer becomes a pixel layer holding the tiled pattern over its
+  rect, its fill / adjustment data is cleared, and the change is one undo step
+
+#### Scenario: A pattern fill with a missing pattern is still rasterizable
+
+- **WHEN** Rasterize Fill Content runs on a `PtFl` layer whose `pattern_id` is
+  not present in the document's `Patt` resource
+- **THEN** the layer becomes a pixel layer holding the grey placeholder and
+  the change is one undo step
 
 #### Scenario: A kind-less variant stays disabled
 

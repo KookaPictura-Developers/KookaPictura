@@ -42,5 +42,8 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
         Adjustment::SolidFill(_) => Err(AdjustError::Unsupported(
             "solid fill is composited, not applied destructively".into(),
         )),
+        Adjustment::PatternFill(_) => Err(AdjustError::Unsupported(
+            "pattern fill is composited, not applied destructively".into(),
+        )),
     }
 }
