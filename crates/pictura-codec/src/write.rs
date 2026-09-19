@@ -29,8 +29,8 @@ impl OutChannel {
         }
     }
 
-    fn declared_len(&self) -> u32 {
-        self.bytes().len() as u32
+    fn declared_len(&self) -> u64 {
+        self.bytes().len() as u64
     }
 
     fn write(&self, out: &mut Vec<u8>) {
@@ -83,7 +83,7 @@ fn record_name(layer: &Layer) -> &str {
     }
 }
 
-fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
+fn write_layer_info(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     let records = flatten(&doc.layers);
     if records.len() > i16::MAX as usize {
         return Err(PsdError::Unsupported("too many layer records".into()));
@@ -101,7 +101,7 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
             for channel in &layer.channels {
                 channels.push((
                     channel.id,
-                    OutChannel::Encoded(rle_channel(layer_w, layer_h, &channel.data)?),
+                    OutChannel::Encoded(rle_channel(layer_w, layer_h, &channel.data, psb)?),
                 ));
             }
             for channel in &layer.raw_channels {
@@ -124,7 +124,10 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
                     }
                     None => vec![mask.default_color; pixels],
                 };
-                channels.push((-2, OutChannel::Encoded(rle_channel(width, height, &data)?)));
+                channels.push((
+                    -2,
+                    OutChannel::Encoded(rle_channel(width, height, &data, psb)?),
+                ));
             }
         }
         if channels.len() > MAX_CHANNELS as usize {
@@ -133,7 +136,7 @@ fn write_layer_info(doc: &Document) -> Result<Vec<u8>, PsdError> {
                 channels.len()
             )));
         }
-        write_record(&mut info, record, &channels, doc.width, doc.height);
+        write_record(&mut info, record, &channels, doc.width, doc.height, psb);
         channel_data.push(channels);
     }
 
@@ -155,6 +158,7 @@ fn write_record(
     channels: &[(i16, OutChannel)],
     doc_width: u32,
     doc_height: u32,
+    psb: bool,
 ) {
     match record.layer {
         Some(layer) => {
@@ -165,7 +169,11 @@ fn write_record(
             out.extend_from_slice(&(channels.len() as u16).to_be_bytes());
             for (id, channel) in channels {
                 out.extend_from_slice(&id.to_be_bytes());
-                out.extend_from_slice(&channel.declared_len().to_be_bytes());
+                if psb {
+                    out.extend_from_slice(&channel.declared_len().to_be_bytes());
+                } else {
+                    out.extend_from_slice(&(channel.declared_len() as u32).to_be_bytes());
+                }
             }
             out.extend_from_slice(b"8BIM");
             // Preserve an unrecognized blend key; a recognized key rides along
@@ -197,6 +205,7 @@ fn write_record(
                 record.section,
                 doc_width,
                 doc_height,
+                psb,
             );
             out.extend_from_slice(&(extra.len() as u32).to_be_bytes());
             out.extend_from_slice(&extra);
@@ -219,6 +228,7 @@ fn write_record(
                 record.section,
                 doc_width,
                 doc_height,
+                psb,
             );
             out.extend_from_slice(&(extra.len() as u32).to_be_bytes());
             out.extend_from_slice(&extra);
@@ -260,6 +270,7 @@ fn write_extra(
     section: u32,
     doc_width: u32,
     doc_height: u32,
+    psb: bool,
 ) {
     match &layer.mask {
         Some(mask) => {
@@ -280,23 +291,30 @@ fn write_extra(
     out.extend_from_slice(&(layer.blending_ranges.len() as u32).to_be_bytes());
     out.extend_from_slice(&layer.blending_ranges);
     write_pascal(out, name);
-    write_tag(out, b"luni", &luni_data(name));
+    write_tag(out, b"luni", &luni_data(name), psb);
     // M36 layer attributes, each omitted at its default so default documents
     // serialize byte-identically to before.
     if layer.lock.bits() != 0 {
-        write_tag(out, b"lspf", &(u32::from(layer.lock.bits())).to_be_bytes());
+        write_tag(
+            out,
+            b"lspf",
+            &(u32::from(layer.lock.bits())).to_be_bytes(),
+            psb,
+        );
     }
     if layer.color != ColorLabel::None {
         let mut lclr = [0u8; 8];
         lclr[0..2].copy_from_slice(&u16::from(layer.color.to_byte()).to_be_bytes());
-        write_tag(out, b"lclr", &lclr);
+        write_tag(out, b"lclr", &lclr, psb);
     }
     if layer.fill != 255 {
-        write_tag(out, b"iOpa", &[layer.fill]);
+        // psd-tools decodes `iOpa` as a 4-byte ByteElement (`B3x`); the reader
+        // only uses the first byte.
+        write_tag(out, b"iOpa", &[layer.fill, 0, 0, 0], psb);
     }
     if let Some(adjustment) = &layer.adjustment {
         // Adjustment payload is opaque here; write the key and bytes back as read.
-        write_tag(out, &adjustment.key, &adjustment.data);
+        write_tag(out, &adjustment.key, &adjustment.data, psb);
     }
     if section != 0 {
         // Section-divider setting: kind + '8BIM' + blend key. Photoshop and
@@ -306,16 +324,16 @@ fn write_extra(
         lsct.extend_from_slice(&section.to_be_bytes());
         lsct.extend_from_slice(b"8BIM");
         lsct.extend_from_slice(&layer.blend.to_psd_key());
-        write_tag(out, b"lsct", &lsct);
+        write_tag(out, b"lsct", &lsct, psb);
     }
     // Unmodeled tagged blocks, re-emitted in encounter order.
     for block in &layer.extra_blocks {
-        write_tag(out, &block.key, &block.data);
+        write_tag(out, &block.key, &block.data, psb);
     }
     // An embedded smart object with no preserved config block is authored here.
     if let Some(so) = crate::smart_writer::should_author(layer) {
         let data = crate::smart_writer::author_sold_block(so, layer, doc_width, doc_height);
-        write_tag(out, b"SoLd", &data);
+        write_tag(out, b"SoLd", &data, psb);
     }
     if out.len() % 2 == 1 {
         out.push(0);
@@ -333,14 +351,96 @@ fn write_pascal(out: &mut Vec<u8>, name: &str) {
     }
 }
 
-pub(crate) fn write_tag(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8]) {
+pub(crate) fn write_tag(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8], psb: bool) {
+    // A per-layer block: Photoshop declares an even length with the pad byte
+    // inside it; psd-tools reads exactly the declared length (padding=1 means no
+    // external pad), so an odd declared length would mis-frame the next block.
+    let declared = data.len() + (data.len() & 1);
     out.extend_from_slice(b"8BIM");
     out.extend_from_slice(key);
-    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    if psb && is_psb_big_key(key) {
+        out.extend_from_slice(&(declared as u64).to_be_bytes());
+    } else {
+        out.extend_from_slice(&(declared as u32).to_be_bytes());
+    }
     out.extend_from_slice(data);
-    if data.len() % 2 == 1 {
+    if declared != data.len() {
         out.push(0);
     }
+}
+
+/// A document-level (global) additional-layer-information block. psd-tools reads
+/// these with `TaggedBlocks.read(..., padding=4)`: the declared length is the
+/// exact data length and the block is padded externally to a 4-byte boundary.
+/// The big-key width rule is the same as for per-layer blocks.
+pub(crate) fn write_tag_document(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8], psb: bool) {
+    out.extend_from_slice(b"8BIM");
+    out.extend_from_slice(key);
+    if psb && is_psb_big_key(key) {
+        out.extend_from_slice(&(data.len() as u64).to_be_bytes());
+    } else {
+        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    }
+    out.extend_from_slice(data);
+    let pad = (4 - data.len() % 4) % 4;
+    out.extend(std::iter::repeat_n(0u8, pad));
+}
+
+/// Re-frame preserved document-level tagged blocks for the destination
+/// container: each block's data is copied verbatim and its exact length is
+/// re-emitted in the destination width, then the block is re-padded externally
+/// to a 4-byte boundary. When the source and destination widths agree the bytes
+/// are returned unchanged. An unparseable block stops the walk and the remaining
+/// bytes are copied verbatim.
+fn reframe_document_extra(bytes: &[u8], src_psb: bool, dst_psb: bool) -> Vec<u8> {
+    if src_psb == dst_psb {
+        return bytes.to_vec();
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut r = Reader::new(bytes);
+    loop {
+        let start = r.pos;
+        let Ok(sig) = r.take(4) else { break };
+        if sig != b"8BIM" && sig != b"8B64" {
+            r.pos = start;
+            break;
+        }
+        let Ok(key) = r.take(4) else {
+            r.pos = start;
+            break;
+        };
+        let key: [u8; 4] = key.try_into().unwrap();
+        let len = if src_psb && is_psb_big_key(&key) {
+            match r.u64() {
+                Ok(len) => usize::try_from(len).unwrap_or(usize::MAX),
+                Err(_) => {
+                    r.pos = start;
+                    break;
+                }
+            }
+        } else {
+            match r.u32() {
+                Ok(len) => len as usize,
+                Err(_) => {
+                    r.pos = start;
+                    break;
+                }
+            }
+        };
+        let Ok(data) = r.take(len) else {
+            r.pos = start;
+            break;
+        };
+        // A global tagged block is padded externally to a 4-byte boundary.
+        let pad = (4 - len % 4) % 4;
+        if r.skip(pad).is_err() {
+            r.pos = start;
+            break;
+        }
+        write_tag_document(&mut out, &key, data, dst_psb);
+    }
+    out.extend_from_slice(&bytes[r.pos..]);
+    out
 }
 
 fn luni_data(name: &str) -> Vec<u8> {
@@ -389,17 +489,20 @@ fn encode_packbits_row(row: &[u8], out: &mut Vec<u8>) {
 }
 
 /// Encode `planes` (each `width * height`, plane-major) into one RLE payload:
-/// all 2-byte scanline byte counts first (plane-major, then row-major), then the
-/// packed rows in the same order. The compression word is not included.
+/// all 2-byte (PSD) or 4-byte (PSB) scanline byte counts first (plane-major,
+/// then row-major), then the packed rows in the same order. The compression word
+/// is not included.
 pub(crate) fn encode_scanlines(
     planes: &[&[u8]],
     width: usize,
     height: usize,
+    psb: bool,
 ) -> Result<Vec<u8>, PsdError> {
     let plane_len = width
         .checked_mul(height)
         .ok_or_else(|| PsdError::Invalid("RLE plane size overflow".into()))?;
-    let mut counts = Vec::with_capacity(planes.len() * height * 2);
+    let count_width = if psb { 4 } else { 2 };
+    let mut counts = Vec::with_capacity(planes.len() * height * count_width);
     let mut rows = Vec::new();
     for plane in planes {
         if plane.len() != plane_len {
@@ -409,14 +512,24 @@ pub(crate) fn encode_scanlines(
             let start = row * width;
             let mut packed = Vec::new();
             encode_packbits_row(&plane[start..start + width], &mut packed);
-            // PSB's 4-byte counts are where a wider limit is needed; the PSD
-            // maximum width (30 000) cannot reach the u16 limit. ponytail: PSD only.
-            if packed.len() > u16::MAX as usize {
-                return Err(PsdError::Invalid(
-                    "RLE scanline exceeds u16 byte count".into(),
-                ));
+            // The PSD maximum width (30 000) cannot reach the u16 limit, so the
+            // guard only fires for a PSB row approaching u32; it errs rather
+            // than truncate. ponytail: one uncompressed row, not the whole plane.
+            if psb {
+                if packed.len() > u32::MAX as usize {
+                    return Err(PsdError::Invalid(
+                        "RLE scanline exceeds u32 byte count".into(),
+                    ));
+                }
+                counts.extend_from_slice(&(packed.len() as u32).to_be_bytes());
+            } else {
+                if packed.len() > u16::MAX as usize {
+                    return Err(PsdError::Invalid(
+                        "RLE scanline exceeds u16 byte count".into(),
+                    ));
+                }
+                counts.extend_from_slice(&(packed.len() as u16).to_be_bytes());
             }
-            counts.extend_from_slice(&(packed.len() as u16).to_be_bytes());
             rows.extend_from_slice(&packed);
         }
     }
@@ -426,15 +539,26 @@ pub(crate) fn encode_scanlines(
 
 /// The complete on-disk layer-channel stream for one engine-encoded plane: the
 /// compression word, the count table, then the packed rows.
-fn rle_channel(width: usize, height: usize, plane: &[u8]) -> Result<Vec<u8>, PsdError> {
+fn rle_channel(width: usize, height: usize, plane: &[u8], psb: bool) -> Result<Vec<u8>, PsdError> {
     let mut out = Vec::with_capacity(2 + plane.len());
     out.extend_from_slice(&COMPRESSION_RLE.to_be_bytes());
-    out.extend_from_slice(&encode_scanlines(&[plane], width, height)?);
+    out.extend_from_slice(&encode_scanlines(&[plane], width, height, psb)?);
     Ok(out)
 }
 
-/// Serialize a [`Document`]'s composite image and layer tree into a valid PSD.
+/// Serialize a [`Document`] into a valid PSD, or into a version-2 PSB when the
+/// source document was a PSB or a dimension exceeds the PSD limit.
 pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
+    let psb = doc.is_psb || doc.width > MAX_DIM_PSD || doc.height > MAX_DIM_PSD;
+    write_container(doc, psb)
+}
+
+/// Serialize a [`Document`] into a version-2 PSB regardless of its dimensions.
+pub fn write_psb(doc: &Document) -> Result<Vec<u8>, PsdError> {
+    write_container(doc, true)
+}
+
+fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     if doc.depth != BitDepth::Eight {
         return Err(PsdError::Unsupported("write supports 8-bit only".into()));
     }
@@ -448,7 +572,8 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
     if channels == 0 || channels > MAX_CHANNELS as usize {
         return Err(PsdError::Invalid(format!("channel count {channels}")));
     }
-    if doc.width == 0 || doc.height == 0 || doc.width > MAX_DIM_PSD || doc.height > MAX_DIM_PSD {
+    let max_dim = if psb { MAX_DIM_PSB } else { MAX_DIM_PSD };
+    if doc.width == 0 || doc.height == 0 || doc.width > max_dim || doc.height > max_dim {
         return Err(PsdError::Unsupported(format!(
             "dimension {}x{}",
             doc.width, doc.height
@@ -474,7 +599,7 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
 
     let mut out = Vec::with_capacity(26 + 12 + 2 + doc.composite.data.len());
     out.extend_from_slice(&SIGNATURE.to_be_bytes());
-    out.extend_from_slice(&VERSION_PSD.to_be_bytes());
+    out.extend_from_slice(&(if psb { VERSION_PSB } else { VERSION_PSD }).to_be_bytes());
     out.extend_from_slice(&[0u8; 6]); // reserved
     out.extend_from_slice(&(channels as u16).to_be_bytes());
     out.extend_from_slice(&doc.height.to_be_bytes());
@@ -488,19 +613,31 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
 
     // Authored smart objects append a document-level linked-record block; the
     // preserved trailing bytes stay untouched, so an existing file is unchanged.
-    let mut extra = doc.layer_section_extra.clone();
+    // A PSD-sourced document written as a PSB re-frames preserved big-key blocks
+    // to u64 lengths so psd-tools can parse them.
+    let mut extra = reframe_document_extra(&doc.layer_section_extra, doc.is_psb, psb);
     let authoring = crate::smart_writer::collect_authoring(&doc.layers);
     if !authoring.is_empty() {
-        extra.extend_from_slice(&crate::smart_writer::author_lnk2_bytes(&authoring));
+        extra.extend_from_slice(&crate::smart_writer::author_lnk2_bytes(&authoring, psb));
     }
 
     if doc.layers.is_empty() && doc.global_layer_mask.is_empty() && extra.is_empty() {
-        out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
+        if psb {
+            out.extend_from_slice(&0u64.to_be_bytes()); // zero-length layer/mask section
+        } else {
+            out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
+        }
     } else {
-        let info = write_layer_info(doc)?;
-        let section_len = 4 + info.len() + 4 + doc.global_layer_mask.len() + extra.len();
-        out.extend_from_slice(&(section_len as u32).to_be_bytes());
-        out.extend_from_slice(&(info.len() as u32).to_be_bytes());
+        let info = write_layer_info(doc, psb)?;
+        let len_width = if psb { 8 } else { 4 };
+        let section_len = len_width + info.len() + 4 + doc.global_layer_mask.len() + extra.len();
+        if psb {
+            out.extend_from_slice(&(section_len as u64).to_be_bytes());
+            out.extend_from_slice(&(info.len() as u64).to_be_bytes());
+        } else {
+            out.extend_from_slice(&(section_len as u32).to_be_bytes());
+            out.extend_from_slice(&(info.len() as u32).to_be_bytes());
+        }
         out.extend_from_slice(&info);
         out.extend_from_slice(&(doc.global_layer_mask.len() as u32).to_be_bytes());
         out.extend_from_slice(&doc.global_layer_mask);
@@ -519,6 +656,7 @@ pub fn write_psd(doc: &Document) -> Result<Vec<u8>, PsdError> {
         &planes,
         doc.width as usize,
         doc.height as usize,
+        psb,
     )?);
     Ok(out)
 }

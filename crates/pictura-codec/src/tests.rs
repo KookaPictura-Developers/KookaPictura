@@ -426,14 +426,16 @@ fn adjustment_layers_round_trip_key_and_bytes() {
     }
     let base = pixel("Base", rect(0, 0, 8, 8), 3, BlendMode::Normal, 255);
 
-    // Odd (`curv`) and even payloads, empty (Invert) and descriptor-ish.
+    // Empty (Invert), descriptor-ish, and even payloads. An additional-layer
+    // block declares an even length with the pad inside, so payloads here are
+    // even; the odd-payload normalization is covered separately.
     let cases: &[([u8; 4], Vec<u8>)] = &[
         (*b"nvrt", Vec::new()),
         (*b"post", vec![0, 4, 0, 0]),
         (*b"thrs", vec![0, 128, 0, 0]),
         (*b"brit", vec![0, 10, 0, 20, 0, 0, 0, 0]),
         (*b"hue2", vec![0; 16]),
-        (*b"curv", vec![1, 2, 3]),
+        (*b"curv", vec![1, 2, 3, 4]),
     ];
 
     let mut layers = vec![base];
@@ -689,7 +691,7 @@ fn encode_rle_round_trips() {
         (0, 0, &[]),
     ];
     for &(w, h, plane) in cases {
-        let payload = crate::write::encode_scanlines(&[plane], w, h).unwrap();
+        let payload = crate::write::encode_scanlines(&[plane], w, h, false).unwrap();
         let decoded = crate::read::decode_rle_channel(&payload, w, h, false).unwrap();
         assert_eq!(decoded, plane, "w={w} h={h}");
     }
@@ -700,7 +702,7 @@ fn encode_rle_round_trips() {
         &(0..258).map(|i| (i % 7) as u8).collect::<Vec<u8>>(),
         &vec![5u8; 300],
     ] {
-        let payload = crate::write::encode_scanlines(&[plane], plane.len(), 1).unwrap();
+        let payload = crate::write::encode_scanlines(&[plane], plane.len(), 1, false).unwrap();
         let decoded = crate::read::decode_rle_channel(&payload, plane.len(), 1, false).unwrap();
         assert_eq!(&decoded, plane);
     }
@@ -1021,7 +1023,7 @@ fn opaque_layer_blocks_round_trip() {
     layer.blending_ranges = vec![1, 2, 3, 4];
     layer.extra_blocks = vec![LayerBlock {
         key: *b"lfx2",
-        data: vec![1, 2, 3],
+        data: vec![1, 2, 3, 4],
     }];
     layer.raw_channels = vec![RawChannel {
         id: -3,
@@ -1077,3 +1079,5 @@ fn truncated_preserved_blocks_error() {
     let cut = bytes.len() - doc.composite.data.len() - 2 - 2;
     assert!(matches!(read_psd(&bytes[..cut]), Err(PsdError::Truncated)));
 }
+
+mod psb;

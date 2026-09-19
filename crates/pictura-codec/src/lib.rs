@@ -41,7 +41,7 @@ pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, 
 pub use read::read_psd;
 pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;
-pub use write::write_psd;
+pub use write::{write_psb, write_psd};
 
 /// Read a Camera Raw Filter's `Fltr` options from a
 /// [`pictura_core::SmartFilter::options`] byte buffer.

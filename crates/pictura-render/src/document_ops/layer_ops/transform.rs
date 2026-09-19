@@ -347,7 +347,7 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
         layer.smart_object = None;
         if !old_uuid.is_empty() {
             if let Some(cleaned) =
-                pictura_codec::remove_linked_source(&doc.layer_section_extra, &old_uuid)
+                pictura_codec::remove_linked_source(&doc.layer_section_extra, &old_uuid, doc.is_psb)
             {
                 doc.layer_section_extra = cleaned;
             }
