@@ -38,7 +38,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
 | G8 | Adjustment descriptor payloads preserved but not decoded/rendered (curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, color lookup) | `composite.rs` doc | Layer renders as no-op |
-| G9 | PSB write missing; write caps at 30 000 px, always version 1 | `write.rs` | Cannot save PSB / huge docs |
+| G9 | ~~PSB write missing~~ PSB write shipped: version-2 container, dimensions to 300 000; tagged-block big-key width + pad framing fixed | `write.rs` | Closed |
 | G10 | Unknown blend key aborts the whole file | `read.rs` `from_psd_key(...).ok_or` | Open blocker |
 | G11 | Absent merged composite ("Maximize Compatibility" off) unhandled | `read.rs` reads compression unconditionally | Open blocker |
 | G12 | ~~Write always raw~~ RLE write shipped; ZIP output still absent | `write.rs` | RLE composite/layer channels/mask now default; ZIP write still missing |
@@ -121,7 +121,21 @@ Indexed/Bitmap/CMYK/Lab/Multichannel/Duotone (G2) and 16/32-bit (G4) through
 core model, color management, renderer, and app gating. Largest phase; needs a
 16-bit sample representation in `PixelBuffer`.
 
-**P5 — PSB write / large documents.** (G9)
+**P5 — PSB write / large documents.** *(shipped)* (G9)
+`write_psd` emits a version-2 container when the source document was a PSB
+(`Document.is_psb`) or either dimension exceeds 30 000, and `write_psb` forces
+one; dimensions are accepted to 300 000. The PSB container widens the
+layer-and-mask section length, the layer-info length, and each per-channel data
+length to `u64`, and the RLE count entries to `u32`. The tagged-block framing it
+exposed is now correct: a PSB big key (the psd-tools `_BIG_KEYS` set) carries an
+8-byte length; a per-layer block declares an even length with the pad inside it,
+while a document-level block declares its exact length and is padded externally
+to 4, and a preserved document-level block is re-framed to the output container's
+width. `iOpa` is written as a 4-byte `B3x` value. Shipped as the archived change
+`2026-09-19-psb-write`; proven by the psd-tools oracle (authored-smart-object
+PSB, PSD→PSB reframe, odd/non-4-multiple block framing). Remaining ceilings: an
+`8B64` signature is normalized to `8BIM` on re-frame, and the app cannot yet open
+a >30 000 PSB (import probe budget).
 
 **P6 — Metadata & ICC integration.** File Info + assign/convert on open/save
 (overlaps P2/P4).
