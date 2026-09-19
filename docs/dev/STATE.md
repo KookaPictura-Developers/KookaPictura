@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **767 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
+- Test suite: **759 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
