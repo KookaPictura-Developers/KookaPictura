@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **942 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **969 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -30,7 +30,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
     `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
     `pattern-fill-layer`, `layer-effects-drop-shadow`,
-    `layer-effects-outer-glow`, and `layer-effects-inner-shadow` changes;
+    `layer-effects-outer-glow`, `layer-effects-inner-shadow`, and
+    `layer-effects-inner-glow` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is under way:
@@ -313,6 +314,21 @@ Snapshot for resuming after a context break. Update after each milestone.
   byte-identical to the single-pass composite. Ceilings: `knocks_out`
   (`layerConceals`) is decoded but inert; contour/noise/anti-alias, the
   global-light resource, and a GPU shader are deferred.
+- Layer effects — Inner Glow (roadmap P3/G6, archived
+  `2026-09-19-layer-effects-inner-glow`): the object-based `lfx2` **Inner Glow**
+  (`IrGl`) is now decoded and composited — an interior matte confined to the
+  content, `Source` Edge (`glwS` typeID `IGSr`, `SrcE`) or Center (`SrcC`),
+  `Choke` (`Ckmt`) erode then Gaussian `Size`, colour/opacity/blend (default
+  Screen, white, 75), composited above the content; a `(size 0, choke 0, Edge)`
+  pair is a strict no-op. The GPU rejects an enabled+present inner glow
+  (`UnsupportedLayerEffect`) and falls back to CPU; a psd-tools-authored
+  `inner_glow.psd` fixture proves decode/round-trip/render. The change also did a
+  pure move: `layer_effects.rs` split into `layer_effects/{mod,shadows,glows}.rs`
+  (drop shadow / inner shadow in `shadows`, outer/inner glow in `glows`, shared
+  helpers in `mod`), verified behavior-preserving. Ceilings: `Center` is a
+  complement-of-edge approximation, linear choke, `Precise` renders as `Softer`,
+  contour/noise/anti-alias ignored, and the legacy `IGsr` typeID is accepted
+  leniently.
 
 ## Commands
 
