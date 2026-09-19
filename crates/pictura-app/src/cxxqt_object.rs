@@ -606,6 +606,23 @@ pub mod qobject {
         #[qinvokable]
         fn rasterize_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
 
+        /// Whether `path` resolves to a replaceable smart-object layer: not a
+        /// group, no adjustment data, and an embedded object with a payload.
+        /// Read-only; mutates nothing.
+        #[qinvokable]
+        fn layer_can_replace_smart_object_contents(&self, path: &QString) -> bool;
+
+        /// `Replace Contents…`: read `file_path`, swap the embedded source of
+        /// the smart object at `path`, and keep the layer's transform. Records
+        /// one "Replace Contents" state on success; false (no state) when the
+        /// file is unreadable, not a PSD/PSB, or the target is ineligible.
+        #[qinvokable]
+        fn replace_smart_object_contents(
+            self: Pin<&mut Self>,
+            path: &QString,
+            file_path: &QString,
+        ) -> bool;
+
         /// Self-test probe: `<kind>:<payload-len>` for `path`'s smart object,
         /// or empty when the layer has none. Read-only.
         #[qinvokable]

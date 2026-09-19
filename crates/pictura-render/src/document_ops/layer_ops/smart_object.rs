@@ -76,6 +76,63 @@ pub fn convert_to_smart_object(doc: &mut Document, path: &str) -> bool {
     true
 }
 
+/// Whether `path` resolves to a replaceable smart-object layer: not a group, no
+/// adjustment data, and an `Embedded` object with a non-empty payload.
+pub fn can_replace_smart_object_contents(doc: &Document, path: &str) -> bool {
+    resolve_path(doc, path).is_some_and(|layer| {
+        !layer.is_group
+            && layer.adjustment.is_none()
+            && layer.smart_object.as_ref().is_some_and(|so| {
+                so.kind == SmartObjectKind::Embedded
+                    && so.payload.as_ref().is_some_and(|p| !p.is_empty())
+            })
+    })
+}
+
+/// Replace the embedded source of the smart-object layer at `path`.
+///
+/// Returns `false` without mutating the document when the target is ineligible
+/// or `bytes` do not parse as a PSD/PSB document. On success only the typed
+/// source and the pixel channels change: the channels are cleared so the new
+/// source renders through the embedded-source path scaled into the existing
+/// `rect`, and the preserved config block and matching linked record are dropped
+/// so a re-save authors a fresh source rather than re-emitting the old one.
+pub fn replace_smart_object_contents(
+    doc: &mut Document,
+    path: &str,
+    filename: &str,
+    bytes: &[u8],
+) -> bool {
+    if !can_replace_smart_object_contents(doc, path) || pictura_codec::read_psd(bytes).is_err() {
+        return false;
+    }
+    let old_uuid = resolve_path(doc, path)
+        .and_then(|layer| layer.smart_object.as_ref())
+        .map(|so| so.uuid.clone())
+        .unwrap_or_default();
+    {
+        let layer = resolve_path_mut(doc, path).expect("can_replace_smart_object_contents checked");
+        layer.channels.clear();
+        layer
+            .extra_blocks
+            .retain(|block| !matches!(&block.key, b"SoLd" | b"SoLE" | b"plLd" | b"PlLd"));
+        let so = layer.smart_object.as_mut().expect("checked");
+        so.payload = Some(bytes.to_vec());
+        so.filename = filename.to_string();
+        so.filetype = *b"8BPB";
+        so.creator = *b"8BIM";
+        so.uuid.clear();
+    }
+    if !old_uuid.is_empty() {
+        if let Some(cleaned) =
+            pictura_codec::remove_linked_source(&doc.layer_section_extra, &old_uuid)
+        {
+            doc.layer_section_extra = cleaned;
+        }
+    }
+    true
+}
+
 /// Place a PSD/PSB file as a new topmost embedded smart-object layer.
 ///
 /// Decodes `bytes` with [`pictura_codec::read_psd`]; returns `None` without

@@ -1,4 +1,5 @@
 #include "selftest_layers_controls.h"
+#include "selftest_layers_smart_object.h"
 #include "selftest_report.h"
 #include "selftest_tools_selection.h"
 
@@ -883,113 +884,9 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         }
         frame.closeDocument(rrDoc, false);
 
-        // lpr_smart_object_convert (277): converting a raster pixel layer
-        // authors an embedded smart object while keeping its raster proxy, so
-        // the composite is unchanged and the object survives save→load; a group
-        // and the Background refuse without history.
-        const bool socCreated = frame.newDocument(QStringLiteral("SmartObjectCtl"), 4, 4,
-                                                  QStringLiteral("rgb"), 8,
-                                                  QStringLiteral("white"));
-        pictura::PictureView* socView = frame.activeView();
-        if (!socCreated || !socView) {
-            return pictura::selfTest().fail(277, "smart object fixture");
-        }
-        const int socDoc = frame.activeDocumentIndex();
-        const QString socPath = socView->add_solid_fill(0xff2244aau);
-        const bool socRaster = socView->rasterize_fill_content(socPath);
-        const bool socCan = socView->layer_can_convert_to_smart_object(socPath);
-        const int socBase = socView->history_count();
-        const unsigned int socBefore = socView->sample_argb(0, 0);
-        const bool socConverted = socView->convert_to_smart_object(socPath);
-        const QString socState = socView->layer_smart_object_state(socPath);
-        const bool socProxy = socView->sample_argb(0, 0) == socBefore;
-        const bool socRecorded = socView->history_count() == socBase + 1;
-        const bool socEmbedded = socState.startsWith(QStringLiteral("embedded:"))
-            && socState.mid(9).toInt() > 0
-            && !socView->layer_can_convert_to_smart_object(socPath);
-        const QString socGroup = socView->add_group_in(QString());
-        socView->background_from_layer(QStringLiteral("0"));
-        const int socRefBase = socView->history_count();
-        const bool socRefGroup = !socView->convert_to_smart_object(socGroup);
-        const bool socRefBackground = !socView->convert_to_smart_object(QStringLiteral("0"));
-        const bool socRefHistory = socView->history_count() == socRefBase;
-        const QString socSavePath =
-            QDir::tempPath() + QStringLiteral("/kooka-pictura-smart-object.psd");
-        const bool socSaved = frame.saveActiveAs(socSavePath);
-        const bool socReopened = frame.openPath(socSavePath);
-        pictura::PictureView* socReload = frame.activeView();
-        const int socReloadDoc = frame.activeDocumentIndex();
-        const QString socReloadState =
-            socReload ? socReload->layer_smart_object_state(socPath) : QString();
-        const bool socRoundTrip = socReopened && socReload
-            && socReloadState.startsWith(QStringLiteral("embedded:"))
-            && socReloadState.mid(9).toInt() > 0;
-        const bool socOk = socRaster && socCan && socConverted && socProxy && socRecorded
-            && socEmbedded && socRefGroup && socRefBackground && socRefHistory && socSaved
-            && socRoundTrip;
-        ST_BEGIN("lpr_smart_object_convert");
-        ST_PASS("lpr_smart_object_convert raster=%d can=%d convert=%d state=%s proxy=%d "
-                "history=%d group=%d bg=%d saved=%d reload=%s",
-                socRaster ? 1 : 0, socCan ? 1 : 0, socConverted ? 1 : 0, qPrintable(socState),
-                socProxy ? 1 : 0, socRecorded ? 1 : 0, socRefGroup ? 1 : 0,
-                socRefBackground ? 1 : 0, socSaved ? 1 : 0, qPrintable(socReloadState));
-        if (!socOk) {
-            return pictura::selfTest().fail(277, "smart object convert");
-        }
-        frame.closeDocument(socReloadDoc, false);
-        frame.closeDocument(socDoc, false);
+        if (const int lso = pictura::runLayersSmartObjectConvertChecks(frame); lso != 0) { return lso; }
 
-        // lpr_smart_object_rasterize (278): converting then rasterizing a raster
-        // pixel layer restores a plain pixel layer with the same composite, no
-        // smart object on save→load, and refuses a non-smart layer without a
-        // history state.
-        const bool rosCreated = frame.newDocument(QStringLiteral("SmartObjectRasterCtl"), 4, 4,
-                                                  QStringLiteral("rgb"), 8,
-                                                  QStringLiteral("white"));
-        pictura::PictureView* rosView = frame.activeView();
-        if (!rosCreated || !rosView) {
-            return pictura::selfTest().fail(278, "smart object rasterize fixture");
-        }
-        const int rosDoc = frame.activeDocumentIndex();
-        const QString rosPath = rosView->add_solid_fill(0xff2244aau);
-        const bool rosRaster = rosView->rasterize_fill_content(rosPath);
-        const unsigned int rosBefore = rosView->sample_argb(0, 0);
-        const bool rosConverted = rosView->convert_to_smart_object(rosPath);
-        const unsigned int rosAfterConvert = rosView->sample_argb(0, 0);
-        const bool rosCanRaster = rosView->layer_can_rasterize_smart_object(rosPath);
-        const int rosBase = rosView->history_count();
-        const bool rosRasterized = rosView->rasterize_smart_object(rosPath);
-        const QString rosState = rosView->layer_smart_object_state(rosPath);
-        const unsigned int rosAfterRaster = rosView->sample_argb(0, 0);
-        const bool rosRecorded = rosView->history_count() == rosBase + 1;
-        const bool rosPixel = rosView->layer_kind(rosPath.toInt()) == QStringLiteral("pixel");
-        const int rosBase2 = rosView->history_count();
-        const bool rosRefuse = !rosView->rasterize_smart_object(rosPath);
-        const bool rosRefuseHistory = rosView->history_count() == rosBase2;
-        const QString rosSavePath =
-            QDir::tempPath() + QStringLiteral("/kooka-pictura-smart-object-rasterize.psd");
-        const bool rosSaved = frame.saveActiveAs(rosSavePath);
-        const bool rosReopened = frame.openPath(rosSavePath);
-        pictura::PictureView* rosReload = frame.activeView();
-        const int rosReloadDoc = frame.activeDocumentIndex();
-        const QString rosReloadState =
-            rosReload ? rosReload->layer_smart_object_state(rosPath) : QString();
-        const bool rosRoundTrip = rosReopened && rosReload && rosReloadState.isEmpty();
-        const bool rosOk = rosRaster && rosConverted && rosCanRaster && rosRasterized
-            && rosBefore == rosAfterConvert && rosBefore == rosAfterRaster && rosState.isEmpty()
-            && rosRecorded && rosPixel && rosRefuse && rosRefuseHistory && rosSaved && rosRoundTrip;
-        ST_BEGIN("lpr_smart_object_rasterize");
-        ST_PASS("lpr_smart_object_rasterize raster=%d convert=%d can=%d rasterize=%d proxy=%d "
-                "state=%s history=%d pixel=%d refuse=%d saved=%d reload=%s",
-                rosRaster ? 1 : 0, rosConverted ? 1 : 0, rosCanRaster ? 1 : 0,
-                rosRasterized ? 1 : 0, rosBefore == rosAfterRaster ? 1 : 0, qPrintable(rosState),
-                rosRecorded ? 1 : 0, rosPixel ? 1 : 0, rosRefuse ? 1 : 0, rosSaved ? 1 : 0,
-                qPrintable(rosReloadState));
-        if (!rosOk) {
-            return pictura::selfTest().fail(278, "smart object rasterize");
-        }
-        frame.closeDocument(rosReloadDoc, false);
-        frame.closeDocument(rosDoc, false);
+        if (const int lso = pictura::runLayersSmartObjectRasterizeChecks(frame); lso != 0) { return lso; }
 
         // lpr_drop_out (239): a layer nested in a group, dropped on the empty
         // viewport (empty target, mode 0), reparents to the document root in
@@ -1100,61 +997,9 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         }
         frame.closeDocument(gflDoc, false);
 
-        // lpr_place_smart_object (279): placing a PSD file appends a channel-less
-        // embedded smart-object layer that renders the source, in one undo state;
-        // a malformed file refuses without changing the document.
-        const bool plSrcCreated = frame.newDocument(QStringLiteral("PlaceSource"), 4, 4,
-                                                    QStringLiteral("rgb"), 8,
-                                                    QStringLiteral("white"));
-        pictura::PictureView* plSrcView = frame.activeView();
-        if (!plSrcCreated || !plSrcView) {
-            return pictura::selfTest().fail(279, "place source fixture");
-        }
-        const int plSrcDoc = frame.activeDocumentIndex();
-        const QString plSourcePath =
-            QDir::tempPath() + QStringLiteral("/kooka-pictura-place-source.psd");
-        const bool plSourceSaved = frame.saveActiveAs(plSourcePath);
-        frame.closeDocument(plSrcDoc, false);
+        if (const int lso = pictura::runLayersPlaceSmartObjectChecks(frame); lso != 0) { return lso; }
 
-        const bool plCreated = frame.newDocument(QStringLiteral("PlaceCtl"), 4, 4,
-                                                 QStringLiteral("rgb"), 8,
-                                                 QStringLiteral("transparent"));
-        pictura::PictureView* plView = frame.activeView();
-        if (!plCreated || !plView) {
-            return pictura::selfTest().fail(279, "place fixture");
-        }
-        const int plDoc = frame.activeDocumentIndex();
-        const int plBase = plView->history_count();
-        const int plRows = plView->layer_row_count();
-        const unsigned int plBefore = plView->sample_argb(0, 0);
-        const QString plPath = plView->place_smart_object(plSourcePath);
-        const bool plPlaced = !plPath.isEmpty() && plView->layer_row_count() == plRows + 1
-            && plView->history_count() == plBase + 1
-            && plView->sample_argb(0, 0) == 0xffffffffu
-            && plView->sample_argb(0, 0) != plBefore
-            && plView->layer_smart_object_state(plPath).startsWith(QStringLiteral("embedded:"));
-        const QString plBadPath =
-            QDir::tempPath() + QStringLiteral("/kooka-pictura-place-bad.psd");
-        QFile plBad(plBadPath);
-        if (plBad.open(QIODevice::WriteOnly)) {
-            plBad.write("not a psd");
-        }
-        plBad.close();
-        const int plBadBase = plView->history_count();
-        const QString plRefused = plView->place_smart_object(plBadPath);
-        const bool plRefusedOk = plRefused.isEmpty()
-            && plView->history_count() == plBadBase
-            && plView->layer_row_count() == plRows + 1;
-        ST_BEGIN("lpr_place_smart_object");
-        ST_PASS("lpr_place_smart_object saved=%d path=%s pixel=%08x before=%08x refuse=%d",
-                plSourceSaved ? 1 : 0, qPrintable(plPath), plView->sample_argb(0, 0), plBefore,
-                plRefusedOk ? 1 : 0);
-        if (!plSourceSaved || !plPlaced || !plRefusedOk) {
-            return pictura::selfTest().fail(279, "place smart object");
-        }
-        QFile::remove(plSourcePath);
-        QFile::remove(plBadPath);
-        frame.closeDocument(plDoc, false);
+        if (const int lso = pictura::runLayersSmartObjectReplaceChecks(frame); lso != 0) { return lso; }
 
         if (const int sts = pictura::runToolsSelectionChecks(frame); sts != 0) { return sts; }
 
