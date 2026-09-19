@@ -324,6 +324,17 @@ bool PicturaMainWindow::openPath(const QString& path)
     return true;
 }
 
+bool PicturaMainWindow::openAsSmartObjectPath(const QString& path)
+{
+    auto* view = new PictureView(this);
+    if (!view->open_as_smart_object(path)) {
+        delete view;
+        return false;
+    }
+    addDocument(view, QString());
+    return true;
+}
+
 bool PicturaMainWindow::saveActive()
 {
     const int index = activeDocumentIndex();

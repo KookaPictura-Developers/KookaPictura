@@ -226,3 +226,65 @@ int pictura::runLayersSmartObjectReplaceChecks(pictura::PicturaMainWindow& frame
     frame.closeDocument(rpDoc, false);
     return 0;
 }
+
+int pictura::runLayersOpenSmartObjectChecks(pictura::PicturaMainWindow& frame)
+{
+    // lpr_open_as_smart_object (281): opening a written PSD as a smart object
+    // adds one untitled tab holding exactly one embedded smart-object layer
+    // whose composite is the source colour, in one "Open As Smart Object"
+    // history state; a malformed file refuses and adds no tab.
+    const bool ossSourceCreated = frame.newDocument(QStringLiteral("OpenSmartSource"), 4, 4,
+                                                    QStringLiteral("rgb"), 8,
+                                                    QStringLiteral("white"));
+    pictura::PictureView* ossSrcView = frame.activeView();
+    if (!ossSourceCreated || !ossSrcView) {
+        return pictura::selfTest().fail(281, "open smart object source fixture");
+    }
+    ossSrcView->rasterize_fill_content(ossSrcView->add_solid_fill(0xff2244aau));
+    const QString ossSourcePath =
+        QDir::tempPath() + QStringLiteral("/kooka-pictura-open-smart-source.psd");
+    const bool ossSourceSaved = frame.saveActiveAs(ossSourcePath);
+    frame.closeDocument(frame.activeDocumentIndex(), false);
+
+    const int ossBase = frame.documentCount();
+    const bool ossOpened = frame.openAsSmartObjectPath(ossSourcePath);
+    pictura::PictureView* ossView = frame.activeView();
+    const bool ossAdded = ossOpened && frame.documentCount() == ossBase + 1 && ossView;
+    const bool ossUntitled = ossView && ossView->file_path().isEmpty();
+    const bool ossOneLayer = ossView && ossView->layer_row_count() == 1;
+    const QString ossState =
+        ossView ? ossView->layer_smart_object_state(QStringLiteral("0")) : QString();
+    const bool ossSmart = ossState.startsWith(QStringLiteral("embedded:"))
+        && ossState.mid(9).toInt() > 0;
+    const bool ossPixel = ossView && ossView->sample_argb(0, 0) == 0xff2244aau;
+    const bool ossHistory = ossView && ossView->history_count() == 1
+        && ossView->history_label(0) == QStringLiteral("Open As Smart Object");
+
+    const QString ossBadPath =
+        QDir::tempPath() + QStringLiteral("/kooka-pictura-open-smart-bad.psd");
+    QFile ossBad(ossBadPath);
+    if (ossBad.open(QIODevice::WriteOnly)) {
+        ossBad.write("not a psd");
+    }
+    ossBad.close();
+    const int ossBadBase = frame.documentCount();
+    const bool ossRefused = !frame.openAsSmartObjectPath(ossBadPath);
+    const bool ossNoTab = frame.documentCount() == ossBadBase;
+
+    const bool ossOk = ossSourceSaved && ossAdded && ossUntitled && ossOneLayer && ossSmart
+        && ossPixel && ossHistory && ossRefused && ossNoTab;
+    ST_BEGIN("lpr_open_as_smart_object");
+    ST_PASS("lpr_open_as_smart_object opened=%d added=%d untitled=%d layers=%d state=%s "
+            "pixel=%08x history=%d refused=%d notab=%d",
+            ossOpened ? 1 : 0, ossAdded ? 1 : 0, ossUntitled ? 1 : 0,
+            ossView ? ossView->layer_row_count() : -1, qPrintable(ossState),
+            ossView ? ossView->sample_argb(0, 0) : 0, ossView ? ossView->history_count() : -1,
+            ossRefused ? 1 : 0, ossNoTab ? 1 : 0);
+    if (!ossOk) {
+        return pictura::selfTest().fail(281, "open as smart object");
+    }
+    QFile::remove(ossSourcePath);
+    QFile::remove(ossBadPath);
+    frame.closeDocument(frame.activeDocumentIndex(), false);
+    return 0;
+}

@@ -153,8 +153,10 @@ channels and drops the preserved `SoLd`/`SoLE`/`plLd` block and its document
 smart-object layer that renders from its embedded source. `Layer > Smart
 Objects > Replace Contents…` (archived `2026-09-19-replace-smart-object-contents`)
 swaps the embedded source while preserving the layer's transform and re-authors
-a fresh link on save. Edit Contents, `Open As Smart Object`, and linked objects
-are deferred.
+a fresh link on save. `File > Open As Smart Object…` (archived
+`2026-09-19-open-as-smart-object`) opens a PSD/PSB as a new untitled document
+with one embedded smart-object layer. Edit Contents and linked objects are
+deferred.
 
 Double-clicking the layer reopens ACR from the stored source and settings. CS6
 supports embedded objects only; linked objects (`lnkE`, external paths) are CC

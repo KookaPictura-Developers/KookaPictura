@@ -52,6 +52,14 @@ void PicturaMainWindow::registerHandlers()
 {
     registry_->setHandler(command_ids::FileNew, [this]() { showNewDocumentDialog(); });
     registry_->setHandler(command_ids::FileOpen, [this]() { showOpenDialog(); });
+    registry_->setHandler(command_ids::FileOpenAsSmartObject, [this]() {
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Open As Smart Object"), QString(),
+            QStringLiteral("Photoshop files (*.psd *.psb)"));
+        if (!path.isEmpty()) {
+            openAsSmartObjectPath(path);
+        }
+    });
     registry_->setHandler(command_ids::FilePlace, [this]() {
         PictureView* view = activeView();
         if (!view) {

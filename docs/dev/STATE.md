@@ -23,7 +23,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `psd-opaque-preservation`, `psd-smart-object-roundtrip`,
   `smart-object-source-render`, `adjustment-payload-decode`, and
   `psd-rle-write`, `convert-to-smart-object`, `rasterize-smart-object`,
-  `place-smart-object`, and `replace-smart-object-contents` changes;
+  `place-smart-object`, `replace-smart-object-contents`, and
+  `open-as-smart-object` changes;
   canonical specs are in `openspec/specs/` (71 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -84,9 +85,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   `2026-09-19-replace-smart-object-contents`) swaps the embedded source while
   keeping the layer's geometry, clears the proxy, and drops the preserved
   `SoLd`/`lnk*` so the save re-authors the new payload. The C++ smart-object
-  self-tests (277-280) were moved into `selftest_layers_smart_object.{cpp,h}`,
-  taking `selftest_layers_controls.cpp` from the 1200 cap to 1007. Deferred:
-  Edit Contents, `Open As Smart Object`, linked objects.
+  self-tests (277-281) live in `selftest_layers_smart_object.{cpp,h}`, taking
+  `selftest_layers_controls.cpp` from the 1200 cap to 1009. `File > Open As Smart
+  Object…` (archived `2026-09-19-open-as-smart-object`) opens a PSD/PSB as a new
+  untitled document (path `None`, so Save cannot overwrite the source) with one
+  embedded smart-object layer. Deferred: Edit Contents, linked objects.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's

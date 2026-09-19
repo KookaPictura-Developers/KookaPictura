@@ -17,9 +17,12 @@ class PicturaMainWindow;
 // lpr_place_smart_object (279) places a written PSD as a channel-less embedded
 // layer and refuses a malformed file. lpr_smart_object_replace (280) replaces
 // an embedded smart object's source in one labelled history state and refuses a
-// malformed file without a state.
+// malformed file without a state. lpr_open_as_smart_object (281) opens a
+// written PSD as an untitled document holding exactly one embedded smart-object
+// layer and refuses a malformed file without adding a tab.
 int runLayersSmartObjectConvertChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectRasterizeChecks(PicturaMainWindow& frame);
 int runLayersPlaceSmartObjectChecks(PicturaMainWindow& frame);
 int runLayersSmartObjectReplaceChecks(PicturaMainWindow& frame);
+int runLayersOpenSmartObjectChecks(PicturaMainWindow& frame);
 } // namespace pictura

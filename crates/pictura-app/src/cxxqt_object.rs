@@ -57,6 +57,14 @@ pub mod qobject {
         #[qinvokable]
         fn open(self: Pin<&mut Self>, path: &QString) -> bool;
 
+        /// `File > Open As Smart Object…`: open `path` as a new untitled
+        /// document whose sole layer is that PSD/PSB source as an embedded
+        /// smart object. Records one "Open As Smart Object" state on success;
+        /// false without mutating when the file is missing, unreadable, or not
+        /// a PSD/PSB document.
+        #[qinvokable]
+        fn open_as_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
+
         /// Create a new `width`×`height` document. `mode` is `"rgb"` or
         /// `"grayscale"`, `depth` must be 8, and `background` is `"white"` or
         /// `"transparent"`. Resets the selection and history and clears the
