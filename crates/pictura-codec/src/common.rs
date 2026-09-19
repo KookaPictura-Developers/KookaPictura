@@ -17,6 +17,8 @@ pub(crate) const SECTION_CLOSED_FOLDER: u32 = 2;
 
 pub(crate) const COMPRESSION_RAW: u16 = 0;
 pub(crate) const COMPRESSION_RLE: u16 = 1;
+pub(crate) const COMPRESSION_ZIP: u16 = 2;
+pub(crate) const COMPRESSION_ZIP_PREDICTION: u16 = 3;
 
 pub(crate) const DIVIDER_NAME: &str = "</Layer group>";
 

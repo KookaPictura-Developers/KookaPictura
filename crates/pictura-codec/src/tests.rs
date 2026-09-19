@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::common::COMPRESSION_RAW;
+use crate::common::{COMPRESSION_RAW, COMPRESSION_ZIP, COMPRESSION_ZIP_PREDICTION};
 use pictura_core::*;
 
 fn header(version: u16, channels: u16, width: u32, height: u32, mode: u16) -> Vec<u8> {
@@ -22,6 +22,81 @@ fn psd_sections() -> Vec<u8> {
     v.extend_from_slice(&0u32.to_be_bytes());
     v.extend_from_slice(&0u32.to_be_bytes());
     v
+}
+
+/// zlib-frame `data` for a hand-built composite or channel payload.
+fn zlib(data: &[u8]) -> Vec<u8> {
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+
+    let mut enc = ZlibEncoder::new(Vec::new(), Compression::default());
+    enc.write_all(data).unwrap();
+    enc.finish().unwrap()
+}
+
+/// Forward byte-wise delta per `row_len` scanline: inverse of the decoder's
+/// `undo_prediction`.
+fn predict(data: &[u8], row_len: usize) -> Vec<u8> {
+    let mut out = data.to_vec();
+    if row_len == 0 {
+        return out;
+    }
+    for row_start in (0..out.len()).step_by(row_len) {
+        let row_end = (row_start + row_len).min(out.len());
+        for i in (row_start + 1)..row_end {
+            out[i] = data[i].wrapping_sub(data[i - 1]);
+        }
+    }
+    out
+}
+
+/// A 1x1 RGB PSD with one layer carrying a single `id=0` channel whose data is
+/// `compression` followed by `encoded`.
+fn one_layer_channel_psd(compression: u16, encoded: &[u8]) -> Vec<u8> {
+    let channel_len = 2 + encoded.len();
+
+    let mut extra = Vec::new();
+    extra.extend_from_slice(&0u32.to_be_bytes()); // no mask
+    extra.extend_from_slice(&0u32.to_be_bytes()); // blending ranges
+    extra.extend_from_slice(&[1, b'L', 0, 0]); // pascal name "L"
+
+    let mut rec = Vec::new();
+    for v in [0i32, 0, 1, 1] {
+        rec.extend_from_slice(&v.to_be_bytes());
+    }
+    rec.extend_from_slice(&1u16.to_be_bytes()); // one channel
+    rec.extend_from_slice(&0i16.to_be_bytes()); // id 0
+    rec.extend_from_slice(&(channel_len as u32).to_be_bytes());
+    rec.extend_from_slice(b"8BIM");
+    rec.extend_from_slice(b"norm");
+    rec.push(255);
+    rec.push(0);
+    rec.push(0);
+    rec.push(0);
+    rec.extend_from_slice(&(extra.len() as u32).to_be_bytes());
+    rec.extend_from_slice(&extra);
+
+    let mut info = Vec::new();
+    info.extend_from_slice(&1i16.to_be_bytes());
+    info.extend_from_slice(&rec);
+    info.extend_from_slice(&compression.to_be_bytes());
+    info.extend_from_slice(encoded);
+    while info.len() % 4 != 0 {
+        info.push(0);
+    }
+
+    let mut out = header(1, 3, 1, 1, 3);
+    out.extend_from_slice(&0u32.to_be_bytes()); // color mode data
+    out.extend_from_slice(&0u32.to_be_bytes()); // image resources
+    let section_len = 4 + info.len() + 4;
+    out.extend_from_slice(&(section_len as u32).to_be_bytes());
+    out.extend_from_slice(&(info.len() as u32).to_be_bytes());
+    out.extend_from_slice(&info);
+    out.extend_from_slice(&0u32.to_be_bytes()); // global layer mask
+    out.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
+    out.extend_from_slice(&[1, 2, 3]); // 1x1 RGB composite
+    out
 }
 
 #[test]
@@ -488,14 +563,14 @@ fn malformed_layer_section_is_error_not_panic() {
 }
 
 #[test]
-fn zip_layer_compression_is_unsupported() {
+fn invalid_zip_layer_payload_errors() {
     let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![pixel("Only", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255)];
     let mut bytes = write_psd(&doc).unwrap();
     // Layer channel data follows the first (and only) record's extra data.
     let extra_len = u32::from_be_bytes(bytes[98..102].try_into().unwrap()) as usize;
     let channel_data = 102 + extra_len;
-    bytes[channel_data + 1] = 2; // compression 2 = ZIP
+    bytes[channel_data + 1] = 2; // compression 2 = ZIP, but the payload is raw
     assert!(matches!(read_psd(&bytes), Err(PsdError::Unsupported(_))));
 }
 
@@ -728,4 +803,103 @@ fn reads_hand_built_attribute_tags_and_folds_legacy_flag() {
         "legacy bit folds in"
     );
     assert!(!layer.lock.contains(LockFlags::POSITION));
+}
+
+// -- ZIP compression and tolerant open ----------------------------------
+
+#[test]
+fn zip_composite_round_trips() {
+    let planes = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    let mut p = header(1, 3, 2, 2, 3);
+    p.extend_from_slice(&psd_sections());
+    p.extend_from_slice(&COMPRESSION_ZIP.to_be_bytes());
+    p.extend_from_slice(&zlib(&planes));
+
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.composite.channels, 3);
+    assert_eq!(doc.composite.data, planes.to_vec());
+}
+
+#[test]
+fn zip_prediction_composite_round_trips() {
+    let planes = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    let encoded = predict(&planes, 2);
+    let mut p = header(1, 3, 2, 2, 3);
+    p.extend_from_slice(&psd_sections());
+    p.extend_from_slice(&COMPRESSION_ZIP_PREDICTION.to_be_bytes());
+    p.extend_from_slice(&zlib(&encoded));
+
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.composite.data, planes.to_vec());
+}
+
+#[test]
+fn zip_layer_channel_decodes() {
+    let expected = vec![0xAB];
+    let psd = one_layer_channel_psd(COMPRESSION_ZIP, &zlib(&expected));
+    let doc = read_psd(&psd).unwrap();
+    assert_eq!(doc.layers[0].channels.len(), 1);
+    assert_eq!(doc.layers[0].channels[0].data, expected);
+}
+
+#[test]
+fn zip_prediction_layer_channel_decodes() {
+    let expected = vec![0x11];
+    let psd = one_layer_channel_psd(COMPRESSION_ZIP_PREDICTION, &zlib(&expected));
+    let doc = read_psd(&psd).unwrap();
+    assert_eq!(doc.layers[0].channels[0].data, expected);
+}
+
+#[test]
+fn zip_prediction_is_per_row() {
+    // A per-plane inverse would add row 0's last byte into row 1's first byte,
+    // turning 30 into 50; the per-row inverse leaves it at 30.
+    let planes = [10u8, 20, 30, 40];
+    let encoded = predict(&planes, 2);
+    let mut p = header(1, 1, 2, 2, 1);
+    p.extend_from_slice(&psd_sections());
+    p.extend_from_slice(&COMPRESSION_ZIP_PREDICTION.to_be_bytes());
+    p.extend_from_slice(&zlib(&encoded));
+
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.composite.data, planes.to_vec());
+}
+
+#[test]
+fn unknown_blend_key_reads_as_normal() {
+    let mut psd = tagged_layer_psd(0, &[]);
+    // Blend key follows the record's "8BIM" at offset 62.
+    psd[66..70].copy_from_slice(b"zzzz");
+
+    let doc = read_psd(&psd).unwrap();
+    assert_eq!(doc.layers[0].blend, BlendMode::Normal);
+}
+
+#[test]
+fn absent_composite_yields_zero_composite() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel("Only", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255)];
+    let bytes = write_psd(&doc).unwrap();
+    let section_len = u32::from_be_bytes(bytes[34..38].try_into().unwrap()) as usize;
+
+    let back = read_psd(&bytes[..38 + section_len]).unwrap();
+    assert_eq!(back.layers.len(), 1);
+    assert_eq!(back.composite.channels, 3);
+    assert_eq!(back.composite.data, vec![0u8; 4 * 4 * 3]);
+
+    // A bare header with no layer section still errors as truncated.
+    assert!(read_psd(&header(1, 3, 1, 1, 3)).is_err());
+}
+
+#[test]
+fn bad_zip_payload_errors() {
+    let mut p = header(1, 3, 1, 1, 3);
+    p.extend_from_slice(&psd_sections());
+    p.extend_from_slice(&COMPRESSION_ZIP.to_be_bytes());
+    p.extend_from_slice(&[0xff; 8]);
+
+    assert!(matches!(
+        read_psd(&p),
+        Err(PsdError::Unsupported(_)) | Err(PsdError::Invalid(_))
+    ));
 }

@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **655 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **665 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -115,7 +115,7 @@ by self-test section is a deliberate later step, out of this pass.
 | Crate | Responsibility |
 |---|---|
 | `pictura-core` | Document/Layer/Channel/Mask/BlendMode(27+pass)/AdjustmentData; no deps |
-| `pictura-codec` | PSD/PSB read/write: composite, layers, masks, adjustment keys, document channels |
+| `pictura-codec` | PSD/PSB read/write: composite + layer channels raw/RLE/ZIP/ZIP-prediction, layers, masks, adjustment keys, document channels; unknown blend key degrades to Normal; absent composite tolerated |
 | `pictura-color` | ICC profiles (sRGB/AdobeRGB/ProPhoto), convert/assign, intents, BPC |
 | `pictura-adjust` | 15 destructive adjustments (`apply`) |
 | `pictura-filters` | blur/sharpen/noise + stylize/other + pixelate + distort + render filters (`Filter` + `apply`); seeded filters; `artistic` module (15 CS6 Artistic filters with shared `reduce`/`noise`/`texture` helpers) + the four remaining families — Brush Strokes, Sketch, Texture, Oil Paint (29 filters, same shared helpers) |
@@ -1912,6 +1912,20 @@ upgrade), and the target layer is still the topmost pixel layer, matching the
 existing Move tool. Self-tests `tsc_quick_modes` (270) through
 `tsc_quick_mode_drag` (276) cover the mapping, geometry, view hooks, polygon band,
 and the move/duplicate wiring.
+
+PSD interop phase P1 (`docs/dev/psd-support-roadmap.md`) landed in
+`pictura-codec`: the composite and layer channel readers now accept compression
+`2` (ZIP/zlib deflate, with a raw-deflate fallback) and `3`
+(ZIP-with-prediction, inverting the byte-wise per-row delta after inflating), an
+unrecognized blend key degrades to `BlendMode::Normal` instead of aborting the
+file, and a layered document whose merged composite is absent parses with a
+zero-filled composite. `flate2` (pure-Rust miniz_oxide backend) is the only new
+dependency. Write behaviour is unchanged (still raw) so the byte-layout golden
+holds. psd-tools' writer only emits raw/RLE, so the differential oracle
+(`tests/oracle.rs`) builds a ZIP/ZIP-with-prediction PSD by hand and requires
+psd-tools' *decoder* to agree byte-for-byte with `read_psd`. Remaining PSD gaps
+(color modes, 16/32-bit, image resources/ICC/metadata, effects/smart
+objects/text, PSB write, write-side RLE/ZIP) are tracked in the roadmap.
 
 > These numbers reuse M36–M38 previously sketched for canvas performance below.
 > `docs/dev/canvas-compositing-plan.md` is frozen and still uses them, so read

@@ -1,4 +1,6 @@
+use flate2::read::{DeflateDecoder, ZlibDecoder};
 use pictura_core::*;
+use std::io::Read;
 
 use crate::common::*;
 use crate::error::PsdError;
@@ -56,6 +58,21 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     // Layer and mask information section: 4-byte length (8 in PSB).
     let layers = read_layer_section(&mut r, is_psb)?;
 
+    // "Maximize Compatibility" off: a layered file may end after the layer
+    // section with no merged composite. A file with no layers at all and no
+    // trailing data is still malformed and falls through to the truncation error.
+    if r.remaining() == 0 && !layers.is_empty() {
+        return Ok(Document {
+            width,
+            height,
+            mode,
+            depth: BitDepth::Eight,
+            composite: PixelBuffer::new(width, height, mode.color_channels()),
+            layers,
+            channels: Vec::new(),
+        });
+    }
+
     // Image data section: 2-byte compression method, then one plane per header
     // channel (color channels first, then alpha/spot/selection channels).
     let compression = r.u16()?;
@@ -67,6 +84,16 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             .take(planar_len(header_channels, width, height)?)?
             .to_vec(),
         1 => read_rle(&mut r, header_channels, width, height, is_psb)?,
+        COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION => {
+            let expected = planar_len(header_channels, width, height)?;
+            let remaining = r.remaining();
+            let payload = r.take(remaining)?.to_vec();
+            let mut data = inflate(&payload, expected)?;
+            if compression == COMPRESSION_ZIP_PREDICTION {
+                undo_prediction(&mut data, width);
+            }
+            data
+        }
         c => return Err(PsdError::Unsupported(format!("compression {c}"))),
     };
     let (composite, channels) = split_planes(data, mode, width, height, header_channels)?;
@@ -123,6 +150,38 @@ fn planar_len(channels: usize, width: usize, height: usize) -> Result<usize, Psd
         .checked_mul(width)
         .and_then(|n| n.checked_mul(height))
         .ok_or_else(|| PsdError::Invalid("image dimensions overflow".into()))
+}
+
+/// Inflate a ZIP channel payload. Photoshop writes a zlib-framed stream; some
+/// third-party writers emit raw deflate, so fall back to that if zlib framing
+/// is absent. Output shorter than `expected` is malformed; longer is truncated.
+fn inflate(payload: &[u8], expected: usize) -> Result<Vec<u8>, PsdError> {
+    let mut out = Vec::new();
+    if ZlibDecoder::new(payload).read_to_end(&mut out).is_err() {
+        out.clear();
+        if DeflateDecoder::new(payload).read_to_end(&mut out).is_err() {
+            return Err(PsdError::Unsupported("ZIP channel data".into()));
+        }
+    }
+    if out.len() < expected {
+        return Err(PsdError::Invalid("ZIP payload too short".into()));
+    }
+    out.truncate(expected);
+    Ok(out)
+}
+
+/// Invert the byte-wise delta applied by ZIP-with-prediction: each scanline is a
+/// running sum. 8-bit data only (the only depth supported).
+fn undo_prediction(data: &mut [u8], row_len: usize) {
+    if row_len == 0 {
+        return;
+    }
+    for row_start in (0..data.len()).step_by(row_len) {
+        let row_end = (row_start + row_len).min(data.len());
+        for i in (row_start + 1)..row_end {
+            data[i] = data[i].wrapping_add(data[i - 1]);
+        }
+    }
 }
 
 fn read_rle(
@@ -351,8 +410,9 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     }
     let mut key = [0u8; 4];
     key.copy_from_slice(r.take(4)?);
-    let mut blend = BlendMode::from_psd_key(key)
-        .ok_or_else(|| PsdError::Unsupported(format!("blend mode {:?}", key)))?;
+    // An unrecognized key degrades to Normal rather than failing the file; the
+    // raw value is not preserved yet.
+    let mut blend = BlendMode::from_psd_key(key).unwrap_or(BlendMode::Normal);
 
     let opacity = r.u8()?;
     let clipping = r.u8()? != 0;
@@ -562,9 +622,13 @@ fn read_channel_data(
             Ok(payload[..pixels].to_vec())
         }
         COMPRESSION_RLE => decode_rle_channel(payload, width, height, is_psb),
-        2 | 3 => Err(PsdError::Unsupported(
-            "ZIP layer channel compression".into(),
-        )),
+        COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION => {
+            let mut data = inflate(payload, pixels)?;
+            if compression == COMPRESSION_ZIP_PREDICTION {
+                undo_prediction(&mut data, width);
+            }
+            Ok(data)
+        }
         c => Err(PsdError::Unsupported(format!(
             "layer channel compression {c}"
         ))),

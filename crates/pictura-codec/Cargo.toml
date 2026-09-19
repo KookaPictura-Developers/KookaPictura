@@ -8,5 +8,6 @@ rust-version.workspace = true
 [dependencies]
 pictura-core = { path = "../pictura-core" }
 thiserror.workspace = true
+flate2 = "1"
 
 [dev-dependencies]
