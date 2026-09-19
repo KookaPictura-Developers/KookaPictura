@@ -70,8 +70,8 @@ openspec validate --all --strict
 
 ## Code health (LOC guardrail)
 
-Every source file is under the **1000-LOC hard cap** (target <800; `AGENTS.md`
-rule). `scripts/check-file-size.sh` is the guard, `scripts/file-size-allowlist.txt`
+Every source file is under the **LOC hard cap** (code 1200, tests 1400; target
+<800; `AGENTS.md` rule). `scripts/check-file-size.sh` is the guard, `scripts/file-size-allowlist.txt`
 the exception list, and `scripts/verify-fast.sh` runs it. A completed
 code-splitting pass (`docs/dev/refactor-code-splitting.md`) took the sixteen
 over-cap files down to one by pure moves — build, byte-identical self-test

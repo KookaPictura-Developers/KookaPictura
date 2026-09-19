@@ -1,4 +1,4 @@
-# Files over the 1000-LOC hard cap (scripts/check-file-size.sh).
+# Files over the LOC hard cap (scripts/check-file-size.sh; code 1200, tests 1400).
 #
 # One entry per line: <repo-relative-path> <current LOC>. Blank lines and
 # lines starting with '#' are ignored. This list only shrinks: as files are

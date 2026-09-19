@@ -123,8 +123,10 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
    ceiling.
 8. **Escalate, don't guess.** If a spec is ambiguous or a dependency/toolchain
    decision is needed, stop and report the blocker rather than inventing scope.
-9. **File size.** Target under **800 LOC**, hard cap **1000**. A file over the
-   cap must be listed in `scripts/file-size-allowlist.txt`, a ceiling that only
+9. **File size.** Target under **800 LOC**; hard cap **1200** for code and
+   **1400** for tests. Tests are detected by path: Rust under `tests/` or named
+   `tests.rs`, C++ `*_test.{cpp,h}`. A file over its cap must be listed in
+   `scripts/file-size-allowlist.txt`, a ceiling that only
    shrinks. Split along class/concern seams with pure moves (no behavior change):
    C++ classes may span several `.cpp` translation units, Rust modules become
    submodule directories.
