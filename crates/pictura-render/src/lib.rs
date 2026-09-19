@@ -36,6 +36,9 @@ pub use composite::{
 };
 pub use pictura_adjust::{GradientFillParams, GradientKind, GradientStop};
 
+mod color_balance;
+pub use color_balance::encode_color_balance;
+
 mod fill;
 pub use fill::encode_gradient_fill;
 

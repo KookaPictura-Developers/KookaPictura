@@ -1148,6 +1148,37 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             }
         }
 
+        // lpr_color_balance (293): the neutral `color-balance` kind becomes an
+        // adjustment layer that leaves the composite unchanged, and the
+        // Adjustments panel offers a `Color Balance` row.
+        {
+            const bool cbCreated = frame.newDocument(QStringLiteral("ColorBalanceCtl"), 4, 4,
+                                                     QStringLiteral("rgb"), 8,
+                                                     QStringLiteral("white"));
+            pictura::PictureView* cbView = frame.activeView();
+            if (!cbCreated || !cbView) {
+                return pictura::selfTest().fail(293, "color balance fixture");
+            }
+            const int cbDoc = frame.activeDocumentIndex();
+            const unsigned int cbBefore = cbView->sample_argb(1, 1);
+            const bool cbAdded = cbView->add_adjustment(QStringLiteral("color-balance"));
+            const bool cbAdjustment =
+                cbView->layer_kind(cbView->layer_count() - 1) == QStringLiteral("adjustment");
+            const unsigned int cbAfter = cbView->sample_argb(1, 1);
+            const bool cbNeutral = cbAfter == cbBefore;
+            const pictura::PanelColumn* cbColumn = frame.panelColumn();
+            const bool cbMenu = cbColumn
+                && cbColumn->widgetMenuTextsForTest(QStringLiteral("adjustmentsPanel"))
+                       .contains(QStringLiteral("Color Balance"));
+            ST_BEGIN("lpr_color_balance");
+            ST_PASS("lpr_color_balance added=%d adjustment=%d neutral=%d menu=%d",
+                    cbAdded ? 1 : 0, cbAdjustment ? 1 : 0, cbNeutral ? 1 : 0, cbMenu ? 1 : 0);
+            if (!cbAdded || !cbAdjustment || !cbNeutral || !cbMenu) {
+                return pictura::selfTest().fail(293, "color balance adjustment");
+            }
+            frame.closeDocument(cbDoc, false);
+        }
+
         if (const int fd = pictura::runFileDropChecks(frame); fd != 0) { return fd; }
 
     return 0;

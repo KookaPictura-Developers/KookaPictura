@@ -11,7 +11,8 @@ matching `pictura_adjust::Adjustment` variant: `expA` to
 `Adjustment::Vibrance(VibranceParams)`, `blwh` to
 `Adjustment::BlackWhite(BlackWhiteParams)`, `phfl` to
 `Adjustment::PhotoFilter(PhotoFilterParams)`, `grdm` to
-`Adjustment::GradientMap(GradientMapParams)`, `SoCo` to
+`Adjustment::GradientMap(GradientMapParams)`, `blnc` to
+`Adjustment::ColorBalance(ColorBalanceParams)`, `SoCo` to
 `Adjustment::SolidFill([u8; 4])`, and `GdFl` to
 `Adjustment::GradientFill(GradientFillParams)`. The fixed structs `expA` and
 `phfl` SHALL be read as a `u16` version followed by fixed-width fields. The
@@ -27,6 +28,10 @@ and a colour-stop list; each stop SHALL be read as a `u32` location, a `u32`
 midpoint, a `u16` mode, and four `u16` colour components whose first three are
 reduced from the 16-bit scale to the stop's RGB colour, and the midpoint, mode,
 fourth component, and every field after the colour stops SHALL be ignored. A
+`blnc` payload SHALL be read as nine big-endian `i16` shifts in the order
+shadows, midtones, highlights (three per band, each in `-100..=100`) followed by
+a `u8` luminosity flag, and every byte after the flag SHALL be ignored; a
+truncated payload or a shift outside `-100..=100` SHALL decode to `None`. A
 `SoCo` payload SHALL be read in one of two forms: a 4-byte straight-alpha RGBA
 tuple, or a version-16 descriptor whose `Clr ` object carries `Rd  `, `Grn `,
 and `Bl  ` `doub` values on the `0..=255` scale. The descriptor form SHALL
@@ -75,6 +80,11 @@ and 100.
 - **WHEN** a `grdm` payload has version 3 and a `4`-byte method before the name
 - **THEN** `decode_adjustment` returns `Adjustment::GradientMap` with the same stops as the equivalent version-1 payload
 
+#### Scenario: Color Balance payload decodes to ColorBalanceParams
+
+- **WHEN** a `blnc` payload carries nine `i16` shifts in `-100..=100`, a luminosity byte, and trailing pad bytes
+- **THEN** `decode_adjustment` returns `Adjustment::ColorBalance` whose `shadows`, `midtones`, and `highlights` are the three shifts per band in order and whose `preserve_luminosity` is the luminosity byte interpreted as a boolean
+
 #### Scenario: Solid-color fill payload decodes to SolidFill
 
 - **WHEN** a `SoCo` payload is a 4-byte RGBA tuple, or a version-16 descriptor whose `Clr ` object carries `Rd  `/`Grn `/`Bl  ` doubles on the `0..=255` scale
@@ -118,6 +128,11 @@ and 100.
 #### Scenario: Malformed Gradient Map payload is a no-op
 
 - **WHEN** a `grdm` payload is truncated, has a version other than 1 or 3, has fewer than two colour stops, or has non-increasing or out-of-range stop locations
+- **THEN** `decode_adjustment` returns `None` and does not panic
+
+#### Scenario: Malformed Color Balance payload is a no-op
+
+- **WHEN** a `blnc` payload is truncated or carries a shift outside `-100..=100`
 - **THEN** `decode_adjustment` returns `None` and does not panic
 
 #### Scenario: Malformed solid-color descriptor is a no-op
@@ -400,4 +415,61 @@ over a backdrop SHALL change the result.
 
 - **WHEN** the Layer menu and the Layers-panel fill menu are built
 - **THEN** each offers an enabled `Gradient…` entry that creates a gradient fill layer
+
+### Requirement: Color Balance payloads encode and round-trip
+
+`pictura-render` SHALL expose `encode_color_balance(shadows: [f64; 3],
+midtones: [f64; 3], highlights: [f64; 3], preserve_luminosity: bool) ->
+AdjustmentData` that builds the `blnc` block `decode_adjustment` reads: the nine
+shifts as big-endian `i16` in shadows/midtones/highlights order, the luminosity
+byte, and pad bytes to a 4-byte boundary. The encoder SHALL clamp each shift to
+`-100..=100`, so its output always decodes. `decode_adjustment` on the encoder's
+output SHALL equal `Adjustment::ColorBalance` with the input shifts and
+luminosity flag. The emitted block SHALL match the psd-tools `ColorBalance`
+layout, so an independent psd-tools read of the same bytes reports the same
+`shadows`, `midtones`, `highlights`, and `luminosity`.
+
+#### Scenario: Encoded Color Balance decodes back
+
+- **WHEN** `encode_color_balance` is called with a midtones shift of `[25.0, 0.0, 0.0]`, the other bands zero, and luminosity preservation true
+- **THEN** `decode_adjustment` returns `Adjustment::ColorBalance` with those shifts and `preserve_luminosity` true
+
+#### Scenario: Out-of-range shifts are clamped
+
+- **WHEN** `encode_color_balance` is called with a shift above 100 or below -100
+- **THEN** the encoded shift is clamped into `-100..=100` and the block still decodes
+
+#### Scenario: psd-tools reads the encoded block
+
+- **WHEN** the bytes produced by `encode_color_balance` are read by `psd_tools.psd.adjustments.ColorBalance`
+- **THEN** its `shadows`, `midtones`, `highlights`, and `luminosity` equal the encoder's inputs
+
+### Requirement: The app can create a Color Balance adjustment layer
+
+The app SHALL map the adjustment kind `color-balance` to a `blnc` adjustment
+layer carrying the Photoshop default (all three band shifts zero and luminosity
+preservation on), and the Adjustments panel menu SHALL offer a `Color Balance`
+entry that dispatches `adjustment:color-balance`. Because the default shifts are
+zero, the default layer SHALL leave the backdrop unchanged. A `blnc` layer whose
+shifts are not all zero SHALL change the composite over a non-uniform backdrop.
+
+#### Scenario: The color-balance kind becomes an adjustment layer
+
+- **WHEN** the app adds an adjustment layer of kind `color-balance`
+- **THEN** the new layer carries a `blnc` block and is reported as an adjustment layer
+
+#### Scenario: The default Color Balance layer is neutral
+
+- **WHEN** a `color-balance` adjustment layer with the default parameters is composited over a backdrop
+- **THEN** the result equals the backdrop-only composite
+
+#### Scenario: The panel menu offers Color Balance
+
+- **WHEN** the Adjustments panel menu is built
+- **THEN** it contains a `Color Balance` row dispatching `adjustment:color-balance`
+
+#### Scenario: A non-neutral Color Balance layer changes the composite
+
+- **WHEN** a Color Balance adjustment layer with a non-zero midtone shift is composited over a non-uniform backdrop
+- **THEN** the result differs from the backdrop-only composite
 

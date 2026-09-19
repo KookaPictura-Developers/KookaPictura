@@ -43,10 +43,10 @@ pub(crate) fn is_psb_big_key(key: &[u8; 4]) -> bool {
 /// `hue2`. Both spellings are accepted on read. `SoCo` is solid-color fill
 /// content and `GdFl` is gradient fill content: both are preserved verbatim
 /// here, and only `pictura-render` decodes the subsets it understands.
-pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 20] = [
+pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 21] = [
     *b"levl", *b"curv", *b"brit", *b"expA", *b"vibA", *b"hue2", *b"hue ", *b"blwh", *b"phfl",
-    *b"mixr", *b"grdm", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc", *b"clrL",
-    *b"SoCo", *b"GdFl",
+    *b"blnc", *b"mixr", *b"grdm", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc",
+    *b"clrL", *b"SoCo", *b"GdFl",
 ];
 
 pub(crate) fn is_adjustment_key(key: &[u8; 4]) -> bool {

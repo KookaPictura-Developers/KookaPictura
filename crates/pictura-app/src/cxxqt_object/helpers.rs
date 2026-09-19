@@ -6,13 +6,15 @@ use pictura_paint::{PaintMode, Rgba};
 use pictura_select::CombineMode;
 /// Build an adjustment layer for `kind`, or `None` for an unknown kind.
 ///
-/// Defaults are chosen so a freshly added layer visibly changes the composite;
-/// editing parameters is out of scope for M4-C. `mask` confines the effect to a
+/// Most defaults are chosen so a freshly added layer visibly changes the
+/// composite; a few kinds (e.g. Color Balance) use Photoshop's neutral default.
+/// Editing parameters is out of scope for M4-C. `mask` confines the effect to a
 /// selection when one is active.
 pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
     use pictura_render::{
-        encode_brightness_contrast, encode_gradient_map, encode_hue_saturation, encode_invert,
-        encode_photo_filter, encode_posterize, encode_threshold, GradientStop,
+        encode_brightness_contrast, encode_color_balance, encode_gradient_map,
+        encode_hue_saturation, encode_invert, encode_photo_filter, encode_posterize,
+        encode_threshold, GradientStop,
     };
 
     let (name, data): (&str, AdjustmentData) = match kind {
@@ -40,6 +42,10 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
                 ],
                 false,
             ),
+        ),
+        "color-balance" => (
+            "Color Balance",
+            encode_color_balance([0.0; 3], [0.0; 3], [0.0; 3], true),
         ),
         _ => return None,
     };

@@ -1,7 +1,7 @@
 use super::*;
 use pictura_adjust::{
-    BlackWhiteParams, ExposureParams, GradientMapParams, GradientStop, PhotoFilterParams,
-    VibranceParams,
+    BlackWhiteParams, ColorBalanceParams, ExposureParams, GradientMapParams, GradientStop,
+    PhotoFilterParams, VibranceParams,
 };
 use pictura_codec::{write_descriptor, DescValue};
 
@@ -22,6 +22,23 @@ fn phfl_payload(version: u16, components: [u16; 4], density: u32, luminosity: u8
     data.extend_from_slice(&density.to_be_bytes());
     data.push(luminosity);
     data.extend_from_slice(&[0, 0, 0]);
+    data
+}
+
+fn blnc_payload(
+    shadows: [i16; 3],
+    midtones: [i16; 3],
+    highlights: [i16; 3],
+    luminosity: u8,
+) -> Vec<u8> {
+    let mut data = Vec::with_capacity(20);
+    for band in [shadows, midtones, highlights] {
+        for value in band {
+            data.extend_from_slice(&value.to_be_bytes());
+        }
+    }
+    data.push(luminosity);
+    data.push(0);
     data
 }
 
@@ -252,6 +269,20 @@ fn encode_decode_round_trips() {
             preserve_luminosity: true,
         }))
     );
+    assert_eq!(
+        decode_adjustment(&encode_color_balance(
+            [0.0; 3],
+            [25.0, 0.0, 0.0],
+            [0.0; 3],
+            true
+        )),
+        Some(Adjustment::ColorBalance(ColorBalanceParams {
+            shadows: [0.0; 3],
+            midtones: [25.0, 0.0, 0.0],
+            highlights: [0.0; 3],
+            preserve_luminosity: true,
+        }))
+    );
 
     // Byte formats match the psd-tools fixtures (`H2x`, `3HBx`).
     assert_eq!(encode_invert().key, *b"nvrt");
@@ -327,6 +358,20 @@ fn encode_decode_round_trips() {
         Some(Adjustment::PhotoFilter(PhotoFilterParams {
             color: [255, 180, 80],
             density: 0.0,
+            preserve_luminosity: false,
+        }))
+    );
+
+    // Out-of-range Color Balance shifts are clamped and the block still decodes.
+    let cb = encode_color_balance([150.0, -150.0, 0.0], [0.0; 3], [0.0; 3], false);
+    assert_eq!(cb.key, *b"blnc");
+    assert_eq!(cb.data.len(), 20);
+    assert_eq!(
+        decode_adjustment(&cb),
+        Some(Adjustment::ColorBalance(ColorBalanceParams {
+            shadows: [100.0, -100.0, 0.0],
+            midtones: [0.0; 3],
+            highlights: [0.0; 3],
             preserve_luminosity: false,
         }))
     );
@@ -977,4 +1022,92 @@ fn gradient_map_layer_changes_non_uniform_backdrop() {
             "the grey should follow the backdrop's luminance at {x}: {before:?} -> {got:?}"
         );
     }
+}
+
+#[test]
+fn blnc_decodes_and_rejects_malformed() {
+    let payload = blnc_payload([-100, 5, 0], [25, 0, -30], [100, 0, 0], 1);
+    assert_eq!(payload.len(), 20);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"blnc", payload.clone())),
+        Some(Adjustment::ColorBalance(ColorBalanceParams {
+            shadows: [-100.0, 5.0, 0.0],
+            midtones: [25.0, 0.0, -30.0],
+            highlights: [100.0, 0.0, 0.0],
+            preserve_luminosity: true,
+        }))
+    );
+
+    // The luminosity flag is a boolean and the trailing pad is ignored.
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"blnc", blnc_payload([0; 3], [0; 3], [0; 3], 2))),
+        Some(Adjustment::ColorBalance(ColorBalanceParams {
+            shadows: [0.0; 3],
+            midtones: [0.0; 3],
+            highlights: [0.0; 3],
+            preserve_luminosity: true,
+        }))
+    );
+
+    // Truncation anywhere before the luminosity byte is a no-op, never an error.
+    for cut in 0..19 {
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"blnc", payload[..cut].to_vec())),
+            None,
+            "cut {cut}"
+        );
+    }
+
+    // A shift outside -100..=100 is rejected, not clamped.
+    for bad in [101i16, -101] {
+        assert_eq!(
+            decode_adjustment(&adjdata(
+                *b"blnc",
+                blnc_payload([bad, 0, 0], [0; 3], [0; 3], 1)
+            )),
+            None,
+            "out-of-range {bad}"
+        );
+    }
+}
+
+#[test]
+fn color_balance_layer_changes_non_uniform_backdrop() {
+    // Non-uniform, non-neutral backdrop so the luma-weighted bands differ.
+    let base = solid(
+        "base",
+        full(2, 1),
+        (30, 90, 210),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let patch = solid(
+        "patch",
+        rect(0, 0, 1, 1),
+        (200, 100, 50),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 1, vec![base.clone(), patch.clone()]));
+    let balanced = composite_rgba(&doc(
+        2,
+        1,
+        vec![
+            base,
+            patch,
+            adjustment_layer(
+                "color-balance",
+                *b"blnc",
+                encode_color_balance([0.0; 3], [25.0, 0.0, 0.0], [0.0; 3], true).data,
+                255,
+                None,
+            ),
+        ],
+    ));
+    assert_ne!(
+        balanced.data, plain.data,
+        "a non-neutral Color Balance layer must change the backdrop"
+    );
 }

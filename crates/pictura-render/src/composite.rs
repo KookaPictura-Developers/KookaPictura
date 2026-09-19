@@ -321,9 +321,10 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
 /// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2),
-/// `grdm` (Gradient Map, versions 1/3), `SoCo` (solid-color fill content,
-/// either the 4-byte in-house RGBA tuple or the standard Photoshop descriptor),
-/// and `GdFl` (gradient fill content, a version-16 descriptor). Descriptor/custom
+/// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `SoCo`
+/// (solid-color fill content, either the 4-byte in-house RGBA tuple or the
+/// standard Photoshop descriptor), and `GdFl` (gradient fill content, a
+/// version-16 descriptor). Descriptor/custom
 /// payloads (`curv`, `mixr`, `selc`, `clrL`, and a version-3 `phfl`) are
 /// preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
@@ -343,6 +344,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"vibA" => decode_vibrance(&data.data),
         b"blwh" => decode_black_white(&data.data),
         b"gdrm" | b"grdm" => decode_gradient_map(&data.data),
+        b"blnc" => crate::color_balance::decode_color_balance(&data.data),
         b"SoCo" => match data.data.as_slice() {
             [r, g, b, a] => Some(Adjustment::SolidFill([*r, *g, *b, *a])),
             _ => decode_solid_fill(&data.data),
@@ -382,7 +384,7 @@ fn be_u16(d: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_be_bytes([s[0], s[1]]))
 }
 
-fn be_i16(d: &[u8], at: usize) -> Option<i16> {
+pub(crate) fn be_i16(d: &[u8], at: usize) -> Option<i16> {
     Some(be_u16(d, at)? as i16)
 }
 
