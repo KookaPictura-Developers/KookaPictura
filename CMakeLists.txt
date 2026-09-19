@@ -53,6 +53,8 @@ cxx_qt_import_crate(
 
 add_executable(pictura
     crates/pictura-app/cpp/main.cpp
+    crates/pictura-app/cpp/decode_image.cpp
+    crates/pictura-app/cpp/decode_image.h
     crates/pictura-app/cpp/selftest.cpp
     crates/pictura-app/cpp/selftest_report.cpp
     crates/pictura-app/cpp/selftest_layers_controls.cpp

@@ -5,6 +5,7 @@
 //! unchanged. Each successful command records exactly one undo state; a refusal
 //! records nothing.
 
+use super::helpers::decode_import;
 use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
@@ -52,6 +53,47 @@ impl qobject::PictureView {
         };
         let Some(created) = created else {
             return QString::default();
+        };
+        self.as_mut().clear_link_sets();
+        self.as_mut().recomposite();
+        self.as_mut().record("Place");
+        QString::from(created.as_str())
+    }
+
+    /// `File > Place…` for a raster image: read `file_path`, probe and decode it
+    /// with Qt, append it as a native-size raster layer, convert that layer into
+    /// an embedded smart object, recomposite, and record one "Place" state.
+    /// Returns the new layer's path, or an empty string recording nothing on any
+    /// refusal (no document, missing/unreadable file, unsupported format, over
+    /// budget, or failed conversion).
+    pub fn place_image(mut self: Pin<&mut Self>, file_path: &QString) -> QString {
+        let file = file_path.to_string();
+        let name = std::path::Path::new(&file)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some((rgba, width, height)) =
+            std::fs::read(&file).ok().as_deref().and_then(decode_import)
+        else {
+            return QString::default();
+        };
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => {
+                let path =
+                    pictura_render::add_raster_layer_from_rgba(doc, &name, width, height, &rgba);
+                if path.is_empty() {
+                    return QString::default();
+                }
+                if !pictura_render::convert_to_smart_object(doc, &path) {
+                    // A refusal must leave the document unchanged: undo the
+                    // append. `add_raster_layer_from_rgba` pushes exactly one
+                    // top-level layer and a failed conversion adds none.
+                    doc.layers.pop();
+                    return QString::default();
+                }
+                path
+            }
+            None => return QString::default(),
         };
         self.as_mut().clear_link_sets();
         self.as_mut().recomposite();

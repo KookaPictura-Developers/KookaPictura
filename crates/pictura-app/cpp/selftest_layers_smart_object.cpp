@@ -7,6 +7,8 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtGui/QColor>
+#include <QtGui/QImage>
 
 int pictura::runLayersSmartObjectConvertChecks(pictura::PicturaMainWindow& frame)
 {
@@ -491,5 +493,122 @@ int pictura::runLayersEditSmartObjectSessionChecks(pictura::PicturaMainWindow& f
     if (!sesOk) {
         return pictura::selfTest().fail(289, "edit smart object session");
     }
+    return 0;
+}
+
+int pictura::runImageImportChecks(pictura::PicturaMainWindow& frame)
+{
+    // lpr_image_import (290): File > Open decodes a raster image into an
+    // untitled one-layer document in exactly one "Open" state; Place appends it
+    // as a topmost smart-object layer in exactly one "Place" state; an
+    // unrecognized and an over-budget file refuse without adding a state.
+    const QString pngPath = QDir::tempPath() + QStringLiteral("/kooka-pictura-import.png");
+    QImage png(2, 2, QImage::Format_RGBA8888);
+    png.fill(QColor(255, 0, 0, 255));
+    const bool pngSaved = png.save(pngPath, "PNG");
+    if (!pngSaved) {
+        return pictura::selfTest().fail(290, "image import fixture");
+    }
+
+    const int openDocsBase = frame.documentCount();
+    const bool opened = frame.openImagePath(pngPath);
+    pictura::PictureView* view = frame.activeView();
+    const bool openAdded = opened && frame.documentCount() == openDocsBase + 1 && view;
+    const bool openSize = view && view->document_width() == 2 && view->document_height() == 2;
+    const bool openOneLayer = view && view->layer_row_count() == 1;
+    const bool openPixel = view && view->sample_argb(0, 0) == 0xffff0000u;
+    const bool openHistory =
+        view && view->history_count() == 1 && view->history_label(0) == QStringLiteral("Open");
+    const bool openUntitled = view && view->file_path().isEmpty();
+    const bool openClean = view && !view->is_dirty();
+
+    const int placeBase = view ? view->history_count() : -1;
+    const int placeRows = view ? view->layer_row_count() : -1;
+    const QString placePath = view ? view->place_image(pngPath) : QString();
+    const bool placePlaced = !placePath.isEmpty() && view
+        && view->layer_row_count() == placeRows + 1 && view->history_count() == placeBase + 1
+        && view->history_label(placeBase) == QStringLiteral("Place")
+        && view->layer_smart_object_state(placePath).startsWith(QStringLiteral("embedded:"));
+
+    const QString badPath = QDir::tempPath() + QStringLiteral("/kooka-pictura-import-bad.png");
+    QFile bad(badPath);
+    if (bad.open(QIODevice::WriteOnly)) {
+        bad.write("not an image");
+    }
+    bad.close();
+    const int badDocs = frame.documentCount();
+    const bool badOpen = !frame.openImagePath(badPath);
+    const bool badOpenDocs = frame.documentCount() == badDocs;
+    const int badHistory = view ? view->history_count() : -1;
+    const int badRows = view ? view->layer_row_count() : -1;
+    const bool badPlace = view && view->place_image(badPath).isEmpty()
+        && view->history_count() == badHistory && view->layer_row_count() == badRows;
+
+    // A PNG IHDR declaring 40000x40000 is over the 30000 px dimension budget,
+    // so the probe refuses it before Qt ever decodes.
+    const QString bigPath = QDir::tempPath() + QStringLiteral("/kooka-pictura-import-big.png");
+    QByteArray big;
+    big += QByteArray::fromHex("89504e470d0a1a0a");
+    big += QByteArray::fromHex("0000000d49484452");
+    big += QByteArray::fromHex("00009c4000009c40");
+    big += QByteArray::fromHex("0806000000");
+    QFile bigFile(bigPath);
+    if (bigFile.open(QIODevice::WriteOnly)) {
+        bigFile.write(big);
+    }
+    bigFile.close();
+    const int bigDocs = frame.documentCount();
+    const bool bigOpen = !frame.openImagePath(bigPath);
+    const bool bigOpenDocs = frame.documentCount() == bigDocs;
+    const int bigHistory = view ? view->history_count() : -1;
+    const bool bigPlace = view && view->place_image(bigPath).isEmpty()
+        && view->history_count() == bigHistory;
+
+    // A P3 PPM is decoded by Qt's built-in ppm handler but is not one of the
+    // containers the probe sniffs, so the decode edge must still attempt Qt.
+    const QString ppmPath = QDir::tempPath() + QStringLiteral("/kooka-pictura-import.ppm");
+    QFile ppm(ppmPath);
+    if (ppm.open(QIODevice::WriteOnly)) {
+        ppm.write("P3\n2 1\n255\n255 0 0 0 255 0\n");
+    }
+    ppm.close();
+    const int ppmDocsBase = frame.documentCount();
+    const bool ppmOpened = frame.openImagePath(ppmPath);
+    pictura::PictureView* ppmView = frame.activeView();
+    const bool ppmOk = ppmOpened && frame.documentCount() == ppmDocsBase + 1 && ppmView
+        && ppmView->document_width() == 2 && ppmView->document_height() == 1
+        && ppmView->sample_argb(0, 0) == 0xffff0000u
+        && ppmView->sample_argb(1, 0) == 0xff00ff00u;
+    if (ppmOpened) {
+        frame.closeDocument(frame.activeDocumentIndex(), false);
+    }
+    QFile::remove(ppmPath);
+
+    // Suffix routing: `.psd`/`.psb` (case-insensitively, and only as the final
+    // suffix) go native; anything else goes through the Qt image edge.
+    const bool routing = PicturaMainWindow::isNativeDocumentPath(QStringLiteral("a.psd"))
+        && PicturaMainWindow::isNativeDocumentPath(QStringLiteral("a.PSB"))
+        && !PicturaMainWindow::isNativeDocumentPath(QStringLiteral("a.png"))
+        && !PicturaMainWindow::isNativeDocumentPath(QStringLiteral("a.psd.png"));
+
+    const bool ok = openAdded && openSize && openOneLayer && openPixel && openHistory
+        && openUntitled && openClean && placePlaced && badOpen && badOpenDocs && badPlace
+        && bigOpen && bigOpenDocs && bigPlace && ppmOk && routing;
+    ST_BEGIN("lpr_image_import");
+    ST_PASS("lpr_image_import saved=%d open=%d size=%dx%d layers=%d pixel=%08x history=%s "
+            "untitled=%d clean=%d place=%s placed=%d bad=%d big=%d ppm=%d routing=%d",
+            pngSaved ? 1 : 0, opened ? 1 : 0, view ? view->document_width() : -1,
+            view ? view->document_height() : -1, view ? view->layer_row_count() : -1,
+            view ? view->sample_argb(0, 0) : 0u, view ? qPrintable(view->history_label(0)) : "-",
+            openUntitled ? 1 : 0, openClean ? 1 : 0, qPrintable(placePath), placePlaced ? 1 : 0,
+            (badOpen && badOpenDocs && badPlace) ? 1 : 0,
+            (bigOpen && bigOpenDocs && bigPlace) ? 1 : 0, ppmOk ? 1 : 0, routing ? 1 : 0);
+    if (!ok) {
+        return pictura::selfTest().fail(290, "image import");
+    }
+    QFile::remove(pngPath);
+    QFile::remove(badPath);
+    QFile::remove(bigPath);
+    frame.closeDocument(frame.activeDocumentIndex(), false);
     return 0;
 }

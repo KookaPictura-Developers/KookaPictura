@@ -331,6 +331,25 @@ bool PicturaMainWindow::openPath(const QString& path)
     return true;
 }
 
+bool PicturaMainWindow::openImagePath(const QString& path)
+{
+    auto* view = new PictureView(this);
+    if (!view->open_image(path)) {
+        delete view;
+        return false;
+    }
+    // Imported pixels become an untitled PSD document; keeping the image path
+    // would let Ctrl+S write PSD bytes over the source image.
+    addDocument(view, QString());
+    return true;
+}
+
+bool PicturaMainWindow::isNativeDocumentPath(const QString& path)
+{
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    return suffix == QStringLiteral("psd") || suffix == QStringLiteral("psb");
+}
+
 bool PicturaMainWindow::openAsSmartObjectPath(const QString& path)
 {
     auto* view = new PictureView(this);
@@ -493,10 +512,17 @@ void PicturaMainWindow::showNewDocumentDialog()
 
 void PicturaMainWindow::showOpenDialog()
 {
-    const QString path = QFileDialog::getOpenFileName(
-        this, tr("Open"), QString(), QStringLiteral("Photoshop files (*.psd *.psb)"));
-    if (!path.isEmpty()) {
+    const QString filter = QStringLiteral(
+        "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff *.webp);;"
+        "Photoshop files (*.psd *.psb);;All files (*)");
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open"), QString(), filter);
+    if (path.isEmpty()) {
+        return;
+    }
+    if (isNativeDocumentPath(path)) {
         openPath(path);
+    } else {
+        openImagePath(path);
     }
 }
 

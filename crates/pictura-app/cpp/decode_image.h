@@ -1,0 +1,11 @@
+#pragma once
+
+#include "rust/cxx.h"
+
+#include <cstdint>
+
+// Decode `data` with Qt to tightly packed RGBA8888 and report the decoded size.
+// Returns an empty buffer (and zeroes `width`/`height`) when Qt cannot read it.
+// Defined at global scope because the cxx bridge declares no namespace.
+::rust::Vec<uint8_t> decode_image_rgba(::rust::Slice<const uint8_t> data, int32_t& width,
+                                       int32_t& height);
