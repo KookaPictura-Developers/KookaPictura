@@ -29,6 +29,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("pattern_fill.psd", 8, 8, ColorMode::Rgb),
     ("pattern_fill_16bit.psd", 8, 8, ColorMode::Rgb),
     ("drop_shadow.psd", 8, 8, ColorMode::Rgb),
+    ("outer_glow.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -1359,3 +1360,6 @@ fn scratch_dir(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
+
+#[path = "oracle/outer_glow.rs"]
+mod outer_glow;

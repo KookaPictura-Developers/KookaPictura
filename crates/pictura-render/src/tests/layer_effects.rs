@@ -835,3 +835,5 @@ fn drop_shadow_fixture_decodes_and_composites() {
     }
     assert_ne!(with_effect, composite_rgba(&plain), "the shadow renders");
 }
+
+mod outer_glow;

@@ -1,8 +1,8 @@
-//! Object-based layer effects: the `lfx2` Drop Shadow.
+//! Object-based layer effects: the `lfx2` Drop Shadow and Outer Glow.
 //!
 //! A layer's effects live in the `lfx2` additional-layer-information block as a
-//! `DescriptorBlock2` whose top-level `DrSh` object holds the drop shadow. This
-//! slice decodes and renders only Drop Shadow.
+//! `DescriptorBlock2`: the top-level `DrSh` object holds the drop shadow and the
+//! `OrGl` object holds the outer glow. This slice decodes and renders both.
 //!
 //! ponytail: the effective angle is the stored `lagl`, not the document
 //! global-light resource (1037), which this crate does not decode; `uglg` is
@@ -11,6 +11,13 @@
 //! content, so a semi-transparent layer shows it through (the `knocks_out =
 //! false` look). The matte is a full-canvas `f32` buffer, matching the
 //! compositor's ceiling.
+//!
+//! A glow has no offset: `GlwT` `PrBL` (Precise) is decoded but rendered as
+//! `SfBL` (Softer), `Range` (`Inpr`), contour, noise, jitter (`ShdN`),
+//! anti-alias and gradient mode (`Grad`) are ignored, the spread is a max-filter
+//! dilate of radius `round(spread / 100 * size)` (not Photoshop's spread-then-
+//! blur split), and the exterior is the multiplicative `1 - matte` rather than
+//! Photoshop's exact knock-out equation.
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
@@ -43,6 +50,85 @@ pub struct DropShadow {
     pub size: f32,
     pub use_global_angle: bool,
     pub knocks_out: bool,
+}
+
+/// The blur technique stored in `GlwT` (typeID `BETE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlowTechnique {
+    /// `SfBL`: the ordinary Gaussian blur.
+    Softer,
+    /// `PrBL`: Photoshop's distance-measure technique, rendered as `Softer`
+    /// (a stated ceiling).
+    Precise,
+}
+
+/// The typed outer glow decoded from a layer's `lfx2` block.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OuterGlow {
+    pub enabled: bool,
+    pub present: bool,
+    pub blend_mode: BlendMode,
+    pub color: [u8; 3],
+    /// Percent, `0..=100`.
+    pub opacity: f32,
+    /// Percent, `0..=100` (`Ckmt`, Photoshop's stored key for Spread).
+    pub spread: f32,
+    /// Pixels, Gaussian radius, `0..=250`.
+    pub size: f32,
+    pub technique: GlowTechnique,
+}
+
+/// Decode a layer's `lfx2` Outer Glow.
+///
+/// A missing `lfx2`, a missing or wrongly-typed `OrGl`, an unknown data version,
+/// a wrong-typed or non-finite value, or a parse error is `None`. Never panics.
+pub fn decode_outer_glow(layer: &Layer) -> Option<OuterGlow> {
+    let data = &layer.extra_block(b"lfx2")?.data;
+    let body = data.get(4..)?;
+    let obj = pictura_codec::read_descriptor(body).ok()?;
+    let orgl = desc_item(&obj, b"OrGl")?;
+    let DescValue::Object { class_id, .. } = orgl else {
+        return None;
+    };
+    if class_id.as_slice() != b"OrGl" {
+        return None;
+    }
+    let blend_mode = match desc_item(orgl, b"Md  ") {
+        None => BlendMode::Screen,
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
+            .as_slice()
+            .try_into()
+            .ok()
+            .and_then(BlendMode::from_psd_key)
+            .unwrap_or(BlendMode::Screen),
+        Some(_) => return None,
+    };
+    let color = match desc_item(orgl, b"Clr ") {
+        None => [255, 255, 190],
+        Some(value) => decode_color(value)?,
+    };
+    let technique = match desc_item(orgl, b"GlwT") {
+        None => GlowTechnique::Softer,
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BETE" => {
+            if value.as_slice() == b"PrBL" {
+                GlowTechnique::Precise
+            } else {
+                // `SfBL`, or an unknown value, is Softer.
+                GlowTechnique::Softer
+            }
+        }
+        Some(_) => return None,
+    };
+    Some(OuterGlow {
+        enabled: bool_or(orgl, b"enab", false)?,
+        present: bool_or(orgl, b"present", false)?,
+        blend_mode,
+        color,
+        opacity: num_clamped(orgl, b"Opct", 75.0, 0.0, MAX_OPACITY)?,
+        spread: num_clamped(orgl, b"Ckmt", 0.0, 0.0, MAX_SPREAD)?,
+        size: num_clamped(orgl, b"blur", 5.0, 0.0, MAX_SIZE)?,
+        technique,
+    })
 }
 
 /// Decode a layer's `lfx2` Drop Shadow.
@@ -152,11 +238,15 @@ pub(crate) fn composite_layer_effects(canvas: &mut Canvas, layer: &Layer, doc: &
     if layer.is_group || is_destructive_adjustment(layer) {
         return;
     }
-    let Some(shadow) = decode_drop_shadow(layer) else {
-        return;
-    };
-    if shadow.enabled && shadow.present {
-        composite_drop_shadow(canvas, layer, doc, &shadow);
+    if let Some(shadow) = decode_drop_shadow(layer) {
+        if shadow.enabled && shadow.present {
+            composite_drop_shadow(canvas, layer, doc, &shadow);
+        }
+    }
+    if let Some(glow) = decode_outer_glow(layer) {
+        if glow.enabled && glow.present {
+            composite_outer_glow(canvas, layer, doc, &glow);
+        }
     }
 }
 
@@ -259,6 +349,83 @@ fn composite_drop_shadow(canvas: &mut Canvas, layer: &Layer, doc: &Document, sha
                     color,
                     alpha,
                     shadow.blend_mode,
+                );
+            }
+        }
+    }
+}
+
+/// Build the glow matte over the padded source region, dilate it by the spread,
+/// blur it by the size, knock out the content, and composite it behind the
+/// layer content over the padded region only (a glow has no offset).
+///
+/// ponytail: a canvas-filling layer with the maximum `size` still costs
+/// O(canvas · size) because the blur is a naive separable kernel; the common
+/// small-layer and crafted off-canvas cases are bounded. `Precise` renders as
+/// `Softer`.
+fn composite_outer_glow(canvas: &mut Canvas, layer: &Layer, doc: &Document, glow: &OuterGlow) {
+    let (w, h) = (canvas.w as i32, canvas.h as i32);
+    if w == 0 || h == 0 {
+        return;
+    }
+    let source = clip_rect(layer, w, h);
+    if rect_empty(source) {
+        return;
+    }
+    // Clamp again: a hand-built `OuterGlow` may not have gone through decode.
+    let spread = clamp_finite(glow.spread, MAX_SPREAD) as f64;
+    let size = clamp_finite(glow.size, MAX_SIZE) as f64;
+    let dilate_radius = (spread / 100.0 * size).round() as i64;
+    let blur_support = if size > 0.0 {
+        (3.0 * pictura_filters::kernel::sigma_from_radius(size)).ceil() as i64
+    } else {
+        0
+    };
+    // Content can only be non-zero inside `source`; dilate and blur spread it by
+    // at most `reach`, so the matte is built and processed over `padded` only.
+    let padded = pad_rect(source, dilate_radius + blur_support, w, h);
+    if rect_empty(padded) {
+        return;
+    }
+    let (px0, py0, px1, py1) = padded;
+    let pw = (px1 - px0) as usize;
+    let ph = (py1 - py0) as usize;
+    let mut matte = content_matte(layer, doc, padded);
+    for y in py0..py1 {
+        for x in px0..px1 {
+            matte[(y - py0) as usize * pw + (x - px0) as usize] *=
+                mask_alpha(layer, x, y) as f32 / 255.0;
+        }
+    }
+    if matte.iter().all(|&v| v <= 0.0) {
+        return;
+    }
+    // Exterior mask: the glow is knocked out where the content is opaque.
+    let exterior: Vec<f32> = matte.iter().map(|&m| 1.0 - m).collect();
+    let dilated = if dilate_radius > 0 {
+        dilate_matte(&matte, pw, ph, dilate_radius)
+    } else {
+        matte
+    };
+    let blurred = blur_matte(&dilated, pw, ph, size);
+    let color = [
+        glow.color[0] as f32 / 255.0,
+        glow.color[1] as f32 / 255.0,
+        glow.color[2] as f32 / 255.0,
+    ];
+    let opacity = clamp_finite(glow.opacity, MAX_OPACITY) / 100.0;
+    for y in py0..py1 {
+        for x in px0..px1 {
+            let i = (y - py0) as usize * pw + (x - px0) as usize;
+            let alpha = blurred[i] * exterior[i] * opacity;
+            if alpha > 0.0 {
+                blend_parts(
+                    canvas,
+                    x as usize,
+                    y as usize,
+                    color,
+                    alpha,
+                    glow.blend_mode,
                 );
             }
         }

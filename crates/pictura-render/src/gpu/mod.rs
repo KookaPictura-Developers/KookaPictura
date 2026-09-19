@@ -276,10 +276,15 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
             return Ok(());
         }
         // The effect check wins over the adjustment check: a fill layer with an
-        // enabled shadow must report `UnsupportedLayerEffect`, not
+        // enabled shadow or glow must report `UnsupportedLayerEffect`, not
         // `UnsupportedAdjustment`.
         if crate::layer_effects::decode_drop_shadow(layer)
             .is_some_and(|shadow| shadow.enabled && shadow.present)
+        {
+            return Err(GpuError::UnsupportedLayerEffect);
+        }
+        if crate::layer_effects::decode_outer_glow(layer)
+            .is_some_and(|glow| glow.enabled && glow.present)
         {
             return Err(GpuError::UnsupportedLayerEffect);
         }
