@@ -571,3 +571,68 @@ pub(crate) fn pattern_tile_rgba(
     }
     out
 }
+
+/// Paint a fill layer's coverage alpha into a region `(x0, y0, x1, y1)` of the
+/// canvas (row-major `(x1-x0) × (y1-y0)`), zero outside the layer rect. Returns
+/// `false` when `layer` is not a decoded fill, so the caller falls back to the
+/// pixel/smart path.
+///
+/// ponytail: the pattern tile is sampled nearest-neighbour, matching the
+/// compositor's [`Tile`].
+pub(crate) fn fill_coverage_matte(
+    layer: &Layer,
+    doc: &Document,
+    region: (i32, i32, i32, i32),
+    out: &mut [f32],
+) -> bool {
+    let Some(data) = &layer.adjustment else {
+        return false;
+    };
+    let Some(adjustment) = crate::decode_adjustment(data) else {
+        return false;
+    };
+    let (rx0, ry0, rx1, ry1) = region;
+    let rw = (rx1 - rx0) as usize;
+    let ix0 = layer.rect.left.max(rx0);
+    let iy0 = layer.rect.top.max(ry0);
+    let ix1 = layer.rect.right.min(rx1);
+    let iy1 = layer.rect.bottom.min(ry1);
+    if ix1 <= ix0 || iy1 <= iy0 {
+        return true;
+    }
+    let mut put = |x: i32, y: i32, value: f32| {
+        out[(y - ry0) as usize * rw + (x - rx0) as usize] = value;
+    };
+    match adjustment {
+        Adjustment::SolidFill(rgba) => {
+            let alpha = rgba[3] as f32 / 255.0;
+            for y in iy0..iy1 {
+                for x in ix0..ix1 {
+                    put(x, y, alpha);
+                }
+            }
+            true
+        }
+        Adjustment::GradientFill(_) => {
+            for y in iy0..iy1 {
+                for x in ix0..ix1 {
+                    put(x, y, 1.0);
+                }
+            }
+            true
+        }
+        Adjustment::PatternFill(params) => {
+            let patterns = pictura_codec::decode_patterns(doc);
+            let pattern = patterns.iter().find(|p| p.pattern_id == params.pattern_id);
+            let tile = tile_for(pattern, &params);
+            for y in iy0..iy1 {
+                for x in ix0..ix1 {
+                    let c = tile.sample(x, y, layer.rect.left, layer.rect.top);
+                    put(x, y, c[3] as f32 / 255.0);
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
