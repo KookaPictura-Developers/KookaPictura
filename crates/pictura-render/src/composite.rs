@@ -32,9 +32,9 @@ struct Px {
     a: f32,
 }
 
-struct Canvas {
-    w: usize,
-    h: usize,
+pub(crate) struct Canvas {
+    pub(crate) w: usize,
+    pub(crate) h: usize,
     px: Vec<Px>,
 }
 
@@ -321,10 +321,11 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
 /// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2),
-/// `grdm` (Gradient Map, versions 1/3), and `SoCo` (solid-color fill content,
-/// either the 4-byte in-house RGBA tuple or the standard Photoshop descriptor).
-/// Descriptor/custom payloads (`curv`, `mixr`, `selc`, `clrL`, and a version-3
-/// `phfl`) are preserved on disk but not decoded here.
+/// `grdm` (Gradient Map, versions 1/3), `SoCo` (solid-color fill content,
+/// either the 4-byte in-house RGBA tuple or the standard Photoshop descriptor),
+/// and `GdFl` (gradient fill content, a version-16 descriptor). Descriptor/custom
+/// payloads (`curv`, `mixr`, `selc`, `clrL`, and a version-3 `phfl`) are
+/// preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -346,6 +347,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
             [r, g, b, a] => Some(Adjustment::SolidFill([*r, *g, *b, *a])),
             _ => decode_solid_fill(&data.data),
         },
+        b"GdFl" => crate::fill::decode_gradient_fill(&data.data),
         _ => None,
     }
 }
@@ -587,7 +589,7 @@ fn decode_tint_color(value: &DescValue) -> Option<[u8; 3]> {
     ])
 }
 
-fn desc_item<'a>(obj: &'a DescValue, key: &[u8]) -> Option<&'a DescValue> {
+pub(crate) fn desc_item<'a>(obj: &'a DescValue, key: &[u8]) -> Option<&'a DescValue> {
     let DescValue::Object { items, .. } = obj else {
         return None;
     };
@@ -832,7 +834,11 @@ fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustm
     // Fill content is generative: it adds color inside the layer's rect instead
     // of transforming the backdrop, so it takes the normal-content path.
     if let Adjustment::SolidFill(rgba) = adjustment {
-        composite_solid_fill(canvas, layer, *rgba);
+        crate::fill::composite_solid_fill(canvas, layer, *rgba);
+        return;
+    }
+    if let Adjustment::GradientFill(params) = adjustment {
+        crate::fill::composite_gradient_fill(canvas, layer, params);
         return;
     }
     let n = canvas.w * canvas.h;
@@ -867,35 +873,16 @@ fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustm
     }
 }
 
-/// Composite a solid fill across the layer's rect (clamped to the canvas).
-///
-/// Unlike a destructive adjustment, every in-rect pixel is source content at
-/// the payload's alpha; the layer's mask, opacity, fill, and blend still apply
-/// through [`blend_into`]. Pixels outside the rect are untouched.
-fn composite_solid_fill(canvas: &mut Canvas, layer: &Layer, rgba: [u8; 4]) {
-    let x0 = layer.rect.left.max(0);
-    let y0 = layer.rect.top.max(0);
-    let x1 = layer.rect.right.min(canvas.w as i32);
-    let y1 = layer.rect.bottom.min(canvas.h as i32);
-    if x1 <= x0 || y1 <= y0 {
-        return;
-    }
-    let cs = [
-        rgba[0] as f32 / 255.0,
-        rgba[1] as f32 / 255.0,
-        rgba[2] as f32 / 255.0,
-    ];
-    let src_a = rgba[3] as f32 / 255.0;
-    for y in y0..y1 {
-        for x in x0..x1 {
-            blend_into(canvas, layer, x as usize, y as usize, cs, src_a);
-        }
-    }
-}
-
 /// Composite one source sample over the running backdrop, applying the layer's
 /// opacity, fill (ignored for groups) and mask to the source alpha.
-fn blend_into(canvas: &mut Canvas, layer: &Layer, x: usize, y: usize, cs: [f32; 3], src_a: f32) {
+pub(crate) fn blend_into(
+    canvas: &mut Canvas,
+    layer: &Layer,
+    x: usize,
+    y: usize,
+    cs: [f32; 3],
+    src_a: f32,
+) {
     if src_a <= 0.0 {
         return;
     }

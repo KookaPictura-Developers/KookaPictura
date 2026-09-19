@@ -76,6 +76,7 @@ inline constexpr char LayerLinkLayers[] = "layer.link.layers";
 inline constexpr char LayerUnlinkLayers[] = "layer.unlink.layers";
 inline constexpr char LayerHideLayers[] = "layer.hide.layers";
 inline constexpr char LayerNewFillSolidColor[] = "layer.new.fill.solidColor";
+inline constexpr char LayerNewFillGradient[] = "layer.new.fill.gradient";
 inline constexpr char LayerRasterizeFillContent[] = "layer.rasterize.fillContent";
 inline constexpr char LayerRasterizeLayer[] = "layer.rasterize.layer";
 inline constexpr char LayerRasterizeAllLayers[] = "layer.rasterize.allLayers";

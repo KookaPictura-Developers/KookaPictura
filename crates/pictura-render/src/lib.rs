@@ -34,7 +34,10 @@ pub use composite::{
     encode_hue_saturation, encode_invert, encode_photo_filter, encode_posterize,
     encode_solid_color_fill, encode_threshold,
 };
-pub use pictura_adjust::GradientStop;
+pub use pictura_adjust::{GradientFillParams, GradientKind, GradientStop};
+
+mod fill;
+pub use fill::encode_gradient_fill;
 
 pub mod gpu;
 pub use gpu::{
@@ -50,12 +53,12 @@ pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 
 pub mod document_ops;
 pub use document_ops::{
-    add_group, add_group_full, add_group_in, add_layer, add_layer_full, add_layer_in,
-    add_solid_fill, apply_visibility, background_from_layer, can_convert_to_smart_object,
-    can_merge_scope, can_merge_target, can_move_path_to, can_rasterize_smart_object,
-    can_replace_smart_object_contents, convert_to_smart_object, crop_document,
-    delete_hidden_layers, delete_paths, duplicate_layer, duplicate_paths, flatten, flatten_rows,
-    flip_document, group_layer, group_paths, is_background, is_fill_content_layer,
+    add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
+    add_layer_in, add_solid_fill, apply_visibility, background_from_layer,
+    can_convert_to_smart_object, can_merge_scope, can_merge_target, can_move_path_to,
+    can_rasterize_smart_object, can_replace_smart_object_contents, convert_to_smart_object,
+    crop_document, delete_hidden_layers, delete_paths, duplicate_layer, duplicate_paths, flatten,
+    flatten_rows, flip_document, group_layer, group_paths, is_background, is_fill_content_layer,
     is_visible_in_panel, layer_from_background, layer_via_copy, layer_via_cut, merge_scope,
     move_path, move_path_to, move_selection_content, neutral_color, next_layer_name,
     open_as_smart_object, parent_path, place_smart_object, rasterize_all_fill_content,

@@ -994,12 +994,68 @@ fn alpha_is_never_modified() {
             ],
             reverse: false,
         }),
+        Adjustment::GradientFill(GradientFillParams {
+            stops: vec![
+                GradientStop {
+                    location: 0,
+                    color: [0, 0, 0],
+                },
+                GradientStop {
+                    location: 4096,
+                    color: [255, 255, 255],
+                },
+            ],
+            reverse: false,
+            kind: GradientKind::Linear,
+            angle_deg: 0.0,
+            scale: 100.0,
+        }),
     ];
     for a in adjustments {
         let mut b = base.clone();
-        apply(&a, &mut b).unwrap();
+        match apply(&a, &mut b) {
+            Ok(()) => {}
+            Err(AdjustError::Unsupported(_)) => {
+                assert_eq!(b, base, "{a:?} refused but mutated the buffer");
+            }
+            Err(e) => panic!("{a:?} failed: {e}"),
+        }
         assert_eq!(&b.data[3 * n..4 * n], &alpha[..], "{a:?} touched alpha");
     }
+}
+
+#[test]
+fn apply_refuses_gradient_fill_without_mutating() {
+    let mut buf = buf3(
+        2,
+        2,
+        &[[10, 20, 30], [40, 50, 60], [70, 80, 90], [100, 110, 120]],
+    );
+    let before = buf.clone();
+    let params = GradientFillParams {
+        stops: vec![
+            GradientStop {
+                location: 0,
+                color: [0, 0, 0],
+            },
+            GradientStop {
+                location: 4096,
+                color: [255, 255, 255],
+            },
+        ],
+        reverse: false,
+        kind: GradientKind::Radial,
+        angle_deg: 45.0,
+        scale: 100.0,
+    };
+    assert!(matches!(
+        apply(&Adjustment::GradientFill(params), &mut buf),
+        Err(AdjustError::Unsupported(_))
+    ));
+    assert_eq!(
+        buf, before,
+        "a refused gradient fill leaves the buffer unchanged"
+    );
 }
 
 #[test]

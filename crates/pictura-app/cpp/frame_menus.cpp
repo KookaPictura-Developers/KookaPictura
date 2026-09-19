@@ -519,6 +519,16 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::LayerNewFillSolidColor,
                                   [this]() { return activeView() && activeView()->has_document(); });
 
+    // Gradient fill creation: a fixed black-to-white Linear fill at angle 0.
+    registry_->setHandler(command_ids::LayerNewFillGradient, [this]() {
+        PictureView* view = activeView();
+        if (view && !view->add_gradient_fill().isEmpty()) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerNewFillGradient,
+                                  [this]() { return activeView() && activeView()->has_document(); });
+
     // Rasterize. Fill Content and Layer both need a current fill-content layer;
     // All Layers needs a document with at least one. Type/Shape/Layer Style/
     // Video/3D have no handler and stay disabled (their kinds do not exist).

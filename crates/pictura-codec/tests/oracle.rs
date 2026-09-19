@@ -24,6 +24,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("adjustment.psd", 8, 8, ColorMode::Rgb),
     ("gradient_map.psd", 8, 8, ColorMode::Rgb),
     ("solid_fill.psd", 8, 8, ColorMode::Rgb),
+    ("gradient_fill.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -246,6 +247,69 @@ fn solid_fill_layer_preserves_descriptor() {
     assert_eq!(get(b"Rd  "), &DescValue::Double(10.0));
     assert_eq!(get(b"Grn "), &DescValue::Double(20.0));
     assert_eq!(get(b"Bl  "), &DescValue::Double(30.0));
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc);
+}
+
+/// The gradient fill fixture: the psd-tools-authored `GdFl` descriptor survives
+/// read and whole-document round-trip, with the expected kind, angle, and stops.
+#[test]
+fn gradient_fill_layer_preserves_descriptor() {
+    fn get<'a>(obj: &'a DescValue, key: &[u8]) -> Option<&'a DescValue> {
+        let DescValue::Object { items, .. } = obj else {
+            return None;
+        };
+        items
+            .iter()
+            .find(|(k, _)| k.as_slice() == key)
+            .map(|(_, v)| v)
+    }
+
+    let doc = load("gradient_fill.psd");
+    let names: Vec<&str> = doc.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["Base", "Gradient Fill"]);
+
+    let adj = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Gradient Fill")
+        .and_then(|l| l.adjustment.as_ref())
+        .expect("gradient fill adjustment block");
+    assert_eq!(adj.key, *b"GdFl");
+
+    let desc = read_descriptor(&adj.data).expect("version-16 descriptor");
+    let kind = get(&desc, b"Type").expect("Type enum");
+    assert_eq!(
+        kind,
+        &DescValue::Enum {
+            kind: b"GrdT".to_vec(),
+            value: b"Lnr ".to_vec(),
+        }
+    );
+    assert_eq!(get(&desc, b"Angl"), Some(&DescValue::Double(0.0)));
+
+    let grad = get(&desc, b"Grad").expect("Grad object");
+    let DescValue::List(clrs) = get(grad, b"Clrs").expect("Clrs list") else {
+        panic!("Clrs is a list");
+    };
+    assert_eq!(clrs.len(), 2, "two stops");
+    let components: Vec<(u16, u8, u8, u8)> = clrs
+        .iter()
+        .map(|stop| {
+            let clr = get(stop, b"Clr ").expect("Clr object");
+            let c = |key: &[u8]| match get(clr, key) {
+                Some(DescValue::Double(v)) => v.round() as u8,
+                other => panic!("{key:?} not a double: {other:?}"),
+            };
+            let location = match get(stop, b"Lctn") {
+                Some(DescValue::Double(v)) => v.round() as u16,
+                other => panic!("Lctn not a double: {other:?}"),
+            };
+            (location, c(b"Rd  "), c(b"Grn "), c(b"Bl  "))
+        })
+        .collect();
+    assert_eq!(components, [(0, 0, 0, 0), (4096, 255, 255, 255)]);
 
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back, doc);

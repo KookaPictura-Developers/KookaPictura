@@ -27,6 +27,7 @@ not hand-edit these files.
 | `adjustment.psd` | RGB | 8x8 | `Base` pixel layer + adjustment layers `Invert`, `Posterize`, `Threshold`, `BrightnessContrast`, `Levels`, `PhotoFilter` |
 | `gradient_map.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Map` (`grdm`) adjustment layer |
 | `solid_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Solid Fill` (`SoCo`) descriptor fill layer |
+| `gradient_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Fill` (`GdFl`) Linear black-to-white descriptor fill layer |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -113,6 +114,45 @@ data = DescriptorBlock(
         classID=b"SoCo"),
 )
 adj(psd, Tag.SOLID_COLOR_SHEET_SETTING, "Solid Fill", data)
+```
+
+
+`gradient_fill.psd` is authored by the `gradient_fill()` builder: the same
+`Base` pixel layer plus a channel-stripped, **document-sized** `GdFl` fill
+layer (not collapsed to zero, so psd-tools composites the black-to-white ramp).
+The descriptor carries `Angl`, a `GrdT` kind, and a `Grdn` object with `GrdF`
+`CstS`, an `Intr` interpolation, and a `Clrs` list of `RGBC` stops whose `Lctn`
+is on the `0..=4096` scale.
+
+```python
+from psd_tools.psd.descriptor import (
+    Descriptor, DescriptorBlock, Double, Enumerated, List, String,
+)
+from psd_tools.terminology import Enum, Key, Type
+
+def stop(location, rgb):
+    return Descriptor({
+        Key.Color: Descriptor(
+            {Key.Red: Double(float(rgb[0])),
+             Key.Green: Double(float(rgb[1])),
+             Key.Blue: Double(float(rgb[2]))},
+            classID=b"RGBC"),
+        Key.Type: Enumerated(Type.ColorStopType, Enum.UserStop),
+        Key.Location: Double(float(location)),
+        Key.Midpoint: Double(50.0),
+    }, classID=b"Clrt")
+
+data = DescriptorBlock(Descriptor({
+    Key.Angle: Double(0.0),
+    Key.Type: Enumerated(Type.GradientType, Enum.Linear),
+    Key.Gradient: Descriptor({
+        Key.Name: String("Black to White"),
+        Type.GradientForm: Enumerated(Type.GradientForm, Enum.CustomStops),
+        b"Intr": Enumerated(Type.Interpolation, b"Lnr "),
+        Key.Colors: List([stop(0, (0, 0, 0)), stop(4096, (255, 255, 255))]),
+    }, classID=b"Grdn"),
+}, classID=b"GdFl"))
+adj(psd, Tag.GRADIENT_FILL_SETTING, "Gradient Fill", data)
 ```
 
 

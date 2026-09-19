@@ -36,6 +36,9 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
             Ok(())
         }
         Adjustment::GradientMap(p) => gradient_map(p, buf, n),
+        Adjustment::GradientFill(_) => Err(AdjustError::Unsupported(
+            "gradient fill is composited, not applied destructively".into(),
+        )),
         Adjustment::SolidFill(_) => Err(AdjustError::Unsupported(
             "solid fill is composited, not applied destructively".into(),
         )),

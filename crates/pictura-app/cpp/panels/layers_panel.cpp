@@ -256,6 +256,12 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->add_solid_fill(0xff000000u);
         }
     });
+    QAction* gradientFill = menu->addAction(tr("Gradient…"));
+    connect(gradientFill, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->add_gradient_fill();
+        }
+    });
     menu->addSeparator();
     const QStringList kinds = {
         QStringLiteral("invert"),

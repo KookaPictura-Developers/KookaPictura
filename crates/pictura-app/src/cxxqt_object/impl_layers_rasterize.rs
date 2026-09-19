@@ -1,6 +1,6 @@
-//! Solid-color fill creation and the Rasterize subset bridge commands.
+//! Solid/gradient fill creation and the Rasterize subset bridge commands.
 //!
-//! A fill layer is an opaque `SoCo` block with a 4-byte RGBA payload, so it
+//! A fill layer is an opaque `SoCo` or `GdFl` block (solid or gradient), so it
 //! lives in the existing adjustment slot and needs no new `Layer` field. Each
 //! successful command recomposites then records exactly one undo state; a
 //! refusal records nothing.
@@ -33,7 +33,24 @@ impl qobject::PictureView {
         QString::from(created.as_str())
     }
 
-    /// Whether the layer at `path` is a decodable solid-color fill layer.
+    /// Append a black-to-white Linear gradient fill layer at the top of the
+    /// stack. Records one "Gradient Fill" state on success. Returns the new
+    /// path, or empty without a document.
+    pub fn add_gradient_fill(mut self: Pin<&mut Self>) -> QString {
+        let created = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::add_gradient_fill(doc, ""),
+            None => String::new(),
+        };
+        if !created.is_empty() {
+            self.as_mut().clear_link_sets();
+            self.as_mut().recomposite();
+            self.as_mut().record("Gradient Fill");
+        }
+        QString::from(created.as_str())
+    }
+
+    /// Whether the layer at `path` is a decodable solid-color or gradient fill
+    /// layer.
     pub fn layer_is_fill_content(&self, path: &QString) -> bool {
         self.rust()
             .doc

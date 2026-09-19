@@ -1,4 +1,5 @@
 use super::*;
+use pictura_codec::DescValue;
 
 #[test]
 fn solid_fill_composites_over_transparency() {
@@ -202,8 +203,83 @@ fn rasterize_all_counts_fill_layers() {
     );
     let first = add_solid_fill(&mut d, "0", [1, 1, 1, 255]);
     let second = add_solid_fill(&mut d, &first, [2, 2, 2, 255]);
-    assert_eq!(rasterize_all_fill_content(&mut d), 2);
+    let third = add_gradient_fill(&mut d, &second);
+    assert_eq!(rasterize_all_fill_content(&mut d), 3);
     assert!(resolve_path(&d, &first).unwrap().adjustment.is_none());
     assert!(resolve_path(&d, &second).unwrap().adjustment.is_none());
+    assert!(resolve_path(&d, &third).unwrap().adjustment.is_none());
     assert_eq!(rasterize_all_fill_content(&mut d), 0, "already rasterized");
+}
+
+#[test]
+fn gradient_fill_is_fill_content_and_rasterizes_to_ramp() {
+    let mut d = doc(8, 1, Vec::new());
+    let path = add_gradient_fill(&mut d, "");
+    assert_eq!(path, "0");
+    let layer = resolve_path(&d, &path).unwrap();
+    assert!(
+        is_fill_content_layer(layer),
+        "a decoded GdFl is fill content"
+    );
+
+    assert!(rasterize_fill_content(&mut d, &path));
+    let layer = resolve_path(&d, &path).unwrap();
+    assert!(layer.adjustment.is_none(), "fill data is cleared");
+    let red = crate::channel(layer, 0).unwrap();
+    assert!(red.iter().any(|&v| v != red[0]), "non-uniform ramp");
+    assert!(red[0] < 8 && red[7] > 247, "black-to-white endpoints");
+    assert_eq!(
+        crate::channel(layer, -1).unwrap(),
+        &[255u8; 8],
+        "baked gradient is opaque"
+    );
+
+    // The baked pixels composite to the same ramp the generative fill showed.
+    let out = composite_rgba(&d);
+    assert_eq!(rgb(&out, 0, 0)[0], red[0]);
+    assert_eq!(rgb(&out, 7, 0)[0], red[7]);
+}
+
+#[test]
+fn rasterize_refuses_colour_noise_gradient() {
+    let grad = DescValue::Object {
+        name: String::new(),
+        class_id: b"Grdn".to_vec(),
+        items: vec![(
+            b"GrdF".to_vec(),
+            DescValue::Enum {
+                kind: b"GrdF".to_vec(),
+                value: b"ClNs".to_vec(),
+            },
+        )],
+    };
+    let desc = DescValue::Object {
+        name: String::new(),
+        class_id: b"GdFl".to_vec(),
+        items: vec![
+            (b"Angl".to_vec(), DescValue::Double(0.0)),
+            (
+                b"Type".to_vec(),
+                DescValue::Enum {
+                    kind: b"GrdT".to_vec(),
+                    value: b"Lnr ".to_vec(),
+                },
+            ),
+            (b"Grad".to_vec(), grad),
+        ],
+    };
+    let mut d = doc(
+        2,
+        2,
+        vec![adjustment_layer(
+            "noise",
+            *b"GdFl",
+            pictura_codec::write_descriptor(&desc),
+            255,
+            None,
+        )],
+    );
+    assert!(!is_fill_content_layer(resolve_path(&d, "0").unwrap()));
+    assert!(!rasterize_fill_content(&mut d, "0"));
+    assert!(resolve_path(&d, "0").unwrap().adjustment.is_some());
 }

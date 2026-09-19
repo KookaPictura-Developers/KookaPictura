@@ -91,6 +91,12 @@ const MAPPING: &[Mapping] = &[
         note: "no faithful IM operator",
     },
     Mapping {
+        adjustment: "GradientFill",
+        im: None,
+        tolerance: 0,
+        note: "generative fill composited over the layer rect; no IM operator",
+    },
+    Mapping {
         adjustment: "ChannelMixer",
         im: None,
         tolerance: 0,
@@ -141,10 +147,11 @@ const MAPPING: &[Mapping] = &[
 ];
 
 /// Adjustments the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 13] = [
+const NO_EQUIVALENT: [&str; 14] = [
     "BlackWhite",
     "PhotoFilter",
     "GradientMap",
+    "GradientFill",
     "Vibrance",
     "ColorBalance",
     "Auto",
@@ -389,7 +396,7 @@ fn oracle_negate_matches_expected_bytes() {
 
 #[test]
 fn mapping_marks_no_equivalent_operators() {
-    assert_eq!(MAPPING.len(), 16, "one mapping row per Adjustment variant");
+    assert_eq!(MAPPING.len(), 17, "one mapping row per Adjustment variant");
     let none: Vec<&str> = MAPPING
         .iter()
         .filter(|m| m.im.is_none())

@@ -104,6 +104,29 @@ pub struct GradientMapParams {
     pub reverse: bool,
 }
 
+/// The geometry of a gradient fill (`GdFl`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GradientKind {
+    Linear,
+    Radial,
+    Angle,
+    Reflected,
+    Diamond,
+}
+
+/// A gradient fill (`GdFl`): the stops plus the geometry parameters psd-tools
+/// reads from the descriptor. Like [`GradientMapParams`] it reuses
+/// [`GradientStop`]; unlike a gradient map it is composited over the layer rect
+/// rather than applied to the backdrop.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GradientFillParams {
+    pub stops: Vec<GradientStop>,
+    pub reverse: bool,
+    pub kind: GradientKind,
+    pub angle_deg: f32,
+    pub scale: f32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoKind {
     Tone,
@@ -130,6 +153,10 @@ pub enum Adjustment {
     Threshold(u8),
     Desaturate,
     GradientMap(GradientMapParams),
+    /// Gradient fill content (`GdFl`): a generative fill composited over the
+    /// layer rect (see `pictura-render`'s `composite_gradient_fill`), refused
+    /// by [`apply`] like [`Adjustment::SolidFill`].
+    GradientFill(GradientFillParams),
     /// Solid-color fill content (`SoCo`): straight-alpha RGBA. This is not a
     /// destructive adjustment; the renderer composites it generatively (see
     /// `pictura-render`'s `composite_adjustment`), and [`apply`] refuses it.
