@@ -14,7 +14,8 @@ close it in.
 - Composite compression 0 (raw) / 1 (RLE). Layer channel compression 0 / 1.
 - Pixel layers, groups (`lsct`), raster masks (`-2`), `luni`/`lspf`/`lclr`/`iOpa`.
 - 18 adjustment keys preserved opaquely; `pictura-render` decodes a subset
-  (`nvrt`/`invr`, `post`, `thrs`, `brit`, `levl`, `hue2`, 4-byte `SoCo`).
+  (`nvrt`/`invr`, `post`, `thrs`, `brit`, `levl`, `hue2`, `SoCo` in both the
+  4-byte and descriptor forms).
 - Document extra channels (saved selections) in the image-data section.
 
 Anything else is either `PsdError::Unsupported` on read or silently dropped.
@@ -36,7 +37,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G5 | Image resources entirely dropped (ICC, EXIF, XMP, IPTC, resolution, paths, slices, alpha names, guides, print) | `read.rs` skip, `write.rs` zero | **Save destroys metadata/profile** |
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
-| G8 | Adjustment descriptor payloads preserved but not decoded/rendered (curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, color lookup, real `SoCo`) | `composite.rs` doc | Layer renders as no-op |
+| G8 | Adjustment descriptor payloads preserved but not decoded/rendered (curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, color lookup) | `composite.rs` doc | Layer renders as no-op |
 | G9 | PSB write missing; write caps at 30 000 px, always version 1 | `write.rs` | Cannot save PSB / huge docs |
 | G10 | Unknown blend key aborts the whole file | `read.rs` `from_psd_key(...).ok_or` | Open blocker |
 | G11 | Absent merged composite ("Maximize Compatibility" off) unhandled | `read.rs` reads compression unconditionally | Open blocker |
@@ -97,12 +98,15 @@ rect (stored merged composite preferred, layers fallback; nearest-neighbour;
 panel `Photo Filter` entry. Gradient Map (`grdm`) now decodes to
 `Adjustment::GradientMap` and encodes too (archived
 `2026-09-19-gradient-map-adjustment-decode`) with an encoder and an Adjustments
-panel `Gradient Map` entry. Remaining: `curv`, `mixr`, version-3 `phfl`, `selc`,
-`clrL`, and a real `SoCo` descriptor (ungrounded schema or missing op).
+panel `Gradient Map` entry. The real solid-color fill (`SoCo`) descriptor now
+decodes, encodes, and rasterizes (archived
+`2026-09-19-solid-color-fill-descriptor`). Remaining: `curv`, `mixr`, version-3
+`phfl`, `selc`, `clrL`, and the fill/effect/text/vector kinds (gradient fill
+`GdFl`, pattern fill `PtFl`, `lfx2`/`lrFX`, text, vector masks).
 **Curves (`curv`) is deferred**: the model is single-composite versus
 Photoshop's per-channel curves, and the legacy channel-bitmap order is
 ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:
-those keys, the fill/effect/text/vector kinds, and write RLE by default (G12).
+those keys and kinds, and write RLE by default (G12).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
 channels), layer color channels, and the raster mask are PackBits-encoded;

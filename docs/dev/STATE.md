@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **752 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
+- Test suite: **767 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -27,7 +27,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `psd-rle-write`, `convert-to-smart-object`, `rasterize-smart-object`,
   `place-smart-object`, `replace-smart-object-contents`,
   `open-as-smart-object`, `export-smart-object-contents`,
-  `photo-filter-adjustment-decode`, and `gradient-map-adjustment-decode` changes;
+  `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`, and
+  `solid-color-fill-descriptor` changes;
   canonical specs are in `openspec/specs/` (71 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -63,7 +64,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   (`read_descriptor`/`write_descriptor`/`DescValue`) publicly for this. Malformed
   payloads are a no-op. Deferred because the schema is not confidently groundable
   or the op is missing: `phfl` (colour-space conversion), `mixr` (layout), `curv`
-  (list/format), `selc`/`clrL`/`grdm`, and a real `SoCo` descriptor.
+  (list/format), `selc`/`clrL`/`grdm`.
 - Photo Filter adjustment decoding (roadmap P3/G8, archived
   `2026-09-19-photo-filter-adjustment-decode`): a version-2 `phfl` payload now
   decodes to `PhotoFilterParams` (R, G, B taken from the first three of the four
@@ -89,6 +90,15 @@ Snapshot for resuming after a context break. Update after each milestone.
   spellings are now accepted on read). Ceilings: linear-only interpolation,
   midpoint/dither/transparency stops ignored, and only RGB (no non-RGB colour
   models).
+- Solid-color fill descriptor (roadmap P3/G8, archived
+  `2026-09-19-solid-color-fill-descriptor`): the real Photoshop `SoCo` descriptor
+  (version-16 `Clr `/`RGBC` with `Rd  `/`Grn `/`Bl  ` doubles on the 0–255 scale)
+  now decodes to `Adjustment::SolidFill([r, g, b, 255])`; the 4-byte in-house form
+  stays readable (length-first dispatch). `pictura-render::encode_solid_color_fill`
+  and `document_ops::add_solid_fill` now author the standard descriptor, and
+  `is_fill_content_layer`/`rasterize_fill_content` accept both forms through one
+  decoder. Alpha ceiling: the descriptor is RGB-only, so all app callers stay
+  opaque (`// ponytail:` note in `create.rs`).
 - RLE write (roadmap P3/G12, archived `2026-09-19-psd-rle-write`): `write_psd`
   now PackBits-encodes the merged composite (color + document extra channels),
   layer color channels, and the raster mask (compression 1), instead of raw.
