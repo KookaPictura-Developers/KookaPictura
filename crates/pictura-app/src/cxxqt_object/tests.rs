@@ -596,6 +596,79 @@ fn sample_planar_argb_matches_buffer_to_image_for_every_plane_count() {
 }
 
 #[test]
+fn layer_can_edit_smart_object_contents_eligibility() {
+    use pictura_core::{SmartObject, SmartObjectKind};
+
+    let payload = {
+        let mut src = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
+        let n = 4usize;
+        for i in 0..n {
+            src.composite.data[i] = 10;
+            src.composite.data[n + i] = 20;
+            src.composite.data[2 * n + i] = 30;
+        }
+        pictura_codec::write_psd(&src).expect("payload writes")
+    };
+    let smart = |payload: Option<Vec<u8>>| {
+        let mut layer = pixel_layer("smart", 4, 4, (1, 2, 3));
+        layer.smart_object = Some(SmartObject {
+            kind: SmartObjectKind::Embedded,
+            payload,
+            filename: "source.psd".into(),
+            ..Default::default()
+        });
+        let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![layer];
+        doc
+    };
+
+    let valid = smart(Some(payload.clone()));
+    let before = valid.clone();
+    assert!(pictura_render::can_edit_smart_object_contents(&valid, "0"));
+
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &smart(Some(vec![0, 1, 2, 3])),
+        "0"
+    ));
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &smart(Some(Vec::new())),
+        "0"
+    ));
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &smart(None),
+        "0"
+    ));
+
+    let mut grouped = smart(Some(payload.clone()));
+    grouped.layers[0].is_group = true;
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &grouped, "0"
+    ));
+
+    let mut external = smart(Some(payload.clone()));
+    external.layers[0].smart_object.as_mut().unwrap().kind = SmartObjectKind::External;
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &external, "0"
+    ));
+
+    let mut adjustment = smart(Some(payload));
+    adjustment.layers[0].adjustment = Some(pictura_render::encode_invert());
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &adjustment,
+        "0"
+    ));
+
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &valid, "99"
+    ));
+    assert!(!pictura_render::can_edit_smart_object_contents(
+        &valid, "bad"
+    ));
+
+    assert_eq!(valid, before, "the predicate must not mutate the document");
+}
+
+#[test]
 fn save_after_edit_serializes_the_current_composite() {
     let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![pixel_layer("base", 8, 8, (40, 40, 40))];

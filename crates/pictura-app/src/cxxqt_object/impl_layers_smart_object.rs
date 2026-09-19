@@ -75,6 +75,42 @@ impl qobject::PictureView {
         path: &QString,
         file_path: &QString,
     ) -> bool {
+        self.as_mut()
+            .apply_smart_object_source(path, file_path, "Replace Contents")
+    }
+
+    /// `Edit Contents`: apply the edited `file_path` as the embedded source of
+    /// the smart object at `path`. Shares `replace_smart_object_contents`'s
+    /// engine path; records one "Edit Contents" state on success, false (no
+    /// state) on the same refusals.
+    pub fn commit_smart_object_edit(
+        mut self: Pin<&mut Self>,
+        path: &QString,
+        file_path: &QString,
+    ) -> bool {
+        self.as_mut()
+            .apply_smart_object_source(path, file_path, "Edit Contents")
+    }
+
+    /// Whether `path` resolves to a smart-object layer whose embedded payload
+    /// parses as a PSD/PSB document, i.e. it can be opened as an in-app editor.
+    /// Read-only; mutates nothing.
+    pub fn layer_can_edit_smart_object_contents(&self, path: &QString) -> bool {
+        self.rust().doc.as_ref().is_some_and(|doc| {
+            pictura_render::can_edit_smart_object_contents(doc, &path.to_string())
+        })
+    }
+
+    /// Shared body of Replace Contents and Edit Contents: read `file_path`,
+    /// swap the embedded source at `path` with its bytes, and record `label` on
+    /// success. A read/parse/eligibility failure returns false and records
+    /// nothing.
+    fn apply_smart_object_source(
+        mut self: Pin<&mut Self>,
+        path: &QString,
+        file_path: &QString,
+        label: &str,
+    ) -> bool {
         let file = file_path.to_string();
         let name = std::path::Path::new(&file)
             .file_stem()
@@ -89,7 +125,7 @@ impl qobject::PictureView {
         if changed {
             self.as_mut().clear_link_sets();
             self.as_mut().recomposite();
-            self.as_mut().record("Replace Contents");
+            self.as_mut().record(label);
         }
         changed
     }

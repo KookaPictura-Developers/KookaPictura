@@ -17,6 +17,7 @@ class QLabel;
 class QListWidget;
 class QSplitter;
 class QTabWidget;
+class QTemporaryDir;
 class QTimer;
 class QWidget;
 
@@ -166,6 +167,7 @@ public:
                      int depth, const QString& background);
     bool openPath(const QString& path);
     bool openAsSmartObjectPath(const QString& path);
+    bool editSmartObjectContents(const QString& layerPath);
     bool saveActive();
     bool saveActiveAs(const QString& path);
     bool revertActive();
@@ -185,6 +187,16 @@ private:
         ImageView* canvas = nullptr;
         QString path;
         int untitledNumber = 0;
+    };
+
+    // One open Edit Contents editor: the untitled tab, the document that owns
+    // the edited layer, and the per-session temporary file holding the source.
+    struct SmartObjectEditSession {
+        PictureView* editor = nullptr;
+        PictureView* origin = nullptr;
+        QString layerPath;
+        QString filename;
+        QTemporaryDir* temp = nullptr;
     };
 
     void buildMenus();
@@ -210,6 +222,7 @@ private:
     void applyBrightness(int level);
 
     QList<DocEntry> docs_;
+    QList<SmartObjectEditSession> editSessions_;
     QTabWidget* tabs_ = nullptr;
     QSplitter* centerSplitter_ = nullptr;
     QTimer* panelRefreshTimer_ = nullptr;

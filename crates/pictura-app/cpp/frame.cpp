@@ -1,5 +1,6 @@
 #include "frame_includes.h"
 
+#include <QtCore/QTemporaryDir>
 #include <QtWidgets/QTabBar>
 
 namespace pictura {
@@ -109,7 +110,13 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     setWindowTitle(QStringLiteral("Kooka Pictura"));
 }
 
-PicturaMainWindow::~PicturaMainWindow() = default;
+PicturaMainWindow::~PicturaMainWindow()
+{
+    for (const SmartObjectEditSession& session : editSessions_) {
+        delete session.temp;
+    }
+    editSessions_.clear();
+}
 
 QStringList PicturaMainWindow::topLevelMenuTitles() const
 {
@@ -335,11 +342,55 @@ bool PicturaMainWindow::openAsSmartObjectPath(const QString& path)
     return true;
 }
 
+bool PicturaMainWindow::editSmartObjectContents(const QString& layerPath)
+{
+    PictureView* origin = activeView();
+    if (!origin || layerPath.isEmpty()
+        || !origin->layer_can_edit_smart_object_contents(layerPath)) {
+        return false;
+    }
+    auto* temp = new QTemporaryDir();
+    if (!temp->isValid()) {
+        delete temp;
+        return false;
+    }
+    const QString filename = QStringLiteral("contents.psd");
+    const QString file = temp->filePath(filename);
+    if (!origin->export_smart_object_contents(layerPath, file)) {
+        delete temp;
+        return false;
+    }
+    auto* editor = new PictureView(this);
+    if (!editor->open(file)) {
+        delete editor;
+        delete temp;
+        return false;
+    }
+    addDocument(editor, QString());
+    editSessions_.append(SmartObjectEditSession{editor, origin, layerPath, filename, temp});
+    return true;
+}
+
 bool PicturaMainWindow::saveActive()
 {
     const int index = activeDocumentIndex();
     if (index < 0) {
         return false;
+    }
+    PictureView* view = viewAt(index);
+    for (const SmartObjectEditSession& session : editSessions_) {
+        if (session.editor != view) {
+            continue;
+        }
+        const QString file = session.temp->filePath(session.filename);
+        if (!view->save(file)
+            || !session.origin->commit_smart_object_edit(session.layerPath, file)) {
+            return false;
+        }
+        refresh();
+        updateTabTitle(index);
+        updateWindowTitle();
+        return true;
     }
     QString path = docs_.at(index).path;
     if (path.isEmpty()) {
@@ -416,6 +467,13 @@ void PicturaMainWindow::removeDocument(int index)
         return;
     }
     const DocEntry entry = docs_.takeAt(index);
+    for (int i = editSessions_.size() - 1; i >= 0; --i) {
+        const SmartObjectEditSession& session = editSessions_.at(i);
+        if (session.editor == entry.view || session.origin == entry.view) {
+            delete session.temp;
+            editSessions_.removeAt(i);
+        }
+    }
     tabs_->removeTab(index);
     delete entry.canvas;
     delete entry.view;
