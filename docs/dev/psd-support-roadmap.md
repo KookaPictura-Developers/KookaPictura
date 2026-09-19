@@ -100,9 +100,13 @@ panel `Photo Filter` entry. Gradient Map (`grdm`) now decodes to
 `2026-09-19-gradient-map-adjustment-decode`) with an encoder and an Adjustments
 panel `Gradient Map` entry. The real solid-color fill (`SoCo`) descriptor now
 decodes, encodes, and rasterizes (archived
-`2026-09-19-solid-color-fill-descriptor`). Remaining: `curv`, `mixr`, version-3
-`phfl`, `selc`, `clrL`, and the fill/effect/text/vector kinds (gradient fill
-`GdFl`, pattern fill `PtFl`, `lfx2`/`lrFX`, text, vector masks).
+`2026-09-19-solid-color-fill-descriptor`); the real gradient fill (`GdFl`)
+descriptor now decodes to `Adjustment::GradientFill`, composites generatively for
+all five kinds, is fill content for rasterize, and authors through
+`encode_gradient_fill` and `Layer > New Fill Layer > Gradient…` (archived
+`2026-09-19-gradient-fill-layer`). Remaining: `curv`, `mixr`, version-3 `phfl`,
+`selc`, `clrL`, and the effect/text/vector kinds (pattern fill `PtFl`,
+`lfx2`/`lrFX`, text, vector masks).
 **Curves (`curv`) is deferred**: the model is single-composite versus
 Photoshop's per-channel curves, and the legacy channel-bitmap order is
 ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:
