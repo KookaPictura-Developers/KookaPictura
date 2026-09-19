@@ -31,7 +31,7 @@ mod smart_writer_tests;
 #[cfg(test)]
 mod tests;
 
-pub use descriptor::DescValue;
+pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;
 pub use read::read_psd;
 pub use smart_filter::set_camera_raw_option;
@@ -41,5 +41,12 @@ pub use write::write_psd;
 /// [`pictura_core::SmartFilter::options`] byte buffer.
 pub fn camera_raw_options(options: &[u8]) -> Result<DescValue, PsdError> {
     let mut reader = common::Reader::new(options);
+    descriptor::read_descriptor(&mut reader)
+}
+
+/// Read a bare version-16 `DescriptorBlock` (for example an adjustment-layer
+/// payload) into its [`DescValue::Object`].
+pub fn read_descriptor(bytes: &[u8]) -> Result<DescValue, PsdError> {
+    let mut reader = common::Reader::new(bytes);
     descriptor::read_descriptor(&mut reader)
 }
