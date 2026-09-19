@@ -1,4 +1,8 @@
-use pictura_adjust::{Adjustment, BrightnessContrastParams, HueSaturationParams, LevelsParams};
+use pictura_adjust::{
+    Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, HueSaturationParams,
+    LevelsParams, VibranceParams,
+};
+use pictura_codec::DescValue;
 use pictura_core::{
     AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelBuffer, SmartObject,
     SmartObjectKind,
@@ -261,10 +265,11 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 ///
 /// Supported keys: `nvrt`/`invr` (Invert, no payload), `post` (Posterize),
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
-/// record), `hue2`/`hue ` (Hue/Saturation), and `SoCo` (solid-color fill
-/// content with a 4-byte RGBA payload). Descriptor/custom payloads (`curv`,
-/// `expA`, `vibA`, `blwh`, `phfl`, `mixr`, `gdrm`, `selc`, `clrL`, and a real
-/// Photoshop `SoCo` descriptor) are preserved on disk but not decoded here.
+/// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
+/// (Vibrance), `blwh` (Black & White), and `SoCo` (solid-color fill content
+/// with a 4-byte RGBA payload). Descriptor/custom payloads (`curv`, `phfl`,
+/// `mixr`, `gdrm`, `selc`, `clrL`, and a real Photoshop `SoCo` descriptor) are
+/// preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -277,6 +282,9 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"brit" => decode_brightness_contrast(&data.data),
         b"levl" => decode_levels(&data.data),
         b"hue2" | b"hue " => decode_hue_saturation(&data.data),
+        b"expA" => decode_exposure(&data.data),
+        b"vibA" => decode_vibrance(&data.data),
+        b"blwh" => decode_black_white(&data.data),
         // ponytail: our own 4-byte payload, not Photoshop's `'Clr '` descriptor;
         // parse the descriptor when a real CS6 solid-fill baseline appears.
         b"SoCo" => match data.data.as_slice() {
@@ -294,6 +302,11 @@ fn be_u16(d: &[u8], at: usize) -> Option<u16> {
 
 fn be_i16(d: &[u8], at: usize) -> Option<i16> {
     Some(be_u16(d, at)? as i16)
+}
+
+fn be_f32(d: &[u8], at: usize) -> Option<f32> {
+    let s = d.get(at..at + 4)?;
+    Some(f32::from_be_bytes([s[0], s[1], s[2], s[3]]))
 }
 
 /// `brit`: brightness (i16), contrast (i16), mean (i16), lab_only (u8), pad.
@@ -364,6 +377,117 @@ fn decode_hue_saturation(d: &[u8]) -> Option<Adjustment> {
         saturation,
         lightness,
     }))
+}
+
+/// `expA`: `u16` version (= 1), then big-endian `f32` exposure, offset, and
+/// gamma.
+fn decode_exposure(d: &[u8]) -> Option<Adjustment> {
+    if be_u16(d, 0)? != 1 {
+        return None;
+    }
+    let exposure = be_f32(d, 2)? as f64;
+    let offset = be_f32(d, 6)? as f64;
+    let gamma = be_f32(d, 10)? as f64;
+    if !exposure.is_finite() || !offset.is_finite() || !gamma.is_finite() || gamma <= 0.0 {
+        return None;
+    }
+    Some(Adjustment::Exposure(ExposureParams {
+        exposure,
+        offset,
+        gamma,
+    }))
+}
+
+/// `vibA`: descriptor block with `vibrance` and the legacy `Strt` (saturation)
+/// integer keys. Missing keys are 0; wrong types and out-of-range values are
+/// rejected so a corrupt file cannot silently render a different adjustment.
+fn decode_vibrance(d: &[u8]) -> Option<Adjustment> {
+    let obj = pictura_codec::read_descriptor(d).ok()?;
+    let vibrance = desc_long_or(&obj, b"vibrance", 0.0)?;
+    let saturation = desc_long_or(&obj, b"Strt", 0.0)?;
+    if !(-100.0..=100.0).contains(&vibrance) || !(-100.0..=100.0).contains(&saturation) {
+        return None;
+    }
+    Some(Adjustment::Vibrance(VibranceParams {
+        vibrance: vibrance as i16,
+        saturation: saturation as i16,
+    }))
+}
+
+/// `blwh`: descriptor block with the six channel-percentage longs, a `useTint`
+/// bool, and a nested `Clr ` `tintColor` object whose `Rd  `/`Grn `/`Bl  `
+/// doubles are 0..1. Missing numeric keys default to Photoshop's Black & White
+/// defaults; absent `tintColor` is black.
+fn decode_black_white(d: &[u8]) -> Option<Adjustment> {
+    let obj = pictura_codec::read_descriptor(d).ok()?;
+    let red = desc_long_or(&obj, b"Rd  ", 40.0)?;
+    let yellow = desc_long_or(&obj, b"Yllw", 60.0)?;
+    let green = desc_long_or(&obj, b"Grn ", 40.0)?;
+    let cyan = desc_long_or(&obj, b"Cyn ", 60.0)?;
+    let blue = desc_long_or(&obj, b"Bl  ", 20.0)?;
+    let magenta = desc_long_or(&obj, b"Mgnt", 80.0)?;
+    if [red, yellow, green, cyan, blue, magenta]
+        .into_iter()
+        .any(|v| !(-200.0..=300.0).contains(&v))
+    {
+        return None;
+    }
+    let tint = match desc_item(&obj, b"useTint") {
+        Some(DescValue::Bool(b)) => *b,
+        Some(_) => return None,
+        None => false,
+    };
+    let tint_color = match desc_item(&obj, b"tintColor") {
+        Some(value) => decode_tint_color(value)?,
+        None => [0, 0, 0],
+    };
+    Some(Adjustment::BlackWhite(BlackWhiteParams {
+        red,
+        yellow,
+        green,
+        cyan,
+        blue,
+        magenta,
+        tint,
+        tint_color,
+    }))
+}
+
+fn decode_tint_color(value: &DescValue) -> Option<[u8; 3]> {
+    if !matches!(value, DescValue::Object { .. }) {
+        return None;
+    }
+    let component = |key: &[u8]| -> Option<u8> {
+        match desc_item(value, key) {
+            None => Some(0),
+            Some(DescValue::Double(c)) => Some((c * 255.0).round().clamp(0.0, 255.0) as u8),
+            Some(_) => None,
+        }
+    };
+    Some([
+        component(b"Rd  ")?,
+        component(b"Grn ")?,
+        component(b"Bl  ")?,
+    ])
+}
+
+fn desc_item<'a>(obj: &'a DescValue, key: &[u8]) -> Option<&'a DescValue> {
+    let DescValue::Object { items, .. } = obj else {
+        return None;
+    };
+    items
+        .iter()
+        .find(|(k, _)| k.as_slice() == key)
+        .map(|(_, v)| v)
+}
+
+/// Read a `long` item as `f64`; `None` when the key is present but not a long.
+fn desc_long_or(obj: &DescValue, key: &[u8], default: f64) -> Option<f64> {
+    match desc_item(obj, key) {
+        None => Some(default),
+        Some(DescValue::Long(n)) => Some(*n as f64),
+        Some(_) => None,
+    }
 }
 
 // --- Encoders for the same subset ------------------------------------------

@@ -55,7 +55,7 @@ pub(crate) fn read_descriptor(r: &mut Reader) -> Result<DescValue, PsdError> {
 
 /// Serialize a descriptor as a version-16 `DescriptorBlock`. Only an
 /// [`DescValue::Object`] is meaningful at the top level.
-pub(crate) fn write_descriptor(value: &DescValue) -> Vec<u8> {
+pub fn write_descriptor(value: &DescValue) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&16u32.to_be_bytes());
     if let DescValue::Object {
@@ -439,6 +439,14 @@ mod tests {
         let back = read_descriptor(&mut r).expect("round-trips");
         assert_eq!(back, value);
         assert_eq!(r.remaining(), 0, "the reader consumed the whole descriptor");
+    }
+
+    #[test]
+    fn public_read_descriptor_round_trips_and_rejects_truncation() {
+        let value = sample_object();
+        let bytes = crate::write_descriptor(&value);
+        assert_eq!(crate::read_descriptor(&bytes).expect("parses"), value);
+        assert!(crate::read_descriptor(&bytes[..bytes.len() - 1]).is_err());
     }
 
     #[test]

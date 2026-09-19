@@ -1,4 +1,22 @@
 use super::*;
+use pictura_adjust::{BlackWhiteParams, ExposureParams, VibranceParams};
+use pictura_codec::{write_descriptor, DescValue};
+
+fn exposure_payload(exposure: f32, offset: f32, gamma: f32) -> Vec<u8> {
+    let mut data = 1u16.to_be_bytes().to_vec();
+    data.extend_from_slice(&exposure.to_be_bytes());
+    data.extend_from_slice(&offset.to_be_bytes());
+    data.extend_from_slice(&gamma.to_be_bytes());
+    data
+}
+
+fn desc_object(name: &str, class_id: &[u8], items: Vec<(Vec<u8>, DescValue)>) -> DescValue {
+    DescValue::Object {
+        name: name.to_string(),
+        class_id: class_id.to_vec(),
+        items,
+    }
+}
 
 #[test]
 fn decode_adjustment_subset_and_unknown() {
@@ -242,5 +260,233 @@ fn unknown_adjustment_key_is_noop() {
     assert_eq!(
         with_unknown.data, plain.data,
         "undecodable key must be a no-op"
+    );
+}
+
+#[test]
+fn exp_a_decodes_exposure() {
+    let payload = exposure_payload(1.5, -0.25, 1.1);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"expA", payload.clone())),
+        Some(Adjustment::Exposure(ExposureParams {
+            exposure: 1.5f32 as f64,
+            offset: -0.25f32 as f64,
+            gamma: 1.1f32 as f64,
+        }))
+    );
+
+    // Fewer than the 14 field bytes is a no-op, never an error.
+    for cut in 0..payload.len() {
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"expA", payload[..cut].to_vec())),
+            None,
+            "cut {cut}"
+        );
+    }
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"expA", exposure_payload(1.5, -0.25, 0.0))),
+        None,
+        "gamma must be positive"
+    );
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"expA", exposure_payload(f32::NAN, 0.0, 1.0))),
+        None,
+        "non-finite exposure is rejected"
+    );
+
+    // The version word must be 1, per the committed payload layout.
+    let mut wrong_version = 2u16.to_be_bytes().to_vec();
+    wrong_version.extend_from_slice(&1.5f32.to_be_bytes());
+    wrong_version.extend_from_slice(&(-0.25f32).to_be_bytes());
+    wrong_version.extend_from_slice(&1.1f32.to_be_bytes());
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"expA", wrong_version)),
+        None,
+        "version must be 1"
+    );
+}
+
+#[test]
+fn vib_a_decodes_descriptor() {
+    let payload = write_descriptor(&desc_object(
+        "",
+        b"null",
+        vec![
+            (b"vibrance".to_vec(), DescValue::Long(40)),
+            (b"Strt".to_vec(), DescValue::Long(-10)),
+        ],
+    ));
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"vibA", payload)),
+        Some(Adjustment::Vibrance(VibranceParams {
+            vibrance: 40,
+            saturation: -10,
+        }))
+    );
+
+    // Garbage bytes are not a version-16 descriptor object: no-op.
+    assert_eq!(decode_adjustment(&adjdata(*b"vibA", vec![1, 2, 3])), None);
+
+    // A present key outside the slider range is rejected, not clamped.
+    let out_of_range = write_descriptor(&desc_object(
+        "",
+        b"null",
+        vec![(b"vibrance".to_vec(), DescValue::Long(200))],
+    ));
+    assert_eq!(decode_adjustment(&adjdata(*b"vibA", out_of_range)), None);
+}
+
+#[test]
+fn blwh_decodes_descriptor() {
+    let tint = desc_object(
+        "tint",
+        b"Clr ",
+        vec![
+            (b"Rd  ".to_vec(), DescValue::Double(0.5)),
+            (b"Grn ".to_vec(), DescValue::Double(0.25)),
+            (b"Bl  ".to_vec(), DescValue::Double(0.75)),
+        ],
+    );
+    let payload = write_descriptor(&desc_object(
+        "",
+        b"null",
+        vec![
+            (b"Rd  ".to_vec(), DescValue::Long(40)),
+            (b"Yllw".to_vec(), DescValue::Long(60)),
+            (b"Grn ".to_vec(), DescValue::Long(40)),
+            (b"Cyn ".to_vec(), DescValue::Long(60)),
+            (b"Bl  ".to_vec(), DescValue::Long(20)),
+            (b"Mgnt".to_vec(), DescValue::Long(80)),
+            (b"useTint".to_vec(), DescValue::Bool(true)),
+            (b"tintColor".to_vec(), tint),
+        ],
+    ));
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"blwh", payload)),
+        Some(Adjustment::BlackWhite(BlackWhiteParams {
+            red: 40.0,
+            yellow: 60.0,
+            green: 40.0,
+            cyan: 60.0,
+            blue: 20.0,
+            magenta: 80.0,
+            tint: true,
+            tint_color: [128, 64, 191],
+        }))
+    );
+
+    // A non-descriptor payload is a no-op.
+    assert_eq!(decode_adjustment(&adjdata(*b"blwh", vec![0, 16, 0])), None);
+
+    // A truncated descriptor and an out-of-range percentage are both rejected.
+    let truncated = write_descriptor(&desc_object("", b"null", vec![]));
+    assert_eq!(
+        decode_adjustment(&adjdata(
+            *b"blwh",
+            truncated[..truncated.len() - 1].to_vec()
+        )),
+        None
+    );
+    let out_of_range = write_descriptor(&desc_object(
+        "",
+        b"null",
+        vec![(b"Rd  ".to_vec(), DescValue::Long(400))],
+    ));
+    assert_eq!(decode_adjustment(&adjdata(*b"blwh", out_of_range)), None);
+
+    // A descriptor with no channel keys falls back to Photoshop's defaults.
+    let empty = write_descriptor(&desc_object("", b"null", vec![]));
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"blwh", empty)),
+        Some(Adjustment::BlackWhite(BlackWhiteParams {
+            red: 40.0,
+            yellow: 60.0,
+            green: 40.0,
+            cyan: 60.0,
+            blue: 20.0,
+            magenta: 80.0,
+            tint: false,
+            tint_color: [0, 0, 0],
+        }))
+    );
+}
+
+#[test]
+fn deferred_keys_still_none() {
+    for key in [*b"curv", *b"phfl", *b"mixr", *b"selc", *b"clrL", *b"gdrm"] {
+        assert_eq!(
+            decode_adjustment(&adjdata(key, vec![1, 2, 3, 4])),
+            None,
+            "deferred key {key:?}"
+        );
+    }
+    // A real Photoshop `'Clr '` descriptor on `SoCo` is still undecoded.
+    let descriptor = write_descriptor(&desc_object("", b"null", vec![]));
+    assert_eq!(decode_adjustment(&adjdata(*b"SoCo", descriptor)), None);
+}
+
+#[test]
+fn hidden_decoded_adjustment_is_noop() {
+    // A committed key (expA) decodes, but a fully hidden mask must gate it off
+    // exactly like the existing `nvrt` path.
+    let base = solid(
+        "base",
+        full(2, 1),
+        (120, 60, 200),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 1, vec![base.clone()]));
+    let mut hidden = adjustment_layer(
+        "exposure",
+        *b"expA",
+        exposure_payload(2.0, 0.5, 0.5),
+        255,
+        None,
+    );
+    hidden.mask = Some(LayerMask {
+        rect: full(2, 1),
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: Some(vec![0, 0]),
+        ..Default::default()
+    });
+    let out = composite_rgba(&doc(2, 1, vec![base, hidden]));
+    assert_eq!(
+        out.data, plain.data,
+        "a fully masked decoded adjustment layer must be a no-op"
+    );
+}
+
+#[test]
+fn decoded_adjustment_changes_backdrop() {
+    let base = solid(
+        "base",
+        full(2, 2),
+        (120, 60, 200),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 2, vec![base.clone()]));
+    let adjusted = composite_rgba(&doc(
+        2,
+        2,
+        vec![
+            base,
+            adjustment_layer(
+                "exposure",
+                *b"expA",
+                exposure_payload(1.0, 0.0, 1.0),
+                255,
+                None,
+            ),
+        ],
+    ));
+    assert_ne!(
+        adjusted.data, plain.data,
+        "a decoded expA adjustment layer must change the backdrop"
     );
 }
