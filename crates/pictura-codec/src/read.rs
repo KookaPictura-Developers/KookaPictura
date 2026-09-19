@@ -59,7 +59,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     let (mut layers, global_layer_mask, layer_section_extra) = read_layer_section(&mut r, is_psb)?;
     // Derive the smart-object view from the preserved bytes; a malformed
     // descriptor or linked-layer record degrades to Unresolved (design D5).
-    crate::smart_object::resolve_smart_objects(&mut layers, &layer_section_extra);
+    crate::smart_object::resolve_smart_objects(&mut layers, &layer_section_extra, is_psb);
 
     // "Maximize Compatibility" off: a layered file may end after the layer
     // section with no merged composite. A file with no layers at all and no
@@ -72,6 +72,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             depth: BitDepth::Eight,
             composite: PixelBuffer::new(width, height, mode.color_channels()),
             merged_composite_present: false,
+            is_psb,
             layers,
             channels: Vec::new(),
             color_mode_data,
@@ -113,6 +114,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         depth: BitDepth::Eight,
         composite,
         merged_composite_present: true,
+        is_psb,
         layers,
         channels,
         color_mode_data,
@@ -509,7 +511,11 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
         }
         let mut tag_key = [0u8; 4];
         tag_key.copy_from_slice(er.take(4)?);
-        let tag_len = er.u32()? as usize;
+        let tag_len = if is_psb && is_psb_big_key(&tag_key) {
+            er.u64()? as usize
+        } else {
+            er.u32()? as usize
+        };
         let data = er.take(tag_len)?;
         if tag_len % 2 == 1 {
             // Tagged block data is padded to an even length.

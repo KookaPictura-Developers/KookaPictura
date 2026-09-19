@@ -22,6 +22,20 @@ pub(crate) const COMPRESSION_ZIP_PREDICTION: u16 = 3;
 
 pub(crate) const DIVIDER_NAME: &str = "</Layer group>";
 
+/// The additional-layer-information keys whose length field widens to `u64` in
+/// a version-2 PSB. This is the exact psd-tools `TaggedBlock._BIG_KEYS` set
+/// (`psd/tagged_blocks.py`): its `_length_format` returns `Q` when
+/// `version == 2 and key in _BIG_KEYS`, `I` otherwise.
+const PSB_BIG_KEYS: [[u8; 4]; 21] = [
+    *b"Alph", *b"FELS", *b"FEid", *b"FMsk", *b"FXid", *b"LMsk", *b"Layr", *b"Lr16", *b"Lr32",
+    *b"Mt16", *b"Mt32", *b"Mtrn", *b"PxSD", *b"artd", *b"cinf", *b"extd", *b"extn", *b"lnk2",
+    *b"lnk3", *b"lnkE", *b"pths",
+];
+
+pub(crate) fn is_psb_big_key(key: &[u8; 4]) -> bool {
+    PSB_BIG_KEYS.contains(key)
+}
+
 /// Additional-layer-info keys that carry an adjustment.
 ///
 /// The brief's list plus the spellings Photoshop actually writes: Invert is

@@ -82,6 +82,10 @@ pub struct Document {
     /// when the file ended after the layer section (maximize-compatibility off),
     /// in which case `composite` is a zero-filled placeholder, not authoritative.
     pub merged_composite_present: bool,
+    /// True when the document was read from a version-2 PSB container; false for
+    /// a PSD and for new/blank documents. Selects the PSB container and its
+    /// widened length fields on re-save.
+    pub is_psb: bool,
     pub layers: Vec<Layer>,
     /// Document-level extra channels (saved selections / spot channels), which
     /// live after the color channels in the PSD image-data section.
@@ -107,6 +111,7 @@ impl Document {
             depth,
             composite: PixelBuffer::new(width, height, channels),
             merged_composite_present: true,
+            is_psb: false,
             layers: Vec::new(),
             channels: Vec::new(),
             color_mode_data: Vec::new(),

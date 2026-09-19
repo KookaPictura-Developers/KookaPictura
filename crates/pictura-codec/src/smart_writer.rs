@@ -243,8 +243,9 @@ pub(crate) fn collect_authoring(layers: &[Layer]) -> Vec<&SmartObject> {
 }
 
 /// One document-level `lnk2` tagged block holding one record per distinct uuid,
-/// in first-seen order.
-pub(crate) fn author_lnk2_bytes(sos: &[&SmartObject]) -> Vec<u8> {
+/// in first-seen order. The block length is `u64` under PSB (`lnk2` is a big key)
+/// and is padded externally to 4 bytes, matching a global tagged block.
+pub(crate) fn author_lnk2_bytes(sos: &[&SmartObject], psb: bool) -> Vec<u8> {
     let mut records: Vec<(&SmartObject, String)> = Vec::new();
     for &so in sos {
         let uuid = author_uuid(so);
@@ -266,6 +267,6 @@ pub(crate) fn author_lnk2_bytes(sos: &[&SmartObject]) -> Vec<u8> {
     }
 
     let mut out = Vec::new();
-    crate::write::write_tag(&mut out, b"lnk2", &list);
+    crate::write::write_tag_document(&mut out, b"lnk2", &list, psb);
     out
 }

@@ -8,7 +8,7 @@
 
 use pictura_core::{Layer, LayerBlock, SmartFilter, SmartObject, SmartObjectKind};
 
-use crate::common::Reader;
+use crate::common::{is_psb_big_key, Reader};
 use crate::descriptor::DescValue;
 use crate::descriptor::{self, get_object_item, read_unicode_string, skip_descriptor_block};
 use crate::error::PsdError;
@@ -28,8 +28,12 @@ struct LinkedRecord {
 /// Resolve smart objects for `layers` (and their children) from the preserved
 /// document-level linked-layer bytes. Never fails: an unparseable list or
 /// descriptor leaves the layer unresolved.
-pub(crate) fn resolve_smart_objects(layers: &mut [Layer], layer_section_extra: &[u8]) {
-    let records = collect_linked_records(layer_section_extra);
+pub(crate) fn resolve_smart_objects(
+    layers: &mut [Layer],
+    layer_section_extra: &[u8],
+    is_psb: bool,
+) {
+    let records = collect_linked_records(layer_section_extra, is_psb);
     for layer in layers.iter_mut() {
         resolve_layer(layer, &records);
     }
@@ -144,7 +148,7 @@ fn find_config_block(blocks: &[LayerBlock]) -> Option<&LayerBlock> {
 
 /// Parse every linked record in the preserved top-level tagged blocks. On any
 /// malformed block, keep what parsed so far instead of failing the file.
-fn collect_linked_records(layer_section_extra: &[u8]) -> Vec<LinkedRecord> {
+fn collect_linked_records(layer_section_extra: &[u8], is_psb: bool) -> Vec<LinkedRecord> {
     let mut records = Vec::new();
     let mut r = Reader::new(layer_section_extra);
     while r.remaining() >= 12 {
@@ -153,12 +157,19 @@ fn collect_linked_records(layer_section_extra: &[u8]) -> Vec<LinkedRecord> {
             break;
         }
         let Ok(key) = r.take(4) else { break };
-        let Ok(len) = r.u32() else { break };
-        let Ok(data) = r.take(len as usize) else {
+        let len = if is_psb && is_psb_big_key(&arr4(key)) {
+            let Ok(len) = r.u64() else { break };
+            usize::try_from(len).unwrap_or(usize::MAX)
+        } else {
+            let Ok(len) = r.u32() else { break };
+            len as usize
+        };
+        let Ok(data) = r.take(len) else {
             break;
         };
-        if len % 2 == 1 {
-            let _ = r.skip(1);
+        // A global tagged block is padded externally to a 4-byte boundary.
+        if r.skip((4 - len % 4) % 4).is_err() {
+            break;
         }
         if matches!(key, b"lnkD" | b"lnk2" | b"lnk3" | b"lnkE") {
             if let Ok(mut parsed) = parse_linked_layers(data) {
@@ -247,10 +258,15 @@ fn parse_linked_layer(data: &[u8]) -> Result<LinkedRecord, PsdError> {
 ///
 /// Every non-matched block is copied byte-for-byte (padding included); a
 /// matched `lnkD`/`lnk2`/`lnk3`/`lnkE` block is re-emitted with the same key, a
-/// recomputed length, and even padding. A malformed block is copied verbatim.
+/// recomputed exact length, and external padding to a 4-byte boundary. A
+/// malformed block is copied verbatim.
 /// Returns `Some` only when at least one record was removed, `None` otherwise
 /// (so the caller's bytes are left untouched).
-pub fn remove_linked_source(layer_section_extra: &[u8], uuid: &str) -> Option<Vec<u8>> {
+pub fn remove_linked_source(
+    layer_section_extra: &[u8],
+    uuid: &str,
+    is_psb: bool,
+) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(layer_section_extra.len());
     let mut removed = false;
     let mut r = Reader::new(layer_section_extra);
@@ -265,22 +281,33 @@ pub fn remove_linked_source(layer_section_extra: &[u8], uuid: &str) -> Option<Ve
             r.pos = start;
             break;
         };
-        let Ok(len) = r.u32() else {
+        let big = is_psb && is_psb_big_key(&arr4(key));
+        let len = if big {
+            let Ok(len) = r.u64() else {
+                r.pos = start;
+                break;
+            };
+            usize::try_from(len).unwrap_or(usize::MAX)
+        } else {
+            let Ok(len) = r.u32() else {
+                r.pos = start;
+                break;
+            };
+            len as usize
+        };
+        let Ok(data) = r.take(len) else {
             r.pos = start;
             break;
         };
-        let Ok(data) = r.take(len as usize) else {
-            r.pos = start;
-            break;
-        };
-        if len % 2 == 1 && r.skip(1).is_err() {
+        // A global tagged block is padded externally to a 4-byte boundary.
+        if r.skip((4 - len % 4) % 4).is_err() {
             r.pos = start;
             break;
         }
         let end = r.pos;
         if matches!(key, b"lnkD" | b"lnk2" | b"lnk3" | b"lnkE") {
             if let Some(kept) = remove_linked_records(data, uuid) {
-                crate::write::write_tag(&mut out, &arr4(key), &kept);
+                crate::write::write_tag_document(&mut out, &arr4(key), &kept, is_psb);
                 removed = true;
                 continue;
             }
@@ -454,14 +481,13 @@ mod tests {
         v
     }
 
+    /// A document-level tagged block: exact length, padded externally to 4.
     fn tagged(key: &[u8; 4], data: &[u8]) -> Vec<u8> {
         let mut v = b"8BIM".to_vec();
         v.extend_from_slice(key);
         v.extend_from_slice(&(data.len() as u32).to_be_bytes());
         v.extend_from_slice(data);
-        if data.len() % 2 == 1 {
-            v.push(0);
-        }
+        v.extend_from_slice(&vec![0u8; (4 - data.len() % 4) % 4]);
         v
     }
 
@@ -502,7 +528,7 @@ mod tests {
         let section = tagged(b"lnk2", &linked_list(&[record]));
 
         let mut layers = vec![config_layer(uuid)];
-        resolve_smart_objects(&mut layers, &section);
+        resolve_smart_objects(&mut layers, &section, false);
         let so = layers[0].smart_object.as_ref().expect("resolved");
         assert_eq!(so.kind, SmartObjectKind::External);
         assert!(so.payload.is_none(), "external payload is not exposed");
@@ -512,7 +538,7 @@ mod tests {
     #[test]
     fn config_without_matching_record_is_unresolved() {
         let mut layers = vec![config_layer("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")];
-        resolve_smart_objects(&mut layers, &tagged(b"lnk2", &linked_list(&[])));
+        resolve_smart_objects(&mut layers, &tagged(b"lnk2", &linked_list(&[])), false);
         let so = layers[0].smart_object.as_ref().expect("resolved");
         assert_eq!(so.kind, SmartObjectKind::Unresolved);
         assert_eq!(so.uuid, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
@@ -526,7 +552,7 @@ mod tests {
         let section = tagged(b"lnk2", &linked_list(&[record]));
 
         let mut layers = vec![config_layer(uuid)];
-        resolve_smart_objects(&mut layers, &section);
+        resolve_smart_objects(&mut layers, &section, false);
         let so = layers[0].smart_object.as_ref().expect("resolved");
         assert_eq!(so.kind, SmartObjectKind::Embedded);
         assert_eq!(so.filename, "Layer 1.psb");
@@ -545,7 +571,7 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
         let section = tagged(b"lnk2", &linked_list(&[record]));
 
         let mut layers = vec![config_layer(uuid)];
-        resolve_smart_objects(&mut layers, &section);
+        resolve_smart_objects(&mut layers, &section, false);
         let so = layers[0].smart_object.as_ref().expect("resolved");
         assert_eq!(so.kind, SmartObjectKind::Embedded);
         let crs = so.crs_xmp.as_ref().expect("crs xmp is exposed");
@@ -559,7 +585,7 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
     fn malformed_record_degrades_without_panic() {
         assert!(parse_linked_layers(&[0, 0, 0, 0, 0, 0, 0, 5, 1, 2, 3]).is_err());
         let section = tagged(b"lnk2", &[0, 0, 0, 0, 0, 0, 0, 5, 1, 2, 3]);
-        assert!(collect_linked_records(&section).is_empty());
+        assert!(collect_linked_records(&section, false).is_empty());
     }
 
     #[test]
@@ -575,7 +601,7 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
         ]
         .concat();
 
-        let cleaned = remove_linked_source(&section, drop).expect("a record was removed");
+        let cleaned = remove_linked_source(&section, drop, false).expect("a record was removed");
         let expected = [tagged(b"lnk2", &linked_list(&[record_keep])), unrelated].concat();
         assert_eq!(
             cleaned, expected,
@@ -586,11 +612,11 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
             !cleaned.windows(drop.len()).any(|w| w == drop.as_bytes()),
             "the removed uuid no longer appears"
         );
-        let records = collect_linked_records(&cleaned);
+        let records = collect_linked_records(&cleaned, false);
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].uuid, keep);
 
-        assert_eq!(remove_linked_source(&section, "no-such-uuid"), None);
+        assert_eq!(remove_linked_source(&section, "no-such-uuid", false), None);
     }
 
     #[test]
@@ -603,7 +629,7 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
         );
         let section = [malformed.clone(), good].concat();
 
-        let cleaned = remove_linked_source(&section, drop).expect("the good block changed");
+        let cleaned = remove_linked_source(&section, drop, false).expect("the good block changed");
         assert!(
             cleaned.starts_with(&malformed),
             "a malformed block is copied byte-for-byte"

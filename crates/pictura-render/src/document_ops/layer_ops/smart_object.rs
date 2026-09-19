@@ -157,7 +157,7 @@ pub fn replace_smart_object_contents(
     }
     if !old_uuid.is_empty() {
         if let Some(cleaned) =
-            pictura_codec::remove_linked_source(&doc.layer_section_extra, &old_uuid)
+            pictura_codec::remove_linked_source(&doc.layer_section_extra, &old_uuid, doc.is_psb)
         {
             doc.layer_section_extra = cleaned;
         }
@@ -274,7 +274,8 @@ pub fn rasterize_smart_object(doc: &mut Document, path: &str) -> bool {
         layer.smart_object = None;
     }
     if !uuid.is_empty() {
-        if let Some(cleaned) = pictura_codec::remove_linked_source(&doc.layer_section_extra, &uuid)
+        if let Some(cleaned) =
+            pictura_codec::remove_linked_source(&doc.layer_section_extra, &uuid, doc.is_psb)
         {
             doc.layer_section_extra = cleaned;
         }
