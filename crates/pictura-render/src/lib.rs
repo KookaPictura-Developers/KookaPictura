@@ -45,8 +45,8 @@ pub use fill::encode_gradient_fill;
 
 pub mod layer_effects;
 pub use layer_effects::{
-    decode_drop_shadow, decode_inner_shadow, decode_outer_glow, DropShadow, GlowTechnique,
-    InnerShadow, OuterGlow,
+    decode_drop_shadow, decode_inner_glow, decode_inner_shadow, decode_outer_glow, DropShadow,
+    GlowSource, GlowTechnique, InnerGlow, InnerShadow, OuterGlow,
 };
 
 pub mod gpu;

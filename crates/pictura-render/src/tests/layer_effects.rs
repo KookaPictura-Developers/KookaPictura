@@ -839,3 +839,5 @@ fn drop_shadow_fixture_decodes_and_composites() {
 mod outer_glow;
 
 mod inner_shadow;
+
+mod inner_glow;

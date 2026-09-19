@@ -1,0 +1,51 @@
+## 1. Split `layer_effects` by concern (pure moves)
+
+- [x] 1.1 Create `crates/pictura-render/src/layer_effects/mod.rs` and move the shared plumbing there unchanged: the module doc comment and `ponytail:` ceiling block, the `MAX_*` constants, `num_or`/`finite_f32`/`num_clamped`/`bool_or`/`decode_color`, `GlowTechnique`, `clip_rect`/`pad_rect`/`rect_empty`, `content_matte`/`dilate_matte`/`erode_matte`/`blur_matte`/`clamp_finite`, `is_destructive_adjustment`, and the `composite_layer_effects` / `composite_layer_effects_above` entry points.
+- [x] 1.2 Move the Drop Shadow and Inner Shadow types, decoders and composites to `layer_effects/shadows.rs`; move the Outer Glow type, decoder and composite to `layer_effects/glows.rs`. Declare `mod shadows; mod glows;` in `mod.rs` and `pub use` the public types so `lib.rs`'s `pub use layer_effects::{...}` is unchanged.
+- [x] 1.3 Confirm the split is a pure move: `cargo nextest run -p pictura-render` is byte-for-byte green with no golden or behavior change.
+
+## 2. Inner glow decoder
+
+- [x] 2.1 Add `GlowSource { Edge, Center }` and `InnerGlow { enabled, present, blend_mode, color, opacity, choke, size, source, technique }` to `crates/pictura-render/src/layer_effects/glows.rs`, beside `OuterGlow`.
+- [x] 2.2 Add `pub fn decode_inner_glow(layer: &Layer) -> Option<InnerGlow>` mirroring `decode_outer_glow`: take the `lfx2` block via `Layer::extra_block`, require at least `8` bytes, hand `&data[4..]` to `pictura_codec::read_descriptor`, require the top-level object, find `IrGl` (an `Objc` with class id `IrGl`), and decode `enab`, `present`, `Md  ` (blend enum via `BlendMode::from_psd_key`, default/missing/unknown → Screen), `Clr `/`RGBC` `Rd `/`Grn `/`Bl  `, `Opct`, `Ckmt` as `choke`, `blur` as `size`, `GlwT` (typeID `BETE`, `SfBL`→Softer / `PrBL`→Precise, missing/unknown→Softer), and `glwS` (typeID `IGSr`, `SrcE`→Edge / `SrcC`→Center, missing/unknown→Edge). Accept `UnitFloat` or `Double` for numeric keys and apply the D3 defaults. Any parse error, unknown data version, wrong type, a non-`BlnM`/`BETE`/`IGSr` typeID, a non-`RGBC` colour, or a non-finite value (including a finite `f64` that overflows `f32`) returns `None`; a finite out-of-range numeric is clamped (`opacity`/`choke` `0..=100`, `size` `0..=250`); never panic.
+- [x] 2.3 Re-export `InnerGlow` and `GlowSource` from `crates/pictura-render/src/lib.rs`; extend the module `ponytail:` ceiling comment for the `Center` approximation, the `Precise`-as-`Softer` ceiling, and the ignored contour/noise/range/anti-alias.
+- [x] 2.4 Add decoder unit tests in `crates/pictura-render/src/tests/layer_effects/inner_glow.rs` using `pictura_codec::write_descriptor` with a `DescriptorBlock2` header (`1u32`, `16u32`): a full `IrGl` decodes to the expected `InnerGlow` including `glwS` `IGSr`/`SrcC` → `Center` and `GlwT` `BETE`/`PrBL` → `Precise`; a minimal `IrGl` takes the defaults (Screen, white, opacity 75, choke 0, size 5, Edge, Softer); a `doub` (non-unit) numeric decodes; missing `lfx2`, missing `IrGl`, wrong data version, wrong-typed `Md  `, wrong `Md  `/`GlwT`/`glwS` typeIDs, non-`RGBC` `Clr `, non-finite `blur`, and a truncated block each return `None` without panicking; `blur`/`Ckmt` `1e30` clamp and `1e300` rejects.
+
+## 3. Renderer: interior field above the content
+
+- [x] 3.1 Add `composite_inner_glow(canvas, layer, doc, glow)` to `crates/pictura-render/src/layer_effects/glows.rs`, reusing `content_matte`, `clip_rect`, `pad_rect`, `erode_matte`, `blur_matte`, `clamp_finite` and `blend_parts`: build the masked content matte `M` over `padded = pad_rect(source, round(choke/100 · size) + Gaussian support, w, h)`; erode it by `round(choke/100 · size)` into `anchor`; Gaussian-blur `anchor` by `size` into `B`; set `field = 1 - B` for `Source = Edge` and `field = B` for `Source = Center`; composite over `source` only, with per-pixel alpha `M(x,y) · field(x,y) · opacity/100`, the glow colour, and the effect's own `blend_mode`. Early-out on an empty source/padded or an all-zero matte; clamp the numerics again so a hand-built `InnerGlow` cannot panic; never panic.
+- [x] 3.2 Make `composite_layer_effects_above` decode `decode_inner_glow` and call `composite_inner_glow` only when `enabled && present`, keeping the group and destructive-adjustment skips shared with the shadow and glow. Composite Inner Shadow before Inner Glow when both are present.
+- [x] 3.3 Add render tests in `tests/layer_effects/inner_glow.rs`: the glow is interior only and every exterior pixel is byte-identical to no effect; `source` `Edge` and `source` `Center` composites differ; `size` 0 with `choke` 0 under Edge is byte-identical to no effect and `size` 6 tints the edge band; a positive `choke` is at least as strong in the edge-adjacent band as `choke` 0; `opacity` 50 with a red `colour` over white content is a red tint; a mask hides the glow where zero and keeps it where 255; a small layer with a large `size` leaves outside-the-rect pixels byte-identical; a crafted huge `choke`/`size` renders as a bounded no-op without panic; a disabled or not-present glow is byte-identical to no effect; the matte-source cases (solid fill follows payload alpha, pattern fill confined to the fill, channel-less smart object covers the rect) and edge cases (opacity 0 no-op, off-canvas/zero-area no-op) mirror the shadow and glow suites.
+
+## 4. GPU fallback
+
+- [x] 4.1 Extend `check_supported`'s `walk` in `crates/pictura-render/src/gpu/mod.rs` so a visible layer whose `decode_inner_glow` is enabled and present also returns `GpuError::UnsupportedLayerEffect` before dispatch, ahead of the adjustment check. Keep disabled/absent/malformed effects from rejecting the document, and do not add a new error variant.
+- [x] 4.2 Add tests: `composite_gpu` on an inner-glow document returns `UnsupportedLayerEffect` without panicking, `composite_gpu_or_cpu` equals `composite_rgba`, and a disabled or not-present glow does not produce the error.
+
+## 5. Fixture and oracle
+
+- [x] 5.1 Add an `inner_glow()` builder to `scripts/generate-fixtures.py`: a `Base` pixel layer plus a `Glow` pixel layer whose record carries `DescriptorBlock2(Descriptor({ masterFXSwitch: Bool(True), IrGl: Descriptor({ enab, present, showInDialog, Md  : Enumerated(b"BlnM", b"scrn"), Clr : Descriptor(RGBC, Rd /Grn /Bl  doubles), Opct: UnitFloat(75.0, Percent), GlwT: Enumerated(b"BETE", b"SfBL"), Ckmt: UnitFloat(0.0, Percent), blur: UnitFloat(5.0, Pixels), glwS: Enumerated(b"IGSr", b"SrcE"), Nose: UnitFloat(0.0, Percent), ShdN: UnitFloat(0.0, Percent), Inpr: UnitFloat(50.0, Percent), AntA: Bool(True), TrnS: Descriptor(Linear, classID=b"TrnS") }, classID=b"IrGl") }, classID=Klass.Null))` under `Tag.OBJECT_BASED_EFFECTS_LAYER_INFO`. Register `"inner_glow.psd": inner_glow` in `FIXTURES`.
+- [x] 5.2 Regenerate with `python3 scripts/generate-fixtures.py`, add `crates/pictura-codec/tests/fixtures/inner_glow.psd`, and confirm the existing fixtures are byte-identical (`git status`).
+- [x] 5.3 Register the fixture in the codec `FIXTURES` table (`("inner_glow.psd", 8, 8, ColorMode::Rgb)`) and add an oracle test in `crates/pictura-codec/tests/oracle/inner_glow.rs` (declared with `#[path]` from `oracle.rs`): the `lfx2` key is present in `extra_blocks` with version 1 / data version 16, the whole `Document` round-trips through `write_psd`/`read_psd` with `lfx2` preserved, and a self-skipping psd-tools check reads the layer's effect as `InnerGlow` asserting `enabled`, `present`, `opacity`, `blend_mode`, `choke`, `size`, `glow_type`, `glow_source` and colour.
+- [x] 5.4 Add a render test that loads `inner_glow.psd` with `include_bytes!`, asserts `decode_inner_glow` yields the authored parameters including `source` `Edge`, and composites a glow that differs from the no-effect composite.
+- [x] 5.5 Update `crates/pictura-codec/tests/fixtures/README.md`: the contents row and an `inner_glow()` snippet, noting the `glwS`/`IGSr` source key.
+
+## 6. App
+
+- [x] 6.1 Confirm no production app change is needed: the canvas composites through `pictura_render::composite_rgba` / `composite_active`, which now render the glow. Do not add an authoring command, panel, or `CMakeLists.txt` entry. No C++ self-test check is added.
+
+## 7. Verification fixes
+
+- [x] 7.1 Bound every decoded numeric to its documented range (`opacity`/`choke` `0..=100`, `size` `0..=250`), re-check `is_finite()` after the `f32` cast, and clamp again in `composite_inner_glow` so a hand-built `InnerGlow` cannot panic the erode/blur.
+- [x] 7.2 Confirm the interior confinement (`M` factor) leaves every exterior pixel byte-identical, that the mask folds into `M` before the erosion, and that a pixel-layer's missing `-1` alpha still yields `M = 1` inside the rect.
+- [x] 7.3 Confirm the bbox confinement: a small layer with a large `size` leaves outside-the-rect pixels byte-identical and completes within a generous wall-clock bound; a canvas-filling layer remains the documented `O(canvas · size)` ceiling.
+- [x] 7.4 Keep each `layer_effects/*.rs` file under its 1200 LOC cap; keep `tests/layer_effects/inner_glow.rs` under 1400 and declare it from `tests/layer_effects.rs` beside `outer_glow` and `inner_shadow`.
+- [x] 7.5 Fix the `glwS` typeID to the canonical `IGSr` (psd-tools `Type.InnerGlowSource`, libpsd `'IGSr'`, ag-psd `IGSr`), accept the legacy/mis-authored `IGsr` leniently, return `None` for any other typeID, regenerate `inner_glow.psd` with the canonical spelling, and update the tests, spec, README and design references.
+- [x] 7.6 Short-circuit `composite_inner_glow` when `size == 0 && choke == 0 && source == Edge` so a partial-alpha matte is byte-identical to no effect instead of picking up an `M · (1 - M)` tint; leave Center and other combinations unchanged.
+
+## 8. Gates
+
+- [x] 8.1 `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo nextest run --workspace`, `cargo test --workspace --doc`.
+- [ ] 8.2 `bash scripts/verify-fast.sh` and a headless self-test; record counts.
+- [x] 8.3 `openspec validate layer-effects-inner-glow --strict` and `openspec validate --all --strict`.
+- [ ] 8.4 Commit with the new golden fixture; state the fixture addition in the commit message. Update `docs/dev/STATE.md` separately under `TASK-ALLOWS-DOCS` if the milestone anchor is advanced.
