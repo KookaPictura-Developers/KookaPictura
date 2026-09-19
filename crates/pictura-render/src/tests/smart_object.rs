@@ -237,3 +237,194 @@ fn author_and_render_round_trip() {
         }
     }
 }
+
+#[test]
+fn convert_authors_embedded_object_and_keeps_proxy() {
+    let layer = solid(
+        "Raster",
+        full(4, 4),
+        (10, 20, 30),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut d = doc(4, 4, vec![layer]);
+    let before = d.clone();
+    let before_comp = composite_rgba(&d);
+
+    assert!(can_convert_to_smart_object(&d, "0"));
+    assert!(convert_to_smart_object(&mut d, "0"));
+
+    let so = d.layers[0].smart_object.as_ref().expect("smart object");
+    assert_eq!(so.kind, SmartObjectKind::Embedded);
+    assert!(so.payload.as_deref().is_some_and(|p| !p.is_empty()));
+    assert_eq!(so.filename, "Raster.psd");
+    assert_eq!(so.filetype, *b"8BPB");
+    assert_eq!(so.creator, *b"8BIM");
+    assert_eq!(d.layers[0].channels, before.layers[0].channels);
+    assert_eq!(composite_rgba(&d), before_comp);
+
+    let embedded = read_psd(so.payload.as_deref().unwrap()).expect("payload reads");
+    assert_eq!(embedded.width, 4);
+    assert_eq!(embedded.height, 4);
+    assert_eq!(embedded.composite.channels, 3);
+    for i in 0..16 {
+        assert_eq!(embedded.composite.data[i], 10);
+        assert_eq!(embedded.composite.data[16 + i], 20);
+        assert_eq!(embedded.composite.data[32 + i], 30);
+    }
+}
+
+#[test]
+fn converted_layer_round_trips() {
+    let layer = solid(
+        "Raster",
+        full(4, 4),
+        (10, 20, 30),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut d = doc(4, 4, vec![layer]);
+    assert!(convert_to_smart_object(&mut d, "0"));
+    let payload = d.layers[0]
+        .smart_object
+        .as_ref()
+        .unwrap()
+        .payload
+        .clone()
+        .unwrap();
+
+    let bytes = write_psd(&d).expect("host writes");
+    let back = read_psd(&bytes).expect("host reads");
+    let so = back.layers[0].smart_object.as_ref().expect("smart object");
+    assert_eq!(so.kind, SmartObjectKind::Embedded);
+    assert_eq!(so.payload.as_deref(), Some(payload.as_slice()));
+    assert_eq!(back.layers[0].channels, d.layers[0].channels);
+    assert_eq!(composite_rgba(&back), composite_rgba(&d));
+}
+
+#[test]
+fn convert_refuses_ineligible_targets() {
+    let cases: Vec<(&str, Document)> = vec![
+        (
+            "group",
+            doc(4, 4, vec![group("G", BlendMode::Normal, 255, None, vec![])]),
+        ),
+        (
+            "adjustment",
+            doc(
+                4,
+                4,
+                vec![adjustment_layer("Adj", *b"inv ", vec![0], 255, None)],
+            ),
+        ),
+        ("background", {
+            let mut d = doc(
+                4,
+                4,
+                vec![solid(
+                    "Background",
+                    full(4, 4),
+                    (0, 0, 0),
+                    255,
+                    BlendMode::Normal,
+                    255,
+                )],
+            );
+            d.layers[0].background = true;
+            d
+        }),
+        (
+            "zero-size",
+            doc(
+                4,
+                4,
+                vec![solid(
+                    "Zero",
+                    rect(0, 0, 0, 0),
+                    (1, 2, 3),
+                    255,
+                    BlendMode::Normal,
+                    255,
+                )],
+            ),
+        ),
+    ];
+    for (name, mut d) in cases {
+        let before = d.clone();
+        assert!(!can_convert_to_smart_object(&d, "0"), "can: {name}");
+        assert!(!convert_to_smart_object(&mut d, "0"), "convert: {name}");
+        assert_eq!(d, before, "mutated: {name}");
+    }
+
+    let mut d = doc(
+        4,
+        4,
+        vec![solid(
+            "Raster",
+            full(4, 4),
+            (1, 2, 3),
+            255,
+            BlendMode::Normal,
+            255,
+        )],
+    );
+    let before = d.clone();
+    assert!(!convert_to_smart_object(&mut d, "99"));
+    assert!(!convert_to_smart_object(&mut d, "bad"));
+    assert_eq!(d, before);
+
+    assert!(convert_to_smart_object(&mut d, "0"));
+    let converted = d.clone();
+    assert!(!convert_to_smart_object(&mut d, "0"));
+    assert_eq!(d, converted);
+}
+
+#[test]
+fn sixteen_bit_document_refuses_conversion() {
+    let mut d = Document::new(4, 4, ColorMode::Rgb, BitDepth::Sixteen);
+    d.layers = vec![solid(
+        "Raster",
+        full(4, 4),
+        (10, 20, 30),
+        255,
+        BlendMode::Normal,
+        255,
+    )];
+    let before = d.clone();
+    assert!(!can_convert_to_smart_object(&d, "0"));
+    assert!(!convert_to_smart_object(&mut d, "0"));
+    assert_eq!(d, before);
+}
+
+#[test]
+fn grayscale_layer_converts_to_grayscale_source() {
+    let mut d = Document::new(2, 2, ColorMode::Grayscale, BitDepth::Eight);
+    d.layers = vec![Layer {
+        name: "Gray".into(),
+        rect: full(2, 2),
+        channels: vec![
+            Channel {
+                id: 0,
+                data: vec![128; 4],
+            },
+            Channel {
+                id: -1,
+                data: vec![255; 4],
+            },
+        ],
+        ..Default::default()
+    }];
+    assert!(convert_to_smart_object(&mut d, "0"));
+    let payload = d.layers[0]
+        .smart_object
+        .as_ref()
+        .unwrap()
+        .payload
+        .clone()
+        .unwrap();
+    let embedded = read_psd(&payload).expect("payload reads");
+    assert_eq!(embedded.mode, ColorMode::Grayscale);
+    assert!(embedded.composite.data.iter().all(|&b| b == 128));
+}

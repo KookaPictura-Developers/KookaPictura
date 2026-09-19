@@ -882,6 +882,62 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         }
         frame.closeDocument(rrDoc, false);
 
+        // lpr_smart_object_convert (277): converting a raster pixel layer
+        // authors an embedded smart object while keeping its raster proxy, so
+        // the composite is unchanged and the object survives save→load; a group
+        // and the Background refuse without history.
+        const bool socCreated = frame.newDocument(QStringLiteral("SmartObjectCtl"), 4, 4,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* socView = frame.activeView();
+        if (!socCreated || !socView) {
+            return pictura::selfTest().fail(277, "smart object fixture");
+        }
+        const int socDoc = frame.activeDocumentIndex();
+        const QString socPath = socView->add_solid_fill(0xff2244aau);
+        const bool socRaster = socView->rasterize_fill_content(socPath);
+        const bool socCan = socView->layer_can_convert_to_smart_object(socPath);
+        const int socBase = socView->history_count();
+        const unsigned int socBefore = socView->sample_argb(0, 0);
+        const bool socConverted = socView->convert_to_smart_object(socPath);
+        const QString socState = socView->layer_smart_object_state(socPath);
+        const bool socProxy = socView->sample_argb(0, 0) == socBefore;
+        const bool socRecorded = socView->history_count() == socBase + 1;
+        const bool socEmbedded = socState.startsWith(QStringLiteral("embedded:"))
+            && socState.mid(9).toInt() > 0
+            && !socView->layer_can_convert_to_smart_object(socPath);
+        const QString socGroup = socView->add_group_in(QString());
+        socView->background_from_layer(QStringLiteral("0"));
+        const int socRefBase = socView->history_count();
+        const bool socRefGroup = !socView->convert_to_smart_object(socGroup);
+        const bool socRefBackground = !socView->convert_to_smart_object(QStringLiteral("0"));
+        const bool socRefHistory = socView->history_count() == socRefBase;
+        const QString socSavePath =
+            QDir::tempPath() + QStringLiteral("/kooka-pictura-smart-object.psd");
+        const bool socSaved = frame.saveActiveAs(socSavePath);
+        const bool socReopened = frame.openPath(socSavePath);
+        pictura::PictureView* socReload = frame.activeView();
+        const int socReloadDoc = frame.activeDocumentIndex();
+        const QString socReloadState =
+            socReload ? socReload->layer_smart_object_state(socPath) : QString();
+        const bool socRoundTrip = socReopened && socReload
+            && socReloadState.startsWith(QStringLiteral("embedded:"))
+            && socReloadState.mid(9).toInt() > 0;
+        const bool socOk = socRaster && socCan && socConverted && socProxy && socRecorded
+            && socEmbedded && socRefGroup && socRefBackground && socRefHistory && socSaved
+            && socRoundTrip;
+        ST_BEGIN("lpr_smart_object_convert");
+        ST_PASS("lpr_smart_object_convert raster=%d can=%d convert=%d state=%s proxy=%d "
+                "history=%d group=%d bg=%d saved=%d reload=%s",
+                socRaster ? 1 : 0, socCan ? 1 : 0, socConverted ? 1 : 0, qPrintable(socState),
+                socProxy ? 1 : 0, socRecorded ? 1 : 0, socRefGroup ? 1 : 0,
+                socRefBackground ? 1 : 0, socSaved ? 1 : 0, qPrintable(socReloadState));
+        if (!socOk) {
+            return pictura::selfTest().fail(277, "smart object convert");
+        }
+        frame.closeDocument(socReloadDoc, false);
+        frame.closeDocument(socDoc, false);
+
         // lpr_drop_out (239): a layer nested in a group, dropped on the empty
         // viewport (empty target, mode 0), reparents to the document root in
         // one undo step; the validator accepts the root target.

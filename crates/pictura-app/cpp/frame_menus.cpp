@@ -550,6 +550,28 @@ void PicturaMainWindow::registerHandlers()
         return false;
     });
 
+    // Smart Objects. Convert to Smart Object needs the current layer to be a
+    // raster pixel layer (not a group, adjustment, Background, or already a
+    // smart object).
+    const auto currentSmartPath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty() || !view->layer_can_convert_to_smart_object(path)) {
+            return QString();
+        }
+        return path;
+    };
+    registry_->setHandler(command_ids::LayerSmartObjectConvertTo, [this, currentSmartPath]() {
+        if (PictureView* view = activeView()) {
+            const QString path = currentSmartPath();
+            if (!path.isEmpty() && view->convert_to_smart_object(path)) {
+                refresh();
+            }
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerSmartObjectConvertTo,
+                                  [currentSmartPath]() { return !currentSmartPath().isEmpty(); });
+
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {
             canvas->zoomIn();

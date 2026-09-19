@@ -77,6 +77,7 @@ inline constexpr char LayerNewFillSolidColor[] = "layer.new.fill.solidColor";
 inline constexpr char LayerRasterizeFillContent[] = "layer.rasterize.fillContent";
 inline constexpr char LayerRasterizeLayer[] = "layer.rasterize.layer";
 inline constexpr char LayerRasterizeAllLayers[] = "layer.rasterize.allLayers";
+inline constexpr char LayerSmartObjectConvertTo[] = "layer.smartObject.convertTo";
 inline constexpr char ViewZoomIn[] = "view.zoomIn";
 inline constexpr char ViewZoomOut[] = "view.zoomOut";
 inline constexpr char ViewFitOnScreen[] = "view.fitOnScreen";
