@@ -169,20 +169,34 @@ fn planar_len(channels: usize, width: usize, height: usize) -> Result<usize, Psd
 
 /// Inflate a ZIP channel payload. Photoshop writes a zlib-framed stream; some
 /// third-party writers emit raw deflate, so fall back to that if zlib framing
-/// is absent. Output shorter than `expected` is malformed; longer is truncated.
+/// is absent. The decode is bounded to `expected` bytes so a crafted stream
+/// cannot expand without limit; output shorter or longer than `expected` is
+/// rejected with a typed error. This is a deliberate divergence from psd-tools,
+/// which catches an over-long stream and substitutes a black channel with a
+/// warning.
 fn inflate(payload: &[u8], expected: usize) -> Result<Vec<u8>, PsdError> {
+    // `+1` so an over-long stream is detected rather than silently truncated.
+    let limit = expected.saturating_add(1) as u64;
     let mut out = Vec::new();
-    if ZlibDecoder::new(payload).read_to_end(&mut out).is_err() {
+    if ZlibDecoder::new(payload)
+        .take(limit)
+        .read_to_end(&mut out)
+        .is_err()
+    {
         out.clear();
-        if DeflateDecoder::new(payload).read_to_end(&mut out).is_err() {
+        if DeflateDecoder::new(payload)
+            .take(limit)
+            .read_to_end(&mut out)
+            .is_err()
+        {
             return Err(PsdError::Unsupported("ZIP channel data".into()));
         }
     }
-    if out.len() < expected {
-        return Err(PsdError::Invalid("ZIP payload too short".into()));
+    match out.len().cmp(&expected) {
+        std::cmp::Ordering::Less => Err(PsdError::Invalid("ZIP payload too short".into())),
+        std::cmp::Ordering::Greater => Err(PsdError::Invalid("ZIP payload too long".into())),
+        std::cmp::Ordering::Equal => Ok(out),
     }
-    out.truncate(expected);
-    Ok(out)
 }
 
 /// Invert the byte-wise delta applied by ZIP-with-prediction: each scanline is a
@@ -658,9 +672,6 @@ fn read_channel_data(
     height: usize,
     is_psb: bool,
 ) -> Result<Vec<u8>, PsdError> {
-    let pixels = width
-        .checked_mul(height)
-        .ok_or_else(|| PsdError::Invalid("layer channel size overflow".into()))?;
     if declared_len == 0 {
         return Ok(Vec::new());
     }
@@ -671,25 +682,7 @@ fn read_channel_data(
     }
     let compression = r.u16()?;
     let payload = r.take(declared_len - 2)?;
-    match compression {
-        COMPRESSION_RAW => {
-            if payload.len() < pixels {
-                return Err(PsdError::Invalid("raw layer channel too short".into()));
-            }
-            Ok(payload[..pixels].to_vec())
-        }
-        COMPRESSION_RLE => decode_rle_channel(payload, width, height, is_psb),
-        COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION => {
-            let mut data = inflate(payload, pixels)?;
-            if compression == COMPRESSION_ZIP_PREDICTION {
-                undo_prediction(&mut data, width);
-            }
-            Ok(data)
-        }
-        c => Err(PsdError::Unsupported(format!(
-            "layer channel compression {c}"
-        ))),
-    }
+    decode_channel_data(compression, payload, width, height, is_psb)
 }
 
 pub(crate) fn decode_rle_channel(
@@ -709,6 +702,40 @@ pub(crate) fn decode_rle_channel(
         decode_packbits(packed, &mut out[row * width..(row + 1) * width])?;
     }
     Ok(out)
+}
+
+/// Decode one 8-bit channel plane from its compression byte and payload. Shared
+/// by layer channel data (via [`read_channel_data`]) and the document Patterns
+/// resource, whose `VirtualMemoryArray` channels carry the same encodings.
+/// `is_psb` selects the RLE scanline-count width (u32 in a PSB, u16 otherwise);
+/// pattern channel counts are always u16 (version 1).
+pub(crate) fn decode_channel_data(
+    compression: u16,
+    payload: &[u8],
+    width: usize,
+    height: usize,
+    is_psb: bool,
+) -> Result<Vec<u8>, PsdError> {
+    let pixels = width
+        .checked_mul(height)
+        .ok_or_else(|| PsdError::Invalid("channel size overflow".into()))?;
+    match compression {
+        COMPRESSION_RAW => {
+            if payload.len() < pixels {
+                return Err(PsdError::Invalid("raw channel too short".into()));
+            }
+            Ok(payload[..pixels].to_vec())
+        }
+        COMPRESSION_RLE => decode_rle_channel(payload, width, height, is_psb),
+        COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION => {
+            let mut data = inflate(payload, pixels)?;
+            if compression == COMPRESSION_ZIP_PREDICTION {
+                undo_prediction(&mut data, width);
+            }
+            Ok(data)
+        }
+        c => Err(PsdError::Unsupported(format!("channel compression {c}"))),
+    }
 }
 
 /// Assemble the bottom-first layer tree from flat records. Section dividers
@@ -736,4 +763,59 @@ fn build_tree(raws: Vec<RawLayer>) -> Vec<Layer> {
         stack.last_mut().unwrap().extend(contents);
     }
     stack.pop().unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+
+    fn zlib(data: &[u8]) -> Vec<u8> {
+        let mut enc = ZlibEncoder::new(Vec::new(), Compression::fast());
+        enc.write_all(data).unwrap();
+        enc.finish().unwrap()
+    }
+
+    #[test]
+    fn zip_bomb_is_rejected_with_bounded_allocation() {
+        // 256 MiB of zeros compresses to a few hundred KiB. The bounded decode
+        // reads at most `expected + 1` bytes, so the expansion is never
+        // materialised; before the guard this allocated the whole 256 MiB (and
+        // a real bomb scales without limit).
+        let mut enc = ZlibEncoder::new(Vec::new(), Compression::fast());
+        let chunk = vec![0u8; 1 << 20];
+        for _ in 0..256 {
+            enc.write_all(&chunk).unwrap();
+        }
+        let bomb = enc.finish().unwrap();
+        assert!(
+            bomb.len() < 4 << 20,
+            "bomb input stays small: {}",
+            bomb.len()
+        );
+
+        let err = inflate(&bomb, 4).unwrap_err();
+        assert!(matches!(err, PsdError::Invalid(_)), "typed error: {err:?}");
+    }
+
+    #[test]
+    fn zip_exact_is_ok_and_both_mismatches_error() {
+        assert_eq!(inflate(&zlib(&[1, 2, 3, 4]), 4).unwrap(), vec![1, 2, 3, 4]);
+        assert!(matches!(
+            inflate(&zlib(&[1, 2]), 4).unwrap_err(),
+            PsdError::Invalid(_)
+        ));
+        // Over-long output is malformed, not silently truncated.
+        assert!(matches!(
+            inflate(&zlib(&[1, 2, 3, 4, 5]), 4).unwrap_err(),
+            PsdError::Invalid(_)
+        ));
+        // A bare deflate stream (no zlib framing) still decodes via the fallback.
+        use flate2::write::DeflateEncoder;
+        let mut enc = DeflateEncoder::new(Vec::new(), Compression::fast());
+        enc.write_all(&[9, 9, 9]).unwrap();
+        assert_eq!(inflate(&enc.finish().unwrap(), 3).unwrap(), vec![9, 9, 9]);
+    }
 }

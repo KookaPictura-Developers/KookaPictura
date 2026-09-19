@@ -41,12 +41,13 @@ pub(crate) fn is_psb_big_key(key: &[u8; 4]) -> bool {
 /// The brief's list plus the spellings Photoshop actually writes: Invert is
 /// `nvrt` (not `invr`) and the legacy Hue/Saturation key is `hue ` alongside
 /// `hue2`. Both spellings are accepted on read. `SoCo` is solid-color fill
-/// content and `GdFl` is gradient fill content: both are preserved verbatim
-/// here, and only `pictura-render` decodes the subsets it understands.
-pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 21] = [
+/// content, `GdFl` is gradient fill content, and `PtFl` is pattern fill content:
+/// all three are preserved verbatim here, and only `pictura-render` decodes the
+/// subsets it understands.
+pub(crate) const ADJUSTMENT_KEYS: [[u8; 4]; 22] = [
     *b"levl", *b"curv", *b"brit", *b"expA", *b"vibA", *b"hue2", *b"hue ", *b"blwh", *b"phfl",
     *b"blnc", *b"mixr", *b"grdm", *b"gdrm", *b"invr", *b"nvrt", *b"post", *b"thrs", *b"selc",
-    *b"clrL", *b"SoCo", *b"GdFl",
+    *b"clrL", *b"SoCo", *b"GdFl", *b"PtFl",
 ];
 
 pub(crate) fn is_adjustment_key(key: &[u8; 4]) -> bool {

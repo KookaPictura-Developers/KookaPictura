@@ -28,6 +28,8 @@ not hand-edit these files.
 | `gradient_map.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Map` (`grdm`) adjustment layer |
 | `solid_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Solid Fill` (`SoCo`) descriptor fill layer |
 | `gradient_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Fill` (`GdFl`) Linear black-to-white descriptor fill layer |
+| `pattern_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Pattern Fill` (`PtFl`) descriptor fill layer referencing a 2x2 RGB pattern in the `Patt` block |
+| `pattern_fill_16bit.psd` | RGB | 8x8 | same, but the `Patt` pattern planes are 16-bit (the decoder skips them) |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -153,6 +155,48 @@ data = DescriptorBlock(Descriptor({
     }, classID=b"Grdn"),
 }, classID=b"GdFl"))
 adj(psd, Tag.GRADIENT_FILL_SETTING, "Gradient Fill", data)
+```
+
+
+`pattern_fill.psd` is authored by the `pattern_fill()` builder: the same `Base`
+pixel layer plus a document-sized, channel-stripped `PtFl` fill layer, and a 2x2
+RGB pattern (red, green / blue, white) stored in the global `Patt` tagged block
+(`Tag.PATTERNS1`), not in an image resource. The pattern's channel list carries
+Photoshop's fixed slot layout -- three written colour slots (`num_channels = 3`)
+followed by the two-slot alpha region, the last holding an opaque plane -- which
+is the colour/alpha boundary the Rust decoder follows. The `PtFl` descriptor
+references the pattern with `Ptrn { Nm  , Idnt }`, `Scl `, and `Algn`.
+
+```python
+from psd_tools.psd.descriptor import Bool, Descriptor, DescriptorBlock, String, UnitFloat
+from psd_tools.psd.patterns import Pattern, VirtualMemoryArray, VirtualMemoryArrayList
+from psd_tools.psd.tagged_blocks import TaggedBlocks
+from psd_tools.terminology import Unit
+
+def channel(data):
+    c = VirtualMemoryArray()
+    c.set_data((2, 2), bytes(data), 8, 0)
+    return c
+
+pattern = Pattern(version=1, image_mode=3, point=(2, 2),
+                  name="Pictura", pattern_id="pictura-pattern",
+                  data=VirtualMemoryArrayList(version=3, rectangle=(0, 0, 2, 2),
+                      channels=[channel([255, 0, 0, 255]), channel([0, 255, 0, 255]),
+                                channel([0, 0, 255, 255]), VirtualMemoryArray(),
+                                channel([255, 255, 255, 255])]))
+
+# layer: a document-sized pixel layer with channels stripped (see `adj`).
+rec.tagged_blocks[Tag.PATTERN_FILL_SETTING] = TaggedBlock(
+    key=Tag.PATTERN_FILL_SETTING,
+    data=DescriptorBlock(Descriptor({
+        b"Ptrn": Descriptor({b"Nm  ": String("Pictura\x00"),
+                             b"Idnt": String("pictura-pattern\x00")}, classID=b"Ptrn"),
+        b"Scl ": UnitFloat(100.0, Unit.Percent),
+        b"Algn": Bool(True),
+    }, classID=b"PtFl")))
+
+psd._record.layer_and_mask_information.tagged_blocks = TaggedBlocks()
+psd.tagged_blocks.set_data(Tag.PATTERNS1, [pattern])
 ```
 
 

@@ -127,6 +127,21 @@ pub struct GradientFillParams {
     pub scale: f32,
 }
 
+/// A pattern fill (`PtFl`): the id of a pattern in the document's pattern
+/// library plus the tiling controls. Like [`GradientFillParams`] it is
+/// composited over the layer rect rather than applied to the backdrop.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PatternFillParams {
+    pub pattern_id: String,
+    /// Tile scale in percent (100 = one pattern pixel per layer pixel).
+    pub scale: f32,
+    /// Anchor the tile at the layer's top-left when set, else at the document
+    /// origin.
+    pub link_with_layer: bool,
+    /// Pixel offset added to the tiled sample.
+    pub origin: (i32, i32),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoKind {
     Tone,
@@ -161,4 +176,8 @@ pub enum Adjustment {
     /// destructive adjustment; the renderer composites it generatively (see
     /// `pictura-render`'s `composite_adjustment`), and [`apply`] refuses it.
     SolidFill([u8; 4]),
+    /// Pattern fill content (`PtFl`): a generative fill composited over the
+    /// layer rect (see `pictura-render`'s `composite_pattern_fill`), refused by
+    /// [`apply`] like [`Adjustment::SolidFill`].
+    PatternFill(PatternFillParams),
 }

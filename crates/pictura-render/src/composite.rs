@@ -92,7 +92,7 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
         // composited over. Unknown/undecodable keys are a no-op (preserved on
         // save, not applied), never an error.
         if let Some(adjustment) = decode_adjustment(data) {
-            composite_adjustment(canvas, layer, &adjustment);
+            composite_adjustment(canvas, layer, doc, &adjustment);
         }
     } else {
         if !composite_smart_source(canvas, layer, layer.smart_object.as_ref()) {
@@ -323,8 +323,8 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2),
 /// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `SoCo`
 /// (solid-color fill content, either the 4-byte in-house RGBA tuple or the
-/// standard Photoshop descriptor), and `GdFl` (gradient fill content, a
-/// version-16 descriptor). Descriptor/custom
+/// standard Photoshop descriptor), `GdFl` (gradient fill content), and `PtFl`
+/// (pattern fill content), both fill descriptors. Descriptor/custom
 /// payloads (`curv`, `mixr`, `selc`, `clrL`, and a version-3 `phfl`) are
 /// preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
@@ -350,6 +350,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
             _ => decode_solid_fill(&data.data),
         },
         b"GdFl" => crate::fill::decode_gradient_fill(&data.data),
+        b"PtFl" => crate::fill::decode_pattern_fill(&data.data),
         _ => None,
     }
 }
@@ -832,7 +833,12 @@ fn encode_short(key: [u8; 4], value: u16) -> AdjustmentData {
 /// Apply a decoded adjustment to the running backdrop, then gate the result by
 /// the layer's mask/opacity/blend (Photoshop applies the adjustment to the
 /// backdrop and blends the adjusted result back).
-fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustment) {
+fn composite_adjustment(
+    canvas: &mut Canvas,
+    layer: &Layer,
+    doc: &Document,
+    adjustment: &Adjustment,
+) {
     // Fill content is generative: it adds color inside the layer's rect instead
     // of transforming the backdrop, so it takes the normal-content path.
     if let Adjustment::SolidFill(rgba) = adjustment {
@@ -841,6 +847,10 @@ fn composite_adjustment(canvas: &mut Canvas, layer: &Layer, adjustment: &Adjustm
     }
     if let Adjustment::GradientFill(params) = adjustment {
         crate::fill::composite_gradient_fill(canvas, layer, params);
+        return;
+    }
+    if let Adjustment::PatternFill(params) = adjustment {
+        crate::fill::composite_pattern_fill(canvas, layer, doc, params);
         return;
     }
     let n = canvas.w * canvas.h;

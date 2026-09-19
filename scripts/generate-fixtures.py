@@ -29,16 +29,23 @@ from psd_tools.psd.adjustments import (
 )
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
 from psd_tools.psd.descriptor import (
+    Bool,
     Descriptor,
     DescriptorBlock,
     Double,
     Enumerated,
     List,
     String,
+    UnitFloat,
 )
 from psd_tools.psd.layer_and_mask import ChannelDataList
-from psd_tools.psd.tagged_blocks import TaggedBlock
-from psd_tools.terminology import Enum, Key, Type
+from psd_tools.psd.patterns import (
+    Pattern,
+    VirtualMemoryArray,
+    VirtualMemoryArrayList,
+)
+from psd_tools.psd.tagged_blocks import TaggedBlock, TaggedBlocks
+from psd_tools.terminology import Enum, Key, Type, Unit
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = ROOT / "crates" / "pictura-codec" / "tests" / "fixtures"
@@ -287,6 +294,125 @@ def gradient_fill() -> PSDImage:
     return psd
 
 
+def _pattern_channel(data: list[int], depth: int = 8) -> VirtualMemoryArray:
+    """One written 2x2 channel for the fixture pattern."""
+    channel = VirtualMemoryArray()
+    channel.set_data((2, 2), bytes(data), depth, 0)
+    return channel
+
+
+def _fixture_pattern() -> Pattern:
+    """A 2x2 RGB pattern: red, green / blue, white, opaque.
+
+    The channel list carries Photoshop's fixed slot layout: three written colour
+    slots (``num_channels = 3``), then the two-slot alpha region, the last of
+    which holds a written opaque plane. psd-tools' ``get_pattern_color_channels``
+    reads the three leading written slots as colour and the trailing one as
+    alpha, which is the boundary the Rust decoder follows.
+    """
+    return Pattern(
+        version=1,
+        image_mode=3,  # ColorMode.RGB
+        point=(2, 2),
+        name="Pictura",
+        pattern_id="pictura-pattern",
+        data=VirtualMemoryArrayList(
+            version=3,
+            rectangle=(0, 0, 2, 2),
+            channels=[
+                _pattern_channel([255, 0, 0, 255]),  # R: red, red
+                _pattern_channel([0, 255, 0, 255]),  # G: green, white
+                _pattern_channel([0, 0, 255, 255]),  # B: blue, white
+                VirtualMemoryArray(),  # unwritten alpha slot
+                _pattern_channel([255, 255, 255, 255]),  # transparency
+            ],
+        ),
+    )
+
+
+def _fixture_pattern_16bit() -> Pattern:
+    """The same 2x2 RGB pattern with 16-bit channel planes.
+
+    The decoder only reads 8-bit pattern planes, so this pattern is skipped and
+    the fill renders the placeholder; the fixture proves a 16-bit payload is not
+    misdecoded as 8-bit pixels.
+    """
+    return Pattern(
+        version=1,
+        image_mode=3,
+        point=(2, 2),
+        name="Pictura",
+        pattern_id="pictura-pattern-16",
+        data=VirtualMemoryArrayList(
+            version=3,
+            rectangle=(0, 0, 2, 2),
+            channels=[
+                _pattern_channel([255, 0, 0, 0, 0, 0, 0, 255], 16),
+                _pattern_channel([0, 0, 255, 0, 0, 0, 0, 255], 16),
+                _pattern_channel([0, 0, 0, 0, 255, 0, 0, 255], 16),
+                VirtualMemoryArray(),
+                _pattern_channel([255, 0, 255, 0, 255, 0, 255, 0], 16),
+            ],
+        ),
+    )
+
+
+def _pattern_fill(name: str, pattern: Pattern) -> PSDImage:
+    """Base layer plus a document-sized PtFl fill referencing `pattern`.
+
+    The pattern's pixels live in the global `Patt` tagged block
+    (`Tag.PATTERNS1`), not in an image resource; the `PtFl` descriptor
+    references the pattern by id. The fill layer keeps a document-sized rect so
+    psd-tools composites the tile.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0)), name=name
+    )
+    rec = layer._record
+    layer._channels = ChannelDataList([])
+    rec.channel_info = []
+    rec.mask_data = None
+    data = DescriptorBlock(
+        Descriptor(
+            {
+                b"Ptrn": Descriptor(
+                    {
+                        b"Nm  ": String("Pictura\x00"),
+                        b"Idnt": String(pattern.pattern_id + "\x00"),
+                    },
+                    classID=b"Ptrn",
+                ),
+                b"Scl ": UnitFloat(100.0, Unit.Percent),
+                b"Algn": Bool(True),
+            },
+            classID=b"PtFl",
+        )
+    )
+    rec.tagged_blocks[Tag.PATTERN_FILL_SETTING] = TaggedBlock(
+        key=Tag.PATTERN_FILL_SETTING, data=data
+    )
+    psd._record.layer_and_mask_information.tagged_blocks = TaggedBlocks()
+    psd.tagged_blocks.set_data(Tag.PATTERNS1, [pattern])
+    return psd
+
+
+def pattern_fill() -> PSDImage:
+    """RGB, a Base pixel layer plus a document-sized 8-bit PtFl pattern fill."""
+    return _pattern_fill("Pattern Fill", _fixture_pattern())
+
+
+def pattern_fill_16bit() -> PSDImage:
+    """RGB, a Base layer plus a PtFl fill whose pattern planes are 16-bit.
+
+    The decoder skips the 16-bit pattern, so the fill renders the placeholder.
+    """
+    return _pattern_fill("Pattern Fill 16", _fixture_pattern_16bit())
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -296,6 +422,8 @@ FIXTURES = {
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
     "gradient_fill.psd": gradient_fill,
+    "pattern_fill.psd": pattern_fill,
+    "pattern_fill_16bit.psd": pattern_fill_16bit,
 }
 
 
