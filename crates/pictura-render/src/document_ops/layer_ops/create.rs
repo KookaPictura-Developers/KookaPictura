@@ -1,3 +1,4 @@
+use pictura_adjust::{GradientKind, GradientStop};
 use pictura_core::{BlendMode, Channel, ColorLabel, Document, Layer, LockFlags, PsdRect};
 
 use super::paths::{
@@ -330,6 +331,57 @@ pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -
         // ponytail: SoCo descriptor is RGB-only, alpha is dropped (app callers
         // pass 0xFF); thread alpha through if a non-opaque fill is ever needed.
         adjustment: Some(crate::encode_solid_color_fill([rgba[0], rgba[1], rgba[2]])),
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: false,
+        background: false,
+        ..Default::default()
+    };
+    insert_node(doc, selection_path, layer)
+}
+
+/// Insert a gradient fill-content layer at the [`insert_node`] rule.
+///
+/// The node is document-sized with no pixel channels; its content lives in an
+/// opaque `GdFl` block holding a black-to-white Linear gradient at angle 0.
+/// Named `"Gradient Fill N"`. Returns the new path, or empty for a
+/// zero-dimension document.
+pub fn add_gradient_fill(doc: &mut Document, selection_path: &str) -> String {
+    if doc.width == 0 || doc.height == 0 {
+        return String::new();
+    }
+    let name = next_layer_name(doc, "Gradient Fill");
+    let stops = [
+        GradientStop {
+            location: 0,
+            color: [0, 0, 0],
+        },
+        GradientStop {
+            location: 4096,
+            color: [255, 255, 255],
+        },
+    ];
+    let layer = Layer {
+        name,
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: doc.height as i32,
+            right: doc.width as i32,
+        },
+        blend: BlendMode::Normal,
+        opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: Some(crate::encode_gradient_fill(
+            GradientKind::Linear,
+            &stops,
+            0.0,
+        )),
         channels: Vec::new(),
         children: Vec::new(),
         is_group: false,

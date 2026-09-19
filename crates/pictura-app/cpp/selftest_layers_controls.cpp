@@ -15,6 +15,8 @@
 #include <QtCore/QFile>
 #include <QtGui/QAction>
 #include <QtGui/QImage>
+#include <QtWidgets/QMenu>
+#include <QtWidgets/QToolButton>
 
 int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
 {
@@ -1084,6 +1086,58 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
                 return pictura::selfTest().fail(285, "gradient map adjustment");
             }
             frame.closeDocument(gmDoc, false);
+        }
+
+        // lpr_gradient_fill (286): adding a gradient fill layer succeeds, the
+        // layer is fill content, and the composite becomes a black-to-white ramp.
+        {
+            const bool gfCreated = frame.newDocument(QStringLiteral("GradientFillCtl"), 4, 4,
+                                                     QStringLiteral("rgb"), 8,
+                                                     QStringLiteral("white"));
+            pictura::PictureView* gfView = frame.activeView();
+            if (!gfCreated || !gfView) {
+                return pictura::selfTest().fail(286, "gradient fill fixture");
+            }
+            const int gfDoc = frame.activeDocumentIndex();
+            const unsigned int gfBefore = gfView->sample_argb(0, 0);
+            const int gfBase = gfView->history_count();
+            const QString gfPath = gfView->add_gradient_fill();
+            const unsigned int gfLeft = gfView->sample_argb(0, 0);
+            const unsigned int gfRight = gfView->sample_argb(3, 0);
+            const bool gfOk = gfPath == QStringLiteral("1")
+                && gfView->layer_is_fill_content(gfPath)
+                && ((gfLeft >> 16) & 0xffu) < 64u
+                && ((gfRight >> 16) & 0xffu) > 192u
+                && gfLeft != gfBefore
+                && gfView->history_count() == gfBase + 1;
+            ST_BEGIN("lpr_gradient_fill");
+            ST_PASS("lpr_gradient_fill path=%s fill=%d left=%08x right=%08x history=%d",
+                    qPrintable(gfPath), gfView->layer_is_fill_content(gfPath) ? 1 : 0, gfLeft,
+                    gfRight, gfView->history_count() - gfBase);
+            if (!gfOk) {
+                return pictura::selfTest().fail(286, "gradient fill layer");
+            }
+            frame.closeDocument(gfDoc, false);
+        }
+
+        // lpr_gradient_fill_menu (287): the Layers-panel strip fill/adjustment
+        // menu offers an enabled `Gradient…` entry wired to the gradient fill.
+        {
+            auto* gfButton =
+                frame.findChild<QToolButton*>(QStringLiteral("layersStripFillAdjustment"));
+            bool gfEntry = false;
+            if (gfButton && gfButton->menu()) {
+                for (QAction* action : gfButton->menu()->actions()) {
+                    if (action->text() == QStringLiteral("Gradient…")) {
+                        gfEntry = action->isEnabled();
+                    }
+                }
+            }
+            ST_BEGIN("lpr_gradient_fill_menu");
+            ST_PASS("lpr_gradient_fill_menu entry=%d", gfEntry ? 1 : 0);
+            if (!gfEntry) {
+                return pictura::selfTest().fail(287, "gradient fill menu");
+            }
         }
 
     return 0;

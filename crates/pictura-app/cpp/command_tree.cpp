@@ -320,7 +320,8 @@ void addDefaultCommands(CommandRegistry& registry) {
          QStringLiteral("Delete Filter Mask"));
     registry.add(command_ids::LayerNewFillSolidColor, {"Layer", "New Fill Layer", "Solid Color…"},
                  QStringLiteral("Solid Color…"), QKeySequence(), true);
-    leaf(registry, {"Layer", "New Fill Layer", "Gradient…"}, QStringLiteral("Gradient…"));
+    registry.add(command_ids::LayerNewFillGradient, {"Layer", "New Fill Layer", "Gradient…"},
+                 QStringLiteral("Gradient…"), QKeySequence(), true);
     leaf(registry, {"Layer", "New Fill Layer", "Pattern…"}, QStringLiteral("Pattern…"));
     leaf(registry, {"Layer", "New Adjustment Layer", "Brightness/Contrast"},
          QStringLiteral("Brightness/Contrast"));

@@ -560,6 +560,12 @@ pub mod qobject {
         #[qinvokable]
         fn add_solid_fill(self: Pin<&mut Self>, rgba: u32) -> QString;
 
+        /// Append a black-to-white Linear gradient fill layer at the top of the
+        /// stack, recomposite, and record one "Gradient Fill" state on success.
+        /// Returns the new path, or empty without a document.
+        #[qinvokable]
+        fn add_gradient_fill(self: Pin<&mut Self>) -> QString;
+
         /// Whether the layer at `path` is a decodable solid-color fill layer.
         #[qinvokable]
         fn layer_is_fill_content(&self, path: &QString) -> bool;

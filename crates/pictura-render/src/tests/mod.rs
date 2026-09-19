@@ -8,6 +8,7 @@ use pictura_core::{
 mod adjustment;
 mod blend;
 mod composite;
+mod gradient_fill;
 mod rasterize;
 mod smart_object;
 

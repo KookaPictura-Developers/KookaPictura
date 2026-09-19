@@ -28,9 +28,17 @@ from psd_tools.psd.adjustments import (
     TransparencyStop,
 )
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
-from psd_tools.psd.descriptor import Descriptor, DescriptorBlock, Double
+from psd_tools.psd.descriptor import (
+    Descriptor,
+    DescriptorBlock,
+    Double,
+    Enumerated,
+    List,
+    String,
+)
 from psd_tools.psd.layer_and_mask import ChannelDataList
 from psd_tools.psd.tagged_blocks import TaggedBlock
+from psd_tools.terminology import Enum, Key, Type
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = ROOT / "crates" / "pictura-codec" / "tests" / "fixtures"
@@ -211,6 +219,74 @@ def solid_fill() -> PSDImage:
     return psd
 
 
+def _gradient_stop(location: int, rgb: tuple[int, int, int]) -> Descriptor:
+    """One custom gradient stop for a `GdFl` descriptor's `Clrs` list."""
+    return Descriptor(
+        {
+            Key.Color: Descriptor(
+                {
+                    Key.Red: Double(float(rgb[0])),
+                    Key.Green: Double(float(rgb[1])),
+                    Key.Blue: Double(float(rgb[2])),
+                },
+                classID=b"RGBC",
+            ),
+            Key.Type: Enumerated(Type.ColorStopType, Enum.UserStop),
+            Key.Location: Double(float(location)),
+            Key.Midpoint: Double(50.0),
+        },
+        classID=b"Clrt",
+    )
+
+
+def gradient_fill() -> PSDImage:
+    """RGB, a Base pixel layer plus a channel-stripped document-sized GdFl fill.
+
+    The fill layer keeps a document-sized rect so psd-tools composites the ramp
+    (a black-to-white 8-pixel row) rather than collapsing it to zero.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0)), name="Gradient Fill"
+    )
+    rec = layer._record
+    layer._channels = ChannelDataList([])
+    rec.channel_info = []
+    rec.mask_data = None
+    data = DescriptorBlock(
+        Descriptor(
+            {
+                Key.Angle: Double(0.0),
+                Key.Type: Enumerated(Type.GradientType, Enum.Linear),
+                Key.Gradient: Descriptor(
+                    {
+                        Key.Name: String("Black to White"),
+                        Type.GradientForm: Enumerated(
+                            Type.GradientForm, Enum.CustomStops
+                        ),
+                        b"Intr": Enumerated(Type.Interpolation, b"Lnr "),
+                        Key.Colors: List(
+                            [
+                                _gradient_stop(0, (0, 0, 0)),
+                                _gradient_stop(4096, (255, 255, 255)),
+                            ]
+                        ),
+                    },
+                    classID=b"Grdn",
+                ),
+            },
+            classID=b"GdFl",
+        )
+    )
+    rec.tagged_blocks[Tag.GRADIENT_FILL_SETTING] = TaggedBlock(
+        key=Tag.GRADIENT_FILL_SETTING, data=data
+    )
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -219,6 +295,7 @@ FIXTURES = {
     "adjustment.psd": adjustment,
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
+    "gradient_fill.psd": gradient_fill,
 }
 
 
