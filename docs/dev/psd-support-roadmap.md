@@ -195,8 +195,11 @@ pixels (shipped as `2026-09-19-image-import`). OS file drag-and-drop is shipped
 as `2026-09-19-file-drop-routing`: a drop on the document canvas places each
 image into the current document, while a drop on the tab strip, menu bar, or
 options bar opens each file as its own tab, reusing the same PSD-native vs
-Qt-decode routing. The remaining follow-up is an interactive free-transform
-session on place (Phase 3).
+Qt-decode routing. Free Transform shipped as `2026-09-19-free-transform-mode`:
+a successful place (menu command or canvas drop) selects the new layer and enters
+an interactive move/scale/rotate session that commits one state on Enter and
+cancels bit-identically on Escape. Skew, distort, perspective, and warp are
+deferred follow-ups.
 
 ## Reference fixtures
 
