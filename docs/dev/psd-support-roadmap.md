@@ -186,6 +186,14 @@ supports embedded objects only; linked objects (`lnkE`, external paths) are CC
 Open items: a 16-bit fixture, produced later, and whether Photoshop regenerates
 or trusts our merged composite.
 
+## Non-PSD image import
+
+`File > Open` and `File > Place…` accept common raster images
+(PNG/JPEG/GIF/BMP/TIFF/WebP) beside the native PSD/PSB path; Qt decodes at the
+app boundary and the engine builds its own document/layer structures from the
+pixels (shipped as `2026-09-19-image-import`). Planned follow-ups: OS file
+drag-and-drop, then an interactive free-transform session on place.
+
 ## Reference fixtures
 
 Supplied, currently in `assets/`, to move under
