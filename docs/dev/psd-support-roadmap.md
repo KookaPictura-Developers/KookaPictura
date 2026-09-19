@@ -82,11 +82,15 @@ against the supplied Photoshop fixtures (G16) by the `psd-tools` oracle; a
 manual Photoshop reopen and a CS6/earliest-CC fixture are deferred follow-ups.
 Shipped as the archived change `2026-09-19-psd-smart-object-roundtrip`.
 
-**P3 — Render preserved data.**
+**P3 — Render preserved data.** *(in progress)*
 Decode the remaining adjustment descriptors and real fill descriptors (G8);
-gradient/pattern fill layers; layer effects (`lfx2`/`lrFX`); text; vector masks;
-render a smart object's source through the P2.5 model, rasterizing only contents
-the renderer cannot reproduce. Write RLE by default (G12).
+gradient/pattern fill layers; layer effects (`lfx2`/`lrFX`); text; vector masks.
+**Smart-object source rendering is shipped** (archived
+`2026-09-19-smart-object-source-render`): an `Embedded` smart object with no
+raster proxy is rendered by decoding its payload and sampling it into the layer
+rect (stored merged composite preferred, layers fallback; nearest-neighbour;
+`Trnf`/warp deferred). Remaining: the other preserved-data kinds, and write RLE
+by default (G12).
 
 **P4 — Color modes and depth.**
 Indexed/Bitmap/CMYK/Lab/Multichannel/Duotone (G2) and 16/32-bit (G4) through

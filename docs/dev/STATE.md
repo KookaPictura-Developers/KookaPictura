@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **692 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
+- Test suite: **701 tests, 0 failed, 9 ignored** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
@@ -20,8 +20,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
   `layers-panel-control-polish`, `layers-panel-management`,
   `selection-tools-and-menu`, `psd-interop-compression`,
-  `psd-opaque-preservation`, and `psd-smart-object-roundtrip` changes;
-  canonical specs are in `openspec/specs/` (68 specs, `validate --all --strict`
+  `psd-opaque-preservation`, `psd-smart-object-roundtrip`, and
+  `smart-object-source-render` changes;
+  canonical specs are in `openspec/specs/` (69 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
   content rather than a milestone number.
@@ -37,6 +38,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   Raw settings model targets the earliest CC (ACR 8 / PV2012) `Fltr` key set,
   later-CC keys preserved, and `crs:` XMP is preserve-only. A CS6/earliest-CC
   fixture and the manual Photoshop reopen are deferred follow-ups.
+- Smart-object source rendering (roadmap P3, archived
+  `2026-09-19-smart-object-source-render`): `pictura-render` now depends on
+  `pictura-codec` and `composite_rgba` renders an `Embedded` smart object's
+  payload when the layer has no raster proxy (`composite.rs::composite_smart_source`):
+  decode the payload, prefer its stored merged composite, else composite its
+  layers; sample nearest-neighbour into the layer rect; `External`/`Alias`/
+  `Unresolved`/empty/undecodable are no-ops. `Document.merged_composite_present`
+  distinguishes a real merged composite from the codec's zero-filled placeholder
+  so the layers-fallback is reachable. `Trnf`/warp and bilinear resampling are a
+  `ponytail:` ceiling. A layer with a raster proxy still renders from the proxy.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's

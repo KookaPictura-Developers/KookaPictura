@@ -1,5 +1,8 @@
 use pictura_adjust::{Adjustment, BrightnessContrastParams, HueSaturationParams, LevelsParams};
-use pictura_core::{AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelBuffer};
+use pictura_core::{
+    AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelBuffer, SmartObject,
+    SmartObjectKind,
+};
 
 /// Composite the document's layer stack.
 ///
@@ -88,11 +91,19 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             composite_adjustment(canvas, layer, &adjustment);
         }
     } else {
-        composite_pixels(canvas, layer, doc);
+        if !composite_smart_source(canvas, layer, layer.smart_object.as_ref()) {
+            composite_pixels(canvas, layer, doc);
+        }
     }
 }
 
 fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
+    // A smart-object layer with no raster proxy has no channel to draw from. The
+    // embedded-source branch above handles it; if that source is unusable, leave
+    // the backdrop unchanged instead of painting the channel-less rect black.
+    if layer.smart_object.is_some() && channel(layer, 0).is_none() {
+        return;
+    }
     let lw = layer.rect.width();
     let lh = layer.rect.height();
     if lw <= 0 || lh <= 0 {
@@ -140,6 +151,97 @@ fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             );
         }
     }
+}
+
+/// Render a layer from its embedded smart-object source when it has no raster
+/// proxy, scaling the decoded source into the layer rect. Returns `true` when
+/// it produced pixels, so the caller skips the (empty) channel path.
+///
+/// `External`/`Alias`/`Unresolved`, an empty payload, or a decode failure
+/// returns `false`; the caller then tries the normal path, which draws nothing
+/// for a channel-less layer.
+fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, so: Option<&SmartObject>) -> bool {
+    let Some(so) = so else {
+        return false;
+    };
+    if so.kind != SmartObjectKind::Embedded || channel(layer, 0).is_some() {
+        return false;
+    }
+    let Some(payload) = so.payload.as_deref().filter(|p| !p.is_empty()) else {
+        return false;
+    };
+    // ponytail: an embedded source that itself holds a no-proxy smart object
+    // recurses without a depth guard; a crafted cyclic payload could loop. Add
+    // a depth pass-through when untrusted embeddings appear.
+    let Ok(embedded) = pictura_codec::read_psd(payload) else {
+        return false;
+    };
+    let comp = &embedded.composite;
+    let usable = comp.width > 0
+        && comp.height > 0
+        && comp.channels >= 1
+        && comp.data.len() == comp.width as usize * comp.height as usize * comp.channels as usize;
+    let fallback;
+    let src: &PixelBuffer = if embedded.merged_composite_present && usable {
+        comp
+    } else {
+        fallback = composite_rgba(&embedded);
+        &fallback
+    };
+
+    let src_w = src.width as usize;
+    let src_h = src.height as usize;
+    let ch = src.channels as usize;
+    if src_w == 0 || src_h == 0 || ch == 0 {
+        return false;
+    }
+    let plane = src_w * src_h;
+
+    let lw = layer.rect.width();
+    let lh = layer.rect.height();
+    if lw <= 0 || lh <= 0 {
+        return false;
+    }
+    let lw = lw as usize;
+    let lh = lh as usize;
+    let x0 = layer.rect.left.max(0);
+    let y0 = layer.rect.top.max(0);
+    let x1 = layer.rect.right.min(canvas.w as i32);
+    let y1 = layer.rect.bottom.min(canvas.h as i32);
+    if x1 <= x0 || y1 <= y0 {
+        return false;
+    }
+
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let sx = (x - layer.rect.left) as u64 * src_w as u64 / lw as u64;
+            let sy = (y - layer.rect.top) as u64 * src_h as u64 / lh as u64;
+            let si = sy as usize * src_w + sx as usize;
+            if si >= plane {
+                continue;
+            }
+            let (r, g, b) = if ch < 3 {
+                let v = src.data[si];
+                (v, v, v)
+            } else {
+                (src.data[si], src.data[plane + si], src.data[2 * plane + si])
+            };
+            let a = if ch >= 4 {
+                src.data[3 * plane + si]
+            } else {
+                255
+            };
+            blend_into(
+                canvas,
+                layer,
+                x as usize,
+                y as usize,
+                [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0],
+                a as f32 / 255.0,
+            );
+        }
+    }
+    true
 }
 
 fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
