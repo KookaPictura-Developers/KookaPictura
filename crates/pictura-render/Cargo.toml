@@ -13,11 +13,11 @@ pictura-adjust = { path = "../pictura-adjust" }
 pictura-ops = { path = "../pictura-ops" }
 # M6-C: apply destructive filters to a layer's color channels.
 pictura-filters = { path = "../pictura-filters" }
+# Decode an embedded PSD/PSB smart-object source when a layer has no raster proxy.
+pictura-codec = { path = "../pictura-codec" }
 # wgpu/pollster versions track `pictura-app`, which already pulls wgpu 30.0.1.
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "vulkan", "wgsl"] }
 pollster = "1"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }
-# M12-B: structural document-ops oracle round-trips through the PSD codec.
-pictura-codec = { path = "../pictura-codec" }

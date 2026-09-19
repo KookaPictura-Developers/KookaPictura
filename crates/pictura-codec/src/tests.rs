@@ -828,6 +828,7 @@ fn zip_composite_round_trips() {
     let doc = read_psd(&p).unwrap();
     assert_eq!(doc.composite.channels, 3);
     assert_eq!(doc.composite.data, planes.to_vec());
+    assert!(doc.merged_composite_present);
 }
 
 #[test]
@@ -896,6 +897,7 @@ fn absent_composite_yields_zero_composite() {
     assert_eq!(back.layers.len(), 1);
     assert_eq!(back.composite.channels, 3);
     assert_eq!(back.composite.data, vec![0u8; 4 * 4 * 3]);
+    assert!(!back.merged_composite_present);
 
     // A bare header with no layer section still errors as truncated.
     assert!(read_psd(&header(1, 3, 1, 1, 3)).is_err());
