@@ -124,8 +124,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Edit", "Content-Aware Scale"}, QStringLiteral("Content-Aware Scale"),
          QStringLiteral("Alt+Shift+Ctrl+C"));
     leaf(registry, {"Edit", "Puppet Warp"}, QStringLiteral("Puppet Warp"));
-    leaf(registry, {"Edit", "Free Transform"}, QStringLiteral("Free Transform"),
-         QStringLiteral("Ctrl+T"));
+    registry.add(command_ids::EditFreeTransform, {"Edit", "Free Transform"},
+                 QStringLiteral("Free Transform"), QKeySequence(QStringLiteral("Ctrl+T")), true);
     leaf(registry, {"Edit", "Transform", "Again"}, QStringLiteral("Again"),
          QStringLiteral("Shift+Ctrl+T"));
     leaf(registry, {"Edit", "Transform", "Scale"}, QStringLiteral("Scale"));

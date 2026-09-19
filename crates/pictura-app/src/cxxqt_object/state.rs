@@ -1,9 +1,28 @@
 use crate::history::History;
 use cxx_qt_lib::QImage;
-use pictura_core::Document;
+use pictura_core::{Document, PsdRect};
 use pictura_paint::Stroke;
 use pictura_select::Selection;
 use std::collections::HashMap;
+
+/// The live Free Transform session: the target path, the source rect, the
+/// current similarity transform about that rect's centre, and the drag state.
+pub struct TransformSession {
+    pub(super) path: String,
+    pub(super) orig_rect: PsdRect,
+    pub(super) scale_x: f64,
+    pub(super) scale_y: f64,
+    pub(super) angle: f64,
+    pub(super) dx: f64,
+    pub(super) dy: f64,
+    /// Active handle: 0..=7 scale, 8 rotate, 9 move, -1 none.
+    pub(super) handle: i32,
+    pub(super) press_x: f64,
+    pub(super) press_y: f64,
+    /// `[scale_x, scale_y, angle, dx, dy]` captured at press.
+    pub(super) start: [f64; 5],
+    pub(super) dragging: bool,
+}
 
 /// Backing Rust state for [`super::qobject::PictureView`].
 pub struct PictureViewRust {
@@ -32,6 +51,7 @@ pub struct PictureViewRust {
     pub(super) move_prepared_revision: u64,
     pub(super) move_prepared_layer: i32,
     pub(super) move_preview_cache_hit: bool,
+    pub(super) transform_session: Option<TransformSession>,
     pub(super) opacity_preview_changed: bool,
     pub(super) fill_preview_changed: bool,
     pub(super) content_revision: u64,
@@ -64,6 +84,7 @@ impl Default for PictureViewRust {
             move_prepared_revision: 0,
             move_prepared_layer: -1,
             move_preview_cache_hit: false,
+            transform_session: None,
             opacity_preview_changed: false,
             fill_preview_changed: false,
             content_revision: 0,

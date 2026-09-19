@@ -379,6 +379,7 @@ impl super::PictureViewRust {
         self.move_x = 0;
         self.move_y = 0;
         self.move_opacity = 0;
+        self.transform_session = None;
         self.display_dirty = false;
         self.link_sets.clear();
     }

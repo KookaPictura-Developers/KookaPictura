@@ -4,6 +4,7 @@
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtGui/QFontMetrics>
+#include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
@@ -307,6 +308,81 @@ void ImageView::endMovePreview()
     update();
 }
 
+void ImageView::beginTransformPreview(const QImage& base, const QImage& layer,
+                                      const QPointF& layerPos, double opacity)
+{
+    moveBase_ = base;
+    moveLayer_ = layer;
+    moveLayerPos_ = layerPos;
+    moveDelta_ = QPointF();
+    moveOpacity_ = opacity;
+    movePreviewActive_ = true;
+    transformActive_ = true;
+    transformScaleX_ = 1.0;
+    transformScaleY_ = 1.0;
+    transformAngle_ = 0.0;
+    transformDx_ = 0.0;
+    transformDy_ = 0.0;
+    transformQuad_.clear();
+    update();
+}
+
+void ImageView::setTransformPreview(double scaleX, double scaleY, double angleRadians, double dx,
+                                    double dy)
+{
+    transformScaleX_ = scaleX;
+    transformScaleY_ = scaleY;
+    transformAngle_ = angleRadians;
+    transformDx_ = dx;
+    transformDy_ = dy;
+    update();
+}
+
+QTransform ImageView::transformPreviewMatrix() const
+{
+    const double cx = moveLayerPos_.x() + moveLayer_.width() / 2.0;
+    const double cy = moveLayerPos_.y() + moveLayer_.height() / 2.0;
+    QTransform matrix;
+    matrix.translate(transformDx_, transformDy_);
+    matrix.translate(cx, cy);
+    matrix.rotate(transformAngle_ * 180.0 / M_PI);
+    matrix.scale(transformScaleX_, transformScaleY_);
+    matrix.translate(-cx, -cy);
+    return matrix;
+}
+
+void ImageView::setTransformQuad(const QString& encoded)
+{
+    transformQuad_.clear();
+    const QStringList points = encoded.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    for (const QString& point : points) {
+        const int comma = point.indexOf(QLatin1Char(','));
+        if (comma < 0) {
+            continue;
+        }
+        bool okX = false;
+        bool okY = false;
+        const double x = point.left(comma).toDouble(&okX);
+        const double y = point.mid(comma + 1).toDouble(&okY);
+        if (okX && okY) {
+            transformQuad_ << QPointF(x, y);
+        }
+    }
+    update();
+}
+
+void ImageView::clearTransformPreview()
+{
+    transformActive_ = false;
+    transformQuad_.clear();
+    movePreviewActive_ = false;
+    moveBase_ = QImage();
+    moveLayer_ = QImage();
+    moveDelta_ = QPointF();
+    moveOpacity_ = 1.0;
+    update();
+}
+
 void ImageView::setDragSizeHint(const QString& text, const QPointF& imagePos)
 {
     dragSizeText_ = text;
@@ -386,7 +462,18 @@ void ImageView::paintEvent(QPaintEvent*)
     // Crop the base, the move-preview layer, and the overlay to the document.
     painter.setClipRect(QRectF(0.0, 0.0, image_.width(), image_.height()));
 
-    if (movePreviewActive_ && !moveBase_.isNull()) {
+    if (transformActive_ && !moveBase_.isNull()) {
+        // Free Transform: the base is fixed; the layer is drawn under the live
+        // similarity transform about its original centre.
+        painter.drawImage(QPointF(0.0, 0.0), moveBase_);
+        painter.setOpacity(moveOpacity_);
+        painter.save();
+        painter.setTransform(transformPreviewMatrix(), true);
+        painter.drawImage(moveLayerPos_, moveLayer_);
+        painter.restore();
+        painter.setOpacity(1.0);
+        presentCacheRebuiltLastPaint_ = false;
+    } else if (movePreviewActive_ && !moveBase_.isNull()) {
         // Draw the base and moving layer straight through the pan/zoom
         // transform. A move preview is transient and its sources change every
         // drag, so a scaled present cache would be rebuilt on the first frame
@@ -463,6 +550,46 @@ void ImageView::paintEvent(QPaintEvent*)
                 painter.drawPolyline(loop);
             }
         }
+    }
+
+    if (transformActive_ && transformQuad_.size() >= 4) {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(Qt::white, 0, Qt::SolidLine));
+        painter.drawPolygon(transformQuad_);
+        painter.setPen(QPen(Qt::black, 0, Qt::DashLine));
+        painter.drawPolygon(transformQuad_);
+
+        // Eight scale handles at the corners and edge midpoints.
+        const QPointF tl = transformQuad_.at(0);
+        const QPointF tr = transformQuad_.at(1);
+        const QPointF br = transformQuad_.at(2);
+        const QPointF bl = transformQuad_.at(3);
+        const QPointF handles[8] = {
+            tl,
+            tr,
+            br,
+            bl,
+            (tl + tr) / 2.0,
+            (tr + br) / 2.0,
+            (br + bl) / 2.0,
+            (bl + tl) / 2.0,
+        };
+        const double hs = 3.5 / (zoom_ > 0.0 ? zoom_ : 1.0);
+        painter.setBrush(Qt::white);
+        painter.setPen(QPen(Qt::black, 0, Qt::SolidLine));
+        for (const QPointF& h : handles) {
+            const QRectF box(h.x() - hs, h.y() - hs, 2.0 * hs, 2.0 * hs);
+            painter.drawRect(box);
+        }
+
+        // Rotate affordance: a short stem and knob below the bottom edge.
+        const QPointF bottomMid = (br + bl) / 2.0;
+        const double stem = 22.0 / (zoom_ > 0.0 ? zoom_ : 1.0);
+        const QPointF knob(bottomMid.x(), bottomMid.y() + stem);
+        painter.setPen(QPen(Qt::white, 0, Qt::SolidLine));
+        painter.drawLine(bottomMid, knob);
+        painter.setBrush(Qt::white);
+        painter.drawEllipse(knob, hs, hs);
     }
 
     if (dragSizeActive_ && !dragSizeText_.isEmpty()) {
@@ -584,6 +711,23 @@ void ImageView::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
     updateAntsTimer();
+}
+
+void ImageView::keyPressEvent(QKeyEvent* event)
+{
+    if (transformActive_) {
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+            emit transformCommitRequested();
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Escape) {
+            emit transformCancelRequested();
+            event->accept();
+            return;
+        }
+    }
+    QWidget::keyPressEvent(event);
 }
 
 void ImageView::hideEvent(QHideEvent* event)

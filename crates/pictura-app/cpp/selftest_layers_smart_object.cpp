@@ -3,8 +3,11 @@
 
 #include "frame.h"
 #include "image_view.h"
+#include "panels/layers_panel.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+
+#include <cmath>
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
@@ -15,6 +18,7 @@
 #include <QtGui/QDragEnterEvent>
 #include <QtGui/QDropEvent>
 #include <QtGui/QImage>
+#include <QtGui/QKeyEvent>
 #include <QtWidgets/QMenuBar>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
@@ -826,5 +830,176 @@ int pictura::runFileDropChecks(pictura::PicturaMainWindow& frame)
     if (!ok) {
         return pictura::selfTest().fail(291, "file drop routing");
     }
+    return 0;
+}
+
+int pictura::runFreeTransformChecks(pictura::PicturaMainWindow& frame)
+{
+    // lpr_free_transform (292): a canvas drop places a raster image and enters a
+    // Free Transform session on the new layer; a corner-scale gesture commits in
+    // exactly one "Free Transform" state and changes the layer rect; a second
+    // session's rotation cancels byte-identically with history unchanged; a
+    // group, an adjustment layer, and the Background refuse both the predicate
+    // and a session begin.
+    const QString png = QDir::tempPath() + QStringLiteral("/kooka-pictura-free-transform.png");
+    QImage image(4, 4, QImage::Format_RGBA8888);
+    image.fill(QColor(255, 0, 0, 255));
+    if (!image.save(png, "PNG")) {
+        return pictura::selfTest().fail(292, "free transform fixture");
+    }
+
+    const bool created = frame.newDocument(QStringLiteral("FreeTransformCtl"), 8, 8,
+                                           QStringLiteral("rgb"), 8,
+                                           QStringLiteral("transparent"));
+    pictura::PictureView* view = frame.activeView();
+    pictura::ImageView* canvas = frame.imageView();
+    if (!created || !view || !canvas) {
+        QFile::remove(png);
+        return pictura::selfTest().fail(292, "free transform canvas fixture");
+    }
+    const int doc = frame.activeDocumentIndex();
+    const int base = view->history_count();
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(png)});
+    const DropResult drop = sendDrop(canvas, mime);
+    const QString path = view->transform_session_path();
+    const bool entered = drop.enter && drop.drop && view->transform_session_active()
+        && !path.isEmpty() && view->history_label(base) == QStringLiteral("Place");
+
+    // A successful place selects the newly placed layer in the Layers panel.
+    auto* layersPanel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    const bool placedSelected = layersPanel && !path.isEmpty()
+        && layersPanel->currentPath() == path;
+
+    // Begin-while-active: the same path is a no-op; a different path cancels
+    // the active session and starts a new one on the new target.
+    const QString otherPath = view->layer_row_path(view->layer_row_count() - 1);
+    const bool samePathNoop = view->begin_free_transform(path)
+        && view->transform_session_active() && view->transform_session_path() == path;
+    const bool otherPathSwitched = otherPath != path
+        && view->begin_free_transform(otherPath) && view->transform_session_path() == otherPath;
+    const bool restoredPath =
+        view->begin_free_transform(path) && view->transform_session_path() == path;
+
+    const QString beforeRect = view->layer_rect(path);
+
+    // Scale about the top-left corner: press the handle, drag outward, commit.
+    const int hit = view->transform_press(0.0, 0.0, 1.0, false, false);
+    const bool moved = view->transform_move(-4.0, -4.0, 1.0, false, false);
+
+    // Preview mapping must match commit: the painter transform composes as
+    // `c + R·S·(u − c) + d` (the offset is the outermost translate), not
+    // `c + R·S·(u − c + d)`. The gesture (sx=sy=2, dx=dy=−2) must map the
+    // dragged corner (0,0) to (−4,−4) and the anchor (4,4) to (4,4).
+    canvas->setTransformPreview(2.0, 2.0, 0.0, -2.0, -2.0);
+    const QTransform previewMatrix = canvas->transformPreviewMatrix();
+    const QPointF previewDragged = previewMatrix.map(QPointF(0.0, 0.0));
+    const QPointF previewAnchor = previewMatrix.map(QPointF(4.0, 4.0));
+    const bool previewMatchesCommit =
+        std::abs(previewDragged.x() + 4.0) < 1e-6 && std::abs(previewDragged.y() + 4.0) < 1e-6
+        && std::abs(previewAnchor.x() - 4.0) < 1e-6 && std::abs(previewAnchor.y() - 4.0) < 1e-6;
+
+    view->transform_release();
+    const bool committed = view->commit_transform();
+    frame.imageView()->clearTransformPreview();
+    const QString afterRect = view->layer_rect(path);
+    const bool oneState = view->history_count() == base + 2
+        && view->history_label(base + 1) == QStringLiteral("Free Transform");
+    const bool rectChanged = !beforeRect.isEmpty() && afterRect != beforeRect;
+    const bool previewMatchesCommitRect = previewMatchesCommit
+        && afterRect == QStringLiteral("-4 -4 4 4");
+
+    // Save the committed state, then rotate a second session and cancel: the
+    // document must be byte-identical and the history count unchanged.
+    const QString saveA = QDir::tempPath() + QStringLiteral("/kooka-pictura-ft-a.psd");
+    const QString saveB = QDir::tempPath() + QStringLiteral("/kooka-pictura-ft-b.psd");
+    const bool savedA = view->save(saveA);
+    const int cancelBase = view->history_count();
+    const bool reentered = view->begin_free_transform(path);
+    const int rotHit = view->transform_press(-10.0, -10.0, 1.0, false, false);
+    const bool rotated = rotHit == 8
+        && view->transform_move(8.0, -2.0, 1.0, false, false)
+        && view->transform_angle() != 0.0;
+    view->cancel_transform();
+    frame.imageView()->clearTransformPreview();
+    const bool cancelled = !view->transform_session_active();
+    const bool savedB = view->save(saveB);
+    QFile fileA(saveA);
+    QFile fileB(saveB);
+    const bool readA = fileA.open(QIODevice::ReadOnly);
+    const bool readB = fileB.open(QIODevice::ReadOnly);
+    const bool identical = readA && readB && fileA.readAll() == fileB.readAll();
+    const bool historyKept = view->history_count() == cancelBase;
+
+    // An identity commit records nothing and leaves the document unchanged.
+    const int identityBase = view->history_count();
+    const bool identityBegin = view->begin_free_transform(path);
+    const bool identityCommitted = view->commit_transform();
+    const bool identityNoState =
+        !identityCommitted && view->history_count() == identityBase;
+
+    // Enter and Escape reach commit/cancel through the real ImageView key path.
+    const int keyCommitBase = view->history_count();
+    const bool keyBegin = frame.beginFreeTransform(path);
+    const bool keyHit = view->transform_press(4.0, 4.0, 1.0, false, false) == 2;
+    const bool keyMoved = view->transform_move(6.0, 6.0, 1.0, false, false);
+    QKeyEvent enterEvent(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QCoreApplication::sendEvent(canvas, &enterEvent);
+    const bool keyCommitted = enterEvent.isAccepted() && keyBegin && keyHit && keyMoved
+        && !view->transform_session_active() && view->history_count() == keyCommitBase + 1
+        && view->history_label(keyCommitBase) == QStringLiteral("Free Transform");
+
+    const int keyCancelBase = view->history_count();
+    const bool keyReenter = frame.beginFreeTransform(path);
+    QKeyEvent escapeEvent(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QCoreApplication::sendEvent(canvas, &escapeEvent);
+    const bool keyCancelled = escapeEvent.isAccepted() && keyReenter
+        && !view->transform_session_active() && view->history_count() == keyCancelBase;
+
+    // Refusals: a group, an adjustment layer, and the Background.
+    const QString group = view->add_group_in(QString());
+    const bool groupCan = !group.isEmpty() && !view->layer_can_free_transform(group)
+        && !view->begin_free_transform(group);
+    const bool adjAdded = view->add_adjustment(QStringLiteral("invert"));
+    const QString adjPath = adjAdded ? view->layer_row_path(0) : QString();
+    const bool adjCan = adjAdded && !adjPath.isEmpty()
+        && !view->layer_can_free_transform(adjPath)
+        && !view->begin_free_transform(adjPath);
+    const bool bgCreated = frame.newDocument(QStringLiteral("FreeTransformBg"), 4, 4,
+                                             QStringLiteral("rgb"), 8,
+                                             QStringLiteral("white"));
+    pictura::PictureView* bgView = frame.activeView();
+    const bool bgFlagged =
+        bgCreated && bgView && bgView->background_from_layer(QStringLiteral("0"));
+    const bool bgCan = bgFlagged && !bgView->layer_can_free_transform(QStringLiteral("0"))
+        && !bgView->begin_free_transform(QStringLiteral("0"));
+    const int bgDoc = bgFlagged ? frame.activeDocumentIndex() : -1;
+
+    const bool ok = entered && placedSelected && samePathNoop && otherPathSwitched
+        && restoredPath && hit == 0 && moved && previewMatchesCommitRect && committed && oneState
+        && rectChanged && savedA && reentered && rotHit == 8 && rotated && cancelled && savedB
+        && identical && historyKept && identityBegin && identityNoState && keyBegin && keyCommitted
+        && keyReenter && keyCancelled && groupCan && adjCan && bgCan;
+    ST_BEGIN("lpr_free_transform");
+    ST_PASS("lpr_free_transform entered=%d select=%d begin=%d preview=%d hit=%d moved=%d "
+            "commit=%d states=%d rect=%s->%s keys=%d rotate=%d cancel=%d identical=%d "
+            "history=%d identity=%d group=%d adj=%d bg=%d",
+            entered ? 1 : 0, placedSelected ? 1 : 0,
+            (samePathNoop && otherPathSwitched && restoredPath) ? 1 : 0,
+            previewMatchesCommitRect ? 1 : 0, hit, moved ? 1 : 0, committed ? 1 : 0,
+            view->history_count() - base, qPrintable(beforeRect), qPrintable(afterRect),
+            (keyCommitted && keyCancelled) ? 1 : 0, rotated ? 1 : 0, cancelled ? 1 : 0,
+            identical ? 1 : 0, historyKept ? 1 : 0, identityNoState ? 1 : 0, groupCan ? 1 : 0,
+            adjCan ? 1 : 0, bgCan ? 1 : 0);
+    if (!ok) {
+        return pictura::selfTest().fail(292, "free transform");
+    }
+    QFile::remove(png);
+    QFile::remove(saveA);
+    QFile::remove(saveB);
+    if (bgDoc >= 0) {
+        frame.closeDocument(bgDoc, false);
+    }
+    frame.closeDocument(doc, false);
     return 0;
 }

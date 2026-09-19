@@ -1009,6 +1009,87 @@ pub mod qobject {
         #[qinvokable]
         fn flip_doc(self: Pin<&mut Self>, horizontal: bool) -> bool;
 
+        /// Whether `path` resolves to a transformable target for Free Transform:
+        /// a raster pixel layer, or a channel-less embedded smart object whose
+        /// source materializes. Read-only; mutates nothing.
+        #[qinvokable]
+        fn layer_can_free_transform(&self, path: &QString) -> bool;
+
+        /// Begin a Free Transform session on the layer at `path`. A second begin
+        /// on the same active path is a no-op; a different path cancels first.
+        /// Returns false for an untransformable target (group, adjustment,
+        /// Background, position-locked, zero-area, or undecodable channel-less).
+        #[qinvokable]
+        fn begin_free_transform(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// Clear the active Free Transform session without touching the document.
+        #[qinvokable]
+        fn cancel_transform(self: Pin<&mut Self>);
+
+        /// Commit the session: one `transform_layer` call, recomposite, and one
+        /// `"Free Transform"` history state on a non-identity success. Returns
+        /// false (no state) for an identity transform or an engine refusal; the
+        /// session always clears.
+        #[qinvokable]
+        fn commit_transform(self: Pin<&mut Self>) -> bool;
+
+        /// Begin a transform drag at document-space `(x, y)`. Returns the hit
+        /// handle (0..=7 scale, 8 rotate, 9 move) or -1 when nothing was hit.
+        #[qinvokable]
+        fn transform_press(
+            self: Pin<&mut Self>,
+            x: f64,
+            y: f64,
+            zoom: f64,
+            shift: bool,
+            alt: bool,
+        ) -> i32;
+
+        /// Hover hit-test for the transform overlay cursor; 0..=7 scale,
+        /// 8 rotate, 9 move, -1 outside. Read-only.
+        #[qinvokable]
+        fn transform_hit_test(&self, x: f64, y: f64, zoom: f64) -> i32;
+
+        /// Update the active transform drag from document-space `(x, y)`. Shift
+        /// locks the corner aspect ratio and snaps rotation to 15°. Returns false
+        /// without an active drag.
+        #[qinvokable]
+        fn transform_move(
+            self: Pin<&mut Self>,
+            x: f64,
+            y: f64,
+            zoom: f64,
+            shift: bool,
+            alt: bool,
+        ) -> bool;
+
+        /// End the active transform drag, leaving the session open.
+        #[qinvokable]
+        fn transform_release(self: Pin<&mut Self>) -> bool;
+
+        /// Session probes: active flag, target path, and the live transform
+        /// values (`1.0`/`0.0` when inactive), plus the quad as
+        /// `"x,y x,y x,y x,y"` and the layer at `path`'s rect as
+        /// `"left top right bottom"`. All read-only.
+        #[qinvokable]
+        fn transform_session_active(&self) -> bool;
+        #[qinvokable]
+        fn transform_session_path(&self) -> QString;
+        #[qinvokable]
+        fn transform_scale_x(&self) -> f64;
+        #[qinvokable]
+        fn transform_scale_y(&self) -> f64;
+        #[qinvokable]
+        fn transform_angle(&self) -> f64;
+        #[qinvokable]
+        fn transform_dx(&self) -> f64;
+        #[qinvokable]
+        fn transform_dy(&self) -> f64;
+        #[qinvokable]
+        fn transform_quad(&self) -> QString;
+        #[qinvokable]
+        fn layer_rect(&self, path: &QString) -> QString;
+
         #[qinvokable]
         fn undo(self: Pin<&mut Self>) -> bool;
 

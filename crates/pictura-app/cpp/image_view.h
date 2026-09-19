@@ -7,9 +7,11 @@
 #include <QtGui/QColor>
 #include <QtGui/QImage>
 #include <QtGui/QPolygonF>
+#include <QtGui/QTransform>
 #include <QtWidgets/QWidget>
 
 class QMouseEvent;
+class QKeyEvent;
 class QPaintEvent;
 class QResizeEvent;
 class QWheelEvent;
@@ -111,6 +113,23 @@ public:
     void endMovePreview();
     bool movePreviewActive() const { return movePreviewActive_; }
 
+    // Free Transform preview: same cached base/layer as the Move preview, but the
+    // layer is drawn under a live similarity transform (scale/rotate/translate
+    // about the layer centre) and the quad with its eight handles is overlaid.
+    void beginTransformPreview(const QImage& base, const QImage& layer, const QPointF& layerPos,
+                               double opacity);
+    void setTransformPreview(double scaleX, double scaleY, double angleRadians, double dx,
+                             double dy);
+    void setTransformQuad(const QString& encoded);
+    void clearTransformPreview();
+    bool transformPreviewActive() const { return transformActive_; }
+
+    // The document-space matrix the live preview applies to the cached layer
+    // (`c + R·S·(u − c) + d`). paintEvent draws through the same matrix, so a
+    // gesture's preview mapping can be checked against the committed mapping
+    // without rendering.
+    QTransform transformPreviewMatrix() const;
+
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
     // mapped cursor. Empty text or clearDragSizeHint() hides it.
     void setDragSizeHint(const QString& text, const QPointF& imagePos);
@@ -132,6 +151,9 @@ signals:
     void mousePressed(const QPointF& imagePos, int button, int modifiers);
     void mouseMoved(const QPointF& imagePos);
     void mouseReleased(const QPointF& imagePos);
+    // Free Transform Enter/Return (commit) and Escape (cancel).
+    void transformCommitRequested();
+    void transformCancelRequested();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -139,6 +161,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
@@ -185,6 +208,14 @@ private:
     QPointF moveLayerPos_;
     QPointF moveDelta_;
     double moveOpacity_ = 1.0;
+
+    bool transformActive_ = false;
+    double transformScaleX_ = 1.0;
+    double transformScaleY_ = 1.0;
+    double transformAngle_ = 0.0;
+    double transformDx_ = 0.0;
+    double transformDy_ = 0.0;
+    QPolygonF transformQuad_;
 
     QString dragSizeText_;
     QPointF dragSizeImagePos_;

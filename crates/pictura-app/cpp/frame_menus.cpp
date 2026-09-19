@@ -76,6 +76,8 @@ void PicturaMainWindow::registerHandlers()
         const QString created =
             psd ? view->place_smart_object(path) : view->place_image(path);
         if (!created.isEmpty()) {
+            beginFreeTransform(created);
+            selectLayerPath(created);
             refresh();
         }
     });
@@ -182,6 +184,23 @@ void PicturaMainWindow::registerHandlers()
     });
     registry_->setEnabledProvider(command_ids::EditStepForward,
                                   [this]() { return activeView() && activeView()->can_redo(); });
+
+    registry_->setHandler(command_ids::EditFreeTransform, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty()) {
+            return;
+        }
+        if (beginFreeTransform(path)) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::EditFreeTransform, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        return view && view->has_document() && !path.isEmpty()
+            && view->layer_can_free_transform(path);
+    });
 
     registry_->setHandler(command_ids::ImageRotate90Cw, [this]() {
         if (PictureView* view = activeView(); view && view->rotate_doc(1)) {
@@ -857,6 +876,21 @@ void PicturaMainWindow::registerHandlers()
         QMessageBox::about(this, tr("About Kooka Pictura"),
                            tr("Kooka Pictura — a Photoshop CS6 reimplementation in Rust and Qt."));
     });
+}
+
+bool PicturaMainWindow::beginFreeTransform(const QString& path)
+{
+    return tools_ && tools_->beginFreeTransform(path);
+}
+
+void PicturaMainWindow::selectLayerPath(const QString& path)
+{
+    if (!layersPanel_ || path.isEmpty()) {
+        return;
+    }
+    layersPanel_->setView(activeView());
+    layersPanel_->refresh();
+    layersPanel_->selectPaths(QStringList{path}, path);
 }
 
 } // namespace pictura

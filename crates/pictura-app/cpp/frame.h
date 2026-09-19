@@ -173,6 +173,12 @@ public:
     static bool isNativeDocumentPath(const QString& path);
     bool openAsSmartObjectPath(const QString& path);
     bool editSmartObjectContents(const QString& layerPath);
+    // Begin a Free Transform session on `path` in the active view and show its
+    // overlay. Returns false without a transformable target.
+    bool beginFreeTransform(const QString& path);
+    // Make `path` the active Layers-panel row (refresh first so a just-created
+    // layer is present in the model). No-op without the panel or an empty path.
+    void selectLayerPath(const QString& path);
     bool saveActive();
     bool saveActiveAs(const QString& path);
     bool revertActive();

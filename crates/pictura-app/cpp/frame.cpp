@@ -98,6 +98,16 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     connect(panelRefreshTimer_, &QTimer::timeout, this, &PicturaMainWindow::refreshPanels);
 
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int) {
+        PictureView* active = activeView();
+        for (int i = 0; i < docs_.size(); ++i) {
+            PictureView* view = viewAt(i);
+            if (view && view != active && view->transform_session_active()) {
+                view->cancel_transform();
+                if (ImageView* canvas = canvasAt(i)) {
+                    canvas->clearTransformPreview();
+                }
+            }
+        }
         refresh();
         panelRefreshTimer_->stop();
         refreshPanels();
@@ -511,6 +521,8 @@ void PicturaMainWindow::removeDocument(int index)
         }
     }
     tabs_->removeTab(index);
+    entry.view->cancel_transform();
+    entry.canvas->clearTransformPreview();
     delete entry.canvas;
     delete entry.view;
     refresh();

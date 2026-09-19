@@ -16,6 +16,9 @@ mod smart_object;
 mod tests;
 #[cfg(test)]
 mod tests_via;
+mod transform;
+#[cfg(test)]
+mod transform_tests;
 mod via;
 
 pub use create::{
@@ -43,4 +46,5 @@ pub use smart_object::{
     place_smart_object, rasterize_smart_object, replace_smart_object_contents,
     smart_object_source_bytes,
 };
+pub use transform::{transform_layer, LayerTransform};
 pub use via::{layer_via_copy, layer_via_cut};

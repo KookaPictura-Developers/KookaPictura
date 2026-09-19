@@ -61,11 +61,15 @@ bool FileDropRouter::eventFilter(QObject* watched, QEvent* event)
     PictureView* view = frame_->activeView();
     const bool place = qobject_cast<ImageView*>(watched) != nullptr && view != nullptr;
     bool changed = false;
+    QString lastPlaced;
     if (place) {
         for (const QString& path : paths) {
             const QString layer = PicturaMainWindow::isNativeDocumentPath(path)
                 ? view->place_smart_object(path)
                 : view->place_image(path);
+            if (!layer.isEmpty()) {
+                lastPlaced = layer;
+            }
             changed = changed || !layer.isEmpty();
         }
     } else {
@@ -77,6 +81,10 @@ bool FileDropRouter::eventFilter(QObject* watched, QEvent* event)
         }
     }
     if (changed) {
+        if (place && !lastPlaced.isEmpty()) {
+            frame_->beginFreeTransform(lastPlaced);
+            frame_->selectLayerPath(lastPlaced);
+        }
         frame_->refresh();
     }
     drop->acceptProposedAction();
