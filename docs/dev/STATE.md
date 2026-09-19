@@ -9,14 +9,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **772 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
+- Test suite: **773 tests, 0 failed, 8 skipped** (the M29 `move_profile_*` pair,
   the M31 `region_move_timing_4000`, the M33 `m33_composite_profile_*` pair, the
   M34 `m34_undo_profile_4000`, the M35 `m35_region_refresh_profile_4000`, and the
   newly-ignored M25 `filter_profile_1024`; M44 added the `gpu_parity`
   fresh-white-document regression; counted from `cargo nextest run --workspace`,
   which excludes the pre-existing ignored `pictura-render` doctest that
   `cargo test --workspace` reports as the ninth skip). The
-  C++ self-test reports **223 passed, 0 failed, 0 skipped**.
+  C++ self-test reports **225 passed, 0 failed, 0 skipped**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -28,7 +28,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `place-smart-object`, `replace-smart-object-contents`,
   `open-as-smart-object`, `export-smart-object-contents`,
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
-  `solid-color-fill-descriptor`, and `gradient-fill-layer` changes;
+  `solid-color-fill-descriptor`, `gradient-fill-layer`, and
+  `edit-smart-object-contents` changes;
   canonical specs are in `openspec/specs/` (71 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
@@ -139,8 +140,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   untitled document (path `None`, so Save cannot overwrite the source) with one
   embedded smart-object layer. `Layer > Smart Objects > Export Contents…`
   (archived `2026-09-19-export-smart-object-contents`) writes the stored payload
-  byte-for-byte to a file and records no history state. Deferred: Edit Contents
-  (needs a cross-document editing session), linked objects.
+  byte-for-byte to a file and records no history state. Deferred: linked objects
+  and the placeholder menu commands New Smart Object via Copy and Stack Mode.
+- `Layer > Smart Objects > Edit Contents` (archived
+  `2026-09-19-edit-smart-object-contents`) opens the embedded source as a new
+  untitled editor tab; saving the editor re-embeds the edited document into the
+  originating layer (`commit_smart_object_edit`, labelled `"Edit Contents"`,
+  exactly one origin undo state). The implementation reuses the existing
+  export/open/save/replace bridge methods through a per-session `QTemporaryDir`
+  temp file (no new byte-crossing FFI). Eligibility requires an `Embedded` object
+  with a non-empty payload that parses as PSD/PSB; C++ self-test codes 288/289.
 - Move-tool drag start is instant: `begin_move_preview` reuses a cached base
   composite keyed by `content_revision` + topmost-layer index. The base is the
   document with the topmost layer hidden, which does not depend on that layer's

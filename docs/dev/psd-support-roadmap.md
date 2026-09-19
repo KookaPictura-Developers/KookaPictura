@@ -174,8 +174,10 @@ a fresh link on save. `File > Open As Smart Object…` (archived
 `2026-09-19-open-as-smart-object`) opens a PSD/PSB as a new untitled document
 with one embedded smart-object layer. `Layer > Smart Objects > Export
 Contents…` (archived `2026-09-19-export-smart-object-contents`) writes the stored
-payload byte-for-byte and records no state. Edit Contents (a cross-document
-editing session) and linked objects are deferred.
+payload byte-for-byte and records no state. `Layer > Smart Objects > Edit
+Contents…` (archived `2026-09-19-edit-smart-object-contents`) opens the embedded
+source in an untitled editor tab and re-embeds it on save. Linked objects are
+deferred.
 
 Double-clicking the layer reopens ACR from the stored source and settings. CS6
 supports embedded objects only; linked objects (`lnkE`, external paths) are CC
