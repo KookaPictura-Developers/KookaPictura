@@ -572,6 +572,28 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::LayerSmartObjectConvertTo,
                                   [currentSmartPath]() { return !currentSmartPath().isEmpty(); });
 
+    const auto currentRasterizableSmartPath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty() || !view->layer_can_rasterize_smart_object(path)) {
+            return QString();
+        }
+        return path;
+    };
+    registry_->setHandler(command_ids::LayerRasterizeSmartObject,
+                          [this, currentRasterizableSmartPath]() {
+                              if (PictureView* view = activeView()) {
+                                  const QString path = currentRasterizableSmartPath();
+                                  if (!path.isEmpty() && view->rasterize_smart_object(path)) {
+                                      refresh();
+                                  }
+                              }
+                          });
+    registry_->setEnabledProvider(command_ids::LayerRasterizeSmartObject,
+                                  [currentRasterizableSmartPath]() {
+                                      return !currentRasterizableSmartPath().isEmpty();
+                                  });
+
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {
             canvas->zoomIn();

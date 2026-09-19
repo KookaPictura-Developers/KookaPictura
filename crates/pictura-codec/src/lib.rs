@@ -36,6 +36,7 @@ pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;
 pub use read::read_psd;
 pub use smart_filter::set_camera_raw_option;
+pub use smart_object::remove_linked_source;
 pub use write::write_psd;
 
 /// Read a Camera Raw Filter's `Fltr` options from a

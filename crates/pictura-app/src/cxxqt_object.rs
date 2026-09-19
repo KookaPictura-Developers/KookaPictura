@@ -586,6 +586,19 @@ pub mod qobject {
         #[qinvokable]
         fn convert_to_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
 
+        /// Whether `path` resolves to a rasterizable smart-object layer: not a
+        /// group, no adjustment data, and a typed smart object. Read-only.
+        #[qinvokable]
+        fn layer_can_rasterize_smart_object(&self, path: &QString) -> bool;
+
+        /// `Rasterize Smart Object`: consume the object at `path`, keeping its
+        /// raster proxy (or materializing the embedded source into channels),
+        /// then drop the preserved blocks and linked record. Records one
+        /// "Rasterize Smart Object" state on success; false (no state) for an
+        /// ineligible target or an undecodable payload.
+        #[qinvokable]
+        fn rasterize_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
+
         /// Self-test probe: `<kind>:<payload-len>` for `path`'s smart object,
         /// or empty when the layer has none. Read-only.
         #[qinvokable]

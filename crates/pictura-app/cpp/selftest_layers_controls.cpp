@@ -938,6 +938,58 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         frame.closeDocument(socReloadDoc, false);
         frame.closeDocument(socDoc, false);
 
+        // lpr_smart_object_rasterize (278): converting then rasterizing a raster
+        // pixel layer restores a plain pixel layer with the same composite, no
+        // smart object on save→load, and refuses a non-smart layer without a
+        // history state.
+        const bool rosCreated = frame.newDocument(QStringLiteral("SmartObjectRasterCtl"), 4, 4,
+                                                  QStringLiteral("rgb"), 8,
+                                                  QStringLiteral("white"));
+        pictura::PictureView* rosView = frame.activeView();
+        if (!rosCreated || !rosView) {
+            return pictura::selfTest().fail(278, "smart object rasterize fixture");
+        }
+        const int rosDoc = frame.activeDocumentIndex();
+        const QString rosPath = rosView->add_solid_fill(0xff2244aau);
+        const bool rosRaster = rosView->rasterize_fill_content(rosPath);
+        const unsigned int rosBefore = rosView->sample_argb(0, 0);
+        const bool rosConverted = rosView->convert_to_smart_object(rosPath);
+        const unsigned int rosAfterConvert = rosView->sample_argb(0, 0);
+        const bool rosCanRaster = rosView->layer_can_rasterize_smart_object(rosPath);
+        const int rosBase = rosView->history_count();
+        const bool rosRasterized = rosView->rasterize_smart_object(rosPath);
+        const QString rosState = rosView->layer_smart_object_state(rosPath);
+        const unsigned int rosAfterRaster = rosView->sample_argb(0, 0);
+        const bool rosRecorded = rosView->history_count() == rosBase + 1;
+        const bool rosPixel = rosView->layer_kind(rosPath.toInt()) == QStringLiteral("pixel");
+        const int rosBase2 = rosView->history_count();
+        const bool rosRefuse = !rosView->rasterize_smart_object(rosPath);
+        const bool rosRefuseHistory = rosView->history_count() == rosBase2;
+        const QString rosSavePath =
+            QDir::tempPath() + QStringLiteral("/kooka-pictura-smart-object-rasterize.psd");
+        const bool rosSaved = frame.saveActiveAs(rosSavePath);
+        const bool rosReopened = frame.openPath(rosSavePath);
+        pictura::PictureView* rosReload = frame.activeView();
+        const int rosReloadDoc = frame.activeDocumentIndex();
+        const QString rosReloadState =
+            rosReload ? rosReload->layer_smart_object_state(rosPath) : QString();
+        const bool rosRoundTrip = rosReopened && rosReload && rosReloadState.isEmpty();
+        const bool rosOk = rosRaster && rosConverted && rosCanRaster && rosRasterized
+            && rosBefore == rosAfterConvert && rosBefore == rosAfterRaster && rosState.isEmpty()
+            && rosRecorded && rosPixel && rosRefuse && rosRefuseHistory && rosSaved && rosRoundTrip;
+        ST_BEGIN("lpr_smart_object_rasterize");
+        ST_PASS("lpr_smart_object_rasterize raster=%d convert=%d can=%d rasterize=%d proxy=%d "
+                "state=%s history=%d pixel=%d refuse=%d saved=%d reload=%s",
+                rosRaster ? 1 : 0, rosConverted ? 1 : 0, rosCanRaster ? 1 : 0,
+                rosRasterized ? 1 : 0, rosBefore == rosAfterRaster ? 1 : 0, qPrintable(rosState),
+                rosRecorded ? 1 : 0, rosPixel ? 1 : 0, rosRefuse ? 1 : 0, rosSaved ? 1 : 0,
+                qPrintable(rosReloadState));
+        if (!rosOk) {
+            return pictura::selfTest().fail(278, "smart object rasterize");
+        }
+        frame.closeDocument(rosReloadDoc, false);
+        frame.closeDocument(rosDoc, false);
+
         // lpr_drop_out (239): a layer nested in a group, dropped on the empty
         // viewport (empty target, mode 0), reparents to the document root in
         // one undo step; the validator accepts the root target.
