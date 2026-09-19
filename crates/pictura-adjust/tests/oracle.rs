@@ -21,8 +21,8 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use pictura_adjust::{
-    apply, Adjustment, BrightnessContrastParams, ChannelMixerParams, HueSaturationParams,
-    LevelsParams,
+    apply, Adjustment, BrightnessContrastParams, ChannelMixerParams, GradientMapParams,
+    GradientStop, HueSaturationParams, LevelsParams,
 };
 use pictura_core::PixelBuffer;
 use pictura_testkit::compare;
@@ -85,6 +85,12 @@ const MAPPING: &[Mapping] = &[
         note: "no faithful IM operator",
     },
     Mapping {
+        adjustment: "GradientMap",
+        im: None,
+        tolerance: 0,
+        note: "no faithful IM operator",
+    },
+    Mapping {
         adjustment: "ChannelMixer",
         im: None,
         tolerance: 0,
@@ -135,9 +141,10 @@ const MAPPING: &[Mapping] = &[
 ];
 
 /// Adjustments the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 12] = [
+const NO_EQUIVALENT: [&str; 13] = [
     "BlackWhite",
     "PhotoFilter",
+    "GradientMap",
     "Vibrance",
     "ColorBalance",
     "Auto",
@@ -382,7 +389,7 @@ fn oracle_negate_matches_expected_bytes() {
 
 #[test]
 fn mapping_marks_no_equivalent_operators() {
-    assert_eq!(MAPPING.len(), 15, "one mapping row per Adjustment variant");
+    assert_eq!(MAPPING.len(), 16, "one mapping row per Adjustment variant");
     let none: Vec<&str> = MAPPING
         .iter()
         .filter(|m| m.im.is_none())
@@ -632,5 +639,63 @@ fn desaturate_matches_imagemagick() {
         &["--op", "desaturate"],
         1,
         "Desaturate",
+    );
+}
+
+/// IM has no faithful Gradient Map operator. Guard the identity/reverse/clamp
+/// contract directly instead.
+#[test]
+fn gradient_map_identity_reverse_and_clamp() {
+    let bw = |reverse| {
+        Adjustment::GradientMap(GradientMapParams {
+            stops: vec![
+                GradientStop {
+                    location: 0,
+                    color: [0, 0, 0],
+                },
+                GradientStop {
+                    location: 4096,
+                    color: [255, 255, 255],
+                },
+            ],
+            reverse,
+        })
+    };
+    let ramp = gray_ramp(256);
+    let identity = apply_owned(&bw(false), ramp.clone());
+    for i in 0..ramp.pixel_count() {
+        let d = identity.data[i] as i16 - ramp.data[i] as i16;
+        assert!(d.abs() <= 1, "black-to-white ramp must be the identity");
+    }
+
+    let reversed = apply_owned(&bw(true), buffer_of(&[[0, 0, 0], [255, 255, 255]]));
+    assert_eq!(color_at(&reversed, 0), [255, 255, 255]);
+    assert_eq!(color_at(&reversed, 1), [0, 0, 0]);
+
+    let clamped = apply_owned(
+        &Adjustment::GradientMap(GradientMapParams {
+            stops: vec![
+                GradientStop {
+                    location: 1024,
+                    color: [0, 0, 255],
+                },
+                GradientStop {
+                    location: 3072,
+                    color: [255, 255, 0],
+                },
+            ],
+            reverse: false,
+        }),
+        buffer_of(&[[0, 0, 0], [255, 255, 255]]),
+    );
+    assert_eq!(
+        color_at(&clamped, 0),
+        [0, 0, 255],
+        "below first stop clamps"
+    );
+    assert_eq!(
+        color_at(&clamped, 1),
+        [255, 255, 0],
+        "above last stop clamps"
     );
 }

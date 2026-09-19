@@ -20,9 +20,12 @@ from psd_tools import PSDImage
 from psd_tools.constants import Tag
 from psd_tools.psd.adjustments import (
     BrightnessContrast,
+    ColorStop,
+    GradientMap,
     LevelRecord,
     Levels,
     PhotoFilter,
+    TransparencyStop,
 )
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
 from psd_tools.psd.layer_and_mask import ChannelDataList
@@ -132,12 +135,57 @@ def adjustment() -> PSDImage:
     return psd
 
 
+def gradient_map() -> PSDImage:
+    """RGB, a Base pixel layer plus a black-to-white Gradient Map adjustment."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    _adj_layer(
+        psd,
+        Tag.GRADIENT_MAP,
+        "Gradient Map",
+        GradientMap(
+            version=1,
+            is_reversed=0,
+            is_dithered=0,
+            name="Black to White",
+            color_stops=[
+                ColorStop(location=0, midpoint=50, mode=0, color=(0, 0, 0, 0)),
+                ColorStop(
+                    location=4096,
+                    midpoint=50,
+                    mode=0,
+                    color=(65535, 65535, 65535, 0),
+                ),
+            ],
+            transparency_stops=[
+                TransparencyStop(location=0, midpoint=50, opacity=255),
+                TransparencyStop(location=4096, midpoint=50, opacity=255),
+            ],
+            expansion=2,
+            interpolation=4096,
+            length=32,
+            mode=0,
+            random_seed=0,
+            show_transparency=0,
+            use_vector_color=0,
+            roughness=0,
+            color_model=0,
+            minimum_color=[0, 0, 0, 0],
+            maximum_color=[0, 0, 0, 0],
+        ),
+    )
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
     "masked.psd": masked,
     "gray.psd": gray,
     "adjustment.psd": adjustment,
+    "gradient_map.psd": gradient_map,
 }
 
 

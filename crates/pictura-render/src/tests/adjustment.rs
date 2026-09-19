@@ -1,5 +1,8 @@
 use super::*;
-use pictura_adjust::{BlackWhiteParams, ExposureParams, PhotoFilterParams, VibranceParams};
+use pictura_adjust::{
+    BlackWhiteParams, ExposureParams, GradientMapParams, GradientStop, PhotoFilterParams,
+    VibranceParams,
+};
 use pictura_codec::{write_descriptor, DescValue};
 
 fn exposure_payload(exposure: f32, offset: f32, gamma: f32) -> Vec<u8> {
@@ -19,6 +22,37 @@ fn phfl_payload(version: u16, components: [u16; 4], density: u32, luminosity: u8
     data.extend_from_slice(&density.to_be_bytes());
     data.push(luminosity);
     data.extend_from_slice(&[0, 0, 0]);
+    data
+}
+
+fn grdm_payload(
+    version: u16,
+    reverse: u8,
+    dither: u8,
+    name: &str,
+    stops: &[(u32, [u16; 4])],
+) -> Vec<u8> {
+    let mut data = version.to_be_bytes().to_vec();
+    data.push(reverse);
+    data.push(dither);
+    if version == 3 {
+        data.extend_from_slice(b"Gcls");
+    }
+    let utf16: Vec<u16> = name.encode_utf16().collect();
+    data.extend_from_slice(&(utf16.len() as u32).to_be_bytes());
+    for u in utf16 {
+        data.extend_from_slice(&u.to_be_bytes());
+    }
+    data.extend_from_slice(&(stops.len() as u16).to_be_bytes());
+    for (location, color) in stops {
+        data.extend_from_slice(&location.to_be_bytes());
+        data.extend_from_slice(&50u32.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        for c in color {
+            data.extend_from_slice(&c.to_be_bytes());
+        }
+        data.extend_from_slice(&[0, 0]);
+    }
     data
 }
 
@@ -158,6 +192,31 @@ fn encode_decode_round_trips() {
         phfl.data,
         [0, 2, 0, 0, 0, 255, 0, 180, 0, 80, 0, 0, 0, 0, 0, 25, 1, 0, 0, 0]
     );
+
+    let gm_stops = [
+        GradientStop {
+            location: 0,
+            color: [0, 0, 0],
+        },
+        GradientStop {
+            location: 2048,
+            color: [255, 0, 0],
+        },
+        GradientStop {
+            location: 4096,
+            color: [255, 255, 255],
+        },
+    ];
+    let gm = encode_gradient_map(&gm_stops, true);
+    assert_eq!(gm.key, *b"grdm");
+    assert_eq!(
+        decode_adjustment(&gm),
+        Some(Adjustment::GradientMap(GradientMapParams {
+            stops: gm_stops.to_vec(),
+            reverse: true,
+        }))
+    );
+    assert_eq!(gm.data.len() % 4, 0, "block is padded to 4 bytes");
 
     // Out-of-range inputs are clamped to what the decoder accepts.
     assert_eq!(
@@ -511,8 +570,99 @@ fn phfl_decodes_version_two() {
 }
 
 #[test]
+fn grdm_decodes_versions_and_rejects_malformed() {
+    let stops = [
+        (0u32, [0u16, 0, 0, 0]),
+        (4096u32, [65535u16, 65535, 65535, 0]),
+    ];
+    let expected = Adjustment::GradientMap(GradientMapParams {
+        stops: vec![
+            GradientStop {
+                location: 0,
+                color: [0, 0, 0],
+            },
+            GradientStop {
+                location: 4096,
+                color: [255, 255, 255],
+            },
+        ],
+        reverse: false,
+    });
+
+    let payload = grdm_payload(1, 0, 0, "Black to White", &stops);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"grdm", payload.clone())),
+        Some(expected.clone())
+    );
+    assert_eq!(
+        decode_adjustment(&adjdata(
+            *b"grdm",
+            grdm_payload(1, 1, 0, "Black to White", &stops)
+        )),
+        Some(Adjustment::GradientMap(GradientMapParams {
+            stops: vec![
+                GradientStop {
+                    location: 0,
+                    color: [0, 0, 0],
+                },
+                GradientStop {
+                    location: 4096,
+                    color: [255, 255, 255],
+                },
+            ],
+            reverse: true,
+        }))
+    );
+    // Version 3 carries a 4-byte method after the flags; the stops are the same.
+    assert_eq!(
+        decode_adjustment(&adjdata(
+            *b"grdm",
+            grdm_payload(3, 0, 1, "Black to White", &stops)
+        )),
+        Some(expected.clone())
+    );
+
+    // Truncation anywhere before the last stop's colour is a no-op, never an
+    // error. The final 4 bytes (stop pad + transparency count) are ignored.
+    for cut in 0..payload.len() - 4 {
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"grdm", payload[..cut].to_vec())),
+            None,
+            "cut {cut}"
+        );
+    }
+    // The in-house `gdrm` spelling is accepted as an alias.
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"gdrm", payload.clone())),
+        Some(expected.clone())
+    );
+    // Unsupported version.
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"grdm", grdm_payload(2, 0, 0, "", &stops))),
+        None
+    );
+    // Fewer than two stops.
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"grdm", grdm_payload(1, 0, 0, "", &stops[..1]))),
+        None
+    );
+    // Non-increasing locations.
+    let decreasing = [(4096u32, [0u16, 0, 0, 0]), (0u32, [0u16, 0, 0, 0])];
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"grdm", grdm_payload(1, 0, 0, "", &decreasing))),
+        None
+    );
+    // A location above 4096.
+    let out_of_range = [(0u32, [0u16, 0, 0, 0]), (5000u32, [0u16, 0, 0, 0])];
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"grdm", grdm_payload(1, 0, 0, "", &out_of_range))),
+        None
+    );
+}
+
+#[test]
 fn deferred_keys_still_none() {
-    for key in [*b"curv", *b"mixr", *b"selc", *b"clrL", *b"gdrm"] {
+    for key in [*b"curv", *b"mixr", *b"selc", *b"clrL"] {
         assert_eq!(
             decode_adjustment(&adjdata(key, vec![1, 2, 3, 4])),
             None,
@@ -653,6 +803,71 @@ fn photo_filter_layer_warms_and_preserves_luminance() {
             "luminance must be preserved at {x}: {:?} -> {:?}",
             before,
             got
+        );
+    }
+}
+
+#[test]
+fn gradient_map_layer_changes_non_uniform_backdrop() {
+    // Non-uniform, non-neutral backdrop: black-to-white maps each pixel to the
+    // grey of its luminance, changing the colour.
+    let base = solid(
+        "base",
+        full(2, 1),
+        (30, 90, 210),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let patch = solid(
+        "patch",
+        rect(0, 0, 1, 1),
+        (200, 100, 50),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 1, vec![base.clone(), patch.clone()]));
+    let stops = [
+        GradientStop {
+            location: 0,
+            color: [0, 0, 0],
+        },
+        GradientStop {
+            location: 4096,
+            color: [255, 255, 255],
+        },
+    ];
+    let graded = composite_rgba(&doc(
+        2,
+        1,
+        vec![
+            base,
+            patch,
+            adjustment_layer(
+                "gradient-map",
+                *b"grdm",
+                encode_gradient_map(&stops, false).data,
+                255,
+                None,
+            ),
+        ],
+    ));
+    assert_ne!(
+        graded.data, plain.data,
+        "a Gradient Map layer must change the backdrop"
+    );
+    for x in 0..2 {
+        let before = rgb(&plain, x, 0);
+        let got = rgb(&graded, x, 0);
+        let luma = 0.299 * before[0] as f64 + 0.587 * before[1] as f64 + 0.114 * before[2] as f64;
+        assert!(
+            got[0].abs_diff(got[1]) <= 1 && got[1].abs_diff(got[2]) <= 1,
+            "black-to-white output must be neutral at {x}: {got:?}"
+        );
+        assert!(
+            (got[0] as f64 - luma).abs() <= 2.0,
+            "the grey should follow the backdrop's luminance at {x}: {before:?} -> {got:?}"
         );
     }
 }

@@ -1049,5 +1049,42 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(284, "adjustments photo filter menu");
         }
 
+        // lpr_gradient_map (285): a gradient-map adjustment layer is reported as
+        // an adjustment, maps a non-uniform backdrop's luminance through the
+        // black-to-white gradient, and the Adjustments panel menu offers it.
+        {
+            const bool gmCreated = frame.newDocument(QStringLiteral("GradientMapCtl"), 8, 8,
+                                                     QStringLiteral("rgb"), 8,
+                                                     QStringLiteral("white"));
+            pictura::PictureView* gmView = frame.activeView();
+            if (!gmCreated || !gmView) {
+                return pictura::selfTest().fail(285, "gradient map fixture");
+            }
+            const int gmDoc = frame.activeDocumentIndex();
+            bool gmPainted = gmView->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 4, 100, 100, 0,
+                                                 100, 100, 25, QStringLiteral("normal"), false,
+                                                 false);
+            gmPainted = gmPainted && gmView->paint_dab(2, 2, 1.0) && gmView->paint_dab(5, 5, 1.0)
+                && gmView->end_paint();
+            const unsigned int gmBefore = gmView->sample_argb(2, 2);
+            const bool gmAdded = gmView->add_adjustment(QStringLiteral("gradient-map"));
+            const bool gmAdjustment =
+                gmView->layer_kind(gmView->layer_count() - 1) == QStringLiteral("adjustment");
+            const unsigned int gmAfter = gmView->sample_argb(2, 2);
+            const pictura::PanelColumn* gmColumn = frame.panelColumn();
+            const bool gmMenu = gmColumn
+                && gmColumn->widgetMenuTextsForTest(QStringLiteral("adjustmentsPanel"))
+                       .contains(QStringLiteral("Gradient Map"));
+            ST_BEGIN("lpr_gradient_map");
+            ST_PASS("lpr_gradient_map added=%d adjustment=%d changed=%d menu=%d before=%08x "
+                    "after=%08x",
+                    gmAdded ? 1 : 0, gmAdjustment ? 1 : 0, gmAfter != gmBefore ? 1 : 0,
+                    gmMenu ? 1 : 0, gmBefore, gmAfter);
+            if (!gmPainted || !gmAdded || !gmAdjustment || gmAfter == gmBefore || !gmMenu) {
+                return pictura::selfTest().fail(285, "gradient map adjustment");
+            }
+            frame.closeDocument(gmDoc, false);
+        }
+
     return 0;
 }

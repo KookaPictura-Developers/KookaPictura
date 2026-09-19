@@ -25,6 +25,7 @@ not hand-edit these files.
 | `masked.psd` | RGB | 8x8 | `Masked` with a raster layer mask |
 | `gray.psd` | Grayscale | 8x8 | `Gray` |
 | `adjustment.psd` | RGB | 8x8 | `Base` pixel layer + adjustment layers `Invert`, `Posterize`, `Threshold`, `BrightnessContrast`, `Levels`, `PhotoFilter` |
+| `gradient_map.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Map` (`grdm`) adjustment layer |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -66,6 +67,28 @@ adj(psd, Tag.PHOTO_FILTER, "PhotoFilter",
     PhotoFilter(version=2, color_space=0,
                 color_components=(255, 180, 80, 0), density=25, luminosity=1))
 psd.save("adjustment.psd")
+```
+
+`gradient_map.psd` is authored by the `gradient_map()` builder: the same `Base`
+pixel layer plus one `grdm` adjustment layer holding a black-to-white gradient
+with the colours on the 16-bit storage scale.
+
+```python
+from psd_tools.psd.adjustments import ColorStop, GradientMap, TransparencyStop
+
+adj(psd, Tag.GRADIENT_MAP, "Gradient Map", GradientMap(
+    version=1, is_reversed=0, is_dithered=0, name="Black to White",
+    color_stops=[
+        ColorStop(location=0, midpoint=50, mode=0, color=(0, 0, 0, 0)),
+        ColorStop(location=4096, midpoint=50, mode=0, color=(65535, 65535, 65535, 0)),
+    ],
+    transparency_stops=[
+        TransparencyStop(location=0, midpoint=50, opacity=255),
+        TransparencyStop(location=4096, midpoint=50, opacity=255),
+    ],
+    expansion=2, interpolation=4096, length=32,
+    minimum_color=[0, 0, 0, 0], maximum_color=[0, 0, 0, 0],
+))
 ```
 
 

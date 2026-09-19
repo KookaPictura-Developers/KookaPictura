@@ -4,7 +4,8 @@ use crate::common::{
     hermite_eval, linear_to_srgb, luma, map_lut, monotone_tangents, planes_mut, srgb_to_linear,
 };
 use crate::types::{
-    AdjustError, BrightnessContrastParams, CurvesParams, ExposureParams, LevelsParams,
+    AdjustError, BrightnessContrastParams, CurvesParams, ExposureParams, GradientMapParams,
+    GradientStop, LevelsParams,
 };
 
 // ---------------------------------------------------------------------------
@@ -182,4 +183,71 @@ pub(crate) fn threshold(level: u8, buf: &mut PixelBuffer, n: usize) -> Result<()
         *bv = v;
     }
     Ok(())
+}
+
+pub(crate) fn gradient_map(
+    p: &GradientMapParams,
+    buf: &mut PixelBuffer,
+    n: usize,
+) -> Result<(), AdjustError> {
+    if p.stops.len() < 2 {
+        return Err(AdjustError::InvalidParams(
+            "gradient map needs at least 2 stops".into(),
+        ));
+    }
+    if p.stops.iter().any(|s| s.location > 4096) {
+        return Err(AdjustError::InvalidParams(
+            "gradient stop location must be <= 4096".into(),
+        ));
+    }
+    if p.stops.windows(2).any(|w| w[0].location >= w[1].location) {
+        return Err(AdjustError::InvalidParams(
+            "gradient stop locations must be strictly increasing".into(),
+        ));
+    }
+    // ponytail: plain linear interpolation between adjacent stops; Photoshop's
+    // midpoint bias, dither, opacity stops, and interpolation modes are not
+    // modelled (gradient-map.md marks them closed/inferred).
+    let mut lut = [[0u8; 3]; 256];
+    for (i, slot) in lut.iter_mut().enumerate() {
+        let l = i as f64 / 255.0;
+        let l = if p.reverse { 1.0 - l } else { l };
+        *slot = sample_gradient(&p.stops, (l * 4096.0).round());
+    }
+    let (r, g, b) = planes_mut(buf, n);
+    for ((rv, gv), bv) in r.iter_mut().zip(g.iter_mut()).zip(b.iter_mut()) {
+        let y = luma(*rv as f64, *gv as f64, *bv as f64);
+        let c = lut[y.round().clamp(0.0, 255.0) as usize];
+        *rv = c[0];
+        *gv = c[1];
+        *bv = c[2];
+    }
+    Ok(())
+}
+
+/// Sample the gradient at integer position `pos` (`0..=4096`), clamping outside
+/// the stop range and lerping between the bracketing stops.
+fn sample_gradient(stops: &[GradientStop], pos: f64) -> [u8; 3] {
+    let first = stops[0];
+    let last = stops[stops.len() - 1];
+    if pos <= first.location as f64 {
+        return first.color;
+    }
+    if pos >= last.location as f64 {
+        return last.color;
+    }
+    let mut i = 0;
+    while i + 1 < stops.len() && (stops[i + 1].location as f64) < pos {
+        i += 1;
+    }
+    let a = stops[i];
+    let b = stops[i + 1];
+    let span = (b.location - a.location) as f64;
+    let t = ((pos - a.location as f64) / span).clamp(0.0, 1.0);
+    let mix = |x: u8, y: u8| (x as f64 + (y as f64 - x as f64) * t).round() as u8;
+    [
+        mix(a.color[0], b.color[0]),
+        mix(a.color[1], b.color[1]),
+        mix(a.color[2], b.color[2]),
+    ]
 }

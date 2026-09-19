@@ -90,6 +90,20 @@ pub struct ColorBalanceParams {
     pub preserve_luminosity: bool,
 }
 
+/// One colour stop of a [`GradientMapParams`] gradient.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GradientStop {
+    /// Photoshop gradient position, `0..=4096`.
+    pub location: u16,
+    pub color: [u8; 3],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GradientMapParams {
+    pub stops: Vec<GradientStop>,
+    pub reverse: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoKind {
     Tone,
@@ -115,6 +129,7 @@ pub enum Adjustment {
     Posterize(u8),
     Threshold(u8),
     Desaturate,
+    GradientMap(GradientMapParams),
     /// Solid-color fill content (`SoCo`): straight-alpha RGBA. This is not a
     /// destructive adjustment; the renderer composites it generatively (see
     /// `pictura-render`'s `composite_adjustment`), and [`apply`] refuses it.

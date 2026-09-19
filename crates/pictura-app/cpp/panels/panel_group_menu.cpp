@@ -219,6 +219,7 @@ const QList<MenuRow>& rowsForPanel(const QString& panel)
                  QStringLiteral("adjustment:brightness-contrast")),
              imp(QStringLiteral("Hue-Saturation"), QStringLiteral("adjustment:hue-saturation")),
              imp(QStringLiteral("Photo Filter"), QStringLiteral("adjustment:photo-filter")),
+             imp(QStringLiteral("Gradient Map"), QStringLiteral("adjustment:gradient-map")),
              dis(QStringLiteral("Add Mask by Default"), true),
              chk(QStringLiteral("Clip to Layer")),
          }},

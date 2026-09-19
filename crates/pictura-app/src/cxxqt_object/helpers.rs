@@ -11,8 +11,8 @@ use pictura_select::CombineMode;
 /// selection when one is active.
 pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
     use pictura_render::{
-        encode_brightness_contrast, encode_hue_saturation, encode_invert, encode_photo_filter,
-        encode_posterize, encode_threshold,
+        encode_brightness_contrast, encode_gradient_map, encode_hue_saturation, encode_invert,
+        encode_photo_filter, encode_posterize, encode_threshold, GradientStop,
     };
 
     let (name, data): (&str, AdjustmentData) = match kind {
@@ -24,6 +24,22 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
         "photo-filter" => (
             "Photo Filter",
             encode_photo_filter([255, 180, 80], 25.0, true),
+        ),
+        "gradient-map" => (
+            "Gradient Map",
+            encode_gradient_map(
+                &[
+                    GradientStop {
+                        location: 0,
+                        color: [0, 0, 0],
+                    },
+                    GradientStop {
+                        location: 4096,
+                        color: [255, 255, 255],
+                    },
+                ],
+                false,
+            ),
         ),
         _ => return None,
     };

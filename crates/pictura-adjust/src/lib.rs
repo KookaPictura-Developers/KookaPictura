@@ -22,6 +22,6 @@ mod tests;
 pub use apply::apply;
 pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
-    ChannelMixerParams, ColorBalanceParams, CurvesParams, ExposureParams, HueSaturationParams,
-    LevelsParams, PhotoFilterParams, VibranceParams,
+    ChannelMixerParams, ColorBalanceParams, CurvesParams, ExposureParams, GradientMapParams,
+    GradientStop, HueSaturationParams, LevelsParams, PhotoFilterParams, VibranceParams,
 };
