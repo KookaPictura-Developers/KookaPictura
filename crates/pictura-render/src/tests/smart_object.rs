@@ -957,3 +957,36 @@ fn replace_clears_proxy_and_renders_new_source() {
     assert_ne!(after_comp.data, before_comp.data);
     assert_close(&after_comp, 0, 0, [200, 100, 50, 255]);
 }
+
+#[test]
+fn open_as_smart_object_builds_one_embedded_layer() {
+    let bytes = write_psd(&solid_doc(2, 2, [10, 20, 30])).expect("source writes");
+    let source = read_psd(&bytes).expect("source reads");
+
+    let d = open_as_smart_object("source", &bytes).expect("opens");
+
+    assert_eq!((d.width, d.height), (source.width, source.height));
+    assert_eq!(d.mode, source.mode);
+    assert_eq!(d.depth, source.depth);
+    assert_eq!(d.composite, source.composite);
+    assert_eq!(d.layers.len(), 1);
+    let layer = &d.layers[0];
+    assert_eq!(layer.name, "source");
+    assert!(layer.channels.is_empty());
+    assert_eq!(layer.rect, rect(0, 0, 2, 2));
+    let so = layer.smart_object.as_ref().expect("smart object");
+    assert_eq!(so.kind, SmartObjectKind::Embedded);
+    assert_eq!(so.payload.as_deref(), Some(bytes.as_slice()));
+    assert_eq!(so.filename, "source");
+    assert_eq!(so.filetype, *b"8BPB");
+    assert_eq!(so.creator, *b"8BIM");
+
+    let out = composite_rgba(&d);
+    assert_close(&out, 0, 0, [10, 20, 30, 255]);
+    assert_close(&out, 1, 1, [10, 20, 30, 255]);
+}
+
+#[test]
+fn open_as_smart_object_refuses_malformed_source() {
+    assert!(open_as_smart_object("bad", &[0, 1, 2, 3]).is_none());
+}

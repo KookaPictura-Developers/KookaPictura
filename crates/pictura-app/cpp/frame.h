@@ -165,6 +165,7 @@ public:
     bool newDocument(const QString& name, int width, int height, const QString& mode,
                      int depth, const QString& background);
     bool openPath(const QString& path);
+    bool openAsSmartObjectPath(const QString& path);
     bool saveActive();
     bool saveActiveAs(const QString& path);
     bool revertActive();

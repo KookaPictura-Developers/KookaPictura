@@ -39,6 +39,44 @@ impl qobject::PictureView {
         ok
     }
 
+    /// `File > Open As Smart Object…`: read `path`, decode it as a PSD/PSB
+    /// source, and replace the view with a new untitled document whose sole
+    /// layer is that source as an embedded smart object. Records one
+    /// "Open As Smart Object" state on success; `false` without mutating when
+    /// the file is missing, unreadable, or not a PSD/PSB document.
+    pub fn open_as_smart_object(self: Pin<&mut Self>, path: &QString) -> bool {
+        let path = path.to_string();
+        let name = std::path::Path::new(&path)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let mut doc = match std::fs::read(&path)
+            .ok()
+            .and_then(|bytes| pictura_render::open_as_smart_object(&name, &bytes))
+        {
+            Some(doc) => doc,
+            None => return false,
+        };
+        let gpu_compute = self.rust().gpu_compute;
+        let rendered = current_buffer(&doc, gpu_compute);
+        store_composite(&mut doc, &rendered);
+        let image = buffer_to_image(&rendered);
+        let mut view = self.rust_mut();
+        view.image = image;
+        view.doc = Some(doc);
+        view.reset_edit_state();
+        let initial = view.doc.as_ref().map(|doc| Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        });
+        if let Some(snapshot) = initial {
+            view.history.capture(snapshot, "Open As Smart Object");
+        }
+        view.path = None;
+        view.dirty = false;
+        true
+    }
+
     pub fn new_document(
         self: Pin<&mut Self>,
         width: i32,

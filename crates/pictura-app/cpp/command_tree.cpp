@@ -38,7 +38,8 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QKeySequence(QStringLiteral("Ctrl+O")), true);
     leaf(registry, {"File", "Open As…"}, QStringLiteral("Open As…"),
          QStringLiteral("Ctrl+Alt+Shift+O"));
-    leaf(registry, {"File", "Open As Smart Object…"}, QStringLiteral("Open As Smart Object…"));
+    registry.add(command_ids::FileOpenAsSmartObject, {"File", "Open As Smart Object…"},
+                 QStringLiteral("Open As Smart Object…"), QKeySequence(), true);
     registry.addSeparator({"File"});
     registry.add(command_ids::FileClose, {"File", "Close"}, QStringLiteral("Close"),
                  QKeySequence(QStringLiteral("Ctrl+W")), true);

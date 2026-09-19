@@ -169,6 +169,21 @@ pub fn place_smart_object(doc: &mut Document, filename: &str, bytes: &[u8]) -> O
     Some(format_segments(&[index]))
 }
 
+/// Open `bytes` as a new document holding `filename` as one embedded smart
+/// object, or `None` when they do not parse as a PSD/PSB document.
+///
+/// The new document takes the source's size, mode, and depth, seeds its merged
+/// composite from the source, then appends one topmost channel-less native-size
+/// layer via [`place_smart_object`]. No source path is carried: the caller
+/// decides whether the new document is untitled.
+pub fn open_as_smart_object(filename: &str, bytes: &[u8]) -> Option<Document> {
+    let src = pictura_codec::read_psd(bytes).ok()?;
+    let mut doc = Document::new(src.width, src.height, src.mode, src.depth);
+    doc.composite = src.composite;
+    place_smart_object(&mut doc, filename, bytes)?;
+    Some(doc)
+}
+
 /// Whether `path` resolves to a rasterizable smart-object layer: not a group,
 /// no adjustment data, and a typed smart object to consume.
 pub fn can_rasterize_smart_object(doc: &Document, path: &str) -> bool {
