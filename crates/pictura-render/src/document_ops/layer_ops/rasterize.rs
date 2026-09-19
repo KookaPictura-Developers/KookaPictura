@@ -1,26 +1,36 @@
 //! The Rasterize subset (design D8).
 //!
-//! Only solid-color fill content (`SoCo` with a 4-byte RGBA payload) is a
-//! target. Type/Shape/Vector Mask/Smart Object/Video/3D layers do not exist in
-//! the model, and gradient/pattern fills and Photoshop's `'Clr '` descriptor
-//! are preserved on disk but not decoded, so those commands refuse without
-//! mutating.
+//! Only solid-color fill content is a target: a layer whose `SoCo` block
+//! decodes to [`Adjustment::SolidFill`], in either the 4-byte in-house form or
+//! the standard Photoshop descriptor. Type/Shape/Vector Mask/Smart Object/
+//! Video/3D layers do not exist in the model, and gradient/pattern fills are
+//! preserved on disk but not decoded, so those commands refuse without mutating.
 
+use pictura_adjust::Adjustment;
 use pictura_core::{Channel, Document, Layer};
 
 use super::paths::{flatten_rows, resolve_path, resolve_path_mut};
 
-/// A decodable solid-color fill layer: a `SoCo` block carrying exactly the
-/// 4-byte RGBA payload this codec writes. A descriptor-shaped `SoCo` is real
-/// Photoshop fill data but is not decoded, so it is not a rasterize target.
+/// A decodable solid-color fill layer: a `SoCo` block whose payload decodes to
+/// [`Adjustment::SolidFill`] (either the 4-byte in-house form or the standard
+/// descriptor).
 pub fn is_fill_content_layer(layer: &Layer) -> bool {
     layer
         .adjustment
         .as_ref()
-        .is_some_and(|data| data.key == *b"SoCo" && data.data.len() == 4)
+        .is_some_and(|data| data.key == *b"SoCo" && solid_fill(data).is_some())
 }
 
-/// Rasterize the fill content at `path`: bake the solid color into the layer's
+/// The decoded RGBA of a fill-content `SoCo` block, or `None` when it is not
+/// understood.
+fn solid_fill(data: &pictura_core::AdjustmentData) -> Option<[u8; 4]> {
+    match crate::decode_adjustment(data) {
+        Some(Adjustment::SolidFill(rgba)) => Some(rgba),
+        _ => None,
+    }
+}
+
+/// Rasterize the fill content at `path`: bake the decoded RGBA into the layer's
 /// `0/1/2/-1` channels over its rect, clear the adjustment, and keep the name,
 /// rect, blend, opacity, fill, and mask. Returns false (no mutation) when
 /// `path` does not resolve to a decodable fill-content layer.
@@ -28,14 +38,9 @@ pub fn rasterize_fill_content(doc: &mut Document, path: &str) -> bool {
     let Some(layer) = resolve_path_mut(doc, path) else {
         return false;
     };
-    if !is_fill_content_layer(layer) {
+    let Some(rgba) = layer.adjustment.as_ref().and_then(solid_fill) else {
         return false;
-    }
-    let data = layer
-        .adjustment
-        .as_ref()
-        .expect("is_fill_content_layer checked Some");
-    let rgba = [data.data[0], data.data[1], data.data[2], data.data[3]];
+    };
     bake_solid(layer, rgba);
     layer.adjustment = None;
     true

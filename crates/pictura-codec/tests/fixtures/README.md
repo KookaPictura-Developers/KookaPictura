@@ -26,6 +26,7 @@ not hand-edit these files.
 | `gray.psd` | Grayscale | 8x8 | `Gray` |
 | `adjustment.psd` | RGB | 8x8 | `Base` pixel layer + adjustment layers `Invert`, `Posterize`, `Threshold`, `BrightnessContrast`, `Levels`, `PhotoFilter` |
 | `gradient_map.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Map` (`grdm`) adjustment layer |
+| `solid_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Solid Fill` (`SoCo`) descriptor fill layer |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -89,6 +90,29 @@ adj(psd, Tag.GRADIENT_MAP, "Gradient Map", GradientMap(
     expansion=2, interpolation=4096, length=32,
     minimum_color=[0, 0, 0, 0], maximum_color=[0, 0, 0, 0],
 ))
+```
+
+
+`solid_fill.psd` is authored by the `solid_fill()` builder: the same `Base`
+pixel layer plus a channel-stripped fill layer whose tagged-block key is `SoCo`
+carrying the standard Photoshop descriptor, a version-16 block whose `Clr `
+`RGBC` object holds the three `doub` components (10, 20, 30) on the `0..=255`
+scale. psd-tools' `DescriptorBlock` keeps its own default class id, so the
+serialized top-level descriptor class is `null`; only the tagged-block key is
+`SoCo`. Our encoder writes `SoCo` as the top-level class, which psd-tools
+accepts identically (it dispatches on the tag).
+
+```python
+from psd_tools.psd.descriptor import Descriptor, DescriptorBlock, Double
+
+data = DescriptorBlock(
+    Descriptor(
+        {b"Clr ": Descriptor(
+            {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
+            classID=b"RGBC")},
+        classID=b"SoCo"),
+)
+adj(psd, Tag.SOLID_COLOR_SHEET_SETTING, "Solid Fill", data)
 ```
 
 

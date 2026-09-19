@@ -31,7 +31,8 @@ mod composite;
 pub(crate) use composite::{channel, mask_alpha, render_smart_source, sample};
 pub use composite::{
     composite_rgba, decode_adjustment, encode_brightness_contrast, encode_gradient_map,
-    encode_hue_saturation, encode_invert, encode_photo_filter, encode_posterize, encode_threshold,
+    encode_hue_saturation, encode_invert, encode_photo_filter, encode_posterize,
+    encode_solid_color_fill, encode_threshold,
 };
 pub use pictura_adjust::GradientStop;
 
