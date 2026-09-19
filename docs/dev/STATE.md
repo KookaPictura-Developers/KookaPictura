@@ -16,7 +16,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   fresh-white-document regression; counted from `cargo nextest run --workspace`,
   which excludes the pre-existing ignored `pictura-render` doctest that
   `cargo test --workspace` reports as the ninth skip). The
-  C++ self-test reports **226 passed, 0 failed, 0 skipped**.
+  C++ self-test reports **227 passed, 0 failed, 0 skipped**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -29,8 +29,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   `open-as-smart-object`, `export-smart-object-contents`,
   `photo-filter-adjustment-decode`, `gradient-map-adjustment-decode`,
   `solid-color-fill-descriptor`, `gradient-fill-layer`,
-  `edit-smart-object-contents`, and `image-import` changes;
-  canonical specs are in `openspec/specs/` (72 specs, `validate --all --strict`
+  `edit-smart-object-contents`, `image-import`, and `file-drop-routing` changes;
+  canonical specs are in `openspec/specs/` (73 specs, `validate --all --strict`
   green), change history under `openspec/changes/archive/`; no change is open.
   The next panel-program stage is **layer styles / effects**, named by
   content rather than a milestone number.
@@ -196,6 +196,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   yields the authored proxy), frame 0 only, no ICC/EXIF, and a colour image
   placed into a Grayscale document renders red-as-gray. Remaining phases: OS file
   drag-and-drop, then free transform on place.
+- OS file drag-and-drop (archived `2026-09-19-file-drop-routing`): a
+  `FileDropRouter` event filter on the frame routes each drop by target — a drop
+  on a document `ImageView` (canvas or its surrounding space) **places** each file
+  into the current document, falling back to opening tabs when no document is
+  open; a drop on the tab strip, menu bar, or options bar **opens** each file as
+  its own tab. PSD stays on the native `openPath`/`place_smart_object` branch and
+  other images reuse the Phase 1 `open_image`/`place_image` routing; a URL-less or
+  non-file drag is never consumed, so the Layers-panel internal DnD and tab
+  reordering are untouched, and failures are skipped per file. C++ self-test
+  `lpr_file_drop` (code 291). This is Phase 2 of the place/drop program;
+  free-transform-on-place (Phase 3) remains.
 
 ## Commands
 

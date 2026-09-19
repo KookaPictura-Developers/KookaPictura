@@ -191,8 +191,12 @@ or trusts our merged composite.
 `File > Open` and `File > Place…` accept common raster images
 (PNG/JPEG/GIF/BMP/TIFF/WebP) beside the native PSD/PSB path; Qt decodes at the
 app boundary and the engine builds its own document/layer structures from the
-pixels (shipped as `2026-09-19-image-import`). Planned follow-ups: OS file
-drag-and-drop, then an interactive free-transform session on place.
+pixels (shipped as `2026-09-19-image-import`). OS file drag-and-drop is shipped
+as `2026-09-19-file-drop-routing`: a drop on the document canvas places each
+image into the current document, while a drop on the tab strip, menu bar, or
+options bar opens each file as its own tab, reusing the same PSD-native vs
+Qt-decode routing. The remaining follow-up is an interactive free-transform
+session on place (Phase 3).
 
 ## Reference fixtures
 
