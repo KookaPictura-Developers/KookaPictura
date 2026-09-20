@@ -22,7 +22,9 @@ pub(super) fn finalize_import(doc: &mut Document, rgba: &[u8]) {
     };
     layer.name = "Background".to_string();
     layer.background = true;
-    layer.lock = LockFlags::all();
+    layer.lock = LockFlags::default()
+        .with(LockFlags::TRANSPARENCY, true)
+        .with(LockFlags::POSITION, true);
     layer.channels.retain(|channel| channel.id != -1);
 }
 

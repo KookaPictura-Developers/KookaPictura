@@ -8,6 +8,7 @@
 #include "selftest_report.h"
 #include "selftest_session.h"
 #include "selftest_tools_selection.h"
+#include "selftest_ui_persistence.h"
 
 #include "commands.h"
 #include "frame.h"
@@ -1089,6 +1090,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int ll = pictura::runLayerLocksChecks(frame); ll != 0) { return ll; }
 
         if (const int ss = pictura::runSessionChecks(frame); ss != 0) { return ss; }
+
+        if (const int up = pictura::runUiPersistenceChecks(frame); up != 0) { return up; }
 
     return 0;
 }

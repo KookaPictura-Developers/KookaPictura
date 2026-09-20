@@ -153,7 +153,8 @@ int pictura::runCanvasViewChecks(pictura::PicturaMainWindow& frame)
     }
     frame.closeDocument(bigDoc, false);
 
-    // 310: both bars hide when the document fits the viewport.
+    // 310: both bars stay visible when the document fits the viewport, and the
+    // canvas is still pannable through the shared range.
     const bool smallCreated = frame.newDocument(QStringLiteral("CanvasFits"), 16, 16,
                                                 QStringLiteral("rgb"), 8,
                                                 QStringLiteral("white"));
@@ -170,12 +171,15 @@ int pictura::runCanvasViewChecks(pictura::PicturaMainWindow& frame)
     if (!smallHost) {
         return pictura::selfTest().fail(310, "canvas fits host");
     }
-    const bool hidden = smallHost->horizontalBarForTest()->isHidden()
-                        && smallHost->verticalBarForTest()->isHidden();
-    ST_BEGIN("canvas_scrollbar_hidden");
-    ST_PASS("canvas_scrollbar_hidden hidden=%d", hidden ? 1 : 0);
-    if (!hidden) {
-        return pictura::selfTest().fail(310, "scrollbars not hidden");
+    QScrollBar* smallH = smallHost->horizontalBarForTest();
+    const bool visible = !smallH->isHidden() && !smallHost->verticalBarForTest()->isHidden();
+    const int beforePan = int(std::lround(small->offset().x()));
+    smallH->setValue(smallH->minimum());
+    const bool panned = int(std::lround(small->offset().x())) != beforePan;
+    ST_BEGIN("canvas_scrollbar_visible");
+    ST_PASS("canvas_scrollbar_visible visible=%d panned=%d", visible ? 1 : 0, panned ? 1 : 0);
+    if (!visible || !panned) {
+        return pictura::selfTest().fail(310, "scrollbars not visible");
     }
     frame.closeDocument(smallDoc, false);
 

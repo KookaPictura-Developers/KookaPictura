@@ -72,8 +72,8 @@ void PicturaMainWindow::saveSession()
         // Legacy flat mirror of the primary column kept for older stores.
         state.panelGroups = panelColumn_->savePanelState();
     }
-    // v7: the ordered per-column layout, in central-splitter order, each with
-    // its normal-mode width.
+    // v8: the ordered per-column layout, in central-splitter order, each with
+    // its normal-mode width and its own rail mode.
     QJsonArray columns;
     int order = 0;
     for (PanelColumn* column : panelColumns()) {
@@ -83,11 +83,14 @@ void PicturaMainWindow::saveSession()
                                                        : QStringLiteral("right"));
         entry.insert(QStringLiteral("order"), order++);
         entry.insert(QStringLiteral("width"), column->persistedWidth());
+        entry.insert(QStringLiteral("railMode"),
+                     column->railMode() ? QStringLiteral("iconic")
+                                        : QStringLiteral("normal"));
         entry.insert(QStringLiteral("groups"), column->savePanelState());
         columns.append(entry);
     }
     state.panelColumns = columns;
-    state.schemaVersion = 7;
+    state.schemaVersion = 8;
     state.recent = recent_;
     pictura::saveSession(state);
 }
@@ -157,8 +160,23 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
     };
     QList<QPair<PanelColumn*, int>> restoredWidths;
 
-    auto buildColumn = [this, &entries, &restoredWidth, &restoredWidths](int entryIndex,
-                                                                         PanelSide side) {
+    // The rail mode to restore for stored column `i`: its own v8 mode, else the
+    // legacy top-level `panelRailMode` (v7 and older).
+    auto restoredRailMode = [&state, &entries](int i) {
+        const QString stored =
+            entries.at(i).value(QStringLiteral("railMode")).toString();
+        if (stored == QStringLiteral("iconic")) {
+            return true;
+        }
+        if (stored == QStringLiteral("normal")) {
+            return false;
+        }
+        return state.panelRailMode == QStringLiteral("iconic");
+    };
+    QHash<PanelColumn*, bool> restoredRails;
+
+    auto buildColumn = [this, &entries, &restoredWidth, &restoredWidths, &restoredRailMode,
+                        &restoredRails](int entryIndex, PanelSide side) {
         const QJsonObject entry = entries.at(entryIndex);
         const QJsonArray groups = entry.value(QStringLiteral("groups")).toArray();
         QList<PanelGroup*> moved;
@@ -185,6 +203,7 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
         column->restorePanelState(groups);
         column->setRestoredWidth(restoredWidth(entryIndex));
         restoredWidths.append({column, restoredWidth(entryIndex)});
+        restoredRails.insert(column, restoredRailMode(entryIndex));
     };
 
     if (entries.isEmpty()) {
@@ -207,11 +226,15 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
         }
     }
 
-    const bool iconic = state.panelRailMode == QStringLiteral("iconic");
+    const bool legacyIconic = state.panelRailMode == QStringLiteral("iconic");
+    // The primary column's mode also comes from its own entry when present, else
+    // from the legacy top-level value.
+    restoredRails.insert(panelColumn_,
+                         primary >= 0 ? restoredRailMode(primary) : legacyIconic);
     for (PanelColumn* column : panelColumns()) {
         column->setAutoCollapseIconic(state.autoCollapseIconic);
         column->setAutoShowHidden(state.autoShowHidden);
-        column->setRailMode(iconic);
+        column->setRailMode(restoredRails.value(column, legacyIconic));
     }
     // The primary column's width is stored in `panelColumn_`, not a dynamic one,
     // so it is not in `restoredWidths` yet. `setRailMode` above resets an iconic

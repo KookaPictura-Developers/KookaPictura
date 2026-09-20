@@ -782,7 +782,11 @@ fn finalize_import_marks_opaque_import_as_locked_background() {
     let layer = &doc.layers[0];
     assert_eq!(layer.name, "Background");
     assert!(layer.background, "opaque import becomes the Background");
-    assert!(layer.lock.is_all(), "Background carries every lock bit");
+    assert_eq!(
+        layer.lock.bits(),
+        LockFlags::TRANSPARENCY | LockFlags::POSITION,
+        "Background locks transparency and position only"
+    );
     assert!(
         !layer.channels.iter().any(|channel| channel.id == -1),
         "the redundant opaque alpha channel is dropped"

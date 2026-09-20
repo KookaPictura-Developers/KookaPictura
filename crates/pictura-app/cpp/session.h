@@ -19,18 +19,18 @@ struct SessionState {
     bool layersExpandNewEffects = true;
     int toolsColumns = 1;            // 1 or 2; out-of-range loads the default
     bool useShiftKeyForToolSwitch = true;
-    // v5/v6/v7 panel-column state. `panelGroups` is the legacy flat JSON array
-    // of {name, order, visible, minimized, collapsed} for the primary column;
-    // `panelColumns` is the ordered array of {side, order, width, groups:[...]}.
-    // Both are kept opaque here so an older or newer store round-trips
-    // unchanged.
+    // v5-v8 panel-column state. `panelGroups` is the legacy flat JSON array of
+    // {name, order, visible, minimized, collapsed} for the primary column;
+    // `panelColumns` is the ordered array of
+    // {side, order, width, railMode, groups:[...]}. Both are kept opaque here so
+    // an older or newer store round-trips unchanged.
     QString panelRailMode = QStringLiteral("normal");
     int railWidth = 0;               // legacy primary width seed
     bool autoCollapseIconic = false;
     bool autoShowHidden = false;
     QJsonArray panelGroups;
     QJsonArray panelColumns;
-    int schemaVersion = 7;
+    int schemaVersion = 8;
     QStringList recent;
 };
 
