@@ -458,6 +458,26 @@ void ToolController::adjustBrushSize(int delta) { setBrushSize(brushSize_ + delt
 
 void ToolController::adjustBrushHardness(int delta) { setBrushHardness(brushHardness_ + delta); }
 
+bool ToolController::applyBrushShortcut(int key, quint32 nativeScanCode, bool shift)
+{
+    PictureView* v = view();
+    if (!v) {
+        return false;
+    }
+    const bool paint = active_ == ToolId::Brush || active_ == ToolId::Pencil;
+    const int delta = v->brush_shortcut_delta(key, nativeScanCode, shift, paint);
+    if (delta == 0) {
+        return false;
+    }
+    // Magnitude 1 is a diameter step, magnitude 5 a hardness step.
+    if (std::abs(delta) >= 5) {
+        adjustBrushHardness(delta);
+    } else {
+        adjustBrushSize(delta);
+    }
+    return true;
+}
+
 void ToolController::setViewProvider(std::function<PictureView*()> provider)
 {
     viewProvider_ = std::move(provider);

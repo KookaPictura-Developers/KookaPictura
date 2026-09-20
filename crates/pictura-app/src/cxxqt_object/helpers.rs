@@ -722,3 +722,37 @@ pub(super) fn decode_import(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     }
     Some((rgba, w, h))
 }
+
+/// Brush size/hardness step for a `[`/`]` key event, or `0` when the key is not
+/// a brush bracket or `paint_tool` is false.
+///
+/// `key` is the Qt key value (`[` = 0x5B, `]` = 0x5D, `{` = 0x7B, `}` = 0x7D);
+/// `native_scan_code` is the Linux evdev code (`[` = 34, `]` = 35), so the
+/// binding follows the physical key on EU/Scandinavian layouts. A magnitude of
+/// `1` is a diameter step and `5` a hardness step; the caller picks the target.
+pub(super) fn brush_shortcut_delta(
+    key: i32,
+    native_scan_code: u32,
+    shift: bool,
+    paint_tool: bool,
+) -> i32 {
+    const KEY_BRACKET_LEFT: i32 = 0x5B;
+    const KEY_BRACKET_RIGHT: i32 = 0x5D;
+    const KEY_BRACE_LEFT: i32 = 0x7B;
+    const KEY_BRACE_RIGHT: i32 = 0x7D;
+    const EVDEV_LEFT: u32 = 34;
+    const EVDEV_RIGHT: u32 = 35;
+    if !paint_tool {
+        return 0;
+    }
+    let left = key == KEY_BRACKET_LEFT || key == KEY_BRACE_LEFT || native_scan_code == EVDEV_LEFT;
+    let right =
+        key == KEY_BRACKET_RIGHT || key == KEY_BRACE_RIGHT || native_scan_code == EVDEV_RIGHT;
+    match (shift, left, right) {
+        (false, true, _) => -1,
+        (false, _, true) => 1,
+        (true, true, _) => -5,
+        (true, _, true) => 5,
+        _ => 0,
+    }
+}

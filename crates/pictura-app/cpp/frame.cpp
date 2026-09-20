@@ -769,6 +769,13 @@ void PicturaMainWindow::refresh()
     PictureView* view = activeView();
     ImageView* canvas = canvasAt(index);
 
+    // Empty workspace: hide the document tab pane (and its ghost-canvas
+    // background) rather than showing an empty tab widget. This is the single
+    // writer of tabs_ visibility so every document-set change routes here.
+    if (tabs_) {
+        tabs_->setVisible(!docs_.isEmpty());
+    }
+
     if (view && canvas) {
         if (view->has_document()) {
             canvas->replaceImage(view->image());
@@ -921,6 +928,14 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
     }
     if (!event->isAutoRepeat() && event->key() == Qt::Key_F) {
         cycleScreenMode(!(event->modifiers() & Qt::ShiftModifier));
+        return;
+    }
+    // EU/Scandinavian fallback for the `[`/`]` brush shortcuts: the US
+    // QShortcuts above consume the event first, so this only runs when the
+    // layout produced a different key value; the native scan code still maps.
+    if (!event->isAutoRepeat() && tools_
+        && tools_->applyBrushShortcut(event->key(), event->nativeScanCode(),
+                                      event->modifiers().testFlag(Qt::ShiftModifier))) {
         return;
     }
     QMainWindow::keyPressEvent(event);
