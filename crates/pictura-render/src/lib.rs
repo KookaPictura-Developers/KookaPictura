@@ -52,7 +52,7 @@ pub use layer_effects::{
     decode_inner_glow, decode_inner_shadow, decode_outer_glow, decode_pattern_overlay,
     decode_satin, decode_stroke, BevelDirection, BevelEmboss, BevelHighlight, BevelShadow,
     BevelStyle, BevelTechnique, ColorOverlay, DropShadow, GlowSource, GlowTechnique,
-    GradientOverlay, InnerGlow, InnerShadow, OuterGlow, PatternOverlay, Satin, Stroke,
+    GradientOverlay, InnerGlow, InnerShadow, OuterGlow, PatternOverlay, Satin, Stroke, StrokeFill,
     StrokePosition,
 };
 

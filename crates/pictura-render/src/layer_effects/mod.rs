@@ -43,12 +43,16 @@
 //! result rather than an isolated content buffer.
 //!
 //! A stroke (`FrFX`) also composites **above** the content: an exact
-//! integer-width band at the content edge, outside, inside or straddling it.
-//! ponytail: only the solid-colour fill (`PntT` `FrFl`/`SClr`) is decoded and
-//! rendered — a gradient or pattern fill is ignored; contour (`TrnS`),
-//! anti-alias (`AntA`) and `overprint` are ignored; the colour defaults to
-//! black rather than the docs' "foreground `(inferred)`"; and Photoshop's exact
-//! inter-effect order among the above-content effects is not modelled.
+//! integer-width band at the content edge, outside, inside or straddling it,
+//! filled from the stroke's `fill` — a flat colour, a gradient (over the layer
+//! rect when aligned, else the canvas) or a pattern (tiled, anchored to the
+//! layer rect when linked, else the canvas origin). ponytail: the aligned
+//! gradient clamps at the layer-rect edge and the pattern is anchored to the
+//! layer rect (design D4), an approximation; gradient noise/`Dither`/`Ofst` and
+//! stop midpoints, and pattern `Angl` rotation, are not applied; contour
+//! (`TrnS`), anti-alias (`AntA`) and `overprint` are ignored; the solid colour
+//! defaults to black; and Photoshop's exact inter-effect order among the
+//! above-content effects is not modelled.
 //!
 //! The overlays (`SoFi` Color, `GrFl` Gradient, `patternFill` Pattern) also
 //! composite **above** the content: they fill the masked content coverage `M`
@@ -113,7 +117,7 @@ pub use overlays::{
 };
 pub use satin::{decode_satin, Satin};
 pub use shadows::{decode_drop_shadow, decode_inner_shadow, DropShadow, InnerShadow};
-pub use strokes::{decode_stroke, Stroke, StrokePosition};
+pub use strokes::{decode_stroke, Stroke, StrokeFill, StrokePosition};
 
 /// Documented Drop Shadow parameter caps (`docs/05-layers/layer-styles.md`).
 const MAX_OPACITY: f32 = 100.0;
@@ -184,6 +188,40 @@ fn decode_color(value: &DescValue) -> Option<[u8; 3]> {
         component(b"Grn ")?,
         component(b"Bl  ")?,
     ])
+}
+
+/// Clone a `GrFl`/`GdFl` object, injecting the overlay defaults the shared
+/// helper requires: an absent `Angl` becomes `0` and an absent `Type` becomes
+/// the `GrdT`/`Lnr ` Linear enum. A present but malformed key is left as-is so
+/// the helper still rejects it. This is overlay/stroke-layer only; the strict
+/// `GdFl` contract keeps requiring both keys.
+pub(crate) fn with_gradient_defaults(obj: &DescValue) -> DescValue {
+    let DescValue::Object {
+        name,
+        class_id,
+        items,
+    } = obj
+    else {
+        return obj.clone();
+    };
+    let mut items = items.clone();
+    if crate::composite::desc_item(obj, b"Angl").is_none() {
+        items.push((b"Angl".to_vec(), DescValue::Double(0.0)));
+    }
+    if crate::composite::desc_item(obj, b"Type").is_none() {
+        items.push((
+            b"Type".to_vec(),
+            DescValue::Enum {
+                kind: b"GrdT".to_vec(),
+                value: b"Lnr ".to_vec(),
+            },
+        ));
+    }
+    DescValue::Object {
+        name: name.clone(),
+        class_id: class_id.clone(),
+        items,
+    }
 }
 
 /// Map an `lfx2` effect blend-mode value (typeID `BlnM`) to a [`BlendMode`],

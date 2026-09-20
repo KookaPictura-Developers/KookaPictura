@@ -172,7 +172,7 @@ fn stroke_decodes_typed_parameters() {
     let stroke = decode_stroke(&stroke_layer(Some(block))).expect("decodes");
     assert!(stroke.enabled && stroke.present);
     assert_eq!(stroke.blend_mode, BlendMode::Multiply);
-    assert_eq!(stroke.color, [200, 100, 50]);
+    assert_eq!(stroke.fill, StrokeFill::Solid([200, 100, 50]));
     assert_eq!(stroke.opacity, 60.0);
     assert_eq!(stroke.size, 12);
     assert_eq!(stroke.position, StrokePosition::Inside);
@@ -186,7 +186,7 @@ fn stroke_missing_keys_take_defaults() {
     ])));
     let stroke = decode_stroke(&stroke_layer(Some(block))).expect("decodes");
     assert_eq!(stroke.blend_mode, BlendMode::Normal);
-    assert_eq!(stroke.color, [0, 0, 0]);
+    assert_eq!(stroke.fill, StrokeFill::Solid([0, 0, 0]));
     assert_eq!(stroke.opacity, 100.0);
     assert_eq!(stroke.size, 3);
     assert_eq!(stroke.position, StrokePosition::Outside);
@@ -249,7 +249,9 @@ fn stroke_position_values_decode() {
 }
 
 #[test]
-fn stroke_non_solid_fill_is_deferred() {
+fn stroke_non_solid_without_content_is_a_no_op() {
+    // A `GrFl`/`Ptrn` fill with no matching content object is malformed, and an
+    // unknown fill type is rejected; all three are byte-identical to no effect.
     for fill in [b"GrFl".as_slice(), b"Ptrn".as_slice(), b"zzzz".as_slice()] {
         let spec = StrokeSpec {
             fill: fill.to_vec(),
@@ -257,12 +259,362 @@ fn stroke_non_solid_fill_is_deferred() {
         };
         assert!(
             decode_stroke(&spec_stroke(&spec)).is_none(),
-            "PntT {fill:?} is a documented ceiling"
+            "PntT {fill:?} without its content object is a no-op"
         );
         assert_eq!(
             compose_stroke(spec_stroke(&spec)),
             plain_stroke(),
-            "a non-solid fill is byte-identical to no effect"
+            "a malformed fill is byte-identical to no effect"
+        );
+    }
+}
+
+fn stop(location: f64, color: (f64, f64, f64)) -> DescValue {
+    object(
+        b"Clrt",
+        vec![
+            (b"Clr ".to_vec(), rgbc(color.0, color.1, color.2)),
+            (b"Lctn".to_vec(), DescValue::Double(location)),
+        ],
+    )
+}
+
+fn gradn(stops: Vec<DescValue>) -> DescValue {
+    object(
+        b"Grdn",
+        vec![
+            (
+                b"GrdF".to_vec(),
+                DescValue::Enum {
+                    kind: b"GrdF".to_vec(),
+                    value: b"CstS".to_vec(),
+                },
+            ),
+            (b"Clrs".to_vec(), DescValue::List(stops)),
+        ],
+    )
+}
+
+fn gradient_stroke_block(align: bool, enabled: bool) -> LayerBlock {
+    lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(enabled)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"GrFl")),
+        (
+            b"Grad".to_vec(),
+            gradn(vec![
+                stop(0.0, (0.0, 0.0, 0.0)),
+                stop(4096.0, (255.0, 255.0, 255.0)),
+            ]),
+        ),
+        (b"Angl".to_vec(), unit(45.0, ANG)),
+        (
+            b"Type".to_vec(),
+            DescValue::Enum {
+                kind: b"GrdT".to_vec(),
+                value: b"Lnr ".to_vec(),
+            },
+        ),
+        (b"Rvrs".to_vec(), DescValue::Bool(false)),
+        (b"Scl ".to_vec(), unit(100.0, PRC)),
+        (b"Algn".to_vec(), DescValue::Bool(align)),
+        (b"Sz  ".to_vec(), unit(2.0, PXL)),
+    ])))
+}
+
+fn ptrn(content: &str) -> DescValue {
+    object(
+        b"Ptrn",
+        vec![(b"Idnt".to_vec(), DescValue::Text(format!("{content}\0")))],
+    )
+}
+
+fn pattern_stroke_block(id: &str, link: bool) -> LayerBlock {
+    lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), ptrn(id)),
+        (b"Scl ".to_vec(), unit(100.0, PRC)),
+        (b"Lnkd".to_vec(), DescValue::Bool(link)),
+        (b"Angl".to_vec(), unit(0.0, ANG)),
+        (b"Sz  ".to_vec(), unit(2.0, PXL)),
+    ])))
+}
+
+#[test]
+fn gradient_fill_decodes_to_gradient() {
+    let stroke =
+        decode_stroke(&stroke_layer(Some(gradient_stroke_block(false, true)))).expect("decodes");
+    match stroke.fill {
+        StrokeFill::Gradient {
+            params,
+            align_with_layer,
+        } => {
+            assert_eq!(
+                params.stops,
+                vec![
+                    GradientStop {
+                        location: 0,
+                        color: [0, 0, 0]
+                    },
+                    GradientStop {
+                        location: 4096,
+                        color: [255, 255, 255]
+                    },
+                ]
+            );
+            assert!(!params.reverse);
+            assert_eq!(params.kind, GradientKind::Linear);
+            assert_eq!(params.angle_deg, 45.0);
+            assert_eq!(params.scale, 100.0);
+            assert!(!align_with_layer);
+        }
+        other => panic!("expected a gradient fill, got {other:?}"),
+    }
+}
+
+#[test]
+fn absent_gradient_angl_and_type_take_defaults() {
+    let block = lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"GrFl")),
+        (
+            b"Grad".to_vec(),
+            gradn(vec![
+                stop(0.0, (0.0, 0.0, 0.0)),
+                stop(4096.0, (255.0, 255.0, 255.0)),
+            ]),
+        ),
+    ])));
+    let stroke = decode_stroke(&stroke_layer(Some(block))).expect("decodes");
+    match stroke.fill {
+        StrokeFill::Gradient {
+            params,
+            align_with_layer,
+        } => {
+            assert_eq!(params.angle_deg, 0.0, "absent Angl defaults to 0");
+            assert_eq!(
+                params.kind,
+                GradientKind::Linear,
+                "absent Type defaults Linear"
+            );
+            assert!(align_with_layer, "absent Algn defaults true");
+        }
+        other => panic!("expected a gradient fill, got {other:?}"),
+    }
+}
+
+#[test]
+fn pattern_fill_decodes_to_pattern() {
+    let stroke = decode_stroke(&stroke_layer(Some(pattern_stroke_block(
+        "pictura-pattern",
+        false,
+    ))))
+    .expect("decodes");
+    match stroke.fill {
+        StrokeFill::Pattern { params, angle_deg } => {
+            assert_eq!(params.pattern_id, "pictura-pattern");
+            assert_eq!(params.scale, 100.0);
+            assert!(
+                !params.link_with_layer,
+                "Lnkd false overrides the helper default"
+            );
+            assert_eq!(angle_deg, 0.0);
+        }
+        other => panic!("expected a pattern fill, got {other:?}"),
+    }
+}
+
+#[test]
+fn pattern_link_flag_prefers_lnkd_and_defaults_true() {
+    // `Lnkd` absent and `Algn` absent: the helper default true holds.
+    let block = lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), ptrn("pictura-pattern")),
+    ])));
+    let link = |block: LayerBlock| match decode_stroke(&stroke_layer(Some(block)))
+        .expect("decodes")
+        .fill
+    {
+        StrokeFill::Pattern { params, .. } => params.link_with_layer,
+        other => panic!("expected a pattern fill, got {other:?}"),
+    };
+    assert!(link(block), "absent Lnkd/Algn defaults true");
+    // `Lnkd` present overrides a contradictory `Algn`.
+    let block = lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), ptrn("pictura-pattern")),
+        (b"Algn".to_vec(), DescValue::Bool(true)),
+        (b"Lnkd".to_vec(), DescValue::Bool(false)),
+    ])));
+    assert!(!link(block), "Lnkd overrides Algn");
+}
+
+#[test]
+fn valid_lnkd_survives_a_wrongly_typed_algn() {
+    // `Lnkd` is authoritative: a present-but-malformed `Algn` must not reject
+    // the stroke when `Lnkd` is valid.
+    let block = lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), ptrn("pictura-pattern")),
+        (b"Algn".to_vec(), DescValue::Double(1.0)),
+        (b"Lnkd".to_vec(), DescValue::Bool(false)),
+    ])));
+    match decode_stroke(&stroke_layer(Some(block)))
+        .expect("a valid Lnkd decodes despite the malformed Algn")
+        .fill
+    {
+        StrokeFill::Pattern { params, .. } => {
+            assert!(!params.link_with_layer, "the valid Lnkd value is used")
+        }
+        other => panic!("expected a pattern fill, got {other:?}"),
+    }
+    // Without `Lnkd`, the malformed `Algn` still rejects.
+    let block = lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), ptrn("pictura-pattern")),
+        (b"Algn".to_vec(), DescValue::Double(1.0)),
+    ])));
+    assert!(decode_stroke(&stroke_layer(Some(block))).is_none());
+}
+
+#[test]
+fn malformed_gradient_or_pattern_content_is_none() {
+    let base = |items: Vec<(Vec<u8>, DescValue)>| {
+        let mut all = vec![
+            (b"enab".to_vec(), DescValue::Bool(true)),
+            (b"present".to_vec(), DescValue::Bool(true)),
+        ];
+        all.extend(items);
+        lfx2(stroke_top_with(frfx(all)))
+    };
+    // GrFl without Grad.
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![(
+        b"PntT".to_vec(),
+        pntt(b"GrFl")
+    )]))))
+    .is_none());
+    // Grad that is not an object.
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![
+        (b"PntT".to_vec(), pntt(b"GrFl")),
+        (b"Grad".to_vec(), DescValue::Double(1.0)),
+    ]))))
+    .is_none());
+    // GrdF that is not CstS.
+    let not_csts = object(
+        b"Grdn",
+        vec![
+            (
+                b"GrdF".to_vec(),
+                DescValue::Enum {
+                    kind: b"GrdF".to_vec(),
+                    value: b"FStS".to_vec(),
+                },
+            ),
+            (
+                b"Clrs".to_vec(),
+                DescValue::List(vec![
+                    stop(0.0, (0.0, 0.0, 0.0)),
+                    stop(4096.0, (1.0, 1.0, 1.0)),
+                ]),
+            ),
+        ],
+    );
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![
+        (b"PntT".to_vec(), pntt(b"GrFl")),
+        (b"Grad".to_vec(), not_csts),
+    ]))))
+    .is_none());
+    // A single stop.
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![
+        (b"PntT".to_vec(), pntt(b"GrFl")),
+        (b"Grad".to_vec(), gradn(vec![stop(0.0, (0.0, 0.0, 0.0))])),
+    ]))))
+    .is_none());
+    // Non-increasing stops.
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![
+        (b"PntT".to_vec(), pntt(b"GrFl")),
+        (
+            b"Grad".to_vec(),
+            gradn(vec![
+                stop(4096.0, (0.0, 0.0, 0.0)),
+                stop(0.0, (1.0, 1.0, 1.0))
+            ]),
+        ),
+    ]))))
+    .is_none());
+    // Ptrn without Ptrn.
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![(
+        b"PntT".to_vec(),
+        pntt(b"Ptrn")
+    )]))))
+    .is_none());
+    // Ptrn that is not an object.
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), DescValue::Double(1.0)),
+    ]))))
+    .is_none());
+    // A missing Idnt.
+    assert!(decode_stroke(&stroke_layer(Some(base(vec![
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), object(b"Ptrn", vec![])),
+    ]))))
+    .is_none());
+    // Non-finite Angl rejects a gradient and a pattern.
+    for fill in [b"GrFl".as_slice(), b"Ptrn".as_slice()] {
+        let mut items = vec![
+            (b"enab".to_vec(), DescValue::Bool(true)),
+            (b"present".to_vec(), DescValue::Bool(true)),
+            (b"PntT".to_vec(), pntt(fill)),
+            (b"Angl".to_vec(), DescValue::Double(f64::NAN)),
+        ];
+        match fill {
+            b"GrFl" => items.push((
+                b"Grad".to_vec(),
+                gradn(vec![
+                    stop(0.0, (0.0, 0.0, 0.0)),
+                    stop(4096.0, (1.0, 1.0, 1.0)),
+                ]),
+            )),
+            _ => items.push((b"Ptrn".to_vec(), ptrn("pictura-pattern"))),
+        }
+        assert!(
+            decode_stroke(&stroke_layer(Some(lfx2(stroke_top_with(frfx(items)))))).is_none(),
+            "a non-finite Angl rejects {fill:?}"
+        );
+    }
+    // A non-finite `Scl ` rejects a gradient and a pattern too.
+    for fill in [b"GrFl".as_slice(), b"Ptrn".as_slice()] {
+        let mut items = vec![
+            (b"enab".to_vec(), DescValue::Bool(true)),
+            (b"present".to_vec(), DescValue::Bool(true)),
+            (b"PntT".to_vec(), pntt(fill)),
+            (b"Scl ".to_vec(), DescValue::Double(f64::INFINITY)),
+        ];
+        match fill {
+            b"GrFl" => items.push((
+                b"Grad".to_vec(),
+                gradn(vec![
+                    stop(0.0, (0.0, 0.0, 0.0)),
+                    stop(4096.0, (1.0, 1.0, 1.0)),
+                ]),
+            )),
+            _ => items.push((b"Ptrn".to_vec(), ptrn("pictura-pattern"))),
+        }
+        assert!(
+            decode_stroke(&stroke_layer(Some(lfx2(stroke_top_with(frfx(items)))))).is_none(),
+            "a non-finite Scl rejects {fill:?}"
         );
     }
 }
@@ -674,6 +1026,132 @@ fn max_size_small_layer_is_bounded() {
     );
 }
 
+// --- Gradient and pattern fill sources -------------------------------------
+
+/// A stroked 3x3 red layer at `(3, 3)` over a white backdrop on the 8x8
+/// pattern-fixture document (which carries the 2x2 `pictura-pattern`).
+fn pattern_stroke_doc(id: &str, link: bool) -> Document {
+    let mut layer = solid(
+        "Stroked",
+        rect(3, 3, 6, 6),
+        (255, 0, 0),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    layer.extra_blocks = vec![pattern_stroke_block(id, link)];
+    let mut d = pattern_fixture_doc();
+    let backdrop = solid(
+        "Backdrop",
+        full(8, 8),
+        (255, 255, 255),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    d.layers = vec![backdrop, layer];
+    d
+}
+
+#[test]
+fn gradient_stroke_paints_the_band_and_leaves_the_interior() {
+    let out = compose_stroke(stroke_layer(Some(gradient_stroke_block(true, true))));
+    let plain = plain_stroke();
+    let (x0, y0, x1, y1) = content();
+    for y in y0..y1 {
+        for x in x0..x1 {
+            assert_eq!(px(&out, x, y), px(&plain, x, y), "interior ({x},{y})");
+        }
+    }
+    // The ring outside the content varies along the gradient direction.
+    let mut colors = std::collections::BTreeSet::new();
+    for y in 2..10u32 {
+        for x in 2..10u32 {
+            if (x0..x1).contains(&x) && (y0..y1).contains(&y) {
+                continue;
+            }
+            let c = rgb(&out, x, y);
+            if c != [255, 255, 255] {
+                colors.insert(c);
+            }
+        }
+    }
+    assert!(
+        colors.len() >= 2,
+        "the gradient band varies, not one flat tint: {colors:?}"
+    );
+    // Beyond the content padded by 2 on a 12x12 canvas is byte-identical.
+    assert_eq!(rgb(&out, 0, 0), [255, 255, 255]);
+    assert_eq!(px(&out, 0, 0), px(&plain, 0, 0));
+}
+
+#[test]
+fn gradient_align_flag_moves_the_origin() {
+    let aligned = compose_stroke(stroke_layer(Some(gradient_stroke_block(true, true))));
+    let unaligned = compose_stroke(stroke_layer(Some(gradient_stroke_block(false, true))));
+    assert_ne!(
+        aligned, unaligned,
+        "the align flag moves the gradient origin"
+    );
+}
+
+#[test]
+fn pattern_stroke_tiles_the_band_and_shows_the_authored_tile() {
+    let out = composite_rgba(&pattern_stroke_doc("pictura-pattern", false));
+    let mut band = std::collections::BTreeSet::new();
+    for y in 0..8u32 {
+        for x in 0..8u32 {
+            band.insert(rgb(&out, x, y));
+        }
+    }
+    // The resolved 2x2 tile contributes colours the red content cannot. White is
+    // the backdrop, so it is not evidence of the tile.
+    assert!(
+        band.contains(&[0, 255, 0]) || band.contains(&[0, 0, 255]),
+        "the authored pattern resolves in the band: {band:?}"
+    );
+    // An unknown id falls back to the shipped grey placeholder, not a no-op.
+    let grey = composite_rgba(&pattern_stroke_doc("missing-pattern", false));
+    assert!(
+        (0..8u32).any(|y| (0..8u32).any(|x| rgb(&grey, x, y) == [128, 128, 128])),
+        "an unknown pattern id renders the grey placeholder"
+    );
+}
+
+#[test]
+fn pattern_link_flag_moves_the_anchor() {
+    let unlinked = composite_rgba(&pattern_stroke_doc("pictura-pattern", false));
+    let linked = composite_rgba(&pattern_stroke_doc("pictura-pattern", true));
+    assert_ne!(unlinked, linked, "the pattern anchor follows the link flag");
+}
+
+#[test]
+fn unreadable_fill_is_a_bounded_no_op() {
+    // GrFl without Grad renders nothing rather than panicking.
+    let bad_gradient = lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"GrFl")),
+        (b"Sz  ".to_vec(), unit(2.0, PXL)),
+    ])));
+    assert_eq!(
+        compose_stroke(stroke_layer(Some(bad_gradient))),
+        plain_stroke()
+    );
+    // Ptrn with a non-object payload renders nothing rather than panicking.
+    let bad_pattern = lfx2(stroke_top_with(frfx(vec![
+        (b"enab".to_vec(), DescValue::Bool(true)),
+        (b"present".to_vec(), DescValue::Bool(true)),
+        (b"PntT".to_vec(), pntt(b"Ptrn")),
+        (b"Ptrn".to_vec(), DescValue::Double(1.0)),
+        (b"Sz  ".to_vec(), unit(2.0, PXL)),
+    ])));
+    assert_eq!(
+        compose_stroke(stroke_layer(Some(bad_pattern))),
+        plain_stroke()
+    );
+}
+
 // --- Matte sources ---------------------------------------------------------
 
 #[test]
@@ -800,7 +1278,34 @@ fn gpu_rejects_a_stroke_layer_and_falls_back() {
 }
 
 #[test]
-fn gpu_does_not_reject_an_inert_or_non_solid_stroke() {
+fn gpu_rejects_a_gradient_or_pattern_stroke_and_falls_back() {
+    let gradient = doc(
+        12,
+        12,
+        vec![stroke_layer(Some(gradient_stroke_block(true, true)))],
+    );
+    assert!(
+        matches!(
+            composite_gpu(&gradient),
+            Err(GpuError::UnsupportedLayerEffect)
+        ),
+        "a gradient stroke is effect-bearing"
+    );
+    assert_eq!(composite_gpu_or_cpu(&gradient), composite_rgba(&gradient));
+
+    let pattern = pattern_stroke_doc("pictura-pattern", true);
+    assert!(
+        matches!(
+            composite_gpu(&pattern),
+            Err(GpuError::UnsupportedLayerEffect)
+        ),
+        "a pattern stroke is effect-bearing"
+    );
+    assert_eq!(composite_gpu_or_cpu(&pattern), composite_rgba(&pattern));
+}
+
+#[test]
+fn gpu_does_not_reject_an_inert_or_malformed_stroke() {
     for spec in [
         StrokeSpec {
             enabled: false,
@@ -811,6 +1316,7 @@ fn gpu_does_not_reject_an_inert_or_non_solid_stroke() {
             ..Default::default()
         },
         StrokeSpec {
+            // `GrFl` with no `Grad` payload does not decode, so it is not an effect.
             fill: b"GrFl".to_vec(),
             ..Default::default()
         },
@@ -818,9 +1324,22 @@ fn gpu_does_not_reject_an_inert_or_non_solid_stroke() {
         let d = doc(12, 12, vec![spec_stroke(&spec)]);
         assert!(
             !matches!(composite_gpu(&d), Err(GpuError::UnsupportedLayerEffect)),
-            "an inert or non-solid stroke must not reject the GPU"
+            "an inert or malformed stroke must not reject the GPU"
         );
     }
+    // A disabled gradient stroke does not reject either.
+    let disabled = doc(
+        12,
+        12,
+        vec![stroke_layer(Some(gradient_stroke_block(true, false)))],
+    );
+    assert!(
+        !matches!(
+            composite_gpu(&disabled),
+            Err(GpuError::UnsupportedLayerEffect)
+        ),
+        "a disabled gradient stroke must not reject the GPU"
+    );
 }
 
 // --- Fixture ---------------------------------------------------------------
@@ -838,7 +1357,7 @@ fn stroke_fixture_decodes_and_composites() {
     let stroke = decode_stroke(layer).expect("decodes the authored FrFX");
     assert!(stroke.enabled && stroke.present);
     assert_eq!(stroke.blend_mode, BlendMode::Normal);
-    assert_eq!(stroke.color, [0, 0, 0]);
+    assert_eq!(stroke.fill, StrokeFill::Solid([0, 0, 0]));
     assert_eq!(stroke.opacity, 100.0);
     assert_eq!(stroke.size, 3);
     assert_eq!(stroke.position, StrokePosition::Outside);

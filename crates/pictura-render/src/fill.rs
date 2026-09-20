@@ -90,6 +90,19 @@ pub fn decode_pattern_fill(d: &[u8]) -> Option<Adjustment> {
 /// the public fill decoder and the pattern-overlay decoder (a pure move; the
 /// strict `PtFl` contract is unchanged).
 pub(crate) fn pattern_params_from_desc(obj: &DescValue) -> Option<PatternFillParams> {
+    pattern_params_from_desc_with_link(obj, None)
+}
+
+/// [`pattern_params_from_desc`] with the link flag forced when `Some`.
+///
+/// The overlay pattern links via `Algn`; the stroke pattern links via `Lnkd`
+/// (psd-tools `_PatternMixin`), so the stroke passes its decoded `Lnkd` here.
+/// Forcing it bypasses the helper's `Algn` requirement, so a valid `Lnkd` wins
+/// even when a present-but-wrongly-typed `Algn` would otherwise reject.
+pub(crate) fn pattern_params_from_desc_with_link(
+    obj: &DescValue,
+    link_override: Option<bool>,
+) -> Option<PatternFillParams> {
     if !matches!(obj, DescValue::Object { .. }) {
         return None;
     }
@@ -113,10 +126,13 @@ pub(crate) fn pattern_params_from_desc(obj: &DescValue) -> Option<PatternFillPar
     if !scale.is_finite() {
         return None;
     }
-    let link_with_layer = match desc_item(obj, b"Algn") {
-        Some(DescValue::Bool(b)) => *b,
-        Some(_) => return None,
-        None => true,
+    let link_with_layer = match link_override {
+        Some(linked) => linked,
+        None => match desc_item(obj, b"Algn") {
+            Some(DescValue::Bool(b)) => *b,
+            Some(_) => return None,
+            None => true,
+        },
     };
     Some(PatternFillParams {
         pattern_id,
@@ -572,9 +588,30 @@ pub(crate) fn composite_pattern_fill(
     }
 }
 
+/// Bake the tiled pattern (or placeholder) for an arbitrary canvas `region`
+/// into row-major RGBA. Shares [`Tile`] with the compositor; the caller decodes
+/// the pattern library once and passes the anchor the tile is linked to.
+pub(crate) fn pattern_tile_region(
+    patterns: &[PatternPixels],
+    params: &PatternFillParams,
+    anchor: (i32, i32),
+    region: (i32, i32, i32, i32),
+) -> Vec<[u8; 4]> {
+    let pattern = patterns.iter().find(|p| p.pattern_id == params.pattern_id);
+    let tile = tile_for(pattern, params);
+    let (x0, y0, x1, y1) = region;
+    let mut out = Vec::with_capacity(((x1 - x0).max(0) * (y1 - y0).max(0)) as usize);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            out.push(tile.sample(x, y, anchor.0, anchor.1));
+        }
+    }
+    out
+}
+
 /// Bake the tiled pattern (or placeholder) for a rect into row-major RGBA, for
-/// fill-content rasterization. Shares [`Tile`] with the compositor; the caller
-/// decodes the pattern library once.
+/// fill-content rasterization. A thin wrapper over [`pattern_tile_region`]
+/// anchored to the rect's top-left.
 pub(crate) fn pattern_tile_rgba(
     patterns: &[PatternPixels],
     params: &PatternFillParams,
@@ -583,17 +620,17 @@ pub(crate) fn pattern_tile_rgba(
     w: i32,
     h: i32,
 ) -> Vec<[u8; 4]> {
-    let pattern = patterns.iter().find(|p| p.pattern_id == params.pattern_id);
-    let tile = tile_for(pattern, params);
-    let w = w.max(0);
-    let h = h.max(0);
-    let mut out = Vec::with_capacity(w as usize * h as usize);
-    for ly in 0..h {
-        for lx in 0..w {
-            out.push(tile.sample(rect_left + lx, rect_top + ly, rect_left, rect_top));
-        }
-    }
-    out
+    pattern_tile_region(
+        patterns,
+        params,
+        (rect_left, rect_top),
+        (
+            rect_left,
+            rect_top,
+            rect_left + w.max(0),
+            rect_top + h.max(0),
+        ),
+    )
 }
 
 /// Paint a fill layer's coverage alpha into a region `(x0, y0, x1, y1)` of the

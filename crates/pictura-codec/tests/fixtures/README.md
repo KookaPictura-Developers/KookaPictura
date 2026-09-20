@@ -35,6 +35,8 @@ not hand-edit these files.
 | `inner_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Inner` layer carrying an `lfx2` `IrSh` inner shadow |
 | `inner_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glow` layer carrying an `lfx2` `IrGl` inner glow |
 | `stroke.psd` | RGB | 8x8 | `Base` pixel layer + `Stroked` layer carrying an `lfx2` `FrFX` solid-colour stroke |
+| `stroke_gradient.psd` | RGB | 8x8 | `Base` pixel layer + `Stroked` layer carrying an `lfx2` `FrFX` gradient-fill stroke (`PntT` `GrFl` + `Grad`) |
+| `stroke_pattern.psd` | RGB | 8x8 | `Base` pixel layer + `Stroked` layer carrying an `lfx2` `FrFX` pattern-fill stroke (`PntT` `Ptrn` + `Ptrn`; the link key is `Lnkd`) referencing the 2x2 `Patt` pattern |
 | `color_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Colored` layer carrying an `lfx2` `SoFi` color overlay |
 | `gradient_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient` layer carrying an `lfx2` `GrFl` gradient overlay |
 | `pattern_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Patterned` layer carrying an `lfx2` `patternFill` pattern overlay referencing the 2x2 `Patt` pattern |
@@ -398,6 +400,60 @@ layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
     key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
     data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"FrFX": frfx},
                           classID=Klass.Null))
+```
+
+
+`stroke_gradient.psd` and `stroke_pattern.psd` are authored by the
+`stroke_gradient()` and `stroke_pattern()` builders: the same `stroke()` shape
+but with `PntT` (`FrFl`) set to `GradientFill`/`Pattern` and the matching
+content object. The gradient carries `Grad` (`Grdn`: `GrdF` `CstS`, a
+black-to-white `Clrs`, `Angl` 45, `Type` `GrdT`/`Lnr `, `Rvrs`, `Algn`, `Scl `
+100); the pattern carries `Ptrn` (`Nm  `/`Idnt` `pictura-pattern`), `Scl ` 100,
+`Angl` 0 and the **`Lnkd`** link key (not `Algn`) set false, and writes the 2x2
+fixture pattern to the global `Patt` block so the renderer resolves the tile.
+
+```python
+# stroke_gradient(): object classID=b"FrFX", PntT (FrFl) = GradientFill,
+# plus Grad (Grdn: GrdF CstS, Clrs, Angl, Type GrdT, Rvrs, Algn, Scl ).
+frfx = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"Nrml"),
+    Key.Opacity: UnitFloat(100.0, Unit.Percent),
+    Key.Style: Enumerated(Type.FrameStyle, Enum.OutsetFrame),
+    Key.PaintType: Enumerated(Type.FrameFill, Enum.GradientFill),
+    Key.SizeKey: UnitFloat(3.0, Unit.Pixels),
+    Key.Gradient: Descriptor({
+        Key.Name: String("Black to White"),
+        Type.GradientForm: Enumerated(Type.GradientForm, Enum.CustomStops),
+        b"Intr": Enumerated(Type.Interpolation, b"Lnr "),
+        Key.Colors: List([stop(0, (0, 0, 0)), stop(4096, (255, 255, 255))]),
+    }, classID=b"Grdn"),
+    Key.Angle: Double(45.0),
+    Key.Type: Enumerated(Type.GradientType, Enum.Linear),
+    Key.Reverse: Bool(True),
+    Key.Alignment: Bool(True),
+    Key.Scale: UnitFloat(100.0, Unit.Percent),
+}, classID=b"FrFX")
+
+# stroke_pattern(): PntT (FrFl) = Pattern, plus Ptrn {Nm  , Idnt}, Scl ,
+# Lnkd (the stroke's link key) and Angl; the 2x2 pattern goes in Patt.
+frfx = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"Nrml"),
+    Key.Opacity: UnitFloat(100.0, Unit.Percent),
+    Key.Style: Enumerated(Type.FrameStyle, Enum.OutsetFrame),
+    Key.PaintType: Enumerated(Type.FrameFill, Enum.Pattern),
+    Key.SizeKey: UnitFloat(3.0, Unit.Pixels),
+    b"Ptrn": Descriptor({b"Nm  ": String("Pictura\x00"),
+                         b"Idnt": String("pictura-pattern\x00")}, classID=b"Ptrn"),
+    Key.Scale: UnitFloat(100.0, Unit.Percent),
+    b"Lnkd": Bool(False),
+    Key.Angle: Double(0.0),
+}, classID=b"FrFX")
+psd._record.layer_and_mask_information.tagged_blocks = TaggedBlocks()
+psd.tagged_blocks.set_data(Tag.PATTERNS1, [pattern])
 ```
 
 

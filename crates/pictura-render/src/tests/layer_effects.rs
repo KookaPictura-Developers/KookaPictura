@@ -899,6 +899,8 @@ mod inner_glow;
 
 mod stroke;
 
+mod stroke_fills;
+
 mod color_overlay;
 
 mod gradient_overlay;
