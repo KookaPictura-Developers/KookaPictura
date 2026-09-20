@@ -60,6 +60,10 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     // Derive the smart-object view from the preserved bytes; a malformed
     // descriptor or linked-layer record degrades to Unresolved (design D5).
     crate::smart_object::resolve_smart_objects(&mut layers, &layer_section_extra, is_psb);
+    // Derive the vector-mask view from the preserved `vmsk` blocks.
+    // ponytail: this is a read snapshot. In-session resize/crop/orientation do
+    // not re-derive it; the raw block stays authoritative and a reload re-derives.
+    crate::vector_mask::resolve_vector_masks(&mut layers, width, height);
 
     // "Maximize Compatibility" off: a layered file may end after the layer
     // section with no merged composite. A file with no layers at all and no
@@ -614,6 +618,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             extra_blocks,
             raw_channels: Vec::new(),
             smart_object: None,
+            vector_mask: None,
         },
         channel_ids,
         channel_lens,

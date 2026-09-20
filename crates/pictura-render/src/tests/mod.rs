@@ -15,6 +15,7 @@ mod pattern_fill;
 mod raster_import;
 mod rasterize;
 mod smart_object;
+mod vector_mask;
 
 fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
     PsdRect {

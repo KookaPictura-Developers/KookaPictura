@@ -1,6 +1,9 @@
 //! Group, mask, fill, and adjustment-layer parity tests.
 
-use pictura_core::{AdjustmentData, BitDepth, BlendMode, ColorMode, Document, LayerMask, PsdRect};
+use pictura_core::{
+    AdjustmentData, BitDepth, BlendMode, ColorMode, Document, LayerMask, PsdRect, VectorFillRule,
+    VectorMask, VectorSubpath,
+};
 use pictura_render::{
     composite_gpu, composite_gpu_or_cpu, composite_rgba, encode_invert, GpuError,
 };
@@ -73,6 +76,25 @@ fn groups_and_masks_match_cpu() {
     });
     let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![base_layer(), adj];
+    check_scene_parity(&doc, &mut max_delta);
+
+    // Pixel layer clipped by a document-relative vector mask (per-pixel plane).
+    let mut shaped = layer("shaped", BlendMode::Normal, |x, y| {
+        (x as u8 * 20, y as u8 * 20, 128, 255)
+    });
+    let edge = 4 * 256;
+    shaped.vector_mask = Some(VectorMask {
+        subpaths: vec![VectorSubpath {
+            closed: true,
+            operation: 1,
+            fill_rule: VectorFillRule::EvenOdd,
+            points: vec![[0, 0], [edge, 0], [edge, edge], [0, edge]],
+        }],
+        invert: false,
+        disabled: false,
+    });
+    let mut doc = Document::new(SIZE, SIZE, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![base_layer(), shaped];
     check_scene_parity(&doc, &mut max_delta);
 
     eprintln!("group/mask parity: max delta {max_delta} LSB");

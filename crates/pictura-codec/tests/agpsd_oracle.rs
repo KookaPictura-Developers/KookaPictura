@@ -258,3 +258,66 @@ fn ag_psd_reads_selective_color_fixture() {
         "absolute reds..blacks: {stdout}"
     );
 }
+
+const VECTOR_MASK_SCRIPT: &str = r#"
+const fs = require('fs');
+const ag = require('ag-psd');
+const psd = ag.readPsd(fs.readFileSync(process.argv[1]), {
+  skipLayerImageData: true,
+  skipCompositeImageData: true,
+});
+const lines = [];
+(function walk(layers) {
+  for (const layer of layers || []) {
+    const vm = layer.vectorMask;
+    if (vm) {
+      const path = vm.paths[0];
+      const parts = [layer.name, String(vm.invert), String(path.open), path.fillRule, path.operation];
+      for (const knot of path.knots) parts.push(knot.points.join(','));
+      lines.push(parts.join('|'));
+    }
+    walk(layer.children);
+  }
+})(psd.children);
+console.log(lines.join('\n'));
+"#;
+
+#[test]
+fn ag_psd_reads_vector_mask_fixture() {
+    if !node_ag_psd_available() {
+        eprintln!(
+            "skipping ag-psd check: node + ag-psd not available (run `npm i ag-psd`, or set NODE_PATH)"
+        );
+        return;
+    }
+
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vector_mask.psd");
+    let out = Command::new("node")
+        .args([
+            "-e",
+            VECTOR_MASK_SCRIPT,
+            fixture.to_str().expect("utf-8 fixture path"),
+        ])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("run node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "ag-psd read failed:\n{stdout}\n{stderr}"
+    );
+
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(lines.len(), 2, "two vector-mask layers:\n{stdout}");
+    assert_eq!(
+        lines[0],
+        "Shape Inverted|true|false|even-odd|combine|0,0,0,0,0,0|6,0,6,0,6,0|6,6,6,6,6,6|0,6,0,6,0,6",
+        "inverted rectangle: {stdout}"
+    );
+    assert_eq!(
+        lines[1],
+        "Shape|false|false|even-odd|combine|1,1,1,1,1,1|3,1,3,1,3,1|3,3,3,3,3,3|1,3,1,3,1,3",
+        "normal rectangle: {stdout}"
+    );
+}

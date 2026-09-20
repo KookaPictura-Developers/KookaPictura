@@ -752,12 +752,14 @@ pub(super) fn assemble_source(
 }
 
 /// Whether `mask_alpha` has data to sample: absent, disabled, or data-less
-/// masks are the constant-255 case the row fill covers.
+/// masks (including an empty/all-open vector mask) are the constant-255 case
+/// the row fill covers.
 pub(super) fn mask_has_data(layer: &Layer) -> bool {
     layer
         .mask
         .as_ref()
         .is_some_and(|m| !m.disabled && m.data.is_some())
+        || layer.vector_mask.as_ref().is_some_and(|v| v.has_fill())
 }
 
 /// The coverage influence rectangle: the whole region for a group or an
