@@ -148,9 +148,13 @@ also fills from a **gradient** (`PntT` `GrFl`, `Grad`) or **pattern** (`PntT`
 `Ptrn`, `Ptrn`) source over the same content-edge band, the last deferred `lfx2`
 stroke piece (archived `2026-09-20-layer-effects-stroke-fills`). That change also fixed a cross-cutting bug: every `lfx2`
 effect blend mode now decodes the `BlnM` descriptor vocabulary instead of the
-layer-key one, and the effect goldens were regenerated.
+layer-key one, and the effect goldens were regenerated. Selective Color (`selc`)
+now decodes to `Adjustment::SelectiveColor` and encodes too, with an Adjustments
+panel entry; the ten-plate layout (reserved plate 0 plus nine named ranges) is
+grounded three ways (libpsd, ag-psd, psd-tools framing) and the kernel follows
+libpsd's integer CMYK pipeline (archived `selective-color-adjustment-decode`).
 Remaining:
-version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
+version-3 `phfl`, `clrL`, and the text/vector kinds
 (text, vector masks).
 **Curves (`curv`) is now shipped**: the original deferral reason — a
 single-composite model versus Photoshop's per-channel curves, and an ungrounded

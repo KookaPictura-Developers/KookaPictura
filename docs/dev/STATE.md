@@ -9,13 +9,13 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1145 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1159 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports as the ninth
-  skip). The C++ self-test reports **231 passed, 0 failed, 0 skipped**. The
-  full gate (`scripts/verify-full.sh`) reports **1414 passed, 9 skipped,
+  skip). The C++ self-test reports **232 passed, 0 failed, 0 skipped**. The
+  full gate (`scripts/verify-full.sh`) reports **1429 passed, 9 skipped,
   0 failed**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
@@ -36,7 +36,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-inner-glow`, `layer-effects-stroke`,
     `layer-effects-overlays`, `layer-effects-satin`,
     `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
-    `channel-mixer-adjustment-decode`, `curves-adjustment-decode`, and
+    `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
+    `selective-color-adjustment-decode`, and
     `layer-effects-stroke-fills` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -447,6 +448,15 @@ Snapshot for resuming after a context break. Update after each milestone.
   bitmap form and the duplicate `Crv ` v4 section are ignored. The
   per-channel-then-composite order is a marked assumption (not
   Photoshop-verified). Ceilings: point counts `2..=14`; no pixel-parity claim.
+- Selective Color adjustment decode (roadmap P3/G8, archived
+  `selective-color-adjustment-decode`): `selc` now decodes/encodes into a new
+  `Adjustment::SelectiveColor` (relative/absolute, nine ranges), implemented from
+  libpsd's integer CMYK algorithm; the block layout is grounded three ways
+  (libpsd plate 0 reserved + nine named ranges; ag-psd; psd-tools framing); a
+  committed `selective_color.psd` fixture is proven by psd-tools + ag-psd
+  oracles; the app gains a neutral `selective-color` kind/panel row. Ceilings:
+  profile-free CMYK round-trip, the all-zero early-return deviation from libpsd,
+  no Photoshop pixel parity, no GPU shader.
 
 ## Commands
 
