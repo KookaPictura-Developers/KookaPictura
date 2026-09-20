@@ -80,6 +80,10 @@ pub struct Document {
     pub height: u32,
     pub mode: ColorMode,
     pub depth: BitDepth,
+    /// The header color mode of the file this document was read from, when that
+    /// mode was normalized to the working mode on read. `None` for a Grayscale
+    /// or RGB file and for a constructed document.
+    pub source_mode: Option<ColorMode>,
     pub composite: PixelBuffer,
     /// True when the file carried a merged composite image-data section. False
     /// when the file ended after the layer section (maximize-compatibility off),
@@ -112,6 +116,7 @@ impl Document {
             height,
             mode,
             depth,
+            source_mode: None,
             composite: PixelBuffer::new(width, height, channels),
             merged_composite_present: true,
             is_psb: false,

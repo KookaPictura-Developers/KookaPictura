@@ -10,7 +10,9 @@ class PicturaMainWindow;
 // through a black-to-white gradient and checks the panel row; lpr_color_balance
 // (293) adds the neutral `color-balance` kind and checks it leaves the
 // composite unchanged; lpr_channel_mixer (294) adds the neutral `channel-mixer`
-// kind and checks the same neutrality plus its panel row. Returns 0 when all
-// pass, otherwise the self-test failure code.
+// kind and checks the same neutrality plus its panel row; color_mode_open (297)
+// writes a minimal flat CMYK PSD and opens it, checking the view reports the
+// CMYK conversion notice and reads as an RGB document. Returns 0 when all pass,
+// otherwise the self-test failure code.
 int runLayersAdjustmentChecks(PicturaMainWindow& frame);
 } // namespace pictura

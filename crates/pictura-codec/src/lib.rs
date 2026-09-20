@@ -18,6 +18,7 @@
 //! - Anything outside the supported subset returns [`PsdError::Unsupported`],
 //!   never a panic.
 
+mod color_mode;
 mod common;
 mod descriptor;
 mod error;

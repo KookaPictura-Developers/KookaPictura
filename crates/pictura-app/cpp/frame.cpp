@@ -355,6 +355,10 @@ bool PicturaMainWindow::openPath(const QString& path)
         return false;
     }
     addDocument(view, path);
+    const QString notice = view->mode_notice();
+    if (!notice.isEmpty()) {
+        statusBar()->showMessage(notice);
+    }
     return true;
 }
 
