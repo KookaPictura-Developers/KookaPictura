@@ -184,16 +184,18 @@ thumbnail's visual result SHALL be unchanged.
 ### Requirement: Layer grouping commands
 
 The system SHALL offer Group Layers and Ungroup Layers from the panel, the row
-context menu, and the Layer menu, acting on the active document's currently
-selected layers. Group Layers SHALL wrap the selection in one new group placed
-at the topmost selected layer's position, preserving the selected layers' order,
-and SHALL name the group `"Group N"` where N is one more than the highest
-existing `Group <number>` name. Group Layers SHALL be refused, leaving the
-document unchanged, when the selection is empty, contains the Background layer,
-contains a fully locked layer, or spans more than one container. Ungroup Layers
-SHALL splice each selected group's children into the parent at the group's
-position, preserving their order, and SHALL skip a selected layer that is not a
-group. Each applied operation SHALL be one undoable step.
+context menu, the `Layer` menu, and the `Ctrl+G`/`Shift+Ctrl+G` shortcuts, acting
+on the active document's currently selected layers. Group Layers SHALL wrap the
+selection in one new group placed at the topmost selected layer's position,
+preserving the selected layers' order, and SHALL name the group `"Group N"` where
+N is one more than the highest existing `Group <number>` name. Group Layers SHALL
+be refused, leaving the document unchanged, when the selection is empty, contains
+the Background layer, contains a fully locked layer, or spans more than one
+container. Ungroup Layers SHALL splice each selected group's children into the
+parent at the group's position, preserving their order, and SHALL skip a selected
+layer that is not a group. Each applied operation SHALL be one undoable step. The
+keyboard shortcut path SHALL use the same selection-aware operation as the menu
+path; it SHALL NOT operate on only the current row.
 
 #### Scenario: Group a layer
 
@@ -206,6 +208,12 @@ group. Each applied operation SHALL be one undoable step.
   container
 - **THEN** one group is created at the topmost selected position containing all
   of them in their existing order, in one undo step
+
+#### Scenario: Ctrl+G groups the selection [lpr_ctrl_g]
+
+- **WHEN** several layers are selected and `Ctrl+G` is pressed
+- **THEN** the whole selection is wrapped in one group in one undo step, exactly
+  as the menu Group Layers command does
 
 #### Scenario: Group refuses the Background
 
@@ -285,10 +293,13 @@ row; an unlocked layer SHALL show none. The visibility toggle SHALL be an eye
 icon (`layers.eyeOn`/`layers.eyeOff`) drawn slightly inset from the panel's left
 edge and at the same x for every row, independent of nesting depth; the nesting
 indentation SHALL apply to the thumbnail and name, not to the visibility toggle.
-A group with at least one child SHALL show a disclosure icon — right when
-collapsed, down when expanded — at its indented position, and clicking that icon
-SHALL expand or collapse the group. If an expected icon asset is unavailable, the
-delegate SHALL omit that badge while keeping the row legible rather than fail.
+A layer whose color label is not `None` SHALL tint the eye gutter with that label
+color behind the eye glyph, so the label reads at the left of the row as it does
+in Photoshop, and the tint SHALL keep the eye glyph and any selection highlight
+legible. A group with at least one child SHALL show a disclosure icon — right
+when collapsed, down when expanded — at its indented position, and clicking that
+icon SHALL expand or collapse the group. If an expected icon asset is unavailable,
+the delegate SHALL omit that badge while keeping the row legible rather than fail.
 
 #### Scenario: The visibility toggle is an eye icon [lpr_eye]
 
@@ -301,6 +312,16 @@ delegate SHALL omit that badge while keeping the row legible rather than fail.
 - **WHEN** a nested layer is shown under its group
 - **THEN** its eye icon is at the same x as a top-level row's, while its
   thumbnail and name are indented
+
+#### Scenario: The color label tints the eye gutter [lpr_label_tint]
+
+- **WHEN** a layer with a non-`None` color label is shown
+- **THEN** the eye gutter is filled with that label color behind the eye glyph
+
+#### Scenario: An unlabeled layer has no gutter tint [lpr_label_tint_none]
+
+- **WHEN** a layer with color label `None` is shown
+- **THEN** its eye gutter uses the normal row background
 
 #### Scenario: A group shows a disclosure icon [lpr_chevron]
 
@@ -395,16 +416,25 @@ operation runs.
 
 ### Requirement: Inline rename with Tab navigation
 
-The system SHALL begin inline name editing when the user double-clicks a row's
-name, and while editing SHALL commit the edit and move to the next visible row
-when the user presses `Tab`, and to the previous visible row when the user
-presses `Shift+Tab`. At the last or first visible row, the commit SHALL occur
-without wrapping.
+The system SHALL begin inline name editing only when the user double-clicks a
+row's name, not the rest of the row. A double-click elsewhere on the row —
+including the visibility, lock, chevron, and thumbnail regions — SHALL NOT begin
+editing and SHALL instead invoke the layer-style affordance, which is a
+documented no-op while no Layer Style dialog exists. While editing, the system
+SHALL commit the edit and move to the next visible row when the user presses
+`Tab`, and to the previous visible row when the user presses `Shift+Tab`. At the
+last or first visible row, the commit SHALL occur without wrapping.
 
 #### Scenario: Double-click starts editing [m39_rename]
 
 - **WHEN** the user double-clicks a row's name
 - **THEN** an editor opens on that row and the document is unchanged until the edit commits
+
+#### Scenario: Double-click elsewhere does not rename [lpr_rename_name_only]
+
+- **WHEN** the user double-clicks a row outside the name region
+- **THEN** no inline editor opens, the name is unchanged, and the layer-style
+  affordance is invoked instead
 
 #### Scenario: Tab commits and moves down [m39_rename]
 
@@ -660,7 +690,9 @@ layer, of a fully-locked or nesting-locked layer, of a row onto itself, or of a
 row into its own descendant. Dropping a dragged row on a bottom-strip button
 SHALL apply that button's action to the dragged row: Delete deletes it, New
 Layer duplicates it, and New Group groups it; buttons whose operation is not yet
-implemented (mask, link, fx) SHALL be inert.
+implemented (mask, link, fx) SHALL be inert. The row model SHALL advertise the
+drag and drop capabilities so the view starts a drag for a draggable row rather
+than falling back to rubber-band selection.
 
 #### Scenario: Dragging reorders a row [lpr_drag]
 
@@ -691,6 +723,12 @@ implemented (mask, link, fx) SHALL be inert.
 - **WHEN** the Background, a fully-locked, or a nesting-locked row is dragged
   onto another row
 - **THEN** the move is refused and the document is unchanged
+
+#### Scenario: A press-move starts a drag rather than extending a selection [lpr_drag_enabled]
+
+- **WHEN** the user presses a draggable row and moves the pointer
+- **THEN** the drag pipeline starts, the selection is not extended, and no
+  rubber-band selection appears
 
 #### Scenario: Dropping on Delete deletes the dragged row [lpr_drop_button]
 
