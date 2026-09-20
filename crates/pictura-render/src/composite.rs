@@ -328,11 +328,12 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
 /// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2),
-/// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `SoCo`
+/// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `mixr`
+/// (Channel Mixer), `SoCo`
 /// (solid-color fill content, either the 4-byte in-house RGBA tuple or the
 /// standard Photoshop descriptor), `GdFl` (gradient fill content), and `PtFl`
 /// (pattern fill content), both fill descriptors. Descriptor/custom
-/// payloads (`curv`, `mixr`, `selc`, `clrL`, and a version-3 `phfl`) are
+/// payloads (`curv`, `selc`, `clrL`, and a version-3 `phfl`) are
 /// preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
@@ -352,6 +353,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"blwh" => decode_black_white(&data.data),
         b"gdrm" | b"grdm" => decode_gradient_map(&data.data),
         b"blnc" => crate::color_balance::decode_color_balance(&data.data),
+        b"mixr" => crate::channel_mixer::decode_channel_mixer(&data.data),
         b"SoCo" => match data.data.as_slice() {
             [r, g, b, a] => Some(Adjustment::SolidFill([*r, *g, *b, *a])),
             _ => decode_solid_fill(&data.data),
@@ -387,7 +389,7 @@ fn decode_solid_fill(d: &[u8]) -> Option<Adjustment> {
     ]))
 }
 
-fn be_u16(d: &[u8], at: usize) -> Option<u16> {
+pub(crate) fn be_u16(d: &[u8], at: usize) -> Option<u16> {
     let s = d.get(at..at + 2)?;
     Some(u16::from_be_bytes([s[0], s[1]]))
 }

@@ -1,7 +1,7 @@
 use super::*;
 use pictura_adjust::{
-    BlackWhiteParams, ColorBalanceParams, ExposureParams, GradientMapParams, GradientStop,
-    PhotoFilterParams, VibranceParams,
+    BlackWhiteParams, ChannelMixerParams, ColorBalanceParams, ExposureParams, GradientMapParams,
+    GradientStop, PhotoFilterParams, VibranceParams,
 };
 use pictura_codec::{write_descriptor, DescValue};
 
@@ -39,6 +39,19 @@ fn blnc_payload(
     }
     data.push(luminosity);
     data.push(0);
+    data
+}
+
+fn mixr_payload(monochrome: bool, channels: &[([i16; 3], i16)]) -> Vec<u8> {
+    let mut data = 1u16.to_be_bytes().to_vec();
+    data.extend_from_slice(&u16::from(monochrome).to_be_bytes());
+    for (rgb, constant) in channels {
+        for source in rgb {
+            data.extend_from_slice(&source.to_be_bytes());
+        }
+        data.extend_from_slice(&[0, 0]);
+        data.extend_from_slice(&constant.to_be_bytes());
+    }
     data
 }
 
@@ -281,6 +294,56 @@ fn encode_decode_round_trips() {
             midtones: [25.0, 0.0, 0.0],
             highlights: [0.0; 3],
             preserve_luminosity: true,
+        }))
+    );
+
+    let cm = encode_channel_mixer(
+        false,
+        [30.0, -10.0, 50.0],
+        [10.0, 90.0, 0.0],
+        [0.0, 20.0, 110.0],
+        [5.0, -20.0, 40.0],
+    );
+    assert_eq!(cm.key, *b"mixr");
+    assert_eq!(cm.data.len(), 44);
+    assert_eq!(
+        decode_adjustment(&cm),
+        Some(Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: false,
+            red: [30.0, -10.0, 50.0],
+            green: [10.0, 90.0, 0.0],
+            blue: [0.0, 20.0, 110.0],
+            constant: [5.0, -20.0, 40.0],
+        }))
+    );
+    let cm_mono = encode_channel_mixer(
+        true,
+        [20.0, 40.0, 60.0],
+        [0.0, 100.0, 0.0],
+        [0.0, 0.0, 100.0],
+        [-15.0, 0.0, 0.0],
+    );
+    assert_eq!(cm_mono.data.len(), 44);
+    assert_eq!(
+        decode_adjustment(&cm_mono),
+        Some(Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: true,
+            red: [20.0, 40.0, 60.0],
+            green: [0.0, 100.0, 0.0],
+            blue: [0.0, 0.0, 100.0],
+            constant: [-15.0, 0.0, 0.0],
+        }))
+    );
+    let cm_clamped =
+        encode_channel_mixer(false, [999.0, -999.0, 0.0], [0.0; 3], [0.0; 3], [0.0; 3]);
+    assert_eq!(
+        decode_adjustment(&cm_clamped),
+        Some(Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: false,
+            red: [200.0, -200.0, 0.0],
+            green: [0.0; 3],
+            blue: [0.0; 3],
+            constant: [0.0; 3],
         }))
     );
 
@@ -817,7 +880,7 @@ fn fixture_solid_fill_decodes_descriptor() {
 
 #[test]
 fn deferred_keys_still_none() {
-    for key in [*b"curv", *b"mixr", *b"selc", *b"clrL"] {
+    for key in [*b"curv", *b"selc", *b"clrL"] {
         assert_eq!(
             decode_adjustment(&adjdata(key, vec![1, 2, 3, 4])),
             None,
@@ -1109,5 +1172,171 @@ fn color_balance_layer_changes_non_uniform_backdrop() {
     assert_ne!(
         balanced.data, plain.data,
         "a non-neutral Color Balance layer must change the backdrop"
+    );
+}
+
+#[test]
+fn mixr_decodes_channels_and_ignores_gray_and_trailing() {
+    let mut payload = mixr_payload(
+        false,
+        &[
+            ([30, -10, 50], 5),
+            ([10, 90, 0], -20),
+            ([0, 20, 110], 40),
+            ([100, 0, 0], 0),
+        ],
+    );
+    payload.extend_from_slice(&[9, 9, 9, 9]);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"mixr", payload)),
+        Some(Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: false,
+            red: [30.0, -10.0, 50.0],
+            green: [10.0, 90.0, 0.0],
+            blue: [0.0, 20.0, 110.0],
+            constant: [5.0, -20.0, 40.0],
+        }))
+    );
+
+    let mono = mixr_payload(true, &[([20, 40, 60], -15)]);
+    assert_eq!(mono.len(), 14);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"mixr", mono)),
+        Some(Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: true,
+            red: [20.0, 40.0, 60.0],
+            green: [0.0, 100.0, 0.0],
+            blue: [0.0, 0.0, 100.0],
+            constant: [-15.0, 0.0, 0.0],
+        }))
+    );
+}
+
+#[test]
+fn mixr_rejects_malformed() {
+    let full = mixr_payload(
+        false,
+        &[
+            ([10, 20, 30], 5),
+            ([40, 50, 60], -5),
+            ([70, 80, 90], 10),
+            ([0, 0, 0], 0),
+        ],
+    );
+    assert_eq!(full.len(), 44);
+    for cut in 0..full.len() {
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"mixr", full[..cut].to_vec())),
+            None,
+            "cut {cut}"
+        );
+    }
+
+    let mut wrong_version = full.clone();
+    wrong_version[1] = 2;
+    assert_eq!(decode_adjustment(&adjdata(*b"mixr", wrong_version)), None);
+
+    for (rgb, constant) in [([201, 0, 0], 0), ([0, 0, 0], -201)] {
+        let payload = mixr_payload(
+            false,
+            &[
+                (rgb, constant),
+                ([0, 0, 0], 0),
+                ([0, 0, 0], 0),
+                ([0, 0, 0], 0),
+            ],
+        );
+        assert_eq!(
+            decode_adjustment(&adjdata(*b"mixr", payload)),
+            None,
+            "out-of-range {rgb:?} {constant}"
+        );
+    }
+
+    let mono = mixr_payload(true, &[([0, 0, 0], 201)]);
+    assert_eq!(decode_adjustment(&adjdata(*b"mixr", mono)), None);
+}
+
+#[test]
+fn channel_mixer_layer_changes_non_uniform_backdrop() {
+    let base = solid(
+        "base",
+        full(2, 1),
+        (30, 90, 210),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let patch = solid(
+        "patch",
+        rect(0, 0, 1, 1),
+        (200, 100, 50),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 1, vec![base.clone(), patch.clone()]));
+    let mixed = composite_rgba(&doc(
+        2,
+        1,
+        vec![
+            base,
+            patch,
+            adjustment_layer(
+                "channel-mixer",
+                *b"mixr",
+                encode_channel_mixer(
+                    false,
+                    [0.0, 100.0, 0.0],
+                    [0.0, 100.0, 0.0],
+                    [0.0, 0.0, 100.0],
+                    [0.0; 3],
+                )
+                .data,
+                255,
+                None,
+            ),
+        ],
+    ));
+    assert_ne!(
+        mixed.data, plain.data,
+        "a non-neutral Channel Mixer layer must change the backdrop"
+    );
+}
+
+#[test]
+fn fixture_channel_mixer_decodes() {
+    let bytes = include_bytes!("../../../pictura-codec/tests/fixtures/channel_mixer.psd");
+    let d = pictura_codec::read_psd(bytes).expect("fixture parses");
+    let color = d
+        .layers
+        .iter()
+        .find(|l| l.name == "Channel Mixer")
+        .expect("Channel Mixer layer");
+    assert_eq!(
+        decode_adjustment(color.adjustment.as_ref().expect("mixr block")),
+        Some(Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: false,
+            red: [30.0, -10.0, 50.0],
+            green: [10.0, 90.0, 0.0],
+            blue: [0.0, 20.0, 110.0],
+            constant: [5.0, -20.0, 40.0],
+        }))
+    );
+
+    let mono = d
+        .layers
+        .iter()
+        .find(|l| l.name == "Channel Mixer Mono")
+        .expect("Channel Mixer Mono layer");
+    assert_eq!(
+        decode_adjustment(mono.adjustment.as_ref().expect("mixr block")),
+        Some(Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: true,
+            red: [20.0, 40.0, 60.0],
+            green: [0.0, 100.0, 0.0],
+            blue: [0.0, 0.0, 100.0],
+            constant: [-15.0, 0.0, 0.0],
+        }))
     );
 }

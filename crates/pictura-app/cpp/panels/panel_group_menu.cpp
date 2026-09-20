@@ -221,6 +221,7 @@ const QList<MenuRow>& rowsForPanel(const QString& panel)
              imp(QStringLiteral("Photo Filter"), QStringLiteral("adjustment:photo-filter")),
              imp(QStringLiteral("Gradient Map"), QStringLiteral("adjustment:gradient-map")),
              imp(QStringLiteral("Color Balance"), QStringLiteral("adjustment:color-balance")),
+             imp(QStringLiteral("Channel Mixer"), QStringLiteral("adjustment:channel-mixer")),
              dis(QStringLiteral("Add Mask by Default"), true),
              chk(QStringLiteral("Clip to Layer")),
          }},
