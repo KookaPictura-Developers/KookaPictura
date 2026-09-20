@@ -433,22 +433,27 @@ void PanelColumn::setPreferredWidth(int width)
     if (width <= 0) {
         return;
     }
+    // A normal column is never wider than `kMaxNormalWidth`; an iconic strip
+    // keeps its own narrow floor. This is both the layout bound and the guard
+    // against a stale oversized store expanding the column across the workspace.
+    const int floor = railMode_ ? kIconStripMinWidth : kPanelMinWidth;
+    const int target = qBound(floor, width, kMaxNormalWidth);
     auto* splitter = qobject_cast<QSplitter*>(parentWidget());
     const int index = splitter ? splitter->indexOf(this) : -1;
-    if (!splitter || index < 0 || splitter->width() <= width) {
+    if (!splitter || index < 0 || splitter->width() <= 0) {
         // Before the first layout the splitter has no width; remember the value
         // and apply it on show.
-        pendingWidth_ = width;
+        pendingWidth_ = target;
+        return;
+    }
+    QList<int> sizes = splitter->sizes();
+    if (index >= sizes.size()) {
+        pendingWidth_ = target;
         return;
     }
     // Keep every other pane's size (other columns, the document tabs) and set
     // only this column. The M41 two-pane case is the same operation.
-    QList<int> sizes = splitter->sizes();
-    if (index >= sizes.size()) {
-        pendingWidth_ = width;
-        return;
-    }
-    sizes[index] = width;
+    sizes[index] = target;
     splitter->setSizes(sizes);
     pendingWidth_ = 0;
 }
@@ -459,7 +464,7 @@ void PanelColumn::setRestoredWidth(int width)
         return;
     }
     if (railMode_) {
-        normalWidthBeforeIconic_ = width;
+        normalWidthBeforeIconic_ = qBound(kMinNormalWidth, width, kMaxNormalWidth);
         return;
     }
     setPreferredWidth(width);
