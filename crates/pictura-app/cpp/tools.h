@@ -12,6 +12,9 @@
 #include <QtGui/QImage>
 #include <QtGui/QPolygonF>
 
+#include "tool_context.h"
+#include "tool_registry.h"
+
 #include <functional>
 #include <utility>
 
@@ -149,9 +152,9 @@ QList<ToolHint> toolHintEntries(ToolId id);
 // branch; defined in tools_marquee.cpp with the other cursor helpers.
 bool topmostPixelLocked(PictureView* view);
 
-// Routes canvas pointer events to the active tool. One switch, not one class per
-// tool (see design.md); painting tools with per-tool engines can split later.
-class ToolController : public QObject {
+// Routes canvas pointer events to the active tool. Implemented tools dispatch
+// through the handler registry; the legacy switch covers the rest.
+class ToolController : public QObject, public ToolContext {
     Q_OBJECT
 
 public:
@@ -219,7 +222,11 @@ public:
 
     void bindCanvas(ImageView* canvas);
     void unbindCanvas();
-    ImageView* canvas() const { return canvas_; }
+    ImageView* canvas() const override { return canvas_; }
+
+    // ToolContext: the shared services a handler receives.
+    PictureView* view() const override;
+    void sampledForeground(const QColor& color) override;
 
     void setViewProvider(std::function<PictureView*()> provider);
 
@@ -272,7 +279,6 @@ signals:
 private:
     void applyToolPolicy();
     void warmMovePreview();
-    PictureView* view() const;
     static bool isSelectionTool(ToolId id);
     bool maybeBeginSelectionMove(PictureView* v, const QPointF& imagePos);
     void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate);
@@ -293,6 +299,7 @@ private:
     void updateTransformOverlay(PictureView* v);
     void setTransformCursor(const QPointF& imagePos);
 
+    ToolRegistry registry_;
     ImageView* canvas_ = nullptr;
     std::function<PictureView*()> viewProvider_;
     ToolId active_ = ToolId::Move;
