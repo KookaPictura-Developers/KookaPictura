@@ -15,6 +15,7 @@
 #include <QtGui/QAction>
 #include <QtGui/QDragEnterEvent>
 #include <QtGui/QDropEvent>
+#include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
@@ -445,6 +446,89 @@ bool LayersPanel::dropOnStripButtonForTest(const QString& buttonName, const QStr
     QDropEvent drop(local, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(button, &drop);
     return drop.isAccepted();
+}
+
+bool LayersPanel::layerDragFlagsForTest(const QString& path) const
+{
+    const QModelIndex index = model_ ? model_->indexForPath(path) : QModelIndex();
+    if (!index.isValid()) {
+        return false;
+    }
+    const Qt::ItemFlags flags = model_->flags(index);
+    return flags.testFlag(Qt::ItemIsDragEnabled) && flags.testFlag(Qt::ItemIsDropEnabled);
+}
+
+QColor LayersPanel::rowGutterColorForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    if (vr.width() <= 4 || vr.height() <= 2) {
+        return {};
+    }
+    QImage image(vr.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(tree_->palette().color(QPalette::Base));
+    QPainter painter(&image);
+    QStyleOptionViewItem option;
+    option.rect = QRect(0, 0, vr.width(), vr.height());
+    option.palette = tree_->palette();
+    option.widget = tree_;
+    option.state = QStyle::State_Enabled;
+    delegate_->paint(&painter, option, index);
+    painter.end();
+    return image.pixelColor(2, vr.height() / 2);
+}
+
+bool LayersPanel::editTriggersDisabledForTest() const
+{
+    return tree_ && tree_->editTriggers() == QAbstractItemView::NoEditTriggers;
+}
+
+bool LayersPanel::doubleClickAtForTest(const QString& path, bool atName)
+{
+    if (!delegate_ || !tree_) {
+        return false;
+    }
+    // An editor a previous check left open keeps the view in EditingState, which
+    // makes the next programmatic edit fail. Revert it and delete every stale
+    // editor so findChild below returns only the editor this double-click makes.
+    const QList<QLineEdit*> stale = tree_->viewport()->findChildren<QLineEdit*>();
+    for (QLineEdit* editor : stale) {
+        if (editor->isVisible()) {
+            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+            QCoreApplication::sendEvent(editor, &escape);
+        }
+        editor->deleteLater();
+    }
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    // A model reset during an earlier edit can leave the view in EditingState
+    // with no live editor, which wedges programmatic edits. There is no editor
+    // to close at this point, so normalize the state.
+    if (tree_->editStateForTest() != 0) {
+        tree_->resetEditStateForTest();
+    }
+
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid()) {
+        return false;
+    }
+    const QRect vr = tree_->visualRect(index);
+    const QPoint pos = atName ? delegate_->nameRect(vr, index).center()
+                              : delegate_->eyeRect(vr).center();
+    QMouseEvent dbl(QEvent::MouseButtonDblClick, pos, tree_->viewport()->mapToGlobal(pos),
+                    Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &dbl);
+    QLineEdit* editor = tree_->viewport()->findChild<QLineEdit*>();
+    const bool opened = editor != nullptr;
+    if (editor) {
+        QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+        QCoreApplication::sendEvent(editor, &escape);
+        editor->deleteLater();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+    return opened;
 }
 
 } // namespace pictura

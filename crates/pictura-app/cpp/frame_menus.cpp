@@ -307,14 +307,14 @@ void PicturaMainWindow::registerHandlers()
         }
     });
     registry_->setHandler(command_ids::LayerGroupLayers, [this]() {
-        if (PictureView* view = activeView()) {
-            view->group_layer(layersPanel_ ? layersPanel_->currentLayer() : -1);
+        if (layersPanel_) {
+            layersPanel_->groupSelection();
             refresh();
         }
     });
     registry_->setHandler(command_ids::LayerUngroupLayers, [this]() {
-        if (PictureView* view = activeView()) {
-            view->ungroup_layer(layersPanel_ ? layersPanel_->currentLayer() : -1);
+        if (layersPanel_) {
+            layersPanel_->ungroupSelection();
             refresh();
         }
     });

@@ -1,5 +1,6 @@
 #include "selftest_layers_controls.h"
 #include "selftest_layers_adjustments.h"
+#include "selftest_layers_drag.h"
 #include "selftest_layers_smart_object.h"
 #include "selftest_report.h"
 #include "selftest_tools_selection.h"
@@ -1074,6 +1075,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         }
 
         if (const int fd = pictura::runFileDropChecks(frame); fd != 0) { return fd; }
+
+        if (const int ld = pictura::runLayersDragChecks(frame); ld != 0) { return ld; }
 
     return 0;
 }

@@ -64,10 +64,8 @@
 
 namespace pictura {
 
-namespace {
-
 // CS6 sheet colors (PSD `lclr`), index 1..7; 0 is no label.
-QColor labelColor(int label)
+QColor layerLabelColor(int label)
 {
     switch (label) {
     case 1:
@@ -89,8 +87,6 @@ QColor labelColor(int label)
     }
 }
 
-} // namespace
-
 QString layerTooltip(const LayerRow& layer)
 {
     return QStringLiteral("%1 (%2)").arg(layer.name, layer.kind);
@@ -98,7 +94,7 @@ QString layerTooltip(const LayerRow& layer)
 
 QPixmap labelSwatch(int label)
 {
-    const QColor color = labelColor(label);
+    const QColor color = layerLabelColor(label);
     if (!color.isValid()) {
         return {};
     }
@@ -194,6 +190,9 @@ LayersPanel::LayersPanel(QWidget* parent)
     tree_->setIndentation(0);
     tree_->setItemsExpandable(true);
     tree_->setExpandsOnDoubleClick(false);
+    // The viewport filter starts a rename only inside the name rect; Qt's own
+    // DoubleClicked trigger would edit the whole row, so it is disabled.
+    tree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tree_->setAllColumnsShowFocus(true);
     tree_->setSelectionBehavior(QAbstractItemView::SelectRows);
     tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -628,7 +627,29 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             }
         }
     }
+    if (watched == tree_->viewport() && event->type() == QEvent::MouseButtonDblClick) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (mouse->button() == Qt::LeftButton) {
+            const QPoint pos = mouse->position().toPoint();
+            const QModelIndex index = tree_->indexAt(pos);
+            if (index.isValid()) {
+                if (delegate_->nameRect(tree_->visualRect(index), index).contains(pos)) {
+                    tree_->edit(index);
+                } else {
+                    openLayerStyle(pathForProxyIndex(index));
+                }
+                return true;
+            }
+        }
+    }
     return QWidget::eventFilter(watched, event);
+}
+
+void LayersPanel::openLayerStyle(const QString&)
+{
+    // ponytail: no Layer Style dialog exists yet (the fx button and Blending
+    // Options are inert). A double-click outside the name is a deliberate no-op
+    // affordance until one is built.
 }
 
 void LayersPanel::syncControls()
