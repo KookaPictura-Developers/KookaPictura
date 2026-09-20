@@ -10,6 +10,11 @@ namespace pictura {
 namespace {
 
 constexpr int kCanvasColorCount = 4;
+// The document pane keeps a minimum width even with no document open, so the
+// widget columns can never absorb the whole workspace (and the splitter keeps a
+// grabbable handle on each side of it). ponytail: chosen, not a sourced CS6
+// metric.
+constexpr int kWorkspaceMinWidth = 160;
 const QColor kCanvasColors[kCanvasColorCount] = {
     QColor(37, 37, 37), QColor(82, 82, 82), QColor(0, 0, 0), QColor(255, 255, 255)};
 
@@ -91,6 +96,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     centerSplitter_->setObjectName(QStringLiteral("centerSplitter"));
     centerSplitter_->addWidget(tabs_);
     centerSplitter_->addWidget(panelColumn_);
+    tabs_->setMinimumWidth(kWorkspaceMinWidth);
     centerSplitter_->setStretchFactor(0, 1);
     centerSplitter_->setStretchFactor(1, 0);
     centerSplitter_->setChildrenCollapsible(false);
@@ -783,11 +789,15 @@ void PicturaMainWindow::refresh()
     PictureView* view = activeView();
     ImageView* canvas = canvasAt(index);
 
-    // Empty workspace: hide the document tab pane (and its ghost-canvas
-    // background) rather than showing an empty tab widget. This is the single
-    // writer of tabs_ visibility so every document-set change routes here.
+    // Empty workspace: keep the document pane (it holds the splitter stretch and
+    // the minimum width, so the widget columns can never absorb the workspace),
+    // but hide the empty tab strip. This is the single writer of the pane's
+    // visibility so every document-set change routes here.
     if (tabs_) {
-        tabs_->setVisible(!docs_.isEmpty());
+        tabs_->setVisible(true);
+        if (tabs_->tabBar()) {
+            tabs_->tabBar()->setVisible(!docs_.isEmpty());
+        }
     }
 
     if (view && canvas) {

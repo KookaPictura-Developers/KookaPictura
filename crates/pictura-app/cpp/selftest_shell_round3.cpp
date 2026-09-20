@@ -6,13 +6,17 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include <QtCore/Qt>
+#include <QtCore/QCoreApplication>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
 
 int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
 {
-    // lss_empty_pane (349): the document tab pane is hidden with no document and
-    // reappears on create, then hides again when the last document closes.
+    // lss_empty_pane (349): the document pane stays in the workspace with no
+    // document (so the widget columns cannot absorb it) while its empty tab strip
+    // is hidden and reappears on create; closing the last document hides the
+    // strip again.
     {
         while (frame.documentCount() > 0) {
             frame.closeDocument(0, false);
@@ -21,45 +25,52 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         if (!tabs) {
             return pictura::selfTest().fail(349, "document tab pane missing");
         }
-        const bool hiddenEmpty = !tabs->isVisible();
+        QCoreApplication::processEvents();
+        const bool spaceEmpty = tabs->isVisible() && tabs->width() > 0
+                                && tabs->tabBar() && !tabs->tabBar()->isVisible();
         const bool created = frame.newDocument(QStringLiteral("Round3"), 32, 32,
                                                QStringLiteral("rgb"), 8,
                                                QStringLiteral("white"));
-        const bool shownWithDoc = tabs->isVisible();
+        const bool stripWithDoc = tabs->isVisible() && tabs->tabBar()->isVisible();
         const int doc = frame.activeDocumentIndex();
         frame.closeDocument(doc, false);
-        const bool hiddenAgain = !tabs->isVisible();
+        QCoreApplication::processEvents();
+        const bool spaceAgain = tabs->isVisible() && !tabs->tabBar()->isVisible();
 
         ST_BEGIN("lss_empty_pane");
-        ST_PASS("lss_empty_pane hidden=%d shown=%d hidden2=%d", hiddenEmpty ? 1 : 0,
-                shownWithDoc ? 1 : 0, hiddenAgain ? 1 : 0);
-        if (!hiddenEmpty || !created || !shownWithDoc || !hiddenAgain) {
-            return pictura::selfTest().fail(349, "empty workspace did not hide the pane");
+        ST_PASS("lss_empty_pane space=%d strip=%d space2=%d", spaceEmpty ? 1 : 0,
+                stripWithDoc ? 1 : 0, spaceAgain ? 1 : 0);
+        if (!spaceEmpty || !created || !stripWithDoc || !spaceAgain) {
+            return pictura::selfTest().fail(349, "empty workspace did not keep its space");
         }
     }
 
-    // lss_fresh_pane (380): a freshly constructed window starts with the empty
-    // document pane hidden (no ghost canvas); creating a document shows it and
-    // closing the last one hides it again.
+    // lss_fresh_pane (380): a freshly constructed window keeps the empty document
+    // pane in the workspace (with visible space reserved for it) while hiding the
+    // empty tab strip; creating a document shows the strip, and closing the last
+    // one hides it again.
     {
         pictura::PicturaMainWindow fresh;
         auto* freshTabs = fresh.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
         if (!freshTabs) {
             return pictura::selfTest().fail(380, "fresh document tab pane missing");
         }
-        const bool freshHidden = !freshTabs->isVisibleTo(&fresh);
+        const bool freshSpace = freshTabs->isVisibleTo(&fresh)
+                                && !freshTabs->tabBar()->isVisibleTo(&fresh);
         const bool freshCreated = fresh.newDocument(QStringLiteral("Fresh"), 32, 32,
                                                     QStringLiteral("rgb"), 8,
                                                     QStringLiteral("white"));
-        const bool freshShown = freshTabs->isVisibleTo(&fresh);
+        const bool freshStrip = freshTabs->isVisibleTo(&fresh)
+                                && freshTabs->tabBar()->isVisibleTo(&fresh);
         while (fresh.documentCount() > 0) {
             fresh.closeDocument(0, false);
         }
-        const bool freshHiddenAgain = !freshTabs->isVisibleTo(&fresh);
+        const bool freshSpaceAgain = freshTabs->isVisibleTo(&fresh)
+                                     && !freshTabs->tabBar()->isVisibleTo(&fresh);
         ST_BEGIN("lss_fresh_pane");
-        ST_PASS("lss_fresh_pane hidden=%d shown=%d hidden2=%d", freshHidden ? 1 : 0,
-                freshShown ? 1 : 0, freshHiddenAgain ? 1 : 0);
-        if (!freshHidden || !freshCreated || !freshShown || !freshHiddenAgain) {
+        ST_PASS("lss_fresh_pane space=%d strip=%d space2=%d", freshSpace ? 1 : 0,
+                freshStrip ? 1 : 0, freshSpaceAgain ? 1 : 0);
+        if (!freshSpace || !freshCreated || !freshStrip || !freshSpaceAgain) {
             return pictura::selfTest().fail(380, "fresh window ghost pane");
         }
     }

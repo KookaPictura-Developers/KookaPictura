@@ -17,6 +17,9 @@
 #include <QtGui/QColor>
 #include <QtGui/QImage>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QSplitter>
+#include <QtWidgets/QTabBar>
+#include <QtWidgets/QTabWidget>
 
 namespace pictura {
 
@@ -220,6 +223,80 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
                 reset->setPreferredWidth(245);
             }
             frame.saveSession();
+        }
+
+        // lpr_workspace_space (400): with no document open the workspace pane
+        // stays in the splitter at its minimum width and keeps the stretch, so
+        // the widget columns can never absorb it and the splitter keeps a
+        // grabbable handle on both sides; an iconic column stays at its fixed
+        // strip width, and shrinking a normal column gives the slack back to the
+        // workspace rather than to a hidden pane.
+        {
+            frame.applyPanelSessionForTest(pictura::SessionState{});
+            pump(6);
+            while (frame.documentCount() > 0) {
+                frame.closeDocument(0, false);
+            }
+            pump(6);
+            auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
+            auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+            const int wsIndex = (cs && tabs) ? cs->indexOf(tabs) : -1;
+            const int splitterW = cs ? cs->width() : -1;
+            const int wsWidth = tabs ? tabs->width() : -1;
+            const bool paneShown = tabs && tabs->isVisible();
+            const bool stripHidden =
+                tabs && tabs->tabBar() && !tabs->tabBar()->isVisible();
+            const bool handleLeft =
+                cs && wsIndex <= 0 ? true : (cs->handle(wsIndex - 1) != nullptr);
+            const bool handleRight = cs && wsIndex >= 0 && wsIndex < cs->count() - 1
+                                     && cs->handle(wsIndex) != nullptr;
+            int columnsW = 0;
+            for (pictura::PanelColumn* column : frame.panelColumns()) {
+                columnsW += column->width();
+            }
+            const bool reserved = splitterW > 0 && wsWidth >= tabs->minimumWidth()
+                                  && columnsW + wsWidth <= splitterW;
+
+            pictura::PanelColumn* primary = frame.panelColumn();
+            bool iconicFixed = false;
+            bool wsAbsorbs = false;
+            int beforeWs = -1;
+            int beforeCol = -1;
+            int afterWs = -1;
+            int afterCol = -1;
+            if (primary) {
+                primary->setRailMode(true);
+                pump(6);
+                iconicFixed = primary->width() > 0
+                              && primary->width() == primary->minimumWidthForTest()
+                              && primary->maximumWidth() == primary->minimumWidth();
+                primary->setRailMode(false);
+                pump(6);
+                beforeWs = tabs->width();
+                beforeCol = primary->width();
+                primary->setPreferredWidth(beforeCol + 60);
+                pump(6);
+                afterWs = tabs->width();
+                afterCol = primary->width();
+                // The workspace yields exactly what the column gains: the handle
+                // sits between them, not beside a hidden pane.
+                wsAbsorbs = afterCol > beforeCol
+                            && (beforeWs - afterWs) == (afterCol - beforeCol);
+            }
+            ST_BEGIN("lpr_workspace_space");
+            ST_PASS("lpr_workspace_space shown=%d strip=%d hl=%d hr=%d ws=%d cols=%d "
+                    "split=%d iconic=%d absorbs=%d wsBefore=%d wsAfter=%d "
+                    "colBefore=%d colAfter=%d",
+                    paneShown ? 1 : 0, stripHidden ? 1 : 0, handleLeft ? 1 : 0,
+                    handleRight ? 1 : 0, wsWidth, columnsW, splitterW,
+                    iconicFixed ? 1 : 0, wsAbsorbs ? 1 : 0, beforeWs, afterWs,
+                    beforeCol, afterCol);
+            if (!(paneShown && stripHidden && handleLeft && handleRight && reserved
+                  && iconicFixed && wsAbsorbs)) {
+                return pictura::selfTest().fail(400, "workspace space");
+            }
+            frame.applyPanelSessionForTest(pictura::SessionState{});
+            pump(6);
         }
 
         // ldt_mode_bits (320): an opened raster's tab reads `base (RGB/8)`
