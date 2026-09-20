@@ -136,16 +136,31 @@ void ImageView::blitRegion(const QImage& region, int x, int y)
     if (region.isNull() || region.width() <= 0 || region.height() <= 0 || image_.isNull()) {
         return;
     }
-    QPainter painter(&image_);
-    // Source mode overwrites the destination pixels; QPainter clips the draw to
-    // the image rect, so a region straddling the document edge cannot spill.
-    painter.setCompositionMode(QPainter::CompositionMode_Source);
-    painter.drawImage(QPoint(x, y), region);
-    painter.end();
-    // An in-place QPainter write does not reliably bump image_.cacheKey(), so
-    // invalidate the scaled present cache explicitly; the next paint rebuilds it
-    // through the same transform as a direct draw.
-    presentCache_.valid = false;
+    {
+        QPainter painter(&image_);
+        // Source mode overwrites the destination pixels; QPainter clips the draw
+        // to the image rect, so a region straddling the document edge cannot spill.
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.drawImage(QPoint(x, y), region);
+    }
+    // Patch the same region of the scaled present cache under the identical
+    // pan/zoom transform, so a dab does not force a full-document rescale on the
+    // next paint (O(canvas) per dab). CompositionMode_Source matches the
+    // full-rebuild result: the cache is one scaled copy of `image_`.
+    if (presentCacheEnabledForTest_ && presentCache_.valid && presentCache_.zoom == zoom_
+        && !presentCache_.scaled.isNull()) {
+        QPainter patch(&presentCache_.scaled);
+        patch.setCompositionMode(QPainter::CompositionMode_Source);
+        patch.translate(x, y);
+        patch.scale(zoom_, zoom_);
+        patch.drawImage(QPointF(0.0, 0.0), region);
+        // An in-place QPainter write need not bump image_.cacheKey(); keep the
+        // cache key in sync with the image it now mirrors (patched region plus
+        // the untouched pixels that already matched).
+        presentCache_.key = image_.cacheKey();
+    } else {
+        presentCache_.valid = false;
+    }
     update();
 }
 

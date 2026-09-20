@@ -29,6 +29,7 @@ pub struct Stroke {
     scratch: Vec<u8>,
     applied: Vec<u8>,
     dirty: Option<PsdRect>,
+    dab_dirty: Option<PsdRect>,
     layer_path: Vec<usize>,
     rect: PsdRect,
     paint: Rgba,
@@ -68,6 +69,7 @@ impl Stroke {
             scratch,
             applied,
             dirty: None,
+            dab_dirty: None,
             layer_path: indices,
             rect,
             paint: cfg.color,
@@ -138,8 +140,11 @@ impl Stroke {
         &self.working
     }
 
-    pub fn dirty(&self) -> Option<PsdRect> {
-        self.dirty.map(|d| self.dirty_doc(d))
+    /// The document-space rectangle the dabs placed since the last call changed,
+    /// then clears it. The next call reports only newer dabs, so the per-dab
+    /// refresh cost stays dab-sized instead of growing with the stroke.
+    pub fn take_dirty(&mut self) -> Option<PsdRect> {
+        self.dab_dirty.take().map(|d| self.dirty_doc(d))
     }
 
     pub fn finish(self) -> Option<StrokeOutcome> {
@@ -164,20 +169,24 @@ impl Stroke {
     }
 
     fn expand_dirty(&mut self, lx: i32, ly: i32) {
-        self.dirty = Some(match self.dirty {
-            None => PsdRect {
-                top: ly,
-                left: lx,
-                bottom: ly + 1,
-                right: lx + 1,
-            },
-            Some(d) => PsdRect {
-                top: d.top.min(ly),
-                left: d.left.min(lx),
-                bottom: d.bottom.max(ly + 1),
-                right: d.right.max(lx + 1),
-            },
-        });
+        let grow = |d: Option<PsdRect>| {
+            Some(match d {
+                None => PsdRect {
+                    top: ly,
+                    left: lx,
+                    bottom: ly + 1,
+                    right: lx + 1,
+                },
+                Some(d) => PsdRect {
+                    top: d.top.min(ly),
+                    left: d.left.min(lx),
+                    bottom: d.bottom.max(ly + 1),
+                    right: d.right.max(lx + 1),
+                },
+            })
+        };
+        self.dirty = grow(self.dirty);
+        self.dab_dirty = grow(self.dab_dirty);
     }
 
     fn pixel_rgb_matches(&self, lx: f32, ly: f32, color: Rgba) -> bool {
@@ -470,6 +479,40 @@ mod tests {
             b: 0,
             a: 255,
         }
+    }
+
+    #[test]
+    fn take_dirty_reports_each_dab_not_the_stroke_union() {
+        let doc = layer_doc(128, 32, BASE);
+        let cfg = StrokeConfig {
+            color: red(),
+            diameter: 8,
+            hardness: 100,
+            spacing: SpacingMode::Fixed(150),
+            opacity: 100,
+            flow: 100,
+            ..StrokeConfig::default()
+        };
+        // Diameter 8 at 150% spacing steps 12 px, so each sample places one dab.
+        let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin");
+        assert!(stroke.sample(sample(50.0, 16.0)));
+        let first = stroke.take_dirty().expect("first dab");
+        assert!(stroke.sample(sample(62.0, 16.0)));
+        let second = stroke.take_dirty().expect("second dab");
+        assert!(
+            second.left >= first.right,
+            "second rect {second:?} overlaps the first {first:?}"
+        );
+        assert!(
+            second.width() <= 12,
+            "second rect grew to {}",
+            second.width()
+        );
+        assert!(stroke.take_dirty().is_none(), "take_dirty must clear");
+        // The committed union still covers the whole stroke.
+        let outcome = stroke.finish().expect("painted");
+        assert!(outcome.dirty.left <= first.left);
+        assert!(outcome.dirty.right >= second.right);
     }
 
     #[test]

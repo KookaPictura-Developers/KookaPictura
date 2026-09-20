@@ -177,31 +177,15 @@ pub fn composite_region_active(
     (composite_cpu_region(doc, x0, y0, w, h), Backend::Cpu)
 }
 
-/// The CPU region fallback: composite the whole document, then slice the region.
+/// The CPU region fallback.
 ///
-/// ponytail: full CPU composite + slice; the CPU path is the non-default
-/// fallback, so a genuinely region-limited accumulator is not worth it until a
-/// profile asks for it. The oracle stays `composite_rgba`.
+/// Composites only the requested region for a per-pixel stack; a stack with
+/// object-based layer effects still full-composites and slices (effect kernels
+/// read neighborhoods outside the rect). Byte-identical to the same slice of
+/// the full CPU composite either way. ponytail: layer effects keep the
+/// full-composite fallback; raise it only if one shows up in a brush profile.
 fn composite_cpu_region(doc: &Document, x0: u32, y0: u32, rw: u32, rh: u32) -> PixelBuffer {
-    let full = crate::composite_rgba(doc);
-    let fw = doc.width as usize;
-    let fplane = fw * doc.height as usize;
-    let rw = rw as usize;
-    let rh = rh as usize;
-    let rplane = rw * rh;
-    let mut out = PixelBuffer::new(rw as u32, rh as u32, 4);
-    for ry in 0..rh {
-        let frow = (y0 as usize + ry) * fw + x0 as usize;
-        let rrow = ry * rw;
-        for rx in 0..rw {
-            let f = frow + rx;
-            let r = rrow + rx;
-            for c in 0..4 {
-                out.data[c * rplane + r] = full.data[c * fplane + f];
-            }
-        }
-    }
-    out
+    crate::composite::composite_rgba_region(doc, x0, y0, rw, rh)
 }
 
 /// Try [`composite_gpu`]; on any [`GpuError`] fall back to the CPU oracle.

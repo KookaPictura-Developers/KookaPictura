@@ -67,28 +67,24 @@ impl qobject::PictureView {
     }
 
     pub fn paint_dab(mut self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool {
-        let changed = {
+        let dirty = {
             let mut rust = self.as_mut().rust_mut();
-            match rust.stroke.as_mut() {
-                Some(stroke) => stroke.sample(StrokeSample {
-                    x: x as f32,
-                    y: y as f32,
-                    pressure: pressure as f32,
-                }),
-                None => return false,
+            let Some(stroke) = rust.stroke.as_mut() else {
+                return false;
+            };
+            if !stroke.sample(StrokeSample {
+                x: x as f32,
+                y: y as f32,
+                pressure: pressure as f32,
+            }) {
+                return false;
             }
+            stroke.take_dirty()
         };
-        if changed {
-            let dirty = self
-                .rust()
-                .stroke
-                .as_ref()
-                .and_then(|stroke| stroke.dirty());
-            if let Some(rect) = dirty {
-                self.as_mut().refresh_region(rect);
-            }
+        if let Some(rect) = dirty {
+            self.as_mut().refresh_region(rect);
         }
-        changed
+        true
     }
 
     pub fn end_paint(mut self: Pin<&mut Self>) -> bool {
