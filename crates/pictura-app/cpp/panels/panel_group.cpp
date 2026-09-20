@@ -8,6 +8,8 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QBoxLayout>
 #include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QSizePolicy>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QToolButton>
@@ -20,6 +22,9 @@ constexpr int kIconButtonSize = 34;
 constexpr int kIconPixmapSize = 24;
 constexpr int kHeaderButtonSize = 18;
 constexpr int kHeaderGripWidth = 16;
+// M47: matches the docked strip's `kCompactGripHeight`, so the collapsed float
+// row and a strip group box share the same grip band.
+constexpr int kIconGripHeight = 10;
 } // namespace
 
 PanelGroup::PanelGroup(QWidget* parent)
@@ -33,9 +38,13 @@ PanelGroup::PanelGroup(QWidget* parent)
     // when the group is hosted in a `PanelFloat`.
     floatHeader_ = new QWidget(this);
     floatHeader_->setObjectName(QStringLiteral("panelFloatHeader"));
+    // M47: the bar is a fixed-height strip; extra overlay height belongs to the
+    // group body, not to padding around the toggle/close controls.
+    floatHeader_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto* floatLayout = new QHBoxLayout(floatHeader_);
     floatLayout->setContentsMargins(2, 2, 2, 2);
     floatLayout->setSpacing(2);
+    floatLayout->addStretch(1);
     floatToggle_ = new QToolButton(floatHeader_);
     floatToggle_->setObjectName(QStringLiteral("panelFloatToggle"));
     floatToggle_->setAutoRaise(true);
@@ -43,7 +52,6 @@ PanelGroup::PanelGroup(QWidget* parent)
     connect(floatToggle_, &QToolButton::clicked, this,
             [this]() { setCollapsedToIcons(!collapsedToIcons_); });
     floatLayout->addWidget(floatToggle_);
-    floatLayout->addStretch(1);
     floatCloseButton_ = new QToolButton(floatHeader_);
     floatCloseButton_->setObjectName(QStringLiteral("panelFloatClose"));
     floatCloseButton_->setAutoRaise(true);
@@ -74,6 +82,8 @@ PanelGroup::PanelGroup(QWidget* parent)
     layout->addWidget(tabs_);
 
     headerCorner_ = new QWidget(tabs_);
+    headerCorner_->setObjectName(QStringLiteral("panelWidgetCorner"));
+    headerCorner_->setAttribute(Qt::WA_StyledBackground, true);
     auto* cornerLayout = new QHBoxLayout(headerCorner_);
     cornerLayout->setContentsMargins(0, 0, 0, 0);
     cornerLayout->setSpacing(0);
@@ -88,7 +98,7 @@ PanelGroup::PanelGroup(QWidget* parent)
     headerGrip_->setToolTip(tr("Drag to move this panel group"));
     headerGrip_->setAttribute(Qt::WA_StyledBackground, true);
     headerGrip_->installEventFilter(this);
-    cornerLayout->addWidget(headerGrip_);
+    cornerLayout->addWidget(headerGrip_, 0, Qt::AlignVCenter);
 
     headerButton_ = new QToolButton(headerCorner_);
     headerButton_->setObjectName(QStringLiteral("panelWidgetMenu"));
@@ -97,18 +107,34 @@ PanelGroup::PanelGroup(QWidget* parent)
     headerButton_->setPopupMode(QToolButton::InstantPopup);
     headerButton_->setFixedSize(kHeaderButtonSize, kHeaderButtonSize);
     headerButton_->setVisible(false);
-    cornerLayout->addWidget(headerButton_);
+    cornerLayout->addWidget(headerButton_, 0, Qt::AlignVCenter);
 
     tabs_->setCornerWidget(headerCorner_, Qt::TopRightCorner);
     connect(tabs_, &QTabWidget::currentChanged, this, [this]() { updateHeaderMenu(); });
 
+    // M47: the collapsed row mirrors the docked strip's per-group box: an
+    // `panelIconGroup` container with a `panelIconGroupGrip` divider over the
+    // 34 px icon buttons, so a collapsed float and a strip group read alike.
     iconRow_ = new QWidget(this);
-    iconRow_->setObjectName(QStringLiteral("panelGroupIconRow"));
+    iconRow_->setObjectName(QStringLiteral("panelIconGroup"));
     iconRow_->setAttribute(Qt::WA_StyledBackground, true);
-    iconRowLayout_ = new QHBoxLayout(iconRow_);
-    iconRowLayout_->setContentsMargins(2, 2, 2, 2);
-    iconRowLayout_->setSpacing(2);
+    auto* iconRowOuterLayout = new QVBoxLayout(iconRow_);
+    iconRowOuterLayout->setContentsMargins(1, 1, 1, 1);
+    iconRowOuterLayout->setSpacing(1);
+    auto* iconGrip = new QLabel(iconRow_);
+    iconGrip->setObjectName(QStringLiteral("panelIconGroupGrip"));
+    iconGrip->setAlignment(Qt::AlignCenter);
+    iconGrip->setText(QStringLiteral("\u2022\u2022\u2022"));
+    iconGrip->setFixedHeight(kIconGripHeight);
+    iconGrip->setAttribute(Qt::WA_StyledBackground, true);
+    iconRowOuterLayout->addWidget(iconGrip);
+    auto* iconRowInner = new QWidget(iconRow_);
+    iconRowInner->setObjectName(QStringLiteral("panelIconRow"));
+    iconRowLayout_ = new QHBoxLayout(iconRowInner);
+    iconRowLayout_->setContentsMargins(0, 0, 0, 0);
+    iconRowLayout_->setSpacing(4);
     iconRowLayout_->addStretch(1);
+    iconRowOuterLayout->addWidget(iconRowInner);
     iconRow_->setVisible(false);
     layout->addWidget(iconRow_);
 }

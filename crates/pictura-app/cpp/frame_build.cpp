@@ -276,14 +276,33 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     });
     connect(toolbox, &Toolbox::toolbarDragFinished, this, [this](const QPoint& pos) {
         // M47 D8: commit a docked or pane-hosted drag-out too; `commitToolboxDrop`
-        // handles the reparenting, so the float state is irrelevant here.
+        // handles the reparenting, so the float state is irrelevant here. When no
+        // splitter boundary resolves (release outside the central area), float
+        // the dock under the cursor instead of stranding it at an outer edge.
         if (!toolbox_) {
             return;
         }
         QTimer::singleShot(0, this, [this, pos]() {
-            if (toolbox_) {
-                commitToolboxDrop(pos);
+            if (!toolbox_) {
+                return;
             }
+            if (commitToolboxDrop(pos)) {
+                return;
+            }
+            // No splitter boundary resolved (release outside the central area):
+            // keep the dock managed by the main window and float it under the
+            // cursor, rather than stranding it at an outer edge. A splitter pane
+            // is not in the dock layout, so detach it first.
+            if (centerSplitter_ && centerSplitter_->indexOf(toolbox_) >= 0) {
+                toolbox_->setParent(nullptr);
+                toolbox_->setSplitterPane(false);
+            }
+            addDockWidget(toolsArea_, toolbox_);
+            toolbox_->setSplitterPane(false);
+            toolbox_->setFloating(true);
+            toolbox_->move(pos - toolbox_->titleDragOffset());
+            toolbox_->show();
+            toolbox_->raise();
         });
     });
 

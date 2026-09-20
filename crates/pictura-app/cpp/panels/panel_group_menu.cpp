@@ -293,6 +293,18 @@ void populatePanelMenu(QMenu* menu, const QString& panelName,
             }
         }
     }
+    // M47: every live per-widget menu also closes the active tab and the whole
+    // group. Only the live menu (with a dispatcher) carries them; the read-only
+    // text listing stays the transcribed per-panel table.
+    if (dispatch) {
+        menu->addSeparator();
+        QAction* closePanel = menu->addAction(PanelGroup::tr("Close"));
+        QObject::connect(closePanel, &QAction::triggered, menu,
+                         [dispatch]() { dispatch(QStringLiteral("close")); });
+        QAction* closeGroup = menu->addAction(PanelGroup::tr("Close Group"));
+        QObject::connect(closeGroup, &QAction::triggered, menu,
+                         [dispatch]() { dispatch(QStringLiteral("closeGroup")); });
+    }
 }
 } // namespace
 
@@ -332,6 +344,16 @@ void PanelGroup::updateHeaderMenu()
 
 void PanelGroup::runPanelMenuAction(const QString& actionId)
 {
+    // M47: the per-widget menu's close entries. The column that wires this group
+    // owns the close behaviour, so the group only forwards the request.
+    if (actionId == QStringLiteral("close")) {
+        emit closePanelRequested(currentPanelName());
+        return;
+    }
+    if (actionId == QStringLiteral("closeGroup")) {
+        emit closeGroupRequested();
+        return;
+    }
     QWidget* panel = tabs_->currentWidget();
     if (!panel) {
         return;

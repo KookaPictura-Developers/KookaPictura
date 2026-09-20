@@ -13,6 +13,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtGui/QMouseEvent>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QSizeGrip>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
@@ -309,7 +310,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
             minHeight = group->isCollapsedToIcons()
                         && column->floatGeometryForTest(0).height()
                                >= pictura::PanelFloat::kFloatIconMinHeight;
-            themed = qApp->styleSheet().contains(QStringLiteral("QWidget#panelGroupIconRow {"));
+            themed = qApp->styleSheet().contains(QStringLiteral("QWidget#panelIconGroup {"));
             column->closeFloatForTest(0);
             pump(6);
         }
@@ -353,6 +354,438 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         if (!(leftHalf && rightHalf)) {
             return pictura::selfTest().fail(406, "toolbox column drop");
         }
+    }
+
+    // lss_tools_title_drag (407): a real press/drag/release on the Tools custom
+    // title bar drives the drop through the column grammar while Qt's own
+    // QDockWidget drag stays suppressed (the dock never floats mid-gesture). A
+    // release over a column interior lands the pane in the splitter; a release
+    // outside any column leaves it floating at the cursor.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        pictura::PanelColumn* column = frame.panelColumn();
+        if (!toolbox || !cs || !column || !column->isVisible()) {
+            return pictura::selfTest().fail(407, "tools title drag fixture");
+        }
+        if (cs->indexOf(toolbox) >= 0) {
+            frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+            toolbox->setSplitterPane(false);
+            pump(6);
+        }
+        auto sendMouse = [](QWidget* w, QEvent::Type type, const QPoint& global,
+                            Qt::MouseButton button, Qt::MouseButtons buttons) {
+            QMouseEvent event(type, QPointF(w->mapFromGlobal(global)), QPointF(global), button,
+                              buttons, Qt::NoModifier);
+            QApplication::sendEvent(w, &event);
+        };
+        int moved = 0;
+        int finished = 0;
+        const QMetaObject::Connection c1 = QObject::connect(
+            toolbox, &pictura::Toolbox::toolbarDragMoved, toolbox,
+            [&moved](const QPoint&) { ++moved; });
+        const QMetaObject::Connection c2 = QObject::connect(
+            toolbox, &pictura::Toolbox::toolbarDragFinished, toolbox,
+            [&finished](const QPoint&) { ++finished; });
+
+        QWidget* title = toolbox->titleBarForTest();
+        const QPoint blank(qMax(2, title->width() / 4), title->height() / 2);
+        const QRect cr(column->mapToGlobal(QPoint(0, 0)), column->size());
+        const QPoint interior(cr.left() + qMax(1, cr.width() / 4), cr.center().y());
+        const int expected = cs->indexOf(column);
+
+        sendMouse(title, QEvent::MouseButtonPress, title->mapToGlobal(blank), Qt::LeftButton,
+                  Qt::LeftButton);
+        sendMouse(title, QEvent::MouseMove, interior, Qt::NoButton, Qt::LeftButton);
+        pump(4);
+        const bool suppressed = !toolbox->isFloating();
+        const bool movedFired = moved > 0;
+        const bool indicator = column->dropIndicatorVisibleForTest();
+        sendMouse(title, QEvent::MouseButtonRelease, interior, Qt::LeftButton, Qt::NoButton);
+        pump(8);
+        const bool placed = finished > 0 && toolbox->isSplitterPane()
+                            && cs->indexOf(toolbox) == expected;
+
+        QWidget* central = frame.centralWidget();
+        const QPoint outside(central->mapToGlobal(QPoint(central->width() / 2, 0)).x(),
+                             central->mapToGlobal(QPoint(0, 0)).y() - 400);
+        sendMouse(title, QEvent::MouseButtonPress, title->mapToGlobal(blank), Qt::LeftButton,
+                  Qt::LeftButton);
+        sendMouse(title, QEvent::MouseMove, outside, Qt::NoButton, Qt::LeftButton);
+        pump(4);
+        sendMouse(title, QEvent::MouseButtonRelease, outside, Qt::LeftButton, Qt::NoButton);
+        pump(8);
+        const bool floated = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
+
+        QObject::disconnect(c1);
+        QObject::disconnect(c2);
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+
+        ST_BEGIN("lss_tools_title_drag");
+        ST_PASS("lss_tools_title_drag suppressed=%d moved=%d indicator=%d placed=%d float=%d",
+                suppressed ? 1 : 0, movedFired ? 1 : 0, indicator ? 1 : 0, placed ? 1 : 0,
+                floated ? 1 : 0);
+        if (!(suppressed && movedFired && indicator && placed && floated)) {
+            return pictura::selfTest().fail(407, "tools title drag");
+        }
+    }
+
+    // lss_header_menu (408): a real header press+move shows the edge indicator
+    // and the release moves the column; an outer-band header drop lands at the
+    // splitter head, left of a Tools pane at index 0; and the header left-click
+    // menu flips rail mode and both auto toggles and raises interface options.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        pictura::PanelColumn* primary = frame.panelColumn();
+        const bool made =
+            frame.newColumnDropForTest(QStringLiteral("stylesPanel"), QStringLiteral("left"));
+        pump(6);
+        pictura::PanelColumn* left = frame.columnForPanel(QStringLiteral("stylesPanel"));
+        if (!toolbox || !cs || !primary || !left || primary == left) {
+            return pictura::selfTest().fail(408, "header menu fixture tb=%d cs=%d p=%d l=%d made=%d",
+                                            toolbox ? 1 : 0, cs ? 1 : 0, primary ? 1 : 0,
+                                            left ? 1 : 0, made ? 1 : 0);
+        }
+        auto sendMouse = [](QWidget* w, QEvent::Type type, const QPoint& global,
+                            Qt::MouseButton button, Qt::MouseButtons buttons) {
+            QMouseEvent event(type, QPointF(w->mapFromGlobal(global)), QPointF(global), button,
+                              buttons, Qt::NoModifier);
+            QApplication::sendEvent(w, &event);
+        };
+
+        // Real header drag: press the primary header, move over the left column,
+        // see the indicator, release and confirm the column moved.
+        QWidget* header = primary->columnHeaderForTest();
+        const QPoint blank(qMax(2, header->width() / 4), header->height() / 2);
+        const QRect lr(left->mapToGlobal(QPoint(0, 0)), left->size());
+        const QPoint onLeft(lr.left() + qMax(1, lr.width() / 4), lr.center().y());
+        sendMouse(header, QEvent::MouseButtonPress, header->mapToGlobal(blank), Qt::LeftButton,
+                  Qt::LeftButton);
+        sendMouse(header, QEvent::MouseMove, onLeft, Qt::NoButton, Qt::LeftButton);
+        pump(4);
+        const bool indicator = left->dropIndicatorVisibleForTest();
+        sendMouse(header, QEvent::MouseButtonRelease, onLeft, Qt::LeftButton, Qt::NoButton);
+        pump(6);
+        const bool moved = cs->indexOf(primary) == 0 && cs->indexOf(primary) < cs->indexOf(left);
+
+        // Outer-band tools drop, then a header drop to the far-left band must
+        // land at index 0, left of the Tools pane.
+        if (cs->indexOf(toolbox) >= 0) {
+            frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+            toolbox->setSplitterPane(false);
+            pump(4);
+        }
+        QWidget* central = frame.centralWidget();
+        const QPoint headPoint(central->mapToGlobal(QPoint(0, 0)).x() + 2,
+                               central->mapToGlobal(QPoint(0, central->height() / 2)).y());
+        const bool toolsPane = frame.commitToolboxDrop(headPoint) && toolbox->isSplitterPane()
+                               && cs->indexOf(toolbox) >= 0;
+        sendMouse(header, QEvent::MouseButtonPress, header->mapToGlobal(blank), Qt::LeftButton,
+                  Qt::LeftButton);
+        sendMouse(header, QEvent::MouseMove, headPoint, Qt::NoButton, Qt::LeftButton);
+        pump(4);
+        sendMouse(header, QEvent::MouseButtonRelease, headPoint, Qt::LeftButton, Qt::NoButton);
+        pump(6);
+        const bool leftOfTools = toolsPane && cs->indexOf(primary) == 0
+                                 && cs->indexOf(primary) < cs->indexOf(toolbox);
+
+        // Header menu: every entry works.
+        const QStringList texts = primary->columnHeaderMenuTextsForTest();
+        const bool menuComplete =
+            texts.contains(QStringLiteral("Collapse to Icons"))
+            && texts.contains(QStringLiteral("Auto-Collapse Iconic Panels"))
+            && texts.contains(QStringLiteral("Auto-show Hidden Panels"))
+            && texts.contains(QStringLiteral("Interface Options\u2026"));
+        const bool railBefore = primary->railMode();
+        const bool railFlipped = primary->triggerColumnHeaderMenuForTest(
+                                     QStringLiteral("Collapse to Icons"))
+                                 && primary->railMode() != railBefore;
+        const bool autoCollapseBefore = primary->autoCollapseIconicForTest();
+        const bool autoCollapseFlipped = primary->triggerColumnHeaderMenuForTest(
+                                             QStringLiteral("Auto-Collapse Iconic Panels"))
+                                         && primary->autoCollapseIconicForTest()
+                                                != autoCollapseBefore;
+        const bool autoShowBefore = primary->autoShowHiddenForTest();
+        const bool autoShowFlipped = primary->triggerColumnHeaderMenuForTest(
+                                         QStringLiteral("Auto-show Hidden Panels"))
+                                     && primary->autoShowHiddenForTest() != autoShowBefore;
+        bool optionsFired = false;
+        const QMetaObject::Connection conn = QObject::connect(
+            primary, &pictura::PanelColumn::interfaceOptionsRequested,
+            [&optionsFired]() { optionsFired = true; });
+        const bool optionsTriggered = primary->triggerColumnHeaderMenuForTest(
+            QStringLiteral("Interface Options\u2026"));
+        QObject::disconnect(conn);
+
+        // Leave the default chrome for the suites that follow.
+        if (toolbox) {
+            if (cs && cs->indexOf(toolbox) >= 0) {
+                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+                toolbox->setSplitterPane(false);
+            } else if (toolbox->isFloating()) {
+                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+                toolbox->setFloating(false);
+                toolbox->setSplitterPane(false);
+            }
+            pump(6);
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+
+        ST_BEGIN("lss_header_menu");
+        ST_PASS("lss_header_menu made=%d moved=%d tools=%d leftOfTools=%d menu=%d rail=%d "
+                "autoC=%d autoS=%d options=%d",
+                made ? 1 : 0, moved ? 1 : 0, toolsPane ? 1 : 0, leftOfTools ? 1 : 0,
+                menuComplete ? 1 : 0, railFlipped ? 1 : 0, autoCollapseFlipped ? 1 : 0,
+                autoShowFlipped ? 1 : 0, (optionsTriggered && optionsFired) ? 1 : 0);
+        if (!(made && moved && indicator && toolsPane && leftOfTools && menuComplete
+              && railFlipped && autoCollapseFlipped && autoShowFlipped && optionsTriggered
+              && optionsFired)) {
+            return pictura::selfTest().fail(408, "header menu");
+        }
+    }
+
+    // lss_float_toggle_place (409): the float top bar puts the normal/icon
+    // toggle immediately left of the close control, both at the right end.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        pictura::PanelGroup* group =
+            column && !column->groups().isEmpty() ? column->groups().first() : nullptr;
+        bool torn = false;
+        bool placed = false;
+        bool rightSide = false;
+        if (column && group) {
+            torn = column->tearOffForTest(group->objectName());
+            pump(8);
+            QWidget* header = group->floatHeaderForTest();
+            QToolButton* toggle = group->floatToggleForTest();
+            QToolButton* close = group->floatCloseButton();
+            if (header && toggle && close) {
+                const QPoint t = toggle->mapTo(header, QPoint(0, 0));
+                const QPoint c = close->mapTo(header, QPoint(0, 0));
+                const int gap = c.x() - (t.x() + toggle->width());
+                placed = t.x() < c.x() && gap >= 0 && gap <= 12;
+                rightSide = c.x() + close->width() >= header->width() - 6
+                            && t.x() > header->width() / 2;
+            }
+            column->closeFloatForTest(0);
+            pump(6);
+        }
+        ST_BEGIN("lss_float_toggle_place");
+        ST_PASS("lss_float_toggle_place torn=%d placed=%d right=%d", torn ? 1 : 0,
+                placed ? 1 : 0, rightSide ? 1 : 0);
+        if (!(torn && placed && rightSide)) {
+            return pictura::selfTest().fail(409, "float toggle placement");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
+    // lss_float_icon_height (410): collapsing a floating group snaps the overlay
+    // down to the group's icon-row height, not merely up to a minimum.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        pictura::PanelGroup* group =
+            column && !column->groups().isEmpty() ? column->groups().first() : nullptr;
+        bool torn = false;
+        bool snapped = false;
+        bool shrunk = false;
+        int expandedHeight = 0;
+        int collapsedHeight = 0;
+        if (column && group) {
+            torn = column->tearOffForTest(group->objectName());
+            pump(8);
+            expandedHeight = column->floatGeometryForTest(0).height();
+            group->setCollapsedToIcons(true);
+            pump(8);
+            const int iconHeight = group->sizeHint().height();
+            collapsedHeight = column->floatGeometryForTest(0).height();
+            snapped = group->isCollapsedToIcons()
+                      && collapsedHeight >= pictura::PanelFloat::kFloatIconMinHeight
+                      && collapsedHeight <= iconHeight + 8;
+            shrunk = collapsedHeight < expandedHeight;
+            column->closeFloatForTest(0);
+            pump(6);
+        }
+        ST_BEGIN("lss_float_icon_height");
+        ST_PASS("lss_float_icon_height torn=%d expanded=%d collapsed=%d snap=%d shrink=%d",
+                torn ? 1 : 0, expandedHeight, collapsedHeight, snapped ? 1 : 0, shrunk ? 1 : 0);
+        if (!(torn && snapped && shrunk)) {
+            return pictura::selfTest().fail(410, "float icon height");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
+    // lss_float_resize (411): the overlay carries a QSizeGrip and a non-zero
+    // minimum size (min width from the docked column, min height top+tab bars).
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        pictura::PanelGroup* group =
+            column && !column->groups().isEmpty() ? column->groups().first() : nullptr;
+        bool torn = false;
+        bool grip = false;
+        bool minSize = false;
+        if (column && group) {
+            torn = column->tearOffForTest(group->objectName());
+            pump(8);
+            pictura::PanelFloat* floatWindow = column->floatForTest(0);
+            QSizeGrip* sizeGrip = floatWindow ? floatWindow->findChild<QSizeGrip*>() : nullptr;
+            grip = sizeGrip != nullptr;
+            minSize = floatWindow && floatWindow->minimumWidth() > 0
+                      && floatWindow->minimumHeight() > 0;
+            column->closeFloatForTest(0);
+            pump(6);
+        }
+        ST_BEGIN("lss_float_resize");
+        ST_PASS("lss_float_resize torn=%d grip=%d minsize=%d", torn ? 1 : 0, grip ? 1 : 0,
+                minSize ? 1 : 0);
+        if (!(torn && grip && minSize)) {
+            return pictura::selfTest().fail(411, "float resize affordance");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
+    // lss_float_single_drag (412): dragging the tab of a one-panel float moves
+    // the whole overlay as a group drag; no second float is built and the source
+    // overlay survives as the drag state is cancelled.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool floated = false;
+        bool groupDrag = false;
+        bool noExtra = false;
+        bool intact = false;
+        if (column) {
+            floated = column->tearOffPanelForTest(QStringLiteral("channelsPanel"));
+            pump(8);
+            const int before = column->floatCountForTest();
+            pictura::PanelFloat* floatWindow = column->floatForTest(before - 1);
+            pictura::PanelGroup* fg = floatWindow ? floatWindow->group() : nullptr;
+            const bool began =
+                floated && column->beginTabDragForTest(QStringLiteral("channelsPanel"));
+            pump(4);
+            groupDrag = began && column->dragActiveForTest() && !column->dragIsPanelForTest();
+            noExtra = column->floatCountForTest() == before;
+            column->cancelDragForTest();
+            pump(6);
+            intact = fg && column->floatCountForTest() == before
+                     && fg->containsPanel(QStringLiteral("channelsPanel"));
+            for (int i = 0; i < 8 && column->floatCountForTest() > 0; ++i) {
+                if (!column->redockForTest(0, 0)) {
+                    break;
+                }
+                pump(4);
+            }
+        }
+        ST_BEGIN("lss_float_single_drag");
+        ST_PASS("lss_float_single_drag floated=%d group=%d noextra=%d intact=%d",
+                floated ? 1 : 0, groupDrag ? 1 : 0, noExtra ? 1 : 0, intact ? 1 : 0);
+        if (!(floated && groupDrag && noExtra && intact)) {
+            return pictura::selfTest().fail(412, "single-panel float drag");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
+    // lss_panel_menu_close (413): the per-widget menu's live text now carries
+    // `Close` and `Close Group`; Close hides the active tab and Close Group hides
+    // the whole group through the column's existing close paths.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        pictura::PanelGroup* group = column ? column->groupForPanel(QStringLiteral("layersPanel"))
+                                            : nullptr;
+        bool hasClose = false;
+        bool hasCloseGroup = false;
+        bool closesTab = false;
+        bool closesGroup = false;
+        if (column && group) {
+            column->showPanel(QStringLiteral("layersPanel"), true);
+            pump(4);
+            const QStringList texts = group->panelMenuTextsForTest();
+            hasClose = texts.contains(QStringLiteral("Close"));
+            hasCloseGroup = texts.contains(QStringLiteral("Close Group"));
+            const QString active = group->currentPanelName();
+            closesTab = !active.isEmpty()
+                        && column->triggerWidgetMenuForTest(active, QStringLiteral("Close"))
+                        && !group->isPanelVisible(active);
+            column->showPanel(active, true);
+            pump(4);
+            closesGroup = column->triggerWidgetMenuForTest(group->currentPanelName(),
+                                                           QStringLiteral("Close Group"))
+                          && !group->isVisible();
+        }
+        ST_BEGIN("lss_panel_menu_close");
+        ST_PASS("lss_panel_menu_close label=%d groupLabel=%d tab=%d group=%d", hasClose ? 1 : 0,
+                hasCloseGroup ? 1 : 0, closesTab ? 1 : 0, closesGroup ? 1 : 0);
+        if (!(hasClose && hasCloseGroup && closesTab && closesGroup)) {
+            return pictura::selfTest().fail(413, "panel menu close");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
+    // lss_float_drag_opacity (414): the overlay dims while it hovers a valid drop
+    // target and returns to full opacity when the drag is cancelled.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        pictura::PanelGroup* group =
+            column && !column->groups().isEmpty() ? column->groups().first() : nullptr;
+        bool torn = false;
+        bool dimmed = false;
+        bool restored = false;
+        if (column && group) {
+            torn = column->tearOffForTest(group->objectName());
+            pump(8);
+            pictura::PanelFloat* floatWindow = column->floatForTest(0);
+            const QList<QWidget*> panels = group->panels();
+            const QString panel = panels.isEmpty() || !panels.first()
+                                      ? QString()
+                                      : panels.first()->objectName();
+            const bool began = !panel.isEmpty() && column->beginGroupDragForTest(panel);
+            if (floatWindow) {
+                const qreal base = floatWindow->dragOpacityForTest();
+                column->dragToForTest(column->boundaryPointForTest(0));
+                pump(4);
+                const qreal over = floatWindow->dragOpacityForTest();
+                dimmed = began && over < base && over <= 0.7;
+                column->cancelDragForTest();
+                pump(4);
+                restored = floatWindow->dragOpacityForTest() > 0.9;
+            }
+            for (int i = 0; i < 8 && column->floatCountForTest() > 0; ++i) {
+                if (!column->redockForTest(0, 0)) {
+                    break;
+                }
+                pump(4);
+            }
+        }
+        ST_BEGIN("lss_float_drag_opacity");
+        ST_PASS("lss_float_drag_opacity torn=%d dimmed=%d restored=%d", torn ? 1 : 0,
+                dimmed ? 1 : 0, restored ? 1 : 0);
+        if (!(torn && dimmed && restored)) {
+            return pictura::selfTest().fail(414, "float drag opacity");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
     }
 
     return 0;

@@ -187,10 +187,14 @@ QSplitter#panelColumnSplitter::handle { background: ${border}; }
 QFrame#panelIconDivider { background: ${border}; border: 0; }
 QWidget#panelIconGroup { background: ${window}; border: 1px solid ${border}; border-radius: 2px; }
 QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid ${border}; color: ${disabledText}; }
-/* M47: the group's iconic row reads as a panel surface, matching the docked
-   column's icon group. The reserved corner grip is blank header space. */
-QWidget#panelGroupIconRow { background: ${window}; border: 1px solid ${border}; border-radius: 2px; }
+/* M47: a collapsed group's iconic row reuses the docked strip's
+   `panelIconGroup` box, so the float and the strip read alike. The reserved
+   corner grip, corner container, and its `▾` button share the header strip. */
 QWidget#panelGroupDragGrip { background: ${panelHeader}; }
+QWidget#panelWidgetCorner { background: ${panelHeader}; }
+QWidget#panelWidgetCorner QToolButton { background: ${panelHeader}; color: ${buttonText}; border: 0; border-radius: 0; padding: 0; }
+QWidget#panelWidgetCorner QToolButton:hover { background: ${hover}; }
+QWidget#panelWidgetCorner QToolButton:pressed { background: ${pressed}; }
 
 QTabWidget::pane { border: ${borderWidth}px solid ${border}; background: ${base}; }
 QTabWidget#panelGroupTabs { border: ${borderWidth}px solid ${border}; }

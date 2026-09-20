@@ -14,12 +14,14 @@
 #include <functional>
 
 class QBoxLayout;
+class QGraphicsOpacityEffect;
 class QHideEvent;
 class QLabel;
 class QMenu;
 class QResizeEvent;
 class QScrollArea;
 class QShowEvent;
+class QSizeGrip;
 class QSplitter;
 class QTabBar;
 class QToolButton;
@@ -47,14 +49,27 @@ public:
     explicit PanelFloat(QWidget* parent = nullptr);
     PanelGroup* group() const { return group_; }
     void setGroup(PanelGroup* group);
-    // M47: keep the overlay sized to its hosted group. Collapsed-to-icons
-    // enforces the icon row's minimum; expanded drops it and grows to the hint.
+    // M47: keep the overlay sized to its hosted group. Collapsed-to-icons snaps
+    // to the icon row's height; expanded drops the icon floor and grows to the
+    // hint.
     void syncToContent();
+    // M47: dim the overlay while it hovers a valid drop target. A child widget
+    // ignores `setWindowOpacity`, so one shared `QGraphicsOpacityEffect` carries
+    // it and only its opacity changes.
+    void setDragDimmed(bool dimmed);
+    qreal dragOpacityForTest() const;
     static constexpr int kFloatIconMinHeight = 36;
+    static constexpr int kFloatMinWidth = 180;
+    static constexpr int kFloatMinHeight = 48;
     std::function<void()> onClose;
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     PanelGroup* group_ = nullptr;
+    QGraphicsOpacityEffect* opacityEffect_ = nullptr;
+    QSizeGrip* sizeGrip_ = nullptr;
 };
 
 // The frameless `Qt::Popup` that hosts the whole `PanelGroup` a compact-strip
@@ -191,6 +206,7 @@ public:
     void showEdgeDropIndicator(PanelSide side);
     void hideEdgeDropIndicator();
     int floatCountForTest() const;
+    PanelFloat* floatForTest(int index) const;
     QStringList floatPanelNamesForTest(int index) const;
     bool tearOffForTest(const QString& groupName);
     bool tearOffPanelForTest(const QString& objectName);
@@ -208,6 +224,9 @@ public:
     bool beginColumnHeaderDragForTest(const QPoint& globalPos);
     void dragColumnHeaderToForTest(const QPoint& globalPos);
     bool dropColumnHeaderForTest(const QPoint& globalPos);
+    // M47: the header's left-click menu (collapse/auto toggles/interface options).
+    QStringList columnHeaderMenuTextsForTest() const;
+    bool triggerColumnHeaderMenuForTest(const QString& text);
     // M43 Phase B: begin a whole-group drag and a compact-strip entry point.
     bool beginGroupDragForTest(const QString& panelName);
     QPoint stripEntryPointForTest(const QString& panelName, int where) const;
@@ -235,6 +254,7 @@ public:
 
     // M44 Phase C: whole-widget-column docking and compact drop.
     bool dragActiveForTest() const { return dragActive_; }
+    bool dragIsPanelForTest() const { return dragIsPanel_; }
     bool dragSourceGroupAliveForTest() const;
     QWidget* dragHandleForTest(const QString& groupName) const;
     QStringList compactStripGroupOrderForTest() const;
@@ -323,6 +343,9 @@ private:
     void showTabMenu(PanelGroup* group, const QPoint& globalPos);
     QMenu* buildTabMenu(PanelGroup* group);
     QStringList tabMenuTextsFor(const PanelGroup* group) const;
+    // M47: left-click menu on the column's top header.
+    void showColumnHeaderMenu(const QPoint& globalPos);
+    QMenu* buildColumnHeaderMenu();
     QToolButton* makeIconButton(QWidget* parent, const QString& objectName,
                                 const QString& title, const QIcon& icon);
 
@@ -405,6 +428,9 @@ private:
 
     bool dragActive_ = false;
     bool dragIsPanel_ = false;
+    // M47: set when a one-panel-float tab drag was redirected into a group drag,
+    // so only that gesture gets the tab-bar merge on commit.
+    bool dragRedirectedFromFloat_ = false;
     PanelGroup* dragGroup_ = nullptr;
     // M44 W4: the panel's original group is kept alive for the whole drag so the
     // tab bar that owns the implicit mouse grab survives until release; it is

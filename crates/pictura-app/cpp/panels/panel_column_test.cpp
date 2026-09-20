@@ -395,6 +395,14 @@ int PanelColumn::floatCountForTest() const
     return floats_.size();
 }
 
+PanelFloat* PanelColumn::floatForTest(int index) const
+{
+    if (index < 0 || index >= floats_.size()) {
+        return nullptr;
+    }
+    return floats_.at(index);
+}
+
 QStringList PanelColumn::floatPanelNamesForTest(int index) const
 {
     QStringList out;
@@ -571,6 +579,34 @@ bool PanelColumn::dropColumnHeaderForTest(const QPoint& globalPos)
     }
     columnDragging_ = false;
     return finishColumnDrag(globalPos);
+}
+
+QStringList PanelColumn::columnHeaderMenuTextsForTest() const
+{
+    QStringList out;
+    QMenu* menu = const_cast<PanelColumn*>(this)->buildColumnHeaderMenu();
+    for (QAction* action : menu->actions()) {
+        if (!action->isSeparator()) {
+            out << action->text();
+        }
+    }
+    delete menu;
+    return out;
+}
+
+bool PanelColumn::triggerColumnHeaderMenuForTest(const QString& text)
+{
+    QMenu* menu = buildColumnHeaderMenu();
+    bool found = false;
+    for (QAction* action : menu->actions()) {
+        if (!action->isSeparator() && action->text() == text) {
+            action->trigger();
+            found = true;
+            break;
+        }
+    }
+    delete menu;
+    return found;
 }
 
 bool PanelColumn::dragSourceGroupAliveForTest() const
