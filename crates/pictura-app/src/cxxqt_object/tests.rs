@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::helpers_composite::*;
 use super::impl_core::finalize_import;
+use super::impl_transform::build_move_preview_base;
 use crate::history::{History, Snapshot};
 use pictura_core::{
     BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
@@ -372,6 +373,143 @@ fn layer_visibility_region_bounds_raster_and_bounded_adjustments() {
     let mut group = pixel_layer("group", 4, 4, (0, 0, 0));
     group.is_group = true;
     assert_eq!(layer_visibility_region(&group), None);
+}
+
+#[test]
+fn visibility_region_path_matches_full_recomposite() {
+    let mut doc = Document::new(16, 16, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        pixel_layer("base", 16, 16, (30, 60, 90)),
+        pixel_layer("top", 6, 6, (200, 100, 50)),
+    ];
+    let rendered = current_buffer(&doc, false);
+    store_composite(&mut doc, &rendered);
+
+    // The region path: apply the toggle, union the changed regions, composite
+    // and patch only that union.
+    let mut region_doc = doc.clone();
+    let (changed, region) = set_visible_paths_union(&mut region_doc, &["1"], false);
+    assert_eq!(changed, 1);
+    let rect = region.expect("raster layer is bounded");
+    let (x0, y0, w, h) =
+        clamp_region(rect, region_doc.width, region_doc.height).expect("non-empty region");
+    let (buffer, _) = pictura_render::composite_region_active(&region_doc, rect, false);
+    assert_eq!((buffer.width, buffer.height), (w, h));
+    patch_composite_region(&mut region_doc, &buffer, x0, y0);
+
+    // A full recomposite of the same state, stored the way `recomposite` does.
+    let mut full_doc = doc.clone();
+    assert_eq!(
+        pictura_render::set_visible_paths(&mut full_doc, &["1"], false),
+        1
+    );
+    let rendered = current_buffer(&full_doc, false);
+    store_composite(&mut full_doc, &rendered);
+
+    assert_eq!(
+        buffer_to_image(&region_doc.composite),
+        buffer_to_image(&full_doc.composite),
+        "region path must match a full recomposite byte-for-byte"
+    );
+}
+
+#[test]
+fn visibility_union_falls_back_for_unbounded_layer() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut group = pixel_layer("group", 4, 4, (9, 9, 9));
+    group.is_group = true;
+    doc.layers = vec![pixel_layer("base", 4, 4, (0, 0, 0)), group];
+
+    // A group is unbounded, so the union is `None` and the caller falls back.
+    let (changed, region) = set_visible_paths_union(&mut doc, &["1"], false);
+    assert_eq!(changed, 1);
+    assert_eq!(region, None);
+
+    // Two bounded layers union into their bounding box.
+    let mut two = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    let mut far = pixel_layer("far", 3, 3, (1, 1, 1));
+    far.rect = PsdRect {
+        top: 4,
+        left: 4,
+        bottom: 7,
+        right: 7,
+    };
+    two.layers = vec![pixel_layer("base", 2, 2, (0, 0, 0)), far];
+    let (changed, region) = set_visible_paths_union(&mut two, &["0", "1"], false);
+    assert_eq!(changed, 2);
+    assert_eq!(
+        region,
+        Some(PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 7,
+            right: 7,
+        })
+    );
+}
+
+#[test]
+fn active_layer_visible_tracks_the_active_raster_layer() {
+    let mut hidden = pixel_layer("hidden", 4, 4, (1, 2, 3));
+    hidden.visible = false;
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 4, 4, (0, 0, 0)), hidden];
+
+    assert!(active_layer_visible(&doc, Some("0")));
+    assert!(!active_layer_visible(&doc, Some("1")));
+    // No active layer, a group, and an unknown path are not editable targets
+    // and are not treated as invisible.
+    assert!(active_layer_visible(&doc, None));
+    assert!(active_layer_visible(&doc, Some("")));
+    assert!(active_layer_visible(&doc, Some("9")));
+    let mut group = pixel_layer("group", 4, 4, (0, 0, 0));
+    group.is_group = true;
+    doc.layers.push(group);
+    assert!(active_layer_visible(&doc, Some("2")));
+}
+
+#[test]
+fn invisible_active_layer_refuses_edits_but_not_move() {
+    let mut hidden = pixel_layer("hidden", 8, 8, (200, 100, 50));
+    hidden.visible = false;
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 8, 8, (30, 60, 90)), hidden];
+
+    // Paint and filter gate on `active_layer_visible`, so both refuse.
+    assert!(!active_layer_visible(&doc, Some("1")));
+    // Move resolves the same layer through `active_pixel_layer`, which is
+    // visibility-agnostic, so the layer is still a move target.
+    assert!(active_pixel_layer(&doc, Some("1")).is_some());
+}
+
+#[test]
+fn move_preview_base_preserves_layer_visibility() {
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        pixel_layer("base", 8, 8, (30, 60, 90)),
+        pixel_layer("top", 8, 8, (200, 100, 50)),
+    ];
+    let rendered = current_buffer(&doc, false);
+    store_composite(&mut doc, &rendered);
+    doc.layers[1].visible = false;
+
+    // The region path.
+    let base = build_move_preview_base(&mut doc, 1, false);
+    assert!(
+        !doc.layers[1].visible,
+        "a move must not reveal the invisible layer"
+    );
+    assert!(!base.is_null());
+
+    // The full-composite fallback (a missing/mismatched composite).
+    let mut no_composite = doc.clone();
+    no_composite.composite.data.clear();
+    no_composite.layers[1].visible = false;
+    let _ = build_move_preview_base(&mut no_composite, 1, false);
+    assert!(
+        !no_composite.layers[1].visible,
+        "the fallback must restore the prior visibility"
+    );
 }
 
 #[test]

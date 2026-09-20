@@ -623,6 +623,15 @@ pub(super) fn active_pixel_layer_mut<'a>(
     let layer = doc.layers.get_mut(index)?;
     (!layer.is_group && layer.adjustment.is_none()).then_some(layer)
 }
+/// Whether the single active layer a tool edit may target is visible.
+///
+/// A path that does not resolve to one editable pixel layer (none, a group, an
+/// adjustment, a nested/unknown path) is reported visible: paint and filters
+/// already refuse it through [`active_pixel_layer`], and the cursor must not
+/// show the invisible-layer refusal for it.
+pub(super) fn active_layer_visible(doc: &Document, active: Option<&str>) -> bool {
+    active_pixel_layer(doc, active).is_none_or(|layer| layer.visible)
+}
 /// A rectangle that provably bounds a visibility toggle's effect, or `None` when
 /// the toggle can change a pixel outside any such rectangle.
 ///
@@ -664,6 +673,33 @@ pub(super) fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
         bottom: a.bottom.max(b.bottom),
         right: a.right.max(b.right),
     }
+}
+/// Apply `set_visible_paths` and return the changed count plus the union of the
+/// changed layers' bounded [`layer_visibility_region`]s.
+///
+/// The second value is `None` when any changed layer is unbounded (a group, or
+/// a channel-less/unmasked adjustment), which forces the caller's full
+/// `recomposite` fallback. A union of `None` (nothing changed) is distinct: the
+/// caller sees `changed == 0` and records nothing.
+pub(super) fn set_visible_paths_union(
+    doc: &mut Document,
+    paths: &[&str],
+    visible: bool,
+) -> (usize, Option<PsdRect>) {
+    let mut union: Option<PsdRect> = None;
+    let mut unbounded = false;
+    for path in paths {
+        if let Some(layer) = pictura_render::resolve_path(doc, path) {
+            if layer.visible != visible {
+                match layer_visibility_region(layer) {
+                    Some(rect) => union = Some(union.map_or(rect, |u| union_rect(u, rect))),
+                    None => unbounded = true,
+                }
+            }
+        }
+    }
+    let changed = pictura_render::set_visible_paths(doc, paths, visible);
+    (changed, if unbounded { None } else { union })
 }
 /// Clamp `rect` to `width`×`height`.
 ///

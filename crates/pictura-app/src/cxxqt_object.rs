@@ -98,6 +98,11 @@ pub mod qobject {
         #[qinvokable]
         fn active_layer_path(&self) -> QString;
 
+        /// Whether the single active layer a tool edit may target is visible;
+        /// true when there is no single editable active layer.
+        #[qinvokable]
+        fn active_layer_visible(&self) -> bool;
+
         /// Notice when an opened document's source color mode was normalized.
         #[qinvokable]
         fn mode_notice(&self) -> QString;

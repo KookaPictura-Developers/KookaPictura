@@ -78,27 +78,27 @@
 
 ## 3. Batch 3 — Visibility perf + invisible layers (items 13, 17)
 
-- [ ] 3.1 Item 13: route the `set_layers_visible` path through the region fast
+- [x] 3.1 Item 13: route the `set_layers_visible` path through the region fast
   path (`layer_visibility_region` → `refresh_region`) instead of always
   `batch_changed` + full `recomposite` + full-doc snapshot; fall back to
   `recomposite` only when a region is `None`; keep one history state.
-- [ ] 3.2 Item 13 regression: Rust unit test that a visibility toggle takes the
+- [x] 3.2 Item 13 regression: Rust unit test that a visibility toggle takes the
   region path (region blit fired, no full `changed`) and equals a full
   recomposite byte-for-byte; a `#[ignore]`d 4000² print-only profile; a C++
   check that the eye toggle on a large document takes the region path and meets
   the sub-1s target on the reference run (record the measured value).
-- [ ] 3.3 Item 17: add the shared `active_layer_visible` helper in
+- [x] 3.3 Item 17: add the shared `active_layer_visible` helper in
   `crates/pictura-app/src/cxxqt_object/`; refuse paint/filter edits on an
   invisible active layer with the Block/Forbidden cursor, while selection and
   copy stay available.
-- [ ] 3.4 Item 17: fix `compute_move_preview`
+- [x] 3.4 Item 17: fix `compute_move_preview`
   (`crates/pictura-app/src/cxxqt_object/impl_transform.rs`) to save and restore
   the active layer's `visible` flag instead of forcing `visible = true`.
-- [ ] 3.5 Item 17 regression: Rust tests for the helper and the
+- [x] 3.5 Item 17 regression: Rust tests for the helper and the
   preview save/restore; C++ checks that paint on an invisible layer is refused
   with the Block cursor with no history state, and that a Move on an invisible
   layer translates and records one state while leaving it invisible.
-- [ ] 3.6 Batch 3 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
+- [x] 3.6 Batch 3 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
   headless self-test.
 
 ## 4. Batch 4 — Selection modifiers (items 14, 15, 16)
