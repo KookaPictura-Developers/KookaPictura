@@ -681,6 +681,36 @@ fn nesting_lock_refuses_grouping_but_allows_reorder() {
 }
 
 #[test]
+fn nesting_lock_refuses_reparent_in_and_out() {
+    let mut group = empty_group("Locked");
+    group.lock = LockFlags::default().with(LockFlags::NESTING, true);
+    group.children = vec![pixel_layer("A", 4, 4, 1), pixel_layer("B", 4, 4, 2)];
+    let mut doc = doc_with(vec![pixel_layer("top", 4, 4, 3), group]);
+
+    // A drop into the nesting-locked group is refused in both forms.
+    let before = doc.clone();
+    assert!(!can_move_path_to(&doc, "0", "1", 2));
+    assert!(!move_path_to(&mut doc, "0", "1", 2));
+    assert_eq!(doc, before, "drop into a nesting-locked group is refused");
+
+    // A drop out of the group is refused, to the root and next to a peer.
+    let before = doc.clone();
+    assert!(!can_move_path_to(&doc, "1/0", "", 0));
+    assert!(!move_path_to(&mut doc, "1/0", "", 0));
+    assert_eq!(doc, before, "drop out of a nesting-locked group is refused");
+    let before = doc.clone();
+    assert!(!can_move_path_to(&doc, "1/0", "0", 0));
+    assert!(!move_path_to(&mut doc, "1/0", "0", 0));
+    assert_eq!(doc, before, "reparent to a top-level peer is refused");
+
+    // A within-container reorder keeps the same parent and stays allowed.
+    assert!(can_move_path_to(&doc, "1/0", "1/1", 0));
+    assert!(move_path_to(&mut doc, "1/0", "1/1", 0));
+    assert_eq!(doc.layers[1].children[0].name, "B");
+    assert_eq!(doc.layers[1].children[1].name, "A");
+}
+
+#[test]
 fn move_path_to_reparents_refuses_and_dry_runs() {
     fn sample() -> Document {
         let mut group = empty_group("Group");

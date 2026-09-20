@@ -10,7 +10,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use pictura_core::{Channel, PixelBuffer};
+use pictura_core::{Channel, Layer, PixelBuffer};
 
 mod contour;
 pub use contour::contour;
@@ -604,6 +604,43 @@ fn median(src: &[u8], w: usize, h: usize, radius: usize) -> Vec<u8> {
     out
 }
 
+/// Build a document-sized selection from `layer`'s alpha channel (`-1`),
+/// offset by `layer.rect`. A pixel outside the layer's rect has coverage 0; a
+/// layer with no alpha channel is fully opaque (`255`) inside its rect. Reuses
+/// [`Selection::from_channel`] over a synthesized document-sized channel.
+pub fn selection_from_layer_alpha(layer: &Layer, width: u32, height: u32) -> Selection {
+    let mut data = vec![0u8; width as usize * height as usize];
+    let rect = layer.rect;
+    let alpha = layer
+        .channels
+        .iter()
+        .find(|channel| channel.id == -1)
+        .map(|channel| channel.data.as_slice());
+    let lw = rect.width();
+    let lh = rect.height();
+    for dy in 0..lh {
+        let py = rect.top + dy;
+        if py < 0 || py >= height as i32 {
+            continue;
+        }
+        for dx in 0..lw {
+            let px = rect.left + dx;
+            if px < 0 || px >= width as i32 {
+                continue;
+            }
+            let local = dy as usize * lw as usize + dx as usize;
+            let coverage = match alpha {
+                Some(bytes) if local < bytes.len() => bytes[local],
+                Some(_) => 0,
+                None => 255,
+            };
+            data[py as usize * width as usize + px as usize] = coverage;
+        }
+    }
+    let channel = Channel { id: -1, data };
+    Selection::from_channel(&channel, width, height).expect("document-sized selection channel")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -807,6 +844,40 @@ mod tests {
             data: vec![0; 5],
         };
         assert!(Selection::from_channel(&ch, 4, 4).is_err());
+    }
+
+    #[test]
+    fn layer_alpha_selection_offsets_and_fills() {
+        use pictura_core::{Layer, PsdRect};
+        let mut layer = Layer {
+            rect: PsdRect {
+                top: 1,
+                left: 2,
+                bottom: 3,
+                right: 5,
+            }, // 3x2
+            ..Default::default()
+        };
+        // No alpha channel -> fully opaque inside the rect, zero outside.
+        let at = |x: usize, y: usize| y * 6 + x;
+        let sel = selection_from_layer_alpha(&layer, 6, 4);
+        assert_eq!(sel.data.iter().filter(|&&v| v == 255).count(), 6);
+        assert_eq!(sel.data[at(2, 1)], 255);
+        assert_eq!(sel.data[at(2, 0)], 0, "outside the rect");
+        assert_eq!(sel.data[at(5, 1)], 0, "right edge exclusive");
+
+        // Alpha channel -> layer-local coverage copied to the document offset.
+        layer.channels = vec![Channel {
+            id: -1,
+            data: vec![0, 64, 255, 128, 0, 255],
+        }];
+        let sel = selection_from_layer_alpha(&layer, 6, 4);
+        assert_eq!(sel.data[at(2, 1)], 0);
+        assert_eq!(sel.data[at(3, 1)], 64);
+        assert_eq!(sel.data[at(4, 1)], 255);
+        assert_eq!(sel.data[at(2, 2)], 128);
+        assert_eq!(sel.data[at(3, 2)], 0);
+        assert_eq!(sel.data[at(4, 2)], 255);
     }
 
     #[test]

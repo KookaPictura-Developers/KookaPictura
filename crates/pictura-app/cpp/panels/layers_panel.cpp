@@ -586,7 +586,16 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                         if (dropAction == QLatin1String("delete")) {
                             view_->delete_layers(paths);
                         } else if (dropAction == QLatin1String("duplicate")) {
-                            view_->duplicate_layers(paths);
+                            // A Background cannot be duplicated into a locked
+                            // `Background copy`; convert it in place instead.
+                            const QModelIndex row = model_->indexForPath(paths.first());
+                            if (row.isValid()
+                                && row.data(KindRole).toString()
+                                    == QLatin1String("background")) {
+                                view_->layer_from_background(paths.first());
+                            } else {
+                                view_->duplicate_layers(paths);
+                            }
                         } else if (dropAction == QLatin1String("group")) {
                             view_->group_layers(paths);
                         }
@@ -607,6 +616,17 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     delegate_->chevronRect(tree_->visualRect(index), index.data(DepthRole).toInt());
                 if (chevron.contains(pos)) {
                     tree_->setExpanded(index, !tree_->isExpanded(index));
+                    return true;
+                }
+            }
+            if (index.isValid() && (mouse->modifiers() & Qt::ControlModifier)) {
+                const QRect thumb = delegate_->thumbRect(tree_->visualRect(index), index);
+                if (!thumb.isEmpty() && thumb.contains(pos)) {
+                    // Ctrl+click the thumbnail selects the layer's pixels;
+                    // consume the click so it starts no drag and opens no editor.
+                    if (view_) {
+                        view_->select_layer_alpha(pathForProxyIndex(index));
+                    }
                     return true;
                 }
             }
@@ -635,6 +655,13 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             if (index.isValid()) {
                 if (delegate_->nameRect(tree_->visualRect(index), index).contains(pos)) {
                     tree_->edit(index);
+                } else if (index.data(KindRole).toString() == QLatin1String("background")) {
+                    // A double-click outside the name converts the Background
+                    // rather than invoking the layer-style no-op.
+                    if (view_) {
+                        view_->layer_from_background(pathForProxyIndex(index));
+                        refresh();
+                    }
                 } else {
                     openLayerStyle(pathForProxyIndex(index));
                 }

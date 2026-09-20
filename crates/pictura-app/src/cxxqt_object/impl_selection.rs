@@ -331,6 +331,25 @@ impl qobject::PictureView {
         self.as_mut().apply_selection(shape, mode)
     }
 
+    /// Build a document-sized selection from the alpha channel of the layer at
+    /// `path` (a missing alpha is fully opaque inside the layer's rect) and
+    /// replace the current selection with it. Records one undo state; false for
+    /// an unresolved path.
+    pub fn select_layer_alpha(mut self: Pin<&mut Self>, path: &QString) -> bool {
+        let path = path.to_string();
+        let shape = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            let Some(layer) = pictura_render::resolve_path(doc, &path) else {
+                return false;
+            };
+            pictura_select::selection_from_layer_alpha(layer, doc.width, doc.height)
+        };
+        self.as_mut().apply_selection(shape, CombineMode::New)
+    }
+
     pub fn has_selection(&self) -> bool {
         self.rust().selection.is_some()
     }
