@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1045 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1066 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -31,17 +31,17 @@ Snapshot for resuming after a context break. Update after each milestone.
     `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
     `pattern-fill-layer`, `layer-effects-drop-shadow`,
     `layer-effects-outer-glow`, `layer-effects-inner-shadow`,
-    `layer-effects-inner-glow`, `layer-effects-stroke`, and
-    `layer-effects-overlays` changes;
+    `layer-effects-inner-glow`, `layer-effects-stroke`,
+    `layer-effects-overlays`, and `layer-effects-satin` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is under way:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
    `layer-effects-inner-shadow`, `layer-effects-inner-glow`,
-   `layer-effects-stroke`, and `layer-effects-overlays` ship the object-based
-   effect kinds (drop shadow, outer glow, inner shadow, inner glow, stroke, and
-   color/gradient/pattern overlay); the remaining kinds (bevel, satin, the
-   legacy `lrFX` block) are deferred.
+   `layer-effects-stroke`, `layer-effects-overlays`, and `layer-effects-satin`
+   ship the object-based effect kinds (drop shadow, outer glow, inner shadow,
+   inner glow, stroke, color/gradient/pattern overlay, and satin); the remaining
+   kinds (bevel, the legacy `lrFX` block) are deferred.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
@@ -364,7 +364,18 @@ Snapshot for resuming after a context break. Update after each milestone.
   tightens the strict `GdFl` `Type`/`GrdF` typeID checks and rejects an `f64`
   that overflows `f32` (no existing fixture regressed). Ceilings: gradient
   `Ofst`/noise/`Dither`, pattern rotation (`Angl` decoded but not applied); the
-  remaining kinds — bevel, satin, the legacy `lrFX` block — are deferred.
+  remaining kinds — bevel and the legacy `lrFX` block — are deferred.
+- Layer effects — Satin (roadmap P3/G6, archived
+  `2026-09-20-layer-effects-satin`): the object-based `lfx2` **Satin** (`ChFX`)
+  is now decoded and composited — an interior directional band from the blurred
+  content matte (`|B(x−dx, y−dy) − B(x+dx, y+dy)|`, offset by `Distance`/`Angle`),
+  optionally inverted, tinted colour/opacity/blend (defaults Multiply, black, 50,
+  angle 19, distance 11, size 14), confined to the content and composited above
+  it; the GPU rejects an enabled+present satin (`UnsupportedLayerEffect`) and
+  falls back to CPU; a psd-tools-authored `satin.psd` fixture proves
+  decode/round-trip/render; the new `layer_effects/satin.rs` holds the kind.
+  Ceilings: contour (`MpgS`)/anti-alias/global-light ignored, one `M` confinement
+  (libpsd squares it), and the rounding differs from libpsd by ≤1 px.
 
 ## Commands
 
