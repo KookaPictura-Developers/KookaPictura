@@ -26,18 +26,6 @@ namespace {
 // when zoomed out.
 constexpr double kPolygonCloseRadius = 6.0;
 
-// True when the document's topmost pixel layer carries the `PIXELS` lock
-// (`LockFlags::PIXELS` = 0x02). Composed from existing bridge accessors so the
-// frozen `cxxqt_object.rs` line budget is not grown.
-bool topmostPixelLocked(PictureView* view)
-{
-    if (!view) {
-        return false;
-    }
-    const int index = view->topmost_pixel_layer_index();
-    return index >= 0 && (view->layer_lock(index) & 0x02) != 0;
-}
-
 const ToolInfo kToolTable[] = {
     {ToolId::Move, "move", "Move", QLatin1Char('V'), Qt::SizeAllCursor,
      "Move: drag to move the active layer", 1, true, 2, 2},
@@ -580,45 +568,6 @@ void ToolController::applyToolPolicy()
     }
 }
 
-void ToolController::refreshCursor()
-{
-    if (!canvas_) {
-        return;
-    }
-    const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
-    PictureView* hoverView = view();
-    const bool ctrlPreview = isSelectionTool(active_) && hoverView
-        && mods.testFlag(Qt::ControlModifier) && hoverView->has_selection();
-    // A combine modifier (Shift/Alt) hands the cursor back to the tool's
-    // add/remove assets; a gesture follows the mode captured at press.
-    if (hoverCursorId(active_, mods, movingSelection_ || cursorOverSelection_, ctrlPreview)
-        == QStringLiteral("cursor.moveSelection")) {
-        const QCursor c = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
-        if (!c.pixmap().isNull()) {
-            return canvas_->setCursor(c);
-        }
-    }
-    if (isSelectionTool(active_) && dragging_ && !movingSelection_) {
-        const ToolInfo& info = toolInfo(active_);
-        const QCursor c = cursor(dragCursorId(), info.hotspotX, info.hotspotY);
-        if (!c.pixmap().isNull()) {
-            return canvas_->setCursor(c);
-        }
-    }
-    if (active_ == ToolId::Brush || active_ == ToolId::Pencil) {
-        if (hoverView
-            && (topmostPixelLocked(hoverView) || !hoverView->active_layer_visible())) {
-            return canvas_->setCursor(Qt::ForbiddenCursor);
-        }
-        // The drawn brush-size ring is the pointer affordance; hide the OS
-        // cursor rather than scaling a pixmap with the brush.
-        return canvas_->setCursor(Qt::BlankCursor);
-    }
-    const ToolInfo& info = toolInfo(active_);
-    const QCursor toolCursor = cursor(toolCursorId(active_, mods), info.hotspotX, info.hotspotY);
-    canvas_->setCursor(toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
-}
-
 void ToolController::handlePressed(const QPointF& imagePos, int button, int modifiers)
 {
     if (button != Qt::LeftButton) {
@@ -665,11 +614,10 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         if (!canvas_) {
             return;
         }
-        if (mods.testFlag(Qt::ControlModifier) || mods.testFlag(Qt::AltModifier)) {
-            canvas_->zoomOut();
-        } else {
-            canvas_->zoomIn();
-        }
+        // Anchor the step at the clicked image point, not the canvas centre.
+        const QPointF anchor = imagePos * canvas_->zoom() + canvas_->offset();
+        const bool out = mods.testFlag(Qt::ControlModifier) || mods.testFlag(Qt::AltModifier);
+        canvas_->setZoom(canvas_->zoom() * (out ? 1.0 / 1.2 : 1.2), anchor);
         return;
     }
     case ToolId::Eyedropper: {
@@ -685,6 +633,15 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
     case ToolId::Brush:
     case ToolId::Pencil: {
         if (!v) {
+            return;
+        }
+        // Transient Alt eyedropper: sample the pointer without starting a
+        // stroke, leaving the active tool unchanged.
+        if (mods.testFlag(Qt::AltModifier)) {
+            const quint32 argb = v->sample_argb(qRound(imagePos.x()), qRound(imagePos.y()));
+            if (argb != 0) {
+                emit foregroundSampled(QColor::fromRgb(argb));
+            }
             return;
         }
         const bool aliased = active_ == ToolId::Pencil;

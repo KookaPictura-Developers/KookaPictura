@@ -137,20 +137,20 @@
 
 ## 6. Batch 6 — Workspace zoom/scroll (items 20, 22, 23, 24)
 
-- [ ] 6.1 Item 20: implement the transient Alt eyedropper in `cpp/tools.cpp`
+- [x] 6.1 Item 20: implement the transient Alt eyedropper in `cpp/tools.cpp`
   (sample + eyedropper cursor) with release restoring the previous tool and no
   history; add the tool-framework cursor branch.
-- [ ] 6.2 Item 22: Shift doubles the wheel zoom step in
+- [x] 6.2 Item 22: Shift doubles the wheel zoom step in
   `ImageView::wheelEvent`/`zoomAt`.
-- [ ] 6.3 Item 23: apply the shared wheel modifier precedence — side-wheel pans
+- [x] 6.3 Item 23: apply the shared wheel modifier precedence — side-wheel pans
   horizontally, `Ctrl+Alt` pans vertically, `Alt` pans horizontally, otherwise
   zoom at the cursor.
-- [ ] 6.4 Item 24: anchor the Zoom-tool click (`cpp/tools.cpp`) and the Navigator
+- [x] 6.4 Item 24: anchor the Zoom-tool click (`cpp/tools.cpp`) and the Navigator
   slider at the click/cursor point through `setZoom(zoom, anchor)`.
-- [ ] 6.5 Item 20/22/23/24 regression: C++ checks for the transient eyedropper
+- [x] 6.5 Item 20/22/23/24 regression: C++ checks for the transient eyedropper
   sample/cursor/restore, the Shift step, the three wheel pan cases, and
   cursor-anchored Zoom-click/Navigator zoom.
-- [ ] 6.6 Batch 6 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
+- [x] 6.6 Batch 6 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
   headless self-test.
 
 ## 7. Verification and gates

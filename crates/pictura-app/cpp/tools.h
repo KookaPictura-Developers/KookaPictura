@@ -144,6 +144,11 @@ struct ToolHint {
 // none (the status bar then falls back to the tool's text hint).
 QList<ToolHint> toolHintEntries(ToolId id);
 
+// True when the document's topmost pixel layer carries the `PIXELS` lock
+// (`LockFlags::PIXELS` = 0x02). Shared by the paint press path and the cursor
+// branch; defined in tools_marquee.cpp with the other cursor helpers.
+bool topmostPixelLocked(PictureView* view);
+
 // Routes canvas pointer events to the active tool. One switch, not one class per
 // tool (see design.md); painting tools with per-tool engines can split later.
 class ToolController : public QObject {
@@ -158,6 +163,10 @@ public:
     // Re-apply the active tool's cursor using the live keyboard modifiers
     // (Shift / Alt select the marquee add / remove cursor variants).
     void refreshCursor();
+    // Resolve the cursor from an explicit modifier state. The live path calls
+    // the no-arg overload; the offscreen self-test drives this one to check the
+    // transient Alt eyedropper without a platform keyboard state.
+    void refreshCursor(Qt::KeyboardModifiers mods);
     QString cursorIdForModifiersForTest(ToolId id, int mods) const;
 
     SelectionMode combineMode() const { return mode_; }
