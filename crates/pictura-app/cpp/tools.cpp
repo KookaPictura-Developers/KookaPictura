@@ -718,7 +718,8 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         }
         QElapsedTimer pressClock;
         pressClock.start();
-        const bool prepared = v->begin_move_preview();
+        const bool alt = mods.testFlag(Qt::AltModifier);
+        const bool prepared = alt ? v->begin_move_duplicate() : v->begin_move_preview();
         const qint64 pressNs = pressClock.nsecsElapsed();
         if (qEnvironmentVariableIsSet("PICTURA_PRESS_TRACE") || pressNs > 8000000) {
             qWarning("[move-press] begin_move_preview hit=%d work=%.1fms",

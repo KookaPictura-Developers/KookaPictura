@@ -160,7 +160,20 @@ impl qobject::PictureView {
         if !moved {
             return false;
         }
-        self.as_mut().rust_mut().selection_move_origin = None;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.selection_move_origin = None;
+            if duplicate {
+                // `layer_via_copy` inserts the copy directly above the source,
+                // which is always a single top-level path here.
+                if let Ok(source) = path.parse::<usize>() {
+                    rust.active_layer = Some((source + 1).to_string());
+                }
+                // ponytail: only the selection outline previews during the
+                // drag; the copied pixels appear on commit. A live pixel
+                // pre-clone would duplicate and composite per pointer event.
+            }
+        }
         self.as_mut().recomposite();
         self.as_mut().record("Move Selection");
         true

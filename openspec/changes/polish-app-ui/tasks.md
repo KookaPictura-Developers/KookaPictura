@@ -122,17 +122,17 @@
 
 ## 5. Batch 5 — Move nudge + Alt clone (items 18, 19)
 
-- [ ] 5.1 Item 18: add plain-arrow 1 px and `Shift+Arrow` 10 px nudge for the
+- [x] 5.1 Item 18: add plain-arrow 1 px and `Shift+Arrow` 10 px nudge for the
   Move tool through the existing `translate_layer`, one history state per nudge,
   refused for position-locked/Background/group/adjustment/no-document.
-- [ ] 5.2 Item 19: add a Rust `begin_move_duplicate` (duplicate the active layer
+- [x] 5.2 Item 19: add a Rust `begin_move_duplicate` (duplicate the active layer
   or the selected pixels, recomposite, `compute_move_preview`, no `record`);
   `commit_move` records one state; make the duplicate the active layer on commit
   and preview the clone during the drag.
-- [ ] 5.3 Item 18/19 regression: Rust tests for `begin_move_duplicate` (clone
+- [x] 5.3 Item 18/19 regression: Rust tests for `begin_move_duplicate` (clone
   inserted, no record at begin, one state at commit, clone active); C++ checks
   for the 1 px/10 px nudge and the Alt-drag clone preview/commit.
-- [ ] 5.4 Batch 5 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
+- [x] 5.4 Batch 5 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
   headless self-test.
 
 ## 6. Batch 6 — Workspace zoom/scroll (items 20, 22, 23, 24)

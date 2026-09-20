@@ -860,6 +860,8 @@ pub mod qobject {
         /// document content, topmost layer, and clamped rect are unchanged.
         #[qinvokable]
         fn begin_move_preview(self: Pin<&mut Self>) -> bool;
+        #[qinvokable]
+        fn begin_move_duplicate(self: Pin<&mut Self>) -> bool;
 
         /// Warm the move-preview cache without entering preview mode, so the
         /// next `begin_move_preview` is a cache hit. Returns true when the

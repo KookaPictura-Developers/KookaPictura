@@ -13,8 +13,10 @@
 #include <QtCore/QPointF>
 #include <QtCore/QRectF>
 #include <QtCore/QString>
+#include <QtCore/QStringList>
 #include <QtCore/Qt>
 #include <QtGui/QAction>
+#include <QtGui/QImage>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QPolygonF>
 #include <QtWidgets/QApplication>
@@ -884,17 +886,23 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
         const bool dupSeed = ellipseView->select_rect(4, 4, 4, 4, QStringLiteral("new"), 0.0);
         const int dupLayers = ellipseView->select_all_layers().size();
         const int dupBase = ellipseView->history_count();
+        const QString dupSource = ellipseView->active_layer_path();
         ellipseCanvas->mousePressed(QPointF(5, 5), Qt::LeftButton, int(Qt::AltModifier));
         ellipseCanvas->mouseMoved(QPointF(7, 7));
         ellipseCanvas->mouseReleased(QPointF(7, 7));
         const bool dupCommitted = dupSeed && ellipseView->history_count() == dupBase + 1
             && ellipseView->history_label(dupBase) == QStringLiteral("Move Selection");
         const bool dupLayerAdded = ellipseView->select_all_layers().size() == dupLayers + 1;
+        const bool dupActiveIsClone = !dupSource.isEmpty()
+            && ellipseView->active_layer_path()
+                == QString::number(dupSource.toInt() + 1)
+            && ellipseView->active_layer_path() != dupSource;
         ST_BEGIN("tsc_content_duplicate");
-        ST_PASS("tsc_content_duplicate seed=%d committed=%d layers=%d added=%d",
+        ST_PASS("tsc_content_duplicate seed=%d committed=%d layers=%d added=%d active=%d",
                 dupSeed ? 1 : 0, dupCommitted ? 1 : 0,
-                ellipseView->select_all_layers().size(), dupLayerAdded ? 1 : 0);
-        if (!dupSeed || !dupCommitted || !dupLayerAdded) {
+                ellipseView->select_all_layers().size(), dupLayerAdded ? 1 : 0,
+                dupActiveIsClone ? 1 : 0);
+        if (!dupSeed || !dupCommitted || !dupLayerAdded || !dupActiveIsClone) {
             return pictura::selfTest().fail(275, "content duplicate");
         }
 
@@ -1031,6 +1039,92 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
             || apBounds != QStringLiteral("1 3 8 4") || !apSeed || !apSubtract) {
             return pictura::selfTest().fail(369, "alt pivot pre-toggle");
         }
+
+        // lst_nudge (370): Move-tool arrow keys translate the active layer by
+        // 1 px (plain) and 10 px (Shift) through `translate_layer`, one history
+        // state each; a position-locked layer refuses with no new state.
+        const bool nudgeCreated = frame.newDocument(
+            QStringLiteral("MoveNudge"), 16, 16, QStringLiteral("rgb"), 8,
+            QStringLiteral("white"));
+        pictura::PictureView* nudgeView = frame.activeView();
+        if (!nudgeCreated || !nudgeView) {
+            return pictura::selfTest().fail(370, "nudge fixture");
+        }
+        const int nudgeDoc = frame.activeDocumentIndex();
+        const QString nudgeLayer = nudgeView->add_layer_in(QString());
+        nudgeView->set_active_layer(nudgeLayer);
+        frame.setActiveTool(pictura::ToolId::Move);
+        auto sendArrow = [&frame](int key, Qt::KeyboardModifiers mods) {
+            QKeyEvent event(QEvent::KeyPress, key, mods);
+            QApplication::sendEvent(&frame, &event);
+        };
+        const int nudgeBase = nudgeView->history_count();
+        sendArrow(Qt::Key_Right, Qt::NoModifier);
+        const bool nudgeOne = nudgeView->layer_rect(nudgeLayer) == QStringLiteral("1 0 17 16")
+            && nudgeView->history_count() == nudgeBase + 1
+            && nudgeView->history_label(nudgeBase) == QStringLiteral("Move Layer");
+        sendArrow(Qt::Key_Down, Qt::ShiftModifier);
+        const bool nudgeTen = nudgeView->layer_rect(nudgeLayer) == QStringLiteral("1 10 17 26")
+            && nudgeView->history_count() == nudgeBase + 2;
+        nudgeView->set_layers_lock(QStringList{nudgeLayer}, QStringLiteral("position"), true);
+        const QString nudgeLockedRect = nudgeView->layer_rect(nudgeLayer);
+        const int nudgeLockBase = nudgeView->history_count();
+        sendArrow(Qt::Key_Left, Qt::NoModifier);
+        const bool nudgeLocked = nudgeView->layer_rect(nudgeLayer) == nudgeLockedRect
+            && nudgeView->history_count() == nudgeLockBase;
+        ST_BEGIN("lst_nudge");
+        ST_PASS("lst_nudge one=%d ten=%d locked=%d rect=%s", nudgeOne ? 1 : 0,
+                nudgeTen ? 1 : 0, nudgeLocked ? 1 : 0, qPrintable(nudgeLockedRect));
+        if (!nudgeOne || !nudgeTen || !nudgeLocked) {
+            frame.closeDocument(nudgeDoc, false);
+            return pictura::selfTest().fail(370, "move nudge");
+        }
+        frame.closeDocument(nudgeDoc, false);
+
+        // lst_alt_clone (371): an Alt Move drag on a whole layer duplicates it
+        // at press (no history yet) and previews the clone during the drag; on
+        // release the clone is the active layer with exactly one "Move Layer"
+        // state, the source is unchanged, and undo removes the clone.
+        const bool cloneCreated = frame.newDocument(
+            QStringLiteral("MoveClone"), 16, 16, QStringLiteral("rgb"), 8,
+            QStringLiteral("white"));
+        pictura::PictureView* cloneView = frame.activeView();
+        pictura::ImageView* cloneCanvas = frame.imageView();
+        if (!cloneCreated || !cloneView || !cloneCanvas) {
+            return pictura::selfTest().fail(371, "clone fixture");
+        }
+        const int cloneDoc = frame.activeDocumentIndex();
+        const QString cloneSource = cloneView->add_layer_in(QString());
+        cloneView->set_active_layer(cloneSource);
+        const QString cloneSourceRect = cloneView->layer_rect(cloneSource);
+        const int cloneLayers = cloneView->select_all_layers().size();
+        const int cloneBase = cloneView->history_count();
+        frame.setActiveTool(pictura::ToolId::Move);
+        cloneCanvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::AltModifier));
+        cloneCanvas->mouseMoved(QPointF(6, 6));
+        const QString clonePath = cloneView->active_layer_path();
+        const bool clonePreview = cloneView->select_all_layers().size() == cloneLayers + 1
+            && !cloneView->move_preview_layer().isNull()
+            && clonePath != cloneSource
+            && cloneView->history_count() == cloneBase;
+        cloneCanvas->mouseReleased(QPointF(6, 6));
+        const bool cloneCommitted = cloneView->history_count() == cloneBase + 1
+            && cloneView->history_label(cloneBase) == QStringLiteral("Move Layer")
+            && cloneView->select_all_layers().size() == cloneLayers + 1
+            && cloneView->layer_rect(cloneSource) == cloneSourceRect;
+        const bool cloneActive = clonePath == cloneView->active_layer_path()
+            && cloneView->layer_rect(clonePath) == QStringLiteral("2 2 18 18");
+        const bool cloneUndo = cloneView->undo()
+            && cloneView->select_all_layers().size() == cloneLayers;
+        ST_BEGIN("lst_alt_clone");
+        ST_PASS("lst_alt_clone preview=%d committed=%d active=%d undo=%d path=%s",
+                clonePreview ? 1 : 0, cloneCommitted ? 1 : 0, cloneActive ? 1 : 0,
+                cloneUndo ? 1 : 0, qPrintable(clonePath));
+        if (!clonePreview || !cloneCommitted || !cloneActive || !cloneUndo) {
+            frame.closeDocument(cloneDoc, false);
+            return pictura::selfTest().fail(371, "alt clone");
+        }
+        frame.closeDocument(cloneDoc, false);
 
     return 0;
 }
