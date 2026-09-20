@@ -175,18 +175,18 @@ public:
     SelectionMode combineMode() const { return mode_; }
     void setCombineMode(SelectionMode mode);
 
-    MarqueeStyle marqueeStyle() const { return marqueeStyle_; }
+    MarqueeStyle marqueeStyle() const override { return marqueeStyle_; }
     void setMarqueeStyle(MarqueeStyle style);
 
-    double feather() const { return feather_; }
+    double feather() const override { return feather_; }
     void setFeather(double feather);
 
-    double fixedRatioWidth() const { return fixedRatioW_; }
-    double fixedRatioHeight() const { return fixedRatioH_; }
+    double fixedRatioWidth() const override { return fixedRatioW_; }
+    double fixedRatioHeight() const override { return fixedRatioH_; }
     void setFixedRatio(double width, double height);
 
-    int fixedSizeWidth() const { return fixedSizeW_; }
-    int fixedSizeHeight() const { return fixedSizeH_; }
+    int fixedSizeWidth() const override { return fixedSizeW_; }
+    int fixedSizeHeight() const override { return fixedSizeH_; }
     void setFixedSize(int width, int height);
 
     int tolerance() const override { return tolerance_; }
@@ -237,18 +237,31 @@ public:
                                        bool hasExistingSelection) const override;
     void refused(const QString& message) override;
     void emitSelectionCommitted() override;
+    void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate) override;
 
     void setViewProvider(std::function<PictureView*()> provider);
 
-    bool hasPendingCrop() const { return hasPendingCrop_; }
-    QRect pendingCropRect() const { return pendingCrop_; }
+    bool hasPendingCrop() const
+    {
+        ToolHandler* h = registry_.forTool(ToolId::Crop);
+        return h && h->hasPendingCrop();
+    }
+    QRect pendingCropRect() const
+    {
+        ToolHandler* h = registry_.forTool(ToolId::Crop);
+        return h ? h->pendingCropRect() : QRect();
+    }
     bool commitCrop();
 
     static SelectionMode selectionModeForModifiers(SelectionMode base, Qt::KeyboardModifiers mods,
                                                    bool hasExistingSelection);
     QRect marqueeRectForTest(const QPointF& a, const QPointF& b, int mods) const;
     int dragModeForTest() const { return static_cast<int>(dragMode_); }
-    int dragModsForTest() const { return int(dragMods_); }
+    int dragModsForTest() const
+    {
+        ToolHandler* h = registry_.forTool(active_);
+        return h ? int(h->dragMods()) : 0;
+    }
     // The cursor id a selection-tool drag shows, derived from the mode captured
     // at press (`dragMode_`) rather than the live keyboard state.
     QString dragCursorId() const;
@@ -288,10 +301,8 @@ signals:
 
 private:
     void applyToolPolicy();
-    void warmMovePreview();
     static bool isSelectionTool(ToolId id);
     bool maybeBeginSelectionMove(PictureView* v, const QPointF& imagePos);
-    void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate);
     void cancelSelectionMove();
     void updateSelectionHover(const QPointF& imagePos);
     void dragSelectionMove(const QPointF& imagePos);
@@ -299,12 +310,7 @@ private:
     void handlePressed(const QPointF& imagePos, int button, int modifiers);
     void handleMoved(const QPointF& imagePos);
     void handleReleased(const QPointF& imagePos);
-    void updateDragOverlay(const QPointF& imagePos);
-    void updateMarqueeOverlay(const QPointF& imagePos);
     void updateBrushOutline(const QPointF& imagePos);
-    void closePolygonLasso();
-    QRect marqueeDragRect(const QPointF& a, const QPointF& b, Qt::KeyboardModifiers mods) const;
-    static QRect dragRect(const QPointF& a, const QPointF& b);
 
     void updateTransformOverlay(PictureView* v);
     void setTransformCursor(const QPointF& imagePos);
@@ -315,10 +321,6 @@ private:
     ToolId active_ = ToolId::Move;
     SelectionMode mode_ = SelectionMode::New;
     SelectionMode dragMode_ = SelectionMode::New;
-    // The keyboard modifiers captured at press, used for the marquee preview
-    // geometry and the release raster so releasing Shift/Alt mid-drag does not
-    // change the constraint.
-    Qt::KeyboardModifiers dragMods_ = Qt::NoModifier;
     MarqueeStyle marqueeStyle_ = MarqueeStyle::Normal;
     double feather_ = 0.0;
     double fixedRatioW_ = 1.0;
@@ -345,21 +347,10 @@ private:
     bool contentMove_ = false;
     bool contentDuplicate_ = false;
     bool cursorOverSelection_ = false;
-    QPointF anchor_;
-    QPointF last_;
-    QPointF totalDelta_;
-    QPolygonF lassoPolygon_;
-    QPolygonF polygonPoints_;
-    QPointF lastPolygonPress_;
-    QElapsedTimer polygonClock_;
-    bool polygonInProgress_ = false;
-    QRect pendingCrop_;
-    bool hasPendingCrop_ = false;
-
-    PictureView* warmView_ = nullptr;
-    QImage warmBase_;
-    QImage warmLayer_;
-    bool warmValid_ = false;
+    // The press point for a selection/content move, owned by the controller
+    // because the routing is cross-cutting; a tool handler's own drag anchor is
+    // private to that handler.
+    QPointF selectionMoveAnchor_;
 
     bool transformDragging_ = false;
     int transformHandle_ = -1;

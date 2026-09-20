@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QPointF>
 #include <QtCore/QString>
 #include <QtCore/Qt>
 #include <QtGui/QColor>
@@ -9,6 +10,7 @@ namespace pictura {
 class ImageView;
 class PictureView;
 enum class SelectionMode;
+enum class MarqueeStyle;
 
 // The shared services a tool handler may use, implemented by `ToolController`.
 // Kept minimal on purpose: add accessors only as a migrating tool needs them.
@@ -28,6 +30,17 @@ struct ToolContext {
     virtual bool autoErase() const = 0;
     virtual int tolerance() const = 0;
     virtual bool contiguous() const = 0;
+
+    virtual MarqueeStyle marqueeStyle() const = 0;
+    virtual double fixedRatioWidth() const = 0;
+    virtual double fixedRatioHeight() const = 0;
+    virtual int fixedSizeWidth() const = 0;
+    virtual int fixedSizeHeight() const = 0;
+    virtual double feather() const = 0;
+
+    // The controller's selection-move service: start a mask/content translate
+    // from `imagePos`. The Move handler and the selection pre-block share it.
+    virtual void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate) = 0;
 
     virtual bool dragging() const = 0;
     virtual void setDragging(bool dragging) = 0;

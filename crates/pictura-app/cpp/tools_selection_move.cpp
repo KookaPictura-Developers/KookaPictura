@@ -27,7 +27,7 @@ bool ToolController::maybeBeginSelectionMove(PictureView* v, const QPointF& imag
     movingSelection_ = true;
     dragging_ = true;
     dragCommitted_ = false;
-    anchor_ = last_ = imagePos;
+    selectionMoveAnchor_ = imagePos;
     refreshCursor();
     return true;
 }
@@ -42,7 +42,7 @@ void ToolController::beginContentMove(PictureView* v, const QPointF& imagePos, b
     movingSelection_ = true;
     dragging_ = true;
     dragCommitted_ = false;
-    anchor_ = last_ = imagePos;
+    selectionMoveAnchor_ = imagePos;
     refreshCursor();
 }
 
@@ -74,8 +74,8 @@ void ToolController::dragSelectionMove(const QPointF& imagePos)
     if (!v) {
         return;
     }
-    const int dx = qRound(imagePos.x() - anchor_.x());
-    const int dy = qRound(imagePos.y() - anchor_.y());
+    const int dx = qRound(imagePos.x() - selectionMoveAnchor_.x());
+    const int dy = qRound(imagePos.y() - selectionMoveAnchor_.y());
     if (v->preview_selection_move(dx, dy)) {
         emit selectionPreviewChanged();
     }
@@ -88,8 +88,8 @@ void ToolController::releaseSelectionMove(const QPointF& imagePos)
     }
     movingSelection_ = false;
     PictureView* v = view();
-    const int dx = qRound(imagePos.x() - anchor_.x());
-    const int dy = qRound(imagePos.y() - anchor_.y());
+    const int dx = qRound(imagePos.x() - selectionMoveAnchor_.x());
+    const int dy = qRound(imagePos.y() - selectionMoveAnchor_.y());
     if (contentMove_) {
         contentMove_ = false;
         if (v && (dx != 0 || dy != 0)) {

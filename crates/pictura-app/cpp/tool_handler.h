@@ -3,6 +3,7 @@
 #include "tool_context.h"
 
 #include <QtCore/QPointF>
+#include <QtCore/QRect>
 #include <QtCore/Qt>
 
 namespace pictura {
@@ -23,6 +24,23 @@ public:
                            Qt::KeyboardModifiers mods)
     {
     }
+
+    // Lifecycle: the controller activates the new handler and deactivates the
+    // old one on tool switch and canvas unbind, so handlers hold no stale state.
+    virtual void onActivate(ToolContext& ctx) {}
+    virtual void onDeactivate(ToolContext& ctx) {}
+
+    // Tool-specific commands the controller forwards by active tool.
+    virtual bool commitPolygonLasso() { return false; }
+    virtual bool cancelPolygonLasso() { return false; }
+    virtual bool commitCrop() { return false; }
+
+    // The modifiers captured at press for a selection drag; only the marquee
+    // handlers keep them (the self-test reads them through the controller).
+    virtual Qt::KeyboardModifiers dragMods() const { return Qt::NoModifier; }
+    // The Crop handler's staged rectangle; the controller exposes it.
+    virtual bool hasPendingCrop() const { return false; }
+    virtual QRect pendingCropRect() const { return QRect(); }
 };
 
 } // namespace pictura
