@@ -506,55 +506,40 @@ from the near-white window text, so the dots read as a handle.
 - **THEN** each group container uses the panel surface shade and its drag dots
   render in dark gray
 
-### Requirement: Empty document area draws no ghost canvas
+### Requirement: Empty document area keeps its workspace space
 
-When no document is open the application SHALL hide the document tab pane (and
-therefore the `QTabWidget#documentTabs` pane background that reads as a ghost
-canvas), so the workspace shows only chrome and panel panes until a document is
-created or opened. The visibility SHALL be driven from the shared
-`frame.cpp::refresh` funnel so every path that changes the document set
-(create, open, import, close, close all, restore) takes the same branch and no
-code path can leave the pane visible with an empty `docs_`. When a document
-exists the pane SHALL be shown and sized as before.
+When the frame is shown with no document open the document pane SHALL stay in
+the central splitter with a minimum width and the splitter stretch, so the
+widget columns can never absorb the workspace and the splitter keeps a grabbable
+handle between the workspace and each adjacent column. Only the empty tab strip
+SHALL be hidden; the pane itself SHALL remain visible and SHALL become the
+workspace background. The visibility SHALL be driven from the shared
+`frame.cpp::refresh` funnel so every path that changes the document set (create,
+open, import, close, close all, restore) takes the same branch. When a document
+exists the strip SHALL be shown and the pane SHALL host the canvas as before.
 
-#### Scenario: No document shows no ghost canvas [las_empty_pane]
+#### Scenario: No document keeps the workspace space [las_empty_pane]
 
 - **WHEN** the frame starts with no document open
-- **THEN** the document tab pane is hidden and no canvas-like pane background is
-  drawn between the panel columns
+- **THEN** the document pane is visible with at least its minimum width, the
+  widget columns together take less than the splitter width, an empty tab strip
+  is not drawn, and the splitter exposes a handle between the workspace and each
+  adjacent column
 
-#### Scenario: The first document reveals the pane [las_empty_pane_show]
+#### Scenario: The first document reveals the tab strip [las_empty_pane_show]
 
 - **WHEN** a document is created or opened with no document previously open
-- **THEN** the document tab pane is shown and hosts the new canvas
+- **THEN** the document tab strip is shown in the pane and hosts the new canvas
 
-#### Scenario: Closing the last document hides the pane again [las_empty_pane_hide]
-
-- **WHEN** the last open document is closed
-- **THEN** the document tab pane is hidden again through the same refresh path
-
-### Requirement: First show with no document draws no ghost canvas
-
-The shell SHALL hide the document tab pane when the main window is first shown
-with zero documents, matching the empty-workspace rule that already applies to
-every later document-set transition. The first show SHALL route through the same
-single visibility writer as the create/open/close transitions, so the two paths
-cannot diverge. When the first document is opened the pane SHALL become visible
-and show its tab.
-
-#### Scenario: Launch with no document hides the tab pane
-
-- **WHEN** the main window is constructed and shown with no document open
-- **THEN** the document tab pane is hidden, so no empty tab widget or its
-  ghost-canvas background is drawn
-
-#### Scenario: Opening the first document shows the pane
-
-- **WHEN** the first document is opened in a window that was shown empty
-- **THEN** the document tab pane becomes visible and shows the document's tab
-
-#### Scenario: Closing the last document hides the pane again
+#### Scenario: Closing the last document hides the strip again [las_empty_pane_hide]
 
 - **WHEN** the last open document is closed
-- **THEN** the document tab pane is hidden again through the same writer
+- **THEN** the tab strip is hidden again through the same refresh path while the
+  pane keeps its workspace space
+
+#### Scenario: An icon column keeps its strip against the workspace [las_icon_workspace]
+
+- **WHEN** a widget column is in icon mode beside the workspace
+- **THEN** the column keeps its fixed strip width and the workspace, not the
+  column, absorbs the splitter slack
 
