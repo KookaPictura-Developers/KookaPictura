@@ -41,6 +41,7 @@ class PlaceholderPanel;
 class PreferencesDialog;
 class SwatchesPanel;
 class Toolbox;
+class ToolHintBar;
 struct SessionState;
 
 // True when a launch should seed the scratch white document. Only the self-test
@@ -279,7 +280,7 @@ private:
     PanelColumn* toolboxDropAnchor_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
-    QLabel* hintLabel_ = nullptr;
+    ToolHintBar* hintBar_ = nullptr;
     QLabel* backendLabel_ = nullptr;
     QString statusReadout_ = QStringLiteral("sizes");
     QColor foreground_;

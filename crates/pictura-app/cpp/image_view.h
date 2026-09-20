@@ -89,6 +89,12 @@ public:
     void setPanEnabled(bool enabled);
     bool panEnabled() const { return panEnabled_; }
 
+    // Transient Space-key pan: while on, a left drag pans and the hand cursors
+    // are used regardless of the active tool, and the tool's mouse-press is not
+    // emitted. The owner restores the pan/cursor state on release.
+    void setSpacePan(bool on);
+    bool spacePanForTest() const { return spacePan_; }
+
     void setOverlayPolygon(const QPolygonF& polygon);
     void clearOverlay();
 
@@ -208,6 +214,7 @@ private:
     QPointF last_;
     bool panEnabled_ = true;
     bool panning_ = false;
+    bool spacePan_ = false;
     bool userAdjusted_ = false;
     QPolygonF overlayPolygon_;
 

@@ -329,11 +329,11 @@ void PicturaMainWindow::buildStatusBar()
     zoomLabel_ = new QLabel(QStringLiteral("100%"), bar);
     sizeLabel_ = new QLabel(QStringLiteral("—"), bar);
     backendLabel_ = new QLabel(QStringLiteral("—"), bar);
-    hintLabel_ = new QLabel(QStringLiteral("Ready"), bar);
+    hintBar_ = new ToolHintBar(bar);
     bar->addWidget(zoomLabel_);
     bar->addWidget(sizeLabel_);
     bar->addWidget(backendLabel_);
-    bar->addWidget(hintLabel_);
+    bar->addWidget(hintBar_);
 
     auto* optionsButton = new QToolButton(bar);
     optionsButton->setArrowType(Qt::DownArrow);
@@ -355,6 +355,7 @@ void PicturaMainWindow::buildStatusBar()
     }
     optionsButton->setMenu(optionsMenu);
     bar->addPermanentWidget(optionsButton);
+    updateToolHint();
 }
 
 

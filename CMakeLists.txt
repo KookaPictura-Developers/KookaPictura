@@ -71,6 +71,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_active_layer.cpp
     crates/pictura-app/cpp/selftest_session.cpp
     crates/pictura-app/cpp/selftest_ui_persistence.cpp
+    crates/pictura-app/cpp/selftest_tool_canvas.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
     crates/pictura-app/cpp/command_tree.cpp
@@ -117,6 +118,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tools_selection_move.cpp
     crates/pictura-app/cpp/toolbox.cpp
     crates/pictura-app/cpp/options_bar.cpp
+    crates/pictura-app/cpp/tool_hint_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp
     crates/pictura-app/cpp/layer_new_dialog.cpp
     crates/pictura-app/cpp/dialogs.cpp
@@ -144,6 +146,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_active_layer.h
     crates/pictura-app/cpp/selftest_session.h
     crates/pictura-app/cpp/selftest_ui_persistence.h
+    crates/pictura-app/cpp/selftest_tool_canvas.h
     crates/pictura-app/cpp/panels/layers_panel.h
     crates/pictura-app/cpp/panels/layers_filter_proxy.h
     crates/pictura-app/cpp/panels/layers_filter_bar.h
@@ -162,6 +165,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tools.h
     crates/pictura-app/cpp/toolbox.h
     crates/pictura-app/cpp/options_bar.h
+    crates/pictura-app/cpp/tool_hint_bar.h
     crates/pictura-app/cpp/new_document_dialog.h
     crates/pictura-app/cpp/layer_new_dialog.h
     crates/pictura-app/cpp/dialogs.h

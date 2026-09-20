@@ -1,5 +1,6 @@
 #include "tools.h"
 
+#include "commands.h"
 #include "icons.h"
 #include "image_view.h"
 
@@ -247,6 +248,30 @@ int toolGroupForKey(QChar key)
         }
     }
     return 0;
+}
+
+QList<ToolHint> toolHintEntries(ToolId id)
+{
+    switch (id) {
+    case ToolId::Marquee:
+    case ToolId::EllipticalMarquee:
+    case ToolId::Lasso:
+    case ToolId::PolygonalLasso:
+    case ToolId::QuickSelection:
+    case ToolId::MagicWand:
+        return {{QStringLiteral("Shift"), QStringLiteral("Add to selection")},
+                {QStringLiteral("Alt"), QStringLiteral("Subtract from selection")}};
+    case ToolId::Brush:
+    case ToolId::Pencil:
+        return {{QStringLiteral("["), QStringLiteral("Decrease brush size")},
+                {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
+    case ToolId::Move:
+        return {{QStringLiteral("Arrows"), QStringLiteral("Nudge 1 px")},
+                {QStringLiteral("Shift"), QStringLiteral("Nudge 10 px")},
+                {QString(), QStringLiteral("Free transform"), command_ids::EditFreeTransform}};
+    default:
+        return {};
+    }
 }
 
 const QList<ToolId>& allToolIds()
@@ -561,6 +586,12 @@ void ToolController::refreshCursor()
             canvas_->setCursor(ctrlCursor);
             return;
         }
+    }
+    if (active_ == ToolId::Brush || active_ == ToolId::Pencil) {
+        // The drawn brush-size ring is the pointer affordance; hide the OS
+        // cursor rather than scaling a pixmap with the brush.
+        canvas_->setCursor(Qt::BlankCursor);
+        return;
     }
     const ToolInfo& info = toolInfo(active_);
     const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
