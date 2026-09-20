@@ -41,6 +41,14 @@
 //! noise (`Nose`), the `Range` (`Inpr`) remap and anti-alias (`AntA`) are
 //! ignored; and the interior effect blends against the layer-over-backdrop
 //! result rather than an isolated content buffer.
+//!
+//! A stroke (`FrFX`) also composites **above** the content: an exact
+//! integer-width band at the content edge, outside, inside or straddling it.
+//! ponytail: only the solid-colour fill (`PntT` `FrFl`/`SClr`) is decoded and
+//! rendered — a gradient or pattern fill is ignored; contour (`TrnS`),
+//! anti-alias (`AntA`) and `overprint` are ignored; the colour defaults to
+//! black rather than the docs' "foreground `(inferred)`"; and Photoshop's exact
+//! inter-effect order among the above-content effects is not modelled.
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
@@ -50,9 +58,11 @@ use crate::composite::{channel, Canvas};
 
 mod glows;
 mod shadows;
+mod strokes;
 
 pub use glows::{decode_inner_glow, decode_outer_glow, GlowSource, InnerGlow, OuterGlow};
 pub use shadows::{decode_drop_shadow, decode_inner_shadow, DropShadow, InnerShadow};
+pub use strokes::{decode_stroke, Stroke, StrokePosition};
 
 /// Documented Drop Shadow parameter caps (`docs/05-layers/layer-styles.md`).
 const MAX_OPACITY: f32 = 100.0;
@@ -147,7 +157,8 @@ pub(crate) fn composite_layer_effects(canvas: &mut Canvas, layer: &Layer, doc: &
 /// Composite a layer's enabled, present inner shadow and inner glow into the
 /// running canvas **after** the layer's own content. Groups and destructive
 /// adjustment layers are skipped, matching the below-content pass. Inner Shadow
-/// is composited before Inner Glow when both are present.
+/// is composited before Inner Glow when both are present, and a Stroke is drawn
+/// after both.
 pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
     if layer.is_group || is_destructive_adjustment(layer) {
         return;
@@ -160,6 +171,11 @@ pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, 
     if let Some(glow) = decode_inner_glow(layer) {
         if glow.enabled && glow.present {
             glows::composite_inner_glow(canvas, layer, doc, &glow);
+        }
+    }
+    if let Some(stroke) = decode_stroke(layer) {
+        if stroke.enabled && stroke.present {
+            strokes::composite_stroke(canvas, layer, doc, &stroke);
         }
     }
 }
