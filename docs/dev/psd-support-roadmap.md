@@ -86,8 +86,8 @@ Shipped as the archived change `2026-09-19-psd-smart-object-roundtrip`.
 **P3 — Render preserved data.** *(in progress)*
 Decode the remaining adjustment descriptors and real fill descriptors (G8);
 gradient fill layers; layer effects (`lfx2` Drop Shadow, Outer Glow, Inner
-Shadow, Inner Glow, Stroke, Color/Gradient/Pattern Overlay, Satin); text; vector
-masks.
+Shadow, Inner Glow, Stroke, Color/Gradient/Pattern Overlay, Satin); text (the
+remaining kind — vector masks are shipped, archived `vector-mask-render`).
 **Smart-object source rendering is shipped** (archived
 `2026-09-19-smart-object-source-render`): an `Embedded` smart object with no
 raster proxy is rendered by decoding its payload and sampling it into the layer
@@ -154,8 +154,8 @@ panel entry; the ten-plate layout (reserved plate 0 plus nine named ranges) is
 grounded three ways (libpsd, ag-psd, psd-tools framing) and the kernel follows
 libpsd's integer CMYK pipeline (archived `selective-color-adjustment-decode`).
 Remaining:
-version-3 `phfl`, `clrL`, and the text/vector kinds
-(text, vector masks).
+version-3 `phfl`, `clrL`, and the text kind (vector masks are shipped,
+archived `vector-mask-render`).
 **Curves (`curv`) is now shipped**: the original deferral reason — a
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,

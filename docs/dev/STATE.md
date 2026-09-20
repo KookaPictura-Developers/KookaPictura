@@ -9,13 +9,13 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1159 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1175 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports as the ninth
   skip). The C++ self-test reports **232 passed, 0 failed, 0 skipped**. The
-  full gate (`scripts/verify-full.sh`) reports **1429 passed, 9 skipped,
+  full gate (`scripts/verify-full.sh`) reports **1445 passed, 9 skipped,
   0 failed**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
@@ -37,8 +37,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-overlays`, `layer-effects-satin`,
     `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
     `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
-    `selective-color-adjustment-decode`, and
-    `layer-effects-stroke-fills` changes;
+    `selective-color-adjustment-decode`, `layer-effects-stroke-fills`, and
+    `vector-mask-render` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -457,6 +457,18 @@ Snapshot for resuming after a context break. Update after each milestone.
   oracles; the app gains a neutral `selective-color` kind/panel row. Ceilings:
   profile-free CMYK round-trip, the all-zero early-return deviation from libpsd,
   no Photoshop pixel parity, no GPU shader.
+- `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
+  into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
+  and clip the layer through `mask_alpha`, combined with the raster mask by
+  multiplication and honoring the invert/disable flags. Fill rule is even-odd by
+  default; non-zero is read only from the ag-psd marker. A committed
+  `vector_mask.psd` fixture is proven by psd-tools + ag-psd oracles and GPU
+  parity; new `vector.rs` in `pictura-core`, `vector_mask.rs` in
+  `pictura-codec` and `pictura-render`. Ceilings: open paths / `vscg` / `vsms`
+  deferred, non-union operations collapsed, no AA / Feather / Density, layer
+  effects gated with content (Photoshop's "Vector Mask Hides Effects" off by
+  default is a documented divergence), no resize transform, fixed 16-segment
+  flattening, no Photoshop pixel parity.
 
 ## Commands
 
