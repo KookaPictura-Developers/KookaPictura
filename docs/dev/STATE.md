@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1116 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1132 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -34,7 +34,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-inner-glow`, `layer-effects-stroke`,
     `layer-effects-overlays`, `layer-effects-satin`,
     `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
-    `channel-mixer-adjustment-decode` changes;
+    `channel-mixer-adjustment-decode`, and
+    `layer-effects-stroke-fills` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -426,6 +427,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   Ceilings: version 1 only; the non-monochrome gray row is read by ag-psd but
   ignored by the decoder; the two reserved bytes per channel are ignored; no
   Adobe pixel parity claim.
+- Layer effects — Stroke gradient/pattern fills (roadmap P3/G6, archived
+  `2026-09-20-layer-effects-stroke-fills`): the `lfx2` Stroke (`FrFX`) now
+  decodes and composites **gradient** (`PntT` `GrFl`, `Grad`) and **pattern**
+  (`PntT` `Ptrn`, `Ptrn`) fills in addition to solid, reusing the shipped overlay
+  gradient/pattern samplers over the stroke band; the pattern link key is `Lnkd`
+  (with `Algn` fallback); the GPU rejects a renderable gradient/pattern stroke;
+  two psd-tools-authored fixtures `stroke_gradient.psd`/`stroke_pattern.psd`
+  prove decode/render. Ceilings: the aligned-gradient edge clamp and the
+  layer-rect pattern anchor are marked approximations (Photoshop's exact
+  stroke-fill extent is ungrounded); the solid render path is unchanged.
 
 ## Commands
 
@@ -482,6 +493,10 @@ stderr, the Rust suite, and the specs green throughout:
 One file remains allowlisted: `crates/pictura-app/cpp/selftest.cpp` (7212 LOC).
 It was extracted whole first to protect the verification oracle; subdividing it
 by self-test section is a deliberate later step, out of this pass.
+
+`crates/pictura-codec/tests/oracle.rs` is at **1398 LOC**, just under the 1400
+test-LOC cap, and must be split (the `tests/oracle/` submodule directory
+already exists) before any further oracle growth.
 
 ## Crates
 
