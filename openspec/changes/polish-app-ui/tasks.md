@@ -103,21 +103,21 @@
 
 ## 4. Batch 4 — Selection modifiers (items 14, 15, 16)
 
-- [ ] 4.1 Item 14: in `cpp/tools.cpp::refreshCursor` gate the move-selection
+- [x] 4.1 Item 14: in `cpp/tools.cpp::refreshCursor` gate the move-selection
   cursor on no Shift/Alt so the combine cursor wins while hovering an existing
   selection.
-- [ ] 4.2 Item 15: capture the drag modifiers at press (`dragMods_`) in
+- [x] 4.2 Item 15: capture the drag modifiers at press (`dragMods_`) in
   `cpp/tools_marquee.cpp` / the press handler and use them for the marquee
   geometry, the release raster, and the drag cursor, so releasing Shift/Alt
   mid-drag keeps the mode and geometry.
-- [ ] 4.3 Item 16: keep Alt geometry-only (from-centre) driven by `dragMods_`
+- [x] 4.3 Item 16: keep Alt geometry-only (from-centre) driven by `dragMods_`
   and ensure it never pre-toggles a combine mode before a drag starts; note any
   spec conflict with the existing combine-mode wording in the change notes.
-- [ ] 4.4 Item 14/15/16 regression: extend
+- [x] 4.4 Item 14/15/16 regression: extend
   `crates/pictura-app/cpp/selftest_tools_selection.cpp` (or a round-3 TU) with
   the combine-cursor-under-modifier, released-modifier-retention, and
   Alt-no-pretoggle checks.
-- [ ] 4.5 Batch 4 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
+- [x] 4.5 Batch 4 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
   headless self-test.
 
 ## 5. Batch 5 — Move nudge + Alt clone (items 18, 19)

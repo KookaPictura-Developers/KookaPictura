@@ -7,13 +7,53 @@
 
 #include <QtCore/QPointF>
 #include <QtCore/QRect>
-#include <QtGui/QGuiApplication>
 #include <QtGui/QPainterPath>
 
 #include <algorithm>
 #include <cmath>
 
 namespace pictura {
+
+namespace {
+
+// The synthetic modifier set that selects a combine mode's cursor asset, so a
+// locked drag mode can reuse `toolCursorId` while live keys are ignored.
+Qt::KeyboardModifiers modsForSelectionMode(SelectionMode mode)
+{
+    switch (mode) {
+    case SelectionMode::Add:
+        return Qt::ShiftModifier;
+    case SelectionMode::Subtract:
+        return Qt::AltModifier;
+    case SelectionMode::Intersect:
+        return Qt::ShiftModifier | Qt::AltModifier;
+    case SelectionMode::New:
+        break;
+    }
+    return Qt::NoModifier;
+}
+
+} // namespace
+
+QString ToolController::hoverCursorId(ToolId id, Qt::KeyboardModifiers mods, bool overSelection,
+                                      bool ctrlPreview)
+{
+    if (isSelectionTool(id) && !mods.testFlag(Qt::ShiftModifier)
+        && !mods.testFlag(Qt::AltModifier) && (overSelection || ctrlPreview)) {
+        return QStringLiteral("cursor.moveSelection");
+    }
+    return toolCursorId(id, mods);
+}
+
+QString ToolController::dragCursorId() const
+{
+    return toolCursorId(active_, modsForSelectionMode(dragMode_));
+}
+
+QString ToolController::cursorIdForModifiersForTest(ToolId id, int mods) const
+{
+    return toolCursorId(id, Qt::KeyboardModifiers(mods));
+}
 
 SelectionMode ToolController::selectionModeForModifiers(SelectionMode base,
                                                         Qt::KeyboardModifiers mods,
@@ -105,8 +145,7 @@ void ToolController::updateMarqueeOverlay(const QPointF& imagePos)
     if (!canvas_) {
         return;
     }
-    const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
-    const QRect rect = marqueeDragRect(anchor_, imagePos, mods);
+    const QRect rect = marqueeDragRect(anchor_, imagePos, dragMods_);
     if (rect.width() <= 0 || rect.height() <= 0) {
         canvas_->clearSelectionPreview();
         return;

@@ -585,43 +585,38 @@ void ToolController::refreshCursor()
     if (!canvas_) {
         return;
     }
-    if ((movingSelection_ || cursorOverSelection_) && isSelectionTool(active_)) {
-        const QCursor moveCursor = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
-        if (!moveCursor.pixmap().isNull()) {
-            canvas_->setCursor(moveCursor);
-            return;
+    const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
+    PictureView* hoverView = view();
+    const bool ctrlPreview = isSelectionTool(active_) && hoverView
+        && mods.testFlag(Qt::ControlModifier) && hoverView->has_selection();
+    // A combine modifier (Shift/Alt) hands the cursor back to the tool's
+    // add/remove assets; a gesture follows the mode captured at press.
+    if (hoverCursorId(active_, mods, movingSelection_ || cursorOverSelection_, ctrlPreview)
+        == QStringLiteral("cursor.moveSelection")) {
+        const QCursor c = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
+        if (!c.pixmap().isNull()) {
+            return canvas_->setCursor(c);
         }
     }
-    PictureView* hoverView = view();
-    if ((active_ == ToolId::Brush || active_ == ToolId::Pencil) && hoverView
-        && (topmostPixelLocked(hoverView) || !hoverView->active_layer_visible())) {
-        canvas_->setCursor(Qt::ForbiddenCursor);
-        return;
-    }
-    if (isSelectionTool(active_)
-        && QGuiApplication::queryKeyboardModifiers().testFlag(Qt::ControlModifier) && hoverView
-        && hoverView->has_selection()) {
-        const QCursor ctrlCursor = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
-        if (!ctrlCursor.pixmap().isNull()) {
-            canvas_->setCursor(ctrlCursor);
-            return;
+    if (isSelectionTool(active_) && dragging_ && !movingSelection_) {
+        const ToolInfo& info = toolInfo(active_);
+        const QCursor c = cursor(dragCursorId(), info.hotspotX, info.hotspotY);
+        if (!c.pixmap().isNull()) {
+            return canvas_->setCursor(c);
         }
     }
     if (active_ == ToolId::Brush || active_ == ToolId::Pencil) {
+        if (hoverView
+            && (topmostPixelLocked(hoverView) || !hoverView->active_layer_visible())) {
+            return canvas_->setCursor(Qt::ForbiddenCursor);
+        }
         // The drawn brush-size ring is the pointer affordance; hide the OS
         // cursor rather than scaling a pixmap with the brush.
-        canvas_->setCursor(Qt::BlankCursor);
-        return;
+        return canvas_->setCursor(Qt::BlankCursor);
     }
     const ToolInfo& info = toolInfo(active_);
-    const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
     const QCursor toolCursor = cursor(toolCursorId(active_, mods), info.hotspotX, info.hotspotY);
     canvas_->setCursor(toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
-}
-
-QString ToolController::cursorIdForModifiersForTest(ToolId id, int mods) const
-{
-    return toolCursorId(id, Qt::KeyboardModifiers(mods));
 }
 
 void ToolController::handlePressed(const QPointF& imagePos, int button, int modifiers)
@@ -645,6 +640,10 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         return;
     }
     if (isSelectionTool(active_)) {
+        // Capture the modifiers once so the geometry, the release raster, and
+        // the drag cursor keep the press-time constraint even if Shift/Alt is
+        // released mid-drag.
+        dragMods_ = mods;
         const bool ctrl = mods.testFlag(Qt::ControlModifier);
         const bool shift = mods.testFlag(Qt::ShiftModifier);
         const bool alt = mods.testFlag(Qt::AltModifier);
@@ -967,8 +966,7 @@ void ToolController::handleReleased(const QPointF& imagePos)
     }
     case ToolId::Marquee:
     case ToolId::EllipticalMarquee: {
-        const QRect rect =
-            marqueeDragRect(anchor_, imagePos, QGuiApplication::queryKeyboardModifiers());
+        const QRect rect = marqueeDragRect(anchor_, imagePos, dragMods_);
         const bool shaped = v && rect.width() > 0 && rect.height() > 0;
         const bool committed = shaped
             && (active_ == ToolId::EllipticalMarquee
