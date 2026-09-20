@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::helpers_composite::*;
+use super::impl_core::finalize_import;
 use crate::history::{History, Snapshot};
 use pictura_core::{
     BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
@@ -770,4 +771,38 @@ fn content_move_refused_on_locked_layer() {
         );
         assert_eq!(doc, before, "refusal leaves the document unchanged");
     }
+}
+
+#[test]
+fn finalize_import_marks_opaque_import_as_locked_background() {
+    let rgba = vec![10, 20, 30, 255, 40, 50, 60, 255];
+    let mut doc = Document::from_rgba("photo", 2, 1, &rgba);
+    finalize_import(&mut doc, &rgba);
+    assert_eq!(doc.layers.len(), 1);
+    let layer = &doc.layers[0];
+    assert_eq!(layer.name, "Background");
+    assert!(layer.background, "opaque import becomes the Background");
+    assert!(layer.lock.is_all(), "Background carries every lock bit");
+    assert!(
+        !layer.channels.iter().any(|channel| channel.id == -1),
+        "the redundant opaque alpha channel is dropped"
+    );
+}
+
+#[test]
+fn finalize_import_keeps_non_opaque_import_as_regular_alpha_layer() {
+    let rgba = vec![10, 20, 30, 255, 40, 50, 60, 128];
+    let mut doc = Document::from_rgba("photo", 2, 1, &rgba);
+    finalize_import(&mut doc, &rgba);
+    let layer = &doc.layers[0];
+    assert_eq!(layer.name, "photo", "the file stem names the alpha layer");
+    assert!(
+        !layer.background,
+        "a non-opaque import stays a regular layer"
+    );
+    assert_eq!(layer.lock, LockFlags::default(), "no locks are added");
+    assert!(
+        layer.channels.iter().any(|channel| channel.id == -1),
+        "the real alpha channel is preserved"
+    );
 }

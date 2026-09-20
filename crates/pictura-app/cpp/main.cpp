@@ -143,6 +143,12 @@ int main(int argc, char* argv[])
     }
 
     pictura::PicturaMainWindow frame;
+    // `File > Exit` / Ctrl+Q call `qApp->quit()`, which leaves the event loop
+    // without running `closeEvent`; save on the application's quit signal so
+    // every quit path persists the session. The `closeEvent` save is unchanged
+    // (and idempotent).
+    QObject::connect(&app, &QApplication::aboutToQuit, &frame,
+                     &pictura::PicturaMainWindow::saveSession);
 
     bool codecLoaded = false;
     if (!psdPath.isEmpty()) {

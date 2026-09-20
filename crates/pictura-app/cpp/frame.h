@@ -163,6 +163,7 @@ public:
     ImageView* canvasAt(int index) const;
     QString documentPath(int index) const;
     QString documentName(int index) const;
+    QString documentTabTextForTest(int index) const;
     bool isDocumentDirty(int index) const;
     QString activeFilePath() const;
     QString activeDocumentName() const;
@@ -204,6 +205,10 @@ private:
         ImageView* canvas = nullptr;
         CanvasScrollBars* canvasHost = nullptr;
         QString path;
+        // Display name for a path-less import (Open Image / Open As Smart
+        // Object); preferred over the generated Untitled-N name. The tab title
+        // uses it while `path` stays empty so Save cannot overwrite the source.
+        QString displayName;
         int untitledNumber = 0;
     };
 
@@ -245,6 +250,7 @@ private:
     FileDropRouter* fileDropRouter_ = nullptr;
     QSplitter* centerSplitter_ = nullptr;
     QTimer* panelRefreshTimer_ = nullptr;
+    QTimer* sessionSaveTimer_ = nullptr;
     CommandRegistry* registry_ = nullptr;
     LayersPanel* layersPanel_ = nullptr;
     HistoryPanel* historyPanel_ = nullptr;

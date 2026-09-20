@@ -59,10 +59,8 @@ pub mod qobject {
         #[qinvokable]
         fn open(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// `File > Open` for a common raster image: read `path`, probe and decode
-        /// it with Qt, and replace the view with an untitled RGB/8-bit document
-        /// holding the decoded pixels. Records one "Open" state and marks the view
-        /// unmodified; `false` without mutating on any refusal.
+        /// `File > Open` for a common raster image: decode `path` with Qt into an
+        /// untitled RGB/8-bit document; `false` without mutating on any refusal.
         #[qinvokable]
         fn open_image(self: Pin<&mut Self>, path: &QString) -> bool;
 
@@ -116,9 +114,12 @@ pub mod qobject {
         #[qinvokable]
         fn document_mode(&self) -> QString;
 
-        /// The image to display. Never null. Returns the cached image when the
-        /// display is clean; rebuilds it from the document composite when a
-        /// region refresh has marked the display dirty.
+        /// Bit depth per channel (8/16/32/1) of the loaded document, or 0 when none.
+        #[qinvokable]
+        fn document_depth_bits(&self) -> i32;
+
+        /// The image to display. Never null. Returns the cached image when clean,
+        /// otherwise rebuilds it from the document composite.
         #[qinvokable]
         fn image(self: Pin<&mut Self>) -> QImage;
 
@@ -127,13 +128,11 @@ pub mod qobject {
         #[qinvokable]
         fn has_document(&self) -> bool;
 
-        /// Width of the loaded document in pixels (0 when none). Reads the
-        /// document directly without materializing or copying any image.
+        /// Width of the loaded document in pixels (0 when none).
         #[qinvokable]
         fn document_width(&self) -> i32;
 
-        /// Height of the loaded document in pixels (0 when none). Reads the
-        /// document directly without materializing or copying any image.
+        /// Height of the loaded document in pixels (0 when none).
         #[qinvokable]
         fn document_height(&self) -> i32;
 
