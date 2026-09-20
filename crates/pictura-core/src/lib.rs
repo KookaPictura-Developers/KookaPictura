@@ -4,6 +4,9 @@
 //! layer/channel/mask model is specified in `docs/01-architecture/document-model.md`
 //! and is **not** implemented here yet.
 
+mod vector;
+pub use vector::{VectorFillRule, VectorMask, VectorSubpath};
+
 /// PSD color modes (`header.color_mode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorMode {
@@ -558,6 +561,9 @@ pub struct Layer {
     pub raw_channels: Vec<RawChannel>,
     /// Derived embedded/linked smart-object view; `None` for ordinary layers.
     pub smart_object: Option<SmartObject>,
+    /// Derived `vmsk` vector-mask view; `None` when absent or unparseable. The
+    /// raw block remains in `extra_blocks` and is the serialization source.
+    pub vector_mask: Option<VectorMask>,
 }
 
 impl Default for Layer {
@@ -588,6 +594,7 @@ impl Default for Layer {
             extra_blocks: Vec::new(),
             raw_channels: Vec::new(),
             smart_object: None,
+            vector_mask: None,
         }
     }
 }

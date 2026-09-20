@@ -50,6 +50,8 @@ mod selective_color;
 pub use pictura_adjust::{SelectiveColorMethod, SelectiveRange};
 pub use selective_color::encode_selective_color;
 
+mod vector_mask;
+
 mod fill;
 pub use fill::encode_gradient_fill;
 

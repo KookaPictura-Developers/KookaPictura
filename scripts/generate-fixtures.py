@@ -55,6 +55,13 @@ from psd_tools.psd.patterns import (
     VirtualMemoryArrayList,
 )
 from psd_tools.psd.tagged_blocks import TaggedBlock, TaggedBlocks
+from psd_tools.psd.vector import (
+    ClosedKnotLinked,
+    ClosedPath,
+    Path as VectorPath,
+    PathFillRule,
+    VectorMaskSetting,
+)
 from psd_tools.terminology import Enum, Key, Klass, Type, Unit
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -380,6 +387,87 @@ def solid_fill() -> PSDImage:
         )
     )
     _adj_layer(psd, Tag.SOLID_COLOR_SHEET_SETTING, "Solid Fill", data)
+    return psd
+
+
+def _solid_color_block(rgb: tuple[int, int, int]) -> DescriptorBlock:
+    return DescriptorBlock(
+        Descriptor(
+            {
+                b"Clr ": Descriptor(
+                    {
+                        b"Rd  ": Double(float(rgb[0])),
+                        b"Grn ": Double(float(rgb[1])),
+                        b"Bl  ": Double(float(rgb[2])),
+                    },
+                    classID=b"RGBC",
+                )
+            },
+            classID=b"SoCo",
+        )
+    )
+
+
+def _shape_fill_layer(psd: PSDImage, name: str, rgb: tuple[int, int, int]):
+    """A document-sized solid-color fill layer (`SoCo`, no pixel channels)."""
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (2, 2), (0, 0, 0, 0)), name=name
+    )
+    rec = layer._record
+    layer._channels = ChannelDataList([])
+    rec.channel_info = []
+    rec.top, rec.left, rec.bottom, rec.right = 0, 0, HEIGHT, WIDTH
+    rec.mask_data = None
+    rec.tagged_blocks[Tag.SOLID_COLOR_SHEET_SETTING] = TaggedBlock(
+        key=Tag.SOLID_COLOR_SHEET_SETTING, data=_solid_color_block(rgb)
+    )
+    return layer
+
+
+def _closed_rect_path(
+    x0: int, y0: int, x1: int, y1: int, fill_rule: int = 1
+) -> VectorPath:
+    """A closed rectangle subpath in normalized 8.24 document coordinates."""
+    corners = [(y0, x0), (y0, x1), (y1, x1), (y1, x0)]
+    knots = [
+        ClosedKnotLinked(
+            preceding=(y / HEIGHT, x / WIDTH),
+            anchor=(y / HEIGHT, x / WIDTH),
+            leaving=(y / HEIGHT, x / WIDTH),
+        )
+        for (y, x) in corners
+    ]
+    return VectorPath(
+        [ClosedPath(knots, operation=1, unknown1=fill_rule), PathFillRule()]
+    )
+
+
+def vector_mask() -> PSDImage:
+    """RGB, a Base layer plus a SoCo fill layer clipped by a closed-rectangle
+    ``vmsk``, and a second SoCo layer whose ``vmsk`` sets the invert flag.
+
+    `Shape Inverted` shows outside ``(0,0)-(6,6)``; `Shape` shows inside
+    ``(1,1)-(3,3)``, so compositing bottom-first proves the mask clips a fill
+    layer and that the invert flag flips it.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    inverted = _shape_fill_layer(psd, "Shape Inverted", (0, 0, 255))
+    inverted._record.tagged_blocks[Tag.VECTOR_MASK_SETTING1] = TaggedBlock(
+        key=Tag.VECTOR_MASK_SETTING1,
+        data=VectorMaskSetting(
+            version=3, flags=0x01, path=_closed_rect_path(0, 0, 6, 6)
+        ),
+    )
+    shape = _shape_fill_layer(psd, "Shape", (255, 0, 0))
+    shape._record.tagged_blocks[Tag.VECTOR_MASK_SETTING1] = TaggedBlock(
+        key=Tag.VECTOR_MASK_SETTING1,
+        data=VectorMaskSetting(
+            version=3, flags=0, path=_closed_rect_path(1, 1, 3, 3)
+        ),
+    )
     return psd
 
 
@@ -1285,6 +1373,7 @@ FIXTURES = {
     "selective_color.psd": selective_color,
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
+    "vector_mask.psd": vector_mask,
     "gradient_fill.psd": gradient_fill,
     "pattern_fill.psd": pattern_fill,
     "pattern_fill_16bit.psd": pattern_fill_16bit,
