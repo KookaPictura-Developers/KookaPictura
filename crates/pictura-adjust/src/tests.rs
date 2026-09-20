@@ -804,8 +804,89 @@ fn color_balance_validation() {
     .is_err());
 }
 
-// --- Gradient Map ------------------------------------------------------
+// --- Selective Color ---------------------------------------------------
 
+/// An adjustment with one non-zero range; indices are reds…blacks.
+fn selective(
+    method: SelectiveColorMethod,
+    index: usize,
+    c: i16,
+    m: i16,
+    y: i16,
+    k: i16,
+) -> Adjustment {
+    let mut ranges = [SelectiveRange::default(); 9];
+    ranges[index] = SelectiveRange { c, m, y, k };
+    Adjustment::SelectiveColor(SelectiveColorParams { method, ranges })
+}
+
+#[test]
+fn selective_color_zero_ranges_is_identity() {
+    let mut b = buf3(3, 1, &[[0, 0, 0], [200, 100, 50], [255, 255, 255]]);
+    let before = b.clone();
+    apply(
+        &Adjustment::SelectiveColor(SelectiveColorParams::default()),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(b, before, "all-zero ranges must be a bit-exact identity");
+}
+
+#[test]
+fn selective_color_relative_reds_magenta() {
+    let mut b = buf3(1, 1, &[[200, 100, 50]]);
+    apply(
+        &selective(SelectiveColorMethod::Relative, 0, 0, 50, 0, 0),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(px3(&b, 0), [200, 61, 51]);
+}
+
+#[test]
+fn selective_color_absolute_reds_yellow() {
+    let mut b = buf3(1, 1, &[[200, 100, 50]]);
+    apply(
+        &selective(SelectiveColorMethod::Absolute, 0, 0, 0, 100, 0),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(px3(&b, 0), [200, 101, 1]);
+}
+
+#[test]
+fn selective_color_relative_blacks_black() {
+    let mut b = buf3(1, 1, &[[0, 0, 0]]);
+    apply(
+        &selective(SelectiveColorMethod::Relative, 8, 0, 0, 0, -100),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(px3(&b, 0), [255, 255, 255]);
+}
+
+#[test]
+fn selective_color_absolute_whites_cyan() {
+    let mut b = buf3(1, 1, &[[255, 255, 255]]);
+    apply(
+        &selective(SelectiveColorMethod::Absolute, 6, 100, 0, 0, 0),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(px3(&b, 0), [1, 255, 255]);
+}
+
+#[test]
+fn selective_color_validation() {
+    let mut b = buf3(1, 1, &[[10, 10, 10]]);
+    assert!(apply(
+        &selective(SelectiveColorMethod::Relative, 0, 101, 0, 0, 0),
+        &mut b
+    )
+    .is_err());
+}
+
+// --- Gradient Map ------------------------------------------------------
 fn bw_stops() -> Vec<GradientStop> {
     vec![
         GradientStop {
@@ -1069,6 +1150,7 @@ fn alpha_is_never_modified() {
             highlights: [0.0, 0.0, 0.0],
             preserve_luminosity: true,
         }),
+        selective(SelectiveColorMethod::Relative, 0, 0, 50, 0, 0),
         Adjustment::Auto(AutoKind::Tone),
         Adjustment::Invert,
         Adjustment::Posterize(4),
@@ -1111,11 +1193,11 @@ fn alpha_is_never_modified() {
         }),
         Adjustment::SolidFill([10, 20, 30, 40]),
     ];
-    // One entry per `Adjustment` variant: the 16 destructive ones plus the three
+    // One entry per `Adjustment` variant: the 17 destructive ones plus the three
     // refused fills (`SolidFill`, `GradientFill`, `PatternFill`).
     assert_eq!(
         adjustments.len(),
-        19,
+        20,
         "every Adjustment variant is exercised"
     );
     for a in adjustments {

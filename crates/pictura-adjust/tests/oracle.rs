@@ -41,8 +41,9 @@ struct Mapping {
     note: &'static str,
 }
 
-/// One row per classified `Adjustment` variant: the sixteen destructive variants
-/// plus the two generative fills the spec names (`GradientFill`, `PatternFill`).
+/// One row per classified `Adjustment` variant: the seventeen destructive
+/// variants plus the two generative fills the spec names (`GradientFill`,
+/// `PatternFill`).
 /// `SolidFill` is the third refused fill; it has no `apply`, so it has no
 /// differential/classification row. Its refusal is covered by
 /// `apply_refuses_solid_fill_without_mutating` and the alpha-preservation test.
@@ -126,6 +127,12 @@ const MAPPING: &[Mapping] = &[
         note: "no faithful IM operator",
     },
     Mapping {
+        adjustment: "SelectiveColor",
+        im: None,
+        tolerance: 0,
+        note: "no faithful IM operator; profile-free integer CMYK round-trip",
+    },
+    Mapping {
         adjustment: "Auto",
         im: None,
         tolerance: 0,
@@ -158,7 +165,7 @@ const MAPPING: &[Mapping] = &[
 ];
 
 /// Adjustments the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 15] = [
+const NO_EQUIVALENT: [&str; 16] = [
     "BlackWhite",
     "PhotoFilter",
     "GradientMap",
@@ -166,6 +173,7 @@ const NO_EQUIVALENT: [&str; 15] = [
     "PatternFill",
     "Vibrance",
     "ColorBalance",
+    "SelectiveColor",
     "Auto",
     "Curves",
     "Exposure",
@@ -410,8 +418,8 @@ fn oracle_negate_matches_expected_bytes() {
 fn mapping_marks_no_equivalent_operators() {
     assert_eq!(
         MAPPING.len(),
-        18,
-        "one row per classified variant (16 destructive + GradientFill + PatternFill)"
+        19,
+        "one row per classified variant (17 destructive + GradientFill + PatternFill)"
     );
     let none: Vec<&str> = MAPPING
         .iter()

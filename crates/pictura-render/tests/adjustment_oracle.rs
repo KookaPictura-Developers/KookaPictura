@@ -10,7 +10,9 @@
 
 use std::process::Command;
 
-use pictura_adjust::{Adjustment, CurvesParams};
+use pictura_adjust::{
+    Adjustment, CurvesParams, SelectiveColorMethod, SelectiveColorParams, SelectiveRange,
+};
 use pictura_render::{decode_adjustment, encode_color_balance};
 
 /// Print `shadows midtones highlights luminosity` as whitespace-separated
@@ -229,5 +231,142 @@ fn psd_tools_reads_fixture_curves_prefix() {
         &fields[2..],
         &[0, 0, 32, 64, 224, 192, 255, 255],
         "first curve is the authored rgb curve in (output, input) order"
+    );
+}
+
+/// The nine relative `selc` plates authored in `selective_color.psd` (reds
+/// through blacks; the reserved plate is omitted).
+const RELATIVE_PLATES: [[i16; 4]; 9] = [
+    [10, -20, 30, 0],
+    [0, 0, 0, 5],
+    [-10, 0, 0, 0],
+    [0, 15, 0, 0],
+    [0, 0, -25, 0],
+    [5, 0, 0, 0],
+    [0, 0, 0, 0],
+    [20, -10, 0, 0],
+    [0, 0, 0, -40],
+];
+
+/// The absolute plates: reds `(1, 2, 3, 4)` through blacks `(33, 34, 35, 36)`.
+const ABSOLUTE_PLATES: [[i16; 4]; 9] = [
+    [1, 2, 3, 4],
+    [5, 6, 7, 8],
+    [9, 10, 11, 12],
+    [13, 14, 15, 16],
+    [17, 18, 19, 20],
+    [21, 22, 23, 24],
+    [25, 26, 27, 28],
+    [29, 30, 31, 32],
+    [33, 34, 35, 36],
+];
+
+fn selective_params(method: SelectiveColorMethod, plates: [[i16; 4]; 9]) -> SelectiveColorParams {
+    SelectiveColorParams {
+        method,
+        ranges: plates.map(|[c, m, y, k]| SelectiveRange { c, m, y, k }),
+    }
+}
+
+/// The committed `selective_color.psd` decodes through `decode_adjustment` into
+/// the authored relative and absolute params. Pure Rust; psd-tools and ag-psd
+/// carry the independent proofs.
+#[test]
+fn fixture_selective_color_decodes() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../pictura-codec/tests/fixtures/selective_color.psd"
+    );
+    let bytes = std::fs::read(path).expect("read selective_color.psd");
+    let doc = pictura_codec::read_psd(&bytes).expect("fixture parses");
+
+    let relative = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Selective Color")
+        .expect("Selective Color layer");
+    assert_eq!(
+        decode_adjustment(relative.adjustment.as_ref().expect("selc block")),
+        Some(Adjustment::SelectiveColor(selective_params(
+            SelectiveColorMethod::Relative,
+            RELATIVE_PLATES
+        )))
+    );
+
+    let absolute = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Selective Color Abs")
+        .expect("Selective Color Abs layer");
+    assert_eq!(
+        decode_adjustment(absolute.adjustment.as_ref().expect("selc block")),
+        Some(Adjustment::SelectiveColor(selective_params(
+            SelectiveColorMethod::Absolute,
+            ABSOLUTE_PLATES
+        )))
+    );
+}
+
+/// `version method` then the ten plates flattened, read from the hex-encoded
+/// `selc` payload in `argv[1]`.
+const SELECTIVE_COLOR_SCRIPT: &str = "\
+import sys
+from io import BytesIO
+from psd_tools.psd.adjustments import SelectiveColor
+sc = SelectiveColor.read(BytesIO(bytes.fromhex(sys.argv[1])))
+print(sc.version, sc.method, *[v for plate in sc.data for v in plate])
+";
+
+/// psd-tools reads the framing (version, method) and the ten plates, but names
+/// no plate, so this is a field check; the ag-psd oracle in `pictura-codec` is
+/// the full-field, labelled one.
+#[test]
+fn psd_tools_reads_fixture_selective_color_prefix() {
+    if !psd_tools_available() {
+        eprintln!("skipping psd-tools check: python3 + psd_tools not available");
+        return;
+    }
+
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../pictura-codec/tests/fixtures/selective_color.psd"
+    );
+    let bytes = std::fs::read(path).expect("read selective_color.psd");
+    let doc = pictura_codec::read_psd(&bytes).expect("fixture parses");
+    let layer = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Selective Color")
+        .expect("Selective Color layer");
+    let block = layer.adjustment.as_ref().expect("selc block");
+    assert_eq!(block.key, *b"selc");
+
+    let hex: String = block.data.iter().map(|b| format!("{b:02x}")).collect();
+    let out = Command::new("python3")
+        .args(["-c", SELECTIVE_COLOR_SCRIPT, &hex])
+        .output()
+        .expect("run python3");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "psd-tools SelectiveColor read failed:\n{stdout}\n{stderr}"
+    );
+
+    let fields: Vec<i64> = stdout
+        .split_whitespace()
+        .map(|token| token.parse::<i64>().expect("integer field"))
+        .collect();
+    assert_eq!(fields[0], 1, "version must be 1");
+    assert_eq!(fields[1], 0, "method must be relative");
+    let expected: Vec<i64> = RELATIVE_PLATES
+        .iter()
+        .flatten()
+        .map(|&value| value as i64)
+        .collect();
+    assert_eq!(
+        &fields[6..],
+        &expected[..],
+        "the nine relative plates (reds..blacks) after the reserved plate"
     );
 }

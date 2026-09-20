@@ -438,6 +438,7 @@ fn adjustment_layers_round_trip_key_and_bytes() {
         (*b"blnc", vec![0; 20]),
         (*b"mixr", vec![0; 44]),
         (*b"curv", vec![1, 2, 3, 4]),
+        (*b"selc", vec![0u8; 84]),
     ];
 
     let mut layers = vec![base];

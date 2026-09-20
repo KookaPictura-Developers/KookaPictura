@@ -2,7 +2,8 @@ use pictura_core::PixelBuffer;
 
 use crate::auto::auto;
 use crate::color::{
-    black_white, channel_mixer, color_balance, hue_saturation, photo_filter, vibrance,
+    black_white, channel_mixer, color_balance, hue_saturation, photo_filter, selective_color,
+    vibrance,
 };
 use crate::common::{map_float, validate};
 use crate::tonal::{
@@ -24,6 +25,7 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
         Adjustment::ChannelMixer(p) => channel_mixer(p, buf, n),
         Adjustment::Vibrance(p) => vibrance(p, buf, n),
         Adjustment::ColorBalance(p) => color_balance(p, buf, n),
+        Adjustment::SelectiveColor(p) => selective_color(p, buf, n),
         Adjustment::Auto(kind) => auto(*kind, buf, n),
         Adjustment::Invert => {
             map_float(buf, n, |v| 255 - v);

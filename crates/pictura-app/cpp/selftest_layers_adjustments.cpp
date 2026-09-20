@@ -152,5 +152,37 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             frame.closeDocument(cmDoc, false);
         }
 
+        // lpr_selective_color (296): the neutral `selective-color` kind becomes
+        // an adjustment layer that leaves the composite unchanged, and the
+        // Adjustments panel offers a `Selective Color` row.
+        {
+            const bool selCreated = frame.newDocument(QStringLiteral("SelectiveColorCtl"), 4, 4,
+                                                      QStringLiteral("rgb"), 8,
+                                                      QStringLiteral("white"));
+            pictura::PictureView* selView = frame.activeView();
+            if (!selCreated || !selView) {
+                return pictura::selfTest().fail(296, "selective color fixture");
+            }
+            const int selDoc = frame.activeDocumentIndex();
+            const unsigned int selBefore = selView->sample_argb(1, 1);
+            const bool selAdded = selView->add_adjustment(QStringLiteral("selective-color"));
+            const bool selAdjustment =
+                selView->layer_kind(selView->layer_count() - 1) == QStringLiteral("adjustment");
+            const unsigned int selAfter = selView->sample_argb(1, 1);
+            const bool selNeutral = selAfter == selBefore;
+            const pictura::PanelColumn* selColumn = frame.panelColumn();
+            const bool selMenu = selColumn
+                && selColumn->widgetMenuTextsForTest(QStringLiteral("adjustmentsPanel"))
+                       .contains(QStringLiteral("Selective Color"));
+            ST_BEGIN("lpr_selective_color");
+            ST_PASS("lpr_selective_color added=%d adjustment=%d neutral=%d menu=%d",
+                    selAdded ? 1 : 0, selAdjustment ? 1 : 0, selNeutral ? 1 : 0,
+                    selMenu ? 1 : 0);
+            if (!selAdded || !selAdjustment || !selNeutral || !selMenu) {
+                return pictura::selfTest().fail(296, "selective color adjustment");
+            }
+            frame.closeDocument(selDoc, false);
+        }
+
     return 0;
 }
