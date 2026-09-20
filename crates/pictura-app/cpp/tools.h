@@ -246,6 +246,7 @@ private:
     void handleReleased(const QPointF& imagePos);
     void updateDragOverlay(const QPointF& imagePos);
     void updateMarqueeOverlay(const QPointF& imagePos);
+    void updateBrushOutline(const QPointF& imagePos);
     void closePolygonLasso();
     QRect marqueeDragRect(const QPointF& a, const QPointF& b, Qt::KeyboardModifiers mods) const;
     static QRect dragRect(const QPointF& a, const QPointF& b);

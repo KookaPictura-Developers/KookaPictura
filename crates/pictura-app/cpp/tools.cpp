@@ -7,6 +7,8 @@
 
 #include <QtCore/QDebug>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QPoint>
+#include <QtGui/QCursor>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QPainterPath>
 #include <QtWidgets/QApplication>
@@ -294,6 +296,17 @@ QString selectionModeString(SelectionMode mode)
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
 {
+    // A size change from the options bar or `[`/`]` moves the hover ring at
+    // once. Query the pointer so a stale position is never reused after leave.
+    connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
+        if (!canvas_ || (active_ != ToolId::Brush && active_ != ToolId::Pencil)) {
+            return;
+        }
+        const QPoint local = canvas_->mapFromGlobal(QCursor::pos());
+        if (canvas_->rect().contains(local)) {
+            canvas_->setBrushOutline(size, canvas_->widgetToImage(QPointF(local)));
+        }
+    });
 }
 
 void ToolController::setActiveTool(ToolId id)
@@ -458,6 +471,7 @@ void ToolController::unbindCanvas()
     transformHandle_ = -1;
     canvas_->clearOverlay();
     canvas_->clearSelectionPreview();
+    canvas_->clearBrushOutline();
     canvas_ = nullptr;
     warmView_ = nullptr;
     warmValid_ = false;
@@ -495,6 +509,9 @@ void ToolController::applyToolPolicy()
     }
     const bool session = transformSessionActive();
     canvas_->setPanEnabled(!session && active_ == ToolId::Hand);
+    if (active_ != ToolId::Brush && active_ != ToolId::Pencil) {
+        canvas_->clearBrushOutline();
+    }
     if (session) {
         return;
     }
@@ -767,6 +784,7 @@ void ToolController::handleMoved(const QPointF& imagePos)
         return;
     }
     updateSelectionHover(imagePos);
+    updateBrushOutline(imagePos);
     if (!dragging_ && !polygonInProgress_) {
         return;
     }
