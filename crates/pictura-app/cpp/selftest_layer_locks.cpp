@@ -29,6 +29,7 @@ int pictura::runLayerLocksChecks(pictura::PicturaMainWindow& frame)
         }
         const int doc = frame.activeDocumentIndex();
         const QString locked = view->add_layer_in(QString());
+        view->set_active_layer(locked);
         view->set_layer_name_path(locked, QStringLiteral("LockedMove"));
         view->set_layers_lock(QStringList{locked}, QStringLiteral("position"), true);
         const QString rectBefore = view->layer_rect(locked);
@@ -63,6 +64,7 @@ int pictura::runLayerLocksChecks(pictura::PicturaMainWindow& frame)
         }
         const int doc = frame.activeDocumentIndex();
         const QString locked = view->add_layer_in(QString());
+        view->set_active_layer(locked);
         view->set_layer_name_path(locked, QStringLiteral("LockedFilter"));
         view->set_layers_lock(QStringList{locked}, QStringLiteral("pixels"), true);
         const unsigned int pixelBefore = view->composite_argb(4, 4);
@@ -93,6 +95,7 @@ int pictura::runLayerLocksChecks(pictura::PicturaMainWindow& frame)
         }
         const int doc = frame.activeDocumentIndex();
         const QString locked = view->add_layer_in(QString());
+        view->set_active_layer(locked);
         view->set_layer_name_path(locked, QStringLiteral("LockedCursor"));
         view->set_layers_lock(QStringList{locked}, QStringLiteral("pixels"), true);
         frame.setActiveTool(pictura::ToolId::Brush);
@@ -126,6 +129,7 @@ int pictura::runLayerLocksChecks(pictura::PicturaMainWindow& frame)
         }
         const int doc = frame.activeDocumentIndex();
         const QString locked = view->add_layer_in(QString());
+        view->set_active_layer(locked);
         view->set_layer_name_path(locked, QStringLiteral("LockedPaint"));
         view->set_layers_lock(QStringList{locked}, QStringLiteral("pixels"), true);
         const unsigned int pixelBefore = view->composite_argb(4, 4);

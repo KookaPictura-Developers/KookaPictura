@@ -29,13 +29,13 @@
 
 ## 3. Batch 3 — Active-layer gating and transparency lock (items 9, 10)
 
-- [ ] 3.1 Item 9 resolver: add one shared active-layer resolver in `crates/pictura-app/src/cxxqt_object/` returning the exactly-one active layer path or a typed refusal; have the Layers panel push its selection to the view on selection change, and have `open_image` set the imported layer active (`impl_core.rs`).
-- [ ] 3.2 Item 9 entry points: replace the topmost-raster fallback with the resolver in paint (`crates/pictura-app/src/cxxqt_object/impl_paint.rs`, `crates/pictura-paint/src/helpers.rs:593`, `stroke.rs:45-46`), filters (`impl_filters.rs:55`), Free Transform (`impl_transform.rs:757`), and content move (`impl_selection.rs:143`); zero or multiple selected layers refuse with a user-visible error and no history state.
-- [ ] 3.3 Item 9 regression: add Rust tests for the resolver (exactly one, zero, multiple, non-raster) and `selftest_layer_locks.cpp` checks that a tool edit targets the panel's active layer and is refused with no single selection.
-- [ ] 3.4 Item 10: remove the blanket `TRANSPARENCY` refusal at `crates/pictura-paint/src/stroke.rs:52` and `crates/pictura-render/src/document_ops/.../move_content.rs:35`; make `composite_pixel`/`write_pixel` (`stroke.rs:196-231,310-326`) carry the pre-existing alpha and write it back for pixels whose alpha is greater than zero; leave fully transparent pixels untouched.
-- [ ] 3.5 Item 10 filter: apply the same per-pixel rule in the filter path so `filter.rs` preserves each pixel's alpha; keep a `Clear` paint mode / erase refused because it lowers alpha.
-- [ ] 3.6 Item 10 regression: add Rust tests that a transparency-locked paint and filter change color where alpha `>0`, keep alpha bit-identical (e.g. `180` stays `180`), and leave alpha `0` untouched; add a `selftest_layer_locks.cpp` check for the same through the bridge.
-- [ ] 3.7 Batch 3 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`, headless self-test; commit.
+- [x] 3.1 Item 9 resolver: add one shared active-layer resolver in `crates/pictura-app/src/cxxqt_object/` returning the exactly-one active layer path or a typed refusal; have the Layers panel push its selection to the view on selection change, and have `open_image` set the imported layer active (`impl_core.rs`).
+- [x] 3.2 Item 9 entry points: replace the topmost-raster fallback with the resolver in paint (`crates/pictura-app/src/cxxqt_object/impl_paint.rs`, `crates/pictura-paint/src/helpers.rs:593`, `stroke.rs:45-46`), filters (`impl_filters.rs:55`), Free Transform (`impl_transform.rs:757`), and content move (`impl_selection.rs:143`); zero or multiple selected layers refuse with a user-visible error and no history state.
+- [x] 3.3 Item 9 regression: add Rust tests for the resolver (exactly one, zero, multiple, non-raster) and `selftest_layer_locks.cpp` checks that a tool edit targets the panel's active layer and is refused with no single selection.
+- [x] 3.4 Item 10: remove the blanket `TRANSPARENCY` refusal at `crates/pictura-paint/src/stroke.rs:52` and `crates/pictura-render/src/document_ops/.../move_content.rs:35`; make `composite_pixel`/`write_pixel` (`stroke.rs:196-231,310-326`) carry the pre-existing alpha and write it back for pixels whose alpha is greater than zero; leave fully transparent pixels untouched.
+- [x] 3.5 Item 10 filter: apply the same per-pixel rule in the filter path so `filter.rs` preserves each pixel's alpha; keep a `Clear` paint mode / erase refused because it lowers alpha.
+- [x] 3.6 Item 10 regression: add Rust tests that a transparency-locked paint and filter change color where alpha `>0`, keep alpha bit-identical (e.g. `180` stays `180`), and leave alpha `0` untouched; add a `selftest_layer_locks.cpp` check for the same through the bridge.
+- [x] 3.7 Batch 3 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`, headless self-test; commit.
 
 ## 4. Batch 4 — Cursor, ring outside, Space pan, hint bar (items 11, 12, 14, 15)
 

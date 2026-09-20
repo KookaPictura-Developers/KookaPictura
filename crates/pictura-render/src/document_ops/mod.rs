@@ -8,7 +8,10 @@ mod orient;
 mod resize;
 
 pub use canvas::resize_canvas_document;
-pub use crop::{crop_document, translate_layer, translate_layer_active, translate_layer_rect};
+pub use crop::{
+    crop_document, translate_layer, translate_layer_active, translate_layer_index,
+    translate_layer_rect,
+};
 pub use layer_ops::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
     add_layer_in, add_raster_layer_from_rgba, add_solid_fill, apply_visibility,

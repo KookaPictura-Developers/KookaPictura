@@ -711,7 +711,8 @@ fn topmost_selector_still_edits_under_position_lock() {
     let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
     doc.layers = vec![pixel_layer("base", 8, 8, (40, 40, 40))];
     doc.layers[0].lock = LockFlags::default().with(LockFlags::POSITION, true);
-    let layer = topmost_pixel_layer(&mut doc).expect("selector finds the pixel layer");
+    let layer =
+        active_pixel_layer_mut(&mut doc, Some("0")).expect("selector finds the pixel layer");
     assert!(pictura_render::apply_filter(
         layer,
         &pictura_filters::Filter::GaussianBlur { radius: 1.0 },
@@ -727,7 +728,8 @@ fn filter_refused_and_unchanged_on_pixel_locked_layer() {
     doc.layers = vec![pixel_layer("base", 8, 8, (40, 40, 40))];
     doc.layers[0].lock = LockFlags::default().with(LockFlags::PIXELS, true);
     let before = doc.layers[0].clone();
-    let layer = topmost_pixel_layer(&mut doc).expect("selector finds the pixel layer");
+    let layer =
+        active_pixel_layer_mut(&mut doc, Some("0")).expect("selector finds the pixel layer");
     let err = pictura_render::apply_filter(
         layer,
         &pictura_filters::Filter::GaussianBlur { radius: 1.0 },
@@ -809,4 +811,54 @@ fn finalize_import_keeps_non_opaque_import_as_regular_alpha_layer() {
         layer.channels.iter().any(|channel| channel.id == -1),
         "the real alpha channel is preserved"
     );
+}
+
+#[test]
+fn active_layer_resolution_targets_only_a_single_top_level_raster() {
+    let mut group = pixel_layer("group", 8, 8, (0, 0, 0));
+    group.is_group = true;
+    group.children = vec![pixel_layer("nested", 8, 8, (0, 0, 0))];
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        pixel_layer("base", 8, 8, (40, 40, 40)),
+        group,
+        adjustment_layer("invert", None).expect("known kind"),
+    ];
+
+    assert_eq!(
+        active_pixel_layer(&doc, Some("0"))
+            .expect("chosen layer")
+            .name,
+        "base"
+    );
+    assert!(
+        active_pixel_layer(&doc, Some("1")).is_none(),
+        "a group has no target"
+    );
+    assert!(
+        active_pixel_layer(&doc, Some("2")).is_none(),
+        "an adjustment has no target"
+    );
+    assert!(
+        active_pixel_layer(&doc, Some("0/0")).is_none(),
+        "a nested path has no target"
+    );
+    assert!(
+        active_pixel_layer(&doc, Some("")).is_none(),
+        "an empty (multi) selection has no target"
+    );
+    assert!(
+        active_pixel_layer(&doc, None).is_none(),
+        "no active path has no target"
+    );
+    assert!(
+        active_pixel_layer(&doc, Some("9")).is_none(),
+        "an out-of-range path has no target"
+    );
+
+    active_pixel_layer_mut(&mut doc, Some("0"))
+        .expect("mutable target")
+        .name = "renamed".to_string();
+    assert_eq!(doc.layers[0].name, "renamed");
+    assert_eq!(doc.layers[1].name, "group", "other layers are untouched");
 }

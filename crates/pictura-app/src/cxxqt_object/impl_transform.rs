@@ -335,7 +335,13 @@ impl qobject::PictureView {
     /// A second begin on the same active path is a no-op; a begin on a different
     /// path first cancels the active session.
     pub fn begin_free_transform(mut self: Pin<&mut Self>, path: &QString) -> bool {
-        let path = path.to_string();
+        let mut path = path.to_string();
+        if path.is_empty() {
+            let Some(active) = self.rust().active_layer.clone() else {
+                return false;
+            };
+            path = active;
+        }
         {
             let rust = self.rust();
             if let Some(session) = rust.transform_session.as_ref() {
@@ -650,12 +656,15 @@ impl qobject::PictureView {
 
 impl qobject::PictureView {
     pub fn translate_layer(mut self: Pin<&mut Self>, dx: i32, dy: i32) -> bool {
+        let Some(index) = self.as_ref().move_cache_target() else {
+            return false;
+        };
         let moved = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
-            pictura_render::translate_layer(doc, dx, dy)
+            pictura_render::translate_layer_index(doc, index as usize, dx, dy)
         };
         if moved {
             self.as_mut().recomposite();
@@ -668,12 +677,15 @@ impl qobject::PictureView {
         if dx == 0 && dy == 0 {
             return false;
         }
+        let Some(index) = self.as_ref().move_cache_target() else {
+            return false;
+        };
         let moved = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
-            pictura_render::translate_layer(doc, dx, dy)
+            pictura_render::translate_layer_index(doc, index as usize, dx, dy)
         };
         if moved {
             let gpu_compute = self.rust().gpu_compute;
@@ -752,10 +764,14 @@ impl qobject::PictureView {
         self.rust().move_preview_cache_hit
     }
 
-    /// The current topmost pixel layer index, or `None` without a document or
-    /// raster layer.
+    /// The active top-level pixel layer index, or `None` without a document or
+    /// a single active raster layer.
     fn move_cache_target(&self) -> Option<i32> {
-        Some(topmost_pixel_layer_index(self.rust().doc.as_ref()?)? as i32)
+        let rust = self.rust();
+        let doc = rust.doc.as_ref()?;
+        let path = rust.active_layer.as_deref()?;
+        active_pixel_layer(doc, Some(path))?;
+        path.parse::<usize>().ok().map(|index| index as i32)
     }
 
     fn move_cache_valid(&self, index: i32) -> bool {
@@ -848,13 +864,16 @@ impl qobject::PictureView {
         if dx == 0 && dy == 0 {
             return false;
         }
+        let Some(index) = self.as_ref().move_cache_target() else {
+            return false;
+        };
         let before = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
                 return false;
             };
-            match topmost_pixel_layer_rect(doc) {
-                Some(rect) => rect,
+            match doc.layers.get(index as usize) {
+                Some(layer) => layer.rect,
                 None => return false,
             }
         };
@@ -863,17 +882,19 @@ impl qobject::PictureView {
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
-            pictura_render::translate_layer_rect(doc, dx, dy)
+            pictura_render::translate_layer_index(doc, index as usize, dx, dy)
         };
         if !moved {
             return false;
         }
         let dirty = {
             let rust = self.rust();
-            let Some(doc) = rust.doc.as_ref() else {
-                return false;
-            };
-            union_rect(before, topmost_pixel_layer_rect(doc).unwrap_or(before))
+            let after = rust
+                .doc
+                .as_ref()
+                .and_then(|doc| doc.layers.get(index as usize))
+                .map_or(before, |layer| layer.rect);
+            union_rect(before, after)
         };
         self.as_mut().refresh_region(dirty);
         self.as_mut().record_move("Move Layer");

@@ -813,7 +813,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
             // M18: move the topmost (blue) layer over the red quadrant.
             frame.openPath(psdPath);
-            pictura::PictureView* moveView = frame.activeView();
+            pictura::PictureView* moveView = frame.activeView(); if (moveView) moveView->set_active_layer(QString::number(moveView->topmost_pixel_layer_index()));
             const bool moved = moveView && moveView->translate_layer(-4, -4);
             const QImage moveImg = moveView ? moveView->image() : QImage();
             const QRgb movePx = moveImg.isNull() ? 0 : moveImg.pixel(2, 2);

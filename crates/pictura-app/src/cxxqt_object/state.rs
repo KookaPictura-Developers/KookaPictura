@@ -37,6 +37,9 @@ pub struct PictureViewRust {
     pub(super) selection_move_origin: Option<Selection>,
     pub(super) history: History,
     pub(super) path: Option<String>,
+    /// Panel path of the single active layer, or `None` when the selection is
+    /// empty or multiple. The shared resolver turns this into the edit target.
+    pub(super) active_layer: Option<String>,
     pub(super) dirty: bool,
     pub(super) interop: Option<crate::gpu::InteropState>,
     pub(super) pending_lasso: Vec<(i32, i32)>,
@@ -70,6 +73,7 @@ impl Default for PictureViewRust {
             selection_move_origin: None,
             history: History::default(),
             path: None,
+            active_layer: None,
             dirty: false,
             interop: None,
             pending_lasso: Vec::new(),

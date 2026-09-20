@@ -3,7 +3,7 @@
 //! Contract: `docs/dev/m6c-filter-integration.md`. The filter runs on channels
 //! `0,1,2` only; the transparency channel (`-1`) is never touched.
 
-use pictura_core::{layer_pixel_locked, Layer, LayerMask, PixelBuffer};
+use pictura_core::{layer_pixel_locked, layer_transparency_locked, Layer, LayerMask, PixelBuffer};
 use pictura_filters::{Filter, FilterError};
 
 use crate::channel;
@@ -50,6 +50,14 @@ pub fn apply_filter(
     let orig = buf.clone();
     crate::gpu_filter::apply_filter_active(filter, &mut buf, gpu_enabled)?;
 
+    // A transparency lock preserves the alpha plane exactly and leaves fully
+    // transparent pixels untouched; only opaque pixels take the filter color.
+    let alpha = if layer_transparency_locked(layer) {
+        channel(layer, -1).map(|d| d.to_vec())
+    } else {
+        None
+    };
+
     let (left, top) = (layer.rect.left, layer.rect.top);
     for c in 0..3i16 {
         let plane = c as usize * n;
@@ -58,11 +66,14 @@ pub fn apply_filter(
         let out = channel_mut(layer, c).expect("channel presence validated above");
         for ly in 0..lh {
             for lx in 0..lw {
+                let i = ly * lw + lx;
+                if alpha.as_ref().is_some_and(|a| a[i] == 0) {
+                    continue;
+                }
                 let cov = coverage(mask, left + lx as i32, top + ly as i32);
                 if cov == 0 {
                     continue;
                 }
-                let i = ly * lw + lx;
                 let o = orig_plane[i] as f64;
                 let f = filtered_plane[i] as f64;
                 out[i] = (o + (f - o) * cov as f64 / 255.0).round().clamp(0.0, 255.0) as u8;
@@ -309,6 +320,48 @@ mod tests {
         .unwrap_err();
         assert!(matches!(err, FilterError::Locked), "{err:?}");
         assert_eq!(layer, before, "refusal leaves every channel bit-identical");
+    }
+
+    #[test]
+    fn transparency_lock_keeps_alpha_and_skips_clear_pixels() {
+        let (w, h) = (4usize, 4usize);
+        let mut layer = step_layer(w as i32, h as i32, 255);
+        for c in &mut layer.channels {
+            if c.id == -1 {
+                c.data[w + 1] = 0;
+                c.data[w + 2] = 180;
+            }
+        }
+        layer.lock = LockFlags::default().with(LockFlags::TRANSPARENCY, true);
+        let alpha_before = chan(&layer, -1).to_vec();
+        let before = chan(&layer, 0).to_vec();
+
+        apply_filter(
+            &mut layer,
+            &Filter::GaussianBlur { radius: 2.0 },
+            None,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            chan(&layer, -1),
+            alpha_before.as_slice(),
+            "alpha is bit-identical"
+        );
+        assert_eq!(
+            chan(&layer, 0)[w + 1],
+            before[w + 1],
+            "a fully transparent pixel is untouched"
+        );
+        assert_eq!(chan(&layer, -1)[w + 2], 180);
+        assert!(
+            chan(&layer, 0)
+                .iter()
+                .enumerate()
+                .any(|(i, v)| { alpha_before[i] > 0 && *v != before[i] }),
+            "an opaque pixel still takes the filter"
+        );
     }
 
     #[test]

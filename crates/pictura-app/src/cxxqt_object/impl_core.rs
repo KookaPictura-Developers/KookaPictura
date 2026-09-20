@@ -46,6 +46,10 @@ impl qobject::PictureView {
         view.image = image;
         view.doc = loaded;
         view.reset_edit_state();
+        view.active_layer = view
+            .doc
+            .as_ref()
+            .and_then(|doc| topmost_pixel_layer_index(doc).map(|i| i.to_string()));
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -83,6 +87,7 @@ impl qobject::PictureView {
         view.image = image;
         view.doc = Some(doc);
         view.reset_edit_state();
+        view.active_layer = Some("0".to_string());
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -121,6 +126,7 @@ impl qobject::PictureView {
         view.image = image;
         view.doc = Some(doc);
         view.reset_edit_state();
+        view.active_layer = Some("0".to_string());
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -201,6 +207,7 @@ impl qobject::PictureView {
         view.image = image;
         view.doc = Some(doc);
         view.reset_edit_state();
+        view.active_layer = Some("0".to_string());
         let initial = view.doc.as_ref().map(|doc| Snapshot {
             doc: doc.clone(),
             selection: None,
@@ -405,6 +412,22 @@ impl qobject::PictureView {
         self.rust().interop.as_ref().map_or(0, |s| s.height)
     }
 
+    /// Record the panel's selection as the active layer. An empty `path` means
+    /// no single selection, disabling tool edits until one layer is selected.
+    pub fn set_active_layer(mut self: Pin<&mut Self>, path: &QString) {
+        let path = path.to_string();
+        self.as_mut().rust_mut().active_layer = (!path.is_empty()).then_some(path);
+    }
+
+    /// The panel path of the active layer, or empty when none is active.
+    pub fn active_layer_path(&self) -> QString {
+        self.rust()
+            .active_layer
+            .as_deref()
+            .map(QString::from)
+            .unwrap_or_default()
+    }
+
     pub fn set_gpu_compute(mut self: Pin<&mut Self>, enabled: bool) {
         self.as_mut().rust_mut().gpu_compute = enabled;
         self.as_mut().recomposite();
@@ -438,6 +461,7 @@ impl super::PictureViewRust {
         self.history = History::default();
         self.stroke = None;
         self.stroke_label.clear();
+        self.active_layer = None;
         self.move_base = None;
         self.move_layer = None;
         self.move_x = 0;
