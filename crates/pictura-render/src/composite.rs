@@ -92,17 +92,20 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             composite_layer(&mut inner, child, doc);
         }
         composite_canvas(canvas, layer, &inner);
-    } else if let Some(data) = &layer.adjustment {
-        // An adjustment layer owns no pixels: it transforms the backdrop it is
-        // composited over. Unknown/undecodable keys are a no-op (preserved on
-        // save, not applied), never an error.
-        if let Some(adjustment) = decode_adjustment(data) {
-            composite_adjustment(canvas, layer, doc, &adjustment);
-        }
-    } else {
-        if !composite_smart_source(canvas, layer, layer.smart_object.as_ref()) {
-            composite_pixels(canvas, layer, doc);
-        }
+    } else if let Some(adjustment) = crate::fill::decode_layer_fill(layer) {
+        composite_adjustment(canvas, layer, doc, &adjustment);
+    } else if layer.adjustment.is_none()
+        && !composite_smart_source(canvas, layer, layer.smart_object.as_ref())
+    {
+        // A layer with no decoded fill but an adjustment block is a no-op here
+        // (the guard above). With no adjustment block a channel-less layer (for
+        // example a shape whose `vscg` did not decode) falls through to
+        // `composite_pixels`, which paints an opaque black rect over the layer
+        // rect: the "vscg does not change the backdrop" guarantee is relative to
+        // the bare channel-less layer. ponytail: pre-existing channel-less
+        // behavior, left as is; gate it when a fill-less shape layer needs to be
+        // truly transparent.
+        composite_pixels(canvas, layer, doc);
     }
     // The above-content effect (inner shadow) renders over the layer's content.
     crate::layer_effects::composite_layer_effects_above(canvas, layer, doc);
@@ -371,7 +374,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
 /// values on the `0..=255` scale; each is rounded and clamped, and alpha is
 /// forced to 255 (the descriptor has none). Missing key, wrong type,
 /// non-finite value, or a parse error is `None`, never a panic.
-fn decode_solid_fill(d: &[u8]) -> Option<Adjustment> {
+pub(crate) fn decode_solid_fill(d: &[u8]) -> Option<Adjustment> {
     let obj = pictura_codec::read_descriptor(d).ok()?;
     let clr = desc_item(&obj, b"Clr ")?;
     if !matches!(clr, DescValue::Object { .. }) {

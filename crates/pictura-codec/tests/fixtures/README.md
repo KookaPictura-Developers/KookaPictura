@@ -45,6 +45,7 @@ not hand-edit these files.
 | `satin.psd` | RGB | 8x8 | `Base` pixel layer + `Satin` layer carrying an `lfx2` `ChFX` satin |
 | `bevel.psd` | RGB | 8x8 | `Base` pixel layer + `Beveled` layer carrying an `lfx2` `ebbl` bevel & emboss |
 | `legacy_effects.psd` | RGB | 8x8 | `Base` pixel layer + `Legacy` layer carrying a legacy `lrFX` `EffectsLayer` (`cmnS` + `dsdw` + `oglw`) |
+| `vector_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Shape` shape layer with a `vscg` `SoCo` solid fill clipped by a closed `(1,1)-(5,5)` `vmsk` |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer

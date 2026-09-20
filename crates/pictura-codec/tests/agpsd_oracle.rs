@@ -321,3 +321,57 @@ fn ag_psd_reads_vector_mask_fixture() {
         "normal rectangle: {stdout}"
     );
 }
+
+const VECTOR_FILL_SCRIPT: &str = r#"
+const fs = require('fs');
+const ag = require('ag-psd');
+const psd = ag.readPsd(fs.readFileSync(process.argv[1]), {
+  skipLayerImageData: true,
+  skipCompositeImageData: true,
+});
+const lines = [];
+(function walk(layers) {
+  for (const layer of layers || []) {
+    const vf = layer.vectorFill;
+    if (vf && vf.type === 'color') {
+      lines.push([layer.name, vf.color.r, vf.color.g, vf.color.b].join('|'));
+    }
+    walk(layer.children);
+  }
+})(psd.children);
+console.log(lines.join('\n'));
+"#;
+
+#[test]
+fn ag_psd_reads_vector_fill_fixture() {
+    if !node_ag_psd_available() {
+        eprintln!(
+            "skipping ag-psd check: node + ag-psd not available (run `npm i ag-psd`, or set NODE_PATH)"
+        );
+        return;
+    }
+
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vector_fill.psd");
+    let out = Command::new("node")
+        .args([
+            "-e",
+            VECTOR_FILL_SCRIPT,
+            fixture.to_str().expect("utf-8 fixture path"),
+        ])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("run node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "ag-psd read failed:\n{stdout}\n{stderr}"
+    );
+
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(lines.len(), 1, "one vector-fill layer:\n{stdout}");
+    assert_eq!(
+        lines[0], "Shape|255|0|0",
+        "solid color vector fill: {stdout}"
+    );
+}

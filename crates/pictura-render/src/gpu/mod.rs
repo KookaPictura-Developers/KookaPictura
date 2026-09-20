@@ -336,6 +336,11 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
                 return Err(GpuError::UnsupportedAdjustment);
             }
         }
+        // A channel-less vector fill has no GPU shader, exactly like a fill
+        // adjustment layer; the CPU composites it.
+        if layer.extra_block(b"vscg").is_some() {
+            return Err(GpuError::UnsupportedAdjustment);
+        }
         if matches!(layer.blend, BlendMode::Dissolve) {
             return Err(GpuError::UnsupportedMode(layer.blend));
         }
