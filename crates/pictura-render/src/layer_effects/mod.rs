@@ -49,6 +49,14 @@
 //! anti-alias (`AntA`) and `overprint` are ignored; the colour defaults to
 //! black rather than the docs' "foreground `(inferred)`"; and Photoshop's exact
 //! inter-effect order among the above-content effects is not modelled.
+//!
+//! The overlays (`SoFi` Color, `GrFl` Gradient, `patternFill` Pattern) also
+//! composite **above** the content: they fill the masked content coverage `M`
+//! with a source (a flat colour, the gradient geometry or the document pattern)
+//! at alpha `M · source_alpha · opacity/100`. ponytail: the effect object class
+//! ids are `SoFi`/`GrFl`/`patternFill`, not the `SoCo`/`PtFl` fill-layer ids;
+//! gradient `Ofst`, noise and `Dither` are not modelled; pattern `Angl` rotation
+//! is decoded but not applied; the unaligned gradient buffer is canvas-sized.
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
@@ -57,10 +65,15 @@ use pictura_core::{Document, Layer, PixelBuffer};
 use crate::composite::{channel, Canvas};
 
 mod glows;
+mod overlays;
 mod shadows;
 mod strokes;
 
 pub use glows::{decode_inner_glow, decode_outer_glow, GlowSource, InnerGlow, OuterGlow};
+pub use overlays::{
+    decode_color_overlay, decode_gradient_overlay, decode_pattern_overlay, ColorOverlay,
+    GradientOverlay, PatternOverlay,
+};
 pub use shadows::{decode_drop_shadow, decode_inner_shadow, DropShadow, InnerShadow};
 pub use strokes::{decode_stroke, Stroke, StrokePosition};
 
@@ -171,6 +184,21 @@ pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, 
     if let Some(glow) = decode_inner_glow(layer) {
         if glow.enabled && glow.present {
             glows::composite_inner_glow(canvas, layer, doc, &glow);
+        }
+    }
+    if let Some(overlay) = decode_color_overlay(layer) {
+        if overlay.enabled && overlay.present {
+            overlays::composite_color_overlay(canvas, layer, doc, &overlay);
+        }
+    }
+    if let Some(overlay) = decode_gradient_overlay(layer) {
+        if overlay.enabled && overlay.present {
+            overlays::composite_gradient_overlay(canvas, layer, doc, &overlay);
+        }
+    }
+    if let Some(overlay) = decode_pattern_overlay(layer) {
+        if overlay.enabled && overlay.present {
+            overlays::composite_pattern_overlay(canvas, layer, doc, &overlay);
         }
     }
     if let Some(stroke) = decode_stroke(layer) {

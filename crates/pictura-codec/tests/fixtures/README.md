@@ -35,6 +35,9 @@ not hand-edit these files.
 | `inner_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Inner` layer carrying an `lfx2` `IrSh` inner shadow |
 | `inner_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glow` layer carrying an `lfx2` `IrGl` inner glow |
 | `stroke.psd` | RGB | 8x8 | `Base` pixel layer + `Stroked` layer carrying an `lfx2` `FrFX` solid-colour stroke |
+| `color_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Colored` layer carrying an `lfx2` `SoFi` color overlay |
+| `gradient_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient` layer carrying an `lfx2` `GrFl` gradient overlay |
+| `pattern_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Patterned` layer carrying an `lfx2` `patternFill` pattern overlay referencing the 2x2 `Patt` pattern |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -392,6 +395,83 @@ layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
     key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
     data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"FrFX": frfx},
                           classID=Klass.Null))
+```
+
+
+`color_overlay.psd`, `gradient_overlay.psd` and `pattern_overlay.psd` are
+authored by the `color_overlay()`, `gradient_overlay()` and `pattern_overlay()`
+builders. Each is the same `Base` pixel layer plus a pixel layer whose `lfx2`
+`DescriptorBlock2` carries one effect object. The effect object class ids are
+`SoFi`, `GrFl` and `patternFill` -- the **effect** ids, not the `SoCo`/`PtFl`
+**fill-layer** ids used by the fill descriptors above.
+
+```python
+from psd_tools.psd.descriptor import (
+    Bool, Descriptor, DescriptorBlock2, Double, Enumerated, List, String, UnitFloat,
+)
+from psd_tools.terminology import Enum, Key, Klass, Type, Unit
+
+# color_overlay(): object classID=b"SoFi", keys Md  /K.Color, Opct.
+sofi = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Color: Descriptor(
+        {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
+        classID=b"RGBC"),
+    Key.Opacity: UnitFloat(75.0, Unit.Percent),
+}, classID=b"SoFi")
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"SoFi": sofi},
+                          classID=Klass.Null))
+
+# gradient_overlay(): object classID=b"GrFl", keys Md  , Opct, Grad,
+# Angl, Type (GrdT), Rvrs, Algn, Scl (the GdFl keys, note the object id).
+grfl = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Opacity: UnitFloat(80.0, Unit.Percent),
+    Key.Gradient: Descriptor({
+        Key.Name: String("Black to White"),
+        Type.GradientForm: Enumerated(Type.GradientForm, Enum.CustomStops),
+        b"Intr": Enumerated(Type.Interpolation, b"Lnr "),
+        Key.Colors: List([stop(0, (0, 0, 0)), stop(4096, (255, 255, 255))]),
+    }, classID=b"Grdn"),
+    Key.Angle: Double(45.0),
+    Key.Type: Enumerated(Type.GradientType, Enum.Linear),
+    Key.Reverse: Bool(True),
+    Key.Alignment: Bool(False),
+    Key.Scale: UnitFloat(150.0, Unit.Percent),
+    Key.Offset: Descriptor({b"Hrzn": Double(0.0), b"Vrtc": Double(0.0)},
+                           classID=b"Pnt "),
+    Key.Dither: Bool(False),
+}, classID=b"GrFl")
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"GrFl": grfl},
+                          classID=Klass.Null))
+
+# pattern_overlay(): object classID=b"patternFill", keys Ptrn {Nm  , Idnt},
+# Scl , Algn, Angl; the 2x2 pattern is written to the global Patt block.
+pf = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"scrn"),
+    Key.Opacity: UnitFloat(80.0, Unit.Percent),
+    b"Ptrn": Descriptor({b"Nm  ": String("Pictura\x00"),
+                         b"Idnt": String("pictura-pattern\x00")}, classID=b"Ptrn"),
+    Key.Scale: UnitFloat(50.0, Unit.Percent),
+    Key.Alignment: Bool(True),
+    Key.Angle: Double(30.0),
+}, classID=b"patternFill")
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"patternFill": pf},
+                          classID=Klass.Null))
+psd._record.layer_and_mask_information.tagged_blocks = TaggedBlocks()
+psd.tagged_blocks.set_data(Tag.PATTERNS1, [pattern])
 ```
 
 

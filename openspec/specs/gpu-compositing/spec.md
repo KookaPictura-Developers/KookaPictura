@@ -322,9 +322,11 @@ A visible layer carrying a decodable object-based layer effect SHALL make
 layer to the GPU, without panicking. A layer counts as effect-bearing when its
 `lfx2` block decodes to an enabled and present `DropShadow`, an enabled and
 present `OuterGlow`, an enabled and present `InnerShadow`, an enabled and present
-`InnerGlow`, or an enabled and present solid-colour `Stroke`; a disabled, absent,
-or malformed effect, and a stroke whose fill type is not solid, SHALL NOT reject
-the document.
+`InnerGlow`, an enabled and present solid-colour `Stroke`, an enabled and present
+`ColorOverlay`, an enabled and present `GradientOverlay`, or an enabled and
+present `PatternOverlay`; a disabled, absent, or malformed effect, a stroke whose
+fill type is not solid, and an overlay whose pattern or gradient payload cannot
+be decoded SHALL NOT reject the document.
 `composite_active` and `composite_gpu_or_cpu` SHALL fall back to the CPU
 composite for a document with such a layer, and the fallback output SHALL be
 byte-identical to `composite_rgba` of the same document.
@@ -354,13 +356,18 @@ byte-identical to `composite_rgba` of the same document.
 - **WHEN** `composite_gpu` is called on a document whose visible layer carries an enabled and present solid-colour stroke
 - **THEN** it returns `Err(GpuError::UnsupportedLayerEffect)` and does not panic
 
+#### Scenario: An overlay layer is rejected before dispatch
+
+- **WHEN** `composite_gpu` is called on a document whose visible layer carries an enabled and present color overlay, gradient overlay, or pattern overlay
+- **THEN** it returns `Err(GpuError::UnsupportedLayerEffect)` and does not panic
+
 #### Scenario: The effect document falls back to the CPU composite
 
-- **WHEN** `composite_gpu_or_cpu` is called on a document whose visible layer carries an enabled and present drop shadow, outer glow, inner shadow, inner glow, or stroke
+- **WHEN** `composite_gpu_or_cpu` is called on a document whose visible layer carries an enabled and present drop shadow, outer glow, inner shadow, inner glow, stroke, color overlay, gradient overlay, or pattern overlay
 - **THEN** it returns the same buffer as `composite_rgba` for that document
 
-#### Scenario: A disabled effect does not reject the GPU
+#### Scenario: A disabled or undecodable effect does not reject the GPU
 
-- **WHEN** `composite_gpu` is called on a document whose only effect is disabled
-- **THEN** the disabled effect does not by itself produce `UnsupportedLayerEffect`
+- **WHEN** `composite_gpu` is called on a document whose only effect is disabled, or whose overlay pattern/gradient payload cannot be decoded
+- **THEN** the effect does not by itself produce `UnsupportedLayerEffect`
 

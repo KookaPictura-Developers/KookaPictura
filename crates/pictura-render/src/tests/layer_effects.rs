@@ -58,6 +58,40 @@ fn lfx2(top: DescValue) -> LayerBlock {
     lfx2_with(top, 16)
 }
 
+/// A descriptor object with `class_id` and `items`.
+fn object(class_id: &[u8], items: Vec<(Vec<u8>, DescValue)>) -> DescValue {
+    DescValue::Object {
+        name: String::new(),
+        class_id: class_id.to_vec(),
+        items,
+    }
+}
+
+/// The `lfx2` top-level descriptor carrying `masterFXSwitch` and one effect
+/// object under `key`.
+fn effect_top(key: &[u8], effect: DescValue) -> DescValue {
+    object(
+        b"null",
+        vec![
+            (b"masterFXSwitch".to_vec(), DescValue::Bool(true)),
+            (key.to_vec(), effect),
+        ],
+    )
+}
+
+/// An `lfx2` block whose top-level object carries one effect under `key`.
+fn lfx2_effect(key: &[u8], effect: DescValue) -> LayerBlock {
+    lfx2(effect_top(key, effect))
+}
+
+/// A `Md  ` blend-mode enum.
+fn blenm(value: &[u8]) -> DescValue {
+    DescValue::Enum {
+        kind: b"BlnM".to_vec(),
+        value: value.to_vec(),
+    }
+}
+
 /// A shadowed 3x3 pixel layer at `(3, 3)` on a 9x9 canvas.
 fn shadow_layer(block: Option<LayerBlock>) -> Layer {
     let mut layer = solid(
@@ -105,6 +139,27 @@ fn with_mask(mut layer: Layer, value: u8) -> Layer {
     layer.mask = Some(LayerMask {
         rect: r,
         data: Some(vec![value; n]),
+        ..Default::default()
+    });
+    layer
+}
+
+/// A mask zero on the left half of the layer rect and 255 on the right half.
+fn half_mask(mut layer: Layer) -> Layer {
+    let r = layer.rect;
+    let w = r.width().max(0) as usize;
+    let h = r.height().max(0) as usize;
+    let mut data = vec![0u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            if x * 2 >= w {
+                data[y * w + x] = 255;
+            }
+        }
+    }
+    layer.mask = Some(LayerMask {
+        rect: r,
+        data: Some(data),
         ..Default::default()
     });
     layer
@@ -843,3 +898,9 @@ mod inner_shadow;
 mod inner_glow;
 
 mod stroke;
+
+mod color_overlay;
+
+mod gradient_overlay;
+
+mod pattern_overlay;
