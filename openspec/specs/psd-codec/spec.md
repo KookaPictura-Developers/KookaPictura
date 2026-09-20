@@ -19,19 +19,25 @@ version 2 (PSB) and SHALL reject any other version with `PsdError::Unsupported`.
 ### Requirement: Header validation for the composite subset
 The system SHALL parse the channel count, height, width, bit depth, and color
 mode, and SHALL accept 1–56 channels, non-zero dimensions within the PSD/PSB
-dimension limit, bit depth 8 (or bit depth 1 only for Bitmap mode), and color
-mode Bitmap (0), Grayscale (1), Indexed (2), RGB (3), CMYK (4), or Lab (9). It
-SHALL return `PsdError::Unsupported` for Multichannel (7), Duotone (8), any
-other color-mode code, and any bit depth other than 8 (other than depth 1 for
-Bitmap); it SHALL return `PsdError::Invalid` for a channel count or dimension
-outside the accepted range.
+dimension limit, color modes Bitmap (0), Grayscale (1), Indexed (2), RGB (3),
+CMYK (4), or Lab (9), and bit depth 8 for every accepted mode, bit depth 1 for
+Bitmap only, and bit depths 16 and 32 for the Grayscale, RGB, CMYK, and Lab
+modes (see `psd-bit-depth`). It SHALL return `PsdError::Unsupported` for
+Multichannel (7), Duotone (8), any other color-mode code, any bit depth other
+than 1, 8, 16, or 32, and bit depth 16 or 32 for a Bitmap or Indexed document;
+it SHALL return `PsdError::Invalid` for a channel count or dimension outside
+the accepted range.
 
 #### Scenario: Zero dimension
 - **WHEN** the header declares a width or height of zero
 - **THEN** it returns `PsdError::Invalid`
 
-#### Scenario: Depth other than 8-bit
-- **WHEN** the header declares a bit depth other than 8 for a mode other than Bitmap, or a bit depth other than 1 for Bitmap
+#### Scenario: Depth 16 and 32 are accepted
+- **WHEN** the header declares bit depth 16 or 32 for Grayscale, RGB, CMYK, or Lab
+- **THEN** the header is accepted and the samples are read and narrowed to 8-bit
+
+#### Scenario: Unsupported depth
+- **WHEN** the header declares a bit depth other than 1, 8, 16, or 32, or bit depth 16/32 for a Bitmap or Indexed document
 - **THEN** it returns `PsdError::Unsupported`
 
 #### Scenario: Bitmap depth 1 is accepted
@@ -59,11 +65,14 @@ palette (see `psd-color-modes`) and SHALL NOT be retained on the normalized
 document. It SHALL read the image-data section and decode the composite color
 planes for compression `0` (raw), `1` (PackBits RLE), `2` (ZIP), and `3`
 (ZIP-with-prediction), returning `PsdError::Unsupported` for any other
-compression method. ZIP is a zlib-framed deflate stream (a raw-deflate stream
-SHALL also be accepted); ZIP-with-prediction additionally SHALL invert the
-byte-wise per-scanline delta after inflating. For a depth-1 Bitmap document the
-raw and RLE row stride SHALL be `ceil(width / 8)` bytes per row and ZIP
-compression SHALL be `PsdError::Unsupported`. A malformed deflate stream SHALL
+compression method. Each channel's row byte stride SHALL be
+`ceil(width * depth / 8)`, so a depth-1 Bitmap row is `ceil(width / 8)` bytes
+and a depth-16 or depth-32 row is `2 * width` or `4 * width` bytes. ZIP is a
+zlib-framed deflate stream (a raw-deflate stream SHALL also be accepted);
+ZIP-with-prediction SHALL invert the per-scanline delta after inflating,
+byte-wise at depth 8, per-big-endian-`u16` at depth 16, and through the
+four-byte-plane shuffle at depth 32 (see `psd-bit-depth`). ZIP compression at
+depth 1 SHALL be `PsdError::Unsupported`. A malformed deflate stream SHALL
 return a typed error, never a panic.
 
 #### Scenario: Read a raw RGB composite
@@ -81,6 +90,14 @@ return a typed error, never a panic.
 #### Scenario: Read a ZIP-with-prediction composite
 - **WHEN** the image-data section uses compression 3
 - **THEN** `read_psd` inflates the stream and inverts the byte-wise per-row delta to recover the planes
+
+#### Scenario: Read a depth-16 composite
+- **WHEN** a depth-16 image-data section stores a raw or RLE composite
+- **THEN** each row is decoded at a `2 * width` stride and the big-endian `u16` samples are narrowed to 8-bit
+
+#### Scenario: Read a depth-32 ZIP-with-prediction composite
+- **WHEN** a depth-32 image-data section uses compression 3
+- **THEN** the stream is inflated, the four-byte-plane shuffle and the byte-wise delta are undone, and each big-endian `f32` sample is narrowed to 8-bit
 
 #### Scenario: Read a depth-1 Bitmap RLE composite
 - **WHEN** a depth-1 Bitmap document stores compression 1

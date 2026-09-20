@@ -35,6 +35,25 @@ pub(crate) fn gray_to_rgb(gray: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Narrow a big-endian depth-16 sample to 8-bit by its high byte.
+///
+/// ponytail: this is psd-tools' `I;16B` scaling convention (`v >> 8`), not
+/// verified as Photoshop's own 16→8 mode conversion (which rounds), so a
+/// <=1-per-channel difference from Photoshop is accepted and no parity claimed.
+pub(crate) fn narrow_u16_to_8(v: u16) -> u8 {
+    (v >> 8) as u8
+}
+
+/// Narrow a big-endian depth-32 `f32` sample to 8-bit, display-referred.
+///
+/// ponytail: a raw narrowing, not Photoshop's 32-bit HDR display. Values at or
+/// above 1.0 clip to white, at or below 0.0 to black, and no sRGB transfer is
+/// applied; true HDR tone mapping needs the deferred 16/32-bit sample model.
+/// Matches psd-tools' `F;32BF` scaling (`clamp(trunc(f * 256))`).
+pub(crate) fn narrow_f32_to_8(f: f32) -> u8 {
+    (f * 256.0).trunc().clamp(0.0, 255.0) as u8
+}
+
 /// Expand a single index plane through a 768-byte palette laid out as 256 red,
 /// then 256 green, then 256 blue bytes.
 pub(crate) fn indexed_to_rgb(indices: &[u8], palette: &[u8; 768]) -> Vec<u8> {

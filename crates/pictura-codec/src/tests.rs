@@ -1096,4 +1096,6 @@ fn truncated_preserved_blocks_error() {
 
 mod color_modes;
 
+mod depth;
+
 mod psb;

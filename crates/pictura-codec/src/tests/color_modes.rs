@@ -7,7 +7,7 @@ use super::*;
 
 /// A flat (no-layer) document with an explicit `color_mode_data` section and a
 /// raw-compressed composite of `planes`.
-fn flat_psd_with_data(
+pub(super) fn flat_psd_with_data(
     depth: u16,
     mode: u16,
     channels: u16,
@@ -28,7 +28,7 @@ fn flat_psd_with_data(
     p
 }
 
-fn flat_psd(
+pub(super) fn flat_psd(
     depth: u16,
     mode: u16,
     channels: u16,
@@ -50,7 +50,7 @@ fn layered_psd(
 }
 
 /// As [`layered_psd`] at an explicit bit depth (1 for a Bitmap layer channel).
-fn layered_psd_depth(
+pub(super) fn layered_psd_depth(
     depth: u16,
     mode: u16,
     header_channels: u16,
@@ -346,8 +346,9 @@ fn bitmap_depth1_layer_color_channel_expands() {
 
 #[test]
 fn unsupported_depths_and_color_modes_are_rejected() {
-    // 16/32-bit depth and Multichannel (7) / Duotone (8) are typed Unsupported.
-    for (depth, mode) in [(16u16, 3u16), (32, 3), (16, 0), (8, 7), (8, 8)] {
+    // An invalid depth and Multichannel (7) / Duotone (8) are typed Unsupported;
+    // depth 16/32 for Bitmap (0) or Indexed (2) stays rejected too.
+    for (depth, mode) in [(4u16, 3u16), (8, 7), (8, 8), (16, 0), (32, 2)] {
         let p = header_depth(1, 3, 1, 1, depth, mode);
         assert!(
             matches!(read_psd(&p), Err(PsdError::Unsupported(_))),

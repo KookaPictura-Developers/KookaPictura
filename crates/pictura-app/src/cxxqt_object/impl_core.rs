@@ -243,6 +243,18 @@ impl qobject::PictureView {
         QString::from(format!("Converted from {name}"))
     }
 
+    pub fn depth_notice(&self) -> QString {
+        let Some(depth) = self.rust().doc.as_ref().and_then(|d| d.source_depth) else {
+            return QString::default();
+        };
+        let name = match depth {
+            BitDepth::Sixteen => "16-bit",
+            BitDepth::ThirtyTwo => "32-bit",
+            _ => return QString::default(),
+        };
+        QString::from(format!("Converted from {name}"))
+    }
+
     pub fn document_mode(&self) -> QString {
         match self.rust().doc.as_ref().map(|d| d.mode) {
             Some(ColorMode::Grayscale) => QString::from("grayscale"),

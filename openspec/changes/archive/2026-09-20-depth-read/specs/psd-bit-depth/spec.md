@@ -1,0 +1,167 @@
+## ADDED Requirements
+
+### Requirement: Depth 16 and 32 are read and normalized to 8-bit
+
+`read_psd` SHALL accept bit depth 16 and bit depth 32 for the Grayscale, RGB,
+CMYK, and Lab modes, decode their samples big-endian, narrow each sample to
+8-bit, and set the returned document's `depth` to `Eight`. A header bit depth
+other than 1, 8, 16, or 32, and bit depth 16 or 32 for a Bitmap or Indexed
+document, SHALL return `PsdError::Unsupported`. After narrowing, the document
+SHALL be normalized for its color mode exactly as an 8-bit document (see
+`psd-color-modes`).
+
+#### Scenario: A 16-bit RGB document opens as 8-bit RGB
+
+- **WHEN** a depth-16 RGB PSD is read
+- **THEN** `read_psd` returns a document whose `mode` is `Rgb`, whose `depth` is `Eight`, and whose composite is the 8-bit narrowing of the stored `u16` samples
+
+#### Scenario: A 32-bit RGB document opens as 8-bit RGB
+
+- **WHEN** a depth-32 RGB PSD is read
+- **THEN** `read_psd` returns a document whose `mode` is `Rgb`, whose `depth` is `Eight`, and whose composite is the 8-bit narrowing of the stored `f32` samples
+
+#### Scenario: A 16-bit CMYK document is narrowed then converted
+
+- **WHEN** a depth-16 CMYK PSD is read
+- **THEN** the samples are narrowed to 8-bit and the document is normalized to RGB by the profile-free CMYK conversion
+
+#### Scenario: Bitmap and Indexed remain depth 1 and 8
+
+- **WHEN** a Bitmap document declares depth 16/32, or an Indexed document declares depth 16/32
+- **THEN** `read_psd` returns `PsdError::Unsupported` and does not panic
+
+### Requirement: Depth-16 samples are big-endian u16 with a two-byte row stride
+
+For a depth-16 document each sample SHALL be an unsigned big-endian 16-bit
+integer and each channel row SHALL occupy `2 * width` bytes. A depth-16
+scanline's RLE byte count SHALL count its compressed bytes and its decode SHALL
+write exactly `2 * width` bytes. ZIP-with-prediction at depth 16 SHALL be
+inverted as a per-row running sum of big-endian `u16` values, `v[x] = (v[x] +
+v[x-1]) mod 2^16`. Each 16-bit sample SHALL narrow to 8-bit as `sample >> 8`.
+
+#### Scenario: A 16-bit sample narrows by its high byte
+
+- **WHEN** a 16-bit sample stores `0`, `255`, `256`, `32768`, or `65535`
+- **THEN** the narrowed 8-bit value is `0`, `0`, `1`, `128`, or `255` respectively
+
+#### Scenario: A 16-bit RLE row decodes at a two-byte stride
+
+- **WHEN** a depth-16 composite uses RLE compression
+- **THEN** each scanline's PackBits decode writes `2 * width` bytes into the row before narrowing
+
+#### Scenario: 16-bit ZIP-with-prediction is a per-u16 running sum
+
+- **WHEN** a depth-16 composite uses ZIP-with-prediction
+- **THEN** after inflating, each `u16` is added to its left neighbour within the row modulo `2^16` before narrowing
+
+### Requirement: Depth-32 samples are big-endian f32 with a four-byte row stride
+
+For a depth-32 document each sample SHALL be a big-endian IEEE-754 `f32` and
+each channel row SHALL occupy `4 * width` bytes. ZIP-with-prediction at depth 32
+SHALL store the four byte planes of each row shuffled together and delta'd
+byte-wise, so the read SHALL invert the byte-wise delta over the row and
+un-shuffle the four planes back into big-endian floats. Each `f32` sample SHALL
+narrow to 8-bit as `clamp(trunc(sample * 256), 0, 255)`. The narrowing SHALL be
+display-referred: a value at or above 1.0 SHALL clip to 255, a value at or below
+0.0 SHALL clip to 0, and no HDR tone mapping or transfer function SHALL be
+applied.
+
+#### Scenario: A 32-bit sample narrows by `sample * 256`, clipped
+
+- **WHEN** a 32-bit sample stores `0.0`, `0.5`, `1.0`, `1.5`, or `-0.5`
+- **THEN** the narrowed 8-bit value is `0`, `128`, `255`, `255`, or `0` respectively
+
+#### Scenario: 32-bit ZIP-with-prediction is un-shuffled then delta-decoded
+
+- **WHEN** a depth-32 composite uses ZIP-with-prediction
+- **THEN** the byte-wise delta is inverted over the `4 * width`-byte row and the four byte planes are un-shuffled back into big-endian floats
+
+### Requirement: Layer channels are narrowed with the document
+
+When a 16- or 32-bit document carries layers, `read_psd` SHALL decode each layer
+channel — its color channels, the `-1` transparency channel, the `-2` mask
+channel, and unmodeled channels — at the document depth and SHALL narrow it to
+an 8-bit plane before assembling the layer, so the layer path agrees with the
+narrowed composite. The layer's color channels SHALL then be converted by the
+document's color-mode normalization.
+
+#### Scenario: A 16-bit layer color channel is narrowed
+
+- **WHEN** a depth-16 document carries a pixel layer whose color channel stores `u16` samples
+- **THEN** the returned layer's color channel holds the 8-bit narrowing of those samples
+
+#### Scenario: A 16-bit mask channel is narrowed
+
+- **WHEN** a depth-16 document carries a `-2` mask channel
+- **THEN** the returned mask plane is the 8-bit narrowing of the stored samples and is not decoded as an 8-bit row
+
+#### Scenario: A 16-bit unmodeled channel is narrowed, not preserved verbatim
+
+- **WHEN** a depth-16 document carries a layer channel the engine does not model (for example a `-3` or positive spot channel)
+- **THEN** the channel is decoded at the document depth and narrowed to an 8-bit plane, and a save re-emits it as an 8-bit stream rather than the original source-depth bytes
+
+### Requirement: A normalized document records its source depth and saves as 8-bit
+
+When `read_psd` normalizes a 16- or 32-bit document it SHALL set
+`Document.source_depth` to `Some(BitDepth::Sixteen)` or
+`Some(BitDepth::ThirtyTwo)` respectively, and SHALL set it to `None` for an
+8-bit document, a depth-1 Bitmap document, and a constructed document.
+`write_psd` SHALL continue to write only the 8-bit working mode, so an
+open-then-save of a 16/32-bit file produces an 8-bit file; this lossy-in-depth
+save SHALL be documented and SHALL NOT be silent to the application.
+
+#### Scenario: Source depth is recorded
+
+- **WHEN** a depth-16 or depth-32 file is read
+- **THEN** the document's `source_depth` is `Some(BitDepth::Sixteen)` or `Some(BitDepth::ThirtyTwo)` and its `depth` is `Eight`
+
+#### Scenario: Native and depth-1 documents record no source depth
+
+- **WHEN** an 8-bit file, a depth-1 Bitmap file, or a constructed document is read
+- **THEN** its `source_depth` is `None`
+
+#### Scenario: Saving writes 8-bit
+
+- **WHEN** a document read from a 16/32-bit file is written and read back
+- **THEN** the output's header bit depth is 8 and the round-tripped document's `source_depth` is `None`
+
+### Requirement: The application reports a normalized bit depth
+
+The application SHALL expose the source bit depth of an opened document and
+SHALL present a conversion notice to the user when a 16/32-bit file is
+normalized, so the user knows the save will be 8-bit.
+
+#### Scenario: Opening a 16-bit file shows a notice
+
+- **WHEN** the application opens a depth-16 PSD
+- **THEN** the view reports that the document was converted from 16-bit and the document's depth is 8-bit
+
+#### Scenario: Opening an 8-bit file shows no depth notice
+
+- **WHEN** the application opens an 8-bit PSD
+- **THEN** no depth-conversion notice is shown
+
+### Requirement: Depth fixtures agree with an independent decoder
+
+The system SHALL commit the fixtures `crates/pictura-codec/tests/fixtures/rgb16.psd`
+and `crates/pictura-codec/tests/fixtures/rgb32.psd`, regenerated byte-stably by
+`scripts/generate-fixtures.py`, and a test SHALL verify that `read_psd`'s
+narrowed composite agrees exactly (0 tolerance) with the independent
+`psd-tools` decoder for both fixtures. The oracle SHALL self-skip with a clear
+message when `psd-tools` is unavailable and SHALL NOT fail the suite in that
+case.
+
+#### Scenario: The 16-bit fixture agrees with psd-tools
+
+- **WHEN** `read_psd` decodes `rgb16.psd` and `psd-tools` decodes the same file
+- **THEN** every narrowed 8-bit pixel is identical
+
+#### Scenario: The 32-bit fixture agrees with psd-tools
+
+- **WHEN** `read_psd` decodes `rgb32.psd` and `psd-tools` decodes the same file
+- **THEN** every narrowed 8-bit pixel is identical
+
+#### Scenario: The oracle self-skips without psd-tools
+
+- **WHEN** the `psd-tools` package is not available
+- **THEN** the oracle reports a skip and the suite passes

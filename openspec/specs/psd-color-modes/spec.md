@@ -11,7 +11,8 @@ planes into the engine's working mode (RGB for Bitmap/Indexed/CMYK/Lab,
 Grayscale unchanged) and SHALL set the returned document's `mode` to `Rgb` or
 `Grayscale` and its `depth` to `Eight`. A header color mode of Multichannel (7)
 or Duotone (8), any other mode code, and any bit depth other than 8 (other than
-depth 1 for Bitmap) SHALL return `PsdError::Unsupported`. A header channel
+depth 1 for Bitmap, and depths 16/32 for the Grayscale/RGB/CMYK/Lab modes read
+per `psd-bit-depth`) SHALL return `PsdError::Unsupported`. A header channel
 count below the mode's color-channel count SHALL return `PsdError::Invalid`.
 
 #### Scenario: An Indexed document opens as RGB with palette colors
@@ -44,10 +45,10 @@ count below the mode's color-channel count SHALL return `PsdError::Invalid`.
 - **WHEN** the header color mode is Multichannel (7) or Duotone (8)
 - **THEN** `read_psd` returns `PsdError::Unsupported` and does not panic
 
-#### Scenario: 16- and 32-bit depth remain unsupported
+#### Scenario: Depth 16 and 32 are normalized with the mode
 
-- **WHEN** the header bit depth is 16 or 32 for any color mode
-- **THEN** `read_psd` returns `PsdError::Unsupported`
+- **WHEN** a 16- or 32-bit CMYK or Lab document is read
+- **THEN** the samples are narrowed to 8-bit and the color planes are converted to the working mode per this requirement and `psd-bit-depth`
 
 ### Requirement: Bitmap mode is read as MSB-first 1-bit rows
 

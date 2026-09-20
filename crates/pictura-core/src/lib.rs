@@ -84,6 +84,12 @@ pub struct Document {
     /// mode was normalized to the working mode on read. `None` for a Grayscale
     /// or RGB file and for a constructed document.
     pub source_mode: Option<ColorMode>,
+    /// The header bit depth of the file this document was read from, when a
+    /// 16/32-bit file was normalized to the 8-bit working model on read. `None`
+    /// for an 8-bit file, a depth-1 Bitmap file (recorded by `source_mode`), and
+    /// a constructed document. Deliberately not re-emitted on save: `write_psd`
+    /// stays 8-bit, so this records the source depth the save does not preserve.
+    pub source_depth: Option<BitDepth>,
     pub composite: PixelBuffer,
     /// True when the file carried a merged composite image-data section. False
     /// when the file ended after the layer section (maximize-compatibility off),
@@ -117,6 +123,7 @@ impl Document {
             mode,
             depth,
             source_mode: None,
+            source_depth: None,
             composite: PixelBuffer::new(width, height, channels),
             merged_composite_present: true,
             is_psb: false,
