@@ -117,7 +117,7 @@ document `Patt`/`Pat2`/`Pat3` pattern library (`pictura-codec::decode_patterns`)
 and compositing as tiled content, and is fill content for rasterize (archived
 `2026-09-19-pattern-fill-layer`). Layer effects (`lfx2`) now decode the
 object-based **Drop Shadow** (`DrSh`), **Outer Glow** (`OrGl`), **Inner Shadow**
-(`IrSh`), **Inner Glow** (`IrGl`), and a solid-colour **Stroke** (`FrFX`),
+(`IrSh`), **Inner Glow** (`IrGl`), and a **Stroke** (`FrFX`),
 compositing the shadows and glows behind the layer content, the inner shadow and
 inner glow above it, and the stroke as a band at the content edge above it, on
 the CPU, with the GPU falling back to CPU (archived
@@ -140,8 +140,10 @@ no-op (archived `2026-09-20-layer-effects-bevel`). The legacy `lrFX` block is
 now decoded into the same typed effect model and rendered through the shipped
 renderers, with a single `lfx2`-over-`lrFX` resolver (archived
 `layer-effects-legacy-lrfx`), so the layer-effects family covers both the
-object-based `lfx2` and the legacy `lrFX` encodings; gradient/pattern stroke
-fills remain deferred. That change also fixed a cross-cutting bug: every `lfx2`
+object-based `lfx2` and the legacy `lrFX` encodings. The **Stroke** (`FrFX`) now
+also fills from a **gradient** (`PntT` `GrFl`, `Grad`) or **pattern** (`PntT`
+`Ptrn`, `Ptrn`) source over the same content-edge band, the last deferred `lfx2`
+stroke piece (archived `2026-09-20-layer-effects-stroke-fills`). That change also fixed a cross-cutting bug: every `lfx2`
 effect blend mode now decodes the `BlnM` descriptor vocabulary instead of the
 layer-key one, and the effect goldens were regenerated.
 Remaining:
