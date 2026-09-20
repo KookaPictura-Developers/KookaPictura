@@ -862,3 +862,24 @@ fn active_layer_resolution_targets_only_a_single_top_level_raster() {
     assert_eq!(doc.layers[0].name, "renamed");
     assert_eq!(doc.layers[1].name, "group", "other layers are untouched");
 }
+
+#[test]
+fn brush_shortcut_delta_maps_us_and_native_keys() {
+    // US layout keys: `[`/`]` size, `{`/`}` hardness.
+    assert_eq!(brush_shortcut_delta(0x5B, 0, false, true), -1);
+    assert_eq!(brush_shortcut_delta(0x5D, 0, false, true), 1);
+    assert_eq!(brush_shortcut_delta(0x7B, 0, true, true), -5);
+    assert_eq!(brush_shortcut_delta(0x7D, 0, true, true), 5);
+
+    // Nordic physical keys: the evdev scan code wins over the key value.
+    assert_eq!(brush_shortcut_delta(0, 34, false, true), -1);
+    assert_eq!(brush_shortcut_delta(0, 35, false, true), 1);
+    assert_eq!(brush_shortcut_delta(0, 34, true, true), -5);
+    assert_eq!(brush_shortcut_delta(0, 35, true, true), 5);
+    assert_eq!(brush_shortcut_delta(0x5B, 999, false, true), -1);
+
+    // Other keys and non-paint tools are ignored.
+    assert_eq!(brush_shortcut_delta(0x41, 0, false, true), 0);
+    assert_eq!(brush_shortcut_delta(0x5D, 35, false, false), 0);
+    assert_eq!(brush_shortcut_delta(0x5D, 35, true, false), 0);
+}

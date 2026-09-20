@@ -151,8 +151,12 @@ void ImageView::blitRegion(const QImage& region, int x, int y)
         && !presentCache_.scaled.isNull()) {
         QPainter patch(&presentCache_.scaled);
         patch.setCompositionMode(QPainter::CompositionMode_Source);
-        patch.translate(x, y);
+        // Qt composes `world = world * new`, so S(zoom) then T(x, y) maps a
+        // region point p to (p + (x, y)) * zoom and lands the region's top-left
+        // at scaled cache (x*zoom, y*zoom). The reversed order mapped it to
+        // (x, y), off the cache at any zoom below 1.
         patch.scale(zoom_, zoom_);
+        patch.translate(x, y);
         patch.drawImage(QPointF(0.0, 0.0), region);
         // An in-place QPainter write need not bump image_.cacheKey(); keep the
         // cache key in sync with the image it now mirrors (patched region plus

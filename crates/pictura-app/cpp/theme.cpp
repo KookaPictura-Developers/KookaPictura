@@ -193,6 +193,7 @@ QTabWidget#panelGroupTabs { border: ${borderWidth}px solid ${border}; }
 QTabWidget#panelGroupTabs::pane { border: 0; background: ${window}; }
 QTabWidget#documentTabs::pane { border-top: 0; }
 QTabBar#documentTabBar { border-right: ${borderWidth}px solid ${border}; border-top: 0; }
+QTabBar#documentTabBar::tab { font-weight: 500; padding-right: 12px; }
 QWidget#panelColumnContainer { border: ${borderWidth}px solid ${border}; }
 QWidget#panelColumnIconStrip { border: ${borderWidth}px solid ${border}; }
 QDockWidget#toolsPanel { border: ${borderWidth}px solid ${border}; }

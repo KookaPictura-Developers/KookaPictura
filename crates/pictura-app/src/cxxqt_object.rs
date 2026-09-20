@@ -992,6 +992,10 @@ pub mod qobject {
         #[qinvokable]
         fn is_painting(&self) -> bool;
 
+        /// Brush size/hardness step for a `[`/`]` key, or 0.
+        #[qinvokable]
+        fn brush_shortcut_delta(&self, key: i32, scan: u32, shift: bool, paint: bool) -> i32;
+
         /// Scale the document to `width`×`height` with resample `kind`
         /// (nearest, bilinear, bicubic), clear the selection, recomposite, and
         /// emit [`changed`]. Returns false without a document, for an unknown
@@ -1180,19 +1184,15 @@ pub mod qobject {
         fn gpu_image_width(&self) -> u32;
         #[qinvokable]
         fn gpu_image_height(&self) -> u32;
-
         /// Set the GPU-compute preference and recomposite on the new backend.
         #[qinvokable]
         fn set_gpu_compute(self: Pin<&mut Self>, enabled: bool);
-
         /// The persisted GPU-compute preference (true by default).
         #[qinvokable]
         fn gpu_compute(&self) -> bool;
-
         /// Whether a usable GPU adapter exists (cached capability probe).
         #[qinvokable]
         fn gpu_available(&self) -> bool;
-
         /// Active backend label: `"GPU"`, `"CPU"`, or `"CPU (no GPU)"`.
         #[qinvokable]
         fn active_backend(&self) -> QString;

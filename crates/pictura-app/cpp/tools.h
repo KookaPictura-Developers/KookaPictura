@@ -203,6 +203,10 @@ public:
     void setBackground(const QColor& color);
     void adjustBrushSize(int delta);
     void adjustBrushHardness(int delta);
+    // Apply the `[`/`]` brush shortcut by Qt key value or native scan code
+    // (evdev 34/35), so it works on EU/Scandinavian layouts. Guarded to the
+    // Brush/Pencil tools; returns false when the key is not a brush bracket.
+    bool applyBrushShortcut(int key, quint32 nativeScanCode, bool shift);
 
     void bindCanvas(ImageView* canvas);
     void unbindCanvas();

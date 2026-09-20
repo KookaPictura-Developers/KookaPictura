@@ -8,6 +8,8 @@
 #include "selftest_layers_smart_object.h"
 #include "selftest_numeric.h"
 #include "selftest_paint_perf.h"
+#include "selftest_paint_live.h"
+#include "selftest_shell_round3.h"
 #include "selftest_report.h"
 #include "selftest_session.h"
 #include "selftest_tools_selection.h"
@@ -1104,6 +1106,10 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int tc = pictura::runToolCanvasChecks(frame); tc != 0) { return tc; }
 
         if (const int pp = pictura::runPaintPerfChecks(frame); pp != 0) { return pp; }
+
+        if (const int pl = pictura::runPaintLiveChecks(frame); pl != 0) { return pl; }
+
+        if (const int sr = pictura::runShellRound3Checks(frame); sr != 0) { return sr; }
 
     return 0;
 }

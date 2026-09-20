@@ -1,30 +1,30 @@
 ## 1. Batch 1 — Startup/tab/brush keys + paint live-render regression (items 1, 2, 21)
 
-- [ ] 1.1 Item 1: in `crates/pictura-app/cpp/frame.cpp::refresh` show or hide the
+- [x] 1.1 Item 1: in `crates/pictura-app/cpp/frame.cpp::refresh` show or hide the
   document tab pane from the empty/occupied state of `docs_` (one branch, no
   other visibility writer), so an empty workspace draws no ghost canvas; assert
   the pane's visibility after create/open/close/close-all through the same path.
-- [ ] 1.2 Item 2: in `crates/pictura-app/cpp/theme.cpp` add a
+- [x] 1.2 Item 2: in `crates/pictura-app/cpp/theme.cpp` add a
   `QTabBar#documentTabBar::tab { font-weight: 500; padding-right: …; }` rule
   scoped to the document tab bar; do not edit the unscoped `QTabBar::tab` rules
   or the line `selftest.cpp` string-matches.
-- [ ] 1.3 Item 21: in `crates/pictura-app/cpp/tools.cpp` route `[`/`]` through a
+- [x] 1.3 Item 21: in `crates/pictura-app/cpp/tools.cpp` route `[`/`]` through a
   new pure helper that maps `QKeyEvent` key + `nativeScanCode` (evdev 34/35 and
   the Shift variants) to a brush-size/hardness delta, guarded to Brush/Pencil.
-- [ ] 1.4 **Regression**: fix `ImageView::blitRegion`
+- [x] 1.4 **Regression**: fix `ImageView::blitRegion`
   (`crates/pictura-app/cpp/image_view.cpp`) so the present-cache patch composes
   the painter as scale-then-translate (or translates by the scaled origin), so
   the region lands at `(x*zoom, y*zoom)`; keep `presentCache_.valid = false` on
   the non-patch branch; keep the full-resolution write and the one-state-on-
   release commit unchanged.
-- [ ] 1.5 Regression test: new C++ check (codes from **346**) that drives
+- [x] 1.5 Regression test: new C++ check (codes from **346**) that drives
   `begin_paint` + several `paint_dab`s at a zoom **below and above** 100 %,
   grabs the canvas **before release**, asserts the dab is present at the right
   position, then asserts `end_paint` adds exactly one history state and undo
   restores the pre-stroke image. This check must fail on the current order.
-- [ ] 1.6 Item 21 regression: Rust unit test for the key→delta helper (US key
+- [x] 1.6 Item 21 regression: Rust unit test for the key→delta helper (US key
   and evdev scan codes, Shift variants, non-paint guard).
-- [ ] 1.7 Batch 1 gate: `cargo fmt --all`, `cargo clippy --workspace
+- [x] 1.7 Batch 1 gate: `cargo fmt --all`, `cargo clippy --workspace
   --all-targets -- -D warnings`, `cargo nextest run --workspace`,
   `cargo test --workspace --doc`; `cmake --build build`;
   `./build/pictura --headless --self-test`.

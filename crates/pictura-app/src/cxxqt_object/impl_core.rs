@@ -450,6 +450,12 @@ impl qobject::PictureView {
             QString::from("CPU")
         }
     }
+
+    /// Brush size/hardness step for a `[`/`]` key event, or 0. See
+    /// [`brush_shortcut_delta`].
+    pub fn brush_shortcut_delta(&self, key: i32, scan: u32, shift: bool, paint: bool) -> i32 {
+        brush_shortcut_delta(key, scan, shift, paint)
+    }
 }
 
 impl super::PictureViewRust {
