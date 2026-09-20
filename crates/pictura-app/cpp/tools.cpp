@@ -15,8 +15,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 namespace pictura {
+
+// Concrete handlers live in their own translation units; ToolController owns
+// only the registry.
+std::unique_ptr<ToolHandler> makeHandToolHandler();
+std::unique_ptr<ToolHandler> makeZoomToolHandler();
+std::unique_ptr<ToolHandler> makeEyedropperToolHandler();
 
 namespace {
 
@@ -30,6 +37,9 @@ constexpr double kPolygonCloseRadius = 6.0;
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
 {
+    registry_.registerTool(ToolId::Hand, makeHandToolHandler());
+    registry_.registerTool(ToolId::Zoom, makeZoomToolHandler());
+    registry_.registerTool(ToolId::Eyedropper, makeEyedropperToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -185,6 +195,11 @@ PictureView* ToolController::view() const
     return viewProvider_ ? viewProvider_() : nullptr;
 }
 
+void ToolController::sampledForeground(const QColor& color)
+{
+    emit foregroundSampled(color);
+}
+
 void ToolController::bindCanvas(ImageView* canvas)
 {
     if (canvas_ == canvas) {
@@ -316,29 +331,13 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         }
     }
 
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        if (h->onPress(*this, imagePos, mods)) {
+            return;
+        }
+    }
+
     switch (active_) {
-    case ToolId::Hand:
-        return;
-    case ToolId::Zoom: {
-        if (!canvas_) {
-            return;
-        }
-        // Anchor the step at the clicked image point, not the canvas centre.
-        const QPointF anchor = imagePos * canvas_->zoom() + canvas_->offset();
-        const bool out = mods.testFlag(Qt::ControlModifier) || mods.testFlag(Qt::AltModifier);
-        canvas_->setZoom(canvas_->zoom() * (out ? 1.0 / 1.2 : 1.2), anchor);
-        return;
-    }
-    case ToolId::Eyedropper: {
-        if (!v) {
-            return;
-        }
-        const quint32 argb = v->sample_argb(qRound(imagePos.x()), qRound(imagePos.y()));
-        if (argb != 0) {
-            emit foregroundSampled(QColor::fromRgb(argb));
-        }
-        return;
-    }
     case ToolId::Brush:
     case ToolId::Pencil: {
         if (!v) {
@@ -529,6 +528,10 @@ void ToolController::handleMoved(const QPointF& imagePos)
     }
     updateSelectionHover(imagePos);
     updateBrushOutline(imagePos);
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onMove(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
+        return;
+    }
     if (!dragging_ && !polygonInProgress_) {
         return;
     }
@@ -603,6 +606,10 @@ void ToolController::handleReleased(const QPointF& imagePos)
                 v->transform_release();
             }
         }
+        return;
+    }
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onRelease(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
         return;
     }
     if (!dragging_) {
