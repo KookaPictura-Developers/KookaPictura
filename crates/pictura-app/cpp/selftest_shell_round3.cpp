@@ -869,5 +869,45 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         }
     }
 
+    // lss_tools_pane_height (416): hosting the Tools panel as a central-splitter
+    // pane must not force the workspace down to the panel's content height. The
+    // pane keeps a free height (min 0, max unbounded) and the document area
+    // fills the splitter.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool ok = false;
+        if (cs && tabs && toolbox && primary) {
+            if (cs->indexOf(toolbox) >= 0) {
+                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+                toolbox->setSplitterPane(false);
+                pump(6);
+            }
+            const int before = cs->height();
+            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+            const QPoint panePoint(pr.left() - 8, pr.center().y());
+            const bool pane = frame.commitToolboxDrop(panePoint);
+            pump(8);
+            const int after = cs->height();
+            const bool freeHeight = toolbox->minimumHeight() == 0
+                                    && toolbox->maximumHeight() == QWIDGETSIZE_MAX;
+            const bool tabsFill = tabs->height() == after;
+            ok = pane && freeHeight && after <= before + 40 && tabsFill;
+            frame.dockToolbox(0);
+            pump(6);
+        }
+        ST_BEGIN("lss_tools_pane_height");
+        ST_PASS("lss_tools_pane_height ok=%d", ok ? 1 : 0);
+        if (!ok) {
+            return pictura::selfTest().fail(416, "tools pane height");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
     return 0;
 }

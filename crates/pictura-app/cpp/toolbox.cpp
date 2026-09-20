@@ -335,6 +335,11 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     // dockLocationChanged/topLevelChanged handler re-docks the panel when it is
     // still tabified. A drop can briefly tabify before that fallback runs.
     installEventFilter(this);
+    // M47: the height contract depends on the float state, so recompute it when
+    // the dock floats or re-docks; a docked/pane panel must not keep the pinned
+    // floating height.
+    connect(this, &QDockWidget::topLevelChanged, this,
+            [this](bool) { updateContentMetrics(); });
 
     titleBar_ = new QWidget(this);
     auto* titleLayout = new QHBoxLayout(titleBar_);
@@ -664,17 +669,26 @@ void Toolbox::updateContentMetrics()
     const int content = contentWidth(columns_);
     const int contentH = contentHeight(columns_);
     setFixedWidth(content);
-    if (splitterPane_) {
-        // M47 T4.3: as a vertical splitter pane the dock keeps a fixed width
-        // but must fill (and be drag-resizable in) the splitter height.
+    // Only a floating panel is pinned to its content height. A docked or
+    // pane-hosted panel fills the height it is given, so its content must not
+    // force the central workspace shorter than the window.
+    const bool floating = isFloating();
+    if (floating) {
+        setMinimumHeight(contentH);
+        setMaximumHeight(contentH);
+        floatHeight_ = contentH;
+    } else {
         setMinimumHeight(0);
         setMaximumHeight(QWIDGETSIZE_MAX);
         floatHeight_ = 0;
-    } else {
-        setFixedHeight(contentH);
-        // M44 T1: while floating the pinned height is the content height, so the
-        // grip/separator cannot stretch it.
-        floatHeight_ = isFloating() ? contentH : 0;
+    }
+    // The dock's own layout would otherwise push the body's tall content minimum
+    // (and a fixed maximum) back onto the dock; release that when not floating so
+    // the explicit bounds above stick and the panel fills the height it is given.
+    if (QLayout* dockLayout = layout()) {
+        dockLayout->setSizeConstraint(floating ? QLayout::SetMinAndMaxSize
+                                               : QLayout::SetNoConstraint);
+        dockLayout->activate();
     }
 
     // A QDockWidget caches its layout minimum; without an explicit invalidation a
@@ -698,6 +712,19 @@ void Toolbox::updateContentMetrics()
     }
 
     metricsClamping_ = false;
+}
+
+QSize Toolbox::minimumSizeHint() const
+{
+    // M47: docked and pane-hosted panels report a free height. The body's
+    // fixed-size children give it a tall minimum, and QSplitter would otherwise
+    // pin the central splitter's minimum height to it, shrinking the workspace.
+    // Only a floating panel keeps the content height.
+    QSize hint = QDockWidget::minimumSizeHint();
+    if (!isFloating()) {
+        hint.setHeight(0);
+    }
+    return hint;
 }
 
 bool Toolbox::floatHeightLockedForTest() const

@@ -88,6 +88,11 @@ public:
     void setSplitterPane(bool on);
     bool isSplitterPane() const { return splitterPane_; }
 
+    // M47: only a floating panel pins the height to its content; docked and
+    // pane-hosted panels report a free height so they never force the central
+    // workspace shorter than the window.
+    QSize minimumSizeHint() const override;
+
     // Gated by `Use Shift Key For Tool Switch`: with it on a plain letter
     // activates the slot's current member and `Shift`+letter cycles; with it off
     // the letter alone cycles. Returns true when a group handled the key.

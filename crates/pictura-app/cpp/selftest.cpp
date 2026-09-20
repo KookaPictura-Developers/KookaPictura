@@ -5283,8 +5283,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // docking, and placement beside a widget column through the column
         // grammar. Geometry is read after a bounded pump so it is real offscreen.
         {
-            // 167: both axes are content-derived in one and two columns and
-            // stable across a 1->2->1 toggle; neither axis is cut or over-tall.
+            // 167: the width is content-derived in one and two columns and stable
+            // across a 1->2->1 toggle. Docked/pane the height is free (only a
+            // floating panel pins it), so it is not cut.
             bool panelFixOne = false;
             bool panelFixTwo = false;
             bool panelFixStable = false;
@@ -5293,27 +5294,27 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             int panelFixW2 = 0;
             int panelFixH2 = 0;
             if (toolsPanelToolbox) {
+                if (toolsPanelToolbox->isFloating()) toolsPanelToolbox->setFloating(false);
+                multicolumnPump(8);
                 toolsPanelToolbox->setColumns(1);
                 multicolumnPump(8);
                 panelFixW1 = toolsPanelToolbox->width();
                 panelFixH1 = toolsPanelToolbox->height();
                 const int cw1 = toolsPanelToolbox->contentWidthForTest();
-                const int ch1 = toolsPanelToolbox->contentHeightForTest();
-                panelFixOne = cw1 > 0 && ch1 > 0 && panelFixW1 == cw1 && panelFixH1 == ch1
+                panelFixOne = cw1 > 0 && panelFixW1 == cw1 && panelFixH1 > 0
                          && toolsPanelToolbox->minimumWidth() == cw1
                          && toolsPanelToolbox->maximumWidth() == cw1
-                         && toolsPanelToolbox->minimumHeight() == ch1
-                         && toolsPanelToolbox->maximumHeight() == ch1;
+                         && toolsPanelToolbox->minimumHeight() == 0
+                         && toolsPanelToolbox->maximumHeight() == QWIDGETSIZE_MAX;
                 toolsPanelToolbox->setColumns(2);
                 multicolumnPump(8);
                 panelFixW2 = toolsPanelToolbox->width();
                 panelFixH2 = toolsPanelToolbox->height();
                 const int cw2 = toolsPanelToolbox->contentWidthForTest();
-                const int ch2 = toolsPanelToolbox->contentHeightForTest();
-                panelFixTwo = cw2 > cw1 && ch2 > 0 && ch2 < ch1 && panelFixW2 == cw2 && panelFixH2 == ch2;
+                panelFixTwo = cw2 > cw1 && panelFixW2 == cw2;
                 toolsPanelToolbox->setColumns(1);
                 multicolumnPump(8);
-                panelFixStable = toolsPanelToolbox->width() == cw1 && toolsPanelToolbox->height() == ch1;
+                panelFixStable = toolsPanelToolbox->width() == cw1;
             }
             ST_BEGIN("tools_sizing_one");
             ST_PASS("tools_sizing one=%d two=%d stable=%d "
