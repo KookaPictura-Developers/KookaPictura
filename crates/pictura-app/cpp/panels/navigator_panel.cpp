@@ -132,7 +132,24 @@ void NavigatorThumbnail::mouseMoveEvent(QMouseEvent* event)
         event->accept();
         return;
     }
+    if (!source_.isNull() && !imageRect().isEmpty()) {
+        cursorImage_ = mapToImage(event->position());
+        cursorValid_ = true;
+    }
     QWidget::mouseMoveEvent(event);
+}
+
+QPointF NavigatorThumbnail::mapToImage(const QPointF& pos) const
+{
+    const QRect area = imageRect();
+    if (source_.isNull() || area.isEmpty()) {
+        return QPointF();
+    }
+    const double x = std::clamp((pos.x() - area.x()) / area.width(), 0.0, 1.0)
+                     * (source_.width() - 1);
+    const double y = std::clamp((pos.y() - area.y()) / area.height(), 0.0, 1.0)
+                     * (source_.height() - 1);
+    return QPointF(x, y);
 }
 
 void NavigatorThumbnail::pickAt(const QPointF& pos)
@@ -141,11 +158,9 @@ void NavigatorThumbnail::pickAt(const QPointF& pos)
     if (source_.isNull() || area.isEmpty() || !picked_) {
         return;
     }
-    const double x = std::clamp((pos.x() - area.x()) / area.width(), 0.0, 1.0)
-                     * (source_.width() - 1);
-    const double y = std::clamp((pos.y() - area.y()) / area.height(), 0.0, 1.0)
-                     * (source_.height() - 1);
-    picked_(QPointF(x, y));
+    cursorImage_ = mapToImage(pos);
+    cursorValid_ = true;
+    picked_(cursorImage_);
 }
 
 NavigatorPanel::NavigatorPanel(QWidget* parent)
@@ -181,8 +196,13 @@ NavigatorPanel::NavigatorPanel(QWidget* parent)
         if (updating_ || !canvas_) {
             return;
         }
-        canvas_->setZoom(zoomForSlider(value),
-                         QPointF(canvas_->width() / 2.0, canvas_->height() / 2.0));
+        // Anchor at the point under the proxy cursor (last hover/click) so it
+        // stays fixed; fall back to the viewport centre when there is none.
+        QPointF anchor(canvas_->width() / 2.0, canvas_->height() / 2.0);
+        if (thumbnail_->hasCursorImagePoint()) {
+            anchor = thumbnail_->cursorImagePoint() * canvas_->zoom() + canvas_->offset();
+        }
+        canvas_->setZoom(zoomForSlider(value), anchor);
     });
     connect(fit, &QPushButton::clicked, this, [this] {
         if (canvas_) {

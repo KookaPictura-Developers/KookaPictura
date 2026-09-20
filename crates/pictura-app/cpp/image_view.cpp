@@ -742,7 +742,22 @@ void ImageView::paintEvent(QPaintEvent*)
 
 void ImageView::wheelEvent(QWheelEvent* event)
 {
-    zoomAt(event->position(), event->angleDelta().y());
+    const QPoint delta = event->angleDelta();
+    const Qt::KeyboardModifiers mods = event->modifiers();
+    // Shared wheel precedence: a horizontal side-wheel pans horizontally;
+    // Ctrl+Alt pans vertically; Alt (without Ctrl) pans horizontally; otherwise
+    // the vertical wheel zooms at the cursor, with Shift doubling the step.
+    if (delta.x() != 0) {
+        panBy(QPointF(delta.x(), 0.0));
+    } else if (mods.testFlag(Qt::ControlModifier) && mods.testFlag(Qt::AltModifier)) {
+        panBy(QPointF(0.0, delta.y()));
+    } else if (mods.testFlag(Qt::AltModifier)) {
+        panBy(QPointF(delta.y(), 0.0));
+    } else {
+        const int step = (delta.y() != 0 && mods.testFlag(Qt::ShiftModifier)) ? delta.y() * 2
+                                                                              : delta.y();
+        zoomAt(event->position(), step);
+    }
     event->accept();
 }
 

@@ -3,16 +3,81 @@
 
 #include "tools.h"
 
+#include "icons.h"
 #include "image_view.h"
+
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include <QtCore/QPointF>
 #include <QtCore/QRect>
+#include <QtGui/QCursor>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QPainterPath>
 
 #include <algorithm>
 #include <cmath>
 
 namespace pictura {
+
+bool topmostPixelLocked(PictureView* view)
+{
+    if (!view) {
+        return false;
+    }
+    const int index = view->topmost_pixel_layer_index();
+    return index >= 0 && (view->layer_lock(index) & 0x02) != 0;
+}
+
+void ToolController::refreshCursor()
+{
+    refreshCursor(QGuiApplication::queryKeyboardModifiers());
+}
+
+void ToolController::refreshCursor(Qt::KeyboardModifiers mods)
+{
+    if (!canvas_) {
+        return;
+    }
+    PictureView* hoverView = view();
+    const bool ctrlPreview = isSelectionTool(active_) && hoverView
+        && mods.testFlag(Qt::ControlModifier) && hoverView->has_selection();
+    // A combine modifier (Shift/Alt) hands the cursor back to the tool's
+    // add/remove assets; a gesture follows the mode captured at press.
+    if (hoverCursorId(active_, mods, movingSelection_ || cursorOverSelection_, ctrlPreview)
+        == QStringLiteral("cursor.moveSelection")) {
+        const QCursor c = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
+        if (!c.pixmap().isNull()) {
+            return canvas_->setCursor(c);
+        }
+    }
+    if (isSelectionTool(active_) && dragging_ && !movingSelection_) {
+        const ToolInfo& info = toolInfo(active_);
+        const QCursor c = cursor(dragCursorId(), info.hotspotX, info.hotspotY);
+        if (!c.pixmap().isNull()) {
+            return canvas_->setCursor(c);
+        }
+    }
+    if (active_ == ToolId::Brush || active_ == ToolId::Pencil) {
+        // The transient Alt eyedropper wins over the blank paint cursor and the
+        // invisible/locked refusal (tool-framework cursor precedence).
+        if (mods.testFlag(Qt::AltModifier)) {
+            const ToolInfo& info = toolInfo(ToolId::Eyedropper);
+            const QCursor c =
+                cursor(toolCursorId(ToolId::Eyedropper, mods), info.hotspotX, info.hotspotY);
+            return canvas_->setCursor(c.pixmap().isNull() ? QCursor(info.cursor) : c);
+        }
+        if (hoverView
+            && (topmostPixelLocked(hoverView) || !hoverView->active_layer_visible())) {
+            return canvas_->setCursor(Qt::ForbiddenCursor);
+        }
+        // The drawn brush-size ring is the pointer affordance; hide the OS
+        // cursor rather than scaling a pixmap with the brush.
+        return canvas_->setCursor(Qt::BlankCursor);
+    }
+    const ToolInfo& info = toolInfo(active_);
+    const QCursor toolCursor = cursor(toolCursorId(active_, mods), info.hotspotX, info.hotspotY);
+    canvas_->setCursor(toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
+}
 
 namespace {
 

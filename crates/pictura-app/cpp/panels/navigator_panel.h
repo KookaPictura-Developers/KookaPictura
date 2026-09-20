@@ -25,6 +25,11 @@ public:
     void setView(double zoom, const QPointF& offset, const QSize& viewport);
     void setPointPicked(std::function<void(const QPointF&)> callback);
 
+    // The document point under the proxy cursor (last hover or click), used as
+    // the slider's zoom anchor so the point under the cursor stays fixed.
+    QPointF cursorImagePoint() const { return cursorImage_; }
+    bool hasCursorImagePoint() const { return cursorValid_; }
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
@@ -33,6 +38,7 @@ protected:
 
 private:
     QRect imageRect() const;
+    QPointF mapToImage(const QPointF& pos) const;
     void pickAt(const QPointF& pos);
 
     QImage source_;
@@ -41,6 +47,8 @@ private:
     QPointF offset_;
     QSize viewport_;
     std::function<void(const QPointF&)> picked_;
+    QPointF cursorImage_;
+    bool cursorValid_ = false;
 };
 
 class NavigatorPanel : public QWidget {

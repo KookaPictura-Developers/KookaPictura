@@ -17,6 +17,7 @@
 #include "selftest_tool_canvas.h"
 #include "selftest_ui_persistence.h"
 #include "selftest_visibility.h"
+#include "selftest_workspace_input.h"
 
 #include "commands.h"
 #include "frame.h"
@@ -1116,6 +1117,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int lr3 = pictura::runLayersRound3Checks(frame); lr3 != 0) { return lr3; }
 
         if (const int vv = pictura::runVisibilityChecks(frame); vv != 0) { return vv; }
+
+        if (const int wi = pictura::runWorkspaceInputChecks(frame); wi != 0) { return wi; }
 
     return 0;
 }
