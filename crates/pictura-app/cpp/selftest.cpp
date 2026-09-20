@@ -4681,7 +4681,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                             QStringLiteral("left"));
             frame.saveSession();
             const pictura::SessionState multicolumnLoaded = pictura::loadSession();
-            sessionV6 = multicolumnLoaded.schemaVersion == 6;
+            sessionV6 = multicolumnLoaded.schemaVersion >= 6;
 
             bool hasLeft = false;
             bool hasRight = false;

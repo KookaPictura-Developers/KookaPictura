@@ -15,6 +15,18 @@ const QColor kCanvasColors[kCanvasColorCount] = {
 
 constexpr int kRecentLimit = 20;
 
+// The tab title's mode label: `document_mode()` reports the working mode key.
+QString modeLabel(const QString& mode)
+{
+    if (mode == QStringLiteral("grayscale")) {
+        return QStringLiteral("Grayscale");
+    }
+    if (mode == QStringLiteral("rgb")) {
+        return QStringLiteral("RGB");
+    }
+    return mode.toUpper();
+}
+
 } // namespace
 
 bool launchCreatesScratchDocument(bool selfTest, bool codecLoaded)
@@ -101,6 +113,18 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     panelRefreshTimer_->setSingleShot(true);
     panelRefreshTimer_->setInterval(120);
     connect(panelRefreshTimer_, &QTimer::timeout, this, &PicturaMainWindow::refreshPanels);
+
+    // A splitter drag has no other save trigger; coalesce the column-width
+    // changes into one write instead of saving on every pixel of the drag.
+    sessionSaveTimer_ = new QTimer(this);
+    sessionSaveTimer_->setSingleShot(true);
+    sessionSaveTimer_->setInterval(400);
+    connect(sessionSaveTimer_, &QTimer::timeout, this, &PicturaMainWindow::saveSession);
+    connect(centerSplitter_, &QSplitter::splitterMoved, this, [this](int, int) {
+        if (sessionSaveTimer_) {
+            sessionSaveTimer_->start();
+        }
+    });
 
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int) {
         PictureView* active = activeView();
@@ -244,10 +268,21 @@ QString PicturaMainWindow::documentName(int index) const
         return QStringLiteral("Untitled");
     }
     const DocEntry& entry = docs_.at(index);
+    if (!entry.displayName.isEmpty()) {
+        return entry.displayName;
+    }
     if (!entry.path.isEmpty()) {
         return QFileInfo(entry.path).fileName();
     }
     return QStringLiteral("Untitled-%1").arg(entry.untitledNumber);
+}
+
+QString PicturaMainWindow::documentTabTextForTest(int index) const
+{
+    if (!tabs_ || index < 0 || index >= tabs_->count()) {
+        return QString();
+    }
+    return tabs_->tabText(index);
 }
 
 bool PicturaMainWindow::isDocumentDirty(int index) const
@@ -382,8 +417,13 @@ bool PicturaMainWindow::openImagePath(const QString& path)
         return false;
     }
     // Imported pixels become an untitled PSD document; keeping the image path
-    // would let Ctrl+S write PSD bytes over the source image.
-    addDocument(view, QString());
+    // would let Ctrl+S write PSD bytes over the source image. The file's base
+    // name is kept only as the tab's display name.
+    const int index = addDocument(view, QString());
+    if (index >= 0) {
+        docs_[index].displayName = QFileInfo(path).baseName();
+        updateTabTitle(index);
+    }
     return true;
 }
 
@@ -400,7 +440,11 @@ bool PicturaMainWindow::openAsSmartObjectPath(const QString& path)
         delete view;
         return false;
     }
-    addDocument(view, QString());
+    const int index = addDocument(view, QString());
+    if (index >= 0) {
+        docs_[index].displayName = QFileInfo(path).baseName();
+        updateTabTitle(index);
+    }
     return true;
 }
 
@@ -735,6 +779,13 @@ void PicturaMainWindow::updateTabTitle(int index)
         return;
     }
     QString title = documentName(index);
+    if (PictureView* view = viewAt(index); view && view->has_document()) {
+        const QString mode = modeLabel(view->document_mode());
+        const int bits = view->document_depth_bits();
+        if (!mode.isEmpty() && bits > 0) {
+            title += QStringLiteral(" (%1/%2)").arg(mode).arg(bits);
+        }
+    }
     if (isDocumentDirty(index)) {
         title += QStringLiteral(" *");
     }

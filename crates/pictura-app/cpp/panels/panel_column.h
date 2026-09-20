@@ -113,6 +113,14 @@ public:
     bool autoCollapseIconic() const { return autoCollapseIconic_; }
     bool autoShowHidden() const { return autoShowHidden_; }
     void setPreferredWidth(int width);
+    // A migrated v6 per-column entry carries no width; use this until one is set.
+    static constexpr int kDefaultNormalWidth = 220;
+    // Width to persist for this column: its own width in normal mode, or the
+    // remembered normal width while iconic (0 when neither is known yet).
+    int persistedWidth() const { return railMode_ ? normalWidthBeforeIconic_ : width(); }
+    // Apply a width loaded from the session. An iconic column records it as the
+    // normal width to restore on the next toggle instead of resizing the strip.
+    void setRestoredWidth(int width);
 
     // M45 W8: drop a column's contribution to the shared minimum floor after it
     // is added or removed, recomputing from the columns currently alive so a

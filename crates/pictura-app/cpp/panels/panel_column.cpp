@@ -452,6 +452,18 @@ void PanelColumn::setPreferredWidth(int width)
     pendingWidth_ = 0;
 }
 
+void PanelColumn::setRestoredWidth(int width)
+{
+    if (width <= 0) {
+        return;
+    }
+    if (railMode_) {
+        normalWidthBeforeIconic_ = width;
+        return;
+    }
+    setPreferredWidth(width);
+}
+
 void PanelColumn::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);

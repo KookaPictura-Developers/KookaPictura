@@ -9,6 +9,23 @@ use pictura_core::{
     BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LockFlags, PsdRect,
 };
 
+/// Finish an imported raster document. When every decoded pixel is opaque the
+/// single `from_rgba` layer becomes the locked `Background` and its redundant
+/// alpha channel is dropped; otherwise the regular alpha layer named from the
+/// file stem is left untouched.
+pub(super) fn finalize_import(doc: &mut Document, rgba: &[u8]) {
+    if !rgba.as_chunks::<4>().0.iter().all(|px| px[3] == 255) {
+        return;
+    }
+    let Some(layer) = doc.layers.last_mut() else {
+        return;
+    };
+    layer.name = "Background".to_string();
+    layer.background = true;
+    layer.lock = LockFlags::all();
+    layer.channels.retain(|channel| channel.id != -1);
+}
+
 impl qobject::PictureView {
     pub fn open(self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
@@ -55,6 +72,7 @@ impl qobject::PictureView {
             return false;
         };
         let mut doc = Document::from_rgba(&name, width, height, &rgba);
+        finalize_import(&mut doc, &rgba);
         let gpu_compute = self.rust().gpu_compute;
         let rendered = current_buffer(&doc, gpu_compute);
         store_composite(&mut doc, &rendered);
@@ -260,6 +278,16 @@ impl qobject::PictureView {
             Some(ColorMode::Grayscale) => QString::from("grayscale"),
             Some(_) => QString::from("rgb"),
             None => QString::default(),
+        }
+    }
+
+    pub fn document_depth_bits(&self) -> i32 {
+        match self.rust().doc.as_ref().map(|d| d.depth) {
+            Some(BitDepth::Eight) => 8,
+            Some(BitDepth::Sixteen) => 16,
+            Some(BitDepth::ThirtyTwo) => 32,
+            Some(BitDepth::One) => 1,
+            None => 0,
         }
     }
 

@@ -531,6 +531,10 @@ int pictura::runImageImportChecks(pictura::PicturaMainWindow& frame)
     const bool openSize = view && view->document_width() == 2 && view->document_height() == 2;
     const bool openOneLayer = view && view->layer_row_count() == 1;
     const bool openPixel = view && view->sample_argb(0, 0) == 0xffff0000u;
+    // An all-opaque import becomes the locked Background (issue 4 / D1).
+    const bool openBackground =
+        view && view->layer_row_kind(0) == QStringLiteral("background");
+    const bool openLocked = view && view->layer_row_lock(0) == 0x0F;
     const bool openHistory =
         view && view->history_count() == 1 && view->history_label(0) == QStringLiteral("Open");
     const bool openUntitled = view && view->file_path().isEmpty();
@@ -606,15 +610,18 @@ int pictura::runImageImportChecks(pictura::PicturaMainWindow& frame)
         && !PicturaMainWindow::isNativeDocumentPath(QStringLiteral("a.psd.png"));
 
     const bool ok = openAdded && openSize && openOneLayer && openPixel && openHistory
-        && openUntitled && openClean && placePlaced && badOpen && badOpenDocs && badPlace
+        && openUntitled && openClean && openBackground && openLocked && placePlaced && badOpen
+        && badOpenDocs && badPlace
         && bigOpen && bigOpenDocs && bigPlace && ppmOk && routing;
     ST_BEGIN("lpr_image_import");
     ST_PASS("lpr_image_import saved=%d open=%d size=%dx%d layers=%d pixel=%08x history=%s "
-            "untitled=%d clean=%d place=%s placed=%d bad=%d big=%d ppm=%d routing=%d",
+            "untitled=%d clean=%d background=%d locked=%d place=%s placed=%d bad=%d big=%d "
+            "ppm=%d routing=%d",
             pngSaved ? 1 : 0, opened ? 1 : 0, view ? view->document_width() : -1,
             view ? view->document_height() : -1, view ? view->layer_row_count() : -1,
             view ? view->sample_argb(0, 0) : 0u, view ? qPrintable(view->history_label(0)) : "-",
-            openUntitled ? 1 : 0, openClean ? 1 : 0, qPrintable(placePath), placePlaced ? 1 : 0,
+            openUntitled ? 1 : 0, openClean ? 1 : 0, openBackground ? 1 : 0, openLocked ? 1 : 0,
+            qPrintable(placePath), placePlaced ? 1 : 0,
             (badOpen && badOpenDocs && badPlace) ? 1 : 0,
             (bigOpen && bigOpenDocs && bigPlace) ? 1 : 0, ppmOk ? 1 : 0, routing ? 1 : 0);
     if (!ok) {

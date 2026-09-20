@@ -72,7 +72,8 @@ void PicturaMainWindow::saveSession()
         // Legacy flat mirror of the primary column kept for older stores.
         state.panelGroups = panelColumn_->savePanelState();
     }
-    // v6: the ordered per-column layout, in central-splitter order.
+    // v7: the ordered per-column layout, in central-splitter order, each with
+    // its normal-mode width.
     QJsonArray columns;
     int order = 0;
     for (PanelColumn* column : panelColumns()) {
@@ -81,11 +82,12 @@ void PicturaMainWindow::saveSession()
                      sideOf(column) == PanelSide::Left ? QStringLiteral("left")
                                                        : QStringLiteral("right"));
         entry.insert(QStringLiteral("order"), order++);
+        entry.insert(QStringLiteral("width"), column->persistedWidth());
         entry.insert(QStringLiteral("groups"), column->savePanelState());
         columns.append(entry);
     }
     state.panelColumns = columns;
-    state.schemaVersion = 6;
+    state.schemaVersion = 7;
     state.recent = recent_;
     pictura::saveSession(state);
 }
@@ -141,7 +143,23 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
         primary = rightIndices.first();
     }
 
-    auto buildColumn = [this](const QJsonObject& entry, PanelSide side) {
+    // The width to restore for stored column `i`: its own v7 width, else the
+    // legacy top-level `railWidth` for the primary column, else the default.
+    auto restoredWidth = [&state, primary, &entries](int i) {
+        const int stored = entries.at(i).value(QStringLiteral("width")).toInt(0);
+        if (stored > 0) {
+            return stored;
+        }
+        if (i == primary && state.railWidth > 0) {
+            return state.railWidth;
+        }
+        return PanelColumn::kDefaultNormalWidth;
+    };
+    QList<QPair<PanelColumn*, int>> restoredWidths;
+
+    auto buildColumn = [this, &entries, &restoredWidth, &restoredWidths](int entryIndex,
+                                                                         PanelSide side) {
+        const QJsonObject entry = entries.at(entryIndex);
         const QJsonArray groups = entry.value(QStringLiteral("groups")).toArray();
         QList<PanelGroup*> moved;
         for (const QJsonValue& value : groups) {
@@ -165,6 +183,8 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
             column->addGroup(group);
         }
         column->restorePanelState(groups);
+        column->setRestoredWidth(restoredWidth(entryIndex));
+        restoredWidths.append({column, restoredWidth(entryIndex)});
     };
 
     if (entries.isEmpty()) {
@@ -174,11 +194,11 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
         // Left columns are inserted at the splitter head, so adopt them
         // outermost-first to preserve their left-to-right order.
         for (int k = leftIndices.size() - 1; k >= 0; --k) {
-            buildColumn(entries.at(leftIndices.at(k)), PanelSide::Left);
+            buildColumn(leftIndices.at(k), PanelSide::Left);
         }
         for (int i = 0; i < rightIndices.size(); ++i) {
             if (rightIndices.at(i) != primary) {
-                buildColumn(entries.at(rightIndices.at(i)), PanelSide::Right);
+                buildColumn(rightIndices.at(i), PanelSide::Right);
             }
         }
         if (primary >= 0) {
@@ -193,10 +213,25 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
         column->setAutoShowHidden(state.autoShowHidden);
         column->setRailMode(iconic);
     }
-    if (!iconic) {
-        panelColumn_->setPreferredWidth(state.railWidth);
+    // The primary column's width is stored in `panelColumn_`, not a dynamic one,
+    // so it is not in `restoredWidths` yet. `setRailMode` above resets an iconic
+    // column's remembered width, so seed it after the mode change. A legacy
+    // store with no per-column layout keeps its old no-op when `railWidth` is 0.
+    const int primaryWidth = primary >= 0 ? restoredWidth(primary) : state.railWidth;
+    if (primaryWidth > 0) {
+        panelColumn_->setRestoredWidth(primaryWidth);
+        restoredWidths.append({panelColumn_, primaryWidth});
     }
     restoringPanelSession_ = false;
+    // Before the first layout the splitter has no width, so `setPreferredWidth`
+    // only remembers the value; re-apply once the event loop has laid out.
+    QTimer::singleShot(0, this, [restoredWidths]() {
+        for (const QPair<PanelColumn*, int>& entry : restoredWidths) {
+            if (entry.first) {
+                entry.first->setRestoredWidth(entry.second);
+            }
+        }
+    });
 }
 
 } // namespace pictura

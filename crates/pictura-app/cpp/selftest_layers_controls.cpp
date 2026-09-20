@@ -6,6 +6,7 @@
 #include "selftest_layers_smart_object.h"
 #include "selftest_numeric.h"
 #include "selftest_report.h"
+#include "selftest_session.h"
 #include "selftest_tools_selection.h"
 
 #include "commands.h"
@@ -1086,6 +1087,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int cv = pictura::runCanvasViewChecks(frame); cv != 0) { return cv; }
 
         if (const int ll = pictura::runLayerLocksChecks(frame); ll != 0) { return ll; }
+
+        if (const int ss = pictura::runSessionChecks(frame); ss != 0) { return ss; }
 
     return 0;
 }
