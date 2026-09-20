@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1066 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1089 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -32,16 +32,17 @@ Snapshot for resuming after a context break. Update after each milestone.
     `pattern-fill-layer`, `layer-effects-drop-shadow`,
     `layer-effects-outer-glow`, `layer-effects-inner-shadow`,
     `layer-effects-inner-glow`, `layer-effects-stroke`,
-    `layer-effects-overlays`, and `layer-effects-satin` changes;
+    `layer-effects-overlays`, `layer-effects-satin`, and
+    `layer-effects-bevel` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is under way:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
    `layer-effects-inner-shadow`, `layer-effects-inner-glow`,
-   `layer-effects-stroke`, `layer-effects-overlays`, and `layer-effects-satin`
-   ship the object-based effect kinds (drop shadow, outer glow, inner shadow,
-   inner glow, stroke, color/gradient/pattern overlay, and satin); the remaining
-   kinds (bevel, the legacy `lrFX` block) are deferred.
+   `layer-effects-stroke`, `layer-effects-overlays`, `layer-effects-satin`, and
+   `layer-effects-bevel` ship the object-based effect kinds (drop shadow, outer
+   glow, inner shadow, inner glow, stroke, color/gradient/pattern overlay, satin,
+   and bevel & emboss); the remaining kind (the legacy `lrFX` block) is deferred.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
@@ -376,6 +377,25 @@ Snapshot for resuming after a context break. Update after each milestone.
   decode/round-trip/render; the new `layer_effects/satin.rs` holds the kind.
   Ceilings: contour (`MpgS`)/anti-alias/global-light ignored, one `M` confinement
   (libpsd squares it), and the rounding differs from libpsd by ≤1 px.
+- Layer effects — Bevel & Emboss (roadmap P3/G6, archived
+  `2026-09-20-layer-effects-bevel`): the object-based `lfx2` **Bevel & Emboss**
+  (`ebbl`) is now decoded and, for the **Inner + Smooth** slice, composited — a
+  height field from the blurred content matte lit from `Angle`/`Altitude`
+  produces highlight/shadow intensities (tinted by `hglM`/`hglC`/`hglO` and
+  `sdwM`/`sdwC`/`sdwO`), confined to the content and composited above it; other
+  styles/techniques decode but render a no-op; the GPU rejects an enabled+present
+  renderable bevel (`UnsupportedLayerEffect`); a psd-tools-authored `bevel.psd`
+  fixture proves decode/round-trip/render; the new `layer_effects/bevel.rs` holds
+  the kind. Ceilings: chisel techniques, the Outer/Emboss/Pillow/Stroke styles,
+  contour/texture, and the global-light resource.
+- Effect blend-mode fix (cross-cutting, in `2026-09-20-layer-effects-bevel`): all
+  `lfx2` effect blend modes (`Md  `, and a bevel's `hglM`/`sdwM`) now decode the
+  `BlnM` descriptor vocabulary (`Nrml`/`Mltp`/`Scrn`/`Ovrl`/…) via a shared
+  `effect_blend_mode`; previously they used the layer-key decoder, so real
+  Photoshop effect modes silently fell back to defaults. This required
+  regenerating the effect fixtures' goldens (`drop_shadow`, `outer_glow`,
+  `inner_shadow`, `inner_glow`, `color`/`gradient`/`pattern_overlay`, `satin`;
+  `bevel` is new) — non-effect fixtures are unchanged.
 
 ## Commands
 
