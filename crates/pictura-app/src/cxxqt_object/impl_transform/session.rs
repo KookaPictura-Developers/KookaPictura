@@ -295,8 +295,14 @@ impl qobject::PictureView {
         computed
     }
 
-    /// Clone the active layer, make the copy active, and build its move preview.
+    /// Begin a duplicate drag. With a selection active this is the Alt
+    /// selection-content case: the selected pixels are prepared as the live
+    /// move-preview layer, no document change. Otherwise the active pixel layer
+    /// is cloned, made active, and previewed.
     pub fn begin_move_duplicate(mut self: Pin<&mut Self>) -> bool {
+        if self.rust().selection.is_some() {
+            return self.as_mut().begin_selection_duplicate_preview();
+        }
         let new_index = {
             let mut guard = self.as_mut().rust_mut();
             let rust = &mut *guard;

@@ -3,7 +3,7 @@ use super::helpers_composite::*;
 use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QString, QStringList};
+use cxx_qt_lib::{QImage, QString, QStringList};
 use pictura_core::Channel;
 use pictura_select::{CombineMode, Selection};
 
@@ -169,13 +169,47 @@ impl qobject::PictureView {
                 if let Ok(source) = path.parse::<usize>() {
                     rust.active_layer = Some((source + 1).to_string());
                 }
-                // ponytail: only the selection outline previews during the
-                // drag; the copied pixels appear on commit. A live pixel
-                // pre-clone would duplicate and composite per pointer event.
             }
         }
         self.as_mut().recomposite();
         self.as_mut().record("Move Selection");
+        true
+    }
+
+    /// Build the live Alt selection-content preview without touching the
+    /// document: the full composite as base and the masked copy of the selected
+    /// pixels as the moving layer, stored in the move-preview slots. The copy is
+    /// produced by the same engine call the commit uses, so preview and commit
+    /// agree. No history. False without a document, selection, editable active
+    /// layer, or when the engine refuses (a locked source).
+    pub fn begin_selection_duplicate_preview(mut self: Pin<&mut Self>) -> bool {
+        let prepared = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            let selection = rust
+                .selection_move_origin
+                .as_ref()
+                .or(rust.selection.as_ref());
+            let (Some(selection), Some(path)) = (selection, rust.active_layer.as_deref()) else {
+                return false;
+            };
+            selection_duplicate_preview(doc, path, selection, rust.gpu_compute)
+        };
+        let Some((base, layer, opacity)) = prepared else {
+            return false;
+        };
+        let mut rust = self.as_mut().rust_mut();
+        rust.move_base = Some(base);
+        rust.move_layer = Some(layer);
+        rust.move_x = 0;
+        rust.move_y = 0;
+        rust.move_opacity = opacity;
+        rust.move_prepared_revision = rust.content_revision;
+        // The `-1` sentinel keeps the whole-layer cache from reusing this base.
+        rust.move_prepared_layer = -1;
+        rust.move_preview_cache_hit = false;
         true
     }
 
@@ -597,6 +631,37 @@ impl qobject::PictureView {
         }
         QString::from(parts.join(";"))
     }
+}
+
+/// The `(base, moving layer, opacity)` for an Alt selection-content preview.
+///
+/// The base is the full composite (source pixels intact); the moving layer is a
+/// document-sized copy of the selected pixels produced by the same engine call
+/// the commit uses, so the preview matches the committed layer exactly. Returns
+/// `None` for a non-top-level path, a missing source layer, or an engine refusal.
+///
+/// ponytail: clones the document and recomposites once per Alt press, not per
+/// pointer event; shave it only if press latency on large documents matters.
+fn selection_duplicate_preview(
+    doc: &pictura_core::Document,
+    path: &str,
+    selection: &Selection,
+    gpu_compute: bool,
+) -> Option<(QImage, QImage, i32)> {
+    let source_index: usize = path.parse().ok()?;
+    doc.layers.get(source_index)?;
+    let mask = selection_to_mask(selection, doc);
+    let mut preview = doc.clone();
+    if !pictura_render::move_selection_content(&mut preview, path, &mask, 0, 0, true) {
+        return None;
+    }
+    let copy = preview.layers.get(source_index + 1)?;
+    let layer = layer_image(copy)?;
+    Some((
+        document_to_image(doc, gpu_compute),
+        layer,
+        copy.opacity as i32,
+    ))
 }
 
 /// The zero-based `doc.channels` index for a dialog label `"Alpha N"`.

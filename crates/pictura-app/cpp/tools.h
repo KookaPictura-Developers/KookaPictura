@@ -346,6 +346,9 @@ private:
     bool movingSelection_ = false;
     bool contentMove_ = false;
     bool contentDuplicate_ = false;
+    // True while a duplicate content move is showing the pre-cloned pixel
+    // preview on the canvas; cleared on release/cancel/tool switch.
+    bool contentPreviewActive_ = false;
     bool cursorOverSelection_ = false;
     // The press point for a selection/content move, owned by the controller
     // because the routing is cross-cutting; a tool handler's own drag anchor is

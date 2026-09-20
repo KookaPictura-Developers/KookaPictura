@@ -418,6 +418,8 @@ void LayersPanel::refresh()
     QVector<LayerRow> rows;
     if (view_) {
         const int count = view_->layer_row_count();
+        const int documentWidth = view_->document_width();
+        const int documentHeight = view_->document_height();
         rows.reserve(count);
         for (int i = 0; i < count; ++i) {
             LayerRow row;
@@ -438,6 +440,8 @@ void LayersPanel::refresh()
             row.childCount = view_->layer_row_child_count(i);
             row.linked = view_->layer_row_linked(i);
             row.placed = view_->layer_row_placed(i);
+            row.documentWidth = documentWidth;
+            row.documentHeight = documentHeight;
             row.thumbnail = view_->layer_row_thumbnail(i, thumbSize, thumbEntireDocument_);
             row.maskThumbnail = view_->layer_row_mask_thumbnail(i, thumbSize);
             rows.push_back(std::move(row));

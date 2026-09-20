@@ -120,10 +120,14 @@ private:
 // Freehand Lasso: the mask grows with each move until release.
 class LassoToolHandler : public ToolHandler {
 public:
-    bool onPress(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers) override
+    bool onPress(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers mods) override
     {
         PictureView* v = ctx.view();
-        if (!v || !v->begin_lasso(selectionModeString(ctx.dragMode()))) {
+        if (!v) {
+            return true;
+        }
+        ctx.setDragMode(ctx.resolveSelectionMode(mods, v->has_selection()));
+        if (!v->begin_lasso(selectionModeString(ctx.dragMode()))) {
             return true;
         }
         ctx.setDragging(true);

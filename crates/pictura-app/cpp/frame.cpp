@@ -190,6 +190,9 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
             [this]() { setBrightnessLevel(brightnessLevel_ + 1); });
 
     resize(1100, 700);
+    // A normal launch opens no document; refresh() is the only writer of the
+    // tab pane's visibility, so hide the empty ghost canvas at startup.
+    refresh();
     setWindowTitle(QStringLiteral("Kooka Pictura"));
 }
 
@@ -383,6 +386,11 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
                 updateWindowTitle();
                 if (registry_) {
                     registry_->refresh();
+                }
+                // A region update can change the active layer's visibility
+                // without a `changed` emission; keep the tool cursor in sync.
+                if (tools_) {
+                    tools_->refreshCursor();
                 }
             });
     connect(entry.canvas, &ImageView::zoomChanged, this, [this](double) { updateStatus(); });

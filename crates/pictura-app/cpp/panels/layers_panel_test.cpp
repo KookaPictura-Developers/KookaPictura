@@ -733,6 +733,71 @@ QRect LayersPanel::rowNameRectForTest(const QString& path) const
     return delegate_->nameRect(QRect(0, 0, vr.width(), vr.height()), index);
 }
 
+bool LayersPanel::eyeGutterCentredForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return false;
+    }
+    const QRect vr = tree_->visualRect(index);
+    const QRect eye = delegate_->eyeRect(QRect(0, 0, vr.width(), vr.height()));
+    const int leftPad = eye.left();
+    const int rightPad = LayerRowDelegate::kEyeColumn - eye.right() - 1;
+    return leftPad > 0 && leftPad == rightPad;
+}
+
+bool LayersPanel::eyeSeparatorPresentForTest(const QString& path) const
+{
+    if (!delegate_) {
+        return false;
+    }
+    const QImage image = rowImageForTest(path);
+    if (image.isNull()) {
+        return false;
+    }
+    const int x = LayerRowDelegate::kEyeColumn - 1;
+    const int y = image.height() / 2;
+    if (x < 0 || x >= image.width() || y < 0 || y >= image.height()) {
+        return false;
+    }
+    const QColor separator = image.pixelColor(x, y);
+    return separator.red() == separator.green() && separator.green() == separator.blue()
+        && separator.red() < 128;
+}
+
+int LayersPanel::dropIndicatorForTest(const QString& source, const QString& hover, int where)
+{    if (!tree_) {
+        return -1;
+    }
+    const QModelIndex index = proxyIndexForPath(hover);
+    if (!index.isValid()) {
+        return -1;
+    }
+    const QRect vr = tree_->visualRect(index);
+    int y = vr.center().y();
+    if (where == 0) {
+        y = vr.top() + 1;
+    } else if (where == 1) {
+        y = vr.bottom() - 1;
+    }
+    const QPoint pos(vr.left() + 4, y);
+    QMimeData mime;
+    mime.setData(kLayerMimeType, source.toUtf8());
+    QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &enter);
+    QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &move);
+    return tree_->dropIndicatorKindForTest();
+}
+
+void LayersPanel::expandForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (index.isValid()) {
+        tree_->expand(index);
+    }
+}
+
 QImage LayersPanel::rowImageForTest(const QString& path) const
 {
     const QModelIndex index = proxyIndexForPath(path);

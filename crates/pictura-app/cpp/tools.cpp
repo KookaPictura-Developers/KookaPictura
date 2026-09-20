@@ -227,6 +227,12 @@ void ToolController::emitSelectionCommitted() { emit selectionCommitted(); }
 void ToolController::bindCanvas(ImageView* canvas)
 {
     if (canvas_ == canvas) {
+        // The canvas pointer is unchanged, but the active layer's visibility or
+        // identity may have changed under it; re-assert the cursor without
+        // waiting for the next mouse move.
+        if (!transformSessionActive()) {
+            refreshCursor();
+        }
         return;
     }
     unbindCanvas();

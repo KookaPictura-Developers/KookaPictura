@@ -28,6 +28,7 @@ public:
         warmBase_ = QImage();
         warmLayer_ = QImage();
         warmValid_ = false;
+        pendingDuplicate_ = false;
     }
 
     bool onPress(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers mods) override
@@ -43,7 +44,8 @@ public:
         QElapsedTimer pressClock;
         pressClock.start();
         const bool alt = mods.testFlag(Qt::AltModifier);
-        const bool prepared = alt ? v->begin_move_duplicate() : v->begin_move_preview();
+        const bool prepared = v->begin_move_preview();
+        pendingDuplicate_ = alt;
         const qint64 pressNs = pressClock.nsecsElapsed();
         if (qEnvironmentVariableIsSet("PICTURA_PRESS_TRACE") || pressNs > 8000000) {
             qWarning("[move-press] begin_move_preview hit=%d work=%.1fms",
@@ -78,6 +80,22 @@ public:
         }
         totalDelta_ += imagePos - last_;
         last_ = imagePos;
+        // Defer the Alt clone to the first real movement, so a bare Alt press
+        // with no movement inserts nothing. The clone appears with the preview
+        // rebuilt for the copy, then follows the pointer like the source did.
+        if (pendingDuplicate_
+            && (qRound(totalDelta_.x()) != 0 || qRound(totalDelta_.y()) != 0)) {
+            pendingDuplicate_ = false;
+            PictureView* v = ctx.view();
+            if (v && v->begin_move_duplicate()) {
+                warmValid_ = false;
+                if (ImageView* canvas = ctx.canvas()) {
+                    canvas->beginMovePreview(v->move_preview_base(), v->move_preview_layer(),
+                                             QPointF(v->move_preview_x(), v->move_preview_y()),
+                                             v->move_preview_opacity() / 255.0);
+                }
+            }
+        }
         if (ImageView* canvas = ctx.canvas()) {
             canvas->setMovePreviewDelta(totalDelta_);
         }
@@ -97,6 +115,7 @@ public:
                 v->commit_move(dx, dy);
             }
         }
+        pendingDuplicate_ = false;
         if (ImageView* canvas = ctx.canvas()) {
             canvas->endMovePreview();
         }
@@ -126,6 +145,8 @@ private:
     QImage warmBase_;
     QImage warmLayer_;
     bool warmValid_ = false;
+    // Alt is armed at press; the clone is inserted on the first non-zero move.
+    bool pendingDuplicate_ = false;
 };
 
 } // namespace

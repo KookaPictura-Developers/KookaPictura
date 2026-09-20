@@ -131,6 +131,14 @@ public:
     QRect rowEyeRectForTest(const QString& path) const;
     QRect rowNameRectForTest(const QString& path) const;
 
+    // Follow-up cosmetics hooks: the centred eye gutter, its separator, and the
+    // custom drop indicator kind after a synthesized hover (0 above, 1 below,
+    // 2 centre). The kind is 0 none, 1 sibling line, 2 drop-into outline.
+    bool eyeGutterCentredForTest(const QString& path) const;
+    bool eyeSeparatorPresentForTest(const QString& path) const;
+    int dropIndicatorForTest(const QString& source, const QString& hover, int where);
+    void expandForTest(const QString& path);
+
     // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
     // one, updates the bar, and applies it to the proxy.
     QStringList visiblePathsForTest() const;

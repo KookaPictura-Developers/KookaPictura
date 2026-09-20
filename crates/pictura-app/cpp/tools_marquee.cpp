@@ -42,18 +42,20 @@ void ToolController::refreshCursor(Qt::KeyboardModifiers mods)
     PictureView* hoverView = view();
     const bool ctrlPreview = isSelectionTool(active_) && hoverView
         && mods.testFlag(Qt::ControlModifier) && hoverView->has_selection();
-    // A combine modifier (Shift/Alt) hands the cursor back to the tool's
-    // add/remove assets; a gesture follows the mode captured at press.
-    if (hoverCursorId(active_, mods, movingSelection_ || cursorOverSelection_, ctrlPreview)
-        == QStringLiteral("cursor.moveSelection")) {
-        const QCursor c = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
+    // An in-progress combine drag keeps the cursor captured at press for the
+    // whole gesture, even after the live modifier is released.
+    if (isSelectionTool(active_) && dragging_ && !movingSelection_) {
+        const ToolInfo& info = toolInfo(active_);
+        const QCursor c = cursor(dragCursorId(), info.hotspotX, info.hotspotY);
         if (!c.pixmap().isNull()) {
             return canvas_->setCursor(c);
         }
     }
-    if (isSelectionTool(active_) && dragging_ && !movingSelection_) {
-        const ToolInfo& info = toolInfo(active_);
-        const QCursor c = cursor(dragCursorId(), info.hotspotX, info.hotspotY);
+    // A combine modifier (Shift/Alt) hands the cursor back to the tool's
+    // add/remove assets; hovering without a drag still offers move-selection.
+    if (hoverCursorId(active_, mods, movingSelection_ || cursorOverSelection_, ctrlPreview)
+        == QStringLiteral("cursor.moveSelection")) {
+        const QCursor c = cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
         if (!c.pixmap().isNull()) {
             return canvas_->setCursor(c);
         }

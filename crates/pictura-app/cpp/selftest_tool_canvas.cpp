@@ -199,5 +199,112 @@ int pictura::runToolCanvasChecks(pictura::PicturaMainWindow& frame)
         frame.closeDocument(doc, false);
     }
 
+    // tc_alt_clone_noop (384): an Alt Move press+release with no movement leaves
+    // the document unchanged: no clone, the source still active, no history. A
+    // following non-zero Alt drag still clones, proving the press state is intact.
+    {
+        const bool created = frame.newDocument(QStringLiteral("MoveCloneNoop"), 16, 16,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        PictureView* view = frame.activeView();
+        ImageView* canvas = frame.imageView();
+        if (!created || !view || !canvas) {
+            return pictura::selfTest().fail(384, "clone noop fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        const QString source = view->add_layer_in(QString());
+        view->set_active_layer(source);
+        const QString sourceRect = view->layer_rect(source);
+        const int layers = view->select_all_layers().size();
+        const int base = view->history_count();
+        frame.setActiveTool(ToolId::Move);
+        canvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::AltModifier));
+        canvas->mouseReleased(QPointF(4, 4));
+        const bool clean = view->select_all_layers().size() == layers
+            && view->active_layer_path() == source
+            && view->layer_rect(source) == sourceRect
+            && view->history_count() == base;
+        canvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::AltModifier));
+        canvas->mouseMoved(QPointF(6, 6));
+        canvas->mouseReleased(QPointF(6, 6));
+        const bool thenClone = view->select_all_layers().size() == layers + 1
+            && view->history_count() == base + 1 && view->active_layer_path() != source;
+        ST_BEGIN("tc_alt_clone_noop");
+        ST_PASS("tc_alt_clone_noop clean=%d thenclone=%d layers=%d", clean ? 1 : 0,
+                thenClone ? 1 : 0, view->select_all_layers().size());
+        if (!clean || !thenClone) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(384, "alt clone no-op");
+        }
+        frame.closeDocument(doc, false);
+    }
+
+    // tc_content_duplicate_preview (385): with Alt held a selection content drag
+    // shows the duplicated pixels on the canvas from the first move, not only the
+    // outline; release adds one copy under one "Move Selection" state with the
+    // clone active.
+    {
+        frame.setActiveTool(ToolId::Move);
+        const bool created = frame.newDocument(QStringLiteral("MoveSelDup"), 16, 16,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        PictureView* view = frame.activeView();
+        ImageView* canvas = frame.imageView();
+        if (!created || !view || !canvas) {
+            return pictura::selfTest().fail(385, "content duplicate preview fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        const QString layer = view->add_layer_in(QString());
+        view->set_active_layer(layer);
+        view->deselect();
+        const bool seed = view->select_rect(4, 4, 4, 4, QStringLiteral("new"), 0.0);
+        const int layers = view->select_all_layers().size();
+        const int base = view->history_count();
+        const QString source = view->active_layer_path();
+        canvas->mousePressed(QPointF(5, 5), Qt::LeftButton, int(Qt::AltModifier));
+        canvas->mouseMoved(QPointF(8, 8));
+        const bool preview = canvas->movePreviewActive()
+            && !view->move_preview_layer().isNull()
+            && view->select_all_layers().size() == layers && view->history_count() == base;
+        canvas->mouseReleased(QPointF(8, 8));
+        const bool committed = view->history_count() == base + 1
+            && view->history_label(base) == QStringLiteral("Move Selection")
+            && view->select_all_layers().size() == layers + 1;
+        const bool active = !source.isEmpty()
+            && view->active_layer_path() == QString::number(source.toInt() + 1);
+        ST_BEGIN("tc_content_duplicate_preview");
+        ST_PASS("tc_content_duplicate_preview seed=%d preview=%d committed=%d active=%d",
+                seed ? 1 : 0, preview ? 1 : 0, committed ? 1 : 0, active ? 1 : 0);
+        if (!seed || !preview || !committed || !active) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(385, "content duplicate preview");
+        }
+
+        // tc_content_duplicate_cancel (386): an Alt content press+release with no
+        // movement restores the document bit-identically with no history and no
+        // lingering preview.
+        view->deselect();
+        const bool cancelSeed = view->select_rect(4, 4, 4, 4, QStringLiteral("new"), 0.0);
+        const int cancelLayers = view->select_all_layers().size();
+        const int cancelBase = view->history_count();
+        const QString cancelSource = view->active_layer_path();
+        const QString cancelBounds = view->selection_bounds();
+        const quint32 cancelPixel = view->composite_argb(5, 5);
+        canvas->mousePressed(QPointF(5, 5), Qt::LeftButton, int(Qt::AltModifier));
+        canvas->mouseReleased(QPointF(5, 5));
+        const bool cancelClean = view->select_all_layers().size() == cancelLayers
+            && view->history_count() == cancelBase
+            && view->active_layer_path() == cancelSource
+            && view->selection_bounds() == cancelBounds
+            && view->composite_argb(5, 5) == cancelPixel && !canvas->movePreviewActive();
+        ST_BEGIN("tc_content_duplicate_cancel");
+        ST_PASS("tc_content_duplicate_cancel seed=%d clean=%d layers=%d", cancelSeed ? 1 : 0,
+                cancelClean ? 1 : 0, view->select_all_layers().size());
+        frame.closeDocument(doc, false);
+        if (!cancelSeed || !cancelClean) {
+            return pictura::selfTest().fail(386, "content duplicate cancel");
+        }
+    }
+
     return 0;
 }
