@@ -40,6 +40,9 @@ pub use pictura_adjust::{GradientFillParams, GradientKind, GradientStop, Pattern
 mod color_balance;
 pub use color_balance::encode_color_balance;
 
+mod channel_mixer;
+pub use channel_mixer::encode_channel_mixer;
+
 mod fill;
 pub use fill::encode_gradient_fill;
 

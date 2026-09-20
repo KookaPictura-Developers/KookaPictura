@@ -1,0 +1,16 @@
+#pragma once
+
+namespace pictura {
+class PicturaMainWindow;
+
+// Runs the adjustment-layer checks: lpr_photo_filter (283) adds a photo-filter
+// kind, confirms it is reported as an adjustment, and that it warms the
+// composite; adjustments_photo_filter_menu (284) checks the Adjustments panel
+// offers the Photo Filter row; lpr_gradient_map (285) maps a painted backdrop
+// through a black-to-white gradient and checks the panel row; lpr_color_balance
+// (293) adds the neutral `color-balance` kind and checks it leaves the
+// composite unchanged; lpr_channel_mixer (294) adds the neutral `channel-mixer`
+// kind and checks the same neutrality plus its panel row. Returns 0 when all
+// pass, otherwise the self-test failure code.
+int runLayersAdjustmentChecks(PicturaMainWindow& frame);
+} // namespace pictura

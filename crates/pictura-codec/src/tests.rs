@@ -436,6 +436,7 @@ fn adjustment_layers_round_trip_key_and_bytes() {
         (*b"brit", vec![0, 10, 0, 20, 0, 0, 0, 0]),
         (*b"hue2", vec![0; 16]),
         (*b"blnc", vec![0; 20]),
+        (*b"mixr", vec![0; 44]),
         (*b"curv", vec![1, 2, 3, 4]),
     ];
 

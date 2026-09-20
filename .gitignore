@@ -11,6 +11,8 @@
 # Node (openspec tooling)
 node_modules/
 .opencode/node_modules/
+package.json
+package-lock.json
 
 # Rust tooling caches
 .sccache

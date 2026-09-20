@@ -13,6 +13,7 @@ Regenerate with:  python3 scripts/generate-fixtures.py
 from __future__ import annotations
 
 import io
+import struct
 from pathlib import Path
 
 from PIL import Image
@@ -155,6 +156,50 @@ def adjustment() -> PSDImage:
             density=25,
             luminosity=1,
         ),
+    )
+    return psd
+
+
+def _mixr_data(monochrome, red, green, blue, gray) -> bytes:
+    """Hand-build an ag-psd-shaped `mixr` block.
+
+    Each channel argument is a `(rgb, constant)` pair. Non-monochrome writes
+    red/green/blue then the gray channel; monochrome writes only the gray
+    channel followed by 30 zero bytes, so both forms are 44 bytes (the decoder
+    ignores trailing bytes and only needs the channels it reads).
+    """
+    data = struct.pack(">HH", 1, 1 if monochrome else 0)
+    channels = (gray,) if monochrome else (red, green, blue, gray)
+    for rgb, constant in channels:
+        data += struct.pack(">hhh", *rgb) + b"\x00\x00" + struct.pack(">h", constant)
+    if monochrome:
+        data += b"\x00" * 30
+    return data
+
+
+def channel_mixer() -> PSDImage:
+    """RGB, a Base pixel layer plus non-monochrome and monochrome `mixr` layers."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    _adj_layer(
+        psd,
+        Tag.CHANNEL_MIXER,
+        "Channel Mixer",
+        _mixr_data(
+            False,
+            ((30, -10, 50), 5),
+            ((10, 90, 0), -20),
+            ((0, 20, 110), 40),
+            ((100, 0, 0), 0),
+        ),
+    )
+    _adj_layer(
+        psd,
+        Tag.CHANNEL_MIXER,
+        "Channel Mixer Mono",
+        _mixr_data(True, None, None, None, ((20, 40, 60), -15)),
     )
     return psd
 
@@ -1019,6 +1064,7 @@ FIXTURES = {
     "masked.psd": masked,
     "gray.psd": gray,
     "adjustment.psd": adjustment,
+    "channel_mixer.psd": channel_mixer,
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
     "gradient_fill.psd": gradient_fill,
