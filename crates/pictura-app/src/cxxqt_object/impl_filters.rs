@@ -53,6 +53,9 @@ impl qobject::PictureView {
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
+            if !active_layer_visible(doc, active.as_deref()) {
+                return false;
+            }
             let Some(layer) = active_pixel_layer_mut(doc, active.as_deref()) else {
                 return false;
             };

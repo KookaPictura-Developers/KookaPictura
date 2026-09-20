@@ -476,10 +476,25 @@ impl qobject::PictureView {
     }
 
     pub fn set_layers_visible(mut self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32 {
-        self.as_mut()
-            .batch_changed(paths, "Set Visibility", |doc, paths| {
-                pictura_render::set_visible_paths(doc, paths, visible)
-            })
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let (changed, region) = {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            match rust.doc.as_mut() {
+                Some(doc) => set_visible_paths_union(doc, &refs, visible),
+                None => (0, None),
+            }
+        };
+        if changed == 0 {
+            return 0;
+        }
+        match region {
+            Some(rect) => self.as_mut().refresh_region(rect),
+            None => self.as_mut().recomposite(),
+        }
+        self.as_mut().record("Set Visibility");
+        changed as i32
     }
 
     pub fn set_layers_blend(mut self: Pin<&mut Self>, paths: &QStringList, key: &QString) -> i32 {

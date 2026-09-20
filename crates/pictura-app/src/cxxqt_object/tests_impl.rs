@@ -46,6 +46,53 @@ fn region_refresh_profile_4000() {
     println!("region_refresh_profile backend: {backend:?}");
 }
 
+/// Print-only reference for a visibility toggle on a 4000² document whose
+/// layer covers only a small rect: the region path composites and patches that
+/// rect, versus a full `current_buffer` recomposite of the whole document. No
+/// pass/fail budget (the reference machine is not pinned).
+#[test]
+#[ignore = "4000x4000 visibility profile; run explicitly with --ignored --nocapture"]
+fn visibility_region_profile_4000() {
+    let ms = |label: &str, d: std::time::Duration| {
+        println!(
+            "visibility_profile {label} 4000x4000: {:.2} ms",
+            d.as_secs_f64() * 1000.0
+        );
+    };
+
+    let mut small = pixel_layer("small", 200, 200, (200, 100, 50));
+    small.rect = PsdRect {
+        top: 1900,
+        left: 1900,
+        bottom: 2100,
+        right: 2100,
+    };
+    let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 4000, 4000, (30, 60, 90)), small];
+    let rendered = current_buffer(&doc, false);
+    store_composite(&mut doc, &rendered);
+
+    // Region path: hide the small layer and composite only its rect.
+    let (_, region) = set_visible_paths_union(&mut doc, &["1"], false);
+    let rect = region.expect("small raster layer is bounded");
+    let (x0, y0, ..) = clamp_region(rect, doc.width, doc.height).expect("in bounds");
+    let t = std::time::Instant::now();
+    let (buffer, backend) = pictura_render::composite_region_active(&doc, rect, false);
+    patch_composite_region(&mut doc, &buffer, x0, y0);
+    let _ = buffer_to_image(&buffer);
+    ms("region toggle", t.elapsed());
+
+    // Full recomposite of the same state, for comparison.
+    let mut full = doc.clone();
+    let t = std::time::Instant::now();
+    let rendered = current_buffer(&full, false);
+    store_composite(&mut full, &rendered);
+    let _ = buffer_to_image(&full.composite);
+    ms("full recomposite", t.elapsed());
+
+    println!("visibility_profile backend: {backend:?}");
+}
+
 #[test]
 fn filter_from_kind_maps_known_and_rejects_unknown() {
     use pictura_filters::{

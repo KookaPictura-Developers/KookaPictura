@@ -428,6 +428,15 @@ impl qobject::PictureView {
             .unwrap_or_default()
     }
 
+    /// Whether the single active layer a tool edit may target is visible; true
+    /// when there is no single editable active layer (nothing to refuse).
+    pub fn active_layer_visible(&self) -> bool {
+        let rust = self.rust();
+        rust.doc
+            .as_ref()
+            .is_none_or(|doc| active_layer_visible(doc, rust.active_layer.as_deref()))
+    }
+
     pub fn set_gpu_compute(mut self: Pin<&mut Self>, enabled: bool) {
         self.as_mut().rust_mut().gpu_compute = enabled;
         self.as_mut().recomposite();

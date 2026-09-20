@@ -594,7 +594,7 @@ void ToolController::refreshCursor()
     }
     PictureView* hoverView = view();
     if ((active_ == ToolId::Brush || active_ == ToolId::Pencil) && hoverView
-        && topmostPixelLocked(hoverView)) {
+        && (topmostPixelLocked(hoverView) || !hoverView->active_layer_visible())) {
         canvas_->setCursor(Qt::ForbiddenCursor);
         return;
     }
@@ -695,6 +695,9 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
             if (topmostPixelLocked(v)) {
                 emit pixelEditRefused(
                     tr("Could not paint: the layer's pixels are locked."));
+            } else if (!v->active_layer_visible()) {
+                emit pixelEditRefused(
+                    tr("Could not paint: the active layer is invisible."));
             } else if (v->active_layer_path().isEmpty()) {
                 emit pixelEditRefused(
                     tr("Could not paint: select a single layer first."));

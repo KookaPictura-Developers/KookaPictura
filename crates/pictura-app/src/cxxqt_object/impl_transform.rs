@@ -5,7 +5,7 @@ use super::state::TransformSession;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QString};
-use pictura_core::{layer_move_locked, LockFlags, PsdRect};
+use pictura_core::{layer_move_locked, Document, LockFlags, PsdRect};
 use pictura_render::LayerTransform;
 
 /// Screen-pixel tolerance for a scale-handle hit.
@@ -317,6 +317,40 @@ fn can_free_transform(doc: &pictura_core::Document, path: &str) -> bool {
     }
     let mut clone = doc.clone();
     pictura_render::rasterize_smart_object(&mut clone, path)
+}
+
+/// Build the move-preview base for layer `index`: the authoritative composite
+/// with the layer's rect recomposited as if hidden, then the layer's prior
+/// `visible` flag restored, so starting a move never reveals an invisible layer.
+pub(super) fn build_move_preview_base(
+    doc: &mut Document,
+    index: usize,
+    gpu_compute: bool,
+) -> QImage {
+    let rect = doc.layers[index].rect;
+    let composite_ok = doc.composite.width == doc.width
+        && doc.composite.height == doc.height
+        && !doc.composite.data.is_empty();
+    let was_visible = doc.layers[index].visible;
+    match move_preview_region(rect, doc.width, doc.height, composite_ok) {
+        Some((x0, y0, ..)) => {
+            doc.layers[index].visible = false;
+            let (region, _backend) =
+                pictura_render::composite_region_active(doc, rect, gpu_compute);
+            doc.layers[index].visible = was_visible;
+            let mut base_buffer = doc.composite.clone();
+            patch_buffer_region(&mut base_buffer, &region, x0, y0);
+            buffer_to_image(&base_buffer)
+        }
+        None => {
+            // ponytail: full-composite fallback for a missing/mismatched
+            // composite; the region path covers the common case.
+            doc.layers[index].visible = false;
+            let base = document_to_image(doc, gpu_compute);
+            doc.layers[index].visible = was_visible;
+            base
+        }
+    }
 }
 
 impl qobject::PictureView {
@@ -800,31 +834,7 @@ impl qobject::PictureView {
         };
         let rect = doc.layers[index].rect;
         let (x, y, opacity) = (rect.left, rect.top, doc.layers[index].opacity as i32);
-        // Build the base from the authoritative planar composite, never a
-        // possibly-stale cached image: clone it and overwrite the moved layer's
-        // rectangle with the region composited with the layer hidden.
-        let composite_ok = doc.composite.width == doc.width
-            && doc.composite.height == doc.height
-            && !doc.composite.data.is_empty();
-        let base = match move_preview_region(rect, doc.width, doc.height, composite_ok) {
-            Some((x0, y0, ..)) => {
-                doc.layers[index].visible = false;
-                let (region, _backend) =
-                    pictura_render::composite_region_active(doc, rect, gpu_compute);
-                doc.layers[index].visible = true;
-                let mut base_buffer = doc.composite.clone();
-                patch_buffer_region(&mut base_buffer, &region, x0, y0);
-                buffer_to_image(&base_buffer)
-            }
-            None => {
-                // ponytail: full-composite fallback for a missing/mismatched
-                // composite; the region path covers the common case.
-                doc.layers[index].visible = false;
-                let base = document_to_image(doc, gpu_compute);
-                doc.layers[index].visible = true;
-                base
-            }
-        };
+        let base = build_move_preview_base(doc, index, gpu_compute);
         rust.move_base = Some(base);
         rust.move_layer = Some(layer_image);
         rust.move_x = x;
