@@ -60,13 +60,20 @@
 - [ ] 2.9 Item 12: hide `lockNesting_` in the Layers panel
   (`cpp/panels/layers_panel.cpp`, `layers_panel_actions.cpp`); leave the engine
   `NESTING` rules and PSD flag untouched.
-- [ ] 2.10 Batch 2 regression: new `crates/pictura-app/cpp/selftest_layers_round3.cpp`
+- [ ] 2.10 Item 5: convert the Background to a normal layer through a
+  name-and-color dialog, defaulting to the next free `Layer N` and no label
+  (`cpp/panels/layers_panel.cpp` double-click and New-Layer drop, `cpp/panels/layer_new_dialog.{h,cpp}`
+  name+color-only factory, bridge `set_layer_name_path`/`set_layers_color` or a
+  combined op); cancelling leaves the Background unchanged and records nothing;
+  each conversion is exactly one undo state.
+- [ ] 2.11 Batch 2 regression: new `crates/pictura-app/cpp/selftest_layers_round3.cpp`
   (register in `CMakeLists.txt`, invoked from `runLayersControlsChecks`, codes
   from **346+**) covering the rename band, top-level drop indicator + closed-hand
-  cursor, eye-only tint with no name swatch, highlight clip, thumbnail
+  cursor, Background conversion dialog (accept/cancel, `Layer N` default, label
+  applied), eye-only tint with no name swatch, highlight clip, thumbnail
   checkerboard/outline/brackets, row roles/fonts, row-height floor, and the
   hidden nesting button.
-- [ ] 2.11 Batch 2 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
+- [ ] 2.12 Batch 2 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
   headless self-test.
 
 ## 3. Batch 3 — Visibility perf + invisible layers (items 13, 17)
