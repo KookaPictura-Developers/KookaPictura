@@ -17,8 +17,14 @@ pub struct LevelsParams {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CurvesParams {
-    /// Monotone control points in `(input, output)` order, inclusive of endpoints.
+    /// Monotone composite control points in `(input, output)` order, inclusive
+    /// of endpoints.
     pub points: Vec<(u8, u8)>,
+    /// Optional per-channel curves, each in the same `(input, output)` order as
+    /// `points`. Applied to their own plane before the composite `points` curve.
+    pub red: Option<Vec<(u8, u8)>>,
+    pub green: Option<Vec<(u8, u8)>>,
+    pub blue: Option<Vec<(u8, u8)>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

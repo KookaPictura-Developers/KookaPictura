@@ -37,19 +37,21 @@ pub(crate) fn levels(p: &LevelsParams, buf: &mut PixelBuffer, n: usize) -> Resul
     Ok(())
 }
 
-pub(crate) fn curves(p: &CurvesParams, buf: &mut PixelBuffer, n: usize) -> Result<(), AdjustError> {
-    if p.points.len() < 2 {
+/// Build a 256-entry monotone-Hermite LUT for `points`, validating the shared
+/// curves contract (2..=14 control points, strictly increasing inputs).
+fn curve_lut(points: &[(u8, u8)]) -> Result<[u8; 256], AdjustError> {
+    if points.len() < 2 {
         return Err(AdjustError::InvalidParams(
             "curves need at least 2 points".into(),
         ));
     }
-    if p.points.len() > 14 {
+    if points.len() > 14 {
         return Err(AdjustError::InvalidParams(
             "curves support at most 14 points".into(),
         ));
     }
-    let xs: Vec<f64> = p.points.iter().map(|q| q.0 as f64).collect();
-    let ys: Vec<f64> = p.points.iter().map(|q| q.1 as f64).collect();
+    let xs: Vec<f64> = points.iter().map(|q| q.0 as f64).collect();
+    let ys: Vec<f64> = points.iter().map(|q| q.1 as f64).collect();
     if xs.windows(2).any(|w| w[0] >= w[1]) {
         return Err(AdjustError::InvalidParams(
             "curve inputs must be strictly increasing".into(),
@@ -62,7 +64,28 @@ pub(crate) fn curves(p: &CurvesParams, buf: &mut PixelBuffer, n: usize) -> Resul
             .round()
             .clamp(0.0, 255.0) as u8;
     }
-    map_lut(buf, n, &lut);
+    Ok(lut)
+}
+
+pub(crate) fn curves(p: &CurvesParams, buf: &mut PixelBuffer, n: usize) -> Result<(), AdjustError> {
+    let composite = curve_lut(&p.points)?;
+    let red = p.red.as_deref().map(curve_lut).transpose()?;
+    let green = p.green.as_deref().map(curve_lut).transpose()?;
+    let blue = p.blue.as_deref().map(curve_lut).transpose()?;
+    {
+        let (r, g, b) = planes_mut(buf, n);
+        for (plane, lut) in [(r, red), (g, green), (b, blue)] {
+            if let Some(lut) = lut {
+                for v in plane.iter_mut() {
+                    *v = lut[*v as usize];
+                }
+            }
+        }
+    }
+    // ponytail: per-channel curves then the composite curve is an assumption;
+    // Photoshop's composition order is unpublished. Revisit with a CS6/CC
+    // Curves baseline carrying both a composite and a per-channel curve.
+    map_lut(buf, n, &composite);
     Ok(())
 }
 

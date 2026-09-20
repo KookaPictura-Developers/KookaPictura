@@ -156,6 +156,9 @@ fn curves_identity_and_control_point() {
     apply(
         &Adjustment::Curves(CurvesParams {
             points: vec![(0, 0), (255, 255)],
+            red: None,
+            green: None,
+            blue: None,
         }),
         &mut b,
     )
@@ -165,6 +168,9 @@ fn curves_identity_and_control_point() {
     apply(
         &Adjustment::Curves(CurvesParams {
             points: vec![(0, 0), (100, 200), (255, 255)],
+            red: None,
+            green: None,
+            blue: None,
         }),
         &mut b,
     )
@@ -178,6 +184,9 @@ fn curves_monotone_and_validation() {
     apply(
         &Adjustment::Curves(CurvesParams {
             points: vec![(0, 0), (64, 32), (192, 224), (255, 255)],
+            red: None,
+            green: None,
+            blue: None,
         }),
         &mut b,
     )
@@ -188,14 +197,95 @@ fn curves_monotone_and_validation() {
     let mut b = buf3(1, 1, &[[0, 0, 0]]);
     assert!(apply(
         &Adjustment::Curves(CurvesParams {
-            points: vec![(0, 0)]
+            points: vec![(0, 0)],
+            red: None,
+            green: None,
+            blue: None,
         }),
         &mut b
     )
     .is_err());
     assert!(apply(
         &Adjustment::Curves(CurvesParams {
-            points: vec![(0, 0), (0, 10), (255, 255)]
+            points: vec![(0, 0), (0, 10), (255, 255)],
+            red: None,
+            green: None,
+            blue: None,
+        }),
+        &mut b
+    )
+    .is_err());
+}
+
+#[test]
+fn curves_per_channel_touches_only_its_plane() {
+    let mut b = buf3(1, 1, &[[100, 150, 200]]);
+    apply(
+        &Adjustment::Curves(CurvesParams {
+            points: vec![(0, 0), (255, 255)],
+            red: Some(vec![(0, 0), (128, 255), (255, 255)]),
+            green: None,
+            blue: None,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    let p = px3(&b, 0);
+    assert!(p[0] > 100, "red follows its curve: {p:?}");
+    assert_eq!(p[1], 150, "green is identity");
+    assert_eq!(p[2], 200, "blue is identity");
+}
+
+#[test]
+fn curves_per_channel_only_with_identity_composite() {
+    let mut b = buf3(2, 1, &[[10, 20, 30], [200, 100, 50]]);
+    apply(
+        &Adjustment::Curves(CurvesParams {
+            points: vec![(0, 0), (255, 255)],
+            red: None,
+            green: Some(vec![(0, 0), (128, 255), (255, 255)]),
+            blue: None,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    for (i, p) in [px3(&b, 0), px3(&b, 1)].into_iter().enumerate() {
+        let source = [[10u8, 20, 30], [200, 100, 50]][i];
+        assert_eq!(p[0], source[0], "red is identity on sample {i}");
+        assert_eq!(p[2], source[2], "blue is identity on sample {i}");
+        assert!(p[1] > source[1], "green follows its curve on sample {i}");
+    }
+}
+
+#[test]
+fn curves_composite_applies_after_per_channel() {
+    // Red 100 is pulled to ~50 by its channel curve, then the composite lifts
+    // 50 to ~78; green 100 is only touched by the composite, to ~156.
+    let mut b = buf3(1, 1, &[[100, 100, 100]]);
+    apply(
+        &Adjustment::Curves(CurvesParams {
+            points: vec![(0, 0), (128, 200), (255, 255)],
+            red: Some(vec![(0, 0), (100, 50), (255, 255)]),
+            green: None,
+            blue: None,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    let p = px3(&b, 0);
+    assert!(p[0] < p[1], "per-channel red then composite: {p:?}");
+    assert_eq!(p[1], p[2], "green and blue share the composite result");
+}
+
+#[test]
+fn curves_rejects_bad_per_channel() {
+    let mut b = buf3(1, 1, &[[10, 10, 10]]);
+    assert!(apply(
+        &Adjustment::Curves(CurvesParams {
+            points: vec![(0, 0), (255, 255)],
+            red: Some(vec![(0, 0), (0, 255)]),
+            green: None,
+            blue: None,
         }),
         &mut b
     )
@@ -937,6 +1027,9 @@ fn alpha_is_never_modified() {
         }),
         Adjustment::Curves(CurvesParams {
             points: vec![(0, 0), (128, 180), (255, 255)],
+            red: None,
+            green: None,
+            blue: None,
         }),
         Adjustment::BrightnessContrast(BrightnessContrastParams {
             brightness: 10,

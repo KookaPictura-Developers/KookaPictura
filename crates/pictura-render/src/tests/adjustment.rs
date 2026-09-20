@@ -880,7 +880,7 @@ fn fixture_solid_fill_decodes_descriptor() {
 
 #[test]
 fn deferred_keys_still_none() {
-    for key in [*b"curv", *b"selc", *b"clrL"] {
+    for key in [*b"selc", *b"clrL"] {
         assert_eq!(
             decode_adjustment(&adjdata(key, vec![1, 2, 3, 4])),
             None,
@@ -1339,4 +1339,60 @@ fn fixture_channel_mixer_decodes() {
             constant: [-15.0, 0.0, 0.0],
         }))
     );
+}
+
+#[test]
+fn curves_layer_changes_backdrop_and_per_channel_isolates() {
+    let base = solid(
+        "base",
+        full(2, 1),
+        (100, 100, 100),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let patch = solid(
+        "patch",
+        rect(0, 0, 1, 1),
+        (60, 140, 200),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 1, vec![base.clone(), patch.clone()]));
+
+    let points = [(0u8, 0u8), (64, 32), (192, 224), (255, 255)];
+    let composite = encode_curves(&points, None, None, None).data;
+    let graded = composite_rgba(&doc(
+        2,
+        1,
+        vec![
+            base.clone(),
+            patch.clone(),
+            adjustment_layer("curves", *b"curv", composite, 255, None),
+        ],
+    ));
+    assert_ne!(
+        graded.data, plain.data,
+        "a non-identity Curves layer must change the backdrop"
+    );
+
+    let red = [(0u8, 0u8), (128, 255), (255, 255)];
+    let red_only = encode_curves(&[(0, 0), (255, 255)], Some(&red), None, None).data;
+    let adjusted = composite_rgba(&doc(
+        2,
+        1,
+        vec![
+            base,
+            patch,
+            adjustment_layer("red-curve", *b"curv", red_only, 255, None),
+        ],
+    ));
+    for x in 0..2 {
+        let before = rgb(&plain, x, 0);
+        let after = rgb(&adjusted, x, 0);
+        assert_eq!(before[1], after[1], "green untouched at {x}");
+        assert_eq!(before[2], after[2], "blue untouched at {x}");
+        assert!(after[0] > before[0], "red follows its curve at {x}");
+    }
 }
