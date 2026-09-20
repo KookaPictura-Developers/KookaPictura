@@ -33,7 +33,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G1 | ZIP / ZIP-with-prediction unsupported (composite + layer channels) | `read.rs` `read_psd` match, `read_channel_data` | **Open blocker** for many real PSDs |
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB; Multichannel/Duotone and the lossy-in-mode save stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted and consumed on read; the Duotone spec stays preserve-only |
-| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Open blocker for HDR/16-bit; a 16-bit raw smart object is downgraded on save |
+| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit (`>>8` / `clamp(trunc(f*256))`), all channels narrowed; a true `u16`/`f32` sample model preserving depth stays open |
 | G5 | Image resources entirely dropped (ICC, EXIF, XMP, IPTC, resolution, paths, slices, alpha names, guides, print) | `read.rs` skip, `write.rs` zero | **Save destroys metadata/profile** |
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
@@ -172,10 +172,16 @@ preserved verbatim channels stay byte-for-byte. ZIP write remains.
 **P4 — Color modes and depth.** *(partly shipped)*
 Indexed/Bitmap/CMYK/Lab now read and normalize to RGB (G2/G3, archived
 `color-mode-read`), with a documented lossy-in-mode save (`write_psd` writes the
-working mode) and a status-bar conversion notice in the app. Multichannel/Duotone
-(no natural RGB mapping / needs the spot-ink spec) and 16/32-bit depth (G4, needs
-a 16-bit sample representation in `PixelBuffer`) remain open, along with
-write-side re-encoding to the source mode.
+working mode) and a status-bar conversion notice in the app. 16/32-bit depth now
+reads and normalizes to 8-bit on load too (G4, archived `depth-read`):
+`source_depth` records the original, every channel (color, alpha/mask,
+spot/extra, and document extras) is narrowed, `write_psd` writes 8-bit
+(lossy-in-depth), and the app shows a conversion notice. Multichannel/Duotone
+(no natural RGB mapping / needs the spot-ink spec) remains open, along with
+write-side re-encoding to the source mode. The remaining depth work is a true
+`u16`/`f32` sample model in `PixelBuffer` that preserves depth (no narrowing on
+load) and a 32-bit HDR tone map (the shipped path is display-referred, clipping
+at 1.0).
 
 **P5 — PSB write / large documents.** *(shipped)* (G9)
 `write_psd` emits a version-2 container when the source document was a PSB
