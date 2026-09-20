@@ -493,46 +493,64 @@ bool Toolbox::eventFilter(QObject* watched, QEvent* event)
         return true;
     case QEvent::MouseButtonPress:
         // M47 T4.1: the title bar is draggable in every state, not just while
-        // floating, so arm the gesture regardless of `isFloating()`.
+        // floating, so arm the gesture regardless of `isFloating()`. The custom
+        // gesture is the only handler: consume the press so Qt's QDockWidget
+        // title-bar filter never starts its own drag.
         if (watched == titleBar_) {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (mouse->button() == Qt::LeftButton) {
                 titleDragPending_ = true;
                 titleDragMoved_ = false;
                 titlePressGlobal_ = mouse->globalPosition().toPoint();
+                titleDragOffset_ = isFloating()
+                    ? titlePressGlobal_ - frameGeometry().topLeft()
+                    : titlePressGlobal_ - mapToGlobal(QPoint(0, 0));
+                return true;
             }
         }
         break;
     case QEvent::MouseMove:
         // M45 T3: a left-button drag on the title bar is the floating-toolbar
         // drop gesture; the frame resolves it through the column grammar. M46:
-        // once floating, Qt's own dock drag grabs the mouse and delivers
-        // move/release to the dock, not the title bar, so the pending flag
-        // carries the gesture across that grab. M47 T4.1: the same applies when
-        // the gesture starts docked/pane, gated on the drag threshold so a
-        // jittery click does not relocate the panel.
+        // once floating, move/release may arrive on the dock rather than the
+        // title bar, so the pending flag carries the gesture. M47 T4.1: the same
+        // applies when the gesture starts docked/pane, gated on the drag
+        // threshold so a jittery click does not relocate the panel.
         if (titleDragPending_) {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (mouse->buttons() & Qt::LeftButton) {
                 const QPoint pos = mouse->globalPosition().toPoint();
-                if ((pos - titlePressGlobal_).manhattanLength()
-                    >= QApplication::startDragDistance()) {
+                if (!titleDragMoved_
+                    && (pos - titlePressGlobal_).manhattanLength()
+                           >= QApplication::startDragDistance()) {
                     titleDragMoved_ = true;
+                }
+                if (titleDragMoved_) {
+                    // A floating dock follows the cursor so the gesture reads as
+                    // a real drag; a docked/pane title drag only reports.
+                    if (isFloating()) {
+                        move(pos - titleDragOffset_);
+                    }
                     emit toolbarDragMoved(pos);
+                    return true;
                 }
             }
         }
         break;
     case QEvent::MouseButtonRelease:
-        if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+        if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton
+            && titleDragPending_) {
             // Only a real drag commits; a plain click on the title bar must not
             // relocate the panel.
-            if (titleDragPending_ && titleDragMoved_) {
-                emit toolbarDragFinished(
-                    static_cast<QMouseEvent*>(event)->globalPosition().toPoint());
-            }
+            const bool moved = titleDragMoved_;
+            const QPoint pos =
+                static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
             titleDragPending_ = false;
             titleDragMoved_ = false;
+            if (moved) {
+                emit toolbarDragFinished(pos);
+            }
+            return true;
         }
         break;
     case QEvent::Resize:

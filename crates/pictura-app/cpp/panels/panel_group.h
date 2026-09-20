@@ -124,6 +124,10 @@ signals:
     void dragCanceled();
     // M47: a floating group resizes itself to the collapsed icon row.
     void collapsedToIconsChanged(bool collapsed);
+    // M47: the per-widget menu's Close / Close Group entries. The column that
+    // wires the group performs the actual close through its existing paths.
+    void closePanelRequested(const QString& objectName);
+    void closeGroupRequested();
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;

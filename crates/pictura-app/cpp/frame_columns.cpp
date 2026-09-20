@@ -241,26 +241,13 @@ PanelColumn* PicturaMainWindow::resolveColumnMoveTarget(const QPoint& globalPos,
             return column;
         }
     }
-    // 3. A workspace edge: anchor on the outermost visible column on that side.
+    // 3. A workspace edge: a bare edge target. The anchor stays null and only
+    // `side` is set, so the column lands at the splitter head/tail — to the left
+    // of even a Tools pane hosted at index 0, or to the right of the last pane.
     const int wsSide = newColumnSideAt(globalPos);
     if (wsSide >= 0) {
         if (side) {
             *side = wsSide;
-        }
-        const QList<PanelColumn*> columns = panelColumns();
-        if (wsSide == 0) {
-            for (PanelColumn* column : columns) {
-                if (column && column->isVisible() && column != exclude) {
-                    return column;
-                }
-            }
-        } else {
-            for (int i = columns.size() - 1; i >= 0; --i) {
-                PanelColumn* column = columns.at(i);
-                if (column && column->isVisible() && column != exclude) {
-                    return column;
-                }
-            }
         }
     }
     return nullptr;

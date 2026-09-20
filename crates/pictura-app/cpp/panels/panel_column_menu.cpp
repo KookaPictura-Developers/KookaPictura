@@ -55,7 +55,55 @@ QStringList tabMenuTexts(bool minimized)
     };
 }
 
+// The column-header menu labels: one source of truth for the menu and its test.
+QStringList columnHeaderMenuTexts()
+{
+    return {
+        PanelColumn::tr("Collapse to Icons"),
+        PanelColumn::tr("Auto-Collapse Iconic Panels"),
+        PanelColumn::tr("Auto-show Hidden Panels"),
+        PanelColumn::tr("Interface Options\u2026"),
+    };
+}
+
 } // namespace
+
+void PanelColumn::showColumnHeaderMenu(const QPoint& globalPos)
+{
+    QMenu* menu = buildColumnHeaderMenu();
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->popup(globalPos);
+}
+
+QMenu* PanelColumn::buildColumnHeaderMenu()
+{
+    const QStringList labels = columnHeaderMenuTexts();
+    auto* menu = new QMenu(this);
+    menu->setObjectName(QStringLiteral("panelColumnHeaderMenu"));
+
+    QAction* collapse = menu->addAction(labels[0]);
+    collapse->setCheckable(true);
+    collapse->setChecked(railMode_);
+    connect(collapse, &QAction::triggered, this, [this](bool on) { setRailMode(on); });
+
+    QAction* autoCollapse = menu->addAction(labels[1]);
+    autoCollapse->setCheckable(true);
+    autoCollapse->setChecked(autoCollapseIconic_);
+    connect(autoCollapse, &QAction::triggered, this,
+            [this](bool on) { setAutoCollapseIconic(on); });
+
+    QAction* autoShow = menu->addAction(labels[2]);
+    autoShow->setCheckable(true);
+    autoShow->setChecked(autoShowHidden_);
+    connect(autoShow, &QAction::triggered, this, [this](bool on) { setAutoShowHidden(on); });
+
+    menu->addSeparator();
+
+    QAction* options = menu->addAction(labels[3]);
+    connect(options, &QAction::triggered, this, [this]() { emit interfaceOptionsRequested(); });
+
+    return menu;
+}
 
 void PanelColumn::showTabMenu(PanelGroup* group, const QPoint& globalPos)
 {

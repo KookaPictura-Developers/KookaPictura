@@ -19,17 +19,20 @@
 #include <QtGui/QHideEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
+#include <QtGui/QResizeEvent>
 #include <QtGui/QScreen>
 #include <QtGui/QShowEvent>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QBoxLayout>
 #include <QtWidgets/QFrame>
+#include <QtWidgets/QGraphicsOpacityEffect>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QScrollArea>
 #include <QtWidgets/QScrollBar>
+#include <QtWidgets/QSizeGrip>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QToolButton>
@@ -60,9 +63,20 @@ PanelFloat::PanelFloat(QWidget* parent)
     // list. OS-window float chrome and multi-monitor float are non-goals.
     setWindowFlags(Qt::Widget);
     setAttribute(Qt::WA_StyledBackground, true);
+    setMinimumWidth(kFloatMinWidth);
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(1, 1, 1, 1);
     layout->setSpacing(0);
+    // M47: one shared effect dims the whole overlay while it hovers a valid drop
+    // target; `setWindowOpacity` is a no-op on a child widget.
+    opacityEffect_ = new QGraphicsOpacityEffect(this);
+    opacityEffect_->setOpacity(1.0);
+    setGraphicsEffect(opacityEffect_);
+    // M47: the overlay is resizable like a docked column; the grip rides the
+    // bottom-right corner and never makes this a top-level window.
+    sizeGrip_ = new QSizeGrip(this);
+    sizeGrip_->setObjectName(QStringLiteral("panelFloatSizeGrip"));
+    sizeGrip_->setToolTip(tr("Resize"));
 }
 
 void PanelFloat::setGroup(PanelGroup* group)
@@ -92,18 +106,42 @@ void PanelFloat::syncToContent()
     }
     if (group_->isCollapsedToIcons()) {
         setMinimumHeight(kFloatIconMinHeight);
+        // M47: snap to the icon row rather than only growing, so collapsing a
+        // tall expanded float actually shrinks the overlay.
         const int target = qMax(group_->sizeHint().height(), kFloatIconMinHeight);
-        if (height() < target) {
-            resize(width(), target);
-        }
+        resize(width(), target);
         return;
     }
-    // Expanded: drop the icon-row minimum and grow to fit the group.
-    setMinimumHeight(0);
+    // Expanded: the overlay keeps a top-bar + tab-bar floor and grows to fit the
+    // group.
+    setMinimumHeight(kFloatMinHeight);
     const int target = group_->sizeHint().height();
     if (target > height()) {
         resize(width(), target);
     }
+}
+
+void PanelFloat::setDragDimmed(bool dimmed)
+{
+    if (opacityEffect_) {
+        opacityEffect_->setOpacity(dimmed ? 0.6 : 1.0);
+    }
+}
+
+qreal PanelFloat::dragOpacityForTest() const
+{
+    return opacityEffect_ ? opacityEffect_->opacity() : 1.0;
+}
+
+void PanelFloat::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    if (!sizeGrip_) {
+        return;
+    }
+    sizeGrip_->resize(sizeGrip_->sizeHint());
+    sizeGrip_->move(width() - sizeGrip_->width() - 2, height() - sizeGrip_->height() - 2);
+    sizeGrip_->raise();
 }
 
 } // namespace pictura

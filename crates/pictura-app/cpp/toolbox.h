@@ -103,6 +103,12 @@ public:
     QStringList flyoutKeysForTest(int group) const;
     void cycleGroupForTest(int group) { cycleGroup(group); }
     QToolButton* titleBarToggleForTest() const { return titleToggle_; }
+    // The custom title bar, so the self-test can drive the real gesture path.
+    QWidget* titleBarForTest() const { return titleBar_; }
+    // The grab offset recorded at the start of a title-bar drag: the frame uses
+    // it to place a floating fallback under the cursor when no splitter target
+    // resolves.
+    QPoint titleDragOffset() const { return titleDragOffset_; }
     bool hasFlyoutTriangleForTest(int group) const;
     QString titleTextForTest() const;
     int minimumWidthForTest() const { return minimumWidth(); }
@@ -171,6 +177,9 @@ private:
     bool titleDragPending_ = false;
     bool titleDragMoved_ = false;
     QPoint titlePressGlobal_;
+    // M47: cursor offset within the dock/title at press, for the floating
+    // follow and the frame's float-at-cursor fallback.
+    QPoint titleDragOffset_;
     // M44 T1: while floating the height is pinned to this content height.
     int floatHeight_ = 0;
 };

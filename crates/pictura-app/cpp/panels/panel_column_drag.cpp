@@ -64,11 +64,19 @@ bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
                 return true;
             }
         } else if (type == QEvent::MouseButtonRelease) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            const bool wasPending = columnPressPending_;
             columnPressPending_ = false;
             if (columnDragging_) {
                 columnDragging_ = false;
-                auto* mouse = static_cast<QMouseEvent*>(event);
                 return finishColumnDrag(mouse->globalPosition().toPoint());
+            }
+            // A press+release under the drag threshold is a click, not a drag:
+            // open the column header menu. A release past the threshold was
+            // already consumed as a drag above.
+            if (wasPending && mouse->button() == Qt::LeftButton) {
+                showColumnHeaderMenu(mouse->globalPosition().toPoint());
+                return true;
             }
         }
     }
@@ -621,7 +629,16 @@ void PanelColumn::beginPanelDrag(PanelGroup* group, const QString& objectName,
     if (!group) {
         return;
     }
+    // M47: a tab drag out of a one-panel float would build a second one-panel
+    // float and leave the source overlay behind as a ghost. The whole overlay is
+    // the only meaningful thing to move, so route it through a group drag.
+    if (floatForGroup(group) && group->visibleTitles().size() <= 1) {
+        beginGroupDrag(group, globalPos);
+        dragRedirectedFromFloat_ = true;
+        return;
+    }
     dragActive_ = true;
+    dragRedirectedFromFloat_ = false;
     dragIsPanel_ = true;
     dragGroup_ = group;
     dragSourceGroup_ = group;
@@ -646,6 +663,7 @@ void PanelColumn::beginGroupDrag(PanelGroup* group, const QPoint& globalPos)
         return;
     }
     dragActive_ = true;
+    dragRedirectedFromFloat_ = false;
     dragIsPanel_ = false;
     dragGroup_ = group;
     dragSourceGroup_ = group;
@@ -667,6 +685,10 @@ void PanelColumn::updateDrag(const QPoint& globalPos)
         return;
     }
     dropTarget_ = resolveDrop(globalPos);
+    // M47: dim the overlay only while it actually hovers a valid drop target.
+    if (dragFloat_) {
+        dragFloat_->setDragDimmed(dropTarget_.valid && !dropTarget_.outside);
+    }
     // M45 W1/W2: render the resolved target in the column that owns it, so a
     // cross-column drop draws its line in the target column.
     PanelColumn* owner = dropTarget_.owner ? dropTarget_.owner : this;
@@ -698,6 +720,9 @@ bool PanelColumn::commitDrop()
     const DropTarget target = dropTarget_;
     PanelGroup* source = dragSourceGroup_;
     bool ok = false;
+    if (dragFloat_) {
+        dragFloat_->setDragDimmed(false);
+    }
     if (indicatorOwner_ && indicatorOwner_ != this) {
         indicatorOwner_->clearIndicator();
     }
@@ -734,6 +759,7 @@ bool PanelColumn::commitDrop()
     }
     dragActive_ = false;
     dragIsPanel_ = false;
+    dragRedirectedFromFloat_ = false;
     dragGroup_ = nullptr;
     dragSourceGroup_ = nullptr;
     dragPanel_.clear();
@@ -753,6 +779,9 @@ bool PanelColumn::commitDrop()
 
 void PanelColumn::cancelDrag()
 {
+    if (dragFloat_) {
+        dragFloat_->setDragDimmed(false);
+    }
     if (indicatorOwner_ && indicatorOwner_ != this) {
         indicatorOwner_->clearIndicator();
     }
@@ -770,6 +799,7 @@ void PanelColumn::cancelDrag()
     }
     dragActive_ = false;
     dragIsPanel_ = false;
+    dragRedirectedFromFloat_ = false;
     dragGroup_ = nullptr;
     dragSourceGroup_ = nullptr;
     dragPanel_.clear();
@@ -943,6 +973,28 @@ bool PanelColumn::applyGroupDrop(PanelGroup* group, const DropTarget& target)
     if (!group) {
         return false;
     }
+    // M47: a one-panel float reached here through the single-panel tab-drag
+    // redirect. Dropping it on another group's tab bar merges its panel in (the
+    // same result a tab drag gave) instead of leaving a one-panel sibling. Only
+    // the redirected gesture merges; a plain one-panel group drag keeps the
+    // sibling result it always had.
+    if (dragRedirectedFromFloat_ && target.onTabBar && target.group && target.group != group
+        && group->titleCountForTest() == 1 && floatForGroup(group)) {
+        QWidget* panel = group->panels().value(0);
+        const QString name = panel ? panel->objectName() : QString();
+        QString title;
+        QIcon iconValue;
+        int index = -1;
+        if (panel && !name.isEmpty()
+            && group->takePanel(name, &title, &iconValue, &index)) {
+            PanelColumn* owner = target.owner ? target.owner : this;
+            const int at = qBound(0, target.tabIndex, target.group->titleCountForTest());
+            target.group->insertPanel(panel, title, iconValue, at);
+            owner->panelVisible_[name] = true;
+            cleanupEmptyGroup(group);
+            return true;
+        }
+    }
     // A whole-group drop can resolve into another column; move the group there
     // so the commit matches the drawn line.
     PanelColumn* owner = target.owner ? target.owner : this;
@@ -1009,13 +1061,36 @@ void PanelColumn::updateColumnDrag(const QPoint& globalPos)
     }
     int side = -1;
     PanelColumn* anchor = frame->resolveColumnMoveTarget(globalPos, this, &side);
-    if (columnDropAnchor_ && columnDropAnchor_ != anchor) {
+    // A bare workspace edge resolves no anchor; approximate the edge line on the
+    // outermost visible column so the user still sees where the column lands.
+    // ponytail: visual-only anchor; the commit inserts at the splitter head/tail.
+    PanelColumn* indicator = anchor;
+    if (!indicator && side >= 0) {
+        const QList<PanelColumn*> columns = frame->panelColumns();
+        if (side == 0) {
+            for (PanelColumn* column : columns) {
+                if (column && column->isVisible() && column != this) {
+                    indicator = column;
+                    break;
+                }
+            }
+        } else {
+            for (int i = columns.size() - 1; i >= 0; --i) {
+                PanelColumn* column = columns.at(i);
+                if (column && column->isVisible() && column != this) {
+                    indicator = column;
+                    break;
+                }
+            }
+        }
+    }
+    if (columnDropAnchor_ && columnDropAnchor_ != indicator) {
         columnDropAnchor_->hideEdgeDropIndicator();
     }
-    columnDropAnchor_ = anchor;
+    columnDropAnchor_ = indicator;
     columnDropSide_ = side;
-    if (anchor) {
-        anchor->showEdgeDropIndicator(side == 0 ? PanelSide::Left : PanelSide::Right);
+    if (indicator && side >= 0) {
+        indicator->showEdgeDropIndicator(side == 0 ? PanelSide::Left : PanelSide::Right);
     }
 }
 

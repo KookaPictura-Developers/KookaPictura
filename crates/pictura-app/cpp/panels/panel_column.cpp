@@ -209,6 +209,15 @@ void PanelColumn::wireGroup(PanelGroup* group)
         commitDrop();
     });
     connect(group, &PanelGroup::dragCanceled, this, [this]() { cancelDrag(); });
+    // M47: the per-widget menu's Close / Close Group reuse this column's own
+    // close paths, the same ones `buildTabMenu` drives.
+    connect(group, &PanelGroup::closePanelRequested, this, [this](const QString& objectName) {
+        if (!objectName.isEmpty()) {
+            showPanel(objectName, false);
+        }
+    });
+    connect(group, &PanelGroup::closeGroupRequested, this,
+            [this, group]() { closeGroup(group); });
 }
 
 void PanelColumn::insertGroupAt(PanelGroup* group, int index)
