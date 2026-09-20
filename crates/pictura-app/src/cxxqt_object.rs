@@ -64,19 +64,15 @@ pub mod qobject {
         #[qinvokable]
         fn open_image(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// `File > Open As Smart Object…`: open `path` as a new untitled
-        /// document whose sole layer is that PSD/PSB source as an embedded
-        /// smart object. Records one "Open As Smart Object" state on success;
-        /// false without mutating when the file is missing, unreadable, or not
-        /// a PSD/PSB document.
+        /// `File > Open As Smart Object…`: open `path` as a new untitled document
+        /// holding that PSD/PSB source as an embedded smart object; one state.
+        /// False without mutating on any refusal.
         #[qinvokable]
         fn open_as_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// Create a new `width`×`height` document. `mode` is `"rgb"` or
-        /// `"grayscale"`, `depth` must be 8, and `background` is `"white"` or
-        /// `"transparent"`. Resets the selection and history and clears the
-        /// file path and dirty flag. Returns false and leaves state unchanged
-        /// for any invalid parameter.
+        /// Create a new `width`×`height` document. `mode` is `"rgb"`/`"grayscale"`,
+        /// `depth` must be 8, `background` is `"white"`/`"transparent"`. Resets
+        /// selection/history; false without mutating on any invalid parameter.
         #[qinvokable]
         fn new_document(
             self: Pin<&mut Self>,
@@ -87,10 +83,8 @@ pub mod qobject {
             background: &QString,
         ) -> bool;
 
-        /// Serialize the document to `path` as a PSD, writing a sibling
-        /// `<path>.tmp` first and renaming it over `path`. Clears the dirty
-        /// flag on success. Returns false without a document or on any encode
-        /// or IO error.
+        /// Serialize the document to `path` as a PSD via a `.tmp` sibling and
+        /// rename. Clears the dirty flag; false on any encode/IO error.
         #[qinvokable]
         fn save(self: Pin<&mut Self>, path: &QString) -> bool;
 
@@ -719,6 +713,11 @@ pub mod qobject {
             contiguous: bool,
             mode: &QString,
         ) -> bool;
+
+        /// Build a document-sized selection from the alpha of the layer at
+        /// `path`; missing alpha is opaque. Replaces the selection, one undo state.
+        #[qinvokable]
+        fn select_layer_alpha(self: Pin<&mut Self>, path: &QString) -> bool;
 
         /// Whether a selection is currently active.
         #[qinvokable]

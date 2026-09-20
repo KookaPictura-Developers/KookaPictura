@@ -101,6 +101,15 @@ public:
     bool editTriggersDisabledForTest() const;
     bool doubleClickAtForTest(const QString& path, bool atName);
 
+    // Batch 2 hooks: drag-and-drop capability and resolved drop modes, a
+    // synthesized drop, a thumbnail Ctrl-click, and the inline-editor state.
+    bool layerRowDragSupportedForTest() const;
+    bool dropIndicatorShownForTest() const;
+    int dragMoveModeAtForTest(const QString& source, const QString& hover, bool above);
+    bool dropAtForTest(const QString& source, const QString& hover, bool above);
+    bool ctrlClickThumbnailForTest(const QString& path);
+    bool inlineEditorOpenForTest() const;
+
     // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
     // one, updates the bar, and applies it to the proxy.
     QStringList visiblePathsForTest() const;

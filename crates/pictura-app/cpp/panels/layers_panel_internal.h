@@ -289,6 +289,22 @@ public:
             | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
     }
 
+    // Drag-and-drop capability virtuals. Without these the view's private
+    // `canDrop()` is false, so `QTreeView::dragMoveEvent` never computes a real
+    // `dropIndicatorPosition` and every drop reads the stale position.
+    QStringList mimeTypes() const override
+    {
+        return {QString::fromLatin1(kLayerMimeType)};
+    }
+
+    Qt::DropActions supportedDropActions() const override { return Qt::MoveAction; }
+
+    bool canDropMimeData(const QMimeData*, Qt::DropAction, int, int,
+                         const QModelIndex&) const override
+    {
+        return true;
+    }
+
     bool setData(const QModelIndex& index, const QVariant& value, int role) override
     {
         Node* node = index.isValid() ? static_cast<Node*>(index.internalPointer()) : nullptr;
@@ -400,6 +416,14 @@ public:
     // the next edit.
     int editStateForTest() const { return static_cast<int>(state()); }
     void resetEditStateForTest() { setState(NoState); }
+    int dropIndicatorForTest() const { return static_cast<int>(dropIndicatorPosition()); }
+    bool dropIndicatorShownForTest() const { return showDropIndicator(); }
+    int dropModeAtForTest(const QPoint& pos) const
+    {
+        int mode = 0;
+        dropTargetFor(pos, &mode);
+        return mode;
+    }
 
 protected:
     void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
@@ -423,6 +447,9 @@ protected:
     void dragEnterEvent(QDragEnterEvent* event) override
     {
         if (event->mimeData()->hasFormat(kLayerMimeType)) {
+            // Enter the dragging state so the drop indicator paints (the base
+            // implementation would do this, but we handle the drag ourselves).
+            setState(QAbstractItemView::DraggingState);
             event->acceptProposedAction();
         } else {
             QTreeView::dragEnterEvent(event);
@@ -537,6 +564,22 @@ public:
         const int side = qMin(kChevronWidth, itemRect.height());
         const int left = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent;
         return QRect(left, itemRect.top() + (itemRect.height() - side) / 2, side, side);
+    }
+
+    /// The thumbnail's hit-target, mirroring the x/y math paint() lays out.
+    /// Empty when thumbnails are turned off.
+    QRect thumbRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int thumb = qMax(0, thumbnailSize_);
+        if (thumb <= 0) {
+            return {};
+        }
+        const int depth = index.data(DepthRole).toInt();
+        int x = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent + kChevronWidth;
+        if (index.data(ClippingRole).toBool()) {
+            x += qMax(10, thumb - 8) + 2;
+        }
+        return QRect(x, itemRect.top() + (itemRect.height() - thumb) / 2, thumb, thumb);
     }
 
     /// The name text's hit-target, mirroring the geometry paint() lays out. A

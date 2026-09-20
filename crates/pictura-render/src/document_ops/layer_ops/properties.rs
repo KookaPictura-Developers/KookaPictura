@@ -416,25 +416,50 @@ fn move_path_to_dest(
     if !target.is_empty() && (target == path || target.starts_with(&format!("{path}/"))) {
         return None;
     }
-    if target.is_empty() {
-        return Some((Vec::new(), None));
-    }
-    let tgt = parse_path(target)?;
-    let (dest_parent, dest_index) = if mode == 2 {
-        if !resolve_path(doc, target).is_some_and(|layer| layer.is_group) {
-            return None;
-        }
-        (tgt, None)
+    let (dest_parent, dest_index) = if target.is_empty() {
+        (Vec::new(), None)
     } else {
-        let (last, parent) = tgt.split_last()?;
-        (parent.to_vec(), Some(last + usize::from(mode == 0)))
+        let tgt = parse_path(target)?;
+        if mode == 2 {
+            if !resolve_path(doc, target).is_some_and(|layer| layer.is_group) {
+                return None;
+            }
+            (tgt, None)
+        } else {
+            let (last, parent) = tgt.split_last()?;
+            (parent.to_vec(), Some(last + usize::from(mode == 0)))
+        }
     };
     let src_parent = &src[..src.len() - 1];
     let src_index = *src.last().expect("non-empty");
+    // Nesting lock: a drop that changes the layer's parent is refused when
+    // either the destination container or the current parent carries `NESTING`.
+    // A within-container reorder keeps the same parent and stays allowed.
+    if dest_parent.as_slice() != src_parent
+        && (parent_nesting_locked(doc, &dest_parent) || parent_nesting_locked(doc, src_parent))
+    {
+        return None;
+    }
     if !container_exists_after_removal(doc, &dest_parent, src_parent, src_index) {
         return None;
     }
     Some((dest_parent, dest_index))
+}
+
+/// Whether the container named by `parent` (empty = document root) carries the
+/// `NESTING` lock. Used to refuse reparenting into or out of a nesting-locked
+/// group.
+fn parent_nesting_locked(doc: &Document, parent: &[usize]) -> bool {
+    let mut layers: &[Layer] = &doc.layers;
+    let mut node: Option<&Layer> = None;
+    for &index in parent {
+        let Some(layer) = layers.get(index) else {
+            return false;
+        };
+        node = Some(layer);
+        layers = &layer.children;
+    }
+    node.is_some_and(|layer| layer.lock.contains(LockFlags::NESTING))
 }
 
 /// Dry-run form of [`move_path_to`]: whether the move would be accepted. Performs
@@ -446,8 +471,9 @@ pub fn can_move_path_to(doc: &Document, path: &str, target: &str, mode: i32) -> 
 /// Move the node at `path` relative to `target`: mode `0` = above, `1` = below,
 /// `2` = into `target` (which must be a group). An empty target means the top of
 /// the document. Refuses the Background, a fully- or nesting-locked source, a
-/// malformed/unknown target, a drop onto the source or into its own descendant,
-/// and an `Into` target that is not a group.
+/// move into or out of a nesting-locked group, a malformed/unknown target, a
+/// drop onto the source or into its own descendant, and an `Into` target that is
+/// not a group.
 pub fn move_path_to(doc: &mut Document, path: &str, target: &str, mode: i32) -> bool {
     let Some(src) = parse_path(path) else {
         return false;

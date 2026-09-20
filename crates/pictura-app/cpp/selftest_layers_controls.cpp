@@ -3,6 +3,7 @@
 #include "selftest_layer_locks.h"
 #include "selftest_layers_adjustments.h"
 #include "selftest_layers_drag.h"
+#include "selftest_layers_interactions.h"
 #include "selftest_layers_smart_object.h"
 #include "selftest_numeric.h"
 #include "selftest_report.h"
@@ -1082,6 +1083,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int fd = pictura::runFileDropChecks(frame); fd != 0) { return fd; }
 
         if (const int ld = pictura::runLayersDragChecks(frame); ld != 0) { return ld; }
+
+        if (const int li = pictura::runLayersInteractionsChecks(frame); li != 0) { return li; }
 
         if (const int nf = pictura::runNumericFieldChecks(frame); nf != 0) { return nf; }
 

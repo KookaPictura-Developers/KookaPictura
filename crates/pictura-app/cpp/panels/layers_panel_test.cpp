@@ -14,6 +14,7 @@
 #include <QtCore/QStringList>
 #include <QtGui/QAction>
 #include <QtGui/QDragEnterEvent>
+#include <QtGui/QDragMoveEvent>
 #include <QtGui/QDropEvent>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
@@ -529,6 +530,87 @@ bool LayersPanel::doubleClickAtForTest(const QString& path, bool atName)
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     }
     return opened;
+}
+
+bool LayersPanel::layerRowDragSupportedForTest() const
+{
+    if (!model_) {
+        return false;
+    }
+    return model_->mimeTypes().contains(QString::fromLatin1(kLayerMimeType))
+        && model_->supportedDropActions().testFlag(Qt::MoveAction)
+        && model_->canDropMimeData(nullptr, Qt::MoveAction, 0, 0, QModelIndex());
+}
+
+bool LayersPanel::dropIndicatorShownForTest() const
+{
+    return tree_ && tree_->dropIndicatorShownForTest();
+}
+
+int LayersPanel::dragMoveModeAtForTest(const QString& source, const QString& hover, bool above)
+{
+    if (!tree_) {
+        return -1;
+    }
+    const QModelIndex index = proxyIndexForPath(hover);
+    if (!index.isValid()) {
+        return -1;
+    }
+    const QRect vr = tree_->visualRect(index);
+    const QPoint pos(vr.left() + 4, above ? vr.top() + 1 : vr.bottom() - 1);
+    QMimeData mime;
+    mime.setData(kLayerMimeType, source.toUtf8());
+    QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &enter);
+    QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &move);
+    return tree_->dropModeAtForTest(pos);
+}
+
+bool LayersPanel::dropAtForTest(const QString& source, const QString& hover, bool above)
+{
+    if (!tree_) {
+        return false;
+    }
+    const QModelIndex index = proxyIndexForPath(hover);
+    if (!index.isValid()) {
+        return false;
+    }
+    const QRect vr = tree_->visualRect(index);
+    const QPoint pos(vr.left() + 4, above ? vr.top() + 1 : vr.bottom() - 1);
+    QMimeData mime;
+    mime.setData(kLayerMimeType, source.toUtf8());
+    QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &enter);
+    QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &move);
+    QDropEvent drop(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &drop);
+    return drop.isAccepted();
+}
+
+bool LayersPanel::ctrlClickThumbnailForTest(const QString& path)
+{
+    if (!tree_ || !delegate_) {
+        return false;
+    }
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid()) {
+        return false;
+    }
+    const QRect thumb = delegate_->thumbRect(tree_->visualRect(index), index);
+    if (thumb.isEmpty()) {
+        return false;
+    }
+    const QPoint pos = thumb.center();
+    QMouseEvent press(QEvent::MouseButtonPress, pos, tree_->viewport()->mapToGlobal(pos),
+                      Qt::LeftButton, Qt::LeftButton, Qt::ControlModifier);
+    return QCoreApplication::sendEvent(tree_->viewport(), &press);
+}
+
+bool LayersPanel::inlineEditorOpenForTest() const
+{
+    return tree_ && tree_->viewport()->findChild<QLineEdit*>() != nullptr;
 }
 
 } // namespace pictura
