@@ -904,3 +904,5 @@ mod color_overlay;
 mod gradient_overlay;
 
 mod pattern_overlay;
+
+mod satin;

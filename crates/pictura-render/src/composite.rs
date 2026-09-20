@@ -41,7 +41,7 @@ pub(crate) struct Canvas {
 }
 
 impl Canvas {
-    fn new(w: usize, h: usize) -> Self {
+    pub(crate) fn new(w: usize, h: usize) -> Self {
         Self {
             w,
             h,
@@ -49,7 +49,7 @@ impl Canvas {
         }
     }
 
-    fn into_pixel_buffer(self) -> PixelBuffer {
+    pub(crate) fn into_pixel_buffer(self) -> PixelBuffer {
         let plane = self.w * self.h;
         let mut out = PixelBuffer::new(self.w as u32, self.h as u32, 4);
         for (i, p) in self.px.iter().enumerate() {

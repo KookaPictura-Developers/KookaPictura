@@ -38,6 +38,7 @@ not hand-edit these files.
 | `color_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Colored` layer carrying an `lfx2` `SoFi` color overlay |
 | `gradient_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient` layer carrying an `lfx2` `GrFl` gradient overlay |
 | `pattern_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Patterned` layer carrying an `lfx2` `patternFill` pattern overlay referencing the 2x2 `Patt` pattern |
+| `satin.psd` | RGB | 8x8 | `Base` pixel layer + `Satin` layer carrying an `lfx2` `ChFX` satin |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -472,6 +473,40 @@ layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
                           classID=Klass.Null))
 psd._record.layer_and_mask_information.tagged_blocks = TaggedBlocks()
 psd.tagged_blocks.set_data(Tag.PATTERNS1, [pattern])
+```
+
+
+`satin.psd` is authored by the `satin()` builder: the same `Base` pixel layer
+plus a `Satin` pixel layer whose `lfx2` `DescriptorBlock2` carries one `ChFX`
+object. The effect object class id and the top-level key are both `ChFX`
+(ChromeFX); psd-tools registers it as `Satin`. The invert key is `Invr` and the
+contour key is `MpgS` (not `TrnS`); `uglg`, `showInDialog`, `AntA` and `MpgS`
+are authored but ignored by the renderer.
+
+```python
+# satin(): object classID=b"ChFX", keys enab, present, showInDialog, Md  ,
+# Clr , Opct, uglg, lagl (angle), Dstn (distance), blur (size), Invr, AntA,
+# MpgS (contour, value classID=b"TrnS").
+chfx = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Color: Descriptor(
+        {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
+        classID=b"RGBC"),
+    Key.Opacity: UnitFloat(50.0, Unit.Percent),
+    b"uglg": Bool(False),
+    Key.LocalLightingAngle: UnitFloat(120.0, Unit.Angle),
+    Key.Distance: UnitFloat(8.0, Unit.Pixels),
+    Key.Blur: UnitFloat(6.0, Unit.Pixels),
+    Key.Invert: Bool(True),
+    Key.AntiAlias: Bool(True),
+    Key.MappingShape: Descriptor({Key.Name: String("Linear")}, classID=b"TrnS"),
+}, classID=b"ChFX")
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"ChFX": chfx},
+                          classID=Klass.Null))
 ```
 
 
