@@ -24,6 +24,9 @@ namespace pictura {
 std::unique_ptr<ToolHandler> makeHandToolHandler();
 std::unique_ptr<ToolHandler> makeZoomToolHandler();
 std::unique_ptr<ToolHandler> makeEyedropperToolHandler();
+std::unique_ptr<ToolHandler> makeBrushToolHandler(bool aliased);
+std::unique_ptr<ToolHandler> makeMagicWandToolHandler();
+std::unique_ptr<ToolHandler> makeQuickSelectionToolHandler();
 
 namespace {
 
@@ -40,6 +43,10 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::Hand, makeHandToolHandler());
     registry_.registerTool(ToolId::Zoom, makeZoomToolHandler());
     registry_.registerTool(ToolId::Eyedropper, makeEyedropperToolHandler());
+    registry_.registerTool(ToolId::Brush, makeBrushToolHandler(false));
+    registry_.registerTool(ToolId::Pencil, makeBrushToolHandler(true));
+    registry_.registerTool(ToolId::MagicWand, makeMagicWandToolHandler());
+    registry_.registerTool(ToolId::QuickSelection, makeQuickSelectionToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -200,6 +207,16 @@ void ToolController::sampledForeground(const QColor& color)
     emit foregroundSampled(color);
 }
 
+SelectionMode ToolController::resolveSelectionMode(Qt::KeyboardModifiers mods,
+                                                   bool hasExistingSelection) const
+{
+    return selectionModeForModifiers(mode_, mods, hasExistingSelection);
+}
+
+void ToolController::refused(const QString& message) { emit pixelEditRefused(message); }
+
+void ToolController::emitSelectionCommitted() { emit selectionCommitted(); }
+
 void ToolController::bindCanvas(ImageView* canvas)
 {
     if (canvas_ == canvas) {
@@ -338,41 +355,6 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
     }
 
     switch (active_) {
-    case ToolId::Brush:
-    case ToolId::Pencil: {
-        if (!v) {
-            return;
-        }
-        // Transient Alt eyedropper: sample the pointer without starting a
-        // stroke, leaving the active tool unchanged.
-        if (mods.testFlag(Qt::AltModifier)) {
-            const quint32 argb = v->sample_argb(qRound(imagePos.x()), qRound(imagePos.y()));
-            if (argb != 0) {
-                emit foregroundSampled(QColor::fromRgb(argb));
-            }
-            return;
-        }
-        const bool aliased = active_ == ToolId::Pencil;
-        if (!v->begin_paint(foreground_.rgba(), background_.rgba(), brushSize_, brushHardness_,
-                            100, 0, brushOpacity_, brushFlow_, 25, brushMode_, aliased,
-                            autoErase_)) {
-            if (topmostPixelLocked(v)) {
-                emit pixelEditRefused(
-                    tr("Could not paint: the layer's pixels are locked."));
-            } else if (!v->active_layer_visible()) {
-                emit pixelEditRefused(
-                    tr("Could not paint: the active layer is invisible."));
-            } else if (v->active_layer_path().isEmpty()) {
-                emit pixelEditRefused(
-                    tr("Could not paint: select a single layer first."));
-            }
-            return;
-        }
-        dragging_ = true;
-        dragCommitted_ = false;
-        v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
-        return;
-    }
     case ToolId::Move: {
         if (!v) {
             return;
@@ -486,28 +468,6 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         }
         return;
     }
-    case ToolId::MagicWand: {
-        if (!v) {
-            return;
-        }
-        dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
-        const bool committed = v->magic_wand(qRound(imagePos.x()), qRound(imagePos.y()),
-                                             tolerance_, contiguous_,
-                                             selectionModeString(dragMode_));
-        if (committed) {
-            emit selectionCommitted();
-        }
-        return;
-    }
-    case ToolId::QuickSelection:
-        if (!v) {
-            return;
-        }
-        dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
-        dragging_ = true;
-        dragCommitted_ = v->quick_select(qRound(imagePos.x()), qRound(imagePos.y()), tolerance_,
-                                         selectionModeString(dragMode_));
-        return;
     default:
         return;
     }
@@ -574,21 +534,6 @@ void ToolController::handleMoved(const QPointF& imagePos)
             QPolygonF preview = polygonPoints_;
             preview << imagePos;
             canvas_->setSelectionPreview({preview}, false, /*solid=*/true);
-        }
-        return;
-    case ToolId::QuickSelection:
-        if (!v) {
-            return;
-        }
-        if (v->quick_select(qRound(imagePos.x()), qRound(imagePos.y()), tolerance_,
-                            selectionModeString(dragMode_))) {
-            dragCommitted_ = true;
-        }
-        return;
-    case ToolId::Brush:
-    case ToolId::Pencil:
-        if (v) {
-            v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
         }
         return;
     default:
@@ -668,14 +613,6 @@ void ToolController::handleReleased(const QPointF& imagePos)
         }
         return;
     }
-    case ToolId::QuickSelection:
-        if (canvas_) {
-            canvas_->clearSelectionPreview();
-        }
-        if (dragCommitted_) {
-            emit selectionCommitted();
-        }
-        return;
     case ToolId::Crop: {
         const QRect rect = dragRect(anchor_, imagePos);
         pendingCrop_ = rect;
@@ -689,12 +626,6 @@ void ToolController::handleReleased(const QPointF& imagePos)
         }
         return;
     }
-    case ToolId::Brush:
-    case ToolId::Pencil:
-        if (v) {
-            v->end_paint();
-        }
-        return;
     default:
         return;
     }
