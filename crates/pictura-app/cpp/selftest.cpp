@@ -58,6 +58,7 @@
 #include "selftest.h"
 #include "selftest_layers_controls.h"
 #include "selftest_layers_filter.h"
+#include "selftest_canvas.h"
 
 int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 pictura::PicturaMainWindow& frame, pictura::PictureView* view,
@@ -6698,7 +6699,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(195, "compact shade");
             }
         }
-        if (const int lpc = pictura::runLayersControlsChecks(frame); lpc != 0) { return lpc; } if (const int lfs = pictura::runLayersFilterChecks(frame); lfs != 0) { return lfs; }
+        if (const int lpc = pictura::runLayersControlsChecks(frame); lpc != 0) { return lpc; } if (const int lfs = pictura::runLayersFilterChecks(frame); lfs != 0) { return lfs; } if (const int rcc = pictura::runCanvasChecks(frame); rcc != 0) { return rcc; }
         frame.closeDocument(anatomyDocIndex, false);
         // Re-acquire the canvas; create a document if the suites left none open.
         canvas = frame.imageView();
