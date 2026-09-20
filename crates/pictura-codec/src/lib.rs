@@ -20,6 +20,7 @@
 
 mod color_mode;
 mod common;
+mod depth;
 mod descriptor;
 mod error;
 mod patterns;

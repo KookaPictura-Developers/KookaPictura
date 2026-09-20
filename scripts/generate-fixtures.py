@@ -71,6 +71,12 @@ FIXTURE_DIR = ROOT / "crates" / "pictura-codec" / "tests" / "fixtures"
 
 WIDTH = HEIGHT = 8
 
+# Depth-16 and depth-32 narrowing samples. Chosen so the big-endian stored
+# values exercise `v >> 8` and `clamp(trunc(f * 256))` at their boundaries and
+# match psd-tools' composite exactly (its I;16B / F;32BF scaling).
+DEPTH16_SAMPLES = [0, 1, 255, 256, 257, 32768, 65534, 65535]
+DEPTH32_SAMPLES = [0.0, 0.001, 0.5, 1.0, 1.5, -0.5, 0.99609375, 255.0]
+
 
 def _solid(size: tuple[int, int], color: tuple[int, int, int]) -> Image.Image:
     return Image.new("RGB", size, color)
@@ -216,6 +222,22 @@ def bitmap() -> PSDImage:
     psd = PSDImage.new("BITMAP", (WIDTH, HEIGHT), color=0)
     psd._record.header.depth = 1
     _set_composite(psd, [bytes([0xAA]) * HEIGHT])
+    return psd
+
+
+def rgb16() -> PSDImage:
+    """Flat depth-16 RGB, big-endian `u16` planes from `DEPTH16_SAMPLES`."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), depth=16)
+    row = b"".join(struct.pack(">H", DEPTH16_SAMPLES[x]) for x in range(WIDTH))
+    _set_composite(psd, [row * HEIGHT] * 3)
+    return psd
+
+
+def rgb32() -> PSDImage:
+    """Flat depth-32 RGB, big-endian `f32` planes from `DEPTH32_SAMPLES`."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), depth=32)
+    row = b"".join(struct.pack(">f", DEPTH32_SAMPLES[x]) for x in range(WIDTH))
+    _set_composite(psd, [row * HEIGHT] * 3)
     return psd
 
 
@@ -1513,6 +1535,8 @@ FIXTURES = {
     "cmyk.psd": cmyk,
     "lab.psd": lab,
     "bitmap.psd": bitmap,
+    "rgb16.psd": rgb16,
+    "rgb32.psd": rgb32,
     "adjustment.psd": adjustment,
     "channel_mixer.psd": channel_mixer,
     "curves.psd": curves,

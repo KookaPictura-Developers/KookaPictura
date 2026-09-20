@@ -37,8 +37,7 @@ pub mod qobject {
         type QStringList = cxx_qt_lib::QStringList;
 
         include!("decode_image.h");
-        /// Decode `data` with Qt to tightly packed RGBA8888 and report the
-        /// decoded size; empty with zero dimensions when Qt cannot read it.
+        /// Decode `data` with Qt to tightly packed RGBA8888 and report the decoded size; empty with zero dimensions when Qt cannot read it.
         fn decode_image_rgba(data: &[u8], width: &mut i32, height: &mut i32) -> Vec<u8>;
     }
 
@@ -51,14 +50,12 @@ pub mod qobject {
         #[qsignal]
         fn changed(self: Pin<&mut Self>);
 
-        /// Emitted after a region composite. The receiver blits `region` at
-        /// `(x, y)`; the full image was not rebuilt.
+        /// Emitted after a region composite. The receiver blits `region` at `(x, y)`; the full image was not rebuilt.
         #[qsignal]
         #[cxx_name = "regionBlitted"]
         fn region_blitted(self: Pin<&mut Self>, region: QImage, x: i32, y: i32);
 
-        /// Try to load a PSD through `pictura-codec`. Returns `false` and falls
-        /// back to a generated test image when the file is missing or unsupported.
+        /// Try to load a PSD through `pictura-codec`. Returns `false` and falls back to a generated test image when the file is missing or unsupported.
         #[qinvokable]
         fn open(self: Pin<&mut Self>, path: &QString) -> bool;
 
@@ -110,6 +107,10 @@ pub mod qobject {
         /// Notice when an opened document's source color mode was normalized.
         #[qinvokable]
         fn mode_notice(&self) -> QString;
+
+        /// Notice when an opened 16/32-bit document was narrowed to 8-bit.
+        #[qinvokable]
+        fn depth_notice(&self) -> QString;
 
         /// Working mode: `"rgb"` or `"grayscale"`; empty without a document.
         #[qinvokable]

@@ -243,5 +243,64 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
         }
 
+        // depth_open (298): a minimal flat depth-16 RGB PSD opens as a
+        // normalized 8-bit RGB document, the view reports the 16-bit conversion
+        // notice, and a composite pixel is the `v >> 8` narrowing.
+        {
+            QTemporaryDir depthDir;
+            const QString depthPath = depthDir.filePath(QStringLiteral("depth16.psd"));
+            QByteArray depthBytes;
+            const auto depthAppend16 = [&depthBytes](unsigned short value) {
+                depthBytes.append(char((value >> 8) & 0xff));
+                depthBytes.append(char(value & 0xff));
+            };
+            const auto depthAppend32 = [&depthBytes](unsigned int value) {
+                depthBytes.append(char((value >> 24) & 0xff));
+                depthBytes.append(char((value >> 16) & 0xff));
+                depthBytes.append(char((value >> 8) & 0xff));
+                depthBytes.append(char(value & 0xff));
+            };
+            depthBytes.append("8BPS", 4);
+            depthAppend16(1);               // version
+            depthBytes.append(6, char(0));  // reserved
+            depthAppend16(3);               // channels
+            depthAppend32(1);               // height
+            depthAppend32(1);               // width
+            depthAppend16(16);              // depth
+            depthAppend16(3);               // color mode RGB
+            depthAppend32(0);               // color mode data
+            depthAppend32(0);               // image resources
+            depthAppend32(0);               // layer/mask section
+            depthAppend16(0);               // raw compression
+            depthAppend16(0x1234);          // R narrows to 0x12
+            depthAppend16(0x5678);          // G narrows to 0x56
+            depthAppend16(0x9abc);          // B narrows to 0x9a
+            QFile depthFile(depthPath);
+            const bool depthWritten = depthFile.open(QIODevice::WriteOnly)
+                && depthFile.write(depthBytes) == depthBytes.size();
+            depthFile.close();
+
+            const int depthDocs = frame.documentCount();
+            const bool depthOpened = depthWritten && frame.openPath(depthPath);
+            pictura::PictureView* depthView = frame.activeView();
+            const bool depthOk = depthOpened && frame.documentCount() == depthDocs + 1
+                && depthView
+                && depthView->depth_notice() == QStringLiteral("Converted from 16-bit")
+                && depthView->document_mode() == QStringLiteral("rgb")
+                && depthView->sample_argb(0, 0) == 0xff12569au;
+            ST_BEGIN("depth_open");
+            ST_PASS("depth_open open=%d notice=%s mode=%s pixel=%08x",
+                    depthOpened ? 1 : 0,
+                    depthView ? qPrintable(depthView->depth_notice()) : "-",
+                    depthView ? qPrintable(depthView->document_mode()) : "-",
+                    depthView ? depthView->sample_argb(0, 0) : 0u);
+            if (depthView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!depthOk) {
+                return pictura::selfTest().fail(298, "depth open");
+            }
+        }
+
     return 0;
 }
