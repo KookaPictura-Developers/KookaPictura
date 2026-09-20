@@ -9,13 +9,13 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1188 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1214 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports as the ninth
-  skip). The C++ self-test reports **232 passed, 0 failed, 0 skipped**. The
-  full gate (`scripts/verify-full.sh`) reports **1458 passed, 9 skipped,
+  skip). The C++ self-test reports **233 passed, 0 failed, 0 skipped**. The
+  full gate (`scripts/verify-full.sh`) reports **1485 passed, 9 skipped,
   0 failed**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
@@ -38,8 +38,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
     `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
-    `vector-mask-render`, and `vector-fill-content` changes;
-    canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
+    `vector-mask-render`, `vector-fill-content`, and `color-mode-read` changes;
+    canonical specs are in `openspec/specs/` (76 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
@@ -61,6 +61,28 @@ Snapshot for resuming after a context break. Update after each milestone.
   Raw settings model targets the earliest CC (ACR 8 / PV2012) `Fltr` key set,
   later-CC keys preserved, and `crs:` XMP is preserve-only. A CS6/earliest-CC
   fixture and the manual Photoshop reopen are deferred follow-ups.
+- **Color-mode read** (roadmap P4/G2/G3, change `color-mode-read`, archived):
+  `read_psd` now opens Bitmap (depth 1), Indexed, CMYK, and Lab 8-bit documents
+  in addition to Grayscale/RGB and normalizes each to the working mode on load.
+  Bitmap and Indexed are exact (1-bit expansion and a 768-byte palette lookup);
+  CMYK and Lab are profile-free approximations marked `ponytail:`. CMYK floors
+  `color * black / 255` (psd-tools/Pillow rounds, a ≤1 difference); Lab is the
+  exact CIELAB(D50)→sRGB(D65) transform and matches lcms2's unoptimized transform
+  within 1 LSB — psd-tools' optimized `.convert("RGB")` LUT can differ by up to
+  ~20 in-gamut, so the oracle uses the exact transform, not the composite. The
+  normalized document's `mode` is `Rgb`, `depth` is `Eight`, and the new
+  `Document.source_mode` carries the original mode (`Some` for a normalized file);
+  the Indexed palette is consumed and `write_psd` still writes the working mode,
+  so open→save is a documented lossy-in-mode save. A depth-1 Bitmap layer's color
+  channel is bit-unpacked like the composite. Multichannel/Duotone and all 16/32-bit
+  depth stay `PsdError::Unsupported`. Four new fixtures
+  (`indexed/cmyk/lab/bitmap.psd`) are compared to psd-tools/lcms2 by
+  `tests/color_mode_oracle.rs`; the app shows a status-bar "Converted from …"
+  notice and the C++ self-test `color_mode_open` (code 297) covers it. No new
+  dependency. A depth-1 layer channel with ZIP compression is `Unsupported` (as
+  for the composite); the Lab tolerance ceiling is 1 LSB against the exact
+  transform. `scripts/generate-fixtures.py` regenerated `lab.psd`/`cmyk.psd`;
+  `bitmap.psd`/`indexed.psd` stayed byte-stable.
 - Smart-object source rendering (roadmap P3, archived
   `2026-09-19-smart-object-source-render`): `pictura-render` now depends on
   `pictura-codec` and `composite_rgba` renders an `Embedded` smart object's
