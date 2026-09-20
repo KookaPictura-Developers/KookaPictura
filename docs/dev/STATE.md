@@ -9,13 +9,13 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1214 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1231 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports as the ninth
-  skip). The C++ self-test reports **233 passed, 0 failed, 0 skipped**. The
-  full gate (`scripts/verify-full.sh`) reports **1485 passed, 9 skipped,
+  skip). The C++ self-test reports **234 passed, 0 failed, 0 skipped**. The
+  full gate (`scripts/verify-full.sh`) reports **1503 passed, 9 skipped,
   0 failed**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
@@ -38,8 +38,9 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
     `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
-    `vector-mask-render`, `vector-fill-content`, and `color-mode-read` changes;
-    canonical specs are in `openspec/specs/` (76 specs, `validate --all --strict`
+    `vector-mask-render`, `vector-fill-content`, `color-mode-read`, and
+    `depth-read` changes;
+    canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
@@ -502,6 +503,24 @@ Snapshot for resuming after a context break. Update after each milestone.
   vector stroke (`vstk`) deferred, `vogk`/`vsms` deferred, noise gradients,
   boolean ops beyond union, no AA, no authoring/UI, rasterize stays
   adjustment-block-based.
+- **16/32-bit depth read** (roadmap P4/G4, archived `depth-read`): `read_psd`
+  now opens 16-bit and 32-bit Grayscale/RGB/CMYK/Lab documents and **normalizes
+  them to 8-bit on load** — `source_depth` records the original
+  (`Some(Sixteen)` / `Some(ThirtyTwo)`), the written document is uniformly
+  8-bit (`write_psd` keeps writing 8-bit, a documented lossy-in-depth save), and
+  the app shows a status-bar "Converted from 16-bit"/"…32-bit" notice. The
+  narrowings match psd-tools: 16→8 is `sample >> 8`, 32→8 is
+  `clamp(trunc(sample * 256), 0, 255)`; the row stride, RLE byte counts, and
+  ZIP-with-prediction are depth-aware (16 a per-`u16` running sum mod 2^16; 32 a
+  four-byte-plane unshuffle then byte-wise delta). **Every** channel is narrowed,
+  including layer color/`-1`/`-2`, unmodeled spot/selection channels (re-wrapped
+  as an 8-bit raw stream instead of re-emitting source-depth bytes), and
+  document-level extra channels. Bitmap/Indexed at 16/32 stay unsupported. New
+  flat fixtures `rgb16.psd`/`rgb32.psd` are proven by a psd-tools oracle (0
+  tolerance); `scripts/generate-fixtures.py` is byte-stable and no existing
+  fixture/golden changed. Ceilings (all `ponytail:`): no true 16-bit sample model
+  (depth is not preserved), the 32-bit path is display-referred so HDR clips at
+  1.0 with no tone map, and there is no write-side re-encode to the source depth.
 
 ## Commands
 
