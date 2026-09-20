@@ -31,49 +31,49 @@
 
 ## 2. Batch 2 — Layers panel polish (items 3, 4, 6, 7, 8, 9, 10, 11, 12)
 
-- [ ] 2.1 Item 3: correct `LayerRowDelegate::nameRect`
+- [x] 2.1 Item 3: correct `LayerRowDelegate::nameRect`
   (`cpp/panels/layers_panel_internal.h`) to mirror paint exactly (the `+4` gap,
   the right-edge badge/mask caps) and floor it to a non-zero width; treat a
   content-band double-click outside the eye/chevron/thumbnail/lock/fx/mask
   controls as a rename (style no-op for non-Background), routed through
   `layers_panel.cpp`'s hit-test.
-- [ ] 2.2 Item 4: in `LayersModel::flags` return `Qt::ItemIsDropEnabled` for the
+- [x] 2.2 Item 4: in `LayersModel::flags` return `Qt::ItemIsDropEnabled` for the
   invalid parent index; set a closed-hand cursor around `startDrag` and restore
   it after, in `cpp/panels/layers_panel.cpp`.
-- [ ] 2.3 Item 6: tint only `eyeRect`'s background with the color label
+- [x] 2.3 Item 6: tint only `eyeRect`'s background with the color label
   (`layers_panel_internal.h` paint) and remove the post-name `labelSwatch` paint;
   keep `labelSwatch` for the row menu.
-- [ ] 2.4 Item 7: clip the style's selected-row paint to the row minus the eye
+- [x] 2.4 Item 7: clip the style's selected-row paint to the row minus the eye
   column and repaint the eye column with the base colour before drawing the
   eye/tint, so the active highlight never covers the eye.
-- [ ] 2.5 Item 8: draw regular-layer thumbnails over a cached two-tone
+- [x] 2.5 Item 8: draw regular-layer thumbnails over a cached two-tone
   checkerboard; keep the group folder glyph and no checkerboard.
-- [ ] 2.6 Item 9: draw a 1 px black thumbnail outline for every thumbnail and
+- [x] 2.6 Item 9: draw a 1 px black thumbnail outline for every thumbnail and
   white 1 px corner brackets one pixel outside it for the singular active layer
   (no brackets for zero/multiple).
-- [ ] 2.7 Item 10: add `LayerRowLinkedRole` (path in the frame's `link_sets`)
+- [x] 2.7 Item 10: add `LayerRowLinkedRole` (path in the frame's `link_sets`)
   and `LayerRowPlacedRole` (`Layer.smart_object` External/Alias) to the row
   projection; italicise `Background`, keep other names normal, underline
   linked/placed rows in the delegate.
-- [ ] 2.8 Item 11: add one named row-height constant with a floor of ~28 px used
+- [x] 2.8 Item 11: add one named row-height constant with a floor of ~28 px used
   by both `sizeHint` and the delegate's centring math.
-- [ ] 2.9 Item 12: hide `lockNesting_` in the Layers panel
+- [x] 2.9 Item 12: hide `lockNesting_` in the Layers panel
   (`cpp/panels/layers_panel.cpp`, `layers_panel_actions.cpp`); leave the engine
   `NESTING` rules and PSD flag untouched.
-- [ ] 2.10 Item 5: convert the Background to a normal layer through a
+- [x] 2.10 Item 5: convert the Background to a normal layer through a
   name-and-color dialog, defaulting to the next free `Layer N` and no label
   (`cpp/panels/layers_panel.cpp` double-click and New-Layer drop, `cpp/panels/layer_new_dialog.{h,cpp}`
   name+color-only factory, bridge `set_layer_name_path`/`set_layers_color` or a
   combined op); cancelling leaves the Background unchanged and records nothing;
   each conversion is exactly one undo state.
-- [ ] 2.11 Batch 2 regression: new `crates/pictura-app/cpp/selftest_layers_round3.cpp`
+- [x] 2.11 Batch 2 regression: new `crates/pictura-app/cpp/selftest_layers_round3.cpp`
   (register in `CMakeLists.txt`, invoked from `runLayersControlsChecks`, codes
   from **346+**) covering the rename band, top-level drop indicator + closed-hand
   cursor, Background conversion dialog (accept/cancel, `Layer N` default, label
   applied), eye-only tint with no name swatch, highlight clip, thumbnail
   checkerboard/outline/brackets, row roles/fonts, row-height floor, and the
   hidden nesting button.
-- [ ] 2.12 Batch 2 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
+- [x] 2.12 Batch 2 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`,
   headless self-test.
 
 ## 3. Batch 3 — Visibility perf + invisible layers (items 13, 17)

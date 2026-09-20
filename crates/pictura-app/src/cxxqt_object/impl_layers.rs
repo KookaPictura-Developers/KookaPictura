@@ -401,6 +401,26 @@ impl qobject::PictureView {
             .unwrap_or_default()
     }
 
+    /// Whether row `i`'s path is a member of the frame's link set.
+    pub fn layer_row_linked(&self, i: i32) -> bool {
+        self.row_at(i)
+            .is_some_and(|(_, path, _, _)| self.rust().link_sets.contains_key(&path))
+    }
+
+    /// Whether row `i` is a placed (external/alias) smart object.
+    pub fn layer_row_placed(&self, i: i32) -> bool {
+        self.row_at(i)
+            .is_some_and(|(_, _, _, layer)| is_placed_smart_object(layer))
+    }
+
+    /// `Prefix N` where N is one more than the highest existing `Prefix <number>`
+    /// name in the whole tree, falling back to 1.
+    pub fn next_layer_name(&self, prefix: &QString) -> QString {
+        self.rust().doc.as_ref().map_or(QString::default(), |doc| {
+            QString::from(pictura_render::next_layer_name(doc, &prefix.to_string()).as_str())
+        })
+    }
+
     pub fn set_layer_name_path(mut self: Pin<&mut Self>, path: &QString, name: &QString) -> bool {
         let changed = match self.as_mut().rust_mut().doc.as_mut() {
             Some(doc) => pictura_render::rename_path(doc, &path.to_string(), &name.to_string()),

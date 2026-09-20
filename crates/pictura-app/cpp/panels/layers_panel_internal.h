@@ -16,6 +16,7 @@
 #include <QtCore/QVariant>
 #include <QtCore/QVector>
 #include <QtGui/QColor>
+#include <QtGui/QCursor>
 #include <QtGui/QFont>
 #include <QtGui/QIcon>
 #include <QtGui/QImage>
@@ -23,6 +24,7 @@
 #include <QtGui/QPalette>
 #include <QtGui/QPen>
 #include <QtGui/QPixmap>
+#include <QtGui/QRegion>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QStyle>
 #include <QtCore/QMimeData>
@@ -60,6 +62,8 @@ struct LayerRow {
     bool hasAdjustment = false;
     bool expandable = false;
     int childCount = 0;
+    bool linked = false;
+    bool placed = false;
     QImage thumbnail;
     QImage maskThumbnail;
 };
@@ -132,6 +136,8 @@ enum LayerRole {
     ChildCountRole,
     ThumbnailRole,
     MaskThumbnailRole,
+    LayerRowLinkedRole,
+    LayerRowPlacedRole,
 };
 
 struct Node {
@@ -275,6 +281,10 @@ public:
             return row.thumbnail;
         case MaskThumbnailRole:
             return row.maskThumbnail;
+        case LayerRowLinkedRole:
+            return row.linked;
+        case LayerRowPlacedRole:
+            return row.placed;
         default:
             return {};
         }
@@ -283,7 +293,9 @@ public:
     Qt::ItemFlags flags(const QModelIndex& index) const override
     {
         if (!index.isValid()) {
-            return Qt::NoItemFlags;
+            // The invalid parent is the top-level drop surface; without the
+            // flag Qt computes no AboveItem/BelowItem indicator for root rows.
+            return Qt::ItemIsDropEnabled;
         }
         return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable
             | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
@@ -411,6 +423,15 @@ public:
         dropValidator_ = std::move(validator);
     }
 
+    // Closed-hand cursor for the duration of a drag, restored when it ends.
+    void enterDragCursor()
+    {
+        dragCursor_ = viewport()->cursor();
+        viewport()->setCursor(Qt::ClosedHandCursor);
+    }
+    void leaveDragCursor() { viewport()->setCursor(dragCursor_); }
+    int cursorShapeForTest() const { return static_cast<int>(viewport()->cursor().shape()); }
+
     // Self-test hooks: state() is protected on QAbstractItemView, and a model
     // reset can leave the view in EditingState with no live editor, which wedges
     // the next edit.
@@ -441,7 +462,9 @@ protected:
         mime->setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
         auto* drag = new QDrag(this);
         drag->setMimeData(mime);
+        enterDragCursor();
         drag->exec(Qt::MoveAction);
+        leaveDragCursor();
     }
 
     void dragEnterEvent(QDragEnterEvent* event) override
@@ -525,6 +548,7 @@ private:
     std::function<QString(const QModelIndex&)> pathForIndex_;
     std::function<bool(const QString&, const QString&, int)> dropHandler_;
     std::function<bool(const QString&, const QString&, int)> dropValidator_;
+    QCursor dragCursor_;
 };
 
 class LayerRowDelegate : public QStyledItemDelegate {
@@ -582,74 +606,107 @@ public:
         return QRect(x, itemRect.top() + (itemRect.height() - thumb) / 2, thumb, thumb);
     }
 
-    /// The name text's hit-target, mirroring the geometry paint() lays out. A
-    /// double-click inside it renames; outside it opens the layer-style
-    /// affordance. The badge/mask slots on the right cap the name's right edge.
+    /// The name text's hit-target, mirroring the geometry paint() lays out: the
+    /// clipping glyph and thumbnail advance, the +4 gap, the clipping indent,
+    /// and the right-edge lock/fx/mask caps. Floored to a non-zero width so a
+    /// click in an empty label area still resolves to the name.
     QRect nameRect(const QRect& itemRect, const QModelIndex& index) const
     {
         const int depth = index.data(DepthRole).toInt();
         const int thumb = qMax(0, thumbnailSize_);
         int x = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent + kChevronWidth;
-        if (index.data(ClippingRole).toBool()) {
-            x += qMax(10, thumb > 0 ? thumb - 8 : 12) + 2;
+        const bool clipping = index.data(ClippingRole).toBool();
+        if (clipping) {
+            const int side = qMax(10, thumb > 0 ? thumb - 8 : 12);
+            if (!pictura::icon(QStringLiteral("layers.clipMask")).pixmap(side, side).isNull()) {
+                x += side + 2;
+            }
         }
         if (thumb > 0) {
-            x += thumb + 4;
+            x += thumb;
         }
-        if (index.data(ClippingRole).toBool()) {
-            x += 12;
-        }
+        x += 4;
         int right = itemRect.right() - 3;
         const int badge = qMax(12, thumb > 0 ? thumb : 16);
-        if (index.data(LockRole).toInt() != 0) {
+        if (index.data(LockRole).toInt() != 0
+            && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
-        if (index.data(HasAdjustmentRole).toBool()) {
+        if (index.data(HasAdjustmentRole).toBool()
+            && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
-        if (!index.data(MaskThumbnailRole).value<QImage>().isNull() && thumb > 0) {
+        if (thumb > 0 && !index.data(MaskThumbnailRole).value<QImage>().isNull()) {
             right -= thumb + 3;
         }
-        const int nameRight = qMax(x, right - 4);
-        return QRect(x, itemRect.top(), nameRight - x, itemRect.height());
+        const int nameLeft = x + (clipping ? 12 : 0);
+        const int nameRight = qMax(nameLeft, right - 4);
+        return QRect(nameLeft, itemRect.top(), qMax(1, nameRight - nameLeft), itemRect.height());
+    }
+
+    /// One named row height (floor 28 px) shared by sizeHint and centring.
+    static constexpr int kRowHeightFloor = 28;
+    int rowHeight() const { return qMax(kRowHeightFloor, thumbnailSize_ + 8); }
+
+    /// The row name's font: Background italic, linked/placed (and clip-base)
+    /// underlined. Shared by paint and the self-test so one rule is asserted.
+    QFont nameFont(const QFont& base, const QModelIndex& index) const
+    {
+        QFont font = base;
+        font.setItalic(index.data(KindRole).toString() == QLatin1String("background"));
+        font.setUnderline(index.data(ClipBaseRole).toBool()
+                          || index.data(LayerRowLinkedRole).toBool()
+                          || index.data(LayerRowPlacedRole).toBool());
+        return font;
     }
 
     QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
     {
         Q_UNUSED(option);
         Q_UNUSED(index);
-        return QSize(200, qMax(24, thumbnailSize_ + 8));
+        return QSize(200, rowHeight());
     }
 
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
                const QModelIndex& index) const override
     {
         // Let the style paint the row background/selection only, then draw the
-        // CS6 anatomy ourselves on top.
+        // CS6 anatomy ourselves on top. The selection highlight is clipped away
+        // from the eye column and that column is repainted with the base colour,
+        // so the visibility toggle stays legible.
         QStyleOptionViewItem opt = option;
         initStyleOption(&opt, index);
         opt.text.clear();
         opt.icon = QIcon();
         const QWidget* widget = opt.widget;
         QStyle* style = widget ? widget->style() : QApplication::style();
-        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+
+        const QRect rect = option.rect;
+        const int height = qMax(kRowHeightFloor, rect.height());
+        const bool selected = option.state & QStyle::State_Selected;
+        const QRect eye = eyeRect(rect);
+        if (selected) {
+            painter->save();
+            painter->setClipRegion(QRegion(rect).subtracted(QRegion(eye)));
+            style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+            painter->restore();
+            painter->fillRect(eye, option.palette.color(QPalette::Base));
+        } else {
+            style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+        }
 
         painter->save();
-        const QRect rect = option.rect;
-        const int height = rect.height();
-        const bool selected = option.state & QStyle::State_Selected;
         const QPalette& palette = option.palette;
-
         const int depth = index.data(DepthRole).toInt();
-        // A non-None color label tints the fixed eye gutter behind the glyph;
-        // the alpha keeps the eye and any selection highlight legible.
+        // A non-None color label tints the eye toggle's own background; the
+        // alpha keeps the eye glyph legible.
         QColor label = layerLabelColor(index.data(ColorRole).toInt());
         if (label.isValid()) {
             label.setAlpha(90);
-            painter->fillRect(QRect(rect.left(), rect.top(), kEyeColumn, rect.height()), label);
+            painter->fillRect(eye, label);
         }
         // Eye icon, anchored at the panel's left edge for every depth.
-        paintAsset(painter, eyeRect(rect),
+        paintAsset(painter, eye,
                    index.data(VisibleRole).toBool() ? QStringLiteral("layers.eyeOn")
                                                     : QStringLiteral("layers.eyeOff"));
 
@@ -658,6 +715,7 @@ public:
         // reserved so group and layer thumbnails align.
         const int thumb = qMax(0, thumbnailSize_);
         int x = rect.left() + kEyeColumn + qMax(0, depth) * kIndent;
+        QRect thumbBox;
         if (index.data(ExpandableRole).toBool()) {
             const auto* treeView = qobject_cast<const QTreeView*>(opt.widget);
             const bool expanded = treeView && treeView->isExpanded(index);
@@ -678,6 +736,7 @@ public:
         }
         if (thumb > 0) {
             const QRect thumbRect(x, rect.top() + (height - thumb) / 2, thumb, thumb);
+            thumbBox = thumbRect;
             if (index.data(KindRole).toString() == QLatin1String("group")) {
                 const QPixmap glyph =
                     pictura::icon(QStringLiteral("layers.group")).pixmap(thumb, thumb);
@@ -685,11 +744,16 @@ public:
                     painter->drawPixmap(thumbRect, glyph);
                 }
             } else {
+                painter->drawTiledPixmap(thumbRect, checkerTile());
                 const QImage image = index.data(ThumbnailRole).value<QImage>();
                 if (!image.isNull()) {
                     painter->drawImage(thumbRect, image);
                 }
             }
+            // 1 px black outline for every thumbnail.
+            painter->setPen(QPen(Qt::black, 1));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawRect(thumbRect.adjusted(0, 0, -1, -1));
         }
         x += thumb + 4;
 
@@ -727,9 +791,7 @@ public:
         // Name, with the extra clipping indent and the base underline.
         const int nameLeft = x + (index.data(ClippingRole).toBool() ? 12 : 0);
         const int nameRight = qMax(nameLeft, right - 4);
-        QFont font = option.font;
-        font.setUnderline(index.data(ClipBaseRole).toBool());
-        painter->setFont(font);
+        painter->setFont(nameFont(option.font, index));
         painter->setPen(selected ? palette.color(QPalette::HighlightedText)
                                  : palette.color(QPalette::Text));
         const QString elided =
@@ -738,20 +800,52 @@ public:
         painter->drawText(QRect(nameLeft, rect.top(), nameRight - nameLeft, height),
                           Qt::AlignVCenter | Qt::AlignLeft, elided);
 
-        // Color-label swatch, right after the name when it fits.
-        const QPixmap swatch = labelSwatch(index.data(ColorRole).toInt());
-        if (!swatch.isNull()) {
-            const int side = 10;
-            const int sx = nameLeft + painter->fontMetrics().horizontalAdvance(elided) + 6;
-            if (sx + side <= right) {
-                painter->drawPixmap(
-                    QRect(sx, rect.top() + (height - side) / 2, side, side), swatch);
-            }
+        // White 1 px corner brackets one pixel outside the outline, only for the
+        // singular active layer.
+        if (thumb > 0 && singularActive(selected, opt.widget, index)) {
+            paintBrackets(painter, thumbBox.adjusted(-1, -1, 1, 1));
         }
         painter->restore();
     }
 
 private:
+    static bool singularActive(bool selected, const QWidget* widget, const QModelIndex& index)
+    {
+        if (!selected) {
+            return false;
+        }
+        const auto* treeView = qobject_cast<const QTreeView*>(widget);
+        return treeView && treeView->selectionModel()
+            && treeView->selectionModel()->selectedRows(0).size() == 1;
+    }
+
+    static void paintBrackets(QPainter* painter, const QRect& r)
+    {
+        painter->setPen(QPen(Qt::white, 1));
+        const int len = qMax(2, qMin(r.width(), r.height()) / 3);
+        painter->drawLine(r.left(), r.top(), r.left() + len, r.top());
+        painter->drawLine(r.left(), r.top(), r.left(), r.top() + len);
+        painter->drawLine(r.right() - len, r.top(), r.right(), r.top());
+        painter->drawLine(r.right(), r.top(), r.right(), r.top() + len);
+        painter->drawLine(r.left(), r.bottom() - len, r.left(), r.bottom());
+        painter->drawLine(r.left(), r.bottom(), r.left() + len, r.bottom());
+        painter->drawLine(r.right() - len, r.bottom(), r.right(), r.bottom());
+        painter->drawLine(r.right(), r.bottom() - len, r.right(), r.bottom());
+    }
+
+    static const QPixmap& checkerTile()
+    {
+        static const QPixmap tile = [] {
+            QPixmap pixmap(8, 8);
+            pixmap.fill(QColor(0xC8, 0xC8, 0xC8));
+            QPainter painter(&pixmap);
+            painter.fillRect(0, 0, 4, 4, QColor(0xFF, 0xFF, 0xFF));
+            painter.fillRect(4, 4, 4, 4, QColor(0xFF, 0xFF, 0xFF));
+            return pixmap;
+        }();
+        return tile;
+    }
+
     static void paintAsset(QPainter* painter, const QRect& rect, const QString& assetId)
     {
         // Render the SVG at the largest square that fits, at the painter's

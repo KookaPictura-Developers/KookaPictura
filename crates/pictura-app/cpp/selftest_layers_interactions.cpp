@@ -124,7 +124,8 @@ int runLayersInteractionsChecks(PicturaMainWindow& frame)
         const bool wasBackground =
             view->layer_row_kind(rowForPath(view, path)) == QStringLiteral("background");
         const int base = view->history_count();
-        panel->doubleClickAtForTest(path, false);
+        panel->setBackgroundConvertForTest(true, QString(), 0);
+        panel->doubleClickAtForTest(path, true);
         const int row = rowForPath(view, path);
         const bool converted = row >= 0 && view->layer_row_kind(row) == QStringLiteral("pixel");
         const bool unlocked = row >= 0 && view->layer_row_lock(row) == 0;
@@ -155,6 +156,7 @@ int runLayersInteractionsChecks(PicturaMainWindow& frame)
         panel->setView(view);
         view->background_from_layer(QStringLiteral("0"));
         panel->refresh();
+        panel->setBackgroundConvertForTest(true, QString(), 0);
         const int base = view->history_count();
         const bool dropped = panel->dropOnStripButtonForTest(
             QStringLiteral("layersStripNewLayer"), QStringList{QStringLiteral("0")});

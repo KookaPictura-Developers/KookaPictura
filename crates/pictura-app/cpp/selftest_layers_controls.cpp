@@ -5,6 +5,7 @@
 #include "selftest_layers_adjustments.h"
 #include "selftest_layers_drag.h"
 #include "selftest_layers_interactions.h"
+#include "selftest_layers_round3.h"
 #include "selftest_layers_smart_object.h"
 #include "selftest_numeric.h"
 #include "selftest_paint_perf.h"
@@ -1110,6 +1111,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int pl = pictura::runPaintLiveChecks(frame); pl != 0) { return pl; }
 
         if (const int sr = pictura::runShellRound3Checks(frame); sr != 0) { return sr; }
+
+        if (const int lr3 = pictura::runLayersRound3Checks(frame); lr3 != 0) { return lr3; }
 
     return 0;
 }

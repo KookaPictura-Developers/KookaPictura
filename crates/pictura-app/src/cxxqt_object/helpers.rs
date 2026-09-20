@@ -97,6 +97,14 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
 pub(super) fn is_background_layer(doc: &Document, i: i32) -> bool {
     pictura_render::is_background(doc, &i.to_string())
 }
+/// Whether `layer` is a placed smart object: a linked/external (`liFE`) or
+/// alias (`liFA`) source, the rows the panel underlines.
+pub(super) fn is_placed_smart_object(layer: &Layer) -> bool {
+    matches!(
+        layer.smart_object.as_ref().map(|object| object.kind),
+        Some(pictura_core::SmartObjectKind::External) | Some(pictura_core::SmartObjectKind::Alias)
+    )
+}
 /// Map a lock-strip flag name to its [`LockFlags`] bit. `"all"` is the derived
 /// four-bit set; anything else is `None`.
 pub(super) fn lock_bit(flag: &str) -> Option<u8> {

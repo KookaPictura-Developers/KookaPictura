@@ -7,6 +7,7 @@ use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QString, QStringList};
+use pictura_core::ColorLabel;
 
 impl qobject::PictureView {
     /// Merge Down when `paths` names one layer, Merge Layers when it names two
@@ -97,6 +98,46 @@ impl qobject::PictureView {
         let path = path.to_string();
         let changed = match self.as_mut().rust_mut().doc.as_mut() {
             Some(doc) => pictura_render::layer_from_background(doc, &path),
+            None => false,
+        };
+        if changed {
+            self.as_mut().clear_link_sets();
+            self.as_mut().recomposite();
+            self.as_mut().record("Layer from Background");
+        }
+        changed
+    }
+
+    /// `Layer from Background…` with the dialog's chosen name and color: clear
+    /// the flag, unlock, rename to `name` (or inherit the engine's next free
+    /// `Layer N` when `name` is empty), and set the color label. Records one
+    /// "Layer from Background" state; false (no state) for a non-Background or a
+    /// color outside `0..=7`.
+    pub fn convert_background(
+        mut self: Pin<&mut Self>,
+        path: &QString,
+        name: &QString,
+        color: i32,
+    ) -> bool {
+        if !(0..=7).contains(&color) {
+            return false;
+        }
+        let path = path.to_string();
+        let name = name.to_string();
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => {
+                if !pictura_render::layer_from_background(doc, &path) {
+                    false
+                } else {
+                    if let Some(layer) = pictura_render::resolve_path_mut(doc, &path) {
+                        if !name.is_empty() {
+                            layer.name = name;
+                        }
+                        layer.color = ColorLabel::from_byte(color as u8);
+                    }
+                    true
+                }
+            }
             None => false,
         };
         if changed {

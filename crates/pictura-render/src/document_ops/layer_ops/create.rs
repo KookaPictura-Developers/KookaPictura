@@ -488,9 +488,9 @@ pub fn add_group_in(doc: &mut Document, selection_path: &str, name: &str) -> Str
     add_group_full(doc, selection_path, &spec)
 }
 
-/// `Layer from Background…`: clear the Background flag and unlock all four
-/// locks on the layer at `path`. Refuses a non-background path (returns false,
-/// leaving the document unchanged).
+/// `Layer from Background…`: clear the Background flag, unlock all four locks,
+/// and rename to the next free `Layer N` on the layer at `path`. Refuses a
+/// non-background path (returns false, leaving the document unchanged).
 pub fn layer_from_background(doc: &mut Document, path: &str) -> bool {
     let Some(layer) = resolve_path_mut(doc, path) else {
         return false;
@@ -498,8 +498,13 @@ pub fn layer_from_background(doc: &mut Document, path: &str) -> bool {
     if !layer.background {
         return false;
     }
+    let name = next_layer_name(doc, "Layer");
+    let Some(layer) = resolve_path_mut(doc, path) else {
+        return false;
+    };
     layer.background = false;
     layer.lock = LockFlags::default();
+    layer.name = name;
     true
 }
 
