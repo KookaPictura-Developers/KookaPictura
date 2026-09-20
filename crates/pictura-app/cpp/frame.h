@@ -26,6 +26,7 @@ namespace pictura {
 class CommandRegistry;
 class ColorPanel;
 class ColorState;
+class CanvasScrollBars;
 class FileDropRouter;
 class HistogramPanel;
 class HistoryPanel;
@@ -201,6 +202,7 @@ private:
     struct DocEntry {
         PictureView* view = nullptr;
         ImageView* canvas = nullptr;
+        CanvasScrollBars* canvasHost = nullptr;
         QString path;
         int untitledNumber = 0;
     };

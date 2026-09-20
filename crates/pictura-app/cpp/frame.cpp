@@ -289,6 +289,8 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
         entry.path = path;
     }
     entry.canvas = new ImageView(this);
+    entry.canvasHost = new CanvasScrollBars(this);
+    entry.canvasHost->setView(entry.canvas);
     if (fileDropRouter_) {
         entry.canvas->setAcceptDrops(true);
         entry.canvas->installEventFilter(fileDropRouter_);
@@ -326,7 +328,7 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
 
     docs_.append(entry);
     const int index = docs_.size() - 1;
-    tabs_->addTab(entry.canvas, documentName(index));
+    tabs_->addTab(entry.canvasHost, documentName(index));
     tabs_->setCurrentIndex(index);
     if (!path.isEmpty()) {
         rememberRecent(path);
@@ -537,7 +539,11 @@ void PicturaMainWindow::removeDocument(int index)
     tabs_->removeTab(index);
     entry.view->cancel_transform();
     entry.canvas->clearTransformPreview();
-    delete entry.canvas;
+    if (entry.canvasHost) {
+        delete entry.canvasHost;
+    } else {
+        delete entry.canvas;
+    }
     delete entry.view;
     refresh();
     panelRefreshTimer_->stop();

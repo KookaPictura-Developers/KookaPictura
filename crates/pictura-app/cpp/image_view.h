@@ -56,8 +56,24 @@ public:
     // Set an absolute zoom about a widget-space anchor (clamped to 0.01x..32x).
     void setZoom(double zoom, const QPointF& anchor);
 
+    // Set the widget-space offset directly, clamped by the reveal margin. The
+    // workspace scrollbars use this; every other path goes through clampOffset.
+    void setOffset(const QPointF& offset);
+
     double zoom() const { return zoom_; }
     QPointF offset() const { return offset_; }
+
+    // Brush-size ring drawn in image space under the pan/zoom transform. The
+    // diameter is in image pixels, so a zoomed canvas scales the ring for free.
+    void setBrushOutline(double diameter, const QPointF& imagePos);
+    void clearBrushOutline();
+    bool hasBrushOutlineForTest() const { return brushOutlineActive_; }
+    double brushOutlineDiameterForTest() const { return brushOutlineDiameter_; }
+    // Device-pixel ring diameter for the current zoom (what a render shows).
+    double brushOutlineScreenDiameterForTest() const
+    {
+        return brushOutlineDiameter_ * zoom_;
+    }
 
     void setCanvasColor(const QColor& color);
     QColor canvasColor() const { return canvasColor_; }
@@ -148,6 +164,9 @@ public:
 
 signals:
     void zoomChanged(double zoom);
+    // The pan or zoom changed by any path (pan, zoom, fit, 100%, resize, the
+    // Navigator proxy). The workspace scrollbars project this into their ranges.
+    void viewChanged();
     void mousePressed(const QPointF& imagePos, int button, int modifiers);
     void mouseMoved(const QPointF& imagePos);
     void mouseReleased(const QPointF& imagePos);
@@ -165,10 +184,12 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
+    void leaveEvent(QEvent* event) override;
 
 private:
     void centreImage();
     void applyInitialView();
+    void clampOffset();
     void updateAntsTimer();
 
     struct PresentCache {
@@ -220,6 +241,10 @@ private:
     QString dragSizeText_;
     QPointF dragSizeImagePos_;
     bool dragSizeActive_ = false;
+
+    bool brushOutlineActive_ = false;
+    double brushOutlineDiameter_ = 0.0;
+    QPointF brushOutlineImagePos_;
 
     // Drag-start latency probe: reports the press -> handler -> first move ->
     // paint gaps to stderr when a drag start exceeds one frame, or always when

@@ -63,6 +63,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_tools_selection.cpp
     crates/pictura-app/cpp/selftest_layers_adjustments.cpp
     crates/pictura-app/cpp/selftest_canvas.cpp
+    crates/pictura-app/cpp/selftest_canvas_view.cpp
     crates/pictura-app/cpp/selftest_numeric.cpp
     crates/pictura-app/cpp/selftest_layers_drag.cpp
     crates/pictura-app/cpp/interop.cpp
@@ -72,6 +73,7 @@ add_executable(pictura
     crates/pictura-app/cpp/session.cpp
     crates/pictura-app/cpp/preferences_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
+    crates/pictura-app/cpp/canvas_scrollbars.cpp
     crates/pictura-app/cpp/icons.cpp
     crates/pictura-app/cpp/file_drop_router.cpp
     crates/pictura-app/cpp/frame.cpp
@@ -118,6 +120,8 @@ add_executable(pictura
     crates/pictura-app/cpp/session.h
     crates/pictura-app/cpp/preferences_dialog.h
     crates/pictura-app/cpp/image_view.h
+    crates/pictura-app/cpp/canvas_range.h
+    crates/pictura-app/cpp/canvas_scrollbars.h
     crates/pictura-app/cpp/icons.h
     crates/pictura-app/cpp/file_drop_router.h
     crates/pictura-app/cpp/frame.h
@@ -127,6 +131,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_tools_selection.h
     crates/pictura-app/cpp/selftest_layers_adjustments.h
     crates/pictura-app/cpp/selftest_canvas.h
+    crates/pictura-app/cpp/selftest_canvas_view.h
     crates/pictura-app/cpp/selftest_numeric.h
     crates/pictura-app/cpp/selftest_layers_drag.h
     crates/pictura-app/cpp/panels/layers_panel.h

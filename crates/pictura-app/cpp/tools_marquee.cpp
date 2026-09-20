@@ -123,4 +123,16 @@ void ToolController::updateMarqueeOverlay(const QPointF& imagePos)
         QStringLiteral("%1 x %2").arg(rect.width()).arg(rect.height()), imagePos);
 }
 
+void ToolController::updateBrushOutline(const QPointF& imagePos)
+{
+    if (!canvas_) {
+        return;
+    }
+    if (active_ == ToolId::Brush || active_ == ToolId::Pencil) {
+        canvas_->setBrushOutline(brushSize_, imagePos);
+    } else {
+        canvas_->clearBrushOutline();
+    }
+}
+
 } // namespace pictura

@@ -1,5 +1,7 @@
 #include "image_view.h"
 
+#include "canvas_range.h"
+
 #include <QtCore/QDebug>
 #include <QtCore/QRect>
 #include <QtCore/QStringList>
@@ -78,6 +80,7 @@ void ImageView::setImage(const QImage& image)
         zoom_ = 1.0;
         offset_ = QPointF();
         update();
+        emit viewChanged();
         return;
     }
     applyInitialView();
@@ -97,7 +100,9 @@ void ImageView::applyInitialView()
         zoom_ = 1.0;
     }
     centreImage();
+    clampOffset();
     emit zoomChanged(zoom_);
+    emit viewChanged();
     update();
 }
 
@@ -105,6 +110,19 @@ void ImageView::centreImage()
 {
     offset_ = QPointF((width() - image_.width() * zoom_) / 2.0,
                       (height() - image_.height() * zoom_) / 2.0);
+    clampOffset();
+}
+
+void ImageView::clampOffset()
+{
+    if (image_.isNull()) {
+        offset_ = QPointF();
+        return;
+    }
+    const OffsetRange range = offsetRangeFor(
+        QSizeF(image_.width(), image_.height()), zoom_, QSizeF(width(), height()));
+    offset_.setX(std::clamp(offset_.x(), range.minX, range.maxX));
+    offset_.setY(std::clamp(offset_.y(), range.minY, range.maxY));
 }
 
 void ImageView::replaceImage(const QImage& image)
@@ -141,7 +159,18 @@ void ImageView::panBy(const QPointF& delta)
 {
     userAdjusted_ = true;
     offset_ += delta;
+    clampOffset();
     update();
+    emit viewChanged();
+}
+
+void ImageView::setOffset(const QPointF& offset)
+{
+    userAdjusted_ = true;
+    offset_ = offset;
+    clampOffset();
+    update();
+    emit viewChanged();
 }
 
 void ImageView::zoomIn()
@@ -166,19 +195,25 @@ void ImageView::fitOnScreen()
     zoom_ = std::clamp(fit, kMinZoom, kMaxZoom);
     offset_ = QPointF((width() - image_.width() * zoom_) / 2.0,
                       (height() - image_.height() * zoom_) / 2.0);
+    clampOffset();
     emit zoomChanged(zoom_);
+    emit viewChanged();
     update();
 }
 
 void ImageView::actualPixels()
 {
-    userAdjusted_ = false;
+    // 100% is an explicit user choice: keep it when the workspace scrollbars
+    // appear and resize the canvas instead of refitting on the next resize.
+    userAdjusted_ = true;
     zoom_ = 1.0;
     offset_ = image_.isNull()
                   ? QPointF()
                   : QPointF((width() - image_.width()) / 2.0,
                             (height() - image_.height()) / 2.0);
+    clampOffset();
     emit zoomChanged(zoom_);
+    emit viewChanged();
     update();
 }
 
@@ -509,6 +544,19 @@ void ImageView::paintEvent(QPaintEvent*)
         presentCacheRebuiltLastPaint_ = presentCache_.rebuilds != before;
     }
 
+    if (brushOutlineActive_ && brushOutlineDiameter_ > 0.0) {
+        // Cosmetic pens keep each ring 1 device px independent of zoom; the
+        // radius is in image pixels, so the on-screen circle scales with zoom.
+        // A white ring one image px outside the black one keeps the outline
+        // legible on both light and dark documents.
+        const double radius = brushOutlineDiameter_ / 2.0;
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(Qt::white, 0));
+        painter.drawEllipse(brushOutlineImagePos_, radius + 1.0, radius + 1.0);
+        painter.setPen(QPen(Qt::black, 0));
+        painter.drawEllipse(brushOutlineImagePos_, radius, radius);
+    }
+
     if (!overlayPolygon_.isEmpty()) {
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QPen(Qt::white, 0, Qt::DashLine));
@@ -712,8 +760,17 @@ void ImageView::resizeEvent(QResizeEvent* event)
 {
     if (!userAdjusted_ && !image_.isNull()) {
         applyInitialView();
+    } else {
+        clampOffset();
+        emit viewChanged();
     }
     QWidget::resizeEvent(event);
+}
+
+void ImageView::leaveEvent(QEvent* event)
+{
+    clearBrushOutline();
+    QWidget::leaveEvent(event);
 }
 
 void ImageView::showEvent(QShowEvent* event)
@@ -752,7 +809,30 @@ void ImageView::setZoom(double zoom, const QPointF& anchor)
     const double factor = (zoom_ > 0.0) ? target / zoom_ : 1.0;
     offset_ = anchor - (anchor - offset_) * factor;
     zoom_ = target;
+    clampOffset();
     emit zoomChanged(zoom_);
+    emit viewChanged();
+    update();
+}
+
+void ImageView::setBrushOutline(double diameter, const QPointF& imagePos)
+{
+    if (diameter <= 0.0) {
+        clearBrushOutline();
+        return;
+    }
+    brushOutlineActive_ = true;
+    brushOutlineDiameter_ = diameter;
+    brushOutlineImagePos_ = imagePos;
+    update();
+}
+
+void ImageView::clearBrushOutline()
+{
+    if (!brushOutlineActive_) {
+        return;
+    }
+    brushOutlineActive_ = false;
     update();
 }
 

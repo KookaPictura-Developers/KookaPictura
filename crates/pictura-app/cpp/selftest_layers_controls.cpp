@@ -1,4 +1,5 @@
 #include "selftest_layers_controls.h"
+#include "selftest_canvas_view.h"
 #include "selftest_layers_adjustments.h"
 #include "selftest_layers_drag.h"
 #include "selftest_layers_smart_object.h"
@@ -1080,6 +1081,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int ld = pictura::runLayersDragChecks(frame); ld != 0) { return ld; }
 
         if (const int nf = pictura::runNumericFieldChecks(frame); nf != 0) { return nf; }
+
+        if (const int cv = pictura::runCanvasViewChecks(frame); cv != 0) { return cv; }
 
     return 0;
 }

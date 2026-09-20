@@ -1,0 +1,47 @@
+#pragma once
+
+#include <QtCore/QSizeF>
+
+#include <algorithm>
+
+namespace pictura {
+
+// ponytail: one display inch (96 logical pixels) of the canvas must stay
+// reachable, so the clamp slides each axis by the minimum instead of recentring.
+// If the reveal margin ever needs to change, this constant is the only knob:
+// the ImageView pan clamp and the workspace scrollbars both read it here.
+inline constexpr double kCanvasRevealMarginPx = 96.0;
+
+// Allowed widget-space canvas offset (top-left of the scaled document) so that
+// at least `margin` logical pixels of each axis stay inside the viewport. A
+// document smaller than the margin keeps its whole extent visible instead.
+struct OffsetRange {
+    double minX = 0.0;
+    double maxX = 0.0;
+    double minY = 0.0;
+    double maxY = 0.0;
+};
+
+inline OffsetRange offsetRangeFor(const QSizeF& imageSize, double zoom, const QSizeF& viewport,
+                                  double margin = kCanvasRevealMarginPx)
+{
+    const double w = imageSize.width() * zoom;
+    const double h = imageSize.height() * zoom;
+    const double visibleX = std::min(margin, w);
+    const double visibleY = std::min(margin, h);
+
+    OffsetRange range;
+    range.minX = visibleX - w;
+    range.maxX = viewport.width() - visibleX;
+    range.minY = visibleY - h;
+    range.maxY = viewport.height() - visibleY;
+    if (range.minX > range.maxX) {
+        range.minX = range.maxX = (viewport.width() - w) / 2.0;
+    }
+    if (range.minY > range.maxY) {
+        range.minY = range.maxY = (viewport.height() - h) / 2.0;
+    }
+    return range;
+}
+
+} // namespace pictura
