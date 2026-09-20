@@ -1,7 +1,7 @@
 use super::helpers::*;
 use super::helpers_composite::*;
 use super::impl_core::finalize_import;
-use super::impl_transform::build_move_preview_base;
+use super::impl_transform::{build_move_preview_base, duplicate_move_target};
 use crate::history::{History, Snapshot};
 use pictura_core::{
     BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
@@ -510,6 +510,95 @@ fn move_preview_base_preserves_layer_visibility() {
         !no_composite.layers[1].visible,
         "the fallback must restore the prior visibility"
     );
+}
+
+#[test]
+fn duplicate_move_target_duplicates_and_repoints_the_active_layer() {
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        pixel_layer("base", 8, 8, (30, 60, 90)),
+        pixel_layer("top", 8, 8, (200, 100, 50)),
+    ];
+    let mut active = Some("1".to_string());
+    let new_index = duplicate_move_target(&mut doc, &mut active).expect("duplicate");
+    assert_eq!(new_index, 2);
+    assert_eq!(doc.layers.len(), 3, "one layer is added");
+    assert_eq!(doc.layers[2].name, "top copy");
+    assert_eq!(active.as_deref(), Some("2"), "the copy becomes active");
+}
+
+#[test]
+fn duplicate_move_target_preserves_visibility_and_refuses_locks() {
+    let mut hidden = pixel_layer("hidden", 8, 8, (1, 2, 3));
+    hidden.visible = false;
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 8, 8, (0, 0, 0)), hidden];
+    let mut active = Some("1".to_string());
+    assert_eq!(duplicate_move_target(&mut doc, &mut active), Some(2));
+    assert!(
+        !doc.layers[2].visible,
+        "the clone of an invisible layer stays invisible"
+    );
+
+    // A position-locked target refuses without mutating the document or the
+    // active path, and a group is not a target at all.
+    let mut locked = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    locked.layers = vec![pixel_layer("base", 8, 8, (0, 0, 0))];
+    locked.layers[0].lock = LockFlags::default().with(LockFlags::POSITION, true);
+    let mut active = Some("0".to_string());
+    let before = locked.clone();
+    assert!(duplicate_move_target(&mut locked, &mut active).is_none());
+    assert_eq!(locked, before, "a locked target refuses without mutation");
+    assert_eq!(active.as_deref(), Some("0"));
+
+    let mut group = pixel_layer("group", 8, 8, (0, 0, 0));
+    group.is_group = true;
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![group];
+    assert!(duplicate_move_target(&mut doc, &mut Some("0".to_string())).is_none());
+}
+
+#[test]
+fn move_duplicate_records_one_state_and_undo_restores_the_layer_count() {
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 8, 8, (30, 60, 90))];
+    let mut history = History::default();
+    history.capture(
+        Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        },
+        "Open",
+    );
+    let before = history.count();
+
+    let mut active = Some("0".to_string());
+    let new_index = duplicate_move_target(&mut doc, &mut active).expect("duplicate");
+    assert_eq!(history.count(), before, "the drag start records no state");
+
+    // The commit: translate the clone, then the bridge's one `record_move`.
+    assert!(pictura_render::translate_layer_index(
+        &mut doc,
+        new_index as usize,
+        2,
+        2
+    ));
+    history.capture(
+        Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        },
+        "Move Layer",
+    );
+    assert_eq!(
+        history.count(),
+        before + 1,
+        "the commit is exactly one state"
+    );
+    assert_eq!(history.label(before), "Move Layer");
+
+    let restored = history.undo().expect("undo");
+    assert_eq!(restored.doc.layers.len(), 1, "undo removes the clone");
 }
 
 #[test]

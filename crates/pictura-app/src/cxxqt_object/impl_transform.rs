@@ -353,6 +353,21 @@ pub(super) fn build_move_preview_base(
     }
 }
 
+/// Duplicate the active top-level pixel layer, repointing `active` at the copy.
+pub(super) fn duplicate_move_target(
+    doc: &mut Document,
+    active: &mut Option<String>,
+) -> Option<i32> {
+    let index: usize = active.as_deref()?.parse().ok()?;
+    active_pixel_layer(doc, active.as_deref())?;
+    if layer_move_locked(doc.layers.get(index)?) {
+        return None;
+    }
+    let new_index = pictura_render::duplicate_layer(doc, index as i32);
+    *active = Some(new_index.to_string());
+    Some(new_index)
+}
+
 impl qobject::PictureView {
     /// Whether `path` resolves to a transformable layer. Read-only.
     pub fn layer_can_free_transform(&self, path: &QString) -> bool {
@@ -781,6 +796,23 @@ impl qobject::PictureView {
         let computed = self.as_mut().compute_move_preview(index as usize);
         self.as_mut().rust_mut().move_preview_cache_hit = false;
         computed
+    }
+
+    /// Clone the active layer, make the copy active, and build its move preview.
+    pub fn begin_move_duplicate(mut self: Pin<&mut Self>) -> bool {
+        let new_index = {
+            let mut guard = self.as_mut().rust_mut();
+            let rust = &mut *guard;
+            let (doc, active_layer) = (&mut rust.doc, &mut rust.active_layer);
+            let doc = doc.as_mut();
+            let duplicate = doc.and_then(|d| duplicate_move_target(d, active_layer));
+            let Some(new_index) = duplicate else {
+                return false;
+            };
+            new_index
+        };
+        self.as_mut().recomposite();
+        self.as_mut().compute_move_preview(new_index as usize)
     }
 
     /// Warm the move-preview cache without entering preview mode.
