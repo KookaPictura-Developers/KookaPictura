@@ -58,16 +58,16 @@
 
 ## 6. Verification and gates
 
-- [ ] 6.1 `cargo fmt --all` (CI runs `--check`), `cargo clippy --workspace --all-targets -- -D warnings`.
-- [ ] 6.2 `cargo nextest run --workspace` and `cargo test --workspace --doc`.
-- [ ] 6.3 `bash scripts/verify-full.sh` (CMake build first, then fmt/clippy/test-report/file-size/guard/openspec) and confirm `scripts/file-size-allowlist.txt` ceilings still hold; new `selftest_*.cpp` files stay under the code/test caps.
-- [ ] 6.4 `./build/pictura --headless --self-test` (and a bare `./build/pictura --headless`) and record the passed/failed/skipped counts; confirm the headless platform check passes.
-- [ ] 6.5 `openspec validate fix-app-ui-issues --strict` and `openspec validate --all --strict`; both must report valid.
-- [ ] 6.6 No `docs/` change in this change; if any is needed it goes in a separate `TASK-ALLOWS-DOCS` commit.
+- [x] 6.1 `cargo fmt --all` (CI runs `--check`), `cargo clippy --workspace --all-targets -- -D warnings`.
+- [x] 6.2 `cargo nextest run --workspace` and `cargo test --workspace --doc`.
+- [x] 6.3 `bash scripts/verify-full.sh` (CMake build first, then fmt/clippy/test-report/file-size/guard/openspec) and confirm `scripts/file-size-allowlist.txt` ceilings still hold; new `selftest_*.cpp` files stay under the code/test caps.
+- [x] 6.4 `./build/pictura --headless --self-test` (and a bare `./build/pictura --headless`) and record the passed/failed/skipped counts; confirm the headless platform check passes.
+- [x] 6.5 `openspec validate fix-app-ui-issues --strict` and `openspec validate --all --strict`; both must report valid.
+- [x] 6.6 No `docs/` change in this change; if any is needed it goes in a separate `TASK-ALLOWS-DOCS` commit.
 
 ## 7. Explicitly not done (ceilings)
 
-- [ ] 7.1 Issue 7 (arrow-key nudge) is deferred: it needs a multi-layer translate in the renderer plus a shortcut decision that conflicts with `docs/dev/canvas-view-spec.md:141` and `docs/02-ui-ux/keyboard-shortcuts.md:389-392`. A single-layer-only nudge would half-satisfy the requirement, so the whole item is out.
-- [ ] 7.2 Issue 8 (brush slow at 4000×4000) is deferred to its own `paint-engine` performance change: it is a region/architecture project (incremental dirty, a real region compositor) that needs benchmarking, not an app-UI change.
-- [ ] 7.3 Zoom/offset (and therefore scrollbar position) persistence is deferred per design D2: no `workspace-persistence` schema field and no restore path is added for it.
-- [ ] 7.4 No Layer Style dialog is built; issue 5 ships a documented no-op `openLayerStyle(path)` placeholder. No new dependency or crate is added.
+- [x] 7.1 Issue 7 (arrow-key nudge) is deferred: it needs a multi-layer translate in the renderer plus a shortcut decision that conflicts with `docs/dev/canvas-view-spec.md:141` and `docs/02-ui-ux/keyboard-shortcuts.md:389-392`. A single-layer-only nudge would half-satisfy the requirement, so the whole item is out.
+- [x] 7.2 Issue 8 (brush slow at 4000×4000) is deferred to its own `paint-engine` performance change: it is a region/architecture project (incremental dirty, a real region compositor) that needs benchmarking, not an app-UI change.
+- [x] 7.3 Zoom/offset (and therefore scrollbar position) persistence is deferred per design D2: no `workspace-persistence` schema field and no restore path is added for it.
+- [x] 7.4 No Layer Style dialog is built; issue 5 ships a documented no-op `openLayerStyle(path)` placeholder. No new dependency or crate is added.

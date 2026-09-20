@@ -45,7 +45,10 @@ The system SHALL open a top-level Qt Widgets `QMainWindow` frame containing a
 menu bar, a tabbed document area that hosts one canvas per open document, a
 status bar, and dock areas, and SHALL run under a headless display server (Xvfb,
 the offscreen QPA plugin, or the explicit `--headless` flag) without requiring a
-GPU.
+GPU. A normal launch with no document argument SHALL open no document and leave
+the document-requiring commands disabled; the scratch document used by the
+self-test checks SHALL be created only for a `--self-test` or `--headless` run
+that needs it. An explicitly opened or created document SHALL behave as before.
 
 #### Scenario: Run under Xvfb
 - **WHEN** the executable is started under `xvfb-run` or with `QT_QPA_PLATFORM=offscreen`
@@ -63,6 +66,18 @@ GPU.
 - **WHEN** the frame starts with no document loaded
 - **THEN** document-requiring commands are disabled and the application does not crash
 
+#### Scenario: A normal launch opens no document [las_no_scratch]
+- **WHEN** the application is launched with no document argument and without
+  `--self-test` or `--headless`
+- **THEN** no tab and no document are created, and the document-requiring
+  commands are disabled
+
+#### Scenario: The self-test keeps its scratch document [las_selftest_scratch]
+- **WHEN** the application is launched with `--self-test` or `--headless` and no
+  document argument
+- **THEN** the scratch document the bridge checks depend on is created and the
+  self-test runs normally
+
 ### Requirement: Bridge self-test mode
 
 The system SHALL provide a `--self-test` mode that exercises the Rust↔Qt bridge,
@@ -72,7 +87,9 @@ check with a stable exit code, so a failure names the check. The headless
 self-test SHALL assert that the application platform is `offscreen` and SHALL
 reserve exit code **152** for a platform mismatch; later checks SHALL allocate
 codes from **153** upward. The M44 checks SHALL occupy codes **153–166** and the
-M45 checks SHALL occupy codes **167–179**.
+M45 checks SHALL occupy codes **167–179**. New checks SHALL take the next free
+codes from **299** upward and SHALL live in a `selftest_*.cpp` translation unit
+rather than growing `selftest.cpp`.
 
 #### Scenario: Self-test succeeds
 
@@ -93,6 +110,12 @@ M45 checks SHALL occupy codes **167–179**.
 
 - **WHEN** an M45 check fails
 - **THEN** the self-test exits with that check's code in the range **167–179** and prints which check failed
+
+#### Scenario: New checks use append-only codes [las_codes]
+
+- **WHEN** a new UI check is added for this change
+- **THEN** it takes a code at or above **299**, lives in a new `selftest_*.cpp`
+  file, and the existing exit codes are unchanged
 
 ### Requirement: Interface theme with brightness levels
 The system SHALL apply a dark application theme through a single `Theme` unit as
