@@ -93,6 +93,13 @@ public:
     PanelColumn* columnEdgeAnchorAt(const QPoint& globalPos, const PanelColumn* exclude,
                                     int* side) const;
 
+    // M47: move a whole column beside an anchor (side 0 = left, 1 = right) using
+    // the same splitter history as `createPanelColumn`. `resolveColumnMoveTarget`
+    // returns the anchor for a header drag (null for a bare workspace edge).
+    PanelColumn* resolveColumnMoveTarget(const QPoint& globalPos, const PanelColumn* exclude,
+                                         int* side) const;
+    bool movePanelColumn(PanelColumn* column, int side, PanelColumn* anchor);
+
     // M45 T3: a floating-Tools drop resolved through the same column grammar.
     // `resolveToolboxDrop` shows the single `#2a7fff` indicator at the resolved
     // boundary; `commitToolboxDrop` hosts the Tools panel as a fixed-width
@@ -112,6 +119,10 @@ public:
     // resolve/commit path; returns true when the indicator showed and the pane
     // landed adjacent.
     bool toolboxBesideColumnForTest(const QString& side, bool dynamicAnchor);
+    // Drop the floating Tools panel onto a point in the interior of the
+    // column owning `anchorPanel` (left half / right half) and at both workspace
+    // outer bands; returns true when each landed at the expected splitter index.
+    bool toolboxOnColumnForTest(const QString& anchorPanel, bool rightSide);
     bool dropIntoGroupForTest(const QString& panelName, const QString& targetPanel, int index = 1);
     bool dropBoundaryForTest(const QString& panelName, const QString& targetPanel, bool above);
     // M43 Phase C test hook: re-runs the real startup restore path so a saved

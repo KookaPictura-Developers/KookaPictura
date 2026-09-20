@@ -61,6 +61,11 @@ PanelColumn::PanelColumn(QWidget* parent)
 
     header_ = new QWidget(this);
     header_->setObjectName(QStringLiteral("panelColumnHeader"));
+    // M47: the whole column is draggable from its top header. The filter goes on
+    // the header only, never the toggle child, so a toggle click still toggles.
+    header_->installEventFilter(this);
+    header_->setCursor(Qt::SizeAllCursor);
+    header_->setToolTip(tr("Drag to move this panel column"));
     auto* headerLayout = new QHBoxLayout(header_);
     headerLayout->setContentsMargins(2, 2, 2, 2);
     headerLayout->setSpacing(2);
@@ -610,6 +615,12 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
     floatWindow->resize(size);
     moveFloat(floatWindow, globalPos - dragGrabOffset_);
     floatWindow->show();
+    // M47: an iconic hosted group needs room for its icon row.
+    if (hosted->isCollapsedToIcons()
+        && floatWindow->height() < PanelFloat::kFloatIconMinHeight) {
+        floatWindow->resize(floatWindow->width(), PanelFloat::kFloatIconMinHeight);
+    }
+    floatWindow->syncToContent();
     floatWindow->raise();
     floats_ << floatWindow;
     // ponytail: the strip row stays stale during the drag (rebuilt on

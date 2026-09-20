@@ -543,6 +543,36 @@ bool PanelColumn::ensureGroupVisibleForTest(const QString& panelName)
     return true;
 }
 
+QWidget* PanelColumn::columnHeaderForTest() const
+{
+    return header_;
+}
+
+bool PanelColumn::beginColumnHeaderDragForTest(const QPoint& globalPos)
+{
+    columnPressPending_ = false;
+    columnDragging_ = true;
+    columnPressGlobal_ = globalPos;
+    updateColumnDrag(globalPos);
+    return true;
+}
+
+void PanelColumn::dragColumnHeaderToForTest(const QPoint& globalPos)
+{
+    if (columnDragging_) {
+        updateColumnDrag(globalPos);
+    }
+}
+
+bool PanelColumn::dropColumnHeaderForTest(const QPoint& globalPos)
+{
+    if (!columnDragging_) {
+        return false;
+    }
+    columnDragging_ = false;
+    return finishColumnDrag(globalPos);
+}
+
 bool PanelColumn::dragSourceGroupAliveForTest() const
 {
     return dragSourceGroup_ && groups_.contains(dragSourceGroup_);

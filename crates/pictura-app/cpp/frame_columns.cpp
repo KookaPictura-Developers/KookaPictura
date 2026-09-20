@@ -216,6 +216,99 @@ PanelColumn* PicturaMainWindow::columnEdgeAnchorAt(const QPoint& globalPos,
     return nullptr;
 }
 
+PanelColumn* PicturaMainWindow::resolveColumnMoveTarget(const QPoint& globalPos,
+                                                        const PanelColumn* exclude,
+                                                        int* side) const
+{
+    if (side) {
+        *side = -1;
+    }
+    // 1. A band beside an existing column.
+    int edgeSide = -1;
+    if (PanelColumn* anchor = columnEdgeAnchorAt(globalPos, exclude, &edgeSide)) {
+        if (side) {
+            *side = edgeSide;
+        }
+        return anchor;
+    }
+    // 2. The column under the pointer, split by which half holds it.
+    if (PanelColumn* column = columnAtGlobal(globalPos)) {
+        if (column != exclude) {
+            const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
+            if (side) {
+                *side = r.isValid() && globalPos.x() >= r.center().x() ? 1 : 0;
+            }
+            return column;
+        }
+    }
+    // 3. A workspace edge: anchor on the outermost visible column on that side.
+    const int wsSide = newColumnSideAt(globalPos);
+    if (wsSide >= 0) {
+        if (side) {
+            *side = wsSide;
+        }
+        const QList<PanelColumn*> columns = panelColumns();
+        if (wsSide == 0) {
+            for (PanelColumn* column : columns) {
+                if (column && column->isVisible() && column != exclude) {
+                    return column;
+                }
+            }
+        } else {
+            for (int i = columns.size() - 1; i >= 0; --i) {
+                PanelColumn* column = columns.at(i);
+                if (column && column->isVisible() && column != exclude) {
+                    return column;
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
+bool PicturaMainWindow::movePanelColumn(PanelColumn* column, int side, PanelColumn* anchor)
+{
+    if (!column || !centerSplitter_) {
+        return false;
+    }
+    // `side` is 0 (left) or 1 (right); -1 means the drag resolved no target, so
+    // leave the column where it is rather than snapping it to an edge.
+    if (side != 0 && side != 1) {
+        return false;
+    }
+    const int from = centerSplitter_->indexOf(column);
+    if (from < 0) {
+        return false;
+    }
+    const int count = centerSplitter_->count();
+    int target = -1;
+    if (anchor && anchor != column) {
+        const int anchorIndex = centerSplitter_->indexOf(anchor);
+        if (anchorIndex < 0) {
+            return false;
+        }
+        target = side == 0 ? anchorIndex : anchorIndex + 1;
+    } else {
+        // A bare workspace edge: land at the extreme end of the splitter.
+        target = side == 0 ? 0 : count;
+    }
+    if (from < target) {
+        --target;
+    }
+    target = qBound(0, target, count - 1);
+    if (target == from) {
+        return false;
+    }
+    column->setParent(nullptr);
+    centerSplitter_->insertWidget(target, column);
+    // `setParent(nullptr)` hid the widget; re-show it as the splitter pane it is.
+    column->setVisible(!panelsHidden_);
+    reapplyColumnStretch();
+    PanelColumn::refreshSharedFloor(this);
+    saveSession();
+    return true;
+}
+
 bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn** anchor,
                                            int* side)
 {
@@ -267,18 +360,90 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
             }
         }
     }
-    // A pointer over no column (e.g. the document tabs) keeps the panel in its
-    // current state rather than forcing it into the splitter.
+    bool valid = resolved != nullptr;
+    // The workspace outer band is always a target. Anchor on the outermost
+    // visible column on that side so the indicator boundary and the landing slot
+    // agree; with no visible column it is a bare edge (null anchor) that commits
+    // at the splitter head/tail.
+    if (!valid) {
+        const int wsSide = newColumnSideAt(globalPos);
+        if (wsSide >= 0) {
+            const QList<PanelColumn*> columns = panelColumns();
+            if (wsSide == 1) {
+                for (int i = columns.size() - 1; i >= 0; --i) {
+                    PanelColumn* column = columns.at(i);
+                    if (column && column->isVisible()) {
+                        resolved = column;
+                        break;
+                    }
+                }
+            } else {
+                for (PanelColumn* column : columns) {
+                    if (column && column->isVisible()) {
+                        resolved = column;
+                        break;
+                    }
+                }
+            }
+            resolvedSide = wsSide;
+            valid = true;
+        }
+    }
+    // Anywhere else in the central area resolves to the horizontally nearest
+    // visible column, on the half the pointer is in (or the outer side when the
+    // pointer is beside it), so a drop over the document canvas is never a no-op.
+    if (!valid) {
+        if (QWidget* central = centralWidget()) {
+            const QRect centralRect(central->mapToGlobal(QPoint(0, 0)), central->size());
+            if (centralRect.contains(globalPos)) {
+                PanelColumn* nearest = nullptr;
+                int bestDist = 0;
+                for (PanelColumn* column : panelColumns()) {
+                    if (!column || !column->isVisible()) {
+                        continue;
+                    }
+                    const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
+                    if (!r.isValid() || r.width() <= 0) {
+                        continue;
+                    }
+                    int dist = 0;
+                    if (globalPos.x() < r.left()) {
+                        dist = r.left() - globalPos.x();
+                    } else if (globalPos.x() > r.right()) {
+                        dist = globalPos.x() - r.right();
+                    }
+                    if (!nearest || dist < bestDist) {
+                        nearest = column;
+                        bestDist = dist;
+                    }
+                }
+                if (nearest) {
+                    const QRect r(nearest->mapToGlobal(QPoint(0, 0)), nearest->size());
+                    if (globalPos.x() < r.left()) {
+                        resolvedSide = 0;
+                    } else if (globalPos.x() > r.right()) {
+                        resolvedSide = 1;
+                    } else {
+                        resolvedSide = globalPos.x() < r.center().x() ? 0 : 1;
+                    }
+                    resolved = nearest;
+                    valid = true;
+                }
+            }
+        }
+    }
     // Drop the previous boundary's line when the pointer moves off it.
     if (toolboxDropAnchor_ && toolboxDropAnchor_ != resolved) {
         toolboxDropAnchor_->hideEdgeDropIndicator();
         toolboxDropAnchor_ = nullptr;
     }
-    if (!resolved) {
+    if (!valid) {
         return false;
     }
-    resolved->showEdgeDropIndicator(resolvedSide == 0 ? PanelSide::Left : PanelSide::Right);
-    toolboxDropAnchor_ = resolved;
+    if (resolved) {
+        resolved->showEdgeDropIndicator(resolvedSide == 0 ? PanelSide::Left : PanelSide::Right);
+        toolboxDropAnchor_ = resolved;
+    }
     if (anchor) {
         *anchor = resolved;
     }
@@ -292,16 +457,23 @@ bool PicturaMainWindow::commitToolboxDrop(const QPoint& globalPos)
 {
     int side = -1;
     PanelColumn* anchor = nullptr;
-    if (!resolveToolboxDrop(globalPos, &anchor, &side) || !anchor || !centerSplitter_) {
+    if (!resolveToolboxDrop(globalPos, &anchor, &side) || !centerSplitter_ || side < 0) {
         return false;
     }
-    anchor->hideEdgeDropIndicator();
+    if (anchor) {
+        anchor->hideEdgeDropIndicator();
+    }
     toolboxDropAnchor_ = nullptr;
-    const int anchorIndex = centerSplitter_->indexOf(anchor);
-    if (anchorIndex < 0) {
-        return false;
+    // A bare workspace edge (no visible column) hosts the panel at the splitter
+    // head/tail; otherwise it lands immediately before/after its anchor column.
+    int insertAt = side == 0 ? 0 : centerSplitter_->count();
+    if (anchor) {
+        const int anchorIndex = centerSplitter_->indexOf(anchor);
+        if (anchorIndex < 0) {
+            return false;
+        }
+        insertAt = side == 0 ? anchorIndex : anchorIndex + 1;
     }
-    const int insertAt = side == 0 ? anchorIndex : anchorIndex + 1;
     // M45 T3 honest limit: a QDockWidget cannot sit *between* two columns, so the
     // panel is re-hosted as a fixed-width pane at that central-splitter boundary.
     removeDockWidget(toolbox_);

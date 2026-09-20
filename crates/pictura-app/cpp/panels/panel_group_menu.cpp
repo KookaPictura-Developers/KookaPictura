@@ -307,7 +307,11 @@ void PanelGroup::updateHeaderMenu()
     if (headerCorner_) {
         // `headerButton_->isVisible()` is false while the corner container is
         // still hidden, so decide from the explicit flags, not effective state.
-        headerCorner_->setVisible(has
+        // M47: the corner always carries the reserved drag grip, so it stays
+        // visible regardless of the per-widget menu; the close button now lives
+        // in the float header and no longer gates the corner.
+        const bool gripPresent = headerGrip_ != nullptr;
+        headerCorner_->setVisible(gripPresent || has
                                   || (floatCloseButton_ && !floatCloseButton_->isHidden()));
     }
     headerButton_->setMenu(nullptr);

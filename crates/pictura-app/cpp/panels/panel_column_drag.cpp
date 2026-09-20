@@ -39,6 +39,39 @@ namespace pictura {
 
 bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
 {
+    // M47: drag the whole column from its top header onto any side of another
+    // column (or a workspace edge). The toggle child is not filtered.
+    if (watched == header_) {
+        const QEvent::Type type = event->type();
+        if (type == QEvent::MouseButtonPress) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                columnPressPending_ = true;
+                columnDragging_ = false;
+                columnPressGlobal_ = mouse->globalPosition().toPoint();
+            }
+        } else if (type == QEvent::MouseMove) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            const QPoint globalPos = mouse->globalPosition().toPoint();
+            if (columnPressPending_ && !columnDragging_
+                && (globalPos - columnPressGlobal_).manhattanLength()
+                       >= QApplication::startDragDistance()) {
+                columnPressPending_ = false;
+                columnDragging_ = true;
+            }
+            if (columnDragging_) {
+                updateColumnDrag(globalPos);
+                return true;
+            }
+        } else if (type == QEvent::MouseButtonRelease) {
+            columnPressPending_ = false;
+            if (columnDragging_) {
+                columnDragging_ = false;
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                return finishColumnDrag(mouse->globalPosition().toPoint());
+            }
+        }
+    }
     if (watched == iconStrip_ && event->type() == QEvent::Resize) {
         updateIconStripLabels();
     }
@@ -966,6 +999,40 @@ void PanelColumn::showEdgeDropIndicator(PanelSide side)
 void PanelColumn::hideEdgeDropIndicator()
 {
     clearIndicator();
+}
+
+void PanelColumn::updateColumnDrag(const QPoint& globalPos)
+{
+    auto* frame = qobject_cast<PicturaMainWindow*>(window());
+    if (!frame) {
+        return;
+    }
+    int side = -1;
+    PanelColumn* anchor = frame->resolveColumnMoveTarget(globalPos, this, &side);
+    if (columnDropAnchor_ && columnDropAnchor_ != anchor) {
+        columnDropAnchor_->hideEdgeDropIndicator();
+    }
+    columnDropAnchor_ = anchor;
+    columnDropSide_ = side;
+    if (anchor) {
+        anchor->showEdgeDropIndicator(side == 0 ? PanelSide::Left : PanelSide::Right);
+    }
+}
+
+bool PanelColumn::finishColumnDrag(const QPoint& globalPos)
+{
+    auto* frame = qobject_cast<PicturaMainWindow*>(window());
+    if (!frame) {
+        return false;
+    }
+    int side = -1;
+    PanelColumn* anchor = frame->resolveColumnMoveTarget(globalPos, this, &side);
+    if (columnDropAnchor_) {
+        columnDropAnchor_->hideEdgeDropIndicator();
+    }
+    columnDropAnchor_ = nullptr;
+    columnDropSide_ = -1;
+    return frame->movePanelColumn(this, side, anchor);
 }
 
 } // namespace pictura

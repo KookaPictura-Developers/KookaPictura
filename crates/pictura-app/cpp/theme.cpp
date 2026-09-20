@@ -187,6 +187,10 @@ QSplitter#panelColumnSplitter::handle { background: ${border}; }
 QFrame#panelIconDivider { background: ${border}; border: 0; }
 QWidget#panelIconGroup { background: ${window}; border: 1px solid ${border}; border-radius: 2px; }
 QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid ${border}; color: ${disabledText}; }
+/* M47: the group's iconic row reads as a panel surface, matching the docked
+   column's icon group. The reserved corner grip is blank header space. */
+QWidget#panelGroupIconRow { background: ${window}; border: 1px solid ${border}; border-radius: 2px; }
+QWidget#panelGroupDragGrip { background: ${panelHeader}; }
 
 QTabWidget::pane { border: ${borderWidth}px solid ${border}; background: ${base}; }
 QTabWidget#panelGroupTabs { border: ${borderWidth}px solid ${border}; }

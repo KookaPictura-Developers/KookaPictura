@@ -131,6 +131,102 @@ bool PicturaMainWindow::toolboxBesideColumnForTest(const QString& side, bool dyn
     return indicator && placed;
 }
 
+bool PicturaMainWindow::toolboxOnColumnForTest(const QString& anchorPanel, bool rightSide)
+{
+    if (!toolbox_ || !centerSplitter_ || !centralWidget()) {
+        return false;
+    }
+    auto pump = [](int count) {
+        for (int i = 0; i < count; ++i) {
+            QCoreApplication::processEvents();
+        }
+    };
+    // Visible widget columns at both splitter extremes make the outer-band
+    // head/tail cases reachable; reuse them when a previous call made them.
+    auto headColumn = [this]() {
+        return qobject_cast<PanelColumn*>(centerSplitter_->widget(0));
+    };
+    auto tailColumn = [this]() {
+        return qobject_cast<PanelColumn*>(centerSplitter_->widget(centerSplitter_->count() - 1));
+    };
+    if (!headColumn() || !headColumn()->isVisible()) {
+        if (!createPanelColumn(PanelSide::Left, nullptr)) {
+            return false;
+        }
+        pump(6);
+    }
+    if (!tailColumn() || !tailColumn()->isVisible()) {
+        if (!createPanelColumn(PanelSide::Right, nullptr)) {
+            return false;
+        }
+        pump(6);
+    }
+    PanelColumn* anchor = anchorPanel.isEmpty() ? panelColumn_ : columnForPanel(anchorPanel);
+    if (!anchor) {
+        anchor = panelColumn_;
+    }
+    if (!anchor) {
+        return false;
+    }
+    // A splitter-hosted Tools pane shifts the anchor's index; the real gesture
+    // starts from a dock/float, so dock it first and after each placement.
+    auto redockTools = [&]() {
+        if (centerSplitter_->indexOf(toolbox_) >= 0) {
+            addDockWidget(Qt::LeftDockWidgetArea, toolbox_);
+            toolbox_->setSplitterPane(false);
+            pump(6);
+        }
+    };
+    redockTools();
+
+    // Interior drop: the left half lands the tools immediately before the anchor
+    // column, the right half immediately after it.
+    const QRect ar(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
+    const int anchorIndex = centerSplitter_->indexOf(anchor);
+    if (!ar.isValid() || ar.width() < 6 || anchorIndex < 0) {
+        return false;
+    }
+    const QPoint interior = rightSide
+                                ? QPoint(ar.left() + (ar.width() * 2) / 3, ar.center().y())
+                                : QPoint(ar.left() + ar.width() / 3, ar.center().y());
+    PanelColumn* resolved = nullptr;
+    int resolvedSide = -1;
+    if (!resolveToolboxDrop(interior, &resolved, &resolvedSide) || resolved != anchor) {
+        return false;
+    }
+    const bool indicator = anchor->dropIndicatorVisibleForTest();
+    const int expected = rightSide ? anchorIndex + 1 : anchorIndex;
+    const bool interiorOk =
+        commitToolboxDrop(interior) && centerSplitter_->indexOf(toolbox_) == expected;
+
+    // Workspace outer bands: the far-left/far-right bands hit the splitter
+    // head/tail (the end columns created above keep those boundaries real).
+    redockTools();
+    const QRect central(centralWidget()->mapToGlobal(QPoint(0, 0)), centralWidget()->size());
+    const QPoint headPoint(central.left() + 2, central.center().y());
+    const QPoint tailPoint(central.right() - 2, central.center().y());
+    const bool headOk = [&]() {
+        PanelColumn* a = nullptr;
+        int s = -1;
+        if (!resolveToolboxDrop(headPoint, &a, &s) || s != 0) {
+            return false;
+        }
+        return commitToolboxDrop(headPoint) && centerSplitter_->indexOf(toolbox_) == 0;
+    }();
+    redockTools();
+    const bool tailOk = [&]() {
+        PanelColumn* a = nullptr;
+        int s = -1;
+        if (!resolveToolboxDrop(tailPoint, &a, &s) || s != 1) {
+            return false;
+        }
+        return commitToolboxDrop(tailPoint)
+               && centerSplitter_->indexOf(toolbox_) == centerSplitter_->count() - 1;
+    }();
+    redockTools();
+    return indicator && interiorOk && headOk && tailOk;
+}
+
 bool PicturaMainWindow::dropIntoGroupForTest(const QString& panelName, const QString& targetPanel,
                                              int index)
 {

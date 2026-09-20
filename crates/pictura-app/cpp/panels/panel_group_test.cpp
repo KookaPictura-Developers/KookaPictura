@@ -11,11 +11,26 @@ namespace pictura {
 
 int PanelGroup::headerCornerWidthForTest() const
 {
-    int width = headerButton_ ? headerButton_->width() : 0;
-    if (floatCloseButton_ && floatCloseButton_->isVisible()) {
-        width += floatCloseButton_->width();
+    // M47: the reserved grip plus the per-widget menu button; the float close
+    // button no longer lives in the corner.
+    int width = 0;
+    if (headerGrip_) {
+        width += headerGrip_->width();
+    }
+    if (headerButton_) {
+        width += headerButton_->width();
     }
     return width;
+}
+
+bool PanelGroup::tabUsesScrollButtonsForTest() const
+{
+    return tabBar() && tabBar()->usesScrollButtons();
+}
+
+bool PanelGroup::floatHeaderVisibleForTest() const
+{
+    return floatHeader_ && floatHeader_->isVisible();
 }
 
 QPoint PanelGroup::tabInsertionGlobalPointForTest(int index) const

@@ -47,6 +47,10 @@ public:
     explicit PanelFloat(QWidget* parent = nullptr);
     PanelGroup* group() const { return group_; }
     void setGroup(PanelGroup* group);
+    // M47: keep the overlay sized to its hosted group. Collapsed-to-icons
+    // enforces the icon row's minimum; expanded drops it and grows to the hint.
+    void syncToContent();
+    static constexpr int kFloatIconMinHeight = 36;
     std::function<void()> onClose;
 
 private:
@@ -199,6 +203,11 @@ public:
     bool floatClampedForTest(int index, const QPoint& globalTopLeft);
     QPoint boundaryPointForTest(int boundary) const;
     bool ensureGroupVisibleForTest(const QString& panelName);
+    // M47: drag the whole widget column from its top header.
+    QWidget* columnHeaderForTest() const;
+    bool beginColumnHeaderDragForTest(const QPoint& globalPos);
+    void dragColumnHeaderToForTest(const QPoint& globalPos);
+    bool dropColumnHeaderForTest(const QPoint& globalPos);
     // M43 Phase B: begin a whole-group drag and a compact-strip entry point.
     bool beginGroupDragForTest(const QString& panelName);
     QPoint stripEntryPointForTest(const QString& panelName, int where) const;
@@ -341,6 +350,9 @@ private:
     void updateDrag(const QPoint& globalPos);
     bool commitDrop();
     void cancelDrag();
+    // M47: the header-drag column move reuses the edge-drop indicator.
+    void updateColumnDrag(const QPoint& globalPos);
+    bool finishColumnDrag(const QPoint& globalPos);
     PanelFloat* createFloat(PanelGroup* group, const QPoint& globalPos);
     void destroyFloat(PanelFloat* floatWindow);
     void closeFloat(PanelFloat* floatWindow);
@@ -412,6 +424,13 @@ private:
     QToolButton* stripDragButton_ = nullptr;
     // M44 C3: the group whose grip press/held state is active.
     PanelGroup* stripGripGroup_ = nullptr;
+
+    // M47: drag the whole column from its top header.
+    bool columnPressPending_ = false;
+    bool columnDragging_ = false;
+    QPoint columnPressGlobal_;
+    PanelColumn* columnDropAnchor_ = nullptr;
+    int columnDropSide_ = -1;
 };
 
 } // namespace pictura
