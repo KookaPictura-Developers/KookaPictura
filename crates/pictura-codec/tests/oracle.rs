@@ -33,6 +33,9 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("inner_shadow.psd", 8, 8, ColorMode::Rgb),
     ("inner_glow.psd", 8, 8, ColorMode::Rgb),
     ("stroke.psd", 8, 8, ColorMode::Rgb),
+    ("color_overlay.psd", 8, 8, ColorMode::Rgb),
+    ("gradient_overlay.psd", 8, 8, ColorMode::Rgb),
+    ("pattern_overlay.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -1375,3 +1378,12 @@ mod inner_glow;
 
 #[path = "oracle/stroke.rs"]
 mod stroke;
+
+#[path = "oracle/color_overlay.rs"]
+mod color_overlay;
+
+#[path = "oracle/gradient_overlay.rs"]
+mod gradient_overlay;
+
+#[path = "oracle/pattern_overlay.rs"]
+mod pattern_overlay;

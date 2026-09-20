@@ -675,6 +675,151 @@ def stroke() -> PSDImage:
     return psd
 
 
+def color_overlay() -> PSDImage:
+    """RGB, a Base pixel layer plus a `SoFi` color-overlay pixel layer.
+
+    The effect object class id is `SoFi` (the *effect* id), not `SoCo` (the
+    solid-fill *layer* id). The keys mirror psd-tools' `ColorOverlay` accessors:
+    `Md  ` (`BlnM`/`mul `), `Clr ` (`RGBC`), and `Opct` 75.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Colored", left=0, top=0
+    )
+    sofi = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Color: Descriptor(
+                {
+                    b"Rd  ": Double(10.0),
+                    b"Grn ": Double(20.0),
+                    b"Bl  ": Double(30.0),
+                },
+                classID=b"RGBC",
+            ),
+            Key.Opacity: UnitFloat(75.0, Unit.Percent),
+        },
+        classID=b"SoFi",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"SoFi": sofi}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
+def gradient_overlay() -> PSDImage:
+    """RGB, a Base pixel layer plus a `GrFl` gradient-overlay pixel layer.
+
+    The effect object class id is `GrFl` (the *effect* id), not `GdFl` (the
+    gradient-fill *layer* id). The keys mirror psd-tools' `GradientOverlay`
+    accessors; `Ofst` and `Dthr` are authored but ignored by the renderer.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Gradient", left=0, top=0
+    )
+    grfl = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Opacity: UnitFloat(80.0, Unit.Percent),
+            Key.Gradient: Descriptor(
+                {
+                    Key.Name: String("Black to White"),
+                    Type.GradientForm: Enumerated(
+                        Type.GradientForm, Enum.CustomStops
+                    ),
+                    b"Intr": Enumerated(Type.Interpolation, b"Lnr "),
+                    Key.Colors: List(
+                        [
+                            _gradient_stop(0, (0, 0, 0)),
+                            _gradient_stop(4096, (255, 255, 255)),
+                        ]
+                    ),
+                },
+                classID=b"Grdn",
+            ),
+            Key.Angle: Double(45.0),
+            Key.Type: Enumerated(Type.GradientType, Enum.Linear),
+            Key.Reverse: Bool(True),
+            Key.Alignment: Bool(False),
+            Key.Scale: UnitFloat(150.0, Unit.Percent),
+            Key.Offset: Descriptor(
+                {b"Hrzn": Double(0.0), b"Vrtc": Double(0.0)}, classID=b"Pnt "
+            ),
+            Key.Dither: Bool(False),
+        },
+        classID=b"GrFl",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"GrFl": grfl}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
+def pattern_overlay() -> PSDImage:
+    """RGB, a Base pixel layer plus a `patternFill` overlay pixel layer.
+
+    The effect object class id is `patternFill` (the *effect* id), not `PtFl`
+    (the pattern-fill *layer* id). The 2x2 fixture pattern is written to the
+    global `Patt` block, so the renderer resolves the real tile. The keys mirror
+    psd-tools' `PatternOverlay` accessors; `Algn` is "Link With Layer".
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    psd._record.layer_and_mask_information.tagged_blocks = TaggedBlocks()
+    psd.tagged_blocks.set_data(Tag.PATTERNS1, [_fixture_pattern()])
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (0, 0, 0, 255)), name="Patterned", left=0, top=0
+    )
+    pf = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.Mode: Enumerated(b"BlnM", b"scrn"),
+            Key.Opacity: UnitFloat(80.0, Unit.Percent),
+            b"Ptrn": Descriptor(
+                {
+                    b"Nm  ": String("Pictura\x00"),
+                    b"Idnt": String("pictura-pattern\x00"),
+                },
+                classID=b"Ptrn",
+            ),
+            Key.Scale: UnitFloat(50.0, Unit.Percent),
+            Key.Alignment: Bool(True),
+            Key.Angle: Double(30.0),
+        },
+        classID=b"patternFill",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"patternFill": pf}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -691,6 +836,9 @@ FIXTURES = {
     "inner_shadow.psd": inner_shadow,
     "inner_glow.psd": inner_glow,
     "stroke.psd": stroke,
+    "color_overlay.psd": color_overlay,
+    "gradient_overlay.psd": gradient_overlay,
+    "pattern_overlay.psd": pattern_overlay,
 }
 
 

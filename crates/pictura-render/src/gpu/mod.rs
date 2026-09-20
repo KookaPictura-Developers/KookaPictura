@@ -303,6 +303,21 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         {
             return Err(GpuError::UnsupportedLayerEffect);
         }
+        if crate::layer_effects::decode_color_overlay(layer)
+            .is_some_and(|overlay| overlay.enabled && overlay.present)
+        {
+            return Err(GpuError::UnsupportedLayerEffect);
+        }
+        if crate::layer_effects::decode_gradient_overlay(layer)
+            .is_some_and(|overlay| overlay.enabled && overlay.present)
+        {
+            return Err(GpuError::UnsupportedLayerEffect);
+        }
+        if crate::layer_effects::decode_pattern_overlay(layer)
+            .is_some_and(|overlay| overlay.enabled && overlay.present)
+        {
+            return Err(GpuError::UnsupportedLayerEffect);
+        }
         if let Some(data) = &layer.adjustment {
             let supported =
                 decode_adjustment(data).is_some_and(|adj| adjustment_params(&adj).is_some());

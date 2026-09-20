@@ -23,53 +23,77 @@ use crate::composite::{blend_into, desc_item, Canvas};
 /// gradient this crate understands. Never panics; every failure is a no-op.
 pub fn decode_gradient_fill(d: &[u8]) -> Option<Adjustment> {
     let obj = pictura_codec::read_descriptor(d).ok()?;
+    Some(Adjustment::GradientFill(gradient_params_from_desc(&obj)?))
+}
+
+/// The gradient fields of an already-read `GdFl`/`GrFl` object. Shared by the
+/// public fill decoder and the gradient-overlay decoder. A `doub` or a unit
+/// float is accepted for the numerics (a `GdFl` carries `doub`, an effect
+/// `GrFl` carries unit floats); a finite `f64` that overflows `f32` rejects.
+pub(crate) fn gradient_params_from_desc(obj: &DescValue) -> Option<GradientFillParams> {
     if !matches!(obj, DescValue::Object { .. }) {
         return None;
     }
-    let angle_deg = match desc_item(&obj, b"Angl") {
-        Some(DescValue::Double(v)) if v.is_finite() => *v as f32,
+    let angle_deg = match desc_item(obj, b"Angl") {
+        Some(DescValue::Double(v)) if v.is_finite() => as_f32_finite(*v)?,
+        Some(DescValue::UnitFloat { value, .. }) if value.is_finite() => as_f32_finite(*value)?,
         _ => return None,
     };
-    let kind = match desc_item(&obj, b"Type") {
-        Some(DescValue::Enum { value, .. }) => decode_kind(value)?,
+    let kind = match desc_item(obj, b"Type") {
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"GrdT" => decode_kind(value)?,
         _ => return None,
     };
-    let grad = desc_item(&obj, b"Grad")?;
+    let grad = desc_item(obj, b"Grad")?;
     if !matches!(grad, DescValue::Object { .. }) {
         return None;
     }
     match desc_item(grad, b"GrdF") {
-        Some(DescValue::Enum { value, .. }) if value.as_slice() == b"CstS" => {}
+        Some(DescValue::Enum { kind, value })
+            if kind.as_slice() == b"GrdF" && value.as_slice() == b"CstS" => {}
         _ => return None,
     }
     let stops = decode_stops(desc_item(grad, b"Clrs")?)?;
-    let reverse = match desc_item(&obj, b"Rvrs") {
+    let reverse = match desc_item(obj, b"Rvrs") {
         Some(DescValue::Bool(b)) => *b,
         Some(_) => return None,
         None => false,
     };
-    let scale = match desc_item(&obj, b"Scl ") {
-        Some(DescValue::Double(v)) if v.is_finite() => *v as f32,
+    let scale = match desc_item(obj, b"Scl ") {
+        Some(DescValue::Double(v)) if v.is_finite() => as_f32_finite(*v)?,
+        Some(DescValue::UnitFloat { value, .. }) if value.is_finite() => as_f32_finite(*value)?,
         Some(_) => return None,
         None => 100.0,
     };
-    Some(Adjustment::GradientFill(GradientFillParams {
+    Some(GradientFillParams {
         stops,
         reverse,
         kind,
         angle_deg,
         scale,
-    }))
+    })
+}
+
+/// A finite `f32` from an `f64`, or `None` when the cast overflows.
+fn as_f32_finite(value: f64) -> Option<f32> {
+    let v = value as f32;
+    v.is_finite().then_some(v)
 }
 
 /// The decoded `PtFl` descriptor, or `None` when it is not a pattern fill this
 /// crate understands. Never panics; every failure is a no-op.
 pub fn decode_pattern_fill(d: &[u8]) -> Option<Adjustment> {
     let obj = pictura_codec::read_descriptor(d).ok()?;
+    Some(Adjustment::PatternFill(pattern_params_from_desc(&obj)?))
+}
+
+/// The pattern fields of an already-read `PtFl`/`patternFill` object. Shared by
+/// the public fill decoder and the pattern-overlay decoder (a pure move; the
+/// strict `PtFl` contract is unchanged).
+pub(crate) fn pattern_params_from_desc(obj: &DescValue) -> Option<PatternFillParams> {
     if !matches!(obj, DescValue::Object { .. }) {
         return None;
     }
-    let ptrn = desc_item(&obj, b"Ptrn")?;
+    let ptrn = desc_item(obj, b"Ptrn")?;
     let DescValue::Object { class_id, .. } = ptrn else {
         return None;
     };
@@ -80,7 +104,7 @@ pub fn decode_pattern_fill(d: &[u8]) -> Option<Adjustment> {
         Some(DescValue::Text(id)) => id.trim_end_matches('\0').to_string(),
         _ => return None,
     };
-    let scale = match desc_item(&obj, b"Scl ") {
+    let scale = match desc_item(obj, b"Scl ") {
         Some(DescValue::Double(v)) => *v as f32,
         Some(DescValue::UnitFloat { value, .. }) => *value as f32,
         Some(_) => return None,
@@ -89,17 +113,17 @@ pub fn decode_pattern_fill(d: &[u8]) -> Option<Adjustment> {
     if !scale.is_finite() {
         return None;
     }
-    let link_with_layer = match desc_item(&obj, b"Algn") {
+    let link_with_layer = match desc_item(obj, b"Algn") {
         Some(DescValue::Bool(b)) => *b,
         Some(_) => return None,
         None => true,
     };
-    Some(Adjustment::PatternFill(PatternFillParams {
+    Some(PatternFillParams {
         pattern_id,
         scale,
         link_with_layer,
-        origin: decode_origin(&obj)?,
-    }))
+        origin: decode_origin(obj)?,
+    })
 }
 
 /// The optional `phase` `Pnt ` object's `Hrzn`/`Vrtc` doubles as an integer
