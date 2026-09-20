@@ -45,10 +45,12 @@ pub use fill::encode_gradient_fill;
 
 pub mod layer_effects;
 pub use layer_effects::{
-    decode_color_overlay, decode_drop_shadow, decode_gradient_overlay, decode_inner_glow,
-    decode_inner_shadow, decode_outer_glow, decode_pattern_overlay, decode_satin, decode_stroke,
-    ColorOverlay, DropShadow, GlowSource, GlowTechnique, GradientOverlay, InnerGlow, InnerShadow,
-    OuterGlow, PatternOverlay, Satin, Stroke, StrokePosition,
+    decode_bevel_emboss, decode_color_overlay, decode_drop_shadow, decode_gradient_overlay,
+    decode_inner_glow, decode_inner_shadow, decode_outer_glow, decode_pattern_overlay,
+    decode_satin, decode_stroke, BevelDirection, BevelEmboss, BevelHighlight, BevelShadow,
+    BevelStyle, BevelTechnique, ColorOverlay, DropShadow, GlowSource, GlowTechnique,
+    GradientOverlay, InnerGlow, InnerShadow, OuterGlow, PatternOverlay, Satin, Stroke,
+    StrokePosition,
 };
 
 pub mod gpu;

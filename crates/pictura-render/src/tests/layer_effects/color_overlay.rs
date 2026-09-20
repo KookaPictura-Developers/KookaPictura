@@ -50,7 +50,7 @@ impl Default for ColorSpec {
         Self {
             enabled: true,
             present: true,
-            blend: b"norm".to_vec(),
+            blend: b"Nrml".to_vec(),
             color: [0.0, 0.0, 255.0],
             opacity: 100.0,
         }
@@ -86,7 +86,7 @@ fn color_overlay_decodes_typed_parameters() {
         sofi(vec![
             (b"enab".to_vec(), DescValue::Bool(true)),
             (b"present".to_vec(), DescValue::Bool(true)),
-            (b"Md  ".to_vec(), blenm(b"mul ")),
+            (b"Md  ".to_vec(), blenm(b"Mltp")),
             (b"Clr ".to_vec(), rgbc(200.0, 100.0, 50.0)),
             (b"Opct".to_vec(), unit(60.0, PRC)),
         ]),
@@ -173,7 +173,7 @@ fn malformed_or_absent_color_overlay_is_none() {
                 b"Md  ".to_vec(),
                 DescValue::Enum {
                     kind: b"BlnX".to_vec(),
-                    value: b"mul ".to_vec(),
+                    value: b"Mltp".to_vec(),
                 },
             ),
         ]),
@@ -281,7 +281,7 @@ fn color_overlay_opacity_shapes_the_fill() {
 fn color_overlay_blend_mode_shapes_the_fill() {
     let normal = compose_overlay(spec_layer(&ColorSpec::default()));
     let multiply = compose_overlay(spec_layer(&ColorSpec {
-        blend: b"mul ".to_vec(),
+        blend: b"Mltp".to_vec(),
         ..Default::default()
     }));
     assert_ne!(normal, multiply, "Normal and Multiply differ");

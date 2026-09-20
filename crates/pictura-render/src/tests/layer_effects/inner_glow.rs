@@ -68,7 +68,7 @@ impl Default for InnerGlowSpec {
         Self {
             enabled: true,
             present: true,
-            blend: b"norm".to_vec(),
+            blend: b"Nrml".to_vec(),
             color: [0.0, 0.0, 255.0],
             opacity: 100.0,
             choke: 0.0,
@@ -158,7 +158,7 @@ fn inner_glow_decodes_typed_parameters() {
             b"Md  ".to_vec(),
             DescValue::Enum {
                 kind: b"BlnM".to_vec(),
-                value: b"scrn".to_vec(),
+                value: b"Scrn".to_vec(),
             },
         ),
         (b"Clr ".to_vec(), rgbc(200.0, 100.0, 50.0)),
@@ -329,7 +329,7 @@ fn malformed_or_absent_inner_glow_is_none() {
             b"Md  ".to_vec(),
             DescValue::Enum {
                 kind: b"BlnX".to_vec(),
-                value: b"scrn".to_vec(),
+                value: b"Scrn".to_vec(),
             },
         ),
     ])));

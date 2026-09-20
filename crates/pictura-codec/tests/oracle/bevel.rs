@@ -1,17 +1,18 @@
 use super::*;
 
-/// The gradient-overlay fixture: the psd-tools-authored `lfx2` object-based
+/// The bevel & emboss fixture: the psd-tools-authored `lfx2` object-based
 /// effects block survives read and whole-document round-trip, and psd-tools
-/// reads the effect back as a `GradientOverlay` with the authored `GrFl`
-/// values (kind, angle, reverse, scale, alignment).
+/// reads the effect back as a `BevelEmboss` with the authored values, including
+/// the `hglM`/`hglC`/`hglO` and `sdwM`/`sdwC`/`sdwO` key pairs and the
+/// `InrB`/`SfBL`/`In  ` style/technique/direction enums.
 #[test]
-fn gradient_overlay_layer_preserves_effect_block() {
-    let doc = load("gradient_overlay.psd");
+fn bevel_layer_preserves_effect_block() {
+    let doc = load("bevel.psd");
     let layer = doc
         .layers
         .iter()
-        .find(|l| l.name == "Gradient")
-        .expect("Gradient layer");
+        .find(|l| l.name == "Beveled")
+        .expect("Beveled layer");
     let block = layer
         .extra_block(b"lfx2")
         .expect("lfx2 is preserved in extra_blocks");
@@ -24,7 +25,7 @@ fn gradient_overlay_layer_preserves_effect_block() {
     assert!(
         back.layers
             .iter()
-            .find(|l| l.name == "Gradient")
+            .find(|l| l.name == "Beveled")
             .and_then(|l| l.extra_block(b"lfx2"))
             .is_some(),
         "lfx2 survives a round-trip"
@@ -34,11 +35,11 @@ fn gradient_overlay_layer_preserves_effect_block() {
         eprintln!("skipping: python3 + psd-tools not available");
         return;
     }
-    let dir = scratch_dir("psd-gradient-overlay");
-    let path = dir.join("gradient_overlay.psd");
+    let dir = scratch_dir("psd-bevel");
+    let path = dir.join("bevel.psd");
     std::fs::write(
         &path,
-        std::fs::read(fixture_dir().join("gradient_overlay.psd")).unwrap(),
+        std::fs::read(fixture_dir().join("bevel.psd")).unwrap(),
     )
     .unwrap();
 
@@ -46,18 +47,24 @@ fn gradient_overlay_layer_preserves_effect_block() {
 import sys
 from psd_tools import PSDImage
 psd = PSDImage.open(sys.argv[1], lazy=False)
-layer = [l for l in psd if l.name == "Gradient"][0]
+layer = [l for l in psd if l.name == "Beveled"][0]
 effect = layer.effects.items[0]
 print(type(effect).__name__)
 print(1 if effect.enabled else 0)
 print(1 if effect.present else 0)
-print(effect.opacity)
-print(effect.blend_mode.decode())
-print(effect.type.decode())
-print(effect.angle)
-print(1 if effect.reversed else 0)
-print(effect.scale)
-print(1 if effect.aligned else 0)
+print(effect.highlight_mode.decode())
+print(effect.highlight_opacity)
+print(int(round(float(effect.highlight_color[b"Rd  "]))), int(round(float(effect.highlight_color[b"Grn "]))), int(round(float(effect.highlight_color[b"Bl  "]))))
+print(effect.shadow_mode.decode())
+print(effect.shadow_opacity)
+print(int(round(float(effect.shadow_color[b"Rd  "]))), int(round(float(effect.shadow_color[b"Grn "]))), int(round(float(effect.shadow_color[b"Bl  "]))))
+print(effect.bevel_style.decode())
+print(effect.bevel_type.decode())
+print(effect.direction.decode())
+print(effect.altitude)
+print(effect.depth)
+print(effect.size)
+print(effect.soften)
 "#;
     let out = Command::new("python3")
         .arg("-c")
@@ -77,17 +84,23 @@ print(1 if effect.aligned else 0)
     assert_eq!(
         got,
         [
-            "GradientOverlay",
+            "BevelEmboss",
             "1",
             "1",
+            "Scrn",
             "80.0",
+            "250 240 230",
             "Mltp",
-            "Lnr",
-            "45.0",
-            "1",
-            "150.0",
-            "0",
+            "70.0",
+            "10 20 30",
+            "InrB",
+            "SfBL",
+            "In",
+            "30.0",
+            "250.0",
+            "7.0",
+            "3.0",
         ],
-        "psd-tools reads the authored GrFl effect; stdout={stdout}"
+        "psd-tools reads the authored ebbl effect; stdout={stdout}"
     );
 }

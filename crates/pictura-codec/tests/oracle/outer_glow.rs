@@ -75,7 +75,7 @@ print(int(round(effect.size)))
     let got: Vec<&str> = stdout.lines().map(str::trim).collect();
     assert_eq!(
         got,
-        ["OuterGlow", "1", "1", "60.0", "scrn", "PrBL", "20", "10",],
+        ["OuterGlow", "1", "1", "60.0", "Scrn", "PrBL", "20", "10",],
         "psd-tools reads the authored OrGl effect; stdout={stdout}"
     );
 }

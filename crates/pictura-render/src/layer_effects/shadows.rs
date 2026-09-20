@@ -5,8 +5,8 @@ use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
     blur_matte, bool_or, clamp_finite, clip_rect, content_matte, decode_color, dilate_matte,
-    erode_matte, num_clamped, num_or, pad_rect, rect_empty, MAX_CHOKE, MAX_DISTANCE, MAX_OPACITY,
-    MAX_SIZE, MAX_SPREAD,
+    effect_blend_mode, erode_matte, num_clamped, num_or, pad_rect, rect_empty, MAX_CHOKE,
+    MAX_DISTANCE, MAX_OPACITY, MAX_SIZE, MAX_SPREAD,
 };
 
 /// The typed drop shadow decoded from a layer's `lfx2` block.
@@ -71,12 +71,9 @@ pub fn decode_drop_shadow(layer: &Layer) -> Option<DropShadow> {
     }
     let blend_mode = match desc_item(drsh, b"Md  ") {
         None => BlendMode::Normal,
-        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
-            .as_slice()
-            .try_into()
-            .ok()
-            .and_then(BlendMode::from_psd_key)
-            .unwrap_or(BlendMode::Normal),
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => {
+            effect_blend_mode(value, BlendMode::Normal)
+        }
         Some(_) => return None,
     };
     let color = match desc_item(drsh, b"Clr ") {
@@ -115,12 +112,9 @@ pub fn decode_inner_shadow(layer: &Layer) -> Option<InnerShadow> {
     }
     let blend_mode = match desc_item(irsh, b"Md  ") {
         None => BlendMode::Multiply,
-        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
-            .as_slice()
-            .try_into()
-            .ok()
-            .and_then(BlendMode::from_psd_key)
-            .unwrap_or(BlendMode::Multiply),
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => {
+            effect_blend_mode(value, BlendMode::Multiply)
+        }
         Some(_) => return None,
     };
     let color = match desc_item(irsh, b"Clr ") {

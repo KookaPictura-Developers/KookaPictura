@@ -66,19 +66,38 @@
 //! confined to `M` once rather than libpsd's extra knockout multiplication; the
 //! build region pads by `dist_reach + blur_support` rather than `size`; the
 //! exact inter-effect order among the above-content effects is not modelled.
+//!
+//! A bevel & emboss (`ebbl`) also composites **above** the content: the content
+//! matte `M` is blurred by `size` into a height field, its central-difference
+//! normal is lit from `Angle`/`Altitude`, and the signed shading tints the
+//! interior. ponytail: only the `Inner` style with the `Smooth` technique
+//! renders; the chisel techniques, the `Outer`/`Emboss`/`Pillow`/`Stroke`
+//! styles, contour (`MpgS`), gloss contour (`TrnS`), contour range (`Inpr`),
+//! anti-alias (`AntA`/`antialiasGloss`), texture, `useShape` and `showInDialog`
+//! are decoded/ignored; the effective angle/altitude is the stored `lagl`/`Lald`,
+//! not the global-light resource; the height profile is a Gaussian blur of `M`
+//! rather than Adobe's distance transform; `scale = size · depth/100` and the
+//! `dot(N,L) - sin(alt)` flat-offset are ungrounded model choices; the build
+//! region pads by the blur supports only; the exact inter-effect and
+//! highlight/shadow order are not modelled.
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
-use pictura_core::{Document, Layer, PixelBuffer};
+use pictura_core::{BlendMode, Document, Layer, PixelBuffer};
 
 use crate::composite::{channel, Canvas};
 
+mod bevel;
 mod glows;
 mod overlays;
 mod satin;
 mod shadows;
 mod strokes;
 
+pub use bevel::{
+    decode_bevel_emboss, BevelDirection, BevelEmboss, BevelHighlight, BevelShadow, BevelStyle,
+    BevelTechnique,
+};
 pub use glows::{decode_inner_glow, decode_outer_glow, GlowSource, InnerGlow, OuterGlow};
 pub use overlays::{
     decode_color_overlay, decode_gradient_overlay, decode_pattern_overlay, ColorOverlay,
@@ -94,6 +113,9 @@ const MAX_DISTANCE: f32 = 30_000.0;
 const MAX_SPREAD: f32 = 100.0;
 const MAX_CHOKE: f32 = 100.0;
 const MAX_SIZE: f32 = 250.0;
+/// Documented Bevel & Emboss caps (`docs/05-layers/layer-styles.md`).
+const MAX_DEPTH: f32 = 1000.0;
+const MAX_ALTITUDE: f32 = 90.0;
 
 /// The blur technique stored in `GlwT` (typeID `BETE`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,6 +178,47 @@ fn decode_color(value: &DescValue) -> Option<[u8; 3]> {
     ])
 }
 
+/// Map an `lfx2` effect blend-mode value (typeID `BlnM`) to a [`BlendMode`],
+/// falling back to the effect's `default` for an unknown or empty value.
+///
+/// The `BlnM` descriptor vocabulary is **capitalized** (`Nrml`/`Mltp`/`Scrn`)
+/// and is *not* the layer blend key (`norm`/`mul `/`scrn`), so
+/// [`BlendMode::from_psd_key`] must not be used for effect modes. The extended
+/// codes below are accepted best-effort (ag-psd / libpsd write them).
+pub(crate) fn effect_blend_mode(value: &[u8], default: BlendMode) -> BlendMode {
+    match value {
+        b"Nrml" => BlendMode::Normal,
+        b"Dslv" => BlendMode::Dissolve,
+        b"Drkn" => BlendMode::Darken,
+        b"Mltp" => BlendMode::Multiply,
+        b"CBrn" => BlendMode::ColorBurn,
+        b"Lghn" => BlendMode::Lighten,
+        b"Scrn" => BlendMode::Screen,
+        b"CDdg" => BlendMode::ColorDodge,
+        b"Ovrl" => BlendMode::Overlay,
+        b"SftL" => BlendMode::SoftLight,
+        b"HrdL" => BlendMode::HardLight,
+        b"Dfrn" => BlendMode::Difference,
+        b"Xclu" => BlendMode::Exclusion,
+        b"H   " => BlendMode::Hue,
+        b"Strt" => BlendMode::Saturation,
+        b"Clr " => BlendMode::Color,
+        b"Lmns" => BlendMode::Luminosity,
+        b"Sbtr" => BlendMode::Subtract,
+        b"vLit" => BlendMode::VividLight,
+        b"lLit" => BlendMode::LinearLight,
+        b"pLit" => BlendMode::PinLight,
+        b"hMix" => BlendMode::HardMix,
+        b"lbrn" => BlendMode::LinearBurn,
+        b"lddg" => BlendMode::LinearDodge,
+        b"fsub" => BlendMode::Subtract,
+        b"fdiv" => BlendMode::Divide,
+        b"dkCl" => BlendMode::DarkerColor,
+        b"lgCl" => BlendMode::LighterColor,
+        _ => default,
+    }
+}
+
 /// Composite a layer's enabled, present drop shadow into the running canvas
 /// before the layer's own content. Groups and destructive adjustment layers are
 /// skipped.
@@ -197,6 +260,11 @@ pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, 
             glows::composite_inner_glow(canvas, layer, doc, &glow);
         }
     }
+    if let Some(bevel) = decode_bevel_emboss(layer) {
+        if bevel.enabled && bevel.present {
+            bevel::composite_bevel_emboss(canvas, layer, doc, &bevel);
+        }
+    }
     if let Some(satin) = decode_satin(layer) {
         if satin.enabled && satin.present {
             satin::composite_satin(canvas, layer, doc, &satin);
@@ -234,6 +302,19 @@ pub(crate) fn composite_satin_for_test(
 ) -> PixelBuffer {
     let mut canvas = Canvas::new(doc.width as usize, doc.height as usize);
     satin::composite_satin(&mut canvas, layer, doc, satin);
+    canvas.into_pixel_buffer()
+}
+
+/// Test-only: run a hand-built bevel (bypassing decode) over a fresh canvas so
+/// the composite's own non-finite clamps are exercised.
+#[cfg(test)]
+pub(crate) fn composite_bevel_emboss_for_test(
+    layer: &Layer,
+    doc: &Document,
+    bevel: &BevelEmboss,
+) -> PixelBuffer {
+    let mut canvas = Canvas::new(doc.width as usize, doc.height as usize);
+    bevel::composite_bevel_emboss(&mut canvas, layer, doc, bevel);
     canvas.into_pixel_buffer()
 }
 

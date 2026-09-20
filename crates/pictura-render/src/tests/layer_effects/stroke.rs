@@ -76,7 +76,7 @@ impl Default for StrokeSpec {
         Self {
             enabled: true,
             present: true,
-            blend: b"norm".to_vec(),
+            blend: b"Nrml".to_vec(),
             color: [0.0, 0.0, 0.0],
             opacity: 100.0,
             size: 2.0,
@@ -162,7 +162,7 @@ fn stroke_decodes_typed_parameters() {
     let block = lfx2(stroke_top_with(frfx(vec![
         (b"enab".to_vec(), DescValue::Bool(true)),
         (b"present".to_vec(), DescValue::Bool(true)),
-        (b"Md  ".to_vec(), blend(b"mul ")),
+        (b"Md  ".to_vec(), blend(b"Mltp")),
         (b"Clr ".to_vec(), rgbc(200.0, 100.0, 50.0)),
         (b"Opct".to_vec(), unit(60.0, PRC)),
         (b"Sz  ".to_vec(), unit(12.0, PXL)),
@@ -316,7 +316,7 @@ fn malformed_or_absent_stroke_is_none() {
             b"Md  ".to_vec(),
             DescValue::Enum {
                 kind: b"BlnX".to_vec(),
-                value: b"mul ".to_vec(),
+                value: b"Mltp".to_vec(),
             },
         ),
     ])));
@@ -506,11 +506,11 @@ fn opacity_and_colour_shape_the_stroke() {
 #[test]
 fn blend_mode_shapes_the_stroke() {
     let normal = compose_stroke(spec_stroke(&StrokeSpec {
-        blend: b"norm".to_vec(),
+        blend: b"Nrml".to_vec(),
         ..Default::default()
     }));
     let screen = compose_stroke(spec_stroke(&StrokeSpec {
-        blend: b"scrn".to_vec(),
+        blend: b"Scrn".to_vec(),
         ..Default::default()
     }));
     assert_ne!(normal, screen, "Normal and Screen differ");

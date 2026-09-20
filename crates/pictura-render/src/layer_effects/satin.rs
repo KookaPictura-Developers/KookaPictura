@@ -18,8 +18,8 @@ use pictura_core::{BlendMode, Document, Layer};
 use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
-    blur_matte, bool_or, clamp_finite, clip_rect, content_matte, decode_color, num_clamped, num_or,
-    pad_rect, rect_empty, MAX_DISTANCE, MAX_OPACITY, MAX_SIZE,
+    blur_matte, bool_or, clamp_finite, clip_rect, content_matte, decode_color, effect_blend_mode,
+    num_clamped, num_or, pad_rect, rect_empty, MAX_DISTANCE, MAX_OPACITY, MAX_SIZE,
 };
 
 /// The typed satin decoded from a layer's `lfx2` block.
@@ -61,12 +61,9 @@ pub fn decode_satin(layer: &Layer) -> Option<Satin> {
     }
     let blend_mode = match desc_item(chfx, b"Md  ") {
         None => BlendMode::Multiply,
-        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
-            .as_slice()
-            .try_into()
-            .ok()
-            .and_then(BlendMode::from_psd_key)
-            .unwrap_or(BlendMode::Multiply),
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => {
+            effect_blend_mode(value, BlendMode::Multiply)
+        }
         Some(_) => return None,
     };
     let color = match desc_item(chfx, b"Clr ") {

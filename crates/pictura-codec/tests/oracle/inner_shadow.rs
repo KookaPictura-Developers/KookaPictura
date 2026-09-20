@@ -81,7 +81,7 @@ print(int(round(float(effect.color[b"Rd  "]))), int(round(float(effect.color[b"G
             "1",
             "1",
             "75.0",
-            "mul",
+            "Mltp",
             "0",
             "5",
             "120",

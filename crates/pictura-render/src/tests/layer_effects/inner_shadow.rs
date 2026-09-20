@@ -55,7 +55,7 @@ impl Default for InnerSpec {
         Self {
             enabled: true,
             present: true,
-            blend: b"norm".to_vec(),
+            blend: b"Nrml".to_vec(),
             color: [0.0, 0.0, 0.0],
             opacity: 100.0,
             angle: 0.0,
@@ -148,7 +148,7 @@ fn inner_shadow_decodes_typed_parameters() {
             b"Md  ".to_vec(),
             DescValue::Enum {
                 kind: b"BlnM".to_vec(),
-                value: b"mul ".to_vec(),
+                value: b"Mltp".to_vec(),
             },
         ),
         (b"Clr ".to_vec(), rgbc(200.0, 100.0, 50.0)),
@@ -263,7 +263,7 @@ fn malformed_or_absent_inner_shadow_is_none() {
             b"Md  ".to_vec(),
             DescValue::Enum {
                 kind: b"BlnX".to_vec(),
-                value: b"mul ".to_vec(),
+                value: b"Mltp".to_vec(),
             },
         ),
     ])));

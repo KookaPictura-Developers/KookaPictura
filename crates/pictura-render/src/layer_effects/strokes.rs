@@ -4,8 +4,8 @@ use pictura_core::{BlendMode, Document, Layer};
 use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
-    bool_or, clamp_finite, clip_rect, content_matte, decode_color, dilate_matte, erode_matte,
-    num_clamped, pad_rect, rect_empty, MAX_OPACITY, MAX_SIZE,
+    bool_or, clamp_finite, clip_rect, content_matte, decode_color, dilate_matte, effect_blend_mode,
+    erode_matte, num_clamped, pad_rect, rect_empty, MAX_OPACITY, MAX_SIZE,
 };
 
 /// The stroke position stored in `Styl` (typeID `FStl`).
@@ -62,12 +62,9 @@ pub fn decode_stroke(layer: &Layer) -> Option<Stroke> {
     }
     let blend_mode = match desc_item(frfx, b"Md  ") {
         None => BlendMode::Normal,
-        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
-            .as_slice()
-            .try_into()
-            .ok()
-            .and_then(BlendMode::from_psd_key)
-            .unwrap_or(BlendMode::Normal),
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => {
+            effect_blend_mode(value, BlendMode::Normal)
+        }
         Some(_) => return None,
     };
     let color = match desc_item(frfx, b"Clr ") {
