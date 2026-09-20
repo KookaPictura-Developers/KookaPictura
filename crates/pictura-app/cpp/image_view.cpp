@@ -1,8 +1,10 @@
 #include "image_view.h"
 
 #include <QtCore/QDebug>
+#include <QtCore/QRect>
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
+#include <QtCore/QtNumeric>
 #include <QtGui/QFontMetrics>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
@@ -451,9 +453,16 @@ void ImageView::paintEvent(QPaintEvent*)
     // Checkerboard in screen space, anchored to the document origin and
     // clipped to the document rect so it never spills onto the canvas.
     const QRectF docRect(offset_, QSizeF(image_.width() * zoom_, image_.height() * zoom_));
-    const QRectF checkerRect = docRect.intersected(QRectF(rect()));
+    // One integer device rect for the document, rounded the way fillRect rounds,
+    // so the checkerboard and the cached base share an exact boundary. Without
+    // this the floor-sized present cache fell a pixel short at the right/bottom
+    // edge and let the checkerboard show through an opaque canvas-sized layer.
+    const QRect docDevice(qRound(docRect.left()), qRound(docRect.top()),
+                          qRound(docRect.right()) - qRound(docRect.left()),
+                          qRound(docRect.bottom()) - qRound(docRect.top()));
+    const QRect checkerRect = docDevice.intersected(rect());
     if (!checkerRect.isEmpty()) {
-        painter.setBrushOrigin(docRect.topLeft().toPoint());
+        painter.setBrushOrigin(docDevice.topLeft());
         painter.fillRect(checkerRect, QBrush(transparencyTile()));
     }
 
@@ -491,8 +500,8 @@ void ImageView::paintEvent(QPaintEvent*)
         if (base) {
             painter.save();
             painter.resetTransform();
-            painter.translate(offset_);
-            painter.drawImage(QPointF(0.0, 0.0), *base);
+            painter.setClipRect(docDevice);
+            painter.drawImage(docDevice, *base);
             painter.restore();
         } else {
             painter.drawImage(QPointF(0.0, 0.0), image_);
