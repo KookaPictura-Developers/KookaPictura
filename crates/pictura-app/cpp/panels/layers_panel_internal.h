@@ -66,6 +66,9 @@ struct LayerRow {
 
 QString layerTooltip(const LayerRow& layer);
 
+// CS6 sheet color for a label index (1..7); an invalid color for 0/unknown.
+QColor layerLabelColor(int label);
+
 QPixmap labelSwatch(int label);
 
 // Panel Options thumbnail sizes by enum order (None/Small/Medium/Large).
@@ -282,7 +285,8 @@ public:
         if (!index.isValid()) {
             return Qt::NoItemFlags;
         }
-        return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable;
+        return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable
+            | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
     }
 
     bool setData(const QModelIndex& index, const QVariant& value, int role) override
@@ -390,6 +394,12 @@ public:
     {
         dropValidator_ = std::move(validator);
     }
+
+    // Self-test hooks: state() is protected on QAbstractItemView, and a model
+    // reset can leave the view in EditingState with no live editor, which wedges
+    // the next edit.
+    int editStateForTest() const { return static_cast<int>(state()); }
+    void resetEditStateForTest() { setState(NoState); }
 
 protected:
     void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
@@ -529,6 +539,38 @@ public:
         return QRect(left, itemRect.top() + (itemRect.height() - side) / 2, side, side);
     }
 
+    /// The name text's hit-target, mirroring the geometry paint() lays out. A
+    /// double-click inside it renames; outside it opens the layer-style
+    /// affordance. The badge/mask slots on the right cap the name's right edge.
+    QRect nameRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int depth = index.data(DepthRole).toInt();
+        const int thumb = qMax(0, thumbnailSize_);
+        int x = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent + kChevronWidth;
+        if (index.data(ClippingRole).toBool()) {
+            x += qMax(10, thumb > 0 ? thumb - 8 : 12) + 2;
+        }
+        if (thumb > 0) {
+            x += thumb + 4;
+        }
+        if (index.data(ClippingRole).toBool()) {
+            x += 12;
+        }
+        int right = itemRect.right() - 3;
+        const int badge = qMax(12, thumb > 0 ? thumb : 16);
+        if (index.data(LockRole).toInt() != 0) {
+            right -= badge + 3;
+        }
+        if (index.data(HasAdjustmentRole).toBool()) {
+            right -= badge + 3;
+        }
+        if (!index.data(MaskThumbnailRole).value<QImage>().isNull() && thumb > 0) {
+            right -= thumb + 3;
+        }
+        const int nameRight = qMax(x, right - 4);
+        return QRect(x, itemRect.top(), nameRight - x, itemRect.height());
+    }
+
     QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
     {
         Q_UNUSED(option);
@@ -556,6 +598,13 @@ public:
         const QPalette& palette = option.palette;
 
         const int depth = index.data(DepthRole).toInt();
+        // A non-None color label tints the fixed eye gutter behind the glyph;
+        // the alpha keeps the eye and any selection highlight legible.
+        QColor label = layerLabelColor(index.data(ColorRole).toInt());
+        if (label.isValid()) {
+            label.setAlpha(90);
+            painter->fillRect(QRect(rect.left(), rect.top(), kEyeColumn, rect.height()), label);
+        }
         // Eye icon, anchored at the panel's left edge for every depth.
         paintAsset(painter, eyeRect(rect),
                    index.data(VisibleRole).toBool() ? QStringLiteral("layers.eyeOn")

@@ -63,6 +63,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_tools_selection.cpp
     crates/pictura-app/cpp/selftest_layers_adjustments.cpp
     crates/pictura-app/cpp/selftest_canvas.cpp
+    crates/pictura-app/cpp/selftest_layers_drag.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
     crates/pictura-app/cpp/command_tree.cpp
@@ -124,6 +125,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_tools_selection.h
     crates/pictura-app/cpp/selftest_layers_adjustments.h
     crates/pictura-app/cpp/selftest_canvas.h
+    crates/pictura-app/cpp/selftest_layers_drag.h
     crates/pictura-app/cpp/panels/layers_panel.h
     crates/pictura-app/cpp/panels/layers_filter_proxy.h
     crates/pictura-app/cpp/panels/layers_filter_bar.h

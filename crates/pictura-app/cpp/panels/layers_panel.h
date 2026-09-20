@@ -9,6 +9,7 @@
 #include <QtWidgets/QWidget>
 
 class QComboBox;
+class QColor;
 class QEvent;
 class QMenu;
 class QModelIndex;
@@ -93,6 +94,13 @@ public:
     bool canMoveForTest(const QString& path, const QString& target, int mode);
     bool dropOnStripButtonForTest(const QString& buttonName, const QStringList& paths);
 
+    // Batch 1 hooks: drag flags, the tinted eye gutter, the disabled edit
+    // triggers, and a synthesized double-click at the name or the eye rect.
+    bool layerDragFlagsForTest(const QString& path) const;
+    QColor rowGutterColorForTest(const QString& path) const;
+    bool editTriggersDisabledForTest() const;
+    bool doubleClickAtForTest(const QString& path, bool atName);
+
     // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
     // one, updates the bar, and applies it to the proxy.
     QStringList visiblePathsForTest() const;
@@ -113,6 +121,12 @@ public:
     void openNewGroupDialog();
     void openGroupFromLayersDialog();
 
+    /// Wrap the panel's selected layers in one group / splice selected groups
+    /// into the parent. The Layer menu accelerator routes here too, so the
+    /// keyboard path matches the panel and menu paths.
+    void groupSelection();
+    void ungroupSelection();
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -126,6 +140,7 @@ private:
     void addColorLabelActions(QMenu* menu, int currentLabel);
     void openPanelOptions();
     void persistOptions();
+    void openLayerStyle(const QString& path);
 
     void applyFilter(const LayerFilter& filter);
     void expandMatchingGroups();
@@ -136,8 +151,6 @@ private:
     void addGroupAt(const QString& path);
     void duplicateSelection();
     void deleteSelection();
-    void groupSelection();
-    void ungroupSelection();
     void moveCurrent(int delta);
 
     void toggleSolo(const QString& path);
