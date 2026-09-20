@@ -56,17 +56,17 @@
 
 ## 6. Verification and gates
 
-- [ ] 6.1 `cargo fmt --all` (CI runs `--check`), `cargo clippy --workspace --all-targets -- -D warnings`.
-- [ ] 6.2 `cargo nextest run --workspace` and `cargo test --workspace --doc`.
-- [ ] 6.3 `bash scripts/verify-full.sh` and confirm every `scripts/file-size-allowlist.txt` ceiling holds; each new `selftest_*.cpp` stays under the code cap and `selftest.cpp` stays at 6729 LOC.
-- [ ] 6.4 `./build/pictura --headless --self-test` and record the passed/failed/skipped counts; confirm new codes start at 324 and no existing code was reused.
-- [ ] 6.5 `openspec validate fix-app-ui-interactions --strict` and `openspec validate --all --strict`; both must report valid.
-- [ ] 6.6 No `docs/` change in this change; if one is needed it goes in a separate `TASK-ALLOWS-DOCS` commit.
+- [x] 6.1 `cargo fmt --all` (CI runs `--check`), `cargo clippy --workspace --all-targets -- -D warnings`.
+- [x] 6.2 `cargo nextest run --workspace` and `cargo test --workspace --doc`.
+- [x] 6.3 `bash scripts/verify-full.sh` and confirm every `scripts/file-size-allowlist.txt` ceiling holds; each new `selftest_*.cpp` stays under the code cap and `selftest.cpp` stays at 6729 LOC.
+- [x] 6.4 `./build/pictura --headless --self-test` and record the passed/failed/skipped counts; confirm new codes start at 324 and no existing code was reused.
+- [x] 6.5 `openspec validate fix-app-ui-interactions --strict` and `openspec validate --all --strict`; both must report valid.
+- [x] 6.6 No `docs/` change in this change; if one is needed it goes in a separate `TASK-ALLOWS-DOCS` commit.
 
 ## 7. Explicitly not done (ceilings)
 
-- [ ] 7.1 No artboards or frames are added; item 8's nesting rule applies to groups only, as the proposal states.
-- [ ] 7.2 No Layer Style dialog is built; the double-click affordance stays a documented no-op for non-Background layers.
-- [ ] 7.3 Zoom/offset (and therefore scrollbar position) persistence remains out of scope; only the per-column rail mode is added at schema v8.
-- [ ] 7.4 The hint-bar keycap table is limited to the documented context per tool (selection `Shift`/`Alt` plus command shortcuts); a complete Adobe shortcut transcription is not attempted.
-- [ ] 7.5 No new crate, dependency, or `docs/` change; `selftest.cpp` does not grow.
+- [x] 7.1 No artboards or frames are added; item 8's nesting rule applies to groups only, as the proposal states.
+- [x] 7.2 No Layer Style dialog is built; the double-click affordance stays a documented no-op for non-Background layers.
+- [x] 7.3 Zoom/offset (and therefore scrollbar position) persistence remains out of scope; only the per-column rail mode is added at schema v8.
+- [x] 7.4 The hint-bar keycap table is limited to the documented context per tool (selection `Shift`/`Alt` plus command shortcuts); a complete Adobe shortcut transcription is not attempted.
+- [x] 7.5 No new crate, dependency, or `docs/` change; `selftest.cpp` does not grow.

@@ -33,24 +33,6 @@ SHALL clamp the resulting offset through the shared range.
 - **THEN** the scrollbars update to match and no second stored pan state is used
   to compute the canvas transform
 
-### Requirement: Scrollbars hide when the document fits
-
-A scrollbar SHALL be shown only when the corresponding axis can pan; when the
-document fits the viewport along an axis, that axis's scrollbar SHALL be hidden
-(shown as needed). The canvas SHALL still render correctly with both scrollbars
-hidden.
-
-#### Scenario: Bars hide when the document fits [lcs_hide]
-
-- **WHEN** the document is smaller than the viewport along both axes
-- **THEN** both scrollbars are hidden and the canvas is unpannable on those axes
-
-#### Scenario: A bar appears when the document overflows [lcs_show]
-
-- **WHEN** the canvas is zoomed so the document is larger than the viewport along
-  an axis
-- **THEN** that axis's scrollbar is shown with the pan range
-
 ### Requirement: Scrollbars follow pan, zoom, fit, and the Navigator
 
 The scrollbars SHALL update whenever the canvas view changes by any path — a pan,
@@ -68,4 +50,25 @@ signal emitted by the canvas, so the bars never lag the actual view.
 - **WHEN** the user drags the Navigator's proxy rectangle
 - **THEN** the scrollbars move to the corresponding range positions and the
   canvas offset matches the proxy region
+
+### Requirement: Scrollbars are always visible
+
+Both the horizontal and the vertical scrollbar SHALL be visible at all times,
+regardless of whether the document fits the viewport, so the canvas is freely
+pannable. Each bar SHALL remain a pure projection of the canvas offset and zoom
+through the shared range helper, and the canvas SHALL remain the single source of
+truth. Hiding a bar by an as-needed policy is removed; the bars SHALL NOT collapse
+to hidden when the document fits.
+
+#### Scenario: Bars stay visible when the document fits [lcs_always_visible]
+
+- **WHEN** the document is smaller than the viewport along both axes
+- **THEN** both scrollbars are still shown and the canvas can still be panned
+  within the shared range
+
+#### Scenario: Bars are visible when the document overflows
+
+- **WHEN** the canvas is zoomed so the document is larger than the viewport along
+  an axis
+- **THEN** both scrollbars are shown with that axis's pan range
 
