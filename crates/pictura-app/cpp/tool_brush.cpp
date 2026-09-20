@@ -40,7 +40,7 @@ public:
         if (!v->begin_paint(ctx.foreground().rgba(), ctx.background().rgba(), ctx.brushSize(),
                             ctx.brushHardness(), 100, 0, ctx.brushOpacity(), ctx.brushFlow(), 25,
                             ctx.brushMode(), aliased_, ctx.autoErase())) {
-            if (topmostPixelLocked(v)) {
+            if (activePixelLocked(v)) {
                 ctx.refused(QObject::tr("Could not paint: the layer's pixels are locked."));
             } else if (!v->active_layer_visible()) {
                 ctx.refused(QObject::tr("Could not paint: the active layer is invisible."));

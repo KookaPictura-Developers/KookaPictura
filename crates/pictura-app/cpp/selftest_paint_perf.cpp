@@ -1,6 +1,7 @@
 #include "selftest_paint_perf.h"
 #include "selftest_report.h"
 
+#include "commands.h"
 #include "frame.h"
 #include "image_view.h"
 
@@ -127,6 +128,45 @@ int pictura::runPaintPerfChecks(pictura::PicturaMainWindow& frame)
         if (!begun || !dabbed || !same) {
             frame.closeDocument(doc, false);
             return pictura::selfTest().fail(345, "present cache patch changed the render");
+        }
+        frame.closeDocument(doc, false);
+    }
+
+    // pp_no_registry_refresh (394): while a stroke is active the paint region
+    // handler must not re-run the command registry per dab; releasing the stroke
+    // emits `changed`, whose full refresh runs it exactly once. Krita's
+    // "unnecessary objects per event" hot spot. No wall-clock budget.
+    {
+        const bool created = frame.newDocument(QStringLiteral("PaintRefresh"), 128, 128,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        PictureView* view = frame.activeView();
+        CommandRegistry* registry = frame.registry();
+        if (!created || !view || !registry) {
+            return pictura::selfTest().fail(394, "registry refresh fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        view->set_active_layer(QStringLiteral("0"));
+        const bool begun = view->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 8, 100, 100, 0, 100, 100,
+                                             12, QStringLiteral("normal"), false, false);
+        const int before = registry->refreshCount();
+        int dabs = 0;
+        for (int i = 0; i < 16; ++i) {
+            if (view->paint_dab(32.0 + i * 4.0, 64.0, 1.0)) {
+                ++dabs;
+            }
+        }
+        const int mid = registry->refreshCount();
+        const bool ended = view->end_paint();
+        const int after = registry->refreshCount();
+        const bool noPerDab = mid == before;
+        const bool onceOnCommit = after == mid + 1;
+        ST_BEGIN("pp_no_registry_refresh");
+        ST_PASS("pp_no_registry_refresh dabs=%d before=%d mid=%d after=%d", dabs, before, mid,
+                after);
+        if (!begun || !ended || dabs < 16 || !noPerDab || !onceOnCommit) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(394, "registry refreshed per dab");
         }
         frame.closeDocument(doc, false);
     }

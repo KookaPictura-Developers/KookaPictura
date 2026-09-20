@@ -109,6 +109,7 @@ public:
     bool dropIndicatorShownForTest() const;
     int dragMoveModeAtForTest(const QString& source, const QString& hover, bool above);
     bool dropAtForTest(const QString& source, const QString& hover, bool above);
+    bool dropIntoForTest(const QString& source, const QString& hover);
     bool ctrlClickThumbnailForTest(const QString& path);
     bool inlineEditorOpenForTest() const;
 

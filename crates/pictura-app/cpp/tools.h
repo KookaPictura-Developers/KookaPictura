@@ -147,10 +147,10 @@ struct ToolHint {
 // none (the status bar then falls back to the tool's text hint).
 QList<ToolHint> toolHintEntries(ToolId id);
 
-// True when the document's topmost pixel layer carries the `PIXELS` lock
-// (`LockFlags::PIXELS` = 0x02). Shared by the paint press path and the cursor
-// branch; defined in tools_marquee.cpp with the other cursor helpers.
-bool topmostPixelLocked(PictureView* view);
+// True when the single active layer a tool edit may target carries the `PIXELS`
+// lock (`LockFlags::PIXELS` = 0x02). Shared by the paint press path and the
+// cursor branch; defined in tools_marquee.cpp with the other cursor helpers.
+bool activePixelLocked(PictureView* view);
 
 // Routes canvas pointer events to the active tool. Implemented tools dispatch
 // through the handler registry; the legacy switch covers the rest.

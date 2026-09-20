@@ -63,9 +63,13 @@ void PicturaMainWindow::saveSession()
         const bool iconic = panelColumn_->railMode();
         state.panelRailMode = iconic ? QStringLiteral("iconic") : QStringLiteral("normal");
         // Keep the last normal-mode width; an iconic column has no width of its
-        // own, so the loaded value survives unchanged.
-        if (!iconic && panelColumn_->width() > 0) {
-            state.railWidth = panelColumn_->width();
+        // own, so the loaded value survives unchanged. The remembered width,
+        // not the live width, so a mid-flip strip width cannot leak through.
+        if (!iconic) {
+            const int remembered = panelColumn_->persistedWidth();
+            if (remembered > 0) {
+                state.railWidth = remembered;
+            }
         }
         state.autoCollapseIconic = panelColumn_->autoCollapseIconic();
         state.autoShowHidden = panelColumn_->autoShowHidden();

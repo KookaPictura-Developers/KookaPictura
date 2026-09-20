@@ -19,6 +19,7 @@
 #include <QtGui/QHideEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
+#include <QtGui/QResizeEvent>
 #include <QtGui/QScreen>
 #include <QtGui/QShowEvent>
 #include <QtWidgets/QApplication>
@@ -471,6 +472,16 @@ void PanelColumn::showEvent(QShowEvent* event)
         const int width = pendingWidth_;
         pendingWidth_ = 0;
         setPreferredWidth(width);
+    }
+}
+
+void PanelColumn::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    // A normal-mode resize lands the flip's widening; the live width is now the
+    // real normal width, so `persistedWidth` may use it again.
+    if (!railMode_ && width() > 0) {
+        widthFlipPending_ = false;
     }
 }
 

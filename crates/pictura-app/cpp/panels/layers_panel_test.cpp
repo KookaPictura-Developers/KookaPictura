@@ -598,6 +598,27 @@ bool LayersPanel::dropAtForTest(const QString& source, const QString& hover, boo
     return drop.isAccepted();
 }
 
+bool LayersPanel::dropIntoForTest(const QString& source, const QString& hover)
+{
+    if (!tree_) {
+        return false;
+    }
+    const QModelIndex index = proxyIndexForPath(hover);
+    if (!index.isValid()) {
+        return false;
+    }
+    const QPoint pos = tree_->visualRect(index).center();
+    QMimeData mime;
+    mime.setData(kLayerMimeType, source.toUtf8());
+    QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &enter);
+    QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &move);
+    QDropEvent drop(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &drop);
+    return drop.isAccepted();
+}
+
 bool LayersPanel::ctrlClickThumbnailForTest(const QString& path)
 {
     if (!tree_ || !delegate_) {

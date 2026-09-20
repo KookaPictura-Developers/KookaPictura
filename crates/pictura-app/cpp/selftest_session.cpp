@@ -168,6 +168,60 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             pump(6);
         }
 
+        // lpr_iconic_flip_width (399): the primary column's normal width survives
+        // an iconic->normal flip even when the widening is still pending, so the
+        // persisted width is the remembered normal width, never the icon strip.
+        {
+            frame.applyPanelSessionForTest(pictura::SessionState{});
+            pump(6);
+            pictura::PanelColumn* primary = frame.panelColumn();
+            if (!primary) {
+                return pictura::selfTest().fail(399, "iconic flip fixture");
+            }
+            primary->setPreferredWidth(245);
+            pump(6);
+            // Above the splitter's width so the iconic->normal widening cannot
+            // be applied synchronously: this is the mid-flip state under test.
+            const int splitterWidth =
+                primary->parentWidget() ? primary->parentWidget()->width() : 0;
+            const int kRemembered = splitterWidth > 0 ? splitterWidth + 80 : 100000;
+            primary->setRailMode(true);
+            primary->setRestoredWidth(kRemembered);
+            primary->setRailMode(false);
+            frame.saveSession();
+
+            int storedRight = -1;
+            const pictura::SessionState loaded = pictura::loadSession();
+            for (const QJsonValue& value : loaded.panelColumns) {
+                const QJsonObject entry = value.toObject();
+                if (entry.value(QStringLiteral("side")).toString() == QStringLiteral("right")
+                    && storedRight < 0) {
+                    storedRight = entry.value(QStringLiteral("width")).toInt(-1);
+                }
+            }
+            frame.applyPanelSessionForTest(loaded);
+            pump(8);
+            primary = frame.panelColumn();
+            // The live width is clamped by the window; the contract is that the
+            // remembered normal width was persisted and normal mode round-trips.
+            const bool restoredOk = primary && !primary->railMode();
+            ST_BEGIN("lpr_iconic_flip_width");
+            ST_PASS("lpr_iconic_flip_width stored=%d remembered=%d restoredMode=%d width=%d",
+                    storedRight, kRemembered, restoredOk ? 1 : 0,
+                    primary ? primary->width() : -1);
+            if (storedRight != kRemembered || !restoredOk) {
+                return pictura::selfTest().fail(399, "iconic->normal width persistence");
+            }
+            // Leave a sane store behind; the oversized remembered width above is
+            // only a vehicle for exercising the pending flip.
+            frame.applyPanelSessionForTest(pictura::SessionState{});
+            pump(6);
+            if (pictura::PanelColumn* reset = frame.panelColumn()) {
+                reset->setPreferredWidth(245);
+            }
+            frame.saveSession();
+        }
+
         // ldt_mode_bits (320): an opened raster's tab reads `base (RGB/8)`
         // rather than a generated `Untitled-N` name.
         const QString modePath = QDir::tempPath() + QStringLiteral("/modebits.png");
