@@ -189,29 +189,29 @@ public:
     int fixedSizeHeight() const { return fixedSizeH_; }
     void setFixedSize(int width, int height);
 
-    int tolerance() const { return tolerance_; }
+    int tolerance() const override { return tolerance_; }
     void setTolerance(int tolerance);
 
-    bool contiguous() const { return contiguous_; }
+    bool contiguous() const override { return contiguous_; }
     void setContiguous(bool on);
     bool antiAlias() const { return antiAlias_; }
     bool sampleAllLayers() const { return sampleAllLayers_; }
 
-    int brushSize() const;
+    int brushSize() const override;
     void setBrushSize(int size);
-    int brushHardness() const;
+    int brushHardness() const override;
     void setBrushHardness(int h);
-    int brushOpacity() const;
+    int brushOpacity() const override;
     void setBrushOpacity(int o);
-    int brushFlow() const;
+    int brushFlow() const override;
     void setBrushFlow(int f);
-    QString brushMode() const;
+    QString brushMode() const override;
     void setBrushMode(const QString& mode);
-    bool autoErase() const;
+    bool autoErase() const override;
     void setAutoErase(bool on);
-    QColor foreground() const;
+    QColor foreground() const override;
     void setForeground(const QColor& color);
-    QColor background() const;
+    QColor background() const override;
     void setBackground(const QColor& color);
     void adjustBrushSize(int delta);
     void adjustBrushHardness(int delta);
@@ -227,6 +227,16 @@ public:
     // ToolContext: the shared services a handler receives.
     PictureView* view() const override;
     void sampledForeground(const QColor& color) override;
+    bool dragging() const override { return dragging_; }
+    void setDragging(bool dragging) override { dragging_ = dragging; }
+    bool dragCommitted() const override { return dragCommitted_; }
+    void setDragCommitted(bool committed) override { dragCommitted_ = committed; }
+    SelectionMode dragMode() const override { return dragMode_; }
+    void setDragMode(SelectionMode mode) override { dragMode_ = mode; }
+    SelectionMode resolveSelectionMode(Qt::KeyboardModifiers mods,
+                                       bool hasExistingSelection) const override;
+    void refused(const QString& message) override;
+    void emitSelectionCommitted() override;
 
     void setViewProvider(std::function<PictureView*()> provider);
 

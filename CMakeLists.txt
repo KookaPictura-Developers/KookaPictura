@@ -123,6 +123,8 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_registry.cpp
     crates/pictura-app/cpp/tool_hand_zoom.cpp
     crates/pictura-app/cpp/tool_eyedropper.cpp
+    crates/pictura-app/cpp/tool_brush.cpp
+    crates/pictura-app/cpp/tool_wand.cpp
     crates/pictura-app/cpp/tool_catalog.cpp
     crates/pictura-app/cpp/tool_transform.cpp
     crates/pictura-app/cpp/tools_marquee.cpp
