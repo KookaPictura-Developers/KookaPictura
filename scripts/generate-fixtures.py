@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PIL import Image
 from psd_tools import PSDImage
-from psd_tools.constants import Tag
+from psd_tools.constants import BlendMode, ColorSpaceID, EffectOSType, Tag
 from psd_tools.psd.adjustments import (
     BrightnessContrast,
     ColorStop,
@@ -28,6 +28,7 @@ from psd_tools.psd.adjustments import (
     TransparencyStop,
 )
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
+from psd_tools.psd.color import Color
 from psd_tools.psd.descriptor import (
     Bool,
     Descriptor,
@@ -38,6 +39,12 @@ from psd_tools.psd.descriptor import (
     List,
     String,
     UnitFloat,
+)
+from psd_tools.psd.effects_layer import (
+    CommonStateInfo,
+    EffectsLayer,
+    OuterGlowInfo,
+    ShadowInfo,
 )
 from psd_tools.psd.layer_and_mask import ChannelDataList
 from psd_tools.psd.patterns import (
@@ -945,6 +952,67 @@ def bevel() -> PSDImage:
     return psd
 
 
+def legacy_effects() -> PSDImage:
+    """RGB, a Base pixel layer plus a `Legacy` layer with an `lrFX` block.
+
+    The legacy (`EFFECTS_LAYER`) block is the fixed `EffectsLayer` binary
+    struct, not a descriptor: a `cmnS` common state (visible 1), a `dsdw` drop
+    shadow (blur 5, intensity 0, angle 120, distance 5, blend `mul `, opacity
+    255) and an `oglw` outer glow (blur 6, intensity 0, blend `scrn`, opacity
+    191). The colours are 16-bit `Color` values authored as `v << 8` so the
+    decoder's high-byte mapping yields `v`.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Legacy", left=0, top=0
+    )
+
+    def color(rgb: tuple[int, int, int]) -> Color:
+        return Color(ColorSpaceID.RGB, [c << 8 for c in rgb] + [0])
+
+    effects = EffectsLayer(
+        version=0,
+        items=[
+            (EffectOSType.COMMON_STATE, CommonStateInfo(version=0, visible=1)),
+            (
+                EffectOSType.DROP_SHADOW,
+                ShadowInfo(
+                    version=0,
+                    blur=5,
+                    intensity=0,
+                    angle=120,
+                    distance=5,
+                    color=color((10, 20, 30)),
+                    blend_mode=BlendMode.MULTIPLY,
+                    enabled=1,
+                    use_global_angle=0,
+                    opacity=255,
+                    native_color=color((0, 0, 0)),
+                ),
+            ),
+            (
+                EffectOSType.OUTER_GLOW,
+                OuterGlowInfo(
+                    version=0,
+                    blur=6,
+                    intensity=0,
+                    color=color((40, 80, 120)),
+                    blend_mode=BlendMode.SCREEN,
+                    enabled=1,
+                    opacity=191,
+                ),
+            ),
+        ],
+    )
+    layer._record.tagged_blocks[Tag.EFFECTS_LAYER] = TaggedBlock(
+        key=Tag.EFFECTS_LAYER, data=effects
+    )
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -966,6 +1034,7 @@ FIXTURES = {
     "pattern_overlay.psd": pattern_overlay,
     "satin.psd": satin,
     "bevel.psd": bevel,
+    "legacy_effects.psd": legacy_effects,
 }
 
 

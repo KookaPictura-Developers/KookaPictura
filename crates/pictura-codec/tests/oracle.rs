@@ -38,6 +38,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("pattern_overlay.psd", 8, 8, ColorMode::Rgb),
     ("satin.psd", 8, 8, ColorMode::Rgb),
     ("bevel.psd", 8, 8, ColorMode::Rgb),
+    ("legacy_effects.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -1395,3 +1396,5 @@ mod satin;
 
 #[path = "oracle/bevel.rs"]
 mod bevel;
+#[path = "oracle/legacy.rs"]
+mod legacy;

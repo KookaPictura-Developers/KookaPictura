@@ -80,6 +80,11 @@
 //! `dot(N,L) - sin(alt)` flat-offset are ungrounded model choices; the build
 //! region pads by the blur supports only; the exact inter-effect and
 //! highlight/shadow order are not modelled.
+//!
+//! The legacy `lrFX` block is decoded by [`legacy`] and exposed through the
+//! single [`decode_layer_effects`] resolver: an `lfx2` block is authoritative
+//! when present, and the legacy block supplies the mapped set only when `lfx2`
+//! is absent, so the two are never combined or double-applied.
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
@@ -89,10 +94,13 @@ use crate::composite::{channel, Canvas};
 
 mod bevel;
 mod glows;
+mod legacy;
 mod overlays;
 mod satin;
 mod shadows;
 mod strokes;
+
+pub(crate) use legacy::{decode_legacy_effects, LegacyEffects};
 
 pub use bevel::{
     decode_bevel_emboss, BevelDirection, BevelEmboss, BevelHighlight, BevelShadow, BevelStyle,
@@ -219,6 +227,69 @@ pub(crate) fn effect_blend_mode(value: &[u8], default: BlendMode) -> BlendMode {
     }
 }
 
+/// The ten typed effects resolved for one layer, from whichever encoding the
+/// layer carries.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct LayerEffects {
+    pub drop_shadow: Option<DropShadow>,
+    pub outer_glow: Option<OuterGlow>,
+    pub inner_shadow: Option<InnerShadow>,
+    pub inner_glow: Option<InnerGlow>,
+    pub bevel: Option<BevelEmboss>,
+    pub satin: Option<Satin>,
+    pub stroke: Option<Stroke>,
+    pub color_overlay: Option<ColorOverlay>,
+    pub gradient_overlay: Option<GradientOverlay>,
+    pub pattern_overlay: Option<PatternOverlay>,
+}
+
+impl LayerEffects {
+    /// The shipped `lfx2` decoders, one per effect.
+    fn from_lfx2(layer: &Layer) -> Self {
+        Self {
+            drop_shadow: decode_drop_shadow(layer),
+            outer_glow: decode_outer_glow(layer),
+            inner_shadow: decode_inner_shadow(layer),
+            inner_glow: decode_inner_glow(layer),
+            bevel: decode_bevel_emboss(layer),
+            satin: decode_satin(layer),
+            stroke: decode_stroke(layer),
+            color_overlay: decode_color_overlay(layer),
+            gradient_overlay: decode_gradient_overlay(layer),
+            pattern_overlay: decode_pattern_overlay(layer),
+        }
+    }
+
+    /// The legacy `lrFX` mapping; the effects with no legacy record stay absent.
+    fn from_legacy(legacy: LegacyEffects) -> Self {
+        Self {
+            drop_shadow: legacy.drop_shadow,
+            outer_glow: legacy.outer_glow,
+            inner_shadow: legacy.inner_shadow,
+            inner_glow: legacy.inner_glow,
+            bevel: legacy.bevel,
+            satin: None,
+            stroke: None,
+            color_overlay: legacy.color_overlay,
+            gradient_overlay: None,
+            pattern_overlay: None,
+        }
+    }
+}
+
+/// Resolve a layer's effects once. A present `lfx2` block is authoritative and
+/// ignores the legacy block entirely; otherwise the mapped legacy `lrFX` set is
+/// used. Both are never combined.
+pub(crate) fn decode_layer_effects(layer: &Layer) -> LayerEffects {
+    if layer.extra_block(b"lfx2").is_some() {
+        LayerEffects::from_lfx2(layer)
+    } else {
+        decode_legacy_effects(layer)
+            .map(LayerEffects::from_legacy)
+            .unwrap_or_default()
+    }
+}
+
 /// Composite a layer's enabled, present drop shadow into the running canvas
 /// before the layer's own content. Groups and destructive adjustment layers are
 /// skipped.
@@ -229,12 +300,13 @@ pub(crate) fn composite_layer_effects(canvas: &mut Canvas, layer: &Layer, doc: &
     if layer.is_group || is_destructive_adjustment(layer) {
         return;
     }
-    if let Some(shadow) = decode_drop_shadow(layer) {
+    let effects = decode_layer_effects(layer);
+    if let Some(shadow) = effects.drop_shadow {
         if shadow.enabled && shadow.present {
             shadows::composite_drop_shadow(canvas, layer, doc, &shadow);
         }
     }
-    if let Some(glow) = decode_outer_glow(layer) {
+    if let Some(glow) = effects.outer_glow {
         if glow.enabled && glow.present {
             glows::composite_outer_glow(canvas, layer, doc, &glow);
         }
@@ -250,42 +322,43 @@ pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, 
     if layer.is_group || is_destructive_adjustment(layer) {
         return;
     }
-    if let Some(shadow) = decode_inner_shadow(layer) {
+    let effects = decode_layer_effects(layer);
+    if let Some(shadow) = effects.inner_shadow {
         if shadow.enabled && shadow.present {
             shadows::composite_inner_shadow(canvas, layer, doc, &shadow);
         }
     }
-    if let Some(glow) = decode_inner_glow(layer) {
+    if let Some(glow) = effects.inner_glow {
         if glow.enabled && glow.present {
             glows::composite_inner_glow(canvas, layer, doc, &glow);
         }
     }
-    if let Some(bevel) = decode_bevel_emboss(layer) {
+    if let Some(bevel) = effects.bevel {
         if bevel.enabled && bevel.present {
             bevel::composite_bevel_emboss(canvas, layer, doc, &bevel);
         }
     }
-    if let Some(satin) = decode_satin(layer) {
+    if let Some(satin) = effects.satin {
         if satin.enabled && satin.present {
             satin::composite_satin(canvas, layer, doc, &satin);
         }
     }
-    if let Some(overlay) = decode_color_overlay(layer) {
+    if let Some(overlay) = effects.color_overlay {
         if overlay.enabled && overlay.present {
             overlays::composite_color_overlay(canvas, layer, doc, &overlay);
         }
     }
-    if let Some(overlay) = decode_gradient_overlay(layer) {
+    if let Some(overlay) = effects.gradient_overlay {
         if overlay.enabled && overlay.present {
             overlays::composite_gradient_overlay(canvas, layer, doc, &overlay);
         }
     }
-    if let Some(overlay) = decode_pattern_overlay(layer) {
+    if let Some(overlay) = effects.pattern_overlay {
         if overlay.enabled && overlay.present {
             overlays::composite_pattern_overlay(canvas, layer, doc, &overlay);
         }
     }
-    if let Some(stroke) = decode_stroke(layer) {
+    if let Some(stroke) = effects.stroke {
         if stroke.enabled && stroke.present {
             strokes::composite_stroke(canvas, layer, doc, &stroke);
         }

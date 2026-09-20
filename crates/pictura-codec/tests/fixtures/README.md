@@ -40,6 +40,7 @@ not hand-edit these files.
 | `pattern_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Patterned` layer carrying an `lfx2` `patternFill` pattern overlay referencing the 2x2 `Patt` pattern |
 | `satin.psd` | RGB | 8x8 | `Base` pixel layer + `Satin` layer carrying an `lfx2` `ChFX` satin |
 | `bevel.psd` | RGB | 8x8 | `Base` pixel layer + `Beveled` layer carrying an `lfx2` `ebbl` bevel & emboss |
+| `legacy_effects.psd` | RGB | 8x8 | `Base` pixel layer + `Legacy` layer carrying a legacy `lrFX` `EffectsLayer` (`cmnS` + `dsdw` + `oglw`) |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -557,6 +558,41 @@ layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
     key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
     data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"ebbl": ebbl},
                           classID=Klass.Null))
+```
+
+`legacy_effects.psd` is authored by the `legacy_effects()` builder: the same
+`Base` pixel layer plus a 4x4 `Legacy` pixel layer whose record carries a
+legacy `lrFX` (`EFFECTS_LAYER`) `EffectsLayer`. Unlike the object-based blocks
+above, this is a **fixed binary struct**, not a descriptor: a `u16` version and
+`u16` count, then records of `8BIM` + a 4-byte `ostype` + a `u32` body length.
+The records are `cmnS` (visible 1), a `dsdw` shadow and an `oglw` glow. The
+blend modes are the **layer** vocabulary (`BlendMode.MULTIPLY` -> `mul `,
+`BlendMode.SCREEN` -> `scrn`), and the colours are 16-bit `Color` values
+authored as `v << 8` so the decoder's high-byte mapping yields `v`.
+
+```python
+from psd_tools.constants import BlendMode, ColorSpaceID, EffectOSType
+from psd_tools.psd.color import Color
+from psd_tools.psd.effects_layer import (
+    CommonStateInfo, EffectsLayer, OuterGlowInfo, ShadowInfo,
+)
+
+def color(rgb):
+    return Color(ColorSpaceID.RGB, [c << 8 for c in rgb] + [0])
+
+effects = EffectsLayer(version=0, items=[
+    (EffectOSType.COMMON_STATE, CommonStateInfo(version=0, visible=1)),
+    (EffectOSType.DROP_SHADOW, ShadowInfo(
+        version=0, blur=5, intensity=0, angle=120, distance=5,
+        color=color((10, 20, 30)), blend_mode=BlendMode.MULTIPLY,
+        enabled=1, use_global_angle=0, opacity=255,
+        native_color=color((0, 0, 0)))),
+    (EffectOSType.OUTER_GLOW, OuterGlowInfo(
+        version=0, blur=6, intensity=0, color=color((40, 80, 120)),
+        blend_mode=BlendMode.SCREEN, enabled=1, opacity=191)),
+])
+layer._record.tagged_blocks[Tag.EFFECTS_LAYER] = TaggedBlock(
+    key=Tag.EFFECTS_LAYER, data=effects)
 ```
 
 ## Validate codec output
