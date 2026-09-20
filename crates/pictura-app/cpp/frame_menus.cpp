@@ -187,8 +187,10 @@ void PicturaMainWindow::registerHandlers()
 
     registry_->setHandler(command_ids::EditFreeTransform, [this]() {
         PictureView* view = activeView();
-        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
-        if (!view || path.isEmpty()) {
+        const QString path = (layersPanel_ && layersPanel_->selectedPaths().size() == 1)
+                                 ? layersPanel_->currentPath()
+                                 : QString();
+        if (!view) {
             return;
         }
         if (beginFreeTransform(path)) {
@@ -197,7 +199,9 @@ void PicturaMainWindow::registerHandlers()
     });
     registry_->setEnabledProvider(command_ids::EditFreeTransform, [this]() {
         PictureView* view = activeView();
-        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        const QString path = (layersPanel_ && layersPanel_->selectedPaths().size() == 1)
+                                 ? layersPanel_->currentPath()
+                                 : QString();
         return view && view->has_document() && !path.isEmpty()
             && view->layer_can_free_transform(path);
     });

@@ -1,4 +1,5 @@
 #include "selftest_layers_controls.h"
+#include "selftest_active_layer.h"
 #include "selftest_canvas_view.h"
 #include "selftest_layer_locks.h"
 #include "selftest_layers_adjustments.h"
@@ -1091,6 +1092,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int cv = pictura::runCanvasViewChecks(frame); cv != 0) { return cv; }
 
         if (const int ll = pictura::runLayerLocksChecks(frame); ll != 0) { return ll; }
+
+        if (const int al = pictura::runActiveLayerChecks(frame); al != 0) { return al; }
 
         if (const int ss = pictura::runSessionChecks(frame); ss != 0) { return ss; }
 

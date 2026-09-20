@@ -595,15 +595,25 @@ pub(super) fn topmost_pixel_layer_index(doc: &Document) -> Option<usize> {
         .iter()
         .rposition(|l| l.adjustment.is_none() && !l.is_group)
 }
-/// The topmost pixel layer: the last layer (bottom-first order) that is
-/// neither a group nor an adjustment.
-pub(super) fn topmost_pixel_layer(doc: &mut Document) -> Option<&mut Layer> {
-    let index = topmost_pixel_layer_index(doc)?;
-    doc.layers.get_mut(index)
+/// The single active layer a tool edit may target, or `None` when no layer is
+/// active or the path does not name a top-level raster layer.
+///
+/// `active` is the panel path of the selected layer; the panel pushes `None`
+/// (an empty path) for a zero- or multi-layer selection, so neither can edit.
+/// A group, an adjustment, or a nested path resolves to `None`.
+pub(super) fn active_pixel_layer<'a>(doc: &'a Document, active: Option<&str>) -> Option<&'a Layer> {
+    let index: usize = active?.parse().ok()?;
+    let layer = doc.layers.get(index)?;
+    (!layer.is_group && layer.adjustment.is_none()).then_some(layer)
 }
-/// The topmost pixel layer's document-space rect.
-pub(super) fn topmost_pixel_layer_rect(doc: &Document) -> Option<PsdRect> {
-    topmost_pixel_layer_index(doc).map(|index| doc.layers[index].rect)
+/// Mutable [`active_pixel_layer`].
+pub(super) fn active_pixel_layer_mut<'a>(
+    doc: &'a mut Document,
+    active: Option<&str>,
+) -> Option<&'a mut Layer> {
+    let index: usize = active?.parse().ok()?;
+    let layer = doc.layers.get_mut(index)?;
+    (!layer.is_group && layer.adjustment.is_none()).then_some(layer)
 }
 /// A rectangle that provably bounds a visibility toggle's effect, or `None` when
 /// the toggle can change a pixel outside any such rectangle.

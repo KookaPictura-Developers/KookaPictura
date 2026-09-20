@@ -46,13 +46,14 @@ impl qobject::PictureView {
                 .as_ref()
                 .map(|selection| selection_to_mask(selection, doc))
         };
+        let active = self.rust().active_layer.clone();
         let applied = {
             let mut rust = self.as_mut().rust_mut();
             let gpu_compute = rust.gpu_compute;
             let Some(doc) = rust.doc.as_mut() else {
                 return false;
             };
-            let Some(layer) = topmost_pixel_layer(doc) else {
+            let Some(layer) = active_pixel_layer_mut(doc, active.as_deref()) else {
                 return false;
             };
             pictura_render::apply_filter(layer, &filter, mask.as_ref(), gpu_compute).is_ok()

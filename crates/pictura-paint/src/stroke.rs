@@ -38,14 +38,16 @@ pub struct Stroke {
 }
 
 impl Stroke {
-    pub fn begin(doc: &Document, cfg: StrokeConfig) -> Result<Stroke, PaintError> {
+    pub fn begin_at(doc: &Document, path: &str, cfg: StrokeConfig) -> Result<Stroke, PaintError> {
         if doc.layers.is_empty() {
             return Err(PaintError::EmptyDocument);
         }
-        let path =
-            find_topmost_raster(&doc.layers, &mut Vec::new()).ok_or(PaintError::NoRasterLayer)?;
+        let indices = parse_layer_path(path).ok_or(PaintError::NoRasterLayer)?;
         let cfg = cfg.sanitized();
-        let target = layer_at(doc, &path).expect("path returned by find_topmost_raster");
+        let target = layer_at(doc, &indices).ok_or(PaintError::NoRasterLayer)?;
+        if target.is_group || target.adjustment.is_some() {
+            return Err(PaintError::NoRasterLayer);
+        }
         if layer_pixel_locked(target) {
             return Err(PaintError::Locked);
         }
@@ -66,7 +68,7 @@ impl Stroke {
             scratch,
             applied,
             dirty: None,
-            layer_path: path,
+            layer_path: indices,
             rect,
             paint: cfg.color,
             rng: STROKE_SEED,
@@ -200,6 +202,7 @@ impl Stroke {
             return;
         };
         let (dr, dg, db, da) = read_pixel(base_layer, i);
+        let transparency_locked = layer_transparency_locked(base_layer);
         let s = self.paint;
         let mode = self.cfg.mode;
         let write = match mode {
@@ -223,10 +226,21 @@ impl Stroke {
                 Some((dr, dg, db, to_u8(out_a * 255.0)))
             }
         };
-        if let Some(rgba) = write {
-            if let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) {
-                write_pixel(layer, i, mode, rgba);
+        let Some((r, g, b, alpha)) = write else {
+            return;
+        };
+        // A transparency lock preserves each pixel's alpha: fully transparent
+        // pixels stay untouched, everything else keeps its pre-stroke alpha.
+        // (Clear/auto-erase are refused for the whole stroke in `begin_at`.)
+        if transparency_locked {
+            if da == 0 {
+                return;
             }
+            if let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) {
+                write_pixel(layer, i, mode, (r, g, b, da));
+            }
+        } else if let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) {
+            write_pixel(layer, i, mode, (r, g, b, alpha));
         }
     }
 
@@ -243,10 +257,11 @@ impl Stroke {
 /// Feed a whole sample list into a destructive stroke and commit on success.
 pub fn paint_stroke(
     doc: &mut Document,
+    path: &str,
     cfg: &StrokeConfig,
     samples: &[StrokeSample],
 ) -> Option<PsdRect> {
-    let mut stroke = Stroke::begin(doc, *cfg).ok()?;
+    let mut stroke = Stroke::begin_at(doc, path, *cfg).ok()?;
     for &s in samples {
         stroke.sample(s);
     }
@@ -357,21 +372,11 @@ fn layer_at_mut<'a>(doc: &'a mut Document, path: &[usize]) -> Option<&'a mut Lay
     Some(node)
 }
 
-/// Topmost (last) non-group, non-adjustment layer, as an index path.
-fn find_topmost_raster(layers: &[Layer], prefix: &mut Vec<usize>) -> Option<Vec<usize>> {
-    let mut found = None;
-    for (i, layer) in layers.iter().enumerate() {
-        prefix.push(i);
-        if layer.is_group {
-            if let Some(p) = find_topmost_raster(&layer.children, prefix) {
-                found = Some(p);
-            }
-        } else if layer.adjustment.is_none() {
-            found = Some(prefix.clone());
-        }
-        prefix.pop();
-    }
-    found
+/// Resolve a panel path (`"0"`, `"0/1"`) to layer indices; `None` when malformed.
+fn parse_layer_path(path: &str) -> Option<Vec<usize>> {
+    path.split('/')
+        .map(|part| part.parse::<usize>().ok())
+        .collect()
 }
 
 #[cfg(test)]
@@ -453,6 +458,11 @@ mod tests {
         }
     }
 
+    /// Paint into the single layer at path `"0"`.
+    fn paint(doc: &mut Document, cfg: &StrokeConfig, samples: &[StrokeSample]) -> Option<PsdRect> {
+        paint_stroke(doc, "0", cfg, samples)
+    }
+
     fn red() -> Rgba {
         Rgba {
             r: 255,
@@ -472,8 +482,8 @@ mod tests {
             spacing: SpacingMode::Fixed(25),
             ..StrokeConfig::default()
         };
-        let dirty = paint_stroke(&mut doc, &cfg, &[sample(2.0, 16.0), sample(40.0, 16.0)])
-            .expect("painted");
+        let dirty =
+            paint(&mut doc, &cfg, &[sample(2.0, 16.0), sample(40.0, 16.0)]).expect("painted");
         assert!(dirty.width() > 0 && dirty.height() > 0);
         assert!(dirty.top >= 0 && dirty.left >= 0 && dirty.bottom <= 32 && dirty.right <= 64);
         assert!(channel_data(&doc.layers[0], 0)
@@ -495,9 +505,9 @@ mod tests {
             spacing: SpacingMode::Fixed(25),
             ..StrokeConfig::default()
         };
-        let begun = Stroke::begin(&doc, cfg);
+        let begun = Stroke::begin_at(&doc, "0", cfg);
         assert!(matches!(begun, Err(PaintError::Locked)));
-        assert!(paint_stroke(&mut doc, &cfg, &[sample(4.0, 4.0), sample(12.0, 4.0)]).is_none());
+        assert!(paint(&mut doc, &cfg, &[sample(4.0, 4.0), sample(12.0, 4.0)]).is_none());
         assert_eq!(doc, before, "a refused stroke writes no pixels");
     }
 
@@ -513,13 +523,46 @@ mod tests {
             mode: PaintMode::Clear,
             ..StrokeConfig::default()
         };
-        let begun = Stroke::begin(&doc, clear);
+        let begun = Stroke::begin_at(&doc, "0", clear);
         assert!(matches!(begun, Err(PaintError::Locked)));
         let normal = StrokeConfig {
             mode: PaintMode::Normal,
             ..clear
         };
-        assert!(Stroke::begin(&doc, normal).is_ok());
+        assert!(Stroke::begin_at(&doc, "0", normal).is_ok());
+    }
+
+    #[test]
+    fn transparency_lock_preserves_alpha_per_pixel() {
+        let mut doc = layer_doc(2, 1, (10, 20, 30, 180));
+        channel_data_mut(&mut doc.layers[0], -1).expect("alpha")[1] = 0;
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::TRANSPARENCY, true);
+        let cfg = StrokeConfig {
+            color: red(),
+            diameter: 3,
+            hardness: 100,
+            spacing: SpacingMode::Fixed(25),
+            opacity: 100,
+            flow: 100,
+            ..StrokeConfig::default()
+        };
+        paint(&mut doc, &cfg, &[sample(0.5, 0.5)]).expect("painted");
+        assert_eq!(chan(&doc, -1, 0), 180, "semi-transparent pixel keeps alpha");
+        assert_ne!(
+            (chan(&doc, 0, 0), chan(&doc, 1, 0), chan(&doc, 2, 0)),
+            (10, 20, 30),
+            "semi-transparent pixel keeps its colour edit"
+        );
+        assert_eq!(
+            (
+                chan(&doc, 0, 1),
+                chan(&doc, 1, 1),
+                chan(&doc, 2, 1),
+                chan(&doc, -1, 1)
+            ),
+            (10, 20, 30, 0),
+            "fully transparent pixel is untouched"
+        );
     }
 
     #[test]
@@ -534,7 +577,7 @@ mod tests {
         };
 
         let mut dense = transparent_doc(64, 32);
-        paint_stroke(&mut dense, &base(SpacingMode::Fixed(10)), &samples).expect("dense");
+        paint(&mut dense, &base(SpacingMode::Fixed(10)), &samples).expect("dense");
         for lx in 11..=30 {
             assert!(
                 chan(&dense, -1, 16 * 64 + lx) > 0,
@@ -543,7 +586,7 @@ mod tests {
         }
 
         let mut sparse = transparent_doc(64, 32);
-        paint_stroke(&mut sparse, &base(SpacingMode::Fixed(100)), &samples).expect("sparse");
+        paint(&mut sparse, &base(SpacingMode::Fixed(100)), &samples).expect("sparse");
         assert_eq!(
             chan(&sparse, -1, 16 * 64 + 20),
             0,
@@ -567,14 +610,14 @@ mod tests {
         let path = [sample(5.0, 16.0), sample(55.0, 16.0), sample(5.0, 16.0)];
 
         let mut doc = transparent_doc(64, 32);
-        paint_stroke(&mut doc, &cfg, &path).expect("first");
+        paint(&mut doc, &cfg, &path).expect("first");
         let first = max_alpha(&doc);
         assert!(
             first as f32 / 255.0 <= 0.33 + 1.0 / 255.0,
             "single stroke exceeded the opacity cap: {first}"
         );
 
-        paint_stroke(&mut doc, &cfg, &path).expect("second");
+        paint(&mut doc, &cfg, &path).expect("second");
         let second = max_alpha(&doc);
         assert!(
             second > first,
@@ -596,9 +639,9 @@ mod tests {
         let path = [sample(5.0, 16.0), sample(55.0, 16.0)];
 
         let mut lo = transparent_doc(64, 32);
-        paint_stroke(&mut lo, &base(20), &path).expect("lo");
+        paint(&mut lo, &base(20), &path).expect("lo");
         let mut hi = transparent_doc(64, 32);
-        paint_stroke(&mut hi, &base(80), &path).expect("hi");
+        paint(&mut hi, &base(80), &path).expect("hi");
 
         let sum = |d: &Document| -> u32 {
             channel_data(&d.layers[0], -1)
@@ -630,7 +673,7 @@ mod tests {
         };
 
         let mut pencil = transparent_doc(64, 32);
-        paint_stroke(&mut pencil, &cfg(true), &path).expect("pencil");
+        paint(&mut pencil, &cfg(true), &path).expect("pencil");
         let alpha = channel_data(&pencil.layers[0], -1).unwrap();
         assert!(alpha.contains(&255), "pencil painted nothing");
         assert!(
@@ -639,7 +682,7 @@ mod tests {
         );
 
         let mut brush = transparent_doc(64, 32);
-        paint_stroke(&mut brush, &cfg(false), &path).expect("brush");
+        paint(&mut brush, &cfg(false), &path).expect("brush");
         let alpha = channel_data(&brush.layers[0], -1).unwrap();
         assert!(
             alpha.iter().any(|&a| a > 0 && a < 255),
@@ -660,7 +703,7 @@ mod tests {
             mode: PaintMode::Clear,
             ..StrokeConfig::default()
         };
-        paint_stroke(&mut doc, &cfg, &[sample(5.0, 16.0), sample(55.0, 16.0)]).expect("clear");
+        paint(&mut doc, &cfg, &[sample(5.0, 16.0), sample(55.0, 16.0)]).expect("clear");
         assert_eq!(chan(&doc, -1, 16 * 64 + 30), 0);
     }
 
@@ -677,7 +720,7 @@ mod tests {
             mode: PaintMode::Behind,
             ..StrokeConfig::default()
         };
-        paint_stroke(&mut doc, &cfg, &[sample(5.0, 16.0), sample(55.0, 16.0)]).expect("behind");
+        paint(&mut doc, &cfg, &[sample(5.0, 16.0), sample(55.0, 16.0)]).expect("behind");
         let i = 16 * 64 + 30;
         assert_eq!(
             (chan(&doc, 0, i), chan(&doc, 1, i), chan(&doc, 2, i)),
@@ -700,9 +743,9 @@ mod tests {
         let path = [sample(5.0, 16.0), sample(55.0, 16.0)];
 
         let mut a = transparent_doc(64, 32);
-        paint_stroke(&mut a, &cfg, &path).expect("a");
+        paint(&mut a, &cfg, &path).expect("a");
         let mut b = transparent_doc(64, 32);
-        paint_stroke(&mut b, &cfg, &path).expect("b");
+        paint(&mut b, &cfg, &path).expect("b");
 
         for id in [0, 1, 2, -1] {
             assert_eq!(
@@ -722,7 +765,7 @@ mod tests {
             diameter: 8,
             ..StrokeConfig::default()
         };
-        assert!(paint_stroke(&mut doc, &cfg, &[]).is_none());
+        assert!(paint(&mut doc, &cfg, &[]).is_none());
         assert_eq!(doc, before);
     }
 
@@ -753,13 +796,13 @@ mod tests {
             ..Default::default()
         });
         assert!(matches!(
-            Stroke::begin(&doc, StrokeConfig::default()),
+            Stroke::begin_at(&doc, "0", StrokeConfig::default()),
             Err(PaintError::NoRasterLayer)
         ));
 
         let empty = Document::new(16, 16, ColorMode::Rgb, BitDepth::Eight);
         assert!(matches!(
-            Stroke::begin(&empty, StrokeConfig::default()),
+            Stroke::begin_at(&empty, "0", StrokeConfig::default()),
             Err(PaintError::EmptyDocument)
         ));
     }
@@ -776,7 +819,7 @@ mod tests {
             flow: 100,
             ..StrokeConfig::default()
         };
-        paint_stroke(&mut doc, &cfg, &[sample(10.0, 16.0), sample(50.0, 16.0)]).expect("paint");
+        paint(&mut doc, &cfg, &[sample(10.0, 16.0), sample(50.0, 16.0)]).expect("paint");
         let i = 16 * 64 + 30;
         assert_eq!(
             (

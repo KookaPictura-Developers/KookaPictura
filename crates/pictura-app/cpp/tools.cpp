@@ -644,6 +644,9 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
             if (topmostPixelLocked(v)) {
                 emit pixelEditRefused(
                     tr("Could not paint: the layer's pixels are locked."));
+            } else if (v->active_layer_path().isEmpty()) {
+                emit pixelEditRefused(
+                    tr("Could not paint: select a single layer first."));
             }
             return;
         }
@@ -1020,7 +1023,7 @@ void ToolController::closePolygonLasso()
 bool ToolController::beginFreeTransform(const QString& path)
 {
     PictureView* v = view();
-    if (!v || path.isEmpty() || !v->begin_free_transform(path)) {
+    if (!v || !v->begin_free_transform(path)) {
         return false;
     }
     transformDragging_ = false;

@@ -130,6 +130,7 @@ impl qobject::PictureView {
         if dx == 0 && dy == 0 {
             return false;
         }
+        let active = self.rust().active_layer.clone();
         let prepared = {
             let rust = self.rust();
             let (Some(doc), Some(selection)) = (
@@ -140,10 +141,13 @@ impl qobject::PictureView {
             ) else {
                 return false;
             };
-            let Some(index) = topmost_pixel_layer_index(doc) else {
+            let Some(path) = active.as_deref() else {
                 return false;
             };
-            (format!("{index}"), selection_to_mask(&selection, doc))
+            if active_pixel_layer(doc, Some(path)).is_none() {
+                return false;
+            }
+            (path.to_string(), selection_to_mask(&selection, doc))
         };
         let (path, mask) = prepared;
         let moved = {

@@ -105,6 +105,26 @@ pub fn translate_layer_active(doc: &mut Document, dx: i32, dy: i32, gpu_enabled:
     true
 }
 
+/// Shift the top-level pixel layer `index`'s bounds by `(dx, dy)` without
+/// recompositing; the caller refreshes the dirty region. Returns false for an
+/// out-of-range index, a group/adjustment, or a position-locked layer.
+pub fn translate_layer_index(doc: &mut Document, index: usize, dx: i32, dy: i32) -> bool {
+    let Some(layer) = doc.layers.get_mut(index) else {
+        return false;
+    };
+    if layer.is_group || layer.adjustment.is_some() {
+        return false;
+    }
+    if layer_move_locked(layer) {
+        return false;
+    }
+    layer.rect = offset_rect(layer.rect, dx, dy);
+    if let Some(mask) = &mut layer.mask {
+        mask.rect = offset_rect(mask.rect, dx, dy);
+    }
+    true
+}
+
 fn topmost_pixel_layer(layers: &mut [Layer]) -> Option<&mut Layer> {
     layers
         .iter_mut()

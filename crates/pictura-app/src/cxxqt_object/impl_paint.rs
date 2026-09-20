@@ -47,7 +47,13 @@ impl qobject::PictureView {
             let Some(doc) = rust.doc.as_ref() else {
                 return false;
             };
-            Stroke::begin(doc, cfg)
+            let Some(path) = rust.active_layer.as_deref() else {
+                return false;
+            };
+            if active_pixel_layer(doc, Some(path)).is_none() {
+                return false;
+            }
+            Stroke::begin_at(doc, path, cfg)
         };
         match begun {
             Ok(stroke) => {

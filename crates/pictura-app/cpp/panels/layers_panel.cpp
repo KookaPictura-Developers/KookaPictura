@@ -683,6 +683,9 @@ void LayersPanel::syncControls()
 {
     const QModelIndex current = tree_->currentIndex();
     const QStringList paths = selectedPaths();
+    if (view_) {
+        view_->set_active_layer(paths.size() == 1 ? currentPath() : QString());
+    }
     const bool active = view_ && !paths.isEmpty();
     syncing_ = true;
     blend_->setEnabled(false);

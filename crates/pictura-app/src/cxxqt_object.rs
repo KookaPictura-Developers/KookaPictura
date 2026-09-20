@@ -59,20 +59,15 @@ pub mod qobject {
         #[qinvokable]
         fn open(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// `File > Open` for a common raster image: decode `path` with Qt into an
-        /// untitled RGB/8-bit document; `false` without mutating on any refusal.
+        /// `File > Open` for a common raster image: decode `path` into an untitled RGB/8-bit document; `false` without mutating on any refusal.
         #[qinvokable]
         fn open_image(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// `File > Open As Smart Object…`: open `path` as a new untitled document
-        /// holding that PSD/PSB source as an embedded smart object; one state.
-        /// False without mutating on any refusal.
+        /// `File > Open As Smart Object…`: open `path` as a new untitled document holding that PSD/PSB source as an embedded smart object; one state.
         #[qinvokable]
         fn open_as_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// Create a new `width`×`height` document. `mode` is `"rgb"`/`"grayscale"`,
-        /// `depth` must be 8, `background` is `"white"`/`"transparent"`. Resets
-        /// selection/history; false without mutating on any invalid parameter.
+        /// Create a new `width`×`height` document. `mode` is `"rgb"`/`"grayscale"`, `depth` must be 8, `background` is `"white"`/`"transparent"`. Resets selection/history; false without mutating on any invalid parameter.
         #[qinvokable]
         fn new_document(
             self: Pin<&mut Self>,
@@ -83,8 +78,7 @@ pub mod qobject {
             background: &QString,
         ) -> bool;
 
-        /// Serialize the document to `path` as a PSD via a `.tmp` sibling and
-        /// rename. Clears the dirty flag; false on any encode/IO error.
+        /// Serialize the document to `path` as a PSD via a `.tmp` sibling and rename. Clears the dirty flag; false on any encode/IO error.
         #[qinvokable]
         fn save(self: Pin<&mut Self>, path: &QString) -> bool;
 
@@ -95,6 +89,14 @@ pub mod qobject {
         /// Path the document was last opened from or saved to; empty when untitled.
         #[qinvokable]
         fn file_path(&self) -> QString;
+
+        /// Set the panel's active layer path; an empty path disables tool edits.
+        #[qinvokable]
+        fn set_active_layer(self: Pin<&mut Self>, path: &QString);
+
+        /// The active layer's panel path, or empty when none is active.
+        #[qinvokable]
+        fn active_layer_path(&self) -> QString;
 
         /// Notice when an opened document's source color mode was normalized.
         #[qinvokable]
