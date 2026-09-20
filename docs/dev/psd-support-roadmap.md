@@ -130,9 +130,14 @@ geometry and the pattern the document pattern library (archived
 `2026-09-20-layer-effects-overlays`); the object-based **Satin** (`ChFX`) now
 decodes and composites an interior directional band from the blurred content
 matte, optionally inverted, gated by the content coverage, and composited above
-it (archived `2026-09-20-layer-effects-satin`); the remaining effect kinds — the
-legacy `lrFX` block, Bevel & Emboss, and gradient/pattern stroke fills — are
-deferred.
+it (archived `2026-09-20-layer-effects-satin`); **Bevel & Emboss** (`ebbl`) now
+decodes and, for the Inner + Smooth (`InrB`/`SfBL`) slice, composites a lit height
+field confined to the content above it, other styles/techniques decoding to a
+no-op (archived `2026-09-20-layer-effects-bevel`); the remaining effect kinds —
+the legacy `lrFX` block and gradient/pattern stroke fills — are deferred. That
+change also fixed a cross-cutting bug: every `lfx2` effect blend mode now decodes
+the `BlnM` descriptor vocabulary instead of the layer-key one, and the effect
+goldens were regenerated.
 Remaining:
 `curv`,
 `mixr`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
