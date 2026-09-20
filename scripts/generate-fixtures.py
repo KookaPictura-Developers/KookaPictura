@@ -61,6 +61,7 @@ from psd_tools.psd.vector import (
     Path as VectorPath,
     PathFillRule,
     VectorMaskSetting,
+    VectorStrokeContentSetting,
 )
 from psd_tools.terminology import Enum, Key, Klass, Type, Unit
 
@@ -467,6 +468,51 @@ def vector_mask() -> PSDImage:
         data=VectorMaskSetting(
             version=3, flags=0, path=_closed_rect_path(1, 1, 3, 3)
         ),
+    )
+    return psd
+
+
+def vector_fill() -> PSDImage:
+    """RGB, a Base layer plus a ``vscg`` solid-fill shape layer clipped by a
+    closed-rectangle ``vmsk``.
+
+    The ``Shape`` layer carries no pixel channels; its fill content lives in the
+    additional-layer-info ``vscg`` block -- a 4-byte ``SoCo`` key followed by a
+    version-16 descriptor -- and its ``vmsk`` is a closed ``(1,1)-(5,5)``
+    rectangle. The inner ``Clr `` object must be ``RGBC`` or psd-tools' own
+    compositor rejects it.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    shape = psd.create_pixel_layer(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), name="Shape")
+    rec = shape._record
+    shape._channels = ChannelDataList([])
+    rec.channel_info = []
+    rec.top, rec.left, rec.bottom, rec.right = 0, 0, HEIGHT, WIDTH
+    rec.mask_data = None
+    rec.flags.pixel_data_irrelevant = True
+    rec.tagged_blocks[Tag.VECTOR_STROKE_CONTENT_DATA] = TaggedBlock(
+        key=Tag.VECTOR_STROKE_CONTENT_DATA,
+        data=VectorStrokeContentSetting(
+            key=b"SoCo",
+            version=16,
+            items={
+                b"Clr ": Descriptor(
+                    {
+                        b"Rd  ": Double(255.0),
+                        b"Grn ": Double(0.0),
+                        b"Bl  ": Double(0.0),
+                    },
+                    classID=b"RGBC",
+                )
+            },
+        ),
+    )
+    rec.tagged_blocks[Tag.VECTOR_MASK_SETTING1] = TaggedBlock(
+        key=Tag.VECTOR_MASK_SETTING1,
+        data=VectorMaskSetting(version=3, flags=0, path=_closed_rect_path(1, 1, 5, 5)),
     )
     return psd
 
@@ -1374,6 +1420,7 @@ FIXTURES = {
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
     "vector_mask.psd": vector_mask,
+    "vector_fill.psd": vector_fill,
     "gradient_fill.psd": gradient_fill,
     "pattern_fill.psd": pattern_fill,
     "pattern_fill_16bit.psd": pattern_fill_16bit,

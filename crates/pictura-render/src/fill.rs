@@ -26,6 +26,48 @@ pub fn decode_gradient_fill(d: &[u8]) -> Option<Adjustment> {
     Some(Adjustment::GradientFill(gradient_params_from_desc(&obj)?))
 }
 
+/// The decoded `vscg` vector-fill block, or `None` when it is malformed or an
+/// unknown fill kind. Never panics.
+///
+/// The block is `[4-byte fill key][version-16 descriptor]`. A `Grad` object is a
+/// gradient, a `Ptrn` object a pattern, a `Clr ` object a solid fill; anything
+/// else is `None`, and a version other than 16 is rejected by
+/// [`pictura_codec::read_descriptor`]. The fill decoders are the same ones the
+/// top-level `GdFl`/`PtFl`/`SoCo` blocks use, so the layouts cannot drift.
+///
+/// ponytail: the 4-byte key is consumed but ignored; the descriptor's content is
+/// the dispatch authority, mirroring ag-psd `parseVectorContent`.
+pub(crate) fn decode_vector_fill(d: &[u8]) -> Option<Adjustment> {
+    let body = d.get(4..)?;
+    let obj = pictura_codec::read_descriptor(body).ok()?;
+    if desc_item(&obj, b"Grad").is_some() {
+        gradient_params_from_desc(&obj).map(Adjustment::GradientFill)
+    } else if desc_item(&obj, b"Ptrn").is_some() {
+        pattern_params_from_desc(&obj).map(Adjustment::PatternFill)
+    } else if desc_item(&obj, b"Clr ").is_some() {
+        crate::composite::decode_solid_fill(body)
+    } else {
+        None
+    }
+}
+
+/// The layer's decoded fill content: its modeled adjustment block first, else
+/// its preserved `vscg` vector fill. Shared by the compositor dispatch and the
+/// layer-effects coverage matte, so a shape layer's fill and its effects are
+/// gated by the same content.
+///
+/// The choice is strict: an adjustment block is consulted on its own, so an
+/// undecodable key is a no-op and never falls through to the `vscg` fill; the
+/// `vscg` block is decoded only when the layer has no adjustment block.
+pub(crate) fn decode_layer_fill(layer: &Layer) -> Option<Adjustment> {
+    match layer.adjustment.as_ref() {
+        Some(data) => crate::decode_adjustment(data),
+        None => layer
+            .extra_block(b"vscg")
+            .and_then(|b| decode_vector_fill(&b.data)),
+    }
+}
+
 /// The gradient fields of an already-read `GdFl`/`GrFl` object. Shared by the
 /// public fill decoder and the gradient-overlay decoder. A `doub` or a unit
 /// float is accepted for the numerics (a `GdFl` carries `doub`, an effect
@@ -646,10 +688,7 @@ pub(crate) fn fill_coverage_matte(
     region: (i32, i32, i32, i32),
     out: &mut [f32],
 ) -> bool {
-    let Some(data) = &layer.adjustment else {
-        return false;
-    };
-    let Some(adjustment) = crate::decode_adjustment(data) else {
+    let Some(adjustment) = decode_layer_fill(layer) else {
         return false;
     };
     let (rx0, ry0, rx1, ry1) = region;
