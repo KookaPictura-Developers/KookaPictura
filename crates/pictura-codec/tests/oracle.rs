@@ -36,6 +36,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("color_overlay.psd", 8, 8, ColorMode::Rgb),
     ("gradient_overlay.psd", 8, 8, ColorMode::Rgb),
     ("pattern_overlay.psd", 8, 8, ColorMode::Rgb),
+    ("satin.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -1387,3 +1388,6 @@ mod gradient_overlay;
 
 #[path = "oracle/pattern_overlay.rs"]
 mod pattern_overlay;
+
+#[path = "oracle/satin.rs"]
+mod satin;

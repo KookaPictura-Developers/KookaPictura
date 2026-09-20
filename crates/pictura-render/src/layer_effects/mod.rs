@@ -57,6 +57,15 @@
 //! ids are `SoFi`/`GrFl`/`patternFill`, not the `SoCo`/`PtFl` fill-layer ids;
 //! gradient `Ofst`, noise and `Dither` are not modelled; pattern `Angl` rotation
 //! is decoded but not applied; the unaligned gradient buffer is canvas-sized.
+//!
+//! A satin (`ChFX`) composites **above** the content: the blurred content matte
+//! is differenced against itself shifted by `distance` along `angle`, and the
+//! absolute difference tints the interior band. ponytail: contour (`MpgS`),
+//! anti-alias (`AntA`), `uglg` and `showInDialog` are ignored; the effective
+//! angle is the stored `lagl`, not the global-light resource; the band is
+//! confined to `M` once rather than libpsd's extra knockout multiplication; the
+//! build region pads by `dist_reach + blur_support` rather than `size`; the
+//! exact inter-effect order among the above-content effects is not modelled.
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
@@ -66,6 +75,7 @@ use crate::composite::{channel, Canvas};
 
 mod glows;
 mod overlays;
+mod satin;
 mod shadows;
 mod strokes;
 
@@ -74,6 +84,7 @@ pub use overlays::{
     decode_color_overlay, decode_gradient_overlay, decode_pattern_overlay, ColorOverlay,
     GradientOverlay, PatternOverlay,
 };
+pub use satin::{decode_satin, Satin};
 pub use shadows::{decode_drop_shadow, decode_inner_shadow, DropShadow, InnerShadow};
 pub use strokes::{decode_stroke, Stroke, StrokePosition};
 
@@ -186,6 +197,11 @@ pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, 
             glows::composite_inner_glow(canvas, layer, doc, &glow);
         }
     }
+    if let Some(satin) = decode_satin(layer) {
+        if satin.enabled && satin.present {
+            satin::composite_satin(canvas, layer, doc, &satin);
+        }
+    }
     if let Some(overlay) = decode_color_overlay(layer) {
         if overlay.enabled && overlay.present {
             overlays::composite_color_overlay(canvas, layer, doc, &overlay);
@@ -206,6 +222,19 @@ pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, 
             strokes::composite_stroke(canvas, layer, doc, &stroke);
         }
     }
+}
+
+/// Test-only: run a hand-built satin (bypassing decode) over a fresh canvas so
+/// the composite's own non-finite clamps are exercised.
+#[cfg(test)]
+pub(crate) fn composite_satin_for_test(
+    layer: &Layer,
+    doc: &Document,
+    satin: &Satin,
+) -> PixelBuffer {
+    let mut canvas = Canvas::new(doc.width as usize, doc.height as usize);
+    satin::composite_satin(&mut canvas, layer, doc, satin);
+    canvas.into_pixel_buffer()
 }
 
 /// A layer whose content is a destructive adjustment (not fill content) has no

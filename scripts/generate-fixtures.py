@@ -820,6 +820,57 @@ def pattern_overlay() -> PSDImage:
     return psd
 
 
+def satin() -> PSDImage:
+    """RGB, a Base pixel layer plus a `ChFX` satin pixel layer.
+
+    The effect object class id and top-level key are both `ChFX` (ChromeFX);
+    psd-tools registers it as `Satin`. `Invr` is the invert key and `MpgS`
+    (not `TrnS`) is the contour key. Every decoded key is non-default so the
+    oracle proves it survives.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Satin", left=0, top=0
+    )
+    chfx = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Color: Descriptor(
+                {
+                    b"Rd  ": Double(10.0),
+                    b"Grn ": Double(20.0),
+                    b"Bl  ": Double(30.0),
+                },
+                classID=b"RGBC",
+            ),
+            Key.Opacity: UnitFloat(50.0, Unit.Percent),
+            b"uglg": Bool(False),
+            Key.LocalLightingAngle: UnitFloat(120.0, Unit.Angle),
+            Key.Distance: UnitFloat(8.0, Unit.Pixels),
+            Key.Blur: UnitFloat(6.0, Unit.Pixels),
+            Key.Invert: Bool(True),
+            Key.AntiAlias: Bool(True),
+            Key.MappingShape: Descriptor(
+                {Key.Name: String("Linear")}, classID=b"TrnS"
+            ),
+        },
+        classID=b"ChFX",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"ChFX": chfx}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -839,6 +890,7 @@ FIXTURES = {
     "color_overlay.psd": color_overlay,
     "gradient_overlay.psd": gradient_overlay,
     "pattern_overlay.psd": pattern_overlay,
+    "satin.psd": satin,
 }
 
 

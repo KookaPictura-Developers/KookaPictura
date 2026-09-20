@@ -298,6 +298,11 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         {
             return Err(GpuError::UnsupportedLayerEffect);
         }
+        if crate::layer_effects::decode_satin(layer)
+            .is_some_and(|satin| satin.enabled && satin.present)
+        {
+            return Err(GpuError::UnsupportedLayerEffect);
+        }
         if crate::layer_effects::decode_stroke(layer)
             .is_some_and(|stroke| stroke.enabled && stroke.present)
         {
