@@ -82,25 +82,13 @@ void CanvasScrollBars::syncFromView()
     syncing_ = true;
 
     const QImage& image = view_->image();
-    const bool haveImage = !image.isNull() && image.width() > 0 && image.height() > 0;
     const double zoom = view_->zoom();
     const QSizeF imageSize(image.width(), image.height());
-    const double contentW = imageSize.width() * zoom;
-    const double contentH = imageSize.height() * zoom;
-    // Apply with the current geometry, settle, then re-apply: a bar's own
-    // thickness can change the viewport just enough to re-decide, and this
-    // two-pass keeps it from oscillating.
-    for (int pass = 0; pass < 2; ++pass) {
-        const bool showH = haveImage && contentW > view_->width();
-        const bool showV = haveImage && contentH > view_->height();
-        if (hbar_->isHidden() == showH) {
-            hbar_->setVisible(showH);
-        }
-        if (vbar_->isHidden() == showV) {
-            vbar_->setVisible(showV);
-        }
-        grid_->activate();
-    }
+    // ponytail: visibility is fixed on. The canvas is pannable within the
+    // reveal margin, so an as-needed policy would remove the only pan
+    // affordance; the bars stay a projection of the shared offset range.
+    hbar_->show();
+    vbar_->show();
 
     const OffsetRange range = offsetRangeFor(imageSize, zoom, QSizeF(view_->size()));
     {

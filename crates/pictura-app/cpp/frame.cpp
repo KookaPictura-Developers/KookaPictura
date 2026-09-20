@@ -421,7 +421,7 @@ bool PicturaMainWindow::openImagePath(const QString& path)
     // name is kept only as the tab's display name.
     const int index = addDocument(view, QString());
     if (index >= 0) {
-        docs_[index].displayName = QFileInfo(path).baseName();
+        docs_[index].displayName = QFileInfo(path).fileName();
         updateTabTitle(index);
     }
     return true;
@@ -442,7 +442,7 @@ bool PicturaMainWindow::openAsSmartObjectPath(const QString& path)
     }
     const int index = addDocument(view, QString());
     if (index >= 0) {
-        docs_[index].displayName = QFileInfo(path).baseName();
+        docs_[index].displayName = QFileInfo(path).fileName();
         updateTabTitle(index);
     }
     return true;

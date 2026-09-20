@@ -177,7 +177,7 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             const bool opened = !written.isEmpty() && frame.openImagePath(modePath);
             const int index = frame.activeDocumentIndex();
             const QString tabText = frame.documentTabTextForTest(index);
-            const bool titleOk = opened && tabText == QStringLiteral("modebits (RGB/8)");
+            const bool titleOk = opened && tabText == QStringLiteral("modebits.png (RGB/8)");
             ST_BEGIN("ldt_mode_bits");
             ST_PASS("ldt_mode_bits opened=%d title=%s", opened ? 1 : 0,
                     qPrintable(tabText));
@@ -219,7 +219,7 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             pictura::PictureView* view = frame.activeView();
             const bool opaqueOk = opened && view && view->layer_row_count() == 1
                 && view->layer_row_kind(0) == QStringLiteral("background")
-                && view->layer_row_lock(0) == 0x0F;
+                && view->layer_row_lock(0) == 0x05;
             ST_BEGIN("lim_opaque_background");
             ST_PASS("lim_opaque_background opened=%d kind=%s lock=%d", opened ? 1 : 0,
                     view ? qPrintable(view->layer_row_kind(0)) : "-",

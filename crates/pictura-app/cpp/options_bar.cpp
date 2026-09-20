@@ -215,7 +215,7 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
 
     auto* feather = new NumericField(
         QStringLiteral("Feather"),
-        numericConfig(0.0, 250.0, 1.0, 1, QStringLiteral(" px"), true,
+        numericConfig(0.0, 250.0, 1.0, 1, QStringLiteral("px"), false,
                       QStringLiteral("optionsFeather")),
         page);
     feather->setValue(controller_ ? controller_->feather() : 0.0);
@@ -332,10 +332,10 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(toolButton(id, page));
 
-    auto addField = [&](const QString& label, const QString& name, int lo, int hi, int value,
-                        void (ToolController::*setter)(int)) {
+    auto addField = [&](const QString& label, const QString& name, const QString& suffix, int lo,
+                        int hi, int value, void (ToolController::*setter)(int)) {
         auto* field =
-            new NumericField(label, numericConfig(lo, hi, 1, 0, QString(), true, name), page);
+            new NumericField(label, numericConfig(lo, hi, 1, 0, suffix, true, name), page);
         field->setValue(value);
         layout->addWidget(field);
         if (controller_) {
@@ -348,14 +348,16 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
         }
     };
 
-    addField(QStringLiteral("Size"), QStringLiteral("optionsBrushSize"), 1, 5000,
+    addField(QStringLiteral("Size"), QStringLiteral("optionsBrushSize"), QString(), 1, 5000,
              controller_ ? controller_->brushSize() : 12, &ToolController::setBrushSize);
-    addField(QStringLiteral("Hardness"), QStringLiteral("optionsBrushHardness"), 0, 100,
-             controller_ ? controller_->brushHardness() : 100, &ToolController::setBrushHardness);
-    addField(QStringLiteral("Opacity"), QStringLiteral("optionsBrushOpacity"), 0, 100,
-             controller_ ? controller_->brushOpacity() : 100, &ToolController::setBrushOpacity);
-    addField(QStringLiteral("Flow"), QStringLiteral("optionsBrushFlow"), 0, 100,
-             controller_ ? controller_->brushFlow() : 100, &ToolController::setBrushFlow);
+    addField(QStringLiteral("Hardness"), QStringLiteral("optionsBrushHardness"),
+             QStringLiteral("%"), 0, 100, controller_ ? controller_->brushHardness() : 100,
+             &ToolController::setBrushHardness);
+    addField(QStringLiteral("Opacity"), QStringLiteral("optionsBrushOpacity"),
+             QStringLiteral("%"), 0, 100, controller_ ? controller_->brushOpacity() : 100,
+             &ToolController::setBrushOpacity);
+    addField(QStringLiteral("Flow"), QStringLiteral("optionsBrushFlow"), QStringLiteral("%"), 0,
+             100, controller_ ? controller_->brushFlow() : 100, &ToolController::setBrushFlow);
 
     layout->addWidget(new QLabel(QStringLiteral("Mode"), page));
     auto* combo = new QComboBox(page);

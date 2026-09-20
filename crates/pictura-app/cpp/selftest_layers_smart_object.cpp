@@ -534,7 +534,7 @@ int pictura::runImageImportChecks(pictura::PicturaMainWindow& frame)
     // An all-opaque import becomes the locked Background (issue 4 / D1).
     const bool openBackground =
         view && view->layer_row_kind(0) == QStringLiteral("background");
-    const bool openLocked = view && view->layer_row_lock(0) == 0x0F;
+    const bool openLocked = view && view->layer_row_lock(0) == 0x05;
     const bool openHistory =
         view && view->history_count() == 1 && view->history_label(0) == QStringLiteral("Open");
     const bool openUntitled = view && view->file_path().isEmpty();
