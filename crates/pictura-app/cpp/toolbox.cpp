@@ -509,6 +509,17 @@ bool Toolbox::eventFilter(QObject* watched, QEvent* event)
             }
         }
         break;
+    case QEvent::MouseButtonDblClick:
+        // A double-click on the custom title bar is the dock/float toggle; a
+        // single click stays inert (the drag threshold guards relocation).
+        if (watched == titleBar_) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                emit titleBarDoubleClicked();
+                return true;
+            }
+        }
+        break;
     case QEvent::MouseMove:
         // M45 T3: a left-button drag on the title bar is the floating-toolbar
         // drop gesture; the frame resolves it through the column grammar. M46:

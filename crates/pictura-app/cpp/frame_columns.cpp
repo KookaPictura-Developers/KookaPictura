@@ -338,6 +338,16 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
             }
         }
     }
+    // The workspace outer band is a DOCK target now, not a pane: a release there
+    // docks the panel to the left/right dock area. Checked before the column
+    // passes so an edge-adjacent column cannot swallow the band.
+    if (!resolved && newColumnSideAt(globalPos) >= 0) {
+        if (toolboxDropAnchor_) {
+            toolboxDropAnchor_->hideEdgeDropIndicator();
+            toolboxDropAnchor_ = nullptr;
+        }
+        return false;
+    }
     if (!resolved) {
         if (PanelColumn* column = columnAtGlobal(globalPos)) {
             const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
@@ -347,39 +357,10 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
             }
         }
     }
-    bool valid = resolved != nullptr;
-    // The workspace outer band is always a target. Anchor on the outermost
-    // visible column on that side so the indicator boundary and the landing slot
-    // agree; with no visible column it is a bare edge (null anchor) that commits
-    // at the splitter head/tail.
-    if (!valid) {
-        const int wsSide = newColumnSideAt(globalPos);
-        if (wsSide >= 0) {
-            const QList<PanelColumn*> columns = panelColumns();
-            if (wsSide == 1) {
-                for (int i = columns.size() - 1; i >= 0; --i) {
-                    PanelColumn* column = columns.at(i);
-                    if (column && column->isVisible()) {
-                        resolved = column;
-                        break;
-                    }
-                }
-            } else {
-                for (PanelColumn* column : columns) {
-                    if (column && column->isVisible()) {
-                        resolved = column;
-                        break;
-                    }
-                }
-            }
-            resolvedSide = wsSide;
-            valid = true;
-        }
-    }
     // Anywhere else in the central area resolves to the horizontally nearest
     // visible column, on the half the pointer is in (or the outer side when the
     // pointer is beside it), so a drop over the document canvas is never a no-op.
-    if (!valid) {
+    if (!resolved) {
         if (QWidget* central = centralWidget()) {
             const QRect centralRect(central->mapToGlobal(QPoint(0, 0)), central->size());
             if (centralRect.contains(globalPos)) {
@@ -414,7 +395,6 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
                         resolvedSide = globalPos.x() < r.center().x() ? 0 : 1;
                     }
                     resolved = nearest;
-                    valid = true;
                 }
             }
         }
@@ -424,7 +404,7 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
         toolboxDropAnchor_->hideEdgeDropIndicator();
         toolboxDropAnchor_ = nullptr;
     }
-    if (!valid) {
+    if (!resolved) {
         return false;
     }
     if (resolved) {
@@ -470,6 +450,49 @@ bool PicturaMainWindow::commitToolboxDrop(const QPoint& globalPos)
     reapplyColumnStretch();
     toolbox_->show();
     return centerSplitter_->indexOf(toolbox_) == insertAt;
+}
+
+bool PicturaMainWindow::dockToolbox(int side)
+{
+    if (!toolbox_) {
+        return false;
+    }
+    // A splitter pane is not in the dock layout; detach it before re-docking.
+    if (centerSplitter_ && centerSplitter_->indexOf(toolbox_) >= 0) {
+        toolbox_->setParent(nullptr);
+        toolbox_->setSplitterPane(false);
+    }
+    const Qt::DockWidgetArea area =
+        side == 0 ? Qt::LeftDockWidgetArea : Qt::RightDockWidgetArea;
+    toolbox_->setFloating(false);
+    addDockWidget(area, toolbox_);
+    toolsArea_ = area;
+    toolbox_->show();
+    ensureToolsNotTabified();
+    return true;
+}
+
+bool PicturaMainWindow::floatToolboxAt(const QPoint& globalPos)
+{
+    if (!toolbox_) {
+        return false;
+    }
+    // A splitter pane (and a detached one) is not a managed dock; re-attach it to
+    // the frame so the float stays wired to the Window menu and the session.
+    bool detached = false;
+    if (centerSplitter_ && centerSplitter_->indexOf(toolbox_) >= 0) {
+        toolbox_->setParent(nullptr);
+        toolbox_->setSplitterPane(false);
+        detached = true;
+    }
+    if (detached || !toolbox_->isFloating()) {
+        addDockWidget(toolsArea_, toolbox_);
+        toolbox_->setFloating(true);
+    }
+    toolbox_->move(globalPos - toolbox_->titleDragOffset());
+    toolbox_->show();
+    toolbox_->raise();
+    return true;
 }
 
 void PicturaMainWindow::clearDynamicColumns()

@@ -474,8 +474,9 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
         const bool moved = cs->indexOf(primary) == 0 && cs->indexOf(primary) < cs->indexOf(left);
 
-        // Outer-band tools drop, then a header drop to the far-left band must
-        // land at index 0, left of the Tools pane.
+        // Host the Tools panel as a splitter pane right of the primary column
+        // (the outer band is a dock target now), then a header drop to the
+        // far-left band must land at index 0, left of the Tools pane.
         if (cs->indexOf(toolbox) >= 0) {
             frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
             toolbox->setSplitterPane(false);
@@ -484,7 +485,10 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         QWidget* central = frame.centralWidget();
         const QPoint headPoint(central->mapToGlobal(QPoint(0, 0)).x() + 2,
                                central->mapToGlobal(QPoint(0, central->height() / 2)).y());
-        const bool toolsPane = frame.commitToolboxDrop(headPoint) && toolbox->isSplitterPane()
+        const QRect paneRect(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+        const QPoint panePoint(paneRect.left() + (paneRect.width() * 2) / 3,
+                               paneRect.center().y());
+        const bool toolsPane = frame.commitToolboxDrop(panePoint) && toolbox->isSplitterPane()
                                && cs->indexOf(toolbox) >= 0;
         sendMouse(header, QEvent::MouseButtonPress, header->mapToGlobal(blank), Qt::LeftButton,
                   Qt::LeftButton);
@@ -786,6 +790,83 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
+    }
+
+    // lss_tools_dock_float (415): the same title-bar gesture keeps all three
+    // placements. A release in the far-left workspace outer band docks the panel
+    // to the left dock area (no longer a splitter pane); a title-bar double-click
+    // floats it and a second double-click docks it again as a normal dock.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        pictura::PanelColumn* primary = frame.panelColumn();
+        QWidget* central = frame.centralWidget();
+        if (!toolbox || !cs || !primary || !central) {
+            return pictura::selfTest().fail(415, "tools dock float fixture");
+        }
+        auto sendDoubleClick = [](QWidget* w) {
+            const QPoint local = w->rect().center();
+            QMouseEvent event(QEvent::MouseButtonDblClick, QPointF(local),
+                              QPointF(w->mapToGlobal(local)), Qt::LeftButton, Qt::LeftButton,
+                              Qt::NoModifier);
+            QApplication::sendEvent(w, &event);
+        };
+
+        // Start as a splitter pane beside the right-hand primary column.
+        if (cs->indexOf(toolbox) >= 0) {
+            frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+            toolbox->setSplitterPane(false);
+            pump(6);
+        }
+        // Normalize to [tabs, primary] whatever order a previous suite left, so
+        // the pane region and the far-left outer band are distinct.
+        frame.movePanelColumn(primary, 1, nullptr);
+        pump(6);
+        const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+        const QPoint panePoint(pr.left() - 8, pr.center().y());
+        const bool pane = frame.commitToolboxDrop(panePoint) && toolbox->isSplitterPane()
+                          && cs->indexOf(toolbox) >= 0;
+        pump(6);
+
+        // Far-left outer band: the resolve declines and the release path docks.
+        const QPoint headPoint(central->mapToGlobal(QPoint(0, 0)).x() + 2,
+                               central->mapToGlobal(QPoint(0, central->height() / 2)).y());
+        PanelColumn* a = nullptr;
+        int s = -1;
+        const bool declined = !frame.resolveToolboxDrop(headPoint, &a, &s) && a == nullptr
+                              && s == -1 && !frame.commitToolboxDrop(headPoint);
+        const int headSide = frame.newColumnSideAt(headPoint);
+        const bool dockedLeft = declined && headSide == 0 && frame.dockToolbox(headSide)
+                                && !toolbox->isSplitterPane() && !toolbox->isFloating()
+                                && frame.dockWidgetArea(toolbox) == Qt::LeftDockWidgetArea;
+        const QPoint tailPoint(central->mapToGlobal(QPoint(0, 0)).x() + central->width() - 2,
+                               central->mapToGlobal(QPoint(0, central->height() / 2)).y());
+        const bool rightBandFree =
+            frame.newColumnSideAt(tailPoint) == 1 && !frame.commitToolboxDrop(tailPoint);
+        pump(6);
+
+        // Double-click floats, a second double-click docks again.
+        QWidget* title = toolbox->titleBarForTest();
+        sendDoubleClick(title);
+        pump(8);
+        const bool floating = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
+        sendDoubleClick(title);
+        pump(8);
+        const bool redocked = !toolbox->isFloating() && !toolbox->isSplitterPane()
+                              && cs->indexOf(toolbox) < 0
+                              && frame.dockWidgetArea(toolbox) == Qt::LeftDockWidgetArea;
+
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        ST_BEGIN("lss_tools_dock_float");
+        ST_PASS("lss_tools_dock_float pane=%d dock=%d rightband=%d float=%d redock=%d",
+                pane ? 1 : 0, dockedLeft ? 1 : 0, rightBandFree ? 1 : 0, floating ? 1 : 0,
+                redocked ? 1 : 0);
+        if (!(pane && dockedLeft && rightBandFree && floating && redocked)) {
+            return pictura::selfTest().fail(415, "tools dock float");
+        }
     }
 
     return 0;
