@@ -27,15 +27,12 @@ std::unique_ptr<ToolHandler> makeEyedropperToolHandler();
 std::unique_ptr<ToolHandler> makeBrushToolHandler(bool aliased);
 std::unique_ptr<ToolHandler> makeMagicWandToolHandler();
 std::unique_ptr<ToolHandler> makeQuickSelectionToolHandler();
-
-namespace {
-
-// Document-space radius for the Polygonal Lasso close-click and for treating a
-// second rapid press as a double-click. Document pixels, so it shrinks visually
-// when zoomed out.
-constexpr double kPolygonCloseRadius = 6.0;
-
-} // namespace
+std::unique_ptr<ToolHandler> makeMoveToolHandler();
+std::unique_ptr<ToolHandler> makeCropToolHandler();
+std::unique_ptr<ToolHandler> makeMarqueeToolHandler();
+std::unique_ptr<ToolHandler> makeEllipticalMarqueeToolHandler();
+std::unique_ptr<ToolHandler> makeLassoToolHandler();
+std::unique_ptr<ToolHandler> makePolygonalLassoToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -47,6 +44,12 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::Pencil, makeBrushToolHandler(true));
     registry_.registerTool(ToolId::MagicWand, makeMagicWandToolHandler());
     registry_.registerTool(ToolId::QuickSelection, makeQuickSelectionToolHandler());
+    registry_.registerTool(ToolId::Move, makeMoveToolHandler());
+    registry_.registerTool(ToolId::Crop, makeCropToolHandler());
+    registry_.registerTool(ToolId::Marquee, makeMarqueeToolHandler());
+    registry_.registerTool(ToolId::EllipticalMarquee, makeEllipticalMarqueeToolHandler());
+    registry_.registerTool(ToolId::Lasso, makeLassoToolHandler());
+    registry_.registerTool(ToolId::PolygonalLasso, makePolygonalLassoToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -68,8 +71,12 @@ void ToolController::setActiveTool(ToolId id)
     if (active_ == id) {
         return;
     }
+    // Drop the outgoing handler's per-tool state (in-progress polygon, warm
+    // preview) before the switch, while the old tool is still active.
+    if (ToolHandler* old = registry_.forTool(active_)) {
+        old->onDeactivate(*this);
+    }
     active_ = id;
-    cancelPolygonLasso();
     PictureView* v = view();
     if (v && v->is_painting()) {
         v->cancel_paint();
@@ -243,6 +250,11 @@ void ToolController::unbindCanvas()
         return;
     }
     disconnect(canvas_, nullptr, this, nullptr);
+    // Let the active handler release anything tied to this canvas (an
+    // in-progress polygon, the warm Move preview) before it goes away.
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onDeactivate(*this);
+    }
     if (canvas_->movePreviewActive()) {
         canvas_->endMovePreview();
         PictureView* previewView = view();
@@ -259,8 +271,6 @@ void ToolController::unbindCanvas()
     canvas_->clearSelectionPreview();
     canvas_->clearBrushOutline();
     canvas_ = nullptr;
-    warmView_ = nullptr;
-    warmValid_ = false;
     PictureView* v = view();
     if (v && v->is_painting()) {
         v->cancel_paint();
@@ -269,23 +279,6 @@ void ToolController::unbindCanvas()
     dragCommitted_ = false;
     cancelSelectionMove();
     cursorOverSelection_ = false;
-}
-
-void ToolController::warmMovePreview()
-{
-    PictureView* v = view();
-    if (!v) {
-        warmValid_ = false;
-        return;
-    }
-    if (!v->prepare_move_preview()) {
-        warmValid_ = false;
-        return;
-    }
-    warmBase_ = v->move_preview_base();
-    warmLayer_ = v->move_preview_layer();
-    warmView_ = v;
-    warmValid_ = !warmBase_.isNull();
 }
 
 void ToolController::applyToolPolicy()
@@ -302,10 +295,8 @@ void ToolController::applyToolPolicy()
         return;
     }
     refreshCursor();
-    if (active_ == ToolId::Move) {
-        warmMovePreview();
-    } else {
-        warmValid_ = false;
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onActivate(*this);
     }
 }
 
@@ -330,10 +321,8 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         return;
     }
     if (isSelectionTool(active_)) {
-        // Capture the modifiers once so the geometry, the release raster, and
-        // the drag cursor keep the press-time constraint even if Shift/Alt is
-        // released mid-drag.
-        dragMods_ = mods;
+        // A press inside a live selection moves the mask or its content instead
+        // of starting a new shape; the selection handler never sees the event.
         const bool ctrl = mods.testFlag(Qt::ControlModifier);
         const bool shift = mods.testFlag(Qt::ShiftModifier);
         const bool alt = mods.testFlag(Qt::AltModifier);
@@ -349,127 +338,7 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
     }
 
     if (ToolHandler* h = registry_.forTool(active_)) {
-        if (h->onPress(*this, imagePos, mods)) {
-            return;
-        }
-    }
-
-    switch (active_) {
-    case ToolId::Move: {
-        if (!v) {
-            return;
-        }
-        if (v->has_selection()) {
-            beginContentMove(v, imagePos, mods.testFlag(Qt::AltModifier));
-            return;
-        }
-        QElapsedTimer pressClock;
-        pressClock.start();
-        const bool alt = mods.testFlag(Qt::AltModifier);
-        const bool prepared = alt ? v->begin_move_duplicate() : v->begin_move_preview();
-        const qint64 pressNs = pressClock.nsecsElapsed();
-        if (qEnvironmentVariableIsSet("PICTURA_PRESS_TRACE") || pressNs > 8000000) {
-            qWarning("[move-press] begin_move_preview hit=%d work=%.1fms",
-                     (prepared && v->move_preview_cache_hit()) ? 1 : 0, pressNs / 1e6);
-        }
-        if (!prepared) {
-            return;
-        }
-        dragging_ = true;
-        dragCommitted_ = false;
-        anchor_ = last_ = imagePos;
-        totalDelta_ = QPointF();
-        if (canvas_) {
-            const bool reuse = warmValid_ && warmView_ == v && v->move_preview_cache_hit();
-            if (!reuse) {
-                warmBase_ = v->move_preview_base();
-                warmLayer_ = v->move_preview_layer();
-                warmView_ = v;
-                warmValid_ = !warmBase_.isNull();
-            }
-            canvas_->beginMovePreview(warmBase_, warmLayer_,
-                                      QPointF(v->move_preview_x(), v->move_preview_y()),
-                                      v->move_preview_opacity() / 255.0);
-        }
-        return;
-    }
-    case ToolId::Crop:
-        if (!v) {
-            return;
-        }
-        dragging_ = true;
-        dragCommitted_ = false;
-        anchor_ = last_ = imagePos;
-        totalDelta_ = QPointF();
-        hasPendingCrop_ = false;
-        pendingCrop_ = QRect();
-        updateDragOverlay(imagePos);
-        return;
-    case ToolId::Marquee:
-    case ToolId::EllipticalMarquee:
-        if (!v) {
-            return;
-        }
-        dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
-        dragging_ = true;
-        dragCommitted_ = false;
-        anchor_ = last_ = imagePos;
-        updateMarqueeOverlay(imagePos);
-        return;
-    case ToolId::Lasso:
-        if (!v || !v->begin_lasso(selectionModeString(dragMode_))) {
-            return;
-        }
-        dragging_ = true;
-        dragCommitted_ = false;
-        last_ = imagePos;
-        lassoPolygon_.clear();
-        lassoPolygon_ << imagePos;
-        if (canvas_) {
-            canvas_->setSelectionPreview({lassoPolygon_});
-        }
-        return;
-    case ToolId::PolygonalLasso: {
-        if (!v) {
-            return;
-        }
-        const double firstDist = polygonPoints_.isEmpty()
-            ? 1e9
-            : std::hypot(imagePos.x() - polygonPoints_.first().x(),
-                         imagePos.y() - polygonPoints_.first().y());
-        const double lastDist = polygonClock_.isValid()
-            ? std::hypot(imagePos.x() - lastPolygonPress_.x(),
-                         imagePos.y() - lastPolygonPress_.y())
-            : 1e9;
-        const bool closeClick = polygonInProgress_ && firstDist <= kPolygonCloseRadius;
-        const bool doubleClick = polygonInProgress_ && polygonClock_.isValid()
-            && polygonClock_.elapsed() <= QApplication::doubleClickInterval()
-            && lastDist <= kPolygonCloseRadius;
-        if (closeClick || doubleClick) {
-            closePolygonLasso();
-            return;
-        }
-        if (!polygonInProgress_) {
-            dragMode_ = selectionModeForModifiers(mode_, mods, v->has_selection());
-            if (!v->begin_lasso(selectionModeString(dragMode_))) {
-                return;
-            }
-            polygonInProgress_ = true;
-            polygonPoints_.clear();
-        }
-        // ponytail: CS6's Shift 45-degree segment snap is deferred; a plain
-        // click adds the vertex at the pointer.
-        polygonPoints_ << imagePos;
-        lastPolygonPress_ = imagePos;
-        polygonClock_.restart();
-        v->lasso_add_point(qRound(imagePos.x()), qRound(imagePos.y()));
-        if (canvas_) {
-            canvas_->setSelectionPreview({polygonPoints_}, false, /*solid=*/true);
-        }
-        return;
-    }
-    default:
-        return;
+        h->onPress(*this, imagePos, mods);
     }
 }
 
@@ -488,56 +357,14 @@ void ToolController::handleMoved(const QPointF& imagePos)
     }
     updateSelectionHover(imagePos);
     updateBrushOutline(imagePos);
-    if (ToolHandler* h = registry_.forTool(active_)) {
-        h->onMove(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
-        return;
-    }
-    if (!dragging_ && !polygonInProgress_) {
-        return;
-    }
-    PictureView* v = view();
+    // The selection/content move is cross-cutting: route it before the active
+    // tool handler so the shape tools do not also consume the move.
     if (movingSelection_) {
         dragSelectionMove(imagePos);
         return;
     }
-
-    switch (active_) {
-    case ToolId::Move: {
-        totalDelta_ += imagePos - last_;
-        last_ = imagePos;
-        if (canvas_) {
-            canvas_->setMovePreviewDelta(totalDelta_);
-        }
-        return;
-    }
-    case ToolId::Marquee:
-    case ToolId::EllipticalMarquee:
-        last_ = imagePos;
-        updateMarqueeOverlay(imagePos);
-        return;
-    case ToolId::Crop:
-        last_ = imagePos;
-        updateDragOverlay(imagePos);
-        return;
-    case ToolId::Lasso:
-        if (!v) {
-            return;
-        }
-        v->lasso_add_point(qRound(imagePos.x()), qRound(imagePos.y()));
-        lassoPolygon_ << imagePos;
-        if (canvas_) {
-            canvas_->setSelectionPreview({lassoPolygon_});
-        }
-        return;
-    case ToolId::PolygonalLasso:
-        if (polygonInProgress_ && canvas_) {
-            QPolygonF preview = polygonPoints_;
-            preview << imagePos;
-            canvas_->setSelectionPreview({preview}, false, /*solid=*/true);
-        }
-        return;
-    default:
-        return;
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onMove(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
     }
 }
 
@@ -553,150 +380,40 @@ void ToolController::handleReleased(const QPointF& imagePos)
         }
         return;
     }
-    if (ToolHandler* h = registry_.forTool(active_)) {
-        h->onRelease(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
-        return;
-    }
-    if (!dragging_) {
-        return;
-    }
-    dragging_ = false;
-    PictureView* v = view();
-
     if (movingSelection_) {
+        dragging_ = false;
         releaseSelectionMove(imagePos);
         return;
     }
-
-    switch (active_) {
-    case ToolId::Move: {
-        if (v) {
-            v->end_move_preview();
-            const int dx = qRound(totalDelta_.x());
-            const int dy = qRound(totalDelta_.y());
-            if (dx != 0 || dy != 0) {
-                v->commit_move(dx, dy);
-            }
-        }
-        if (canvas_) {
-            canvas_->endMovePreview();
-        }
-        return;
-    }
-    case ToolId::Marquee:
-    case ToolId::EllipticalMarquee: {
-        const QRect rect = marqueeDragRect(anchor_, imagePos, dragMods_);
-        const bool shaped = v && rect.width() > 0 && rect.height() > 0;
-        const bool committed = shaped
-            && (active_ == ToolId::EllipticalMarquee
-                    ? v->select_ellipse(rect.x(), rect.y(), rect.width(), rect.height(),
-                                        selectionModeString(dragMode_), feather_)
-                    : v->select_rect(rect.x(), rect.y(), rect.width(), rect.height(),
-                                     selectionModeString(dragMode_), feather_));
-        if (canvas_) {
-            canvas_->clearSelectionPreview();
-            canvas_->clearDragSizeHint();
-        }
-        if (committed) {
-            emit selectionCommitted();
-        }
-        return;
-    }
-    case ToolId::Lasso: {
-        const bool committed = v && v->end_lasso(feather_);
-        lassoPolygon_.clear();
-        if (canvas_) {
-            canvas_->clearSelectionPreview();
-        }
-        if (committed) {
-            emit selectionCommitted();
-        }
-        return;
-    }
-    case ToolId::Crop: {
-        const QRect rect = dragRect(anchor_, imagePos);
-        pendingCrop_ = rect;
-        hasPendingCrop_ = rect.width() > 0 && rect.height() > 0;
-        if (canvas_) {
-            if (hasPendingCrop_) {
-                canvas_->setOverlayPolygon(QPolygonF(QRectF(rect)));
-            } else {
-                canvas_->clearOverlay();
-            }
-        }
-        return;
-    }
-    default:
-        return;
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onRelease(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
     }
 }
 
 bool ToolController::commitPolygonLasso()
 {
-    if (!polygonInProgress_) {
-        return false;
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        return h->commitPolygonLasso();
     }
-    closePolygonLasso();
-    return true;
+    return false;
 }
 
 bool ToolController::cancelPolygonLasso()
 {
-    if (!polygonInProgress_) {
-        return false;
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        return h->cancelPolygonLasso();
     }
-    polygonInProgress_ = false;
-    polygonPoints_.clear();
-    polygonClock_.invalidate();
-    if (canvas_) {
-        canvas_->clearSelectionPreview();
-    }
-    PictureView* v = view();
-    if (v) {
-        v->cancel_lasso();
-    }
-    return true;
-}
-
-void ToolController::closePolygonLasso()
-{
-    PictureView* v = view();
-    const bool enough = polygonPoints_.size() >= 3;
-    const bool committed = enough && v && v->end_lasso(feather_);
-    if (v && !committed) {
-        v->cancel_lasso();
-    }
-    polygonInProgress_ = false;
-    polygonPoints_.clear();
-    polygonClock_.invalidate();
-    if (canvas_) {
-        canvas_->clearSelectionPreview();
-    }
-    if (committed) {
-        emit selectionCommitted();
-    }
+    return false;
 }
 
 bool ToolController::commitCrop()
 {
-    if (!hasPendingCrop_) {
-        return false;
+    // The staged crop survives a tool switch, so reach the Crop handler
+    // directly rather than through whatever is active now.
+    if (ToolHandler* h = registry_.forTool(ToolId::Crop)) {
+        return h->commitCrop();
     }
-    const QRect rect = pendingCrop_;
-    hasPendingCrop_ = false;
-    pendingCrop_ = QRect();
-    if (canvas_) {
-        canvas_->clearOverlay();
-    }
-    PictureView* v = view();
-    if (!v) {
-        return false;
-    }
-    const bool ok = v->crop(rect.x(), rect.y(), rect.width(), rect.height());
-    if (ok) {
-        emit selectionCommitted();
-    }
-    return ok;
+    return false;
 }
 
 } // namespace pictura

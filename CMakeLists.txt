@@ -125,8 +125,12 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_eyedropper.cpp
     crates/pictura-app/cpp/tool_brush.cpp
     crates/pictura-app/cpp/tool_wand.cpp
+    crates/pictura-app/cpp/tool_move.cpp
+    crates/pictura-app/cpp/tool_crop.cpp
+    crates/pictura-app/cpp/tool_selection.cpp
     crates/pictura-app/cpp/tool_catalog.cpp
     crates/pictura-app/cpp/tool_transform.cpp
+    crates/pictura-app/cpp/selection_geometry.cpp
     crates/pictura-app/cpp/tools_marquee.cpp
     crates/pictura-app/cpp/tools_selection_move.cpp
     crates/pictura-app/cpp/toolbox.cpp
@@ -185,6 +189,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_context.h
     crates/pictura-app/cpp/tool_handler.h
     crates/pictura-app/cpp/tool_registry.h
+    crates/pictura-app/cpp/selection_geometry.h
     crates/pictura-app/cpp/toolbox.h
     crates/pictura-app/cpp/options_bar.h
     crates/pictura-app/cpp/tool_hint_bar.h
