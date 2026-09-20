@@ -108,7 +108,10 @@ all five kinds, is fill content for rasterize, and authors through
 `encode_gradient_fill` and `Layer > New Fill Layer > Gradient…` (archived
 `2026-09-19-gradient-fill-layer`). Color Balance (`blnc`) now decodes to nine
 `i16` shifts plus a luminosity byte and encodes too, with an Adjustments panel
-entry (archived `2026-09-19-color-balance-adjustment-decode`). Pattern fill
+entry (archived `2026-09-19-color-balance-adjustment-decode`). Channel Mixer
+(`mixr`) now decodes to `Adjustment::ChannelMixer` and encodes too, with an
+Adjustments panel entry; the layout is grounded on **ag-psd** because psd-tools
+reads only the red row (archived `channel-mixer-adjustment-decode`). Pattern fill
 (`PtFl`) now decodes to `Adjustment::PatternFill`, taking its pixels from the
 document `Patt`/`Pat2`/`Pat3` pattern library (`pictura-codec::decode_patterns`)
 and compositing as tiled content, and is fill content for rasterize (archived
@@ -142,8 +145,7 @@ fills remain deferred. That change also fixed a cross-cutting bug: every `lfx2`
 effect blend mode now decodes the `BlnM` descriptor vocabulary instead of the
 layer-key one, and the effect goldens were regenerated.
 Remaining:
-`curv`,
-`mixr`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
+`curv`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
 (text, vector masks).
 **Curves (`curv`) is deferred**: the model is single-composite versus
 Photoshop's per-channel curves, and the legacy channel-bitmap order is

@@ -9,12 +9,12 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1110 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1116 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports as the ninth
-  skip). The C++ self-test reports **229 passed, 0 failed, 0 skipped**.
+  skip). The C++ self-test reports **230 passed, 0 failed, 0 skipped**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -33,7 +33,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-outer-glow`, `layer-effects-inner-shadow`,
     `layer-effects-inner-glow`, `layer-effects-stroke`,
     `layer-effects-overlays`, `layer-effects-satin`,
-    `layer-effects-bevel`, and `layer-effects-legacy-lrfx` changes;
+    `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
+    `channel-mixer-adjustment-decode` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -412,6 +413,19 @@ Snapshot for resuming after a context break. Update after each milestone.
   `layer_effects/legacy.rs` test module. Ceilings: only the classic `lrFX`
   record set (no satin/stroke/gradient/pattern record), contour/noise/anti-alias,
   and the shadow `blur` width ambiguity (psd-tools u32 vs libpsd u16+u16).
+- Channel Mixer adjustment decode (roadmap P3/G8, archived
+  `channel-mixer-adjustment-decode`): the `mixr` block now decodes into the
+  existing `Adjustment::ChannelMixer` (no `pictura-adjust` change) and composites
+  through the adjustment-layer path, and `pictura-render` exposes
+  `encode_channel_mixer`. The layout is grounded on **ag-psd** because psd-tools'
+  `ChannelMixer` reads only the red row; a committed `channel_mixer.psd` fixture
+  (monochrome + non-monochrome) is proven by an ag-psd oracle plus a psd-tools
+  partial check. The app gains a neutral-identity `channel-mixer` kind and
+  Adjustments panel row. The adjustment self-test checks moved (pure) into
+  `selftest_layers_adjustments.cpp`, where `lpr_channel_mixer` takes code 294.
+  Ceilings: version 1 only; the non-monochrome gray row is read by ag-psd but
+  ignored by the decoder; the two reserved bytes per channel are ignored; no
+  Adobe pixel parity claim.
 
 ## Commands
 
