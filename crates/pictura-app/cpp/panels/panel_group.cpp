@@ -16,9 +16,10 @@
 namespace pictura {
 
 namespace {
-constexpr int kIconButtonSize = 22;
-constexpr int kIconPixmapSize = 16;
+constexpr int kIconButtonSize = 34;
+constexpr int kIconPixmapSize = 24;
 constexpr int kHeaderButtonSize = 18;
+constexpr int kHeaderGripWidth = 16;
 } // namespace
 
 PanelGroup::PanelGroup(QWidget* parent)
@@ -27,6 +28,34 @@ PanelGroup::PanelGroup(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
+
+    // M47: the float-only top bar. Hidden while docked; `setFloating` shows it
+    // when the group is hosted in a `PanelFloat`.
+    floatHeader_ = new QWidget(this);
+    floatHeader_->setObjectName(QStringLiteral("panelFloatHeader"));
+    auto* floatLayout = new QHBoxLayout(floatHeader_);
+    floatLayout->setContentsMargins(2, 2, 2, 2);
+    floatLayout->setSpacing(2);
+    floatToggle_ = new QToolButton(floatHeader_);
+    floatToggle_->setObjectName(QStringLiteral("panelFloatToggle"));
+    floatToggle_->setAutoRaise(true);
+    floatToggle_->setFixedSize(18, 18);
+    connect(floatToggle_, &QToolButton::clicked, this,
+            [this]() { setCollapsedToIcons(!collapsedToIcons_); });
+    floatLayout->addWidget(floatToggle_);
+    floatLayout->addStretch(1);
+    floatCloseButton_ = new QToolButton(floatHeader_);
+    floatCloseButton_->setObjectName(QStringLiteral("panelFloatClose"));
+    floatCloseButton_->setAutoRaise(true);
+    floatCloseButton_->setFixedSize(kHeaderButtonSize, kHeaderButtonSize);
+    floatCloseButton_->setToolTip(tr("Close"));
+    floatCloseButton_->setIcon(icon(QStringLiteral("panel.close")));
+    floatCloseButton_->setVisible(false);
+    floatLayout->addWidget(floatCloseButton_);
+    floatHeader_->installEventFilter(this);
+    floatHeader_->setVisible(false);
+    layout->addWidget(floatHeader_);
+    updateFloatToggle();
 
     tabs_ = new QTabWidget(this);
     tabs_->setObjectName(QStringLiteral("panelGroupTabs"));
@@ -40,12 +69,26 @@ PanelGroup::PanelGroup(QWidget* parent)
     tabs_->tabBar()->setObjectName(QStringLiteral("panelTabBar"));
     tabs_->tabBar()->setElideMode(Qt::ElideRight);
     tabs_->tabBar()->setExpanding(false);
+    // M47: overflow squeezes/elides the tabs instead of showing scroll arrows.
+    tabs_->tabBar()->setUsesScrollButtons(false);
     layout->addWidget(tabs_);
 
     headerCorner_ = new QWidget(tabs_);
     auto* cornerLayout = new QHBoxLayout(headerCorner_);
     cornerLayout->setContentsMargins(0, 0, 0, 0);
     cornerLayout->setSpacing(0);
+
+    // M47: a reserved blank drag grip, the first corner child so it sits
+    // immediately right of the tab bar.
+    headerGrip_ = new QWidget(headerCorner_);
+    headerGrip_->setObjectName(QStringLiteral("panelGroupDragGrip"));
+    headerGrip_->setFixedWidth(kHeaderGripWidth);
+    headerGrip_->setFixedHeight(kHeaderButtonSize);
+    headerGrip_->setCursor(Qt::SizeAllCursor);
+    headerGrip_->setToolTip(tr("Drag to move this panel group"));
+    headerGrip_->setAttribute(Qt::WA_StyledBackground, true);
+    headerGrip_->installEventFilter(this);
+    cornerLayout->addWidget(headerGrip_);
 
     headerButton_ = new QToolButton(headerCorner_);
     headerButton_->setObjectName(QStringLiteral("panelWidgetMenu"));
@@ -56,20 +99,12 @@ PanelGroup::PanelGroup(QWidget* parent)
     headerButton_->setVisible(false);
     cornerLayout->addWidget(headerButton_);
 
-    floatCloseButton_ = new QToolButton(headerCorner_);
-    floatCloseButton_->setObjectName(QStringLiteral("panelFloatClose"));
-    floatCloseButton_->setAutoRaise(true);
-    floatCloseButton_->setFixedSize(kHeaderButtonSize, kHeaderButtonSize);
-    floatCloseButton_->setToolTip(tr("Close"));
-    floatCloseButton_->setIcon(icon(QStringLiteral("panel.close")));
-    floatCloseButton_->setVisible(false);
-    cornerLayout->addWidget(floatCloseButton_);
-
     tabs_->setCornerWidget(headerCorner_, Qt::TopRightCorner);
     connect(tabs_, &QTabWidget::currentChanged, this, [this]() { updateHeaderMenu(); });
 
     iconRow_ = new QWidget(this);
     iconRow_->setObjectName(QStringLiteral("panelGroupIconRow"));
+    iconRow_->setAttribute(Qt::WA_StyledBackground, true);
     iconRowLayout_ = new QHBoxLayout(iconRow_);
     iconRowLayout_->setContentsMargins(2, 2, 2, 2);
     iconRowLayout_->setSpacing(2);
@@ -356,21 +391,25 @@ int PanelGroup::tabInsertionX(int index) const
     }
     const int count = bar->count();
     index = qBound(0, index, count);
+    // M47: with scroll buttons off a squeezed tab can be clipped past the bar's
+    // right edge, so clamp every candidate point inside the bar; otherwise a
+    // drop at the end of a full tab bar resolves to the group body instead.
+    const int maxX = qMax(0, bar->rect().right());
     // ponytail: hidden QTabBar tabs have empty rects, so scan for the first
     // visible tab instead of trusting tabRect(index).
     for (int i = index; i < count; ++i) {
         const QRect rect = bar->tabRect(i);
         if (rect.isValid() && !rect.isEmpty()) {
-            return rect.left();
+            return qBound(0, rect.left(), maxX);
         }
     }
     for (int i = qMin(index, count) - 1; i >= 0; --i) {
         const QRect rect = bar->tabRect(i);
         if (rect.isValid() && !rect.isEmpty()) {
-            return rect.right() + 1;
+            return qBound(0, rect.right() + 1, maxX);
         }
     }
-    return bar->rect().right() + 1;
+    return maxX;
 }
 
 void PanelGroup::setMinimized(bool minimized)
@@ -425,6 +464,30 @@ void PanelGroup::setCollapsedToIcons(bool collapsed)
     }
     tabs_->setVisible(!collapsed);
     iconRow_->setVisible(collapsed);
+    updateFloatToggle();
+    emit collapsedToIconsChanged(collapsed);
+}
+
+void PanelGroup::updateFloatToggle()
+{
+    if (!floatToggle_) {
+        return;
+    }
+    // M47: mirror `PanelColumn::updateColumnToggle` — show the icon for the
+    // action performed: collapse-to-icons when expanded, expand when collapsed.
+    const QIcon target = icon(collapsedToIcons_ ? QStringLiteral("panel.columnsOne")
+                                                : QStringLiteral("panel.columnsTwo"));
+    if (!target.isNull()) {
+        floatToggle_->setIcon(target);
+        floatToggle_->setIconSize(QSize(16, 16));
+        floatToggle_->setText(QString());
+    } else {
+        floatToggle_->setIcon(QIcon());
+        floatToggle_->setText(collapsedToIcons_ ? QStringLiteral("\u00ab")
+                                                : QStringLiteral("\u00bb"));
+    }
+    floatToggle_->setToolTip(collapsedToIcons_ ? tr("Expand panels")
+                                               : tr("Collapse panels to icons"));
 }
 
 void PanelGroup::rebuildIconRow()
@@ -471,7 +534,55 @@ QToolButton* PanelGroup::makeIconButton(const QIcon& icon, const QString& title,
 
 bool PanelGroup::eventFilter(QObject* watched, QEvent* event)
 {
-    if (watched == tabs_->tabBar()) {
+    // M47: the corner drag grip and the float header both drive a whole-group
+    // drag through the same signals as the empty tab-bar path. Each keeps its
+    // own state so the gestures cannot clobber one another.
+    auto groupGesture = [this](QEvent* e, bool& pressPending, bool& dragging,
+                               QPoint& pressGlobal) -> bool {
+        const QEvent::Type type = e->type();
+        if (type == QEvent::MouseButtonPress) {
+            auto* mouse = static_cast<QMouseEvent*>(e);
+            if (mouse->button() == Qt::LeftButton) {
+                pressPending = true;
+                dragging = false;
+                pressGlobal = mouse->globalPosition().toPoint();
+            }
+        } else if (type == QEvent::MouseMove) {
+            auto* mouse = static_cast<QMouseEvent*>(e);
+            const QPoint globalPos = mouse->globalPosition().toPoint();
+            if (pressPending && !dragging
+                && (globalPos - pressGlobal).manhattanLength()
+                       >= QApplication::startDragDistance()) {
+                pressPending = false;
+                dragging = true;
+                emit groupDragStarted(globalPos);
+            }
+            if (dragging) {
+                emit dragMoved(globalPos);
+                return true;
+            }
+        } else if (type == QEvent::MouseButtonRelease) {
+            pressPending = false;
+            if (dragging) {
+                dragging = false;
+                auto* mouse = static_cast<QMouseEvent*>(e);
+                emit dragFinished(mouse->globalPosition().toPoint());
+                return true;
+            }
+        }
+        return false;
+    };
+    if (watched == headerGrip_) {
+        if (groupGesture(event, gripPressPending_, gripDragging_, gripPressGlobal_)) {
+            return true;
+        }
+    }
+    if (watched == floatHeader_) {
+        if (groupGesture(event, floatPressPending_, floatDragging_, floatPressGlobal_)) {
+            return true;
+        }
+    }
+    if (tabs_ && watched == tabs_->tabBar()) {
         const QEvent::Type type = event->type();
         if (type == QEvent::ContextMenu) {
             auto* menuEvent = static_cast<QContextMenuEvent*>(event);
@@ -526,6 +637,10 @@ void PanelGroup::setFloating(bool on)
     if (floatCloseButton_) {
         floatCloseButton_->setVisible(on);
     }
+    if (floatHeader_) {
+        floatHeader_->setVisible(on);
+    }
+    updateFloatToggle();
     updateHeaderMenu();
 }
 

@@ -80,6 +80,29 @@ void PanelFloat::setGroup(PanelGroup* group)
                 }
             });
         }
+        QObject::connect(group_, &PanelGroup::collapsedToIconsChanged, this,
+                         [this](bool) { syncToContent(); });
+    }
+}
+
+void PanelFloat::syncToContent()
+{
+    if (!group_) {
+        return;
+    }
+    if (group_->isCollapsedToIcons()) {
+        setMinimumHeight(kFloatIconMinHeight);
+        const int target = qMax(group_->sizeHint().height(), kFloatIconMinHeight);
+        if (height() < target) {
+            resize(width(), target);
+        }
+        return;
+    }
+    // Expanded: drop the icon-row minimum and grow to fit the group.
+    setMinimumHeight(0);
+    const int target = group_->sizeHint().height();
+    if (target > height()) {
+        resize(width(), target);
     }
 }
 

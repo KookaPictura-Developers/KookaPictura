@@ -91,6 +91,13 @@ public:
     void setCollapsedToIconsForTest(bool collapsed) { setCollapsedToIcons(collapsed); }
     bool contentHiddenForTest() const;
     bool tabBarVisibleForTest() const;
+    // M47: the tab bar squeezes/elides instead of showing scroll arrows.
+    bool tabUsesScrollButtonsForTest() const;
+    // M47: reserved draggable corner grip and the floating group's top bar.
+    QWidget* headerGripForTest() const { return headerGrip_; }
+    QWidget* floatHeaderForTest() const { return floatHeader_; }
+    QToolButton* floatToggleForTest() const { return floatToggle_; }
+    bool floatHeaderVisibleForTest() const;
     // M44 default-active check: the current tab index and the first visible one.
     int currentTabIndexForTest() const;
     int firstVisibleTabIndexForTest() const;
@@ -115,6 +122,8 @@ signals:
     void dragMoved(const QPoint& globalPos);
     void dragFinished(const QPoint& globalPos);
     void dragCanceled();
+    // M47: a floating group resizes itself to the collapsed icon row.
+    void collapsedToIconsChanged(bool collapsed);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -126,12 +135,19 @@ private:
     void runPanelMenuAction(const QString& actionId);
     QToolButton* makeIconButton(const QIcon& icon, const QString& title,
                                 const QString& objectName);
+    // M47: mirror `PanelColumn::updateColumnToggle` for the float header.
+    void updateFloatToggle();
 
     QTabWidget* tabs_ = nullptr;
     QWidget* iconRow_ = nullptr;
     QBoxLayout* iconRowLayout_ = nullptr;
     QToolButton* headerButton_ = nullptr;
     QWidget* headerCorner_ = nullptr;
+    // M47: always-present blank drag grip in the corner, right of the tabs.
+    QWidget* headerGrip_ = nullptr;
+    // M47: the floating group's top bar with its collapse toggle and close.
+    QWidget* floatHeader_ = nullptr;
+    QToolButton* floatToggle_ = nullptr;
     QToolButton* floatCloseButton_ = nullptr;
     QMenu* headerMenu_ = nullptr;
     bool collapsedToIcons_ = false;
@@ -145,6 +161,14 @@ private:
     bool dragging_ = false;
     QPoint pressGlobal_;
     QString pressedPanel_;
+    // M47: corner-grip and float-header drags each keep their own state so a
+    // grip drag cannot clobber a tab-bar drag.
+    bool gripPressPending_ = false;
+    bool gripDragging_ = false;
+    QPoint gripPressGlobal_;
+    bool floatPressPending_ = false;
+    bool floatDragging_ = false;
+    QPoint floatPressGlobal_;
 };
 
 } // namespace pictura
