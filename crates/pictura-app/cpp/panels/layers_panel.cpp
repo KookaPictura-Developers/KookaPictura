@@ -322,7 +322,7 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->set_layers_blend(paths, blend_->itemData(index).toString());
         }
     });
-    connect(opacity_, &PercentField::valueChanged, this, [this](int pct) {
+    connect(opacity_, &PercentField::valueChanged, this, [this](double pct) {
         if (syncing_ || !view_) {
             return;
         }
@@ -331,7 +331,7 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->preview_layers_opacity(paths, qRound(pct * 255.0 / 100.0));
         }
     });
-    connect(opacity_, &PercentField::valueCommitted, this, [this](int pct) {
+    connect(opacity_, &PercentField::valueCommitted, this, [this](double pct) {
         if (syncing_ || !view_) {
             return;
         }
@@ -340,7 +340,7 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->commit_layers_opacity(paths, qRound(pct * 255.0 / 100.0));
         }
     });
-    connect(fill_, &PercentField::valueChanged, this, [this](int pct) {
+    connect(fill_, &PercentField::valueChanged, this, [this](double pct) {
         if (syncing_ || !view_) {
             return;
         }
@@ -349,7 +349,7 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->preview_layers_fill(paths, qRound(pct * 255.0 / 100.0));
         }
     });
-    connect(fill_, &PercentField::valueCommitted, this, [this](int pct) {
+    connect(fill_, &PercentField::valueCommitted, this, [this](double pct) {
         if (syncing_ || !view_) {
             return;
         }

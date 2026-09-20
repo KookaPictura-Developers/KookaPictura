@@ -1,16 +1,15 @@
 #include "options_bar.h"
 
 #include "icons.h"
+#include "panels/numeric_field.h"
 
 #include <QtGui/QAction>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
-#include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMenu>
-#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QToolButton>
 
@@ -30,6 +29,20 @@ const ModeButton kModes[] = {
     {SelectionMode::Subtract, "Subtract from selection", "select.mode.subtract"},
     {SelectionMode::Intersect, "Intersect with selection", "select.mode.intersect"},
 };
+
+NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals,
+                                 const QString& suffix, bool popup, const QString& name)
+{
+    NumericFieldConfig config;
+    config.minimum = lo;
+    config.maximum = hi;
+    config.step = step;
+    config.decimals = decimals;
+    config.suffix = suffix;
+    config.popup = popup;
+    config.objectName = name;
+    return config;
+}
 
 } // namespace
 
@@ -89,13 +102,14 @@ QWidget* OptionsBar::buildCombinePage(ToolId id, bool withTolerance)
     addModeButtons(layout, page, id != ToolId::QuickSelection);
 
     if (withTolerance && controller_) {
-        layout->addWidget(new QLabel(QStringLiteral("Tolerance"), page));
-        auto* spin = new QSpinBox(page);
-        spin->setRange(0, 255);
+        auto* spin = new NumericField(QStringLiteral("Tolerance"),
+                                      numericConfig(0, 255, 1, 0, QString(), true,
+                                                    QStringLiteral("optionsTolerance")),
+                                      page);
         spin->setValue(controller_->tolerance());
         layout->addWidget(spin);
-        connect(spin, &QSpinBox::valueChanged, this,
-                [this](int value) { controller_->setTolerance(value); });
+        connect(spin, &NumericField::valueChanged, this,
+                [this](double value) { controller_->setTolerance(qRound(value)); });
     }
 
     if (id == ToolId::QuickSelection) {
@@ -129,14 +143,15 @@ QWidget* OptionsBar::buildWandPage(ToolId id)
 
     addModeButtons(layout, page, true);
 
-    layout->addWidget(new QLabel(QStringLiteral("Tolerance"), page));
-    auto* tolerance = new QSpinBox(page);
-    tolerance->setRange(0, 255);
+    auto* tolerance = new NumericField(QStringLiteral("Tolerance"),
+                                       numericConfig(0, 255, 1, 0, QString(), true,
+                                                     QStringLiteral("optionsTolerance")),
+                                       page);
     tolerance->setValue(controller_ ? controller_->tolerance() : 32);
     layout->addWidget(tolerance);
     if (controller_) {
-        connect(tolerance, &QSpinBox::valueChanged, this,
-                [this](int value) { controller_->setTolerance(value); });
+        connect(tolerance, &NumericField::valueChanged, this,
+                [this](double value) { controller_->setTolerance(qRound(value)); });
     }
 
     auto* contiguous = new QCheckBox(QStringLiteral("Contiguous"), page);
@@ -198,15 +213,15 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
 
     addModeButtons(layout, page, true);
 
-    layout->addWidget(new QLabel(QStringLiteral("Feather"), page));
-    auto* feather = new QDoubleSpinBox(page);
-    feather->setRange(0.0, 250.0);
-    feather->setDecimals(1);
-    feather->setSuffix(QStringLiteral(" px"));
+    auto* feather = new NumericField(
+        QStringLiteral("Feather"),
+        numericConfig(0.0, 250.0, 1.0, 1, QStringLiteral(" px"), true,
+                      QStringLiteral("optionsFeather")),
+        page);
     feather->setValue(controller_ ? controller_->feather() : 0.0);
     layout->addWidget(feather);
     if (controller_) {
-        connect(feather, &QDoubleSpinBox::valueChanged, this,
+        connect(feather, &NumericField::valueChanged, this,
                 [this](double value) { controller_->setFeather(value); });
     }
 
@@ -224,13 +239,15 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
         auto* ratioBox = new QWidget(page);
         auto* ratioLayout = new QHBoxLayout(ratioBox);
         ratioLayout->setContentsMargins(0, 0, 0, 0);
-        auto* ratioW = new QDoubleSpinBox(ratioBox);
-        ratioW->setRange(0.1, 100.0);
-        ratioW->setDecimals(1);
+        auto* ratioW = new NumericField(QString(),
+                                        numericConfig(0.1, 100.0, 0.1, 1, QString(), true,
+                                                      QStringLiteral("optionsRatioW")),
+                                        ratioBox);
         ratioW->setValue(controller_ ? controller_->fixedRatioWidth() : 1.0);
-        auto* ratioH = new QDoubleSpinBox(ratioBox);
-        ratioH->setRange(0.1, 100.0);
-        ratioH->setDecimals(1);
+        auto* ratioH = new NumericField(QString(),
+                                        numericConfig(0.1, 100.0, 0.1, 1, QString(), true,
+                                                      QStringLiteral("optionsRatioH")),
+                                        ratioBox);
         ratioH->setValue(controller_ ? controller_->fixedRatioHeight() : 1.0);
         ratioLayout->addWidget(ratioW);
         ratioLayout->addWidget(new QLabel(QStringLiteral(":"), ratioBox));
@@ -242,11 +259,15 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
         auto* sizeBox = new QWidget(page);
         auto* sizeLayout = new QHBoxLayout(sizeBox);
         sizeLayout->setContentsMargins(0, 0, 0, 0);
-        auto* sizeW = new QSpinBox(sizeBox);
-        sizeW->setRange(1, 10000);
+        auto* sizeW = new NumericField(QString(),
+                                       numericConfig(1, 10000, 1, 0, QString(), true,
+                                                     QStringLiteral("optionsSizeW")),
+                                       sizeBox);
         sizeW->setValue(controller_ ? controller_->fixedSizeWidth() : 100);
-        auto* sizeH = new QSpinBox(sizeBox);
-        sizeH->setRange(1, 10000);
+        auto* sizeH = new NumericField(QString(),
+                                       numericConfig(1, 10000, 1, 0, QString(), true,
+                                                     QStringLiteral("optionsSizeH")),
+                                       sizeBox);
         sizeH->setValue(controller_ ? controller_->fixedSizeHeight() : 100);
         sizeLayout->addWidget(sizeW);
         sizeLayout->addWidget(new QLabel(QStringLiteral("x"), sizeBox));
@@ -256,16 +277,18 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
         layout->addWidget(sizeBox);
 
         if (controller_) {
-            connect(ratioW, &QDoubleSpinBox::valueChanged, this, [this, ratioH](double v) {
+            connect(ratioW, &NumericField::valueChanged, this, [this, ratioH](double v) {
                 controller_->setFixedRatio(v, ratioH->value());
             });
-            connect(ratioH, &QDoubleSpinBox::valueChanged, this, [this, ratioW](double v) {
+            connect(ratioH, &NumericField::valueChanged, this, [this, ratioW](double v) {
                 controller_->setFixedRatio(ratioW->value(), v);
             });
-            connect(sizeW, &QSpinBox::valueChanged, this,
-                    [this, sizeH](int v) { controller_->setFixedSize(v, sizeH->value()); });
-            connect(sizeH, &QSpinBox::valueChanged, this,
-                    [this, sizeW](int v) { controller_->setFixedSize(sizeW->value(), v); });
+            connect(sizeW, &NumericField::valueChanged, this, [this, sizeH](double v) {
+                controller_->setFixedSize(qRound(v), qRound(sizeH->value()));
+            });
+            connect(sizeH, &NumericField::valueChanged, this, [this, sizeW](double v) {
+                controller_->setFixedSize(qRound(sizeW->value()), qRound(v));
+            });
         }
 
         const auto applyStyleVisibility = [ratioBox, sizeBox](int style) {
@@ -309,27 +332,30 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(toolButton(id, page));
 
-    auto addSpin = [&](const QString& label, int lo, int hi, int value,
-                       void (ToolController::*setter)(int)) {
-        layout->addWidget(new QLabel(label, page));
-        auto* spin = new QSpinBox(page);
-        spin->setRange(lo, hi);
-        spin->setValue(value);
-        layout->addWidget(spin);
+    auto addField = [&](const QString& label, const QString& name, int lo, int hi, int value,
+                        void (ToolController::*setter)(int)) {
+        auto* field =
+            new NumericField(label, numericConfig(lo, hi, 1, 0, QString(), true, name), page);
+        field->setValue(value);
+        layout->addWidget(field);
         if (controller_) {
-            connect(spin, &QSpinBox::valueChanged, this,
-                    [this, setter](int v) { (controller_->*setter)(v); });
+            connect(field, &NumericField::valueChanged, this,
+                    [this, setter](double v) { (controller_->*setter)(qRound(v)); });
+            if (setter == &ToolController::setBrushSize) {
+                connect(controller_, &ToolController::brushSizeChanged, field,
+                        [field](int size) { field->setValue(size); });
+            }
         }
     };
 
-    addSpin(QStringLiteral("Size"), 1, 5000, controller_ ? controller_->brushSize() : 12,
-            &ToolController::setBrushSize);
-    addSpin(QStringLiteral("Hardness"), 0, 100,
-            controller_ ? controller_->brushHardness() : 100, &ToolController::setBrushHardness);
-    addSpin(QStringLiteral("Opacity"), 0, 100,
-            controller_ ? controller_->brushOpacity() : 100, &ToolController::setBrushOpacity);
-    addSpin(QStringLiteral("Flow"), 0, 100, controller_ ? controller_->brushFlow() : 100,
-            &ToolController::setBrushFlow);
+    addField(QStringLiteral("Size"), QStringLiteral("optionsBrushSize"), 1, 5000,
+             controller_ ? controller_->brushSize() : 12, &ToolController::setBrushSize);
+    addField(QStringLiteral("Hardness"), QStringLiteral("optionsBrushHardness"), 0, 100,
+             controller_ ? controller_->brushHardness() : 100, &ToolController::setBrushHardness);
+    addField(QStringLiteral("Opacity"), QStringLiteral("optionsBrushOpacity"), 0, 100,
+             controller_ ? controller_->brushOpacity() : 100, &ToolController::setBrushOpacity);
+    addField(QStringLiteral("Flow"), QStringLiteral("optionsBrushFlow"), 0, 100,
+             controller_ ? controller_->brushFlow() : 100, &ToolController::setBrushFlow);
 
     layout->addWidget(new QLabel(QStringLiteral("Mode"), page));
     auto* combo = new QComboBox(page);

@@ -1,5 +1,7 @@
 #include "color_panel.h"
 
+#include "jump_slider.h"
+
 #include <QtCore/QSignalBlocker>
 #include <QtGui/QLinearGradient>
 #include <QtGui/QMouseEvent>
@@ -123,7 +125,7 @@ ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
     auto* grid = new QGridLayout();
     const char* rgbLabels[3] = {"R", "G", "B"};
     for (int i = 0; i < 3; ++i) {
-        rgb_[i] = new QSlider(Qt::Horizontal, body);
+        rgb_[i] = new JumpSlider(Qt::Horizontal, body);
         rgb_[i]->setRange(0, 255);
         rgbValue_[i] = new QLabel(body);
         grid->addWidget(new QLabel(QString::fromLatin1(rgbLabels[i]), body), i, 0);
@@ -132,7 +134,7 @@ ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
     }
     const char* hsbLabels[3] = {"H", "S", "B"};
     for (int i = 0; i < 3; ++i) {
-        hsb_[i] = new QSlider(Qt::Horizontal, body);
+        hsb_[i] = new JumpSlider(Qt::Horizontal, body);
         hsb_[i]->setRange(0, i == 0 ? 359 : 255);
         hsbValue_[i] = new QLabel(body);
         grid->addWidget(new QLabel(QString::fromLatin1(hsbLabels[i]), body), 3 + i, 0);

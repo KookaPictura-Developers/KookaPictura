@@ -42,6 +42,11 @@ class SwatchesPanel;
 class Toolbox;
 struct SessionState;
 
+// True when a launch should seed the scratch white document. Only the self-test
+// path needs it (headless implies self-test), so a normal launch starts on the
+// empty workspace with the document commands disabled.
+bool launchCreatesScratchDocument(bool selfTest, bool codecLoaded);
+
 // The CS6-shaped application frame: menu bar, tabbed document area, status bar,
 // and dock areas. Owns the UI and the open documents; each document's state
 // lives in its own cxx-qt PictureView.

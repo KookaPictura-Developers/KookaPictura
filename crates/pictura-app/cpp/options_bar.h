@@ -22,6 +22,9 @@ public:
 
     void showTool(ToolId id);
 
+    // Self-test hook: the controller the size field is wired to.
+    ToolController* controllerForTest() const { return controller_; }
+
 private:
     QWidget* buildPage(ToolId id);
     QWidget* buildCombinePage(ToolId id, bool withTolerance);

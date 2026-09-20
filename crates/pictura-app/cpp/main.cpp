@@ -148,12 +148,13 @@ int main(int argc, char* argv[])
     if (!psdPath.isEmpty()) {
         codecLoaded = frame.openPath(psdPath);
     }
-    // M0.5: fall back to a scratch white document when no document loaded; the
-    // GPU smoke probe reports 0 = no GPU, 1 = rendered non-blank, 2 = blank.
-    // The probe never replaces the document image (E1), so the scratch document
+    // A normal launch opens no document; only the self-test keeps the scratch
+    // white document its null_image/fresh_white/gpu_blank checks need. The GPU
+    // smoke probe reports 0 = no GPU, 1 = rendered non-blank, 2 = blank. The
+    // probe never replaces the document image (E1), so the scratch document
     // presents pure white rather than the probe's gradient.
     int gpu = 0;
-    if (!codecLoaded) {
+    if (pictura::launchCreatesScratchDocument(selfTest, codecLoaded)) {
         frame.newDocument(QStringLiteral("Untitled"), 512, 512, QStringLiteral("rgb"), 8,
                           QStringLiteral("white"));
         if (pictura::PictureView* scratch = frame.activeView()) {

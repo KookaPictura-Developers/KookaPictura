@@ -366,7 +366,15 @@ void ToolController::setContiguous(bool on) { contiguous_ = on; }
 
 int ToolController::brushSize() const { return brushSize_; }
 
-void ToolController::setBrushSize(int size) { brushSize_ = std::clamp(size, 1, 5000); }
+void ToolController::setBrushSize(int size)
+{
+    const int clamped = std::clamp(size, 1, 5000);
+    if (clamped == brushSize_) {
+        return;
+    }
+    brushSize_ = clamped;
+    emit brushSizeChanged(brushSize_);
+}
 
 int ToolController::brushHardness() const { return brushHardness_; }
 

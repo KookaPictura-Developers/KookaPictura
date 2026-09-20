@@ -1,5 +1,6 @@
 #include "preferences_dialog.h"
 
+#include "panels/numeric_field.h"
 #include "theme.h"
 
 #include <QtWidgets/QCheckBox>
@@ -7,7 +8,6 @@
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QListWidget>
-#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QVBoxLayout>
 
@@ -58,9 +58,12 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
     auto* generalPage = new QWidget(this);
     generalPage->setObjectName(QStringLiteral("preferencesGeneralPage"));
     auto* generalForm = new QFormLayout(generalPage);
-    brightness_ = new QSpinBox(generalPage);
-    brightness_->setObjectName(QStringLiteral("preferencesBrightness"));
-    brightness_->setRange(0, Theme::kLevelCount - 1);
+    NumericFieldConfig brightnessConfig;
+    brightnessConfig.minimum = 0;
+    brightnessConfig.maximum = Theme::kLevelCount - 1;
+    brightnessConfig.decimals = 0;
+    brightnessConfig.objectName = QStringLiteral("preferencesBrightness");
+    brightness_ = new NumericField(QString(), brightnessConfig, generalPage);
     brightness_->setValue(Theme::kDefaultLevel);
     generalForm->addRow(tr("Brightness"), brightness_);
     stack_->addWidget(generalPage);
@@ -88,8 +91,8 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
             stack_->setCurrentIndex(row);
         }
     });
-    connect(brightness_, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            [this](int level) { emit brightnessLevelChanged(level); });
+    connect(brightness_, &NumericField::valueChanged, this,
+            [this](double level) { emit brightnessLevelChanged(qRound(level)); });
     pageList_->setCurrentRow(0);
 }
 
