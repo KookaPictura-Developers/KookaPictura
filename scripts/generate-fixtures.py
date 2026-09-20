@@ -204,6 +204,67 @@ def channel_mixer() -> PSDImage:
     return psd
 
 
+def _curv_channel(points: list[tuple[int, int]]) -> bytes:
+    """One `curv` channel: a `u16` node count then `(output, input)` nodes.
+
+    `points` are model `(input, output)` pairs; the block stores them in the
+    on-disk `(output, input)` order.
+    """
+    data = struct.pack(">H", len(points))
+    for input_value, output_value in points:
+        data += struct.pack(">hh", output_value, input_value)
+    return data
+
+
+def _curv_data(channels: list[tuple[int, list[tuple[int, int]]]]) -> bytes:
+    """Hand-build an ag-psd-shaped `curv` block.
+
+    `channels` is a list of `(bitmask_bit, model_points)` in the rgb/red/green/
+    blue order. A version-4 duplicate `Crv ` section is appended so the
+    decoder's ignore path is exercised; passing plain `bytes` as
+    `TaggedBlock.data` stores the block verbatim.
+    """
+    bitmask = 0
+    for bit, _ in channels:
+        bitmask |= bit
+    data = struct.pack(">BHHH", 0, 1, 0, bitmask)
+    for _, points in channels:
+        data += _curv_channel(points)
+    index = {1: 0, 2: 1, 4: 2, 8: 3}
+    data += b"Crv " + struct.pack(">HHH", 4, 0, len(channels))
+    for bit, points in channels:
+        data += struct.pack(">H", index[bit]) + _curv_channel(points)
+    return data
+
+
+def curves() -> PSDImage:
+    """RGB, a Base pixel layer plus composite-only and per-channel `curv` layers."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    _adj_layer(
+        psd,
+        Tag.CURVES,
+        "Curves",
+        _curv_data([(1, [(0, 0), (64, 32), (192, 224), (255, 255)])]),
+    )
+    _adj_layer(
+        psd,
+        Tag.CURVES,
+        "Curves Channels",
+        _curv_data(
+            [
+                (1, [(0, 0), (255, 255)]),
+                (2, [(0, 0), (128, 255), (255, 255)]),
+                (4, [(0, 0), (64, 16), (255, 255)]),
+                (8, [(0, 255), (255, 0)]),
+            ]
+        ),
+    )
+    return psd
+
+
 def gradient_map() -> PSDImage:
     """RGB, a Base pixel layer plus a black-to-white Gradient Map adjustment."""
     psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
@@ -1177,6 +1238,7 @@ FIXTURES = {
     "gray.psd": gray,
     "adjustment.psd": adjustment,
     "channel_mixer.psd": channel_mixer,
+    "curves.psd": curves,
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
     "gradient_fill.psd": gradient_fill,

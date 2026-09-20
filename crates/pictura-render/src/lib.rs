@@ -43,6 +43,9 @@ pub use color_balance::encode_color_balance;
 mod channel_mixer;
 pub use channel_mixer::encode_channel_mixer;
 
+mod curves;
+pub use curves::encode_curves;
+
 mod fill;
 pub use fill::encode_gradient_fill;
 

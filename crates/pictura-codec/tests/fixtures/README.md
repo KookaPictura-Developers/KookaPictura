@@ -26,6 +26,7 @@ not hand-edit these files.
 | `gray.psd` | Grayscale | 8x8 | `Gray` |
 | `adjustment.psd` | RGB | 8x8 | `Base` pixel layer + adjustment layers `Invert`, `Posterize`, `Threshold`, `BrightnessContrast`, `Levels`, `PhotoFilter` |
 | `gradient_map.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Map` (`grdm`) adjustment layer |
+| `curves.psd` | RGB | 8x8 | `Base` pixel layer + composite-only `Curves` and per-channel `Curves Channels` (`curv`) adjustment layers |
 | `solid_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Solid Fill` (`SoCo`) descriptor fill layer |
 | `gradient_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient Fill` (`GdFl`) Linear black-to-white descriptor fill layer |
 | `pattern_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Pattern Fill` (`PtFl`) descriptor fill layer referencing a 2x2 RGB pattern in the `Patt` block |

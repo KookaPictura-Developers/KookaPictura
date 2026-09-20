@@ -13,7 +13,8 @@ matching `pictura_adjust::Adjustment` variant: `expA` to
 `Adjustment::PhotoFilter(PhotoFilterParams)`, `grdm` to
 `Adjustment::GradientMap(GradientMapParams)`, `blnc` to
 `Adjustment::ColorBalance(ColorBalanceParams)`, `mixr` to
-`Adjustment::ChannelMixer(ChannelMixerParams)`, `SoCo` to
+`Adjustment::ChannelMixer(ChannelMixerParams)`, `curv` to
+`Adjustment::Curves(CurvesParams)`, `SoCo` to
 `Adjustment::SolidFill([u8; 4])`, `GdFl` to
 `Adjustment::GradientFill(GradientFillParams)`, and `PtFl` to
 `Adjustment::PatternFill(PatternFillParams)`. The fixed structs `expA` and
@@ -46,15 +47,29 @@ their constants; a monochrome payload SHALL decode with `monochrome` true,
 `red` the `gray` source triple, and `constant[0]` the `gray` constant. A `mixr`
 payload whose version is not 1, that is shorter than the channels it declares,
 or that carries a source percentage or constant outside `-200..=200` SHALL
-decode to `None`. A `SoCo` payload SHALL be read in one of two forms: a 4-byte
-straight-alpha RGBA tuple, or a version-16 descriptor whose `Clr ` object
-carries `Rd  `, `Grn `, and `Bl  ` `doub` values on the `0..=255` scale. The
-descriptor form SHALL decode to `Adjustment::SolidFill([r, g, b, 255])`,
-rounding and clamping each component to `0..=255` and forcing alpha to 255; the
-4-byte form SHALL keep its four stored components. A `GdFl` payload SHALL be
-read as a version-16 descriptor whose `Angl` `doub` is the angle in degrees,
-whose `Type` enum (typeID `GrdT`) is the gradient kind (`Lnr ` Linear, `Rdl `
-Radial, `Angl` Angle, `Rflc` Reflected, `Dmnd` Diamond), and whose `Grad`
+decode to `None`. A `curv` payload SHALL be read as a `u8` ignored byte, a `u16`
+version equal to `1`, a `u16` ignored word, and a `u16` channel bitmask (`1`
+rgb, `2` red, `4` green, `8` blue); for each set bit, in the order rgb, red,
+green, blue, a `u16` node count followed by that many `(i16 output, i16 input)`
+pairs. A bitmask equal to zero or carrying a bit outside `0b1111`, a nonzero lead
+`is_map` byte, a node count outside `2..=14`, a coordinate outside `0..=255`, or
+non-strictly-increasing inputs SHALL decode to `None`. The `2..=14` bound is the
+engine-op contract; psd-tools additionally permits up to 19, so a 15–19-point
+legacy file SHALL decode to a no-op. The version-4 duplicate `Crv ` section and
+every trailing byte SHALL be ignored. A `curv` payload SHALL decode to
+`Adjustment::Curves` whose `points` is the rgb channel's points converted from
+`(output, input)` to `(input, output)` order and whose `red`, `green`, and
+`blue` are the corresponding channels when present; when the rgb bit is clear,
+`points` SHALL be the identity endpoints `[(0, 0), (255, 255)]` and only the
+per-channel curves SHALL be present. A `SoCo` payload SHALL be read in one of
+two forms: a 4-byte straight-alpha RGBA tuple, or a version-16 descriptor whose
+`Clr ` object carries `Rd  `, `Grn `, and `Bl  ` `doub` values on the `0..=255`
+scale. The descriptor form SHALL decode to `Adjustment::SolidFill([r, g, b,
+255])`, rounding and clamping each component to `0..=255` and forcing alpha to
+255; the 4-byte form SHALL keep its four stored components. A `GdFl` payload
+SHALL be read as a version-16 descriptor whose `Angl` `doub` is the angle in
+degrees, whose `Type` enum (typeID `GrdT`) is the gradient kind (`Lnr ` Linear,
+`Rdl ` Radial, `Angl` Angle, `Rflc` Reflected, `Dmnd` Diamond), and whose `Grad`
 object (class `Grdn`) carries the gradient stops. The `Grad` object's `GrdF`
 enum (typeID `GrdF`) SHALL be the custom-stops form (`CstS`); a colour-noise
 form (`ClNs`) SHALL NOT decode. Each stop in the `Clrs` list SHALL be an object
@@ -115,6 +130,26 @@ default to true.
 
 - **WHEN** a monochrome `mixr` payload carries version 1, the monochrome flag set, and a `gray` channel
 - **THEN** `decode_adjustment` returns `Adjustment::ChannelMixer` with `monochrome` true, `red` the `gray` source triple, and `constant[0]` the `gray` constant
+
+#### Scenario: Composite Curves payload decodes to CurvesParams
+
+- **WHEN** a `curv` payload carries version 1, the bitmask `1`, and an rgb node list in `(output, input)` order
+- **THEN** `decode_adjustment` returns `Adjustment::Curves` whose `points` is that list in `(input, output)` order and whose `red`, `green`, and `blue` are `None`
+
+#### Scenario: Per-channel Curves payload decodes to CurvesParams
+
+- **WHEN** a `curv` payload sets the rgb, red, green, and blue bits and carries a node list for each
+- **THEN** `decode_adjustment` returns `Adjustment::Curves` whose `points` is the rgb curve and whose `red`, `green`, and `blue` are the corresponding per-channel curves
+
+#### Scenario: Curves without a composite channel decodes to per-channel curves
+
+- **WHEN** a `curv` payload sets only the red, green, or blue bits
+- **THEN** `decode_adjustment` returns `Adjustment::Curves` whose `points` is the identity `[(0, 0), (255, 255)]` and whose present per-channel curves carry the stored nodes
+
+#### Scenario: Curves duplicate section and trailing bytes are ignored
+
+- **WHEN** a `curv` payload carries the version-4 duplicate `Crv ` section and pad bytes after its last channel
+- **THEN** `decode_adjustment` returns the same `Adjustment::Curves` as the payload without that section
 
 #### Scenario: Solid-color fill payload decodes to SolidFill
 
@@ -184,6 +219,11 @@ default to true.
 #### Scenario: Malformed Channel Mixer payload is a no-op
 
 - **WHEN** a `mixr` payload has a version other than 1, is shorter than the channels it declares, or carries a source percentage or constant outside `-200..=200`
+- **THEN** `decode_adjustment` returns `None` and does not panic
+
+#### Scenario: Malformed Curves payload is a no-op
+
+- **WHEN** a `curv` payload has a version other than 1, a zero bitmask, a bit outside `0b1111`, a node count outside `2..=14`, a coordinate outside `0..=255`, non-increasing inputs, or is truncated mid-channel
 - **THEN** `decode_adjustment` returns `None` and does not panic
 
 #### Scenario: Malformed solid-color descriptor is a no-op
@@ -256,12 +296,12 @@ layer absent.
 ### Requirement: Deferred adjustment payloads remain no-ops
 
 The renderer SHALL return `None` from `decode_adjustment` for the deferred
-payloads `curv`, `selc`, `clrL`, and a version-3 `phfl`. These payloads SHALL
-remain preserved on disk and their layers SHALL leave the backdrop unchanged.
+payloads `selc`, `clrL`, and a version-3 `phfl`. These payloads SHALL remain
+preserved on disk and their layers SHALL leave the backdrop unchanged.
 
 #### Scenario: Deferred keys return None
 
-- **WHEN** a `curv`, `selc`, `clrL`, or version-3 `phfl` payload is decoded
+- **WHEN** a `selc`, `clrL`, or version-3 `phfl` payload is decoded
 - **THEN** `decode_adjustment` returns `None`
 
 #### Scenario: Deferred layer does not change the composite
@@ -709,4 +749,61 @@ with a non-identity row SHALL change the composite over a non-uniform backdrop.
 
 - **WHEN** a Channel Mixer adjustment layer with a non-identity row is composited over a non-uniform backdrop
 - **THEN** the result differs from the backdrop-only composite
+
+### Requirement: Curves payloads encode and round-trip
+
+`pictura-render` SHALL expose `encode_curves(points: &[(u8, u8)], red:
+Option<&[(u8, u8)]>, green: Option<&[(u8, u8)]>, blue: Option<&[(u8, u8)]>) ->
+AdjustmentData` that builds the `curv` block `decode_adjustment` reads: a `u8`
+ignored byte, a `u16` version equal to `1`, a `u16` ignored word, and a `u16`
+bitmask setting a bit for each present non-empty channel (`1` rgb, `2` red, `4`
+green, `8` blue), followed by each present channel's `u16` node count and its
+`(output, input)` pairs in the order rgb, red, green, blue. The encoder SHALL
+write only the version-1 bitmask section and SHALL NOT write the version-4
+duplicate `Crv ` section. `decode_adjustment` on the encoder's output SHALL
+equal `Adjustment::Curves` with the input composite curve as `points`, the input
+per-channel curves as `red`/`green`/`blue`, and `None` for every absent channel
+(when the rgb channel is absent, `points` decodes as the identity
+`[(0, 0), (255, 255)]`).
+
+#### Scenario: Encoded composite Curves decodes back
+
+- **WHEN** `encode_curves(&[(0, 0), (64, 32), (192, 224), (255, 255)], None, None, None)` is passed to `decode_adjustment`
+- **THEN** it returns `Adjustment::Curves` whose `points` is those points and whose `red`/`green`/`blue` are `None`
+
+#### Scenario: Encoded per-channel Curves decodes back
+
+- **WHEN** `encode_curves` is called with an rgb curve and all three per-channel curves
+- **THEN** `decode_adjustment` returns `Adjustment::Curves` carrying all four curves
+
+#### Scenario: Absent channels are omitted from the bitmask
+
+- **WHEN** `encode_curves` is called with only a composite curve
+- **THEN** the encoded bitmask is `1` and no per-channel curve is written
+
+### Requirement: Curves fixtures match an independent ag-psd decoder
+
+The committed fixture `crates/pictura-codec/tests/fixtures/curves.psd` SHALL
+carry a composite-only `curv` block and a per-channel `curv` block with fixed
+values, and a test SHALL read the fixture with the independent `ag-psd` npm
+package through `node` and SHALL assert the decoded `rgb`, `red`, `green`, and
+`blue` curves equal the authored points. The fixture SHALL be regenerated
+byte-stably by `scripts/generate-fixtures.py`. The test SHALL self-skip with a
+clear message when `node` or `ag-psd` is unavailable, and SHALL NOT fail the
+suite in that case.
+
+#### Scenario: ag-psd reads the composite fixture block
+
+- **WHEN** the fixture's composite-only `curv` layer is read by ag-psd
+- **THEN** its `rgb` curve carries the authored points and its `red`/`green`/`blue` curves are absent
+
+#### Scenario: ag-psd reads the per-channel fixture block
+
+- **WHEN** the fixture's per-channel `curv` layer is read by ag-psd
+- **THEN** its `rgb`, `red`, `green`, and `blue` curves carry the authored points
+
+#### Scenario: The oracle self-skips without ag-psd
+
+- **WHEN** `node` or the `ag-psd` package is not available
+- **THEN** the test reports a skip and the suite passes
 
