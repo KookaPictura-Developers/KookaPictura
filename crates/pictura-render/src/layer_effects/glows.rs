@@ -5,8 +5,8 @@ use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
     blur_matte, bool_or, clamp_finite, clip_rect, content_matte, decode_color, dilate_matte,
-    erode_matte, num_clamped, pad_rect, rect_empty, GlowTechnique, MAX_CHOKE, MAX_OPACITY,
-    MAX_SIZE, MAX_SPREAD,
+    effect_blend_mode, erode_matte, num_clamped, pad_rect, rect_empty, GlowTechnique, MAX_CHOKE,
+    MAX_OPACITY, MAX_SIZE, MAX_SPREAD,
 };
 
 /// The typed outer glow decoded from a layer's `lfx2` block.
@@ -70,12 +70,9 @@ pub fn decode_outer_glow(layer: &Layer) -> Option<OuterGlow> {
     }
     let blend_mode = match desc_item(orgl, b"Md  ") {
         None => BlendMode::Screen,
-        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
-            .as_slice()
-            .try_into()
-            .ok()
-            .and_then(BlendMode::from_psd_key)
-            .unwrap_or(BlendMode::Screen),
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => {
+            effect_blend_mode(value, BlendMode::Screen)
+        }
         Some(_) => return None,
     };
     let color = match desc_item(orgl, b"Clr ") {
@@ -124,12 +121,9 @@ pub fn decode_inner_glow(layer: &Layer) -> Option<InnerGlow> {
     }
     let blend_mode = match desc_item(irgl, b"Md  ") {
         None => BlendMode::Screen,
-        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
-            .as_slice()
-            .try_into()
-            .ok()
-            .and_then(BlendMode::from_psd_key)
-            .unwrap_or(BlendMode::Screen),
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => {
+            effect_blend_mode(value, BlendMode::Screen)
+        }
         Some(_) => return None,
     };
     let color = match desc_item(irgl, b"Clr ") {

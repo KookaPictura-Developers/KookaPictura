@@ -71,7 +71,7 @@ impl Default for PatternSpec {
         Self {
             enabled: true,
             present: true,
-            blend: b"norm".to_vec(),
+            blend: b"Nrml".to_vec(),
             opacity: 100.0,
             pattern_id: "pictura-pattern".into(),
             scale: 100.0,
@@ -106,7 +106,7 @@ fn spec_layer(spec: &PatternSpec) -> Layer {
 #[test]
 fn pattern_overlay_decodes_typed_parameters() {
     let spec = PatternSpec {
-        blend: b"scrn".to_vec(),
+        blend: b"Scrn".to_vec(),
         opacity: 80.0,
         scale: 50.0,
         angle: 30.0,
@@ -194,7 +194,7 @@ fn malformed_or_absent_pattern_overlay_is_none() {
                 b"Md  ".to_vec(),
                 DescValue::Enum {
                     kind: b"BlnX".to_vec(),
-                    value: b"norm".to_vec(),
+                    value: b"Nrml".to_vec(),
                 },
             ),
             (b"Ptrn".to_vec(), ptrn("pictura-pattern")),
@@ -339,7 +339,7 @@ fn pattern_overlay_opacity_and_blend_shape_the_fill() {
         "lower opacity shows more of the black content"
     );
     let multiply = compose_pattern(spec_layer(&PatternSpec {
-        blend: b"mul ".to_vec(),
+        blend: b"Mltp".to_vec(),
         ..Default::default()
     }));
     assert_ne!(multiply, full, "Normal and Multiply differ");

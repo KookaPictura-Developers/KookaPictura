@@ -20,7 +20,8 @@ use pictura_core::{BlendMode, Document, Layer};
 use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
-    bool_or, clamp_finite, clip_rect, content_matte, num_clamped, num_or, rect_empty, MAX_OPACITY,
+    bool_or, clamp_finite, clip_rect, content_matte, effect_blend_mode, num_clamped, num_or,
+    rect_empty, MAX_OPACITY,
 };
 
 /// The typed color overlay decoded from a layer's `lfx2` block.
@@ -98,12 +99,9 @@ fn effect_object<'a>(top: &'a DescValue, key: &[u8], class_id: &[u8]) -> Option<
 fn decode_blend_mode(obj: &DescValue) -> Option<BlendMode> {
     match desc_item(obj, b"Md  ") {
         None => Some(BlendMode::Normal),
-        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => value
-            .as_slice()
-            .try_into()
-            .ok()
-            .and_then(BlendMode::from_psd_key)
-            .or(Some(BlendMode::Normal)),
+        Some(DescValue::Enum { kind, value }) if kind.as_slice() == b"BlnM" => {
+            Some(effect_blend_mode(value, BlendMode::Normal))
+        }
         Some(_) => None,
     }
 }

@@ -322,12 +322,13 @@ A visible layer carrying a decodable object-based layer effect SHALL make
 layer to the GPU, without panicking. A layer counts as effect-bearing when its
 `lfx2` block decodes to an enabled and present `DropShadow`, an enabled and
 present `OuterGlow`, an enabled and present `InnerShadow`, an enabled and present
-`InnerGlow`, an enabled and present `Satin`, an enabled and present solid-colour
-`Stroke`, an enabled and present `ColorOverlay`, an enabled and present
-`GradientOverlay`, or an enabled and present `PatternOverlay`; a disabled, absent,
-or malformed effect, a stroke whose fill type is not solid, and an overlay whose
-pattern or gradient payload cannot be decoded SHALL NOT reject the document.
-`composite_active` and `composite_gpu_or_cpu` SHALL fall back to the CPU
+`InnerGlow`, an enabled and present `BevelEmboss`, an enabled and present
+`Satin`, an enabled and present solid-colour `Stroke`, an enabled and present
+`ColorOverlay`, an enabled and present `GradientOverlay`, or an enabled and
+present `PatternOverlay`; a disabled, absent, or malformed effect, a bevel whose
+style or technique is not rendered, a stroke whose fill type is not solid, and an
+overlay whose pattern or gradient payload cannot be decoded SHALL NOT reject the
+document. `composite_active` and `composite_gpu_or_cpu` SHALL fall back to the CPU
 composite for a document with such a layer, and the fallback output SHALL be
 byte-identical to `composite_rgba` of the same document.
 
@@ -351,6 +352,11 @@ byte-identical to `composite_rgba` of the same document.
 - **WHEN** `composite_gpu` is called on a document whose visible layer carries an enabled and present inner glow
 - **THEN** it returns `Err(GpuError::UnsupportedLayerEffect)` and does not panic
 
+#### Scenario: A bevel and emboss layer is rejected before dispatch
+
+- **WHEN** `composite_gpu` is called on a document whose visible layer carries an enabled and present bevel and emboss
+- **THEN** it returns `Err(GpuError::UnsupportedLayerEffect)` and does not panic
+
 #### Scenario: A satin layer is rejected before dispatch
 
 - **WHEN** `composite_gpu` is called on a document whose visible layer carries an enabled and present satin
@@ -368,7 +374,7 @@ byte-identical to `composite_rgba` of the same document.
 
 #### Scenario: The effect document falls back to the CPU composite
 
-- **WHEN** `composite_gpu_or_cpu` is called on a document whose visible layer carries an enabled and present drop shadow, outer glow, inner shadow, inner glow, satin, stroke, color overlay, gradient overlay, or pattern overlay
+- **WHEN** `composite_gpu_or_cpu` is called on a document whose visible layer carries an enabled and present drop shadow, outer glow, inner shadow, inner glow, bevel and emboss, satin, stroke, color overlay, gradient overlay, or pattern overlay
 - **THEN** it returns the same buffer as `composite_rgba` for that document
 
 #### Scenario: A disabled or undecodable effect does not reject the GPU

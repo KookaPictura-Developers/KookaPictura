@@ -85,7 +85,7 @@ print(1 if effect.aligned else 0)
             "1",
             "1",
             "80.0",
-            "scrn",
+            "Scrn",
             "pictura-pattern",
             "50.0",
             "30.0",

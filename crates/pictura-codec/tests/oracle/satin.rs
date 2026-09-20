@@ -76,7 +76,7 @@ print(int(round(float(effect.color[b"Rd  "]))), int(round(float(effect.color[b"G
     let got: Vec<&str> = stdout.lines().map(str::trim).collect();
     assert_eq!(
         got,
-        ["Satin", "1", "1", "50.0", "mul", "1", "120", "8", "6", "10 20 30",],
+        ["Satin", "1", "1", "50.0", "Mltp", "1", "120", "8", "6", "10 20 30",],
         "psd-tools reads the authored ChFX effect; stdout={stdout}"
     );
 }

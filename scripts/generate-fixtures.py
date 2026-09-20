@@ -434,7 +434,7 @@ def drop_shadow() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Mode: Enumerated(b"BlnM", b"Mltp"),
             Key.Color: Descriptor(
                 {
                     b"Rd  ": Double(10.0),
@@ -487,7 +487,7 @@ def outer_glow() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"scrn"),
+            Key.Mode: Enumerated(b"BlnM", b"Scrn"),
             Key.Color: Descriptor(
                 {
                     b"Rd  ": Double(40.0),
@@ -540,7 +540,7 @@ def inner_shadow() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Mode: Enumerated(b"BlnM", b"Mltp"),
             Key.Color: Descriptor(
                 {
                     b"Rd  ": Double(10.0),
@@ -592,7 +592,7 @@ def inner_glow() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"scrn"),
+            Key.Mode: Enumerated(b"BlnM", b"Scrn"),
             Key.Color: Descriptor(
                 {
                     b"Rd  ": Double(255.0),
@@ -694,7 +694,7 @@ def color_overlay() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Mode: Enumerated(b"BlnM", b"Mltp"),
             Key.Color: Descriptor(
                 {
                     b"Rd  ": Double(10.0),
@@ -735,7 +735,7 @@ def gradient_overlay() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Mode: Enumerated(b"BlnM", b"Mltp"),
             Key.Opacity: UnitFloat(80.0, Unit.Percent),
             Key.Gradient: Descriptor(
                 {
@@ -796,7 +796,7 @@ def pattern_overlay() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"scrn"),
+            Key.Mode: Enumerated(b"BlnM", b"Scrn"),
             Key.Opacity: UnitFloat(80.0, Unit.Percent),
             b"Ptrn": Descriptor(
                 {
@@ -840,7 +840,7 @@ def satin() -> PSDImage:
             Key.Enabled: Bool(True),
             b"present": Bool(True),
             b"showInDialog": Bool(True),
-            Key.Mode: Enumerated(b"BlnM", b"mul "),
+            Key.Mode: Enumerated(b"BlnM", b"Mltp"),
             Key.Color: Descriptor(
                 {
                     b"Rd  ": Double(10.0),
@@ -871,6 +871,80 @@ def satin() -> PSDImage:
     return psd
 
 
+def bevel() -> PSDImage:
+    """RGB, a Base pixel layer plus an `ebbl` bevel & emboss pixel layer.
+
+    The effect object class id and the top-level key are both `ebbl`. The
+    highlight keys are `hglM`/`hglC`/`hglO` and the shadow keys are
+    `sdwM`/`sdwC`/`sdwO` (not `sglm`); the outer style is `OtrB` and the
+    directions are `In  `/`Out `. `uglg` is off, so the authored local `lagl`
+    of 120 is the effective angle. Every decoded key is non-default so the
+    oracle proves it survives.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Beveled", left=0, top=0
+    )
+    ebbl = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.HighlightMode: Enumerated(b"BlnM", b"Scrn"),
+            Key.HighlightColor: Descriptor(
+                {
+                    b"Rd  ": Double(250.0),
+                    b"Grn ": Double(240.0),
+                    b"Bl  ": Double(230.0),
+                },
+                classID=b"RGBC",
+            ),
+            Key.HighlightOpacity: UnitFloat(80.0, Unit.Percent),
+            Key.ShadowMode: Enumerated(b"BlnM", b"Mltp"),
+            Key.ShadowColor: Descriptor(
+                {
+                    b"Rd  ": Double(10.0),
+                    b"Grn ": Double(20.0),
+                    b"Bl  ": Double(30.0),
+                },
+                classID=b"RGBC",
+            ),
+            Key.ShadowOpacity: UnitFloat(70.0, Unit.Percent),
+            Key.BevelStyle: Enumerated(b"BESl", b"InrB"),
+            Key.BevelTechnique: Enumerated(b"bvlT", b"SfBL"),
+            Key.BevelDirection: Enumerated(b"BESs", b"In  "),
+            b"uglg": Bool(False),
+            Key.LocalLightingAngle: UnitFloat(120.0, Unit.Angle),
+            Key.LocalLightingAltitude: UnitFloat(30.0, Unit.Angle),
+            Key.StrengthRatio: UnitFloat(250.0, Unit.Percent),
+            Key.Blur: UnitFloat(7.0, Unit.Pixels),
+            Key.Softness: UnitFloat(3.0, Unit.Pixels),
+            Key.TransferSpec: Descriptor(
+                {Key.Name: String("Linear")}, classID=b"TrnS"
+            ),
+            Key.MappingShape: Descriptor(
+                {Key.Name: String("Linear")}, classID=b"TrnS"
+            ),
+            Key.InputRange: UnitFloat(50.0, Unit.Percent),
+            Key.AntiAlias: Bool(True),
+            b"useShape": Bool(False),
+            b"useTexture": Bool(False),
+            b"antialiasGloss": Bool(True),
+        },
+        classID=b"ebbl",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"ebbl": ebbl}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "group.psd": group,
@@ -891,6 +965,7 @@ FIXTURES = {
     "gradient_overlay.psd": gradient_overlay,
     "pattern_overlay.psd": pattern_overlay,
     "satin.psd": satin,
+    "bevel.psd": bevel,
 }
 
 

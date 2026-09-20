@@ -98,7 +98,7 @@ impl Default for GradSpec {
         Self {
             enabled: true,
             present: true,
-            blend: b"norm".to_vec(),
+            blend: b"Nrml".to_vec(),
             opacity: 100.0,
             stops: vec![(0.0, [0.0, 0.0, 0.0]), (4096.0, [255.0, 255.0, 255.0])],
             reverse: false,
@@ -140,7 +140,7 @@ fn spec_layer(spec: &GradSpec) -> Layer {
 #[test]
 fn gradient_overlay_decodes_typed_parameters() {
     let spec = GradSpec {
-        blend: b"mul ".to_vec(),
+        blend: b"Mltp".to_vec(),
         opacity: 80.0,
         stops: vec![(0.0, [0.0, 0.0, 0.0]), (4096.0, [255.0, 255.0, 255.0])],
         reverse: true,
@@ -292,7 +292,7 @@ fn malformed_or_absent_gradient_overlay_is_none() {
                 b"Md  ".to_vec(),
                 DescValue::Enum {
                     kind: b"BlnX".to_vec(),
-                    value: b"norm".to_vec(),
+                    value: b"Nrml".to_vec(),
                 },
             ),
         ]),
@@ -515,7 +515,7 @@ fn gradient_overlay_opacity_and_blend_shape_the_fill() {
         "lower opacity shows more of the red content"
     );
     let multiply = compose_gradient(spec_layer(&GradSpec {
-        blend: b"mul ".to_vec(),
+        blend: b"Mltp".to_vec(),
         ..Default::default()
     }));
     assert_ne!(multiply, full, "Normal and Multiply differ");

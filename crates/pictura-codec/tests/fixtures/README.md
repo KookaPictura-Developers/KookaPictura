@@ -39,6 +39,7 @@ not hand-edit these files.
 | `gradient_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Gradient` layer carrying an `lfx2` `GrFl` gradient overlay |
 | `pattern_overlay.psd` | RGB | 8x8 | `Base` pixel layer + `Patterned` layer carrying an `lfx2` `patternFill` pattern overlay referencing the 2x2 `Patt` pattern |
 | `satin.psd` | RGB | 8x8 | `Base` pixel layer + `Satin` layer carrying an `lfx2` `ChFX` satin |
+| `bevel.psd` | RGB | 8x8 | `Base` pixel layer + `Beveled` layer carrying an `lfx2` `ebbl` bevel & emboss |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -224,7 +225,7 @@ from psd_tools.terminology import Enum, Key, Klass, Unit
 
 drsh = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Mode: Enumerated(b"BlnM", b"Mltp"),
     Key.Color: Descriptor(
         {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
         classID=b"RGBC"),
@@ -263,7 +264,7 @@ from psd_tools.terminology import Enum, Key, Klass, Unit
 orgl = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
     b"showInDialog": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"scrn"),
+    Key.Mode: Enumerated(b"BlnM", b"Scrn"),
     Key.Color: Descriptor(
         {b"Rd  ": Double(40.0), b"Grn ": Double(80.0), b"Bl  ": Double(120.0)},
         classID=b"RGBC"),
@@ -300,7 +301,7 @@ from psd_tools.terminology import Enum, Key, Klass, Unit
 irsh = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
     b"showInDialog": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Mode: Enumerated(b"BlnM", b"Mltp"),
     Key.Color: Descriptor(
         {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
         classID=b"RGBC"),
@@ -339,7 +340,7 @@ from psd_tools.terminology import Enum, Key, Klass, Unit
 irgl = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
     b"showInDialog": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"scrn"),
+    Key.Mode: Enumerated(b"BlnM", b"Scrn"),
     Key.Color: Descriptor(
         {b"Rd  ": Double(255.0), b"Grn ": Double(255.0), b"Bl  ": Double(255.0)},
         classID=b"RGBC"),
@@ -416,7 +417,7 @@ from psd_tools.terminology import Enum, Key, Klass, Type, Unit
 sofi = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
     b"showInDialog": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Mode: Enumerated(b"BlnM", b"Mltp"),
     Key.Color: Descriptor(
         {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
         classID=b"RGBC"),
@@ -432,7 +433,7 @@ layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
 grfl = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
     b"showInDialog": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Mode: Enumerated(b"BlnM", b"Mltp"),
     Key.Opacity: UnitFloat(80.0, Unit.Percent),
     Key.Gradient: Descriptor({
         Key.Name: String("Black to White"),
@@ -459,7 +460,7 @@ layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
 pf = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
     b"showInDialog": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"scrn"),
+    Key.Mode: Enumerated(b"BlnM", b"Scrn"),
     Key.Opacity: UnitFloat(80.0, Unit.Percent),
     b"Ptrn": Descriptor({b"Nm  ": String("Pictura\x00"),
                          b"Idnt": String("pictura-pattern\x00")}, classID=b"Ptrn"),
@@ -490,7 +491,7 @@ are authored but ignored by the renderer.
 chfx = Descriptor({
     Key.Enabled: Bool(True), b"present": Bool(True),
     b"showInDialog": Bool(True),
-    Key.Mode: Enumerated(b"BlnM", b"mul "),
+    Key.Mode: Enumerated(b"BlnM", b"Mltp"),
     Key.Color: Descriptor(
         {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
         classID=b"RGBC"),
@@ -509,6 +510,54 @@ layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
                           classID=Klass.Null))
 ```
 
+
+`bevel.psd` is authored by the `bevel()` builder: the same `Base` pixel layer
+plus a `Beveled` pixel layer whose `lfx2` `DescriptorBlock2` carries one `ebbl`
+object. The effect object class id and the top-level key are both `ebbl`. The
+highlight keys are `hglM`/`hglC`/`hglO` and the shadow keys are
+`sdwM`/`sdwC`/`sdwO` (not `sglm`); the style enum includes `InrB` (Inner) and
+`OtrB` (Outer), and the directions are `In  `/`Out `. `uglg` is off, so the
+authored local `lagl` of 120 is the effective angle.
+
+```python
+# bevel(): object classID=b"ebbl", keys enab, present, showInDialog,
+# hglM/hglC/hglO, sdwM/sdwC/sdwO, bvlS (BESl/InrB), bvlT (bvlT/SfBL),
+# bvlD (BESs/In  ), uglg, lagl/Lald, srgR (depth), blur (size), Sftn (soften).
+ebbl = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.HighlightMode: Enumerated(b"BlnM", b"Scrn"),
+    Key.HighlightColor: Descriptor(
+        {b"Rd  ": Double(250.0), b"Grn ": Double(240.0), b"Bl  ": Double(230.0)},
+        classID=b"RGBC"),
+    Key.HighlightOpacity: UnitFloat(80.0, Unit.Percent),
+    Key.ShadowMode: Enumerated(b"BlnM", b"Mltp"),
+    Key.ShadowColor: Descriptor(
+        {b"Rd  ": Double(10.0), b"Grn ": Double(20.0), b"Bl  ": Double(30.0)},
+        classID=b"RGBC"),
+    Key.ShadowOpacity: UnitFloat(70.0, Unit.Percent),
+    Key.BevelStyle: Enumerated(b"BESl", b"InrB"),
+    Key.BevelTechnique: Enumerated(b"bvlT", b"SfBL"),
+    Key.BevelDirection: Enumerated(b"BESs", b"In  "),
+    b"uglg": Bool(False),
+    Key.LocalLightingAngle: UnitFloat(120.0, Unit.Angle),
+    Key.LocalLightingAltitude: UnitFloat(30.0, Unit.Angle),
+    Key.StrengthRatio: UnitFloat(250.0, Unit.Percent),
+    Key.Blur: UnitFloat(7.0, Unit.Pixels),
+    Key.Softness: UnitFloat(3.0, Unit.Pixels),
+    Key.TransferSpec: Descriptor({Key.Name: String("Linear")}, classID=b"TrnS"),
+    Key.MappingShape: Descriptor({Key.Name: String("Linear")}, classID=b"TrnS"),
+    Key.InputRange: UnitFloat(50.0, Unit.Percent),
+    Key.AntiAlias: Bool(True),
+    b"useShape": Bool(False),
+    b"useTexture": Bool(False),
+    b"antialiasGloss": Bool(True),
+}, classID=b"ebbl")
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"ebbl": ebbl},
+                          classID=Klass.Null))
+```
 
 ## Validate codec output
 

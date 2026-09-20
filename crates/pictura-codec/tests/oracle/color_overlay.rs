@@ -71,7 +71,7 @@ print(int(round(float(effect.color[b"Rd  "]))), int(round(float(effect.color[b"G
     let got: Vec<&str> = stdout.lines().map(str::trim).collect();
     assert_eq!(
         got,
-        ["ColorOverlay", "1", "1", "75.0", "mul", "10 20 30"],
+        ["ColorOverlay", "1", "1", "75.0", "Mltp", "10 20 30"],
         "psd-tools reads the authored SoFi effect; stdout={stdout}"
     );
 }

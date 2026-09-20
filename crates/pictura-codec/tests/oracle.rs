@@ -37,6 +37,7 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("gradient_overlay.psd", 8, 8, ColorMode::Rgb),
     ("pattern_overlay.psd", 8, 8, ColorMode::Rgb),
     ("satin.psd", 8, 8, ColorMode::Rgb),
+    ("bevel.psd", 8, 8, ColorMode::Rgb),
 ];
 
 fn fixture_dir() -> PathBuf {
@@ -479,7 +480,7 @@ print(1 if effect.layer_knocks_out else 0)
     let got: Vec<&str> = stdout.lines().map(str::trim).collect();
     assert_eq!(
         got,
-        ["DropShadow", "1", "1", "75.0", "mul", "5", "5", "0", "0",],
+        ["DropShadow", "1", "1", "75.0", "Mltp", "5", "5", "0", "0",],
         "psd-tools reads the authored DrSh effect; stdout={stdout}"
     );
 }
@@ -1391,3 +1392,6 @@ mod pattern_overlay;
 
 #[path = "oracle/satin.rs"]
 mod satin;
+
+#[path = "oracle/bevel.rs"]
+mod bevel;

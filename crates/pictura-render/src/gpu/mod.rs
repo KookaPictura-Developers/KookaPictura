@@ -298,6 +298,16 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         {
             return Err(GpuError::UnsupportedLayerEffect);
         }
+        // Only a bevel that would render (Inner + Smooth) rejects: a deferred
+        // style/technique is a CPU no-op, so the GPU can still run the layer.
+        if crate::layer_effects::decode_bevel_emboss(layer).is_some_and(|bevel| {
+            bevel.enabled
+                && bevel.present
+                && bevel.style == crate::layer_effects::BevelStyle::Inner
+                && bevel.technique == crate::layer_effects::BevelTechnique::Smooth
+        }) {
+            return Err(GpuError::UnsupportedLayerEffect);
+        }
         if crate::layer_effects::decode_satin(layer)
             .is_some_and(|satin| satin.enabled && satin.present)
         {

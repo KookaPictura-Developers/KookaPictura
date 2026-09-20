@@ -55,7 +55,7 @@ impl Default for SatinSpec {
         Self {
             enabled: true,
             present: true,
-            blend: b"mul ".to_vec(),
+            blend: b"Mltp".to_vec(),
             color: [0.0, 0.0, 0.0],
             opacity: 100.0,
             angle: 0.0,
@@ -109,7 +109,7 @@ fn satin_decodes_typed_parameters() {
         chfx(vec![
             (b"enab".to_vec(), DescValue::Bool(true)),
             (b"present".to_vec(), DescValue::Bool(true)),
-            (b"Md  ".to_vec(), blenm(b"mul ")),
+            (b"Md  ".to_vec(), blenm(b"Mltp")),
             (b"Clr ".to_vec(), rgbc(200.0, 100.0, 50.0)),
             (b"Opct".to_vec(), unit(60.0, PRC)),
             (b"lagl".to_vec(), unit(45.0, ANG)),
@@ -222,7 +222,7 @@ fn malformed_or_absent_satin_is_none() {
                 b"Md  ".to_vec(),
                 DescValue::Enum {
                     kind: b"BlnX".to_vec(),
-                    value: b"mul ".to_vec(),
+                    value: b"Mltp".to_vec(),
                 },
             ),
         ]),
@@ -462,7 +462,7 @@ fn satin_opacity_colour_and_blend_mode_shape_it() {
     let screen = compose(spec_satin(&SatinSpec {
         color: [0.0, 0.0, 255.0],
         opacity: 100.0,
-        blend: b"scrn".to_vec(),
+        blend: b"Scrn".to_vec(),
         ..Default::default()
     }));
     // The band pixel is black under multiply but keeps some red at half opacity.
