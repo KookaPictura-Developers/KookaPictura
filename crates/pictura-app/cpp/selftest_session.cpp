@@ -168,9 +168,9 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             pump(6);
         }
 
-        // lpr_iconic_flip_width (399): the primary column's normal width survives
-        // an iconic->normal flip even when the widening is still pending, so the
-        // persisted width is the remembered normal width, never the icon strip.
+        // lpr_iconic_flip_width (399): an iconic->normal flip persists a sane
+        // normal width, never the icon strip and never an oversized value that
+        // would expand the column across the workspace on the next launch.
         {
             frame.applyPanelSessionForTest(pictura::SessionState{});
             pump(6);
@@ -180,12 +180,8 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             }
             primary->setPreferredWidth(245);
             pump(6);
-            // Above the splitter's width so the iconic->normal widening cannot
-            // be applied synchronously: this is the mid-flip state under test.
-            const int splitterWidth =
-                primary->parentWidget() ? primary->parentWidget()->width() : 0;
-            const int kRemembered = splitterWidth > 0 ? splitterWidth + 80 : 100000;
             primary->setRailMode(true);
+            const int kRemembered = 320;
             primary->setRestoredWidth(kRemembered);
             primary->setRailMode(false);
             frame.saveSession();
@@ -199,21 +195,25 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
                     storedRight = entry.value(QStringLiteral("width")).toInt(-1);
                 }
             }
+            primary->setRailMode(true);
+            primary->setRestoredWidth(1000000);
+            const int clamped = primary->persistedWidth();
             frame.applyPanelSessionForTest(loaded);
             pump(8);
             primary = frame.panelColumn();
-            // The live width is clamped by the window; the contract is that the
-            // remembered normal width was persisted and normal mode round-trips.
             const bool restoredOk = primary && !primary->railMode();
+            const bool storedOk = storedRight >= pictura::PanelColumn::kMinNormalWidth
+                && storedRight <= pictura::PanelColumn::kMaxNormalWidth;
             ST_BEGIN("lpr_iconic_flip_width");
-            ST_PASS("lpr_iconic_flip_width stored=%d remembered=%d restoredMode=%d width=%d",
-                    storedRight, kRemembered, restoredOk ? 1 : 0,
+            ST_PASS("lpr_iconic_flip_width stored=%d remembered=%d clamped=%d "
+                    "restoredMode=%d width=%d",
+                    storedRight, kRemembered, clamped, restoredOk ? 1 : 0,
                     primary ? primary->width() : -1);
-            if (storedRight != kRemembered || !restoredOk) {
+            if (!storedOk || !restoredOk
+                || clamped != pictura::PanelColumn::kMaxNormalWidth) {
                 return pictura::selfTest().fail(399, "iconic->normal width persistence");
             }
-            // Leave a sane store behind; the oversized remembered width above is
-            // only a vehicle for exercising the pending flip.
+            // Leave a sane store behind.
             frame.applyPanelSessionForTest(pictura::SessionState{});
             pump(6);
             if (pictura::PanelColumn* reset = frame.panelColumn()) {

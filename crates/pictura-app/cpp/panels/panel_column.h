@@ -116,15 +116,21 @@ public:
     void setPreferredWidth(int width);
     // A migrated v6 per-column entry carries no width; use this until one is set.
     static constexpr int kDefaultNormalWidth = 220;
+    // The normal-mode width range. A restored or persisted width is clamped to it
+    // so a stale store can never expand a column across the workspace.
+    static constexpr int kMinNormalWidth = 180;
+    static constexpr int kMaxNormalWidth = 400;
     // Width to persist for this column: its own width in normal mode, or the
-    // remembered normal width while iconic. During an iconic->normal flip the
-    // widening may still be pending, so the remembered width is written instead
-    // of the transient icon-strip width (0 when neither is known yet).
+    // remembered normal width while iconic, clamped to the range above. During an
+    // iconic->normal flip the widening may still be pending, so the remembered
+    // width is written instead of the transient icon-strip width (0 when neither
+    // is known yet).
     int persistedWidth() const
     {
-        return railMode_ || (widthFlipPending_ && normalWidthBeforeIconic_ > 0)
+        const int width = railMode_ || (widthFlipPending_ && normalWidthBeforeIconic_ > 0)
             ? normalWidthBeforeIconic_
-            : width();
+            : this->width();
+        return width <= 0 ? 0 : qBound(kMinNormalWidth, width, kMaxNormalWidth);
     }
     // Apply a width loaded from the session. An iconic column records it as the
     // normal width to restore on the next toggle instead of resizing the strip.
