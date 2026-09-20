@@ -36,12 +36,12 @@
 
 ## 4. Batch 4 — Lock enforcement (issues 6, 9)
 
-- [ ] 4.1 Design D4: add the shared lock predicates in `crates/pictura-render` (a small new module, e.g. `crates/pictura-render/src/locks.rs`, or `document_ops`): `layer_move_locked(layer)` for `POSITION` and `layer_pixel_locked(layer)` for `PIXELS`/`TRANSPARENCY`, plus a `PaintError::Locked` (or shared error) refusal. Do not touch `topmost_pixel_layer*`.
-- [ ] 4.2 Issue 6: call the position predicate from the three `translate_layer*` functions and the move preview builder in `crates/pictura-render/src/document_ops/crop.rs:51-104`, and from content move in `crates/pictura-app/src/cxxqt_object/impl_selection.rs:124-163`. Leave structural reordering (`Move Layer Up/Down`) unblocked.
-- [ ] 4.3 Issue 9: call the pixel predicate from paint `Stroke::begin` (`crates/pictura-paint/src/stroke.rs:39-69`) or its bridge entry `crates/pictura-app/src/cxxqt_object/impl_paint.rs`, filter entry (`crates/pictura-app/src/cxxqt_object/impl_filters.rs:36-59` and the `apply_filter` path), fills, and content move. Enforce `TRANSPARENCY` where an edit changes alpha.
-- [ ] 4.4 Issue 9 UI: extend `ToolController::refreshCursor` (`crates/pictura-app/cpp/tools.cpp:523-527`) to consult a bridge query and set `Qt::ForbiddenCursor` for pixel-editing tools over a pixel-locked layer, and surface the refusal (status bar or a `QMessageBox::warning`, following `cpp/frame_menus.cpp:708`).
-- [ ] 4.5 Batch 4 tests: add Rust unit tests for each predicate and the refusal/no-write guarantee (`crates/pictura-render` tests, `crates/pictura-paint` tests, `crates/pictura-app/src/cxxqt_object/tests.rs`), and add `selftest_layer_locks.cpp` (codes 299+) for the Move-tool refusal, filter refusal, and locked cursor.
-- [ ] 4.6 Batch 4 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`, headless self-test; commit.
+- [x] 4.1 Design D4: add the shared lock predicates in `crates/pictura-render` (a small new module, e.g. `crates/pictura-render/src/locks.rs`, or `document_ops`): `layer_move_locked(layer)` for `POSITION` and `layer_pixel_locked(layer)` for `PIXELS`/`TRANSPARENCY`, plus a `PaintError::Locked` (or shared error) refusal. Do not touch `topmost_pixel_layer*`.
+- [x] 4.2 Issue 6: call the position predicate from the three `translate_layer*` functions and the move preview builder in `crates/pictura-render/src/document_ops/crop.rs:51-104`, and from content move in `crates/pictura-app/src/cxxqt_object/impl_selection.rs:124-163`. Leave structural reordering (`Move Layer Up/Down`) unblocked.
+- [x] 4.3 Issue 9: call the pixel predicate from paint `Stroke::begin` (`crates/pictura-paint/src/stroke.rs:39-69`) or its bridge entry `crates/pictura-app/src/cxxqt_object/impl_paint.rs`, filter entry (`crates/pictura-app/src/cxxqt_object/impl_filters.rs:36-59` and the `apply_filter` path), fills, and content move. Enforce `TRANSPARENCY` where an edit changes alpha.
+- [x] 4.4 Issue 9 UI: extend `ToolController::refreshCursor` (`crates/pictura-app/cpp/tools.cpp:523-527`) to consult a bridge query and set `Qt::ForbiddenCursor` for pixel-editing tools over a pixel-locked layer, and surface the refusal (status bar or a `QMessageBox::warning`, following `cpp/frame_menus.cpp:708`).
+- [x] 4.5 Batch 4 tests: add Rust unit tests for each predicate and the refusal/no-write guarantee (`crates/pictura-render` tests, `crates/pictura-paint` tests, `crates/pictura-app/src/cxxqt_object/tests.rs`), and add `selftest_layer_locks.cpp` (codes 299+) for the Move-tool refusal, filter refusal, and locked cursor.
+- [x] 4.6 Batch 4 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`, headless self-test; commit.
 
 ## 5. Batch 5 — Persistence and import identity (issues 1, 3, 4)
 

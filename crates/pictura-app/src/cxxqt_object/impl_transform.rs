@@ -5,7 +5,7 @@ use super::state::TransformSession;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QString};
-use pictura_core::{LockFlags, PsdRect};
+use pictura_core::{layer_move_locked, LockFlags, PsdRect};
 use pictura_render::LayerTransform;
 
 /// Screen-pixel tolerance for a scale-handle hit.
@@ -702,6 +702,19 @@ impl qobject::PictureView {
         let Some(index) = self.as_ref().move_cache_target() else {
             return false;
         };
+        {
+            let rust = self.rust();
+            let Some(layer) = rust
+                .doc
+                .as_ref()
+                .and_then(|doc| doc.layers.get(index as usize))
+            else {
+                return false;
+            };
+            if layer_move_locked(layer) {
+                return false;
+            }
+        }
         if self.as_ref().move_cache_valid(index) {
             {
                 let mut rust = self.as_mut().rust_mut();

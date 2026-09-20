@@ -35,6 +35,8 @@ pub enum FilterError {
     Unsupported(String),
     #[error("invalid parameters: {0}")]
     InvalidParams(String),
+    #[error("layer is pixel-locked")]
+    Locked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

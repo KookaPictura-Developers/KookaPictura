@@ -3,7 +3,7 @@
 //! Contract: `docs/dev/m6c-filter-integration.md`. The filter runs on channels
 //! `0,1,2` only; the transparency channel (`-1`) is never touched.
 
-use pictura_core::{Layer, LayerMask, PixelBuffer};
+use pictura_core::{layer_pixel_locked, Layer, LayerMask, PixelBuffer};
 use pictura_filters::{Filter, FilterError};
 
 use crate::channel;
@@ -25,6 +25,9 @@ pub fn apply_filter(
     let lh = layer.rect.height();
     if lw <= 0 || lh <= 0 {
         return Ok(());
+    }
+    if layer_pixel_locked(layer) {
+        return Err(FilterError::Locked);
     }
     let (lw, lh) = (lw as usize, lh as usize);
     let n = lw * lh;
@@ -290,5 +293,39 @@ mod tests {
         let err =
             apply_filter(&mut layer, &Filter::Median { radius: 200 }, None, false).unwrap_err();
         assert!(matches!(err, FilterError::InvalidParams(_)), "{err:?}");
+    }
+
+    #[test]
+    fn pixel_locked_layer_is_refused_and_unchanged() {
+        let mut layer = step_layer(8, 8, 255);
+        layer.lock = LockFlags::default().with(LockFlags::PIXELS, true);
+        let before = layer.clone();
+        let err = apply_filter(
+            &mut layer,
+            &Filter::GaussianBlur { radius: 2.0 },
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert!(matches!(err, FilterError::Locked), "{err:?}");
+        assert_eq!(layer, before, "refusal leaves every channel bit-identical");
+    }
+
+    #[test]
+    fn position_and_transparency_locks_do_not_block_a_filter() {
+        for flag in [LockFlags::POSITION, LockFlags::TRANSPARENCY] {
+            let mut layer = step_layer(8, 8, 255);
+            layer.lock = LockFlags::default().with(flag, true);
+            assert!(
+                apply_filter(
+                    &mut layer,
+                    &Filter::GaussianBlur { radius: 2.0 },
+                    None,
+                    false
+                )
+                .is_ok(),
+                "flag {flag} must not refuse an opaque-preserving filter"
+            );
+        }
     }
 }

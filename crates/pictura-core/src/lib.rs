@@ -535,6 +535,24 @@ impl LockFlags {
     }
 }
 
+/// True when a layer's `POSITION` lock forbids moving it.
+///
+/// Lives in `pictura-core` (the crate every mutation entry shares) so
+/// `pictura-paint` need not depend on `pictura-render`.
+pub fn layer_move_locked(layer: &Layer) -> bool {
+    layer.lock.contains(LockFlags::POSITION)
+}
+
+/// True when a layer's `PIXELS` lock forbids mutating its pixels.
+pub fn layer_pixel_locked(layer: &Layer) -> bool {
+    layer.lock.contains(LockFlags::PIXELS)
+}
+
+/// True when a layer's `TRANSPARENCY` lock forbids an alpha-changing edit.
+pub fn layer_transparency_locked(layer: &Layer) -> bool {
+    layer.lock.contains(LockFlags::TRANSPARENCY)
+}
+
 /// A pixel layer or a group (`is_group`). Groups carry `children`, bottom-first
 /// like everything else. `rect` is the layer bounds; for groups it may be empty.
 ///

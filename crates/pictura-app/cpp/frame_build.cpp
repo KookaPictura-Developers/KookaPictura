@@ -160,6 +160,11 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     // is refreshed from the dedicated preview signal.
     connect(tools_, &ToolController::selectionPreviewChanged, this,
             &PicturaMainWindow::refreshSelectionOverlay);
+    // A locked pixel edit is refused silently at the bridge; report it so the
+    // user learns why nothing was painted.
+    connect(tools_, &ToolController::pixelEditRefused, this, [this](const QString& message) {
+        statusBar()->showMessage(message, 4000);
+    });
 
     if (colorState_) {
         tools_->setForeground(colorState_->foreground());

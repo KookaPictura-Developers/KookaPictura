@@ -2,10 +2,12 @@
 //! `Layer via Copy`/`Layer via Cut` primitives and translates the resulting
 //! layer's rectangle.
 
-use pictura_core::{Document, LayerMask};
+use pictura_core::{
+    layer_move_locked, layer_pixel_locked, layer_transparency_locked, Document, LayerMask,
+};
 
 use super::merge::{merge_scope, MergeScope};
-use super::paths::resolve_path_mut;
+use super::paths::{resolve_path, resolve_path_mut};
 use super::via::{layer_via_copy, layer_via_cut};
 use crate::document_ops::canvas::offset_rect;
 
@@ -22,6 +24,18 @@ pub fn move_selection_content(
     dy: i32,
     duplicate: bool,
 ) -> bool {
+    // A locked source cannot contribute pixels: a position lock refuses the
+    // move, a pixel lock refuses any mutation, and a transparency lock refuses
+    // the cut that clears the source alpha (a duplicate leaves it intact).
+    let Some(source) = resolve_path(doc, source_path) else {
+        return false;
+    };
+    if layer_move_locked(source)
+        || layer_pixel_locked(source)
+        || (!duplicate && layer_transparency_locked(source))
+    {
+        return false;
+    }
     let new_path = if duplicate {
         layer_via_copy(doc, source_path, mask)
     } else {
@@ -203,5 +217,34 @@ mod tests {
             false
         ));
         assert_eq!(doc, before, "zero coverage moves nothing");
+    }
+
+    #[test]
+    fn locked_source_refuses_content_move() {
+        let mask = selection_mask(vec![255; 16]);
+
+        for flag in [LockFlags::PIXELS, LockFlags::POSITION] {
+            let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+            doc.layers[0].lock = LockFlags::default().with(flag, true);
+            let before = doc.clone();
+            assert!(
+                !move_selection_content(&mut doc, "0", &mask, 2, 0, false),
+                "flag {flag} refuses the move"
+            );
+            assert_eq!(doc, before, "refusal leaves the document unchanged");
+        }
+
+        let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::TRANSPARENCY, true);
+        let before = doc.clone();
+        assert!(
+            !move_selection_content(&mut doc, "0", &mask, 2, 0, false),
+            "a transparency lock refuses the cut"
+        );
+        assert_eq!(doc, before);
+        assert!(
+            move_selection_content(&mut doc, "0", &mask, 2, 0, true),
+            "a duplicate leaves the source alpha intact"
+        );
     }
 }
