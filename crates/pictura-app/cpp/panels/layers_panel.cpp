@@ -1,5 +1,6 @@
 #include "layers_panel.h"
 
+#include "layer_new_dialog.h"
 #include "layers_filter_bar.h"
 #include "layers_filter_proxy.h"
 #include "layers_panel_internal.h"
@@ -166,6 +167,7 @@ LayersPanel::LayersPanel(QWidget* parent)
                              QStringLiteral("position"));
     lockNesting_ = makeLock(QStringLiteral("layers.lockNesting"), tr("Lock Nesting"),
                             QStringLiteral("nesting"));
+    lockNesting_->setVisible(false);
     lockAll_ = makeLock(QStringLiteral("layers.lockAll"), tr("Lock All"),
                         QStringLiteral("all"));
     locks->addStretch(1);
@@ -434,6 +436,8 @@ void LayersPanel::refresh()
             row.hasAdjustment = view_->layer_row_has_adjustment(i);
             row.expandable = view_->layer_row_expandable(i);
             row.childCount = view_->layer_row_child_count(i);
+            row.linked = view_->layer_row_linked(i);
+            row.placed = view_->layer_row_placed(i);
             row.thumbnail = view_->layer_row_thumbnail(i, thumbSize, thumbEntireDocument_);
             row.maskThumbnail = view_->layer_row_mask_thumbnail(i, thumbSize);
             rows.push_back(std::move(row));
@@ -592,7 +596,7 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                             if (row.isValid()
                                 && row.data(KindRole).toString()
                                     == QLatin1String("background")) {
-                                view_->layer_from_background(paths.first());
+                                openBackgroundConversion(paths.first());
                             } else {
                                 view_->duplicate_layers(paths);
                             }
@@ -653,23 +657,50 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             const QPoint pos = mouse->position().toPoint();
             const QModelIndex index = tree_->indexAt(pos);
             if (index.isValid()) {
-                if (delegate_->nameRect(tree_->visualRect(index), index).contains(pos)) {
-                    tree_->edit(index);
-                } else if (index.data(KindRole).toString() == QLatin1String("background")) {
-                    // A double-click outside the name converts the Background
-                    // rather than invoking the layer-style no-op.
-                    if (view_) {
-                        view_->layer_from_background(pathForProxyIndex(index));
-                        refresh();
+                const QString path = pathForProxyIndex(index);
+                if (index.data(KindRole).toString() == QLatin1String("background")) {
+                    // A control keeps its own action; any other content-band
+                    // double-click converts the Background through the dialog.
+                    const QRect vr = tree_->visualRect(index);
+                    const bool control = delegate_->eyeRect(vr).contains(pos)
+                        || delegate_->thumbRect(vr, index).contains(pos);
+                    if (!control) {
+                        openBackgroundConversion(path);
                     }
+                } else if (delegate_->nameRect(tree_->visualRect(index), index).contains(pos)) {
+                    tree_->edit(index);
                 } else {
-                    openLayerStyle(pathForProxyIndex(index));
+                    openLayerStyle(path);
                 }
                 return true;
             }
         }
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void LayersPanel::openBackgroundConversion(const QString& path)
+{
+    if (!view_ || path.isEmpty()) {
+        return;
+    }
+    LayerNewSpec spec;
+    if (bgConvertArmed_) {
+        if (!bgConvertAccept_) {
+            return;
+        }
+        spec.name = bgConvertName_;
+        spec.color = bgConvertColor_;
+    } else {
+        const QString defaultName = view_->next_layer_name(QStringLiteral("Layer"));
+        if (!LayerNewDialog::getNameColor(this, defaultName, &spec)) {
+            return;
+        }
+    }
+    if (view_->convert_background(path, spec.name, spec.color)) {
+        refresh();
+        selectPath(path);
+    }
 }
 
 void LayersPanel::openLayerStyle(const QString&)

@@ -10,18 +10,24 @@
 #include <QtCore/QMimeData>
 #include <QtCore/QModelIndex>
 #include <QtCore/QPoint>
+#include <QtCore/QRect>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtGui/QAction>
 #include <QtGui/QDragEnterEvent>
 #include <QtGui/QDragMoveEvent>
 #include <QtGui/QDropEvent>
+#include <QtGui/QImage>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QPainter>
+#include <QtGui/QPalette>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QStyle>
+#include <QtWidgets/QStyleOptionViewItem>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QTreeView>
 
@@ -479,7 +485,10 @@ QColor LayersPanel::rowGutterColorForTest(const QString& path) const
     option.state = QStyle::State_Enabled;
     delegate_->paint(&painter, option, index);
     painter.end();
-    return image.pixelColor(2, vr.height() / 2);
+    // The tint now lives in the eye toggle's own background, not the whole
+    // gutter: sample just inside its top-left corner, above the glyph.
+    const QRect eye = delegate_->eyeRect(option.rect);
+    return image.pixelColor(eye.left() + 2, eye.top() + 1);
 }
 
 bool LayersPanel::editTriggersDisabledForTest() const
@@ -611,6 +620,149 @@ bool LayersPanel::ctrlClickThumbnailForTest(const QString& path)
 bool LayersPanel::inlineEditorOpenForTest() const
 {
     return tree_ && tree_->viewport()->findChild<QLineEdit*>() != nullptr;
+}
+
+bool LayersPanel::rootDropEnabledForTest() const
+{
+    return model_ && model_->flags(QModelIndex()).testFlag(Qt::ItemIsDropEnabled);
+}
+
+void LayersPanel::beginDragCursorForTest()
+{
+    if (tree_) {
+        tree_->enterDragCursor();
+    }
+}
+
+void LayersPanel::endDragCursorForTest()
+{
+    if (tree_) {
+        tree_->leaveDragCursor();
+    }
+}
+
+int LayersPanel::dragCursorShapeForTest() const
+{
+    return tree_ ? tree_->cursorShapeForTest() : -1;
+}
+
+bool LayersPanel::doubleClickChevronForTest(const QString& path)
+{
+    if (!delegate_ || !tree_) {
+        return false;
+    }
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !index.data(ExpandableRole).toBool()) {
+        return false;
+    }
+    const QPoint pos =
+        delegate_->chevronRect(tree_->visualRect(index), index.data(DepthRole).toInt()).center();
+    QMouseEvent dbl(QEvent::MouseButtonDblClick, pos, tree_->viewport()->mapToGlobal(pos),
+                    Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &dbl);
+    return tree_->viewport()->findChild<QLineEdit*>() != nullptr;
+}
+
+void LayersPanel::setBackgroundConvertForTest(bool accept, const QString& name, int color)
+{
+    bgConvertArmed_ = true;
+    bgConvertAccept_ = accept;
+    bgConvertName_ = name;
+    bgConvertColor_ = color;
+}
+
+bool LayersPanel::lockNestingHiddenForTest() const
+{
+    return lockNesting_ && lockNesting_->isHidden();
+}
+
+bool LayersPanel::rowLinkedForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(LayerRowLinkedRole).toBool();
+}
+
+bool LayersPanel::rowPlacedForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(LayerRowPlacedRole).toBool();
+}
+
+bool LayersPanel::rowNameItalicForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    return index.isValid() && delegate_ && delegate_->nameFont(tree_->font(), index).italic();
+}
+
+bool LayersPanel::rowNameUnderlineForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    return index.isValid() && delegate_ && delegate_->nameFont(tree_->font(), index).underline();
+}
+
+int LayersPanel::rowHeightForTest() const
+{
+    return delegate_ ? delegate_->rowHeight() : 0;
+}
+
+QRect LayersPanel::rowThumbRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    return delegate_->thumbRect(QRect(0, 0, vr.width(), vr.height()), index);
+}
+
+QRect LayersPanel::rowEyeRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    return delegate_->eyeRect(QRect(0, 0, vr.width(), vr.height()));
+}
+
+QRect LayersPanel::rowNameRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    return delegate_->nameRect(QRect(0, 0, vr.width(), vr.height()), index);
+}
+
+QImage LayersPanel::rowImageForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    if (vr.width() <= 0 || vr.height() <= 0) {
+        return {};
+    }
+    QImage image(vr.size(), QImage::Format_ARGB32_Premultiplied);
+    const QColor base(128, 128, 128);
+    image.fill(base);
+    QPainter painter(&image);
+    QStyleOptionViewItem option;
+    option.rect = QRect(0, 0, vr.width(), vr.height());
+    QPalette palette = tree_->palette();
+    palette.setColor(QPalette::Base, base);
+    palette.setColor(QPalette::Highlight, QColor(0, 0, 255));
+    palette.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
+    option.palette = palette;
+    option.widget = tree_;
+    option.font = tree_->font();
+    option.state = QStyle::State_Enabled;
+    if (tree_->selectionModel() && tree_->selectionModel()->isSelected(index)) {
+        option.state |= QStyle::State_Selected;
+    }
+    delegate_->paint(&painter, option, index);
+    painter.end();
+    return image;
 }
 
 } // namespace pictura

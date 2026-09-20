@@ -99,16 +99,52 @@ void LayerNewDialog::syncNeutralForMode()
     }
 }
 
+LayerNewDialog::LayerNewDialog(const QString& defaultName, QWidget* parent)
+    : QDialog(parent)
+    , nameColorOnly_(true)
+{
+    setWindowTitle(QStringLiteral("Layer from Background"));
+    nameEdit_ = new QLineEdit(defaultName, this);
+    colorCombo_ = new QComboBox(this);
+    colorCombo_->addItem(QStringLiteral("None"), 0);
+    colorCombo_->addItem(QStringLiteral("Red"), 1);
+    colorCombo_->addItem(QStringLiteral("Orange"), 2);
+    colorCombo_->addItem(QStringLiteral("Yellow"), 3);
+    colorCombo_->addItem(QStringLiteral("Green"), 4);
+    colorCombo_->addItem(QStringLiteral("Blue"), 5);
+    colorCombo_->addItem(QStringLiteral("Violet"), 6);
+    colorCombo_->addItem(QStringLiteral("Gray"), 7);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &LayerNewDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &LayerNewDialog::reject);
+
+    auto* form = new QFormLayout(this);
+    form->addRow(QStringLiteral("Name:"), nameEdit_);
+    form->addRow(QStringLiteral("Color:"), colorCombo_);
+    form->addRow(buttons);
+}
+
 LayerNewSpec LayerNewDialog::spec() const
 {
     LayerNewSpec result;
     result.name = nameEdit_->text();
     result.color = colorCombo_->currentData().toInt();
-    result.blend = modeCombo_->currentData().toString();
-    result.opacity = qRound(opacitySpin_->value());
+    result.blend = modeCombo_ ? modeCombo_->currentData().toString() : QStringLiteral("norm");
+    result.opacity = opacitySpin_ ? qRound(opacitySpin_->value()) : 255;
     result.neutralFill = neutralCheck_ && neutralCheck_->isChecked();
     result.clipping = clippingCheck_ && clippingCheck_->isChecked();
     return result;
+}
+
+bool LayerNewDialog::getNameColor(QWidget* parent, const QString& defaultName, LayerNewSpec* out)
+{
+    LayerNewDialog dialog(defaultName, parent);
+    if (dialog.exec() != QDialog::Accepted) {
+        return false;
+    }
+    *out = dialog.spec();
+    return true;
 }
 
 bool LayerNewDialog::get(bool group, QWidget* parent, LayerNewSpec* out)

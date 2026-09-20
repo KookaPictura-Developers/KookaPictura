@@ -11,8 +11,10 @@
 class QComboBox;
 class QColor;
 class QEvent;
+class QImage;
 class QMenu;
 class QModelIndex;
+class QRect;
 class QToolButton;
 class QTreeView;
 
@@ -110,6 +112,25 @@ public:
     bool ctrlClickThumbnailForTest(const QString& path);
     bool inlineEditorOpenForTest() const;
 
+    // Round-3 hooks: root drop capability, drag cursor, the rename band, the
+    // Background conversion dialog, row roles/typography, and painted geometry.
+    bool rootDropEnabledForTest() const;
+    void beginDragCursorForTest();
+    void endDragCursorForTest();
+    int dragCursorShapeForTest() const;
+    bool doubleClickChevronForTest(const QString& path);
+    void setBackgroundConvertForTest(bool accept, const QString& name, int color);
+    bool lockNestingHiddenForTest() const;
+    bool rowLinkedForTest(const QString& path) const;
+    bool rowPlacedForTest(const QString& path) const;
+    bool rowNameItalicForTest(const QString& path) const;
+    bool rowNameUnderlineForTest(const QString& path) const;
+    int rowHeightForTest() const;
+    QImage rowImageForTest(const QString& path) const;
+    QRect rowThumbRectForTest(const QString& path) const;
+    QRect rowEyeRectForTest(const QString& path) const;
+    QRect rowNameRectForTest(const QString& path) const;
+
     // Filter self-test hooks (lfs_*). Each builds a LayerFilter over the current
     // one, updates the bar, and applies it to the proxy.
     QStringList visiblePathsForTest() const;
@@ -150,6 +171,7 @@ private:
     void openPanelOptions();
     void persistOptions();
     void openLayerStyle(const QString& path);
+    void openBackgroundConversion(const QString& path);
 
     void applyFilter(const LayerFilter& filter);
     void expandMatchingGroups();
@@ -191,6 +213,12 @@ private:
     QHash<QString, bool> soloSnapshot_;
     bool syncing_ = false;
     QMetaObject::Connection viewConnection_;
+
+    // Test seam: skip the modal Background-conversion dialog and use this result.
+    bool bgConvertArmed_ = false;
+    bool bgConvertAccept_ = false;
+    QString bgConvertName_;
+    int bgConvertColor_ = 0;
 };
 
 } // namespace pictura

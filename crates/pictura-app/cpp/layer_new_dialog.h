@@ -29,20 +29,29 @@ class LayerNewDialog : public QDialog {
 public:
     explicit LayerNewDialog(bool group, QWidget* parent = nullptr);
 
+    // Name-and-color-only variant used to convert the Background to a normal
+    // layer; `defaultName` seeds the name edit.
+    explicit LayerNewDialog(const QString& defaultName, QWidget* parent = nullptr);
+
     LayerNewSpec spec() const;
 
     // Run the dialog modally; returns true and fills `out` on OK.
     static bool get(bool group, QWidget* parent, LayerNewSpec* out);
 
+    // Run the name-and-color-only dialog modally.
+    static bool getNameColor(QWidget* parent, const QString& defaultName, LayerNewSpec* out);
+
     // Self-test hooks: inspect or drive the dialog without showing it.
     bool neutralEnabledForTest() const;
     bool clippingVisibleForTest() const;
+    bool nameColorOnlyForTest() const { return nameColorOnly_; }
     void setModeForTest(const QString& blendKey);
 
 private:
     void syncNeutralForMode();
 
     bool group_ = false;
+    bool nameColorOnly_ = false;
     QLineEdit* nameEdit_ = nullptr;
     QComboBox* colorCombo_ = nullptr;
     QComboBox* modeCombo_ = nullptr;

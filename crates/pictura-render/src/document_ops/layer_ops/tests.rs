@@ -408,6 +408,10 @@ fn layer_from_background_clears_flag_and_unlocks() {
     assert!(layer_from_background(&mut doc, "0"));
     assert!(!doc.layers[0].background);
     assert_eq!(doc.layers[0].lock.bits(), 0, "unlocked");
+    assert_eq!(
+        doc.layers[0].name, "Layer 1",
+        "renamed to the next free name"
+    );
 
     let before = doc.clone();
     assert!(!layer_from_background(&mut doc, "0"), "not a background");

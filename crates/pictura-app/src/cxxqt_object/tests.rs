@@ -883,3 +883,34 @@ fn brush_shortcut_delta_maps_us_and_native_keys() {
     assert_eq!(brush_shortcut_delta(0x5D, 35, false, false), 0);
     assert_eq!(brush_shortcut_delta(0x5D, 35, true, false), 0);
 }
+
+#[test]
+fn placed_smart_object_predicate_accepts_external_and_alias() {
+    use pictura_core::{SmartObject, SmartObjectKind};
+
+    let with_kind = |kind: SmartObjectKind| {
+        let mut layer = pixel_layer("placed", 2, 2, (1, 2, 3));
+        layer.smart_object = Some(SmartObject {
+            kind,
+            ..Default::default()
+        });
+        layer
+    };
+
+    assert!(is_placed_smart_object(&with_kind(
+        SmartObjectKind::External
+    )));
+    assert!(is_placed_smart_object(&with_kind(SmartObjectKind::Alias)));
+    assert!(!is_placed_smart_object(&with_kind(
+        SmartObjectKind::Embedded
+    )));
+    assert!(!is_placed_smart_object(&with_kind(
+        SmartObjectKind::Unresolved
+    )));
+    assert!(!is_placed_smart_object(&pixel_layer(
+        "plain",
+        2,
+        2,
+        (1, 2, 3)
+    )));
+}

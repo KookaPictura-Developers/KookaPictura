@@ -114,8 +114,7 @@ pub mod qobject {
         #[qinvokable]
         fn document_depth_bits(&self) -> i32;
 
-        /// The image to display. Never null. Returns the cached image when clean,
-        /// otherwise rebuilds it from the document composite.
+        /// The image to display: cached when clean, else rebuilt.
         #[qinvokable]
         fn image(self: Pin<&mut Self>) -> QImage;
 
@@ -158,9 +157,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_blend(&self, i: i32) -> QString;
 
-        /// Set layer `i`'s blend mode from a 4-byte PSD `key`. Captures history,
-        /// marks dirty, recomposites, and emits [`changed`]. Returns false for an
-        /// unknown key or when layer `i` is out of range, leaving state unchanged.
+        /// Set layer `i`'s blend mode from a 4-byte PSD `key`; false on an unknown key.
         #[qinvokable]
         fn set_layer_blend(self: Pin<&mut Self>, i: i32, key: &QString) -> bool;
 
@@ -168,10 +165,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_opacity(&self, i: i32) -> i32;
 
-        /// Set layer `i`'s opacity, clamped to `0..=255`. Refused (false, state
-        /// unchanged) for the Background layer or a fully locked layer. Captures
-        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
-        /// false when layer `i` is out of range.
+        /// Set layer `i`'s opacity, clamped to `0..=255`; refused for the Background.
         #[qinvokable]
         fn set_layer_opacity(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
 
@@ -180,10 +174,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_fill(&self, i: i32) -> i32;
 
-        /// Set layer `i`'s fill, clamped to `0..=255`. Refused (false, state
-        /// unchanged) for a group, the Background layer, or a fully locked layer
-        /// (CS6 exposes no group Fill). Captures history, marks dirty,
-        /// recomposites, and emits [`changed`].
+        /// Set layer `i`'s fill, clamped to `0..=255`; refused for a group or Background.
         #[qinvokable]
         fn set_layer_fill(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
 
@@ -192,10 +183,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_lock(&self, i: i32) -> i32;
 
-        /// Set one lock flag of layer `i`. `flag` is `"transparency"`, `"pixels"`,
-        /// `"position"`, or `"all"`; an unknown flag returns false. Refused for
-        /// the Background layer. Captures history, recomposites, and emits
-        /// [`changed`].
+        /// Set one lock flag of layer `i` (`transparency`/`pixels`/`position`/`all`).
         #[qinvokable]
         fn set_layer_lock(self: Pin<&mut Self>, i: i32, flag: &QString, on: bool) -> bool;
 
@@ -203,9 +191,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_color(&self, i: i32) -> i32;
 
-        /// Set layer `i`'s color label. A `value` outside `0..=7` returns false.
-        /// Refused for the Background layer. Captures history, recomposites, and
-        /// emits [`changed`].
+        /// Set layer `i`'s color label (`0..=7`); refused for the Background.
         #[qinvokable]
         fn set_layer_color(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
 
@@ -214,42 +200,27 @@ pub mod qobject {
         #[qinvokable]
         fn set_layer_name(self: Pin<&mut Self>, i: i32, name: &QString) -> bool;
 
-        /// Swap layer `i` with the neighbour `delta` positions away in the
-        /// bottom-first list. Captures history, marks dirty, recomposites, and
-        /// emits [`changed`]. Returns false when either position is out of range.
+        /// Swap layer `i` with the neighbour `delta` positions away; one undo state.
         #[qinvokable]
         fn move_layer(self: Pin<&mut Self>, i: i32, delta: i32) -> bool;
 
-        /// Insert a new empty transparent raster layer above layer `above`
-        /// (`above < 0` or out of range means the top of the stack). Captures
-        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
-        /// the new index, or -1 without a document.
+        /// Insert a new transparent raster layer above `above`; returns the new index.
         #[qinvokable]
         fn add_layer(self: Pin<&mut Self>, above: i32) -> i32;
 
-        /// Insert an empty group above layer `above`. Captures history, marks
-        /// dirty, recomposites, and emits [`changed`]. Returns the new index, or
-        /// -1 without a document.
+        /// Insert an empty group above `above`; returns the new index, or -1.
         #[qinvokable]
         fn add_group(self: Pin<&mut Self>, above: i32) -> i32;
 
-        /// Deep-clone layer `index` (children, mask, adjustment, and all
-        /// attributes) directly above it, named `"<name> copy"`. Captures
-        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
-        /// the new index, or -1 when `index` is out of range.
+        /// Deep-clone layer `index` above itself as `"<name> copy"`; new index or -1.
         #[qinvokable]
         fn duplicate_layer(self: Pin<&mut Self>, index: i32) -> i32;
 
-        /// Wrap layer `index` in a new group at the same stack position.
-        /// Captures history, marks dirty, recomposites, and emits [`changed`].
-        /// Returns the group's index, or -1 when `index` is out of range.
+        /// Wrap layer `index` in a new group in place; returns the group's index.
         #[qinvokable]
         fn group_layer(self: Pin<&mut Self>, index: i32) -> i32;
 
-        /// Splice group `index`'s children into its parent position. Captures
-        /// history, marks dirty, recomposites, and emits [`changed`]. Returns
-        /// false, leaving state unchanged, when `index` is out of range or not
-        /// a group.
+        /// Splice group `index`'s children into its parent position; false when not a group.
         #[qinvokable]
         fn ungroup_layer(self: Pin<&mut Self>, index: i32) -> bool;
 
@@ -340,6 +311,18 @@ pub mod qobject {
         /// Mask thumbnail of row `i` scaled to `size`, or null without a mask.
         #[qinvokable]
         fn layer_row_mask_thumbnail(&self, i: i32, size: i32) -> QImage;
+
+        /// Whether row `i`'s path is in the frame's link set.
+        #[qinvokable]
+        fn layer_row_linked(&self, i: i32) -> bool;
+
+        /// Whether row `i` is a placed (external/alias) smart object.
+        #[qinvokable]
+        fn layer_row_placed(&self, i: i32) -> bool;
+
+        /// `Prefix N` for the next free name in the whole tree.
+        #[qinvokable]
+        fn next_layer_name(&self, prefix: &QString) -> QString;
 
         /// Rename the node at `path`. Recomposites and records one undo state
         /// on success. Returns false for a path that does not resolve.
@@ -531,6 +514,16 @@ pub mod qobject {
         /// one "Layer from Background" state; false when not the Background.
         #[qinvokable]
         fn layer_from_background(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// `Layer from Background…` with the dialog's name/color: clear the
+        /// flag, unlock, rename, and set the color. Records one state.
+        #[qinvokable]
+        fn convert_background(
+            self: Pin<&mut Self>,
+            path: &QString,
+            name: &QString,
+            color: i32,
+        ) -> bool;
 
         /// `Background From Layer`: flag `path`, fill transparency with the
         /// background color, and move it to the bottom. Records one state;
