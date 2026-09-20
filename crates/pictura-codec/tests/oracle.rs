@@ -33,6 +33,8 @@ const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("inner_shadow.psd", 8, 8, ColorMode::Rgb),
     ("inner_glow.psd", 8, 8, ColorMode::Rgb),
     ("stroke.psd", 8, 8, ColorMode::Rgb),
+    ("stroke_gradient.psd", 8, 8, ColorMode::Rgb),
+    ("stroke_pattern.psd", 8, 8, ColorMode::Rgb),
     ("color_overlay.psd", 8, 8, ColorMode::Rgb),
     ("gradient_overlay.psd", 8, 8, ColorMode::Rgb),
     ("pattern_overlay.psd", 8, 8, ColorMode::Rgb),
@@ -1370,31 +1372,27 @@ fn scratch_dir(tag: &str) -> PathBuf {
     dir
 }
 
-#[path = "oracle/outer_glow.rs"]
-mod outer_glow;
-
-#[path = "oracle/inner_shadow.rs"]
-mod inner_shadow;
-
-#[path = "oracle/inner_glow.rs"]
-mod inner_glow;
-
-#[path = "oracle/stroke.rs"]
-mod stroke;
-
-#[path = "oracle/color_overlay.rs"]
-mod color_overlay;
-
-#[path = "oracle/gradient_overlay.rs"]
-mod gradient_overlay;
-
-#[path = "oracle/pattern_overlay.rs"]
-mod pattern_overlay;
-
-#[path = "oracle/satin.rs"]
-mod satin;
-
 #[path = "oracle/bevel.rs"]
 mod bevel;
+#[path = "oracle/color_overlay.rs"]
+mod color_overlay;
+#[path = "oracle/gradient_overlay.rs"]
+mod gradient_overlay;
+#[path = "oracle/inner_glow.rs"]
+mod inner_glow;
+#[path = "oracle/inner_shadow.rs"]
+mod inner_shadow;
 #[path = "oracle/legacy.rs"]
 mod legacy;
+#[path = "oracle/outer_glow.rs"]
+mod outer_glow;
+#[path = "oracle/pattern_overlay.rs"]
+mod pattern_overlay;
+#[path = "oracle/satin.rs"]
+mod satin;
+#[path = "oracle/stroke.rs"]
+mod stroke;
+#[path = "oracle/stroke_gradient.rs"]
+mod stroke_gradient;
+#[path = "oracle/stroke_pattern.rs"]
+mod stroke_pattern;

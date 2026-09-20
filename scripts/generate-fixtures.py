@@ -727,6 +727,118 @@ def stroke() -> PSDImage:
     return psd
 
 
+def stroke_gradient() -> PSDImage:
+    """RGB, a Base pixel layer plus an `FrFX` gradient-fill stroke pixel layer.
+
+    The `FrFX` object mirrors `stroke()` but sets `PntT` (`FrFl`) to
+    `GradientFill` and carries the `Grad` `Grdn` content: a black-to-white
+    `Clrs` list, `Angl` 45, `Type` `GrdT`/`Lnr `, `Rvrs` true, `Algn` true and
+    `Scl ` 100. psd-tools reads it back as a `Stroke` with `fill_type` `GrFl`.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Stroked", left=0, top=0
+    )
+    frfx = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.Mode: Enumerated(b"BlnM", b"Nrml"),
+            Key.Opacity: UnitFloat(100.0, Unit.Percent),
+            Key.Style: Enumerated(Type.FrameStyle, Enum.OutsetFrame),
+            Key.PaintType: Enumerated(Type.FrameFill, Enum.GradientFill),
+            Key.SizeKey: UnitFloat(3.0, Unit.Pixels),
+            Key.Gradient: Descriptor(
+                {
+                    Key.Name: String("Black to White"),
+                    Type.GradientForm: Enumerated(
+                        Type.GradientForm, Enum.CustomStops
+                    ),
+                    b"Intr": Enumerated(Type.Interpolation, b"Lnr "),
+                    Key.Colors: List(
+                        [
+                            _gradient_stop(0, (0, 0, 0)),
+                            _gradient_stop(4096, (255, 255, 255)),
+                        ]
+                    ),
+                },
+                classID=b"Grdn",
+            ),
+            Key.Angle: Double(45.0),
+            Key.Type: Enumerated(Type.GradientType, Enum.Linear),
+            Key.Reverse: Bool(True),
+            Key.Alignment: Bool(True),
+            Key.Scale: UnitFloat(100.0, Unit.Percent),
+            b"overprint": Bool(False),
+            Key.AntiAlias: Bool(True),
+        },
+        classID=b"FrFX",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"FrFX": frfx}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
+def stroke_pattern() -> PSDImage:
+    """RGB, a Base pixel layer plus an `FrFX` pattern-fill stroke pixel layer.
+
+    The `FrFX` object mirrors `stroke()` but sets `PntT` (`FrFl`) to `Pattern`
+    and carries the `Ptrn` content (`Nm  `/`Idnt` `pictura-pattern`), `Scl `
+    100, `Lnkd` false and `Angl` 0. The 2x2 fixture pattern is written to the
+    global `Patt` block, so the renderer resolves the real tile. psd-tools reads
+    it back as a `Stroke` with `fill_type` `Ptrn` and `linked` false.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    psd._record.layer_and_mask_information.tagged_blocks = TaggedBlocks()
+    psd.tagged_blocks.set_data(Tag.PATTERNS1, [_fixture_pattern()])
+    layer = psd.create_pixel_layer(
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)), name="Stroked", left=0, top=0
+    )
+    frfx = Descriptor(
+        {
+            Key.Enabled: Bool(True),
+            b"present": Bool(True),
+            b"showInDialog": Bool(True),
+            Key.Mode: Enumerated(b"BlnM", b"Nrml"),
+            Key.Opacity: UnitFloat(100.0, Unit.Percent),
+            Key.Style: Enumerated(Type.FrameStyle, Enum.OutsetFrame),
+            Key.PaintType: Enumerated(Type.FrameFill, Enum.Pattern),
+            Key.SizeKey: UnitFloat(3.0, Unit.Pixels),
+            b"Ptrn": Descriptor(
+                {
+                    b"Nm  ": String("Pictura\x00"),
+                    b"Idnt": String("pictura-pattern\x00"),
+                },
+                classID=b"Ptrn",
+            ),
+            Key.Scale: UnitFloat(100.0, Unit.Percent),
+            b"Lnkd": Bool(False),
+            Key.Angle: Double(0.0),
+            b"overprint": Bool(False),
+            Key.AntiAlias: Bool(True),
+        },
+        classID=b"FrFX",
+    )
+    layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+        key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+        data=DescriptorBlock2(
+            {b"masterFXSwitch": Bool(True), b"FrFX": frfx}, classID=Klass.Null
+        ),
+    )
+    return psd
+
+
 def color_overlay() -> PSDImage:
     """RGB, a Base pixel layer plus a `SoFi` color-overlay pixel layer.
 
@@ -1075,6 +1187,8 @@ FIXTURES = {
     "inner_shadow.psd": inner_shadow,
     "inner_glow.psd": inner_glow,
     "stroke.psd": stroke,
+    "stroke_gradient.psd": stroke_gradient,
+    "stroke_pattern.psd": stroke_pattern,
     "color_overlay.psd": color_overlay,
     "gradient_overlay.psd": gradient_overlay,
     "pattern_overlay.psd": pattern_overlay,

@@ -145,7 +145,7 @@ pub fn decode_gradient_overlay(layer: &Layer) -> Option<GradientOverlay> {
     let top = read_effect(layer)?;
     let obj = effect_object(&top, b"GrFl", b"GrFl")?;
     let (enabled, present, blend_mode, opacity) = common(obj)?;
-    let params = crate::fill::gradient_params_from_desc(&with_gradient_defaults(obj))?;
+    let params = crate::fill::gradient_params_from_desc(&super::with_gradient_defaults(obj))?;
     Some(GradientOverlay {
         enabled,
         present,
@@ -158,40 +158,6 @@ pub fn decode_gradient_overlay(layer: &Layer) -> Option<GradientOverlay> {
         scale: params.scale,
         align_with_layer: bool_or(obj, b"Algn", true)?,
     })
-}
-
-/// Clone a `GrFl`/`GdFl` object, injecting the overlay defaults the shared
-/// helper requires: an absent `Angl` becomes `0` and an absent `Type` becomes
-/// the `GrdT`/`Lnr ` Linear enum. A present but malformed key is left as-is so
-/// the helper still rejects it. This is overlay-layer only; the strict `GdFl`
-/// contract keeps requiring both keys.
-fn with_gradient_defaults(obj: &DescValue) -> DescValue {
-    let DescValue::Object {
-        name,
-        class_id,
-        items,
-    } = obj
-    else {
-        return obj.clone();
-    };
-    let mut items = items.clone();
-    if desc_item(obj, b"Angl").is_none() {
-        items.push((b"Angl".to_vec(), DescValue::Double(0.0)));
-    }
-    if desc_item(obj, b"Type").is_none() {
-        items.push((
-            b"Type".to_vec(),
-            DescValue::Enum {
-                kind: b"GrdT".to_vec(),
-                value: b"Lnr ".to_vec(),
-            },
-        ));
-    }
-    DescValue::Object {
-        name: name.clone(),
-        class_id: class_id.clone(),
-        items,
-    }
 }
 
 /// Decode a layer's `lfx2` Pattern Overlay (`patternFill`). The pattern fields
