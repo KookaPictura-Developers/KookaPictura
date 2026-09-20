@@ -82,11 +82,14 @@ the system SHALL persist the per-column layout (each column's side and order
 with its groups' order, visibility, minimized, and collapsed state nested per
 column). At schema version 7 the system SHALL add a width to each per-column layout
 entry, and SHALL seed a column's width from the legacy top-level `railWidth` when
-a loaded store has no per-column width. A store that is missing a field or older
-than the current version SHALL load the defaults, a store with no per-column
-layout SHALL load a single right-hand column built from the legacy per-group
-state, and unknown keys SHALL survive a load-then-write cycle. The store SHALL be
-written on every quit path.
+a loaded store has no per-column width. At schema version 8 the system SHALL add a
+`railMode` to each per-column layout entry, SHALL restore each column's own rail
+mode, and SHALL seed a column's rail mode from the legacy top-level
+`panelRailMode` when a loaded store has no per-column rail mode. A store that is
+missing a field or older than the current version SHALL load the defaults, a store
+with no per-column layout SHALL load a single right-hand column built from the
+legacy per-group state, and unknown keys SHALL survive a load-then-write cycle.
+The store SHALL be written on every quit path.
 
 #### Scenario: Session state is restored on launch
 
@@ -118,7 +121,7 @@ written on every quit path.
 
 - **WHEN** a multi-column layout is saved and the store is reloaded
 - **THEN** each column's side and order plus its groups' order, visibility,
-  minimized state, and collapsed state are restored
+  minimized state, collapsed state, and rail mode are restored
 
 #### Scenario: A version-5 store loads a single right-hand column [m43_session]
 
@@ -132,4 +135,16 @@ written on every quit path.
 - **WHEN** a schema-6 store whose per-column entries carry no width is loaded
 - **THEN** each column loads the default width and the legacy top-level
   `railWidth` seeds the primary column's width
+
+#### Scenario: A version-7 store seeds the per-column rail mode [lpr_v8_railmode]
+
+- **WHEN** a schema-7 store whose per-column entries carry no `railMode` is loaded
+- **THEN** each column loads the legacy top-level `panelRailMode` as its mode
+
+#### Scenario: A per-column rail mode is applied after restart [lpr_column_mode]
+
+- **WHEN** a non-primary column's `normal`/`iconic` mode is changed, the
+  application is quit, and it is relaunched
+- **THEN** each column's mode after launch equals its stored mode, measured after
+  the first layout
 

@@ -189,8 +189,12 @@ flagged layer on save. The `is_background` check SHALL use the flag and MUST NOT
 depend on the layer's index or name. `Layer from Background…` SHALL clear the
 flag and unlock the layer, and `Background From Layer` SHALL set the flag,
 convert transparent pixels to the background color, move the node to the bottom
-of the stack, and refuse a group or a layer that is already the Background. Each
-conversion SHALL recomposite and record exactly one undo state.
+of the stack, and refuse a group or a layer that is already the Background. The
+conversion from a Background SHALL also be reachable from the Layers panel: a
+double-click on the Background row outside its name, and dropping the Background
+on the New Layer button, SHALL each run `Layer from Background…` in place rather
+than cloning a locked `Background copy`. Each conversion SHALL recomposite and
+record exactly one undo state.
 
 #### Scenario: The flag round-trips through PSD
 
@@ -209,6 +213,18 @@ conversion SHALL recomposite and record exactly one undo state.
 - **WHEN** `Layer from Background…` runs on the Background layer
 - **THEN** the flag is cleared, the layer is no longer locked, and the change is
   one undo step
+
+#### Scenario: A double-click converts the Background [lmb_background_dblclick]
+
+- **WHEN** the user double-clicks the Background row outside its name region
+- **THEN** the Background is converted to a normal, unlocked layer in one undo
+  step
+
+#### Scenario: Dropping the Background on New Layer converts it [lmb_background_drop]
+
+- **WHEN** the Background row is dropped on the New Layer strip button
+- **THEN** the Background is converted in place to a normal layer, no
+  `Background copy` is created, and the change is one undo step
 
 #### Scenario: Convert to Background
 
