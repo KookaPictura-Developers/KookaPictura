@@ -277,59 +277,55 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         }
         // The effect check wins over the adjustment check: a fill layer with an
         // enabled shadow or glow must report `UnsupportedLayerEffect`, not
-        // `UnsupportedAdjustment`.
-        if crate::layer_effects::decode_drop_shadow(layer)
-            .is_some_and(|shadow| shadow.enabled && shadow.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_outer_glow(layer)
-            .is_some_and(|glow| glow.enabled && glow.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_inner_shadow(layer)
-            .is_some_and(|shadow| shadow.enabled && shadow.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_inner_glow(layer)
-            .is_some_and(|glow| glow.enabled && glow.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        // Only a bevel that would render (Inner + Smooth) rejects: a deferred
-        // style/technique is a CPU no-op, so the GPU can still run the layer.
-        if crate::layer_effects::decode_bevel_emboss(layer).is_some_and(|bevel| {
+        // `UnsupportedAdjustment`. The resolved set comes from the same
+        // `lfx2`-over-`lrFX` path the CPU compositor uses.
+        let effects = crate::layer_effects::decode_layer_effects(layer);
+        let on = |enabled: bool, present: bool| enabled && present;
+        let bevel = effects.bevel.as_ref().is_some_and(|bevel| {
+            // Only a bevel that would render (Inner + Smooth) rejects: a
+            // deferred style/technique is a CPU no-op, so the GPU can run.
             bevel.enabled
                 && bevel.present
                 && bevel.style == crate::layer_effects::BevelStyle::Inner
                 && bevel.technique == crate::layer_effects::BevelTechnique::Smooth
-        }) {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_satin(layer)
-            .is_some_and(|satin| satin.enabled && satin.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_stroke(layer)
-            .is_some_and(|stroke| stroke.enabled && stroke.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_color_overlay(layer)
-            .is_some_and(|overlay| overlay.enabled && overlay.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_gradient_overlay(layer)
-            .is_some_and(|overlay| overlay.enabled && overlay.present)
-        {
-            return Err(GpuError::UnsupportedLayerEffect);
-        }
-        if crate::layer_effects::decode_pattern_overlay(layer)
-            .is_some_and(|overlay| overlay.enabled && overlay.present)
+        });
+        if effects
+            .drop_shadow
+            .as_ref()
+            .is_some_and(|e| on(e.enabled, e.present))
+            || effects
+                .outer_glow
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
+            || effects
+                .inner_shadow
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
+            || effects
+                .inner_glow
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
+            || bevel
+            || effects
+                .satin
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
+            || effects
+                .stroke
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
+            || effects
+                .color_overlay
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
+            || effects
+                .gradient_overlay
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
+            || effects
+                .pattern_overlay
+                .as_ref()
+                .is_some_and(|e| on(e.enabled, e.present))
         {
             return Err(GpuError::UnsupportedLayerEffect);
         }

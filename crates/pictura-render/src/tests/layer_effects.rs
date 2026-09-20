@@ -909,4 +909,6 @@ mod satin;
 
 mod bevel;
 
+mod legacy;
+
 mod blend_mode;
