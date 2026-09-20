@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1089 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1110 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -32,17 +32,18 @@ Snapshot for resuming after a context break. Update after each milestone.
     `pattern-fill-layer`, `layer-effects-drop-shadow`,
     `layer-effects-outer-glow`, `layer-effects-inner-shadow`,
     `layer-effects-inner-glow`, `layer-effects-stroke`,
-    `layer-effects-overlays`, `layer-effects-satin`, and
-    `layer-effects-bevel` changes;
+    `layer-effects-overlays`, `layer-effects-satin`,
+    `layer-effects-bevel`, and `layer-effects-legacy-lrfx` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
-   The panel-program stage **layer styles / effects** is under way:
+   The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
    `layer-effects-inner-shadow`, `layer-effects-inner-glow`,
-   `layer-effects-stroke`, `layer-effects-overlays`, `layer-effects-satin`, and
-   `layer-effects-bevel` ship the object-based effect kinds (drop shadow, outer
-   glow, inner shadow, inner glow, stroke, color/gradient/pattern overlay, satin,
-   and bevel & emboss); the remaining kind (the legacy `lrFX` block) is deferred.
+   `layer-effects-stroke`, `layer-effects-overlays`, `layer-effects-satin`,
+   `layer-effects-bevel`, and `layer-effects-legacy-lrfx` cover the object-based
+   effect kinds (drop shadow, outer glow, inner shadow, inner glow, stroke,
+   color/gradient/pattern overlay, satin, and bevel & emboss) plus the legacy
+   `lrFX` block.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
@@ -396,6 +397,21 @@ Snapshot for resuming after a context break. Update after each milestone.
   regenerating the effect fixtures' goldens (`drop_shadow`, `outer_glow`,
   `inner_shadow`, `inner_glow`, `color`/`gradient`/`pattern_overlay`, `satin`;
   `bevel` is new) — non-effect fixtures are unchanged.
+- Layer effects — legacy `lrFX` (roadmap P3/G6, archived
+  `layer-effects-legacy-lrfx`): the legacy `lrFX` block (Photoshop 5.0–6.0; CS
+  writes it for compatibility) is now decoded into the existing typed effect
+  model (`DropShadow`/`InnerShadow`/`OuterGlow`/`InnerGlow`/`BevelEmboss`/
+  `ColorOverlay`) in the new `layer_effects/legacy.rs`, and rendered through the
+  shipped `lfx2` renderers. A single resolver `decode_layer_effects` prefers
+  `lfx2` and falls back to `lrFX` — never both, so no effect is double-applied.
+  `lrFX` uses the layer blend vocabulary (`BlendMode::from_psd_key`), unlike
+  `lfx2`'s capitalized `BlnM`; gaps (technique/soften/altitude/knockout) take
+  the typed defaults. The GPU rejects a renderable legacy effect through the same
+  resolved set (`UnsupportedLayerEffect`). A psd-tools-authored
+  `legacy_effects.psd` fixture proves decode, round-trip and render; new
+  `layer_effects/legacy.rs` test module. Ceilings: only the classic `lrFX`
+  record set (no satin/stroke/gradient/pattern record), contour/noise/anti-alias,
+  and the shadow `blur` width ambiguity (psd-tools u32 vs libpsd u16+u16).
 
 ## Commands
 

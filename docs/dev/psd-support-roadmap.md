@@ -133,11 +133,14 @@ matte, optionally inverted, gated by the content coverage, and composited above
 it (archived `2026-09-20-layer-effects-satin`); **Bevel & Emboss** (`ebbl`) now
 decodes and, for the Inner + Smooth (`InrB`/`SfBL`) slice, composites a lit height
 field confined to the content above it, other styles/techniques decoding to a
-no-op (archived `2026-09-20-layer-effects-bevel`); the remaining effect kinds —
-the legacy `lrFX` block and gradient/pattern stroke fills — are deferred. That
-change also fixed a cross-cutting bug: every `lfx2` effect blend mode now decodes
-the `BlnM` descriptor vocabulary instead of the layer-key one, and the effect
-goldens were regenerated.
+no-op (archived `2026-09-20-layer-effects-bevel`). The legacy `lrFX` block is
+now decoded into the same typed effect model and rendered through the shipped
+renderers, with a single `lfx2`-over-`lrFX` resolver (archived
+`layer-effects-legacy-lrfx`), so the layer-effects family covers both the
+object-based `lfx2` and the legacy `lrFX` encodings; gradient/pattern stroke
+fills remain deferred. That change also fixed a cross-cutting bug: every `lfx2`
+effect blend mode now decodes the `BlnM` descriptor vocabulary instead of the
+layer-key one, and the effect goldens were regenerated.
 Remaining:
 `curv`,
 `mixr`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
