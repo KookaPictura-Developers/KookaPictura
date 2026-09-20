@@ -1,9 +1,8 @@
 # Refactor — tool architecture and code splitting (round 2)
 
-- **Status:** in progress. Tracks 0–1 and 3 done; Track 2 partially landed (six
-  of the thirteen implemented tools migrated); Track 4 unexercised. Only
-  `cxxqt_object.rs` (1200, the bridge) and the allowlisted `selftest.cpp` sit at
-  the code cap; `tools.cpp` is 702.
+- **Status:** done, except Track 4. Tracks 0–3 landed; the single cxx-qt bridge
+  (`cxxqt_object.rs`, 1200) is unexercised because no new declaration was needed.
+  `tools.cpp` is 417; every implemented tool has a handler.
 - **Type:** pure-mechanical splits first, then a behavior-preserving tool-handler
   redesign. No spec deltas, no new dependency, no algorithm change.
 - **Contract:** every public symbol, signature, registration, self-test exit
@@ -98,15 +97,17 @@ changes.
 - `tools.h` re-includes the new headers so every existing include site and
   declaration is unchanged.
 
-### Track 2 — handler architecture (partially landed)
+### Track 2 — handler architecture (done)
 
-Landed (`1a57fef`, `c30e26e`): `tool_context.h`, `tool_handler.h`,
-`tool_registry.{h,cpp}`, the `Hand`, `Zoom`, `Eyedropper`, `Brush`/`Pencil`,
-`MagicWand`, and `QuickSelection` handlers, and the controller dispatch that
-consults the registry before the legacy switch. `tools.cpp` is 702 LOC. The
-`Move`, `Marquee`, `EllipticalMarquee`, `Lasso`, `PolygonalLasso`, and `Crop`
-cases still use the switch and are the remaining migrations; once they land the
-switch is deleted.
+Landed (`1a57fef`, `c30e26e`, `fbfd513`): `tool_context.h`, `tool_handler.h`,
+`tool_registry.{h,cpp}`, and handlers for every implemented tool — `Hand`,
+`Zoom`, `Eyedropper`, `Brush`/`Pencil`, `MagicWand`, `QuickSelection`, `Move`,
+`Crop`, `Marquee`, `EllipticalMarquee`, `Lasso`, and `PolygonalLasso` — plus a
+shared `selection_geometry.{h,cpp}`. The legacy `switch (active_)` blocks are
+deleted; `ToolController` dispatches to the registry and keeps only the
+cross-cutting transform session, content-move routing, and cursor/hover policy.
+`tools.cpp` is 417 LOC. Adding a tool is one new handler file plus one registry
+entry.
 
 Introduce `ToolContext`, `ToolHandler`, and a `ToolId -> handler` registry; the
 default handler is a no-op, so unimplemented tools keep behaving as today.
@@ -141,15 +142,17 @@ public:
 };
 ```
 
-### Track 3 — bridge and test splits (partially landed)
+### Track 3 — bridge and test splits (done)
 
 - `cxxqt_object/impl_transform.rs` (1200) → `impl_transform/{mod,geometry,session,dispatch}.rs`
   by pure move (`4c0b7fe`; the largest is 451). `cxxqt_object.rs` was not
   touched; `mod impl_transform;` still resolves.
-- Still open: split `selftest_tools_selection.cpp` (1130) and
-  `selftest_layers_controls.cpp` (1124) before they reach the 1400 test cap, and
-  the near-cap `oracle.rs` (1398) / `adjustment.rs` (1396).
-- `composite.rs` (1125) and `frame.cpp` (1068) when next touched.
+- `codec/tests/oracle.rs` (1398) → a root plus `oracle/` submodules
+  (`5340fe6`), and `render/src/tests/adjustment.rs` (1396) →
+  `tests/adjustment/{mod,payloads,part_decode,part_composite}.rs`. The test set
+  is unchanged (1261 Rust tests).
+- `composite.rs` (1125) and `frame.cpp` (1068) still have headroom and are left
+  for when they are next touched.
 
 ### Track 4 — bridge growth policy (open)
 
