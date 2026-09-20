@@ -284,22 +284,36 @@ without panicking and without changing the document.
 ### Requirement: Layer row badges and delegate
 
 The system SHALL draw each row with a delegate that paints, in CS6 order, the
-visibility toggle, the thumbnail (a folder glyph for a group), the name, the
-color-label swatch, a clipping-mask indicator for a clipped layer, the clipping
-indentation and base underline, the layer-mask thumbnail when a mask is present,
-and an adjustment/style badge when adjustment content is present. A layer whose
-lock state has any flag set SHALL also show a lock badge at the right side of its
+visibility toggle, the thumbnail (a folder glyph for a group), the name, a
+clipping-mask indicator for a clipped layer, the clipping indentation and base
+underline, the layer-mask thumbnail when a mask is present, and an
+adjustment/style badge when adjustment content is present. A layer whose lock
+state has any flag set SHALL also show a lock badge at the right side of its
 row; an unlocked layer SHALL show none. The visibility toggle SHALL be an eye
 icon (`layers.eyeOn`/`layers.eyeOff`) drawn slightly inset from the panel's left
 edge and at the same x for every row, independent of nesting depth; the nesting
 indentation SHALL apply to the thumbnail and name, not to the visibility toggle.
-A layer whose color label is not `None` SHALL tint the eye gutter with that label
-color behind the eye glyph, so the label reads at the left of the row as it does
-in Photoshop, and the tint SHALL keep the eye glyph and any selection highlight
-legible. A group with at least one child SHALL show a disclosure icon — right
-when collapsed, down when expanded — at its indented position, and clicking that
-icon SHALL expand or collapse the group. If an expected icon asset is unavailable,
-the delegate SHALL omit that badge while keeping the row legible rather than fail.
+A layer whose color label is not `None` SHALL tint the **visibility toggle's own
+background** (`eyeRect`) with that label color behind the eye glyph, and the
+delegate SHALL NOT paint a color swatch after the name; the tint SHALL keep the
+eye glyph and any selection highlight legible, and the label color elsewhere on
+the row SHALL fall back to the row background. A group with at least one child
+SHALL show a disclosure icon — right when collapsed, down when expanded — at its
+indented position, and clicking that icon SHALL expand or collapse the group. A
+**regular (non-group) layer's thumbnail SHALL be drawn over a cached two-tone
+checkerboard** so transparency reads under it, while a group keeps its folder
+glyph and no checkerboard. **Every thumbnail SHALL carry a 1 px black outline**,
+and **when exactly one layer is active** (the same singular active-layer
+resolution tool edits use) its thumbnail SHALL additionally show white 1 px
+corner brackets drawn one pixel outside the outline; with zero or multiple active
+layers no brackets are drawn. Row typography SHALL derive from the layer: a
+`background` layer's name SHALL be italic/cursive, every other name normal, and
+a layer that is a member of the frame's link set or a placed/external smart
+object SHALL be underlined through the new `LayerRowLinkedRole` and
+`LayerRowPlacedRole` projections. The delegate SHALL report a row height of at
+least **28 px** through one named constant used by both `sizeHint` and the
+vertical centring math. If an expected icon asset is unavailable, the delegate
+SHALL omit that badge while keeping the row legible rather than fail.
 
 #### Scenario: The visibility toggle is an eye icon [lpr_eye]
 
@@ -313,10 +327,12 @@ the delegate SHALL omit that badge while keeping the row legible rather than fai
 - **THEN** its eye icon is at the same x as a top-level row's, while its
   thumbnail and name are indented
 
-#### Scenario: The color label tints the eye gutter [lpr_label_tint]
+#### Scenario: The color label tints only the eye toggle [lpr_label_tint]
 
 - **WHEN** a layer with a non-`None` color label is shown
-- **THEN** the eye gutter is filled with that label color behind the eye glyph
+- **THEN** the eye toggle's background is filled with that label color behind
+  the eye glyph, no swatch is painted after the name, and the rest of the row
+  background is unchanged
 
 #### Scenario: An unlabeled layer has no gutter tint [lpr_label_tint_none]
 
@@ -350,6 +366,32 @@ the delegate SHALL omit that badge while keeping the row legible rather than fai
 - **WHEN** a layer has any lock flag set
 - **THEN** its row draws a lock badge on the right side, and an unlocked layer
   draws no lock badge
+
+#### Scenario: A regular thumbnail shows a checkerboard [lpr_thumb_checker]
+
+- **WHEN** a regular (non-group) layer with translucent pixels is shown
+- **THEN** its thumbnail is drawn over a two-tone checkerboard, while a group
+  row keeps its folder glyph and draws no checkerboard
+
+#### Scenario: Thumbnails are outlined and the active layer is bracketed [lpr_thumb_bracket]
+
+- **WHEN** a regular layer row is shown with a 1 px black thumbnail outline
+- **THEN** the singular active layer's thumbnail additionally shows white
+  corner brackets one pixel outside the outline, and a multi- or zero-selection
+  row shows no brackets
+
+#### Scenario: Row typography follows the layer kind [lpr_row_fonts]
+
+- **WHEN** the rows for the Background, a linked layer, and a placed smart
+  object are inspected
+- **THEN** the Background name is italic/cursive, ordinary names are normal, and
+  the linked and placed rows are underlined through their roles
+
+#### Scenario: The row height has a floor [lpr_row_height]
+
+- **WHEN** a row's size hint is read
+- **THEN** its height is at least 28 px from the single named row-height
+  constant
 
 #### Scenario: A missing badge asset does not break the row [m39_badges]
 
@@ -416,38 +458,53 @@ operation runs.
 
 ### Requirement: Inline rename with Tab navigation
 
-The system SHALL begin inline name editing only when the user double-clicks a
-row's name, not the rest of the row. A double-click elsewhere on the row —
-including the visibility, lock, chevron, and thumbnail regions — SHALL NOT begin
-editing. When the double-clicked row is the Background layer, the system SHALL
-convert it to a normal layer; for every other layer it SHALL instead invoke the
-layer-style affordance, which is a documented no-op while no Layer Style dialog
-exists. While editing, the system SHALL commit the edit and move to the next
-visible row when the user presses `Tab`, and to the previous visible row when the
-user presses `Shift+Tab`. At the last or first visible row, the commit SHALL occur
-without wrapping.
+The system SHALL begin inline name editing when the user double-clicks a row's
+**name/label content band**, and SHALL NOT begin editing on the visibility,
+chevron, thumbnail, lock, fx, or mask regions. The content band SHALL be the
+`nameRect` geometry the delegate paints, corrected so it mirrors paint exactly
+(including the +4 gap after the thumbnail and the right-edge badge/mask caps)
+and is floored to a non-zero minimum width, so a click on an empty label area
+still resolves to the name and not to a zero-width rect. A double-click that is
+not on the eye/chevron/thumbnail/lock/fx/mask controls and not on a masked or
+clipped indicator SHALL be treated as a rename for a normal layer. When the
+double-clicked row is the Background layer, the system SHALL convert it to a
+normal layer (through the name-and-color dialog) instead of renaming; for every
+other layer it SHALL invoke the layer-style affordance, which is a documented
+no-op while no Layer Style dialog exists. While editing, the system SHALL commit
+the edit and move to the next visible row when the user presses `Tab`, and to
+the previous visible row when the user presses `Shift+Tab`. At the last or first
+visible row, the commit SHALL occur without wrapping.
 
 #### Scenario: Double-click starts editing [m39_rename]
 
-- **WHEN** the user double-clicks a row's name
-- **THEN** an editor opens on that row and the document is unchanged until the edit commits
+- **WHEN** the user double-clicks a row's name/label content band
+- **THEN** an editor opens on that row and the document is unchanged until the
+  edit commits
 
-#### Scenario: Double-click elsewhere does not rename [lpr_rename_name_only]
+#### Scenario: Double-click anywhere in the label band renames [lpr_rename_band]
 
-- **WHEN** the user double-clicks a non-Background row outside the name region
-- **THEN** no inline editor opens, the name is unchanged, and the layer-style
-  affordance is invoked instead
+- **WHEN** the user double-clicks a non-Background row anywhere in the content
+  band outside the eye/chevron/thumbnail/lock/fx/mask controls, including a
+  zero-width-name row when thumbnails are off
+- **THEN** the inline editor opens for that row
+
+#### Scenario: Double-click on a control does not rename [lpr_rename_name_only]
+
+- **WHEN** the user double-clicks the eye, chevron, thumbnail, lock, fx, or mask
+  control
+- **THEN** no inline editor opens and the control's own action runs
 
 #### Scenario: Double-clicking the Background converts it [lpr_background_dblclick]
 
-- **WHEN** the user double-clicks the Background row outside its name region
-- **THEN** the Background is converted to a normal layer in one undo step instead
-  of invoking the layer-style no-op
+- **WHEN** the user double-clicks the Background row in the content band
+- **THEN** the Background is converted through the name-and-color dialog rather
+  than opening an inline editor
 
 #### Scenario: Tab commits and moves down [m39_rename]
 
 - **WHEN** the user edits a name and presses `Tab`
-- **THEN** the name changes, the edit is one undo state, and the editor moves to the next visible row
+- **THEN** the name changes, the edit is one undo state, and the editor moves to
+  the next visible row
 
 #### Scenario: Shift+Tab moves up without wrapping [m39_rename]
 
@@ -690,7 +747,13 @@ or begin a rubber-band selection. The row model SHALL implement the drag-and-dro
 capability virtuals — `mimeTypes()`, `canDropMimeData()`, and
 `supportedDropActions()` — so the view's `canDrop()` is true and a real drop
 indicator position is computed, and the view SHALL enter the dragging state on
-drag enter so the indicator paints. The system SHALL validate a candidate drop
+drag enter so the indicator paints. **The model SHALL return
+`Qt::ItemIsDropEnabled` for the invalid parent index**, so a top-level row is a
+valid drop target surface and Qt's `AboveItem`/`BelowItem` indicator is
+available for the top level as well as for nested rows; without it the drop
+indicator is empty and reordering a top-level row shows nothing. **The view SHALL
+set a closed-hand cursor for the duration of `startDrag`** and restore the
+previous cursor when the drag ends. The system SHALL validate a candidate drop
 during the drag and SHALL show a drop indicator only for a valid target, and it
 SHALL reject an invalid drop without calling the bridge or changing the document.
 Releasing a dragged row above or below another row SHALL reorder it at that
@@ -712,6 +775,19 @@ into the row.
 - **WHEN** a row is dragged and released above a sibling
 - **THEN** the row moves to that position in one undo step and the drag does not
   select any other row
+
+#### Scenario: A top-level sibling shows the above/below indicator [lpr_drag_top_level]
+
+- **WHEN** a top-level row is dragged over the gap above or below a top-level
+  sibling
+- **THEN** the model is drop-enabled for the invalid parent, the drop indicator
+  is above/below, and the reorder is accepted
+
+#### Scenario: The drag cursor is a closed hand [lpr_drag_cursor]
+
+- **WHEN** a row drag starts
+- **THEN** the viewport cursor is a closed hand until the drag ends, then the
+  previous cursor is restored
 
 #### Scenario: A sibling reorder resolves at the drop [lpr_drag_reorder_mode]
 
@@ -831,4 +907,27 @@ toggle visibility.
 
 - **WHEN** the user `Ctrl`-clicks a layer's thumbnail
 - **THEN** no drag starts, no editor opens, and the visibility is unchanged
+
+### Requirement: Nesting lock button is hidden in the panel
+
+The Layers panel SHALL hide its nesting-lock toggle button (`lockNesting_`), so
+the panel exposes only the transparency, pixel, position, and all lock controls.
+Hiding the button SHALL NOT change the engine: the `NESTING` flag SHALL remain
+part of the layer lock state, SHALL still refuse Group Layers and Ungroup Layers
+on a nesting-locked layer, SHALL still round-trip through the PSD `lspf` block,
+and SHALL still be settable and readable through the bridge. A layer already
+carrying the flag SHALL still report it in its row and keep its structural
+parent; the button is a presentation removal, not a feature removal.
+
+#### Scenario: The panel has no nesting lock button [lpr_nesting_hidden]
+
+- **WHEN** the Layers panel header lock controls are shown
+- **THEN** the nesting-lock button is hidden and the other lock controls remain
+
+#### Scenario: The engine nesting rules still hold [lpr_nesting_engine]
+
+- **WHEN** a layer reports the `NESTING` bit programmatically and Group Layers
+  is attempted
+- **THEN** the operation is still refused and the PSD round-trip still preserves
+  the bit
 
