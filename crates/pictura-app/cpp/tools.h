@@ -222,6 +222,17 @@ public:
                                                    bool hasExistingSelection);
     QRect marqueeRectForTest(const QPointF& a, const QPointF& b, int mods) const;
     int dragModeForTest() const { return static_cast<int>(dragMode_); }
+    int dragModsForTest() const { return int(dragMods_); }
+    // The cursor id a selection-tool drag shows, derived from the mode captured
+    // at press (`dragMode_`) rather than the live keyboard state.
+    QString dragCursorId() const;
+    // The canvas cursor id a selection-tool hover shows under the given live
+    // modifiers: the move-selection cursor when neither Shift nor Alt is held
+    // and the pointer is over the selection (or Ctrl previews it); otherwise the
+    // tool's modifier cursor asset (Shift -> .add, Alt -> .remove). Static so
+    // the gate is testable without live keyboard state.
+    static QString hoverCursorId(ToolId id, Qt::KeyboardModifiers mods, bool overSelection,
+                                 bool ctrlPreview);
     bool contentMoveActiveForTest() const { return contentMove_; }
 
     // Polygonal Lasso interaction state. `commitPolygonLasso` closes the
@@ -278,6 +289,10 @@ private:
     ToolId active_ = ToolId::Move;
     SelectionMode mode_ = SelectionMode::New;
     SelectionMode dragMode_ = SelectionMode::New;
+    // The keyboard modifiers captured at press, used for the marquee preview
+    // geometry and the release raster so releasing Shift/Alt mid-drag does not
+    // change the constraint.
+    Qt::KeyboardModifiers dragMods_ = Qt::NoModifier;
     MarqueeStyle marqueeStyle_ = MarqueeStyle::Normal;
     double feather_ = 0.0;
     double fixedRatioW_ = 1.0;

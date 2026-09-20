@@ -920,5 +920,117 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(276, "quick mode drag");
         }
 
+        // lst_combine_cursor (367): with an existing selection, a combine
+        // modifier beats the move-selection hover cursor; without one the move
+        // affordance (hover or Ctrl preview) wins, and a no-asset lasso falls
+        // through to its plain cursor. The helper is the exact gate
+        // `refreshCursor` consults.
+        const QString hoverShift = pictura::ToolController::hoverCursorId(
+            pictura::ToolId::Marquee, Qt::ShiftModifier, true, false);
+        const QString hoverAlt = pictura::ToolController::hoverCursorId(
+            pictura::ToolId::Marquee, Qt::AltModifier, true, false);
+        const QString hoverNone = pictura::ToolController::hoverCursorId(
+            pictura::ToolId::Marquee, Qt::NoModifier, true, false);
+        const QString hoverOutside = pictura::ToolController::hoverCursorId(
+            pictura::ToolId::Marquee, Qt::NoModifier, false, false);
+        const QString hoverCtrl = pictura::ToolController::hoverCursorId(
+            pictura::ToolId::Marquee, Qt::NoModifier, false, true);
+        const QString hoverShiftCtrl = pictura::ToolController::hoverCursorId(
+            pictura::ToolId::Marquee, Qt::ShiftModifier | Qt::ControlModifier, true, true);
+        const QString hoverLassoShift = pictura::ToolController::hoverCursorId(
+            pictura::ToolId::Lasso, Qt::ShiftModifier, true, false);
+        // A plain drag from inside the selection still moves it (the hover path
+        // only changes the cursor, not the press behaviour).
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        ellipseView->deselect();
+        const bool hcSeed = ellipseView->select_rect(2, 2, 6, 6, QStringLiteral("new"), 0.0);
+        ellipseCanvas->mouseMoved(QPointF(4, 4));
+        const int hcBase = ellipseView->history_count();
+        ellipseCanvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::NoModifier));
+        ellipseCanvas->mouseMoved(QPointF(5, 5));
+        ellipseCanvas->mouseReleased(QPointF(5, 5));
+        const bool hcMoved = hcSeed
+            && ellipseView->selection_bounds() == QStringLiteral("3 3 6 6")
+            && ellipseView->history_count() == hcBase + 1;
+        const bool combineCursor = hoverShift == QStringLiteral("tool.marquee.add")
+            && hoverAlt == QStringLiteral("tool.marquee.remove")
+            && hoverNone == QStringLiteral("cursor.moveSelection")
+            && hoverOutside == QStringLiteral("tool.marquee")
+            && hoverCtrl == QStringLiteral("cursor.moveSelection")
+            && hoverShiftCtrl == QStringLiteral("tool.marquee.add")
+            && hoverLassoShift == QStringLiteral("tool.lasso");
+        ST_BEGIN("lst_combine_cursor");
+        ST_PASS("lst_combine_cursor shift=%s alt=%s none=%s outside=%s ctrl=%s "
+                "shiftctrl=%s lasso=%s moved=%d bounds=%s",
+                qPrintable(hoverShift), qPrintable(hoverAlt), qPrintable(hoverNone),
+                qPrintable(hoverOutside), qPrintable(hoverCtrl), qPrintable(hoverShiftCtrl),
+                qPrintable(hoverLassoShift), hcMoved ? 1 : 0,
+                qPrintable(ellipseView->selection_bounds()));
+        if (!combineCursor || !hcMoved) {
+            return pictura::selfTest().fail(367, "combine hover cursor");
+        }
+
+        // lst_drag_retention (368): a Shift press locks Add and the square
+        // constraint at press. The live keyboard state at move and release is
+        // empty here, so the committed union and the `.add` drag cursor prove
+        // the geometry, mode, and cursor all come from the captured `dragMods_`.
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        ellipseView->deselect();
+        const bool drSeed = ellipseView->select_rect(2, 2, 4, 4, QStringLiteral("new"), 0.0);
+        const int drBase = ellipseView->history_count();
+        ellipseCanvas->mousePressed(QPointF(8, 8), Qt::LeftButton, int(Qt::ShiftModifier));
+        ellipseCanvas->mouseMoved(QPointF(11, 8));
+        const bool drMode = tools->dragModeForTest() == int(pictura::SelectionMode::Add);
+        const bool drMods = (tools->dragModsForTest() & int(Qt::ShiftModifier)) != 0;
+        const QString drCursor = tools->dragCursorId();
+        ellipseCanvas->mouseReleased(QPointF(11, 8));
+        const bool drCommitted = ellipseView->has_selection()
+            && ellipseView->history_count() == drBase + 1;
+        const QString drBounds = ellipseView->selection_bounds();
+        ST_BEGIN("lst_drag_retention");
+        ST_PASS("lst_drag_retention seed=%d mode=%d mods=%d cursor=%s committed=%d bounds=%s",
+                drSeed ? 1 : 0, drMode ? 1 : 0, drMods ? 1 : 0, qPrintable(drCursor),
+                drCommitted ? 1 : 0, qPrintable(drBounds));
+        if (!drSeed || !drMode || !drMods || drCursor != QStringLiteral("tool.marquee.add")
+            || !drCommitted || drBounds != QStringLiteral("2 2 9 9")) {
+            return pictura::selfTest().fail(368, "drag modifier retention");
+        }
+
+        // lst_alt_pivot (369): Alt chooses Subtract at press only when a
+        // selection exists (never pre-toggled while only hovering); its
+        // from-centre geometry comes from the captured `dragMods_`, so a press
+        // pivot from the centre survives to release even with no live modifier.
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        ellipseView->deselect();
+        const int apBase = ellipseView->history_count();
+        ellipseCanvas->mousePressed(QPointF(5, 5), Qt::LeftButton, int(Qt::AltModifier));
+        const bool apNoPretoggle =
+            tools->dragModeForTest() == int(pictura::SelectionMode::New);
+        const bool apModsAlt = (tools->dragModsForTest() & int(Qt::AltModifier)) != 0;
+        ellipseCanvas->mouseMoved(QPointF(9, 7));
+        ellipseCanvas->mouseReleased(QPointF(9, 7));
+        const bool apCommitted = ellipseView->has_selection()
+            && ellipseView->history_count() == apBase + 1;
+        const QString apBounds = ellipseView->selection_bounds();
+        const bool apSeed = ellipseView->select_rect(2, 2, 4, 4, QStringLiteral("new"), 0.0);
+        ellipseCanvas->mousePressed(QPointF(3, 3), Qt::LeftButton, int(Qt::AltModifier));
+        const bool apSubtract =
+            tools->dragModeForTest() == int(pictura::SelectionMode::Subtract);
+        ellipseCanvas->mouseReleased(QPointF(3, 3));
+        ST_BEGIN("lst_alt_pivot");
+        ST_PASS("lst_alt_pivot nopretoggle=%d modsalt=%d committed=%d bounds=%s subtract=%d",
+                apNoPretoggle ? 1 : 0, apModsAlt ? 1 : 0, apCommitted ? 1 : 0,
+                qPrintable(apBounds), apSubtract ? 1 : 0);
+        if (!apNoPretoggle || !apModsAlt || !apCommitted
+            || apBounds != QStringLiteral("1 3 8 4") || !apSeed || !apSubtract) {
+            return pictura::selfTest().fail(369, "alt pivot pre-toggle");
+        }
+
     return 0;
 }
