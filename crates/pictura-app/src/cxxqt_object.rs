@@ -107,6 +107,14 @@ pub mod qobject {
         #[qinvokable]
         fn file_path(&self) -> QString;
 
+        /// Notice when an opened document's source color mode was normalized.
+        #[qinvokable]
+        fn mode_notice(&self) -> QString;
+
+        /// Working mode: `"rgb"` or `"grayscale"`; empty without a document.
+        #[qinvokable]
+        fn document_mode(&self) -> QString;
+
         /// The image to display. Never null. Returns the cached image when the
         /// display is clean; rebuilds it from the document composite when a
         /// region refresh has marked the display dirty.

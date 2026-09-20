@@ -5,6 +5,10 @@ use std::io::Read;
 use crate::common::*;
 use crate::error::PsdError;
 
+/// Fallback for an Indexed document's palette; unreachable because
+/// `palette_from` errors on a malformed Indexed palette before conversion.
+const EMPTY_PALETTE: [u8; 768] = [0; 768];
+
 /// Parse a PSD (or PSB) file into a [`Document`] holding the composite image and
 /// the layer tree (bottom-first, matching PSD on-disk z-order).
 pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
@@ -40,23 +44,24 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             "dimension {width}x{height} exceeds {max_dim}"
         )));
     }
-    if depth != 8 {
+    let mode = color_mode_from_code(mode_code)?;
+    // Depth 1 is Photoshop's Bitmap; every other mode is 8-bit here.
+    if depth != 8 && !(depth == 1 && mode == ColorMode::Bitmap) {
         return Err(PsdError::Unsupported(format!("bit depth {depth}")));
     }
-    let mode = match mode_code {
-        MODE_GRAYSCALE => ColorMode::Grayscale,
-        MODE_RGB => ColorMode::Rgb,
-        c => return Err(PsdError::Unsupported(format!("color mode {c}"))),
-    };
+    let bits: u8 = if depth == 1 { 1 } else { 8 };
 
     // Color mode data section: 4-byte length + opaque bytes, kept verbatim.
+    // An Indexed palette is interpreted and consumed (see `normalize`).
     let color_mode_len = r.u32()? as usize;
     let color_mode_data = r.take(color_mode_len)?.to_vec();
+    let palette = palette_from(mode, &color_mode_data)?;
     // Image resources section: 4-byte length + opaque bytes, kept verbatim.
     let resources_len = r.u32()? as usize;
     let image_resources = r.take(resources_len)?.to_vec();
     // Layer and mask information section: 4-byte length (8 in PSB).
-    let (mut layers, global_layer_mask, layer_section_extra) = read_layer_section(&mut r, is_psb)?;
+    let (mut layers, global_layer_mask, layer_section_extra) =
+        read_layer_section(&mut r, is_psb, mode.color_channels() as usize, bits)?;
     // Derive the smart-object view from the preserved bytes; a malformed
     // descriptor or linked-layer record degrades to Unresolved (design D5).
     crate::smart_object::resolve_smart_objects(&mut layers, &layer_section_extra, is_psb);
@@ -69,11 +74,12 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     // section with no merged composite. A file with no layers at all and no
     // trailing data is still malformed and falls through to the truncation error.
     if r.remaining() == 0 && !layers.is_empty() {
-        return Ok(Document {
+        let doc = Document {
             width,
             height,
             mode,
             depth: BitDepth::Eight,
+            source_mode: None,
             composite: PixelBuffer::new(width, height, mode.color_channels()),
             merged_composite_present: false,
             is_psb,
@@ -83,7 +89,8 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             image_resources,
             global_layer_mask,
             layer_section_extra,
-        });
+        };
+        return Ok(normalize(doc, mode, bits, palette.as_ref()));
     }
 
     // Image data section: 2-byte compression method, then one plane per header
@@ -92,13 +99,17 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     let header_channels = channels as usize;
     let width = width as usize;
     let height = height as usize;
+    let row_bytes = if bits == 1 { width.div_ceil(8) } else { width };
+    if bits == 1 && matches!(compression, COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION) {
+        return Err(PsdError::Unsupported("ZIP compression at depth 1".into()));
+    }
     let data = match compression {
         0 => r
-            .take(planar_len(header_channels, width, height)?)?
+            .take(planar_len(header_channels, row_bytes, height)?)?
             .to_vec(),
-        1 => read_rle(&mut r, header_channels, width, height, is_psb)?,
+        1 => read_rle(&mut r, header_channels, row_bytes, height, is_psb)?,
         COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION => {
-            let expected = planar_len(header_channels, width, height)?;
+            let expected = planar_len(header_channels, row_bytes, height)?;
             let remaining = r.remaining();
             let payload = r.take(remaining)?.to_vec();
             let mut data = inflate(&payload, expected)?;
@@ -109,13 +120,15 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         }
         c => return Err(PsdError::Unsupported(format!("compression {c}"))),
     };
-    let (composite, channels) = split_planes(data, mode, width, height, header_channels)?;
+    let plane = row_bytes * height;
+    let (composite, channels) = split_planes(data, mode, width, height, plane, header_channels)?;
 
-    Ok(Document {
+    let doc = Document {
         width: width as u32,
         height: height as u32,
         mode,
         depth: BitDepth::Eight,
+        source_mode: None,
         composite,
         merged_composite_present: true,
         is_psb,
@@ -125,16 +138,163 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         image_resources,
         global_layer_mask,
         layer_section_extra,
+    };
+    Ok(normalize(doc, mode, bits, palette.as_ref()))
+}
+
+/// The PSD `header.color_mode` code to the engine's [`ColorMode`]. Bitmap,
+/// Grayscale, Indexed, RGB, CMYK, and Lab are accepted; Multichannel, Duotone,
+/// and every other code are unsupported.
+fn color_mode_from_code(code: u16) -> Result<ColorMode, PsdError> {
+    Ok(match code {
+        MODE_BITMAP => ColorMode::Bitmap,
+        MODE_GRAYSCALE => ColorMode::Grayscale,
+        MODE_INDEXED => ColorMode::Indexed,
+        MODE_RGB => ColorMode::Rgb,
+        MODE_CMYK => ColorMode::Cmyk,
+        MODE_LAB => ColorMode::Lab,
+        MODE_MULTICHANNEL | MODE_DUOTONE => {
+            return Err(PsdError::Unsupported(format!("color mode {code}")))
+        }
+        c => return Err(PsdError::Unsupported(format!("color mode {c}"))),
     })
+}
+
+/// The 768-byte Indexed palette (256 red, then green, then blue), or `None` for
+/// a mode that has no palette. Any other length is malformed, never a panic.
+fn palette_from(mode: ColorMode, data: &[u8]) -> Result<Option<[u8; 768]>, PsdError> {
+    if mode != ColorMode::Indexed {
+        return Ok(None);
+    }
+    if data.len() != 768 {
+        return Err(PsdError::Invalid(format!(
+            "indexed palette length {}",
+            data.len()
+        )));
+    }
+    let mut palette = [0u8; 768];
+    palette.copy_from_slice(data);
+    Ok(Some(palette))
+}
+
+/// Normalize a non-RGB document to the engine's working mode. Grayscale and RGB
+/// pass through untouched; Bitmap/Indexed/CMYK/Lab become RGB, record the source
+/// mode, and convert every color plane (composite and layers).
+fn normalize(
+    mut doc: Document,
+    header_mode: ColorMode,
+    bits: u8,
+    palette: Option<&[u8; 768]>,
+) -> Document {
+    if matches!(header_mode, ColorMode::Grayscale | ColorMode::Rgb) {
+        return doc;
+    }
+    doc.composite = convert_pixels(doc.composite, header_mode, bits, palette);
+    for layer in &mut doc.layers {
+        convert_layer_color_channels(layer, header_mode, palette);
+    }
+    doc.mode = ColorMode::Rgb;
+    doc.depth = BitDepth::Eight;
+    doc.source_mode = Some(header_mode);
+    if header_mode == ColorMode::Indexed {
+        doc.color_mode_data.clear();
+    }
+    doc
+}
+
+/// Convert a composite's color planes to planar RGB.
+fn convert_pixels(
+    buf: PixelBuffer,
+    mode: ColorMode,
+    bits: u8,
+    palette: Option<&[u8; 768]>,
+) -> PixelBuffer {
+    use crate::color_mode::*;
+    let data = match mode {
+        ColorMode::Bitmap if bits == 1 => {
+            bitmap_rows_to_rgb(&buf.data, buf.width as usize, buf.height as usize)
+        }
+        ColorMode::Bitmap => gray_to_rgb(&buf.data),
+        ColorMode::Indexed => indexed_to_rgb(&buf.data, palette.unwrap_or(&EMPTY_PALETTE)),
+        ColorMode::Cmyk => cmyk_to_rgb(&buf.data),
+        ColorMode::Lab => lab_to_rgb(&buf.data),
+        ColorMode::Grayscale | ColorMode::Rgb => buf.data,
+        ColorMode::Multichannel | ColorMode::Duotone => buf.data,
+    };
+    PixelBuffer {
+        width: buf.width,
+        height: buf.height,
+        channels: 3,
+        data,
+    }
+}
+
+/// Replace a layer's color channels (`0..color_channels`) with converted RGB
+/// planes. Non-color channels are untouched; a layer whose color channels do not
+/// match the mode's layout is left unchanged.
+fn convert_layer_color_channels(layer: &mut Layer, mode: ColorMode, palette: Option<&[u8; 768]>) {
+    let color_channels = mode.color_channels() as usize;
+    if color_channels == 0 {
+        return;
+    }
+    let positions: Vec<usize> = layer
+        .channels
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.id >= 0 && (c.id as usize) < color_channels)
+        .map(|(i, _)| i)
+        .collect();
+    if positions.len() != color_channels {
+        return;
+    }
+    let plane = layer.channels[positions[0]].data.len();
+    if positions
+        .iter()
+        .any(|&i| layer.channels[i].data.len() != plane)
+    {
+        return;
+    }
+    let mut planar = Vec::with_capacity(plane * color_channels);
+    for &i in &positions {
+        planar.extend_from_slice(&layer.channels[i].data);
+    }
+    use crate::color_mode::*;
+    let rgb = match mode {
+        ColorMode::Indexed => indexed_to_rgb(&planar, palette.unwrap_or(&EMPTY_PALETTE)),
+        ColorMode::Cmyk => cmyk_to_rgb(&planar),
+        ColorMode::Lab => lab_to_rgb(&planar),
+        // A Bitmap layer's single gray plane is bit-expanded to an 8-bit plane
+        // at read time (depth 1 or 8), so it replicates to RGB.
+        ColorMode::Bitmap => gray_to_rgb(&planar),
+        ColorMode::Grayscale | ColorMode::Rgb => return,
+        ColorMode::Multichannel | ColorMode::Duotone => return,
+    };
+    let others: Vec<Channel> = layer
+        .channels
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !positions.contains(i))
+        .map(|(_, c)| c.clone())
+        .collect();
+    let mut channels: Vec<Channel> = (0..3)
+        .map(|c| Channel {
+            id: c as i16,
+            data: rgb[c * plane..(c + 1) * plane].to_vec(),
+        })
+        .collect();
+    channels.extend(others);
+    layer.channels = channels;
 }
 
 /// Split the planar image-data section into the mode's color planes (the
 /// composite) and the trailing extra channels (saved selections / alpha).
+/// `plane` is one channel's byte length (depth-aware).
 fn split_planes(
     mut data: Vec<u8>,
     mode: ColorMode,
     width: usize,
     height: usize,
+    plane: usize,
     header_channels: usize,
 ) -> Result<(PixelBuffer, Vec<Channel>), PsdError> {
     let color_channels = mode.color_channels() as usize;
@@ -143,7 +303,6 @@ fn split_planes(
             "header has {header_channels} channels for a {color_channels}-channel mode"
         )));
     }
-    let plane = width * height;
     let extra = data.split_off(color_channels * plane);
     let channels = extra
         .chunks_exact(plane)
@@ -164,9 +323,9 @@ fn split_planes(
     ))
 }
 
-fn planar_len(channels: usize, width: usize, height: usize) -> Result<usize, PsdError> {
+fn planar_len(channels: usize, row_bytes: usize, height: usize) -> Result<usize, PsdError> {
     channels
-        .checked_mul(width)
+        .checked_mul(row_bytes)
         .and_then(|n| n.checked_mul(height))
         .ok_or_else(|| PsdError::Invalid("image dimensions overflow".into()))
 }
@@ -220,7 +379,7 @@ fn undo_prediction(data: &mut [u8], row_len: usize) {
 fn read_rle(
     r: &mut Reader,
     channels: usize,
-    width: usize,
+    row_bytes: usize,
     height: usize,
     is_psb: bool,
 ) -> Result<Vec<u8>, PsdError> {
@@ -233,14 +392,14 @@ fn read_rle(
         counts.push(read_rle_count(r, is_psb)?);
     }
 
-    let mut out = vec![0u8; planar_len(channels, width, height)?];
-    let plane = width * height;
+    let mut out = vec![0u8; planar_len(channels, row_bytes, height)?];
+    let plane = row_bytes * height;
     for (i, &count) in counts.iter().enumerate() {
         let packed = r.take(count)?;
         let channel = i / height;
         let row = i % height;
-        let start = channel * plane + row * width;
-        decode_packbits(packed, &mut out[start..start + width])?;
+        let start = channel * plane + row * row_bytes;
+        decode_packbits(packed, &mut out[start..start + row_bytes])?;
     }
     Ok(out)
 }
@@ -296,7 +455,12 @@ struct RawLayer {
 /// `(layers, global_layer_mask, layer_section_extra)` read from the section.
 type LayerSection = (Vec<Layer>, Vec<u8>, Vec<u8>);
 
-fn read_layer_section(r: &mut Reader, is_psb: bool) -> Result<LayerSection, PsdError> {
+fn read_layer_section(
+    r: &mut Reader,
+    is_psb: bool,
+    color_channels: usize,
+    bits: u8,
+) -> Result<LayerSection, PsdError> {
     let section_len = if is_psb {
         r.u64()? as usize
     } else {
@@ -327,7 +491,7 @@ fn read_layer_section(r: &mut Reader, is_psb: bool) -> Result<LayerSection, PsdE
         if info_end > section_end {
             return Err(PsdError::Invalid("layer info exceeds layer section".into()));
         }
-        layers = read_layer_info(r, is_psb, info_end)?;
+        layers = read_layer_info(r, is_psb, info_end, color_channels, bits)?;
         r.pos = info_end;
     }
 
@@ -345,7 +509,13 @@ fn read_layer_section(r: &mut Reader, is_psb: bool) -> Result<LayerSection, PsdE
     Ok((layers, global_layer_mask, layer_section_extra))
 }
 
-fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<Layer>, PsdError> {
+fn read_layer_info(
+    r: &mut Reader,
+    is_psb: bool,
+    info_end: usize,
+    color_channels: usize,
+    bits: u8,
+) -> Result<Vec<Layer>, PsdError> {
     let count = r.i16()?;
     let n = count.unsigned_abs() as usize;
     let mut raws: Vec<RawLayer> = Vec::new();
@@ -367,9 +537,12 @@ fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<
         let mut raw_channels = Vec::new();
         let mut mask_data = None;
         for (&id, &len) in raw.channel_ids.iter().zip(raw.channel_lens.iter()) {
-            // Channels outside the modeled set (notably -3, the real user mask)
-            // keep their full on-disk stream, compression header included.
-            if !matches!(id, -2..=2) {
+            // Channels outside the modeled set (a mode's extra color planes are
+            // decoded; spot/selection channels, notably -3, and any positive id
+            // beyond the color channels keep their full on-disk stream,
+            // compression header included).
+            let is_color = id >= 0 && (id as usize) < color_channels;
+            if id != -2 && id != -1 && !is_color {
                 raw_channels.push(RawChannel {
                     id,
                     data: r.take(len)?.to_vec(),
@@ -383,7 +556,7 @@ fn read_layer_info(r: &mut Reader, is_psb: bool, info_end: usize) -> Result<Vec<
             } else {
                 (layer_w, layer_h)
             };
-            let data = read_channel_data(r, len, w, h, is_psb)?;
+            let data = read_channel_data(r, len, w, h, is_psb, bits)?;
             match id {
                 -2 => mask_data = Some(data),
                 _ => channels.push(Channel { id, data }),
@@ -669,13 +842,16 @@ fn read_rle_count(r: &mut Reader, is_psb: bool) -> Result<usize, PsdError> {
 }
 
 /// Read one layer channel's image data. `declared_len` comes from the channel
-/// info and **includes** the 2-byte compression header.
+/// info and **includes** the 2-byte compression header. At depth 1 (Bitmap only)
+/// a channel is bit-packed with a `ceil(width / 8)` row stride and expanded to an
+/// 8-bit `width * height` plane, so the layer path matches the composite path.
 fn read_channel_data(
     r: &mut Reader,
     declared_len: usize,
     width: usize,
     height: usize,
     is_psb: bool,
+    bits: u8,
 ) -> Result<Vec<u8>, PsdError> {
     if declared_len == 0 {
         return Ok(Vec::new());
@@ -687,7 +863,42 @@ fn read_channel_data(
     }
     let compression = r.u16()?;
     let payload = r.take(declared_len - 2)?;
+    if bits == 1 {
+        return decode_bitmap_channel(compression, payload, width, height, is_psb);
+    }
     decode_channel_data(compression, payload, width, height, is_psb)
+}
+
+/// Decode a depth-1 layer channel to an 8-bit `width * height` plane. Raw and RLE
+/// rows are `ceil(width / 8)` bytes, MSB-first; ZIP is unsupported (as for the
+/// composite at depth 1). The bit is expanded through the same
+/// [`crate::color_mode::bitmap_rows_to_rgb`] helper the composite uses.
+fn decode_bitmap_channel(
+    compression: u16,
+    payload: &[u8],
+    width: usize,
+    height: usize,
+    is_psb: bool,
+) -> Result<Vec<u8>, PsdError> {
+    let row_bytes = width.div_ceil(8);
+    let plane = row_bytes
+        .checked_mul(height)
+        .ok_or_else(|| PsdError::Invalid("channel size overflow".into()))?;
+    let packed = match compression {
+        COMPRESSION_RAW => {
+            if payload.len() < plane {
+                return Err(PsdError::Invalid("raw channel too short".into()));
+            }
+            payload[..plane].to_vec()
+        }
+        COMPRESSION_RLE => decode_rle_channel(payload, row_bytes, height, is_psb)?,
+        COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION => {
+            return Err(PsdError::Unsupported("ZIP compression at depth 1".into()))
+        }
+        c => return Err(PsdError::Unsupported(format!("channel compression {c}"))),
+    };
+    let rgb = crate::color_mode::bitmap_rows_to_rgb(&packed, width, height);
+    Ok(rgb[..width * height].to_vec())
 }
 
 pub(crate) fn decode_rle_channel(

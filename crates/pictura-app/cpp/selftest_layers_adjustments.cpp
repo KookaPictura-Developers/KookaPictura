@@ -6,8 +6,10 @@
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QFile>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <QtCore/QTemporaryDir>
 #include <QtGui/QImage>
 
 int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
@@ -182,6 +184,63 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
                 return pictura::selfTest().fail(296, "selective color adjustment");
             }
             frame.closeDocument(selDoc, false);
+        }
+
+        // color_mode_open (297): a minimal flat CMYK PSD opens as a normalized
+        // RGB document and the view reports the CMYK conversion notice.
+        {
+            QTemporaryDir cmDir;
+            const QString cmPath = cmDir.filePath(QStringLiteral("cmyk.psd"));
+            QByteArray cmBytes;
+            const auto cmAppend16 = [&cmBytes](unsigned short value) {
+                cmBytes.append(char((value >> 8) & 0xff));
+                cmBytes.append(char(value & 0xff));
+            };
+            const auto cmAppend32 = [&cmBytes](unsigned int value) {
+                cmBytes.append(char((value >> 24) & 0xff));
+                cmBytes.append(char((value >> 16) & 0xff));
+                cmBytes.append(char((value >> 8) & 0xff));
+                cmBytes.append(char(value & 0xff));
+            };
+            cmBytes.append("8BPS", 4);
+            cmAppend16(1);              // version
+            cmBytes.append(6, char(0)); // reserved
+            cmAppend16(4);              // channels
+            cmAppend32(1);              // height
+            cmAppend32(1);              // width
+            cmAppend16(8);              // depth
+            cmAppend16(4);              // color mode CMYK
+            cmAppend32(0);              // color mode data
+            cmAppend32(0);              // image resources
+            cmAppend32(0);              // layer/mask section
+            cmAppend16(0);              // raw compression
+            cmBytes.append(char(128));  // C
+            cmBytes.append(char(64));   // M
+            cmBytes.append(char(32));   // Y
+            cmBytes.append(char(200));  // K
+            QFile cmFile(cmPath);
+            const bool cmWritten = cmFile.open(QIODevice::WriteOnly)
+                && cmFile.write(cmBytes) == cmBytes.size();
+            cmFile.close();
+
+            const int cmDocs = frame.documentCount();
+            const bool cmOpened = cmWritten && frame.openPath(cmPath);
+            pictura::PictureView* cmView = frame.activeView();
+            const bool cmOk = cmOpened && frame.documentCount() == cmDocs + 1 && cmView
+                && cmView->mode_notice() == QStringLiteral("Converted from CMYK")
+                && cmView->document_mode() == QStringLiteral("rgb")
+                && cmView->sample_argb(0, 0) == 0xff643219u;
+            ST_BEGIN("color_mode_open");
+            ST_PASS("color_mode_open open=%d notice=%s mode=%s pixel=%08x",
+                    cmOpened ? 1 : 0, cmView ? qPrintable(cmView->mode_notice()) : "-",
+                    cmView ? qPrintable(cmView->document_mode()) : "-",
+                    cmView ? cmView->sample_argb(0, 0) : 0u);
+            if (cmView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!cmOk) {
+                return pictura::selfTest().fail(297, "color mode open");
+            }
         }
 
     return 0;

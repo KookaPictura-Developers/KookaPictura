@@ -18,7 +18,7 @@ from pathlib import Path
 
 from PIL import Image
 from psd_tools import PSDImage
-from psd_tools.constants import BlendMode, ColorSpaceID, EffectOSType, Tag
+from psd_tools.constants import BlendMode, ColorMode, ColorSpaceID, EffectOSType, Tag
 from psd_tools.psd.adjustments import (
     BrightnessContrast,
     ColorStop,
@@ -31,6 +31,7 @@ from psd_tools.psd.adjustments import (
 )
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
 from psd_tools.psd.color import Color
+from psd_tools.psd.color_mode_data import ColorModeData
 from psd_tools.psd.descriptor import (
     Bool,
     Descriptor,
@@ -120,6 +121,101 @@ def gray() -> PSDImage:
     psd.create_pixel_layer(
         Image.new("L", (WIDTH, HEIGHT), 200), name="Gray"
     )
+    return psd
+
+
+def _set_composite(psd: PSDImage, planes: list[bytes]) -> None:
+    """Overwrite the image-data section with hand-built per-channel planes."""
+    psd._record.image_data.set_data([bytes(p) for p in planes], psd._record.header)
+
+
+def indexed() -> PSDImage:
+    """Indexed, an 8x8 index plane plus a 768-byte non-interleaved palette."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
+    psd._record.header.color_mode = ColorMode.INDEXED
+    psd._record.header.channels = 1
+    palette = bytearray(768)
+    for i in range(256):
+        palette[i] = i
+        palette[256 + i] = 255 - i
+        palette[512 + i] = (i * 7) % 256
+    psd._record.color_mode_data = ColorModeData(bytes(palette))
+    indices = bytes(i % 8 for i in range(WIDTH * HEIGHT))
+    _set_composite(psd, [indices])
+    return psd
+
+
+def cmyk() -> PSDImage:
+    """CMYK, varied known planes plus one constant pixel layer.
+
+    The stored planes are `0 = full ink, 255 = no ink`, so the profile-free
+    formula maps `(128, 64, 32, 200)` to RGB `(100, 50, 25)`. psd-tools/Pillow
+    rounds `color * black / 255` while the engine floors it, so the varied
+    samples make that <=1 difference visible; the oracle compares within 1.
+    """
+    psd = PSDImage.new("CMYK", (WIDTH, HEIGHT), color=(0, 0, 0, 0))
+    psd.create_pixel_layer(
+        Image.new("CMYK", (WIDTH, HEIGHT), (128, 64, 32, 200)), name="Ink"
+    )
+    samples = [
+        (128, 64, 32, 200),
+        (50, 200, 10, 90),
+        (0, 0, 0, 0),
+        (255, 255, 255, 255),
+        (10, 20, 30, 40),
+        (200, 10, 90, 150),
+        (77, 88, 99, 111),
+        (250, 5, 128, 63),
+    ]
+    pixels = [samples[i % len(samples)] for i in range(WIDTH * HEIGHT)]
+    _set_composite(
+        psd,
+        [
+            bytes(p[0] for p in pixels),
+            bytes(p[1] for p in pixels),
+            bytes(p[2] for p in pixels),
+            bytes(p[3] for p in pixels),
+        ],
+    )
+    psd._updated = False
+    return psd
+
+
+def lab() -> PSDImage:
+    """Lab, eight non-neutral in-gamut colors repeated across the image.
+
+    Each sample is a `(L, a, b)` triple. The oracle compares the decoded RGB to
+    lcms2's exact (unoptimized) LAB->sRGB transform within 1 LSB; the optimized
+    color LUT that psd-tools' `.convert("RGB")` applies is not the reference.
+    """
+    psd = PSDImage.new("LAB", (WIDTH, HEIGHT), color=(0, 0, 0))
+    samples = [
+        (225, 82, 114),
+        (200, 110, 100),
+        (150, 110, 110),
+        (120, 160, 140),
+        (90, 120, 160),
+        (160, 90, 120),
+        (110, 100, 160),
+        (200, 140, 160),
+    ]
+    pixels = [samples[i % len(samples)] for i in range(WIDTH * HEIGHT)]
+    _set_composite(
+        psd,
+        [
+            bytes(p[0] for p in pixels),
+            bytes(p[1] for p in pixels),
+            bytes(p[2] for p in pixels),
+        ],
+    )
+    return psd
+
+
+def bitmap() -> PSDImage:
+    """Depth-1 Bitmap, an 8x8 image of alternating black/white pixels (0xAA)."""
+    psd = PSDImage.new("BITMAP", (WIDTH, HEIGHT), color=0)
+    psd._record.header.depth = 1
+    _set_composite(psd, [bytes([0xAA]) * HEIGHT])
     return psd
 
 
@@ -1413,6 +1509,10 @@ FIXTURES = {
     "group.psd": group,
     "masked.psd": masked,
     "gray.psd": gray,
+    "indexed.psd": indexed,
+    "cmyk.psd": cmyk,
+    "lab.psd": lab,
+    "bitmap.psd": bitmap,
     "adjustment.psd": adjustment,
     "channel_mixer.psd": channel_mixer,
     "curves.psd": curves,

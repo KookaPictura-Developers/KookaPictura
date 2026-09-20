@@ -4,8 +4,14 @@ pub(crate) const SIGNATURE: u32 = 0x3842_5053; // "8BPS"
 pub(crate) const VERSION_PSD: u16 = 1;
 pub(crate) const VERSION_PSB: u16 = 2;
 
+pub(crate) const MODE_BITMAP: u16 = 0;
 pub(crate) const MODE_GRAYSCALE: u16 = 1;
+pub(crate) const MODE_INDEXED: u16 = 2;
 pub(crate) const MODE_RGB: u16 = 3;
+pub(crate) const MODE_CMYK: u16 = 4;
+pub(crate) const MODE_MULTICHANNEL: u16 = 7;
+pub(crate) const MODE_DUOTONE: u16 = 8;
+pub(crate) const MODE_LAB: u16 = 9;
 
 pub(crate) const MAX_CHANNELS: u16 = 56;
 pub(crate) const MAX_DIM_PSD: u32 = 30_000;

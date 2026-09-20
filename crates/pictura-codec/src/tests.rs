@@ -6,6 +6,17 @@ use crate::common::{
 use pictura_core::*;
 
 fn header(version: u16, channels: u16, width: u32, height: u32, mode: u16) -> Vec<u8> {
+    header_depth(version, channels, width, height, 8, mode)
+}
+
+fn header_depth(
+    version: u16,
+    channels: u16,
+    width: u32,
+    height: u32,
+    depth: u16,
+    mode: u16,
+) -> Vec<u8> {
     let mut v = Vec::new();
     v.extend_from_slice(b"8BPS");
     v.extend_from_slice(&version.to_be_bytes());
@@ -13,7 +24,7 @@ fn header(version: u16, channels: u16, width: u32, height: u32, mode: u16) -> Ve
     v.extend_from_slice(&channels.to_be_bytes());
     v.extend_from_slice(&height.to_be_bytes());
     v.extend_from_slice(&width.to_be_bytes());
-    v.extend_from_slice(&8u16.to_be_bytes());
+    v.extend_from_slice(&depth.to_be_bytes());
     v.extend_from_slice(&mode.to_be_bytes());
     v
 }
@@ -1082,5 +1093,7 @@ fn truncated_preserved_blocks_error() {
     let cut = bytes.len() - doc.composite.data.len() - 2 - 2;
     assert!(matches!(read_psd(&bytes[..cut]), Err(PsdError::Truncated)));
 }
+
+mod color_modes;
 
 mod psb;

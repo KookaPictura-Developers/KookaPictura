@@ -229,6 +229,28 @@ impl qobject::PictureView {
             .unwrap_or_default()
     }
 
+    pub fn mode_notice(&self) -> QString {
+        let Some(mode) = self.rust().doc.as_ref().and_then(|d| d.source_mode) else {
+            return QString::default();
+        };
+        let name = match mode {
+            ColorMode::Bitmap => "Bitmap",
+            ColorMode::Indexed => "Indexed",
+            ColorMode::Cmyk => "CMYK",
+            ColorMode::Lab => "Lab",
+            _ => return QString::default(),
+        };
+        QString::from(format!("Converted from {name}"))
+    }
+
+    pub fn document_mode(&self) -> QString {
+        match self.rust().doc.as_ref().map(|d| d.mode) {
+            Some(ColorMode::Grayscale) => QString::from("grayscale"),
+            Some(_) => QString::from("rgb"),
+            None => QString::default(),
+        }
+    }
+
     pub fn image(mut self: Pin<&mut Self>) -> QImage {
         let mut rust = self.as_mut().rust_mut();
         if !rust.display_dirty {
