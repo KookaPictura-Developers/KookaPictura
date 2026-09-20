@@ -25,6 +25,18 @@ namespace {
 // when zoomed out.
 constexpr double kPolygonCloseRadius = 6.0;
 
+// True when the document's topmost pixel layer carries the `PIXELS` lock
+// (`LockFlags::PIXELS` = 0x02). Composed from existing bridge accessors so the
+// frozen `cxxqt_object.rs` line budget is not grown.
+bool topmostPixelLocked(PictureView* view)
+{
+    if (!view) {
+        return false;
+    }
+    const int index = view->topmost_pixel_layer_index();
+    return index >= 0 && (view->layer_lock(index) & 0x02) != 0;
+}
+
 const ToolInfo kToolTable[] = {
     {ToolId::Move, "move", "Move", QLatin1Char('V'), Qt::SizeAllCursor,
      "Move: drag to move the active layer", 1, true, 2, 2},
@@ -536,6 +548,11 @@ void ToolController::refreshCursor()
         }
     }
     PictureView* hoverView = view();
+    if ((active_ == ToolId::Brush || active_ == ToolId::Pencil) && hoverView
+        && topmostPixelLocked(hoverView)) {
+        canvas_->setCursor(Qt::ForbiddenCursor);
+        return;
+    }
     if (isSelectionTool(active_)
         && QGuiApplication::queryKeyboardModifiers().testFlag(Qt::ControlModifier) && hoverView
         && hoverView->has_selection()) {
@@ -624,6 +641,10 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         if (!v->begin_paint(foreground_.rgba(), background_.rgba(), brushSize_, brushHardness_,
                             100, 0, brushOpacity_, brushFlow_, 25, brushMode_, aliased,
                             autoErase_)) {
+            if (topmostPixelLocked(v)) {
+                emit pixelEditRefused(
+                    tr("Could not paint: the layer's pixels are locked."));
+            }
             return;
         }
         dragging_ = true;

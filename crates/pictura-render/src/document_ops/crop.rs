@@ -4,7 +4,7 @@
 //! clamped rect's top-left, so every rect shifts by `(-x, -y)` and every
 //! document channel is re-blitted into the smaller canvas.
 
-use pictura_core::{Document, Layer};
+use pictura_core::{layer_move_locked, Document, Layer};
 
 use super::canvas::{extend_channel, offset_rect};
 use super::{for_each_layer, recompute};
@@ -52,6 +52,9 @@ pub fn translate_layer(doc: &mut Document, dx: i32, dy: i32) -> bool {
     let Some(layer) = topmost_pixel_layer(&mut doc.layers) else {
         return false;
     };
+    if layer_move_locked(layer) {
+        return false;
+    }
     layer.rect = offset_rect(layer.rect, dx, dy);
     if let Some(mask) = &mut layer.mask {
         mask.rect = offset_rect(mask.rect, dx, dy);
@@ -70,6 +73,9 @@ pub fn translate_layer_rect(doc: &mut Document, dx: i32, dy: i32) -> bool {
     let Some(layer) = topmost_pixel_layer(&mut doc.layers) else {
         return false;
     };
+    if layer_move_locked(layer) {
+        return false;
+    }
     layer.rect = offset_rect(layer.rect, dx, dy);
     if let Some(mask) = &mut layer.mask {
         mask.rect = offset_rect(mask.rect, dx, dy);
@@ -87,6 +93,9 @@ pub fn translate_layer_active(doc: &mut Document, dx: i32, dy: i32, gpu_enabled:
     let Some(layer) = topmost_pixel_layer(&mut doc.layers) else {
         return false;
     };
+    if layer_move_locked(layer) {
+        return false;
+    }
     layer.rect = offset_rect(layer.rect, dx, dy);
     if let Some(mask) = &mut layer.mask {
         mask.rect = offset_rect(mask.rect, dx, dy);
@@ -305,6 +314,29 @@ mod tests {
         let before = doc.clone();
         assert!(!translate_layer(&mut doc, 2, 2));
         assert_eq!(doc, before);
+    }
+
+    #[test]
+    fn position_lock_blocks_translate_but_allows_reorder() {
+        let mut doc = sample_doc();
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::POSITION, true);
+        let before = doc.clone();
+        assert!(
+            !translate_layer(&mut doc, 2, 0),
+            "position lock refuses translate"
+        );
+        assert!(!translate_layer_rect(&mut doc, 2, 0));
+        assert_eq!(doc, before, "refusal leaves the document unchanged");
+
+        let mut doc = sample_doc();
+        doc.layers.push(pixel_layer("top", full(4, 4), None));
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::POSITION, true);
+        assert!(
+            super::super::move_path(&mut doc, "0", 1),
+            "structural reorder ignores the position lock"
+        );
+        assert_eq!(doc.layers[0].name, "top");
+        assert_eq!(doc.layers[1].name, "layer");
     }
 
     /// Manual M31 evidence: a small region composite against the full 4000²

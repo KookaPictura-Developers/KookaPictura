@@ -226,6 +226,8 @@ signals:
     void brushSizeChanged(int size);
     void foregroundSampled(const QColor& color);
     void selectionCommitted();
+    // A pixel edit was refused because the target layer's pixels are locked.
+    void pixelEditRefused(const QString& message);
     // The selection mask moved during a move-from-inside drag; the view changed
     // without a `changed` emission, so the overlay must be refreshed directly.
     void selectionPreviewChanged();

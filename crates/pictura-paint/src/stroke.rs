@@ -2,7 +2,7 @@
 
 use crate::spacing::DabPlacer;
 use crate::{tip_coverage, PaintMode, Rgba, StrokeConfig, StrokeSample};
-use pictura_core::{Document, Layer, PsdRect};
+use pictura_core::{layer_pixel_locked, layer_transparency_locked, Document, Layer, PsdRect};
 
 /// Deterministic stroke seed; Dissolve randomness must not vary between runs.
 const STROKE_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
@@ -11,6 +11,8 @@ const STROKE_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
 pub enum PaintError {
     EmptyDocument,
     NoRasterLayer,
+    /// The target layer's pixel or transparency lock refuses the stroke.
+    Locked,
 }
 
 pub struct StrokeOutcome {
@@ -43,9 +45,14 @@ impl Stroke {
         let path =
             find_topmost_raster(&doc.layers, &mut Vec::new()).ok_or(PaintError::NoRasterLayer)?;
         let cfg = cfg.sanitized();
-        let rect = layer_at(doc, &path)
-            .expect("path returned by find_topmost_raster")
-            .rect;
+        let target = layer_at(doc, &path).expect("path returned by find_topmost_raster");
+        if layer_pixel_locked(target) {
+            return Err(PaintError::Locked);
+        }
+        if layer_transparency_locked(target) && (cfg.mode == PaintMode::Clear || cfg.auto_erase) {
+            return Err(PaintError::Locked);
+        }
+        let rect = target.rect;
         let w = rect.width().max(0) as usize;
         let h = rect.height().max(0) as usize;
         // ponytail: layer-sized coverage buffer; move to tiled/sparse coverage only if huge layers matter.
@@ -474,6 +481,45 @@ mod tests {
             .iter()
             .any(|&v| v != BASE.0));
         assert!(chan(&doc, 0, 16 * 64 + 20) > BASE.0);
+    }
+
+    #[test]
+    fn pixel_locked_layer_refuses_stroke_and_writes_nothing() {
+        let mut doc = layer_doc(16, 16, BASE);
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::PIXELS, true);
+        let before = doc.clone();
+        let cfg = StrokeConfig {
+            color: red(),
+            diameter: 6,
+            hardness: 100,
+            spacing: SpacingMode::Fixed(25),
+            ..StrokeConfig::default()
+        };
+        let begun = Stroke::begin(&doc, cfg);
+        assert!(matches!(begun, Err(PaintError::Locked)));
+        assert!(paint_stroke(&mut doc, &cfg, &[sample(4.0, 4.0), sample(12.0, 4.0)]).is_none());
+        assert_eq!(doc, before, "a refused stroke writes no pixels");
+    }
+
+    #[test]
+    fn transparency_lock_refuses_clear_but_allows_normal() {
+        let mut doc = layer_doc(16, 16, BASE);
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::TRANSPARENCY, true);
+        let clear = StrokeConfig {
+            color: red(),
+            diameter: 6,
+            hardness: 100,
+            spacing: SpacingMode::Fixed(25),
+            mode: PaintMode::Clear,
+            ..StrokeConfig::default()
+        };
+        let begun = Stroke::begin(&doc, clear);
+        assert!(matches!(begun, Err(PaintError::Locked)));
+        let normal = StrokeConfig {
+            mode: PaintMode::Normal,
+            ..clear
+        };
+        assert!(Stroke::begin(&doc, normal).is_ok());
     }
 
     #[test]

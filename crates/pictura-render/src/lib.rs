@@ -74,6 +74,8 @@ pub use gpu::{
 mod filter;
 pub use filter::apply_filter;
 
+pub mod locks;
+
 mod gpu_filter;
 pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 

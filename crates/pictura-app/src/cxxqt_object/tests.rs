@@ -702,3 +702,72 @@ fn save_after_edit_serializes_the_current_composite() {
         "reopened composite is the edited render, not the pre-edit one"
     );
 }
+
+/// A `POSITION` lock does not block a pixel edit: the topmost selector is not
+/// filtered by position lock (the D5 warning).
+#[test]
+fn topmost_selector_still_edits_under_position_lock() {
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 8, 8, (40, 40, 40))];
+    doc.layers[0].lock = LockFlags::default().with(LockFlags::POSITION, true);
+    let layer = topmost_pixel_layer(&mut doc).expect("selector finds the pixel layer");
+    assert!(pictura_render::apply_filter(
+        layer,
+        &pictura_filters::Filter::GaussianBlur { radius: 1.0 },
+        None,
+        false,
+    )
+    .is_ok());
+}
+
+#[test]
+fn filter_refused_and_unchanged_on_pixel_locked_layer() {
+    let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 8, 8, (40, 40, 40))];
+    doc.layers[0].lock = LockFlags::default().with(LockFlags::PIXELS, true);
+    let before = doc.layers[0].clone();
+    let layer = topmost_pixel_layer(&mut doc).expect("selector finds the pixel layer");
+    let err = pictura_render::apply_filter(
+        layer,
+        &pictura_filters::Filter::GaussianBlur { radius: 1.0 },
+        None,
+        false,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, pictura_filters::FilterError::Locked),
+        "{err:?}"
+    );
+    assert_eq!(
+        doc.layers[0], before,
+        "a refused filter leaves the layer bit-identical"
+    );
+}
+
+#[test]
+fn content_move_refused_on_locked_layer() {
+    let mask = LayerMask {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 8,
+            right: 8,
+        },
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: Some(vec![255; 64]),
+        ..Default::default()
+    };
+    for flag in [LockFlags::POSITION, LockFlags::PIXELS] {
+        let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = vec![pixel_layer("base", 8, 8, (40, 40, 40))];
+        doc.layers[0].lock = LockFlags::default().with(flag, true);
+        let before = doc.clone();
+        assert!(
+            !pictura_render::move_selection_content(&mut doc, "0", &mask, 2, 0, false),
+            "flag {flag} refuses the content move"
+        );
+        assert_eq!(doc, before, "refusal leaves the document unchanged");
+    }
+}
