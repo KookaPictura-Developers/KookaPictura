@@ -86,7 +86,7 @@ Shipped as the archived change `2026-09-19-psd-smart-object-roundtrip`.
 **P3 — Render preserved data.** *(in progress)*
 Decode the remaining adjustment descriptors and real fill descriptors (G8);
 gradient fill layers; layer effects (`lfx2` Drop Shadow, Outer Glow, Inner
-Shadow, Inner Glow); text; vector masks.
+Shadow, Inner Glow, Stroke, Color/Gradient/Pattern Overlay); text; vector masks.
 **Smart-object source rendering is shipped** (archived
 `2026-09-19-smart-object-source-render`): an `Embedded` smart object with no
 raster proxy is rendered by decoding its payload and sampling it into the layer
@@ -121,9 +121,14 @@ the CPU, with the GPU falling back to CPU (archived
 `2026-09-19-layer-effects-outer-glow`,
 `2026-09-19-layer-effects-inner-shadow`,
 `2026-09-19-layer-effects-inner-glow`, and
-`2026-09-20-layer-effects-stroke`); the remaining effect kinds — the legacy
-`lrFX` block, bevel, satin, gradient/pattern stroke fills, and the overlays —
-are deferred. Remaining:
+`2026-09-20-layer-effects-stroke`); the object-based **Color Overlay**
+(`SoFi`), **Gradient Overlay** (`GrFl`), and **Pattern Overlay** (`patternFill`)
+now decode and composite above the layer content, gated by the content coverage
+with the effect blend/opacity, the gradient reusing the shared gradient
+geometry and the pattern the document pattern library (archived
+`2026-09-20-layer-effects-overlays`); the remaining effect kinds — the legacy
+`lrFX` block, bevel, satin, and gradient/pattern stroke fills — are deferred.
+Remaining:
 `curv`,
 `mixr`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
 (text, vector masks).

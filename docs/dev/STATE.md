@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **995 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1045 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -31,15 +31,17 @@ Snapshot for resuming after a context break. Update after each milestone.
     `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
     `pattern-fill-layer`, `layer-effects-drop-shadow`,
     `layer-effects-outer-glow`, `layer-effects-inner-shadow`,
-    `layer-effects-inner-glow`, and `layer-effects-stroke` changes;
+    `layer-effects-inner-glow`, `layer-effects-stroke`, and
+    `layer-effects-overlays` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is under way:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
-   `layer-effects-inner-shadow`, `layer-effects-inner-glow`, and
-   `layer-effects-stroke` ship the five object-based effect kinds (drop shadow,
-   outer glow, inner shadow, inner glow, stroke); the remaining kinds (bevel,
-   satin, overlays, the legacy `lrFX` block) are deferred.
+   `layer-effects-inner-shadow`, `layer-effects-inner-glow`,
+   `layer-effects-stroke`, and `layer-effects-overlays` ship the object-based
+   effect kinds (drop shadow, outer glow, inner shadow, inner glow, stroke, and
+   color/gradient/pattern overlay); the remaining kinds (bevel, satin, the
+   legacy `lrFX` block) are deferred.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
@@ -343,6 +345,26 @@ Snapshot for resuming after a context break. Update after each milestone.
   new `layer_effects/strokes.rs` holds the kind. Ceilings: gradient/pattern
   fills, contour/anti-alias/overprint, and the integer max/min band (psd-tools
   uses a doubled-radius edge mask) are deferred.
+- Layer effects — Color/Gradient/Pattern Overlay (roadmap P3/G6, archived
+  `2026-09-20-layer-effects-overlays`): the object-based `lfx2` overlay effects
+  are now decoded and composited — **Color Overlay** (`SoFi`), **Gradient
+  Overlay** (`GrFl`), and **Pattern Overlay** (`patternFill`) into typed params.
+  Each fills the layer's own content coverage: the source (solid colour;
+  gradient via the shared gradient geometry, layer-rect anchored when
+  `align_with_layer` and canvas otherwise; pattern via the document pattern
+  library, grey placeholder when the id is absent) is gated by the masked
+  content matte `M` and composited **above** the content with the effect's own
+  blend mode and `M · opacity/100` alpha. Overlay defaults: absent `Angl` → 0,
+  absent `Type` → Linear. The GPU rejects an enabled+present overlay
+  (`UnsupportedLayerEffect`, no shader) and falls back to the CPU; psd-tools
+  authored `{color,gradient,pattern}_overlay.psd` fixtures prove
+  decode/round-trip/render; the new `layer_effects/overlays.rs` holds the three
+  kinds. The change also extracted the shared `fill.rs` helpers
+  `gradient_params_from_desc`/`pattern_params_from_desc` (a pure move), which
+  tightens the strict `GdFl` `Type`/`GrdF` typeID checks and rejects an `f64`
+  that overflows `f32` (no existing fixture regressed). Ceilings: gradient
+  `Ofst`/noise/`Dither`, pattern rotation (`Angl` decoded but not applied); the
+  remaining kinds — bevel, satin, the legacy `lrFX` block — are deferred.
 
 ## Commands
 
