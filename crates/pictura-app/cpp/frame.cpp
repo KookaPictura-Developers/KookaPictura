@@ -17,6 +17,11 @@ constexpr int kRecentLimit = 20;
 
 } // namespace
 
+bool launchCreatesScratchDocument(bool selfTest, bool codecLoaded)
+{
+    return selfTest && !codecLoaded;
+}
+
 PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     : QMainWindow(parent)
 {

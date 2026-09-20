@@ -6,9 +6,10 @@
 class QCheckBox;
 class QComboBox;
 class QLineEdit;
-class QSpinBox;
 
 namespace pictura {
+
+class NumericField;
 
 // The values collected by the New Layer / New Group dialog.
 struct LayerNewSpec {
@@ -45,7 +46,7 @@ private:
     QLineEdit* nameEdit_ = nullptr;
     QComboBox* colorCombo_ = nullptr;
     QComboBox* modeCombo_ = nullptr;
-    QSpinBox* opacitySpin_ = nullptr;
+    NumericField* opacitySpin_ = nullptr;
     QCheckBox* neutralCheck_ = nullptr;
     QCheckBox* clippingCheck_ = nullptr;
 };

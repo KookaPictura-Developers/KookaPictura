@@ -1,6 +1,7 @@
 #include "layer_new_dialog.h"
 
 #include "panels/layers_panel_internal.h"
+#include "panels/numeric_field.h"
 
 #include <QtCore/QSet>
 #include <QtWidgets/QCheckBox>
@@ -8,7 +9,6 @@
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QLineEdit>
-#include <QtWidgets/QSpinBox>
 
 namespace pictura {
 
@@ -51,8 +51,12 @@ LayerNewDialog::LayerNewDialog(bool group, QWidget* parent)
         modeCombo_->addItem(QString::fromLatin1(entry.name), QString::fromLatin1(entry.key));
     }
 
-    opacitySpin_ = new QSpinBox(this);
-    opacitySpin_->setRange(0, 255);
+    NumericFieldConfig opacityConfig;
+    opacityConfig.minimum = 0;
+    opacityConfig.maximum = 255;
+    opacityConfig.decimals = 0;
+    opacityConfig.objectName = QStringLiteral("layerNewOpacity");
+    opacitySpin_ = new NumericField(QString(), opacityConfig, this);
     opacitySpin_->setValue(255);
 
     if (!group_) {
@@ -101,7 +105,7 @@ LayerNewSpec LayerNewDialog::spec() const
     result.name = nameEdit_->text();
     result.color = colorCombo_->currentData().toInt();
     result.blend = modeCombo_->currentData().toString();
-    result.opacity = opacitySpin_->value();
+    result.opacity = qRound(opacitySpin_->value());
     result.neutralFill = neutralCheck_ && neutralCheck_->isChecked();
     result.clipping = clippingCheck_ && clippingCheck_->isChecked();
     return result;

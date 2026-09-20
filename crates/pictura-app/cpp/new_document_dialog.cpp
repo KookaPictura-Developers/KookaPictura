@@ -1,5 +1,7 @@
 #include "new_document_dialog.h"
 
+#include "panels/numeric_field.h"
+
 #include <QtCore/QSize>
 #include <QtGui/QStandardItemModel>
 
@@ -8,9 +10,22 @@
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
-#include <QtWidgets/QSpinBox>
 
 namespace pictura {
+
+namespace {
+
+NumericFieldConfig dimensionConfig(const QString& objectName)
+{
+    NumericFieldConfig config;
+    config.minimum = 1;
+    config.maximum = 30000;
+    config.decimals = 0;
+    config.objectName = objectName;
+    return config;
+}
+
+} // namespace
 
 NewDocumentDialog::NewDocumentDialog(QWidget* parent)
     : QDialog(parent)
@@ -23,12 +38,11 @@ NewDocumentDialog::NewDocumentDialog(QWidget* parent)
     presetCombo_->addItem(QStringLiteral("Default Photoshop Size"), QSize(1000, 1000));
     presetCombo_->addItem(QStringLiteral("Custom"), QSize());
 
-    widthSpin_ = new QSpinBox(this);
-    heightSpin_ = new QSpinBox(this);
-    for (QSpinBox* spin : {widthSpin_, heightSpin_}) {
-        spin->setRange(1, 30000);
-        spin->setValue(1000);
-    }
+    widthSpin_ = new NumericField(QString(), dimensionConfig(QStringLiteral("newDocWidth")), this);
+    heightSpin_ =
+        new NumericField(QString(), dimensionConfig(QStringLiteral("newDocHeight")), this);
+    widthSpin_->setValue(1000);
+    heightSpin_->setValue(1000);
 
     modeCombo_ = new QComboBox(this);
     modeCombo_->addItem(QStringLiteral("RGB Color"), QStringLiteral("rgb"));
@@ -82,8 +96,8 @@ NewDocumentSpec NewDocumentDialog::spec() const
 {
     NewDocumentSpec result;
     result.name = nameEdit_->text();
-    result.width = widthSpin_->value();
-    result.height = heightSpin_->value();
+    result.width = qRound(widthSpin_->value());
+    result.height = qRound(heightSpin_->value());
     result.mode = modeCombo_->currentData().toString();
     result.depth = depthCombo_->currentData().toInt();
     result.background = backgroundCombo_->currentData().toString();

@@ -5,9 +5,10 @@
 
 class QComboBox;
 class QLineEdit;
-class QSpinBox;
 
 namespace pictura {
+
+class NumericField;
 
 // The values collected by the New Document dialog.
 struct NewDocumentSpec {
@@ -32,8 +33,8 @@ public:
 
 private:
     QLineEdit* nameEdit_ = nullptr;
-    QSpinBox* widthSpin_ = nullptr;
-    QSpinBox* heightSpin_ = nullptr;
+    NumericField* widthSpin_ = nullptr;
+    NumericField* heightSpin_ = nullptr;
     QComboBox* presetCombo_ = nullptr;
     QComboBox* modeCombo_ = nullptr;
     QComboBox* depthCombo_ = nullptr;

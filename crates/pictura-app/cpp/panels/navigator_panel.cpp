@@ -1,6 +1,7 @@
 #include "navigator_panel.h"
 
 #include "image_view.h"
+#include "jump_slider.h"
 
 #include <QtCore/QEvent>
 #include <QtGui/QColor>
@@ -158,7 +159,7 @@ NavigatorPanel::NavigatorPanel(QWidget* parent)
     layout->addWidget(thumbnail_, 1);
 
     auto* zoomRow = new QHBoxLayout();
-    slider_ = new QSlider(Qt::Horizontal, body);
+    slider_ = new JumpSlider(Qt::Horizontal, body);
     slider_->setRange(0, kSliderSteps);
     slider_->setEnabled(false);
     zoomLabel_ = new QLabel(QStringLiteral("100%"), body);

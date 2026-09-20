@@ -7,10 +7,11 @@
 
 class QCheckBox;
 class QListWidget;
-class QSpinBox;
 class QStackedWidget;
 
 namespace pictura {
+
+class NumericField;
 
 // The M41 CS6 Preferences dialog: a left pane list plus a QStackedWidget. Only
 // `General` and `Interface` are real pages; the other CS6 panes are listed but
@@ -54,7 +55,7 @@ private:
     QStackedWidget* stack_ = nullptr;
     QStringList realPages_;
     QHash<QString, QCheckBox*> checkboxes_;
-    QSpinBox* brightness_ = nullptr;
+    NumericField* brightness_ = nullptr;
 };
 
 } // namespace pictura

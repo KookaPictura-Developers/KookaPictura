@@ -223,6 +223,7 @@ public:
 
 signals:
     void activeToolChanged(ToolId id);
+    void brushSizeChanged(int size);
     void foregroundSampled(const QColor& color);
     void selectionCommitted();
     // The selection mask moved during a move-from-inside drag; the view changed
