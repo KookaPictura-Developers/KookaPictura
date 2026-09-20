@@ -27,6 +27,35 @@ QString modeLabel(const QString& mode)
     return mode.toUpper();
 }
 
+// Keycap label for a key event, matching the labels in `toolHintEntries`; empty
+// for a key that no hint shows.
+QString hintKeyLabel(const QKeyEvent* event)
+{
+    switch (event->key()) {
+    case Qt::Key_Shift:
+        return QStringLiteral("Shift");
+    case Qt::Key_Alt:
+        return QStringLiteral("Alt");
+    case Qt::Key_Control:
+        return QStringLiteral("Ctrl");
+    case Qt::Key_BracketLeft:
+        return QStringLiteral("[");
+    case Qt::Key_BracketRight:
+        return QStringLiteral("]");
+    case Qt::Key_Left:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+        return QStringLiteral("Arrows");
+    default:
+        break;
+    }
+    if (event->key() >= Qt::Key_A && event->key() <= Qt::Key_Z) {
+        return QString(QChar(event->key()));
+    }
+    return QString();
+}
+
 } // namespace
 
 bool launchCreatesScratchDocument(bool selfTest, bool codecLoaded)
@@ -149,7 +178,9 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     auto* hidePanelsBack = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Tab), this);
     connect(hidePanelsBack, &QShortcut::activated, this,
             [this]() { setPanelsHidden(!panelsHidden_); });
-    auto* cycleCanvas = new QShortcut(QKeySequence(Qt::Key_Space, Qt::Key_F), this);
+    // Space is reserved for transient panning, so the canvas-colour cycle is
+    // bound to a double `F` instead; a bare Space reaches the widgets.
+    auto* cycleCanvas = new QShortcut(QKeySequence(Qt::Key_F, Qt::Key_F), this);
     connect(cycleCanvas, &QShortcut::activated, this, [this]() { cycleCanvasColor(true); });
     auto* brightnessDown = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F1), this);
     connect(brightnessDown, &QShortcut::activated, this,
@@ -856,6 +887,17 @@ void PicturaMainWindow::closeEvent(QCloseEvent* event)
 
 void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
 {
+    if (hintBar_) {
+        hintBar_->setPressedKey(hintKeyLabel(event));
+    }
+    if (!event->isAutoRepeat() && event->key() == Qt::Key_Space) {
+        ImageView* canvas = imageView();
+        if (canvas && (!tools_ || !tools_->transformSessionActive())) {
+            canvas->setSpacePan(true);
+            event->accept();
+            return;
+        }
+    }
     if (tools_
         && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt
             || event->key() == Qt::Key_Control)) {
@@ -886,6 +928,18 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
 
 void PicturaMainWindow::keyReleaseEvent(QKeyEvent* event)
 {
+    if (hintBar_) {
+        hintBar_->setPressedKey(QString());
+    }
+    if (event->key() == Qt::Key_Space) {
+        if (ImageView* canvas = imageView(); canvas && canvas->spacePanForTest()) {
+            canvas->setSpacePan(false);
+            canvas->setPanEnabled(tools_ && tools_->activeTool() == ToolId::Hand);
+            if (tools_) {
+                tools_->refreshCursor();
+            }
+        }
+    }
     if (tools_
         && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt
             || event->key() == Qt::Key_Control)) {
@@ -923,15 +977,30 @@ void PicturaMainWindow::updateStatus()
 
 void PicturaMainWindow::updateToolHint()
 {
-    if (!hintLabel_) {
+    if (!hintBar_) {
         return;
     }
-    QString text = tools_ ? QString::fromLatin1(toolInfo(tools_->activeTool()).hint)
-                          : QStringLiteral("Ready");
+    QString fallback = tools_ ? QString::fromLatin1(toolInfo(tools_->activeTool()).hint)
+                              : QStringLiteral("Ready");
     if (foreground_.isValid()) {
-        text += QStringLiteral("  ·  Foreground %1").arg(foreground_.name());
+        fallback += QStringLiteral("  ·  Foreground %1").arg(foreground_.name());
     }
-    hintLabel_->setText(text);
+    QList<ToolHint> hints;
+    if (tools_) {
+        hints = toolHintEntries(tools_->activeTool());
+        for (ToolHint& hint : hints) {
+            if (!hint.commandId || !registry_) {
+                continue;
+            }
+            if (QAction* action = registry_->action(QString::fromLatin1(hint.commandId))) {
+                const QString key = action->shortcut().toString(QKeySequence::NativeText);
+                if (!key.isEmpty()) {
+                    hint.key = key;
+                }
+            }
+        }
+    }
+    hintBar_->setHints(hints, fallback);
 }
 
 void PicturaMainWindow::applyBrightness(int level)

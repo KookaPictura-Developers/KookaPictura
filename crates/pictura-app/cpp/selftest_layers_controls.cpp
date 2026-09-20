@@ -10,6 +10,7 @@
 #include "selftest_report.h"
 #include "selftest_session.h"
 #include "selftest_tools_selection.h"
+#include "selftest_tool_canvas.h"
 #include "selftest_ui_persistence.h"
 
 #include "commands.h"
@@ -1098,6 +1099,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int ss = pictura::runSessionChecks(frame); ss != 0) { return ss; }
 
         if (const int up = pictura::runUiPersistenceChecks(frame); up != 0) { return up; }
+
+        if (const int tc = pictura::runToolCanvasChecks(frame); tc != 0) { return tc; }
 
     return 0;
 }

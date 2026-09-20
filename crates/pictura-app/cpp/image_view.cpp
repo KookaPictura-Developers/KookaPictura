@@ -231,6 +231,20 @@ void ImageView::setPanEnabled(bool enabled)
     }
 }
 
+void ImageView::setSpacePan(bool on)
+{
+    if (spacePan_ == on) {
+        return;
+    }
+    spacePan_ = on;
+    if (on) {
+        setPanEnabled(true);
+        setCursor(Qt::OpenHandCursor);
+    } else {
+        panning_ = false;
+    }
+}
+
 void ImageView::setOverlayPolygon(const QPolygonF& polygon)
 {
     overlayPolygon_ = polygon;
@@ -503,8 +517,12 @@ void ImageView::paintEvent(QPaintEvent*)
 
     painter.translate(offset_);
     painter.scale(zoom_, zoom_);
-    // Crop the base, the move-preview layer, and the overlay to the document.
-    painter.setClipRect(QRectF(0.0, 0.0, image_.width(), image_.height()));
+    // Crop the document content (base, preview, overlays) to the image rect.
+    // The brush ring below is drawn outside this scope so it can render past
+    // the document edge while staying inside the canvas widget.
+    const QRectF docClip(0.0, 0.0, image_.width(), image_.height());
+    painter.save();
+    painter.setClipRect(docClip);
 
     if (transformActive_ && !moveBase_.isNull()) {
         // Free Transform: the base is fixed; the layer is drawn under the live
@@ -543,12 +561,14 @@ void ImageView::paintEvent(QPaintEvent*)
         }
         presentCacheRebuiltLastPaint_ = presentCache_.rebuilds != before;
     }
+    painter.restore();
 
     if (brushOutlineActive_ && brushOutlineDiameter_ > 0.0) {
         // Cosmetic pens keep each ring 1 device px independent of zoom; the
         // radius is in image pixels, so the on-screen circle scales with zoom.
         // A white ring one image px outside the black one keeps the outline
-        // legible on both light and dark documents.
+        // legible on both light and dark documents. Drawn with the full-widget
+        // clip, not the document clip, so the ring stays visible past the edge.
         const double radius = brushOutlineDiameter_ / 2.0;
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QPen(Qt::white, 0));
@@ -556,6 +576,9 @@ void ImageView::paintEvent(QPaintEvent*)
         painter.setPen(QPen(Qt::black, 0));
         painter.drawEllipse(brushOutlineImagePos_, radius, radius);
     }
+
+    painter.save();
+    painter.setClipRect(docClip);
 
     if (!overlayPolygon_.isEmpty()) {
         painter.setBrush(Qt::NoBrush);
@@ -648,6 +671,7 @@ void ImageView::paintEvent(QPaintEvent*)
         painter.setBrush(Qt::white);
         painter.drawEllipse(knob, hs, hs);
     }
+    painter.restore();
 
     if (dragSizeActive_ && !dragSizeText_.isEmpty()) {
         painter.save();
@@ -714,6 +738,9 @@ void ImageView::mousePressEvent(QMouseEvent* event)
         panning_ = true;
         userAdjusted_ = true;
         last_ = event->position();
+        if (spacePan_) {
+            setCursor(Qt::ClosedHandCursor);
+        }
     } else {
         pressTrace_.clock.restart();
         pressTrace_.pressHwMs = event->timestamp();
@@ -747,7 +774,11 @@ void ImageView::mouseMoveEvent(QMouseEvent* event)
 void ImageView::mouseReleaseEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton) {
+        const bool wasPanning = panning_;
         panning_ = false;
+        if (wasPanning && spacePan_ && event->button() == Qt::LeftButton) {
+            setCursor(Qt::OpenHandCursor);
+        }
     }
     if (event->button() == Qt::MiddleButton) {
         unsetCursor();

@@ -22,6 +22,7 @@
 #include "preferences_dialog.h"
 #include "session.h"
 #include "theme.h"
+#include "tool_hint_bar.h"
 #include "toolbox.h"
 #include "tools.h"
 

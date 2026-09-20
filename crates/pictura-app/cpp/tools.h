@@ -131,6 +131,19 @@ QString toolCursorId(ToolId id, Qt::KeyboardModifiers mods);
 QList<QChar> toolShortcutKeys();
 int toolGroupForKey(QChar key);
 
+// One context hint for the bottom status bar. `key` is the keycap label; when
+// `commandId` is set the label is taken from that command's registered shortcut
+// instead of the literal `key`.
+struct ToolHint {
+    QString key;
+    QString text;
+    const char* commandId = nullptr;
+};
+
+// The active tool's keycap hints, contextual per tool; empty when the tool has
+// none (the status bar then falls back to the tool's text hint).
+QList<ToolHint> toolHintEntries(ToolId id);
+
 // Routes canvas pointer events to the active tool. One switch, not one class per
 // tool (see design.md); painting tools with per-tool engines can split later.
 class ToolController : public QObject {
