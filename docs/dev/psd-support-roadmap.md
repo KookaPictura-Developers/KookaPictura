@@ -113,14 +113,17 @@ document `Patt`/`Pat2`/`Pat3` pattern library (`pictura-codec::decode_patterns`)
 and compositing as tiled content, and is fill content for rasterize (archived
 `2026-09-19-pattern-fill-layer`). Layer effects (`lfx2`) now decode the
 object-based **Drop Shadow** (`DrSh`), **Outer Glow** (`OrGl`), **Inner Shadow**
-(`IrSh`), and **Inner Glow** (`IrGl`), compositing the shadows and glows behind
-the layer content and the inner shadow and inner glow above it on the CPU, with
-the GPU falling back to CPU (archived
+(`IrSh`), **Inner Glow** (`IrGl`), and a solid-colour **Stroke** (`FrFX`),
+compositing the shadows and glows behind the layer content, the inner shadow and
+inner glow above it, and the stroke as a band at the content edge above it, on
+the CPU, with the GPU falling back to CPU (archived
 `2026-09-19-layer-effects-drop-shadow`,
 `2026-09-19-layer-effects-outer-glow`,
-`2026-09-19-layer-effects-inner-shadow`, and
-`2026-09-19-layer-effects-inner-glow`); the remaining effect kinds — the legacy
-`lrFX` block, bevel, stroke, satin, and the overlays — are deferred. Remaining:
+`2026-09-19-layer-effects-inner-shadow`,
+`2026-09-19-layer-effects-inner-glow`, and
+`2026-09-20-layer-effects-stroke`); the remaining effect kinds — the legacy
+`lrFX` block, bevel, satin, gradient/pattern stroke fills, and the overlays —
+are deferred. Remaining:
 `curv`,
 `mixr`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
 (text, vector masks).

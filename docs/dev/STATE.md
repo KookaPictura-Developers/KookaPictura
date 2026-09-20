@@ -9,7 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **969 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **995 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
@@ -30,13 +30,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   `edit-smart-object-contents`, `image-import`, `file-drop-routing`,
     `free-transform-mode`, `psb-write`, `color-balance-adjustment-decode`,
     `pattern-fill-layer`, `layer-effects-drop-shadow`,
-    `layer-effects-outer-glow`, `layer-effects-inner-shadow`, and
-    `layer-effects-inner-glow` changes;
+    `layer-effects-outer-glow`, `layer-effects-inner-shadow`,
+    `layer-effects-inner-glow`, and `layer-effects-stroke` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is under way:
-   `layer-effects-drop-shadow` ships Drop Shadow, and the other effect kinds are
-   deferred.
+   `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
+   `layer-effects-inner-shadow`, `layer-effects-inner-glow`, and
+   `layer-effects-stroke` ship the five object-based effect kinds (drop shadow,
+   outer glow, inner shadow, inner glow, stroke); the remaining kinds (bevel,
+   satin, overlays, the legacy `lrFX` block) are deferred.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
@@ -329,6 +332,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   complement-of-edge approximation, linear choke, `Precise` renders as `Softer`,
   contour/noise/anti-alias ignored, and the legacy `IGsr` typeID is accepted
   leniently.
+- Layer effects — Stroke (roadmap P3/G6, archived
+  `2026-09-20-layer-effects-stroke`): the object-based `lfx2` **Stroke** (`FrFX`)
+  solid-colour stroke is now decoded and composited as a band at the content
+  edge — `Position` Outside/Inside/Centre (`Styl` typeID `FStl`), `Sz  ` size
+  `1..=250`, colour/opacity/blend (default Normal, black, 100), composited above
+  the content; gradient/pattern strokes are deferred (a non-solid `FrFX` decodes
+  `None`); the GPU rejects an enabled+present solid stroke and falls back to CPU;
+  a psd-tools-authored `stroke.psd` fixture proves decode/round-trip/render; the
+  new `layer_effects/strokes.rs` holds the kind. Ceilings: gradient/pattern
+  fills, contour/anti-alias/overprint, and the integer max/min band (psd-tools
+  uses a doubled-radius edge mask) are deferred.
 
 ## Commands
 
