@@ -121,6 +121,7 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/panel_column_test.cpp
     crates/pictura-app/cpp/tools.cpp
     crates/pictura-app/cpp/tool_catalog.cpp
+    crates/pictura-app/cpp/tool_transform.cpp
     crates/pictura-app/cpp/tools_marquee.cpp
     crates/pictura-app/cpp/tools_selection_move.cpp
     crates/pictura-app/cpp/toolbox.cpp
