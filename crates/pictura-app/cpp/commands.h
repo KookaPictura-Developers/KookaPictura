@@ -157,6 +157,10 @@ public:
     // Re-evaluate enabled/checked/label for every action.
     void refresh();
 
+    // How many times refresh() has run. Test-only probe so a self-test can
+    // prove the paint region path does not fan out per dab.
+    int refreshCount() const { return refreshCount_; }
+
     // Run the handler for `id`; returns false and does nothing when none is set.
     bool dispatch(const QString& id);
 
@@ -176,6 +180,7 @@ private:
     QHash<QString, std::function<bool()>> checkedProviders_;
     QHash<QString, std::function<QString()>> labelProviders_;
     QMenuBar* menuBar_ = nullptr;
+    int refreshCount_ = 0;
 };
 
 // Populate `registry` with the full documented CS6 command tree

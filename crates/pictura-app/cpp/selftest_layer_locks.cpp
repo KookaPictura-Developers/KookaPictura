@@ -3,14 +3,19 @@
 
 #include "frame.h"
 #include "image_view.h"
+#include "panels/layers_panel.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtCore/QPointF>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/Qt>
+#include <QtGui/QColor>
+#include <QtGui/QImage>
 
 int pictura::runLayerLocksChecks(pictura::PicturaMainWindow& frame)
 {
@@ -148,6 +153,153 @@ int pictura::runLayerLocksChecks(pictura::PicturaMainWindow& frame)
         }
         frame.closeDocument(doc, false);
     }
+
+    // llk_active_lock_cursor (395): the refusal cursor follows the ACTIVE layer,
+    // not the topmost. A pixel-locked active layer with an unlocked topmost must
+    // still show Forbidden and refuse the stroke.
+    {
+        const bool created = frame.newDocument(QStringLiteral("LayerLockActive"), 8, 8,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        pictura::PictureView* view = frame.activeView();
+        auto* tools = frame.findChild<pictura::ToolController*>();
+        if (!created || !view || !tools) {
+            return pictura::selfTest().fail(395, "active lock cursor fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        const QString active = view->add_layer_in(QString());
+        view->add_layer_in(QString());
+        view->set_active_layer(active);
+        view->set_layer_name_path(active, QStringLiteral("LockedActive"));
+        view->set_layers_lock(QStringList{active}, QStringLiteral("pixels"), true);
+        frame.setActiveTool(pictura::ToolId::Brush);
+        tools->refreshCursor();
+        const bool forbidden = frame.imageView()->cursor().shape() == Qt::ForbiddenCursor;
+        const bool refused = !view->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 4, 100, 100, 0, 100,
+                                                100, 25, QStringLiteral("normal"), false, false);
+        const bool noStroke = !view->is_painting();
+        ST_BEGIN("llk_active_lock_cursor");
+        ST_PASS("llk_active_lock_cursor forbidden=%d refused=%d stroke=%d", forbidden ? 1 : 0,
+                refused ? 1 : 0, noStroke ? 1 : 0);
+        if (!forbidden || !refused || !noStroke) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(395, "active-layer lock cursor");
+        }
+        frame.closeDocument(doc, false);
+    }
+
+    // llk_topmost_lock_paints (396): a locked topmost layer must not blank the
+    // cursor or refuse an edit that targets a lower, editable active layer.
+    {
+        const bool created = frame.newDocument(QStringLiteral("LayerLockTop"), 8, 8,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        pictura::PictureView* view = frame.activeView();
+        auto* tools = frame.findChild<pictura::ToolController*>();
+        if (!created || !view || !tools) {
+            return pictura::selfTest().fail(396, "topmost lock fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        const QString active = view->add_layer_in(QString());
+        const QString top = view->add_layer_in(QString());
+        view->set_layers_lock(QStringList{top}, QStringLiteral("pixels"), true);
+        view->set_active_layer(active);
+        frame.setActiveTool(pictura::ToolId::Brush);
+        tools->refreshCursor();
+        const bool blank = frame.imageView()->cursor().shape() == Qt::BlankCursor;
+        const unsigned int before = view->composite_argb(4, 4);
+        const bool painted = view->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 4, 100, 100, 0, 100,
+                                               100, 25, QStringLiteral("normal"), false, false)
+            && view->paint_dab(4, 4, 1.0) && view->end_paint();
+        const bool changed = before != view->composite_argb(4, 4);
+        ST_BEGIN("llk_topmost_lock_paints");
+        ST_PASS("llk_topmost_lock_paints blank=%d painted=%d changed=%d", blank ? 1 : 0,
+                painted ? 1 : 0, changed ? 1 : 0);
+        if (!blank || !painted || !changed) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(396, "topmost lock must not refuse a lower edit");
+        }
+        frame.closeDocument(doc, false);
+    }
+
+    // llk_panel_multi_refusal (397): a panel multi-selection (and a cleared
+    // selection) resolves to no single active layer, so the brush refuses.
+    {
+        const bool created = frame.newDocument(QStringLiteral("LayerLockPanel"), 8, 8,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        pictura::PictureView* view = frame.activeView();
+        auto* panel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+        if (!created || !view || !panel) {
+            return pictura::selfTest().fail(397, "panel multi fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        const QString a = view->add_layer_in(QString());
+        const QString b = view->add_layer_in(QString());
+        panel->setView(view);
+        panel->refresh();
+        panel->selectPaths(QStringList{a, b}, a);
+        const bool noSingle = view->active_layer_path().isEmpty();
+        const bool multiRefused = !view->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 4, 100, 100, 0,
+                                                     100, 100, 25, QStringLiteral("normal"),
+                                                     false, false);
+        panel->selectPaths(QStringList{}, QString());
+        const bool nothingActive = view->active_layer_path().isEmpty();
+        const bool noneRefused = !view->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 4, 100, 100, 0,
+                                                    100, 100, 25, QStringLiteral("normal"),
+                                                    false, false);
+        const bool noStroke = !view->is_painting();
+        ST_BEGIN("llk_panel_multi_refusal");
+        ST_PASS("llk_panel_multi_refusal noSingle=%d multi=%d none=%d noneRefused=%d",
+                noSingle ? 1 : 0, multiRefused ? 1 : 0, nothingActive ? 1 : 0,
+                noneRefused ? 1 : 0);
+        if (!noSingle || !multiRefused || !nothingActive || !noneRefused || !noStroke) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(397, "panel multi/none selection must refuse");
+        }
+        frame.closeDocument(doc, false);
+    }
+
+    // llk_transparency_180 (398): a transparency lock through the bridge keeps an
+    // A=180 pixel's alpha exactly while recolouring its RGB, and leaves an A=0
+    // pixel untouched. Documented divergence: content moves keep their existing
+    // transparency refusal, which this paint-path lock does not model.
+    const QString alphaPath =
+        QDir::tempPath() + QStringLiteral("/kooka-pictura-alpha180.png");
+    {
+        const bool created = frame.newDocument(QStringLiteral("LayerLockAlpha"), 8, 8,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("transparent"));
+        pictura::PictureView* view = frame.activeView();
+        if (!created || !view) {
+            return pictura::selfTest().fail(398, "transparency alpha fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        QImage seeded(8, 8, QImage::Format_ARGB32);
+        seeded.fill(Qt::transparent);
+        seeded.setPixel(6, 6, qRgba(0, 0, 0, 180));
+        const bool opened = seeded.save(alphaPath, "PNG") && view->open_image(alphaPath);
+        view->set_active_layer(QStringLiteral("0"));
+        const unsigned int before = view->sample_argb(6, 6);
+        view->set_layers_lock(QStringList{QStringLiteral("0")}, QStringLiteral("transparency"),
+                              true);
+        const bool painted = view->begin_paint(0xFF0000FFu, 0xFFFFFFFFu, 4, 100, 100, 0, 100, 100,
+                                               25, QStringLiteral("normal"), false, false)
+            && view->paint_dab(6, 6, 1.0) && view->end_paint();
+        const unsigned int after = view->sample_argb(6, 6);
+        const bool alphaKept = qAlpha(before) == 180 && qAlpha(after) == 180;
+        const bool rgbChanged = (after & 0x00FFFFFFu) != (before & 0x00FFFFFFu);
+        const bool clearUntouched = qAlpha(view->sample_argb(0, 0)) == 0;
+        ST_BEGIN("llk_transparency_180");
+        ST_PASS("llk_transparency_180 opened=%d a0=%d a1=%d rgb=%d clear=%d", opened ? 1 : 0,
+                qAlpha(before), qAlpha(after), rgbChanged ? 1 : 0, clearUntouched ? 1 : 0);
+        if (!opened || !alphaKept || !rgbChanged || !clearUntouched || !painted) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(398, "transparency lock must keep alpha 180");
+        }
+        frame.closeDocument(doc, false);
+    }
+    QFile::remove(alphaPath);
 
     return 0;
 }

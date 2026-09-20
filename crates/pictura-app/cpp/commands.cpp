@@ -128,6 +128,7 @@ void CommandRegistry::buildMenuBar(QMenuBar* menuBar)
 
 void CommandRegistry::refresh()
 {
+    ++refreshCount_;
     for (Entry& entry : entries_) {
         if (!entry.action) {
             continue;

@@ -3,8 +3,8 @@ use pictura_core::{BlendMode, ColorLabel, Document, Layer, LockFlags};
 use super::create::{empty_group, next_layer_name};
 use super::merge::is_visible_in_panel;
 use super::paths::{
-    container_mut, container_of_mut, edit_paths, flatten_rows, format_segments, is_background,
-    parse_path, resolve_path, resolve_path_mut, selected_paths, unique,
+    container_mut, container_of, container_of_mut, edit_paths, flatten_rows, format_segments,
+    is_background, parse_path, resolve_path, resolve_path_mut, selected_paths, unique,
 };
 
 /// Set the eye on every listed path (the Background included). Returns the
@@ -370,29 +370,21 @@ pub fn move_path(doc: &mut Document, path: &str, delta: i32) -> bool {
     true
 }
 
-/// Whether the container at `parent` still resolves after the node at
-/// (`src_parent`, `src_index`) is removed. Mirrors the post-removal
-/// `container_of_mut` lookup in [`move_path_to`], so the dry run and the
-/// mutation agree on unknown-target refusals.
-fn container_exists_after_removal(
-    doc: &Document,
-    parent: &[usize],
-    src_parent: &[usize],
-    src_index: usize,
-) -> bool {
-    let mut layers = &doc.layers;
-    for depth in 0..parent.len() {
-        let index = if &parent[..depth] == src_parent && parent[depth] >= src_index {
-            parent[depth] + 1
-        } else {
-            parent[depth]
-        };
-        let Some(layer) = layers.get(index) else {
-            return false;
-        };
-        layers = &layer.children;
-    }
-    true
+/// Map a pre-removal parent path to its post-removal coordinates. Removing the
+/// node at (`src_parent`, `src_index`) shifts every later sibling of that node
+/// down by one, at every depth that forks off the source's parent path.
+fn to_post_removal(parent: &[usize], src_parent: &[usize], src_index: usize) -> Vec<usize> {
+    parent
+        .iter()
+        .enumerate()
+        .map(|(depth, &index)| {
+            if &parent[..depth] == src_parent && index > src_index {
+                index - 1
+            } else {
+                index
+            }
+        })
+        .collect()
 }
 
 /// Resolve where a `move_path_to` candidate would land: the destination parent
@@ -431,7 +423,6 @@ fn move_path_to_dest(
         }
     };
     let src_parent = &src[..src.len() - 1];
-    let src_index = *src.last().expect("non-empty");
     // Nesting lock: a drop that changes the layer's parent is refused when
     // either the destination container or the current parent carries `NESTING`.
     // A within-container reorder keeps the same parent and stays allowed.
@@ -440,9 +431,9 @@ fn move_path_to_dest(
     {
         return None;
     }
-    if !container_exists_after_removal(doc, &dest_parent, src_parent, src_index) {
-        return None;
-    }
+    // `dest_parent` is in pre-removal coordinates, so it is validated pre-
+    // removal here and converted once in `move_path_to` after the removal.
+    container_of(doc, &dest_parent)?;
     Some((dest_parent, dest_index))
 }
 
@@ -498,6 +489,7 @@ pub fn move_path_to(doc: &mut Document, path: &str, target: &str, mode: i32) -> 
         }
     }
 
+    let dest_parent = to_post_removal(&dest_parent, &src_parent, src_index);
     let Some(container) = container_of_mut(doc, &dest_parent) else {
         // Unreachable after the guards; re-insert rather than drop the node.
         if let Some(container) = container_of_mut(doc, &src_parent) {

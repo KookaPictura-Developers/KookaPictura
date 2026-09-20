@@ -55,6 +55,7 @@ void PanelColumn::setRailMode(bool iconic)
     }
     railMode_ = iconic;
     if (iconic) {
+        widthFlipPending_ = false;
         if (width() > 0) {
             normalWidthBeforeIconic_ = width();
         }
@@ -74,6 +75,9 @@ void PanelColumn::setRailMode(bool iconic)
         setMaximumWidth(QWIDGETSIZE_MAX);
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
         updateMinimumWidth();
+        // The widening below can stay pending until layout; remember that so a
+        // save in the meantime writes the normal width, not the strip width.
+        widthFlipPending_ = true;
         setPreferredWidth(normalWidthBeforeIconic_ > 0 ? normalWidthBeforeIconic_
                                                        : minimumWidth());
     }

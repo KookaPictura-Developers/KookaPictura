@@ -46,6 +46,89 @@ fn region_refresh_profile_4000() {
     println!("region_refresh_profile backend: {backend:?}");
 }
 
+/// Print-only 4000² live-dab profile comparing the CPU region oracle against the
+/// GPU region composite for a 512 px brush. It showed the GPU path is ~8× faster
+/// per dab on the reference machine, which is why the in-stroke path keeps the
+/// preferred backend. No pass/fail budget (the reference machine is not pinned).
+#[test]
+#[ignore = "4000x4000 live-dab profile; run explicitly with --ignored --nocapture"]
+fn paint_dab_profile_4000() {
+    use pictura_paint::{spacing::SpacingMode, Stroke, StrokeConfig, StrokeSample};
+
+    let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![
+        pixel_layer("base", 4000, 4000, (30, 60, 90)),
+        pixel_layer("top", 4000, 4000, (200, 100, 50)),
+    ];
+    // Prime the GPU adapter and allocator once, untimed, so the GPU comparison
+    // below measures the per-call round-trip rather than first-call setup.
+    let (_, prime_backend) = pictura_render::composite_active(&doc, true);
+    let gpu_available = pictura_render::gpu_available();
+
+    let cfg = StrokeConfig {
+        color: rgba_from_argb(0xFFFF0000),
+        diameter: 512,
+        hardness: 100,
+        spacing: SpacingMode::Fixed(25),
+        ..StrokeConfig::default()
+    };
+    let mut stroke = Stroke::begin_at(&doc, "1", cfg).expect("stroke begins");
+
+    let mut dabs = 0u32;
+    let mut cpu_total = std::time::Duration::ZERO;
+    let mut gpu_total = std::time::Duration::ZERO;
+    for i in 0..16 {
+        let sample = StrokeSample {
+            x: 600.0 + i as f32 * 180.0,
+            y: 2000.0,
+            pressure: 1.0,
+        };
+        if !stroke.sample(sample) {
+            continue;
+        }
+        let Some(rect) = stroke.take_dirty() else {
+            continue;
+        };
+        let t = std::time::Instant::now();
+        let (cpu_buffer, cpu_backend) =
+            pictura_render::composite_region_active(stroke.document(), rect, false);
+        let cpu_composite = t.elapsed();
+        let t = std::time::Instant::now();
+        let _ = buffer_to_image(&cpu_buffer);
+        let blit = t.elapsed();
+        let gpu_composite = if gpu_available {
+            let t = std::time::Instant::now();
+            let _ = pictura_render::composite_region_active(stroke.document(), rect, true);
+            Some(t.elapsed())
+        } else {
+            None
+        };
+        dabs += 1;
+        cpu_total += cpu_composite + blit;
+        gpu_total += gpu_composite.unwrap_or_default();
+        println!(
+            "paint_dab_profile dab={dabs} region={}x{} cpu_composite={:.2}ms blit={:.2}ms \
+             gpu_composite={} backend={cpu_backend:?}",
+            cpu_buffer.width,
+            cpu_buffer.height,
+            cpu_composite.as_secs_f64() * 1000.0,
+            blit.as_secs_f64() * 1000.0,
+            gpu_composite.map_or_else(
+                || "n/a".to_string(),
+                |d| format!("{:.2}ms", d.as_secs_f64() * 1000.0)
+            ),
+        );
+    }
+    println!(
+        "paint_dab_profile dabs={dabs} cpu_per_dab={:.2}ms cpu_total={:.2}ms \
+         gpu_per_dab={:.2}ms gpu_total={:.2}ms prime={prime_backend:?}",
+        cpu_total.as_secs_f64() * 1000.0 / f64::from(dabs.max(1)),
+        cpu_total.as_secs_f64() * 1000.0,
+        gpu_total.as_secs_f64() * 1000.0 / f64::from(dabs.max(1)),
+        gpu_total.as_secs_f64() * 1000.0,
+    );
+}
+
 /// Print-only reference for a visibility toggle on a 4000² document whose
 /// layer covers only a small rect: the region path composites and patches that
 /// rect, versus a full `current_buffer` recomposite of the whole document. No

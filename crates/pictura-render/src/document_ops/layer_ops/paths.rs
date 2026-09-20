@@ -95,6 +95,15 @@ pub(super) fn container_mut<'a>(
     Some((container, *last))
 }
 
+/// Resolve the immutable container named by a full parent path (empty = document).
+pub(super) fn container_of<'a>(doc: &'a Document, parent: &[usize]) -> Option<&'a [Layer]> {
+    let mut layers: &'a [Layer] = &doc.layers;
+    for &index in parent {
+        layers = &layers.get(index)?.children;
+    }
+    Some(layers)
+}
+
 /// Resolve the mutable container named by a full parent path (empty = document).
 pub(super) fn container_of_mut<'a>(
     doc: &'a mut Document,

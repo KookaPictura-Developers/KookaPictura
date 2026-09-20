@@ -17,6 +17,7 @@ class QBoxLayout;
 class QHideEvent;
 class QLabel;
 class QMenu;
+class QResizeEvent;
 class QScrollArea;
 class QShowEvent;
 class QSplitter;
@@ -116,8 +117,15 @@ public:
     // A migrated v6 per-column entry carries no width; use this until one is set.
     static constexpr int kDefaultNormalWidth = 220;
     // Width to persist for this column: its own width in normal mode, or the
-    // remembered normal width while iconic (0 when neither is known yet).
-    int persistedWidth() const { return railMode_ ? normalWidthBeforeIconic_ : width(); }
+    // remembered normal width while iconic. During an iconic->normal flip the
+    // widening may still be pending, so the remembered width is written instead
+    // of the transient icon-strip width (0 when neither is known yet).
+    int persistedWidth() const
+    {
+        return railMode_ || (widthFlipPending_ && normalWidthBeforeIconic_ > 0)
+            ? normalWidthBeforeIconic_
+            : width();
+    }
     // Apply a width loaded from the session. An iconic column records it as the
     // normal width to restore on the next toggle instead of resizing the strip.
     void setRestoredWidth(int width);
@@ -231,6 +239,7 @@ signals:
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     // The frozen M43 drop-target grammar. `onTabBar`/`onStrip`/`outside` are
@@ -356,6 +365,9 @@ private:
     bool iconLabelsShown_ = false;
     int pendingWidth_ = 0;
     int normalWidthBeforeIconic_ = 0;
+    // Set while an iconic->normal flip waits for the widening to be laid out, so
+    // `persistedWidth` does not write the icon-strip width in the meantime.
+    bool widthFlipPending_ = false;
 
     PanelFlyout* flyout_ = nullptr;
     QBoxLayout* flyoutLayout_ = nullptr;

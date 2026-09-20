@@ -20,13 +20,14 @@
 
 namespace pictura {
 
-bool topmostPixelLocked(PictureView* view)
+bool activePixelLocked(PictureView* view)
 {
     if (!view) {
         return false;
     }
-    const int index = view->topmost_pixel_layer_index();
-    return index >= 0 && (view->layer_lock(index) & 0x02) != 0;
+    bool ok = false;
+    const int index = view->active_layer_path().toInt(&ok);
+    return ok && (view->layer_lock(index) & 0x02) != 0;
 }
 
 void ToolController::refreshCursor()
@@ -70,7 +71,7 @@ void ToolController::refreshCursor(Qt::KeyboardModifiers mods)
             return canvas_->setCursor(c.pixmap().isNull() ? QCursor(info.cursor) : c);
         }
         if (hoverView
-            && (topmostPixelLocked(hoverView) || !hoverView->active_layer_visible())) {
+            && (activePixelLocked(hoverView) || !hoverView->active_layer_visible())) {
             return canvas_->setCursor(Qt::ForbiddenCursor);
         }
         // The drawn brush-size ring is the pointer affordance; hide the OS

@@ -373,7 +373,7 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
 
     connect(view, &PictureView::changed, this, &PicturaMainWindow::refresh);
     connect(view, &PictureView::regionBlitted, this,
-            [this, canvas = entry.canvas](const QImage& region, int x, int y) {
+            [this, canvas = entry.canvas, view](const QImage& region, int x, int y) {
                 if (canvas) {
                     canvas->blitRegion(region, x, y);
                 }
@@ -382,15 +382,21 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
                 // the region path cannot refresh panels faster than a full
                 // recomposite.
                 panelRefreshTimer_->start();
-                updateTabTitle(activeDocumentIndex());
-                updateWindowTitle();
-                if (registry_) {
-                    registry_->refresh();
-                }
                 // A region update can change the active layer's visibility
                 // without a `changed` emission; keep the tool cursor in sync.
                 if (tools_) {
                     tools_->refreshCursor();
+                }
+                // Mid-stroke, skip the command-registry and title fan-out on
+                // every dab (Krita's "unnecessary objects per event"). Releasing
+                // the stroke emits `changed`, whose refresh() runs them once.
+                if (view && view->is_painting()) {
+                    return;
+                }
+                updateTabTitle(activeDocumentIndex());
+                updateWindowTitle();
+                if (registry_) {
+                    registry_->refresh();
                 }
             });
     connect(entry.canvas, &ImageView::zoomChanged, this, [this](double) { updateStatus(); });

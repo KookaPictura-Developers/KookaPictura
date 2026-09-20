@@ -784,6 +784,134 @@ fn move_path_to_reparents_refuses_and_dry_runs() {
 }
 
 #[test]
+fn move_path_to_into_group_from_above_resolves_post_removal() {
+    // [A, G]: A sits above the group it is dropped into.
+    let group = empty_group("G");
+    let mut doc = doc_with(vec![pixel_layer("A", 4, 4, 1), group]);
+    assert!(can_move_path_to(&doc, "0", "1", 2));
+    assert!(move_path_to(&mut doc, "0", "1", 2));
+    assert_eq!(doc.layers.len(), 1, "A left the root");
+    assert_eq!(doc.layers[0].name, "G");
+    let children: Vec<&str> = doc.layers[0]
+        .children
+        .iter()
+        .map(|layer| layer.name.as_str())
+        .collect();
+    assert_eq!(children, ["A"], "A is G's last child");
+
+    // [A, G, B]: the sibling below the group stays put.
+    let group = empty_group("G");
+    let mut doc = doc_with(vec![
+        pixel_layer("A", 4, 4, 1),
+        group,
+        pixel_layer("B", 4, 4, 2),
+    ]);
+    assert!(can_move_path_to(&doc, "0", "1", 2));
+    assert!(move_path_to(&mut doc, "0", "1", 2));
+    let root: Vec<&str> = doc.layers.iter().map(|layer| layer.name.as_str()).collect();
+    assert_eq!(root, ["G", "B"], "A left the root, B did not move");
+    let children: Vec<&str> = doc.layers[0]
+        .children
+        .iter()
+        .map(|layer| layer.name.as_str())
+        .collect();
+    assert_eq!(children, ["A"], "A is G's last child");
+}
+
+#[test]
+fn move_path_to_into_a_sibling_container_shifts_each_depth() {
+    // Root G has children [A, H]; H shifts from 0/1 to 0/0 once A is removed.
+    let mut outer = empty_group("G");
+    outer.children = vec![pixel_layer("A", 4, 4, 1), empty_group("H")];
+    let mut doc = doc_with(vec![outer]);
+
+    assert!(can_move_path_to(&doc, "0/0", "0/1", 2));
+    assert!(move_path_to(&mut doc, "0/0", "0/1", 2));
+    assert_eq!(doc.layers[0].children.len(), 1);
+    assert_eq!(doc.layers[0].children[0].name, "H");
+    assert_eq!(doc.layers[0].children[0].children[0].name, "A");
+}
+
+#[test]
+fn move_path_to_out_of_group_to_root_and_root_siblings() {
+    fn sample() -> Document {
+        let mut group = empty_group("G");
+        group.children = vec![pixel_layer("c", 4, 4, 1)];
+        doc_with(vec![
+            pixel_layer("bottom", 4, 4, 0),
+            group,
+            pixel_layer("top", 4, 4, 3),
+        ])
+    }
+
+    // Out to the top of the document (empty target appends at the root top).
+    let mut doc = sample();
+    assert!(can_move_path_to(&doc, "1/0", "", 0));
+    assert!(move_path_to(&mut doc, "1/0", "", 0));
+    let root: Vec<&str> = doc.layers.iter().map(|layer| layer.name.as_str()).collect();
+    assert_eq!(root, ["bottom", "G", "top", "c"]);
+    assert!(doc.layers[1].children.is_empty(), "the group is now empty");
+
+    // Above a root sibling.
+    let mut doc = sample();
+    assert!(move_path_to(&mut doc, "1/0", "0", 0));
+    let root: Vec<&str> = doc.layers.iter().map(|layer| layer.name.as_str()).collect();
+    assert_eq!(root, ["bottom", "c", "G", "top"]);
+
+    // Below a root sibling.
+    let mut doc = sample();
+    assert!(move_path_to(&mut doc, "1/0", "2", 1));
+    let root: Vec<&str> = doc.layers.iter().map(|layer| layer.name.as_str()).collect();
+    assert_eq!(root, ["bottom", "G", "c", "top"]);
+}
+
+#[test]
+fn move_path_to_keeps_reorder_and_refusals() {
+    fn sample() -> Document {
+        let mut group = empty_group("G");
+        group.children = vec![pixel_layer("A", 4, 4, 1), pixel_layer("B", 4, 4, 2)];
+        doc_with(vec![
+            pixel_layer("Background", 4, 4, 0),
+            group,
+            pixel_layer("top", 4, 4, 3),
+        ])
+    }
+
+    // Same-parent reorder still resolves.
+    let mut doc = sample();
+    assert!(move_path_to(&mut doc, "1/1", "1/0", 1));
+    let children: Vec<&str> = doc.layers[1]
+        .children
+        .iter()
+        .map(|layer| layer.name.as_str())
+        .collect();
+    assert_eq!(children, ["B", "A"]);
+
+    // Refusals are unchanged: Background, own descendant, non-group Into.
+    let cases: &[(&str, &str, i32)] = &[
+        ("0", "", 0),    // Background
+        ("1", "1/0", 0), // own descendant
+        ("2", "1/0", 2), // Into a non-group
+    ];
+    for &(path, target, mode) in cases {
+        let mut doc = sample();
+        let before = doc.clone();
+        assert!(
+            !move_path_to(&mut doc, path, target, mode),
+            "{path}->{target}"
+        );
+        assert_eq!(doc, before, "refusal mutated {path}->{target} m{mode}");
+    }
+
+    // A fully-locked source refuses too.
+    let mut locked = sample();
+    locked.layers[2].lock = LockFlags::all();
+    let before = locked.clone();
+    assert!(!move_path_to(&mut locked, "2", "1", 2));
+    assert_eq!(locked, before);
+}
+
+#[test]
 fn neutral_color_lookup_table() {
     let white = Some([255, 255, 255, 255]);
     let black = Some([0, 0, 0, 255]);

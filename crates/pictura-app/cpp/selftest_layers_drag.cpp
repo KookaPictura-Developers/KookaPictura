@@ -25,6 +25,16 @@ int groupCount(pictura::PictureView* view)
     return groups;
 }
 
+int rowForPath(pictura::PictureView* view, const QString& path)
+{
+    for (int i = 0; i < view->layer_row_count(); ++i) {
+        if (view->layer_row_path(i) == path) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 } // namespace
 
 int pictura::runLayersDragChecks(pictura::PicturaMainWindow& frame)
@@ -109,5 +119,81 @@ int pictura::runLayersDragChecks(pictura::PicturaMainWindow& frame)
         }
 
         frame.closeDocument(doc, false);
+
+        // lpr_drag_into_above (392): a layer above a group drops into it through
+        // the panel tree pipeline. It lands as the group's child in one undo
+        // step -- not refused, not mis-nested into a sibling.
+        {
+            const bool created = frame.newDocument(QStringLiteral("DragInto"), 8, 8,
+                                                   QStringLiteral("rgb"), 8,
+                                                   QStringLiteral("white"));
+            PictureView* view = frame.activeView();
+            auto* panel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+            if (!created || !view || !panel) {
+                return pictura::selfTest().fail(392, "drag into group fixture");
+            }
+            const int intoDoc = frame.activeDocumentIndex();
+            panel->setView(view);
+            const QString a = view->add_layer_in(QString());
+            const QString g = view->add_group_in(QString());
+            view->set_layer_name_path(a, QStringLiteral("A"));
+            view->set_layer_name_path(g, QStringLiteral("G"));
+            panel->refresh();
+            const int base = view->history_count();
+            const bool valid = panel->canMoveForTest(a, g, 2);
+            const bool dropped = panel->dropIntoForTest(a, g);
+            const int childRow = rowForPath(view, QStringLiteral("1/0"));
+            const int groupRow = rowForPath(view, QStringLiteral("1"));
+            const bool nested = childRow >= 0
+                && view->layer_row_name(childRow) == QStringLiteral("A")
+                && groupRow >= 0 && view->layer_row_kind(groupRow) == QStringLiteral("group")
+                && view->layer_row_name(groupRow) == QStringLiteral("G")
+                && view->layer_row_count() == 3;
+            const bool oneStep = view->history_count() == base + 1;
+            ST_BEGIN("lpr_drag_into_above");
+            ST_PASS("lpr_drag_into_above valid=%d drop=%d nested=%d history=%d", valid ? 1 : 0,
+                    dropped ? 1 : 0, nested ? 1 : 0, view->history_count() - base);
+            frame.closeDocument(intoDoc, false);
+            if (!valid || !dropped || !nested || !oneStep) {
+                return pictura::selfTest().fail(392, "drag layer into group");
+            }
+        }
+
+        // lpr_drag_out (393): a group child drops back out to the root above a
+        // root sibling through the panel tree pipeline, in one undo step.
+        {
+            const bool created = frame.newDocument(QStringLiteral("DragOut"), 8, 8,
+                                                   QStringLiteral("rgb"), 8,
+                                                   QStringLiteral("white"));
+            PictureView* view = frame.activeView();
+            auto* panel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+            if (!created || !view || !panel) {
+                return pictura::selfTest().fail(393, "drag out of group fixture");
+            }
+            const int outDoc = frame.activeDocumentIndex();
+            panel->setView(view);
+            const QString g = view->add_group_in(QString());
+            const QString child = view->add_layer_in(g);
+            const QString sibling = view->add_layer_in(QString());
+            view->set_layer_name_path(child, QStringLiteral("C"));
+            view->set_layer_name_path(sibling, QStringLiteral("S"));
+            panel->refresh();
+            const int base = view->history_count();
+            const bool dropped = panel->dropAtForTest(child, sibling, true);
+            const bool leftGroup = rowForPath(view, QStringLiteral("1/0")) < 0;
+            const int movedRow = rowForPath(view, QStringLiteral("3"));
+            const bool atRoot = movedRow >= 0
+                && view->layer_row_name(movedRow) == QStringLiteral("C")
+                && view->layer_row_count() == 4;
+            const bool oneStep = view->history_count() == base + 1;
+            ST_BEGIN("lpr_drag_out");
+            ST_PASS("lpr_drag_out drop=%d left=%d root=%d history=%d", dropped ? 1 : 0,
+                    leftGroup ? 1 : 0, atRoot ? 1 : 0, view->history_count() - base);
+            frame.closeDocument(outDoc, false);
+            if (!dropped || !leftGroup || !atRoot || !oneStep) {
+                return pictura::selfTest().fail(393, "drag layer out of group");
+            }
+        }
+
         return 0;
 }
