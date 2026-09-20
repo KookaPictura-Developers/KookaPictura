@@ -1040,6 +1040,62 @@ int pictura::runToolsSelectionChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(369, "alt pivot pre-toggle");
         }
 
+        // lst_lasso_modes (381): the freehand Lasso resolves Shift and the
+        // options-bar combine mode at press instead of reusing a stale drag
+        // mode. A Marquee press first locks a deliberately wrong stale mode.
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        ellipseView->deselect();
+        const bool lmSeed = ellipseView->select_rect(2, 2, 4, 4, QStringLiteral("new"), 0.0);
+        ellipseCanvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::AltModifier));
+        ellipseCanvas->mouseReleased(QPointF(4, 4));
+        frame.setActiveTool(pictura::ToolId::Lasso);
+        ellipseCanvas->mousePressed(QPointF(8, 8), Qt::LeftButton, int(Qt::ShiftModifier));
+        const bool lmShift = tools->dragModeForTest() == int(pictura::SelectionMode::Add);
+        ellipseCanvas->mouseReleased(QPointF(8, 8));
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        ellipseCanvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::ShiftModifier));
+        ellipseCanvas->mouseReleased(QPointF(4, 4));
+        frame.setActiveTool(pictura::ToolId::Lasso);
+        tools->setCombineMode(pictura::SelectionMode::Subtract);
+        ellipseCanvas->mousePressed(QPointF(10, 10), Qt::LeftButton, int(Qt::NoModifier));
+        const bool lmSubtract =
+            tools->dragModeForTest() == int(pictura::SelectionMode::Subtract);
+        ellipseCanvas->mouseReleased(QPointF(10, 10));
+        ST_BEGIN("lst_lasso_modes");
+        ST_PASS("lst_lasso_modes seed=%d shift=%d subtract=%d", lmSeed ? 1 : 0,
+                lmShift ? 1 : 0, lmSubtract ? 1 : 0);
+        if (!lmSeed || !lmShift || !lmSubtract) {
+            return pictura::selfTest().fail(381, "lasso combine mode");
+        }
+
+        // lst_drag_cursor_retention (382): a combine drag that starts inside the
+        // selection keeps the cursor captured at press after the modifier is
+        // released, instead of falling back to the move-selection cursor.
+        frame.setActiveTool(pictura::ToolId::Marquee);
+        tools->setCombineMode(pictura::SelectionMode::New);
+        tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+        ellipseView->deselect();
+        const bool dcSeed = ellipseView->select_rect(2, 2, 6, 6, QStringLiteral("new"), 0.0);
+        ellipseCanvas->mouseMoved(QPointF(4, 4));
+        ellipseCanvas->mousePressed(QPointF(4, 4), Qt::LeftButton, int(Qt::ShiftModifier));
+        tools->refreshCursor(Qt::NoModifier);
+        const QCursor dcShown = frame.imageView()->cursor();
+        const pictura::ToolInfo& dcInfo = pictura::toolInfo(pictura::ToolId::Marquee);
+        const QCursor dcDrag =
+            pictura::cursor(tools->dragCursorId(), dcInfo.hotspotX, dcInfo.hotspotY);
+        const QCursor dcMove = pictura::cursor(QStringLiteral("cursor.moveSelection"), 2, 2);
+        const bool dcRetained = dcSeed && dcShown.hotSpot() == dcDrag.hotSpot()
+            && dcShown.hotSpot() != dcMove.hotSpot();
+        ellipseCanvas->mouseReleased(QPointF(4, 4));
+        ST_BEGIN("lst_drag_cursor_retention");
+        ST_PASS("lst_drag_cursor_retention seed=%d dragx=%d movex=%d retained=%d", dcSeed ? 1 : 0,
+                dcDrag.hotSpot().x(), dcMove.hotSpot().x(), dcRetained ? 1 : 0);
+        if (!dcSeed || !dcRetained) {
+            return pictura::selfTest().fail(382, "combine drag cursor retention");
+        }
+
         // lst_nudge (370): Move-tool arrow keys translate the active layer by
         // 1 px (plain) and 10 px (Shift) through `translate_layer`, one history
         // state each; a position-locked layer refuses with no new state.

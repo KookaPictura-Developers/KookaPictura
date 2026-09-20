@@ -43,6 +43,21 @@ void ToolController::beginContentMove(PictureView* v, const QPointF& imagePos, b
     dragging_ = true;
     dragCommitted_ = false;
     selectionMoveAnchor_ = imagePos;
+    contentPreviewActive_ = false;
+    // Alt copies the selected pixels to a new layer; show that copy following
+    // the pointer during the drag instead of only the selection outline. With a
+    // live selection `begin_move_duplicate` prepares the masked copy as the
+    // preview layer from a clone, so nothing is recorded until release.
+    if (duplicate && canvas_ && v->begin_move_duplicate()) {
+        const QImage previewBase = v->move_preview_base();
+        const QImage previewLayer = v->move_preview_layer();
+        if (!previewBase.isNull() && !previewLayer.isNull()) {
+            canvas_->beginMovePreview(previewBase, previewLayer,
+                                      QPointF(v->move_preview_x(), v->move_preview_y()),
+                                      v->move_preview_opacity() / 255.0);
+            contentPreviewActive_ = true;
+        }
+    }
     refreshCursor();
 }
 
@@ -50,6 +65,10 @@ void ToolController::cancelSelectionMove()
 {
     contentMove_ = false;
     contentDuplicate_ = false;
+    if (contentPreviewActive_ && canvas_) {
+        canvas_->endMovePreview();
+        contentPreviewActive_ = false;
+    }
     if (!movingSelection_) {
         return;
     }
@@ -79,6 +98,9 @@ void ToolController::dragSelectionMove(const QPointF& imagePos)
     if (v->preview_selection_move(dx, dy)) {
         emit selectionPreviewChanged();
     }
+    if (contentPreviewActive_ && canvas_) {
+        canvas_->setMovePreviewDelta(QPointF(dx, dy));
+    }
 }
 
 void ToolController::releaseSelectionMove(const QPointF& imagePos)
@@ -100,6 +122,10 @@ void ToolController::releaseSelectionMove(const QPointF& imagePos)
             }
         } else if (v) {
             v->cancel_selection_move();
+        }
+        if (contentPreviewActive_ && canvas_) {
+            canvas_->endMovePreview();
+            contentPreviewActive_ = false;
         }
         contentDuplicate_ = false;
         refreshCursor();

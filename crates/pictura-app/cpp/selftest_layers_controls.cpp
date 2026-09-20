@@ -134,6 +134,9 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         const bool chromeNoMenu = !lpcPanel->hasPanelMenuButtonForTest();
         const bool chromeSwitch =
             lpcPanel->filterToggleOnForTest() && lpcPanel->filterToggleHasIconForTest();
+        // The nested child has a visual rect only once its group is expanded;
+        // expand it so the same-depth eye-geometry comparison is well defined.
+        lpcPanel->expandForTest(lpcGroup);
         const int eyeGroup = lpcPanel->eyeLeftForTest(lpcGroup);
         const int eyeChild = lpcPanel->eyeLeftForTest(QStringLiteral("1/0"));
         const bool chromeEye = eyeGroup >= 0 && eyeGroup == eyeChild;

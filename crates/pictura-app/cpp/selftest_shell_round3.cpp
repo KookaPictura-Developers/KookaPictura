@@ -38,6 +38,32 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         }
     }
 
+    // lss_fresh_pane (380): a freshly constructed window starts with the empty
+    // document pane hidden (no ghost canvas); creating a document shows it and
+    // closing the last one hides it again.
+    {
+        pictura::PicturaMainWindow fresh;
+        auto* freshTabs = fresh.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
+        if (!freshTabs) {
+            return pictura::selfTest().fail(380, "fresh document tab pane missing");
+        }
+        const bool freshHidden = !freshTabs->isVisibleTo(&fresh);
+        const bool freshCreated = fresh.newDocument(QStringLiteral("Fresh"), 32, 32,
+                                                    QStringLiteral("rgb"), 8,
+                                                    QStringLiteral("white"));
+        const bool freshShown = freshTabs->isVisibleTo(&fresh);
+        while (fresh.documentCount() > 0) {
+            fresh.closeDocument(0, false);
+        }
+        const bool freshHiddenAgain = !freshTabs->isVisibleTo(&fresh);
+        ST_BEGIN("lss_fresh_pane");
+        ST_PASS("lss_fresh_pane hidden=%d shown=%d hidden2=%d", freshHidden ? 1 : 0,
+                freshShown ? 1 : 0, freshHiddenAgain ? 1 : 0);
+        if (!freshHidden || !freshCreated || !freshShown || !freshHiddenAgain) {
+            return pictura::selfTest().fail(380, "fresh window ghost pane");
+        }
+    }
+
     // lss_tab_weight (350): the scoped document-tab rule carries medium weight
     // and extra right padding without touching the unscoped panel rules.
     {

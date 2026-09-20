@@ -30,7 +30,9 @@
 #include <QtCore/QMimeData>
 #include <QtGui/QDrag>
 #include <QtGui/QDragEnterEvent>
+#include <QtGui/QDragLeaveEvent>
 #include <QtGui/QDropEvent>
+#include <QtGui/QPaintEvent>
 #include <QtWidgets/QStyledItemDelegate>
 #include <QtWidgets/QStyleOptionViewItem>
 #include <QtWidgets/QTreeView>
@@ -66,6 +68,8 @@ struct LayerRow {
     bool placed = false;
     QImage thumbnail;
     QImage maskThumbnail;
+    int documentWidth = 0;
+    int documentHeight = 0;
 };
 
 QString layerTooltip(const LayerRow& layer);
@@ -138,6 +142,8 @@ enum LayerRole {
     MaskThumbnailRole,
     LayerRowLinkedRole,
     LayerRowPlacedRole,
+    DocumentWidthRole,
+    DocumentHeightRole,
 };
 
 struct Node {
@@ -285,6 +291,10 @@ public:
             return row.linked;
         case LayerRowPlacedRole:
             return row.placed;
+        case DocumentWidthRole:
+            return row.documentWidth;
+        case DocumentHeightRole:
+            return row.documentHeight;
         default:
             return {};
         }
@@ -399,7 +409,9 @@ public:
     {
         setDragEnabled(true);
         setAcceptDrops(true);
-        setDropIndicatorShown(true);
+        // The view draws the CS6 drop indicator itself; Qt's stock primitive is
+        // off so only the custom line/outline shows.
+        setDropIndicatorShown(false);
         setDragDropMode(QAbstractItemView::DragDrop);
         setDefaultDropAction(Qt::MoveAction);
     }
@@ -438,7 +450,16 @@ public:
     int editStateForTest() const { return static_cast<int>(state()); }
     void resetEditStateForTest() { setState(NoState); }
     int dropIndicatorForTest() const { return static_cast<int>(dropIndicatorPosition()); }
-    bool dropIndicatorShownForTest() const { return showDropIndicator(); }
+    /// Whether the custom CS6 indicator currently has a valid target.
+    bool dropIndicatorShownForTest() const { return dropMode_ >= 0; }
+    /// 0 = none, 1 = sibling line, 2 = drop-into outline.
+    int dropIndicatorKindForTest() const
+    {
+        if (dropMode_ < 0 || dropRect_.isEmpty()) {
+            return 0;
+        }
+        return dropMode_ == 2 ? 2 : 1;
+    }
     int dropModeAtForTest(const QPoint& pos) const
     {
         int mode = 0;
@@ -448,6 +469,26 @@ public:
 
 protected:
     void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
+
+    // The CS6 drop indicator: a thin blue line at a sibling edge, or a thin
+    // blue outline around a group row for a drop-into. Drawn over the base
+    // paint so Qt's own primitive (disabled in the ctor) never competes.
+    void paintEvent(QPaintEvent* event) override
+    {
+        QTreeView::paintEvent(event);
+        if (dropMode_ < 0 || dropRect_.isEmpty()) {
+            return;
+        }
+        QPainter painter(viewport());
+        painter.setPen(QPen(QColor(0x33, 0x99, 0xDD), 1));
+        painter.setBrush(Qt::NoBrush);
+        if (dropMode_ == 2) {
+            painter.drawRect(dropRect_.adjusted(0, 0, -1, -1));
+        } else {
+            const int y = dropMode_ == 0 ? dropRect_.top() : dropRect_.bottom();
+            painter.drawLine(dropRect_.left(), y, dropRect_.right(), y);
+        }
+    }
 
     void startDrag(Qt::DropActions) override
     {
@@ -479,6 +520,12 @@ protected:
         }
     }
 
+    void dragLeaveEvent(QDragLeaveEvent* event) override
+    {
+        clearDropIndicator();
+        QTreeView::dragLeaveEvent(event);
+    }
+
     void dragMoveEvent(QDragMoveEvent* event) override
     {
         if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropValidator_ || !pathForIndex_) {
@@ -489,21 +536,27 @@ protected:
         // then veto invalid targets so the indicator only marks a legal drop.
         QTreeView::dragMoveEvent(event);
         int mode = 0;
-        const QString target = dropTargetFor(event->position().toPoint(), &mode);
+        const QPoint pos = event->position().toPoint();
+        const QString target = dropTargetFor(pos, &mode);
         const QStringList dragged =
             QString::fromUtf8(event->mimeData()->data(kLayerMimeType))
                 .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         if (!dragged.isEmpty() && dropValidator_(dragged.first(), target, mode)) {
-            setDropIndicatorShown(true);
+            const QModelIndex index = indexAt(pos);
+            dropRect_ = index.isValid() ? visualRect(index)
+                                        : QRect(0, pos.y(), viewport()->width(), 1);
+            dropMode_ = mode;
+            viewport()->update();
             event->acceptProposedAction();
         } else {
-            setDropIndicatorShown(false);
+            clearDropIndicator();
             event->ignore();
         }
     }
 
     void dropEvent(QDropEvent* event) override
     {
+        clearDropIndicator();
         if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropHandler_ || !pathForIndex_) {
             QTreeView::dropEvent(event);
             return;
@@ -530,18 +583,38 @@ private:
     QString dropTargetFor(const QPoint& pos, int* mode) const
     {
         const QModelIndex index = indexAt(pos);
-        switch (dropIndicatorPosition()) {
-        case QAbstractItemView::BelowItem:
-            *mode = 1;
-            break;
-        case QAbstractItemView::OnItem:
-            *mode = 2;
-            break;
-        default:
-            *mode = 0;
-            break;
-        }
+        *mode = dropPositionFor(pos, index);
         return index.isValid() ? pathForIndex_(index) : QString();
+    }
+
+    // Mirror Qt's 2 px AboveItem/BelowItem margin rule ourselves: the stock
+    // indicator is disabled, and Qt leaves `dropIndicatorPosition` stale then.
+    int dropPositionFor(const QPoint& pos, const QModelIndex& index) const
+    {
+        if (!index.isValid()) {
+            return 1;
+        }
+        const QRect rect = visualRect(index);
+        if (pos.y() - rect.top() < 2) {
+            return 0;
+        }
+        if (rect.bottom() - pos.y() < 2) {
+            return 1;
+        }
+        if (rect.contains(pos, true)) {
+            return 2;
+        }
+        return 1;
+    }
+
+    void clearDropIndicator()
+    {
+        if (dropMode_ < 0 && dropRect_.isNull()) {
+            return;
+        }
+        dropMode_ = -1;
+        dropRect_ = QRect();
+        viewport()->update();
     }
 
     std::function<QStringList()> dragPaths_;
@@ -549,6 +622,8 @@ private:
     std::function<bool(const QString&, const QString&, int)> dropHandler_;
     std::function<bool(const QString&, const QString&, int)> dropValidator_;
     QCursor dragCursor_;
+    QRect dropRect_;
+    int dropMode_ = -1;
 };
 
 class LayerRowDelegate : public QStyledItemDelegate {
@@ -562,16 +637,17 @@ public:
     void setThumbnailSize(int size) { thumbnailSize_ = qMax(0, size); }
 
     // Fixed eye gutter and per-level content indent, in row-local pixels.
-    static constexpr int kEyeInset = 6;
     static constexpr int kEyeColumn = 26;
     static constexpr int kIndent = 14;
     static constexpr int kChevronWidth = 16;
 
-    /// The eye's hit-target inside a row's content rect (as painted).
+    /// The eye's hit-target inside a row's content rect (as painted): a square
+    /// glyph centred in the fixed gutter with equal left/right padding.
     QRect eyeRect(const QRect& itemRect) const
     {
         const int width = qBound(14, itemRect.height(), 20);
-        return QRect(itemRect.left() + kEyeInset, itemRect.top(), width, itemRect.height());
+        return QRect(itemRect.left() + (kEyeColumn - width) / 2, itemRect.top(), width,
+                     itemRect.height());
     }
 
     /// The lock badge's rect at a row's right edge (as painted).
@@ -582,6 +658,19 @@ public:
                      itemRect.top() + (itemRect.height() - side) / 2, side, side);
     }
 
+    /// The x where a row's content begins: the eye gutter plus the per-depth
+    /// indent, plus the chevron slot only for expandable rows. Shared by
+    /// thumbRect, nameRect, and paint() so the three never disagree.
+    int contentLeft(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int depth = index.data(DepthRole).toInt();
+        int x = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent;
+        if (index.data(ExpandableRole).toBool()) {
+            x += kChevronWidth;
+        }
+        return x;
+    }
+
     /// The expand/collapse chevron's hit-target for a row at `depth`.
     QRect chevronRect(const QRect& itemRect, int depth) const
     {
@@ -590,20 +679,47 @@ public:
         return QRect(left, itemRect.top() + (itemRect.height() - side) / 2, side, side);
     }
 
-    /// The thumbnail's hit-target, mirroring the x/y math paint() lays out.
-    /// Empty when thumbnails are turned off.
+    /// Letterbox a square thumbnail `box` to the document's aspect ratio, so a
+    /// wide or tall document is not stretched. A group (folder glyph) or a
+    /// zero-size document keeps the square box.
+    QRect letterboxedThumb(const QRect& box, const QModelIndex& index) const
+    {
+        if (box.isEmpty() || index.data(KindRole).toString() == QLatin1String("group")) {
+            return box;
+        }
+        const int documentWidth = index.data(DocumentWidthRole).toInt();
+        const int documentHeight = index.data(DocumentHeightRole).toInt();
+        if (documentWidth <= 0 || documentHeight <= 0) {
+            return box;
+        }
+        int width = box.width();
+        int height = box.height();
+        if (static_cast<qint64>(documentWidth) * height
+            > static_cast<qint64>(documentHeight) * width) {
+            height = qMax(1, qRound(static_cast<double>(box.height()) * documentHeight
+                                    / documentWidth));
+        } else {
+            width = qMax(1, qRound(static_cast<double>(box.width()) * documentWidth
+                                   / documentHeight));
+        }
+        return QRect(box.left() + (box.width() - width) / 2,
+                     box.top() + (box.height() - height) / 2, width, height);
+    }
+
+    /// The thumbnail's hit-target, mirroring the x/y math paint() lays out, as
+    /// the letterboxed (document-aspect) rect. Empty when thumbnails are off.
     QRect thumbRect(const QRect& itemRect, const QModelIndex& index) const
     {
         const int thumb = qMax(0, thumbnailSize_);
         if (thumb <= 0) {
             return {};
         }
-        const int depth = index.data(DepthRole).toInt();
-        int x = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent + kChevronWidth;
+        int x = contentLeft(itemRect, index);
         if (index.data(ClippingRole).toBool()) {
             x += qMax(10, thumb - 8) + 2;
         }
-        return QRect(x, itemRect.top() + (itemRect.height() - thumb) / 2, thumb, thumb);
+        const QRect box(x, itemRect.top() + (itemRect.height() - thumb) / 2, thumb, thumb);
+        return letterboxedThumb(box, index);
     }
 
     /// The name text's hit-target, mirroring the geometry paint() lays out: the
@@ -612,9 +728,8 @@ public:
     /// click in an empty label area still resolves to the name.
     QRect nameRect(const QRect& itemRect, const QModelIndex& index) const
     {
-        const int depth = index.data(DepthRole).toInt();
         const int thumb = qMax(0, thumbnailSize_);
-        int x = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent + kChevronWidth;
+        int x = contentLeft(itemRect, index);
         const bool clipping = index.data(ClippingRole).toBool();
         if (clipping) {
             const int side = qMax(10, thumb > 0 ? thumb - 8 : 12);
@@ -644,9 +759,10 @@ public:
         return QRect(nameLeft, itemRect.top(), qMax(1, nameRight - nameLeft), itemRect.height());
     }
 
-    /// One named row height (floor 28 px) shared by sizeHint and centring.
-    static constexpr int kRowHeightFloor = 28;
-    int rowHeight() const { return qMax(kRowHeightFloor, thumbnailSize_ + 8); }
+    /// One named row height (floor 32 px) shared by sizeHint and centring; a
+    /// Medium (24 px) thumbnail row lands at 36 px.
+    static constexpr int kRowHeightFloor = 32;
+    int rowHeight() const { return qMax(kRowHeightFloor, thumbnailSize_ + 12); }
 
     /// The row name's font: Background italic, linked/placed (and clip-base)
     /// underlined. Shared by paint and the self-test so one rule is asserted.
@@ -709,12 +825,15 @@ public:
         paintAsset(painter, eye,
                    index.data(VisibleRole).toBool() ? QStringLiteral("layers.eyeOn")
                                                     : QStringLiteral("layers.eyeOff"));
+        // 1 px darker-grey separator at the gutter's right edge, between the
+        // eye and the row content.
+        const QColor separator = palette.color(QPalette::Base).darker(115);
+        painter->fillRect(QRect(rect.left() + kEyeColumn - 1, rect.top(), 1, height), separator);
 
-        // Content (disclosure, clipping glyph, thumbnail, name) is indented by
-        // depth from the fixed eye gutter; the disclosure slot is always
-        // reserved so group and layer thumbnails align.
+        // Content (disclosure, clipping glyph, thumbnail, name) starts after the
+        // gutter; the chevron slot is reserved only for expandable rows.
         const int thumb = qMax(0, thumbnailSize_);
-        int x = rect.left() + kEyeColumn + qMax(0, depth) * kIndent;
+        int x = contentLeft(rect, index);
         QRect thumbBox;
         if (index.data(ExpandableRole).toBool()) {
             const auto* treeView = qobject_cast<const QTreeView*>(opt.widget);
@@ -723,7 +842,6 @@ public:
                        expanded ? QStringLiteral("layers.disclosureDown")
                                 : QStringLiteral("layers.disclosureRight"));
         }
-        x += kChevronWidth;
         if (index.data(ClippingRole).toBool()) {
             const int side = qMax(10, thumb > 0 ? thumb - 8 : 12);
             const QPixmap clip =
@@ -735,25 +853,26 @@ public:
             }
         }
         if (thumb > 0) {
-            const QRect thumbRect(x, rect.top() + (height - thumb) / 2, thumb, thumb);
-            thumbBox = thumbRect;
+            const QRect box(x, rect.top() + (height - thumb) / 2, thumb, thumb);
+            const QRect shaped = letterboxedThumb(box, index);
+            thumbBox = shaped;
             if (index.data(KindRole).toString() == QLatin1String("group")) {
                 const QPixmap glyph =
                     pictura::icon(QStringLiteral("layers.group")).pixmap(thumb, thumb);
                 if (!glyph.isNull()) {
-                    painter->drawPixmap(thumbRect, glyph);
+                    painter->drawPixmap(box, glyph);
                 }
             } else {
-                painter->drawTiledPixmap(thumbRect, checkerTile());
+                painter->drawTiledPixmap(shaped, checkerTile());
                 const QImage image = index.data(ThumbnailRole).value<QImage>();
                 if (!image.isNull()) {
-                    painter->drawImage(thumbRect, image);
+                    painter->drawImage(shaped, image);
                 }
             }
-            // 1 px black outline for every thumbnail.
+            // 1 px black outline around the letterboxed thumbnail.
             painter->setPen(QPen(Qt::black, 1));
             painter->setBrush(Qt::NoBrush);
-            painter->drawRect(thumbRect.adjusted(0, 0, -1, -1));
+            painter->drawRect(shaped.adjusted(0, 0, -1, -1));
         }
         x += thumb + 4;
 

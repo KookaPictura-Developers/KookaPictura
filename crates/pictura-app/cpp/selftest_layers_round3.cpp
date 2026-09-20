@@ -395,6 +395,85 @@ int runLayersRound3Checks(PicturaMainWindow& frame)
         }
     }
 
+    // lpr_eye_gutter (387): the eye glyph is centred in its fixed gutter with
+    // equal left/right padding, and a 1 px darker separator sits at the gutter's
+    // right edge. lpr_thumb_gap (388): a non-expandable row's thumbnail starts
+    // closer than a group's at the same depth. lpr_thumb_aspect (389): a wide
+    // document's thumbnail is letterboxed, not stretched. lpr_drop_indicator
+    // (390): a sibling gap yields a line and a drop-into a group an outline; an
+    // invalid target yields none.
+    {
+        const bool created = frame.newDocument(QStringLiteral("FollowupCosmetics"), 20, 10,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        PictureView* view = frame.activeView();
+        if (!created || !view) {
+            return pictura::selfTest().fail(387, "follow-up cosmetics fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        panel->setView(view);
+        panel->setOptionsForTest(2, 1, false);
+        const QString group = view->add_group_in(QString());
+        view->add_layer_in(group);
+        const QString a = view->add_layer_in(QString());
+        const QString b = view->add_layer_in(QString());
+        view->set_layer_name_path(a, QStringLiteral("A"));
+        view->set_layer_name_path(b, QStringLiteral("B"));
+        panel->refresh();
+
+        const bool centred = panel->eyeGutterCentredForTest(a);
+        const bool separator = panel->eyeSeparatorPresentForTest(a);
+        ST_BEGIN("lpr_eye_gutter");
+        ST_PASS("lpr_eye_gutter centred=%d separator=%d", centred ? 1 : 0, separator ? 1 : 0);
+        if (!centred || !separator) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(387, "eye gutter centring/separator");
+        }
+
+        const int regularLeft = panel->rowThumbRectForTest(a).left();
+        const int groupLeft = panel->rowThumbRectForTest(group).left();
+        const bool closer = regularLeft >= 0 && groupLeft > regularLeft;
+        ST_BEGIN("lpr_thumb_gap");
+        ST_PASS("lpr_thumb_gap regular=%d group=%d", regularLeft, groupLeft);
+        if (!closer) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(388, "non-group thumbnail gap");
+        }
+
+        const QRect thumb = panel->rowThumbRectForTest(a);
+        const bool wide = thumb.width() > thumb.height() && thumb.height() > 0;
+        const bool ratio = thumb.height() * 2 == thumb.width();
+        ST_BEGIN("lpr_thumb_aspect");
+        ST_PASS("lpr_thumb_aspect w=%d h=%d", thumb.width(), thumb.height());
+        if (!wide || !ratio) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(389, "thumbnail aspect letterbox");
+        }
+
+        const int sibling = panel->dropIndicatorForTest(a, b, 1);
+        const int into = panel->dropIndicatorForTest(a, group, 2);
+        const int invalid = panel->dropIndicatorForTest(group, group, 2);
+        ST_BEGIN("lpr_drop_indicator");
+        ST_PASS("lpr_drop_indicator sibling=%d into=%d invalid=%d", sibling, into, invalid);
+        if (sibling != 1 || into != 2 || invalid != 0) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(390, "custom drop indicator");
+        }
+        frame.closeDocument(doc, false);
+    }
+
+    // lpr_row_height_raised (391): a Medium-thumbnail row is at least 34 px tall,
+    // from the single named floor shared by sizeHint and the delegate.
+    {
+        panel->setOptionsForTest(2, 1, false);
+        const int height = panel->rowHeightForTest();
+        ST_BEGIN("lpr_row_height_raised");
+        ST_PASS("lpr_row_height_raised height=%d", height);
+        if (height < 34) {
+            return pictura::selfTest().fail(391, "raised row height");
+        }
+    }
+
     return 0;
 }
 

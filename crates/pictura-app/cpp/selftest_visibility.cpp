@@ -177,5 +177,35 @@ int pictura::runVisibilityChecks(pictura::PicturaMainWindow& frame)
         frame.closeDocument(doc, false);
     }
 
+    // vis_cursor_refresh (383): toggling the active layer's visibility updates
+    // the canvas cursor without a pointer move: hidden shows the Block cursor,
+    // visible restores the tool cursor.
+    {
+        const bool created = frame.newDocument(QStringLiteral("VisCursor"), 16, 16,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        PictureView* view = frame.activeView();
+        ImageView* canvas = frame.imageView();
+        if (!created || !view || !canvas) {
+            return pictura::selfTest().fail(383, "visibility cursor fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        view->set_active_layer(QStringLiteral("0"));
+        frame.setActiveTool(pictura::ToolId::Brush);
+        const bool visible = canvas->cursor().shape() != Qt::ForbiddenCursor;
+        view->set_layers_visible(QStringList{QStringLiteral("0")}, false);
+        const bool hidden = canvas->cursor().shape() == Qt::ForbiddenCursor;
+        view->set_layers_visible(QStringList{QStringLiteral("0")}, true);
+        const bool restored = canvas->cursor().shape() != Qt::ForbiddenCursor;
+        ST_BEGIN("vis_cursor_refresh");
+        ST_PASS("vis_cursor_refresh visible=%d hidden=%d restored=%d", visible ? 1 : 0,
+                hidden ? 1 : 0, restored ? 1 : 0);
+        if (!visible || !hidden || !restored) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(383, "layer visibility cursor refresh");
+        }
+        frame.closeDocument(doc, false);
+    }
+
     return 0;
 }
