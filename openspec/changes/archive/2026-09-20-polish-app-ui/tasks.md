@@ -155,31 +155,31 @@
 
 ## 7. Verification and gates
 
-- [ ] 7.1 `cargo fmt --all` (CI runs `--check`), `cargo clippy --workspace
+- [x] 7.1 `cargo fmt --all` (CI runs `--check`), `cargo clippy --workspace
   --all-targets -- -D warnings`.
-- [ ] 7.2 `cargo nextest run --workspace` and `cargo test --workspace --doc`.
-- [ ] 7.3 `bash scripts/verify-full.sh`; every `scripts/file-size-allowlist.txt`
+- [x] 7.2 `cargo nextest run --workspace` and `cargo test --workspace --doc`.
+- [x] 7.3 `bash scripts/verify-full.sh`; every `scripts/file-size-allowlist.txt`
   ceiling holds; each new `selftest_*.cpp` stays under its cap and
   `crates/pictura-app/cpp/selftest.cpp` stays at **6729 LOC**.
-- [ ] 7.4 `./build/pictura --headless --self-test` and record the
+- [x] 7.4 `./build/pictura --headless --self-test` and record the
   passed/failed/skipped counts; confirm new codes start at **346** and no
   existing code was reused.
-- [ ] 7.5 `openspec validate polish-app-ui --strict` and
+- [x] 7.5 `openspec validate polish-app-ui --strict` and
   `openspec validate --all --strict`; both must report valid.
-- [ ] 7.6 No `docs/` change in this change; a docs edit would be a separate
+- [x] 7.6 No `docs/` change in this change; a docs edit would be a separate
   `TASK-ALLOWS-DOCS` commit.
 
 ## 8. Explicitly not done / ceilings
 
-- [ ] 8.1 No resident GPU layer sources, tiling, display-time LoD, or
+- [x] 8.1 No resident GPU layer sources, tiling, display-time LoD, or
   GPU-resident zero-copy present.
-- [ ] 8.2 No compositor math, ±1 LSB parity, or PSD/PSB format change; the
+- [x] 8.2 No compositor math, ±1 LSB parity, or PSD/PSB format change; the
   region fast path must remain byte-identical to a full recomposite.
-- [ ] 8.3 No Layer Style dialog: a non-Background content-band double-click
+- [x] 8.3 No Layer Style dialog: a non-Background content-band double-click
   stays a documented no-op.
-- [ ] 8.4 The Layers panel hides the nesting-lock button only; the engine
+- [x] 8.4 The Layers panel hides the nesting-lock button only; the engine
   `NESTING` refusal and PSD flag are unchanged and stay tested.
-- [ ] 8.5 Wheel `Shift`/`Alt`/`Ctrl+Alt` combinations beyond the specified cases
+- [x] 8.5 Wheel `Shift`/`Alt`/`Ctrl+Alt` combinations beyond the specified cases
   (for example Ctrl-only zoom acceleration) are not added.
-- [ ] 8.6 No new crate, dependency, or `docs/` change; `selftest.cpp` does not
+- [x] 8.6 No new crate, dependency, or `docs/` change; `selftest.cpp` does not
   grow.

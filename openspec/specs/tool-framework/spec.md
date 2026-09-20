@@ -145,7 +145,13 @@ tool-appropriate cursor while the tool is active. For Brush and Pencil the curso
 SHALL be blank so the drawn brush-size ring is the pointer affordance. When the
 active tool would edit pixels and the target layer is pixel-locked, the cursor
 SHALL indicate that the action is not allowed, and a refusal SHALL be reported to
-the user rather than the action silently doing nothing.
+the user rather than the action silently doing nothing. **The canvas SHALL also
+show a Block/Forbidden cursor when a pixel-editing tool's active layer is
+invisible (an edit would be refused), and the transient Alt eyedropper SHALL
+show the eyedropper cursor while Alt is held with a paint tool active. The
+cursor SHALL be resolved in one place with the precedence transient eyedropper >
+transform session > blank paint > invisible target > pixel-locked target >
+tool default, so the branches cannot disagree.**
 
 #### Scenario: Status hint reflects the tool
 
@@ -162,6 +168,18 @@ the user rather than the action silently doing nothing.
 - **WHEN** a pixel-editing tool is active over a pixel-locked layer
 - **THEN** the canvas cursor indicates the action is not allowed and an attempted
   edit reports a refusal
+
+#### Scenario: An invisible target marks the cursor [ltf_invisible_cursor]
+
+- **WHEN** a pixel-editing tool is active over a layer whose visibility is off
+- **THEN** the canvas shows a Block/Forbidden cursor and an attempted paint is
+  refused
+
+#### Scenario: The transient eyedropper cursor shows [ltf_alt_cursor]
+
+- **WHEN** Alt is held with a paint tool active over the canvas
+- **THEN** the canvas shows the eyedropper cursor, which takes precedence over
+  the blank paint cursor
 
 ### Requirement: Tools panel column layout
 
@@ -365,4 +383,19 @@ cursor SHALL reflect the new target without a separate per-tool lookup.
 - **WHEN** paint, a filter, Free Transform, and a content move each run with the
   same single active layer
 - **THEN** all four target that layer through the same resolver
+
+### Requirement: Transient alt-tool cursor is resolved centrally
+
+The cursor precedence SHALL live in one `refreshCursor` path so the transient
+eyedropper, the invisible-layer refusal, and the existing blank/locked cursors
+are not re-evaluated in separate handlers. Changing the active layer, its
+visibility, or the held modifiers SHALL refresh the cursor through that one path
+without a per-tool lookup.
+
+#### Scenario: One path resolves all cursor states [ltf_cursor_precedence]
+
+- **WHEN** the active layer becomes invisible, then visible again, with a paint
+  tool active
+- **THEN** the canvas cursor changes through the single precedence path each time
+  and no other handler re-sets it
 
