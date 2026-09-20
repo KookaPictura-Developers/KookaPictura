@@ -13,7 +13,8 @@ matching `pictura_adjust::Adjustment` variant: `expA` to
 `Adjustment::PhotoFilter(PhotoFilterParams)`, `grdm` to
 `Adjustment::GradientMap(GradientMapParams)`, `blnc` to
 `Adjustment::ColorBalance(ColorBalanceParams)`, `mixr` to
-`Adjustment::ChannelMixer(ChannelMixerParams)`, `curv` to
+`Adjustment::ChannelMixer(ChannelMixerParams)`, `selc` to
+`Adjustment::SelectiveColor(SelectiveColorParams)`, `curv` to
 `Adjustment::Curves(CurvesParams)`, `SoCo` to
 `Adjustment::SolidFill([u8; 4])`, `GdFl` to
 `Adjustment::GradientFill(GradientFillParams)`, and `PtFl` to
@@ -47,7 +48,16 @@ their constants; a monochrome payload SHALL decode with `monochrome` true,
 `red` the `gray` source triple, and `constant[0]` the `gray` constant. A `mixr`
 payload whose version is not 1, that is shorter than the channels it declares,
 or that carries a source percentage or constant outside `-200..=200` SHALL
-decode to `None`. A `curv` payload SHALL be read as a `u8` ignored byte, a `u16`
+decode to `None`. A `selc` payload SHALL be read as a `u16` version equal to
+`1`, a `u16` correction method (`0` relative, nonzero absolute), and ten plates of
+four big-endian `i16` corrections in cyan, magenta, yellow, black order. The first
+plate SHALL be ignored without validation (Photoshop reserves it and writes
+zeroes); the remaining nine plates SHALL be the ranges reds, yellows, greens,
+cyans, blues, magentas, whites, neutrals, and blacks, and every one of their
+corrections SHALL be in `-100..=100` or the payload SHALL decode to `None`. Every
+byte after the tenth plate SHALL be ignored. A `selc` payload SHALL decode to
+`Adjustment::SelectiveColor` with that method and those nine range records. A
+`curv` payload SHALL be read as a `u8` ignored byte, a `u16`
 version equal to `1`, a `u16` ignored word, and a `u16` channel bitmask (`1`
 rgb, `2` red, `4` green, `8` blue); for each set bit, in the order rgb, red,
 green, blue, a `u16` node count followed by that many `(i16 output, i16 input)`
@@ -151,6 +161,16 @@ default to true.
 - **WHEN** a `curv` payload carries the version-4 duplicate `Crv ` section and pad bytes after its last channel
 - **THEN** `decode_adjustment` returns the same `Adjustment::Curves` as the payload without that section
 
+#### Scenario: Selective Color payload decodes to SelectiveColorParams
+
+- **WHEN** a `selc` payload has version 1, a relative method, a zero reserved plate, and nine non-zero range plates
+- **THEN** `decode_adjustment` returns `Adjustment::SelectiveColor` with the relative method and those nine ranges in reds through blacks order
+
+#### Scenario: Selective Color reserved plate and trailing bytes are ignored
+
+- **WHEN** a `selc` payload carries non-zero values in its reserved first plate and trailing bytes after the tenth plate
+- **THEN** `decode_adjustment` returns the same `Adjustment::SelectiveColor` as the payload with a zero reserved plate and no trailing bytes
+
 #### Scenario: Solid-color fill payload decodes to SolidFill
 
 - **WHEN** a `SoCo` payload is a 4-byte RGBA tuple, or a version-16 descriptor whose `Clr ` object carries `Rd  `/`Grn `/`Bl  ` doubles on the `0..=255` scale
@@ -226,6 +246,11 @@ default to true.
 - **WHEN** a `curv` payload has a version other than 1, a zero bitmask, a bit outside `0b1111`, a node count outside `2..=14`, a coordinate outside `0..=255`, non-increasing inputs, or is truncated mid-channel
 - **THEN** `decode_adjustment` returns `None` and does not panic
 
+#### Scenario: Malformed Selective Color payload is a no-op
+
+- **WHEN** a `selc` payload is shorter than 84 bytes, has a version other than 1, or carries a range correction outside `-100..=100`
+- **THEN** `decode_adjustment` returns `None` and does not panic
+
 #### Scenario: Malformed solid-color descriptor is a no-op
 
 - **WHEN** a `SoCo` payload is neither a 4-byte RGBA tuple nor a version-16 descriptor object whose `Clr ` object carries `Rd  `, `Grn `, and `Bl  ` finite doubles
@@ -296,12 +321,12 @@ layer absent.
 ### Requirement: Deferred adjustment payloads remain no-ops
 
 The renderer SHALL return `None` from `decode_adjustment` for the deferred
-payloads `selc`, `clrL`, and a version-3 `phfl`. These payloads SHALL remain
+payloads `clrL` and a version-3 `phfl`. These payloads SHALL remain
 preserved on disk and their layers SHALL leave the backdrop unchanged.
 
 #### Scenario: Deferred keys return None
 
-- **WHEN** a `selc`, `clrL`, or version-3 `phfl` payload is decoded
+- **WHEN** a `clrL` or version-3 `phfl` payload is decoded
 - **THEN** `decode_adjustment` returns `None`
 
 #### Scenario: Deferred layer does not change the composite
@@ -806,4 +831,78 @@ suite in that case.
 
 - **WHEN** `node` or the `ag-psd` package is not available
 - **THEN** the test reports a skip and the suite passes
+
+### Requirement: Selective Color payloads encode and round-trip
+
+`pictura-render` SHALL expose `encode_selective_color(method:
+SelectiveColorMethod, ranges: &[SelectiveRange; 9]) -> AdjustmentData` that
+builds the `selc` block `decode_adjustment` reads: a `u16` version equal to `1`,
+a `u16` correction method (`0` relative, `1` absolute), a zero reserved first
+plate, and nine range plates in reds, yellows, greens, cyans, blues, magentas,
+whites, neutrals, and blacks order, each plate four big-endian `i16` corrections
+in cyan, magenta, yellow, black order. The encoder SHALL clamp every correction
+to `-100..=100`, so its output always decodes. `decode_adjustment` on the
+encoder's output SHALL equal `Adjustment::SelectiveColor` with the input method
+and the input nine ranges.
+
+#### Scenario: Encoded Selective Color decodes back
+
+- **WHEN** `encode_selective_color` is called with the relative method and a known nine-range set is passed to `decode_adjustment`
+- **THEN** it returns `Adjustment::SelectiveColor` with the relative method and those nine ranges
+
+#### Scenario: Out-of-range corrections are clamped
+
+- **WHEN** `encode_selective_color` is called with a correction above 100 or below -100
+- **THEN** the encoded correction is clamped into `-100..=100` and the block still decodes
+
+### Requirement: Selective Color fixtures match an independent ag-psd decoder
+
+The committed fixture `crates/pictura-codec/tests/fixtures/selective_color.psd` SHALL
+carry a relative `selc` block and an absolute `selc` block with fixed
+nine-range values, and a test SHALL read the fixture with the independent
+`ag-psd` npm package through `node` and SHALL assert the decoded method and the
+`reds`, `yellows`, `greens`, `cyans`, `blues`, `magentas`, `whites`, `neutrals`,
+and `blacks` ranges equal the authored values. The fixture SHALL be regenerated
+byte-stably by `scripts/generate-fixtures.py`. The test SHALL self-skip with a
+clear message when `node` or `ag-psd` is unavailable, and SHALL NOT fail the
+suite in that case.
+
+#### Scenario: ag-psd reads the relative fixture block
+
+- **WHEN** the fixture's relative `selc` layer is read by ag-psd
+- **THEN** its mode is relative and its nine named ranges carry the authored corrections
+
+#### Scenario: ag-psd reads the absolute fixture block
+
+- **WHEN** the fixture's absolute `selc` layer is read by ag-psd
+- **THEN** its mode is absolute and its nine named ranges carry the authored corrections
+
+#### Scenario: The oracle self-skips without ag-psd
+
+- **WHEN** `node` or the `ag-psd` package is not available
+- **THEN** the test reports a skip and the suite passes
+
+### Requirement: The app can create a Selective Color adjustment layer
+
+The app SHALL map the adjustment kind `selective-color` to a `selc` adjustment
+layer carrying the neutral default (relative method, all nine ranges zero), and
+the Adjustments panel menu SHALL offer a `Selective Color` entry that dispatches
+`adjustment:selective-color`. Because every range is zero, the default layer
+SHALL leave the backdrop unchanged. A `selc` layer with a non-zero range SHALL
+change the composite over a non-uniform backdrop.
+
+#### Scenario: The selective-color kind becomes an adjustment layer
+
+- **WHEN** the app adds an adjustment layer of kind `selective-color`
+- **THEN** the new layer carries a `selc` block and is reported as an adjustment layer
+
+#### Scenario: The default Selective Color layer is neutral
+
+- **WHEN** a `selective-color` adjustment layer with the default parameters is composited over a backdrop
+- **THEN** the result equals the backdrop-only composite
+
+#### Scenario: The panel menu offers Selective Color
+
+- **WHEN** the Adjustments panel menu is built
+- **THEN** it contains a `Selective Color` row dispatching `adjustment:selective-color`
 

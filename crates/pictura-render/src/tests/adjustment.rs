@@ -880,13 +880,11 @@ fn fixture_solid_fill_decodes_descriptor() {
 
 #[test]
 fn deferred_keys_still_none() {
-    for key in [*b"selc", *b"clrL"] {
-        assert_eq!(
-            decode_adjustment(&adjdata(key, vec![1, 2, 3, 4])),
-            None,
-            "deferred key {key:?}"
-        );
-    }
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"clrL", vec![1, 2, 3, 4])),
+        None,
+        "deferred key clrL"
+    );
     // Version-3 `phfl` (three u32 CIE XYZ values) is still deferred.
     let mut v3 = 3u16.to_be_bytes().to_vec();
     v3.extend_from_slice(&[0u8; 12]);

@@ -14,7 +14,8 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
     use pictura_render::{
         encode_brightness_contrast, encode_channel_mixer, encode_color_balance,
         encode_gradient_map, encode_hue_saturation, encode_invert, encode_photo_filter,
-        encode_posterize, encode_threshold, GradientStop,
+        encode_posterize, encode_selective_color, encode_threshold, GradientStop,
+        SelectiveColorMethod, SelectiveRange,
     };
 
     let (name, data): (&str, AdjustmentData) = match kind {
@@ -55,6 +56,13 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
                 [0.0, 100.0, 0.0],
                 [0.0, 0.0, 100.0],
                 [0.0; 3],
+            ),
+        ),
+        "selective-color" => (
+            "Selective Color",
+            encode_selective_color(
+                SelectiveColorMethod::Relative,
+                &[SelectiveRange::default(); 9],
             ),
         ),
         _ => return None,

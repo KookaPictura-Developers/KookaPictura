@@ -26,6 +26,7 @@ from psd_tools.psd.adjustments import (
     LevelRecord,
     Levels,
     PhotoFilter,
+    SelectiveColor,
     TransparencyStop,
 )
 from psd_tools.psd.base import EmptyElement, ShortIntegerElement
@@ -261,6 +262,48 @@ def curves() -> PSDImage:
                 (8, [(0, 255), (255, 0)]),
             ]
         ),
+    )
+    return psd
+
+
+def selective_color() -> PSDImage:
+    """RGB, a Base layer plus relative and absolute `selc` layers.
+
+    Each layer carries ten plates (cyan, magenta, yellow, black): a zero
+    reserved plate 0 then the nine named ranges reds, yellows, greens, cyans,
+    blues, magentas, whites, neutrals, blacks. psd-tools stores the
+    ``SelectiveColor`` element verbatim.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    relative = [
+        (0, 0, 0, 0),
+        (10, -20, 30, 0),
+        (0, 0, 0, 5),
+        (-10, 0, 0, 0),
+        (0, 15, 0, 0),
+        (0, 0, -25, 0),
+        (5, 0, 0, 0),
+        (0, 0, 0, 0),
+        (20, -10, 0, 0),
+        (0, 0, 0, -40),
+    ]
+    _adj_layer(
+        psd,
+        Tag.SELECTIVE_COLOR,
+        "Selective Color",
+        SelectiveColor(version=1, method=0, data=relative),
+    )
+    absolute = [(0, 0, 0, 0)] + [
+        tuple(4 * i + j for j in range(1, 5)) for i in range(9)
+    ]
+    _adj_layer(
+        psd,
+        Tag.SELECTIVE_COLOR,
+        "Selective Color Abs",
+        SelectiveColor(version=1, method=1, data=absolute),
     )
     return psd
 
@@ -1239,6 +1282,7 @@ FIXTURES = {
     "adjustment.psd": adjustment,
     "channel_mixer.psd": channel_mixer,
     "curves.psd": curves,
+    "selective_color.psd": selective_color,
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
     "gradient_fill.psd": gradient_fill,

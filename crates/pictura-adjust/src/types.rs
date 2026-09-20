@@ -96,6 +96,40 @@ pub struct ColorBalanceParams {
     pub preserve_luminosity: bool,
 }
 
+/// How a Selective Color correction scales: relative scales by the source ink,
+/// absolute by full scale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectiveColorMethod {
+    Relative,
+    Absolute,
+}
+
+/// One CMYK correction pair of a Selective Color family, each `-100..=100`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SelectiveRange {
+    pub c: i16,
+    pub m: i16,
+    pub y: i16,
+    pub k: i16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectiveColorParams {
+    pub method: SelectiveColorMethod,
+    /// Nine ranges in Photoshop's order: reds, yellows, greens, cyans, blues,
+    /// magentas, whites, neutrals, blacks.
+    pub ranges: [SelectiveRange; 9],
+}
+
+impl Default for SelectiveColorParams {
+    fn default() -> Self {
+        Self {
+            method: SelectiveColorMethod::Relative,
+            ranges: [SelectiveRange::default(); 9],
+        }
+    }
+}
+
 /// One colour stop of a [`GradientMapParams`] gradient.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GradientStop {
@@ -168,6 +202,7 @@ pub enum Adjustment {
     ChannelMixer(ChannelMixerParams),
     Vibrance(VibranceParams),
     ColorBalance(ColorBalanceParams),
+    SelectiveColor(SelectiveColorParams),
     Auto(AutoKind),
     Invert,
     Posterize(u8),

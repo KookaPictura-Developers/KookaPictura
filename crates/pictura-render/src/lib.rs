@@ -46,6 +46,10 @@ pub use channel_mixer::encode_channel_mixer;
 mod curves;
 pub use curves::encode_curves;
 
+mod selective_color;
+pub use pictura_adjust::{SelectiveColorMethod, SelectiveRange};
+pub use selective_color::encode_selective_color;
+
 mod fill;
 pub use fill::encode_gradient_fill;
 
