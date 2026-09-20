@@ -111,7 +111,10 @@ all five kinds, is fill content for rasterize, and authors through
 entry (archived `2026-09-19-color-balance-adjustment-decode`). Channel Mixer
 (`mixr`) now decodes to `Adjustment::ChannelMixer` and encodes too, with an
 Adjustments panel entry; the layout is grounded on **ag-psd** because psd-tools
-reads only the red row (archived `channel-mixer-adjustment-decode`). Pattern fill
+reads only the red row (archived `channel-mixer-adjustment-decode`). Curves
+(`curv`) now decodes composite and per-channel curves into `Adjustment::Curves`
+and encodes too, grounded on **ag-psd** with a psd-tools partial check (archived
+`curves-adjustment-decode`). Pattern fill
 (`PtFl`) now decodes to `Adjustment::PatternFill`, taking its pixels from the
 document `Patt`/`Pat2`/`Pat3` pattern library (`pictura-codec::decode_patterns`)
 and compositing as tiled content, and is fill content for rasterize (archived
@@ -147,11 +150,13 @@ stroke piece (archived `2026-09-20-layer-effects-stroke-fills`). That change als
 effect blend mode now decodes the `BlnM` descriptor vocabulary instead of the
 layer-key one, and the effect goldens were regenerated.
 Remaining:
-`curv`, version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
+version-3 `phfl`, `selc`, `clrL`, and the text/vector kinds
 (text, vector masks).
-**Curves (`curv`) is deferred**: the model is single-composite versus
-Photoshop's per-channel curves, and the legacy channel-bitmap order is
-ungrounded (no real Photoshop fixture has any adjustment key). Remaining P3:
+**Curves (`curv`) is now shipped**: the original deferral reason — a
+single-composite model versus Photoshop's per-channel curves, and an ungrounded
+channel-bitmap order — is addressed by the per-channel `CurvesParams` model,
+with the per-channel-then-composite order marked an assumption (not
+Photoshop-verified). Remaining P3:
 those keys and kinds, and write RLE by default (G12).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra

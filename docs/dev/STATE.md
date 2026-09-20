@@ -9,12 +9,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1132 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1145 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports as the ninth
-  skip). The C++ self-test reports **230 passed, 0 failed, 0 skipped**.
+  skip). The C++ self-test reports **231 passed, 0 failed, 0 skipped**. The
+  full gate (`scripts/verify-full.sh`) reports **1414 passed, 9 skipped,
+  0 failed**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -34,7 +36,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-inner-glow`, `layer-effects-stroke`,
     `layer-effects-overlays`, `layer-effects-satin`,
     `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
-    `channel-mixer-adjustment-decode`, and
+    `channel-mixer-adjustment-decode`, `curves-adjustment-decode`, and
     `layer-effects-stroke-fills` changes;
     canonical specs are in `openspec/specs/` (75 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -437,6 +439,14 @@ Snapshot for resuming after a context break. Update after each milestone.
   prove decode/render. Ceilings: the aligned-gradient edge clamp and the
   layer-rect pattern anchor are marked approximations (Photoshop's exact
   stroke-fill extent is ungrounded); the solid render path is unchanged.
+- Curves adjustment decode (roadmap P3/G8, archived `curves-adjustment-decode`):
+  `curv` now decodes/encodes into an extended `CurvesParams` (composite `points`
+  plus optional per-channel `red`/`green`/`blue` curves), applied per-channel
+  then composite. The layout is grounded on **ag-psd** with a psd-tools partial
+  check; a committed `curves.psd` fixture proves decode. The legacy `is_map`
+  bitmap form and the duplicate `Crv ` v4 section are ignored. The
+  per-channel-then-composite order is a marked assumption (not
+  Photoshop-verified). Ceilings: point counts `2..=14`; no pixel-parity claim.
 
 ## Commands
 
