@@ -34,6 +34,7 @@ not hand-edit these files.
 | `outer_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glowing` layer carrying an `lfx2` `OrGl` outer glow |
 | `inner_shadow.psd` | RGB | 8x8 | `Base` pixel layer + `Inner` layer carrying an `lfx2` `IrSh` inner shadow |
 | `inner_glow.psd` | RGB | 8x8 | `Base` pixel layer + `Glow` layer carrying an `lfx2` `IrGl` inner glow |
+| `stroke.psd` | RGB | 8x8 | `Base` pixel layer + `Stroked` layer carrying an `lfx2` `FrFX` solid-colour stroke |
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
@@ -353,6 +354,43 @@ irgl = Descriptor({
 layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
     key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
     data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"IrGl": irgl},
+                          classID=Klass.Null))
+```
+
+
+`stroke.psd` is authored by the `stroke()` builder: the same `Base` pixel
+layer plus a 4x4 `Stroked` pixel layer whose record carries an `lfx2`
+`DescriptorBlock2`. Its top-level object has `masterFXSwitch` and an `FrFX`
+object whose keys mirror psd-tools' `Stroke` accessors (`Md  `, `Clr `/`RGBC`,
+`Opct`, `Styl`, `PntT`, `Sz  `, `overprint`, `TrnS`, `AntA`). The position is
+`Styl` with enum typeID `FStl` (value `OutF`), and the fill type is `PntT` with
+enum typeID `FrFl` (value `SClr`).
+
+```python
+from psd_tools.psd.descriptor import (
+    Bool, Descriptor, DescriptorBlock2, Double, Enumerated, String, UnitFloat,
+)
+from psd_tools.terminology import Enum, Key, Klass, Type, Unit
+
+frfx = Descriptor({
+    Key.Enabled: Bool(True), b"present": Bool(True),
+    b"showInDialog": Bool(True),
+    Key.Mode: Enumerated(b"BlnM", b"Nrml"),
+    Key.Color: Descriptor(
+        {b"Rd  ": Double(0.0), b"Grn ": Double(0.0), b"Bl  ": Double(0.0)},
+        classID=b"RGBC"),
+    Key.Opacity: UnitFloat(100.0, Unit.Percent),
+    Key.Style: Enumerated(Type.FrameStyle, Enum.OutsetFrame),
+    Key.PaintType: Enumerated(Type.FrameFill, Enum.SolidColor),
+    Key.SizeKey: UnitFloat(3.0, Unit.Pixels),
+    b"overprint": Bool(False),
+    Key.TransferSpec: Descriptor({Key.Name: String("Linear")}, classID=b"TrnS"),
+    Key.AntiAlias: Bool(True),
+}, classID=b"FrFX")
+
+layer._record.tagged_blocks[Tag.OBJECT_BASED_EFFECTS_LAYER_INFO] = TaggedBlock(
+    key=Tag.OBJECT_BASED_EFFECTS_LAYER_INFO,
+    data=DescriptorBlock2({b"masterFXSwitch": Bool(True), b"FrFX": frfx},
                           classID=Klass.Null))
 ```
 
