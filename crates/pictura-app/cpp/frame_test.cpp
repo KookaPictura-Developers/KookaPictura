@@ -199,8 +199,10 @@ bool PicturaMainWindow::toolboxOnColumnForTest(const QString& anchorPanel, bool 
     const bool interiorOk =
         commitToolboxDrop(interior) && centerSplitter_->indexOf(toolbox_) == expected;
 
-    // Workspace outer bands: the far-left/far-right bands hit the splitter
-    // head/tail (the end columns created above keep those boundaries real).
+    // Workspace outer bands: those are DOCK targets now, not splitter panes.
+    // The release path docks the panel there, so the resolve must decline and
+    // the commit must not host it as a pane. The end columns created above stay
+    // the edge-adjacent columns the dock band has to win over.
     redockTools();
     const QRect central(centralWidget()->mapToGlobal(QPoint(0, 0)), centralWidget()->size());
     const QPoint headPoint(central.left() + 2, central.center().y());
@@ -208,20 +210,15 @@ bool PicturaMainWindow::toolboxOnColumnForTest(const QString& anchorPanel, bool 
     const bool headOk = [&]() {
         PanelColumn* a = nullptr;
         int s = -1;
-        if (!resolveToolboxDrop(headPoint, &a, &s) || s != 0) {
-            return false;
-        }
-        return commitToolboxDrop(headPoint) && centerSplitter_->indexOf(toolbox_) == 0;
+        return !resolveToolboxDrop(headPoint, &a, &s) && a == nullptr && s == -1
+               && !commitToolboxDrop(headPoint);
     }();
     redockTools();
     const bool tailOk = [&]() {
         PanelColumn* a = nullptr;
         int s = -1;
-        if (!resolveToolboxDrop(tailPoint, &a, &s) || s != 1) {
-            return false;
-        }
-        return commitToolboxDrop(tailPoint)
-               && centerSplitter_->indexOf(toolbox_) == centerSplitter_->count() - 1;
+        return !resolveToolboxDrop(tailPoint, &a, &s) && a == nullptr && s == -1
+               && !commitToolboxDrop(tailPoint);
     }();
     redockTools();
     return indicator && interiorOk && headOk && tailOk;

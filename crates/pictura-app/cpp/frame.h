@@ -107,6 +107,13 @@ public:
     bool resolveToolboxDrop(const QPoint& globalPos, PanelColumn** anchor, int* side);
     bool commitToolboxDrop(const QPoint& globalPos);
 
+    // M47: the two non-pane placements the title-bar gesture also drives. A
+    // release in the workspace outer band docks the panel to the left (0) or
+    // right (1) dock area; a release outside the frame floats it at the cursor.
+    // A title-bar double-click toggles between docked and floating.
+    bool dockToolbox(int side);
+    bool floatToolboxAt(const QPoint& globalPos);
+
     // M43 Phase B test hooks. All drive the same resolve/commit drag path.
     int panelColumnCountForTest() const { return columnCount(); }
     QString panelColumnSideForTest(int index) const;

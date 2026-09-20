@@ -137,6 +137,8 @@ signals:
     // drop through the column grammar and hosts the pane at that boundary.
     void toolbarDragMoved(const QPoint& globalPos);
     void toolbarDragFinished(const QPoint& globalPos);
+    // M47: a double-click on the custom title bar toggles docked <-> floating.
+    void titleBarDoubleClicked();
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
