@@ -48,11 +48,11 @@
 
 ## 5. Batch 5 — Brush performance (item 13)
 
-- [ ] 5.1 Item 13 dirty: in `crates/pictura-paint/src/stroke.rs:139-141` make `Stroke::dirty()` return and clear the per-dab dirty rectangle instead of accumulating the whole stroke; assert the reported rect covers the latest dab only.
-- [ ] 5.2 Item 13 region compositor: in `crates/pictura-render/src/gpu/mod.rs:185-205` make `composite_cpu_region` composite only the requested region rather than full-compositing then slicing; preserve the existing composite result within tolerance.
-- [ ] 5.3 Item 13 present cache: in `crates/pictura-app/cpp/image_view.cpp:148` update only the region of the scaled present image instead of invalidating the whole cache per dab.
-- [ ] 5.4 Item 13 regression: add a Rust region-compositor test comparing a region composite against the full composite, and `crates/pictura-app/cpp/selftest_paint_latency.cpp` (register, codes **342+**) asserting per-dab dirty is incremental; measure a 4000² dab against the canvas-view budget (≤16 ms input-to-first-pixel, ≥60 FPS sustained) and record the result.
-- [ ] 5.5 Batch 5 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`, headless self-test; commit.
+- [x] 5.1 Item 13 dirty: in `crates/pictura-paint/src/stroke.rs:139-141` make `Stroke::dirty()` return and clear the per-dab dirty rectangle instead of accumulating the whole stroke; assert the reported rect covers the latest dab only.
+- [x] 5.2 Item 13 region compositor: in `crates/pictura-render/src/gpu/mod.rs:185-205` make `composite_cpu_region` composite only the requested region rather than full-compositing then slicing; preserve the existing composite result within tolerance.
+- [x] 5.3 Item 13 present cache: in `crates/pictura-app/cpp/image_view.cpp:148` update only the region of the scaled present image instead of invalidating the whole cache per dab.
+- [x] 5.4 Item 13 regression: add a Rust region-compositor test comparing a region composite against the full composite, and `crates/pictura-app/cpp/selftest_paint_latency.cpp` (register, codes **342+**) asserting per-dab dirty is incremental; measure a 4000² dab against the canvas-view budget (≤16 ms input-to-first-pixel, ≥60 FPS sustained) and record the result.
+- [x] 5.5 Batch 5 gate: fmt/clippy/nextest/doctests, `scripts/verify-full.sh`, headless self-test; commit.
 
 ## 6. Verification and gates
 

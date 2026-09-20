@@ -7,6 +7,7 @@
 #include "selftest_layers_interactions.h"
 #include "selftest_layers_smart_object.h"
 #include "selftest_numeric.h"
+#include "selftest_paint_perf.h"
 #include "selftest_report.h"
 #include "selftest_session.h"
 #include "selftest_tools_selection.h"
@@ -1101,6 +1102,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int up = pictura::runUiPersistenceChecks(frame); up != 0) { return up; }
 
         if (const int tc = pictura::runToolCanvasChecks(frame); tc != 0) { return tc; }
+
+        if (const int pp = pictura::runPaintPerfChecks(frame); pp != 0) { return pp; }
 
     return 0;
 }

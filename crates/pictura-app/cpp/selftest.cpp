@@ -2064,7 +2064,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // M35: the C++ region-blit path. A region refresh emits regionBlitted
         // (not changed), ImageView::blitRegion overwrites the canvas, and the
         // on-screen canvas equals a full recomposite; image() rebuilds from the
-        // composite while dirty; the present cache is invalidated then rebuilt.
+        // composite while dirty; the present cache is patched, not rebuilt.
         // 82: document; 83: blit equality; 84: present cache; 85: large region.
         const bool blitCreated = frame.newDocument(QStringLiteral("RegionBlit"), 32, 32,
                                                   QStringLiteral("rgb"), 8,
@@ -2100,7 +2100,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         QImage blitShot(blitCanvas->size(), QImage::Format_ARGB32);
         blitCanvas->render(&blitShot);
-        const bool cacheRebuiltAfter = blitCanvas->presentCacheRebuiltOnLastPaint();
+        const bool cachePatchedAfter = !blitCanvas->presentCacheRebuiltOnLastPaint();
 
         // Force a full recomposite and compare both the blitted canvas and the
         // rebuilt image with it.
@@ -2109,7 +2109,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool regionPath = regionBlits >= 1 && blitChanged == 0;
         const bool canvasSame = samePixels(blitBlitted, blitFull);
         const bool rebuiltSame = samePixels(blitRebuilt, blitFull);
-        const bool cacheOk = reuseBefore && cacheRebuiltAfter;
+        const bool cacheOk = reuseBefore && cachePatchedAfter;
         ST_BEGIN("region_blit_region");
         ST_PASS("region_blit region=%d changed=%d canvas=%d "
                      "rebuilt=%d cache=%d", regionPath ? 1 : 0,

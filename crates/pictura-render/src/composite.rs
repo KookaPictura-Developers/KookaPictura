@@ -22,6 +22,75 @@ pub fn composite_rgba(doc: &Document) -> PixelBuffer {
     canvas.into_pixel_buffer()
 }
 
+/// Composite only the document-space region `[x0, x0+rw) × [y0, y0+rh)`.
+///
+/// Byte-identical to the same slice of [`composite_rgba`] for every stack whose
+/// only neighborhood operations are layer effects; such a stack falls back to
+/// the full composite plus a slice.
+///
+/// ponytail: object-based layer effects (blur/offset/shape neighborhoods) still
+/// full-composite and slice. Per-pixel layers (pixels, fills, adjustments,
+/// smart sources, masks, groups) composite the region alone, which is the brush
+/// path; add a region-expanded effect kernel only if an effect-bearing paint
+/// layer shows up in a profile.
+pub(crate) fn composite_rgba_region(
+    doc: &Document,
+    x0: u32,
+    y0: u32,
+    rw: u32,
+    rh: u32,
+) -> PixelBuffer {
+    if rw == 0 || rh == 0 {
+        return PixelBuffer::new(0, 0, 4);
+    }
+    if doc.layers.iter().any(has_effect_block) {
+        return slice_region(&composite_rgba(doc), doc.width, x0, y0, rw, rh);
+    }
+    let mut canvas = Canvas::new_region(x0 as i32, y0 as i32, rw as usize, rh as usize);
+    for layer in &doc.layers {
+        composite_layer(&mut canvas, layer, doc);
+    }
+    canvas.into_pixel_buffer()
+}
+
+/// Whether the layer (or a descendant) carries a layer-effects block, which the
+/// region compositor cannot restrict to a rectangle. Conservative: a disabled
+/// effect still forces the full-composite fallback.
+fn has_effect_block(layer: &Layer) -> bool {
+    layer.extra_block(b"lfx2").is_some()
+        || layer.extra_block(b"lrFX").is_some()
+        || layer.children.iter().any(has_effect_block)
+}
+
+/// Copy the region `[x0, x0+rw) × [y0, y0+rh)` out of a full-document buffer.
+fn slice_region(
+    full: &PixelBuffer,
+    full_width: u32,
+    x0: u32,
+    y0: u32,
+    rw: u32,
+    rh: u32,
+) -> PixelBuffer {
+    let fw = full_width as usize;
+    let fplane = full.pixel_count();
+    let rw = rw as usize;
+    let rh = rh as usize;
+    let rplane = rw * rh;
+    let mut out = PixelBuffer::new(rw as u32, rh as u32, 4);
+    for ry in 0..rh {
+        let frow = (y0 as usize + ry) * fw + x0 as usize;
+        let rrow = ry * rw;
+        for rx in 0..rw {
+            let f = frow + rx;
+            let r = rrow + rx;
+            for c in 0..4 {
+                out.data[c * rplane + r] = full.data[c * fplane + f];
+            }
+        }
+    }
+    out
+}
+
 /// Straight-alpha RGBA accumulator in normalized `f32`.
 ///
 /// ponytail: one full-document f32 buffer; streaming/tiled compositing is the
@@ -37,16 +106,47 @@ struct Px {
 pub(crate) struct Canvas {
     pub(crate) w: usize,
     pub(crate) h: usize,
+    /// Document x of canvas column 0.
+    pub(crate) ox: i32,
+    /// Document y of canvas row 0.
+    pub(crate) oy: i32,
     px: Vec<Px>,
 }
 
 impl Canvas {
     pub(crate) fn new(w: usize, h: usize) -> Self {
+        Self::new_region(0, 0, w, h)
+    }
+
+    /// A canvas covering document-space `[ox, ox+w) × [oy, oy+h)`.
+    pub(crate) fn new_region(ox: i32, oy: i32, w: usize, h: usize) -> Self {
         Self {
             w,
             h,
+            ox,
+            oy,
             px: vec![Px::default(); w * h],
         }
+    }
+
+    /// Document bounds of the canvas.
+    pub(crate) fn x0(&self) -> i32 {
+        self.ox
+    }
+    pub(crate) fn y0(&self) -> i32 {
+        self.oy
+    }
+    pub(crate) fn x1(&self) -> i32 {
+        self.ox + self.w as i32
+    }
+    pub(crate) fn y1(&self) -> i32 {
+        self.oy + self.h as i32
+    }
+
+    /// The accumulator index of document pixel `(x, y)`.
+    fn idx(&self, x: usize, y: usize) -> usize {
+        debug_assert!((x as i32) >= self.ox && (y as i32) >= self.oy);
+        (y as i32 - self.oy) as usize * self.w + (x as i32 - self.ox) as usize
     }
 
     pub(crate) fn into_pixel_buffer(self) -> PixelBuffer {
@@ -87,7 +187,7 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             }
             return;
         }
-        let mut inner = Canvas::new(canvas.w, canvas.h);
+        let mut inner = Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h);
         for child in &layer.children {
             composite_layer(&mut inner, child, doc);
         }
@@ -124,10 +224,10 @@ fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
         return;
     }
     let lw = lw as usize;
-    let x0 = layer.rect.left.max(0);
-    let y0 = layer.rect.top.max(0);
-    let x1 = layer.rect.right.min(canvas.w as i32);
-    let y1 = layer.rect.bottom.min(canvas.h as i32);
+    let x0 = layer.rect.left.max(canvas.x0());
+    let y0 = layer.rect.top.max(canvas.y0());
+    let x1 = layer.rect.right.min(canvas.x1());
+    let y1 = layer.rect.bottom.min(canvas.y1());
     if x1 <= x0 || y1 <= y0 {
         return;
     }
@@ -277,10 +377,10 @@ fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, so: Option<&SmartO
         return false;
     }
     let region = PsdRect {
-        top: layer.rect.top.max(0),
-        left: layer.rect.left.max(0),
-        bottom: layer.rect.bottom.min(canvas.h as i32),
-        right: layer.rect.right.min(canvas.w as i32),
+        top: layer.rect.top.max(canvas.y0()),
+        left: layer.rect.left.max(canvas.x0()),
+        bottom: layer.rect.bottom.min(canvas.y1()),
+        right: layer.rect.right.min(canvas.x1()),
     };
     if region.width() <= 0 || region.height() <= 0 {
         return false;
@@ -313,11 +413,11 @@ fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, so: Option<&SmartO
 }
 
 fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
-    for y in 0..canvas.h {
-        for x in 0..canvas.w {
-            let p = inner.px[y * inner.w + x];
+    for y in canvas.y0()..canvas.y1() {
+        for x in canvas.x0()..canvas.x1() {
+            let p = inner.px[inner.idx(x as usize, y as usize)];
             if p.a > 0.0 {
-                blend_into(canvas, layer, x, y, [p.r, p.g, p.b], p.a);
+                blend_into(canvas, layer, x as usize, y as usize, [p.r, p.g, p.b], p.a);
             }
         }
     }
@@ -880,9 +980,9 @@ fn composite_adjustment(
     if pictura_adjust::apply(adjustment, &mut buf).is_err() {
         return; // invalid/unsupported parameters: no-op, never an error
     }
-    for y in 0..canvas.h {
-        for x in 0..canvas.w {
-            let i = y * canvas.w + x;
+    for y in canvas.y0()..canvas.y1() {
+        for x in canvas.x0()..canvas.x1() {
+            let i = canvas.idx(x as usize, y as usize);
             // Source coverage is the backdrop's own alpha: an adjustment adds no
             // content where the backdrop is transparent.
             let backdrop_alpha = canvas.px[i].a;
@@ -894,7 +994,7 @@ fn composite_adjustment(
                 buf.data[n + i] as f32 / 255.0,
                 buf.data[2 * n + i] as f32 / 255.0,
             ];
-            blend_into(canvas, layer, x, y, cs, backdrop_alpha);
+            blend_into(canvas, layer, x as usize, y as usize, cs, backdrop_alpha);
         }
     }
 }
@@ -933,7 +1033,7 @@ pub(crate) fn blend_parts(
     if as_ <= 0.0 {
         return;
     }
-    let i = y * canvas.w + x;
+    let i = canvas.idx(x, y);
     let cb = canvas.px[i];
 
     // Dissolve is stochastic: the effective alpha is a threshold on a fixed

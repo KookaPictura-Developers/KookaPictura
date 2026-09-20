@@ -160,6 +160,57 @@ fn full_region_equals_full_composite() {
 }
 
 #[test]
+fn cpu_region_matches_full_slice() {
+    // The CPU fallback must composite only the requested rect yet stay
+    // byte-identical to the same slice of the full CPU composite, including
+    // partial coverage and every multi-layer scene kind.
+    let rects = [
+        region_rect(0, 0, 4, 4),
+        region_rect(1, 2, 7, 6),
+        region_rect(3, 5, SIZE as i32, SIZE as i32),
+        region_rect(-5, -5, 3, 3),
+        region_rect(6, 6, 999, 999),
+    ];
+    for (name, doc) in region_scenes() {
+        let (full, fb) = composite_active(&doc, false);
+        assert_eq!(fb, Backend::Cpu, "{name}: full CPU backend");
+        for &r in &rects {
+            let (region, rb) = composite_region_active(&doc, r, false);
+            assert_eq!(rb, Backend::Cpu, "{name}: region CPU backend");
+            let x0 = r.left.max(0) as usize;
+            let y0 = r.top.max(0) as usize;
+            let x1 = r.right.min(doc.width as i32).max(0) as usize;
+            let y1 = r.bottom.min(doc.height as i32).max(0) as usize;
+            let rw = x1.saturating_sub(x0);
+            let rh = y1.saturating_sub(y0);
+            assert_eq!(
+                (region.width as usize, region.height as usize),
+                (rw, rh),
+                "{name}: region size"
+            );
+            let fplane = full.pixel_count();
+            let rplane = region.pixel_count();
+            for ry in 0..rh {
+                for rx in 0..rw {
+                    for c in 0..4 {
+                        let f = c * fplane + (y0 + ry) * doc.width as usize + x0 + rx;
+                        let rr = c * rplane + ry * rw + rx;
+                        assert_eq!(
+                            region.data[rr],
+                            full.data[f],
+                            "{name}: pixel ({}, {}) channel {c}",
+                            x0 + rx,
+                            y0 + ry
+                        );
+                    }
+                }
+            }
+        }
+    }
+    eprintln!("cpu region parity: every scene byte-identical to the full slice");
+}
+
+#[test]
 fn empty_and_out_of_bounds_region_are_safe() {
     let doc = scene(BlendMode::Multiply);
     let (full, _) = composite_active(&doc, false);
