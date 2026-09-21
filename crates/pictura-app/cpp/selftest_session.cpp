@@ -149,7 +149,10 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
                 return ok;
             };
 
-            const bool seededWritten = writeV6(234);
+            // The legacy `railWidth` is a normal-mode width, so it must sit above
+            // the shared normal-mode floor to be carried through unclamped.
+            const int kLegacyWidth = 334;
+            const bool seededWritten = writeV6(kLegacyWidth);
             frame.applyPanelSessionForTest(pictura::loadSession());
             pump(8);
             pictura::PanelColumn* primary = frame.panelColumn();
@@ -162,7 +165,7 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             primary = frame.panelColumn();
             const int defaultWidth = primary ? primary->persistedWidth() : -1;
             const bool v7Ok = seededWritten && defaultWritten && iconic && primary
-                && primary->railMode() && seededWidth == 234
+                && primary->railMode() && seededWidth == kLegacyWidth
                 && defaultWidth == pictura::PanelColumn::kDefaultNormalWidth;
             ST_BEGIN("lpr_v7_width");
             ST_PASS("lpr_v7_width seeded=%d default=%d/%d", seededWidth, defaultWidth,

@@ -275,7 +275,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
             }
         }
     }
-    DropTarget target = resolveLocalDrop(globalPos);
+    DropTarget target = resolveLocalDrop(globalPos, dragIsPanel_, dragGroup_);
     target.owner = const_cast<PanelColumn*>(this);
     if (target.outside) {
         // A point inside another column may still land there; that column's own
@@ -283,7 +283,8 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
         if (auto* frame = owningFrame()) {
             if (PanelColumn* other = frame->columnAtGlobal(globalPos)) {
                 if (other != this) {
-                    DropTarget delegated = other->resolveLocalDrop(globalPos);
+                    DropTarget delegated =
+                        other->resolveLocalDrop(globalPos, dragIsPanel_, dragGroup_);
                     if (delegated.valid && !delegated.outside
                         && delegated.kind != DropKind::OnStrip) {
                         delegated.owner = other;
@@ -296,7 +297,8 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
     return target;
 }
 
-PanelColumn::DropTarget PanelColumn::resolveLocalDrop(const QPoint& globalPos) const
+PanelColumn::DropTarget PanelColumn::resolveLocalDrop(const QPoint& globalPos, bool dragIsPanel,
+                                                       PanelGroup* dragGroup) const
 {
     DropTarget target;
     if (toolsContent_) {
@@ -346,6 +348,17 @@ PanelColumn::DropTarget PanelColumn::resolveLocalDrop(const QPoint& globalPos) c
         if (groupRect.contains(globalPos)) {
             target.valid = true;
             target.group = group;
+            // A whole-group drag over a *different* group's body tabifies into it
+            // (the blue region outline, then a merge). The dragged group's own
+            // body stays an above/below reorder boundary, so in-column reordering
+            // is unchanged.
+            const QRect bar = group->tabBarGlobalRect();
+            if (!dragIsPanel && group != dragGroup && globalPos.y() > bar.bottom()) {
+                target.onTabBar = true;
+                target.tabIndex = group->titleCountForTest();
+                target.kind = DropKind::IntoGroup;
+                return target;
+            }
             const int centerY = groupRect.top() + groupRect.height() / 2;
             const int base = groups_.indexOf(group);
             if (globalPos.y() < centerY) {

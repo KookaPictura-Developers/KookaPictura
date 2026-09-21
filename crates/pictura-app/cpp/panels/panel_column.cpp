@@ -44,7 +44,7 @@ namespace {
 // M45 W8: one shared minimum width for every normal-mode widget column, so all
 // columns match and none can be squeezed away. ponytail: chosen, not a sourced
 // CS6 metric; tune here. The iconic strip keeps its own narrow minimum.
-constexpr int kPanelMinWidth = 180;
+constexpr int kPanelMinWidth = 300;
 constexpr int kPanelMaxWidth = 400;
 
 } // namespace

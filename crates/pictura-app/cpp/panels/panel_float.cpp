@@ -215,20 +215,29 @@ void PanelFloat::syncToContent()
 {
     if (group_) {
         if (group_->isCollapsedToIcons()) {
-            setMinimumHeight(kFloatIconMinHeight);
-            // Snap both axes: the icon row is shorter and narrower than the
-            // expanded body, so no normal-width residue is left behind.
-            const int w = qMax(kFloatMinWidth, group_->sizeHint().width());
+            // Icon mode hugs the icon row on both axes: hide the resize grip and
+            // drop the normal-width floor, otherwise a body-wide residue is left
+            // around the icons.
+            if (sizeGrip_) {
+                sizeGrip_->setVisible(false);
+            }
+            const int w = qMax(1, group_->sizeHint().width());
             const int h = qMax(group_->sizeHint().height(), kFloatIconMinHeight);
+            setMinimumWidth(w);
+            setMinimumHeight(h);
             resize(w, h);
             return;
         }
-        // Expanded: the overlay keeps a top-bar + tab-bar floor and grows to fit
-        // the group.
+        // Expanded: restore the grip and the shared normal minimum width, keep a
+        // top-bar + tab-bar height floor, and grow to fit the group.
+        setMinimumWidth(kFloatMinWidth);
         setMinimumHeight(kFloatMinHeight);
+        if (sizeGrip_) {
+            sizeGrip_->setVisible(resizable_);
+        }
         const int target = group_->sizeHint().height();
         if (target > height()) {
-            resize(width(), target);
+            resize(qMax(width(), kFloatMinWidth), target);
         }
         return;
     }

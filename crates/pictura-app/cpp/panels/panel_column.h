@@ -82,7 +82,7 @@ public:
     void hideTabIndicator();
     bool tabIndicatorVisibleForTest() const { return indicator_ && indicator_->isVisible(); }
     static constexpr int kFloatIconMinHeight = 36;
-    static constexpr int kFloatMinWidth = 180;
+    static constexpr int kFloatMinWidth = 300;
     static constexpr int kFloatMinHeight = 48;
     std::function<void()> onClose;
 
@@ -181,10 +181,10 @@ public:
     bool autoShowHidden() const { return autoShowHidden_; }
     void setPreferredWidth(int width);
     // A migrated v6 per-column entry carries no width; use this until one is set.
-    static constexpr int kDefaultNormalWidth = 220;
+    static constexpr int kDefaultNormalWidth = 300;
     // The normal-mode width range. A restored or persisted width is clamped to it
     // so a stale store can never expand a column across the workspace.
-    static constexpr int kMinNormalWidth = 180;
+    static constexpr int kMinNormalWidth = 300;
     static constexpr int kMaxNormalWidth = 400;
     // Width to persist for this column: its own width in normal mode, or the
     // remembered normal width while iconic, clamped to the range above. During an
@@ -436,7 +436,8 @@ private:
     // float once the column is floated, so callers that need the frame use this.
     PicturaMainWindow* owningFrame() const;
     DropTarget resolveDrop(const QPoint& globalPos) const;
-    DropTarget resolveLocalDrop(const QPoint& globalPos) const;
+    DropTarget resolveLocalDrop(const QPoint& globalPos, bool dragIsPanel = false,
+                                PanelGroup* dragGroup = nullptr) const;
     bool resolveIconicDrop(const QPoint& globalPos, DropTarget& target) const;
     int boundaryIndexForGlobalY(const QPoint& globalPos) const;
     int stripInsertionIndexAt(const QPoint& globalPos) const;
