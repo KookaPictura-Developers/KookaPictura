@@ -49,6 +49,12 @@ public:
     explicit PanelFloat(QWidget* parent = nullptr);
     PanelGroup* group() const { return group_; }
     void setGroup(PanelGroup* group);
+    // A whole torn-off `PanelColumn` is hosted through the same overlay: the
+    // content setter takes either a group or a column, so the in-window
+    // behaviour, size grip, and minimum width are shared by construction.
+    void setContent(QWidget* content);
+    QWidget* content() const { return content_; }
+    QSizeGrip* sizeGripForTest() const { return sizeGrip_; }
     // M47: keep the overlay sized to its hosted group. Collapsed-to-icons snaps
     // to the icon row's height; expanded drops the icon floor and grows to the
     // hint.
@@ -58,6 +64,11 @@ public:
     // it and only its opacity changes.
     void setDragDimmed(bool dimmed);
     qreal dragOpacityForTest() const;
+    // Phase 3: the shared `#2a7fff` insertion indicator, drawn over this float's
+    // hosted group tab bar while a dragged panel/group hovers the overlay.
+    void showTabIndicator(PanelGroup* group, int index);
+    void hideTabIndicator();
+    bool tabIndicatorVisibleForTest() const { return indicator_ && indicator_->isVisible(); }
     static constexpr int kFloatIconMinHeight = 36;
     static constexpr int kFloatMinWidth = 180;
     static constexpr int kFloatMinHeight = 48;
@@ -68,8 +79,10 @@ protected:
 
 private:
     PanelGroup* group_ = nullptr;
+    QWidget* content_ = nullptr;
     QGraphicsOpacityEffect* opacityEffect_ = nullptr;
     QSizeGrip* sizeGrip_ = nullptr;
+    QWidget* indicator_ = nullptr;
 };
 
 // The frameless `Qt::Popup` that hosts the whole `PanelGroup` a compact-strip
@@ -116,10 +129,30 @@ public:
     // wiring and `floats_` ownership) so an emptied source column can be removed.
     void rehomeFloatsTo(PanelColumn* target);
 
+    // True while the whole column is torn off into an in-window `PanelFloat`
+    // overlay. A floated column is not a splitter pane, so the empty-column
+    // cleanup must never delete it.
+    bool isColumnFloating() const { return columnFloat_ != nullptr; }
+    // Drop a live whole-column tear-off overlay without moving the column (used
+    // when a session rebuild re-parents the column into the splitter).
+    void cancelColumnFloat();
+
     // M43 session v6: detach a group so it can be adopted by another column
     // (used to rebuild a stored multi-column layout at startup). Returns the
     // live group, unwired from this column, or nullptr when unknown.
     PanelGroup* takeGroup(const QString& groupObjectName);
+
+    // D1: a tools column hosts one plain content widget instead of groups. It
+    // has no tab bar, no `PanelGroup`, and no rail mode; it is atomic (the drop
+    // resolver never combines it with a widget panel/group). Its header toggle
+    // reflows the content between one and two columns through the supplied
+    // callbacks rather than switching rail mode.
+    void setToolsContent(QWidget* content, std::function<int()> columnsState,
+                         std::function<void()> onToggleRequested);
+    bool isToolsColumn() const { return toolsContent_ != nullptr; }
+    QWidget* toolsContentForTest() const { return toolsContent_; }
+    // Re-fit the tools column width to its content (after a 1<->2 column flip).
+    void refreshToolsWidth();
 
     // `normal` (splitter of groups) <-> `iconic` (narrow icon strip).
     void setRailMode(bool iconic);
@@ -146,6 +179,11 @@ public:
     // is known yet).
     int persistedWidth() const
     {
+        // The tools column is not governed by the widget-column width range; it
+        // records its live content width so a 1/2 column flip round-trips.
+        if (toolsContent_) {
+            return qMax(0, width());
+        }
         const int width = railMode_ || (widthFlipPending_ && normalWidthBeforeIconic_ > 0)
             ? normalWidthBeforeIconic_
             : this->width();
@@ -196,6 +234,9 @@ public:
     bool dropIndicatorVisibleForTest() const;
     QRect dropIndicatorGeometryForTest() const;
     QRect dropIndicatorGlobalGeometryForTest() const;
+    // Phase 4: the blue region outline shown around the target group for a
+    // group-on-group tabify.
+    bool outlineIndicatorVisibleForTest() const;
     int scrollViewportHeightForTest() const;
     int dropIndexForTest() const;
     int horizontalScrollPolicyForTest() const;
@@ -208,6 +249,7 @@ public:
     int floatCountForTest() const;
     PanelFloat* floatForTest(int index) const;
     QStringList floatPanelNamesForTest(int index) const;
+    bool floatTabIndicatorVisibleForTest(int index) const;
     bool tearOffForTest(const QString& groupName);
     bool tearOffPanelForTest(const QString& objectName);
     bool redockForTest(int floatIndex, int boundaryIndex);
@@ -224,6 +266,8 @@ public:
     bool beginColumnHeaderDragForTest(const QPoint& globalPos);
     void dragColumnHeaderToForTest(const QPoint& globalPos);
     bool dropColumnHeaderForTest(const QPoint& globalPos);
+    // The whole-column tear-off overlay while it is floating, or null.
+    PanelFloat* columnFloatForTest() const { return columnFloat_; }
     // M47: the header's left-click menu (collapse/auto toggles/interface options).
     QStringList columnHeaderMenuTextsForTest() const;
     bool triggerColumnHeaderMenuForTest(const QString& text);
@@ -255,6 +299,9 @@ public:
     // M44 Phase C: whole-widget-column docking and compact drop.
     bool dragActiveForTest() const { return dragActive_; }
     bool dragIsPanelForTest() const { return dragIsPanel_; }
+    // Phase 6: opacity of the widget currently dimmed for this drag (the docked
+    // source group or the float), 1.0 when nothing is dimmed.
+    qreal dragDimOpacityForTest() const;
     bool dragSourceGroupAliveForTest() const;
     QWidget* dragHandleForTest(const QString& groupName) const;
     QStringList compactStripGroupOrderForTest() const;
@@ -308,6 +355,14 @@ private:
         // column for a cross-column result). The indicator is rendered through
         // the owner so the line is drawn where the commit will place it.
         PanelColumn* owner = nullptr;
+        // Phase 3: the in-window float hosting `group`, when the point resolved
+        // over an overlay. Null for docked targets; the tabify commit and the
+        // indicator both key off it.
+        PanelFloat* floatTarget = nullptr;
+        // Phase 4: a whole-group drag resolved onto another group's tab bar
+        // tabifies into it; the indicator draws the blue region outline instead
+        // of the thin insertion line.
+        bool groupTabify = false;
     };
 
     // One icon in the iconic strip, in strip order. `button` is the drag source
@@ -333,6 +388,9 @@ private:
     void updateIconStripLabels();
     void ensureFlyout();
     void openIconFlyout(const QString& objectName, const QPoint& globalPos);
+    // Phase 7: a compact icon lives either in a docked group (`groups_`) or in a
+    // live float, so the flyout resolves both before it opens.
+    PanelGroup* resolveFlyoutGroup(const QString& objectName) const;
     void closeIconFlyout();
     void restoreFlyoutGroup();
     void placeFlyout(const QRect& buttonGlobalRect, const QSize& size);
@@ -367,10 +425,20 @@ private:
     bool applyPanelDrop(PanelGroup* source, const QString& name, const DropTarget& target);
     bool applyStripDrop(PanelGroup* source, const QString& name, int stripIndex);
     bool applyGroupDrop(PanelGroup* group, const DropTarget& target);
+    // Phase 3/4: move every tab of `source` into `dest` at `at`, then tear the
+    // emptied source down through the one cleanup path. One merge mechanism for
+    // a float target now and group-on-group later.
+    bool mergeGroupInto(PanelGroup* source, PanelGroup* dest, PanelColumn* owner, int at);
     bool applyNewColumnDrop(PanelSide side, PanelColumn* anchor);
     void beginPanelDrag(PanelGroup* group, const QString& objectName, const QPoint& globalPos);
     void beginGroupDrag(PanelGroup* group, const QPoint& globalPos);
     void updateDrag(const QPoint& globalPos);
+    // Phase 6: dim the dragged thing for the whole drag, not only while a valid
+    // target is under the pointer. `setDragDimTarget` restores the previous
+    // target first; a docked group gets a transient `QGraphicsOpacityEffect`,
+    // a float reuses its own.
+    void updateDragDim();
+    void setDragDimTarget(QWidget* target);
     bool commitDrop();
     void cancelDrag();
     // M47: the header-drag column move reuses the edge-drop indicator.
@@ -382,12 +450,26 @@ private:
     void moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft);
     QRect floatBounds(QWidget* host) const;
     PanelFloat* floatForGroup(PanelGroup* group) const;
+    // Phase 3: this column's in-window float hosting a `PanelGroup` whose rect
+    // contains `globalPos`, or null. A whole-column float (no group) is skipped.
+    PanelFloat* groupFloatAtGlobal(const QPoint& globalPos) const;
+    // The whole-column tear-off overlay lifecycle. `floatColumn` hosts this
+    // column in an in-window overlay at `globalTopLeft`; `redockColumnFloat`
+    // puts it back in the splitter through the frame's move path and removes the
+    // overlay; `destroyColumnFloat` tears the overlay down without moving.
+    PanelFloat* floatColumn(const QPoint& globalTopLeft);
+    bool redockColumnFloat(int side, PanelColumn* anchor);
+    void destroyColumnFloat();
     PanelGroup* findGroupByName(const QString& objectName) const;
     QWidget* makeGroupGrip(PanelGroup* group);
     QWidget* stripGroupBoxFor(PanelGroup* group) const;
 
     QWidget* header_ = nullptr;
     QToolButton* columnToggle_ = nullptr;
+    // D1/D2: set while this column hosts a single plain tools content widget.
+    QWidget* toolsContent_ = nullptr;
+    std::function<int()> toolsColumnsState_;
+    std::function<void()> toolsToggleAction_;
     QScrollArea* scroll_ = nullptr;
     QSplitter* splitter_ = nullptr;
     QWidget* iconStrip_ = nullptr;
@@ -415,6 +497,12 @@ private:
     PanelGroup* flyoutGroup_ = nullptr;
     QString flyoutName_;
     int flyoutGroupIndex_ = -1;
+    // Phase 7: the live float that hosted the group when its compact icon was
+    // clicked, so the popup returns it there instead of docking it.
+    PanelFloat* flyoutFloat_ = nullptr;
+    // Phase 7: a collapsed group is expanded for the popup and re-collapsed on
+    // close, so a compact icon opens the same content a docked strip icon does.
+    bool flyoutWasCollapsed_ = false;
     bool restoringFlyout_ = false;
 
     bool autoCollapseIconic_ = false;
@@ -423,14 +511,12 @@ private:
 
     QWidget* indicator_ = nullptr;
     QWidget* stripIndicator_ = nullptr;
+    QWidget* outlineIndicator_ = nullptr;
     QSet<PanelGroup*> wired_;
     QList<PanelFloat*> floats_;
 
     bool dragActive_ = false;
     bool dragIsPanel_ = false;
-    // M47: set when a one-panel-float tab drag was redirected into a group drag,
-    // so only that gesture gets the tab-bar merge on commit.
-    bool dragRedirectedFromFloat_ = false;
     PanelGroup* dragGroup_ = nullptr;
     // M44 W4: the panel's original group is kept alive for the whole drag so the
     // tab bar that owns the implicit mouse grab survives until release; it is
@@ -440,9 +526,14 @@ private:
     QPoint dragGrabOffset_;
     int dragOriginalIndex_ = -1;
     PanelFloat* dragFloat_ = nullptr;
+    // Phase 6: the widget currently dimmed for this drag (a docked group or a
+    // float), or null. Cleared on commit and cancel.
+    QWidget* dimTarget_ = nullptr;
     DropTarget dropTarget_;
     // M45 W1/W2: the column currently owning the rendered drop indicator.
     PanelColumn* indicatorOwner_ = nullptr;
+    // Phase 3: the float whose tab-bar indicator this column currently shows.
+    PanelFloat* floatIndicator_ = nullptr;
 
     bool stripPressPending_ = false;
     bool stripDragging_ = false;
@@ -455,8 +546,12 @@ private:
     bool columnPressPending_ = false;
     bool columnDragging_ = false;
     QPoint columnPressGlobal_;
+    // Cursor offset inside the column at drag start, so a torn-off overlay keeps
+    // the header under the pointer instead of jumping to its top-left corner.
+    QPoint columnGrabOffset_;
     PanelColumn* columnDropAnchor_ = nullptr;
     int columnDropSide_ = -1;
+    PanelFloat* columnFloat_ = nullptr;
 };
 
 } // namespace pictura

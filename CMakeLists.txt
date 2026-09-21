@@ -77,6 +77,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_paint_live.cpp
     crates/pictura-app/cpp/selftest_visibility.cpp
     crates/pictura-app/cpp/selftest_shell_round3.cpp
+    crates/pictura-app/cpp/selftest_shell_round4.cpp
     crates/pictura-app/cpp/selftest_workspace_input.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
@@ -115,9 +116,11 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/panel_group_test.cpp
     crates/pictura-app/cpp/panels/panel_column.cpp
     crates/pictura-app/cpp/panels/panel_float.cpp
+    crates/pictura-app/cpp/panels/panel_column_float.cpp
     crates/pictura-app/cpp/panels/panel_column_iconic.cpp
     crates/pictura-app/cpp/panels/panel_column_menu.cpp
     crates/pictura-app/cpp/panels/panel_column_drag.cpp
+    crates/pictura-app/cpp/panels/panel_column_indicator.cpp
     crates/pictura-app/cpp/panels/panel_column_test.cpp
     crates/pictura-app/cpp/tools.cpp
     crates/pictura-app/cpp/tool_registry.cpp
@@ -169,6 +172,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_paint_live.h
     crates/pictura-app/cpp/selftest_visibility.h
     crates/pictura-app/cpp/selftest_shell_round3.h
+    crates/pictura-app/cpp/selftest_shell_round4.h
     crates/pictura-app/cpp/selftest_workspace_input.h
     crates/pictura-app/cpp/panels/layers_panel.h
     crates/pictura-app/cpp/panels/layers_filter_proxy.h

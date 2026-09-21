@@ -11,6 +11,7 @@
 #include "selftest_paint_perf.h"
 #include "selftest_paint_live.h"
 #include "selftest_shell_round3.h"
+#include "selftest_shell_round4.h"
 #include "selftest_report.h"
 #include "selftest_session.h"
 #include "selftest_tools_selection.h"
@@ -1116,6 +1117,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int pl = pictura::runPaintLiveChecks(frame); pl != 0) { return pl; }
 
         if (const int sr = pictura::runShellRound3Checks(frame); sr != 0) { return sr; }
+
+        if (const int sr4 = pictura::runShellRound4Checks(frame); sr4 != 0) { return sr4; }
 
         if (const int lr3 = pictura::runLayersRound3Checks(frame); lr3 != 0) { return lr3; }
 

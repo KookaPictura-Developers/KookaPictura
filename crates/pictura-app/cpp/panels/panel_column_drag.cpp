@@ -24,6 +24,7 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QBoxLayout>
 #include <QtWidgets/QFrame>
+#include <QtWidgets/QGraphicsOpacityEffect>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMainWindow>
@@ -31,7 +32,6 @@
 #include <QtWidgets/QScrollArea>
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QSplitter>
-#include <QtWidgets/QTabBar>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
 
@@ -58,6 +58,7 @@ bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
                        >= QApplication::startDragDistance()) {
                 columnPressPending_ = false;
                 columnDragging_ = true;
+                columnGrabOffset_ = columnPressGlobal_ - mapToGlobal(QPoint(0, 0));
             }
             if (columnDragging_) {
                 updateColumnDrag(globalPos);
@@ -176,6 +177,40 @@ bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
 
 PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
 {
+    // Phase 3: a raised in-window float sits on top of the splitter panes, so a
+    // pointer over its group resolves a tabify target before any column or edge
+    // grammar claims the point. A whole-column float (no group) is never a
+    // tabify target, so it falls through to the existing behaviour. The float
+    // being dragged can never target itself.
+    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+        for (PanelColumn* column : frame->panelColumns()) {
+            if (!column) {
+                continue;
+            }
+            PanelFloat* hostFloat = column->groupFloatAtGlobal(globalPos);
+            // Never target the float the drag started from: a group drag names
+            // it in `dragFloat_`, a panel drag lifted out of a float names its
+            // group in `dragSourceGroup_` (and must build a fresh overlay).
+            if (!hostFloat || hostFloat == dragFloat_
+                || hostFloat->group() == dragSourceGroup_) {
+                continue;
+            }
+            PanelGroup* group = hostFloat->group();
+            int index = group->tabInsertionIndexAt(globalPos);
+            if (index < 0) {
+                index = group->titleCountForTest();
+            }
+            DropTarget target;
+            target.valid = true;
+            target.onTabBar = true;
+            target.group = group;
+            target.tabIndex = index;
+            target.kind = DropKind::IntoGroup;
+            target.owner = column;
+            target.floatTarget = hostFloat;
+            return target;
+        }
+    }
     // M43: the workspace-edge new-column band is resolved before the local
     // column grammar, so a drop at an outer edge always means a new column on
     // that side. Compact strips are exempt (they sit on the edge), so the
@@ -231,6 +266,14 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
             target.kind = anchorSide == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
             return target;
         }
+        // D4 atomic target: a widget panel/group may never combine with the tools
+        // column. Resolve nothing (not even an outside float) so no indicator is
+        // drawn and no in-column grouping can commit.
+        if (PanelColumn* over = frame->columnAtGlobal(globalPos)) {
+            if (over->isToolsColumn()) {
+                return DropTarget{};
+            }
+        }
     }
     DropTarget target = resolveLocalDrop(globalPos);
     target.owner = const_cast<PanelColumn*>(this);
@@ -256,6 +299,10 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
 PanelColumn::DropTarget PanelColumn::resolveLocalDrop(const QPoint& globalPos) const
 {
     DropTarget target;
+    if (toolsContent_) {
+        // D4 atomic: the tools column has no in-column grouping target.
+        return target;
+    }
     if (railMode_) {
         if (resolveIconicDrop(globalPos, target)) {
             return target;
@@ -485,141 +532,40 @@ int PanelColumn::boundaryIndexForGlobalY(const QPoint& globalPos) const
     return boundary;
 }
 
-void PanelColumn::showIndicatorFor(const DropTarget& target)
+void PanelColumn::updateDragDim()
 {
-    const bool newColumn =
-        target.kind == DropKind::NewColumnLeft || target.kind == DropKind::NewColumnRight;
-    const bool compactKind =
-        railMode_
-        && (target.kind == DropKind::IntoGroup || target.kind == DropKind::AboveGroup
-            || target.kind == DropKind::BelowGroup)
-        && target.stripIndex >= 0;
-    if (target.onStrip || compactKind) {
-        if (!stripIndicator_ || stripEntries_.isEmpty()) {
-            clearIndicator();
-            return;
+    // Phase 6: the draggable is dimmed for the whole drag. A torn-off transient
+    // float is the dim target; otherwise the source group is, whether it sits
+    // docked (its own transient effect) or inside a float (the float's effect).
+    QWidget* target = dragFloat_;
+    if (!target && dragSourceGroup_) {
+        target = floatForGroup(dragSourceGroup_);
+        if (!target) {
+            target = dragSourceGroup_;
         }
-        // M45 C2: a whole-group drag draws at the group container's insertion
-        // boundary — above its drag-handle grip — not at an icon button, so the
-        // line sits where the drop inserts rather than inside the group.
-        if (!dragIsPanel_) {
-            QWidget* box = nullptr;
-            bool below = false;
-            if (target.group) {
-                box = stripGroupBoxFor(target.group);
-                below = target.kind == DropKind::BelowGroup;
-            }
-            if (!box) {
-                const int boundary = qBound(0, target.boundary, groups_.size());
-                if (boundary < groups_.size()) {
-                    box = stripGroupBoxFor(groups_.at(boundary));
-                } else if (!groups_.isEmpty()) {
-                    box = stripGroupBoxFor(groups_.last());
-                    below = true;
-                }
-            }
-            if (box) {
-                const QPoint origin = box->mapTo(iconStrip_, QPoint(0, 0));
-                const int y = below ? origin.y() + box->height() + 1 : origin.y() - 1;
-                stripIndicator_->setGeometry(QRect(0, y, iconStrip_->width(), 3));
-                stripIndicator_->show();
-                stripIndicator_->raise();
-                if (indicator_) {
-                    indicator_->hide();
-                }
-                return;
-            }
-        }
-        const int index = qBound(0, target.stripIndex, stripEntries_.size());
-        QToolButton* anchor = index < stripEntries_.size() ? stripEntries_.at(index).button
-                                                           : stripEntries_.last().button;
-        if (!anchor) {
-            clearIndicator();
-            return;
-        }
-        const QPoint origin = anchor->mapTo(iconStrip_, QPoint(0, 0));
-        const int y = index < stripEntries_.size() ? origin.y() - 1
-                                                   : origin.y() + anchor->height() + 1;
-        stripIndicator_->setGeometry(QRect(0, y, iconStrip_->width(), 3));
-        stripIndicator_->show();
-        stripIndicator_->raise();
-        if (indicator_) {
-            indicator_->hide();
-        }
-        return;
     }
-    if (stripIndicator_) {
-        stripIndicator_->hide();
-    }
-    if (!indicator_ || !scroll_) {
-        return;
-    }
-    QWidget* viewport = scroll_->viewport();
-    if (!viewport) {
-        return;
-    }
-    if (newColumn) {
-        // A full-height mark at the workspace edge for a new-column candidate.
-        const int x = target.kind == DropKind::NewColumnLeft ? 0 : qMax(0, viewport->width() - 3);
-        indicator_->setGeometry(QRect(x, 0, 3, viewport->height()));
-        indicator_->show();
-        indicator_->raise();
-        return;
-    }
-    if (target.onTabBar && target.group) {
-        QTabBar* bar = target.group->tabBar();
-        if (!bar) {
-            clearIndicator();
-            return;
-        }
-        const int x = target.group->tabInsertionX(target.tabIndex);
-        const QPoint origin = bar->mapTo(viewport, QPoint(x, 0));
-        indicator_->setGeometry(QRect(origin.x() - 1, origin.y(), 3, bar->height()));
-    } else {
-        const QList<PanelGroup*> visible = visibleGroups();
-        if (visible.isEmpty()) {
-            clearIndicator();
-            return;
-        }
-        auto topOf = [viewport](PanelGroup* group) {
-            return group->mapTo(viewport, QPoint(0, 0)).y();
-        };
-        int prev = -1;
-        int next = -1;
-        for (int i = 0; i < groups_.size(); ++i) {
-            PanelGroup* group = groups_.at(i);
-            if (!group || !group->isVisible()) {
-                continue;
-            }
-            if (i < target.boundary) {
-                prev = i;
-            } else if (next < 0) {
-                next = i;
-            }
-        }
-        int y = 0;
-        if (prev >= 0 && next >= 0) {
-            const int bottom = topOf(groups_.at(prev)) + groups_.at(prev)->height();
-            y = (bottom + topOf(groups_.at(next))) / 2;
-        } else if (next >= 0) {
-            y = topOf(groups_.at(next)) - 1;
-        } else if (prev >= 0) {
-            y = topOf(groups_.at(prev)) + groups_.at(prev)->height() + 1;
-        }
-        y = qBound(0, y, qMax(0, viewport->height() - 3));
-        indicator_->setGeometry(QRect(0, y, viewport->width(), 3));
-    }
-    indicator_->show();
-    indicator_->raise();
+    setDragDimTarget(target);
 }
 
-void PanelColumn::clearIndicator()
+void PanelColumn::setDragDimTarget(QWidget* target)
 {
-    if (indicator_) {
-        indicator_->hide();
+    if (target == dimTarget_) {
+        return;
     }
-    if (stripIndicator_) {
-        stripIndicator_->hide();
+    if (auto* floatWindow = qobject_cast<PanelFloat*>(dimTarget_)) {
+        floatWindow->setDragDimmed(false);
+    } else if (dimTarget_) {
+        // The effect is this helper's own; removing it restores full opacity
+        // and leaves nothing behind on the docked group.
+        dimTarget_->setGraphicsEffect(nullptr);
+    }
+    dimTarget_ = target;
+    if (auto* floatWindow = qobject_cast<PanelFloat*>(target)) {
+        floatWindow->setDragDimmed(true);
+    } else if (target) {
+        auto* effect = new QGraphicsOpacityEffect(target);
+        effect->setOpacity(0.6);
+        target->setGraphicsEffect(effect);
     }
 }
 
@@ -634,11 +580,9 @@ void PanelColumn::beginPanelDrag(PanelGroup* group, const QString& objectName,
     // the only meaningful thing to move, so route it through a group drag.
     if (floatForGroup(group) && group->visibleTitles().size() <= 1) {
         beginGroupDrag(group, globalPos);
-        dragRedirectedFromFloat_ = true;
         return;
     }
     dragActive_ = true;
-    dragRedirectedFromFloat_ = false;
     dragIsPanel_ = true;
     dragGroup_ = group;
     dragSourceGroup_ = group;
@@ -655,6 +599,7 @@ void PanelColumn::beginPanelDrag(PanelGroup* group, const QString& objectName,
     }
     indicatorOwner_ = nullptr;
     clearIndicator();
+    updateDragDim();
 }
 
 void PanelColumn::beginGroupDrag(PanelGroup* group, const QPoint& globalPos)
@@ -663,7 +608,6 @@ void PanelColumn::beginGroupDrag(PanelGroup* group, const QPoint& globalPos)
         return;
     }
     dragActive_ = true;
-    dragRedirectedFromFloat_ = false;
     dragIsPanel_ = false;
     dragGroup_ = group;
     dragSourceGroup_ = group;
@@ -677,6 +621,7 @@ void PanelColumn::beginGroupDrag(PanelGroup* group, const QPoint& globalPos)
     }
     indicatorOwner_ = nullptr;
     clearIndicator();
+    updateDragDim();
 }
 
 void PanelColumn::updateDrag(const QPoint& globalPos)
@@ -685,10 +630,11 @@ void PanelColumn::updateDrag(const QPoint& globalPos)
         return;
     }
     dropTarget_ = resolveDrop(globalPos);
-    // M47: dim the overlay only while it actually hovers a valid drop target.
-    if (dragFloat_) {
-        dragFloat_->setDragDimmed(dropTarget_.valid && !dropTarget_.outside);
-    }
+    // Phase 4: a whole-group drag onto another group's tab bar tabifies into it.
+    // The source column knows the drag kind; the target column renders it.
+    dropTarget_.groupTabify = !dragIsPanel_ && dropTarget_.valid && !dropTarget_.outside
+        && dropTarget_.onTabBar && dropTarget_.group && dropTarget_.group != dragGroup_
+        && !dropTarget_.floatTarget;
     // M45 W1/W2: render the resolved target in the column that owns it, so a
     // cross-column drop draws its line in the target column.
     PanelColumn* owner = dropTarget_.owner ? dropTarget_.owner : this;
@@ -704,11 +650,13 @@ void PanelColumn::updateDrag(const QPoint& globalPos)
         } else if (dragFloat_) {
             moveFloat(dragFloat_, globalPos - dragGrabOffset_);
         }
+        updateDragDim();
         return;
     }
     if (dragFloat_) {
         moveFloat(dragFloat_, globalPos - dragGrabOffset_);
     }
+    updateDragDim();
     owner->showIndicatorFor(dropTarget_);
 }
 
@@ -720,9 +668,7 @@ bool PanelColumn::commitDrop()
     const DropTarget target = dropTarget_;
     PanelGroup* source = dragSourceGroup_;
     bool ok = false;
-    if (dragFloat_) {
-        dragFloat_->setDragDimmed(false);
-    }
+    setDragDimTarget(nullptr);
     if (indicatorOwner_ && indicatorOwner_ != this) {
         indicatorOwner_->clearIndicator();
     }
@@ -759,7 +705,6 @@ bool PanelColumn::commitDrop()
     }
     dragActive_ = false;
     dragIsPanel_ = false;
-    dragRedirectedFromFloat_ = false;
     dragGroup_ = nullptr;
     dragSourceGroup_ = nullptr;
     dragPanel_.clear();
@@ -779,9 +724,7 @@ bool PanelColumn::commitDrop()
 
 void PanelColumn::cancelDrag()
 {
-    if (dragFloat_) {
-        dragFloat_->setDragDimmed(false);
-    }
+    setDragDimTarget(nullptr);
     if (indicatorOwner_ && indicatorOwner_ != this) {
         indicatorOwner_->clearIndicator();
     }
@@ -799,7 +742,6 @@ void PanelColumn::cancelDrag()
     }
     dragActive_ = false;
     dragIsPanel_ = false;
-    dragRedirectedFromFloat_ = false;
     dragGroup_ = nullptr;
     dragSourceGroup_ = nullptr;
     dragPanel_.clear();
@@ -973,27 +915,11 @@ bool PanelColumn::applyGroupDrop(PanelGroup* group, const DropTarget& target)
     if (!group) {
         return false;
     }
-    // M47: a one-panel float reached here through the single-panel tab-drag
-    // redirect. Dropping it on another group's tab bar merges its panel in (the
-    // same result a tab drag gave) instead of leaving a one-panel sibling. Only
-    // the redirected gesture merges; a plain one-panel group drag keeps the
-    // sibling result it always had.
-    if (dragRedirectedFromFloat_ && target.onTabBar && target.group && target.group != group
-        && group->titleCountForTest() == 1 && floatForGroup(group)) {
-        QWidget* panel = group->panels().value(0);
-        const QString name = panel ? panel->objectName() : QString();
-        QString title;
-        QIcon iconValue;
-        int index = -1;
-        if (panel && !name.isEmpty()
-            && group->takePanel(name, &title, &iconValue, &index)) {
-            PanelColumn* owner = target.owner ? target.owner : this;
-            const int at = qBound(0, target.tabIndex, target.group->titleCountForTest());
-            target.group->insertPanel(panel, title, iconValue, at);
-            owner->panelVisible_[name] = true;
-            cleanupEmptyGroup(group);
-            return true;
-        }
+    // Phase 3/4: a whole group dropped on another group's tab bar tabifies into
+    // it (docked or float), moving every panel across as a tab through the one
+    // merge mechanism. The single-panel float redirect is the same result.
+    if (target.onTabBar && target.group && target.group != group) {
+        return mergeGroupInto(group, target.group, target.owner, target.tabIndex);
     }
     // A whole-group drop can resolve into another column; move the group there
     // so the commit matches the drawn line.
@@ -1036,78 +962,39 @@ bool PanelColumn::applyGroupDrop(PanelGroup* group, const DropTarget& target)
     return true;
 }
 
-void PanelColumn::showEdgeDropIndicator(PanelSide side)
+bool PanelColumn::mergeGroupInto(PanelGroup* source, PanelGroup* dest, PanelColumn* owner,
+                                 int at)
 {
-    // M45 T3: reuse the M43/M44 new-column `DropTarget` and the single
-    // `#2a7fff` indicator; no second indicator system.
-    DropTarget target;
-    target.valid = true;
-    target.anchorColumn = this;
-    target.kind = side == PanelSide::Left ? DropKind::NewColumnLeft
-                                          : DropKind::NewColumnRight;
-    showIndicatorFor(target);
-}
-
-void PanelColumn::hideEdgeDropIndicator()
-{
-    clearIndicator();
-}
-
-void PanelColumn::updateColumnDrag(const QPoint& globalPos)
-{
-    auto* frame = qobject_cast<PicturaMainWindow*>(window());
-    if (!frame) {
-        return;
-    }
-    int side = -1;
-    PanelColumn* anchor = frame->resolveColumnMoveTarget(globalPos, this, &side);
-    // A bare workspace edge resolves no anchor; approximate the edge line on the
-    // outermost visible column so the user still sees where the column lands.
-    // ponytail: visual-only anchor; the commit inserts at the splitter head/tail.
-    PanelColumn* indicator = anchor;
-    if (!indicator && side >= 0) {
-        const QList<PanelColumn*> columns = frame->panelColumns();
-        if (side == 0) {
-            for (PanelColumn* column : columns) {
-                if (column && column->isVisible() && column != this) {
-                    indicator = column;
-                    break;
-                }
-            }
-        } else {
-            for (int i = columns.size() - 1; i >= 0; --i) {
-                PanelColumn* column = columns.at(i);
-                if (column && column->isVisible() && column != this) {
-                    indicator = column;
-                    break;
-                }
-            }
-        }
-    }
-    if (columnDropAnchor_ && columnDropAnchor_ != indicator) {
-        columnDropAnchor_->hideEdgeDropIndicator();
-    }
-    columnDropAnchor_ = indicator;
-    columnDropSide_ = side;
-    if (indicator && side >= 0) {
-        indicator->showEdgeDropIndicator(side == 0 ? PanelSide::Left : PanelSide::Right);
-    }
-}
-
-bool PanelColumn::finishColumnDrag(const QPoint& globalPos)
-{
-    auto* frame = qobject_cast<PicturaMainWindow*>(window());
-    if (!frame) {
+    if (!source || !dest || source == dest) {
         return false;
     }
-    int side = -1;
-    PanelColumn* anchor = frame->resolveColumnMoveTarget(globalPos, this, &side);
-    if (columnDropAnchor_) {
-        columnDropAnchor_->hideEdgeDropIndicator();
+    QStringList names;
+    for (QWidget* panel : source->panels()) {
+        if (panel) {
+            names << panel->objectName();
+        }
     }
-    columnDropAnchor_ = nullptr;
-    columnDropSide_ = -1;
-    return frame->movePanelColumn(this, side, anchor);
+    if (names.isEmpty()) {
+        return false;
+    }
+    PanelColumn* destOwner = owner ? owner : this;
+    int index = qBound(0, at, dest->titleCountForTest());
+    for (const QString& name : names) {
+        QString title;
+        QIcon iconValue;
+        int from = -1;
+        QWidget* panel = source->takePanel(name, &title, &iconValue, &from);
+        if (!panel) {
+            continue;
+        }
+        dest->insertPanel(panel, title, iconValue, index);
+        destOwner->panelVisible_[name] = true;
+        ++index;
+    }
+    // The now-empty source is torn down through the one cleanup path (which also
+    // destroys a source float).
+    cleanupEmptyGroup(source);
+    return true;
 }
 
 } // namespace pictura

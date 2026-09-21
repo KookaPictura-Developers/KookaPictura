@@ -27,11 +27,14 @@ bool PicturaMainWindow::newColumnDropForTest(const QString& panelName, const QSt
         point = QPoint(central.right() - 2, central.center().y());
         expected = 1;
     } else if (side == QStringLiteral("tools")) {
-        if (!toolsDock_ || !toolsDock_->isVisible()) {
+        // D1: the Tools panel is now a column; a widget-panel drop at its outer
+        // (left) edge allocates a new sibling column on that side.
+        if (!toolsColumn_ || !toolsColumn_->isVisible()) {
             return false;
         }
-        point = toolsDock_->mapToGlobal(toolsDock_->rect().center());
-        expected = toolsArea_ == Qt::LeftDockWidgetArea ? 0 : 1;
+        const QRect tr(toolsColumn_->mapToGlobal(QPoint(0, 0)), toolsColumn_->size());
+        point = QPoint(tr.left() - 8, tr.center().y());
+        expected = 0;
     } else {
         return false;
     }
@@ -78,150 +81,6 @@ bool PicturaMainWindow::newColumnBesideForTest(const QString& panelName,
     const int destIndex = centerSplitter_->indexOf(destination);
     const int anchorIndex = centerSplitter_->indexOf(anchor);
     return destIndex >= 0 && anchorIndex >= 0 && qAbs(destIndex - anchorIndex) == 1;
-}
-
-bool PicturaMainWindow::toolboxBesideColumnForTest(const QString& side, bool dynamicAnchor)
-{
-    if (!toolbox_ || !panelColumn_ || !centerSplitter_) {
-        return false;
-    }
-    PanelColumn* anchor = panelColumn_;
-    if (dynamicAnchor) {
-        anchor = createPanelColumn(PanelSide::Right, panelColumn_);
-        if (!anchor) {
-            return false;
-        }
-        for (int i = 0; i < 4; ++i) {
-            QCoreApplication::processEvents();
-        }
-    }
-    // The real path is a floating-Tools drag; float it so the resolve/commit
-    // below is the same path the title-bar gesture drives. Re-dock first when a
-    // previous beside-column placement left it in the splitter.
-    if (centerSplitter_->indexOf(toolbox_) >= 0) {
-        addDockWidget(Qt::LeftDockWidgetArea, toolbox_);
-        for (int i = 0; i < 4; ++i) {
-            QCoreApplication::processEvents();
-        }
-    }
-    if (!toolbox_->isFloating()) {
-        toolbox_->setFloating(true);
-        for (int i = 0; i < 4; ++i) {
-            QCoreApplication::processEvents();
-        }
-    }
-    const QRect r(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
-    if (!r.isValid() || r.width() <= 0) {
-        return false;
-    }
-    const bool left = side == QStringLiteral("left");
-    const QPoint point = left ? QPoint(r.left() - 8, r.center().y())
-                              : QPoint(r.right() + 8, r.center().y());
-    PanelColumn* resolved = nullptr;
-    int resolvedSide = -1;
-    if (!resolveToolboxDrop(point, &resolved, &resolvedSide) || resolved != anchor) {
-        return false;
-    }
-    const bool indicator = anchor->dropIndicatorVisibleForTest();
-    const int anchorIndex = centerSplitter_->indexOf(anchor);
-    // `commitToolboxDrop` inserts before the anchor for a left drop and after it
-    // for a right drop, matching `createPanelColumn`.
-    const int expected = left ? anchorIndex : anchorIndex + 1;
-    const bool placed = commitToolboxDrop(point) && centerSplitter_->indexOf(toolbox_) == expected;
-    return indicator && placed;
-}
-
-bool PicturaMainWindow::toolboxOnColumnForTest(const QString& anchorPanel, bool rightSide)
-{
-    if (!toolbox_ || !centerSplitter_ || !centralWidget()) {
-        return false;
-    }
-    auto pump = [](int count) {
-        for (int i = 0; i < count; ++i) {
-            QCoreApplication::processEvents();
-        }
-    };
-    // Visible widget columns at both splitter extremes make the outer-band
-    // head/tail cases reachable; reuse them when a previous call made them.
-    auto headColumn = [this]() {
-        return qobject_cast<PanelColumn*>(centerSplitter_->widget(0));
-    };
-    auto tailColumn = [this]() {
-        return qobject_cast<PanelColumn*>(centerSplitter_->widget(centerSplitter_->count() - 1));
-    };
-    if (!headColumn() || !headColumn()->isVisible()) {
-        if (!createPanelColumn(PanelSide::Left, nullptr)) {
-            return false;
-        }
-        pump(6);
-    }
-    if (!tailColumn() || !tailColumn()->isVisible()) {
-        if (!createPanelColumn(PanelSide::Right, nullptr)) {
-            return false;
-        }
-        pump(6);
-    }
-    PanelColumn* anchor = anchorPanel.isEmpty() ? panelColumn_ : columnForPanel(anchorPanel);
-    if (!anchor) {
-        anchor = panelColumn_;
-    }
-    if (!anchor) {
-        return false;
-    }
-    // A splitter-hosted Tools pane shifts the anchor's index; the real gesture
-    // starts from a dock/float, so dock it first and after each placement.
-    auto redockTools = [&]() {
-        if (centerSplitter_->indexOf(toolbox_) >= 0) {
-            addDockWidget(Qt::LeftDockWidgetArea, toolbox_);
-            toolbox_->setSplitterPane(false);
-            pump(6);
-        }
-    };
-    redockTools();
-
-    // Interior drop: the left half lands the tools immediately before the anchor
-    // column, the right half immediately after it.
-    const QRect ar(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
-    const int anchorIndex = centerSplitter_->indexOf(anchor);
-    if (!ar.isValid() || ar.width() < 6 || anchorIndex < 0) {
-        return false;
-    }
-    const QPoint interior = rightSide
-                                ? QPoint(ar.left() + (ar.width() * 2) / 3, ar.center().y())
-                                : QPoint(ar.left() + ar.width() / 3, ar.center().y());
-    PanelColumn* resolved = nullptr;
-    int resolvedSide = -1;
-    if (!resolveToolboxDrop(interior, &resolved, &resolvedSide) || resolved != anchor) {
-        return false;
-    }
-    const bool indicator = anchor->dropIndicatorVisibleForTest();
-    const int expected = rightSide ? anchorIndex + 1 : anchorIndex;
-    const bool interiorOk =
-        commitToolboxDrop(interior) && centerSplitter_->indexOf(toolbox_) == expected;
-
-    // Workspace outer bands: those are DOCK targets now, not splitter panes.
-    // The release path docks the panel there, so the resolve must decline and
-    // the commit must not host it as a pane. The end columns created above stay
-    // the edge-adjacent columns the dock band has to win over.
-    redockTools();
-    const QRect central(centralWidget()->mapToGlobal(QPoint(0, 0)), centralWidget()->size());
-    const QPoint headPoint(central.left() + 2, central.center().y());
-    const QPoint tailPoint(central.right() - 2, central.center().y());
-    const bool headOk = [&]() {
-        PanelColumn* a = nullptr;
-        int s = -1;
-        return !resolveToolboxDrop(headPoint, &a, &s) && a == nullptr && s == -1
-               && !commitToolboxDrop(headPoint);
-    }();
-    redockTools();
-    const bool tailOk = [&]() {
-        PanelColumn* a = nullptr;
-        int s = -1;
-        return !resolveToolboxDrop(tailPoint, &a, &s) && a == nullptr && s == -1
-               && !commitToolboxDrop(tailPoint);
-    }();
-    redockTools();
-    return indicator && interiorOk && headOk && tailOk;
 }
 
 bool PicturaMainWindow::dropIntoGroupForTest(const QString& panelName, const QString& targetPanel,

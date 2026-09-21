@@ -81,6 +81,15 @@ PanelGroup::PanelGroup(QWidget* parent)
     tabs_->tabBar()->setUsesScrollButtons(false);
     layout->addWidget(tabs_);
 
+    // M47: a lowered band behind the tab bar and corner paints the header strip
+    // across the whole group width, including the slice above the corner button
+    // that the tab bar does not reach.
+    headerBand_ = new QWidget(tabs_);
+    headerBand_->setObjectName(QStringLiteral("panelHeaderBand"));
+    headerBand_->setAttribute(Qt::WA_StyledBackground, true);
+    headerBand_->lower();
+    tabs_->installEventFilter(this);
+
     headerCorner_ = new QWidget(tabs_);
     headerCorner_->setObjectName(QStringLiteral("panelWidgetCorner"));
     headerCorner_->setAttribute(Qt::WA_StyledBackground, true);
@@ -126,7 +135,12 @@ PanelGroup::PanelGroup(QWidget* parent)
     iconGrip->setAlignment(Qt::AlignCenter);
     iconGrip->setText(QStringLiteral("\u2022\u2022\u2022"));
     iconGrip->setFixedHeight(kIconGripHeight);
+    iconGrip->setCursor(Qt::SizeAllCursor);
+    iconGrip->setToolTip(tr("Drag to move this panel group"));
     iconGrip->setAttribute(Qt::WA_StyledBackground, true);
+    // Phase 7: the collapsed float row's grip drags the whole group through the
+    // same `groupDragStarted` path the tab-bar grip and float header use.
+    iconGrip->installEventFilter(this);
     iconRowOuterLayout->addWidget(iconGrip);
     auto* iconRowInner = new QWidget(iconRow_);
     iconRowInner->setObjectName(QStringLiteral("panelIconRow"));
@@ -516,6 +530,15 @@ void PanelGroup::updateFloatToggle()
                                                : tr("Collapse panels to icons"));
 }
 
+void PanelGroup::updateHeaderBand()
+{
+    if (!headerBand_ || !tabs_ || !tabs_->tabBar()) {
+        return;
+    }
+    headerBand_->setGeometry(0, 0, tabs_->width(), tabs_->tabBar()->height());
+    headerBand_->lower();
+}
+
 void PanelGroup::rebuildIconRow()
 {
     while (QLayoutItem* item = iconRowLayout_->takeAt(0)) {
@@ -560,6 +583,10 @@ QToolButton* PanelGroup::makeIconButton(const QIcon& icon, const QString& title,
 
 bool PanelGroup::eventFilter(QObject* watched, QEvent* event)
 {
+    if ((watched == tabs_ || (tabs_ && watched == tabs_->tabBar()))
+        && event->type() == QEvent::Resize) {
+        updateHeaderBand();
+    }
     // M47: the corner drag grip and the float header both drive a whole-group
     // drag through the same signals as the empty tab-bar path. Each keeps its
     // own state so the gestures cannot clobber one another.
@@ -604,6 +631,16 @@ bool PanelGroup::eventFilter(QObject* watched, QEvent* event)
         }
     }
     if (watched == floatHeader_) {
+        if (groupGesture(event, floatPressPending_, floatDragging_, floatPressGlobal_)) {
+            return true;
+        }
+    }
+    // Phase 7: the collapsed float row's grip drags the whole group through the
+    // same gesture/emission path as the float header.
+    if (auto* widget = qobject_cast<QWidget*>(watched);
+        widget && iconRow_ && widget != floatHeader_ && widget != headerGrip_
+        && widget->objectName() == QStringLiteral("panelIconGroupGrip")
+        && widget->parentWidget() == iconRow_) {
         if (groupGesture(event, floatPressPending_, floatDragging_, floatPressGlobal_)) {
             return true;
         }

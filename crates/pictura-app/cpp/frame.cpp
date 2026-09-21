@@ -728,9 +728,6 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         }
     };
     auto setChromeVisible = [this](bool visible) {
-        if (toolsDock_) {
-            toolsDock_->setVisible(visible);
-        }
         for (PanelColumn* column : panelColumns()) {
             column->setVisible(visible);
         }

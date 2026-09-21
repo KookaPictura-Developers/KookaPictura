@@ -30,7 +30,7 @@ struct SessionState {
     bool autoShowHidden = false;
     QJsonArray panelGroups;
     QJsonArray panelColumns;
-    int schemaVersion = 8;
+    int schemaVersion = 9;
     QStringList recent;
 };
 

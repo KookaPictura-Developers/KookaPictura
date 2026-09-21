@@ -339,63 +339,59 @@ canvas behaviour.
 
 ### Requirement: Tools panel is a standalone dock
 
-The Tools panel SHALL be allowed in the main-window dock areas only on the left
-and right sides of the workspace — not on the top or bottom — and SHALL support
-being moved, floated, and closed, but SHALL NOT be grouped with other panels in
-a tab group. A drop of the Tools panel onto a tab bar SHALL NOT tabify it; when
-a drop still results in tabification, the frame SHALL re-dock the panel to its
-previous area as a fallback. When floated, the panel SHALL size to the minimum
-height its content needs rather than expanding to fill the window, and that
-height SHALL NOT be drag-resizable. The panel's custom title bar SHALL remain
-draggable so the panel can be moved and floated. The panel's content size SHALL
-be fixed along the dock's major axis: a fixed content width for a left or right
-dock. Dragging the dock separator SHALL NOT resize it. The panel SHALL be
-placeable on any side of any widget panel or column, wherever the columns are
-docked — to the left of a right column, between two columns, or at the outer
-edge — through the same column drop grammar and the same single insertion
-indicator the widget columns use, without breaking the fixed-size rule or the
-no-tabification contract.
+The Tools panel SHALL be hosted as an atomic column — a tabless, ungroupable
+`PanelColumn` variant — and SHALL NOT be a `QDockWidget` in the main-window dock
+areas. It SHALL support being moved and floated as an in-window overlay and SHALL
+NOT be grouped with other panels in a tab group. A drag or drop that would
+combine the Tools panel with a widget panel or group SHALL NOT tabify or merge
+them. When floated it SHALL size to the minimum its content needs and SHALL
+remain an in-window overlay rather than an independent operating-system window.
+The panel's column header SHALL remain draggable so the column can be moved and
+floated. The panel's content size SHALL be fixed along the column's major axis: a
+fixed content width in both one- and two-column modes. Dragging the column
+separator SHALL NOT resize it. The panel SHALL be placeable on either side of any
+widget panel or column, wherever the columns are placed, through the same column
+drop grammar and the same single insertion indicator the widget columns use,
+without breaking the fixed-size rule or the no-tabification contract.
 
-#### Scenario: The panel docks only on the left or right [m45_tools_sides]
+#### Scenario: The panel is an atomic column, not a dock [las_tools_column]
 
-- **WHEN** the Tools panel's allowed areas are queried
-- **THEN** only the left and right main-window dock areas are permitted, and the
-  top and bottom areas are refused
+- **WHEN** the frame is built
+- **THEN** the Tools panel is a tabless `PanelColumn` variant with no tab bar and
+  no `PanelGroup`, and no Tools `QDockWidget` exists
 
-#### Scenario: The panel can float [m40_dock]
+#### Scenario: The panel floats in-window [las_tools_inwindow_float]
 
-- **WHEN** the Tools panel is dragged out of its dock area
-- **THEN** it floats as an independent window and can be docked back to a side
+- **WHEN** the Tools column is dragged out of the workspace
+- **THEN** it floats as an in-window overlay and can be re-placed, not as an
+  independent operating-system window
 
-#### Scenario: The floated dock hugs its content height [m42_tools]
+#### Scenario: The floating overlay hugs its content height [m42_tools]
 
-- **WHEN** the Tools panel is floated
+- **WHEN** the Tools column floats in-window
 - **THEN** its height is the minimum its content needs and it does not expand to
   fill the window
 
-#### Scenario: The floated height cannot be dragged [m44_toolsfloat]
+#### Scenario: The floating height cannot be dragged [m44_toolsfloat]
 
-- **WHEN** a resize is attempted on the floating Tools panel
+- **WHEN** a resize is attempted on the floating Tools column
 - **THEN** it keeps its fixed content height and does not change
 
 #### Scenario: Tabification is refused [m40_dock]
 
-- **WHEN** the Tools panel is dropped onto another panel's tab bar
-- **THEN** it does not become a tab in that group
-
-#### Scenario: A tabified drop falls back to a side dock [m40_dock]
-
-- **WHEN** a drop nonetheless leaves the Tools panel tabified with another panel
-- **THEN** the frame re-docks it to its previous dock area
+- **WHEN** the Tools column is dragged onto another panel's tab bar
+- **THEN** it does not become a tab in that group and no insertion indicator is
+  shown for the forbidden combination
 
 #### Scenario: The width cannot be dragged [m43_tools]
 
-- **WHEN** the dock separator beside the Tools panel is dragged
-- **THEN** the Tools panel's width does not change and stays at its content width
+- **WHEN** the column separator beside the Tools column is dragged
+- **THEN** the Tools column's width does not change and stays at its content
+  width
 
-#### Scenario: The panel docks beside a widget column [m45_tools_beside_column]
+#### Scenario: The panel is placed beside a widget column [m45_tools_beside_column]
 
-- **WHEN** the floating Tools panel is dragged to a side of a widget column,
+- **WHEN** the floating Tools column is dragged to a side of a widget column,
   including the left of a right-hand column or between two columns
 - **THEN** the single blue indicator marks that boundary and the panel is placed
   there without being tabified and without losing its fixed content width
@@ -472,28 +468,6 @@ non-collapsible invariant for its panel groups.
   minimum height
 - **THEN** the group is clamped at its minimum and its tab bar stays visible
 
-### Requirement: Central splitter hosts the Tools pane
-
-The application shell SHALL allow the Tools panel to be re-hosted from its dock
-into the central splitter as a fixed-width pane, on either side of a widget
-column or between two widget columns, through the same column drop grammar and
-indicator the widget columns use. While it is a splitter pane the Tools panel
-SHALL keep its fixed content width, fill the splitter height, remain re-draggable
-by its title bar, and SHALL NOT be tabified. A docked or pane-hosted Tools panel
-SHALL NOT block a floating widget overlay from being dragged across it.
-
-#### Scenario: The Tools panel is hosted between columns [m47_tools_pane]
-
-- **WHEN** the floating Tools panel is dropped between two widget columns
-- **THEN** it becomes a fixed-width splitter pane at that boundary and is not
-  tabified
-
-#### Scenario: A widget overlay crosses the Tools pane [m47_float_over_tools]
-
-- **WHEN** a widget overlay is dragged over the Tools panel
-- **THEN** it continues to follow the cursor instead of stopping at the central
-  area edge
-
 ### Requirement: Compact group chrome shading
 
 The compact/iconic group container SHALL use the panel surface shade rather than
@@ -543,27 +517,6 @@ exists the strip SHALL be shown and the pane SHALL host the canvas as before.
 - **THEN** the column keeps its fixed strip width and the workspace, not the
   column, absorbs the splitter slack
 
-### Requirement: Tools panel height is pinned only while floating
-
-The Tools panel SHALL pin its height to its content only while it is floating.
-While docked in a left or right dock area, or hosted as a central-splitter pane,
-its height SHALL be free: the panel SHALL fill the height it is given and its
-content minimum SHALL NOT force the main window's central workspace shorter than
-the window. Re-docking a floating panel SHALL release the pinned height, and
-floating it again SHALL re-pin it.
-
-#### Scenario: A pane-hosted panel does not shrink the workspace [las_tools_free_height]
-
-- **WHEN** the Tools panel is hosted as a central-splitter pane
-- **THEN** the panel's height bounds are free, the central splitter keeps its
-  height, and the document pane fills the splitter
-
-#### Scenario: Floating pins and re-docking releases [las_tools_float_height]
-
-- **WHEN** the Tools panel is floated and then re-docked
-- **THEN** the floating panel is pinned to its content height and the re-docked
-  panel is free again
-
 ### Requirement: Docked or pane-hosted Tools panel content is top-aligned
 
 The content body of the Tools panel SHALL fill the height the dock is given and
@@ -579,4 +532,26 @@ keep the body at its fixed content height.
   frame is taller than the panel's content
 - **THEN** the content body's height equals the space below the title bar and its
   top edge sits at the title bar's bottom, not centred in the dock
+
+### Requirement: Tools column fills its column height
+
+The Tools column SHALL fill its column height while it is hosted in the
+workspace, and its content minimum SHALL NOT force the main window's central
+workspace shorter than the window. Only the in-window floating overlay SHALL pin
+its height to the content it needs; re-placing a floating column into the
+workspace SHALL release the pinned height and floating it again SHALL re-pin it.
+The floating pinned height SHALL NOT be drag-resizable.
+
+#### Scenario: The column fills its column height [las_tools_free_height]
+
+- **WHEN** the Tools column is hosted in the workspace
+- **THEN** the column fills the height it is given, the central splitter keeps
+  its height, and the document pane fills the splitter
+
+#### Scenario: Floating pins and re-placing releases [las_tools_float_height]
+
+- **WHEN** the Tools column is floated in-window and then re-placed into the
+  workspace
+- **THEN** the floating overlay is pinned to its content height and the
+  re-placed column is free to fill its column height again
 

@@ -79,13 +79,22 @@ PanelFloat::PanelFloat(QWidget* parent)
     sizeGrip_->setToolTip(tr("Resize"));
 }
 
+void PanelFloat::setContent(QWidget* content)
+{
+    if (!content) {
+        return;
+    }
+    content_ = content;
+    if (auto* layout = qobject_cast<QBoxLayout*>(this->layout())) {
+        layout->addWidget(content);
+    }
+}
+
 void PanelFloat::setGroup(PanelGroup* group)
 {
     group_ = group;
     if (group_) {
-        if (auto* layout = qobject_cast<QBoxLayout*>(this->layout())) {
-            layout->addWidget(group_);
-        }
+        setContent(group_);
         group_->setFloating(true);
         if (QToolButton* close = group_->floatCloseButton()) {
             QObject::connect(close, &QToolButton::clicked, this, [this]() {
@@ -131,6 +140,34 @@ void PanelFloat::setDragDimmed(bool dimmed)
 qreal PanelFloat::dragOpacityForTest() const
 {
     return opacityEffect_ ? opacityEffect_->opacity() : 1.0;
+}
+
+void PanelFloat::showTabIndicator(PanelGroup* group, int index)
+{
+    QTabBar* bar = group ? group->tabBar() : nullptr;
+    if (!bar) {
+        return;
+    }
+    if (!indicator_) {
+        // Same `#2a7fff` mark as the docked column's indicator, owned by the
+        // float because the docked indicator cannot reach outside its viewport.
+        indicator_ = new QWidget(this);
+        indicator_->setObjectName(QStringLiteral("panelFloatDropIndicator"));
+        indicator_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        indicator_->setStyleSheet(QStringLiteral("background-color:#2a7fff;"));
+    }
+    const int x = group->tabInsertionX(index);
+    const QPoint origin = bar->mapTo(this, QPoint(x, 0));
+    indicator_->setGeometry(QRect(origin.x() - 1, origin.y(), 3, bar->height()));
+    indicator_->show();
+    indicator_->raise();
+}
+
+void PanelFloat::hideTabIndicator()
+{
+    if (indicator_) {
+        indicator_->hide();
+    }
 }
 
 void PanelFloat::resizeEvent(QResizeEvent* event)

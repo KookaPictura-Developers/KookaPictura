@@ -94,6 +94,9 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             int storedRight = -1;
             for (const QJsonValue& value : loaded.panelColumns) {
                 const QJsonObject entry = value.toObject();
+                if (entry.value(QStringLiteral("tools")).toBool()) {
+                    continue;
+                }
                 const int width = entry.value(QStringLiteral("width")).toInt(-1);
                 if (entry.value(QStringLiteral("side")).toString() == QStringLiteral("left")
                     && storedLeft < 0) {
@@ -112,7 +115,7 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             pump(8);
             pictura::PanelColumn* restoredLeft =
                 frame.columnForPanel(QStringLiteral("stylesPanel"));
-            const bool appliedOk = frame.panelColumnCountForTest() == 2 && restoredLeft
+            const bool appliedOk = frame.panelColumnCountForTest() == 3 && restoredLeft
                 && restoredLeft->width() == leftWidth
                 && frame.panelColumn()->width() == primaryWidth;
             ST_BEGIN("lpr_width_restart");

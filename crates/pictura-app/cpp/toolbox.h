@@ -6,7 +6,6 @@
 #include <QtCore/QRect>
 #include <QtCore/QStringList>
 #include <QtGui/QColor>
-#include <QtWidgets/QDockWidget>
 #include <QtWidgets/QWidget>
 
 #include "tools.h"
@@ -67,10 +66,12 @@ private:
     int swapCount_ = 0;
 };
 
-// The Tools dock: a CS6 list of flyout slots (one button per group) that reflows
-// between one and two columns, the foreground/background swatches, and the
-// screen-mode toggle.
-class Toolbox : public QDockWidget {
+// The Tools content: a CS6 list of flyout slots (one button per group) that
+// reflows between one and two columns, the foreground/background swatches, and
+// the screen-mode toggle. It is a plain content widget hosted by the tools
+// `PanelColumn` (no dock, no title bar); its column header owns the width
+// toggle, which drives `setColumns` through the column.
+class Toolbox : public QWidget {
     Q_OBJECT
 
 public:
@@ -82,16 +83,6 @@ public:
     // Current column count, 1 or 2.
     int columns() const { return columns_; }
     void setColumns(int columns);
-
-    // M47 T4.3: while hosted as a vertical pane in the central splitter the dock
-    // keeps a fixed width but fills the splitter height.
-    void setSplitterPane(bool on);
-    bool isSplitterPane() const { return splitterPane_; }
-
-    // M47: only a floating panel pins the height to its content; docked and
-    // pane-hosted panels report a free height so they never force the central
-    // workspace shorter than the window.
-    QSize minimumSizeHint() const override;
 
     // Gated by `Use Shift Key For Tool Switch`: with it on a plain letter
     // activates the slot's current member and `Shift`+letter cycles; with it off
@@ -105,48 +96,18 @@ public:
     void openFlyoutForTest(int group) { openSlotFlyoutForTest(group); }
     QMenu* slotMenuForTest(int group) const;
     QList<QAction*> slotMenuActionsForTest(int group) const;
-    QStringList flyoutKeysForTest(int group) const;
-    void cycleGroupForTest(int group) { cycleGroup(group); }
-    QToolButton* titleBarToggleForTest() const { return titleToggle_; }
-    // The custom title bar, so the self-test can drive the real gesture path.
-    QWidget* titleBarForTest() const { return titleBar_; }
-    // The grab offset recorded at the start of a title-bar drag: the frame uses
-    // it to place a floating fallback under the cursor when no splitter target
-    // resolves.
-    QPoint titleDragOffset() const { return titleDragOffset_; }
     bool hasFlyoutTriangleForTest(int group) const;
-    QString titleTextForTest() const;
-    int minimumWidthForTest() const { return minimumWidth(); }
     int contentWidthForTest() const;
-    int contentHeightForTest() const;
     int foregroundBackgroundWidthForTest() const;
     // Exchanges the foreground/background swatches (the frame's `X` key).
     void swapForegroundBackground();
     // Resets the swatches to the default black/white pair (the frame's `D` key).
     void resetForegroundBackground();
     ForegroundBackgroundWidget* foregroundBackgroundForTest() const { return fgbg_; }
-    // Floated/docked body geometry: the trailing stretch is 0 while floating so
-    // a floated dock can hug its content height.
-    int bodyStretchForTest() const;
-    int bodyHeightForTest() const;
-    int bodySizeHintHeightForTest() const;
-    // M44 T1: while floating the dock height is pinned to the content height and
-    // cannot be drag-resizable.
-    int floatHeightForTest() const { return floatHeight_; }
-    bool floatHeightLockedForTest() const;
 
 signals:
     void screenModeRequested();
     void columnsChanged(int columns);
-    // M45 T3: the floating Tools panel's title-bar drag. The frame resolves the
-    // drop through the column grammar and hosts the pane at that boundary.
-    void toolbarDragMoved(const QPoint& globalPos);
-    void toolbarDragFinished(const QPoint& globalPos);
-    // M47: a double-click on the custom title bar toggles docked <-> floating.
-    void titleBarDoubleClicked();
-
-protected:
-    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     ToolId groupCurrentTool(int group) const;
@@ -157,8 +118,6 @@ private:
     void reflow();
     void updateContentMetrics();
     int contentWidth(int columns) const;
-    int contentHeight(int columns) const;
-    void updateTitleIcon();
 
     ToolController* controller_ = nullptr;
     ColorState* colors_ = nullptr;
@@ -167,28 +126,11 @@ private:
     QList<QMenu*> slotMenus_;
     QGridLayout* grid_ = nullptr;
     QWidget* gridWidget_ = nullptr;
-    QWidget* titleBar_ = nullptr;
-    QToolButton* titleToggle_ = nullptr;
     QVBoxLayout* bodyLayout_ = nullptr;
     ForegroundBackgroundWidget* fgbg_ = nullptr;
     QToolButton* screenMode_ = nullptr;
     int columns_ = 1;
     bool shiftKeyForToolSwitch_ = true;
-    // M47 T4.3: true while the dock is a pane in the central splitter.
-    bool splitterPane_ = false;
-    // M45 T1: one guard for the single content-metrics recompute; the M43
-    // width lock and M44 height lock are now one pass over both axes.
-    bool metricsClamping_ = false;
-    // M46: a floating title-bar press arms the drag; Qt's dock drag then grabs
-    // the mouse, so move/release arrive on the dock before it completes.
-    bool titleDragPending_ = false;
-    bool titleDragMoved_ = false;
-    QPoint titlePressGlobal_;
-    // M47: cursor offset within the dock/title at press, for the floating
-    // follow and the frame's float-at-cursor fallback.
-    QPoint titleDragOffset_;
-    // M44 T1: while floating the height is pinned to this content height.
-    int floatHeight_ = 0;
 };
 
 } // namespace pictura

@@ -319,57 +319,22 @@ void ForegroundBackgroundWidget::mousePressEvent(QMouseEvent* event)
 }
 
 Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent)
-    : QDockWidget(QStringLiteral("Tools"), parent)
+    : QWidget(parent)
     , controller_(controller)
     , colors_(colors)
 {
     setObjectName(QStringLiteral("toolsPanel"));
-    // M45 T2: top/bottom docking is refused again; the M44 `AllDockWidgetAreas`
-    // reverts to left/right. Placement beside a widget column is handled by the
-    // frame's central-splitter pane path, not a dock area.
-    setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-    setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
-                | QDockWidget::DockWidgetClosable);
-    // ponytail: Qt has no clean tabify-veto API (no per-dock setTabbable(false)).
-    // This filter refuses drag/drop over the panel; the frame's
-    // dockLocationChanged/topLevelChanged handler re-docks the panel when it is
-    // still tabified. A drop can briefly tabify before that fallback runs.
-    installEventFilter(this);
-    // M47: the height contract depends on the float state, so recompute it when
-    // the dock floats or re-docks; a docked/pane panel must not keep the pinned
-    // floating height.
-    connect(this, &QDockWidget::topLevelChanged, this,
-            [this](bool) { updateContentMetrics(); });
+    setAttribute(Qt::WA_StyledBackground, true);
 
-    titleBar_ = new QWidget(this);
-    auto* titleLayout = new QHBoxLayout(titleBar_);
-    titleLayout->setContentsMargins(4, 2, 2, 2);
-    titleLayout->setSpacing(2);
-    titleLayout->addStretch(1);
-    titleToggle_ = new QToolButton(titleBar_);
-    titleToggle_->setObjectName(QStringLiteral("toolsColumnToggle"));
-    titleToggle_->setAutoRaise(true);
-    titleToggle_->setFixedSize(20, 20);
-    titleToggle_->setToolTip(tr("Toggle one or two columns of tools"));
-    connect(titleToggle_, &QToolButton::clicked, this,
-            [this]() { setColumns(columns_ == 1 ? 2 : 1); });
-    titleLayout->addWidget(titleToggle_);
-    setTitleBarWidget(titleBar_);
-    // M45 T3: observe the title-bar drag so the frame can resolve the drop
-    // beside a widget column; Qt's own dock drag still runs underneath.
-    titleBar_->installEventFilter(this);
-    updateTitleIcon();
-
-    auto* body = new QWidget(this);
-    auto* layout = new QVBoxLayout(body);
+    auto* layout = new QVBoxLayout(this);
     bodyLayout_ = layout;
-    // Track the body's content exactly so a 2->1 column change lowers the dock's
-    // minimum width instead of leaving the two-column floor behind.
+    // Track the body's content exactly so a 2->1 column change lowers the
+    // content's minimum width instead of leaving the two-column floor behind.
     layout->setSizeConstraint(QLayout::SetMinimumSize);
     layout->setContentsMargins(2, 2, 2, 2);
     layout->setSpacing(4);
 
-    gridWidget_ = new QWidget(body);
+    gridWidget_ = new QWidget(this);
     grid_ = new QGridLayout(gridWidget_);
     grid_->setContentsMargins(0, 0, 0, 0);
     grid_->setSpacing(1);
@@ -443,10 +408,10 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
 
     layout->addWidget(gridWidget_, 0, Qt::AlignHCenter);
 
-    fgbg_ = new ForegroundBackgroundWidget(colors, body);
+    fgbg_ = new ForegroundBackgroundWidget(colors, this);
     layout->addWidget(fgbg_, 0, Qt::AlignHCenter);
 
-    screenMode_ = new QToolButton(body);
+    screenMode_ = new QToolButton(this);
     screenMode_->setObjectName(QStringLiteral("screenModeButton"));
     screenMode_->setFixedSize(kSlotButtonSize, kSlotButtonSize);
     screenMode_->setAutoRaise(true);
@@ -463,20 +428,6 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     layout->addWidget(screenMode_, 0, Qt::AlignHCenter);
 
     layout->addStretch(1);
-    // Floated, the trailing stretch is zeroed and the window resized to its
-    // content hint so the dock hugs the grid + fg/bg + Screen Mode. Docked, the
-    // stretch stays so the body may fill the dock area.
-    connect(this, &QDockWidget::topLevelChanged, this, [this](bool floating) {
-        if (bodyLayout_ && bodyLayout_->count() > 0) {
-            bodyLayout_->setStretch(bodyLayout_->count() - 1, floating ? 0 : 1);
-        }
-        // M45 T1: one recompute owns both axes and the pinned float height.
-        updateContentMetrics();
-    });
-    // M45 T1: a dock/undock move recomputes both fixed axes and the float lock.
-    connect(this, &QDockWidget::dockLocationChanged, this,
-            [this](Qt::DockWidgetArea) { updateContentMetrics(); });
-    setWidget(body);
     updateContentMetrics();
 
     if (controller_) {
@@ -488,101 +439,6 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     }
 }
 
-bool Toolbox::eventFilter(QObject* watched, QEvent* event)
-{
-    switch (event->type()) {
-    case QEvent::DragEnter:
-    case QEvent::DragMove:
-    case QEvent::Drop:
-        event->ignore();
-        return true;
-    case QEvent::MouseButtonPress:
-        // M47 T4.1: the title bar is draggable in every state, not just while
-        // floating, so arm the gesture regardless of `isFloating()`. The custom
-        // gesture is the only handler: consume the press so Qt's QDockWidget
-        // title-bar filter never starts its own drag.
-        if (watched == titleBar_) {
-            auto* mouse = static_cast<QMouseEvent*>(event);
-            if (mouse->button() == Qt::LeftButton) {
-                titleDragPending_ = true;
-                titleDragMoved_ = false;
-                titlePressGlobal_ = mouse->globalPosition().toPoint();
-                titleDragOffset_ = isFloating()
-                    ? titlePressGlobal_ - frameGeometry().topLeft()
-                    : titlePressGlobal_ - mapToGlobal(QPoint(0, 0));
-                return true;
-            }
-        }
-        break;
-    case QEvent::MouseButtonDblClick:
-        // A double-click on the custom title bar is the dock/float toggle; a
-        // single click stays inert (the drag threshold guards relocation).
-        if (watched == titleBar_) {
-            auto* mouse = static_cast<QMouseEvent*>(event);
-            if (mouse->button() == Qt::LeftButton) {
-                emit titleBarDoubleClicked();
-                return true;
-            }
-        }
-        break;
-    case QEvent::MouseMove:
-        // M45 T3: a left-button drag on the title bar is the floating-toolbar
-        // drop gesture; the frame resolves it through the column grammar. M46:
-        // once floating, move/release may arrive on the dock rather than the
-        // title bar, so the pending flag carries the gesture. M47 T4.1: the same
-        // applies when the gesture starts docked/pane, gated on the drag
-        // threshold so a jittery click does not relocate the panel.
-        if (titleDragPending_) {
-            auto* mouse = static_cast<QMouseEvent*>(event);
-            if (mouse->buttons() & Qt::LeftButton) {
-                const QPoint pos = mouse->globalPosition().toPoint();
-                if (!titleDragMoved_
-                    && (pos - titlePressGlobal_).manhattanLength()
-                           >= QApplication::startDragDistance()) {
-                    titleDragMoved_ = true;
-                }
-                if (titleDragMoved_) {
-                    // A floating dock follows the cursor so the gesture reads as
-                    // a real drag; a docked/pane title drag only reports.
-                    if (isFloating()) {
-                        move(pos - titleDragOffset_);
-                    }
-                    emit toolbarDragMoved(pos);
-                    return true;
-                }
-            }
-        }
-        break;
-    case QEvent::MouseButtonRelease:
-        if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton
-            && titleDragPending_) {
-            // Only a real drag commits; a plain click on the title bar must not
-            // relocate the panel.
-            const bool moved = titleDragMoved_;
-            const QPoint pos =
-                static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
-            titleDragPending_ = false;
-            titleDragMoved_ = false;
-            if (moved) {
-                emit toolbarDragFinished(pos);
-            }
-            return true;
-        }
-        break;
-    case QEvent::Resize:
-        // M45 T1: the main-window dock splitter can still attempt a size change
-        // on some platforms; recompute both fixed axes from the content formula.
-        // The guard stops setFixed*'s own resize from recursing.
-        if (watched == this && !metricsClamping_) {
-            updateContentMetrics();
-        }
-        break;
-    default:
-        break;
-    }
-    return QDockWidget::eventFilter(watched, event);
-}
-
 void Toolbox::setColumns(int columns)
 {
     columns = columns == 2 ? 2 : 1;
@@ -592,17 +448,7 @@ void Toolbox::setColumns(int columns)
     columns_ = columns;
     reflow();
     updateContentMetrics();
-    updateTitleIcon();
     emit columnsChanged(columns_);
-}
-
-void Toolbox::setSplitterPane(bool on)
-{
-    if (splitterPane_ == on) {
-        return;
-    }
-    splitterPane_ = on;
-    updateContentMetrics();
 }
 
 int Toolbox::contentWidth(int columns) const
@@ -616,149 +462,25 @@ int Toolbox::contentWidth(int columns) const
     return gridWidth + margins;
 }
 
-int Toolbox::contentHeight(int columns) const
-{
-    // The matching vertical formula (T1): the grid's row count for the active
-    // column count, the swatch, and the screen-mode button with the body
-    // spacing, plus the custom title bar. Same grid metrics as `contentWidth`.
-    const int count = slotButtons_.size();
-    const int rows = columns > 0 ? (count + columns - 1) / columns : count;
-    const int gridSpacing = grid_ ? grid_->spacing() : 0;
-    const int gridHeight =
-        rows * kSlotButtonSize + (rows > 1 ? (rows - 1) * gridSpacing : 0);
-    const int vmargin = bodyLayout_
-        ? bodyLayout_->contentsMargins().top() + bodyLayout_->contentsMargins().bottom()
-        : 0;
-    const int hmargin = bodyLayout_
-        ? bodyLayout_->contentsMargins().left() + bodyLayout_->contentsMargins().right()
-        : 0;
-    const int spacing = bodyLayout_ ? bodyLayout_->spacing() : 0;
-    const int fgbgSide =
-        std::clamp(contentWidth(columns) - hmargin, kMinWidgetSize, kWidgetSize);
-    const int title = titleBar_ ? titleBar_->sizeHint().height() : 0;
-    // Three body gaps: grid | swatch | screen mode | trailing stretch.
-    return title + vmargin + gridHeight + spacing + fgbgSide + spacing + kSlotButtonSize
-           + spacing;
-}
-
 void Toolbox::updateContentMetrics()
 {
-    if (metricsClamping_) {
-        return;
-    }
-    metricsClamping_ = true;
-
-    // M45 T1: release both fixed axes before re-fixing them, so the M43 width
-    // lock and the M44 height lock cannot double-apply and leave behind a stale
-    // width (a cut-off one-column layout) or a stale height (an over-tall
-    // two-column layout).
-    setMinimumSize(0, 0);
-    setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
-
-    // Activate the layout so the grid reflects the current column count before
-    // the content formula reads it; otherwise `reflow` leaves a stale hint.
-    if (QWidget* body = widget()) {
-        if (body->layout()) {
-            body->layout()->activate();
-        }
-    }
-    if (layout()) {
-        layout()->activate();
-    }
-
+    // The content's minimum width follows the tool grid; the hosting PanelColumn
+    // tracks it so the column hugs the grid plus the fg/bg control.
     const int content = contentWidth(columns_);
-    const int contentH = contentHeight(columns_);
-    setFixedWidth(content);
-    // Only a floating panel is pinned to its content height. A docked or
-    // pane-hosted panel fills the height it is given, so its content must not
-    // force the central workspace shorter than the window.
-    const bool floating = isFloating();
-    if (floating) {
-        setMinimumHeight(contentH);
-        setMaximumHeight(contentH);
-        floatHeight_ = contentH;
-    } else {
-        setMinimumHeight(0);
-        setMaximumHeight(QWIDGETSIZE_MAX);
-        floatHeight_ = 0;
-    }
-    // The dock's own layout would otherwise push the body's tall content minimum
-    // (and a fixed maximum) back onto the dock; release that when not floating so
-    // the explicit bounds above stick and the panel fills the height it is given.
-    if (QLayout* dockLayout = layout()) {
-        dockLayout->setSizeConstraint(floating ? QLayout::SetMinAndMaxSize
-                                               : QLayout::SetNoConstraint);
-        dockLayout->activate();
-    }
-
-    // A QDockWidget caches its layout minimum; without an explicit invalidation a
-    // 2->1 column change leaves the two-column floor in place.
-    if (QWidget* body = widget()) {
-        // A docked/pane dock is free-height: the body must expand vertically so
-        // it fills the space below the title bar and the trailing stretch keeps
-        // the slots at the top. With a Fixed vertical policy Qt's QWidgetItem
-        // centres the shorter body in the taller content rect instead. While
-        // floating the body stays Fixed so the dock hugs its content height.
-        body->setSizePolicy(QSizePolicy::Fixed,
-                            floating ? QSizePolicy::Fixed : QSizePolicy::Expanding);
-        if (body->layout()) {
-            body->layout()->invalidate();
-        }
-        body->updateGeometry();
-    }
-    if (layout()) {
-        layout()->invalidate();
-    }
+    setMinimumWidth(content);
     if (fgbg_) {
-        // The swatch is sized from the column's content width, so it can never
-        // be the widest child. Clamped to a readable square.
         fgbg_->setSide(content - (bodyLayout_ ? bodyLayout_->contentsMargins().left()
                                                    + bodyLayout_->contentsMargins().right()
                                                : 0));
     }
-
-    metricsClamping_ = false;
-}
-
-QSize Toolbox::minimumSizeHint() const
-{
-    // M47: docked and pane-hosted panels report a free height. The body's
-    // fixed-size children give it a tall minimum, and QSplitter would otherwise
-    // pin the central splitter's minimum height to it, shrinking the workspace.
-    // Only a floating panel keeps the content height.
-    QSize hint = QDockWidget::minimumSizeHint();
-    if (!isFloating()) {
-        hint.setHeight(0);
+    if (QWidget* body = this) {
+        body->updateGeometry();
     }
-    return hint;
-}
-
-bool Toolbox::floatHeightLockedForTest() const
-{
-    return isFloating() && floatHeight_ > 0 && minimumHeight() == floatHeight_
-           && maximumHeight() == floatHeight_ && height() == floatHeight_;
-}
-
-QString Toolbox::titleTextForTest() const
-{
-    if (!titleBar_) {
-        return QString();
-    }
-    QStringList texts;
-    for (QLabel* label : titleBar_->findChildren<QLabel*>()) {
-        texts << label->text();
-    }
-    return texts.join(QString());
 }
 
 int Toolbox::contentWidthForTest() const
 {
     return contentWidth(columns_);
-}
-
-int Toolbox::contentHeightForTest() const
-{
-    return contentHeight(columns_);
 }
 
 int Toolbox::foregroundBackgroundWidthForTest() const
@@ -780,24 +502,6 @@ void Toolbox::resetForegroundBackground()
     }
 }
 
-int Toolbox::bodyStretchForTest() const
-{
-    if (!bodyLayout_ || bodyLayout_->count() == 0) {
-        return 0;
-    }
-    return static_cast<int>(bodyLayout_->stretch(bodyLayout_->count() - 1));
-}
-
-int Toolbox::bodyHeightForTest() const
-{
-    return widget() ? widget()->height() : 0;
-}
-
-int Toolbox::bodySizeHintHeightForTest() const
-{
-    return widget() ? widget()->sizeHint().height() : 0;
-}
-
 void Toolbox::reflow()
 {
     while (QLayoutItem* item = grid_->takeAt(0)) {
@@ -809,21 +513,6 @@ void Toolbox::reflow()
         } else {
             grid_->addWidget(slotButtons_.at(i), i, 0, Qt::AlignHCenter);
         }
-    }
-}
-
-void Toolbox::updateTitleIcon()
-{
-    const QIcon target =
-        icon(columns_ == 1 ? QStringLiteral("panel.columnsTwo")
-                            : QStringLiteral("panel.columnsOne"));
-    if (!target.isNull()) {
-        titleToggle_->setIcon(target);
-        titleToggle_->setIconSize(QSize(16, 16));
-        titleToggle_->setText(QString());
-    } else {
-        titleToggle_->setIcon(QIcon());
-        titleToggle_->setText(columns_ == 1 ? QStringLiteral("»") : QStringLiteral("«"));
     }
 }
 
@@ -863,15 +552,6 @@ QList<QAction*> Toolbox::slotMenuActionsForTest(int group) const
 {
     QMenu* menu = slotMenuForTest(group);
     return menu ? menu->actions() : QList<QAction*>();
-}
-
-QStringList Toolbox::flyoutKeysForTest(int group) const
-{
-    QStringList keys;
-    for (QAction* action : slotMenuActionsForTest(group)) {
-        keys << action->shortcut().toString();
-    }
-    return keys;
 }
 
 bool Toolbox::hasFlyoutTriangleForTest(int group) const
