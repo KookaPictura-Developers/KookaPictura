@@ -694,7 +694,13 @@ void Toolbox::updateContentMetrics()
     // A QDockWidget caches its layout minimum; without an explicit invalidation a
     // 2->1 column change leaves the two-column floor in place.
     if (QWidget* body = widget()) {
-        body->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        // A docked/pane dock is free-height: the body must expand vertically so
+        // it fills the space below the title bar and the trailing stretch keeps
+        // the slots at the top. With a Fixed vertical policy Qt's QWidgetItem
+        // centres the shorter body in the taller content rect instead. While
+        // floating the body stays Fixed so the dock hugs its content height.
+        body->setSizePolicy(QSizePolicy::Fixed,
+                            floating ? QSizePolicy::Fixed : QSizePolicy::Expanding);
         if (body->layout()) {
             body->layout()->invalidate();
         }

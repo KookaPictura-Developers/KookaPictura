@@ -338,13 +338,38 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
             }
         }
     }
-    // The workspace outer band is a DOCK target now, not a pane: a release there
-    // docks the panel to the left/right dock area. Checked before the column
-    // passes so an edge-adjacent column cannot swallow the band.
+    // The workspace outer band is a DOCK target, not a pane: a release there
+    // docks the panel to the left/right dock area. Show the dock preview as a
+    // visual-only edge line on the outermost visible column (mirroring
+    // PanelColumn::updateColumnDrag) and decline the pane resolve so the release
+    // takes the dock path. Checked before the column passes so an edge-adjacent
+    // column cannot swallow the band.
     if (!resolved && newColumnSideAt(globalPos) >= 0) {
-        if (toolboxDropAnchor_) {
+        const int wsSide = newColumnSideAt(globalPos);
+        PanelColumn* preview = nullptr;
+        const QList<PanelColumn*> columns = panelColumns();
+        if (wsSide == 0) {
+            for (PanelColumn* column : columns) {
+                if (column && column->isVisible()) {
+                    preview = column;
+                    break;
+                }
+            }
+        } else {
+            for (int i = columns.size() - 1; i >= 0; --i) {
+                PanelColumn* column = columns.at(i);
+                if (column && column->isVisible()) {
+                    preview = column;
+                    break;
+                }
+            }
+        }
+        if (toolboxDropAnchor_ && toolboxDropAnchor_ != preview) {
             toolboxDropAnchor_->hideEdgeDropIndicator();
-            toolboxDropAnchor_ = nullptr;
+        }
+        toolboxDropAnchor_ = preview;
+        if (preview) {
+            preview->showEdgeDropIndicator(wsSide == 0 ? PanelSide::Left : PanelSide::Right);
         }
         return false;
     }
@@ -357,48 +382,10 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
             }
         }
     }
-    // Anywhere else in the central area resolves to the horizontally nearest
-    // visible column, on the half the pointer is in (or the outer side when the
-    // pointer is beside it), so a drop over the document canvas is never a no-op.
-    if (!resolved) {
-        if (QWidget* central = centralWidget()) {
-            const QRect centralRect(central->mapToGlobal(QPoint(0, 0)), central->size());
-            if (centralRect.contains(globalPos)) {
-                PanelColumn* nearest = nullptr;
-                int bestDist = 0;
-                for (PanelColumn* column : panelColumns()) {
-                    if (!column || !column->isVisible()) {
-                        continue;
-                    }
-                    const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
-                    if (!r.isValid() || r.width() <= 0) {
-                        continue;
-                    }
-                    int dist = 0;
-                    if (globalPos.x() < r.left()) {
-                        dist = r.left() - globalPos.x();
-                    } else if (globalPos.x() > r.right()) {
-                        dist = globalPos.x() - r.right();
-                    }
-                    if (!nearest || dist < bestDist) {
-                        nearest = column;
-                        bestDist = dist;
-                    }
-                }
-                if (nearest) {
-                    const QRect r(nearest->mapToGlobal(QPoint(0, 0)), nearest->size());
-                    if (globalPos.x() < r.left()) {
-                        resolvedSide = 0;
-                    } else if (globalPos.x() > r.right()) {
-                        resolvedSide = 1;
-                    } else {
-                        resolvedSide = globalPos.x() < r.center().x() ? 0 : 1;
-                    }
-                    resolved = nearest;
-                }
-            }
-        }
-    }
+    // A release with no column under the pointer and outside the outer band
+    // declines here; the caller's fall-through then floats the panel at the
+    // cursor, so a drop over the empty workspace is no longer snapped to the
+    // nearest column.
     // Drop the previous boundary's line when the pointer moves off it.
     if (toolboxDropAnchor_ && toolboxDropAnchor_ != resolved) {
         toolboxDropAnchor_->hideEdgeDropIndicator();
@@ -407,10 +394,8 @@ bool PicturaMainWindow::resolveToolboxDrop(const QPoint& globalPos, PanelColumn*
     if (!resolved) {
         return false;
     }
-    if (resolved) {
-        resolved->showEdgeDropIndicator(resolvedSide == 0 ? PanelSide::Left : PanelSide::Right);
-        toolboxDropAnchor_ = resolved;
-    }
+    resolved->showEdgeDropIndicator(resolvedSide == 0 ? PanelSide::Left : PanelSide::Right);
+    toolboxDropAnchor_ = resolved;
     if (anchor) {
         *anchor = resolved;
     }
@@ -424,13 +409,20 @@ bool PicturaMainWindow::commitToolboxDrop(const QPoint& globalPos)
 {
     int side = -1;
     PanelColumn* anchor = nullptr;
-    if (!resolveToolboxDrop(globalPos, &anchor, &side) || !centerSplitter_ || side < 0) {
-        return false;
-    }
+    const bool resolved = resolveToolboxDrop(globalPos, &anchor, &side);
     if (anchor) {
         anchor->hideEdgeDropIndicator();
     }
-    toolboxDropAnchor_ = nullptr;
+    // The outer-band preview is a visual-only anchor (the resolve declines, so
+    // anchor/side stay null/-1); always clear it so a declined commit leaves no
+    // line on screen.
+    if (toolboxDropAnchor_) {
+        toolboxDropAnchor_->hideEdgeDropIndicator();
+        toolboxDropAnchor_ = nullptr;
+    }
+    if (!resolved || !centerSplitter_ || side < 0) {
+        return false;
+    }
     // A bare workspace edge (no visible column) hosts the panel at the splitter
     // head/tail; otherwise it lands immediately before/after its anchor column.
     int insertAt = side == 0 ? 0 : centerSplitter_->count();

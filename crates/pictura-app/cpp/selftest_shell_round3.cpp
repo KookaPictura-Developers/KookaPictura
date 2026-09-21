@@ -909,5 +909,122 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
+    // lss_tools_top_align (417): a docked/pane-hosted Tools panel fills the height
+    // it is given and its body starts at the top, rather than the fixed-height body
+    // being centred in the taller dock. Only a floating panel hugs its content.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        auto* primary = frame.panelColumn();
+        bool ok = false;
+        if (cs && toolbox && primary) {
+            if (cs->indexOf(toolbox) >= 0) {
+                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
+                toolbox->setSplitterPane(false);
+                pump(6);
+            }
+            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+            const QPoint panePoint(pr.left() - 8, pr.center().y());
+            const bool pane = frame.commitToolboxDrop(panePoint);
+            pump(8);
+            QWidget* body = toolbox->widget();
+            QWidget* title = toolbox->titleBarForTest();
+            const int titleH = title ? title->height() : 0;
+            const int bodyTop = body ? body->mapTo(toolbox, QPoint(0, 0)).y() : -1000;
+            const bool fills =
+                body && body->height() >= toolbox->height() - titleH - 4;
+            const bool topAligned = body && bodyTop >= 0 && bodyTop <= titleH + 4;
+            ok = pane && fills && topAligned;
+            frame.dockToolbox(0);
+            pump(6);
+        }
+        ST_BEGIN("lss_tools_top_align");
+        ST_PASS("lss_tools_top_align ok=%d", ok ? 1 : 0);
+        if (!ok) {
+            return pictura::selfTest().fail(417, "tools top align");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
+    // lss_tools_edge_preview (418): while the pointer is in the workspace outer
+    // band the shared edge indicator is drawn on the outermost visible column as a
+    // dock preview, while the resolve still declines (so the release docks); a
+    // declined commit clears the line.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        QWidget* central = frame.centralWidget();
+        bool ok = false;
+        if (toolbox && central) {
+            frame.createPanelColumn(pictura::PanelSide::Left, nullptr);
+            pump(6);
+            const QRect centralRect(central->mapToGlobal(QPoint(0, 0)), central->size());
+            const QPoint headPoint(centralRect.left() + 2, centralRect.center().y());
+            auto* preview = static_cast<pictura::PanelColumn*>(nullptr);
+            for (auto* column : frame.panelColumns()) {
+                if (column && column->isVisible()) {
+                    preview = column;
+                    break;
+                }
+            }
+            pictura::PanelColumn* a = nullptr;
+            int s = -1;
+            const bool declined =
+                !frame.resolveToolboxDrop(headPoint, &a, &s) && a == nullptr && s == -1;
+            const bool shown = preview && preview->dropIndicatorVisibleForTest();
+            const bool commitDeclined = !frame.commitToolboxDrop(headPoint);
+            const bool cleared = !preview || !preview->dropIndicatorVisibleForTest();
+            ok = declined && shown && commitDeclined && cleared;
+        }
+        ST_BEGIN("lss_tools_edge_preview");
+        ST_PASS("lss_tools_edge_preview ok=%d", ok ? 1 : 0);
+        if (!ok) {
+            return pictura::selfTest().fail(418, "tools edge preview");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
+    // lss_tools_canvas_float (419): a release over the empty document area has no
+    // widget column under the pointer and is outside the outer band, so the pane
+    // resolve declines and the release path keeps the panel floating instead of
+    // snapping it to the nearest column.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        QWidget* central = frame.centralWidget();
+        bool ok = false;
+        if (cs && tabs && toolbox && central) {
+            frame.floatToolboxAt(central->mapToGlobal(QPoint(20, 20)));
+            pump(6);
+            const bool wasFloating = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
+            const QPoint canvas(tabs->mapToGlobal(tabs->rect().center()));
+            pictura::PanelColumn* a = nullptr;
+            int s = -1;
+            const bool declined =
+                !frame.resolveToolboxDrop(canvas, &a, &s) && a == nullptr && s == -1;
+            const bool commitDeclined = !frame.commitToolboxDrop(canvas);
+            // The release handler's fall-through for an unresolved in-frame drop.
+            frame.floatToolboxAt(canvas);
+            pump(6);
+            const bool stillFloating = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
+            ok = wasFloating && declined && commitDeclined && stillFloating;
+        }
+        ST_BEGIN("lss_tools_canvas_float");
+        ST_PASS("lss_tools_canvas_float ok=%d", ok ? 1 : 0);
+        if (!ok) {
+            return pictura::selfTest().fail(419, "tools canvas float");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+    }
+
     return 0;
 }
