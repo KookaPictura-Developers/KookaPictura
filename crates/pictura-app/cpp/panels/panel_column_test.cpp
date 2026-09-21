@@ -255,15 +255,25 @@ qreal PanelColumn::dragDimOpacityForTest() const
 bool PanelColumn::dropIndicatorVisibleForTest() const
 {
     return (indicator_ && indicator_->isVisible())
-           || (stripIndicator_ && stripIndicator_->isVisible());
+           || (stripIndicator_ && stripIndicator_->isVisible())
+           || (edgeIndicator_ && edgeIndicator_->isVisible());
 }
 
 QRect PanelColumn::dropIndicatorGeometryForTest() const
 {
+    if (edgeIndicator_ && edgeIndicator_->isVisible()) {
+        return edgeIndicator_->geometry();
+    }
     if (stripIndicator_ && stripIndicator_->isVisible()) {
         return stripIndicator_->geometry();
     }
     return indicator_ ? indicator_->geometry() : QRect();
+}
+
+bool PanelColumn::edgeIndicatorOnFrameForTest() const
+{
+    return edgeIndicator_ && edgeIndicator_->parentWidget()
+           && edgeIndicator_->parentWidget() == owningFrame();
 }
 
 int PanelColumn::scrollViewportHeightForTest() const
@@ -273,6 +283,9 @@ int PanelColumn::scrollViewportHeightForTest() const
 
 QRect PanelColumn::dropIndicatorGlobalGeometryForTest() const
 {
+    if (edgeIndicator_ && edgeIndicator_->isVisible()) {
+        return QRect(edgeIndicator_->mapToGlobal(QPoint(0, 0)), edgeIndicator_->size());
+    }
     if (stripIndicator_ && stripIndicator_->isVisible()) {
         return QRect(stripIndicator_->mapToGlobal(QPoint(0, 0)), stripIndicator_->size());
     }

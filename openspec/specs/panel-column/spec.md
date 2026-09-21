@@ -474,7 +474,10 @@ compact mode SHALL draw the line above the group's drag-handle dots, not inside
 the group below them. The column that owns a new-column line SHALL be the column
 adjacent to the workspace edge the new column will occupy, not the drag source.
 The same single indicator SHALL mark any-side docking targets beside the Tools
-toolbar, beside another widget panel or column, and beside the workspace.
+toolbar, beside another widget panel or column, and beside the workspace. The
+new-column line SHALL be drawn above any floating overlay that follows the drag,
+so an in-window overlay that tracks the cursor cannot hide it, and it SHALL NOT
+be drawn on the atomic Tools column, which never shows a widget drop line.
 
 #### Scenario: The blue line marks the target boundary [m41_drop]
 
@@ -535,6 +538,17 @@ toolbar, beside another widget panel or column, and beside the workspace.
   before a group
 - **THEN** the blue line is drawn above that group's drag-handle dots rather
   than inside the group below them
+
+#### Scenario: The new-column mark stays above a following overlay [fp_edge_mark_above_overlay]
+
+- **WHEN** a floating overlay is dragged over a dock spot while still floating
+- **THEN** the new-column mark is drawn above the overlay and remains visible,
+  instead of being hidden under the overlay that follows the cursor
+
+#### Scenario: The atomic Tools column draws no widget drop line [fp_edge_mark_not_on_tools]
+
+- **WHEN** a widget panel is dragged over the docked Tools column
+- **THEN** no new-column mark is drawn on the Tools column
 
 ### Requirement: Panel column session state
 

@@ -5,11 +5,14 @@
 #include "panels/panel_column.h"
 #include "panels/panel_group.h"
 #include "session.h"
+#include "toolbox.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QPoint>
 #include <QtCore/QRect>
 #include <QtWidgets/QMainWindow>
+#include <QtWidgets/QSplitter>
+#include <QtWidgets/QToolButton>
 #include <QtWidgets/QWidget>
 
 namespace {
@@ -19,6 +22,24 @@ void pumpFloat(int count)
     for (int i = 0; i < count; ++i) {
         QCoreApplication::processEvents();
     }
+}
+
+// Dock the tools column, float it with no resolved target, and leave the
+// overlay live. Returns the overlay (null when the float did not happen).
+pictura::PanelFloat* floatToolsColumnForTest(pictura::PicturaMainWindow& frame,
+                                             pictura::PanelColumn* tools)
+{
+    QWidget* tabs = frame.findChild<QWidget*>(QStringLiteral("documentTabs"));
+    if (!tools || !tabs) {
+        return nullptr;
+    }
+    const QPoint parked = tabs->mapToGlobal(tabs->rect().center());
+    tools->beginColumnHeaderDragForTest(
+        tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8)));
+    tools->dragColumnHeaderToForTest(parked);
+    tools->dropColumnHeaderForTest(parked);
+    pumpFloat(6);
+    return tools->columnFloatForTest();
 }
 
 } // namespace
@@ -94,5 +115,121 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
     }
     frame.applyPanelSessionForTest(pictura::SessionState{});
     pumpFloat(6);
+
+    // docked_tools_fixed_width (441): while docked the Tools column is a
+    // fixed-width splitter pane: the handle beside it is disabled, so dragging
+    // it cannot resize the toolbar.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        auto* splitter = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        auto* tools = frame.toolsColumn();
+        bool isPane = false;
+        bool handleOff = false;
+        if (splitter && tools) {
+            const int idx = splitter->indexOf(tools);
+            isPane = idx >= 0;
+            QSplitterHandle* handle = nullptr;
+            if (idx > 0) {
+                handle = splitter->handle(idx - 1);
+            } else if (idx == 0) {
+                handle = splitter->handle(0);
+            }
+            handleOff = handle && !handle->isEnabled();
+        }
+        ST_BEGIN("docked_tools_fixed_width");
+        ST_PASS("docked_tools_fixed_width pane=%d handle_off=%d", isPane ? 1 : 0,
+                handleOff ? 1 : 0);
+        if (!(isPane && handleOff)) {
+            return pictura::selfTest().fail(441, "docked tools fixed width");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // floating_tools_toggle_resize (442): toggling the floating tools overlay
+    // between one and two tool columns re-fits the overlay to the new content
+    // width, so a two-column grid is not clipped by a one-column overlay.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        auto* tools = frame.toolsColumn();
+        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        bool floated = false;
+        bool grew = false;
+        bool matches = false;
+        if (tools && toolbox) {
+            pictura::PanelFloat* floatWindow = floatToolsColumnForTest(frame, tools);
+            floated = floatWindow && floatWindow->isVisible();
+            if (floated) {
+                const int before = floatWindow->width();
+                QToolButton* toggle = tools->panelColumnToggleForTest();
+                if (toggle) {
+                    toggle->click();
+                    pumpFloat(6);
+                }
+                const int after = floatWindow->width();
+                grew = toolbox->columns() == 2 && after > before;
+                matches = after == tools->minimumWidth();
+                if (toggle) {
+                    toggle->click();
+                    pumpFloat(6);
+                }
+            }
+        }
+        ST_BEGIN("floating_tools_toggle_resize");
+        ST_PASS("floating_tools_toggle_resize floated=%d grew=%d matches=%d",
+                floated ? 1 : 0, grew ? 1 : 0, matches ? 1 : 0);
+        if (!(floated && grew && matches)) {
+            return pictura::selfTest().fail(442, "floating tools toggle resize");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // float_column_drag_indicator (443): dragging an already-floating column by
+    // the same header path as a docked one resolves the target and draws the
+    // edge indicator. In child (Wayland) mode the overlay follows the cursor
+    // above the splitter and would cover a viewport-drawn line, so the mark is a
+    // frame-level widget raised over the overlay; release re-docks the column.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        auto* tools = frame.toolsColumn();
+        auto* primary = frame.panelColumn();
+        auto* splitter = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        pictura::PanelFloat::setForceChildOverlayForTest(true);
+        bool floated = false;
+        bool indicator = false;
+        bool onFrame = false;
+        bool redocked = false;
+        if (tools && primary && splitter) {
+            pictura::PanelFloat* floatWindow = floatToolsColumnForTest(frame, tools);
+            floated = floatWindow && floatWindow->isVisible();
+            if (floated) {
+                QWidget* central = frame.centralWidget();
+                const QPoint over(central->mapToGlobal(QPoint(2, central->height() / 2)));
+                tools->beginColumnHeaderDragForTest(
+                    floatWindow->mapToGlobal(QPoint(floatWindow->width() / 2, 8)));
+                tools->dragColumnHeaderToForTest(over);
+                indicator = primary->dropIndicatorVisibleForTest();
+                onFrame = primary->edgeIndicatorOnFrameForTest();
+                redocked = tools->dropColumnHeaderForTest(over)
+                           && tools->columnFloatForTest() == nullptr
+                           && splitter->indexOf(tools) >= 0 && !tools->isWindow();
+                pumpFloat(6);
+            }
+        }
+        pictura::PanelFloat::setForceChildOverlayForTest(false);
+        ST_BEGIN("float_column_drag_indicator");
+        ST_PASS("float_column_drag_indicator floated=%d indicator=%d on_frame=%d "
+                "redocked=%d",
+                floated ? 1 : 0, indicator ? 1 : 0, onFrame ? 1 : 0, redocked ? 1 : 0);
+        if (!(floated && indicator && onFrame && redocked)) {
+            return pictura::selfTest().fail(443, "float column drag indicator");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
     return 0;
 }

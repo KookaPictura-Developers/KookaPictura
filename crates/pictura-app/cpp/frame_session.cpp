@@ -275,6 +275,9 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
         if (toolsColumn_->toolsContentForTest()) {
             toolsColumn_->refreshToolsWidth();
         }
+        // Re-inserting the column created fresh, enabled handles; restore the
+        // tools column's fixed-size handle state (beside it, no resize drag).
+        reapplyColumnStretch();
     }
     restoringPanelSession_ = false;
     // Before the first layout the splitter has no width, so `setPreferredWidth`

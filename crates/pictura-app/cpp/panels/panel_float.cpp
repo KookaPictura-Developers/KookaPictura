@@ -232,10 +232,22 @@ void PanelFloat::syncToContent()
         }
         return;
     }
-    // A whole-column overlay has no group; snap to the hosted column's content
-    // when the column is collapsed to its iconic strip.
+    // A whole-column overlay has no group; snap to the hosted column's content.
     auto* column = qobject_cast<PanelColumn*>(content_);
-    if (!column || column->isToolsColumn() || !column->railMode()) {
+    if (!column) {
+        return;
+    }
+    if (column->isToolsColumn()) {
+        // A non-resizable tools overlay hugs its content: the 1<->2 column flip
+        // changes the grid's width and height, so re-fit both axes.
+        const int w = qMax(content_->minimumWidth(), content_->minimumSizeHint().width());
+        const int h = qMax(content_->minimumHeight(), content_->minimumSizeHint().height());
+        setMinimumWidth(0);
+        setMinimumHeight(0);
+        resize(qMax(1, w), qMax(1, h));
+        return;
+    }
+    if (!column->railMode()) {
         return;
     }
     setMinimumHeight(kFloatIconMinHeight);
