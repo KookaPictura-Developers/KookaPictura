@@ -39,12 +39,6 @@ void PanelColumn::showWorkspaceEdgeIndicator(bool left)
 
 void PanelColumn::showColumnEdgeIndicator(bool left)
 {
-    // The tools column is atomic: a widget panel dragged over its narrow,
-    // leftmost body must never show a new-column line there. (The outer band may
-    // still allocate a sibling column on a drop; only the mark is suppressed.)
-    if (isToolsColumn()) {
-        return;
-    }
     // A full-height mark at the workspace edge for a new-column candidate. It is
     // parented to the frame and raised, so an in-window floating overlay (which
     // follows the cursor, above the splitter) cannot hide it.
@@ -194,6 +188,13 @@ void PanelColumn::showIndicatorFor(const DropTarget& target)
     if (newColumn) {
         if (indicator_) {
             indicator_->hide();
+        }
+        // The atomic Tools column draws no bare new-column mark for a drag over
+        // its own body (the outer-band target it owns); a target resolved beside
+        // it — a `columnEdgeAnchorAt` anchor — draws the mark like any column.
+        if (isToolsColumn() && !target.anchorColumn) {
+            clearIndicator();
+            return;
         }
         showColumnEdgeIndicator(target.kind == DropKind::NewColumnLeft);
         return;

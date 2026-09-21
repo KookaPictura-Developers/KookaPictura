@@ -179,6 +179,11 @@ private:
     bool floatPressPending_ = false;
     bool floatDragging_ = false;
     QPoint floatPressGlobal_;
+    // A collapsed-row icon drag: its own state so it cannot clobber the grips.
+    bool iconPressPending_ = false;
+    bool iconDragging_ = false;
+    QPoint iconPressGlobal_;
+    QString iconDragName_;
 };
 
 } // namespace pictura

@@ -30,6 +30,7 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QRect>
 #include <QtGui/QAction>
 #include <QtGui/QImage>
 #include <QtWidgets/QMenu>
@@ -162,6 +163,25 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
                 rowsPercent ? 1 : 0, rowsLocks ? 1 : 0, rowsDrag ? 1 : 0);
         if (!rowsLabel || !rowsPercent || !rowsLocks || !rowsDrag) {
             return pictura::selfTest().fail(211, "row widgets");
+        }
+
+        // wpx_blend_row (452): the blend combo and the opacity field share the
+        // control row's slack — the opacity field is stretched past its own size
+        // hint (a no-stretch field would sit exactly at the hint) while the blend
+        // combo still takes the larger share.
+        const QRect blendRow = lpcPanel->blendControlRectForTest();
+        const QRect opacityCol = lpcPanel->opacityControlRectForTest();
+        const int opacityHint = lpcPanel->opacitySizeHintWidthForTest();
+        const bool rowBoth = blendRow.width() > 0 && opacityCol.width() > 0;
+        const bool rowSharesSlack = opacityHint > 0 && opacityCol.width() > opacityHint;
+        const bool rowBlendLarger = blendRow.width() > opacityCol.width();
+        ST_BEGIN("wpx_blend_row");
+        ST_PASS("wpx_blend_row both=%d shares_slack=%d blend_bigger=%d blend=%d opacity=%d "
+                "hint=%d",
+                rowBoth ? 1 : 0, rowSharesSlack ? 1 : 0, rowBlendLarger ? 1 : 0,
+                blendRow.width(), opacityCol.width(), opacityHint);
+        if (!(rowBoth && rowSharesSlack && rowBlendLarger)) {
+            return pictura::selfTest().fail(452, "layers blend row");
         }
 
         // lpr_drag (212): a reorder is one undo step.

@@ -73,6 +73,13 @@ public:
     int lockButtonCountForTest() const;
     int opacityPercentForTest() const;
     int fillPercentForTest() const;
+    // wpx_blend_row: the blend combo and opacity field rects in panel-local
+    // coordinates (shared parent), for the control-row proportion check.
+    QRect blendControlRectForTest() const;
+    QRect opacityControlRectForTest() const;
+    // The opacity field's own size hint: the layout pins it to this when it
+    // carries no stretch, so a width above it proves it shares the row's slack.
+    int opacitySizeHintWidthForTest() const;
     void setOpacityPercentForTest(int pct);
     void setFillPercentForTest(int pct);
     bool headerOrderOkForTest() const;

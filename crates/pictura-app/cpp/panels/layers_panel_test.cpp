@@ -23,6 +23,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QPalette>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QSlider>
@@ -171,6 +172,21 @@ int LayersPanel::opacityPercentForTest() const
 int LayersPanel::fillPercentForTest() const
 {
     return fill_ ? fill_->value() : 0;
+}
+
+QRect LayersPanel::blendControlRectForTest() const
+{
+    return blend_ ? blend_->geometry() : QRect();
+}
+
+QRect LayersPanel::opacityControlRectForTest() const
+{
+    return opacity_ ? opacity_->geometry() : QRect();
+}
+
+int LayersPanel::opacitySizeHintWidthForTest() const
+{
+    return opacity_ ? opacity_->sizeHint().width() : 0;
 }
 
 void LayersPanel::setOpacityPercentForTest(int pct)

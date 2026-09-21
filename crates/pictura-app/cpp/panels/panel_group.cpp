@@ -144,7 +144,7 @@ PanelGroup::PanelGroup(QWidget* parent)
     iconRowOuterLayout->addWidget(iconGrip);
     auto* iconRowInner = new QWidget(iconRow_);
     iconRowInner->setObjectName(QStringLiteral("panelIconRow"));
-    iconRowLayout_ = new QHBoxLayout(iconRowInner);
+    iconRowLayout_ = new QVBoxLayout(iconRowInner);
     iconRowLayout_->setContentsMargins(0, 0, 0, 0);
     iconRowLayout_->setSpacing(4);
     iconRowLayout_->addStretch(1);
@@ -578,6 +578,9 @@ QToolButton* PanelGroup::makeIconButton(const QIcon& icon, const QString& title,
     connect(button, &QToolButton::clicked, this, [this, objectName, button]() {
         emit panelActivated(objectName, button->mapToGlobal(QPoint(button->width(), 0)));
     });
+    // A floating icon is also a drag source: the same tab-drag grammar the
+    // docked strip's buttons use, so a panel can be torn out of a floating group.
+    button->installEventFilter(this);
     return button;
 }
 
@@ -643,6 +646,46 @@ bool PanelGroup::eventFilter(QObject* watched, QEvent* event)
         && widget->parentWidget() == iconRow_) {
         if (groupGesture(event, floatPressPending_, floatDragging_, floatPressGlobal_)) {
             return true;
+        }
+    }
+    // Phase 7: an icon in the collapsed row drags its panel through the same
+    // `tabDragStarted`/`dragMoved`/`dragFinished` grammar the docked strip uses.
+    // A press+release below the threshold still emits `panelActivated` (clicked).
+    if (auto* iconButton = qobject_cast<QToolButton*>(watched);
+        iconButton && iconButton->objectName().startsWith(QStringLiteral("panelGroupIcon_"))) {
+        const QEvent::Type type = event->type();
+        if (type == QEvent::MouseButtonPress) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                iconPressPending_ = true;
+                iconDragging_ = false;
+                iconDragName_ = iconButton->objectName().mid(
+                    QStringLiteral("panelGroupIcon_").size());
+                iconPressGlobal_ = mouse->globalPosition().toPoint();
+            }
+        } else if (type == QEvent::MouseMove) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            const QPoint globalPos = mouse->globalPosition().toPoint();
+            if (iconPressPending_ && !iconDragging_
+                && (globalPos - iconPressGlobal_).manhattanLength()
+                       >= QApplication::startDragDistance()) {
+                iconPressPending_ = false;
+                iconDragging_ = true;
+                emit tabDragStarted(iconDragName_, globalPos);
+            }
+            if (iconDragging_) {
+                emit dragMoved(globalPos);
+                return true;
+            }
+        } else if (type == QEvent::MouseButtonRelease) {
+            iconPressPending_ = false;
+            if (iconDragging_) {
+                iconDragging_ = false;
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                emit dragFinished(mouse->globalPosition().toPoint());
+                return true;
+            }
+            iconDragName_.clear();
         }
     }
     if (tabs_ && watched == tabs_->tabBar()) {

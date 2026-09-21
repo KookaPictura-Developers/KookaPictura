@@ -476,12 +476,10 @@ adjacent to the workspace edge the new column will occupy, not the drag source.
 The same single indicator SHALL mark any-side docking targets beside the Tools
 toolbar, beside another widget panel or column, and beside the workspace. The
 new-column line SHALL be drawn above any floating overlay that follows the drag,
-so an in-window overlay that tracks the cursor cannot hide it, and it SHALL NOT
-be drawn on the atomic Tools column, which never shows a widget drop line. For a
-bare workspace edge, the mark SHALL be drawn at the central area's own left or
-right edge — the side the new column will occupy — not at an arbitrary column's
-edge; the outermost column on that side SHALL own the mark so the line and the
-resolved target stay in one column.
+so an in-window overlay that tracks the cursor cannot hide it. The atomic Tools
+column SHALL draw no line for a drag over its own body that resolves no
+beside-column target; a drag that resolves a new column immediately beside the
+Tools column SHALL draw the new-column mark at that edge like any other column.
 
 #### Scenario: The blue line marks the target boundary [m41_drop]
 
@@ -551,7 +549,8 @@ resolved target stay in one column.
 
 #### Scenario: The atomic Tools column draws no widget drop line [fp_edge_mark_not_on_tools]
 
-- **WHEN** a widget panel is dragged over the docked Tools column
+- **WHEN** a widget panel is dragged over the docked Tools column's body and
+  resolves no beside-column target
 - **THEN** no new-column mark is drawn on the Tools column
 
 #### Scenario: A bare workspace-edge mark is drawn on the requested side [fp_edge_mark_workspace_side]
@@ -560,6 +559,13 @@ resolved target stay in one column.
   other column is on the right
 - **THEN** the mark is drawn at the central area's left edge, not at the
   right-hand column's edge, and it is committed at the splitter head
+
+#### Scenario: A drag beside the docked Tools column shows the mark [wpx_tools_side_mark]
+
+- **WHEN** a widget panel or group is dragged into the new-column band
+  immediately beside the docked Tools column
+- **THEN** the thick blue new-column mark is drawn at that side of the Tools
+  column, on the side the new column would occupy
 
 ### Requirement: Panel column session state
 
@@ -985,15 +991,16 @@ SHALL be the first visible panel.
 ### Requirement: Panel column minimum width and no clipping
 
 Every widget column in `normal` mode SHALL enforce a single shared minimum width
-floor, equal for all widget columns, large enough that the column's content is
+floor of at least 300 device-independent pixels, equal for all widget columns and
+for every floating widget overlay, large enough that the column's content is
 always fully visible horizontally, so no column can be resized below it or
 disappear and no column ever displays a horizontal scrollbar or hides content on
-its right edge. The floor SHALL be derived from the column content's minimum
-size plus the scroll chrome, capped at a sane maximum, and SHALL be applied to
-the column so a wider column — not internal scrolling — is what keeps content
-visible. The column SHALL elide its tab text and keep the header corner action
-button inside the header rather than cutting either off. The iconic strip SHALL
-keep its own narrow, fixed minimum separate from the shared normal-mode floor.
+its right edge. The floor SHALL be raised further by content that needs more,
+capped at the shared maximum, and SHALL be applied to the column so a wider
+column — not internal scrolling — is what keeps content visible. The column
+SHALL elide its tab text and keep the header corner action button inside the
+header rather than cutting either off. The iconic strip SHALL keep its own
+narrow, fixed minimum separate from the shared normal-mode floor.
 
 #### Scenario: All widget columns share one minimum width [m45_min_width_floor]
 
@@ -1007,6 +1014,12 @@ keep its own narrow, fixed minimum separate from the shared normal-mode floor.
 - **WHEN** a widget column is at its minimum width
 - **THEN** its horizontal scrollbar policy is off, its content fits within the
   viewport, and no right-side content is hidden
+
+#### Scenario: The shared floor is at least 300 pixels [wpx_min_width_300]
+
+- **WHEN** any normal-mode widget column and any floating widget overlay are at
+  their minimum width
+- **THEN** each reports a minimum width of at least 300 pixels
 
 ### Requirement: Empty columns and ghost groups are cleaned up
 
@@ -1103,17 +1116,23 @@ A floating panel group SHALL carry its own top bar with a normal/icon width
 toggle and a close control, the toggle placed immediately to the left of the
 close control on the bar's right side, and the bar SHALL drag the overlay. The
 toggle SHALL collapse the group to its icon row and expand it again, and the
-close control SHALL remain reachable while collapsed. While collapsed the overlay
-SHALL snap to the height its icon row needs, at least the icon-row minimum, and
-SHALL also shrink its width to the icon row's natural width (at least the
-overlay minimum) so no normal-width body remains. The icon row SHALL render as
-the docked icon strip's group box with the same container styling, grip divider,
-and icon size. The overlay SHALL offer a resize grip that resizes the overlay
-itself and keep a minimum size like a docked column. When the floating group
-holds a single visible panel, dragging its tab SHALL move the whole overlay
-rather than tear off a second overlay and leave a ghost. A dragged overlay SHALL
-be dimmed for the whole drag, from the start of the gesture until it ends, not
-only while it is over a valid drop target.
+close control SHALL remain reachable while collapsed. While collapsed the
+overlay SHALL use the smallest size its icon row needs on both axes — snapping
+to the icon row's height and shrinking its width to the icon row's own width so
+no normal-width body remains — and SHALL NOT offer the resize grip; expanding
+SHALL restore the resize grip and the shared normal minimum width. The icon row
+SHALL render as the docked icon strip's group box with the same container
+styling, grip divider, and icon size, and SHALL stack its icons in a vertical
+column, one icon per row, matching the docked strip. Each icon in the floating
+row SHALL be draggable through the same drag grammar the docked strip uses, so a
+panel can be torn out of the floating group and the group can be dragged and
+dropped elsewhere; a click below the drag threshold SHALL still open the panel.
+The overlay SHALL offer a resize grip that resizes the overlay itself and keep a
+minimum size like a docked column. When the floating group holds a single visible
+panel, dragging its tab SHALL move the whole overlay rather than tear off a
+second overlay and leave a ghost. A dragged overlay SHALL be dimmed for the whole
+drag, from the start of the gesture until it ends, not only while it is over a
+valid drop target.
 
 #### Scenario: The float top bar toggles and closes [pc_float_header]
 
@@ -1130,9 +1149,28 @@ only while it is over a valid drop target.
   normal-width body remains, the icon row renders as a grouped panel-icon box,
   and the close control remains reachable
 
+#### Scenario: A collapsed float shows no resize grip [wpx_float_icon_no_grip]
+
+- **WHEN** a floating group is collapsed to icons
+- **THEN** the overlay does not show its resize grip, keeps the smallest width
+  and height its icon row needs, and shows the grip again when expanded
+
+#### Scenario: The floating icon row stacks vertically [wpx_float_icon_vertical]
+
+- **WHEN** a floating group with more than one icon is collapsed to icons
+- **THEN** its icons are arranged one per row in a vertical column
+
+#### Scenario: A floating icon drags its panel [wpx_float_icon_drag]
+
+- **WHEN** an icon in a floating collapsed group is pressed and dragged past the
+  drag threshold
+- **THEN** that panel starts a drag through the same grammar the docked strip
+  uses and can be dropped elsewhere, while a click below the threshold opens the
+  panel
+
 #### Scenario: The floating overlay is resizable [pc_float_resize]
 
-- **WHEN** a floating group is shown and its corner grip is dragged
+- **WHEN** a floating group is shown expanded and its corner grip is dragged
 - **THEN** it carries a resize grip that resizes the overlay itself and it keeps
   a minimum size comparable to a docked column
 
@@ -1218,13 +1256,22 @@ is the resolved target.
 - **WHEN** a whole group is dragged onto an existing in-window floating panel
 - **THEN** the dragged group's panels join the floating group
 
+#### Scenario: A floating icon group merges into another float [wpx_float_drop_icon_group]
+
+- **WHEN** a collapsed floating group is dragged by the drag grammar onto another
+  floating panel
+- **THEN** its panels join that floating group's tabs
+
 ### Requirement: Group-on-group tabify outline
 
 Dropping a whole group onto another group SHALL merge the two groups, with the
 dragged group's panels joining the target group as tabs. While a dragged group is
-resolved to a target group, the target group SHALL be highlighted with a blue
-outline drawn around its whole region rather than only the thin insertion line,
-and the outline SHALL clear when the drag moves away or is cancelled.
+resolved to a target group — whether the pointer is over that group's tab bar or
+its body — the target group SHALL be highlighted with a blue outline drawn
+around its whole region rather than only the thin insertion line, and the outline
+SHALL clear when the drag moves away or is cancelled. A drop over the dragged
+group's own body SHALL remain an above/below reorder boundary so groups can still
+be reordered in place.
 
 #### Scenario: A group dropped on a group tabifies into it [pc_group_tabify]
 
@@ -1236,6 +1283,13 @@ and the outline SHALL clear when the drag moves away or is cancelled.
 - **WHEN** a dragged group is resolved to a target group
 - **THEN** a blue outline is drawn around the target group's whole region, and it
   clears when the drag leaves or is cancelled
+
+#### Scenario: A group body drop outlines the whole target group [wpx_group_body_outline]
+
+- **WHEN** a whole group is dragged over another group's body, away from its tab
+  bar
+- **THEN** the blue outline is drawn around that whole group and releasing merges
+  the dragged group into it
 
 ### Requirement: Group header full-width background
 

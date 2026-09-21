@@ -126,12 +126,12 @@ LayersPanel::LayersPanel(QWidget* parent)
         blend_->addItem(QString::fromLatin1(entry.name), QString::fromLatin1(entry.key));
     }
     blend_->setEnabled(false);
-    controls->addWidget(blend_, 1);
+    controls->addWidget(blend_, 2);
     opacity_ = new PercentField(tr("Opacity"), body);
     opacity_->setObjectName(QStringLiteral("layersOpacityField"));
     opacity_->setEnabled(false);
     opacity_->setToolTip(tr("Opacity"));
-    controls->addWidget(opacity_);
+    controls->addWidget(opacity_, 1);
     layout->addLayout(controls);
 
     // The lock strip sits directly above the layer list; Fill shares its row.

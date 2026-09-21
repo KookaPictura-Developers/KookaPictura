@@ -10,6 +10,8 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QPoint>
 #include <QtCore/QRect>
+#include <QtCore/QString>
+#include <QtGui/QMouseEvent>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QToolButton>
@@ -40,6 +42,47 @@ pictura::PanelFloat* floatToolsColumnForTest(pictura::PicturaMainWindow& frame,
     tools->dropColumnHeaderForTest(parked);
     pumpFloat(6);
     return tools->columnFloatForTest();
+}
+
+// The first live group (with at least one tab) and one of its panel names, or
+// null/empty. Reveals the group and expands it so an overlay grip/icon check
+// has a normal-mode group to work with.
+pictura::PanelGroup* liveGroup(pictura::PanelColumn* column)
+{
+    if (!column) {
+        return nullptr;
+    }
+    for (pictura::PanelGroup* group : column->groups()) {
+        if (group && group->titleCountForTest() > 0) {
+            return group;
+        }
+    }
+    return nullptr;
+}
+
+QString revealedPanel(pictura::PanelColumn* column, pictura::PanelGroup* group)
+{
+    if (!column || !group) {
+        return QString();
+    }
+    if (group->visiblePanels().isEmpty() && !group->panels().isEmpty()
+        && group->panels().first()) {
+        column->showPanel(group->panels().first()->objectName(), true);
+    }
+    if (group->isCollapsedToIcons()) {
+        group->setCollapsedToIcons(false);
+    }
+    return group->visiblePanels().isEmpty() ? QString()
+                                            : group->visiblePanels().first()->objectName();
+}
+
+void closeFloats(pictura::PanelColumn* column)
+{
+    for (int i = 0; column && i < 24 && column->floatCountForTest() > 0; ++i) {
+        if (!column->closeFloatForTest(0)) {
+            break;
+        }
+    }
 }
 
 } // namespace
@@ -244,6 +287,561 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
                 redocked ? 1 : 0);
         if (!(floated && indicator && onFrame && atLeft && redocked)) {
             return pictura::selfTest().fail(443, "float column drag indicator");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // tools_side_mark (444): a widget panel dragged over the docked Tools body
+    // draws no mark (atomic), but a drag into the new-column band immediately
+    // beside the Tools column draws the new-column mark at that edge.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* tools = frame.toolsColumn();
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool bodyOff = false;
+        bool sideOn = false;
+        bool onFrame = false;
+        if (tools && primary) {
+            const QPoint body(tools->mapToGlobal(tools->rect().center()));
+            const bool beganBody = primary->beginTabDragForTest(QStringLiteral("layersPanel"));
+            primary->dragToForTest(body);
+            bodyOff = beganBody && !tools->dropIndicatorVisibleForTest();
+            primary->cancelDragForTest();
+            pumpFloat(4);
+            const QRect tr(tools->mapToGlobal(QPoint(0, 0)), tools->size());
+            const QPoint beside(tr.right() + 8, tr.center().y());
+            const bool beganSide = primary->beginTabDragForTest(QStringLiteral("layersPanel"));
+            primary->dragToForTest(beside);
+            sideOn = beganSide && tools->dropIndicatorVisibleForTest();
+            onFrame = tools->edgeIndicatorOnFrameForTest();
+            primary->cancelDragForTest();
+            pumpFloat(4);
+        }
+        ST_BEGIN("tools_side_mark");
+        ST_PASS("tools_side_mark body_off=%d side_on=%d on_frame=%d", bodyOff ? 1 : 0,
+                sideOn ? 1 : 0, onFrame ? 1 : 0);
+        if (!(bodyOff && sideOn && onFrame)) {
+            return pictura::selfTest().fail(444, "tools side mark");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // float_icon_no_grip (445): a collapsed floating group hides the resize grip
+    // and shrink-wraps both axes to the icon row; expanding restores the grip
+    // and the shared normal minimum width.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool torn = false;
+        bool gripOff = false;
+        bool sized = false;
+        bool gripBack = false;
+        if (column) {
+            pictura::PanelGroup* group = liveGroup(column);
+            pumpFloat(4);
+            const QString panel = revealedPanel(column, group);
+            pumpFloat(4);
+            if (!panel.isEmpty()) {
+                torn = column->tearOffForTest(panel);
+                pumpFloat(8);
+                const int index = column->floatCountForTest() - 1;
+                pictura::PanelFloat* fw = column->floatForTest(index);
+                if (torn && fw && fw->group() == group) {
+                    group->setCollapsedToIcons(true);
+                    pumpFloat(8);
+                    QWidget* grip = fw->sizeGripForTest();
+                    gripOff = grip && !grip->isVisible();
+                    const int iw = qMax(1, group->sizeHint().width());
+                    const int ih = qMax(group->sizeHint().height(),
+                                        pictura::PanelFloat::kFloatIconMinHeight);
+                    sized = fw->width() <= iw + 2
+                            && fw->height() >= pictura::PanelFloat::kFloatIconMinHeight
+                            && fw->height() <= ih + 8;
+                    group->setCollapsedToIcons(false);
+                    pumpFloat(8);
+                    gripBack = grip && grip->isVisible()
+                               && fw->minimumWidth() >= pictura::PanelFloat::kFloatMinWidth;
+                }
+                closeFloats(column);
+                pumpFloat(6);
+            }
+        }
+        ST_BEGIN("float_icon_no_grip");
+        ST_PASS("float_icon_no_grip torn=%d grip_off=%d sized=%d grip_back=%d", torn ? 1 : 0,
+                gripOff ? 1 : 0, sized ? 1 : 0, gripBack ? 1 : 0);
+        if (!(torn && gripOff && sized && gripBack)) {
+            return pictura::selfTest().fail(445, "float icon no grip");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // float_icons_vertical (446): a floating group collapsed to icons stacks its
+    // icons one per row in a vertical column.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool torn = false;
+        bool stacked = false;
+        int iconCount = 0;
+        if (column) {
+            column->showPanel(QStringLiteral("layersPanel"), true);
+            column->showPanel(QStringLiteral("channelsPanel"), true);
+            pumpFloat(8);
+            pictura::PanelGroup* group = column->groupForPanel(QStringLiteral("layersPanel"));
+            if (group && group->visibleTitles().size() >= 2) {
+                const QString panel = group->visiblePanels().first()->objectName();
+                torn = column->tearOffForTest(panel);
+                pumpFloat(8);
+                const int index = column->floatCountForTest() - 1;
+                pictura::PanelFloat* fw = column->floatForTest(index);
+                group = fw ? fw->group() : nullptr;
+                if (torn && group) {
+                    group->setCollapsedToIcons(true);
+                    pumpFloat(8);
+                    QList<QToolButton*> icons;
+                    for (QToolButton* button : group->findChildren<QToolButton*>()) {
+                        if (button
+                            && button->objectName().startsWith(
+                                QStringLiteral("panelGroupIcon_"))
+                            && button->isVisible()) {
+                            icons << button;
+                        }
+                    }
+                    iconCount = icons.size();
+                    stacked = icons.size() >= 2;
+                    for (int i = 1; i < icons.size() && stacked; ++i) {
+                        const QPoint a = icons.at(i - 1)->mapToGlobal(QPoint(0, 0));
+                        const QPoint b = icons.at(i)->mapToGlobal(QPoint(0, 0));
+                        stacked = b.y() > a.y() && qAbs(b.x() - a.x()) <= 4;
+                    }
+                }
+                closeFloats(column);
+                pumpFloat(6);
+            }
+        }
+        ST_BEGIN("float_icons_vertical");
+        ST_PASS("float_icons_vertical torn=%d stacked=%d n=%d", torn ? 1 : 0,
+                stacked ? 1 : 0, iconCount);
+        if (!(torn && stacked)) {
+            return pictura::selfTest().fail(446, "float icons vertical");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // float_icon_drag (447): an icon in a floating collapsed group starts a panel
+    // drag through the same tab-drag grammar the docked strip uses; a real press
+    // + release below the drag threshold still opens the panel (the new event
+    // filter does not swallow a click); and a released drag lands the panel in a
+    // docked group.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool torn = false;
+        bool clicked = false;
+        bool signalled = false;
+        bool dragging = false;
+        bool landed = false;
+        if (column) {
+            pictura::PanelGroup* group = liveGroup(column);
+            pumpFloat(4);
+            QString panel;
+            if (group) {
+                panel = revealedPanel(column, group);
+                // Reveal a second tab so the icon drag moves a single panel; a
+                // whole-group drag would consume the docked group and perturb the
+                // later checks' accumulated layout.
+                for (QWidget* candidate : group->panels()) {
+                    if (candidate && candidate->objectName() != panel) {
+                        column->showPanel(candidate->objectName(), true);
+                        break;
+                    }
+                }
+            }
+            pumpFloat(6);
+            if (!panel.isEmpty()) {
+                torn = column->tearOffForTest(panel);
+                pumpFloat(8);
+                const int index = column->floatCountForTest() - 1;
+                pictura::PanelFloat* fw = column->floatForTest(index);
+                group = fw ? fw->group() : nullptr;
+                if (torn && group) {
+                    group->setCollapsedToIcons(true);
+                    pumpFloat(8);
+                    auto iconFor = [group, &panel]() {
+                        return group->findChild<QToolButton*>(
+                            QStringLiteral("panelGroupIcon_") + panel);
+                    };
+                    QToolButton* icon = iconFor();
+                    if (icon) {
+                        // Below the threshold: press+release must still open the
+                        // panel through the `clicked` -> `panelActivated` path.
+                        const QPointF local(icon->rect().center());
+                        const QPointF global(icon->mapToGlobal(icon->rect().center()));
+                        QMouseEvent clickPress(QEvent::MouseButtonPress, local, global,
+                                               Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(icon, &clickPress);
+                        QMouseEvent clickRelease(QEvent::MouseButtonRelease, local, global,
+                                                 Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(icon, &clickRelease);
+                        pumpFloat(8);
+                        clicked = column->iconFlyoutVisibleForTest();
+                        column->triggerFlyoutCloseForTest();
+                        pumpFloat(8);
+                    }
+                    // Closing the flyout rebuilds the icon row; re-fetch it.
+                    icon = iconFor();
+                    if (icon) {
+                        // Park the source overlay so it cannot shadow the drop
+                        // point, then reveal a docked group so the column has a
+                        // real target surface.
+                        column->floatClampedForTest(
+                            index, frame.mapToGlobal(QPoint(frame.width() - 260, 60)));
+                        pumpFloat(6);
+                        for (pictura::PanelGroup* candidate : column->groups()) {
+                            if (candidate && candidate->titleCountForTest() > 0) {
+                                revealedPanel(column, candidate);
+                                break;
+                            }
+                        }
+                        pumpFloat(6);
+                        const QPoint drop = column->boundaryPointForTest(1);
+                        QString fired;
+                        const QMetaObject::Connection conn = QObject::connect(
+                            group, &pictura::PanelGroup::tabDragStarted, group,
+                            [&fired](const QString& name, const QPoint&) { fired = name; });
+                        const QPointF local(icon->rect().center());
+                        const QPointF global(icon->mapToGlobal(icon->rect().center()));
+                        QMouseEvent press(QEvent::MouseButtonPress, local, global,
+                                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(icon, &press);
+                        const QPointF moved(drop);
+                        QMouseEvent move(QEvent::MouseMove, local, moved, Qt::NoButton,
+                                         Qt::LeftButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(icon, &move);
+                        signalled = fired == panel;
+                        dragging = column->dragActiveForTest();
+                        QMouseEvent release(QEvent::MouseButtonRelease, local, moved,
+                                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(icon, &release);
+                        pumpFloat(8);
+                        QObject::disconnect(conn);
+                        landed = column->groupForPanel(panel) != nullptr;
+                    }
+                }
+                closeFloats(column);
+                pumpFloat(6);
+            }
+        }
+        ST_BEGIN("float_icon_drag");
+        ST_PASS("float_icon_drag torn=%d clicked=%d signalled=%d dragging=%d landed=%d",
+                torn ? 1 : 0, clicked ? 1 : 0, signalled ? 1 : 0, dragging ? 1 : 0,
+                landed ? 1 : 0);
+        if (!(torn && clicked && signalled && dragging && landed)) {
+            return pictura::selfTest().fail(447, "float icon drag");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // group_body_outline (448): a whole group dragged over another column's group
+    // body resolves a tabify target — the blue region outline is drawn around
+    // that group and the release merges the two groups.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool made = false;
+        bool shown = false;
+        bool merged = false;
+        if (primary) {
+            QList<pictura::PanelGroup*> live;
+            for (pictura::PanelGroup* group : primary->groups()) {
+                if (group && group->titleCountForTest() > 0) {
+                    live << group;
+                }
+            }
+            if (live.size() >= 2) {
+                revealedPanel(primary, live.at(0));
+                revealedPanel(primary, live.at(1));
+                pumpFloat(6);
+            }
+            pictura::PanelColumn* dest =
+                frame.createPanelColumn(pictura::PanelSide::Right, primary);
+            pictura::PanelGroup* host = nullptr;
+            if (dest) {
+                for (pictura::PanelGroup* group : primary->groups()) {
+                    if (group && !group->visibleTitles().isEmpty()) {
+                        if (pictura::PanelGroup* taken =
+                                primary->takeGroup(group->objectName())) {
+                            dest->addGroup(taken);
+                            host = taken;
+                        }
+                        break;
+                    }
+                }
+            }
+            pumpFloat(8);
+            pictura::PanelGroup* source = nullptr;
+            for (pictura::PanelGroup* group : primary->groups()) {
+                if (group && !group->visibleTitles().isEmpty()) {
+                    source = group;
+                    break;
+                }
+            }
+            const QString srcPanel =
+                source && !source->visiblePanels().isEmpty()
+                    ? source->visiblePanels().first()->objectName()
+                    : QString();
+            made = dest && host && source && !srcPanel.isEmpty();
+            if (made) {
+                const QRect gr(host->mapToGlobal(QPoint(0, 0)), host->size());
+                const QRect bar = host->tabBarGlobalRect();
+                const QPoint body(gr.center().x(),
+                                  (bar.bottom() + gr.bottom()) / 2);
+                const bool began = primary->beginGroupDragForTest(srcPanel);
+                primary->dragToForTest(body);
+                shown = began && dest->outlineIndicatorVisibleForTest();
+                const bool dropped = primary->dropForTest(body);
+                pumpFloat(8);
+                merged = dropped && dest->groupForPanel(srcPanel) == host;
+            }
+        }
+        ST_BEGIN("group_body_outline");
+        ST_PASS("group_body_outline made=%d shown=%d merged=%d", made ? 1 : 0,
+                shown ? 1 : 0, merged ? 1 : 0);
+        if (!(made && shown && merged)) {
+            return pictura::selfTest().fail(448, "group body outline");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // min_width_300 (449): a normal-mode widget column and a floating overlay
+    // each report a minimum width of at least 300.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool colOk = false;
+        bool constOk = false;
+        bool floatOk = false;
+        int colMin = 0;
+        int floatMin = 0;
+        if (column) {
+            colMin = column->minimumWidthForTest();
+            colOk = colMin >= 300 && column->minimumWidthFloorForTest() >= 300;
+            constOk = pictura::PanelFloat::kFloatMinWidth >= 300;
+            pictura::PanelGroup* group = liveGroup(column);
+            pumpFloat(4);
+            const QString panel = revealedPanel(column, group);
+            pumpFloat(4);
+            if (!panel.isEmpty()) {
+                column->tearOffForTest(panel);
+                pumpFloat(8);
+                pictura::PanelFloat* fw = column->floatForTest(column->floatCountForTest() - 1);
+                floatMin = fw ? fw->minimumWidth() : 0;
+                floatOk = fw && floatMin >= 300;
+                closeFloats(column);
+                pumpFloat(6);
+            }
+        }
+        ST_BEGIN("min_width_300");
+        ST_PASS("min_width_300 col=%d const=%d float=%d min=%d fmin=%d", colOk ? 1 : 0,
+                constOk ? 1 : 0, floatOk ? 1 : 0, colMin, floatMin);
+        if (!(colOk && constOk && floatOk)) {
+            return pictura::selfTest().fail(449, "min width 300");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // float_icon_group_merge (450): a collapsed floating group dragged by the
+    // group grip onto another floating overlay merges its panels into it.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool twoFloats = false;
+        bool collapsed = false;
+        bool merged = false;
+        if (column) {
+            QList<pictura::PanelGroup*> groups;
+            for (pictura::PanelGroup* group : column->groups()) {
+                if (group && group->titleCountForTest() > 0) {
+                    groups << group;
+                }
+            }
+            if (groups.size() >= 2) {
+                pictura::PanelGroup* gA = groups.at(0);
+                pictura::PanelGroup* gB = groups.at(1);
+                const QString a = revealedPanel(column, gA);
+                const QString b = revealedPanel(column, gB);
+                pumpFloat(8);
+                // Float the *target* group first and park it, so the source
+                // overlay is created later and lands after it in the float list.
+                // The resolver only inspects the first overlay under the cursor,
+                // so the target must not be shadowed by the following source.
+                const bool tB = !b.isEmpty() && column->tearOffForTest(b);
+                pumpFloat(8);
+                for (int i = 0; i < column->floatCountForTest(); ++i) {
+                    pictura::PanelFloat* fw = column->floatForTest(i);
+                    if (fw && fw->group() == gB) {
+                        column->floatClampedForTest(
+                            i, frame.mapToGlobal(QPoint(frame.width() - 260, 60)));
+                        break;
+                    }
+                }
+                pumpFloat(6);
+                const bool tA = !a.isEmpty() && column->tearOffForTest(a);
+                pumpFloat(8);
+                pictura::PanelFloat* fA = nullptr;
+                pictura::PanelFloat* fB = nullptr;
+                for (int i = 0; i < column->floatCountForTest(); ++i) {
+                    pictura::PanelFloat* fw = column->floatForTest(i);
+                    if (fw && fw->group() == gA) {
+                        fA = fw;
+                    }
+                    if (fw && fw->group() == gB) {
+                        fB = fw;
+                    }
+                }
+                twoFloats = tA && tB && fA && fB;
+                if (twoFloats) {
+                    gA->setCollapsedToIcons(true);
+                    pumpFloat(8);
+                    collapsed = gA->isCollapsedToIcons();
+                    const QPoint target = gB->tabInsertionGlobalPointForTest(0);
+                    const bool began = column->beginGroupDragForTest(a);
+                    column->dragToForTest(target);
+                    const bool dropped = column->dropForTest(target);
+                    pumpFloat(8);
+                    merged = began && dropped && fB->group()->containsPanel(a)
+                             && column->floatCountForTest() == 1;
+                }
+            }
+        }
+        closeFloats(column);
+        ST_BEGIN("float_icon_group_merge");
+        ST_PASS("float_icon_group_merge two=%d collapsed=%d merged=%d", twoFloats ? 1 : 0,
+                collapsed ? 1 : 0, merged ? 1 : 0);
+        if (!(twoFloats && collapsed && merged)) {
+            return pictura::selfTest().fail(450, "float icon group merge");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // group_body_outline_same_column (451): a whole-group drag over a *different*
+    // group's body in the SAME column draws the blue region outline and merges on
+    // release — also when the dragged group was torn off into a float — while a
+    // drop on the dragged group's own body stays an above/below reorder boundary
+    // (no outline, the thin insertion line).
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool ownBoundary = false;
+        bool dockedMerge = false;
+        bool floatMerge = false;
+        if (primary) {
+            QList<pictura::PanelGroup*> groups;
+            for (pictura::PanelGroup* group : primary->groups()) {
+                if (group && group->titleCountForTest() > 0) {
+                    groups << group;
+                }
+            }
+            if (groups.size() >= 2) {
+                pictura::PanelGroup* target = groups.at(0);
+                pictura::PanelGroup* source = groups.at(1);
+                const QString t = revealedPanel(primary, target);
+                const QString s = revealedPanel(primary, source);
+                pumpFloat(8);
+                if (!t.isEmpty() && !s.isEmpty()) {
+                    // Own body: an above/below boundary, never the tabify outline.
+                    const QRect own(source->mapToGlobal(QPoint(0, 0)), source->size());
+                    const QRect ownBar = source->tabBarGlobalRect();
+                    const int ownTop = qMax(own.top(), ownBar.bottom());
+                    const QPoint ownBody(own.center().x(),
+                                         ownTop + (own.bottom() - ownTop) / 2);
+                    const bool beganOwn = primary->beginGroupDragForTest(s);
+                    primary->dragToForTest(ownBody);
+                    ownBoundary = beganOwn && primary->dropIndicatorVisibleForTest()
+                                  && !primary->outlineIndicatorVisibleForTest();
+                    primary->cancelDragForTest();
+                    pumpFloat(6);
+
+                    // A different group's body in the same column: outline + merge.
+                    const QRect gr(target->mapToGlobal(QPoint(0, 0)), target->size());
+                    const QRect bar = target->tabBarGlobalRect();
+                    const int top = qMax(gr.top(), bar.bottom());
+                    const QPoint body(gr.center().x(), top + (gr.bottom() - top) / 2);
+                    const bool began = primary->beginGroupDragForTest(s);
+                    primary->dragToForTest(body);
+                    const bool outline = primary->outlineIndicatorVisibleForTest();
+                    const bool dropped = primary->dropForTest(body);
+                    pumpFloat(8);
+                    dockedMerge = began && outline && dropped && target->containsPanel(s);
+                }
+            }
+        }
+        // The same body drop from a torn-off float back into the same column: the
+        // user's tear-off-then-drop case.
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        primary = frame.panelColumn();
+        if (primary) {
+            QList<pictura::PanelGroup*> groups;
+            for (pictura::PanelGroup* group : primary->groups()) {
+                if (group && group->titleCountForTest() > 0) {
+                    groups << group;
+                }
+            }
+            if (groups.size() >= 2) {
+                const QString s = revealedPanel(primary, groups.at(1));
+                revealedPanel(primary, groups.at(0));
+                pumpFloat(8);
+                const bool torn = !s.isEmpty() && primary->tearOffForTest(s);
+                pumpFloat(8);
+                // Re-fetch the docked target: the tear-off re-lays out the column.
+                pictura::PanelGroup* docked = nullptr;
+                for (pictura::PanelGroup* group : primary->groups()) {
+                    if (group && group->titleCountForTest() > 0) {
+                        docked = group;
+                        break;
+                    }
+                }
+                if (torn && docked) {
+                    revealedPanel(primary, docked);
+                    pumpFloat(6);
+                    const QRect gr(docked->mapToGlobal(QPoint(0, 0)), docked->size());
+                    const QRect bar = docked->tabBarGlobalRect();
+                    const int top = qMax(gr.top(), bar.bottom());
+                    const QPoint body(gr.center().x(), top + (gr.bottom() - top) / 2);
+                    const bool began = primary->beginGroupDragForTest(s);
+                    primary->dragToForTest(body);
+                    const bool outline = primary->outlineIndicatorVisibleForTest();
+                    const bool dropped = primary->dropForTest(body);
+                    pumpFloat(8);
+                    floatMerge = began && outline && dropped && docked->containsPanel(s)
+                                 && primary->floatCountForTest() == 0;
+                }
+                closeFloats(primary);
+                pumpFloat(6);
+            }
+        }
+        ST_BEGIN("group_body_outline_same_column");
+        ST_PASS("group_body_outline_same_column own=%d docked=%d float=%d",
+                ownBoundary ? 1 : 0, dockedMerge ? 1 : 0, floatMerge ? 1 : 0);
+        if (!(ownBoundary && dockedMerge && floatMerge)) {
+            return pictura::selfTest().fail(451, "group body same-column outline");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pumpFloat(6);
