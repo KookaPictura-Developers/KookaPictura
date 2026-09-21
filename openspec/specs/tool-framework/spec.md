@@ -62,11 +62,15 @@ or the no-tabification contract. A left-button drag on the panel's custom title
 bar SHALL be tracked for the whole gesture, whether the panel starts docked,
 floating, or hosted as a splitter pane, and on release SHALL place the panel as a
 splitter pane on either side of the widget column under the pointer or between
-two widget columns; when no column is under the pointer the panel SHALL keep its
-current state. While the panel is hosted as a central-splitter pane it SHALL keep
-its fixed content width and SHALL NOT be pinned to its content height, and it
-SHALL remain re-draggable. The implemented tool set and the active-tool contract
-SHALL be unchanged.
+two widget columns. A release with no widget column under the pointer and outside
+the workspace outer band SHALL float the panel at the cursor, so a floating panel
+stays floating and a docked panel can be floated by dragging. While the pointer
+is in the workspace outer left or right band the panel SHALL show the same blue
+edge indicator the widget columns use, anchored on the outermost visible column
+on that side, and the release SHALL dock the panel to that side. While the panel
+is hosted as a central-splitter pane it SHALL keep its fixed content width and
+SHALL NOT be pinned to its content height, and it SHALL remain re-draggable. The
+implemented tool set and the active-tool contract SHALL be unchanged.
 
 #### Scenario: Tools panel reflects the active tool [m23_toolbox]
 
@@ -89,6 +93,14 @@ SHALL be unchanged.
   left or right side of a widget column, or between two widget columns
 - **THEN** a single blue indicator marks that boundary and on release the panel is
   hosted as a splitter pane at that boundary with its fixed content width
+
+#### Scenario: The outer band previews and the empty workspace floats [ltf_tools_drag_fallthrough]
+
+- **WHEN** the Tools panel's title bar is dragged into the workspace outer band,
+  or released over the workspace with no widget column under the pointer
+- **THEN** the outer band shows the shared blue edge indicator on the outermost
+  visible column and the release docks the panel to that side, while a release
+  with no column and outside the band leaves the panel floating at the cursor
 
 #### Scenario: The panel is transparent to widget drags [m47_widget_over_tools]
 
