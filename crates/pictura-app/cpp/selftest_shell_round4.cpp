@@ -571,18 +571,17 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         pump4(6);
     }
 
-    // panel_drag_whole_dim (430): a docked drag source is dimmed for the whole
-    // drag even when the pointer is over no valid target (here the atomic tools
-    // column), and a cancel restores full opacity with no ghost float left.
+    // panel_drag_whole_dim (430): a group drag tears its source into a
+    // following overlay on the first move even when the pointer is over no valid
+    // target (here the atomic tools column); the overlay is dimmed for the whole
+    // drag, and a cancel restores full opacity, re-docks the group, and leaves no
+    // extra overlay behind.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
         pictura::PanelColumn* primary = frame.panelColumn();
         pictura::PanelColumn* tools = frame.toolsColumn();
-        bool began = false;
-        bool dimmed = false;
-        bool noGhost = false;
-        bool restored = false;
+        bool began = false, dimmed = false, floated = false, restored = false;
         if (primary && tools) {
             pictura::PanelGroup* group = nullptr;
             QString panelName;
@@ -602,16 +601,16 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
             }
             if (!panelName.isEmpty()) {
                 // Earlier shell checks leave their floats rehomed onto the
-                // primary column, so "no ghost" means no *new* overlay.
+                // primary column, so the baseline is the number of live overlays.
                 const int floatsBefore = primary->floatCountForTest();
                 began = primary->beginGroupDragForTest(panelName);
-                // The tools column resolves no valid target (D4 atomic), so the
-                // source stays docked; the source group must still be dimmed.
+                // The tools column resolves no valid target (D4 atomic); the
+                // group still tears off into the dimmed following overlay.
                 const QPoint overTools = tools->mapToGlobal(tools->rect().center());
                 primary->dragToForTest(overTools);
                 pump4(4);
                 dimmed = began && primary->dragDimOpacityForTest() < 0.7;
-                noGhost = primary->floatCountForTest() == floatsBefore;
+                floated = primary->floatCountForTest() == floatsBefore + 1;
                 primary->cancelDragForTest();
                 pump4(6);
                 restored = primary->dragDimOpacityForTest() > 0.9
@@ -620,9 +619,9 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
             }
         }
         ST_BEGIN("panel_drag_whole_dim");
-        ST_PASS("panel_drag_whole_dim began=%d dimmed=%d no_ghost=%d restored=%d",
-                began ? 1 : 0, dimmed ? 1 : 0, noGhost ? 1 : 0, restored ? 1 : 0);
-        if (!(began && dimmed && noGhost && restored)) {
+        ST_PASS("panel_drag_whole_dim began=%d dimmed=%d floated=%d restored=%d",
+                began ? 1 : 0, dimmed ? 1 : 0, floated ? 1 : 0, restored ? 1 : 0);
+        if (!(began && dimmed && floated && restored)) {
             return pictura::selfTest().fail(430, "whole-drag dim");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
@@ -894,15 +893,19 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
     }
 
     // column_float_height (435): a floating widget column opens at about two
-    // thirds of its docked height, strictly less than the docked column.
+    // thirds of its docked height, strictly less than the docked column, and a
+    // release on a workspace edge re-docks it so no whole-column float leaks
+    // into later checks.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
         pictura::PanelColumn* column = frame.panelColumn();
         QWidget* tabs = frame.findChild<QWidget*>(QStringLiteral("documentTabs"));
+        QWidget* central = frame.centralWidget();
         bool floated = false;
         bool shorter = false;
-        if (column && tabs) {
+        bool redocked = false;
+        if (column && tabs && central) {
             column->setRailMode(false);
             pump4(4);
             const int dockedHeight = column->height();
@@ -916,16 +919,15 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
                 shorter = floatHeight < dockedHeight
                           && floatHeight >= pictura::PanelFloat::kFloatMinHeight;
             }
-            pictura::PanelColumn* primary = frame.panelColumn();
-            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
-            const QPoint left(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
-            column->dropColumnHeaderForTest(left);
+            const QPoint edge(central->mapToGlobal(QPoint(2, central->height() / 2)));
+            redocked = column->dropColumnHeaderForTest(edge)
+                       && column->columnFloatForTest() == nullptr;
             pump4(6);
         }
         ST_BEGIN("column_float_height");
-        ST_PASS("column_float_height float=%d shorter=%d", floated ? 1 : 0,
-                shorter ? 1 : 0);
-        if (!(floated && shorter)) {
+        ST_PASS("column_float_height float=%d shorter=%d redock=%d", floated ? 1 : 0,
+                shorter ? 1 : 0, redocked ? 1 : 0);
+        if (!(floated && shorter && redocked)) {
             return pictura::selfTest().fail(435, "column float height");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
@@ -1069,6 +1071,125 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         }
         frame.resize(frameBefore);
         pump4(6);
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+    }
+
+    // group_drag_float_follows (438): dragging a docked group by its header
+    // tears it into a following overlay on the first move, even while the
+    // pointer is still inside the workspace over a resolved target group (the
+    // tabify indicator keeps showing), the overlay tracks the cursor, and the
+    // release re-docks the group's panels into that target group.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool began = false, floated = false, indicator = false, follows = false, redocked = false;
+        if (primary) {
+            QList<pictura::PanelGroup*> groups;
+            for (pictura::PanelGroup* candidate : primary->groups()) {
+                if (candidate && candidate->titleCountForTest() > 0
+                    && !candidate->isCollapsedToIcons()) {
+                    groups << candidate;
+                }
+            }
+            if (groups.size() >= 2) {
+                pictura::PanelGroup* source = groups.at(1);
+                pictura::PanelGroup* target = groups.at(0);
+                for (pictura::PanelGroup* group : {source, target}) {
+                    if (group->visiblePanels().isEmpty() && !group->panels().isEmpty()
+                        && group->panels().first()) {
+                        primary->showPanel(group->panels().first()->objectName(), true);
+                    }
+                }
+                pump4(4);
+                if (!source->visiblePanels().isEmpty() && source->visiblePanels().first()) {
+                    const QString panel = source->visiblePanels().first()->objectName();
+                    const int floatsBefore = primary->floatCountForTest();
+                    // Over the target group's tab bar: a valid tabify target
+                    // resolves its region outline while the group still follows.
+                    const QPoint a = target->tabBarGlobalRect().center();
+                    const QPoint b = a + QPoint(0, 12);
+                    began = primary->beginGroupDragForTest(panel);
+                    primary->dragToForTest(a);
+                    const int index = primary->floatCountForTest() - 1;
+                    pictura::PanelFloat* floatWindow = primary->floatForTest(index);
+                    floated = index >= 0 && floatWindow
+                              && primary->floatCountForTest() == floatsBefore + 1;
+                    indicator = primary->outlineIndicatorVisibleForTest()
+                                || primary->dropIndicatorVisibleForTest();
+                    const QRect atA = primary->floatGeometryForTest(index);
+                    primary->dragToForTest(b);
+                    const QRect atB = primary->floatGeometryForTest(index);
+                    follows = atA.isValid() && atB.isValid()
+                              && atB.topLeft() - atA.topLeft() == b - a;
+                    const bool dropped = primary->dropForTest(b);
+                    pump4(6);
+                    // The whole-group drop tabifies the source into the column,
+                    // so every panel is docked again and no overlay remains.
+                    redocked = dropped && primary->floatCountForTest() == floatsBefore
+                               && !primary->dragActiveForTest()
+                               && primary->groupForPanel(panel) != nullptr;
+                }
+            }
+        }
+        ST_BEGIN("group_drag_float_follows");
+        ST_PASS("group_drag_float_follows began=%d floated=%d indicator=%d follows=%d "
+                "redocked=%d",
+                began ? 1 : 0, floated ? 1 : 0, indicator ? 1 : 0, follows ? 1 : 0,
+                redocked ? 1 : 0);
+        if (!(began && floated && indicator && follows && redocked)) {
+            return pictura::selfTest().fail(438, "group drag float follows");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+    }
+
+    // tools_column_drag_float (439): the docked Tools column header drag tears
+    // the column into a following overlay on the first move, even while the
+    // pointer is still over a resolved sibling target inside the workspace (the
+    // edge indicator keeps showing), instead of only floating once outside the
+    // workspace; the release re-docks the column into the splitter.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+        pictura::PanelColumn* tools = frame.toolsColumn();
+        pictura::PanelColumn* primary = frame.panelColumn();
+        auto* splitter = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        bool floated = false, indicator = false, follows = false, redocked = false;
+        if (tools && primary && splitter) {
+            // Pressing the header tears the whole column off immediately; the
+            // splitter then re-lays out, so the sibling target point is measured
+            // against the primary column's post-float geometry.
+            tools->beginColumnHeaderDragForTest(
+                tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8)));
+            pump4(4);
+            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+            const QPoint a(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
+            const QPoint b = a + QPoint(30, 0);
+            tools->dragColumnHeaderToForTest(a);
+            pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
+            floated = floatWindow && floatWindow->isVisible() && splitter->indexOf(tools) < 0;
+            indicator = primary->dropIndicatorVisibleForTest();
+            const QRect atA = floatWindow
+                ? QRect(floatWindow->mapToGlobal(QPoint(0, 0)), floatWindow->size())
+                : QRect();
+            tools->dragColumnHeaderToForTest(b);
+            const QRect atB = floatWindow
+                ? QRect(floatWindow->mapToGlobal(QPoint(0, 0)), floatWindow->size())
+                : QRect();
+            follows = atA.isValid() && atB.isValid()
+                      && atB.topLeft() - atA.topLeft() == b - a;
+            redocked = tools->dropColumnHeaderForTest(b) && tools->columnFloatForTest() == nullptr
+                       && splitter->indexOf(tools) >= 0 && !tools->isWindow();
+            pump4(6);
+        }
+        ST_BEGIN("tools_column_drag_float");
+        ST_PASS("tools_column_drag_float floated=%d indicator=%d follows=%d redocked=%d",
+                floated ? 1 : 0, indicator ? 1 : 0, follows ? 1 : 0, redocked ? 1 : 0);
+        if (!(floated && indicator && follows && redocked)) {
+            return pictura::selfTest().fail(439, "tools column drag float");
+        }
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
     }
