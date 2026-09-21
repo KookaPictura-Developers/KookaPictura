@@ -87,6 +87,11 @@ void PanelColumn::setRailMode(bool iconic)
                                                        : minimumWidth());
     }
     updateColumnToggle();
+    // A whole-column overlay snaps to the icon strip's content when the rail
+    // mode flips while the column is floating.
+    if (columnFloat_) {
+        columnFloat_->syncToContent();
+    }
     emit stateChanged();
 }
 

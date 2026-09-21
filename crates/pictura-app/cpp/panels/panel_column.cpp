@@ -404,9 +404,24 @@ void PanelColumn::maybeRemoveSelf()
 {
     // M45 W4: the frame owns the "is this dynamic column empty" test; every
     // path that can empty this column funnels through here.
-    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+    if (auto* frame = owningFrame()) {
         frame->removeColumnIfEmpty(this);
     }
+}
+
+PicturaMainWindow* PanelColumn::owningFrame() const
+{
+    QWidget* top = window();
+    if (auto* frame = qobject_cast<PicturaMainWindow*>(top)) {
+        return frame;
+    }
+    // A column hosted in a floating overlay: the overlay's parent is the frame.
+    if (top) {
+        if (auto* frame = qobject_cast<PicturaMainWindow*>(top->parentWidget())) {
+            return frame;
+        }
+    }
+    return nullptr;
 }
 
 void PanelColumn::setToolsContent(QWidget* content, std::function<int()> columnsState,

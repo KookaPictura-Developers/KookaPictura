@@ -28,15 +28,24 @@ void pump4(int count)
     }
 }
 
+// A floating overlay is a frameless Qt::Tool top-level window parented to the
+// main window: no decorations, no taskbar entry.
+bool toolFloatWindow(QWidget* w, QWidget* parent)
+{
+    return w && w->isWindow() && w->windowFlags().testFlag(Qt::Tool)
+           && w->windowFlags().testFlag(Qt::FramelessWindowHint)
+           && w->parentWidget() == parent;
+}
+
 } // namespace
 
 int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
 {
     // lsc_column_float (420): a whole widget column dragged by its header with no
-    // resolved column target tears off into an in-window `PanelFloat` overlay
-    // (never an OS window) that keeps the shared minimum width and a resize grip;
-    // a later release on a workspace edge re-docks the whole column into the
-    // splitter and removes the overlay.
+    // resolved column target tears off into a frameless `Qt::Tool` overlay
+    // (parented to the main window, never a decorated OS window) that keeps the
+    // shared minimum width and a resize grip; a later release on a workspace edge
+    // re-docks the whole column into the splitter and removes the overlay.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         for (int i = 0; i < 6; ++i) {
@@ -49,7 +58,7 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         QWidget* central = frame.centralWidget();
 
         bool floated = false;
-        bool inWindow = false;
+        bool toolWindow = false;
         bool minWidth = false;
         bool grip = false;
         bool redocked = false;
@@ -58,14 +67,13 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
                 column->mapToGlobal(QPoint(qMax(1, column->width() / 2), 8));
             column->beginColumnHeaderDragForTest(start);
             // The document area resolves no column and no workspace edge, so the
-            // whole column follows the cursor as an in-window overlay.
+            // whole column follows the cursor as a frameless tool window.
             const QPoint empty = tabs->mapToGlobal(tabs->rect().center());
             column->dragColumnHeaderToForTest(empty);
             pictura::PanelFloat* floatWindow = column->columnFloatForTest();
             floated = floatWindow != nullptr && splitter->indexOf(column) < 0;
-            inWindow = floated && !floatWindow->isWindow()
-                       && floatWindow->parentWidget() == &frame
-                       && floatWindow->content() == column;
+            toolWindow = floated && toolFloatWindow(floatWindow, &frame)
+                         && floatWindow->content() == column;
             minWidth = floated && floatWindow->minimumWidth() >= pictura::PanelFloat::kFloatMinWidth
                        && floatWindow->width() >= pictura::PanelFloat::kFloatMinWidth;
             grip = floated && floatWindow->sizeGripForTest() != nullptr;
@@ -79,9 +87,9 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
 
         ST_BEGIN("lsc_column_float");
         ST_PASS("lsc_column_float floated=%d window=%d min=%d grip=%d redocked=%d",
-                floated ? 1 : 0, inWindow ? 1 : 0, minWidth ? 1 : 0, grip ? 1 : 0,
+                floated ? 1 : 0, toolWindow ? 1 : 0, minWidth ? 1 : 0, grip ? 1 : 0,
                 redocked ? 1 : 0);
-        if (!(floated && inWindow && minWidth && grip && redocked)) {
+        if (!(floated && toolWindow && minWidth && grip && redocked)) {
             return pictura::selfTest().fail(420, "column float");
         }
 
@@ -128,9 +136,9 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         pump4(6);
     }
 
-    // tools_column_float_tabless (422): the tools column floats in-window
-    // (`!isWindow()`), is tabless (no `PanelGroup`s), and re-docks on a valid
-    // column release.
+    // tools_column_float_tabless (422): the tools column floats as a frameless
+    // tool window, is tabless (no `PanelGroup`s), and re-docks on a valid column
+    // release.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
@@ -146,7 +154,7 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
                 tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8)));
             tools->dragColumnHeaderToForTest(tabs->mapToGlobal(tabs->rect().center()));
             pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
-            floated = floatWindow && !floatWindow->isWindow()
+            floated = floatWindow && toolFloatWindow(floatWindow, &frame)
                       && floatWindow->content() == tools && splitter->indexOf(tools) < 0;
             tabless = tools->isToolsColumn() && tools->groups().isEmpty()
                       && !tools->railMode();
@@ -775,6 +783,292 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         if (!(torn && began && groupDrag && noGhost && intact)) {
             return pictura::selfTest().fail(432, "float grip drag");
         }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+    }
+
+    // float_grip_resize (433): dragging the overlay's corner grip resizes the
+    // overlay itself and leaves the main window's size unchanged.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool torn = false;
+        bool resized = false;
+        bool windowUnchanged = false;
+        if (column) {
+            pictura::PanelGroup* group = nullptr;
+            for (pictura::PanelGroup* candidate : column->groups()) {
+                if (candidate && candidate->titleCountForTest() > 0) {
+                    group = candidate;
+                    break;
+                }
+            }
+            if (group && group->visiblePanels().isEmpty() && !group->panels().isEmpty()
+                && group->panels().first()) {
+                column->showPanel(group->panels().first()->objectName(), true);
+                pump4(4);
+            }
+            const QString panel = group && !group->visiblePanels().isEmpty()
+                                      && group->visiblePanels().first()
+                                  ? group->visiblePanels().first()->objectName()
+                                  : QString();
+            if (!panel.isEmpty()) {
+                torn = column->tearOffForTest(panel);
+                pump4(8);
+                const int index = column->floatCountForTest() - 1;
+                pictura::PanelFloat* floatWindow = column->floatForTest(index);
+                QWidget* grip = floatWindow ? floatWindow->sizeGripForTest() : nullptr;
+                if (torn && floatWindow && grip && grip->isVisible()) {
+                    const QSize mainBefore = frame.size();
+                    const QSize floatBefore = floatWindow->size();
+                    const QPointF local(grip->rect().center());
+                    const QPointF global(grip->mapToGlobal(grip->rect().center()));
+                    QMouseEvent press(QEvent::MouseButtonPress, local, global, Qt::LeftButton,
+                                      Qt::LeftButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(grip, &press);
+                    const QPointF moved = global + QPointF(40, 40);
+                    QMouseEvent move(QEvent::MouseMove, local, moved, Qt::NoButton,
+                                     Qt::LeftButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(grip, &move);
+                    QMouseEvent release(QEvent::MouseButtonRelease, local, moved, Qt::LeftButton,
+                                        Qt::NoButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(grip, &release);
+                    pump4(6);
+                    resized = floatWindow->width() > floatBefore.width()
+                              && floatWindow->height() > floatBefore.height();
+                    windowUnchanged = frame.size() == mainBefore;
+                }
+                column->closeFloatForTest(index);
+                pump4(6);
+            }
+        }
+        ST_BEGIN("float_grip_resize");
+        ST_PASS("float_grip_resize torn=%d resized=%d window=%d", torn ? 1 : 0,
+                resized ? 1 : 0, windowUnchanged ? 1 : 0);
+        if (!(torn && resized && windowUnchanged)) {
+            return pictura::selfTest().fail(433, "float grip resize");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+    }
+
+    // tools_float_fixed (434): the floating tools column has no resize grip and
+    // is sized to the minimum the tool grid and its content need.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+        pictura::PanelColumn* tools = frame.toolsColumn();
+        pictura::PanelColumn* primary = frame.panelColumn();
+        QWidget* tabs = frame.findChild<QWidget*>(QStringLiteral("documentTabs"));
+        bool floated = false;
+        bool fixed = false;
+        bool sized = false;
+        if (tools && primary && tabs) {
+            const int wantW = qMax(tools->minimumWidth(), tools->minimumSizeHint().width());
+            const int wantH = qMax(tools->minimumHeight(), tools->minimumSizeHint().height());
+            tools->beginColumnHeaderDragForTest(
+                tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8)));
+            tools->dragColumnHeaderToForTest(tabs->mapToGlobal(tabs->rect().center()));
+            pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
+            floated = floatWindow && toolFloatWindow(floatWindow, &frame);
+            if (floated) {
+                QWidget* grip = floatWindow->sizeGripForTest();
+                fixed = !floatWindow->resizableForTest() && (!grip || !grip->isVisible());
+                sized = qAbs(floatWindow->width() - wantW) <= 2
+                        && floatWindow->height() <= wantH + 2;
+            }
+            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+            const QPoint left(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
+            tools->dropColumnHeaderForTest(left);
+            pump4(6);
+        }
+        ST_BEGIN("tools_float_fixed");
+        ST_PASS("tools_float_fixed float=%d fixed=%d sized=%d", floated ? 1 : 0,
+                fixed ? 1 : 0, sized ? 1 : 0);
+        if (!(floated && fixed && sized)) {
+            return pictura::selfTest().fail(434, "tools float fixed");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+    }
+
+    // column_float_height (435): a floating widget column opens at about two
+    // thirds of its docked height, strictly less than the docked column.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        QWidget* tabs = frame.findChild<QWidget*>(QStringLiteral("documentTabs"));
+        bool floated = false;
+        bool shorter = false;
+        if (column && tabs) {
+            column->setRailMode(false);
+            pump4(4);
+            const int dockedHeight = column->height();
+            column->beginColumnHeaderDragForTest(
+                column->mapToGlobal(QPoint(qMax(1, column->width() / 2), 8)));
+            column->dragColumnHeaderToForTest(tabs->mapToGlobal(tabs->rect().center()));
+            pictura::PanelFloat* floatWindow = column->columnFloatForTest();
+            floated = floatWindow && toolFloatWindow(floatWindow, &frame);
+            if (floated) {
+                const int floatHeight = floatWindow->height();
+                shorter = floatHeight < dockedHeight
+                          && floatHeight >= pictura::PanelFloat::kFloatMinHeight;
+            }
+            pictura::PanelColumn* primary = frame.panelColumn();
+            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+            const QPoint left(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
+            column->dropColumnHeaderForTest(left);
+            pump4(6);
+        }
+        ST_BEGIN("column_float_height");
+        ST_PASS("column_float_height float=%d shorter=%d", floated ? 1 : 0,
+                shorter ? 1 : 0);
+        if (!(floated && shorter)) {
+            return pictura::selfTest().fail(435, "column float height");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+    }
+
+    // float_icon_width_snap (436): a collapsed-to-icons floating group snaps to
+    // the icon-row height and shrinks its width, leaving no normal-width body.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool torn = false;
+        bool snapped = false;
+        bool widthShrunk = false;
+        int expandedWidth = 0;
+        int collapsedWidth = 0;
+        int iconWidth = 0;
+        if (column) {
+            pictura::PanelGroup* group = nullptr;
+            for (pictura::PanelGroup* candidate : column->groups()) {
+                if (candidate && candidate->titleCountForTest() > 0) {
+                    group = candidate;
+                    break;
+                }
+            }
+            if (group && group->visiblePanels().isEmpty() && !group->panels().isEmpty()
+                && group->panels().first()) {
+                column->showPanel(group->panels().first()->objectName(), true);
+                pump4(4);
+            }
+            const QString panel = group && !group->visiblePanels().isEmpty()
+                                      && group->visiblePanels().first()
+                                  ? group->visiblePanels().first()->objectName()
+                                  : QString();
+            if (!panel.isEmpty()) {
+                if (group->isCollapsedToIcons()) {
+                    group->setCollapsedToIcons(false);
+                    pump4(4);
+                }
+                torn = column->tearOffForTest(panel);
+                pump4(8);
+                const int index = column->floatCountForTest() - 1;
+                pictura::PanelFloat* floatWindow = column->floatForTest(index);
+                if (torn && floatWindow && floatWindow->group() == group) {
+                    expandedWidth = floatWindow->width();
+                    group->setCollapsedToIcons(true);
+                    pump4(8);
+                    const int iconHeight = group->sizeHint().height();
+                    iconWidth = qMax(pictura::PanelFloat::kFloatMinWidth,
+                                     group->sizeHint().width());
+                    collapsedWidth = floatWindow->width();
+                    snapped = group->isCollapsedToIcons()
+                              && floatWindow->height() >= pictura::PanelFloat::kFloatIconMinHeight
+                              && floatWindow->height() <= iconHeight + 8;
+                    widthShrunk = collapsedWidth < expandedWidth
+                                  && collapsedWidth <= iconWidth + 2;
+                }
+                column->closeFloatForTest(index);
+                pump4(6);
+            }
+        }
+        ST_BEGIN("float_icon_width_snap");
+        ST_PASS("float_icon_width_snap torn=%d snapped=%d shrink=%d w=%d->%d icon=%d",
+                torn ? 1 : 0, snapped ? 1 : 0, widthShrunk ? 1 : 0, expandedWidth,
+                collapsedWidth, iconWidth);
+        if (!(torn && snapped && widthShrunk)) {
+            return pictura::selfTest().fail(436, "float icon width snap");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+    }
+
+    // float_screen_bounds (437): a float can be moved outside the main window
+    // rect, because movement is clamped to the screen rather than the window.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump4(6);
+        // Shrink the frame below the offscreen screen so a screen-clamped float
+        // has room outside it; the old central-rect clamp would pull it back.
+        const QSize frameBefore = frame.size();
+        frame.resize(700, 500);
+        pump4(8);
+        pictura::PanelColumn* column = frame.panelColumn();
+        bool torn = false;
+        bool onScreen = false;
+        bool outsideFrame = false;
+        int screenBottom = 0;
+        int frameBottom = 0;
+        int screenRight = 0;
+        int frameRight = 0;
+        if (column) {
+            pictura::PanelGroup* group = nullptr;
+            for (pictura::PanelGroup* candidate : column->groups()) {
+                if (candidate && candidate->titleCountForTest() > 0) {
+                    group = candidate;
+                    break;
+                }
+            }
+            if (group && group->visiblePanels().isEmpty() && !group->panels().isEmpty()
+                && group->panels().first()) {
+                column->showPanel(group->panels().first()->objectName(), true);
+                pump4(4);
+            }
+            const QString panel = group && !group->visiblePanels().isEmpty()
+                                      && group->visiblePanels().first()
+                                  ? group->visiblePanels().first()->objectName()
+                                  : QString();
+            if (!panel.isEmpty()) {
+                torn = column->tearOffForTest(panel);
+                pump4(8);
+                const int index = column->floatCountForTest() - 1;
+                const QRect screen = column->floatHostRectForTest();
+                const QRect frameRect(frame.mapToGlobal(QPoint(0, 0)), frame.size());
+                screenBottom = screen.bottom();
+                frameBottom = frameRect.bottom();
+                screenRight = screen.right();
+                frameRight = frameRect.right();
+                const bool lowBand = screen.bottom() > frameRect.bottom();
+                const bool rightBand = screen.right() > frameRect.right();
+                if (torn && (lowBand || rightBand)) {
+                    const QPoint want = lowBand
+                        ? QPoint(screen.center().x(), screen.bottom() + 400)
+                        : QPoint(screen.right() + 400, screen.center().y());
+                    const bool clamped = column->floatClampedForTest(index, want);
+                    const QRect after = column->floatGeometryForTest(index);
+                    onScreen = clamped && screen.contains(after);
+                    outsideFrame = lowBand ? after.bottom() > frameRect.bottom()
+                                           : after.right() > frameRect.right();
+                }
+                column->closeFloatForTest(index);
+                pump4(6);
+            }
+        }
+        ST_BEGIN("float_screen_bounds");
+        ST_PASS("float_screen_bounds torn=%d on_screen=%d outside=%d sb=%d fb=%d sr=%d fr=%d",
+                torn ? 1 : 0, onScreen ? 1 : 0, outsideFrame ? 1 : 0, screenBottom,
+                frameBottom, screenRight, frameRight);
+        if (!(torn && onScreen && outsideFrame)) {
+            return pictura::selfTest().fail(437, "float screen bounds");
+        }
+        frame.resize(frameBefore);
+        pump4(6);
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
     }

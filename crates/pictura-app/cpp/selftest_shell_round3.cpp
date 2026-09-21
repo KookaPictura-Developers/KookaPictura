@@ -13,11 +13,22 @@
 #include <QtCore/QCoreApplication>
 #include <QtGui/QMouseEvent>
 #include <QtWidgets/QApplication>
-#include <QtWidgets/QSizeGrip>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QToolButton>
+
+namespace {
+
+// A floating overlay is a frameless Qt::Tool top-level window, not an in-window
+// child and not a decorated OS window.
+bool toolFloatWindow(QWidget* w)
+{
+    return w && w->isWindow() && w->windowFlags().testFlag(Qt::Tool)
+           && w->windowFlags().testFlag(Qt::FramelessWindowHint);
+}
+
+} // namespace
 
 int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
 {
@@ -405,7 +416,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         tools->beginColumnHeaderDragForTest(startPoint());
         tools->dragColumnHeaderToForTest(canvas);
         pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
-        const bool floated = floatWindow && !floatWindow->isWindow() && cs->indexOf(tools) < 0;
+        const bool floated = floatWindow && toolFloatWindow(floatWindow) && cs->indexOf(tools) < 0;
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
         ST_BEGIN("lss_tools_title_drag");
@@ -585,8 +596,9 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lss_float_resize (411): the overlay carries a QSizeGrip and a non-zero
-    // minimum size (min width from the docked column, min height top+tab bars).
+    // lss_float_resize (411): the overlay carries a resize grip that resizes the
+    // overlay itself and a non-zero minimum size (min width from the docked
+    // column, min height top+tab bars).
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
@@ -600,8 +612,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
             torn = column->tearOffForTest(group->objectName());
             pump(8);
             pictura::PanelFloat* floatWindow = column->floatForTest(0);
-            QSizeGrip* sizeGrip = floatWindow ? floatWindow->findChild<QSizeGrip*>() : nullptr;
-            grip = sizeGrip != nullptr;
+            grip = floatWindow && floatWindow->sizeGripForTest() != nullptr;
             minSize = floatWindow && floatWindow->minimumWidth() > 0
                       && floatWindow->minimumHeight() > 0;
             column->closeFloatForTest(0);
@@ -771,7 +782,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         tools->dragColumnHeaderToForTest(tabs->mapToGlobal(tabs->rect().center()));
         pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
         const bool floating =
-            floatWindow && !floatWindow->isWindow() && cs->indexOf(tools) < 0;
+            floatWindow && toolFloatWindow(floatWindow) && cs->indexOf(tools) < 0;
         // Re-dock on the primary column's left half.
         const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
         const QPoint leftEdge(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
@@ -893,7 +904,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
             tools->dragColumnHeaderToForTest(canvas);
             pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
             const bool floating =
-                floatWindow && !floatWindow->isWindow() && cs->indexOf(tools) < 0;
+                floatWindow && toolFloatWindow(floatWindow) && cs->indexOf(tools) < 0;
             const bool released = tools->dropColumnHeaderForTest(canvas)
                                   && tools->columnFloatForTest() != nullptr;
             ok = begun && floating && released;

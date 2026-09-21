@@ -177,12 +177,12 @@ bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
 
 PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
 {
-    // Phase 3: a raised in-window float sits on top of the splitter panes, so a
+    // Phase 3: a raised floating overlay sits on top of the splitter panes, so a
     // pointer over its group resolves a tabify target before any column or edge
     // grammar claims the point. A whole-column float (no group) is never a
     // tabify target, so it falls through to the existing behaviour. The float
     // being dragged can never target itself.
-    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+    if (auto* frame = owningFrame()) {
         for (PanelColumn* column : frame->panelColumns()) {
             if (!column) {
                 continue;
@@ -222,7 +222,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
             return iconic;
         }
     }
-    if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+    if (auto* frame = owningFrame()) {
         const int side = frame->newColumnSideAt(globalPos);
         if (side >= 0) {
             DropTarget target;
@@ -280,7 +280,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
     if (target.outside) {
         // A point inside another column may still land there; that column's own
         // grammar decides the valid non-outside target.
-        if (auto* frame = qobject_cast<PicturaMainWindow*>(window())) {
+        if (auto* frame = owningFrame()) {
             if (PanelColumn* other = frame->columnAtGlobal(globalPos)) {
                 if (other != this) {
                     DropTarget delegated = other->resolveLocalDrop(globalPos);
@@ -854,7 +854,7 @@ bool PanelColumn::applyStripDrop(PanelGroup* source, const QString& name, int st
 
 bool PanelColumn::applyNewColumnDrop(PanelSide side, PanelColumn* anchor)
 {
-    auto* frame = qobject_cast<PicturaMainWindow*>(window());
+    auto* frame = owningFrame();
     if (!frame || !dragGroup_) {
         return false;
     }

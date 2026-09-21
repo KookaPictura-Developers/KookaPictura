@@ -21,7 +21,6 @@ class QMenu;
 class QResizeEvent;
 class QScrollArea;
 class QShowEvent;
-class QSizeGrip;
 class QSplitter;
 class QTabBar;
 class QToolButton;
@@ -36,12 +35,13 @@ class PicturaMainWindow;
 // relative to the document tabs, never of its on-screen geometry (M43).
 enum class PanelSide { Left, Right };
 
-// A torn-off group in an in-window frameless overlay. It hosts a real
+// A torn-off group in a frameless floating overlay. It hosts a real
 // `PanelGroup` (same tabs, menu, minimize, iconic row) whose own tab-bar drag
 // path routes back through the owning column, so it can be dragged back and
-// re-docked. It is a child of the main window (never a top-level `Qt::Tool`),
-// so it is clipped to the window and never appears in the task list. The column
-// deletes the overlay once its group is empty or re-docked.
+// re-docked. It is a frameless `Qt::Tool` top-level window parented to (transient
+// for) the main window: no title bar, no decorations, no taskbar entry, and it
+// may move anywhere on the screen. The column deletes the overlay once its group
+// is empty or re-docked.
 class PanelFloat : public QWidget {
     Q_OBJECT
 
@@ -50,14 +50,18 @@ public:
     PanelGroup* group() const { return group_; }
     void setGroup(PanelGroup* group);
     // A whole torn-off `PanelColumn` is hosted through the same overlay: the
-    // content setter takes either a group or a column, so the in-window
+    // content setter takes either a group or a column, so the windowing
     // behaviour, size grip, and minimum width are shared by construction.
     void setContent(QWidget* content);
     QWidget* content() const { return content_; }
-    QSizeGrip* sizeGripForTest() const { return sizeGrip_; }
-    // M47: keep the overlay sized to its hosted group. Collapsed-to-icons snaps
-    // to the icon row's height; expanded drops the icon floor and grows to the
-    // hint.
+    QWidget* sizeGripForTest() const { return sizeGrip_; }
+    // When false the grip is removed and the overlay takes the minimum its
+    // content needs; the floating tools column uses this.
+    void setResizable(bool on);
+    bool resizableForTest() const { return resizable_; }
+    // Keep the overlay sized to its hosted group. Collapsed-to-icons snaps
+    // to the icon row's width and height; expanded drops the icon floor and
+    // grows to the hint. A whole-column overlay snaps when its column is iconic.
     void syncToContent();
     // M47: dim the overlay while it hovers a valid drop target. A child widget
     // ignores `setWindowOpacity`, so one shared `QGraphicsOpacityEffect` carries
@@ -81,7 +85,8 @@ private:
     PanelGroup* group_ = nullptr;
     QWidget* content_ = nullptr;
     QGraphicsOpacityEffect* opacityEffect_ = nullptr;
-    QSizeGrip* sizeGrip_ = nullptr;
+    QWidget* sizeGrip_ = nullptr;
+    bool resizable_ = true;
     QWidget* indicator_ = nullptr;
 };
 
@@ -129,7 +134,7 @@ public:
     // wiring and `floats_` ownership) so an emptied source column can be removed.
     void rehomeFloatsTo(PanelColumn* target);
 
-    // True while the whole column is torn off into an in-window `PanelFloat`
+    // True while the whole column is torn off into a frameless `PanelFloat`
     // overlay. A floated column is not a splitter pane, so the empty-column
     // cleanup must never delete it.
     bool isColumnFloating() const { return columnFloat_ != nullptr; }
@@ -255,7 +260,7 @@ public:
     bool redockForTest(int floatIndex, int boundaryIndex);
     bool closeFloatForTest(int index);
     QToolButton* floatCloseButtonForTest(int index) const;
-    bool floatIsWindowForTest(int index) const;
+    bool floatIsToolWindowForTest(int index) const;
     QRect floatGeometryForTest(int index) const;
     QRect floatHostRectForTest() const;
     bool floatClampedForTest(int index, const QPoint& globalTopLeft);
@@ -355,7 +360,7 @@ private:
         // column for a cross-column result). The indicator is rendered through
         // the owner so the line is drawn where the commit will place it.
         PanelColumn* owner = nullptr;
-        // Phase 3: the in-window float hosting `group`, when the point resolved
+        // Phase 3: the floating overlay hosting `group`, when the point resolved
         // over an overlay. Null for docked targets; the tabify commit and the
         // indicator both key off it.
         PanelFloat* floatTarget = nullptr;
@@ -414,6 +419,10 @@ private:
     // M45 W4: remove this dynamic column when no group/panel is left, through
     // the frame's one cleanup entry point.
     void maybeRemoveSelf();
+    // The main window that owns this column, whether it is docked or hosted in
+    // a frameless floating overlay (whose parent is the frame). `window()` is the
+    // float once the column is floated, so callers that need the frame use this.
+    PicturaMainWindow* owningFrame() const;
     DropTarget resolveDrop(const QPoint& globalPos) const;
     DropTarget resolveLocalDrop(const QPoint& globalPos) const;
     bool resolveIconicDrop(const QPoint& globalPos, DropTarget& target) const;
@@ -450,11 +459,11 @@ private:
     void moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft);
     QRect floatBounds(QWidget* host) const;
     PanelFloat* floatForGroup(PanelGroup* group) const;
-    // Phase 3: this column's in-window float hosting a `PanelGroup` whose rect
+    // Phase 3: this column's floating overlay hosting a `PanelGroup` whose rect
     // contains `globalPos`, or null. A whole-column float (no group) is skipped.
     PanelFloat* groupFloatAtGlobal(const QPoint& globalPos) const;
     // The whole-column tear-off overlay lifecycle. `floatColumn` hosts this
-    // column in an in-window overlay at `globalTopLeft`; `redockColumnFloat`
+    // column in an floating overlay at `globalTopLeft`; `redockColumnFloat`
     // puts it back in the splitter through the frame's move path and removes the
     // overlay; `destroyColumnFloat` tears the overlay down without moving.
     PanelFloat* floatColumn(const QPoint& globalTopLeft);

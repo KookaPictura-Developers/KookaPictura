@@ -9,10 +9,11 @@
 
 #include <QtCore/QRect>
 #include <QtCore/QSize>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
+#include <QtGui/QScreen>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QBoxLayout>
-#include <QtWidgets/QMainWindow>
 #include <QtWidgets/QScrollArea>
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QSplitter>
@@ -49,10 +50,13 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
         groups_.removeAt(index);
         hosted->setParent(nullptr);
     }
-    // The overlay parents to the main window (its central area is the clamp
-    // rect) so it is clipped to the window; it must not parent to the
-    // `centerSplitter`, which would absorb it as a splitter pane.
-    QWidget* host = window();
+    // The overlay parents to the main window (transient for it) so it stays
+    // above the frame; it must not parent to the `centerSplitter`, which would
+    // absorb it as a splitter pane, nor to a float, which would nest it.
+    QWidget* host = owningFrame();
+    if (!host) {
+        host = window();
+    }
     if (!host) {
         host = this;
     }
@@ -87,31 +91,13 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
 
 QRect PanelColumn::floatBounds(QWidget* host) const
 {
-    if (!host) {
-        return QRect();
+    // A float may sit anywhere on the screen, including outside the main window;
+    // only the screen's available geometry bounds it so it cannot be lost.
+    QScreen* screen = host ? host->screen() : nullptr;
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
     }
-    // Keep the overlay in the central area plus the visible Tools pane, so a
-    // float can cross the toolbar; fall back to the whole window. The menu bar
-    // stays clear by clamping the top to the central widget's top.
-    if (auto* mainWindow = qobject_cast<QMainWindow*>(host)) {
-        if (QWidget* central = mainWindow->centralWidget()) {
-            const QRect centralRect(central->mapTo(host, QPoint(0, 0)), central->size());
-            QRect bounds = centralRect;
-            if (auto* pictura = qobject_cast<PicturaMainWindow*>(host)) {
-                if (QWidget* tools = pictura->findChild<QWidget*>(QStringLiteral("toolsPanel"))) {
-                    if (tools->isVisible()) {
-                        bounds = bounds.united(
-                            QRect(tools->mapTo(host, QPoint(0, 0)), tools->size()));
-                    }
-                }
-            }
-            if (bounds.top() < centralRect.top()) {
-                bounds.setTop(centralRect.top());
-            }
-            return bounds;
-        }
-    }
-    return host->rect();
+    return screen ? screen->availableGeometry() : QRect();
 }
 
 void PanelColumn::moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft)
@@ -119,16 +105,18 @@ void PanelColumn::moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft
     if (!floatWindow) {
         return;
     }
-    QWidget* host = floatWindow->parentWidget();
-    if (!host) {
-        return;
+    QScreen* screen = QGuiApplication::screenAt(globalTopLeft);
+    if (!screen) {
+        screen = floatWindow->parentWidget() ? floatWindow->parentWidget()->screen() : nullptr;
     }
-    const QRect bounds = floatBounds(host);
-    const QPoint local = host->mapFromGlobal(globalTopLeft);
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    const QRect bounds = screen ? screen->availableGeometry() : QRect();
     const int maxX = qMax(bounds.left(), bounds.right() - floatWindow->width() + 1);
     const int maxY = qMax(bounds.top(), bounds.bottom() - floatWindow->height() + 1);
-    floatWindow->move(qBound(bounds.left(), local.x(), maxX),
-                      qBound(bounds.top(), local.y(), maxY));
+    floatWindow->move(qBound(bounds.left(), globalTopLeft.x(), maxX),
+                      qBound(bounds.top(), globalTopLeft.y(), maxY));
 }
 
 void PanelColumn::destroyFloat(PanelFloat* floatWindow)
@@ -222,29 +210,43 @@ PanelFloat* PanelColumn::floatColumn(const QPoint& globalTopLeft)
     if (columnFloat_) {
         return columnFloat_;
     }
-    QWidget* host = window();
+    QWidget* host = owningFrame();
+    if (!host) {
+        host = window();
+    }
     if (!host) {
         return nullptr;
     }
-    // Keep the on-screen width (never below this column's minimum) so a re-dock
-    // lands in the slot the column left; the overlay carries the shared minimum
-    // width and the size grip for both group and column payloads.
-    const int width =
-        qMax(minimumWidth(), this->width() > 0 ? this->width() : kDefaultNormalWidth);
-    const int height = this->height() > 0 ? this->height() : 240;
     auto* floatWindow = new PanelFloat(host);
     floatWindow->setContent(this);
-    floatWindow->resize(width, height);
+    if (toolsContent_) {
+        // The floating tools column is not resizable and hugs its content: the
+        // tool grid width and the minimum height the content needs.
+        floatWindow->setMinimumWidth(0);
+        floatWindow->setResizable(false);
+    } else {
+        // Keep the on-screen width (never below this column's minimum) so a
+        // re-dock lands in the slot the column left; the overlay carries the
+        // shared minimum width and the size grip for both group and column
+        // payloads. The default height is about two thirds of the docked height
+        // so a floated column leaves room on the desktop.
+        const int width =
+            qMax(minimumWidth(), this->width() > 0 ? this->width() : kDefaultNormalWidth);
+        const int docked = this->height() > 0 ? this->height() : 240;
+        const int height = qMax(PanelFloat::kFloatMinHeight, (docked * 2) / 3);
+        floatWindow->resize(width, height);
+    }
     moveFloat(floatWindow, globalTopLeft);
     floatWindow->show();
     floatWindow->raise();
+    floatWindow->syncToContent();
     columnFloat_ = floatWindow;
     return floatWindow;
 }
 
 bool PanelColumn::redockColumnFloat(int side, PanelColumn* anchor)
 {
-    auto* frame = qobject_cast<PicturaMainWindow*>(window());
+    auto* frame = owningFrame();
     if (!columnFloat_ || !frame) {
         return false;
     }
@@ -275,14 +277,14 @@ void PanelColumn::cancelColumnFloat()
 
 void PanelColumn::updateColumnDrag(const QPoint& globalPos)
 {
-    auto* frame = qobject_cast<PicturaMainWindow*>(window());
+    auto* frame = owningFrame();
     if (!frame) {
         return;
     }
     int side = -1;
     PanelColumn* anchor = frame->resolveColumnMoveTarget(globalPos, this, &side);
     const bool hasTarget = side >= 0;
-    // M48: an unresolved move tears the whole column off into the in-window
+    // M48: an unresolved move tears the whole column off into the floating
     // overlay, which then follows the cursor until a target resolves or the drag
     // ends. This mirrors the group drag's outside-band float; no second drag
     // system.
@@ -329,7 +331,7 @@ void PanelColumn::updateColumnDrag(const QPoint& globalPos)
 bool PanelColumn::finishColumnDrag(const QPoint& globalPos)
 {
     setDragDimTarget(nullptr);
-    auto* frame = qobject_cast<PicturaMainWindow*>(window());
+    auto* frame = owningFrame();
     if (!frame) {
         return false;
     }
@@ -346,7 +348,7 @@ bool PanelColumn::finishColumnDrag(const QPoint& globalPos)
         return columnFloat_ ? redockColumnFloat(side, anchor)
                             : frame->movePanelColumn(this, side, anchor);
     }
-    // No target: the column stays torn off in the in-window overlay instead of
+    // No target: the column stays torn off in the floating overlay instead of
     // doing nothing, and a drag that never moved floats it now.
     if (!columnFloat_) {
         return floatColumn(globalPos - columnGrabOffset_) != nullptr;
