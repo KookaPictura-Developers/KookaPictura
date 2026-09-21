@@ -71,12 +71,17 @@ workspace outer left or right band the column SHALL show the same blue edge
 indicator the widget columns use, anchored on the outermost visible column on
 that side, and the release SHALL commit the Tools column on that side as a
 column. A release with no widget column under the pointer SHALL float the Tools
-column as an in-window overlay at the cursor, never as an operating-system
-top-level window, so a floating column stays floating and a column can be floated
-by dragging. While floating in-window the column SHALL keep its fixed content
-width and SHALL remain re-draggable. The Tools column SHALL NOT take an iconic
-rail mode. The implemented tool set and the active-tool contract SHALL be
-unchanged.
+column at the cursor as a frameless `Qt::Tool` top-level window parented to
+(transient for) the main window — no title bar, no window decorations, and no
+taskbar entry — rather than an in-window overlay, so a floating column stays
+floating and a column can be floated by dragging. The floating Tools column SHALL
+be movable outside the main window, its movement clamped to the available
+geometry of the screen under the target point so it cannot be lost off-screen.
+While floating it SHALL keep its fixed content width and SHALL remain
+re-draggable, and it SHALL NOT be resizable: it SHALL offer no resize grip and
+SHALL take the minimum its tool-grid content needs. The Tools column SHALL NOT
+take an iconic rail mode. The implemented tool set and the active-tool contract
+SHALL be unchanged.
 
 #### Scenario: Tools panel reflects the active tool [m23_toolbox]
 
@@ -110,12 +115,13 @@ unchanged.
   column on that side and the release commits the Tools column on that side as a
   column
 
-#### Scenario: The floating tools column is an in-window overlay [tpc_inwindow_float]
+#### Scenario: The floating tools column is a frameless tool window [tpc_inwindow_float]
 
 - **WHEN** the Tools column's header is dragged and released with no widget
   column under the pointer
-- **THEN** the Tools column floats as an in-window overlay at the cursor and no
-  operating-system top-level window is created
+- **THEN** the Tools column floats at the cursor as a frameless `Qt::Tool`
+  top-level window parented to the main window with no title bar, decorations,
+  or taskbar entry, movable outside the main window and clamped to the screen
 
 #### Scenario: A widget drag cannot combine with the tools column [tpc_atomic_target]
 
@@ -231,9 +237,10 @@ SHALL be derived from one content formula and SHALL be recomputed on every
 column-count change and on every float/column-host change, releasing the stale
 fixed axis before re-fixing it, so neither the one- nor the two-column layout is
 cut off or left over-tall. While the column is hosted in the workspace the tool
-grid SHALL fill its column height; while the column is floating in-window the
-overlay's height SHALL be fixed to the minimum its content needs and SHALL NOT be
-drag-resizable. The chosen column count SHALL persist in the session store and
+grid SHALL fill its column height; while the column is floating the overlay SHALL
+be a frameless `Qt::Tool` top-level window parented to the main window and its
+height SHALL be fixed to the minimum its content needs, with no resize grip and
+no drag-resize. The chosen column count SHALL persist in the session store and
 SHALL load as one column when the store is missing, older, or the value is out of
 range. The foreground/background control and the screen-mode control SHALL remain
 below the slots in both layouts. A missing column icon SHALL fall back to a text
@@ -278,7 +285,7 @@ arrow rather than fail.
 
 #### Scenario: The floating height is fixed [m44_toolsfloat]
 
-- **WHEN** the Tools column is floating in-window and a resize is attempted
+- **WHEN** the Tools column is floating and a resize is attempted
 - **THEN** its height stays the minimum its content needs and does not change
 
 #### Scenario: The tools column has no iconic mode [tpc_no_iconic]

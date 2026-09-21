@@ -466,12 +466,21 @@ bool PanelColumn::floatTabIndicatorVisibleForTest(int index) const
     return floatWindow && floatWindow->tabIndicatorVisibleForTest();
 }
 
-bool PanelColumn::floatIsWindowForTest(int index) const
+bool PanelColumn::floatIsToolWindowForTest(int index) const
 {
     if (index < 0 || index >= floats_.size()) {
         return false;
     }
-    return floats_.at(index)->isWindow();
+    PanelFloat* floatWindow = floats_.at(index);
+    if (!floatWindow) {
+        return false;
+    }
+    const Qt::WindowFlags flags = floatWindow->windowFlags();
+    // A frameless tool window: top-level, no decorations, and transient for the
+    // main window (its parent), so it stays above the frame with no taskbar entry.
+    return floatWindow->isWindow() && flags.testFlag(Qt::Tool)
+           && flags.testFlag(Qt::FramelessWindowHint)
+           && qobject_cast<QMainWindow*>(floatWindow->parentWidget()) != nullptr;
 }
 
 QRect PanelColumn::floatGeometryForTest(int index) const
@@ -485,12 +494,9 @@ QRect PanelColumn::floatGeometryForTest(int index) const
 
 QRect PanelColumn::floatHostRectForTest() const
 {
-    QWidget* host = window();
-    if (!host) {
-        return QRect();
-    }
-    const QRect bounds = floatBounds(host);
-    return QRect(host->mapToGlobal(bounds.topLeft()), bounds.size());
+    // The float is clamped to the screen, not the main window, so the host rect
+    // is the screen's available geometry.
+    return floatBounds(window());
 }
 
 bool PanelColumn::floatClampedForTest(int index, const QPoint& globalTopLeft)

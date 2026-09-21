@@ -4067,10 +4067,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             ST_FAIL(135, "per-widget menu");
         }
 
-        // m42_float_overlay (136): a torn-off group is an in-window child
-        // overlay (never a top-level window), a move toward or past the main
-        // window edge is clamped inside the central area, and the group
-        // re-docks and the overlay disappears.
+        // m42_float_overlay (136): a torn-off group is a frameless tool window
+        // overlay (a `Qt::Tool` top-level parented to the main window, never a
+        // decorated OS window), a move toward or past the screen edge is
+        // clamped to the screen, and the group re-docks and the overlay
+        // disappears.
         bool floatChild = false;
         bool floatClamped = false;
         bool floatMove = false;
@@ -4101,7 +4102,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     QCoreApplication::processEvents();
                 }
                 floatChild = floatTore && panelColumnColumn->floatCountForTest() == 1
-                                && !panelColumnColumn->floatIsWindowForTest(0)
+                                && panelColumnColumn->floatIsToolWindowForTest(0)
                                 && !panelColumnColumn->groupForPanel(floatPanel);
                 if (floatChild) {
                     const QRect floatHost = panelColumnColumn->floatHostRectForTest();
@@ -6102,8 +6103,8 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             }
 
             // 183: the tools column's own header drives the whole-column drag:
-            // a press-move follows as an in-window overlay (never an OS window),
-            // and a release on the workspace edge re-docks the column.
+            // a press-move follows as a frameless tool window (never a decorated
+            // OS window), and a release on the workspace edge re-docks the column.
             bool toolsMoved = false;
             bool toolsFinished = false;
             if (pictura::PanelColumn* tools = frame.toolsColumn()) {
@@ -6114,7 +6115,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                           : tools->mapToGlobal(QPoint(tools->width() * 2, 40));
                 tools->dragColumnHeaderToForTest(empty);
                 pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
-                toolsMoved = floatWindow != nullptr && !floatWindow->isWindow();
+                toolsMoved = floatWindow != nullptr && floatWindow->isWindow()
+                             && floatWindow->windowFlags().testFlag(Qt::Tool)
+                             && floatWindow->windowFlags().testFlag(Qt::FramelessWindowHint);
                 const QPoint edge(frame.centralWidget()->mapToGlobal(
                     QPoint(2, frame.centralWidget()->height() / 2)));
                 toolsFinished = tools->dropColumnHeaderForTest(edge)

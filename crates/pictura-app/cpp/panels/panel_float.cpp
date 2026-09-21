@@ -18,6 +18,8 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QHideEvent>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QPainter>
+#include <QtGui/QPaintEvent>
 #include <QtGui/QPalette>
 #include <QtGui/QResizeEvent>
 #include <QtGui/QScreen>
@@ -32,13 +34,74 @@
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QScrollArea>
 #include <QtWidgets/QScrollBar>
-#include <QtWidgets/QSizeGrip>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
 
 namespace pictura {
+
+namespace {
+
+// A small bottom-right grip that resizes its owning `PanelFloat`. Unlike
+// `QSizeGrip` it never touches the top-level window (the main window); it only
+// grows or shrinks the overlay, clamped to the overlay's minimum size.
+class PanelResizeGrip : public QWidget {
+public:
+    explicit PanelResizeGrip(PanelFloat* overlay)
+        : QWidget(overlay), overlay_(overlay)
+    {
+        setObjectName(QStringLiteral("panelFloatSizeGrip"));
+        setAttribute(Qt::WA_StyledBackground, true);
+        setCursor(Qt::SizeFDiagCursor);
+        setFixedSize(14, 14);
+        setToolTip(QObject::tr("Resize"));
+    }
+    QSize sizeHint() const override { return QSize(14, 14); }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        // The classic diagonal grip lines, mirroring the native QSizeGrip.
+        QPainter painter(this);
+        painter.setPen(palette().color(QPalette::WindowText));
+        for (int i = 0; i < 3; ++i) {
+            const int offset = 3 + i * 4;
+            painter.drawLine(width() - offset, height() - 2, width() - 2, height() - offset);
+        }
+    }
+
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        if (event->button() != Qt::LeftButton) {
+            return;
+        }
+        pressGlobal_ = event->globalPosition().toPoint();
+        startSize_ = overlay_->size();
+        event->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override
+    {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            return;
+        }
+        const QPoint delta = event->globalPosition().toPoint() - pressGlobal_;
+        const QSize next = (startSize_ + QSize(delta.x(), delta.y()))
+                               .expandedTo(overlay_->minimumSize());
+        overlay_->resize(next);
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override { event->accept(); }
+
+private:
+    PanelFloat* overlay_;
+    QPoint pressGlobal_;
+    QSize startSize_;
+};
+
+} // namespace
 
 PanelFlyout::PanelFlyout(QWidget* parent)
     : QWidget(parent)
@@ -58,10 +121,11 @@ PanelFloat::PanelFloat(QWidget* parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("panelFloat"));
-    // ponytail: in-window overlay — a plain raised child, never a top-level
-    // window, so it is clipped to the main window and stays out of the task
-    // list. OS-window float chrome and multi-monitor float are non-goals.
-    setWindowFlags(Qt::Widget);
+    // A frameless `Qt::Tool` top-level window parented to (transient for) the
+    // main window: no title bar, no decorations, no taskbar entry, and the
+    // overlay may move anywhere on the screen. The parent keeps it above the
+    // frame and hidden with it.
+    setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_StyledBackground, true);
     setMinimumWidth(kFloatMinWidth);
     auto* layout = new QVBoxLayout(this);
@@ -72,11 +136,8 @@ PanelFloat::PanelFloat(QWidget* parent)
     opacityEffect_ = new QGraphicsOpacityEffect(this);
     opacityEffect_->setOpacity(1.0);
     setGraphicsEffect(opacityEffect_);
-    // M47: the overlay is resizable like a docked column; the grip rides the
-    // bottom-right corner and never makes this a top-level window.
-    sizeGrip_ = new QSizeGrip(this);
-    sizeGrip_->setObjectName(QStringLiteral("panelFloatSizeGrip"));
-    sizeGrip_->setToolTip(tr("Resize"));
+    // The grip resizes this overlay, never the main window.
+    sizeGrip_ = new PanelResizeGrip(this);
 }
 
 void PanelFloat::setContent(QWidget* content)
@@ -108,26 +169,56 @@ void PanelFloat::setGroup(PanelGroup* group)
     }
 }
 
+void PanelFloat::setResizable(bool on)
+{
+    resizable_ = on;
+    if (sizeGrip_) {
+        sizeGrip_->setVisible(on);
+    }
+    if (on) {
+        return;
+    }
+    // A non-resizable overlay takes the minimum its content needs. The tools
+    // column drops the widget-column width floor so it can hug the tool grid.
+    setMinimumWidth(0);
+    setMinimumHeight(0);
+    if (content_) {
+        const int w = qMax(content_->minimumWidth(), content_->minimumSizeHint().width());
+        const int h = qMax(content_->minimumHeight(), content_->minimumSizeHint().height());
+        resize(qMax(1, w), qMax(1, h));
+    }
+}
+
 void PanelFloat::syncToContent()
 {
-    if (!group_) {
+    if (group_) {
+        if (group_->isCollapsedToIcons()) {
+            setMinimumHeight(kFloatIconMinHeight);
+            // Snap both axes: the icon row is shorter and narrower than the
+            // expanded body, so no normal-width residue is left behind.
+            const int w = qMax(kFloatMinWidth, group_->sizeHint().width());
+            const int h = qMax(group_->sizeHint().height(), kFloatIconMinHeight);
+            resize(w, h);
+            return;
+        }
+        // Expanded: the overlay keeps a top-bar + tab-bar floor and grows to fit
+        // the group.
+        setMinimumHeight(kFloatMinHeight);
+        const int target = group_->sizeHint().height();
+        if (target > height()) {
+            resize(width(), target);
+        }
         return;
     }
-    if (group_->isCollapsedToIcons()) {
-        setMinimumHeight(kFloatIconMinHeight);
-        // M47: snap to the icon row rather than only growing, so collapsing a
-        // tall expanded float actually shrinks the overlay.
-        const int target = qMax(group_->sizeHint().height(), kFloatIconMinHeight);
-        resize(width(), target);
+    // A whole-column overlay has no group; snap to the hosted column's content
+    // when the column is collapsed to its iconic strip.
+    auto* column = qobject_cast<PanelColumn*>(content_);
+    if (!column || column->isToolsColumn() || !column->railMode()) {
         return;
     }
-    // Expanded: the overlay keeps a top-bar + tab-bar floor and grows to fit the
-    // group.
-    setMinimumHeight(kFloatMinHeight);
-    const int target = group_->sizeHint().height();
-    if (target > height()) {
-        resize(width(), target);
-    }
+    setMinimumHeight(kFloatIconMinHeight);
+    resize(qMax(kFloatMinWidth, column->minimumWidth()),
+           qMax(column->minimumSizeHint().height(), kFloatIconMinHeight));
 }
 
 void PanelFloat::setDragDimmed(bool dimmed)
