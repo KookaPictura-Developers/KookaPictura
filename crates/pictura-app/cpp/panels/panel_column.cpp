@@ -74,7 +74,16 @@ PanelColumn::PanelColumn(QWidget* parent)
     columnToggle_->setObjectName(QStringLiteral("panelColumnToggle"));
     columnToggle_->setAutoRaise(true);
     columnToggle_->setFixedSize(20, 20);
-    connect(columnToggle_, &QToolButton::clicked, this, [this]() { setRailMode(!railMode_); });
+    connect(columnToggle_, &QToolButton::clicked, this, [this]() {
+        if (toolsContent_) {
+            if (toolsToggleAction_) {
+                toolsToggleAction_();
+            }
+            updateColumnToggle();
+        } else {
+            setRailMode(!railMode_);
+        }
+    });
     headerLayout->addWidget(columnToggle_);
     layout->addWidget(header_);
     updateColumnToggle();
@@ -119,6 +128,16 @@ PanelColumn::PanelColumn(QWidget* parent)
     stripIndicator_->setAttribute(Qt::WA_TransparentForMouseEvents);
     stripIndicator_->setStyleSheet(QStringLiteral("background-color:#2a7fff;"));
     stripIndicator_->hide();
+
+    // Phase 4: the blue region outline drawn around a whole target group for a
+    // group-on-group tabify. A transparent centre keeps the group visible.
+    outlineIndicator_ = new QWidget(scroll_->viewport());
+    outlineIndicator_->setObjectName(QStringLiteral("panelOutlineIndicator"));
+    outlineIndicator_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    outlineIndicator_->setAttribute(Qt::WA_StyledBackground);
+    outlineIndicator_->setStyleSheet(QStringLiteral(
+        "background:transparent; border:2px solid #2a7fff; border-radius:6px;"));
+    outlineIndicator_->hide();
 
     setMinimumHeight(0);
     updateMinimumWidth();
@@ -390,8 +409,56 @@ void PanelColumn::maybeRemoveSelf()
     }
 }
 
+void PanelColumn::setToolsContent(QWidget* content, std::function<int()> columnsState,
+                                  std::function<void()> onToggleRequested)
+{
+    if (!content || toolsContent_) {
+        return;
+    }
+    toolsContent_ = content;
+    toolsColumnsState_ = std::move(columnsState);
+    toolsToggleAction_ = std::move(onToggleRequested);
+    // No group stack and no rail: host the plain content in the column body.
+    scroll_->setVisible(false);
+    iconStrip_->setVisible(false);
+    if (auto* box = qobject_cast<QBoxLayout*>(layout())) {
+        box->addWidget(content, 1);
+    }
+    content->setVisible(true);
+    updateMinimumWidth();
+    updateColumnToggle();
+}
+
+void PanelColumn::refreshToolsWidth()
+{
+    if (!toolsContent_) {
+        return;
+    }
+    updateMinimumWidth();
+    // A splitter pane keeps its explicit size until told otherwise; resize this
+    // pane to its content width when a 1<->2 column flip changed that width.
+    if (auto* splitter = qobject_cast<QSplitter*>(parentWidget())) {
+        const int index = splitter->indexOf(this);
+        if (index >= 0 && splitter->width() > 0) {
+            QList<int> sizes = splitter->sizes();
+            if (index < sizes.size()) {
+                sizes[index] = minimumWidth();
+                splitter->setSizes(sizes);
+            }
+        }
+    }
+}
+
 void PanelColumn::updateMinimumWidth()
 {
+    if (toolsContent_) {
+        // D2: the tools column tracks its content width (slot grid + fg/bg),
+        // not the widget-column floor.
+        const int want = toolsContent_->minimumWidth() > 0 ? toolsContent_->minimumWidth()
+                                                           : toolsContent_->sizeHint().width();
+        setMinimumWidth(qMax(kIconStripMinWidth, want));
+        return;
+    }
     if (railMode_) {
         setMinimumWidth(kIconStripMinWidth);
         return;
@@ -574,187 +641,6 @@ void PanelColumn::restorePanelState(const QJsonArray& state)
         buildIconStrip();
     }
     updateMinimumWidth();
-}
-
-PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
-{
-    if (!group) {
-        return nullptr;
-    }
-    PanelGroup* hosted = group;
-    if (dragIsPanel_ && !dragPanel_.isEmpty()) {
-        // M43: a tab drag floats a one-panel group holding only the dragged
-        // panel; the source stack (docked group or old float) keeps the rest.
-        QString title;
-        QIcon iconValue;
-        int index = -1;
-        QWidget* panel = group->takePanel(dragPanel_, &title, &iconValue, &index);
-        if (!panel) {
-            return nullptr;
-        }
-        hosted = new PanelGroup(this);
-        hosted->addPanel(panel, title, iconValue);
-        panelVisible_[dragPanel_] = true;
-        wireGroup(hosted);
-        // M44 W4: keep the (possibly now empty) source group alive so its tab
-        // bar keeps the implicit mouse grab until release; commitDrop/cancelDrag
-        // clean it up once the drag ends.
-    }
-    const int index = groups_.indexOf(hosted);
-    if (index >= 0) {
-        groups_.removeAt(index);
-        hosted->setParent(nullptr);
-    }
-    // The overlay parents to the main window (its central area is the clamp
-    // rect) so it is clipped to the window; it must not parent to the
-    // `centerSplitter`, which would absorb it as a splitter pane.
-    QWidget* host = window();
-    if (!host) {
-        host = this;
-    }
-    auto* floatWindow = new PanelFloat(host);
-    floatWindow->setGroup(hosted);
-    floatWindow->onClose = [this, floatWindow]() { closeFloat(floatWindow); };
-    hosted->setVisible(true);
-    QSize size = hosted->sizeHint();
-    size = size.expandedTo(QSize(220, 120));
-    if (size.width() > 520) {
-        size.setWidth(520);
-    }
-    floatWindow->resize(size);
-    moveFloat(floatWindow, globalPos - dragGrabOffset_);
-    floatWindow->show();
-    // M47: an iconic hosted group needs room for its icon row.
-    if (hosted->isCollapsedToIcons()
-        && floatWindow->height() < PanelFloat::kFloatIconMinHeight) {
-        floatWindow->resize(floatWindow->width(), PanelFloat::kFloatIconMinHeight);
-    }
-    floatWindow->syncToContent();
-    floatWindow->raise();
-    floats_ << floatWindow;
-    // ponytail: the strip row stays stale during the drag (rebuilt on
-    // commit/cancel), because rebuilding it deletes the widget holding the
-    // mouse grab.
-    // Re-dock routes through the float's group, so commitDrop takes the panel
-    // out of the one-panel float (or re-inserts the whole group).
-    dragGroup_ = hosted;
-    return floatWindow;
-}
-
-QRect PanelColumn::floatBounds(QWidget* host) const
-{
-    if (!host) {
-        return QRect();
-    }
-    // Keep the overlay in the central area plus the visible Tools pane, so a
-    // float can cross the toolbar; fall back to the whole window. The menu bar
-    // stays clear by clamping the top to the central widget's top.
-    if (auto* mainWindow = qobject_cast<QMainWindow*>(host)) {
-        if (QWidget* central = mainWindow->centralWidget()) {
-            const QRect centralRect(central->mapTo(host, QPoint(0, 0)), central->size());
-            QRect bounds = centralRect;
-            if (auto* pictura = qobject_cast<PicturaMainWindow*>(host)) {
-                if (QWidget* tools = pictura->findChild<QWidget*>(QStringLiteral("toolsPanel"))) {
-                    if (tools->isVisible()) {
-                        bounds = bounds.united(
-                            QRect(tools->mapTo(host, QPoint(0, 0)), tools->size()));
-                    }
-                }
-            }
-            if (bounds.top() < centralRect.top()) {
-                bounds.setTop(centralRect.top());
-            }
-            return bounds;
-        }
-    }
-    return host->rect();
-}
-
-void PanelColumn::moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft)
-{
-    if (!floatWindow) {
-        return;
-    }
-    QWidget* host = floatWindow->parentWidget();
-    if (!host) {
-        return;
-    }
-    const QRect bounds = floatBounds(host);
-    const QPoint local = host->mapFromGlobal(globalTopLeft);
-    const int maxX = qMax(bounds.left(), bounds.right() - floatWindow->width() + 1);
-    const int maxY = qMax(bounds.top(), bounds.bottom() - floatWindow->height() + 1);
-    floatWindow->move(qBound(bounds.left(), local.x(), maxX),
-                      qBound(bounds.top(), local.y(), maxY));
-}
-
-void PanelColumn::destroyFloat(PanelFloat* floatWindow)
-{
-    if (!floatWindow) {
-        return;
-    }
-    if (!floats_.contains(floatWindow)) {
-        // Already torn down by a cleanup path in this drop; do not double-free.
-        if (dragFloat_ == floatWindow) {
-            dragFloat_ = nullptr;
-        }
-        maybeRemoveSelf();
-        return;
-    }
-    floats_.removeAll(floatWindow);
-    if (dragFloat_ == floatWindow) {
-        dragFloat_ = nullptr;
-    }
-    floatWindow->hide();
-    floatWindow->deleteLater();
-    maybeRemoveSelf();
-}
-
-void PanelColumn::closeFloat(PanelFloat* floatWindow)
-{
-    if (!floatWindow) {
-        return;
-    }
-    PanelGroup* group = floatWindow->group();
-    if (group && group->parentWidget() == floatWindow) {
-        group->setParent(nullptr);
-        insertGroupAt(group, groups_.size());
-        // Destroy the shell before `closeGroup` can trigger `maybeRemoveSelf`,
-        // which would re-home this float and leave the empty overlay behind.
-        destroyFloat(floatWindow);
-        closeGroup(group);
-        return;
-    }
-    destroyFloat(floatWindow);
-}
-
-void PanelColumn::rehomeFloatsTo(PanelColumn* target)
-{
-    if (!target || target == this) {
-        return;
-    }
-    for (PanelFloat* floatWindow : floats_) {
-        if (!floatWindow) {
-            continue;
-        }
-        PanelGroup* group = floatWindow->group();
-        if (!group) {
-            continue;
-        }
-        QObject::disconnect(group, nullptr, this, nullptr);
-        wired_.remove(group);
-        target->wireGroup(group);
-        // The float's close callback captured this (now-removed) column; repoint
-        // it at the target so the re-homed overlay's close button stays valid.
-        floatWindow->onClose = [target, floatWindow]() { target->closeFloat(floatWindow); };
-        for (QWidget* panel : group->panels()) {
-            if (panel) {
-                target->panelVisible_[panel->objectName()] =
-                    group->isPanelVisible(panel->objectName());
-            }
-        }
-    }
-    target->floats_.append(floats_);
-    floats_.clear();
 }
 
 } // namespace pictura

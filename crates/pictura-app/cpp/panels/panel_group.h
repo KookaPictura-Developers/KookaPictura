@@ -95,6 +95,8 @@ public:
     bool tabUsesScrollButtonsForTest() const;
     // M47: reserved draggable corner grip and the floating group's top bar.
     QWidget* headerGripForTest() const { return headerGrip_; }
+    QWidget* headerCornerForTest() const { return headerCorner_; }
+    QWidget* headerBandForTest() const { return headerBand_; }
     QWidget* floatHeaderForTest() const { return floatHeader_; }
     QToolButton* floatToggleForTest() const { return floatToggle_; }
     bool floatHeaderVisibleForTest() const;
@@ -141,12 +143,16 @@ private:
                                 const QString& objectName);
     // M47: mirror `PanelColumn::updateColumnToggle` for the float header.
     void updateFloatToggle();
+    // M47: keep the full-width header band sized to the tab bar.
+    void updateHeaderBand();
 
     QTabWidget* tabs_ = nullptr;
     QWidget* iconRow_ = nullptr;
     QBoxLayout* iconRowLayout_ = nullptr;
     QToolButton* headerButton_ = nullptr;
     QWidget* headerCorner_ = nullptr;
+    // M47: lowered band behind the tab bar and corner, full header width.
+    QWidget* headerBand_ = nullptr;
     // M47: always-present blank drag grip in the corner, right of the tabs.
     QWidget* headerGrip_ = nullptr;
     // M47: the floating group's top bar with its collapse toggle and close.

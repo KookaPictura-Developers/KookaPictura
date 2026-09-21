@@ -816,12 +816,12 @@ void PicturaMainWindow::registerHandlers()
 
     registry_->setHandler(command_ids::WindowPanelsTools, [this]() {
         QAction* action = registry_->action(command_ids::WindowPanelsTools);
-        if (toolsDock_ && action) {
-            toolsDock_->setVisible(action->isChecked());
+        if (toolsColumn_ && action) {
+            toolsColumn_->setVisible(action->isChecked());
         }
     });
     registry_->setCheckedProvider(command_ids::WindowPanelsTools,
-                                  [this]() { return toolsDock_ && toolsDock_->isVisible(); });
+                                  [this]() { return toolsColumn_ && toolsColumn_->isVisible(); });
 
     // The two implemented Preferences leaves; the other CS6 panes stay
     // disabled and are no-ops (their command-tree enablement is unchanged).

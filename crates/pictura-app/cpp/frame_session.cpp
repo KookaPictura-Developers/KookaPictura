@@ -5,9 +5,6 @@ namespace pictura {
 void PicturaMainWindow::setPanelsHidden(bool hidden)
 {
     panelsHidden_ = hidden;
-    if (toolsDock_) {
-        toolsDock_->setVisible(!hidden);
-    }
     for (PanelColumn* column : panelColumns()) {
         column->setVisible(!hidden);
     }
@@ -76,8 +73,9 @@ void PicturaMainWindow::saveSession()
         // Legacy flat mirror of the primary column kept for older stores.
         state.panelGroups = panelColumn_->savePanelState();
     }
-    // v8: the ordered per-column layout, in central-splitter order, each with
-    // its normal-mode width and its own rail mode.
+    // v9: the ordered per-column layout, in central-splitter order, each with
+    // its normal-mode width and its own rail mode. The tools column is recorded
+    // with a `tools` marker (its splitter order + the 1/2 tool-column count).
     QJsonArray columns;
     int order = 0;
     for (PanelColumn* column : panelColumns()) {
@@ -90,11 +88,16 @@ void PicturaMainWindow::saveSession()
         entry.insert(QStringLiteral("railMode"),
                      column->railMode() ? QStringLiteral("iconic")
                                         : QStringLiteral("normal"));
-        entry.insert(QStringLiteral("groups"), column->savePanelState());
+        if (column->isToolsColumn()) {
+            entry.insert(QStringLiteral("tools"), true);
+            entry.insert(QStringLiteral("groups"), QJsonArray());
+        } else {
+            entry.insert(QStringLiteral("groups"), column->savePanelState());
+        }
         columns.append(entry);
     }
     state.panelColumns = columns;
-    state.schemaVersion = 8;
+    state.schemaVersion = 9;
     state.recent = recent_;
     pictura::saveSession(state);
 }
@@ -138,7 +141,14 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
     int primary = -1;
     QList<int> leftIndices;
     QList<int> rightIndices;
+    // D5: the tools column entry (if any) is placed by side after the widget
+    // columns are rebuilt; it carries no groups and is never the primary column.
+    int toolsEntry = -1;
     for (int i = 0; i < entries.size(); ++i) {
+        if (entries.at(i).value(QStringLiteral("tools")).toBool()) {
+            toolsEntry = i;
+            continue;
+        }
         if (entries.at(i).value(QStringLiteral("side")).toString()
             == QStringLiteral("left")) {
             leftIndices.append(i);
@@ -248,6 +258,23 @@ void PicturaMainWindow::applyPanelSession(const SessionState& state)
     if (primaryWidth > 0) {
         panelColumn_->setRestoredWidth(primaryWidth);
         restoredWidths.append({panelColumn_, primaryWidth});
+    }
+    // D5: place the tools column at its recorded side. A store with no tools
+    // entry (v8 and older) loads the default left tools column at index 0.
+    if (toolsColumn_ && centerSplitter_) {
+        const bool right = toolsEntry >= 0
+                           && entries.at(toolsEntry).value(QStringLiteral("side")).toString()
+                                  == QStringLiteral("right");
+        // A live whole-column tear-off from a previous session must be dropped
+        // before the column is re-parented into the splitter.
+        toolsColumn_->cancelColumnFloat();
+        toolsColumn_->setParent(nullptr);
+        const int at = right ? centerSplitter_->count() : 0;
+        centerSplitter_->insertWidget(at, toolsColumn_);
+        toolsColumn_->setVisible(!panelsHidden_);
+        if (toolsColumn_->toolsContentForTest()) {
+            toolsColumn_->refreshToolsWidth();
+        }
     }
     restoringPanelSession_ = false;
     // Before the first layout the splitter has no width, so `setPreferredWidth`

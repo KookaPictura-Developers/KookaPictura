@@ -188,8 +188,11 @@ QFrame#panelIconDivider { background: ${border}; border: 0; }
 QWidget#panelIconGroup { background: ${window}; border: 1px solid ${border}; border-radius: 2px; }
 QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid ${border}; color: ${disabledText}; }
 /* M47: a collapsed group's iconic row reuses the docked strip's
-   `panelIconGroup` box, so the float and the strip read alike. The reserved
-   corner grip, corner container, and its `▾` button share the header strip. */
+   `panelIconGroup` box, so the float and the strip read alike. The header band,
+   the reserved corner grip, corner container, and its `▾` button share the
+   header strip; the band spans the whole group width behind the tabs and corner
+   so no vertical slice of the header is left unpainted. */
+QWidget#panelHeaderBand { background: ${panelHeader}; }
 QWidget#panelGroupDragGrip { background: ${panelHeader}; }
 QWidget#panelWidgetCorner { background: ${panelHeader}; }
 QWidget#panelWidgetCorner QToolButton { background: ${panelHeader}; color: ${buttonText}; border: 0; border-radius: 0; padding: 0; }
@@ -204,7 +207,7 @@ QTabBar#documentTabBar { border-right: ${borderWidth}px solid ${border}; border-
 QTabBar#documentTabBar::tab { font-weight: 500; padding-right: 12px; }
 QWidget#panelColumnContainer { border: ${borderWidth}px solid ${border}; }
 QWidget#panelColumnIconStrip { border: ${borderWidth}px solid ${border}; }
-QDockWidget#toolsPanel { border: ${borderWidth}px solid ${border}; }
+QWidget#toolsPanel { border: ${borderWidth}px solid ${border}; }
 QWidget#panelIconFlyout { background: ${window}; border: ${borderWidth}px solid ${border}; }
 QWidget#panelFloat { background: ${window}; border: ${borderWidth}px solid ${border}; }
 

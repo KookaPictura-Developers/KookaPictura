@@ -70,6 +70,9 @@ int runUiPersistenceChecks(pictura::PicturaMainWindow& frame)
         QString storedRight;
         for (const QJsonValue& value : saved.panelColumns) {
             const QJsonObject entry = value.toObject();
+            if (entry.value(QStringLiteral("tools")).toBool()) {
+                continue;
+            }
             const QString side = entry.value(QStringLiteral("side")).toString();
             const QString mode = entry.value(QStringLiteral("railMode")).toString();
             if (side == QStringLiteral("left") && storedLeft.isEmpty()) {
@@ -78,14 +81,14 @@ int runUiPersistenceChecks(pictura::PicturaMainWindow& frame)
                 storedRight = mode;
             }
         }
-        const bool storedOk = saved.schemaVersion == 8 && madeLeft
+        const bool storedOk = saved.schemaVersion >= 9 && madeLeft
             && storedLeft == QStringLiteral("iconic")
             && storedRight == QStringLiteral("normal");
 
         frame.applyPanelSessionForTest(saved);
         pump(8);
         pictura::PanelColumn* restoredLeft = frame.columnForPanel(QStringLiteral("stylesPanel"));
-        const bool appliedOk = frame.panelColumnCountForTest() == 2 && restoredLeft
+        const bool appliedOk = frame.panelColumnCountForTest() == 3 && restoredLeft
             && restoredLeft->railMode() && !frame.panelColumn()->railMode();
 
         // Rewrite the two-column store as schema 7 (no per-column `railMode`) so
@@ -114,12 +117,18 @@ int runUiPersistenceChecks(pictura::PicturaMainWindow& frame)
         }
         frame.applyPanelSessionForTest(pictura::loadSession());
         pump(8);
-        bool allIconic = frame.panelColumnCountForTest() == 2;
+        int widgetColumnCount = 0;
+        bool allIconic = true;
         for (pictura::PanelColumn* column : frame.panelColumns()) {
-            if (column && !column->railMode()) {
+            if (!column || column->isToolsColumn()) {
+                continue;
+            }
+            ++widgetColumnCount;
+            if (!column->railMode()) {
                 allIconic = false;
             }
         }
+        allIconic = allIconic && widgetColumnCount == 2;
         ST_BEGIN("lpr_column_railmode");
         ST_PASS("lpr_column_railmode stored=%s/%s applied=%d seeded=%d columns=%d",
                 qPrintable(storedLeft), qPrintable(storedRight), appliedOk ? 1 : 0,

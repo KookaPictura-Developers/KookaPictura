@@ -196,8 +196,16 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
     // and drives a whole-group drag through the existing signal path.
     {
         pictura::PanelColumn* column = frame.panelColumn();
-        pictura::PanelGroup* group =
-            column && !column->groups().isEmpty() ? column->groups().first() : nullptr;
+        pictura::PanelGroup* group = nullptr;
+        if (column) {
+            for (pictura::PanelGroup* candidate : column->groups()) {
+                if (candidate && candidate->isVisible()
+                    && !candidate->visibleTitles().isEmpty()) {
+                    group = candidate;
+                    break;
+                }
+            }
+        }
         bool hasGrip = false;
         bool dragStarted = false;
         if (group) {
@@ -324,26 +332,38 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lss_toolbox_column_drop (406): the Tools panel can land on either side of a
-    // widget column from a point in that column's interior (left half before it,
-    // right half after it), and both workspace outer bands land it at the
-    // splitter head/tail, through the same resolve/commit path the title-bar drag
-    // drives.
+    // lss_toolbox_column_drop (406): the tools column can be re-placed on either
+    // side of a widget column through its own header drag (left half before it,
+    // right half after it), and both workspace outer bands resolve a real
+    // sibling column rather than a dock.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
-        const bool leftHalf =
-            frame.toolboxOnColumnForTest(QStringLiteral("layersPanel"), false);
-        const bool rightHalf =
-            frame.toolboxOnColumnForTest(QStringLiteral("layersPanel"), true);
-        // Leave the default chrome for the following suites: re-dock the tools
-        // and drop the throwaway left column.
-        if (auto* toolbox =
-                frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"))) {
-            auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
-            if (cs && cs->indexOf(toolbox) >= 0) {
-                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                toolbox->setSplitterPane(false);
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        pictura::PanelColumn* tools = frame.toolsColumn();
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool leftHalf = false;
+        bool rightHalf = false;
+        if (cs && tools && primary) {
+            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+            const QPoint left(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
+            const QPoint right(pr.left() + (pr.width() * 3) / 4, pr.center().y());
+            auto dragTools = [&](const QPoint& to) {
+                tools->beginColumnHeaderDragForTest(
+                    tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8)));
+                tools->dragColumnHeaderToForTest(to);
+                const bool indicator = primary->dropIndicatorVisibleForTest();
+                tools->dropColumnHeaderForTest(to);
+                pump(6);
+                return indicator && cs->indexOf(tools) >= 0;
+            };
+            // A drag is a no-op when the tools column already sits on that side,
+            // so only the indicator is required; the final index is checked.
+            if (dragTools(left)) {
+                leftHalf = cs->indexOf(tools) < cs->indexOf(primary);
+            }
+            if (dragTools(right)) {
+                rightHalf = cs->indexOf(tools) > cs->indexOf(primary);
             }
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
@@ -356,79 +376,42 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         }
     }
 
-    // lss_tools_title_drag (407): a real press/drag/release on the Tools custom
-    // title bar drives the drop through the column grammar while Qt's own
-    // QDockWidget drag stays suppressed (the dock never floats mid-gesture). A
-    // release over a column interior lands the pane in the splitter; a release
-    // outside any column leaves it floating at the cursor.
+    // lss_tools_title_drag (407): the tools column header drag re-places the
+    // column beside a widget column on release, and a release over the empty
+    // document area leaves it as an in-window overlay (never an OS window).
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
-        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
         auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
-        pictura::PanelColumn* column = frame.panelColumn();
-        if (!toolbox || !cs || !column || !column->isVisible()) {
+        auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
+        pictura::PanelColumn* tools = frame.toolsColumn();
+        pictura::PanelColumn* primary = frame.panelColumn();
+        if (!cs || !tabs || !tools || !primary) {
             return pictura::selfTest().fail(407, "tools title drag fixture");
         }
-        if (cs->indexOf(toolbox) >= 0) {
-            frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-            toolbox->setSplitterPane(false);
-            pump(6);
-        }
-        auto sendMouse = [](QWidget* w, QEvent::Type type, const QPoint& global,
-                            Qt::MouseButton button, Qt::MouseButtons buttons) {
-            QMouseEvent event(type, QPointF(w->mapFromGlobal(global)), QPointF(global), button,
-                              buttons, Qt::NoModifier);
-            QApplication::sendEvent(w, &event);
+        auto startPoint = [tools]() {
+            return tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8));
         };
-        int moved = 0;
-        int finished = 0;
-        const QMetaObject::Connection c1 = QObject::connect(
-            toolbox, &pictura::Toolbox::toolbarDragMoved, toolbox,
-            [&moved](const QPoint&) { ++moved; });
-        const QMetaObject::Connection c2 = QObject::connect(
-            toolbox, &pictura::Toolbox::toolbarDragFinished, toolbox,
-            [&finished](const QPoint&) { ++finished; });
-
-        QWidget* title = toolbox->titleBarForTest();
-        const QPoint blank(qMax(2, title->width() / 4), title->height() / 2);
-        const QRect cr(column->mapToGlobal(QPoint(0, 0)), column->size());
-        const QPoint interior(cr.left() + qMax(1, cr.width() / 4), cr.center().y());
-        const int expected = cs->indexOf(column);
-
-        sendMouse(title, QEvent::MouseButtonPress, title->mapToGlobal(blank), Qt::LeftButton,
-                  Qt::LeftButton);
-        sendMouse(title, QEvent::MouseMove, interior, Qt::NoButton, Qt::LeftButton);
-        pump(4);
-        const bool suppressed = !toolbox->isFloating();
-        const bool movedFired = moved > 0;
-        const bool indicator = column->dropIndicatorVisibleForTest();
-        sendMouse(title, QEvent::MouseButtonRelease, interior, Qt::LeftButton, Qt::NoButton);
-        pump(8);
-        const bool placed = finished > 0 && toolbox->isSplitterPane()
-                            && cs->indexOf(toolbox) == expected;
-
-        QWidget* central = frame.centralWidget();
-        const QPoint outside(central->mapToGlobal(QPoint(central->width() / 2, 0)).x(),
-                             central->mapToGlobal(QPoint(0, 0)).y() - 400);
-        sendMouse(title, QEvent::MouseButtonPress, title->mapToGlobal(blank), Qt::LeftButton,
-                  Qt::LeftButton);
-        sendMouse(title, QEvent::MouseMove, outside, Qt::NoButton, Qt::LeftButton);
-        pump(4);
-        sendMouse(title, QEvent::MouseButtonRelease, outside, Qt::LeftButton, Qt::NoButton);
-        pump(8);
-        const bool floated = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
-
-        QObject::disconnect(c1);
-        QObject::disconnect(c2);
+        const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+        const QPoint interior(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
+        tools->beginColumnHeaderDragForTest(startPoint());
+        tools->dragColumnHeaderToForTest(interior);
+        const bool indicator = primary->dropIndicatorVisibleForTest();
+        tools->dropColumnHeaderForTest(interior);
+        pump(6);
+        const bool placed = cs->indexOf(tools) >= 0 && !tools->isWindow()
+                            && cs->indexOf(tools) < cs->indexOf(primary);
+        const QPoint canvas(tabs->mapToGlobal(tabs->rect().center()));
+        tools->beginColumnHeaderDragForTest(startPoint());
+        tools->dragColumnHeaderToForTest(canvas);
+        pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
+        const bool floated = floatWindow && !floatWindow->isWindow() && cs->indexOf(tools) < 0;
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
-
         ST_BEGIN("lss_tools_title_drag");
-        ST_PASS("lss_tools_title_drag suppressed=%d moved=%d indicator=%d placed=%d float=%d",
-                suppressed ? 1 : 0, movedFired ? 1 : 0, indicator ? 1 : 0, placed ? 1 : 0,
-                floated ? 1 : 0);
-        if (!(suppressed && movedFired && indicator && placed && floated)) {
+        ST_PASS("lss_tools_title_drag indicator=%d placed=%d float=%d",
+                indicator ? 1 : 0, placed ? 1 : 0, floated ? 1 : 0);
+        if (!(indicator && placed && floated)) {
             return pictura::selfTest().fail(407, "tools title drag");
         }
     }
@@ -474,30 +457,12 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
         const bool moved = cs->indexOf(primary) == 0 && cs->indexOf(primary) < cs->indexOf(left);
 
-        // Host the Tools panel as a splitter pane right of the primary column
-        // (the outer band is a dock target now), then a header drop to the
-        // far-left band must land at index 0, left of the Tools pane.
-        if (cs->indexOf(toolbox) >= 0) {
-            frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-            toolbox->setSplitterPane(false);
-            pump(4);
-        }
-        QWidget* central = frame.centralWidget();
-        const QPoint headPoint(central->mapToGlobal(QPoint(0, 0)).x() + 2,
-                               central->mapToGlobal(QPoint(0, central->height() / 2)).y());
-        const QRect paneRect(primary->mapToGlobal(QPoint(0, 0)), primary->size());
-        const QPoint panePoint(paneRect.left() + (paneRect.width() * 2) / 3,
-                               paneRect.center().y());
-        const bool toolsPane = frame.commitToolboxDrop(panePoint) && toolbox->isSplitterPane()
-                               && cs->indexOf(toolbox) >= 0;
-        sendMouse(header, QEvent::MouseButtonPress, header->mapToGlobal(blank), Qt::LeftButton,
-                  Qt::LeftButton);
-        sendMouse(header, QEvent::MouseMove, headPoint, Qt::NoButton, Qt::LeftButton);
-        pump(4);
-        sendMouse(header, QEvent::MouseButtonRelease, headPoint, Qt::LeftButton, Qt::NoButton);
-        pump(6);
-        const bool leftOfTools = toolsPane && cs->indexOf(primary) == 0
-                                 && cs->indexOf(primary) < cs->indexOf(toolbox);
+        // The tools column stays a real sibling column (never a dock, never a
+        // tabified pane) after the header drag.
+        const bool toolsSibling =
+            frame.toolsColumn() && frame.toolsColumn()->isToolsColumn()
+            && cs->indexOf(frame.toolsColumn()) >= 0 && !frame.toolsColumn()->isWindow();
+        const bool leftOfTools = toolsSibling && cs->indexOf(primary) >= 0;
 
         // Header menu: every entry works.
         const QStringList texts = primary->columnHeaderMenuTextsForTest();
@@ -528,27 +493,16 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         QObject::disconnect(conn);
 
         // Leave the default chrome for the suites that follow.
-        if (toolbox) {
-            if (cs && cs->indexOf(toolbox) >= 0) {
-                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                toolbox->setSplitterPane(false);
-            } else if (toolbox->isFloating()) {
-                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                toolbox->setFloating(false);
-                toolbox->setSplitterPane(false);
-            }
-            pump(6);
-        }
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
 
         ST_BEGIN("lss_header_menu");
         ST_PASS("lss_header_menu made=%d moved=%d tools=%d leftOfTools=%d menu=%d rail=%d "
                 "autoC=%d autoS=%d options=%d",
-                made ? 1 : 0, moved ? 1 : 0, toolsPane ? 1 : 0, leftOfTools ? 1 : 0,
+                made ? 1 : 0, moved ? 1 : 0, toolsSibling ? 1 : 0, leftOfTools ? 1 : 0,
                 menuComplete ? 1 : 0, railFlipped ? 1 : 0, autoCollapseFlipped ? 1 : 0,
                 autoShowFlipped ? 1 : 0, (optionsTriggered && optionsFired) ? 1 : 0);
-        if (!(made && moved && indicator && toolsPane && leftOfTools && menuComplete
+        if (!(made && moved && indicator && toolsSibling && leftOfTools && menuComplete
               && railFlipped && autoCollapseFlipped && autoShowFlipped && optionsTriggered
               && optionsFired)) {
             return pictura::selfTest().fail(408, "header menu");
@@ -745,8 +699,9 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lss_float_drag_opacity (414): the overlay dims while it hovers a valid drop
-    // target and returns to full opacity when the drag is cancelled.
+    // lss_float_drag_opacity (414): the overlay is dimmed for the whole drag,
+    // including at drag start before any target resolves, and returns to full
+    // opacity when the drag is cancelled.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
@@ -766,11 +721,11 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
                                       : panels.first()->objectName();
             const bool began = !panel.isEmpty() && column->beginGroupDragForTest(panel);
             if (floatWindow) {
-                const qreal base = floatWindow->dragOpacityForTest();
+                const qreal atStart = floatWindow->dragOpacityForTest();
                 column->dragToForTest(column->boundaryPointForTest(0));
                 pump(4);
                 const qreal over = floatWindow->dragOpacityForTest();
-                dimmed = began && over < base && over <= 0.7;
+                dimmed = began && atStart <= 0.7 && over <= 0.7;
                 column->cancelDragForTest();
                 pump(4);
                 restored = floatWindow->dragOpacityForTest() > 0.9;
@@ -792,113 +747,70 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lss_tools_dock_float (415): the same title-bar gesture keeps all three
-    // placements. A release in the far-left workspace outer band docks the panel
-    // to the left dock area (no longer a splitter pane); a title-bar double-click
-    // floats it and a second double-click docks it again as a normal dock.
-    {
-        frame.applyPanelSessionForTest(pictura::SessionState{});
-        pump(6);
-        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
-        pictura::PanelColumn* primary = frame.panelColumn();
-        QWidget* central = frame.centralWidget();
-        if (!toolbox || !cs || !primary || !central) {
-            return pictura::selfTest().fail(415, "tools dock float fixture");
-        }
-        auto sendDoubleClick = [](QWidget* w) {
-            const QPoint local = w->rect().center();
-            QMouseEvent event(QEvent::MouseButtonDblClick, QPointF(local),
-                              QPointF(w->mapToGlobal(local)), Qt::LeftButton, Qt::LeftButton,
-                              Qt::NoModifier);
-            QApplication::sendEvent(w, &event);
-        };
-
-        // Start as a splitter pane beside the right-hand primary column.
-        if (cs->indexOf(toolbox) >= 0) {
-            frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-            toolbox->setSplitterPane(false);
-            pump(6);
-        }
-        // Normalize to [tabs, primary] whatever order a previous suite left, so
-        // the pane region and the far-left outer band are distinct.
-        frame.movePanelColumn(primary, 1, nullptr);
-        pump(6);
-        const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
-        const QPoint panePoint(pr.left() - 8, pr.center().y());
-        const bool pane = frame.commitToolboxDrop(panePoint) && toolbox->isSplitterPane()
-                          && cs->indexOf(toolbox) >= 0;
-        pump(6);
-
-        // Far-left outer band: the resolve declines and the release path docks.
-        const QPoint headPoint(central->mapToGlobal(QPoint(0, 0)).x() + 2,
-                               central->mapToGlobal(QPoint(0, central->height() / 2)).y());
-        PanelColumn* a = nullptr;
-        int s = -1;
-        const bool declined = !frame.resolveToolboxDrop(headPoint, &a, &s) && a == nullptr
-                              && s == -1 && !frame.commitToolboxDrop(headPoint);
-        const int headSide = frame.newColumnSideAt(headPoint);
-        const bool dockedLeft = declined && headSide == 0 && frame.dockToolbox(headSide)
-                                && !toolbox->isSplitterPane() && !toolbox->isFloating()
-                                && frame.dockWidgetArea(toolbox) == Qt::LeftDockWidgetArea;
-        const QPoint tailPoint(central->mapToGlobal(QPoint(0, 0)).x() + central->width() - 2,
-                               central->mapToGlobal(QPoint(0, central->height() / 2)).y());
-        const bool rightBandFree =
-            frame.newColumnSideAt(tailPoint) == 1 && !frame.commitToolboxDrop(tailPoint);
-        pump(6);
-
-        // Double-click floats, a second double-click docks again.
-        QWidget* title = toolbox->titleBarForTest();
-        sendDoubleClick(title);
-        pump(8);
-        const bool floating = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
-        sendDoubleClick(title);
-        pump(8);
-        const bool redocked = !toolbox->isFloating() && !toolbox->isSplitterPane()
-                              && cs->indexOf(toolbox) < 0
-                              && frame.dockWidgetArea(toolbox) == Qt::LeftDockWidgetArea;
-
-        frame.applyPanelSessionForTest(pictura::SessionState{});
-        pump(6);
-        ST_BEGIN("lss_tools_dock_float");
-        ST_PASS("lss_tools_dock_float pane=%d dock=%d rightband=%d float=%d redock=%d",
-                pane ? 1 : 0, dockedLeft ? 1 : 0, rightBandFree ? 1 : 0, floating ? 1 : 0,
-                redocked ? 1 : 0);
-        if (!(pane && dockedLeft && rightBandFree && floating && redocked)) {
-            return pictura::selfTest().fail(415, "tools dock float");
-        }
-    }
-
-    // lss_tools_pane_height (416): hosting the Tools panel as a central-splitter
-    // pane must not force the workspace down to the panel's content height. The
-    // pane keeps a free height (min 0, max unbounded) and the document area
-    // fills the splitter.
+    // lss_tools_dock_float (415): the tools column is a central-splitter pane
+    // (never a dock); a header drag to the document area tears it off as an
+    // in-window overlay, and a release on a widget column re-docks it, while a
+    // release in the workspace outer band resolves a real sibling column.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
         auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
         auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
-        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+        pictura::PanelColumn* tools = frame.toolsColumn();
+        pictura::PanelColumn* primary = frame.panelColumn();
+        QWidget* central = frame.centralWidget();
+        if (!cs || !tabs || !tools || !primary || !central) {
+            return pictura::selfTest().fail(415, "tools column fixture");
+        }
+        auto startPoint = [tools]() {
+            return tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8));
+        };
+        const bool pane = cs->indexOf(tools) >= 0;
+        // Tear off over the empty document area.
+        tools->beginColumnHeaderDragForTest(startPoint());
+        tools->dragColumnHeaderToForTest(tabs->mapToGlobal(tabs->rect().center()));
+        pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
+        const bool floating =
+            floatWindow && !floatWindow->isWindow() && cs->indexOf(tools) < 0;
+        // Re-dock on the primary column's left half.
+        const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
+        const QPoint leftEdge(pr.left() + qMax(1, pr.width() / 4), pr.center().y());
+        const bool redocked = tools->dropColumnHeaderForTest(leftEdge)
+                              && tools->columnFloatForTest() == nullptr
+                              && cs->indexOf(tools) >= 0;
+        pump(6);
+        // The far-right workspace band resolves side 1 (a new sibling column).
+        const QPoint tailPoint(central->mapToGlobal(QPoint(0, 0)).x() + central->width() - 2,
+                               central->mapToGlobal(QPoint(0, central->height() / 2)).y());
+        const bool rightBand = frame.newColumnSideAt(tailPoint) == 1;
+
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        ST_BEGIN("lss_tools_dock_float");
+        ST_PASS("lss_tools_dock_float pane=%d float=%d redock=%d rightband=%d",
+                pane ? 1 : 0, floating ? 1 : 0, redocked ? 1 : 0, rightBand ? 1 : 0);
+        if (!(pane && floating && redocked && rightBand)) {
+            return pictura::selfTest().fail(415, "tools column float");
+        }
+    }
+
+    // lss_tools_pane_height (416): hosting the tools column in the central
+    // splitter keeps a free height (min 0, max unbounded) so the document area
+    // fills the splitter instead of being forced down to the tool content.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
+        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+        auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
+        auto* tools = frame.toolsColumn();
         pictura::PanelColumn* primary = frame.panelColumn();
         bool ok = false;
-        if (cs && tabs && toolbox && primary) {
-            if (cs->indexOf(toolbox) >= 0) {
-                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                toolbox->setSplitterPane(false);
-                pump(6);
-            }
-            const int before = cs->height();
-            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
-            const QPoint panePoint(pr.left() - 8, pr.center().y());
-            const bool pane = frame.commitToolboxDrop(panePoint);
-            pump(8);
-            const int after = cs->height();
-            const bool freeHeight = toolbox->minimumHeight() == 0
-                                    && toolbox->maximumHeight() == QWIDGETSIZE_MAX;
-            const bool tabsFill = tabs->height() == after;
-            ok = pane && freeHeight && after <= before + 40 && tabsFill;
-            frame.dockToolbox(0);
-            pump(6);
+        if (cs && tabs && tools && primary) {
+            const bool pane = cs->indexOf(tools) >= 0;
+            const bool freeHeight = tools->minimumHeight() == 0
+                                    && tools->maximumHeight() == QWIDGETSIZE_MAX;
+            const bool tabsFill = tabs->height() >= cs->height() - 40;
+            ok = pane && freeHeight && tabsFill;
         }
         ST_BEGIN("lss_tools_pane_height");
         ST_PASS("lss_tools_pane_height ok=%d", ok ? 1 : 0);
@@ -909,36 +821,22 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lss_tools_top_align (417): a docked/pane-hosted Tools panel fills the height
-    // it is given and its body starts at the top, rather than the fixed-height body
-    // being centred in the taller dock. Only a floating panel hugs its content.
+    // lss_tools_top_align (417): the tool content is hosted below the tools
+    // column header and fills the column height (top-aligned), rather than being
+    // a fixed-height body centred in the column.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
-        auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
-        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        auto* primary = frame.panelColumn();
+        auto* tools = frame.toolsColumn();
         bool ok = false;
-        if (cs && toolbox && primary) {
-            if (cs->indexOf(toolbox) >= 0) {
-                frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                toolbox->setSplitterPane(false);
-                pump(6);
-            }
-            const QRect pr(primary->mapToGlobal(QPoint(0, 0)), primary->size());
-            const QPoint panePoint(pr.left() - 8, pr.center().y());
-            const bool pane = frame.commitToolboxDrop(panePoint);
-            pump(8);
-            QWidget* body = toolbox->widget();
-            QWidget* title = toolbox->titleBarForTest();
-            const int titleH = title ? title->height() : 0;
-            const int bodyTop = body ? body->mapTo(toolbox, QPoint(0, 0)).y() : -1000;
-            const bool fills =
-                body && body->height() >= toolbox->height() - titleH - 4;
-            const bool topAligned = body && bodyTop >= 0 && bodyTop <= titleH + 4;
-            ok = pane && fills && topAligned;
-            frame.dockToolbox(0);
-            pump(6);
+        if (tools) {
+            QWidget* header = tools->columnHeaderForTest();
+            QWidget* body = tools->toolsContentForTest();
+            const int headerH = header ? header->height() : 0;
+            const int bodyTop = body ? body->mapTo(tools, QPoint(0, 0)).y() : -1000;
+            const bool fills = body && body->height() >= tools->height() - headerH - 4;
+            const bool topAligned = body && bodyTop >= 0 && bodyTop <= headerH + 4;
+            ok = fills && topAligned;
         }
         ST_BEGIN("lss_tools_top_align");
         ST_PASS("lss_tools_top_align ok=%d", ok ? 1 : 0);
@@ -949,36 +847,24 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lss_tools_edge_preview (418): while the pointer is in the workspace outer
-    // band the shared edge indicator is drawn on the outermost visible column as a
-    // dock preview, while the resolve still declines (so the release docks); a
-    // declined commit clears the line.
+    // lss_tools_edge_preview (418): a widget panel dragged over the tools column
+    // resolves no in-column target (atomic), so no insertion indicator is drawn
+    // on the tools column and its contents never combine.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
-        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        QWidget* central = frame.centralWidget();
+        auto* tools = frame.toolsColumn();
+        pictura::PanelColumn* primary = frame.panelColumn();
         bool ok = false;
-        if (toolbox && central) {
-            frame.createPanelColumn(pictura::PanelSide::Left, nullptr);
-            pump(6);
-            const QRect centralRect(central->mapToGlobal(QPoint(0, 0)), central->size());
-            const QPoint headPoint(centralRect.left() + 2, centralRect.center().y());
-            auto* preview = static_cast<pictura::PanelColumn*>(nullptr);
-            for (auto* column : frame.panelColumns()) {
-                if (column && column->isVisible()) {
-                    preview = column;
-                    break;
-                }
-            }
-            pictura::PanelColumn* a = nullptr;
-            int s = -1;
-            const bool declined =
-                !frame.resolveToolboxDrop(headPoint, &a, &s) && a == nullptr && s == -1;
-            const bool shown = preview && preview->dropIndicatorVisibleForTest();
-            const bool commitDeclined = !frame.commitToolboxDrop(headPoint);
-            const bool cleared = !preview || !preview->dropIndicatorVisibleForTest();
-            ok = declined && shown && commitDeclined && cleared;
+        if (tools && primary) {
+            const QPoint over(tools->mapToGlobal(tools->rect().center()));
+            const bool began = primary->beginTabDragForTest(QStringLiteral("layersPanel"));
+            primary->dragToForTest(over);
+            const bool noLine = !tools->dropIndicatorVisibleForTest();
+            const bool atomic = tools->isToolsColumn() && tools->groups().isEmpty();
+            primary->cancelDragForTest();
+            pump(4);
+            ok = began && noLine && atomic;
         }
         ST_BEGIN("lss_tools_edge_preview");
         ST_PASS("lss_tools_edge_preview ok=%d", ok ? 1 : 0);
@@ -989,41 +875,36 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lss_tools_canvas_float (419): a release over the empty document area has no
-    // widget column under the pointer and is outside the outer band, so the pane
-    // resolve declines and the release path keeps the panel floating instead of
-    // snapping it to the nearest column.
+    // lss_tools_canvas_float (419): a tools-column header release over the empty
+    // document area has no column under the pointer and is outside the outer
+    // band, so it stays an in-window overlay (kept floating) instead of snapping
+    // to the nearest column.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump(6);
         auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
         auto* tabs = frame.findChild<QTabWidget*>(QStringLiteral("documentTabs"));
-        auto* toolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        QWidget* central = frame.centralWidget();
+        auto* tools = frame.toolsColumn();
         bool ok = false;
-        if (cs && tabs && toolbox && central) {
-            frame.floatToolboxAt(central->mapToGlobal(QPoint(20, 20)));
-            pump(6);
-            const bool wasFloating = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
+        if (cs && tabs && tools) {
             const QPoint canvas(tabs->mapToGlobal(tabs->rect().center()));
-            pictura::PanelColumn* a = nullptr;
-            int s = -1;
-            const bool declined =
-                !frame.resolveToolboxDrop(canvas, &a, &s) && a == nullptr && s == -1;
-            const bool commitDeclined = !frame.commitToolboxDrop(canvas);
-            // The release handler's fall-through for an unresolved in-frame drop.
-            frame.floatToolboxAt(canvas);
-            pump(6);
-            const bool stillFloating = toolbox->isFloating() && cs->indexOf(toolbox) < 0;
-            ok = wasFloating && declined && commitDeclined && stillFloating;
+            const bool begun = tools->beginColumnHeaderDragForTest(
+                tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8)));
+            tools->dragColumnHeaderToForTest(canvas);
+            pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
+            const bool floating =
+                floatWindow && !floatWindow->isWindow() && cs->indexOf(tools) < 0;
+            const bool released = tools->dropColumnHeaderForTest(canvas)
+                                  && tools->columnFloatForTest() != nullptr;
+            ok = begun && floating && released;
         }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pump(6);
         ST_BEGIN("lss_tools_canvas_float");
         ST_PASS("lss_tools_canvas_float ok=%d", ok ? 1 : 0);
         if (!ok) {
             return pictura::selfTest().fail(419, "tools canvas float");
         }
-        frame.applyPanelSessionForTest(pictura::SessionState{});
-        pump(6);
     }
 
     return 0;

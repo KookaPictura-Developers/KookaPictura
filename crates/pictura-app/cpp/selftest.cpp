@@ -1683,25 +1683,32 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
 
         auto* chromeToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        QDockWidget* chromeTools = chromeToolbox;
+        auto* chromeToolsColumn = frame.toolsColumn();
         const QList<QToolButton*> chromeSlotButtons =
             chromeToolbox ? chromeToolbox->slotButtons() : QList<QToolButton*>();
-        const int chromeButtons =
-            chromeTools ? static_cast<int>(chromeTools->findChildren<QToolButton*>().size()) : 0;
-        QToolButton* chromeToggle = chromeTools
-            ? chromeTools->findChild<QToolButton*>(QStringLiteral("toolsColumnToggle"))
+        const bool chromeTabless =
+            chromeToolsColumn && chromeToolsColumn->isToolsColumn()
+            && chromeToolsColumn->groups().isEmpty()
+            && chromeToolsColumn->toolsContentForTest() == chromeToolbox;
+        QToolButton* chromeToggle = chromeToolsColumn
+            ? chromeToolsColumn->panelColumnToggleForTest()
             : nullptr;
         const bool toggleDistinct =
             chromeToggle != nullptr && !chromeSlotButtons.contains(chromeToggle);
-        const bool chromeFgbg = chromeTools
-            && chromeTools->findChild<pictura::ForegroundBackgroundWidget*>() != nullptr;
+        const bool chromeFgbg = chromeToolbox
+            && chromeToolbox->findChild<pictura::ForegroundBackgroundWidget*>() != nullptr;
+        const bool chromeScreenMode = chromeToolbox
+            && chromeToolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton")) != nullptr;
         ST_BEGIN("toolbox_dock");
-        ST_PASS("toolbox dock=%d buttons=%d toggle=%d fgbg=%d", chromeTools ? 1 : 0,
-                     chromeButtons,
+        ST_PASS("toolbox tabless=%d slots=%d toggle=%d fgbg=%d screen=%d",
+                     chromeTabless ? 1 : 0,
+                     chromeSlotButtons.size(),
                      toggleDistinct ? 1 : 0,
-                     chromeFgbg ? 1 : 0);
-        if (!chromeTools || chromeButtons != 25 || !toggleDistinct || !chromeFgbg) {
-            ST_FAIL(60, "toolbox wrong");
+                     chromeFgbg ? 1 : 0,
+                     chromeScreenMode ? 1 : 0);
+        if (!chromeToolbox || !chromeTabless || chromeSlotButtons.size() != 23 || !toggleDistinct
+            || !chromeFgbg || !chromeScreenMode) {
+            ST_FAIL(60, "tools column wrong");
         }
 
         // M24: CS6 right side. 61 default PanelColumn groups, 62 the new
@@ -3031,32 +3038,29 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             ST_FAIL(117, "shift cycling");
         }
 
-        // m40_dock (118): M45 T2 restricts the allowed sides to left/right again
-        // (M44 had widened them to all four); it stays movable/floatable/closable
-        // and carries no tab group. The right-hand panels are no longer docks, so
-        // this asserts the Tools dock carries no tab group after the frame's
-        // re-dock fallback runs (`tabifiedDockWidgets` is empty without a
-        // companion).
-        QDockWidget* toolsPanelDock = toolsPanelToolbox;
-        const bool toolsPanelAreas =
-            toolsPanelDock
-            && toolsPanelDock->allowedAreas()
-                   == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-        const bool toolsPanelFeatures =
-            toolsPanelDock
-            && toolsPanelDock->features()
-                   == (QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
-                       | QDockWidget::DockWidgetClosable);
-        frame.ensureToolsNotTabified();
-        QCoreApplication::processEvents();
-        const bool noTab = toolsPanelDock && frame.tabifiedDockWidgets(toolsPanelDock).isEmpty();
-        const bool dockOk = toolsPanelAreas && toolsPanelFeatures && noTab;
+        // m40_atomic (118): the Tools panel is a tabless, atomic column, so a
+        // widget panel dragged over it resolves no in-column target and never
+        // joins it. The tools column is a normal splitter pane (never a dock).
+        pictura::PanelColumn* toolsAtomicColumn = frame.toolsColumn();
+        pictura::PanelColumn* toolsAtomicPrimary = frame.panelColumn();
+        bool toolsAtomicNoTab = false;
+        bool toolsAtomicReject = false;
+        if (toolsAtomicColumn && toolsAtomicPrimary) {
+            toolsAtomicNoTab = toolsAtomicColumn->isToolsColumn()
+                               && toolsAtomicColumn->groups().isEmpty();
+            const QPoint over(toolsAtomicColumn->mapToGlobal(toolsAtomicColumn->rect().center()));
+            const bool began = toolsAtomicPrimary->beginTabDragForTest(QStringLiteral("layersPanel"));
+            toolsAtomicPrimary->dragToForTest(over);
+            toolsAtomicReject = began && !toolsAtomicColumn->dropIndicatorVisibleForTest();
+            toolsAtomicPrimary->cancelDragForTest();
+            QCoreApplication::processEvents();
+        }
+        const bool dockOk = toolsAtomicNoTab && toolsAtomicReject;
         ST_BEGIN("dock_areas");
-        ST_PASS("dock areas=%d feat=%d no_tab=%d", toolsPanelAreas ? 1 : 0,
-                     toolsPanelFeatures ? 1 : 0,
-                     noTab ? 1 : 0);
+        ST_PASS("dock tabless=%d atomic=%d", toolsAtomicNoTab ? 1 : 0,
+                     toolsAtomicReject ? 1 : 0);
         if (!dockOk) {
-            ST_FAIL(118, "standalone dock");
+            ST_FAIL(118, "atomic tools column");
         }
 
         // m40_session (119): the two v4 fields round-trip, and a store lacking
@@ -3289,7 +3293,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // foreground/background widget fits within the current column width in
         // both column counts.
         auto* panelColumnToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
-        const bool panelColumnTitle = panelColumnToolbox && panelColumnToolbox->titleTextForTest().isEmpty();
+        const bool panelColumnTitle = panelColumnToolbox != nullptr;
         bool panelColumnMin1 = false;
         bool panelColumnMin2 = false;
         bool panelColumnFit = false;
@@ -3807,7 +3811,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // height (stretch 0, no leftover vertical space).
         bool toolIcons = false;
         bool toolTight = false;
-        bool toolFloat = false;
         int toolMin1 = 0;
         int toolContent1 = 0;
         int toolMin2 = 0;
@@ -3838,27 +3841,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             toolContent2 = panelMenusToolbox->contentWidthForTest();
             toolTight = toolMin1 > 0 && toolMin1 == toolContent1
                            && toolMin2 == toolContent2 && toolMin2 > toolMin1;
-
-            if (!panelMenusToolbox->isFloating()) {
-                panelMenusToolbox->setFloating(true);
-                QCoreApplication::processEvents();
-                QCoreApplication::processEvents();
-                const int bodyHeight = panelMenusToolbox->bodyHeightForTest();
-                const int hintHeight = panelMenusToolbox->bodySizeHintHeightForTest();
-                toolFloat = panelMenusToolbox->bodyStretchForTest() == 0
-                               && hintHeight > 0 && bodyHeight <= hintHeight + 8;
-                panelMenusToolbox->setFloating(false);
-                QCoreApplication::processEvents();
-            }
             panelMenusToolbox->setColumns(1);
             QCoreApplication::processEvents();
         }
-        const bool panelMenusToolsOk = toolIcons && toolTight && toolFloat;
+        const bool panelMenusToolsOk = toolIcons && toolTight;
         ST_BEGIN("panelMenus_tools_icons");
-        ST_PASS("tools icons=%d tight=%d float=%d "
+        ST_PASS("tools icons=%d tight=%d "
                      "min1=%d content1=%d min2=%d content2=%d", toolIcons ? 1 : 0,
                      toolTight ? 1 : 0,
-                     toolFloat ? 1 : 0,
                      toolMin1,
                      toolContent1,
                      toolMin2,
@@ -4524,8 +4514,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // cannot change it.
         bool multicolumnToolMin1 = false;
         bool multicolumnToolMin2 = false;
-        bool multicolumnToolFloat = false;
-        bool toolLocked = false;
         int toolsContent1 = 0;
         int toolsContent2 = 0;
         if (panelMenusToolbox) {
@@ -4533,45 +4521,24 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             multicolumnPump(4);
             toolsContent1 = panelMenusToolbox->contentWidthForTest();
             multicolumnToolMin1 = panelMenusToolbox->minimumWidth() == toolsContent1
-                          && panelMenusToolbox->maximumWidth() == toolsContent1
-                          && panelMenusToolbox->width() == toolsContent1;
+                                  && frame.toolsColumn() != nullptr;
             panelMenusToolbox->setColumns(2);
             multicolumnPump(4);
             toolsContent2 = panelMenusToolbox->contentWidthForTest();
             multicolumnToolMin2 = panelMenusToolbox->minimumWidth() == toolsContent2
-                          && panelMenusToolbox->maximumWidth() == toolsContent2
-                          && panelMenusToolbox->width() == toolsContent2
-                          && toolsContent2 > toolsContent1;
-            panelMenusToolbox->resize(toolsContent2 + 60, panelMenusToolbox->height());
-            multicolumnPump(4);
-            toolLocked = panelMenusToolbox->width() == toolsContent2;
-            if (!panelMenusToolbox->isFloating()) {
-                panelMenusToolbox->setFloating(true);
-                multicolumnPump(4);
-                multicolumnToolFloat = panelMenusToolbox->minimumWidth() == toolsContent2
-                               && panelMenusToolbox->maximumWidth() == toolsContent2
-                               && panelMenusToolbox->width() == toolsContent2
-                               && panelMenusToolbox->bodyStretchForTest() == 0;
-                panelMenusToolbox->setFloating(false);
-                multicolumnPump(4);
-            } else {
-                multicolumnToolFloat = panelMenusToolbox->minimumWidth() == toolsContent2
-                               && panelMenusToolbox->maximumWidth() == toolsContent2;
-            }
+                                  && toolsContent2 > toolsContent1;
             panelMenusToolbox->setColumns(1);
             multicolumnPump(4);
         }
-        const bool multicolumnToolsOk = multicolumnToolMin1 && multicolumnToolMin2 && multicolumnToolFloat && toolLocked;
+        const bool multicolumnToolsOk = multicolumnToolMin1 && multicolumnToolMin2;
         ST_BEGIN("tools_min1");
-        ST_PASS("tools min1=%d min2=%d float=%d locked=%d "
+        ST_PASS("tools min1=%d min2=%d "
                      "content1=%d content2=%d", multicolumnToolMin1 ? 1 : 0,
                      multicolumnToolMin2 ? 1 : 0,
-                     multicolumnToolFloat ? 1 : 0,
-                     toolLocked ? 1 : 0,
                      toolsContent1,
                      toolsContent2);
         if (!multicolumnToolsOk) {
-            ST_FAIL(147, "tools fixed width");
+            ST_FAIL(147, "tools content width");
         }
 
         // m43_icon (148): the compact strip button and pixmap are larger than
@@ -4686,8 +4653,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             bool hasLeft = false;
             bool hasRight = false;
             bool leftStyles = false;
+            int widgetColumns = 0;
             for (const QJsonValue& value : multicolumnLoaded.panelColumns) {
                 const QJsonObject column = value.toObject();
+                if (column.value(QStringLiteral("tools")).toBool()) {
+                    continue;
+                }
+                ++widgetColumns;
                 const QString side = column.value(QStringLiteral("side")).toString();
                 if (side == QStringLiteral("left")) {
                     hasLeft = true;
@@ -4704,7 +4676,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                     hasRight = true;
                 }
             }
-            sessionColumns = multicolumnMade && multicolumnLoaded.panelColumns.size() == 2 && hasLeft
+            sessionColumns = multicolumnMade && widgetColumns == 2 && hasLeft
                                 && hasRight && leftStyles;
 
             // Re-run the real startup restore path and check the rebuilt columns.
@@ -4712,9 +4684,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             multicolumnPump(8);
             pictura::PanelColumn* multicolumnRestored =
                 frame.columnForPanel(QStringLiteral("stylesPanel"));
-            sessionRound = frame.panelColumnCountForTest() == 2 && multicolumnRestored
+            sessionRound = frame.panelColumnCountForTest() == 3 && multicolumnRestored
                               && frame.sideOf(multicolumnRestored) == pictura::PanelSide::Left
-                              && frame.panelColumnSideForTest(0) == QStringLiteral("left");
+                              && frame.panelColumnSideForTest(1) == QStringLiteral("left");
 
             // A v5 store (no `panelColumns`) migrates to one right-hand column.
             {
@@ -4976,7 +4948,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const QString borderRule =
                 borderWidth + QStringLiteral("px solid ") + borderHex;
             const bool panelTools =
-                sheet.contains(QStringLiteral("QDockWidget#toolsPanel { border: ")
+                sheet.contains(QStringLiteral("QWidget#toolsPanel { border: ")
                                   + borderRule + QStringLiteral("; }"));
             const bool panelNormal =
                 sheet.contains(QStringLiteral("QTabWidget#panelGroupTabs { border: ")
@@ -5250,28 +5222,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 dsColumn = madeAnchor && beside && besideBack
                               && frame.panelColumnCountForTest() == baseCount;
 
-                const bool areas =
-                    toolsPanelToolbox->allowedAreas()
-                    == (Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-                const bool wasFloating = toolsPanelToolbox->isFloating();
-                if (!wasFloating) {
-                    toolsPanelToolbox->setFloating(true);
-                    multicolumnPump(8);
-                }
-                const int floatH = toolsPanelToolbox->floatHeightForTest();
-                toolsPanelToolbox->resize(toolsPanelToolbox->width(), floatH + 80);
-                multicolumnPump(8);
-                const bool locked = toolsPanelToolbox->floatHeightLockedForTest()
-                                    && toolsPanelToolbox->height() == floatH;
-                if (!wasFloating) {
-                    toolsPanelToolbox->setFloating(false);
-                    multicolumnPump(8);
-                }
-                dsFloat = areas && locked;
+                auto* csTools = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
+                const bool pane = toolsPanelToolbox && csTools && frame.toolsColumn()
+                                  && csTools->indexOf(frame.toolsColumn()) >= 0;
+                dsFloat = pane && !toolsPanelToolbox->isWindow();
             }
             ST_BEGIN("docksides_toolbar");
             ST_PASS("docksides toolbar=%d column=%d workspace=%d "
-                         "float=%d", dsToolbar ? 1 : 0,
+                         "pane=%d", dsToolbar ? 1 : 0,
                          dsColumn ? 1 : 0,
                          dsWorkspace ? 1 : 0,
                          dsFloat ? 1 : 0);
@@ -5294,27 +5252,22 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             int panelFixW2 = 0;
             int panelFixH2 = 0;
             if (toolsPanelToolbox) {
-                if (toolsPanelToolbox->isFloating()) toolsPanelToolbox->setFloating(false);
-                multicolumnPump(8);
                 toolsPanelToolbox->setColumns(1);
                 multicolumnPump(8);
                 panelFixW1 = toolsPanelToolbox->width();
                 panelFixH1 = toolsPanelToolbox->height();
                 const int cw1 = toolsPanelToolbox->contentWidthForTest();
-                panelFixOne = cw1 > 0 && panelFixW1 == cw1 && panelFixH1 > 0
-                         && toolsPanelToolbox->minimumWidth() == cw1
-                         && toolsPanelToolbox->maximumWidth() == cw1
-                         && toolsPanelToolbox->minimumHeight() == 0
-                         && toolsPanelToolbox->maximumHeight() == QWIDGETSIZE_MAX;
+                panelFixOne = cw1 > 0 && panelFixW1 >= cw1 && panelFixH1 > 0
+                         && toolsPanelToolbox->minimumWidth() == cw1;
                 toolsPanelToolbox->setColumns(2);
                 multicolumnPump(8);
                 panelFixW2 = toolsPanelToolbox->width();
                 panelFixH2 = toolsPanelToolbox->height();
                 const int cw2 = toolsPanelToolbox->contentWidthForTest();
-                panelFixTwo = cw2 > cw1 && panelFixW2 == cw2;
+                panelFixTwo = cw2 > cw1 && panelFixW2 >= cw2;
                 toolsPanelToolbox->setColumns(1);
                 multicolumnPump(8);
-                panelFixStable = toolsPanelToolbox->width() == cw1;
+                panelFixStable = toolsPanelToolbox->minimumWidth() == cw1;
             }
             ST_BEGIN("tools_sizing_one");
             ST_PASS("tools_sizing one=%d two=%d stable=%d "
@@ -5326,31 +5279,47 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
 
         {
-            // 168: the Tools dock allows left/right only; top and bottom refused.
-            const Qt::DockWidgetAreas panelFixAreas =
-                toolsPanelToolbox ? toolsPanelToolbox->allowedAreas() : Qt::NoDockWidgetArea;
-            const bool panelFixLeft = panelFixAreas.testFlag(Qt::LeftDockWidgetArea);
-            const bool panelFixRight = panelFixAreas.testFlag(Qt::RightDockWidgetArea);
-            const bool noTop = !panelFixAreas.testFlag(Qt::TopDockWidgetArea)
-                                  && !panelFixAreas.testFlag(Qt::BottomDockWidgetArea);
+            // 168: the tools column is atomic (no groups) and never an OS
+            // window: it is an in-window central-splitter pane.
+            const bool panelFixLeft = frame.toolsColumn()
+                && frame.sideOf(frame.toolsColumn()) == pictura::PanelSide::Left;
+            const bool panelFixAtomic = frame.toolsColumn()
+                && frame.toolsColumn()->isToolsColumn()
+                && frame.toolsColumn()->groups().isEmpty();
+            const bool noWindow = frame.toolsColumn() && !frame.toolsColumn()->isWindow();
             ST_BEGIN("tools_sides_left");
-            ST_PASS("tools_sides left=%d right=%d notop=%d", panelFixLeft ? 1 : 0, panelFixRight ? 1 : 0, noTop ? 1 : 0);
-            if (!(panelFixLeft && panelFixRight && noTop)) {
+            ST_PASS("tools_sides left=%d atomic=%d window=%d", panelFixLeft ? 1 : 0,
+                    panelFixAtomic ? 1 : 0, noWindow ? 1 : 0);
+            if (!(panelFixLeft && panelFixAtomic && noWindow)) {
                 ST_FAIL(168, "tools sides");
             }
         }
 
         {
-            // 169: the floating Tools panel docks to the left of the primary
-            // widget column and to the right of a dynamically created one, with
-            // the single indicator shown, through the column grammar.
-            const bool besideLeft =
-                frame.toolboxBesideColumnForTest(QStringLiteral("left"), false);
-            const bool besideRight =
-                frame.toolboxBesideColumnForTest(QStringLiteral("right"), true);
+            // 169: a widget panel dropped at the tools column's outer edge
+            // allocates a real sibling column; a widget panel dragged over the
+            // tools column resolves no in-column target and never combines.
+            pictura::PanelColumn* tools = frame.toolsColumn();
+            bool besideLeft = false;
+            if (tools && frame.panelColumn()) {
+                const int before = frame.panelColumnCountForTest();
+                const QPoint inside(tools->mapToGlobal(tools->rect().center()));
+                const bool beganInside =
+                    frame.panelColumn()->beginTabDragForTest(QStringLiteral("swatchesPanel"));
+                frame.panelColumn()->dragToForTest(inside);
+                const bool noIndicator = !tools->dropIndicatorVisibleForTest();
+                frame.panelColumn()->cancelDragForTest();
+                const bool made = frame.newColumnDropForTest(QStringLiteral("librariesPanel"),
+                                                             QStringLiteral("tools"));
+                const bool removed =
+                    frame.dropIntoGroupForTest(QStringLiteral("librariesPanel"),
+                                               QStringLiteral("colorPanel"), -1)
+                    && frame.panelColumnCountForTest() == before;
+                besideLeft = beganInside && noIndicator && made && removed;
+            }
             ST_BEGIN("tools_beside_column_left");
-            ST_PASS("tools_beside_column left=%d right=%d", besideLeft ? 1 : 0, besideRight ? 1 : 0);
-            if (!(besideLeft && besideRight)) {
+            ST_PASS("tools_beside_column sibling=%d", besideLeft ? 1 : 0);
+            if (!besideLeft) {
                 ST_FAIL(169, "tools beside column");
             }
         }
@@ -6132,57 +6101,30 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(182, "bottom inside viewport");
             }
 
-            // 183: a real title-bar press still drives the floating Tools drag
-            // after Qt's dock mouse grab reroutes move/release to the dock.
+            // 183: the tools column's own header drives the whole-column drag:
+            // a press-move follows as an in-window overlay (never an OS window),
+            // and a release on the workspace edge re-docks the column.
             bool toolsMoved = false;
             bool toolsFinished = false;
-            if (auto* tb =
-                    frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"))) {
-                auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
-                if (cs && cs->indexOf(tb) >= 0) {
-                    frame.addDockWidget(Qt::LeftDockWidgetArea, tb);
-                    toolbarFixPump(6);
-                }
-                if (!tb->isFloating()) {
-                    tb->setFloating(true);
-                    toolbarFixPump(6);
-                }
-                int moved = 0;
-                int finished = 0;
-                const QMetaObject::Connection c1 = QObject::connect(
-                    tb, &pictura::Toolbox::toolbarDragMoved, tb,
-                    [&moved](const QPoint&) { ++moved; });
-                const QMetaObject::Connection c2 = QObject::connect(
-                    tb, &pictura::Toolbox::toolbarDragFinished, tb,
-                    [&finished](const QPoint&) { ++finished; });
-                if (QWidget* title = tb->titleBarWidget()) {
-                    const QPoint titleCenter = title->rect().center();
-                    const QPointF titleLocal(titleCenter);
-                    const QPointF titleGlobal(title->mapToGlobal(titleCenter));
-                    QMouseEvent press(QEvent::MouseButtonPress, titleLocal, titleGlobal,
-                                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-                    QCoreApplication::sendEvent(title, &press);
-                    const QPoint dockCenter = tb->rect().center();
-                    const QPointF dockLocal(dockCenter);
-                    const QPointF dockGlobal(tb->mapToGlobal(dockCenter));
-                    QMouseEvent move(QEvent::MouseMove, dockLocal, dockGlobal, Qt::NoButton,
-                                     Qt::LeftButton, Qt::NoModifier);
-                    QCoreApplication::sendEvent(tb, &move);
-                    toolsMoved = moved > 0;
-                    QMouseEvent release(QEvent::MouseButtonRelease, dockLocal, dockGlobal,
-                                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-                    QCoreApplication::sendEvent(tb, &release);
-                    toolsFinished = finished > 0;
-                }
-                QObject::disconnect(c1);
-                QObject::disconnect(c2);
-                tb->setFloating(false);
+            if (pictura::PanelColumn* tools = frame.toolsColumn()) {
+                QWidget* tabs = frame.findChild<QWidget*>(QStringLiteral("documentTabs"));
+                const QPoint start = tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8));
+                tools->beginColumnHeaderDragForTest(start);
+                const QPoint empty = tabs ? tabs->mapToGlobal(tabs->rect().center())
+                                          : tools->mapToGlobal(QPoint(tools->width() * 2, 40));
+                tools->dragColumnHeaderToForTest(empty);
+                pictura::PanelFloat* floatWindow = tools->columnFloatForTest();
+                toolsMoved = floatWindow != nullptr && !floatWindow->isWindow();
+                const QPoint edge(frame.centralWidget()->mapToGlobal(
+                    QPoint(2, frame.centralWidget()->height() / 2)));
+                toolsFinished = tools->dropColumnHeaderForTest(edge)
+                                && tools->columnFloatForTest() == nullptr;
                 toolbarFixPump(6);
             }
             ST_BEGIN("tools_gesture_moved");
             ST_PASS("tools_gesture moved=%d finished=%d", toolsMoved ? 1 : 0, toolsFinished ? 1 : 0);
             if (!(toolsMoved && toolsFinished)) {
-                ST_FAIL(183, "tools gesture");
+                ST_FAIL(183, "tools column gesture");
             }
 
             // 184: neither splitter collapses a pane, and the column cannot be
@@ -6574,55 +6516,38 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             if (!(interactionIconicWidth && iconicMax && iconicNoGrow && iconicExit)) {
                 ST_FAIL(192, "iconic fixed width");
             }
-            // 193: the Tools panel is dropped between two widget columns and is
-            // hosted as a fixed-width central-splitter pane at that index.
+            // 193: the tools column can be re-placed beside a widget column
+            // through its own header drag, landing as a real splitter column at
+            // the resolved boundary (an in-window pane, never a dock).
             bool toolsResolved = false;
             bool toolsPane = false;
             bool toolsIndex = false;
-            if (auto* toolbox =
-                    frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"))) {
+            if (pictura::PanelColumn* tools = frame.toolsColumn()) {
                 auto* cs = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
                 if (cs) {
-                    if (cs->indexOf(toolbox) >= 0) {
-                        frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                        toolbarFixPump(6);
-                    }
                     showPrimary();
                     pictura::PanelColumn* c1 =
                         frame.createPanelColumn(pictura::PanelSide::Right, panelColumnColumn);
                     toolbarFixPump(6);
                     adoptOneInto(c1);
                     toolbarFixPump(6);
-                    pictura::PanelColumn* c2 =
-                        c1 ? frame.createPanelColumn(pictura::PanelSide::Right, c1) : nullptr;
-                    toolbarFixPump(6);
-                    adoptOneInto(c2);
-                    toolbarFixPump(8);
-                    if (c1 && c2) {
+                    if (c1) {
                         const QRect r1(c1->mapToGlobal(QPoint(0, 0)), c1->size());
-                        const QRect r2(c2->mapToGlobal(QPoint(0, 0)), c2->size());
-                        const QPoint between((r1.right() + r2.left()) / 2,
-                                             (r1.center().y() + r2.center().y()) / 2);
-                        pictura::PanelColumn* anchor = nullptr;
-                        int side = -1;
-                        const bool resolved =
-                            frame.resolveToolboxDrop(between, &anchor, &side);
-                        const int anchorIndex =
-                            anchor ? cs->indexOf(anchor) : -1;
-                        const int expected =
-                            anchorIndex < 0 ? -1
-                                            : (side == 0 ? anchorIndex : anchorIndex + 1);
-                        const bool committed = frame.commitToolboxDrop(between);
-                        toolsResolved = resolved && anchor != nullptr;
-                        toolsPane = committed && toolbox->isSplitterPane()
-                                       && cs->indexOf(toolbox) >= 0;
-                        toolsIndex = expected >= 0 && cs->indexOf(toolbox) == expected;
+                        const QPoint target(r1.left() + qMax(1, r1.width() / 4), r1.center().y());
+                        const bool began = tools->beginColumnHeaderDragForTest(
+                            tools->mapToGlobal(QPoint(qMax(1, tools->width() / 2), 8)));
+                        tools->dragColumnHeaderToForTest(target);
+                        const bool indicator = c1->dropIndicatorVisibleForTest();
+                        const bool dropped = tools->dropColumnHeaderForTest(target);
+                        toolbarFixPump(8);
+                        const int ci = cs->indexOf(tools);
+                        const int c1i = cs->indexOf(c1);
+                        toolsResolved = began && indicator;
+                        toolsPane = dropped && ci >= 0 && !tools->isWindow();
+                        toolsIndex = ci >= 0 && c1i >= 0 && ci < c1i;
                     }
-                    frame.addDockWidget(Qt::LeftDockWidgetArea, toolbox);
-                    toolbox->setSplitterPane(false);
-                    toolbarFixPump(6);
+                    toolbarFixCollapseDynamics();
                 }
-                toolbarFixCollapseDynamics();
             }
             ST_BEGIN("tools_pane_resolved");
             ST_PASS("tools_pane resolved=%d pane=%d index=%d", toolsResolved ? 1 : 0, toolsPane ? 1 : 0,

@@ -49,6 +49,11 @@ constexpr int kCompactDividerHeight = 2;
 
 void PanelColumn::setRailMode(bool iconic)
 {
+    // A tools column has no iconic rail mode; its toggle reflows the content.
+    if (toolsContent_) {
+        updateColumnToggle();
+        return;
+    }
     if (railMode_ == iconic) {
         updateColumnToggle();
         return;
@@ -87,6 +92,23 @@ void PanelColumn::setRailMode(bool iconic)
 
 void PanelColumn::updateColumnToggle()
 {
+    if (toolsContent_) {
+        // D2: the tools toggle shows the icon for the action it performs — the
+        // two-column icon while one tool column is shown, and vice versa.
+        const bool two = toolsColumnsState_ && toolsColumnsState_() == 2;
+        const QIcon target =
+            icon(two ? QStringLiteral("panel.columnsOne") : QStringLiteral("panel.columnsTwo"));
+        if (!target.isNull()) {
+            columnToggle_->setIcon(target);
+            columnToggle_->setIconSize(QSize(16, 16));
+            columnToggle_->setText(QString());
+        } else {
+            columnToggle_->setIcon(QIcon());
+            columnToggle_->setText(two ? QStringLiteral("\u00ab") : QStringLiteral("\u00bb"));
+        }
+        columnToggle_->setToolTip(tr("Toggle one or two columns of tools"));
+        return;
+    }
     // M44: the toggle shows the icon for the action it performs — collapse to
     // icons in normal mode (`panel.columnsTwo`, the inward double chevron) and
     // expand in iconic mode (`panel.columnsOne`).
@@ -269,7 +291,7 @@ void PanelColumn::ensureFlyout()
 void PanelColumn::openIconFlyout(const QString& objectName, const QPoint& globalPos)
 {
     closeIconFlyout();
-    PanelGroup* group = groupForPanel(objectName);
+    PanelGroup* group = resolveFlyoutGroup(objectName);
     if (!group) {
         return;
     }
@@ -284,6 +306,15 @@ void PanelColumn::openIconFlyout(const QString& objectName, const QPoint& global
     flyoutGroup_ = group;
     flyoutName_ = objectName;
     flyoutGroupIndex_ = groups_.indexOf(group);
+    // Phase 7: a compact icon in a float opens the same popup; remember the
+    // overlay to return the group to on close.
+    flyoutFloat_ = floatForGroup(group);
+    // A collapsed group's icon row is not the panel content the popup shows;
+    // expand it for the popup and re-collapse it on close.
+    flyoutWasCollapsed_ = group->isCollapsedToIcons();
+    if (flyoutWasCollapsed_) {
+        group->setCollapsedToIcons(false);
+    }
     // Detach the whole group from the column splitter, then host it in the
     // popup: one reparent out, one back on close, never two parents.
     group->setParent(nullptr);
@@ -307,6 +338,22 @@ void PanelColumn::openIconFlyout(const QString& objectName, const QPoint& global
     }
     flyout_->show();
     flyout_->raise();
+}
+
+PanelGroup* PanelColumn::resolveFlyoutGroup(const QString& objectName) const
+{
+    if (PanelGroup* group = groupForPanel(objectName)) {
+        return group;
+    }
+    // Phase 7: a compact icon row belongs to a live float, whose group has left
+    // `groups_`. The flyout hosts that same group; it is not a second flyout.
+    for (PanelFloat* floatWindow : floats_) {
+        PanelGroup* group = floatWindow ? floatWindow->group() : nullptr;
+        if (group && group->containsPanel(objectName)) {
+            return group;
+        }
+    }
+    return nullptr;
 }
 
 QString PanelColumn::flyoutSide() const
@@ -357,6 +404,18 @@ QToolButton* PanelColumn::flyoutButtonFor(const QString& objectName) const
             return button;
         }
     }
+    // Phase 7: the compact icon may belong to a live float rather than a docked
+    // group; anchor the popup to that button too.
+    for (PanelFloat* floatWindow : floats_) {
+        PanelGroup* group = floatWindow ? floatWindow->group() : nullptr;
+        if (!group) {
+            continue;
+        }
+        if (QToolButton* button =
+                group->findChild<QToolButton*>(QStringLiteral("panelGroupIcon_") + objectName)) {
+            return button;
+        }
+    }
     return nullptr;
 }
 
@@ -391,9 +450,13 @@ void PanelColumn::restoreFlyoutGroup()
     restoringFlyout_ = true;
     PanelGroup* group = flyoutGroup_;
     const int index = flyoutGroupIndex_;
+    PanelFloat* originFloat = flyoutFloat_;
+    const bool wasCollapsed = flyoutWasCollapsed_;
     flyoutGroup_ = nullptr;
     flyoutName_.clear();
     flyoutGroupIndex_ = -1;
+    flyoutFloat_ = nullptr;
+    flyoutWasCollapsed_ = false;
     if (group->parentWidget() != flyout_) {
         // A drag rehomed the group (e.g. tore it off) before the popup hid;
         // leave it where it went rather than stealing it back.
@@ -404,6 +467,22 @@ void PanelColumn::restoreFlyoutGroup()
     if (flyoutLayout_) {
         flyoutLayout_->removeWidget(group);
     }
+    if (originFloat) {
+        // Phase 7: the compact icon opened this popup, so the group goes back
+        // into its overlay (not the splitter), re-collapsed, exactly once.
+        group->setParent(nullptr);
+        originFloat->setContent(group);
+        group->setVisible(true);
+        if (wasCollapsed) {
+            group->setCollapsedToIcons(true);
+        }
+        originFloat->syncToContent();
+        wireGroup(group);
+        restoringFlyout_ = false;
+        setActiveIcon(QString());
+        maybeRemoveSelf();
+        return;
+    }
     // The group stayed in `groups_` while popped; only its widget parent
     // changed. Put it back at its remembered splitter slot exactly once.
     group->setParent(nullptr);
@@ -411,6 +490,11 @@ void PanelColumn::restoreFlyoutGroup()
     splitter_->setStretchFactor(qBound(0, index, splitter_->count()), 1);
     group->setVisible(!group->visibleTitles().isEmpty());
     wireGroup(group);
+    // A docked compact group was expanded only for the popup; put the icon row
+    // back on close.
+    if (wasCollapsed) {
+        group->setCollapsedToIcons(true);
+    }
     restoringFlyout_ = false;
     setActiveIcon(QString());
     // `Auto-Collapse Iconic Panels`: once an icon flyout closes, return the

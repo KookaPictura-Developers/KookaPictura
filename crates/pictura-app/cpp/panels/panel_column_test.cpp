@@ -24,6 +24,7 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QBoxLayout>
 #include <QtWidgets/QFrame>
+#include <QtWidgets/QGraphicsOpacityEffect>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMainWindow>
@@ -96,13 +97,18 @@ void PanelColumn::setIconStripWidthForTest(int width)
     if (!iconStrip_) {
         return;
     }
-    iconStrip_->resize(qMax(0, width), iconStrip_->height());
+    // Rail mode pins the column to a fixed narrow width, so the strip alone
+    // cannot reach a wider test width; widen the column too so the requested
+    // strip width is real and the label behaviour can be exercised.
+    const int target = qMax(0, width);
+    setFixedWidth(target);
+    iconStrip_->resize(target, iconStrip_->height());
     updateIconStripLabels();
 }
 
 bool PanelColumn::openIconFlyoutForTest(const QString& objectName)
 {
-    if (!groupForPanel(objectName)) {
+    if (!resolveFlyoutGroup(objectName)) {
         return false;
     }
     QToolButton* button =
@@ -111,6 +117,19 @@ bool PanelColumn::openIconFlyoutForTest(const QString& objectName)
     if (!button) {
         for (PanelGroup* group : groups_) {
             button = group->findChild<QToolButton*>(QStringLiteral("panelGroupIcon_") + objectName);
+            if (button) {
+                break;
+            }
+        }
+    }
+    if (!button) {
+        for (PanelFloat* floatWindow : floats_) {
+            PanelGroup* group = floatWindow ? floatWindow->group() : nullptr;
+            if (!group) {
+                continue;
+            }
+            button = group->findChild<QToolButton*>(
+                QStringLiteral("panelGroupIcon_") + objectName);
             if (button) {
                 break;
             }
@@ -221,6 +240,18 @@ void PanelColumn::cancelDragForTest()
     cancelDrag();
 }
 
+qreal PanelColumn::dragDimOpacityForTest() const
+{
+    if (auto* floatWindow = qobject_cast<PanelFloat*>(dimTarget_)) {
+        return floatWindow->dragOpacityForTest();
+    }
+    if (auto* effect = qobject_cast<QGraphicsOpacityEffect*>(
+            dimTarget_ ? dimTarget_->graphicsEffect() : nullptr)) {
+        return effect->opacity();
+    }
+    return 1.0;
+}
+
 bool PanelColumn::dropIndicatorVisibleForTest() const
 {
     return (indicator_ && indicator_->isVisible())
@@ -249,6 +280,11 @@ QRect PanelColumn::dropIndicatorGlobalGeometryForTest() const
         return QRect(indicator_->mapToGlobal(QPoint(0, 0)), indicator_->size());
     }
     return QRect();
+}
+
+bool PanelColumn::outlineIndicatorVisibleForTest() const
+{
+    return outlineIndicator_ && outlineIndicator_->isVisible();
 }
 
 int PanelColumn::horizontalScrollPolicyForTest() const
@@ -421,6 +457,15 @@ QStringList PanelColumn::floatPanelNamesForTest(int index) const
     return out;
 }
 
+bool PanelColumn::floatTabIndicatorVisibleForTest(int index) const
+{
+    if (index < 0 || index >= floats_.size()) {
+        return false;
+    }
+    PanelFloat* floatWindow = floats_.at(index);
+    return floatWindow && floatWindow->tabIndicatorVisibleForTest();
+}
+
 bool PanelColumn::floatIsWindowForTest(int index) const
 {
     if (index < 0 || index >= floats_.size()) {
@@ -561,6 +606,7 @@ bool PanelColumn::beginColumnHeaderDragForTest(const QPoint& globalPos)
     columnPressPending_ = false;
     columnDragging_ = true;
     columnPressGlobal_ = globalPos;
+    columnGrabOffset_ = globalPos - mapToGlobal(QPoint(0, 0));
     updateColumnDrag(globalPos);
     return true;
 }

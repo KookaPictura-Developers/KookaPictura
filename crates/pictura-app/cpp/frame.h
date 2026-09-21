@@ -100,19 +100,9 @@ public:
                                          int* side) const;
     bool movePanelColumn(PanelColumn* column, int side, PanelColumn* anchor);
 
-    // M45 T3: a floating-Tools drop resolved through the same column grammar.
-    // `resolveToolboxDrop` shows the single `#2a7fff` indicator at the resolved
-    // boundary; `commitToolboxDrop` hosts the Tools panel as a fixed-width
-    // central-splitter pane there (a QDockWidget cannot sit between columns).
-    bool resolveToolboxDrop(const QPoint& globalPos, PanelColumn** anchor, int* side);
-    bool commitToolboxDrop(const QPoint& globalPos);
-
-    // M47: the two non-pane placements the title-bar gesture also drives. A
-    // release in the workspace outer band docks the panel to the left (0) or
-    // right (1) dock area; a release outside the frame floats it at the cursor.
-    // A title-bar double-click toggles between docked and floating.
-    bool dockToolbox(int side);
-    bool floatToolboxAt(const QPoint& globalPos);
+    // The tabless, atomic Tools column hosted in the central splitter (default
+    // left, index 0). Its content is the `toolbox_` widget.
+    PanelColumn* toolsColumn() const { return toolsColumn_; }
 
     // M43 Phase B test hooks. All drive the same resolve/commit drag path.
     int panelColumnCountForTest() const { return columnCount(); }
@@ -121,15 +111,6 @@ public:
     // M44 W5: drop a panel beside an existing column; the new column lands
     // immediately adjacent to the anchor.
     bool newColumnBesideForTest(const QString& panelName, const QString& anchorPanel);
-    // M45 T3: dock the floating Tools panel to the left/right of a widget column
-    // (the primary column, or a throwaway dynamic anchor) through the real
-    // resolve/commit path; returns true when the indicator showed and the pane
-    // landed adjacent.
-    bool toolboxBesideColumnForTest(const QString& side, bool dynamicAnchor);
-    // Drop the floating Tools panel onto a point in the interior of the
-    // column owning `anchorPanel` (left half / right half) and at both workspace
-    // outer bands; returns true when each landed at the expected splitter index.
-    bool toolboxOnColumnForTest(const QString& anchorPanel, bool rightSide);
     bool dropIntoGroupForTest(const QString& panelName, const QString& targetPanel, int index = 1);
     bool dropBoundaryForTest(const QString& panelName, const QString& targetPanel, bool above);
     // M43 Phase C test hook: re-runs the real startup restore path so a saved
@@ -138,14 +119,11 @@ public:
 
     // Bumped when the chrome layout changes shape (M42 removed the old dock
     // set); a persisted layout from another revision is discarded on restore so
-    // stale chrome cannot reappear over the menu bar.
-    static constexpr int kLayoutRevision = 2;
+    // stale chrome cannot reappear over the menu bar. v9 moved Tools from a dock
+    // into a central-splitter column, so the old layout is discarded.
+    static constexpr int kLayoutRevision = 3;
     int layoutRevisionForTest() const { return kLayoutRevision; }
     bool restoreStoredLayout(const QByteArray& layout, int revision);
-
-    // The Tools panel must not join a tab group; re-dock it to its last side if
-    // it somehow does (the tabify fallback, exposed for the self-test).
-    void ensureToolsNotTabified();
 
     // Tool test hooks.
     ToolId activeTool() const;
@@ -293,9 +271,8 @@ private:
     ToolController* tools_ = nullptr;
     OptionsBar* optionsBar_ = nullptr;
     Toolbox* toolbox_ = nullptr;
-    QDockWidget* toolsDock_ = nullptr;
-    // M45 T3: the column currently showing the floating-Tools drop indicator.
-    PanelColumn* toolboxDropAnchor_ = nullptr;
+    // The tabless, atomic Tools column that hosts `toolbox_` in the splitter.
+    PanelColumn* toolsColumn_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
     ToolHintBar* hintBar_ = nullptr;
@@ -309,7 +286,6 @@ private:
     bool gpuCompute_ = true;
     bool gpuAvailable_ = true;
     bool useShiftKeyForToolSwitch_ = true;
-    Qt::DockWidgetArea toolsArea_ = Qt::LeftDockWidgetArea;
     ScreenMode screenMode_ = ScreenMode::Standard;
     int canvasColorIndex_ = 0;
     bool panelsHidden_ = false;

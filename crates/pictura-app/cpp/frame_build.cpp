@@ -178,7 +178,34 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     auto* toolbox = new Toolbox(tools_, colorState_, this);
     toolbox_ = toolbox;
     toolbox->setShiftKeyForToolSwitch(useShiftKeyForToolSwitch);
+
+    // D1: the Tools panel is a tabless, atomic `PanelColumn` hosting the tool
+    // content as one plain child in the central splitter, default left at index
+    // 0. Its header toggle reflows the tool grid one<->two columns (D2), not the
+    // normal/iconic rail mode.
+    toolsColumn_ = new PanelColumn(this);
+    toolsColumn_->setObjectName(QStringLiteral("toolsColumn"));
+    wirePanelColumn(toolsColumn_);
+    centerSplitter_->insertWidget(0, toolsColumn_);
+    toolsColumn_->setToolsContent(
+        toolbox, [toolbox]() { return toolbox->columns(); },
+        [this]() {
+            if (toolbox_) {
+                toolbox_->setColumns(toolbox_->columns() == 1 ? 2 : 1);
+            }
+        });
+    connect(toolbox, &Toolbox::screenModeRequested, this,
+            [this]() { cycleScreenMode(true); });
+    connect(toolbox, &Toolbox::columnsChanged, this, [this](int) {
+        if (toolsColumn_) {
+            toolsColumn_->refreshToolsWidth();
+        }
+        saveSession();
+    });
     toolbox->setColumns(toolsColumns);
+    toolsColumn_->refreshToolsWidth();
+    reapplyColumnStretch();
+    toolsColumn_->setVisible(!panelsHidden_);
 
     // One plain and one Shift shortcut per distinct slot letter; the toolbox
     // resolves the letter to its group and honours `Use Shift Key For Tool
@@ -245,71 +272,7 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
                 }
             });
 
-    toolsDock_ = toolbox;
     registerPanel(toolbox, Qt::LeftDockWidgetArea);
-    connect(toolbox, &Toolbox::screenModeRequested, this,
-            [this]() { cycleScreenMode(true); });
-    connect(toolbox, &Toolbox::columnsChanged, this, [this](int) { saveSession(); });
-    connect(toolbox, &QDockWidget::dockLocationChanged, this, [this](Qt::DockWidgetArea area) {
-        // M46: only left/right persist; a stray top/bottom area must not be
-        // re-applied by `ensureToolsNotTabified`.
-        if (area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea) {
-            toolsArea_ = area;
-        }
-        // M47: a real dock is no longer a central-splitter pane.
-        toolbox_->setSplitterPane(false);
-        ensureToolsNotTabified();
-    });
-    connect(toolbox, &QDockWidget::topLevelChanged, this, [this](bool) {
-        toolbox_->setSplitterPane(false);
-        ensureToolsNotTabified();
-    });
-
-    // M45 T3: while the floating Tools panel is dragged, resolve the drop through
-    // the column grammar and show the single indicator; on release host it at
-    // that boundary. The commit is deferred past Qt's own dock-drag handling.
-    connect(toolbox, &Toolbox::toolbarDragMoved, this, [this](const QPoint& pos) {
-        // M47 D8: show the indicator for a docked/pane title-bar drag too.
-        if (toolbox_) {
-            resolveToolboxDrop(pos, nullptr, nullptr);
-        }
-    });
-    connect(toolbox, &Toolbox::toolbarDragFinished, this, [this](const QPoint& pos) {
-        // M47 D8: commit a docked or pane-hosted drag-out too; `commitToolboxDrop`
-        // handles the reparenting, so the float state is irrelevant here. The
-        // release decision keeps all three placements: a splitter pane beside a
-        // column, a normal dock in the workspace outer band, and a float outside
-        // the frame.
-        if (!toolbox_) {
-            return;
-        }
-        QTimer::singleShot(0, this, [this, pos]() {
-            if (!toolbox_) {
-                return;
-            }
-            if (commitToolboxDrop(pos)) {
-                return;
-            }
-            if (!rect().contains(mapFromGlobal(pos))) {
-                floatToolboxAt(pos);
-            } else if (newColumnSideAt(pos) >= 0) {
-                dockToolbox(newColumnSideAt(pos));
-            } else {
-                floatToolboxAt(pos);
-            }
-        });
-    });
-
-    connect(toolbox, &Toolbox::titleBarDoubleClicked, this, [this]() {
-        if (!toolbox_) {
-            return;
-        }
-        if (toolbox_->isFloating()) {
-            dockToolbox(toolsArea_ == Qt::RightDockWidgetArea ? 1 : 0);
-        } else {
-            floatToolboxAt(toolbox_->mapToGlobal(QPoint(0, 0)));
-        }
-    });
 
     optionsBar_ = new OptionsBar(tools_, this);
     optionsBar_->setObjectName(QStringLiteral("optionsBar"));
@@ -332,19 +295,6 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     if (optionsBar_) {
         optionsBar_->showTool(tools_->activeTool());
     }
-}
-
-void PicturaMainWindow::ensureToolsNotTabified()
-{
-    if (!toolsDock_ || toolsDock_->isFloating()) {
-        return;
-    }
-    if (tabifiedDockWidgets(toolsDock_).isEmpty()) {
-        return;
-    }
-    toolsDock_->setFloating(true);
-    addDockWidget(toolsArea_, toolsDock_);
-    toolsDock_->show();
 }
 
 void PicturaMainWindow::buildStatusBar()
