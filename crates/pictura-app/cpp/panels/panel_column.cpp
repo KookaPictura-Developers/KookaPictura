@@ -143,6 +143,13 @@ PanelColumn::PanelColumn(QWidget* parent)
     updateMinimumWidth();
 }
 
+PanelColumn::~PanelColumn()
+{
+    // It is parented to the frame (above the splitter) so a float cannot cover
+    // it; that outlives this column, so drop it here instead of leaking.
+    delete edgeIndicator_;
+}
+
 PanelSide PanelColumn::side() const
 {
     auto* splitter = qobject_cast<QSplitter*>(parentWidget());
@@ -450,6 +457,13 @@ void PanelColumn::refreshToolsWidth()
         return;
     }
     updateMinimumWidth();
+    // A whole-column overlay hugs the tool grid; the 1<->2 column flip changed
+    // that size, so re-fit the overlay to the content instead of leaving it at
+    // the old width.
+    if (columnFloat_) {
+        columnFloat_->syncToContent();
+        return;
+    }
     // A splitter pane keeps its explicit size until told otherwise; resize this
     // pane to its content width when a 1<->2 column flip changed that width.
     if (auto* splitter = qobject_cast<QSplitter*>(parentWidget())) {
@@ -468,7 +482,8 @@ void PanelColumn::updateMinimumWidth()
 {
     if (toolsContent_) {
         // D2: the tools column tracks its content width (slot grid + fg/bg),
-        // not the widget-column floor.
+        // not the widget-column floor. `reapplyColumnStretch` disables the
+        // splitter handle beside it so a drag cannot resize the toolbar.
         const int want = toolsContent_->minimumWidth() > 0 ? toolsContent_->minimumWidth()
                                                            : toolsContent_->sizeHint().width();
         setMinimumWidth(qMax(kIconStripMinWidth, want));

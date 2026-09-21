@@ -121,6 +121,7 @@ class PanelColumn : public QWidget {
 
 public:
     explicit PanelColumn(QWidget* parent = nullptr);
+    ~PanelColumn() override;
 
     void addGroup(PanelGroup* group);
     // M45 W4: adopt a group from another column without clobbering its panel
@@ -247,6 +248,9 @@ public:
     bool dropIndicatorVisibleForTest() const;
     QRect dropIndicatorGeometryForTest() const;
     QRect dropIndicatorGlobalGeometryForTest() const;
+    // The column-move edge mark is a frame-level widget so a floating overlay
+    // (which follows the cursor) cannot cover it.
+    bool edgeIndicatorOnFrameForTest() const;
     // Phase 4: the blue region outline shown around the target group for a
     // group-on-group tabify.
     bool outlineIndicatorVisibleForTest() const;
@@ -438,6 +442,9 @@ private:
     int stripInsertionIndexAt(const QPoint& globalPos) const;
     void showIndicatorFor(const DropTarget& target);
     void clearIndicator();
+    // The new-column/edge mark, drawn on the frame (above the splitter) so a
+    // following floating overlay cannot hide it.
+    void showColumnEdgeIndicator(bool left);
     QList<PanelGroup*> visibleGroups() const;
     bool applyPanelDrop(PanelGroup* source, const QString& name, const DropTarget& target);
     bool applyStripDrop(PanelGroup* source, const QString& name, int stripIndex);
@@ -529,6 +536,10 @@ private:
     QWidget* indicator_ = nullptr;
     QWidget* stripIndicator_ = nullptr;
     QWidget* outlineIndicator_ = nullptr;
+    // The new-column/edge mark for a drag: parented to the frame, not the
+    // viewport, so an in-window floating overlay (which is raised above the
+    // splitter and follows the cursor) cannot hide it.
+    QWidget* edgeIndicator_ = nullptr;
     QSet<PanelGroup*> wired_;
     QList<PanelFloat*> floats_;
 

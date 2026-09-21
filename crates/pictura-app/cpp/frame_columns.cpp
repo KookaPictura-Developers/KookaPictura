@@ -20,6 +20,15 @@ void PicturaMainWindow::reapplyColumnStretch()
     for (int i = 0; i < centerSplitter_->count(); ++i) {
         centerSplitter_->setStretchFactor(i, centerSplitter_->widget(i) == tabs_ ? 1 : 0);
     }
+    // The Tools column is fixed-size; a live handle beside it would offer a drag
+    // that can only resize the toolbar. Handles between two widget panes stay.
+    for (int i = 0; i + 1 < centerSplitter_->count(); ++i) {
+        if (QSplitterHandle* handle = centerSplitter_->handle(i)) {
+            const bool besideTools = centerSplitter_->widget(i) == toolsColumn_
+                                     || centerSplitter_->widget(i + 1) == toolsColumn_;
+            handle->setEnabled(!besideTools);
+        }
+    }
 }
 
 QList<PanelColumn*> PicturaMainWindow::panelColumns() const

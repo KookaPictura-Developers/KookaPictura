@@ -1,16 +1,53 @@
 #include "panel_column.h"
 
+#include "frame.h"
 #include "panel_group.h"
 
 #include <QtCore/QRect>
 #include <QtWidgets/QScrollArea>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QToolButton>
+#include <QtWidgets/QWidget>
 
 namespace pictura {
 
+void PanelColumn::showColumnEdgeIndicator(bool left)
+{
+    // The tools column is atomic: a widget panel dragged over its narrow,
+    // leftmost body must never show a new-column line there. (The outer band may
+    // still allocate a sibling column on a drop; only the mark is suppressed.)
+    if (isToolsColumn()) {
+        return;
+    }
+    // A full-height mark at the workspace edge for a new-column candidate. It is
+    // parented to the frame and raised, so an in-window floating overlay (which
+    // follows the cursor, above the splitter) cannot hide it.
+    auto* frame = owningFrame();
+    if (!frame) {
+        return;
+    }
+    if (!edgeIndicator_) {
+        edgeIndicator_ = new QWidget(frame);
+        edgeIndicator_->setObjectName(QStringLiteral("panelColumnEdgeIndicator"));
+        edgeIndicator_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        edgeIndicator_->setStyleSheet(QStringLiteral("background-color:#2a7fff;"));
+    }
+    const QRect selfRect(mapToGlobal(QPoint(0, 0)), size());
+    const int globalX = left ? selfRect.left() : selfRect.right() - 2;
+    edgeIndicator_->setGeometry(
+        QRect(frame->mapFromGlobal(QPoint(globalX, selfRect.top())),
+              QSize(3, selfRect.height())));
+    edgeIndicator_->show();
+    edgeIndicator_->raise();
+}
+
 void PanelColumn::showIndicatorFor(const DropTarget& target)
 {
+    // Any non-edge target hides the frame-level edge mark; the new-column branch
+    // below is the only one that shows it.
+    if (edgeIndicator_) {
+        edgeIndicator_->hide();
+    }
     // An unresolved (atomic/forbidden) target draws nothing.
     if (!target.valid) {
         clearIndicator();
@@ -128,19 +165,18 @@ void PanelColumn::showIndicatorFor(const DropTarget& target)
     if (stripIndicator_) {
         stripIndicator_->hide();
     }
+    if (newColumn) {
+        if (indicator_) {
+            indicator_->hide();
+        }
+        showColumnEdgeIndicator(target.kind == DropKind::NewColumnLeft);
+        return;
+    }
     if (!indicator_ || !scroll_) {
         return;
     }
     QWidget* viewport = scroll_->viewport();
     if (!viewport) {
-        return;
-    }
-    if (newColumn) {
-        // A full-height mark at the workspace edge for a new-column candidate.
-        const int x = target.kind == DropKind::NewColumnLeft ? 0 : qMax(0, viewport->width() - 3);
-        indicator_->setGeometry(QRect(x, 0, 3, viewport->height()));
-        indicator_->show();
-        indicator_->raise();
         return;
     }
     if (target.onTabBar && target.group) {
@@ -200,6 +236,9 @@ void PanelColumn::clearIndicator()
     }
     if (outlineIndicator_) {
         outlineIndicator_->hide();
+    }
+    if (edgeIndicator_) {
+        edgeIndicator_->hide();
     }
     if (floatIndicator_) {
         floatIndicator_->hideTabIndicator();

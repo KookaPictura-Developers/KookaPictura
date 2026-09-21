@@ -352,9 +352,14 @@ window, its movement clamped to the available screen geometry, rather than an
 operating-system window with a frame. The panel's column header SHALL remain
 draggable so the column can be moved and floated. The panel's content size SHALL
 be fixed along the column's major axis: a fixed content width in both one- and
-two-column modes. Dragging the column separator SHALL NOT resize it. The panel
-SHALL be placeable on either side of any widget panel or column, wherever the
-columns are placed, through the same column drop grammar and the same single
+two-column modes. Dragging the column separator SHALL NOT resize it: the
+separator handle beside the docked Tools column SHALL be disabled so no resize
+drag is offered, and the disabled state SHALL be re-applied whenever the column
+is re-inserted into the splitter. Changing the tool grid between one and two
+columns SHALL re-fit a floating Tools overlay to the new content size on both
+axes, so the two-column grid is not clipped by a one-column-wide overlay. The
+panel SHALL be placeable on either side of any widget panel or column, wherever
+the columns are placed, through the same column drop grammar and the same single
 insertion indicator the widget columns use, without breaking the fixed-size rule
 or the no-tabification contract.
 
@@ -393,6 +398,19 @@ or the no-tabification contract.
 - **WHEN** the column separator beside the Tools column is dragged
 - **THEN** the Tools column's width does not change and stays at its content
   width
+
+#### Scenario: The separator handle beside Tools is disabled [tpc_docked_separator_disabled]
+
+- **WHEN** the frame is built or a panel session is applied
+- **THEN** the splitter handle adjacent to the docked Tools column is disabled,
+  so no separator drag can resize the toolbar
+
+#### Scenario: A floating Tools overlay re-fits on a mode flip [tpc_float_refit_on_mode_flip]
+
+- **WHEN** the floating Tools column's header toggle changes the tool grid from
+  one to two columns
+- **THEN** the overlay grows to the two-column content width and shrinks in
+  height to the new content minimum, so the grid is not clipped
 
 #### Scenario: The panel is placed beside a widget column [m45_tools_beside_column]
 
