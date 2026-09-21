@@ -12,6 +12,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QRect>
 #include <QtCore/QSize>
+#include <QtCore/QTimer>
 #include <QtGui/QAction>
 #include <QtGui/QCursor>
 #include <QtGui/QFontMetrics>
@@ -458,10 +459,14 @@ void PanelColumn::refreshToolsWidth()
     }
     updateMinimumWidth();
     // A whole-column overlay hugs the tool grid; the 1<->2 column flip changed
-    // that size, so re-fit the overlay to the content instead of leaving it at
-    // the old width.
+    // that size, so re-fit the overlay to the content. The flip rebuilds the
+    // grid synchronously, but the layout chain has not measured the new
+    // arrangement yet, so the re-fit is deferred one tick — otherwise the
+    // overlay takes the previous mode's height. The float is the timer's
+    // context, so a float destroyed before the tick cancels the callback.
     if (columnFloat_) {
-        columnFloat_->syncToContent();
+        PanelFloat* floatWindow = columnFloat_;
+        QTimer::singleShot(0, floatWindow, [floatWindow]() { floatWindow->syncToContent(); });
         return;
     }
     // A splitter pane keeps its explicit size until told otherwise; resize this

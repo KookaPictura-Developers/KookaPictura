@@ -148,8 +148,9 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
     }
 
     // floating_tools_toggle_resize (442): toggling the floating tools overlay
-    // between one and two tool columns re-fits the overlay to the new content
-    // width, so a two-column grid is not clipped by a one-column overlay.
+    // between one and two tool columns re-fits the overlay to the new content on
+    // both axes — wider and shorter — so a two-column grid is neither clipped
+    // nor left at the one-column height.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pumpFloat(6);
@@ -158,19 +159,24 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         bool floated = false;
         bool grew = false;
         bool matches = false;
+        bool fitsHeight = false;
         if (tools && toolbox) {
             pictura::PanelFloat* floatWindow = floatToolsColumnForTest(frame, tools);
             floated = floatWindow && floatWindow->isVisible();
             if (floated) {
-                const int before = floatWindow->width();
+                const int beforeWidth = floatWindow->width();
+                const int beforeHeight = floatWindow->height();
                 QToolButton* toggle = tools->panelColumnToggleForTest();
                 if (toggle) {
                     toggle->click();
                     pumpFloat(6);
                 }
-                const int after = floatWindow->width();
-                grew = toolbox->columns() == 2 && after > before;
-                matches = after == tools->minimumWidth();
+                const int afterWidth = floatWindow->width();
+                const int afterHeight = floatWindow->height();
+                grew = toolbox->columns() == 2 && afterWidth > beforeWidth;
+                matches = afterWidth == tools->minimumWidth();
+                fitsHeight = afterHeight < beforeHeight
+                             && afterHeight <= tools->minimumSizeHint().height() + 8;
                 if (toggle) {
                     toggle->click();
                     pumpFloat(6);
@@ -178,9 +184,9 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
             }
         }
         ST_BEGIN("floating_tools_toggle_resize");
-        ST_PASS("floating_tools_toggle_resize floated=%d grew=%d matches=%d",
-                floated ? 1 : 0, grew ? 1 : 0, matches ? 1 : 0);
-        if (!(floated && grew && matches)) {
+        ST_PASS("floating_tools_toggle_resize floated=%d grew=%d matches=%d fits_h=%d",
+                floated ? 1 : 0, grew ? 1 : 0, matches ? 1 : 0, fitsHeight ? 1 : 0);
+        if (!(floated && grew && matches && fitsHeight)) {
             return pictura::selfTest().fail(442, "floating tools toggle resize");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});

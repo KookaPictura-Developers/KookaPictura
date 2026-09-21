@@ -239,7 +239,9 @@ void PanelFloat::syncToContent()
     }
     if (column->isToolsColumn()) {
         // A non-resizable tools overlay hugs its content: the 1<->2 column flip
-        // changes the grid's width and height, so re-fit both axes.
+        // changes the grid's width and height, so re-fit both axes. The re-fit
+        // runs after the layout pass (deferred by the caller), so the hint is
+        // the flipped arrangement's, not the previous mode's.
         const int w = qMax(content_->minimumWidth(), content_->minimumSizeHint().width());
         const int h = qMax(content_->minimumHeight(), content_->minimumSizeHint().height());
         setMinimumWidth(0);
