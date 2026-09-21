@@ -117,18 +117,21 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
     pumpFloat(6);
 
     // docked_tools_fixed_width (441): while docked the Tools column is a
-    // fixed-width splitter pane: the handle beside it is disabled, so dragging
-    // it cannot resize the toolbar.
+    // fixed-width splitter pane: its width range is pinned to the content width
+    // and the handle beside it is disabled, so no drag can resize the toolbar.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pumpFloat(6);
         auto* splitter = frame.findChild<QSplitter*>(QStringLiteral("centerSplitter"));
         auto* tools = frame.toolsColumn();
         bool isPane = false;
+        bool pinned = false;
         bool handleOff = false;
         if (splitter && tools) {
             const int idx = splitter->indexOf(tools);
             isPane = idx >= 0;
+            pinned = tools->minimumWidth() == tools->maximumWidth()
+                     && tools->minimumWidth() > 0;
             QSplitterHandle* handle = nullptr;
             if (idx > 0) {
                 handle = splitter->handle(idx - 1);
@@ -138,9 +141,9 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
             handleOff = handle && !handle->isEnabled();
         }
         ST_BEGIN("docked_tools_fixed_width");
-        ST_PASS("docked_tools_fixed_width pane=%d handle_off=%d", isPane ? 1 : 0,
-                handleOff ? 1 : 0);
-        if (!(isPane && handleOff)) {
+        ST_PASS("docked_tools_fixed_width pane=%d pinned=%d handle_off=%d", isPane ? 1 : 0,
+                pinned ? 1 : 0, handleOff ? 1 : 0);
+        if (!(isPane && pinned && handleOff)) {
             return pictura::selfTest().fail(441, "docked tools fixed width");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
@@ -198,6 +201,8 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
     // edge indicator. In child (Wayland) mode the overlay follows the cursor
     // above the splitter and would cover a viewport-drawn line, so the mark is a
     // frame-level widget raised over the overlay; release re-docks the column.
+    // A bare workspace edge marks the central area's own edge: dragging to the
+    // leftmost side draws the line at the left, not on a right-hand column.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pumpFloat(6);
@@ -208,18 +213,23 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         bool floated = false;
         bool indicator = false;
         bool onFrame = false;
+        bool atLeft = false;
         bool redocked = false;
         if (tools && primary && splitter) {
             pictura::PanelFloat* floatWindow = floatToolsColumnForTest(frame, tools);
             floated = floatWindow && floatWindow->isVisible();
             if (floated) {
                 QWidget* central = frame.centralWidget();
+                const int centralLeft = central->mapToGlobal(QPoint(0, 0)).x();
                 const QPoint over(central->mapToGlobal(QPoint(2, central->height() / 2)));
                 tools->beginColumnHeaderDragForTest(
                     floatWindow->mapToGlobal(QPoint(floatWindow->width() / 2, 8)));
                 tools->dragColumnHeaderToForTest(over);
                 indicator = primary->dropIndicatorVisibleForTest();
                 onFrame = primary->edgeIndicatorOnFrameForTest();
+                const QRect mark = primary->dropIndicatorGlobalGeometryForTest();
+                atLeft = !mark.isNull() && qAbs(mark.left() - centralLeft) <= 2
+                         && mark.height() > mark.width();
                 redocked = tools->dropColumnHeaderForTest(over)
                            && tools->columnFloatForTest() == nullptr
                            && splitter->indexOf(tools) >= 0 && !tools->isWindow();
@@ -229,9 +239,10 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         pictura::PanelFloat::setForceChildOverlayForTest(false);
         ST_BEGIN("float_column_drag_indicator");
         ST_PASS("float_column_drag_indicator floated=%d indicator=%d on_frame=%d "
-                "redocked=%d",
-                floated ? 1 : 0, indicator ? 1 : 0, onFrame ? 1 : 0, redocked ? 1 : 0);
-        if (!(floated && indicator && onFrame && redocked)) {
+                "at_left=%d redocked=%d",
+                floated ? 1 : 0, indicator ? 1 : 0, onFrame ? 1 : 0, atLeft ? 1 : 0,
+                redocked ? 1 : 0);
+        if (!(floated && indicator && onFrame && atLeft && redocked)) {
             return pictura::selfTest().fail(443, "float column drag indicator");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});

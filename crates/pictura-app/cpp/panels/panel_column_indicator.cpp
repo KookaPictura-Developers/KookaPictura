@@ -11,6 +11,32 @@
 
 namespace pictura {
 
+void PanelColumn::showWorkspaceEdgeIndicator(bool left)
+{
+    // A bare workspace edge has no column on that side to anchor the mark, so it
+    // is drawn at the central area's own left/right edge. Never suppressed: this
+    // is where a dragged Tools column lands, so it may be owned by the tools
+    // column.
+    auto* frame = owningFrame();
+    QWidget* central = frame ? frame->centralWidget() : nullptr;
+    if (!frame || !central) {
+        return;
+    }
+    if (!edgeIndicator_) {
+        edgeIndicator_ = new QWidget(frame);
+        edgeIndicator_->setObjectName(QStringLiteral("panelColumnEdgeIndicator"));
+        edgeIndicator_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        edgeIndicator_->setStyleSheet(QStringLiteral("background-color:#2a7fff;"));
+    }
+    const QRect centralRect(central->mapToGlobal(QPoint(0, 0)), central->size());
+    const int globalX = left ? centralRect.left() : centralRect.right() - 2;
+    edgeIndicator_->setGeometry(
+        QRect(frame->mapFromGlobal(QPoint(globalX, centralRect.top())),
+              QSize(3, centralRect.height())));
+    edgeIndicator_->show();
+    edgeIndicator_->raise();
+}
+
 void PanelColumn::showColumnEdgeIndicator(bool left)
 {
     // The tools column is atomic: a widget panel dragged over its narrow,

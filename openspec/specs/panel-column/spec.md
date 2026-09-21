@@ -477,7 +477,11 @@ The same single indicator SHALL mark any-side docking targets beside the Tools
 toolbar, beside another widget panel or column, and beside the workspace. The
 new-column line SHALL be drawn above any floating overlay that follows the drag,
 so an in-window overlay that tracks the cursor cannot hide it, and it SHALL NOT
-be drawn on the atomic Tools column, which never shows a widget drop line.
+be drawn on the atomic Tools column, which never shows a widget drop line. For a
+bare workspace edge, the mark SHALL be drawn at the central area's own left or
+right edge — the side the new column will occupy — not at an arbitrary column's
+edge; the outermost column on that side SHALL own the mark so the line and the
+resolved target stay in one column.
 
 #### Scenario: The blue line marks the target boundary [m41_drop]
 
@@ -549,6 +553,13 @@ be drawn on the atomic Tools column, which never shows a widget drop line.
 
 - **WHEN** a widget panel is dragged over the docked Tools column
 - **THEN** no new-column mark is drawn on the Tools column
+
+#### Scenario: A bare workspace-edge mark is drawn on the requested side [fp_edge_mark_workspace_side]
+
+- **WHEN** a column is dragged to the leftmost workspace side while the only
+  other column is on the right
+- **THEN** the mark is drawn at the central area's left edge, not at the
+  right-hand column's edge, and it is committed at the splitter head
 
 ### Requirement: Panel column session state
 
