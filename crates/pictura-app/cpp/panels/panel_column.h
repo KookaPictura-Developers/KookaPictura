@@ -445,6 +445,9 @@ private:
     // The new-column/edge mark, drawn on the frame (above the splitter) so a
     // following floating overlay cannot hide it.
     void showColumnEdgeIndicator(bool left);
+    // The mark for a bare workspace edge with no column on that side: drawn at
+    // the central area's left/right edge, not at an arbitrary column.
+    void showWorkspaceEdgeIndicator(bool left);
     QList<PanelGroup*> visibleGroups() const;
     bool applyPanelDrop(PanelGroup* source, const QString& name, const DropTarget& target);
     bool applyStripDrop(PanelGroup* source, const QString& name, int stripIndex);

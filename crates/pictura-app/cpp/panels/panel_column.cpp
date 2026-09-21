@@ -487,11 +487,14 @@ void PanelColumn::updateMinimumWidth()
 {
     if (toolsContent_) {
         // D2: the tools column tracks its content width (slot grid + fg/bg),
-        // not the widget-column floor. `reapplyColumnStretch` disables the
-        // splitter handle beside it so a drag cannot resize the toolbar.
+        // not the widget-column floor. It is fixed-size in both directions: the
+        // maximum equals the minimum, so neither a splitter-handle drag (the
+        // handle beside it is disabled too) nor a stray programmatic resize can
+        // change the toolbar's width.
         const int want = toolsContent_->minimumWidth() > 0 ? toolsContent_->minimumWidth()
                                                            : toolsContent_->sizeHint().width();
         setMinimumWidth(qMax(kIconStripMinWidth, want));
+        setMaximumWidth(qMax(kIconStripMinWidth, want));
         return;
     }
     if (railMode_) {

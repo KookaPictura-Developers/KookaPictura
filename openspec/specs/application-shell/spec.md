@@ -354,9 +354,11 @@ draggable so the column can be moved and floated. The panel's content size SHALL
 be fixed along the column's major axis: a fixed content width in both one- and
 two-column modes. Dragging the column separator SHALL NOT resize it: the
 separator handle beside the docked Tools column SHALL be disabled so no resize
-drag is offered, and the disabled state SHALL be re-applied whenever the column
-is re-inserted into the splitter. Changing the tool grid between one and two
-columns SHALL re-fit a floating Tools overlay to the new content size on both
+drag is offered, the docked column's width range SHALL be pinned to its content
+width (minimum equal to maximum) so no splitter layout pass or stray resize can
+change it either, and the disabled handle state SHALL be re-applied whenever the
+column is re-inserted into the splitter. Changing the tool grid between one and
+two columns SHALL re-fit a floating Tools overlay to the new content size on both
 axes, so the two-column grid is not clipped by a one-column-wide overlay. The
 panel SHALL be placeable on either side of any widget panel or column, wherever
 the columns are placed, through the same column drop grammar and the same single
@@ -404,6 +406,12 @@ or the no-tabification contract.
 - **WHEN** the frame is built or a panel session is applied
 - **THEN** the splitter handle adjacent to the docked Tools column is disabled,
   so no separator drag can resize the toolbar
+
+#### Scenario: The docked Tools width range is pinned [tpc_docked_width_pinned]
+
+- **WHEN** the docked Tools column has been laid out
+- **THEN** its minimum width equals its maximum width and equals the content
+  width, so no splitter layout pass or stray resize can change it
 
 #### Scenario: A floating Tools overlay re-fits on a mode flip [tpc_float_refit_on_mode_flip]
 

@@ -313,28 +313,34 @@ void PanelColumn::updateColumnDrag(const QPoint& globalPos)
     }
     // Phase 6: a whole-column drag dims its overlay for the whole drag.
     setDragDimTarget(columnFloat_);
-    // A bare workspace edge resolves no anchor; approximate the edge line on the
-    // outermost visible column so the user still sees where the column lands.
-    // ponytail: visual-only anchor; the commit inserts at the splitter head/tail.
+    // A bare workspace edge resolves no anchor. Mark the central area's own
+    // left/right edge (where the new column actually lands), not an arbitrary
+    // column's edge: the outermost column only owns the mark so the drawn line
+    // and the resolved target stay in one column. Without this a left-side drop
+    // drew its line on a right-hand column.
     PanelColumn* indicator = anchor;
+    bool workspaceEdge = false;
     if (!indicator && hasTarget) {
         const QList<PanelColumn*> columns = frame->panelColumns();
+        PanelColumn* outer = nullptr;
         if (side == 0) {
             for (PanelColumn* column : columns) {
-                if (column && column->isVisible() && column != this) {
-                    indicator = column;
+                if (column && column != this && column->isVisible()) {
+                    outer = column;
                     break;
                 }
             }
         } else {
             for (int i = columns.size() - 1; i >= 0; --i) {
                 PanelColumn* column = columns.at(i);
-                if (column && column->isVisible() && column != this) {
-                    indicator = column;
+                if (column && column != this && column->isVisible()) {
+                    outer = column;
                     break;
                 }
             }
         }
+        indicator = outer ? outer : this;
+        workspaceEdge = true;
     }
     if (columnDropAnchor_ && columnDropAnchor_ != indicator) {
         columnDropAnchor_->hideEdgeDropIndicator();
@@ -342,7 +348,11 @@ void PanelColumn::updateColumnDrag(const QPoint& globalPos)
     columnDropAnchor_ = indicator;
     columnDropSide_ = side;
     if (indicator && hasTarget) {
-        indicator->showEdgeDropIndicator(side == 0 ? PanelSide::Left : PanelSide::Right);
+        if (workspaceEdge) {
+            indicator->showWorkspaceEdgeIndicator(side == 0);
+        } else {
+            indicator->showEdgeDropIndicator(side == 0 ? PanelSide::Left : PanelSide::Right);
+        }
     }
 }
 
