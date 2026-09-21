@@ -91,8 +91,13 @@ PanelFloat* PanelColumn::createFloat(PanelGroup* group, const QPoint& globalPos)
 
 QRect PanelColumn::floatBounds(QWidget* host) const
 {
-    // A float may sit anywhere on the screen, including outside the main window;
-    // only the screen's available geometry bounds it so it cannot be lost.
+    // In child mode the overlay is clipped to the owning frame, so it is bounded
+    // by the frame rect (in global coordinates); only in top-level mode may it
+    // sit anywhere on the screen, bounded by the screen's available geometry so
+    // it cannot be lost.
+    if (!PanelFloat::overlayUsesTopLevel() && host) {
+        return QRect(host->mapToGlobal(QPoint(0, 0)), host->size());
+    }
     QScreen* screen = host ? host->screen() : nullptr;
     if (!screen) {
         screen = QGuiApplication::primaryScreen();
@@ -104,6 +109,18 @@ void PanelColumn::moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft
 {
     if (!floatWindow) {
         return;
+    }
+    if (!PanelFloat::overlayUsesTopLevel()) {
+        // A child moves in parent-relative coordinates and is clamped to the
+        // frame rect; `QWidget::move` would ignore global coordinates here.
+        QWidget* host = floatWindow->parentWidget();
+        if (host) {
+            const QPoint local = host->mapFromGlobal(globalTopLeft);
+            const int maxX = qMax(0, host->width() - floatWindow->width());
+            const int maxY = qMax(0, host->height() - floatWindow->height());
+            floatWindow->move(qBound(0, local.x(), maxX), qBound(0, local.y(), maxY));
+            return;
+        }
     }
     QScreen* screen = QGuiApplication::screenAt(globalTopLeft);
     if (!screen) {

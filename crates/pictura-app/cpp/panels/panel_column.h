@@ -38,15 +38,23 @@ enum class PanelSide { Left, Right };
 // A torn-off group in a frameless floating overlay. It hosts a real
 // `PanelGroup` (same tabs, menu, minimize, iconic row) whose own tab-bar drag
 // path routes back through the owning column, so it can be dragged back and
-// re-docked. It is a frameless `Qt::Tool` top-level window parented to (transient
-// for) the main window: no title bar, no decorations, no taskbar entry, and it
-// may move anywhere on the screen. The column deletes the overlay once its group
-// is empty or re-docked.
+// re-docked. The hosting is platform-adaptive: where the platform lets a client
+// position its own top-levels it is a frameless `Qt::Tool` parented to (transient
+// for) the main window, with no title bar, no decorations, no taskbar entry, and
+// it may move anywhere on the screen; otherwise (Wayland) it is an in-window
+// child of the frame that follows the cursor and is clamped to the frame rect.
+// The column deletes the overlay once its group is empty or re-docked.
 class PanelFloat : public QWidget {
     Q_OBJECT
 
 public:
     explicit PanelFloat(QWidget* parent = nullptr);
+    // True when the overlay hosts as a positionable top-level window; false on
+    // platforms (Wayland) that ignore a client's `move()` of a top-level, where
+    // the overlay must be an in-window child instead. The test override forces
+    // child mode so the branch can be exercised on a top-level platform.
+    static bool overlayUsesTopLevel();
+    static void setForceChildOverlayForTest(bool force);
     PanelGroup* group() const { return group_; }
     void setGroup(PanelGroup* group);
     // A whole torn-off `PanelColumn` is hosted through the same overlay: the

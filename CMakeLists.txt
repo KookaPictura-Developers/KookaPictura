@@ -78,6 +78,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_visibility.cpp
     crates/pictura-app/cpp/selftest_shell_round3.cpp
     crates/pictura-app/cpp/selftest_shell_round4.cpp
+    crates/pictura-app/cpp/selftest_shell_round4_float.cpp
     crates/pictura-app/cpp/selftest_workspace_input.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
@@ -173,6 +174,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_visibility.h
     crates/pictura-app/cpp/selftest_shell_round3.h
     crates/pictura-app/cpp/selftest_shell_round4.h
+    crates/pictura-app/cpp/selftest_shell_round4_float.h
     crates/pictura-app/cpp/selftest_workspace_input.h
     crates/pictura-app/cpp/panels/layers_panel.h
     crates/pictura-app/cpp/panels/layers_filter_proxy.h
