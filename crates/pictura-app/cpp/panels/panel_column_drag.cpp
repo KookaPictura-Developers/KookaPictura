@@ -642,14 +642,23 @@ void PanelColumn::updateDrag(const QPoint& globalPos)
         indicatorOwner_->clearIndicator();
     }
     indicatorOwner_ = owner;
-    if (dropTarget_.outside) {
-        owner->clearIndicator();
-        indicatorOwner_ = nullptr;
+    // Whole-group drags tear the group into an overlay on the first move and
+    // keep it under the cursor for the rest of the drag, whether or not a
+    // target resolves; the resolved target still draws the indicator and drives
+    // the commit. A single-panel tab keeps the docked in-window reorder grammar
+    // and only floats once it leaves the window. An iconic/compact strip keeps
+    // its in-strip reorder grammar and only floats once the drag leaves it.
+    const bool floatNow = (!dragIsPanel_ && !railMode_) || dropTarget_.outside;
+    if (floatNow) {
         if (!dragFloat_ && dragGroup_) {
             dragFloat_ = createFloat(dragGroup_, globalPos);
         } else if (dragFloat_) {
             moveFloat(dragFloat_, globalPos - dragGrabOffset_);
         }
+    }
+    if (dropTarget_.outside) {
+        owner->clearIndicator();
+        indicatorOwner_ = nullptr;
         updateDragDim();
         return;
     }

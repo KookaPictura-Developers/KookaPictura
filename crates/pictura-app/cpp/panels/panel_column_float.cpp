@@ -284,13 +284,14 @@ void PanelColumn::updateColumnDrag(const QPoint& globalPos)
     int side = -1;
     PanelColumn* anchor = frame->resolveColumnMoveTarget(globalPos, this, &side);
     const bool hasTarget = side >= 0;
-    // M48: an unresolved move tears the whole column off into the floating
-    // overlay, which then follows the cursor until a target resolves or the drag
-    // ends. This mirrors the group drag's outside-band float; no second drag
+    // M48: the whole column tears off into the floating overlay on the first
+    // move and follows the cursor for the rest of the drag, whether or not a
+    // target resolves; a resolved target still draws the edge indicator and
+    // re-docks on release. This mirrors the group drag's float; no second drag
     // system.
-    if (!hasTarget && !columnFloat_) {
+    if (!columnFloat_) {
         floatColumn(globalPos - columnGrabOffset_);
-    } else if (columnFloat_) {
+    } else {
         moveFloat(columnFloat_, globalPos - columnGrabOffset_);
     }
     // Phase 6: a whole-column drag dims its overlay for the whole drag.
