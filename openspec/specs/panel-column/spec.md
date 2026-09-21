@@ -377,23 +377,28 @@ group. Dragging a tab within its own group SHALL reorder it; dragging a tab onto
 another group's tab bar SHALL move the panel into that group at the target index;
 dragging onto the column background or between groups SHALL insert a new group at
 that boundary; and dragging past the workspace edge SHALL tear the dragged panel
-or group off as a frameless `Qt::Tool` top-level window parented to (transient
-for) the main window — no title bar, no window decorations, and no taskbar entry
-— rather than an in-window overlay, movable outside the main window with its
-movement clamped to the available screen geometry. A single-panel drag SHALL
-float a one-panel float, and a group drag SHALL float the group. The same
-tab-versus-header distinction SHALL hold for a floating group. A floating overlay
-SHALL be re-dockable into a column, into another group, or as a new column by
-dropping it on the target. When a tab is dragged outward to float, the drag SHALL
-continue until the mouse button is released: the float SHALL keep following the
-cursor, exactly like a group or column drag, and SHALL only be committed or
-re-docked on release. A whole widget column SHALL be draggable to any side of the
-Tools toolbar, of another widget panel or column, and of the workspace. Every
-drop that moves the last panel or group out of a widget column SHALL leave no
-empty column behind, and this SHALL apply to the primary column as well as to
-drop-created columns: when the last visible panel is removed or moved out, the
-column SHALL be torn down, and a later drop or `Window`-menu show SHALL recreate a
-host column rather than leaving a bare strip.
+or group off into a frameless overlay whose hosting SHALL be platform-adaptive.
+Where the platform lets a client position its own top-level windows, the overlay
+SHALL be a frameless `Qt::Tool` top-level window parented to (transient for) the
+main window — no title bar, no window decorations, and no taskbar entry — rather
+than an in-window child widget, movable outside the main window with its movement
+clamped to the available screen geometry. Where the platform does not let a
+client position its own top-level windows, the overlay SHALL instead be an
+in-window child of the frame that follows the cursor by parent-relative
+coordinates and is clamped to the frame rect, so it cannot be lost. A
+single-panel drag SHALL float a one-panel float, and a group drag SHALL float the
+group. The same tab-versus-header distinction SHALL hold for a floating group. A
+floating overlay SHALL be re-dockable into a column, into another group, or as a
+new column by dropping it on the target. When a tab is dragged outward to float,
+the drag SHALL continue until the mouse button is released: the float SHALL keep
+following the cursor, exactly like a group or column drag, and SHALL only be
+committed or re-docked on release. A whole widget column SHALL be draggable to
+any side of the Tools toolbar, of another widget panel or column, and of the
+workspace. Every drop that moves the last panel or group out of a widget column
+SHALL leave no empty column behind, and this SHALL apply to the primary column as
+well as to drop-created columns: when the last visible panel is removed or moved
+out, the column SHALL be torn down, and a later drop or `Window`-menu show SHALL
+recreate a host column rather than leaving a bare strip.
 
 #### Scenario: A tab reorders within its group [m41_drag]
 
@@ -414,8 +419,8 @@ host column rather than leaving a bare strip.
 
 - **WHEN** a group is dragged past the column edge and then dropped back on the
   column
-- **THEN** it floats in a frameless `Qt::Tool` top-level window and, on the drop,
-  re-docks into the column
+- **THEN** it floats in a frameless overlay and, on the drop, re-docks into the
+  column
 
 #### Scenario: A single-tab drag floats only that panel [m43_tabdrag]
 
@@ -649,19 +654,23 @@ order.
 
 A group torn off a column SHALL float in a frameless overlay that follows the
 cursor and re-docks on release, and the overlay SHALL be able to cross and be
-placed around the docked or pane-hosted Tools panel. The overlay SHALL be a
-frameless `Qt::Tool` top-level window parented to (transient for) the main
-window — no title bar, no window decorations, and no taskbar entry — rather than
-an in-window child widget, so it SHALL NOT be clipped to the main window. Its
-movement SHALL be clamped to the available geometry of the screen under the
-target point (falling back to the frame's screen, then the primary screen) and
-SHALL NOT be clamped to the main window rect, so the overlay can be placed
-outside the main window yet cannot be lost off-screen. The overlay SHALL offer a
-resize grip in its bottom-right corner that resizes the overlay itself by the
-drag delta, clamped to the overlay's minimum size, and SHALL NOT resize the main
-window. The overlay SHALL show a close control at the rightmost side of its
-header; closing SHALL hide the group's panels while keeping the group restorable
-from `Window > Panels`, then remove the overlay. The overlay SHALL support a
+placed around the docked or pane-hosted Tools panel. The overlay's hosting SHALL
+be platform-adaptive. Where the platform lets a client position its own
+top-level windows, the overlay SHALL be a frameless `Qt::Tool` top-level window
+parented to (transient for) the main window — no title bar, no window
+decorations, and no taskbar entry — rather than an in-window child widget, so it
+SHALL NOT be clipped to the main window, and its movement SHALL be clamped to
+the available geometry of the screen under the target point (falling back to the
+frame's screen, then the primary screen) and SHALL NOT be clamped to the main
+window rect. Where the platform does not let a client position its own top-level
+windows, the overlay SHALL instead be an in-window child of the frame that
+follows the cursor by parent-relative coordinates and is clamped to the frame
+rect, so it cannot be lost. Either way the overlay SHALL offer a resize grip in
+its bottom-right corner that resizes the overlay itself by the drag delta,
+clamped to the overlay's minimum size, and SHALL NOT resize the main window. The
+overlay SHALL show a close control at the rightmost side of its header; closing
+SHALL hide the group's panels while keeping the group restorable from
+`Window > Panels`, then remove the overlay. The overlay SHALL support a
 non-resizable mode in which the grip is absent and the overlay takes the minimum
 its content needs; the floating Tools column SHALL use that mode.
 
@@ -699,6 +708,19 @@ its content needs; the floating Tools column SHALL use that mode.
 - **WHEN** a floating overlay is moved toward or past the edge of its screen
 - **THEN** it is clamped inside that screen's available geometry and may sit
   outside the main window's rect
+
+#### Scenario: Hosting follows the platform capabilities [fp_float_host_adapt]
+
+- **WHEN** a panel or group is torn off
+- **THEN** it hosts as a frameless top-level window on a platform that permits
+  client positioning of top-level windows, and as an in-window child of the
+  frame otherwise
+
+#### Scenario: The in-window overlay follows the cursor [fp_float_child_follow]
+
+- **WHEN** the overlay is hosted in-window and dragged
+- **THEN** it moves parent-relative by the cursor delta, stays inside the frame
+  rect, and is clipped to the frame
 
 ### Requirement: Per-widget panel header action menu
 
@@ -1106,13 +1128,15 @@ only while it is over a valid drop target.
 The system SHALL allow a whole widget `PanelColumn` to be dragged by its header
 and torn off the workspace into a frameless floating overlay, through the same
 drag machinery and the same single insertion indicator the panel and group drags
-use. The overlay SHALL be a frameless `Qt::Tool` top-level window parented to
-the main window, rather than an in-window child widget, and SHALL NOT be a
-decorated operating-system window. It SHALL keep a minimum width and SHALL offer
-a resize grip. A widget-column overlay SHALL open at about two thirds of the
-column's docked height, clamped to the overlay minimum. When the hosted column
-is iconic the overlay SHALL snap to the column's content height and its narrow
-content width. A release over a valid column or workspace edge SHALL re-place the
+use. The overlay SHALL use the same platform-adaptive hosting as a torn-off
+group: a frameless `Qt::Tool` top-level window parented to the main window where
+the platform permits client positioning of top-level windows, and an in-window
+child of the frame otherwise; in neither case SHALL it be a decorated
+operating-system window. It SHALL keep a minimum width and SHALL offer a resize
+grip. A widget-column overlay SHALL open at about two thirds of the column's
+docked height, clamped to the overlay minimum. When the hosted column is iconic
+the overlay SHALL snap to the column's content height and its narrow content
+width. A release over a valid column or workspace edge SHALL re-place the
 column; a release with no valid target SHALL leave the overlay floating.
 
 #### Scenario: Dragging a whole column floats it in-window [pc_col_float]
@@ -1143,6 +1167,12 @@ column; a release with no valid target SHALL leave the overlay floating.
 - **WHEN** a floating whole-column overlay is dropped on a column or workspace
   edge
 - **THEN** the whole column re-places at that position and the overlay is removed
+
+#### Scenario: A whole-column overlay follows the cursor in-window [pc_col_float_child]
+
+- **WHEN** a whole-column overlay is hosted in-window and its header is dragged
+- **THEN** it moves parent-relative by the cursor delta and stays clamped to the
+  frame rect
 
 ### Requirement: Floating panel as a drop target
 

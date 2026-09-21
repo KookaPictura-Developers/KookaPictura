@@ -1,4 +1,5 @@
 #include "selftest_shell_round4.h"
+#include "selftest_shell_round4_float.h"
 #include "selftest_report.h"
 
 #include "frame.h"
@@ -1193,6 +1194,6 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
     }
-
+    if (const int fc = pictura::runShellRound4FloatCheck(frame); fc != 0) { return fc; }
     return 0;
 }

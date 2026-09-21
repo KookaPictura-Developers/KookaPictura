@@ -494,8 +494,8 @@ QRect PanelColumn::floatGeometryForTest(int index) const
 
 QRect PanelColumn::floatHostRectForTest() const
 {
-    // The float is clamped to the screen, not the main window, so the host rect
-    // is the screen's available geometry.
+    // Top-level mode clamps the float to the screen, child mode to the owning
+    // frame; `floatBounds` reports whichever applies.
     return floatBounds(window());
 }
 

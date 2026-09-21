@@ -43,6 +43,8 @@ namespace pictura {
 
 namespace {
 
+bool gForceChildOverlayForTest = false;
+
 // A small bottom-right grip that resizes its owning `PanelFloat`. Unlike
 // `QSizeGrip` it never touches the top-level window (the main window); it only
 // grows or shrinks the overlay, clamped to the overlay's minimum size.
@@ -103,6 +105,20 @@ private:
 
 } // namespace
 
+bool PanelFloat::overlayUsesTopLevel()
+{
+    if (gForceChildOverlayForTest) {
+        return false;
+    }
+    return !QGuiApplication::platformName().contains(QStringLiteral("wayland"),
+                                                     Qt::CaseInsensitive);
+}
+
+void PanelFloat::setForceChildOverlayForTest(bool force)
+{
+    gForceChildOverlayForTest = force;
+}
+
 PanelFlyout::PanelFlyout(QWidget* parent)
     : QWidget(parent)
 {
@@ -121,11 +137,17 @@ PanelFloat::PanelFloat(QWidget* parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("panelFloat"));
-    // A frameless `Qt::Tool` top-level window parented to (transient for) the
-    // main window: no title bar, no decorations, no taskbar entry, and the
-    // overlay may move anywhere on the screen. The parent keeps it above the
+    // Wayland ignores a client's `move()` of a top-level window, so an overlay
+    // there must be an in-window child the parent can reposition. Everywhere
+    // else it is a frameless `Qt::Tool` top-level parented to (transient for)
+    // the main window: no title bar, no decorations, no taskbar entry, and it
+    // may move anywhere on the screen. The parent keeps either kind above the
     // frame and hidden with it.
-    setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+    if (overlayUsesTopLevel()) {
+        setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+    } else {
+        setWindowFlags(Qt::Widget);
+    }
     setAttribute(Qt::WA_StyledBackground, true);
     setMinimumWidth(kFloatMinWidth);
     auto* layout = new QVBoxLayout(this);
