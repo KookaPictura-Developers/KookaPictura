@@ -1,8 +1,20 @@
-# psd-image-resources Specification
+## ADDED Requirements
 
-## Purpose
-TBD - created by archiving change psd-image-resources. Update Purpose after archive.
-## Requirements
+### Requirement: Image resources are re-encoded from typed records
+
+`pictura-codec` SHALL expose `encode_image_resources(resources: &[ImageResource])
+-> Vec<u8>` that concatenates each record's raw block bytes in order, so that
+`encode_image_resources(&decode_image_resources(doc))` reproduces the document's
+image-resource section byte-for-byte. `ImageResource` SHALL carry the raw block
+bytes it was decoded from.
+
+#### Scenario: Decode then encode is byte-identical
+
+- **WHEN** any committed fixture's image-resource section is decoded and re-encoded
+- **THEN** the output equals the original section bytes
+
+## MODIFIED Requirements
+
 ### Requirement: Image resources are decoded into typed records
 
 `pictura-codec` SHALL expose `decode_image_resources(document: &Document) ->
@@ -38,29 +50,3 @@ section.
 
 - **WHEN** a document read from a file with a non-empty image-resource section that was not ICC-normalized is written back
 - **THEN** the output's image-resource bytes are identical to the input's, because the raw section is still re-emitted verbatim
-
-### Requirement: Image-resource data is parsed with the shared codec reader
-
-The image-resource parser SHALL use the existing bounds-checked `pictura-codec`
-`Reader`, so every read is length-checked and a truncated section yields a
-recoverable end-of-parse rather than an index panic. It SHALL NOT introduce a
-second byte cursor.
-
-#### Scenario: Truncation is recoverable
-
-- **WHEN** a resource block's declared data length exceeds the remaining bytes
-- **THEN** parsing stops, the prior records are returned, and no panic occurs
-
-### Requirement: Image resources are re-encoded from typed records
-
-`pictura-codec` SHALL expose `encode_image_resources(resources: &[ImageResource])
--> Vec<u8>` that concatenates each record's raw block bytes in order, so that
-`encode_image_resources(&decode_image_resources(doc))` reproduces the document's
-image-resource section byte-for-byte. `ImageResource` SHALL carry the raw block
-bytes it was decoded from.
-
-#### Scenario: Decode then encode is byte-identical
-
-- **WHEN** any committed fixture's image-resource section is decoded and re-encoded
-- **THEN** the output equals the original section bytes
-

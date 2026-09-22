@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+pictura-color = { path = "../pictura-color" }
 pictura-core = { path = "../pictura-core" }
 thiserror.workspace = true
 flate2 = "1"

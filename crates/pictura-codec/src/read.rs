@@ -96,6 +96,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             depth: BitDepth::Eight,
             source_mode: None,
             source_depth,
+            source_icc: None,
             composite: PixelBuffer::new(width, height, mode.color_channels()),
             merged_composite_present: false,
             is_psb,
@@ -106,7 +107,12 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             global_layer_mask,
             layer_section_extra,
         };
-        return Ok(normalize(doc, mode, depth, palette.as_ref()));
+        return Ok(crate::icc::apply_icc(normalize(
+            doc,
+            mode,
+            depth,
+            palette.as_ref(),
+        )));
     }
 
     // Image data section: 2-byte compression method, then one plane per header
@@ -154,6 +160,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         depth: BitDepth::Eight,
         source_mode: None,
         source_depth,
+        source_icc: None,
         composite,
         merged_composite_present: true,
         is_psb,
@@ -164,7 +171,12 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         global_layer_mask,
         layer_section_extra,
     };
-    Ok(normalize(doc, mode, depth, palette.as_ref()))
+    Ok(crate::icc::apply_icc(normalize(
+        doc,
+        mode,
+        depth,
+        palette.as_ref(),
+    )))
 }
 
 /// The PSD `header.color_mode` code to the engine's [`ColorMode`]. Bitmap,

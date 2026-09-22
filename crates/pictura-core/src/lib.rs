@@ -90,6 +90,12 @@ pub struct Document {
     /// a constructed document. Deliberately not re-emitted on save: `write_psd`
     /// stays 8-bit, so this records the source depth the save does not preserve.
     pub source_depth: Option<BitDepth>,
+    /// The embedded ICC profile bytes of the file this document was read from,
+    /// when it was converted to the sRGB working space on read. `None` for a
+    /// file with no decodable non-sRGB profile and for a constructed document.
+    /// Deliberately not re-emitted on save: the profile is removed from
+    /// `image_resources` so the converted sRGB pixels are not mis-tagged.
+    pub source_icc: Option<Vec<u8>>,
     pub composite: PixelBuffer,
     /// True when the file carried a merged composite image-data section. False
     /// when the file ended after the layer section (maximize-compatibility off),
@@ -124,6 +130,7 @@ impl Document {
             depth,
             source_mode: None,
             source_depth: None,
+            source_icc: None,
             composite: PixelBuffer::new(width, height, channels),
             merged_composite_present: true,
             is_psb: false,
