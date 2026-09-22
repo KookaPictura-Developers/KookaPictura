@@ -28,7 +28,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network)
 
 find_package(CxxQt QUIET)
 if(NOT CxxQt_FOUND)
@@ -91,8 +91,10 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_shell_round4.cpp
     crates/pictura-app/cpp/selftest_shell_round4_float.cpp
     crates/pictura-app/cpp/selftest_workspace_input.cpp
+    crates/pictura-app/cpp/selftest_control.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
+    crates/pictura-app/cpp/control_server.cpp
     crates/pictura-app/cpp/command_tree.cpp
     crates/pictura-app/cpp/theme.cpp
     crates/pictura-app/cpp/session.cpp
@@ -158,6 +160,7 @@ add_executable(pictura
     crates/pictura-app/cpp/layer_new_dialog.cpp
     crates/pictura-app/cpp/dialogs.cpp
     crates/pictura-app/cpp/commands.h
+    crates/pictura-app/cpp/control_server.h
     crates/pictura-app/cpp/theme.h
     crates/pictura-app/cpp/session.h
     crates/pictura-app/cpp/preferences_dialog.h
@@ -193,6 +196,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_shell_round4.h
     crates/pictura-app/cpp/selftest_shell_round4_float.h
     crates/pictura-app/cpp/selftest_workspace_input.h
+    crates/pictura-app/cpp/selftest_control.h
     crates/pictura-app/cpp/panels/layers_panel.h
     crates/pictura-app/cpp/panels/layers_filter_proxy.h
     crates/pictura-app/cpp/panels/layers_filter_bar.h
@@ -228,4 +232,4 @@ target_include_directories(pictura PRIVATE
 # The Rust static lib embeds `pictura-color` (Little CMS 2); a staticlib does not
 # propagate its native link dependencies, so the C++ link needs `-llcms2`.
 find_library(LCMS2_LIBRARY NAMES lcms2 REQUIRED)
-target_link_libraries(pictura PRIVATE pictura_app Qt6::Svg "${LCMS2_LIBRARY}")
+target_link_libraries(pictura PRIVATE pictura_app Qt6::Svg Qt6::Network "${LCMS2_LIBRARY}")

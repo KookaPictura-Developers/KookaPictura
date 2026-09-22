@@ -1,0 +1,76 @@
+#pragma once
+
+#include <QtCore/QByteArray>
+#include <QtCore/QHash>
+#include <QtCore/QJsonObject>
+#include <QtCore/QObject>
+#include <QtCore/QString>
+
+class QLocalServer;
+class QLocalSocket;
+
+namespace pictura {
+
+class PicturaMainWindow;
+
+// Opt-in JSON control endpoint for agentic testing. Serves newline-delimited
+// requests on a Unix-domain socket and dispatches on the Qt GUI thread.
+//
+// ponytail: requests block the GUI thread while a method runs; fine for a test
+// surface. Upgrade path is app-wide off-GUI-thread compute.
+class ControlServer : public QObject {
+    Q_OBJECT
+
+public:
+    ControlServer(PicturaMainWindow* frame, const QString& socketPath,
+                  QObject* parent = nullptr);
+    ~ControlServer() override;
+
+    // Path used when the constructor is given an empty path.
+    static QString defaultSocketPath();
+
+    // Upper bound on an unterminated request line held per socket. A larger
+    // buffer is rejected with `bad_request` and the socket is disconnected.
+    static constexpr int kMaxRequestBytes = 1024 * 1024;
+
+    bool listen();
+    QString socketPath() const { return socketPath_; }
+
+    // Dispatch one method call; returns the full {ok,result} or {ok,error}
+    // wrapper. Also drives the in-process self-test block.
+    QJsonObject dispatch(const QString& method, const QJsonObject& params);
+
+public slots:
+    // Close the server and remove the socket. Idempotent.
+    void shutdown();
+
+private slots:
+    void onNewConnection();
+    void onReadyRead();
+    void onDisconnected();
+
+private:
+    QJsonObject ok(const QJsonObject& result) const;
+    QJsonObject error(const QString& code, const QString& message) const;
+    QJsonObject methodStatus(const QJsonObject& params);
+    QJsonObject methodGetPixel(const QJsonObject& params);
+    QJsonObject methodListLayers(const QJsonObject& params);
+    QJsonObject methodListCommands(const QJsonObject& params);
+    QJsonObject methodDispatchCommand(const QJsonObject& params);
+    QJsonObject methodDocument(const QJsonObject& params);
+    QJsonObject methodEdit(const QJsonObject& params);
+    QJsonObject methodSetUnsavedPolicy(const QJsonObject& params);
+
+    void handleLine(QLocalSocket* socket, const QByteArray& line);
+    void writeLine(QLocalSocket* socket, const QJsonObject& response);
+
+    PicturaMainWindow* frame_;
+    QLocalServer* server_ = nullptr;
+    QString socketPath_;
+    QHash<QLocalSocket*, QByteArray> buffers_;
+    // Tracked unsaved-prompt policy, mirrored from the global set in dialogs.cpp.
+    bool unsavedInteractive_ = false;
+    QString unsavedChoice_ = QStringLiteral("discard");
+};
+
+} // namespace pictura
