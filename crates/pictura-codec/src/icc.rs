@@ -14,7 +14,8 @@ use pictura_color::{convert, Intent, Profile};
 use pictura_core::{ColorMode, Document, Layer, PixelBuffer};
 
 use crate::image_resources::{
-    decode_image_resources, encode_image_resources, ImageResource, ICC_PROFILE,
+    decode_image_resources_with_len, encode_image_resources, frame_image_resource, ImageResource,
+    ICC_PROFILE,
 };
 
 /// The `Description` of an ICC profile, or `None` when it does not parse.
@@ -29,7 +30,7 @@ pub(crate) fn apply_icc(doc: Document) -> Document {
     if doc.mode != ColorMode::Rgb || doc.image_resources.is_empty() {
         return doc;
     }
-    let resources = decode_image_resources(&doc);
+    let (resources, consumed) = decode_image_resources_with_len(&doc);
     let Some(profile) = resources.iter().find(|r| r.id == ICC_PROFILE) else {
         return doc;
     };
@@ -49,30 +50,26 @@ pub(crate) fn apply_icc(doc: Document) -> Document {
     let profile_bytes = profile.data.clone();
     let mut doc = doc;
     doc.composite = composite;
-    for layer in &mut doc.layers {
-        convert_layer(layer, &src, &dst);
-    }
+    convert_layers(&mut doc.layers, &src, &dst);
     doc.source_icc = Some(profile_bytes);
-    let kept: Vec<ImageResource> = resources
-        .into_iter()
-        .filter(|r| r.id != ICC_PROFILE)
-        .collect();
-    doc.image_resources = encode_image_resources(&kept);
+    let section = rebuild_resources(&doc, resources, consumed, None);
+    doc.image_resources = section;
     doc
 }
 
-/// Convert a 3-channel RGB buffer's planes, or `None` when it is not RGB or the
-/// transform cannot run; the buffer is never partially converted.
+/// Convert a buffer's color planes (the first 3 for an RGB/RGBA one, leaving any
+/// alpha plane untouched), or `None` when there is no convertible color plane or
+/// the transform cannot run; the buffer is never partially converted.
 fn convert_buffer(buf: &PixelBuffer, src: &Profile, dst: &Profile) -> Option<PixelBuffer> {
-    let channels = buf.channels as usize;
-    if channels != 3 {
-        return None;
-    }
+    let color = match buf.channels {
+        3 | 4 => 3,
+        _ => return None,
+    };
     let n = buf.pixel_count();
     if n == 0 {
         return None;
     }
-    let planes: Vec<Vec<u8>> = (0..channels)
+    let planes: Vec<Vec<u8>> = (0..color)
         .map(|ch| buf.data[ch * n..(ch + 1) * n].to_vec())
         .collect();
     let converted = convert_planes(&planes, src, dst)?;
@@ -101,6 +98,36 @@ fn convert_layer(layer: &mut Layer, src: &Profile, dst: &Profile) {
             layer.channels[slot].data = plane;
         }
     }
+}
+
+/// Convert every layer in `layers` and, recursively, every descendant of a
+/// group, so a nested pixel layer is not left in the old profile.
+fn convert_layers(layers: &mut [Layer], src: &Profile, dst: &Profile) {
+    for layer in layers {
+        convert_layer(layer, src, dst);
+        convert_layers(&mut layer.children, src, dst);
+    }
+}
+
+/// Rebuild an image-resource section: every parsed block except 1039 (with an
+/// optional freshly framed 1039 appended), followed by the unparsed tail the
+/// decoder did not consume, byte-for-byte.
+fn rebuild_resources(
+    doc: &Document,
+    resources: Vec<ImageResource>,
+    consumed: usize,
+    new_icc: Option<&[u8]>,
+) -> Vec<u8> {
+    let mut kept: Vec<ImageResource> = resources
+        .into_iter()
+        .filter(|r| r.id != ICC_PROFILE)
+        .collect();
+    if let Some(bytes) = new_icc {
+        kept.push(frame_image_resource(ICC_PROFILE, "", bytes));
+    }
+    let mut section = encode_image_resources(&kept);
+    section.extend_from_slice(&doc.image_resources[consumed..]);
+    section
 }
 
 /// Interleave 1 or 3 equal-length planes, convert, and split back. The planes
@@ -141,9 +168,78 @@ fn convert_planes(planes: &[Vec<u8>], src: &Profile, dst: &Profile) -> Option<Ve
     Some(converted)
 }
 
+/// Assign Profile: retag the document with `target` without touching pixels.
+///
+/// Rewrites `image_resources` so it carries a framed resource 1039 with
+/// `target`'s ICC bytes, or omits 1039 for the sRGB working space, preserving
+/// every other resource block (and any unparsed tail) byte-for-byte. Sets
+/// `document_icc` to match. Only an RGB document is retagged.
+pub fn assign_document_profile(doc: &mut Document, target: &Profile) {
+    if doc.mode != ColorMode::Rgb {
+        return;
+    }
+    let icc = if target.is_srgb() {
+        None
+    } else {
+        Some(target.to_icc())
+    };
+    let (resources, consumed) = decode_image_resources_with_len(doc);
+    let section = rebuild_resources(doc, resources, consumed, icc.as_deref());
+    doc.image_resources = section;
+    doc.document_icc = icc;
+}
+
+/// Convert to Profile: transform the composite and every layer's color channels
+/// from the document's working profile (`sRGB` when `document_icc` is `None`) to
+/// `dst`, then assign `dst`.
+///
+/// A channel the transform cannot convert (a partial layer) is left untouched,
+/// not treated as an error. Returns `false` without mutating for a non-RGB
+/// document or when the recorded working profile cannot be parsed.
+pub fn convert_document(doc: &mut Document, dst: &Profile) -> bool {
+    if doc.mode != ColorMode::Rgb {
+        return false;
+    }
+    let src = match doc.document_icc.as_deref() {
+        None => Profile::srgb(),
+        Some(icc) => match Profile::from_icc(icc) {
+            Ok(profile) => profile,
+            Err(_) => return false,
+        },
+    };
+    if let Some(composite) = convert_buffer(&doc.composite, &src, dst) {
+        doc.composite = composite;
+    }
+    convert_layers(&mut doc.layers, &src, dst);
+    assign_document_profile(doc, dst);
+    true
+}
+
+/// Convert a document-space buffer to the sRGB working space for display.
+///
+/// Returns the input unchanged when the document has no working profile (the
+/// sRGB default) or records one that cannot be parsed, so an unprofiled document
+/// displays exactly as before.
+pub fn buffer_to_srgb(doc: &Document, buf: &PixelBuffer) -> PixelBuffer {
+    let Some(icc) = doc.document_icc.as_deref() else {
+        return buf.clone();
+    };
+    let Ok(src) = Profile::from_icc(icc) else {
+        return buf.clone();
+    };
+    if src.is_srgb() {
+        return buf.clone();
+    }
+    // ponytail: re-parses the ICC and rebuilds the transform on every display
+    // refresh; cache the transform if a profiled document's refresh ever shows
+    // up in a profile.
+    convert_buffer(buf, &src, &Profile::srgb()).unwrap_or_else(|| buf.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::image_resources::decode_image_resources;
     use pictura_core::{BitDepth, Channel, ColorMode, PsdRect};
 
     /// One `8BIM` resource block with an empty Pascal name.
@@ -330,5 +426,235 @@ mod tests {
             [id(0), id(1), id(2)],
             [expected[0][0], expected[1][0], expected[2][0]]
         );
+    }
+
+    #[test]
+    fn assign_leaves_composite_and_layers_byte_identical() {
+        let mut doc = Document::from_rgba("px", 2, 1, &[10, 20, 30, 255, 40, 50, 60, 128]);
+        let before = doc.clone();
+        assign_document_profile(&mut doc, &Profile::adobe_rgb());
+        assert_eq!(doc.composite, before.composite);
+        assert_eq!(doc.layers[0].channels, before.layers[0].channels);
+        assert!(doc.document_icc.is_some());
+    }
+
+    #[test]
+    fn assign_frames_a_1039_block_for_a_non_srgb_profile() {
+        let profile = Profile::adobe_rgb().to_icc();
+        let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+        assign_document_profile(&mut doc, &Profile::adobe_rgb());
+        let resources = decode_image_resources(&doc);
+        let icc = resources
+            .iter()
+            .find(|r| r.id == ICC_PROFILE)
+            .expect("a 1039 block is framed");
+        assert_eq!(icc.data, profile);
+        assert_eq!(doc.document_icc.as_deref(), Some(profile.as_slice()));
+    }
+
+    #[test]
+    fn assigning_srgb_removes_1039_and_clears_document_icc() {
+        let profile = Profile::adobe_rgb().to_icc();
+        let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+        doc.image_resources = icc_resource(&profile);
+        doc.document_icc = Some(profile);
+        assign_document_profile(&mut doc, &Profile::srgb());
+        assert!(doc.document_icc.is_none());
+        assert!(decode_image_resources(&doc)
+            .iter()
+            .all(|r| r.id != ICC_PROFILE));
+    }
+
+    #[test]
+    fn assign_preserves_other_resources() {
+        let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+        doc.image_resources = xmp_resource(b"<x/>");
+        assign_document_profile(&mut doc, &Profile::adobe_rgb());
+        let resources = decode_image_resources(&doc);
+        let xmp = resources
+            .iter()
+            .find(|r| r.id == crate::image_resources::XMP_METADATA)
+            .expect("the XMP block survives");
+        assert_eq!(xmp.data, b"<x/>");
+        assert!(resources.iter().any(|r| r.id == ICC_PROFILE));
+    }
+
+    #[test]
+    fn convert_changes_pixels_and_tags_destination() {
+        let mut doc = rgb_document();
+        let before = doc.composite.data.clone();
+        assert!(convert_document(&mut doc, &Profile::adobe_rgb()));
+        assert_ne!(doc.composite.data, before, "the composite was converted");
+        assert!(doc.document_icc.is_some());
+        assert!(decode_image_resources(&doc)
+            .iter()
+            .any(|r| r.id == ICC_PROFILE));
+    }
+
+    #[test]
+    fn convert_with_incomplete_layer_channels_is_not_an_error() {
+        let mut doc = rgb_document();
+        doc.layers.push(Layer {
+            name: "partial".into(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 1,
+                right: 2,
+            },
+            channels: vec![Channel {
+                id: 0,
+                data: vec![1, 2],
+            }],
+            ..Default::default()
+        });
+        let before = doc.layers[0].channels[0].data.clone();
+        assert!(convert_document(&mut doc, &Profile::adobe_rgb()));
+        assert_eq!(doc.layers[0].channels[0].data, before);
+    }
+
+    #[test]
+    fn buffer_to_srgb_is_identity_without_a_document_profile() {
+        let doc = rgb_document();
+        assert_eq!(buffer_to_srgb(&doc, &doc.composite), doc.composite);
+    }
+
+    #[test]
+    fn buffer_to_srgb_converts_a_profiled_document() {
+        let mut doc = rgb_document();
+        let before = doc.composite.data.clone();
+        doc.document_icc = Some(Profile::adobe_rgb().to_icc());
+        let out = buffer_to_srgb(&doc, &doc.composite);
+        assert_ne!(out.data, before);
+        assert_eq!(out.channels, doc.composite.channels);
+    }
+
+    fn rgb_layer(name: &str) -> Layer {
+        Layer {
+            name: name.into(),
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 1,
+                right: 2,
+            },
+            channels: vec![
+                Channel {
+                    id: 0,
+                    data: vec![200, 10],
+                },
+                Channel {
+                    id: 1,
+                    data: vec![100, 20],
+                },
+                Channel {
+                    id: 2,
+                    data: vec![50, 30],
+                },
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn convert_reaches_pixel_layers_nested_in_groups() {
+        let mut doc = rgb_document();
+        let child = rgb_layer("child");
+        let before = child.channels[0].data.clone();
+        doc.layers.push(Layer {
+            name: "group".into(),
+            is_group: true,
+            children: vec![child],
+            ..Default::default()
+        });
+        assert!(convert_document(&mut doc, &Profile::adobe_rgb()));
+        assert_ne!(
+            doc.layers[0].children[0].channels[0].data, before,
+            "the nested layer was converted"
+        );
+    }
+
+    #[test]
+    fn read_conversion_reaches_pixel_layers_nested_in_groups() {
+        let profile = Profile::adobe_rgb().to_icc();
+        let mut doc = rgb_document();
+        doc.image_resources = icc_resource(&profile);
+        let child = rgb_layer("child");
+        let before = child.channels[0].data.clone();
+        doc.layers.push(Layer {
+            name: "group".into(),
+            is_group: true,
+            children: vec![child],
+            ..Default::default()
+        });
+        let out = apply_icc(doc);
+        assert_ne!(out.layers[0].children[0].channels[0].data, before);
+    }
+
+    #[test]
+    fn assign_preserves_an_unparsed_resource_tail() {
+        let profile = Profile::adobe_rgb().to_icc();
+        let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+        let mut section = icc_resource(&profile);
+        let tail = b"nope\x00\x01\x02\x03tail".to_vec();
+        section.extend_from_slice(&tail);
+        doc.image_resources = section;
+        assign_document_profile(&mut doc, &Profile::adobe_rgb());
+        assert!(
+            doc.image_resources.ends_with(&tail),
+            "the unknown-signature tail survives"
+        );
+        assert!(decode_image_resources(&doc)
+            .iter()
+            .any(|r| r.id == ICC_PROFILE));
+        assert_eq!(doc.document_icc.as_deref(), Some(profile.as_slice()));
+    }
+
+    #[test]
+    fn read_conversion_preserves_an_unparsed_resource_tail() {
+        let profile = Profile::adobe_rgb().to_icc();
+        let mut doc = rgb_document();
+        let mut section = icc_resource(&profile);
+        let tail = b"nope\x00\x01\x02\x03tail".to_vec();
+        section.extend_from_slice(&tail);
+        doc.image_resources = section;
+        let out = apply_icc(doc);
+        assert_eq!(
+            out.image_resources, tail,
+            "the unparsed tail survives read-normalisation"
+        );
+        assert!(decode_image_resources(&out)
+            .iter()
+            .all(|r| r.id != ICC_PROFILE));
+        assert!(out.document_icc.is_none());
+    }
+
+    #[test]
+    fn convert_document_is_a_noop_for_a_grayscale_document() {
+        let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
+        doc.composite.data = vec![10, 200];
+        let before = doc.clone();
+        assert!(!convert_document(&mut doc, &Profile::adobe_rgb()));
+        assert_eq!(doc, before);
+    }
+
+    #[test]
+    fn assign_document_profile_is_a_noop_for_a_grayscale_document() {
+        let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
+        assign_document_profile(&mut doc, &Profile::adobe_rgb());
+        assert!(doc.document_icc.is_none());
+        assert!(doc.image_resources.is_empty());
+    }
+
+    #[test]
+    fn assign_then_convert_back_to_srgb_leaves_it_untagged() {
+        let mut doc = Document::from_rgba("px", 2, 1, &[10, 20, 30, 255, 40, 50, 60, 255]);
+        assign_document_profile(&mut doc, &Profile::adobe_rgb());
+        assert!(doc.document_icc.is_some());
+        assert!(convert_document(&mut doc, &Profile::srgb()));
+        assert!(doc.document_icc.is_none());
+        assert!(decode_image_resources(&doc)
+            .iter()
+            .all(|r| r.id != ICC_PROFILE));
     }
 }

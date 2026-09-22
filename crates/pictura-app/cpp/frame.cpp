@@ -672,6 +672,23 @@ void PicturaMainWindow::showFileInfo()
     }
 }
 
+void PicturaMainWindow::showProfileCommand(bool convert)
+{
+    PictureView* view = activeView();
+    if (!view || !view->has_document() || view->document_mode() != QStringLiteral("rgb")) {
+        return;
+    }
+    ProfileDialog dialog(convert, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const int index = dialog.profileIndex();
+    const bool ok = convert ? view->convert_profile(index) : view->assign_profile(index);
+    if (ok) {
+        refresh();
+    }
+}
+
 void PicturaMainWindow::showOpenDialog()
 {
     const QString filter = QStringLiteral(

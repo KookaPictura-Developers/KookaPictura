@@ -166,8 +166,10 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"Edit"});
     leaf(registry, {"Edit", "Color Settings…"}, QStringLiteral("Color Settings…"),
          QStringLiteral("Shift+Ctrl+K"));
-    leaf(registry, {"Edit", "Assign Profile…"}, QStringLiteral("Assign Profile…"));
-    leaf(registry, {"Edit", "Convert to Profile…"}, QStringLiteral("Convert to Profile…"));
+    registry.add(command_ids::EditAssignProfile, {"Edit", "Assign Profile…"},
+                 QStringLiteral("Assign Profile…"), QKeySequence(), true);
+    registry.add(command_ids::EditConvertProfile, {"Edit", "Convert to Profile…"},
+                 QStringLiteral("Convert to Profile…"), QKeySequence(), true);
     registry.addSeparator({"Edit"});
     leaf(registry, {"Edit", "Keyboard Shortcuts…"}, QStringLiteral("Keyboard Shortcuts…"),
          QStringLiteral("Alt+Shift+Ctrl+K"));
