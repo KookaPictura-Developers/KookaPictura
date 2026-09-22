@@ -374,7 +374,18 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
                 "ACME\x00");
             // IPTC-IIM: Object Name (2:5) = "Hi".
             const QByteArray fiIptc = QByteArrayLiteral("\x1c\x02\x05\x00\x02Hi");
-            const QByteArray fiXmp = QByteArrayLiteral("<x:xmpmeta/>");
+            // XMP: Element-form dc:title = "Hi" plus a property in an unknown
+            // namespace that must survive an edit.
+            const QByteArray fiXmp = QByteArrayLiteral(
+                "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">"
+                "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+                "<rdf:Description rdf:about=\"\""
+                " xmlns:dc=\"http://purl.org/dc/elements/1.1/\""
+                " xmlns:my=\"http://example.com/ns/\">"
+                "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Hi</rdf:li></rdf:Alt>"
+                "</dc:title>"
+                "<my:Custom>keep</my:Custom>"
+                "</rdf:Description></rdf:RDF></x:xmpmeta>");
             fiResource(1058, fiExif);
             fiResource(1028, fiIptc);
             fiResource(1060, fiXmp);
@@ -418,20 +429,25 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             const QStringList fiEditFields =
                 fiView ? fiView->iptc_edit_fields() : QStringList();
             const QStringList fiOtherRows = fiView ? fiView->iptc_rows() : QStringList();
+            const QStringList fiXmpRows = fiView ? fiView->xmp_rows() : QStringList();
             const QString fiXmpText = fiView ? fiView->xmp_packet() : QString();
             const bool fiExifOk = fiExifRows.contains(QStringLiteral("Make\tACME"));
             const bool fiIptcOk =
                 fiEditFields.contains(QStringLiteral("2:5\tObject Name\tHi"));
-            const bool fiXmpOk = fiXmpText == QStringLiteral("<x:xmpmeta/>");
+            const bool fiXmpRowsOk = fiXmpRows.contains(QStringLiteral("Title\tHi"));
+            const bool fiXmpOk = fiXmpText.contains(QStringLiteral("dc:title"));
 
-            pictura::FileInfoDialog fiDialog(fiExifRows, fiEditFields, fiOtherRows, fiXmpText);
+            pictura::FileInfoDialog fiDialog(fiExifRows, fiXmpRows, fiEditFields, fiOtherRows,
+                                             fiXmpText);
             const bool fiCategories =
                 fiDialog.categoriesForTest()
-                == QStringList({QStringLiteral("Camera Data"), QStringLiteral("IPTC"),
-                                QStringLiteral("Raw Data")});
+                == QStringList({QStringLiteral("Camera Data"), QStringLiteral("Description"),
+                                QStringLiteral("IPTC"), QStringLiteral("Raw Data")});
             const bool fiDialogRows = fiDialog.rowsForTest(QStringLiteral("Camera Data"))
                                           .contains(QStringLiteral("Make\tACME"));
-            const bool fiDialogXmp = fiDialog.xmpForTest() == QStringLiteral("<x:xmpmeta/>");
+            const bool fiDescriptionRows = fiDialog.rowsForTest(QStringLiteral("Description"))
+                                               .contains(QStringLiteral("Title\tHi"));
+            const bool fiDialogXmp = fiDialog.xmpForTest() == fiXmpText;
             const bool fiFieldShown = fiDialog.fieldForTest(QStringLiteral("2:5"))
                 == QStringLiteral("Hi");
             const bool fiEditsEmpty = fiDialog.edits().isEmpty();
@@ -443,43 +459,73 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             const bool fiEnabled = fiAction && fiAction->isEnabled();
 
             const bool fiOk = fiOpened && frame.documentCount() == fiDocs + 1 && fiExifOk
-                && fiIptcOk && fiXmpOk && fiCategories && fiDialogRows && fiDialogXmp
-                && fiFieldShown && fiEditsEmpty && fiEditsRow && fiEnabled;
+                && fiIptcOk && fiXmpRowsOk && fiXmpOk && fiCategories && fiDialogRows
+                && fiDescriptionRows && fiDialogXmp && fiFieldShown && fiEditsEmpty && fiEditsRow
+                && fiEnabled;
             ST_BEGIN("file_info_metadata");
-            ST_PASS("file_info_metadata open=%d exif=%d iptc=%d xmp=%d categories=%d rows=%d",
-                    fiOpened ? 1 : 0, fiExifOk ? 1 : 0, fiIptcOk ? 1 : 0, fiXmpOk ? 1 : 0,
-                    fiCategories ? 1 : 0, fiDialogRows ? 1 : 0);
+            ST_PASS("file_info_metadata open=%d exif=%d iptc=%d xmpr=%d xmp=%d categories=%d "
+                    "rows=%d desc=%d",
+                    fiOpened ? 1 : 0, fiExifOk ? 1 : 0, fiIptcOk ? 1 : 0, fiXmpRowsOk ? 1 : 0,
+                    fiXmpOk ? 1 : 0, fiCategories ? 1 : 0, fiDialogRows ? 1 : 0,
+                    fiDescriptionRows ? 1 : 0);
             if (!fiOk) {
                 return pictura::selfTest().fail(456, "file info metadata");
             }
 
-            // file_info_iptc_edit (457): applying an IPTC edit through the bridge
-            // changes the document, marks it dirty, records one undo state, and
-            // undo restores the previous value; re-applying the same value is a
-            // no-op.
-            const bool fiNoop = !fiView->apply_iptc_edits(
+            // file_info_iptc_edit (457): applying a metadata edit through the
+            // bridge changes both the IIM record and the parsed XMP, marks the
+            // document dirty, records one undo state, and undo restores both;
+            // re-applying the same value is a no-op.
+            const bool fiNoop = !fiView->apply_metadata_edits(
                 QStringList({QStringLiteral("2:5\tHi")}));
             const int fiStates = fiView->history_count();
             const bool fiEdited =
-                fiView->apply_iptc_edits(QStringList({QStringLiteral("2:5\tEdited")}));
+                fiView->apply_metadata_edits(QStringList({QStringLiteral("2:5\tEdited")}));
             const bool fiApplied =
                 fiView->iptc_edit_fields().contains(QStringLiteral("2:5\tObject Name\tEdited"));
+            const bool fiXmpApplied = fiView->xmp_rows().contains(QStringLiteral("Title\tEdited"));
             const bool fiDirty = fiView->is_dirty();
             const bool fiOneState = fiView->history_count() == fiStates + 1
                 && fiView->history_label(fiView->history_count() - 1)
                     == QStringLiteral("File Info");
             const bool fiUndone =
                 fiView->undo()
-                && fiView->iptc_edit_fields().contains(QStringLiteral("2:5\tObject Name\tHi"));
+                && fiView->iptc_edit_fields().contains(QStringLiteral("2:5\tObject Name\tHi"))
+                && fiView->xmp_rows().contains(QStringLiteral("Title\tHi"));
             ST_BEGIN("file_info_iptc_edit");
-            ST_PASS("file_info_iptc_edit noop=%d edited=%d applied=%d dirty=%d state=%d undone=%d",
-                    fiNoop ? 1 : 0, fiEdited ? 1 : 0, fiApplied ? 1 : 0, fiDirty ? 1 : 0,
-                    fiOneState ? 1 : 0, fiUndone ? 1 : 0);
+            ST_PASS("file_info_iptc_edit noop=%d edited=%d applied=%d xmp=%d dirty=%d state=%d "
+                    "undone=%d",
+                    fiNoop ? 1 : 0, fiEdited ? 1 : 0, fiApplied ? 1 : 0, fiXmpApplied ? 1 : 0,
+                    fiDirty ? 1 : 0, fiOneState ? 1 : 0, fiUndone ? 1 : 0);
+
+            // file_info_xmp_sync (459): one apply writes the IIM record and the
+            // XMP title together as a single undo state, and undo restores both.
+            const int syncBase = fiView->history_index();
+            const bool syncApplied = fiView->apply_metadata_edits(
+                QStringList({QStringLiteral("2:5\tSynced")}));
+            const bool syncXmp = fiView->xmp_rows().contains(QStringLiteral("Title\tSynced"));
+            const bool syncIim = fiView->iptc_edit_fields().contains(
+                QStringLiteral("2:5\tObject Name\tSynced"));
+            const bool syncOneState = fiView->history_index() == syncBase + 1
+                && fiView->history_count() == fiView->history_index() + 1
+                && fiView->history_label(fiView->history_index()) == QStringLiteral("File Info");
+            const bool syncUndone = fiView->undo()
+                && fiView->xmp_rows().contains(QStringLiteral("Title\tHi"))
+                && fiView->iptc_edit_fields().contains(QStringLiteral("2:5\tObject Name\tHi"));
+            ST_BEGIN("file_info_xmp_sync");
+            ST_PASS("file_info_xmp_sync applied=%d xmp=%d iim=%d state=%d undone=%d",
+                    syncApplied ? 1 : 0, syncXmp ? 1 : 0, syncIim ? 1 : 0, syncOneState ? 1 : 0,
+                    syncUndone ? 1 : 0);
+
             if (fiView) {
                 frame.closeDocument(frame.activeDocumentIndex(), false);
             }
-            if (!fiNoop || !fiEdited || !fiApplied || !fiDirty || !fiOneState || !fiUndone) {
+            if (!fiNoop || !fiEdited || !fiApplied || !fiXmpApplied || !fiDirty || !fiOneState
+                || !fiUndone) {
                 return pictura::selfTest().fail(457, "file info iptc edit");
+            }
+            if (!syncApplied || !syncXmp || !syncIim || !syncOneState || !syncUndone) {
+                return pictura::selfTest().fail(459, "file info xmp sync");
             }
         }
 

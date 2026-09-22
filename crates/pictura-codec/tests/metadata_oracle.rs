@@ -2,10 +2,13 @@
 //! the independent `exiftool` decoder reads from the same file. Self-skips when
 //! `exiftool` is unavailable.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use pictura_codec::{decode_image_resources, read_metadata, read_psd, ExifValue, XMP_METADATA};
+use pictura_codec::{
+    decode_image_resources, read_metadata, read_psd, set_file_info_fields, write_psd,
+    xmp_properties, ExifValue, XMP_METADATA,
+};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -54,6 +57,21 @@ fn exiftool_values() -> Option<Vec<String>> {
     let text = String::from_utf8_lossy(&out.stdout);
     let lines: Vec<String> = text.lines().map(str::to_string).collect();
     (lines.len() == TAGS.len()).then_some(lines)
+}
+
+fn exiftool_fields(path: &Path, tags: &[&str]) -> Option<Vec<String>> {
+    let out = Command::new("exiftool")
+        .arg("-s3")
+        .args(tags)
+        .arg(path)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<String> = text.lines().map(str::to_string).collect();
+    (lines.len() == tags.len()).then_some(lines)
 }
 
 fn number(text: &str) -> f64 {
@@ -168,4 +186,90 @@ fn metadata_decodes_and_agrees_with_exiftool() {
     assert_eq!(metadata.iptc.text(2, 80).as_deref(), Some(expect(10)));
     assert_eq!(metadata.iptc.text(2, 116).as_deref(), Some(expect(11)));
     assert_eq!(metadata.iptc.text(2, 120).as_deref(), Some(expect(12)));
+}
+
+const XMP_TAGS: &[&str] = &[
+    "-XMP-dc:Title",
+    "-XMP-dc:Creator",
+    "-XMP-dc:Description",
+    "-XMP-dc:Rights",
+    "-XMP-photoshop:Credit",
+    "-XMP-photoshop:Source",
+];
+
+#[test]
+fn parsed_xmp_agrees_with_exiftool() {
+    let bytes = std::fs::read(fixture("metadata.psd")).expect("read fixture");
+    let doc = read_psd(&bytes).expect("fixture parses");
+    let props = xmp_properties(&doc);
+
+    // Engine-side expectations, independent of exiftool.
+    assert_eq!(props.title.as_deref(), Some("Fixture Title"));
+    assert_eq!(props.creator, vec!["Ada Lovelace"]);
+    assert_eq!(props.description.as_deref(), Some("A fixture caption."));
+    assert_eq!(props.rights.as_deref(), Some("(c) 2026 Kooka Pictura"));
+    assert_eq!(props.credit.as_deref(), Some("Kooka Pictura"));
+    assert_eq!(props.source.as_deref(), Some("Test Suite"));
+
+    if !exiftool_available() {
+        eprintln!("skipping exiftool XMP comparison: exiftool not available");
+        return;
+    }
+    let values = exiftool_fields(&fixture("metadata.psd"), XMP_TAGS)
+        .expect("exiftool is available but produced no values");
+    assert_eq!(props.title.as_deref(), Some(values[0].as_str()));
+    assert_eq!(props.creator, vec![values[1].clone()]);
+    assert_eq!(props.description.as_deref(), Some(values[2].as_str()));
+    assert_eq!(props.rights.as_deref(), Some(values[3].as_str()));
+    assert_eq!(props.credit.as_deref(), Some(values[4].as_str()));
+    assert_eq!(props.source.as_deref(), Some(values[5].as_str()));
+}
+
+#[test]
+fn edited_xmp_survives_save_and_exiftool() {
+    let bytes = std::fs::read(fixture("metadata.psd")).expect("read fixture");
+    let mut doc = read_psd(&bytes).expect("fixture parses");
+    assert!(
+        set_file_info_fields(
+            &mut doc,
+            &[
+                (2, 5, "Edited Title".into()),
+                (2, 110, "Edited Credit".into())
+            ]
+        ),
+        "the edit changed the document"
+    );
+
+    let out = write_psd(&doc).expect("write");
+    let back = read_psd(&out).expect("re-read");
+    let props = xmp_properties(&back);
+    assert_eq!(props.title.as_deref(), Some("Edited Title"));
+    assert_eq!(props.credit.as_deref(), Some("Edited Credit"));
+    assert_eq!(
+        read_metadata(&back).iptc.text(2, 5).as_deref(),
+        Some("Edited Title"),
+        "IIM is synced"
+    );
+    let raw = read_metadata(&back).xmp;
+    assert!(
+        raw.contains("acme:Marker=\"keep-me\""),
+        "the unknown namespace attribute survives"
+    );
+    assert!(
+        raw.contains("<acme:Note>keep-me-too</acme:Note>"),
+        "the unknown-namespace property survives"
+    );
+
+    if !exiftool_available() {
+        eprintln!("skipping exiftool XMP round-trip: exiftool not available");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("pictura-xmp-write-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("edited.psd");
+    std::fs::write(&path, &out).unwrap();
+    let values = exiftool_fields(&path, &["-XMP-dc:Title", "-XMP-photoshop:Credit"])
+        .expect("exiftool is available but produced no values");
+    assert_eq!(values[0], "Edited Title");
+    assert_eq!(values[1], "Edited Credit");
 }

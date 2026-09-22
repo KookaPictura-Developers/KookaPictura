@@ -108,8 +108,20 @@ METADATA_XMP = (
     b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
     b'<x:xmpmeta xmlns:x="adobe:ns:meta/">'
     b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
-    b'<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" dc:format="image/psd"/>'
-    b"</rdf:RDF></x:xmpmeta>\n<?xpacket end=\"w\"?>"
+    b'<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" '
+    b'xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" '
+    b'xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/" '
+    b'xmlns:acme="http://example.com/acme/1.0/" '
+    b'dc:format="image/psd" acme:Marker="keep-me">'
+    b"<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Fixture Title</rdf:li></rdf:Alt></dc:title>"
+    b"<dc:creator><rdf:Seq><rdf:li>Ada Lovelace</rdf:li></rdf:Seq></dc:creator>"
+    b"<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">A fixture caption.</rdf:li></rdf:Alt></dc:description>"
+    b"<dc:rights><rdf:Alt><rdf:li xml:lang=\"x-default\">(c) 2026 Kooka Pictura</rdf:li></rdf:Alt></dc:rights>"
+    b"<photoshop:Credit>Kooka Pictura</photoshop:Credit>"
+    b"<photoshop:Source>Test Suite</photoshop:Source>"
+    b"<acme:Note>keep-me-too</acme:Note>"
+    b"</rdf:Description>"
+    b'</rdf:RDF></x:xmpmeta>\n<?xpacket end="w"?>'
 )
 
 
