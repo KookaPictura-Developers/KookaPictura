@@ -659,6 +659,16 @@ void PicturaMainWindow::showNewDocumentDialog()
     newDocument(spec.name, spec.width, spec.height, spec.mode, spec.depth, spec.background);
 }
 
+void PicturaMainWindow::showFileInfo()
+{
+    PictureView* view = activeView();
+    if (!view) {
+        return;
+    }
+    FileInfoDialog dialog(view->exif_rows(), view->iptc_rows(), view->xmp_packet(), this);
+    dialog.exec();
+}
+
 void PicturaMainWindow::showOpenDialog()
 {
     const QString filter = QStringLiteral(

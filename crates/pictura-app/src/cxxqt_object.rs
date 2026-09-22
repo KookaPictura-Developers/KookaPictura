@@ -114,6 +114,14 @@ pub mod qobject {
         #[qinvokable]
         fn icc_notice(&self) -> QString;
 
+        /// File Info rows: EXIF, IPTC-IIM, and the raw XMP packet.
+        #[qinvokable]
+        fn exif_rows(&self) -> QStringList;
+        #[qinvokable]
+        fn iptc_rows(&self) -> QStringList;
+        #[qinvokable]
+        fn xmp_packet(&self) -> QString;
+
         /// Working mode: `"rgb"` or `"grayscale"`; empty without a document.
         #[qinvokable]
         fn document_mode(&self) -> QString;
@@ -306,10 +314,9 @@ pub mod qobject {
         #[qinvokable]
         fn layer_row_child_count(&self, i: i32) -> i32;
 
-        /// Thumbnail of row `i` scaled to `size`. `entire_document` places the
-        /// layer at its document position in a transparent `size`×`size`
-        /// square; otherwise the layer's own bounds fill the square. Null for
-        /// a group, an adjustment layer, or an invalid index/size.
+        /// Thumbnail of row `i` scaled to `size`. `entire_document` places it at
+        /// its document position in a transparent square, else its own bounds fill
+        /// it. Null for a group, an adjustment layer, or an invalid index/size.
         #[qinvokable]
         fn layer_row_thumbnail(&self, i: i32, size: i32, entire_document: bool) -> QImage;
 
@@ -335,15 +342,13 @@ pub mod qobject {
         fn set_layer_name_path(self: Pin<&mut Self>, path: &QString, name: &QString) -> bool;
 
         /// Move the node at `path` `delta` places within its own container.
-        /// Refuses the Background and fully-locked nodes. Recomposites and
-        /// records one undo state on success.
+        /// Refuses the Background and fully-locked nodes; records one undo state.
         #[qinvokable]
         fn move_layer_path(self: Pin<&mut Self>, path: &QString, delta: i32) -> bool;
 
-        /// Move the node at `path` next to (or into) `target`: mode 0 = above,
-        /// 1 = below, 2 = into a group. An empty target means the document top.
-        /// Refuses the Background, fully/nesting-locked sources, a self or
-        /// descendant drop, and an `Into` target that is not a group.
+        /// Move node `path` next to (or into) `target`: 0 = above, 1 = below,
+        /// 2 = into a group (empty target = document top). Refuses the Background,
+        /// locked sources, a self/descendant drop, and a non-group `Into` target.
         #[qinvokable]
         fn move_layer_to(self: Pin<&mut Self>, path: &QString, target: &QString, mode: i32)
             -> bool;
@@ -353,9 +358,8 @@ pub mod qobject {
         #[qinvokable]
         fn can_move_layer_to(&self, path: &QString, target: &QString, mode: i32) -> bool;
 
-        /// Set visibility on every path (always eligible per node). Returns the
-        /// number of nodes changed; recomposites and records one undo state
-        /// only when that count is non-zero.
+        /// Set visibility on every path (always eligible). Returns the number of
+        /// nodes changed; records one undo state only when that count is non-zero.
         #[qinvokable]
         fn set_layers_visible(self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32;
 
@@ -394,9 +398,8 @@ pub mod qobject {
         #[qinvokable]
         fn commit_layers_fill(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 
-        /// Set one lock flag on every path. `flag` is `"transparency"`,
-        /// `"pixels"`, `"position"`, or `"all"`. Returns the number changed;
-        /// records one undo state only when non-zero.
+        /// Set one lock flag on every path (`flag` is `"transparency"`, `"pixels"`,
+        /// `"position"`, or `"all"`). Returns the number changed; records one state.
         #[qinvokable]
         fn set_layers_lock(
             self: Pin<&mut Self>,
@@ -446,10 +449,9 @@ pub mod qobject {
 
         /// Create a raster layer from the New Layer dialog directly above
         /// `selection_path` (top of the stack when empty) with the chosen
-        /// name/color/blend/opacity/fill, optional mode-neutral fill, and
-        /// clipping flag. `blend_key` is a 4-byte PSD key. Recomposites and
-        /// records one "New Layer" state on success. Returns the new path, or
-        /// empty on an invalid blend key or without a document.
+        /// name/color/blend/opacity/fill, optional mode-neutral fill, and clipping
+        /// flag. `blend_key` is a 4-byte PSD key; records one "New Layer" state on
+        /// success. Returns the new path, or empty on an invalid blend key.
         #[qinvokable]
         fn new_layer_dialog(
             self: Pin<&mut Self>,
@@ -584,9 +586,8 @@ pub mod qobject {
         #[qinvokable]
         fn layer_is_fill_content(&self, path: &QString) -> bool;
 
-        /// `Rasterize Fill Content`: bake the fill at `path` into pixels and
-        /// clear its fill data. Records one "Rasterize Fill Content" state on
-        /// success. Returns false (no state) for a non-decodable fill layer.
+        /// `Rasterize Fill Content`: bake `path`'s fill into pixels, clear its fill
+        /// data, and record one state. False (no state) for a non-decodable fill.
         #[qinvokable]
         fn rasterize_fill_content(self: Pin<&mut Self>, path: &QString) -> bool;
 
@@ -601,9 +602,8 @@ pub mod qobject {
         #[qinvokable]
         fn rasterize_all_layers(self: Pin<&mut Self>) -> i32;
 
-        /// Whether `path` resolves to a convertible raster pixel layer: not a
-        /// group, adjustment, Background, or already-smart layer with a
-        /// positive rect. Read-only; mutates nothing.
+        /// Whether `path` is a convertible raster pixel layer (not a group,
+        /// adjustment, Background, or smart layer; positive rect). Read-only.
         #[qinvokable]
         fn layer_can_convert_to_smart_object(&self, path: &QString) -> bool;
 

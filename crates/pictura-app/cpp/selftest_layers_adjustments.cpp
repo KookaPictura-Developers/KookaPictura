@@ -1,6 +1,7 @@
 #include "selftest_layers_adjustments.h"
 #include "selftest_report.h"
 
+#include "file_info_dialog.h"
 #include "frame.h"
 #include "panels/panel_column.h"
 
@@ -330,6 +331,113 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
             if (!depthOk) {
                 return pictura::selfTest().fail(298, "depth open");
+            }
+        }
+
+        // file_info_metadata (456): a PSD carrying EXIF, IPTC, and XMP image
+        // resources decodes into File Info rows, and the read-only dialog shows
+        // the three categories with those values.
+        {
+            QTemporaryDir fiDir;
+            const QString fiPath = fiDir.filePath(QStringLiteral("metadata.psd"));
+            QByteArray fiRes;
+            const auto fiRes16 = [&fiRes](unsigned short value) {
+                fiRes.append(char((value >> 8) & 0xff));
+                fiRes.append(char(value & 0xff));
+            };
+            const auto fiRes32 = [&fiRes](unsigned int value) {
+                fiRes.append(char((value >> 24) & 0xff));
+                fiRes.append(char((value >> 16) & 0xff));
+                fiRes.append(char((value >> 8) & 0xff));
+                fiRes.append(char(value & 0xff));
+            };
+            const auto fiResource = [&](unsigned short id, const QByteArray& data) {
+                fiRes.append("8BIM", 4);
+                fiRes16(id);
+                fiRes.append(char(0)); // empty Pascal name
+                fiRes.append(char(0)); // name pad to even
+                fiRes32(unsigned(data.size()));
+                fiRes.append(data);
+                if (data.size() % 2 != 0) {
+                    fiRes.append(char(0));
+                }
+            };
+            // Little-endian TIFF with IFD0 Make = "ACME" at offset 0x1a.
+            const QByteArray fiExif = QByteArrayLiteral(
+                "II\x2a\x00\x08\x00\x00\x00"
+                "\x01\x00"
+                "\x0f\x01\x02\x00\x05\x00\x00\x00\x1a\x00\x00\x00"
+                "\x00\x00\x00\x00"
+                "ACME\x00");
+            // IPTC-IIM: Object Name (2:5) = "Hi".
+            const QByteArray fiIptc = QByteArrayLiteral("\x1c\x02\x05\x00\x02Hi");
+            const QByteArray fiXmp = QByteArrayLiteral("<x:xmpmeta/>");
+            fiResource(1058, fiExif);
+            fiResource(1028, fiIptc);
+            fiResource(1060, fiXmp);
+
+            QByteArray fi;
+            const auto fi16 = [&fi](unsigned short value) {
+                fi.append(char((value >> 8) & 0xff));
+                fi.append(char(value & 0xff));
+            };
+            const auto fi32 = [&fi](unsigned int value) {
+                fi.append(char((value >> 24) & 0xff));
+                fi.append(char((value >> 16) & 0xff));
+                fi.append(char((value >> 8) & 0xff));
+                fi.append(char(value & 0xff));
+            };
+            fi.append("8BPS", 4);
+            fi16(1);
+            fi.append(6, char(0));
+            fi16(3); // channels
+            fi32(1); // height
+            fi32(1); // width
+            fi16(8); // depth
+            fi16(3); // RGB
+            fi32(0); // color mode data
+            fi32(unsigned(fiRes.size()));
+            fi.append(fiRes);
+            fi32(0); // layer/mask section
+            fi16(0); // raw compression
+            fi.append(char(10));
+            fi.append(char(20));
+            fi.append(char(30));
+            QFile fiFile(fiPath);
+            const bool fiWritten = fiFile.open(QIODevice::WriteOnly)
+                && fiFile.write(fi) == fi.size();
+            fiFile.close();
+
+            const int fiDocs = frame.documentCount();
+            const bool fiOpened = fiWritten && frame.openPath(fiPath);
+            pictura::PictureView* fiView = frame.activeView();
+            const QStringList fiExifRows = fiView ? fiView->exif_rows() : QStringList();
+            const QStringList fiIptcRows = fiView ? fiView->iptc_rows() : QStringList();
+            const QString fiXmpText = fiView ? fiView->xmp_packet() : QString();
+            const bool fiExifOk = fiExifRows.contains(QStringLiteral("Make\tACME"));
+            const bool fiIptcOk = fiIptcRows.contains(QStringLiteral("Object Name\tHi"));
+            const bool fiXmpOk = fiXmpText == QStringLiteral("<x:xmpmeta/>");
+
+            pictura::FileInfoDialog fiDialog(fiExifRows, fiIptcRows, fiXmpText);
+            const bool fiCategories =
+                fiDialog.categoriesForTest()
+                == QStringList({QStringLiteral("Camera Data"), QStringLiteral("IPTC"),
+                                QStringLiteral("Raw Data")});
+            const bool fiDialogRows = fiDialog.rowsForTest(QStringLiteral("Camera Data"))
+                                          .contains(QStringLiteral("Make\tACME"));
+            const bool fiDialogXmp = fiDialog.xmpForTest() == QStringLiteral("<x:xmpmeta/>");
+
+            const bool fiOk = fiOpened && frame.documentCount() == fiDocs + 1 && fiExifOk
+                && fiIptcOk && fiXmpOk && fiCategories && fiDialogRows && fiDialogXmp;
+            ST_BEGIN("file_info_metadata");
+            ST_PASS("file_info_metadata open=%d exif=%d iptc=%d xmp=%d categories=%d rows=%d",
+                    fiOpened ? 1 : 0, fiExifOk ? 1 : 0, fiIptcOk ? 1 : 0, fiXmpOk ? 1 : 0,
+                    fiCategories ? 1 : 0, fiDialogRows ? 1 : 0);
+            if (fiView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!fiOk) {
+                return pictura::selfTest().fail(456, "file info metadata");
             }
         }
 

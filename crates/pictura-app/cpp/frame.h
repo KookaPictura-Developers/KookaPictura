@@ -195,6 +195,7 @@ public:
     bool closeActiveDocument(bool interactive);
     void showNewDocumentDialog();
     void showOpenDialog();
+    void showFileInfo();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
