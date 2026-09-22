@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use pictura_codec::{read_descriptor, read_psd, write_psb, write_psd, DescValue};
 use pictura_core::{
-    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerBlock, LockFlags,
-    PsdRect, SmartObject, SmartObjectKind,
+    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Compression, Document, Layer, LayerBlock,
+    LayerMask, LockFlags, PsdRect, SmartObject, SmartObjectKind,
 };
 
 #[path = "oracle/support.rs"]

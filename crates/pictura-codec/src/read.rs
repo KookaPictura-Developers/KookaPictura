@@ -75,7 +75,7 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     let resources_len = r.u32()? as usize;
     let image_resources = r.take(resources_len)?.to_vec();
     // Layer and mask information section: 4-byte length (8 in PSB).
-    let (mut layers, global_layer_mask, layer_section_extra) =
+    let (mut layers, global_layer_mask, layer_section_extra, layer_compression) =
         read_layer_section(&mut r, is_psb, mode.color_channels() as usize, depth)?;
     // Derive the smart-object view from the preserved bytes; a malformed
     // descriptor or linked-layer record degrades to Unresolved (design D5).
@@ -100,6 +100,8 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             document_icc: None,
             composite: PixelBuffer::new(width, height, mode.color_channels()),
             merged_composite_present: false,
+            composite_compression: Compression::Rle,
+            layer_compression: layer_compression.unwrap_or_default(),
             is_psb,
             layers,
             channels: Vec::new(),
@@ -119,6 +121,8 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     // Image data section: 2-byte compression method, then one plane per header
     // channel (color channels first, then alpha/spot/selection channels).
     let compression = r.u16()?;
+    let composite_compression = Compression::from_code(compression)
+        .ok_or_else(|| PsdError::Unsupported(format!("compression {compression}")))?;
     let header_channels = channels as usize;
     let width = width as usize;
     let height = height as usize;
@@ -126,22 +130,21 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
     if depth == 1 && matches!(compression, COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION) {
         return Err(PsdError::Unsupported("ZIP compression at depth 1".into()));
     }
-    let mut data = match compression {
-        0 => r
+    let mut data = match composite_compression {
+        Compression::Raw => r
             .take(planar_len(header_channels, stride, height)?)?
             .to_vec(),
-        1 => read_rle(&mut r, header_channels, stride, height, is_psb)?,
-        COMPRESSION_ZIP | COMPRESSION_ZIP_PREDICTION => {
+        Compression::Rle => read_rle(&mut r, header_channels, stride, height, is_psb)?,
+        Compression::Zip | Compression::ZipPrediction => {
             let expected = planar_len(header_channels, stride, height)?;
             let remaining = r.remaining();
             let payload = r.take(remaining)?.to_vec();
             let mut data = inflate(&payload, expected)?;
-            if compression == COMPRESSION_ZIP_PREDICTION {
+            if composite_compression == Compression::ZipPrediction {
                 undo_prediction(&mut data, width, header_channels * height, depth);
             }
             data
         }
-        c => return Err(PsdError::Unsupported(format!("compression {c}"))),
     };
     // Narrow 16/32-bit samples to the 8-bit layout before `split_planes`, so
     // `normalize` and every color-mode conversion see the 8-bit planes they
@@ -165,6 +168,8 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         document_icc: None,
         composite,
         merged_composite_present: true,
+        composite_compression,
+        layer_compression: layer_compression.unwrap_or_default(),
         is_psb,
         layers,
         channels,
@@ -477,8 +482,10 @@ struct RawLayer {
     section: Option<u32>,
 }
 
-/// `(layers, global_layer_mask, layer_section_extra)` read from the section.
-type LayerSection = (Vec<Layer>, Vec<u8>, Vec<u8>);
+/// `(layers, global_layer_mask, layer_section_extra, layer_compression)` read
+/// from the section; the compression is `None` when no engine-encoded layer
+/// channel was present.
+type LayerSection = (Vec<Layer>, Vec<u8>, Vec<u8>, Option<Compression>);
 
 fn read_layer_section(
     r: &mut Reader,
@@ -492,7 +499,7 @@ fn read_layer_section(
         r.u32()? as usize
     };
     if section_len == 0 {
-        return Ok((Vec::new(), Vec::new(), Vec::new()));
+        return Ok((Vec::new(), Vec::new(), Vec::new(), None));
     }
     let section_end = r
         .pos
@@ -508,6 +515,7 @@ fn read_layer_section(
         r.u32()? as usize
     };
     let mut layers = Vec::new();
+    let mut layer_compression = None;
     if info_len != 0 {
         let info_end = r
             .pos
@@ -516,7 +524,7 @@ fn read_layer_section(
         if info_end > section_end {
             return Err(PsdError::Invalid("layer info exceeds layer section".into()));
         }
-        layers = read_layer_info(r, is_psb, info_end, color_channels, depth)?;
+        (layers, layer_compression) = read_layer_info(r, is_psb, info_end, color_channels, depth)?;
         r.pos = info_end;
     }
 
@@ -531,7 +539,12 @@ fn read_layer_section(
     // Remaining bytes are trailing global additional-layer information.
     let extra_len = section_end - r.pos;
     let layer_section_extra = r.take(extra_len)?.to_vec();
-    Ok((layers, global_layer_mask, layer_section_extra))
+    Ok((
+        layers,
+        global_layer_mask,
+        layer_section_extra,
+        layer_compression,
+    ))
 }
 
 fn read_layer_info(
@@ -540,13 +553,18 @@ fn read_layer_info(
     info_end: usize,
     color_channels: usize,
     depth: u16,
-) -> Result<Vec<Layer>, PsdError> {
+) -> Result<(Vec<Layer>, Option<Compression>), PsdError> {
     let count = r.i16()?;
     let n = count.unsigned_abs() as usize;
     let mut raws: Vec<RawLayer> = Vec::new();
     for _ in 0..n {
         raws.push(read_layer_record(r, is_psb)?);
     }
+
+    // First engine-encoded layer channel's compression; a document mixing kinds
+    // within a category normalizes to the first seen.
+    // ponytail: one kind per category, per-channel fidelity if ever needed.
+    let mut layer_compression = None;
 
     for raw in raws.iter_mut() {
         let layer_w = raw.layer.rect.width().max(0) as usize;
@@ -574,7 +592,7 @@ fn read_layer_info(
                 let data = if depth == 8 {
                     r.take(len)?.to_vec()
                 } else {
-                    let plane = read_channel_data(r, len, layer_w, layer_h, is_psb, depth)?;
+                    let (plane, _) = read_channel_data(r, len, layer_w, layer_h, is_psb, depth)?;
                     let mut stream = Vec::with_capacity(2 + plane.len());
                     stream.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
                     stream.extend_from_slice(&plane);
@@ -590,7 +608,12 @@ fn read_layer_info(
             } else {
                 (layer_w, layer_h)
             };
-            let data = read_channel_data(r, len, w, h, is_psb, depth)?;
+            let (data, code) = read_channel_data(r, len, w, h, is_psb, depth)?;
+            // Section dividers and folder records carry placeholder channels that
+            // `build_tree` drops; only a normal record's channel is a survivor.
+            if raw.section.is_none() && layer_compression.is_none() {
+                layer_compression = Compression::from_code(code);
+            }
             match id {
                 -2 => mask_data = Some(data),
                 _ => channels.push(Channel { id, data }),
@@ -621,7 +644,7 @@ fn read_layer_info(
     r.pos = info_end;
     let mut layers = build_tree(raws);
     derive_background(&mut layers);
-    Ok(layers)
+    Ok((layers, layer_compression))
 }
 
 /// PSD has no background bit: the bottom top-level, non-group layer named
@@ -879,7 +902,8 @@ fn read_rle_count(r: &mut Reader, is_psb: bool) -> Result<usize, PsdError> {
 /// info and **includes** the 2-byte compression header. At depth 1 (Bitmap only)
 /// a channel is bit-packed with a `ceil(width / 8)` row stride and expanded to an
 /// 8-bit `width * height` plane; at 16/32 it is decoded at the document depth and
-/// narrowed to one, so the layer path matches the composite path.
+/// narrowed to one, so the layer path matches the composite path. Returns the
+/// decoded plane and the observed compression word.
 fn read_channel_data(
     r: &mut Reader,
     declared_len: usize,
@@ -887,9 +911,9 @@ fn read_channel_data(
     height: usize,
     is_psb: bool,
     depth: u16,
-) -> Result<Vec<u8>, PsdError> {
+) -> Result<(Vec<u8>, u16), PsdError> {
     if declared_len == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), COMPRESSION_RAW));
     }
     if declared_len < 2 {
         return Err(PsdError::Invalid(format!(
@@ -898,11 +922,12 @@ fn read_channel_data(
     }
     let compression = r.u16()?;
     let payload = r.take(declared_len - 2)?;
-    match depth {
+    let data = match depth {
         1 => decode_bitmap_channel(compression, payload, width, height, is_psb),
         8 => decode_channel_data(compression, payload, width, height, is_psb),
         _ => decode_depth_channel(compression, payload, width, height, is_psb, depth),
-    }
+    }?;
+    Ok((data, compression))
 }
 
 /// Decode a 16/32-bit layer channel to an 8-bit `width * height` plane: it is

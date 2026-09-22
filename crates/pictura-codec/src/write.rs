@@ -101,7 +101,13 @@ fn write_layer_info(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             for channel in &layer.channels {
                 channels.push((
                     channel.id,
-                    OutChannel::Encoded(rle_channel(layer_w, layer_h, &channel.data, psb)?),
+                    OutChannel::Encoded(channel_stream(
+                        doc.layer_compression,
+                        layer_w,
+                        layer_h,
+                        &channel.data,
+                        psb,
+                    )?),
                 ));
             }
             for channel in &layer.raw_channels {
@@ -126,7 +132,13 @@ fn write_layer_info(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
                 };
                 channels.push((
                     -2,
-                    OutChannel::Encoded(rle_channel(width, height, &data, psb)?),
+                    OutChannel::Encoded(channel_stream(
+                        doc.layer_compression,
+                        width,
+                        height,
+                        &data,
+                        psb,
+                    )?),
                 ));
             }
         }
@@ -537,12 +549,81 @@ pub(crate) fn encode_scanlines(
     Ok(counts)
 }
 
+/// Concatenate `planes` (each `width * height`, plane-major) and zlib-wrap the
+/// result. When `predict`, apply the forward 8-bit per-row delta first (the
+/// inverse of the reader's `undo_prediction`); no scanline count table.
+pub(crate) fn zip_scanlines(
+    planes: &[&[u8]],
+    width: u32,
+    height: u32,
+    predict: bool,
+) -> Result<Vec<u8>, PsdError> {
+    let plane_len = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or_else(|| PsdError::Invalid("ZIP plane size overflow".into()))?;
+    let mut data = Vec::with_capacity(planes.len() * plane_len);
+    for plane in planes {
+        if plane.len() != plane_len {
+            return Err(PsdError::Invalid("ZIP plane length mismatch".into()));
+        }
+        data.extend_from_slice(plane);
+    }
+    if predict {
+        forward_prediction(&mut data, width as usize);
+    }
+    use flate2::write::ZlibEncoder;
+    use std::io::Write;
+    let mut enc = ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(&data)
+        .map_err(|_| PsdError::Invalid("ZIP encode".into()))?;
+    enc.finish()
+        .map_err(|_| PsdError::Invalid("ZIP encode".into()))
+}
+
+/// Apply the forward per-row delta `out[i] = data[i] - data[i-1]` over each
+/// `row_len`-byte scanline, in place. Written right-to-left so the original
+/// left neighbour is still available; the first byte of each row is unchanged.
+fn forward_prediction(data: &mut [u8], row_len: usize) {
+    if row_len == 0 {
+        return;
+    }
+    for row_start in (0..data.len()).step_by(row_len) {
+        let row_end = (row_start + row_len).min(data.len());
+        for i in (row_start + 1..row_end).rev() {
+            data[i] = data[i].wrapping_sub(data[i - 1]);
+        }
+    }
+}
+
 /// The complete on-disk layer-channel stream for one engine-encoded plane: the
-/// compression word, the count table, then the packed rows.
-fn rle_channel(width: usize, height: usize, plane: &[u8], psb: bool) -> Result<Vec<u8>, PsdError> {
+/// compression word followed by the payload for `kind`.
+fn channel_stream(
+    kind: Compression,
+    width: usize,
+    height: usize,
+    plane: &[u8],
+    psb: bool,
+) -> Result<Vec<u8>, PsdError> {
     let mut out = Vec::with_capacity(2 + plane.len());
-    out.extend_from_slice(&COMPRESSION_RLE.to_be_bytes());
-    out.extend_from_slice(&encode_scanlines(&[plane], width, height, psb)?);
+    out.extend_from_slice(&kind.to_code().to_be_bytes());
+    match kind {
+        Compression::Rle => out.extend_from_slice(&encode_scanlines(&[plane], width, height, psb)?),
+        Compression::Raw => {
+            if plane.len() != width * height {
+                return Err(PsdError::Invalid("raw channel length mismatch".into()));
+            }
+            out.extend_from_slice(plane);
+        }
+        Compression::Zip => out.extend_from_slice(&zip_scanlines(
+            &[plane],
+            width as u32,
+            height as u32,
+            false,
+        )?),
+        Compression::ZipPrediction => {
+            out.extend_from_slice(&zip_scanlines(&[plane], width as u32, height as u32, true)?)
+        }
+    }
     Ok(out)
 }
 
@@ -644,7 +725,13 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         out.extend_from_slice(&extra);
     }
 
-    out.extend_from_slice(&COMPRESSION_RLE.to_be_bytes());
+    // "Maximize Compatibility" off: the source ended after the layer section, so
+    // emit no image-data section; the reader then reports no merged composite.
+    if !doc.merged_composite_present {
+        return Ok(out);
+    }
+
+    out.extend_from_slice(&doc.composite_compression.to_code().to_be_bytes());
     let mut planes: Vec<&[u8]> = Vec::with_capacity(channels);
     for c in 0..color_channels {
         planes.push(&doc.composite.data[c * plane..(c + 1) * plane]);
@@ -652,11 +739,24 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     for channel in &doc.channels {
         planes.push(&channel.data);
     }
-    out.extend_from_slice(&encode_scanlines(
-        &planes,
-        doc.width as usize,
-        doc.height as usize,
-        psb,
-    )?);
+    match doc.composite_compression {
+        Compression::Rle => out.extend_from_slice(&encode_scanlines(
+            &planes,
+            doc.width as usize,
+            doc.height as usize,
+            psb,
+        )?),
+        Compression::Raw => {
+            for plane in &planes {
+                out.extend_from_slice(plane);
+            }
+        }
+        Compression::Zip => {
+            out.extend_from_slice(&zip_scanlines(&planes, doc.width, doc.height, false)?)
+        }
+        Compression::ZipPrediction => {
+            out.extend_from_slice(&zip_scanlines(&planes, doc.width, doc.height, true)?)
+        }
+    }
     Ok(out)
 }

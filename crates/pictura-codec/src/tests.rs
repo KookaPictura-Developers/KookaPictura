@@ -957,6 +957,153 @@ fn zip_prediction_layer_channel_decodes() {
     assert_eq!(doc.layers[0].channels[0].data, expected);
 }
 
+// -- Compression preservation on write ----------------------------------
+
+fn patterned_document() -> Document {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    for (i, b) in doc.composite.data.iter_mut().enumerate() {
+        *b = (i * 11 + 3) as u8;
+    }
+    doc
+}
+
+#[test]
+fn zip_composite_declares_zip_and_round_trips() {
+    let mut doc = patterned_document();
+    doc.composite_compression = Compression::Zip;
+    let bytes = write_psd(&doc).unwrap();
+    let compression = u16::from_be_bytes([bytes[38], bytes[39]]);
+    assert_eq!(compression, COMPRESSION_ZIP, "composite declares ZIP");
+    assert_eq!(read_psd(&bytes).unwrap(), doc, "ZIP composite round-trips");
+}
+
+#[test]
+fn zip_prediction_composite_declares_three_and_round_trips() {
+    let mut doc = patterned_document();
+    doc.composite_compression = Compression::ZipPrediction;
+    let bytes = write_psd(&doc).unwrap();
+    let compression = u16::from_be_bytes([bytes[38], bytes[39]]);
+    assert_eq!(compression, COMPRESSION_ZIP_PREDICTION);
+    assert_eq!(read_psd(&bytes).unwrap(), doc, "prediction round-trips");
+}
+
+#[test]
+fn raw_composite_declares_raw_and_round_trips() {
+    let mut doc = patterned_document();
+    doc.composite_compression = Compression::Raw;
+    let bytes = write_psd(&doc).unwrap();
+    let compression = u16::from_be_bytes([bytes[38], bytes[39]]);
+    assert_eq!(compression, COMPRESSION_RAW);
+    assert_eq!(read_psd(&bytes).unwrap(), doc, "raw composite round-trips");
+}
+
+#[test]
+fn zip_layer_channel_and_mask_round_trip() {
+    let mut doc = patterned_document();
+    doc.layer_compression = Compression::Zip;
+    let mut layer = pixel("Zip", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255);
+    layer.mask = Some(LayerMask {
+        rect: rect(0, 0, 4, 4),
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: Some((0..16).map(|i| (i * 5) as u8).collect()),
+        ..Default::default()
+    });
+    doc.layers = vec![layer];
+
+    let bytes = write_psd(&doc).unwrap();
+    let back = read_psd(&bytes).unwrap();
+    assert_eq!(back, doc, "ZIP layer channel and mask round-trip");
+}
+
+#[test]
+fn zip_write_is_deterministic() {
+    let mut doc = patterned_document();
+    doc.composite_compression = Compression::Zip;
+    doc.layer_compression = Compression::Zip;
+    doc.layers = vec![pixel("Zip", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255)];
+    assert_eq!(write_psd(&doc).unwrap(), write_psd(&doc).unwrap());
+}
+
+#[test]
+fn read_records_compression_kinds() {
+    // Composite ZIP with no layers: the layer kind keeps the RLE default.
+    let mut p = header(1, 3, 2, 2, 3);
+    p.extend_from_slice(&psd_sections());
+    p.extend_from_slice(&COMPRESSION_ZIP.to_be_bytes());
+    p.extend_from_slice(&zlib(&[1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]));
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.composite_compression, Compression::Zip);
+    assert_eq!(doc.layer_compression, Compression::Rle);
+
+    // One ZIP layer channel over a raw composite.
+    let layer_psd = one_layer_channel_psd(COMPRESSION_ZIP, &zlib(&[0xAB]));
+    let doc = read_psd(&layer_psd).unwrap();
+    assert_eq!(doc.composite_compression, Compression::Raw);
+    assert_eq!(doc.layer_compression, Compression::Zip);
+
+    let layer_psd = one_layer_channel_psd(COMPRESSION_ZIP_PREDICTION, &zlib(&[0x11]));
+    let doc = read_psd(&layer_psd).unwrap();
+    assert_eq!(doc.layer_compression, Compression::ZipPrediction);
+}
+
+#[test]
+fn group_fixture_records_layer_compression_from_surviving_channels() {
+    // The leading 0x0 bounding-section-divider record declares RAW channels that
+    // `build_tree` discards; only the surviving leaf channels may set the kind.
+    let doc = read_psd(include_bytes!("../tests/fixtures/group.psd")).unwrap();
+    assert_eq!(
+        doc.layer_compression,
+        Compression::Rle,
+        "discarded divider/folder channels must not set the kind"
+    );
+    assert_eq!(read_psd(&write_psd(&doc).unwrap()).unwrap(), doc);
+}
+
+#[test]
+fn empty_group_document_round_trips_with_default_layer_compression() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![Layer {
+        name: "Group".to_string(),
+        rect: rect(0, 0, 0, 0),
+        blend: BlendMode::PassThrough,
+        opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: None,
+        channels: Vec::new(),
+        children: Vec::new(),
+        is_group: true,
+        background: false,
+        ..Default::default()
+    }];
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back.layer_compression, Compression::Rle);
+    assert_eq!(back, doc);
+}
+
+#[test]
+fn no_composite_document_writes_no_image_data_and_round_trips() {
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel("Only", rect(0, 0, 4, 4), 3, BlendMode::Normal, 255)];
+    doc.merged_composite_present = false;
+
+    let bytes = write_psd(&doc).unwrap();
+    // No image-data section: the file ends at the layer/mask section.
+    let section_len = u32::from_be_bytes(bytes[34..38].try_into().unwrap()) as usize;
+    assert_eq!(bytes.len(), 38 + section_len, "no image-data section");
+
+    let back = read_psd(&bytes).unwrap();
+    assert!(!back.merged_composite_present);
+    assert_eq!(back, doc);
+}
+
 #[test]
 fn zip_prediction_is_per_row() {
     // A per-plane inverse would add row 0's last byte into row 1's first byte,
