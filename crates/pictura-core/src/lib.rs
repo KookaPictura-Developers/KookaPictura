@@ -44,6 +44,39 @@ pub enum BitDepth {
     ThirtyTwo,
 }
 
+/// PSD image-data compression method (the `image_data.compression` word).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Compression {
+    #[default]
+    Rle,
+    Raw,
+    Zip,
+    ZipPrediction,
+}
+
+impl Compression {
+    /// The PSD compression word (0/1/2/3).
+    pub fn to_code(self) -> u16 {
+        match self {
+            Compression::Raw => 0,
+            Compression::Rle => 1,
+            Compression::Zip => 2,
+            Compression::ZipPrediction => 3,
+        }
+    }
+
+    /// Parse a PSD compression word; `None` for an unknown code.
+    pub fn from_code(code: u16) -> Option<Compression> {
+        Some(match code {
+            0 => Compression::Raw,
+            1 => Compression::Rle,
+            2 => Compression::Zip,
+            3 => Compression::ZipPrediction,
+            _ => return None,
+        })
+    }
+}
+
 /// A planar, row-major, 8-bit-per-channel pixel buffer.
 ///
 /// `data.len() == width * height * channels`. Planar means channel `c` for the
@@ -107,6 +140,14 @@ pub struct Document {
     /// when the file ended after the layer section (maximize-compatibility off),
     /// in which case `composite` is a zero-filled placeholder, not authoritative.
     pub merged_composite_present: bool,
+    /// Compression observed for the composite image-data section on read; RLE for
+    /// a constructed document. Re-emitted on save to preserve the source encoding.
+    pub composite_compression: Compression,
+    /// Compression observed for the first engine-encoded layer channel (layer
+    /// color channels and the raster mask) on read; RLE for a constructed
+    /// document. Re-emitted on save; a document mixing kinds normalizes to the
+    /// first seen.
+    pub layer_compression: Compression,
     /// True when the document was read from a version-2 PSB container; false for
     /// a PSD and for new/blank documents. Selects the PSB container and its
     /// widened length fields on re-save.
@@ -140,6 +181,8 @@ impl Document {
             document_icc: None,
             composite: PixelBuffer::new(width, height, channels),
             merged_composite_present: true,
+            composite_compression: Compression::Rle,
+            layer_compression: Compression::Rle,
             is_psb: false,
             layers: Vec::new(),
             channels: Vec::new(),
