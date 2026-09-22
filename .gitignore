@@ -7,6 +7,8 @@
 /build-*
 /cmake-build-*
 *.user
+# Root symlink to build/compile_commands.json, recreated by cmake configure
+/compile_commands.json
 
 # Node (openspec tooling)
 node_modules/

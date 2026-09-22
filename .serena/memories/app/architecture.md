@@ -1,0 +1,52 @@
+# App architecture (pictura-app)
+
+Entry points: `mem:core`, `mem:conventions`, `mem:task_completion`.
+
+`crates/pictura-app` is **the only Qt crate**. Rust is built as a `staticlib` (+ `rlib` for Rust
+tests) and linked into the C++ executable `pictura` by CMake via `cxx_qt_import_crate`
+(Corrosion). Engine crates stay Qt-free.
+
+## cxx-qt bridge
+
+- Codegen is driven by `crates/pictura-app/build.rs` + `src/cxxqt_object.rs`.
+- `cxxqt_object.rs` is a **Rust-2018 root** that keeps the `#[cxx_qt::bridge]` and shared helpers,
+  with concern submodules under `src/cxxqt_object/`:
+  `impl_{core,layers,selection,transform,paint,history,filters}.rs`, `helpers.rs`,
+  `helpers_composite.rs`, `tests.rs`, `tests_impl.rs`.
+- Keep the root + directory layout: the generated-header path and the 14 C++ includes depend on it.
+- Qt decodes images at the app boundary to packed RGBA8888 (`cpp/decode_image.cpp`); the engine
+  never sees Qt types.
+
+## C++/Qt shell (`crates/pictura-app/cpp/`)
+
+- **New `.cpp`/`.h` files MUST be added to `CMakeLists.txt` explicitly — there is no globbing.**
+- `main.cpp` is startup only: selects the offscreen QPA plugin before `QApplication` for `--headless`
+  (which implies `--self-test` when no document is given), then calls `runSelfTest`.
+- Large classes are split across several TUs registered in `CMakeLists.txt` (`frame.cpp` →
+  `frame_{columns,session,menus,build,test}.cpp`; `panels/panel_column.cpp` →
+  `panel_column{,_drag,_iconic,_menu,_test}.cpp` + `panel_float.cpp`; etc.).
+
+## The C++ self-test (hand-rolled oracle, not Qt Test/CTest)
+
+- `runSelfTest()` (`cpp/selftest.cpp`, one long sequential function) is called from `main.cpp`.
+  `CMakeLists.txt` has no `enable_testing()`/`add_test`.
+- Emits one token per check on stderr:
+  `pictura self-test: PASS|SKIP|FAIL <suite> <name> ...`, closed by
+  `pictura self-test: SUMMARY passed=<n> failed=<n> skipped=<n>`.
+- **The exit code is the failure identity.** `ST_FAIL(code, ...)` returns its code; codes run from
+  `2` upward and are **append-only**, so they stay stable identifiers. Exit `0` = all passed.
+- Macros: `ST_BEGIN` / `ST_PASS` / `ST_SKIP` / `ST_FAIL` / `ST_FINISH`. Names carry **no milestone**.
+- Checks live in per-concern `selftest_*.cpp` TUs (registered in `CMakeLists.txt`).
+  `selftest.cpp` itself is the **single allowlisted** file with a fixed ceiling in
+  `scripts/file-size-allowlist.txt` — add new checks to a `selftest_*.cpp`, never grow it.
+- `scripts/report_tests.py` parses both self-test invocations' token streams and merges checks by
+  `(suite, name)`.
+- **State isolation**: `main.cpp` points `XDG_STATE_HOME` at a temp dir, so the self-test never
+  touches real preferences/recovery state. The session store is
+  `$XDG_STATE_HOME/kooka-pictura/state.json` (default `~/.local/state/kooka-pictura/state.json`).
+
+## GPU interop
+
+`crates/pictura-app/GPU-INTEROP-NOTES.md`: offscreen wgpu→readback→QImage works and QRhi imports
+the wgpu VkDevice/image, but on-screen present via `QRhiWidget` is blocked. `--interop-probe`
+requires a real platform Vulkan instance (not offscreen-compatible).
