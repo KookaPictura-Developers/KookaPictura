@@ -39,7 +39,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
-    `depth-read`, and `color-lookup-adjustment-decode` changes;
+    `depth-read`, `color-lookup-adjustment-decode`, and `psd-image-resources`
+    changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -495,6 +496,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   metadata only, a non-default `DOMAIN_MIN`/`DOMAIN_MAX` is treated as `0..1`,
   and there is no Adobe pixel-parity claim. Remaining P3 adjustment key:
   version-3 `phfl`.
+- **Image-resource parsing** (roadmap P6/G5, archived
+  `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
+  parses the preserved image-resource section into typed
+  `ImageResource { id, name, data }` records and exposes the well-known ids
+  (`ICC_PROFILE` 1039, `XMP_METADATA` 1060, `EXIF_DATA_1` 1058, `EXIF_DATA_3`
+  1059, `IPTC_NAA` 1028). Parsing is tolerant: an unrecognized signature or a
+  truncated block returns the records so far and never panics, and `write_psd`
+  still re-emits the raw section byte-for-byte. A committed
+  `image_resources.psd` (EXIF + XMP) is proven against psd-tools. Ceiling: the
+  ICC profile is exposed but not yet applied (assign/convert and a save-side
+  resource rewrite are the follow-up). No app change, no new dependency.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
