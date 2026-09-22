@@ -572,11 +572,11 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         pump4(6);
     }
 
-    // panel_drag_whole_dim (430): a group drag tears its source into a
-    // following overlay on the first move even when the pointer is over no valid
-    // target (here the atomic tools column); the overlay is dimmed for the whole
-    // drag, and a cancel restores full opacity, re-docks the group, and leaves no
-    // extra overlay behind.
+    // panel_drag_whole_dim (430): a group drag dims its docked source for the
+    // whole drag and does not tear the group into an overlay while the pointer
+    // is still over a column (here the atomic tools column, which resolves no
+    // valid target); a cancel restores full opacity, re-docks the group, and
+    // leaves no overlay behind.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
@@ -606,12 +606,13 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
                 const int floatsBefore = primary->floatCountForTest();
                 began = primary->beginGroupDragForTest(panelName);
                 // The tools column resolves no valid target (D4 atomic); the
-                // group still tears off into the dimmed following overlay.
+                // group stays docked and dimmed instead of tearing off, because
+                // the pointer has not left every column yet.
                 const QPoint overTools = tools->mapToGlobal(tools->rect().center());
                 primary->dragToForTest(overTools);
                 pump4(4);
                 dimmed = began && primary->dragDimOpacityForTest() < 0.7;
-                floated = primary->floatCountForTest() == floatsBefore + 1;
+                floated = primary->floatCountForTest() != floatsBefore;
                 primary->cancelDragForTest();
                 pump4(6);
                 restored = primary->dragDimOpacityForTest() > 0.9
@@ -622,7 +623,7 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         ST_BEGIN("panel_drag_whole_dim");
         ST_PASS("panel_drag_whole_dim began=%d dimmed=%d floated=%d restored=%d",
                 began ? 1 : 0, dimmed ? 1 : 0, floated ? 1 : 0, restored ? 1 : 0);
-        if (!(began && dimmed && floated && restored)) {
+        if (!(began && dimmed && !floated && restored)) {
             return pictura::selfTest().fail(430, "whole-drag dim");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
@@ -1072,76 +1073,6 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
         }
         frame.resize(frameBefore);
         pump4(6);
-        frame.applyPanelSessionForTest(pictura::SessionState{});
-        pump4(6);
-    }
-
-    // group_drag_float_follows (438): dragging a docked group by its header
-    // tears it into a following overlay on the first move, even while the
-    // pointer is still inside the workspace over a resolved target group (the
-    // tabify indicator keeps showing), the overlay tracks the cursor, and the
-    // release re-docks the group's panels into that target group.
-    {
-        frame.applyPanelSessionForTest(pictura::SessionState{});
-        pump4(6);
-        pictura::PanelColumn* primary = frame.panelColumn();
-        bool began = false, floated = false, indicator = false, follows = false, redocked = false;
-        if (primary) {
-            QList<pictura::PanelGroup*> groups;
-            for (pictura::PanelGroup* candidate : primary->groups()) {
-                if (candidate && candidate->titleCountForTest() > 0
-                    && !candidate->isCollapsedToIcons()) {
-                    groups << candidate;
-                }
-            }
-            if (groups.size() >= 2) {
-                pictura::PanelGroup* source = groups.at(1);
-                pictura::PanelGroup* target = groups.at(0);
-                for (pictura::PanelGroup* group : {source, target}) {
-                    if (group->visiblePanels().isEmpty() && !group->panels().isEmpty()
-                        && group->panels().first()) {
-                        primary->showPanel(group->panels().first()->objectName(), true);
-                    }
-                }
-                pump4(4);
-                if (!source->visiblePanels().isEmpty() && source->visiblePanels().first()) {
-                    const QString panel = source->visiblePanels().first()->objectName();
-                    const int floatsBefore = primary->floatCountForTest();
-                    // Over the target group's tab bar: a valid tabify target
-                    // resolves its region outline while the group still follows.
-                    const QPoint a = target->tabBarGlobalRect().center();
-                    const QPoint b = a + QPoint(0, 12);
-                    began = primary->beginGroupDragForTest(panel);
-                    primary->dragToForTest(a);
-                    const int index = primary->floatCountForTest() - 1;
-                    pictura::PanelFloat* floatWindow = primary->floatForTest(index);
-                    floated = index >= 0 && floatWindow
-                              && primary->floatCountForTest() == floatsBefore + 1;
-                    indicator = primary->outlineIndicatorVisibleForTest()
-                                || primary->dropIndicatorVisibleForTest();
-                    const QRect atA = primary->floatGeometryForTest(index);
-                    primary->dragToForTest(b);
-                    const QRect atB = primary->floatGeometryForTest(index);
-                    follows = atA.isValid() && atB.isValid()
-                              && atB.topLeft() - atA.topLeft() == b - a;
-                    const bool dropped = primary->dropForTest(b);
-                    pump4(6);
-                    // The whole-group drop tabifies the source into the column,
-                    // so every panel is docked again and no overlay remains.
-                    redocked = dropped && primary->floatCountForTest() == floatsBefore
-                               && !primary->dragActiveForTest()
-                               && primary->groupForPanel(panel) != nullptr;
-                }
-            }
-        }
-        ST_BEGIN("group_drag_float_follows");
-        ST_PASS("group_drag_float_follows began=%d floated=%d indicator=%d follows=%d "
-                "redocked=%d",
-                began ? 1 : 0, floated ? 1 : 0, indicator ? 1 : 0, follows ? 1 : 0,
-                redocked ? 1 : 0);
-        if (!(began && floated && indicator && follows && redocked)) {
-            return pictura::selfTest().fail(438, "group drag float follows");
-        }
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pump4(6);
     }

@@ -183,7 +183,7 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
     // tabify target, so it falls through to the existing behaviour. The float
     // being dragged can never target itself.
     if (auto* frame = owningFrame()) {
-        for (PanelColumn* column : frame->panelColumns()) {
+        for (PanelColumn* column : frame->allPanelColumns()) {
             if (!column) {
                 continue;
             }
@@ -601,6 +601,7 @@ void PanelColumn::beginPanelDrag(PanelGroup* group, const QString& objectName,
     dragSourceGroup_ = group;
     dragPanel_ = objectName;
     dragOriginalIndex_ = groups_.indexOf(group);
+    dragOriginalPanelIndex_ = group->indexOfPanel(objectName);
     // M43: a panel drag never reuses the source float. Leaving the column
     // builds a fresh one-panel float (createFloat), so clipping one tab out of
     // a float moves only that panel.
@@ -626,6 +627,7 @@ void PanelColumn::beginGroupDrag(PanelGroup* group, const QPoint& globalPos)
     dragSourceGroup_ = group;
     dragPanel_.clear();
     dragOriginalIndex_ = groups_.indexOf(group);
+    dragOriginalPanelIndex_ = -1;
     dragFloat_ = floatForGroup(group);
     dragGrabOffset_ = globalPos - group->mapToGlobal(QPoint(0, 0));
     dropTarget_ = {};
@@ -655,13 +657,14 @@ void PanelColumn::updateDrag(const QPoint& globalPos)
         indicatorOwner_->clearIndicator();
     }
     indicatorOwner_ = owner;
-    // Whole-group drags tear the group into an overlay on the first move and
-    // keep it under the cursor for the rest of the drag, whether or not a
-    // target resolves; the resolved target still draws the indicator and drives
-    // the commit. A single-panel tab keeps the docked in-window reorder grammar
-    // and only floats once it leaves the window. An iconic/compact strip keeps
-    // its in-strip reorder grammar and only floats once the drag leaves it.
-    const bool floatNow = (!dragIsPanel_ && !railMode_) || dropTarget_.outside;
+    // A drag floats only once it leaves every column (or the workspace): an
+    // in-column reorder keeps the group docked and just moves the indicator, so
+    // dragging a group does not yank it into an overlay. A cross-column drop
+    // resolves a target in the other column and likewise stays docked; once torn
+    // off, the overlay follows the cursor for the rest of the drag. An
+    // iconic/compact strip keeps its in-strip reorder grammar and only floats
+    // once the drag leaves it.
+    const bool floatNow = dropTarget_.outside;
     if (floatNow) {
         if (!dragFloat_ && dragGroup_) {
             dragFloat_ = createFloat(dragGroup_, globalPos);
@@ -732,6 +735,7 @@ bool PanelColumn::commitDrop()
     dragPanel_.clear();
     dragGrabOffset_ = QPoint();
     dragOriginalIndex_ = -1;
+    dragOriginalPanelIndex_ = -1;
     dragFloat_ = nullptr;
     dropTarget_ = {};
     if (railMode_) {
@@ -753,8 +757,19 @@ void PanelColumn::cancelDrag()
     indicatorOwner_ = nullptr;
     clearIndicator();
     PanelGroup* source = dragSourceGroup_;
-    const bool tornOffThisDrag = dragFloat_ && dragOriginalIndex_ >= 0;
-    if (tornOffThisDrag && dragGroup_) {
+    if (dragFloat_ && dragIsPanel_ && source && dragGroup_) {
+        // A cancelled single-panel drag tore a transient one-panel group off.
+        // Put the panel back into the group it came from at its original index;
+        // reinserting the transient group instead would leave a second one.
+        QString title;
+        QIcon iconValue;
+        int from = -1;
+        if (QWidget* panel = dragGroup_->takePanel(dragPanel_, &title, &iconValue, &from)) {
+            source->insertPanel(panel, title, iconValue,
+                                qBound(0, dragOriginalPanelIndex_, source->titleCountForTest()));
+        }
+        destroyFloat(dragFloat_);
+    } else if (dragFloat_ && dragGroup_ && dragOriginalIndex_ >= 0) {
         insertGroupAt(dragGroup_, qBound(0, dragOriginalIndex_, groups_.size()));
         destroyFloat(dragFloat_);
     }
@@ -769,6 +784,7 @@ void PanelColumn::cancelDrag()
     dragPanel_.clear();
     dragGrabOffset_ = QPoint();
     dragOriginalIndex_ = -1;
+    dragOriginalPanelIndex_ = -1;
     dragFloat_ = nullptr;
     dropTarget_ = {};
     if (railMode_) {
@@ -900,8 +916,11 @@ bool PanelColumn::applyNewColumnDrop(PanelSide side, PanelColumn* anchor)
     // A single-panel drag leaves its source group in place (it keeps the rest).
     int index = -1;
     if (!dragIsPanel_) {
-        // The group stops routing its drags here; the new column wires it.
+        // The group stops routing its drags here; the new column wires it. The
+        // bookkeeping set must drop it too, or a later move back into this
+        // column would early-return in `wireGroup` and leave it dead.
         QObject::disconnect(source, nullptr, this, nullptr);
+        wired_.remove(source);
         index = groups_.indexOf(source);
         if (index >= 0) {
             groups_.removeAt(index);
@@ -1005,12 +1024,18 @@ bool PanelColumn::mergeGroupInto(PanelGroup* source, PanelGroup* dest, PanelColu
         QString title;
         QIcon iconValue;
         int from = -1;
+        const bool wasVisible = source->isPanelVisible(name);
         QWidget* panel = source->takePanel(name, &title, &iconValue, &from);
         if (!panel) {
             continue;
         }
         dest->insertPanel(panel, title, iconValue, index);
-        destOwner->panelVisible_[name] = true;
+        // Preserve each tab's hidden state across the merge, so tabifying a group
+        // does not reveal panels the user had closed inside it.
+        if (!wasVisible) {
+            dest->setPanelVisible(name, false);
+        }
+        destOwner->panelVisible_[name] = wasVisible;
         ++index;
     }
     // The now-empty source is torn down through the one cleanup path (which also

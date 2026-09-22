@@ -289,6 +289,13 @@ void PanelColumn::destroyColumnFloat()
 
 void PanelColumn::cancelColumnFloat()
 {
+    if (!columnFloat_) {
+        return;
+    }
+    // Detach this column from the overlay before the overlay is destroyed. The
+    // column is the overlay's child, so deleting the overlay without reparenting
+    // would take the column with it; this keeps the call self-contained.
+    setParent(nullptr);
     destroyColumnFloat();
 }
 

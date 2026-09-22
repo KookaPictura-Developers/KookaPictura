@@ -45,6 +45,21 @@ QList<PanelColumn*> PicturaMainWindow::panelColumns() const
     return out;
 }
 
+QList<PanelColumn*> PicturaMainWindow::allPanelColumns() const
+{
+    QList<PanelColumn*> out = panelColumns();
+    // A whole column torn off into a `PanelFloat` is no longer a splitter pane;
+    // find it through the overlays the frame owns so it stays reachable.
+    const QList<PanelFloat*> overlays = findChildren<PanelFloat*>(Qt::FindDirectChildrenOnly);
+    for (PanelFloat* overlay : overlays) {
+        auto* column = overlay ? qobject_cast<PanelColumn*>(overlay->content()) : nullptr;
+        if (column && !out.contains(column)) {
+            out << column;
+        }
+    }
+    return out;
+}
+
 int PicturaMainWindow::columnCount() const
 {
     return panelColumns().size();
@@ -113,6 +128,7 @@ void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
     // M47: it survives even with a live float, so the floats stay wired.
     if (column == panelColumn_) {
         column->hide();
+        PanelColumn::refreshSharedFloor(this);
         saveSession();
         return;
     }
@@ -140,8 +156,8 @@ void PicturaMainWindow::removeColumnIfEmpty(PanelColumn* column)
 
 PanelColumn* PicturaMainWindow::columnForPanel(const QString& objectName) const
 {
-    for (PanelColumn* column : panelColumns()) {
-        if (column->groupForPanel(objectName)) {
+    for (PanelColumn* column : allPanelColumns()) {
+        if (column->groupForPanel(objectName) || column->floatForPanel(objectName)) {
             return column;
         }
     }
@@ -150,7 +166,9 @@ PanelColumn* PicturaMainWindow::columnForPanel(const QString& objectName) const
 
 PanelColumn* PicturaMainWindow::columnAtGlobal(const QPoint& globalPos) const
 {
-    for (PanelColumn* column : panelColumns()) {
+    // Includes a floating column, so a panel or group can still be dropped onto
+    // a torn-off whole column.
+    for (PanelColumn* column : allPanelColumns()) {
         if (column->isVisible()
             && QRect(column->mapToGlobal(QPoint(0, 0)), column->size()).contains(globalPos)) {
             return column;
@@ -234,15 +252,22 @@ PanelColumn* PicturaMainWindow::resolveColumnMoveTarget(const QPoint& globalPos,
         }
         return anchor;
     }
-    // 2. The column under the pointer, split by which half holds it.
-    if (PanelColumn* column = columnAtGlobal(globalPos)) {
-        if (column != exclude) {
-            const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
-            if (side) {
-                *side = r.isValid() && globalPos.x() >= r.center().x() ? 1 : 0;
-            }
-            return column;
+    // 2. The docked column under the pointer, split by which half holds it. A
+    // floating column (the one being dragged, or another overlay) is not a
+    // valid anchor; scan past it so a column drag over the free workspace still
+    // resolves the docked column below the following overlay.
+    for (PanelColumn* column : allPanelColumns()) {
+        if (!column || column == exclude || centerSplitter_->indexOf(column) < 0) {
+            continue;
         }
+        const QRect r(column->mapToGlobal(QPoint(0, 0)), column->size());
+        if (!r.isValid() || !r.contains(globalPos)) {
+            continue;
+        }
+        if (side) {
+            *side = globalPos.x() >= r.center().x() ? 1 : 0;
+        }
+        return column;
     }
     // 3. A workspace edge: a bare edge target. The anchor stays null and only
     // `side` is set, so the column lands at the splitter head/tail — to the left
