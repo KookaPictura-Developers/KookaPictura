@@ -51,6 +51,27 @@ Toolchain is pinned by `rust-toolchain.toml` (1.98). Qt is the system Qt 6
 CMake builds with Ninja. `cargo deny check` is a no-op locally (no `deny.toml`);
 CI runs it only when the file exists.
 
+## Serena (symbol intelligence)
+
+Serena is the project's symbol-level IDE (configured globally; see also
+`.opencode/`). The repo is already a Serena project: `.serena/project.yml` (config)
+and `.serena/memories/*` (project knowledge) belong with the repo — commit them
+alongside it; only Serena's `cache/` and `project.local.yml` are gitignored.
+Prefer its LSP tools (`find_symbol`, `find_referencing_symbols`,
+`replace_symbol_body`, `rename_symbol`) over text search for reading and editing
+code, and read the relevant memory before a non-trivial task.
+
+- **Index upkeep.** `serena project index` is needed only once, after a fresh
+  clone. During normal use Serena updates the index itself whenever files change,
+  so edits and builds need no manual re-index. (A heavy Rust rebuild can still
+  make rust-analyzer re-index and feel slow for a moment.)
+- **C++ needs a compile database.** clangd, and therefore Serena's C++ cross-file
+  references, reads `compile_commands.json` from the repo root. The CMake
+  configure (command above) links it there from `build/`; if C++ navigation looks
+  fuzzy, (re)configure first.
+- **Keep memories current.** Update `.serena/memories/*` (via `write_memory`) when
+  conventions or architecture change — they are the durable project knowledge.
+
 ## Headless mode
 
 `./build/pictura --headless` selects the offscreen QPA plugin before

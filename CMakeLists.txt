@@ -7,6 +7,17 @@ cmake_minimum_required(VERSION 3.24)
 
 project(kooka_pictura LANGUAGES CXX)
 
+# clangd (and therefore Serena's C++ symbol tools) reads compile_commands.json
+# from the repo root. CMake writes it into the build dir, so link it back.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(_compile_db "${CMAKE_SOURCE_DIR}/compile_commands.json")
+if(IS_SYMLINK "${_compile_db}")
+    file(REMOVE "${_compile_db}")
+endif()
+if(NOT EXISTS "${_compile_db}")
+    file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${_compile_db}" SYMBOLIC)
+endif()
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
     message(STATUS "No CMAKE_BUILD_TYPE set; defaulting to RelWithDebInfo")
