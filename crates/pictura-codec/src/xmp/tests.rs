@@ -320,3 +320,113 @@ fn caps_fail_closed_without_panicking() {
     let _ = parse_xmp(&big);
     assert!(patch_xmp(&big, &[(XmpField::Credit, "x".into())]).is_none());
 }
+
+#[test]
+fn serializes_and_parses_a_mixed_set() {
+    let props = XmpProperties {
+        title: Some("A & B".into()),
+        creator: vec!["Ada".into(), "Grace".into()],
+        subject: vec!["one".into(), "two".into()],
+        credit: Some("Cred".into()),
+        marked: Some(true),
+        ..Default::default()
+    };
+    let packet = to_xmp_packet(&props);
+    assert_eq!(parse_xmp(&packet), props);
+}
+
+#[test]
+fn an_empty_set_serializes_to_an_empty_packet() {
+    let packet = to_xmp_packet(&XmpProperties::default());
+    assert_eq!(parse_xmp(&packet), XmpProperties::default());
+    assert!(parse_xmp(&packet).is_empty());
+}
+
+#[test]
+fn patch_xmp_values_writes_full_lists_and_matches_them() {
+    let packet = packet(
+        "<rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
+         <dc:subject><rdf:Bag><rdf:li>one</rdf:li></rdf:Bag></dc:subject>\
+         </rdf:Description>",
+    );
+    let edited = patch_xmp_values(
+        &packet,
+        &[(XmpField::Subject, vec!["one".into(), "two".into()])],
+    )
+    .unwrap();
+    assert_eq!(parse_xmp(&edited).subject, vec!["one", "two"]);
+
+    let same = patch_xmp_values(
+        &edited,
+        &[(XmpField::Subject, vec!["one".into(), "two".into()])],
+    )
+    .unwrap();
+    assert_eq!(same, edited, "the full list already matches");
+
+    let changed = patch_xmp_values(
+        &edited,
+        &[(XmpField::Subject, vec!["one".into(), "three".into()])],
+    )
+    .unwrap();
+    assert_eq!(parse_xmp(&changed).subject, vec!["one", "three"]);
+}
+
+#[test]
+fn patch_xmp_values_single_list_item_replaces_the_list() {
+    let packet = packet(
+        "<rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
+         <dc:creator><rdf:Seq><rdf:li>Ada</rdf:li><rdf:li>Grace</rdf:li></rdf:Seq></dc:creator>\
+         </rdf:Description>",
+    );
+    let shrunk = patch_xmp_values(&packet, &[(XmpField::Creator, vec!["Ada".into()])]).unwrap();
+    assert_eq!(
+        parse_xmp(&shrunk).creator,
+        vec!["Ada"],
+        "a shorter list shrinks"
+    );
+    let cleared = patch_xmp_values(&packet, &[(XmpField::Creator, Vec::new())]).unwrap();
+    assert_eq!(parse_xmp(&cleared).creator, Vec::<String>::new());
+}
+
+#[test]
+fn a_simple_element_list_is_rewritten_as_a_seq() {
+    let packet = packet(
+        "<rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
+         <dc:creator>Ada</dc:creator>\
+         </rdf:Description>",
+    );
+    let edited = patch_xmp_values(
+        &packet,
+        &[(XmpField::Creator, vec!["Ada".into(), "Grace".into()])],
+    )
+    .unwrap();
+    assert!(edited.contains("<rdf:Seq>"), "{edited}");
+    assert_eq!(parse_xmp(&edited).creator, vec!["Ada", "Grace"]);
+}
+
+#[test]
+fn an_empty_property_parses_as_absent() {
+    let packet = packet(
+        "<rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
+         <dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\"></rdf:li></rdf:Alt></dc:title>\
+         <dc:creator><rdf:Seq><rdf:li></rdf:li></rdf:Seq></dc:creator>\
+         </rdf:Description>",
+    );
+    let props = parse_xmp(&packet);
+    assert_eq!(props.title, None);
+    assert!(props.creator.is_empty());
+    assert_eq!(parse_xmp(&to_xmp_packet(&props)), props);
+}
+
+#[test]
+fn serializer_round_trips_special_and_non_ascii_values() {
+    let props = XmpProperties {
+        title: Some("Titre «café» & <x> \"q\"".into()),
+        description: Some("café — naïve ✓".into()),
+        credit: Some("<a>&\"b\"".into()),
+        ..Default::default()
+    };
+    let packet = to_xmp_packet(&props);
+    assert!(packet.contains("&amp;") && packet.contains("&lt;"));
+    assert_eq!(parse_xmp(&packet), props);
+}

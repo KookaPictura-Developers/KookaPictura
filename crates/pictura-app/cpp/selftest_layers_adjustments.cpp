@@ -15,6 +15,7 @@
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QAction>
 #include <QtGui/QImage>
+#include <QtWidgets/QPushButton>
 
 int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
 {
@@ -589,6 +590,116 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
                 || !pcfConvert || !pcfConvertState || !pcfConvertUndone || !pcfAssignMapping
                 || !pcfConvertMapping) {
                 return pictura::selfTest().fail(458, "profile assign convert");
+            }
+        }
+
+        // metadata_template_apply (460): exporting the active document's managed
+        // metadata writes a standalone XMP template without mutating the
+        // document or its history, and applying it with each merge mode has that
+        // mode's effect as one undoable state.
+        {
+            QTemporaryDir mtDir;
+            const QString mtPath = mtDir.filePath(QStringLiteral("t.xmp"));
+            const bool mtCreated = frame.newDocument(QStringLiteral("TemplateCtl"), 4, 4,
+                                                     QStringLiteral("rgb"), 8,
+                                                     QStringLiteral("white"));
+            pictura::PictureView* mtSource = frame.activeView();
+            if (!mtCreated || !mtSource) {
+                return pictura::selfTest().fail(460, "metadata template fixture");
+            }
+            const int mtSourceDoc = frame.activeDocumentIndex();
+            mtSource->apply_metadata_edits(QStringList(
+                {QStringLiteral("2:5\tTpl"), QStringLiteral("2:110\tTplCred")}));
+            const QStringList mtBefore = mtSource->xmp_rows();
+            const int mtHistory = mtSource->history_count();
+            const bool mtDirtyBefore = mtSource->is_dirty();
+            const bool mtExported = mtSource->export_metadata_template(mtPath);
+            const bool mtFileOk = QFile::exists(mtPath) && QFile(mtPath).size() > 0;
+            const bool mtUnchanged = mtSource->history_count() == mtHistory
+                && mtSource->xmp_rows() == mtBefore
+                && mtSource->is_dirty() == mtDirtyBefore;
+            frame.closeDocument(mtSourceDoc, false);
+
+            frame.newDocument(QStringLiteral("TemplateApplyCtl"), 4, 4, QStringLiteral("rgb"), 8,
+                              QStringLiteral("white"));
+            pictura::PictureView* mtView = frame.activeView();
+            const bool mtBase = mtView
+                && mtView->apply_metadata_edits(QStringList(
+                       {QStringLiteral("2:5\tOld"), QStringLiteral("2:120\tDocDesc")}));
+            const QString mtApplyPath = mtDir.filePath(QStringLiteral("apply.psd"));
+            const bool mtClean = mtView && mtView->save(mtApplyPath) && !mtView->is_dirty();
+
+            const int mtAppendBase = mtView ? mtView->history_index() : 0;
+            const bool mtAppend = mtView && mtView->apply_metadata_template(mtPath, 0);
+            const bool mtAppendDirty = mtView && mtView->is_dirty();
+            const bool mtAppendState = mtView && mtView->history_index() == mtAppendBase + 1
+                && mtView->history_label(mtView->history_index())
+                    == QStringLiteral("Metadata Template");
+            const bool mtAppendEffect = mtView
+                && mtView->xmp_rows().contains(QStringLiteral("Title\tOld"))
+                && mtView->xmp_rows().contains(QStringLiteral("Credit\tTplCred"));
+            const bool mtAppendUndo = mtView && mtView->undo()
+                && mtView->xmp_rows().contains(QStringLiteral("Title\tOld"))
+                && !mtView->xmp_rows().contains(QStringLiteral("Credit\tTplCred"));
+
+            const int mtReplaceBase = mtView ? mtView->history_index() : 0;
+            const bool mtReplace = mtView && mtView->apply_metadata_template(mtPath, 1);
+            const bool mtReplaceState = mtView && mtView->history_index() == mtReplaceBase + 1
+                && mtView->history_label(mtView->history_index())
+                    == QStringLiteral("Metadata Template");
+            const bool mtReplaceEffect = mtView
+                && mtView->xmp_rows().contains(QStringLiteral("Title\tTpl"))
+                && mtView->xmp_rows().contains(QStringLiteral("Credit\tTplCred"))
+                && !mtView->xmp_rows().contains(QStringLiteral("Description\tDocDesc"));
+            const bool mtReplaceUndo = mtView && mtView->undo()
+                && mtView->xmp_rows().contains(QStringLiteral("Title\tOld"))
+                && mtView->xmp_rows().contains(QStringLiteral("Description\tDocDesc"));
+
+            const int mtKeepBase = mtView ? mtView->history_index() : 0;
+            const bool mtKeep = mtView && mtView->apply_metadata_template(mtPath, 2);
+            const bool mtKeepState = mtView && mtView->history_index() == mtKeepBase + 1
+                && mtView->history_label(mtView->history_index())
+                    == QStringLiteral("Metadata Template");
+            const bool mtKeepEffect = mtView
+                && mtView->xmp_rows().contains(QStringLiteral("Title\tTpl"))
+                && mtView->xmp_rows().contains(QStringLiteral("Credit\tTplCred"))
+                && mtView->xmp_rows().contains(QStringLiteral("Description\tDocDesc"));
+            const bool mtKeepUndo = mtView && mtView->undo()
+                && mtView->xmp_rows().contains(QStringLiteral("Title\tOld"))
+                && mtView->xmp_rows().contains(QStringLiteral("Description\tDocDesc"));
+
+            pictura::FileInfoDialog mtDialog({}, {}, {}, {}, QString());
+            int mtCaptured = -1;
+            mtDialog.onApplyTemplate = [&mtCaptured](int mode) { mtCaptured = mode; };
+            QPushButton* mtApplyButton =
+                mtDialog.findChild<QPushButton*>(QStringLiteral("fileInfoApplyTemplate"));
+            mtDialog.setMergeModeForTest(2);
+            const bool mtControls = mtDialog.hasTemplateControlsForTest()
+                && mtDialog.mergeModeForTest() == 2 && mtDialog.templateMode() == 2;
+            if (mtApplyButton) {
+                mtApplyButton->click();
+            }
+            const bool mtCallback = mtCaptured == 2;
+
+            const bool mtOk = mtExported && mtFileOk && mtUnchanged && mtBase && mtClean
+                && mtAppend && mtAppendDirty && mtAppendState && mtAppendEffect && mtAppendUndo
+                && mtReplace && mtReplaceState && mtReplaceEffect && mtReplaceUndo && mtKeep
+                && mtKeepState && mtKeepEffect && mtKeepUndo && mtControls && mtCallback;
+            ST_BEGIN("metadata_template_apply");
+            ST_PASS("metadata_template_apply export=%d file=%d unchanged=%d clean=%d dirty=%d "
+                    "append=%d replace=%d keep=%d state=%d undo=%d controls=%d callback=%d",
+                    mtExported ? 1 : 0, mtFileOk ? 1 : 0, mtUnchanged ? 1 : 0,
+                    mtClean ? 1 : 0, mtAppendDirty ? 1 : 0,
+                    mtAppend && mtAppendEffect ? 1 : 0,
+                    mtReplace && mtReplaceEffect ? 1 : 0, mtKeep && mtKeepEffect ? 1 : 0,
+                    mtAppendState && mtReplaceState && mtKeepState ? 1 : 0,
+                    mtAppendUndo && mtReplaceUndo && mtKeepUndo ? 1 : 0, mtControls ? 1 : 0,
+                    mtCallback ? 1 : 0);
+            if (mtView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!mtOk) {
+                return pictura::selfTest().fail(460, "metadata template apply");
             }
         }
 

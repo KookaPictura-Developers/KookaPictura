@@ -55,8 +55,8 @@ pub use image_resources::{
 };
 pub use iptc::{encode_iptc, iptc_field_name, parse_iptc, Iptc};
 pub use metadata::{
-    read_metadata, set_file_info_fields, set_iptc_fields, set_xmp_fields, xmp_properties,
-    DocumentMetadata,
+    apply_template, export_template, read_metadata, set_file_info_fields, set_iptc_fields,
+    set_xmp_fields, set_xmp_values, xmp_properties, DocumentMetadata, MergeMode,
 };
 pub use patterns::{decode_patterns, PatternPixels};
 // Re-exported so the app's profile commands can name a `Profile` without adding
@@ -67,7 +67,7 @@ pub use read::read_psd;
 pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;
 pub use write::{write_psb, write_psd};
-pub use xmp::{parse_xmp, patch_xmp, XmpField, XmpProperties};
+pub use xmp::{parse_xmp, patch_xmp, patch_xmp_values, to_xmp_packet, XmpField, XmpProperties};
 
 /// Read a Camera Raw Filter's `Fltr` options from a
 /// [`pictura_core::SmartFilter::options`] byte buffer.

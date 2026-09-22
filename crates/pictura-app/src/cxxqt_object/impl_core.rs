@@ -436,6 +436,43 @@ impl qobject::PictureView {
         changed
     }
 
+    /// Export the active document's managed XMP properties to `dest` as a
+    /// standalone template. Read-only: no mutation and no history state; false
+    /// without a document or on a write error.
+    pub fn export_metadata_template(&self, dest: &QString) -> bool {
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return false;
+        };
+        std::fs::write(dest.to_string(), pictura_codec::export_template(doc)).is_ok()
+    }
+
+    /// Apply the XMP template at `path` to the active document with `mode`
+    /// (0 Append, 1 Replace, 2 KeepOriginalReplaceMatching): one
+    /// "Metadata Template" state when anything changes. False without a
+    /// document, on a read error, or when nothing changed.
+    pub fn apply_metadata_template(mut self: Pin<&mut Self>, path: &QString, mode: i32) -> bool {
+        use pictura_codec::MergeMode;
+        let mode = match mode {
+            0 => MergeMode::Append,
+            1 => MergeMode::Replace,
+            2 => MergeMode::KeepOriginalReplaceMatching,
+            _ => return false,
+        };
+        let Ok(text) = std::fs::read_to_string(path.to_string()) else {
+            return false;
+        };
+        let template = pictura_codec::parse_xmp(&text);
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_codec::apply_template(doc, &template, mode),
+            None => false,
+        };
+        if changed {
+            self.as_mut().record("Metadata Template");
+            self.changed();
+        }
+        changed
+    }
+
     /// Assign a built-in working profile to the active document (retag only,
     /// pixels untouched): 0 sRGB, 1 Adobe RGB, 2 Pro Photo RGB. Recomposites and
     /// records one "Assign Profile" state; false without a document or on a bad

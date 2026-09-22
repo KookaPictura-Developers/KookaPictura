@@ -667,6 +667,34 @@ void PicturaMainWindow::showFileInfo()
     }
     FileInfoDialog dialog(view->exif_rows(), view->xmp_rows(), view->iptc_edit_fields(),
                           view->iptc_rows(), view->xmp_packet(), this);
+    dialog.onExportTemplate = [this, &dialog, view] {
+        const QString filter = QStringLiteral("XMP files (*.xmp)");
+        QString dest = QFileDialog::getSaveFileName(this, tr("Export Metadata Template"),
+                                                    QString(), filter);
+        if (dest.isEmpty()) {
+            return;
+        }
+        // ponytail: the static getSaveFileName has no setDefaultSuffix; append it when omitted.
+        if (!dest.endsWith(QStringLiteral(".xmp"), Qt::CaseInsensitive)) {
+            dest += QStringLiteral(".xmp");
+        }
+        if (!view->export_metadata_template(dest)) {
+            QMessageBox::warning(&dialog, tr("Export Metadata Template"),
+                                 tr("Could not write the template."));
+        }
+    };
+    dialog.onApplyTemplate = [this, &dialog, view](int mode) {
+        const QString filter = QStringLiteral("XMP files (*.xmp)");
+        const QString path =
+            QFileDialog::getOpenFileName(&dialog, tr("Apply Metadata Template"), QString(), filter);
+        if (path.isEmpty()) {
+            return;
+        }
+        if (!view->apply_metadata_template(path, mode)) {
+            QMessageBox::warning(&dialog, tr("Apply Metadata Template"),
+                                 tr("Could not apply the template."));
+        }
+    };
     if (dialog.exec() == QDialog::Accepted) {
         view->apply_metadata_edits(dialog.edits());
     }

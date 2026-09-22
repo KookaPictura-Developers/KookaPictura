@@ -1,6 +1,7 @@
 #include "file_info_dialog.h"
 
 #include <QtWidgets/QAbstractItemView>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QHBoxLayout>
@@ -9,6 +10,7 @@
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QPlainTextEdit>
+#include <QtWidgets/QPushButton>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QTableWidget>
 #include <QtWidgets/QTableWidgetItem>
@@ -90,11 +92,37 @@ FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& x
     connect(buttons, &QDialogButtonBox::accepted, this, &FileInfoDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &FileInfoDialog::reject);
 
+    auto* exportButton = new QPushButton(tr("Export Template…"), this);
+    exportButton->setObjectName(QStringLiteral("fileInfoExportTemplate"));
+    auto* applyButton = new QPushButton(tr("Apply Template…"), this);
+    applyButton->setObjectName(QStringLiteral("fileInfoApplyTemplate"));
+    templateMode_ = new QComboBox(this);
+    templateMode_->setObjectName(QStringLiteral("fileInfoTemplateMode"));
+    templateMode_->addItems({tr("Append"), tr("Replace"), tr("Keep Original")});
+    connect(exportButton, &QPushButton::clicked, this, [this] {
+        if (onExportTemplate) {
+            onExportTemplate();
+        }
+    });
+    connect(applyButton, &QPushButton::clicked, this, [this] {
+        if (onApplyTemplate) {
+            onApplyTemplate(templateMode());
+        }
+    });
+
+    auto* templateRow = new QHBoxLayout();
+    templateRow->addWidget(exportButton);
+    templateRow->addWidget(applyButton);
+    templateRow->addWidget(new QLabel(tr("Merge Mode"), this));
+    templateRow->addWidget(templateMode_);
+    templateRow->addStretch(1);
+
     auto* top = new QHBoxLayout();
     top->addWidget(categoryList_);
     top->addWidget(stack_, 1);
     auto* outer = new QVBoxLayout(this);
     outer->addLayout(top, 1);
+    outer->addLayout(templateRow);
     outer->addWidget(buttons);
 }
 
@@ -174,6 +202,30 @@ void FileInfoDialog::setFieldForTest(const QString& id, const QString& value)
 {
     if (QLineEdit* edit = fields_.value(id)) {
         edit->setText(value);
+    }
+}
+
+int FileInfoDialog::templateMode() const
+{
+    return templateMode_ ? templateMode_->currentIndex() : 0;
+}
+
+bool FileInfoDialog::hasTemplateControlsForTest() const
+{
+    return templateMode_ != nullptr
+        && findChild<QPushButton*>(QStringLiteral("fileInfoExportTemplate"))
+        && findChild<QPushButton*>(QStringLiteral("fileInfoApplyTemplate"));
+}
+
+int FileInfoDialog::mergeModeForTest() const
+{
+    return templateMode();
+}
+
+void FileInfoDialog::setMergeModeForTest(int mode)
+{
+    if (templateMode_) {
+        templateMode_->setCurrentIndex(mode);
     }
 }
 

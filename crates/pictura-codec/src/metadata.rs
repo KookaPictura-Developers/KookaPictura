@@ -17,7 +17,11 @@ use crate::image_resources::{
     frame_image_resource, EXIF_DATA_1, EXIF_DATA_3, IPTC_NAA, XMP_METADATA,
 };
 use crate::iptc::{encode_iptc, parse_iptc, Iptc};
-use crate::xmp::{parse_xmp, patch_xmp, XmpField, XmpProperties};
+use crate::xmp::{parse_xmp, patch_xmp_values, XmpField, XmpProperties};
+
+pub mod template;
+
+pub use template::{apply_template, export_template, MergeMode};
 
 /// A document's decoded metadata. An absent resource yields the empty value.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -105,10 +109,22 @@ pub fn xmp_properties(document: &Document) -> XmpProperties {
         .unwrap_or_default()
 }
 
-/// Apply XMP property edits in place. A document with no XMP resource gets a
-/// minimal well-formed packet; every other resource and any unparsed tail are
-/// preserved byte-for-byte. Returns whether the packet changed.
+/// Apply single-value XMP property edits in place. See [`set_xmp_values`] for
+/// the list-aware form.
 pub fn set_xmp_fields(document: &mut Document, updates: &[(XmpField, String)]) -> bool {
+    let updates: Vec<(XmpField, Vec<String>)> = updates
+        .iter()
+        .map(|(field, value)| (*field, vec![value.clone()]))
+        .collect();
+    set_xmp_values(document, &updates)
+}
+
+/// Apply XMP property edits in place, writing one `rdf:li` per value for the
+/// list fields. A document with no XMP resource gets a minimal well-formed
+/// packet only when the edit actually changes it; every other resource and any
+/// unparsed tail are preserved byte-for-byte. An empty value vector removes the
+/// property. Returns whether the packet changed.
+pub fn set_xmp_values(document: &mut Document, updates: &[(XmpField, Vec<String>)]) -> bool {
     if updates.is_empty() {
         return false;
     }
@@ -122,15 +138,18 @@ pub fn set_xmp_fields(document: &mut Document, updates: &[(XmpField, String)]) -
             let Ok(packet) = std::str::from_utf8(&resource.data) else {
                 return false;
             };
-            match patch_xmp(packet, updates) {
+            match patch_xmp_values(packet, updates) {
                 Some(changed) if changed != packet => changed.into_bytes(),
                 _ => return false,
             }
         }
-        None => match patch_xmp(minimal_xmp_packet(), updates) {
-            Some(packet) => packet.into_bytes(),
-            None => return false,
-        },
+        None => {
+            let minimal = minimal_xmp_packet();
+            match patch_xmp_values(minimal, updates) {
+                Some(changed) if changed != minimal => changed.into_bytes(),
+                _ => return false,
+            }
+        }
     };
 
     let block = frame_image_resource(XMP_METADATA, "", &packet);
@@ -677,6 +696,17 @@ xmlns:acme=\"http://example.com/acme/\" acme:Marker=\"keep\">\
         let mut doc = xmp_document();
         let before = doc.image_resources.clone();
         assert!(!set_file_info_fields(&mut doc, &[]));
+        assert_eq!(doc.image_resources, before);
+    }
+
+    #[test]
+    fn set_xmp_fields_empty_on_missing_resource_is_a_noop() {
+        let mut doc = document_with(&[resource(EXIF_DATA_1, "exif", &tiff_with_make())]);
+        let before = doc.image_resources.clone();
+        assert!(!set_xmp_fields(
+            &mut doc,
+            &[(XmpField::Title, String::new())]
+        ));
         assert_eq!(doc.image_resources, before);
     }
 }
