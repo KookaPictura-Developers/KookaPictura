@@ -40,8 +40,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
-    `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, and
-    `assign-convert-profile` changes;
+    `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
+    and `xmp-metadata` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -576,6 +576,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   (`// ponytail:`): RGB 8-bit only, three built-in profiles only, fixed
   relative-colorimetric intent (no BPC/dither/flatten), and no Color Settings
   policy layer (`WF-011`).
+- **XMP parse and edit** (roadmap P6/G5, archived `2026-09-22-xmp-metadata`):
+  `pictura-codec/src/xmp.rs` parses resource 1060 into a fixed typed property
+  set (title, creator, description, subject, rights, credit, source, headline,
+  marked) via a bounded, entity-free, non-recursive scanner, and
+  `patch_xmp` edits a property by byte-span, copying every unmanaged byte
+  verbatim (unknown namespaces/properties/wrapper); a packet it cannot safely
+  rewrite, or a managed property wrapping a comment, fails closed.
+  `set_xmp_fields` frames 1060 (creating a minimal packet when absent) through
+  the same lossless-prefix + preserved-tail pattern as `set_iptc_fields`, and
+  `set_file_info_fields` writes the six IPTC-Core fields to BOTH XMP and IIM so
+  the channels agree (scalar = `x-default`/first item governs the no-op; a
+  non-primary alternative collapses — ceiling). File Info gains a read-only
+  Description category; editing the IPTC page syncs XMP+IIM as one `File Info`
+  undo state. Proven by codec unit tests, `metadata_oracle` (exiftool, ran) and
+  self-tests 456/457/459. Ceilings (`// ponytail:`): nine managed properties
+  only, raw packet read-only, EXIF not editable, no templates/sidecars.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
