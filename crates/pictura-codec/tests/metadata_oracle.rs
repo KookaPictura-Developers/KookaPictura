@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use pictura_codec::{
-    decode_image_resources, read_metadata, read_psd, set_file_info_fields, write_psd,
-    xmp_properties, ExifValue, XMP_METADATA,
+    apply_template, decode_image_resources, read_metadata, read_psd, set_file_info_fields,
+    write_psd, xmp_properties, ExifValue, MergeMode, XmpProperties, XMP_METADATA,
 };
 
 fn fixture(name: &str) -> PathBuf {
@@ -272,4 +272,81 @@ fn edited_xmp_survives_save_and_exiftool() {
         .expect("exiftool is available but produced no values");
     assert_eq!(values[0], "Edited Title");
     assert_eq!(values[1], "Edited Credit");
+}
+
+#[test]
+fn applied_template_survives_save_and_exiftool() {
+    let template = XmpProperties {
+        title: Some("Template Title".into()),
+        credit: Some("Template Credit".into()),
+        ..Default::default()
+    };
+    for mode in [
+        MergeMode::Append,
+        MergeMode::Replace,
+        MergeMode::KeepOriginalReplaceMatching,
+    ] {
+        let bytes = std::fs::read(fixture("metadata.psd")).expect("read fixture");
+        let mut doc = read_psd(&bytes).expect("fixture parses");
+        if mode == MergeMode::Append {
+            // Empty the fields first so Append has something to fill.
+            set_file_info_fields(&mut doc, &[(2, 5, String::new()), (2, 110, String::new())]);
+        }
+        let exif_before = read_metadata(&doc).exif.clone();
+        assert!(apply_template(&mut doc, &template, mode), "{mode:?}");
+
+        let out = write_psd(&doc).expect("write");
+        let back = read_psd(&out).expect("re-read");
+        assert_eq!(
+            xmp_properties(&back).title.as_deref(),
+            Some("Template Title"),
+            "{mode:?}: XMP title"
+        );
+        assert_eq!(
+            xmp_properties(&back).credit.as_deref(),
+            Some("Template Credit"),
+            "{mode:?}: XMP credit"
+        );
+        assert_eq!(
+            read_metadata(&back).iptc.text(2, 5).as_deref(),
+            Some("Template Title"),
+            "{mode:?}: IIM is synced"
+        );
+        assert_eq!(
+            read_metadata(&back).iptc.text(2, 110).as_deref(),
+            Some("Template Credit"),
+            "{mode:?}: IIM credit is synced"
+        );
+        assert_eq!(
+            read_metadata(&back).exif,
+            exif_before,
+            "{mode:?}: EXIF survives"
+        );
+        let raw = read_metadata(&back).xmp;
+        assert!(
+            raw.contains("acme:Marker=\"keep-me\""),
+            "{mode:?}: unknown namespace attribute survives"
+        );
+        assert!(
+            raw.contains("<acme:Note>keep-me-too</acme:Note>"),
+            "{mode:?}: unknown-namespace property survives"
+        );
+
+        if !exiftool_available() {
+            eprintln!("skipping exiftool template comparison: exiftool not available");
+            continue;
+        }
+        let dir =
+            std::env::temp_dir().join(format!("pictura-template-{}-{mode:?}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("template.psd");
+        std::fs::write(&path, &out).unwrap();
+        let values = exiftool_fields(&path, &["-XMP-dc:Title", "-XMP-photoshop:Credit"])
+            .expect("exiftool is available but produced no values");
+        assert_eq!(values[0], "Template Title", "{mode:?}: exiftool title");
+        assert_eq!(values[1], "Template Credit", "{mode:?}: exiftool credit");
+        // Negative control: a wrong value would not compare equal.
+        assert_ne!(values[0], "Not The Title", "{mode:?}");
+        assert_ne!(values[1], "Not The Credit", "{mode:?}");
+    }
 }

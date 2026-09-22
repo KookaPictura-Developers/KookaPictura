@@ -5,6 +5,9 @@
 #include <QtCore/QStringList>
 #include <QtWidgets/QDialog>
 
+#include <functional>
+
+class QComboBox;
 class QLineEdit;
 class QListWidget;
 class QPlainTextEdit;
@@ -35,12 +38,24 @@ public:
     // The edited core fields as `"record:dataset\tValue"` rows, in field order.
     QStringList edits() const;
 
+    // Metadata-template controls. The frame sets these; the buttons stay on the
+    // dialog and pass the current merge mode to `onApplyTemplate`.
+    std::function<void()> onExportTemplate;
+    std::function<void(int)> onApplyTemplate;
+
+    // Merge mode the Apply button passes: 0 Append, 1 Replace,
+    // 2 KeepOriginalReplaceMatching.
+    int templateMode() const;
+
     // Test hooks.
     QStringList categoriesForTest() const;
     QStringList rowsForTest(const QString& category) const;
     QString xmpForTest() const;
     QString fieldForTest(const QString& id) const;
     void setFieldForTest(const QString& id, const QString& value);
+    bool hasTemplateControlsForTest() const;
+    int mergeModeForTest() const;
+    void setMergeModeForTest(int mode);
 
 private:
     QWidget* buildIptcPage(const QStringList& editFields, const QStringList& otherRows);
@@ -53,6 +68,7 @@ private:
     QListWidget* categoryList_ = nullptr;
     QStackedWidget* stack_ = nullptr;
     QPlainTextEdit* xmpEdit_ = nullptr;
+    QComboBox* templateMode_ = nullptr;
     QHash<QString, QLineEdit*> fields_;
     QHash<QString, QString> initial_;
 };

@@ -130,6 +130,14 @@ pub mod qobject {
         #[qinvokable]
         fn apply_metadata_edits(self: Pin<&mut Self>, edits: &QStringList) -> bool;
 
+        /// Export the active document's managed metadata to `dest` as a standalone XMP template; records no history.
+        #[qinvokable]
+        fn export_metadata_template(&self, dest: &QString) -> bool;
+
+        /// Apply the XMP template at `path` with `mode` (0 Append, 1 Replace, 2 KeepOriginalReplaceMatching) as one state.
+        #[qinvokable]
+        fn apply_metadata_template(self: Pin<&mut Self>, path: &QString, mode: i32) -> bool;
+
         /// Working mode: `"rgb"` or `"grayscale"`; empty without a document.
         #[qinvokable]
         fn document_mode(&self) -> QString;
@@ -174,8 +182,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_visible(&self, i: i32) -> bool;
 
-        /// Blend mode of layer `i` as its 4-byte PSD key (e.g. `"mul "`), or
-        /// empty when out of range.
+        /// Blend mode of layer `i` as its 4-byte PSD key (e.g. `"mul "`), or empty when out of range.
         #[qinvokable]
         fn layer_blend(&self, i: i32) -> QString;
 
@@ -199,8 +206,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_layer_fill(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
 
-        /// Lock flags of layer `i` as a bitmask (`0x01` transparency, `0x02`
-        /// pixels, `0x04` position), or 0 when out of range.
+        /// Lock flags of layer `i` as a bitmask (`0x01` transparency, `0x02` pixels, `0x04` position), or 0 when out of range.
         #[qinvokable]
         fn layer_lock(&self, i: i32) -> i32;
 
@@ -216,8 +222,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_layer_color(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
 
-        /// Rename layer `i`. Captures history, marks dirty, recomposites, and
-        /// emits [`changed`]. Returns false when layer `i` is out of range.
+        /// Rename layer `i`. Captures history, marks dirty, recomposites, and emits [`changed`]. Returns false when layer `i` is out of range.
         #[qinvokable]
         fn set_layer_name(self: Pin<&mut Self>, i: i32, name: &QString) -> bool;
 
@@ -245,8 +250,7 @@ pub mod qobject {
         #[qinvokable]
         fn ungroup_layer(self: Pin<&mut Self>, index: i32) -> bool;
 
-        /// The RGBA content of layer `i` scaled to fit `size`×`size` keeping the
-        /// aspect ratio; null for groups/adjustments or an out-of-range argument.
+        /// The RGBA content of layer `i` scaled to fit `size`×`size` keeping the aspect ratio; null for groups/adjustments or an out-of-range argument.
         #[qinvokable]
         fn layer_thumbnail(&self, i: i32, size: i32) -> QImage;
 
@@ -255,8 +259,7 @@ pub mod qobject {
         // `docs/dev/m39-panel-anatomy.md` §3.2.
         // ------------------------------------------------------------------
 
-        /// Number of nodes in the whole layer tree (all depths; 0 without a
-        /// document).
+        /// Number of nodes in the whole layer tree (all depths; 0 without a document).
         #[qinvokable]
         fn layer_row_count(&self) -> i32;
 
@@ -272,8 +275,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_row_name(&self, i: i32) -> QString;
 
-        /// Kind of row `i`: `"pixel"`, `"group"`, `"adjustment"`, or
-        /// `"background"` (the same strings as [`layer_kind`]), or empty.
+        /// Kind of row `i`: `"pixel"`, `"group"`, `"adjustment"`, or `"background"` (the same strings as [`layer_kind`]), or empty.
         #[qinvokable]
         fn layer_row_kind(&self, i: i32) -> QString;
 
@@ -383,8 +385,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_layers_fill(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 
-        /// Preview opacity (clamped `0..=255`) on every path without recording
-        /// history. Returns the number changed.
+        /// Preview opacity (clamped `0..=255`) on every path without recording history. Returns the number changed.
         #[qinvokable]
         fn preview_layers_opacity(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 
@@ -393,8 +394,7 @@ pub mod qobject {
         #[qinvokable]
         fn commit_layers_opacity(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 
-        /// Preview fill opacity (clamped `0..=255`) on every path without
-        /// recording history. Returns the number changed.
+        /// Preview fill opacity (clamped `0..=255`) on every path without recording history. Returns the number changed.
         #[qinvokable]
         fn preview_layers_fill(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 

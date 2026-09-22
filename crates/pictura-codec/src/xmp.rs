@@ -14,6 +14,10 @@
 
 use std::collections::HashMap;
 
+mod serialize;
+
+pub use serialize::to_xmp_packet;
+
 const RDF_URI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 const DC_URI: &str = "http://purl.org/dc/elements/1.1/";
 const PHOTOSHOP_URI: &str = "http://ns.adobe.com/photoshop/1.0/";
@@ -76,13 +80,16 @@ pub fn parse_xmp(packet: &str) -> XmpProperties {
     scan_packet(packet.as_bytes()).properties()
 }
 
-/// Set managed properties in an XMP packet by replacing only the bytes of each
-/// matched property and copying every other byte verbatim. Setting a property
-/// that already has the requested value returns the input unchanged. Returns
-/// `None` when the packet has no recognisable `rdf:Description`, or a managed
-/// property that must be rewritten uses a construct that cannot be safely
-/// reserialised (the caller then leaves the resource untouched).
-pub fn patch_xmp(packet: &str, updates: &[(XmpField, String)]) -> Option<String> {
+/// Replace managed properties in a packet by replacing only the bytes of each
+/// matched property and copying every other byte verbatim. `Creator` is written
+/// as an `rdf:Seq` and `Subject` as an `rdf:Bag` with one `rdf:li` per element;
+/// the other fields use their single element. An empty vector removes the
+/// property. Setting a property that already holds the requested value(s)
+/// returns the input unchanged. Returns `None` when the packet has no
+/// recognisable `rdf:Description`, or a managed property that must be rewritten
+/// uses a construct that cannot be safely reserialised (the caller then leaves
+/// the resource untouched).
+pub fn patch_xmp_values(packet: &str, updates: &[(XmpField, Vec<String>)]) -> Option<String> {
     if updates.is_empty() {
         return Some(packet.to_string());
     }
@@ -93,17 +100,18 @@ pub fn patch_xmp(packet: &str, updates: &[(XmpField, String)]) -> Option<String>
         return None;
     }
 
-    let mut requested: Vec<(XmpField, String)> = Vec::new();
-    for (field, value) in updates {
+    let mut requested: Vec<(XmpField, Vec<String>)> = Vec::new();
+    for (field, values) in updates {
+        let values = normalize_values(values);
         match requested.iter_mut().find(|(f, _)| f == field) {
-            Some(slot) => slot.1 = value.clone(),
-            None => requested.push((*field, value.clone())),
+            Some(slot) => slot.1 = values,
+            None => requested.push((*field, values)),
         }
     }
 
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
     let mut insertions = String::new();
-    for (field, value) in &requested {
+    for (field, values) in &requested {
         if scan.spans.iter().filter(|s| s.field == *field).count() > 1 {
             return None;
         }
@@ -112,28 +120,32 @@ pub fn patch_xmp(packet: &str, updates: &[(XmpField, String)]) -> Option<String>
                 if span.unsafe_ || !span.complete {
                     return None;
                 }
-                if value.is_empty() {
+                if values.is_empty() {
                     // Clearing removes the property bytes entirely; an absent
                     // property already satisfies an empty request.
                     edits.push((span.start, span.end, String::new()));
                     continue;
                 }
-                if *field == XmpField::Marked && parse_xmp_bool(value).is_none() {
+                if *field == XmpField::Marked && parse_xmp_bool(&values[0]).is_none() {
                     return None;
                 }
-                if already_matches(span, *field, value) {
+                if already_matches(span, *field, values) {
                     continue;
                 }
-                edits.push((span.start, span.end, replacement(span, *field, value)?));
+                edits.push((
+                    span.start,
+                    span.end,
+                    replacement(span, *field, values, &description.scope)?,
+                ));
             }
             None => {
-                if value.is_empty() {
+                if values.is_empty() {
                     continue;
                 }
-                if *field == XmpField::Marked && parse_xmp_bool(value).is_none() {
+                if *field == XmpField::Marked && parse_xmp_bool(&values[0]).is_none() {
                     return None;
                 }
-                insertions.push_str(&insertion(*field, value, &description.scope)?);
+                insertions.push_str(&insertion(*field, values, &description.scope)?);
             }
         }
     }
@@ -179,6 +191,25 @@ pub fn patch_xmp(packet: &str, updates: &[(XmpField, String)]) -> Option<String>
     }
     out.push_str(&packet[cursor..]);
     Some(out)
+}
+
+/// Set single managed properties. See [`patch_xmp_values`] for list fields.
+pub fn patch_xmp(packet: &str, updates: &[(XmpField, String)]) -> Option<String> {
+    let updates: Vec<(XmpField, Vec<String>)> = updates
+        .iter()
+        .map(|(field, value)| (*field, vec![value.clone()]))
+        .collect();
+    patch_xmp_values(packet, &updates)
+}
+
+/// Drop empty elements so a single empty value (or an all-empty list) clears the
+/// property, matching the parser's absent-when-empty view.
+fn normalize_values(values: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .filter(|value| !value.is_empty())
+        .cloned()
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,21 +278,39 @@ impl Scan {
         let mut props = XmpProperties::default();
         for span in &self.spans {
             match span.field {
-                XmpField::Title if props.title.is_none() => props.title = span.scalar_value(),
+                XmpField::Title if props.title.is_none() => {
+                    props.title = span.scalar_value().filter(|v| !v.is_empty());
+                }
                 XmpField::Creator if props.creator.is_empty() => {
-                    props.creator = span.values.iter().map(|v| v.value.clone()).collect();
+                    props.creator = span
+                        .values
+                        .iter()
+                        .map(|v| v.value.clone())
+                        .filter(|v| !v.is_empty())
+                        .collect();
                 }
                 XmpField::Description if props.description.is_none() => {
-                    props.description = span.scalar_value();
+                    props.description = span.scalar_value().filter(|v| !v.is_empty());
                 }
                 XmpField::Subject if props.subject.is_empty() => {
-                    props.subject = span.values.iter().map(|v| v.value.clone()).collect();
+                    props.subject = span
+                        .values
+                        .iter()
+                        .map(|v| v.value.clone())
+                        .filter(|v| !v.is_empty())
+                        .collect();
                 }
-                XmpField::Rights if props.rights.is_none() => props.rights = span.scalar_value(),
-                XmpField::Credit if props.credit.is_none() => props.credit = span.scalar_value(),
-                XmpField::Source if props.source.is_none() => props.source = span.scalar_value(),
+                XmpField::Rights if props.rights.is_none() => {
+                    props.rights = span.scalar_value().filter(|v| !v.is_empty());
+                }
+                XmpField::Credit if props.credit.is_none() => {
+                    props.credit = span.scalar_value().filter(|v| !v.is_empty());
+                }
+                XmpField::Source if props.source.is_none() => {
+                    props.source = span.scalar_value().filter(|v| !v.is_empty());
+                }
                 XmpField::Headline if props.headline.is_none() => {
-                    props.headline = span.scalar_value();
+                    props.headline = span.scalar_value().filter(|v| !v.is_empty());
                 }
                 XmpField::Marked if props.marked.is_none() => {
                     props.marked = span.scalar_value().and_then(|v| parse_xmp_bool(&v));
@@ -356,68 +405,99 @@ fn canonical(field: XmpField) -> (&'static str, &'static str) {
     }
 }
 
-/// Whether the property already holds the requested value. The comparison is
-/// on the property's scalar value — the `x-default` item for an `rdf:Alt`, the
-/// first item for `rdf:Seq`/`rdf:Bag`, the text for a simple property — so it
-/// agrees with the reader and with the IPTC-Core sync gate.
-fn already_matches(span: &SpanInfo, field: XmpField, value: &str) -> bool {
+/// Whether the property already holds the requested value(s). Scalar fields use
+/// the property's scalar value — the `x-default` item for an `rdf:Alt`, the text
+/// for a simple property — so it agrees with the reader and the IPTC-Core sync
+/// gate. List fields (`Creator`/`Subject`) match the full item list, so a
+/// shorter list can replace a longer one.
+fn already_matches(span: &SpanInfo, field: XmpField, values: &[String]) -> bool {
+    if is_list_field(field) {
+        let current: Vec<&str> = span.values.iter().map(|v| v.value.as_str()).collect();
+        let requested: Vec<&str> = values.iter().map(String::as_str).collect();
+        return current == requested;
+    }
+    let value = values.first().map(String::as_str).unwrap_or("");
     if field == XmpField::Marked {
         return span.values.first().and_then(|v| parse_xmp_bool(&v.value)) == parse_xmp_bool(value);
     }
     span.scalar_value().as_deref() == Some(value)
 }
 
-fn replacement(span: &SpanInfo, field: XmpField, value: &str) -> Option<String> {
-    let escaped = escape_xml(value);
+/// The `rdf:` prefix in scope for a rewritten property: the existing container's
+/// prefix, or one declared on the `rdf:Description`. `None` fails the rewrite
+/// closed rather than dropping items or emitting an unbound prefix.
+fn rdf_prefix(span: &SpanInfo, scope: &HashMap<String, String>) -> Option<String> {
+    match span.container.as_ref() {
+        Some((_, prefix)) if !prefix.is_empty() => Some(prefix.clone()),
+        Some(_) => None,
+        None => prefix_for(scope, RDF_URI),
+    }
+}
+
+fn list_element(
+    name: &str,
+    kind: &str,
+    span: &SpanInfo,
+    values: &[String],
+    scope: &HashMap<String, String>,
+) -> Option<String> {
+    let rdf = rdf_prefix(span, scope)?;
+    Some(format!(
+        "<{name}><{rdf}:{kind}>{}</{rdf}:{kind}></{name}>",
+        seq_items(&rdf, values)
+    ))
+}
+
+fn replacement(
+    span: &SpanInfo,
+    field: XmpField,
+    values: &[String],
+    scope: &HashMap<String, String>,
+) -> Option<String> {
     if span.form == Form::Attribute {
-        return Some(format!("{}=\"{}\"", span.name, escaped));
+        return Some(format!("{}=\"{}\"", span.name, escape_xml(values.first()?)));
     }
     let name = span.name.as_str();
-    let rdf = span.container.as_ref().map(|(_, prefix)| prefix.as_str());
-    // ponytail: a rewritten Alt/Seq/Bag collapses to a single item; the public
-    // update API carries one value per field.
     match field {
-        XmpField::Title | XmpField::Description | XmpField::Rights if rdf.is_some() => {
-            let rdf = rdf?;
-            if rdf.is_empty() {
-                return None;
-            }
+        XmpField::Creator => list_element(name, "Seq", span, values, scope),
+        XmpField::Subject => list_element(name, "Bag", span, values, scope),
+        XmpField::Title | XmpField::Description | XmpField::Rights if span.container.is_some() => {
+            let rdf = rdf_prefix(span, scope)?;
+            let value = values.first()?;
             Some(format!(
-                "<{name}><{rdf}:Alt><{rdf}:li xml:lang=\"x-default\">{escaped}</{rdf}:li></{rdf}:Alt></{name}>"
-            ))
-        }
-        XmpField::Creator if rdf.is_some() => {
-            let rdf = rdf?;
-            if rdf.is_empty() {
-                return None;
-            }
-            Some(format!(
-                "<{name}><{rdf}:Seq><{rdf}:li>{escaped}</{rdf}:li></{rdf}:Seq></{name}>"
-            ))
-        }
-        XmpField::Subject if rdf.is_some() => {
-            let rdf = rdf?;
-            if rdf.is_empty() {
-                return None;
-            }
-            Some(format!(
-                "<{name}><{rdf}:Bag><{rdf}:li>{escaped}</{rdf}:li></{rdf}:Bag></{name}>"
+                "<{name}><{rdf}:Alt><{rdf}:li xml:lang=\"x-default\">{}</{rdf}:li></{rdf}:Alt></{name}>",
+                escape_xml(value)
             ))
         }
         XmpField::Marked => {
-            let text = if parse_xmp_bool(value)? {
+            let text = if parse_xmp_bool(values.first()?)? {
                 "True"
             } else {
                 "False"
             };
             Some(format!("<{name}>{text}</{name}>"))
         }
-        _ => Some(format!("<{name}>{escaped}</{name}>")),
+        _ => Some(format!("<{name}>{}</{name}>", escape_xml(values.first()?))),
     }
 }
 
-fn insertion(field: XmpField, value: &str, scope: &HashMap<String, String>) -> Option<String> {
-    let escaped = escape_xml(value);
+fn is_list_field(field: XmpField) -> bool {
+    matches!(field, XmpField::Creator | XmpField::Subject)
+}
+
+fn seq_items(rdf: &str, values: &[String]) -> String {
+    let mut out = String::new();
+    for value in values {
+        out.push_str(&format!("<{rdf}:li>{}</{rdf}:li>", escape_xml(value)));
+    }
+    out
+}
+
+fn insertion(
+    field: XmpField,
+    values: &[String],
+    scope: &HashMap<String, String>,
+) -> Option<String> {
     let (uri, local) = canonical(field);
     // ponytail: an inserted property reuses a prefix the receiving
     // rdf:Description already has in scope; an unbound prefix fails closed
@@ -426,31 +506,38 @@ fn insertion(field: XmpField, value: &str, scope: &HashMap<String, String>) -> O
     match field {
         XmpField::Title | XmpField::Description | XmpField::Rights => {
             let rdf = prefix_for(scope, RDF_URI)?;
+            let value = values.first()?;
             Some(format!(
-                "<{prefix}:{local}><{rdf}:Alt><{rdf}:li xml:lang=\"x-default\">{escaped}</{rdf}:li></{rdf}:Alt></{prefix}:{local}>"
+                "<{prefix}:{local}><{rdf}:Alt><{rdf}:li xml:lang=\"x-default\">{}</{rdf}:li></{rdf}:Alt></{prefix}:{local}>",
+                escape_xml(value)
             ))
         }
         XmpField::Creator => {
             let rdf = prefix_for(scope, RDF_URI)?;
             Some(format!(
-                "<{prefix}:{local}><{rdf}:Seq><{rdf}:li>{escaped}</{rdf}:li></{rdf}:Seq></{prefix}:{local}>"
+                "<{prefix}:{local}><{rdf}:Seq>{}</{rdf}:Seq></{prefix}:{local}>",
+                seq_items(&rdf, values)
             ))
         }
         XmpField::Subject => {
             let rdf = prefix_for(scope, RDF_URI)?;
             Some(format!(
-                "<{prefix}:{local}><{rdf}:Bag><{rdf}:li>{escaped}</{rdf}:li></{rdf}:Bag></{prefix}:{local}>"
+                "<{prefix}:{local}><{rdf}:Bag>{}</{rdf}:Bag></{prefix}:{local}>",
+                seq_items(&rdf, values)
             ))
         }
         XmpField::Marked => {
-            let text = if parse_xmp_bool(value)? {
+            let text = if parse_xmp_bool(values.first()?)? {
                 "True"
             } else {
                 "False"
             };
             Some(format!("<{prefix}:{local}>{text}</{prefix}:{local}>"))
         }
-        _ => Some(format!("<{prefix}:{local}>{escaped}</{prefix}:{local}>")),
+        _ => Some(format!(
+            "<{prefix}:{local}>{}</{prefix}:{local}>",
+            escape_xml(values.first()?)
+        )),
     }
 }
 
