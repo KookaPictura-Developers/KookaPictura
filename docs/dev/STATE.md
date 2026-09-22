@@ -41,7 +41,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
-    `xmp-metadata`, `metadata-templates`, and `psd-zip-write` changes;
+    `xmp-metadata`, `metadata-templates`, `psd-zip-write`, and `color-settings`
+    changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -619,6 +620,21 @@ Snapshot for resuming after a context break. Update after each milestone.
   tests and the psd-tools write oracle (ran) across raw/RLE/ZIP/ZIP-prediction.
   Ceilings (`// ponytail:`): mixed per-channel kinds within a category normalize
   to the first seen; no user compression choice, no per-channel fidelity.
+- **Color Settings / incoming-profile policy** (roadmap P6/G5, archived
+  `2026-09-22-color-settings`): `pictura_color::Policy { Preserve (default),
+  Convert, Off }` (codes 0/1/2) and `pictura_codec::read_psd_with(bytes, policy)`
+  decide how an RGB document's decodable non-sRGB embedded profile is honoured:
+  Preserve keeps the pixels + resource 1039 and sets `Document.document_icc` (the
+  canvas converts it for display via `buffer_to_srgb`); Convert is the old
+  normalisation; Off drops 1039 and stays untagged. An untransformable profile
+  (e.g. CMYK on a normalised-RGB doc) is unchanged under every policy.
+  `read_psd` stays `Convert` for existing callers (incl. nested smart-object
+  reads). The app persists the policy as an application preference (default
+  Preserve), pushes it to the view before opening, displays the first frame
+  through the profile conversion, and `Edit > Color Settings…` is a real dialog
+  (sRGB working space, policy combo). Proven by codec unit tests + `icc_oracle`
+  (PIL, ran) and self-tests 461/462. Ceilings (`// ponytail:`): sRGB working
+  space only, RGB policy only, no `.csf`, no mismatch/missing dialogs.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
