@@ -823,6 +823,7 @@ name = "pictura-codec"
 version = "0.0.0"
 dependencies = [
  "flate2",
+ "pictura-color",
  "pictura-core",
  "thiserror 2.0.20",
 ]

@@ -454,6 +454,11 @@ bool PicturaMainWindow::openPath(const QString& path)
         notice = notice.isEmpty() ? depthNotice
                                   : notice + QStringLiteral("; ") + depthNotice;
     }
+    const QString iccNotice = view->icc_notice();
+    if (!iccNotice.isEmpty()) {
+        notice = notice.isEmpty() ? iccNotice
+                                  : notice + QStringLiteral("; ") + iccNotice;
+    }
     if (!notice.isEmpty()) {
         statusBar()->showMessage(notice);
     }

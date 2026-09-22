@@ -219,4 +219,7 @@ target_include_directories(pictura PRIVATE
     crates/pictura-app/cpp
     "${QT_HEADERS_DIR}/QtGui/${QT_VERSION_STR}/QtGui"
 )
-target_link_libraries(pictura PRIVATE pictura_app Qt6::Svg)
+# The Rust static lib embeds `pictura-color` (Little CMS 2); a staticlib does not
+# propagate its native link dependencies, so the C++ link needs `-llcms2`.
+find_library(LCMS2_LIBRARY NAMES lcms2 REQUIRED)
+target_link_libraries(pictura PRIVATE pictura_app Qt6::Svg "${LCMS2_LIBRARY}")

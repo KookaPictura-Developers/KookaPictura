@@ -3,6 +3,7 @@ use super::*;
 pub const FIXTURES: &[(&str, u32, u32, ColorMode)] = &[
     ("two_layers.psd", 8, 8, ColorMode::Rgb),
     ("image_resources.psd", 8, 8, ColorMode::Rgb),
+    ("icc_profile.psd", 8, 8, ColorMode::Rgb),
     ("group.psd", 8, 8, ColorMode::Rgb),
     ("masked.psd", 8, 8, ColorMode::Rgb),
     ("gray.psd", 8, 8, ColorMode::Grayscale),

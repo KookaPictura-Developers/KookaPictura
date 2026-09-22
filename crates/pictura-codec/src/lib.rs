@@ -23,6 +23,7 @@ mod common;
 mod depth;
 mod descriptor;
 mod error;
+mod icc;
 mod image_resources;
 mod patterns;
 mod probe;
@@ -42,9 +43,10 @@ mod tests;
 
 pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;
+pub use icc::profile_description;
 pub use image_resources::{
-    decode_image_resources, ImageResource, EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE, IPTC_NAA,
-    XMP_METADATA,
+    decode_image_resources, encode_image_resources, ImageResource, EXIF_DATA_1, EXIF_DATA_3,
+    ICC_PROFILE, IPTC_NAA, XMP_METADATA,
 };
 pub use patterns::{decode_patterns, PatternPixels};
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};

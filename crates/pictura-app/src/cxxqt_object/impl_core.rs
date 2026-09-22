@@ -282,6 +282,21 @@ impl qobject::PictureView {
         QString::from(format!("Converted from {name}"))
     }
 
+    pub fn icc_notice(&self) -> QString {
+        let Some(icc) = self
+            .rust()
+            .doc
+            .as_ref()
+            .and_then(|d| d.source_icc.as_deref())
+        else {
+            return QString::default();
+        };
+        match pictura_codec::profile_description(icc) {
+            Some(name) => QString::from(format!("Converted from ICC profile {name}")),
+            None => QString::from("Converted from embedded ICC profile"),
+        }
+    }
+
     pub fn document_mode(&self) -> QString {
         match self.rust().doc.as_ref().map(|d| d.mode) {
             Some(ColorMode::Grayscale) => QString::from("grayscale"),

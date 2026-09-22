@@ -29,6 +29,9 @@ pub struct ImageResource {
     pub id: u16,
     pub name: String,
     pub data: Vec<u8>,
+    /// The exact on-disk bytes of the whole block (signature through padded
+    /// data), so the section can be re-emitted or rewritten byte-for-byte.
+    pub raw: Vec<u8>,
 }
 
 /// Signatures psd-tools accepts for an image-resource block; each uses the same
@@ -42,6 +45,7 @@ pub fn decode_image_resources(document: &Document) -> Vec<ImageResource> {
     let mut reader = Reader::new(&document.image_resources);
     let mut out = Vec::new();
     while reader.remaining() >= 4 {
+        let start = reader.pos;
         let Ok(signature) = reader.take(4) else {
             break;
         };
@@ -78,7 +82,19 @@ pub fn decode_image_resources(document: &Document) -> Vec<ImageResource> {
             id,
             name,
             data: data.to_vec(),
+            raw: reader.data[start..reader.pos].to_vec(),
         });
+    }
+    out
+}
+
+/// Re-serialize typed records into an image-resource section by concatenating
+/// each record's raw block bytes. `encode_image_resources(&decode_image_resources(doc))`
+/// reproduces `doc.image_resources`.
+pub fn encode_image_resources(resources: &[ImageResource]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for resource in resources {
+        out.extend_from_slice(&resource.raw);
     }
     out
 }
@@ -120,15 +136,22 @@ mod tests {
 
     #[test]
     fn decodes_resources_in_order_with_odd_padding() {
-        let mut section = resource(b"8BIM", ICC_PROFILE, "ICC", b"profile-bytes");
+        let first = resource(b"8BIM", ICC_PROFILE, "ICC", b"profile-bytes");
+        let mut section = first.clone();
         section.extend(resource(b"8BIM", XMP_METADATA, "xmp", b"<x/>"));
-        let decoded = decode_image_resources(&document_with(section));
+        let decoded = decode_image_resources(&document_with(section.clone()));
         assert_eq!(decoded.len(), 2);
         assert_eq!(decoded[0].id, ICC_PROFILE);
         assert_eq!(decoded[0].name, "ICC");
         assert_eq!(decoded[0].data, b"profile-bytes");
+        assert_eq!(decoded[0].raw, first, "the raw block is retained");
         assert_eq!(decoded[1].id, XMP_METADATA);
         assert_eq!(decoded[1].data, b"<x/>");
+        assert_eq!(
+            encode_image_resources(&decoded),
+            section,
+            "decode then encode reproduces the section"
+        );
     }
 
     #[test]

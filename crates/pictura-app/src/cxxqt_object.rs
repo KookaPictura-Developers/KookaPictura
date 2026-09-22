@@ -98,8 +98,7 @@ pub mod qobject {
         #[qinvokable]
         fn active_layer_path(&self) -> QString;
 
-        /// Whether the single active layer a tool edit may target is visible;
-        /// true when there is no single editable active layer.
+        /// Whether the single active layer a tool edit may target is visible.
         #[qinvokable]
         fn active_layer_visible(&self) -> bool;
 
@@ -110,6 +109,10 @@ pub mod qobject {
         /// Notice when an opened 16/32-bit document was narrowed to 8-bit.
         #[qinvokable]
         fn depth_notice(&self) -> QString;
+
+        /// Notice when an opened document was converted from an embedded ICC profile.
+        #[qinvokable]
+        fn icc_notice(&self) -> QString;
 
         /// Working mode: `"rgb"` or `"grayscale"`; empty without a document.
         #[qinvokable]
@@ -123,8 +126,7 @@ pub mod qobject {
         #[qinvokable]
         fn image(self: Pin<&mut Self>) -> QImage;
 
-        /// Whether a document is loaded (false when only the fallback image is
-        /// shown). Drives command enablement in the shell.
+        /// Whether a document is loaded; drives shell command enablement.
         #[qinvokable]
         fn has_document(&self) -> bool;
 
@@ -148,8 +150,7 @@ pub mod qobject {
         #[qinvokable]
         fn layer_name(&self, i: i32) -> QString;
 
-        /// `"pixel"`, `"group"`, `"adjustment"`, or `"background"` for layer `i`;
-        /// empty when out of range.
+        /// `"pixel"`/`"group"`/`"adjustment"`/`"background"` for layer `i`, or empty.
         #[qinvokable]
         fn layer_kind(&self, i: i32) -> QString;
 
@@ -174,8 +175,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_layer_opacity(self: Pin<&mut Self>, i: i32, value: i32) -> bool;
 
-        /// Fill opacity of layer `i` in `0..=255` (content opacity, distinct
-        /// from Opacity), or 0 when out of range.
+        /// Fill opacity of layer `i` in `0..=255` (distinct from Opacity).
         #[qinvokable]
         fn layer_fill(&self, i: i32) -> i32;
 

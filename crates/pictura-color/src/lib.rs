@@ -9,8 +9,8 @@
 //! so no Adobe profile files are distributed.
 
 use lcms2::{
-    CIExyY, CIExyYTRIPLE, Flags, Intent as LcmsIntent, PixelFormat, Profile as LcmsProfile,
-    ToneCurve, Transform,
+    CIExyY, CIExyYTRIPLE, Flags, InfoType, Intent as LcmsIntent, Locale, PixelFormat,
+    Profile as LcmsProfile, ToneCurve, Transform,
 };
 
 /// Rendering intent (ICC).
@@ -122,6 +122,21 @@ impl Profile {
         // succeeds in practice; the empty fallback keeps this panic-free.
         self.0.icc().unwrap_or_default()
     }
+
+    /// The profile's `Description` tag (`cmsInfoDescription`), when present.
+    pub fn description(&self) -> Option<String> {
+        self.0.info(InfoType::Description, Locale::default())
+    }
+
+    /// Whether this profile is the sRGB working space, by its description.
+    ///
+    /// ponytail: lcms2 has no profile-equality check, so this matches "srgb"
+    /// case-insensitively in the `Description` tag; a differently-named sRGB
+    /// profile is treated as non-sRGB (converted, within a rounding LSB).
+    pub fn is_srgb(&self) -> bool {
+        self.description()
+            .is_some_and(|d| d.to_ascii_lowercase().contains("srgb"))
+    }
 }
 
 fn rgb_profile(white: CIExyY, primaries: CIExyYTRIPLE, curve: ToneCurve) -> Profile {
@@ -229,6 +244,19 @@ fn formats(channels: u8, bits: u8) -> Result<(PixelFormat, PixelFormat), ColorEr
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn description_and_srgb_detection() {
+        assert!(Profile::srgb().is_srgb(), "the working space is sRGB");
+        let adobe = Profile::adobe_rgb();
+        assert!(!adobe.is_srgb(), "Adobe RGB is not sRGB");
+        assert!(
+            adobe.description().is_some(),
+            "a synthesized profile has a description"
+        );
+        let reloaded = Profile::from_icc(&adobe.to_icc()).expect("round-trips");
+        assert!(!reloaded.is_srgb(), "detection survives an ICC round trip");
+    }
 
     fn rgb8(pixels: &[[u8; 3]]) -> Vec<u8> {
         pixels.iter().flatten().copied().collect()

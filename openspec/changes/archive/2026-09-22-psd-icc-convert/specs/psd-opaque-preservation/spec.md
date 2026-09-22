@@ -1,8 +1,5 @@
-# psd-opaque-preservation Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change psd-opaque-preservation. Update Purpose after archive.
-## Requirements
 ### Requirement: Opaque PSD blocks survive an open-save round trip
 
 Reading a PSD SHALL retain, byte-for-byte, every section and block the engine
@@ -41,17 +38,3 @@ example the `-3` real user mask), and each layer mask's trailing parameter bytes
 #### Scenario: Blending ranges and mask parameters round-trip
 - **WHEN** a layer carries non-empty blending ranges or a mask block longer than the fixed fields
 - **THEN** those bytes are present after read→write→read
-
-### Requirement: The document model defaults to empty preservation
-A document created by the engine (not read from a file) SHALL have empty
-preservation storage, so `write_psd` output for it is unchanged from before
-preservation existed.
-
-#### Scenario: A constructed document serializes as before
-- **WHEN** a default document is written
-- **THEN** its bytes equal the pre-preservation serialization for the same document
-
-#### Scenario: Preservation does not affect unrelated edits
-- **WHEN** a file with preserved blocks is read, an unrelated layer is edited, and it is written
-- **THEN** the preserved blocks of the untouched layers are still emitted
-
