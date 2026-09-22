@@ -41,7 +41,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
-    `xmp-metadata`, and `metadata-templates` changes;
+    `xmp-metadata`, `metadata-templates`, and `psd-zip-write` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -607,6 +607,18 @@ Snapshot for resuming after a context break. Update after each milestone.
   tests, `metadata_oracle` (exiftool, ran, all three modes), self-test 460.
   Ceilings (`// ponytail:`): nine managed properties only, no sidecars/template
   folder/batch, `xmp.rs` is near the 1200-line cap.
+- **PSD ZIP write and compression preservation** (roadmap P3/G12, archived
+  `2026-09-22-psd-zip-write`): `pictura-core::Compression` (`Rle` default, `Raw`,
+  `Zip`, `ZipPrediction`) and `Document.{composite,layer}_compression` record the
+  kind read; `write_psd` emits it via `zip_scanlines` (zlib, with a reversible
+  per-row delta for ZIP-prediction) and `channel_stream`, for the composite,
+  document extra channels, layer color channels, and raster mask. A constructed
+  document stays RLE and byte-unchanged; a document with no merged composite now
+  writes no image-data section, so a maximize-compatibility-off file round-trips
+  equal; only surviving layer records set the layer kind. Proven by codec unit
+  tests and the psd-tools write oracle (ran) across raw/RLE/ZIP/ZIP-prediction.
+  Ceilings (`// ponytail:`): mixed per-channel kinds within a category normalize
+  to the first seen; no user compression choice, no per-channel fidelity.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
