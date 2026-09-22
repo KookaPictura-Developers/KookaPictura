@@ -665,8 +665,11 @@ void PicturaMainWindow::showFileInfo()
     if (!view) {
         return;
     }
-    FileInfoDialog dialog(view->exif_rows(), view->iptc_rows(), view->xmp_packet(), this);
-    dialog.exec();
+    FileInfoDialog dialog(view->exif_rows(), view->iptc_edit_fields(), view->iptc_rows(),
+                          view->xmp_packet(), this);
+    if (dialog.exec() == QDialog::Accepted) {
+        view->apply_iptc_edits(dialog.edits());
+    }
 }
 
 void PicturaMainWindow::showOpenDialog()

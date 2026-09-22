@@ -121,6 +121,10 @@ pub mod qobject {
         fn iptc_rows(&self) -> QStringList;
         #[qinvokable]
         fn xmp_packet(&self) -> QString;
+        #[qinvokable]
+        fn iptc_edit_fields(&self) -> QStringList;
+        #[qinvokable]
+        fn apply_iptc_edits(self: Pin<&mut Self>, edits: &QStringList) -> bool;
 
         /// Working mode: `"rgb"` or `"grayscale"`; empty without a document.
         #[qinvokable]
@@ -448,10 +452,9 @@ pub mod qobject {
         fn add_group_in(self: Pin<&mut Self>, selection_path: &QString) -> QString;
 
         /// Create a raster layer from the New Layer dialog directly above
-        /// `selection_path` (top of the stack when empty) with the chosen
-        /// name/color/blend/opacity/fill, optional mode-neutral fill, and clipping
-        /// flag. `blend_key` is a 4-byte PSD key; records one "New Layer" state on
-        /// success. Returns the new path, or empty on an invalid blend key.
+        /// `selection_path` (top when empty) with the chosen name/color/blend/
+        /// opacity/fill, optional neutral fill, and clipping flag. `blend_key` is
+        /// a 4-byte PSD key; records one "New Layer" state. Returns the new path.
         #[qinvokable]
         fn new_layer_dialog(
             self: Pin<&mut Self>,
@@ -608,23 +611,20 @@ pub mod qobject {
         fn layer_can_convert_to_smart_object(&self, path: &QString) -> bool;
 
         /// `Convert to Smart Object`: author an embedded source from `path`'s
-        /// raster and attach it, keeping the raster proxy. Records one
-        /// "Convert to Smart Object" state on success; false (no state) for an
-        /// ineligible target.
+        /// raster and attach it, keeping the raster proxy. Records one state on
+        /// success; false (no state) for an ineligible target.
         #[qinvokable]
         fn convert_to_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
 
         /// `File > Place…`: read `file_path`, decode it as a PSD/PSB source, and
         /// append it as a topmost channel-less embedded smart-object layer.
-        /// Records one "Place" state on success; empty and no state when the
-        /// file is unreadable or not a PSD/PSB document.
+        /// Records one "Place" state; empty and no state on an unreadable file.
         #[qinvokable]
         fn place_smart_object(self: Pin<&mut Self>, file_path: &QString) -> QString;
 
-        /// `File > Place…` for a common raster image: read `file_path`, probe and
-        /// decode it with Qt, append a native-size raster layer, convert it into
-        /// an embedded smart object, recomposite, and record one "Place" state.
-        /// Returns the new layer's path, or empty recording nothing on refusal.
+        /// `File > Place…` for a raster image: decode `file_path` with Qt, append
+        /// a native-size raster layer, convert it to an embedded smart object,
+        /// recomposite, and record one "Place" state. Empty on refusal.
         #[qinvokable]
         fn place_image(self: Pin<&mut Self>, file_path: &QString) -> QString;
 
@@ -634,10 +634,9 @@ pub mod qobject {
         fn layer_can_rasterize_smart_object(&self, path: &QString) -> bool;
 
         /// `Rasterize Smart Object`: consume the object at `path`, keeping its
-        /// raster proxy (or materializing the embedded source into channels),
-        /// then drop the preserved blocks and linked record. Records one
-        /// "Rasterize Smart Object" state on success; false (no state) for an
-        /// ineligible target or an undecodable payload.
+        /// raster proxy or materializing the source into channels, then drop the
+        /// preserved blocks and linked record. Records one state; false (no
+        /// state) for an ineligible target or an undecodable payload.
         #[qinvokable]
         fn rasterize_smart_object(self: Pin<&mut Self>, path: &QString) -> bool;
 

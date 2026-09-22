@@ -1,6 +1,7 @@
 #include "selftest_layers_adjustments.h"
 #include "selftest_report.h"
 
+#include "commands.h"
 #include "file_info_dialog.h"
 #include "frame.h"
 #include "panels/panel_column.h"
@@ -11,6 +12,7 @@
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
+#include <QtGui/QAction>
 #include <QtGui/QImage>
 
 int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
@@ -412,13 +414,16 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             const bool fiOpened = fiWritten && frame.openPath(fiPath);
             pictura::PictureView* fiView = frame.activeView();
             const QStringList fiExifRows = fiView ? fiView->exif_rows() : QStringList();
-            const QStringList fiIptcRows = fiView ? fiView->iptc_rows() : QStringList();
+            const QStringList fiEditFields =
+                fiView ? fiView->iptc_edit_fields() : QStringList();
+            const QStringList fiOtherRows = fiView ? fiView->iptc_rows() : QStringList();
             const QString fiXmpText = fiView ? fiView->xmp_packet() : QString();
             const bool fiExifOk = fiExifRows.contains(QStringLiteral("Make\tACME"));
-            const bool fiIptcOk = fiIptcRows.contains(QStringLiteral("Object Name\tHi"));
+            const bool fiIptcOk =
+                fiEditFields.contains(QStringLiteral("2:5\tObject Name\tHi"));
             const bool fiXmpOk = fiXmpText == QStringLiteral("<x:xmpmeta/>");
 
-            pictura::FileInfoDialog fiDialog(fiExifRows, fiIptcRows, fiXmpText);
+            pictura::FileInfoDialog fiDialog(fiExifRows, fiEditFields, fiOtherRows, fiXmpText);
             const bool fiCategories =
                 fiDialog.categoriesForTest()
                 == QStringList({QStringLiteral("Camera Data"), QStringLiteral("IPTC"),
@@ -426,18 +431,54 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             const bool fiDialogRows = fiDialog.rowsForTest(QStringLiteral("Camera Data"))
                                           .contains(QStringLiteral("Make\tACME"));
             const bool fiDialogXmp = fiDialog.xmpForTest() == QStringLiteral("<x:xmpmeta/>");
+            const bool fiFieldShown = fiDialog.fieldForTest(QStringLiteral("2:5"))
+                == QStringLiteral("Hi");
+            const bool fiEditsEmpty = fiDialog.edits().isEmpty();
+            fiDialog.setFieldForTest(QStringLiteral("2:5"), QStringLiteral("FromDialog"));
+            const bool fiEditsRow = fiDialog.edits().size() == 1
+                && fiDialog.edits().contains(QStringLiteral("2:5\tFromDialog"));
+            QAction* fiAction = frame.registry()->action(
+                QString::fromLatin1(pictura::command_ids::FileInfo));
+            const bool fiEnabled = fiAction && fiAction->isEnabled();
 
             const bool fiOk = fiOpened && frame.documentCount() == fiDocs + 1 && fiExifOk
-                && fiIptcOk && fiXmpOk && fiCategories && fiDialogRows && fiDialogXmp;
+                && fiIptcOk && fiXmpOk && fiCategories && fiDialogRows && fiDialogXmp
+                && fiFieldShown && fiEditsEmpty && fiEditsRow && fiEnabled;
             ST_BEGIN("file_info_metadata");
             ST_PASS("file_info_metadata open=%d exif=%d iptc=%d xmp=%d categories=%d rows=%d",
                     fiOpened ? 1 : 0, fiExifOk ? 1 : 0, fiIptcOk ? 1 : 0, fiXmpOk ? 1 : 0,
                     fiCategories ? 1 : 0, fiDialogRows ? 1 : 0);
+            if (!fiOk) {
+                return pictura::selfTest().fail(456, "file info metadata");
+            }
+
+            // file_info_iptc_edit (457): applying an IPTC edit through the bridge
+            // changes the document, marks it dirty, records one undo state, and
+            // undo restores the previous value; re-applying the same value is a
+            // no-op.
+            const bool fiNoop = !fiView->apply_iptc_edits(
+                QStringList({QStringLiteral("2:5\tHi")}));
+            const int fiStates = fiView->history_count();
+            const bool fiEdited =
+                fiView->apply_iptc_edits(QStringList({QStringLiteral("2:5\tEdited")}));
+            const bool fiApplied =
+                fiView->iptc_edit_fields().contains(QStringLiteral("2:5\tObject Name\tEdited"));
+            const bool fiDirty = fiView->is_dirty();
+            const bool fiOneState = fiView->history_count() == fiStates + 1
+                && fiView->history_label(fiView->history_count() - 1)
+                    == QStringLiteral("File Info");
+            const bool fiUndone =
+                fiView->undo()
+                && fiView->iptc_edit_fields().contains(QStringLiteral("2:5\tObject Name\tHi"));
+            ST_BEGIN("file_info_iptc_edit");
+            ST_PASS("file_info_iptc_edit noop=%d edited=%d applied=%d dirty=%d state=%d undone=%d",
+                    fiNoop ? 1 : 0, fiEdited ? 1 : 0, fiApplied ? 1 : 0, fiDirty ? 1 : 0,
+                    fiOneState ? 1 : 0, fiUndone ? 1 : 0);
             if (fiView) {
                 frame.closeDocument(frame.activeDocumentIndex(), false);
             }
-            if (!fiOk) {
-                return pictura::selfTest().fail(456, "file info metadata");
+            if (!fiNoop || !fiEdited || !fiApplied || !fiDirty || !fiOneState || !fiUndone) {
+                return pictura::selfTest().fail(457, "file info iptc edit");
             }
         }
 

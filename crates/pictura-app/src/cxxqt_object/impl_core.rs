@@ -340,6 +340,51 @@ impl qobject::PictureView {
             .unwrap_or_default()
     }
 
+    /// The six editable IPTC core fields as `"record:dataset\tLabel\tValue"`.
+    pub fn iptc_edit_fields(&self) -> QStringList {
+        const EDITABLE: &[(u8, u8)] = &[(2, 5), (2, 80), (2, 116), (2, 120), (2, 110), (2, 115)];
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return QStringList::default();
+        };
+        let iptc = pictura_codec::read_metadata(doc).iptc;
+        EDITABLE
+            .iter()
+            .map(|(record, dataset)| {
+                let label = pictura_codec::iptc_field_name(*record, *dataset).unwrap_or("IPTC");
+                let value = iptc.text(*record, *dataset).unwrap_or_default();
+                QString::from(format!("{record}:{dataset}\t{label}\t{value}"))
+            })
+            .collect()
+    }
+
+    /// Apply `"record:dataset\tValue"` IPTC edits to the document as one undo
+    /// state. Returns whether anything changed.
+    pub fn apply_iptc_edits(mut self: Pin<&mut Self>, edits: &QStringList) -> bool {
+        let mut fields = Vec::new();
+        for row in edits.iter() {
+            let row = row.to_string();
+            let Some((id, value)) = row.split_once('\t') else {
+                continue;
+            };
+            let Some((record, dataset)) = id.split_once(':') else {
+                continue;
+            };
+            let (Ok(record), Ok(dataset)) = (record.parse::<u8>(), dataset.parse::<u8>()) else {
+                continue;
+            };
+            fields.push((record, dataset, value.to_string()));
+        }
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_codec::set_iptc_fields(doc, &fields),
+            None => false,
+        };
+        if changed {
+            self.as_mut().record("File Info");
+            self.changed();
+        }
+        changed
+    }
+
     pub fn document_mode(&self) -> QString {
         match self.rust().doc.as_ref().map(|d| d.mode) {
             Some(ColorMode::Grayscale) => QString::from("grayscale"),

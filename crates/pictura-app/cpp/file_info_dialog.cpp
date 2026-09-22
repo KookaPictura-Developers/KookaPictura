@@ -2,14 +2,18 @@
 
 #include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QDialogButtonBox>
+#include <QtWidgets/QFormLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QHeaderView>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QPlainTextEdit>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QTableWidget>
 #include <QtWidgets/QTableWidgetItem>
 #include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/QWidget>
 
 namespace pictura {
 
@@ -39,10 +43,23 @@ QTableWidget* makeRowTable(const QStringList& rows, QWidget* parent)
 
 } // namespace
 
-FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& iptcRows,
-                               const QString& xmp, QWidget* parent)
-    : QDialog(parent), exifRows_(exifRows), iptcRows_(iptcRows), xmp_(xmp)
+FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& iptcEditFields,
+                               const QStringList& iptcOtherRows, const QString& xmp,
+                               QWidget* parent)
+    : QDialog(parent), exifRows_(exifRows), xmp_(xmp)
 {
+    // The read-only list holds only records outside the editable core set,
+    // matched by field label.
+    QStringList editableLabels;
+    for (const QString& row : iptcEditFields) {
+        editableLabels.append(row.section(QLatin1Char('\t'), 1, 1));
+    }
+    for (const QString& row : iptcOtherRows) {
+        if (!editableLabels.contains(row.section(QLatin1Char('\t'), 0, 0))) {
+            iptcOtherRows_.append(row);
+        }
+    }
+
     setObjectName(QStringLiteral("fileInfoDialog"));
     setWindowTitle(tr("File Info"));
     setMinimumSize(560, 360);
@@ -57,7 +74,7 @@ FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& i
     stack_ = new QStackedWidget(this);
     stack_->setObjectName(QStringLiteral("fileInfoStack"));
     stack_->addWidget(makeRowTable(exifRows_, stack_));
-    stack_->addWidget(makeRowTable(iptcRows_, stack_));
+    stack_->addWidget(buildIptcPage(iptcEditFields, iptcOtherRows_));
     xmpEdit_ = new QPlainTextEdit(xmp_, stack_);
     xmpEdit_->setObjectName(QStringLiteral("fileInfoXmp"));
     xmpEdit_->setReadOnly(true);
@@ -67,7 +84,8 @@ FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& i
             &QStackedWidget::setCurrentIndex);
     categoryList_->setCurrentRow(0);
 
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &FileInfoDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &FileInfoDialog::reject);
 
     auto* top = new QHBoxLayout();
@@ -76,6 +94,44 @@ FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& i
     auto* outer = new QVBoxLayout(this);
     outer->addLayout(top, 1);
     outer->addWidget(buttons);
+}
+
+QWidget* FileInfoDialog::buildIptcPage(const QStringList& editFields, const QStringList& otherRows)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QVBoxLayout(page);
+    auto* form = new QFormLayout();
+    for (const QString& row : editFields) {
+        const QStringList parts = row.split(QLatin1Char('\t'));
+        const QString id = parts.value(0);
+        auto* edit = new QLineEdit(parts.value(2), page);
+        edit->setObjectName(QStringLiteral("fileInfoIptc_") + id);
+        fieldIds_.append(id);
+        fields_.insert(id, edit);
+        initial_.insert(id, parts.value(2));
+        form->addRow(parts.value(1), edit);
+    }
+    layout->addLayout(form);
+    if (!otherRows.isEmpty()) {
+        layout->addWidget(new QLabel(tr("Other records"), page));
+        layout->addWidget(makeRowTable(otherRows, page), 1);
+    }
+    layout->addStretch(0);
+    return page;
+}
+
+QStringList FileInfoDialog::edits() const
+{
+    // Only changed fields are emitted, so an untouched (possibly non-UTF-8)
+    // value is never rewritten.
+    QStringList out;
+    for (const QString& id : fieldIds_) {
+        const QString value = fields_.value(id)->text();
+        if (value != initial_.value(id)) {
+            out.append(id + QLatin1Char('\t') + value);
+        }
+    }
+    return out;
 }
 
 QStringList FileInfoDialog::categoriesForTest() const
@@ -93,7 +149,7 @@ QStringList FileInfoDialog::rowsForTest(const QString& category) const
         return exifRows_;
     }
     if (category == kIptc) {
-        return iptcRows_;
+        return iptcOtherRows_;
     }
     return {};
 }
@@ -101,6 +157,19 @@ QStringList FileInfoDialog::rowsForTest(const QString& category) const
 QString FileInfoDialog::xmpForTest() const
 {
     return xmpEdit_->toPlainText();
+}
+
+QString FileInfoDialog::fieldForTest(const QString& id) const
+{
+    QLineEdit* edit = fields_.value(id);
+    return edit ? edit->text() : QString();
+}
+
+void FileInfoDialog::setFieldForTest(const QString& id, const QString& value)
+{
+    if (QLineEdit* edit = fields_.value(id)) {
+        edit->setText(value);
+    }
 }
 
 } // namespace pictura
