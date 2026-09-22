@@ -177,4 +177,33 @@ QStringList CommandRegistry::topLevelTitles() const
     return titles;
 }
 
+QList<CommandInfo> CommandRegistry::describe() const
+{
+    QList<CommandInfo> infos;
+    for (const Entry& entry : entries_) {
+        if (entry.spec.id.isEmpty()) {
+            continue;
+        }
+        CommandInfo info;
+        info.id = entry.spec.id;
+        info.path = entry.spec.path;
+        info.label = entry.spec.label;
+        info.implemented = entry.spec.implemented;
+        if (entry.action) {
+            info.enabled = entry.action->isEnabled();
+            info.checked = entry.action->isChecked();
+        } else {
+            bool enabled = entry.spec.implemented && hasHandler(entry.spec.id);
+            if (enabledProviders_.contains(entry.spec.id)) {
+                enabled = enabled && enabledProviders_.value(entry.spec.id)();
+            }
+            info.enabled = enabled;
+            info.checked = entry.spec.checkable && checkedProviders_.contains(entry.spec.id)
+                           && checkedProviders_.value(entry.spec.id)();
+        }
+        infos.append(info);
+    }
+    return infos;
+}
+
 } // namespace pictura

@@ -38,6 +38,7 @@
 #include <optional>
 
 #include "commands.h"
+#include "control_server.h"
 #include "dialogs.h"
 #include "frame.h"
 #include "icons.h"
@@ -92,7 +93,10 @@ int main(int argc, char* argv[])
     bool selfTest = false;
     bool interopProbe = false;
     bool headless = false;
+    bool control = false;
     QString psdPath;
+    QString controlSocket;
+    QString stateHome;
     for (int i = 1; i < args.size(); ++i) {
         if (args.at(i) == QStringLiteral("--self-test")) {
             selfTest = true;
@@ -100,15 +104,29 @@ int main(int argc, char* argv[])
             interopProbe = true;
         } else if (args.at(i) == QStringLiteral("--headless")) {
             headless = true;
+        } else if (args.at(i) == QStringLiteral("--control")) {
+            control = true;
+        } else if (args.at(i) == QStringLiteral("--control-socket") && i + 1 < args.size()) {
+            controlSocket = args.at(++i);
+        } else if (args.at(i) == QStringLiteral("--state-home") && i + 1 < args.size()) {
+            stateHome = args.at(++i);
         } else if (!args.at(i).startsWith(QLatin1Char('-'))) {
             psdPath = args.at(i);
         }
     }
 
     // A bare --headless run has nothing to show and no way to quit; run the
-    // bridge self-test instead of blocking in the event loop.
-    if (headless && !selfTest && psdPath.isEmpty()) {
+    // bridge self-test instead of blocking in the event loop. Control mode keeps
+    // its own event loop, so it must not be turned into a self-test.
+    if (headless && !selfTest && !control && psdPath.isEmpty()) {
         selfTest = true;
+    }
+
+    // Isolate the session store before the frame restores state (session.cpp
+    // only reads XDG_STATE_HOME). The self-test's temp dir below wins over a
+    // user-supplied --state-home.
+    if (!stateHome.isEmpty()) {
+        qputenv("XDG_STATE_HOME", stateHome.toUtf8());
     }
 
     // Self-test must not read the user's saved layout: isolate the session store
@@ -180,6 +198,24 @@ int main(int argc, char* argv[])
         if (rc != 0) {
             return rc;
         }
+    }
+
+    if (control) {
+        // No modal may be reachable from a control request.
+        pictura::setUnsavedPromptInteractive(false);
+        pictura::setNonInteractiveUnsavedChoice(pictura::UnsavedChoice::Discard);
+        pictura::ControlServer controlServer(&frame, controlSocket);
+        if (!controlServer.listen()) {
+            std::fprintf(stderr, "pictura control: FAIL: cannot listen on %s\n",
+                         qPrintable(controlServer.socketPath()));
+            std::fflush(stderr);
+            return 153;
+        }
+        std::fprintf(stderr, "pictura control: %s\n", qPrintable(controlServer.socketPath()));
+        std::fflush(stderr);
+        QObject::connect(&app, &QApplication::aboutToQuit, &controlServer,
+                         &pictura::ControlServer::shutdown);
+        return app.exec();
     }
 
     return app.exec();

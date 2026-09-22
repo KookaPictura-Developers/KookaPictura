@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QHash>
+#include <QtCore/QList>
 #include <QtCore/QObject>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
@@ -129,6 +130,17 @@ struct CommandSpec {
     bool checkable = false;
 };
 
+// A read-only snapshot of one command, for `list_commands` and any inspection
+// surface. Separators are excluded.
+struct CommandInfo {
+    QString id;
+    QStringList path;
+    QString label;
+    bool implemented = false;
+    bool enabled = false;
+    bool checked = false;
+};
+
 // Declarative command table plus menu construction and dispatch. The registry
 // owns no application behavior: the frame supplies handlers, providers, and
 // panel-facing actions by id.
@@ -170,6 +182,10 @@ public:
 
     // Titles of the top-level menus in creation order.
     QStringList topLevelTitles() const;
+
+    // Snapshot of the command table (separators excluded) with each command's
+    // implemented/enabled/checked state.
+    QList<CommandInfo> describe() const;
 
 private:
     bool hasHandler(const QString& id) const;
