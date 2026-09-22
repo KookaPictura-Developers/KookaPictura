@@ -40,7 +40,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
-    `psd-icc-convert`, `psd-file-info`, and `psd-iptc-write` changes;
+    `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, and
+    `assign-convert-profile` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -557,6 +558,24 @@ Snapshot for resuming after a context break. Update after each milestone.
   Ceilings (`// ponytail:`): XMP is not edited (no IIM↔XMP sync), only the six
   core fields are editable, no EXIF editing or metadata templates, and IIM is
   written as UTF-8.
+- **Assign / Convert Profile** (roadmap P6/G5, archived
+  `2026-09-22-assign-convert-profile`): `Document.document_icc` holds the ICC
+  bytes of the working profile the stored pixels are in (`None` = sRGB, so a
+  freshly opened doc is unchanged and read-normalisation is untouched).
+  `pictura-codec::assign_document_profile` retags only (rewrites
+  `image_resources` with a framed 1039, preserving any unparsed tail), and
+  `convert_document` transforms `doc.composite` and every layer's color channels
+  (including group children) then retags; `buffer_to_srgb` converts the final
+  composite to sRGB for display, so `doc.composite`/layer bytes stay in document
+  space and a save emits a consistent 1039. The app wires `Edit > Assign
+  Profile…` / `Edit > Convert to Profile…` (`profile_dialog`, bridge
+  `assign_profile`/`convert_profile`), each one undo step, via the existing
+  whole-document history. Proven by codec unit tests, `icc_oracle` /
+  `profile_assignment_oracle` (lcms2 + 1039 bytes), bridge replay tests in
+  `tests_impl.rs`, and self-test 458 (`profile_assign_convert`). Ceilings
+  (`// ponytail:`): RGB 8-bit only, three built-in profiles only, fixed
+  relative-colorimetric intent (no BPC/dither/flatten), and no Color Settings
+  policy layer (`WF-011`).
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
