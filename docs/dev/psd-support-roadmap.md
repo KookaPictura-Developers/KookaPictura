@@ -34,7 +34,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB; Multichannel/Duotone and the lossy-in-mode save stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted and consumed on read; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit (`>>8` / `clamp(trunc(f*256))`), all channels narrowed; a true `u16`/`f32` sample model preserving depth stays open |
-| G5 | Image resources are preserved and now parsed into typed records (ICC, EXIF, XMP, IPTC, …); using/applying them (File Info, assign/convert profile) is still open | `read.rs` keep, `write.rs` re-emit; `image_resources.rs` parses | Metadata survives; profile not yet applied |
+| G5 | Image resources are parsed and an embedded non-sRGB ICC profile is applied on read (converted to sRGB, stale profile dropped); File Info and a user-facing assign/convert profile command are still open | `read.rs` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts | Wide-gamut files render correctly; metadata preserved |
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
 | G8 | Adjustment descriptor payloads preserved but not decoded/rendered (version-3 `phfl` only; curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, and color lookup now decode) | `composite.rs` doc | Layer renders as no-op |
@@ -210,9 +210,13 @@ a >30 000 PSB (import probe budget).
 (overlaps P2/P4). The resource parser shipped (archived
 `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
 returns typed `(id, name, data)` records and exposes the ICC/EXIF/XMP/IPTC ids,
-with the raw section still re-emitted byte-for-byte. Still open: applying the
-ICC profile (assign vs convert), rewriting or stripping the resource on a
-normalized save, and a File Info surface.
+with the raw section still re-emitted byte-for-byte. The embedded **ICC profile
+is now applied on read** (archived `2026-09-22-psd-icc-convert`): an RGB file
+with a non-sRGB profile is converted to the sRGB working space (composite and
+layer color channels, relative colorimetric), the original bytes are recorded in
+`Document.source_icc`, and resource 1039 is dropped so the save is not
+mis-tagged; a Grayscale or untransformable document is left untouched. Still
+open: a File Info surface and a user-facing Assign/Convert Profile command.
 
 ## Smart objects and Camera Raw interop
 

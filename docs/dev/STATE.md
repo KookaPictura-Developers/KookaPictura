@@ -39,8 +39,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
-    `depth-read`, `color-lookup-adjustment-decode`, and `psd-image-resources`
-    changes;
+    `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`, and
+    `psd-icc-convert` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -507,6 +507,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   `image_resources.psd` (EXIF + XMP) is proven against psd-tools. Ceiling: the
   ICC profile is exposed but not yet applied (assign/convert and a save-side
   resource rewrite are the follow-up). No app change, no new dependency.
+- **Embedded ICC profile applied on read** (roadmap P6/G5, archived
+  `2026-09-22-psd-icc-convert`): an RGB document whose image resources carry a
+  non-sRGB ICC profile (resource 1039) is converted to the sRGB working space on
+  load — the composite and every layer's color channels, relative colorimetric —
+  via a new `pictura-codec` dependency on `pictura-color` (lcms2). The original
+  bytes are recorded in `Document.source_icc` and resource 1039 is dropped from
+  the preserved resources so a save is not mis-tagged (`encode_image_resources`
+  re-emits the rest byte-for-byte). A Grayscale document, an sRGB/undecodable
+  profile, or one lcms2 cannot transform is left untouched. Ceilings
+  (`// ponytail:`): "is sRGB" is a `Description`-contains-"srgb" heuristic, the
+  intent is fixed at relative-colorimetric, and only RGB is converted. The
+  fixture profile is synthesized (`psd_icc_rgb.icc` from `Profile::adobe_rgb()`;
+  no Adobe file), proven against an independent PIL/lcms2 conversion, and the app
+  shows a status "Converted from ICC profile …" notice. The C++ link now needs
+  `-llcms2` (the staticlib does not propagate it). Still open: a File Info
+  surface and a user-facing Assign/Convert Profile command.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
