@@ -532,9 +532,10 @@ bool PanelColumn::tearOffForTest(const QString& groupName)
         return false;
     }
     beginGroupDrag(group, group->mapToGlobal(QPoint(0, 0)));
-    const bool leftColumn = side() == PanelSide::Left;
-    const QPoint outside = leftColumn ? mapToGlobal(QPoint(width() + 40, height() / 2))
-                                      : mapToGlobal(QPoint(-40, height() / 2));
+    // Above the column is unambiguously outside every column and outside the
+    // left/right new-column bands, so the drag tears off rather than resolving a
+    // new-column target (which a horizontal offset can be, at the workspace edge).
+    const QPoint outside = mapToGlobal(QPoint(width() / 2, -40));
     dragToForTest(outside);
     return dropForTest(outside);
 }
@@ -555,9 +556,7 @@ bool PanelColumn::tearOffPanelForTest(const QString& objectName)
         return false;
     }
     beginPanelDrag(group, objectName, group->mapToGlobal(QPoint(0, 0)));
-    const bool leftColumn = side() == PanelSide::Left;
-    const QPoint outside = leftColumn ? mapToGlobal(QPoint(width() + 40, height() / 2))
-                                      : mapToGlobal(QPoint(-40, height() / 2));
+    const QPoint outside = mapToGlobal(QPoint(width() / 2, -40));
     dragToForTest(outside);
     return dropForTest(outside);
 }

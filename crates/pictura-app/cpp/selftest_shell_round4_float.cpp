@@ -979,5 +979,62 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pumpFloat(6);
     }
+    // column_end_drop (454): a widget dropped at the very top or bottom of a
+    // column lands as a new first/last group, not only in the gaps between the
+    // existing groups.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool topOk = false, bottomOk = false;
+        if (primary) {
+            QStringList visible;
+            for (pictura::PanelGroup* group : primary->groups()) {
+                if (!group) {
+                    continue;
+                }
+                revealedPanel(primary, group);
+            }
+            pumpFloat(4);
+            for (pictura::PanelGroup* group : primary->groups()) {
+                if (!group) {
+                    continue;
+                }
+                for (QWidget* panel : group->visiblePanels()) {
+                    if (panel) {
+                        visible << panel->objectName();
+                    }
+                }
+            }
+            const QString first = visible.value(0);
+            const QString second = visible.value(1);
+            if (!first.isEmpty()) {
+                const QPoint top = primary->boundaryPointForTest(0);
+                primary->beginTabDragForTest(first);
+                primary->dragToForTest(top);
+                const bool dropped = primary->dropForTest(top);
+                pumpFloat(6);
+                pictura::PanelGroup* landed = primary->groupForPanel(first);
+                topOk = dropped && !primary->groups().isEmpty() && primary->groups().first() == landed;
+            }
+            if (!second.isEmpty()) {
+                const QPoint bottom = primary->boundaryPointForTest(1000);
+                primary->beginTabDragForTest(second);
+                primary->dragToForTest(bottom);
+                const bool dropped = primary->dropForTest(bottom);
+                pumpFloat(6);
+                pictura::PanelGroup* landed = primary->groupForPanel(second);
+                bottomOk = dropped && !primary->groups().isEmpty()
+                           && primary->groups().last() == landed;
+            }
+        }
+        ST_BEGIN("column_end_drop");
+        ST_PASS("column_end_drop top=%d bottom=%d", topOk ? 1 : 0, bottomOk ? 1 : 0);
+        if (!(topOk && bottomOk)) {
+            return pictura::selfTest().fail(454, "column end drop");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
     return 0;
 }
