@@ -41,7 +41,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
-    and `xmp-metadata` changes;
+    `xmp-metadata`, and `metadata-templates` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -591,7 +591,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   Description category; editing the IPTC page syncs XMP+IIM as one `File Info`
   undo state. Proven by codec unit tests, `metadata_oracle` (exiftool, ran) and
   self-tests 456/457/459. Ceilings (`// ponytail:`): nine managed properties
-  only, raw packet read-only, EXIF not editable, no templates/sidecars.
+  only, raw packet read-only, EXIF not editable.
+- **Metadata templates** (roadmap P6/G5, archived `2026-09-22-metadata-templates`):
+  `pictura-codec/src/xmp/serialize.rs` serializes the nine managed properties to
+  a standalone packet and `metadata/template.rs` adds
+  `MergeMode { Append, Replace, KeepOriginalReplaceMatching }`, `export_template`
+  (managed fields only) and `apply_template` (patches in place; Append fills
+  empty only, Replace overwrites and clears template-omitted fields, Keep
+  Original overwrites only template-defined fields). Lists merge as full
+  `rdf:Seq`/`rdf:Bag` via `patch_xmp_values`; the six shared fields route through
+  `set_file_info_fields` so XMP and IIM agree. File Info gains Export/Apply
+  Template controls + a mode combo (dialog stays open; callbacks call the bridge
+  `export_metadata_template`/`apply_metadata_template`), apply = one
+  `Metadata Template` undo state, export = no mutation. Proven by codec unit
+  tests, `metadata_oracle` (exiftool, ran, all three modes), self-test 460.
+  Ceilings (`// ponytail:`): nine managed properties only, no sidecars/template
+  folder/batch, `xmp.rs` is near the 1200-line cap.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
