@@ -40,7 +40,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
-    `psd-icc-convert`, and `psd-file-info` changes;
+    `psd-icc-convert`, `psd-file-info`, and `psd-iptc-write` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -540,6 +540,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   read-only, and the app decodes the three groups with separate bridge getters.
   Still open: editing/templates, XMP field extraction, sidecars, assign/convert
   profile.
+- **IPTC editing and write-back** (roadmap P6/G5, archived
+  `2026-09-22-psd-iptc-write`): the File Info dialog's IPTC page now edits the
+  six core fields (Object Name, By-line, Copyright Notice, Caption/Abstract,
+  Credit, Source); OK applies only the changed fields as one `File Info` undo
+  state and marks the document dirty. `pictura-codec` gains
+  `frame_image_resource` (the block framer), `Iptc::set`/`remove`,
+  `encode_iptc`, and `set_iptc_fields(&mut Document, &[(u8,u8,String)])`, which
+  re-frames resource 1028 and reassigns `Document.image_resources`. Safety:
+  every other resource keeps its raw bytes, a section that does not decode
+  losslessly is left untouched (no unframed bytes dropped), an IIM value longer
+  than the `u16` length is truncated so no later record is lost, clearing an
+  absent/empty field is a no-op, and unchanged fields record no undo state.
+  Proven by `iptc_write_oracle.rs` (edit → `write_psd` → re-read + `exiftool`)
+  and self-tests `file_info_metadata` / `file_info_iptc_edit` (456/457).
+  Ceilings (`// ponytail:`): XMP is not edited (no IIM↔XMP sync), only the six
+  core fields are editable, no EXIF editing or metadata templates, and IIM is
+  written as UTF-8.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
