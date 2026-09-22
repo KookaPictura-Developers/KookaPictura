@@ -327,6 +327,24 @@ PanelColumn::DropTarget PanelColumn::resolveLocalDrop(const QPoint& globalPos, b
         target.kind = DropKind::Outside;
         return target;
     }
+    // The column's top/bottom ends are their own target: a thin band above the
+    // first group (its tab bar is otherwise the topmost surface) or below the
+    // last (which stretches to the bottom edge) inserts at the column's
+    // first/last boundary, so a widget can be dropped at the top or bottom of a
+    // column and not only into the gaps between groups.
+    const int edgeY = viewport->mapFromGlobal(globalPos).y();
+    if (edgeY <= kColumnEdgeBand) {
+        target.valid = true;
+        target.kind = DropKind::AboveGroup;
+        target.boundary = 0;
+        return target;
+    }
+    if (edgeY >= viewport->height() - 1 - kColumnEdgeBand) {
+        target.valid = true;
+        target.kind = DropKind::BelowGroup;
+        target.boundary = groups_.size();
+        return target;
+    }
     for (PanelGroup* group : groups_) {
         if (!group || !group->isVisible()) {
             continue;

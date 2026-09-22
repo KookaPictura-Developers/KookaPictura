@@ -810,6 +810,12 @@ int pictura::runShellRound4Checks(pictura::PicturaMainWindow& frame)
                 column->showPanel(group->panels().first()->objectName(), true);
                 pump4(4);
             }
+            // A collapsed-to-icons group floats without a resize grip, so expand
+            // it first; the grip check below needs the expanded chrome.
+            if (group && group->isCollapsedToIcons()) {
+                group->setCollapsedToIcons(false);
+                pump4(4);
+            }
             const QString panel = group && !group->visiblePanels().isEmpty()
                                       && group->visiblePanels().first()
                                   ? group->visiblePanels().first()->objectName()
