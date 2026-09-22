@@ -84,8 +84,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"File", "Scripts", "Script Events Manager"}, QStringLiteral("Script Events Manager"));
     leaf(registry, {"File", "Scripts", "Statistics"}, QStringLiteral("Statistics"));
     registry.addSeparator({"File"});
-    leaf(registry, {"File", "File Info…"}, QStringLiteral("File Info…"),
-         QStringLiteral("Ctrl+Alt+Shift+I"));
+    registry.add(command_ids::FileInfo, {"File", "File Info…"}, QStringLiteral("File Info…"),
+                 QKeySequence(QStringLiteral("Ctrl+Alt+Shift+I")), true);
     leaf(registry, {"File", "Print…"}, QStringLiteral("Print…"), QStringLiteral("Ctrl+P"));
     leaf(registry, {"File", "Print One Copy"}, QStringLiteral("Print One Copy"),
          QStringLiteral("Ctrl+Alt+Shift+P"));

@@ -4,7 +4,7 @@ use super::qobject;
 use crate::history::{History, Snapshot};
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QImage, QString};
+use cxx_qt_lib::{QImage, QString, QStringList};
 use pictura_core::{
     BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LockFlags, PsdRect,
 };
@@ -295,6 +295,49 @@ impl qobject::PictureView {
             Some(name) => QString::from(format!("Converted from ICC profile {name}")),
             None => QString::from("Converted from embedded ICC profile"),
         }
+    }
+
+    pub fn exif_rows(&self) -> QStringList {
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return QStringList::default();
+        };
+        pictura_codec::read_metadata(doc)
+            .exif
+            .entries()
+            .iter()
+            .map(|(tag, value)| {
+                let label = pictura_codec::exif_tag_name(*tag)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("Tag 0x{tag:04X}"));
+                QString::from(format!("{label}\t{}", value.display()))
+            })
+            .collect()
+    }
+
+    pub fn iptc_rows(&self) -> QStringList {
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return QStringList::default();
+        };
+        pictura_codec::read_metadata(doc)
+            .iptc
+            .records()
+            .iter()
+            .map(|(record, dataset, value)| {
+                let label = pictura_codec::iptc_field_name(*record, *dataset)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("{record}:{dataset}"));
+                let text = String::from_utf8_lossy(value);
+                QString::from(format!("{label}\t{text}"))
+            })
+            .collect()
+    }
+
+    pub fn xmp_packet(&self) -> QString {
+        self.rust()
+            .doc
+            .as_ref()
+            .map(|doc| QString::from(pictura_codec::read_metadata(doc).xmp))
+            .unwrap_or_default()
     }
 
     pub fn document_mode(&self) -> QString {

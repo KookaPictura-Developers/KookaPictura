@@ -23,6 +23,7 @@ not hand-edit these files.
 | `two_layers.psd` | RGB | 8x8 | `Red` (0,0,4,4), `Blue` (4,4,8,8) |
 | `image_resources.psd` | RGB | 8x8 | `Base` pixel layer plus EXIF (id 1058) and XMP (id 1060) image resources |
 | `icc_profile.psd` | RGB | 8x8 | `Base` pixel layer plus an embedded Adobe-RGB ICC profile (id 1039); `psd_icc_rgb.icc` is the profile, synthesized by `cargo run -p pictura-color --example dump_adobe_rgb` |
+| `metadata.psd` | RGB | 8x8 | `Base` pixel layer plus a real EXIF IFD (id 1058), an IPTC-IIM stream (id 1028), and an XMP packet (id 1060); decoded and checked against `exiftool` |
 | `group.psd` | RGB | 8x8 | group `Group A` containing `Inner Green`, `Inner Yellow` |
 | `masked.psd` | RGB | 8x8 | `Masked` with a raster layer mask |
 | `gray.psd` | Grayscale | 8x8 | `Gray` |

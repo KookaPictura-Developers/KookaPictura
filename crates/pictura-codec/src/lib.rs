@@ -23,8 +23,11 @@ mod common;
 mod depth;
 mod descriptor;
 mod error;
+mod exif;
 mod icc;
 mod image_resources;
+mod iptc;
+mod metadata;
 mod patterns;
 mod probe;
 mod read;
@@ -43,11 +46,14 @@ mod tests;
 
 pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;
+pub use exif::{exif_tag_name, parse_exif, Exif, ExifValue};
 pub use icc::profile_description;
 pub use image_resources::{
     decode_image_resources, encode_image_resources, ImageResource, EXIF_DATA_1, EXIF_DATA_3,
     ICC_PROFILE, IPTC_NAA, XMP_METADATA,
 };
+pub use iptc::{iptc_field_name, parse_iptc, Iptc};
+pub use metadata::{read_metadata, DocumentMetadata};
 pub use patterns::{decode_patterns, PatternPixels};
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
 pub use read::read_psd;

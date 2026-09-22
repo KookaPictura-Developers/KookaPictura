@@ -101,6 +101,88 @@ CUBE_IDENTITY = (
 EXIF_BYTES = bytes((i * 7 + 3) % 256 for i in range(128))
 XMP_BYTES = b'<x:xmpmeta xmlns:x="adobe:ns:meta/"></x:xmpmeta>'
 
+# The `metadata.psd` resources: a real little-endian EXIF IFD (IFD0 + Exif
+# sub-IFD), an IPTC-IIM stream, and an XMP packet. Fixed bytes so the fixture is
+# byte-stable and `exiftool` can decode it as an independent oracle.
+METADATA_XMP = (
+    b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
+    b'<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+    b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+    b'<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" dc:format="image/psd"/>'
+    b"</rdf:RDF></x:xmpmeta>\n<?xpacket end=\"w\"?>"
+)
+
+
+def _metadata_exif() -> bytes:
+    """A little-endian TIFF: IFD0 (Make/Model/Orientation/Software/DateTime)
+    plus an Exif sub-IFD (ExposureTime/FNumber/ISO/DateTimeOriginal/FocalLength).
+    """
+    make = b"ACME Cameras\x00"
+    model = b"ACME One\x00"
+    software = b"Kooka Pictura Fixtures\x00"
+    date_time = b"2026:09:22 12:00:00\x00"
+    date_orig = b"2026:09:22 11:59:00\x00"
+    exposure = struct.pack("<II", 1, 125)
+    f_number = struct.pack("<II", 28, 10)
+    focal = struct.pack("<II", 50, 1)
+
+    blobs = [make, model, software, date_time, exposure, f_number, focal, date_orig]
+    ifd0_size = 2 + 6 * 12 + 4
+    exif_size = 2 + 5 * 12 + 4
+    offsets = []
+    cursor = 8 + ifd0_size + exif_size
+    for blob in blobs:
+        offsets.append(cursor)
+        cursor += len(blob)
+    make_off, model_off, software_off, dt_off, exp_off, fnum_off, focal_off, dto_off = (
+        offsets
+    )
+
+    def pointer(tag: int, typ: int, count: int, offset: int) -> bytes:
+        return struct.pack("<HHI", tag, typ, count) + struct.pack("<I", offset)
+
+    def inline(tag: int, typ: int, value: int) -> bytes:
+        return struct.pack("<HHI", tag, typ, 1) + struct.pack("<H", value) + b"\x00\x00"
+
+    ifd0 = struct.pack("<H", 6)
+    ifd0 += pointer(271, 2, len(make), make_off)
+    ifd0 += pointer(272, 2, len(model), model_off)
+    ifd0 += inline(274, 3, 1)
+    ifd0 += pointer(305, 2, len(software), software_off)
+    ifd0 += pointer(306, 2, len(date_time), dt_off)
+    ifd0 += pointer(0x8769, 4, 1, 8 + ifd0_size)
+    ifd0 += struct.pack("<I", 0)
+
+    exif = struct.pack("<H", 5)
+    exif += pointer(33434, 5, 1, exp_off)
+    exif += pointer(33437, 5, 1, fnum_off)
+    exif += inline(34855, 3, 200)
+    exif += pointer(36867, 2, len(date_orig), dto_off)
+    exif += pointer(37386, 5, 1, focal_off)
+    exif += struct.pack("<I", 0)
+
+    header = b"II" + struct.pack("<H", 42) + struct.pack("<I", 8)
+    return header + ifd0 + exif + b"".join(blobs)
+
+
+def _metadata_iptc() -> bytes:
+    """An IPTC-IIM stream of core caption/credit records."""
+
+    def record(number: int, dataset: int, value: bytes) -> bytes:
+        return b"\x1c" + bytes([number, dataset]) + struct.pack(">H", len(value)) + value
+
+    return b"".join(
+        [
+            record(2, 5, b"Fixture Title"),
+            record(2, 80, b"Ada Lovelace"),
+            record(2, 85, b"Engineer"),
+            record(2, 110, b"Kooka Pictura"),
+            record(2, 115, b"Test Suite"),
+            record(2, 116, b"(c) 2026 Kooka Pictura"),
+            record(2, 120, b"A fixture caption."),
+        ]
+    )
+
 
 def _solid(size: tuple[int, int], color: tuple[int, int, int]) -> Image.Image:
     return Image.new("RGB", size, color)
@@ -305,6 +387,24 @@ def icc_profile() -> PSDImage:
     )
     psd._record.image_resources[Resource.ICC_PROFILE] = ImageResource(
         key=Resource.ICC_PROFILE, data=profile
+    )
+    return psd
+
+
+def metadata() -> PSDImage:
+    """RGB, a base layer plus a real EXIF IFD, an IPTC-IIM block, and XMP."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    psd._record.image_resources[Resource.EXIF_DATA_1] = ImageResource(
+        key=Resource.EXIF_DATA_1, data=_metadata_exif()
+    )
+    psd._record.image_resources[Resource.IPTC_NAA] = ImageResource(
+        key=Resource.IPTC_NAA, data=_metadata_iptc()
+    )
+    psd._record.image_resources[Resource.XMP_METADATA] = ImageResource(
+        key=Resource.XMP_METADATA, data=METADATA_XMP
     )
     return psd
 
@@ -1612,6 +1712,7 @@ FIXTURES = {
     "two_layers.psd": two_layers,
     "image_resources.psd": image_resources,
     "icc_profile.psd": icc_profile,
+    "metadata.psd": metadata,
     "group.psd": group,
     "masked.psd": masked,
     "gray.psd": gray,
