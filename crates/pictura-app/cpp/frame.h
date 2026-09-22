@@ -84,6 +84,11 @@ public:
     PanelSide sideOf(const PanelColumn* column) const;
     int columnCount() const;
     QList<PanelColumn*> panelColumns() const;
+    // Every column the frame owns, including a whole column torn off into a
+    // floating overlay (which is no longer a splitter pane). Used where a
+    // floating column must still be reachable: drop targeting, the Window >
+    // Panels owner lookup, and session serialization.
+    QList<PanelColumn*> allPanelColumns() const;
     PanelColumn* columnForPanel(const QString& objectName) const;
     PanelColumn* columnAtGlobal(const QPoint& globalPos) const;
     // -1 = not a new-column candidate, 0 = left, 1 = right.

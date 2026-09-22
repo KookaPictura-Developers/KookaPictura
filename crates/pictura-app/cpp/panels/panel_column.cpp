@@ -155,17 +155,21 @@ PanelSide PanelColumn::side() const
 {
     auto* splitter = qobject_cast<QSplitter*>(parentWidget());
     if (!splitter) {
-        return PanelSide::Right;
+        // A floating column has no splitter parent; fall back to the side it
+        // last held while docked rather than flipping its flyout to the right.
+        return lastSide_;
     }
     const int self = splitter->indexOf(const_cast<PanelColumn*>(this));
     for (int i = 0; i < splitter->count(); ++i) {
         QWidget* pane = splitter->widget(i);
         if (pane && pane->objectName() == QStringLiteral("documentTabs")) {
-            return self < i ? PanelSide::Left : PanelSide::Right;
+            lastSide_ = self < i ? PanelSide::Left : PanelSide::Right;
+            return lastSide_;
         }
     }
     // The document tabs are the first pane when no left column exists.
-    return self == 0 ? PanelSide::Left : PanelSide::Right;
+    lastSide_ = self == 0 ? PanelSide::Left : PanelSide::Right;
+    return lastSide_;
 }
 
 void PanelColumn::addGroup(PanelGroup* group)
@@ -301,6 +305,7 @@ void PanelColumn::cleanupEmptyGroup(PanelGroup* group)
         // but keep it alive (and float ownership intact) so a later show works.
         if (group->visibleTitles().isEmpty()) {
             group->setVisible(false);
+            refreshFloorAfterContentChange();
             maybeRemoveSelf();
         }
         return;
@@ -308,11 +313,13 @@ void PanelColumn::cleanupEmptyGroup(PanelGroup* group)
     wired_.remove(group);
     if (PanelFloat* floatWindow = floatForGroup(group)) {
         destroyFloat(floatWindow);
+        refreshFloorAfterContentChange();
         maybeRemoveSelf();
         return;
     }
     removeGroup(group);
     group->deleteLater();
+    refreshFloorAfterContentChange();
     maybeRemoveSelf();
 }
 
@@ -324,6 +331,25 @@ PanelFloat* PanelColumn::floatForGroup(PanelGroup* group) const
         }
     }
     return nullptr;
+}
+
+PanelFloat* PanelColumn::floatForPanel(const QString& objectName) const
+{
+    for (PanelFloat* floatWindow : floats_) {
+        PanelGroup* group = floatWindow ? floatWindow->group() : nullptr;
+        if (group && group->containsPanel(objectName)) {
+            return floatWindow;
+        }
+    }
+    return nullptr;
+}
+
+void PanelColumn::refreshFloorAfterContentChange()
+{
+    updateMinimumWidth();
+    if (PicturaMainWindow* frame = owningFrame()) {
+        refreshSharedFloor(frame);
+    }
 }
 
 PanelGroup* PanelColumn::findGroupByName(const QString& objectName) const
@@ -360,6 +386,10 @@ PanelGroup* PanelColumn::groupForPanel(const QString& objectName) const
 bool PanelColumn::showPanel(const QString& objectName, bool visible)
 {
     PanelGroup* group = groupForPanel(objectName);
+    PanelFloat* hostFloat = group ? nullptr : floatForPanel(objectName);
+    if (hostFloat) {
+        group = hostFloat->group();
+    }
     if (!group) {
         panelVisible_[objectName] = visible;
         return true;
@@ -368,6 +398,19 @@ bool PanelColumn::showPanel(const QString& objectName, bool visible)
         return false;
     }
     panelVisible_[objectName] = visible;
+    if (hostFloat) {
+        // A floated panel has no docked group. Hiding the last visible tab closes
+        // the overlay (re-docking the group through the one close path); a
+        // still-populated overlay just shrinks to its new content.
+        if (!visible && group->visibleTitles().isEmpty()) {
+            closeFloat(hostFloat);
+        } else {
+            hostFloat->syncToContent();
+        }
+        refreshFloorAfterContentChange();
+        emit stateChanged();
+        return true;
+    }
     if (visible) {
         show();
         group->setVisible(true);
@@ -375,7 +418,7 @@ bool PanelColumn::showPanel(const QString& objectName, bool visible)
     if (railMode_) {
         buildIconStrip();
     }
-    updateMinimumWidth();
+    refreshFloorAfterContentChange();
     emit stateChanged();
     if (!visible) {
         maybeRemoveSelf();
@@ -393,6 +436,12 @@ void PanelColumn::closeGroup(PanelGroup* group)
     if (!group) {
         return;
     }
+    // A floated group has left `groups_`; closing it must tear the overlay down
+    // too, or it is left as an empty ghost with no way to restore it.
+    if (PanelFloat* hostFloat = floatForGroup(group)) {
+        closeFloat(hostFloat);
+        return;
+    }
     for (QWidget* panel : group->panels()) {
         if (panel) {
             const QString name = panel->objectName();
@@ -403,7 +452,7 @@ void PanelColumn::closeGroup(PanelGroup* group)
         }
     }
     group->setVisible(false);
-    updateMinimumWidth();
+    refreshFloorAfterContentChange();
     emit stateChanged();
     maybeRemoveSelf();
 }
@@ -521,7 +570,7 @@ void PanelColumn::refreshSharedFloor(PicturaMainWindow* frame)
     if (!frame) {
         return;
     }
-    for (PanelColumn* column : frame->panelColumns()) {
+    for (PanelColumn* column : frame->allPanelColumns()) {
         column->updateMinimumWidth();
     }
 }
@@ -611,11 +660,7 @@ void PanelColumn::resizeEvent(QResizeEvent* event)
 
 QJsonArray PanelColumn::savePanelState() const
 {
-    QJsonArray groups;
-    for (PanelGroup* group : groups_) {
-        if (!group) {
-            continue;
-        }
+    auto serialize = [](PanelGroup* group, bool floating) {
         QJsonObject entry;
         entry.insert(QStringLiteral("name"), group->objectName());
         QJsonArray order;
@@ -633,7 +678,25 @@ QJsonArray PanelColumn::savePanelState() const
         entry.insert(QStringLiteral("visible"), visible);
         entry.insert(QStringLiteral("minimized"), group->isMinimized());
         entry.insert(QStringLiteral("collapsed"), group->isCollapsedToIcons());
-        groups.append(entry);
+        // A floated group has left `groups_`; record it additively so its panels
+        // are kept visible on restore without hiding the group's docked siblings.
+        if (floating) {
+            entry.insert(QStringLiteral("floating"), true);
+        }
+        return entry;
+    };
+
+    QJsonArray groups;
+    for (PanelGroup* group : groups_) {
+        if (group) {
+            groups.append(serialize(group, false));
+        }
+    }
+    for (PanelFloat* floatWindow : floats_) {
+        PanelGroup* group = floatWindow ? floatWindow->group() : nullptr;
+        if (group) {
+            groups.append(serialize(group, true));
+        }
     }
     return groups;
 }
@@ -642,8 +705,24 @@ void PanelColumn::restorePanelState(const QJsonArray& state)
 {
     for (const QJsonValue& value : state) {
         const QJsonObject entry = value.toObject();
-        PanelGroup* group = findGroupByName(entry.value(QStringLiteral("name")).toString());
         const QJsonArray order = entry.value(QStringLiteral("order")).toArray();
+        QStringList visibleList;
+        for (const QJsonValue& name : entry.value(QStringLiteral("visible")).toArray()) {
+            visibleList << name.toString();
+        }
+        // A floated group has no docked identity to find by name (a torn-off
+        // single panel's group is named after its panel). Apply it additively to
+        // whichever group now owns each panel, so the panel does not vanish.
+        if (entry.value(QStringLiteral("floating")).toBool(false)) {
+            for (const QString& name : visibleList) {
+                if (PanelGroup* group = groupForPanel(name)) {
+                    group->setPanelVisible(name, true);
+                    panelVisible_[name] = true;
+                }
+            }
+            continue;
+        }
+        PanelGroup* group = findGroupByName(entry.value(QStringLiteral("name")).toString());
         if (!group && !order.isEmpty()) {
             group = groupForPanel(order.first().toString());
         }
@@ -656,10 +735,6 @@ void PanelColumn::restorePanelState(const QJsonArray& state)
         }
         if (!orderList.isEmpty()) {
             group->setPanelOrder(orderList);
-        }
-        QStringList visibleList;
-        for (const QJsonValue& name : entry.value(QStringLiteral("visible")).toArray()) {
-            visibleList << name.toString();
         }
         for (QWidget* panel : group->panels()) {
             if (!panel) {

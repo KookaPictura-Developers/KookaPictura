@@ -846,5 +846,138 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pumpFloat(6);
     }
+    // group_drag_float_follows (438): a group dragged over a resolved target
+    // inside its own column stays docked and keeps the tabify indicator; only
+    // when the pointer leaves every column does the group tear into an overlay;
+    // the release re-docks the group's panels into the target group. (Overlay
+    // cursor tracking is covered by tools_column_drag_float, where the exact
+    // delta is measurable.)
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool began = false, inside = false, floated = false, indicator = false, redocked = false;
+        if (primary) {
+            QList<pictura::PanelGroup*> groups;
+            for (pictura::PanelGroup* candidate : primary->groups()) {
+                if (candidate && candidate->titleCountForTest() > 0
+                    && !candidate->isCollapsedToIcons()) {
+                    groups << candidate;
+                }
+            }
+            if (groups.size() >= 2) {
+                pictura::PanelGroup* source = groups.at(1);
+                pictura::PanelGroup* target = groups.at(0);
+                for (pictura::PanelGroup* group : {source, target}) {
+                    if (group->visiblePanels().isEmpty() && !group->panels().isEmpty()
+                        && group->panels().first()) {
+                        primary->showPanel(group->panels().first()->objectName(), true);
+                    }
+                }
+                pumpFloat(4);
+                if (!source->visiblePanels().isEmpty() && source->visiblePanels().first()) {
+                    const QString panel = source->visiblePanels().first()->objectName();
+                    const int floatsBefore = primary->floatCountForTest();
+                    const QPoint a = target->tabBarGlobalRect().center();
+                    began = primary->beginGroupDragForTest(panel);
+                    primary->dragToForTest(a);
+                    inside = primary->floatCountForTest() == floatsBefore
+                             && (primary->outlineIndicatorVisibleForTest()
+                                 || primary->dropIndicatorVisibleForTest());
+                    indicator = primary->outlineIndicatorVisibleForTest()
+                                || primary->dropIndicatorVisibleForTest();
+                    // Leaving the workspace below the column tears the group off
+                    // into an overlay (the left/right margins resolve a new-column
+                    // target, so the free area below is the unambiguous outside).
+                    const QPoint c =
+                        primary->mapToGlobal(QPoint(primary->width() / 2, primary->height() + 40));
+                    primary->dragToForTest(c);
+                    const int index = primary->floatCountForTest() - 1;
+                    pictura::PanelFloat* floatWindow = primary->floatForTest(index);
+                    floated = index >= 0 && floatWindow
+                              && primary->floatCountForTest() == floatsBefore + 1;
+                    // Drop back on the tab bar: the whole group tabifies in, so
+                    // every panel is docked again and no overlay remains.
+                    const bool dropped = primary->dropForTest(a);
+                    pumpFloat(6);
+                    redocked = dropped && primary->floatCountForTest() == floatsBefore
+                               && !primary->dragActiveForTest()
+                               && primary->groupForPanel(panel) != nullptr;
+                }
+            }
+        }
+        ST_BEGIN("group_drag_float_follows");
+        ST_PASS("group_drag_float_follows began=%d inside=%d floated=%d indicator=%d redocked=%d",
+                began ? 1 : 0, inside ? 1 : 0, floated ? 1 : 0, indicator ? 1 : 0,
+                redocked ? 1 : 0);
+        if (!(began && inside && floated && indicator && redocked)) {
+            return pictura::selfTest().fail(438, "group drag float follows");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
+
+    // float_widget_menu_close (453): the per-widget header menu's Close and
+    // Close Group act on a floated group too — Close hides the active tab and
+    // removes the emptied overlay, and Close Group removes the overlay instead of
+    // leaving an empty ghost with a group no column can find.
+    {
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+        pictura::PanelColumn* primary = frame.panelColumn();
+        bool floatTorn = false, closedPanel = false, panelDocked = false, groupTorn = false,
+             closedGroup = false, groupDocked = false;
+        if (primary) {
+            const int before = primary->floatCountForTest();
+            pictura::PanelGroup* group = nullptr;
+            for (pictura::PanelGroup* candidate : primary->groups()) {
+                if (candidate && candidate->titleCountForTest() > 0) {
+                    group = candidate;
+                    break;
+                }
+            }
+            const QString panel = revealedPanel(primary, group);
+            pumpFloat(6);
+            if (!panel.isEmpty() && primary->tearOffPanelForTest(panel)) {
+                pumpFloat(8);
+                const int index = primary->floatCountForTest() - 1;
+                pictura::PanelFloat* overlay = primary->floatForTest(index);
+                pictura::PanelGroup* floated = overlay ? overlay->group() : nullptr;
+                floatTorn = index >= 0 && floated != nullptr;
+                if (floated) {
+                    const bool asked = floated->triggerPanelMenuForTest(QStringLiteral("Close"));
+                    pumpFloat(8);
+                    closedPanel = asked && primary->floatCountForTest() == before
+                                  && !primary->isPanelVisible(panel);
+                    panelDocked = primary->groupForPanel(panel) != nullptr;
+                }
+            }
+            // Close Group on a whole floated group.
+            if (!panel.isEmpty() && primary->tearOffForTest(panel)) {
+                pumpFloat(8);
+                const int index = primary->floatCountForTest() - 1;
+                pictura::PanelFloat* overlay = primary->floatForTest(index);
+                pictura::PanelGroup* floated = overlay ? overlay->group() : nullptr;
+                groupTorn = index >= 0 && floated != nullptr;
+                if (floated) {
+                    const bool asked =
+                        floated->triggerPanelMenuForTest(QStringLiteral("Close Group"));
+                    pumpFloat(8);
+                    closedGroup = asked && primary->floatCountForTest() == before
+                                  && !primary->isPanelVisible(panel);
+                    groupDocked = primary->groupForPanel(panel) != nullptr;
+                }
+            }
+        }
+        ST_BEGIN("float_widget_menu_close");
+        ST_PASS("float_widget_menu_close torn=%d panel=%d dock=%d groupTorn=%d group=%d gdock=%d",
+                floatTorn ? 1 : 0, closedPanel ? 1 : 0, panelDocked ? 1 : 0, groupTorn ? 1 : 0,
+                closedGroup ? 1 : 0, groupDocked ? 1 : 0);
+        if (!(floatTorn && closedPanel && panelDocked && groupTorn && closedGroup && groupDocked)) {
+            return pictura::selfTest().fail(453, "float widget menu close");
+        }
+        frame.applyPanelSessionForTest(pictura::SessionState{});
+        pumpFloat(6);
+    }
     return 0;
 }

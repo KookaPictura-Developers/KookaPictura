@@ -76,9 +76,20 @@ void PicturaMainWindow::saveSession()
     // v9: the ordered per-column layout, in central-splitter order, each with
     // its normal-mode width and its own rail mode. The tools column is recorded
     // with a `tools` marker (its splitter order + the 1/2 tool-column count).
+    // A floating whole column is included too (via `allPanelColumns`) so its
+    // panels survive a restart: a floated dynamic column's groups are folded
+    // into the primary column's entry instead of being lost.
     QJsonArray columns;
+    QJsonArray floatingDynamicGroups;
+    int primaryEntry = -1;
     int order = 0;
-    for (PanelColumn* column : panelColumns()) {
+    for (PanelColumn* column : allPanelColumns()) {
+        if (column->isColumnFloating() && column != panelColumn_) {
+            for (const QJsonValue& group : column->savePanelState()) {
+                floatingDynamicGroups.append(group);
+            }
+            continue;
+        }
         QJsonObject entry;
         entry.insert(QStringLiteral("side"),
                      sideOf(column) == PanelSide::Left ? QStringLiteral("left")
@@ -94,7 +105,27 @@ void PicturaMainWindow::saveSession()
         } else {
             entry.insert(QStringLiteral("groups"), column->savePanelState());
         }
+        if (column == panelColumn_) {
+            primaryEntry = columns.size();
+        }
         columns.append(entry);
+    }
+    if (!floatingDynamicGroups.isEmpty()) {
+        if (primaryEntry >= 0) {
+            QJsonObject entry = columns.at(primaryEntry).toObject();
+            QJsonArray groups = entry.value(QStringLiteral("groups")).toArray();
+            for (const QJsonValue& group : floatingDynamicGroups) {
+                groups.append(group);
+            }
+            entry.insert(QStringLiteral("groups"), groups);
+            columns.replace(primaryEntry, entry);
+        } else {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("side"), QStringLiteral("right"));
+            entry.insert(QStringLiteral("order"), order++);
+            entry.insert(QStringLiteral("groups"), floatingDynamicGroups);
+            columns.append(entry);
+        }
     }
     state.panelColumns = columns;
     state.schemaVersion = 9;

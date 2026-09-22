@@ -415,7 +415,12 @@ int PanelGroup::tabInsertionIndexAt(const QPoint& globalPos) const
     if (!bar->rect().contains(pos)) {
         return -1;
     }
+    // Skip hidden tabs (whose rects are empty), matching `tabInsertionX`, so the
+    // drawn line and the committed insert agree for a group with hidden tabs.
     for (int i = 0; i < bar->count(); ++i) {
+        if (!bar->isTabVisible(i)) {
+            continue;
+        }
         if (pos.x() < bar->tabRect(i).center().x()) {
             return i;
         }

@@ -129,6 +129,10 @@ public:
     // is removed, so the panel widget survives for a later show).
     void adoptGroup(PanelGroup* group);
     PanelGroup* groupForPanel(const QString& objectName) const;
+    // The live float hosting a group that contains `objectName`, or null. A
+    // floated panel has left `groups_`, so close/show/Window-menu lookups must
+    // consult this before concluding the panel is unknown.
+    PanelFloat* floatForPanel(const QString& objectName) const;
     QList<PanelGroup*> groups() const { return groups_; }
 
     // M43 multi-column host. `side` is derived from the splitter order relative
@@ -478,6 +482,9 @@ private:
     void moveFloat(PanelFloat* floatWindow, const QPoint& globalTopLeft);
     QRect floatBounds(QWidget* host) const;
     PanelFloat* floatForGroup(PanelGroup* group) const;
+    // Recompute the shared minimum-width floor across the frame's columns when
+    // panel content changed, so a closed wide panel lets the floor shrink.
+    void refreshFloorAfterContentChange();
     // Phase 3: this column's floating overlay hosting a `PanelGroup` whose rect
     // contains `globalPos`, or null. A whole-column float (no group) is skipped.
     PanelFloat* groupFloatAtGlobal(const QPoint& globalPos) const;
@@ -514,6 +521,10 @@ private:
 
     bool railMode_ = false;
     bool iconLabelsShown_ = false;
+    // Last side observed while docked in the central splitter. A floating column
+    // has no splitter parent, so `side()` falls back to this instead of a
+    // hardcoded right, keeping its compact flyout on the correct side.
+    mutable PanelSide lastSide_ = PanelSide::Right;
     int pendingWidth_ = 0;
     int normalWidthBeforeIconic_ = 0;
     // Set while an iconic->normal flip waits for the widening to be laid out, so
@@ -557,6 +568,9 @@ private:
     QString dragPanel_;
     QPoint dragGrabOffset_;
     int dragOriginalIndex_ = -1;
+    // The dragged panel's tab index in its source group, so a cancelled single
+    // panel drag lands back where it was instead of in a new group.
+    int dragOriginalPanelIndex_ = -1;
     PanelFloat* dragFloat_ = nullptr;
     // Phase 6: the widget currently dimmed for this drag (a docked group or a
     // float), or null. Cleared on commit and cancel.
