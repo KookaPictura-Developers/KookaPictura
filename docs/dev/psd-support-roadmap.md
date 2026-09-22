@@ -11,7 +11,8 @@ close it in.
 `pictura-codec` reads and writes a narrow native subset:
 
 - 8-bit only, RGB or Grayscale only.
-- Composite compression 0 (raw) / 1 (RLE). Layer channel compression 0 / 1.
+- Composite compression 0 (raw) / 1 (RLE) / 2 (ZIP) / 3 (ZIP-with-prediction)
+  on read and write; the source kind is preserved on save.
 - Pixel layers, groups (`lsct`), raster masks (`-2`), `luni`/`lspf`/`lclr`/`iOpa`.
 - 18 adjustment keys preserved opaquely; `pictura-render` decodes a subset
   (`nvrt`/`invr`, `post`, `thrs`, `brit`, `levl`, `hue2`, `SoCo` in both the
@@ -30,7 +31,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 
 | # | Gap | Evidence | Impact |
 |---|---|---|---|
-| G1 | ZIP / ZIP-with-prediction unsupported (composite + layer channels) | `read.rs` `read_psd` match, `read_channel_data` | **Open blocker** for many real PSDs |
+| G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB; Multichannel/Duotone and the lossy-in-mode save stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted and consumed on read; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit (`>>8` / `clamp(trunc(f*256))`), all channels narrowed; a true `u16`/`f32` sample model preserving depth stays open |
@@ -41,7 +42,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G9 | ~~PSB write missing~~ PSB write shipped: version-2 container, dimensions to 300 000; tagged-block big-key width + pad framing fixed | `write.rs` | Closed |
 | G10 | Unknown blend key aborts the whole file | `read.rs` `from_psd_key(...).ok_or` | Open blocker |
 | G11 | Absent merged composite ("Maximize Compatibility" off) unhandled | `read.rs` reads compression unconditionally | Open blocker |
-| G12 | ~~Write always raw~~ RLE write shipped; ZIP output still absent | `write.rs` | RLE composite/layer channels/mask now default; ZIP write still missing |
+| G12 | ~~Write always raw~~ RLE and ZIP/ZIP-prediction write shipped; the document's recorded source compression is preserved on save | `write.rs`, `compression` model | RLE/raw/ZIP/ZIP-prediction composite/layer channels/mask; per-channel mixed kinds normalize per category |
 | G13 | Smart objects are preserved opaquely but not modeled: no embedded-source node, so a smart object cannot be resolved, rendered, or re-edited | P2 holds `SoLd`/`SoLE`/`plLd` and `lnkD`/`lnk2`/`lnk3` bytes; nothing consumes them | Open blocker for Camera Raw |
 | G14 | No writer for a valid smart-object pair: the `SoLd`/`SoLE` config descriptor, its `lnkD`/`lnk2`/`lnk3` source record, and the matching `uuid` that links them | `write_psd` re-emits preserved bytes but cannot author a new smart object | Open blocker for raw interop |
 | G15 | Camera Raw settings are not read or written. Two storage models: `crs:` XMP for a raw opened as a Smart Object, and the `SoLd.filterFX[].Fltr` descriptor for a Camera Raw Filter smart filter | settings are preserved opaquely only; no edit round-trip | Open blocker for Camera Raw |
@@ -174,7 +175,14 @@ those keys and kinds, and write RLE by default (G12).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
 channels), layer color channels, and the raster mask are PackBits-encoded;
-preserved verbatim channels stay byte-for-byte. ZIP write remains.
+preserved verbatim channels stay byte-for-byte. **ZIP write is shipped**
+(archived `2026-09-22-psd-zip-write`): `Document` records the composite and
+layer-channel compression observed on read (default RLE) and `write_psd` emits
+that kind — RLE, raw, ZIP (zlib), or ZIP-with-prediction (reversible per-row
+delta then zlib) — for the composite, extra channels, layer color channels, and
+raster mask; a constructed document is byte-unchanged, and an absent merged
+composite now writes no image-data section. Ceiling: mixed per-channel kinds
+within a category normalize to the first seen.
 
 **P4 — Color modes and depth.** *(partly shipped)*
 Indexed/Bitmap/CMYK/Lab now read and normalize to RGB (G2/G3, archived
