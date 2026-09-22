@@ -370,3 +370,88 @@ fn psd_tools_reads_fixture_selective_color_prefix() {
         "the nine relative plates (reds..blacks) after the reserved plate"
     );
 }
+
+/// The committed `color_lookup.psd` decodes through `decode_adjustment` into a
+/// 3-D LUT whose embedded identity cube parses. Pure Rust; psd-tools and ag-psd
+/// carry the independent block proofs.
+#[test]
+fn fixture_color_lookup_decodes() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../pictura-codec/tests/fixtures/color_lookup.psd"
+    );
+    let bytes = std::fs::read(path).expect("read color_lookup.psd");
+    let doc = pictura_codec::read_psd(&bytes).expect("fixture parses");
+    let layer = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Color Lookup")
+        .expect("Color Lookup layer");
+    let block = layer.adjustment.as_ref().expect("clrL block");
+    assert_eq!(block.key, *b"clrL");
+    let Some(Adjustment::ColorLookup(params)) = decode_adjustment(block) else {
+        panic!("clrL must decode to ColorLookup");
+    };
+    assert_eq!(params.kind, pictura_adjust::ColorLookupKind::ThreeDLut);
+    let lut = params.lookup.expect("identity cube parses");
+    assert_eq!(lut.size, 2);
+    assert_eq!(lut.points.len(), 8);
+    assert_eq!(lut.points[0], [0.0, 0.0, 0.0]);
+    assert_eq!(lut.points[7], [1.0, 1.0, 1.0]);
+}
+
+/// `data_version lookupType LUTFormat dither lut_bytes_len` read from the
+/// hex-encoded `clrL` payload in `argv[1]`.
+const COLOR_LOOKUP_SCRIPT: &str = "\
+import sys
+from io import BytesIO
+from psd_tools.psd.adjustments import ColorLookup
+cl = ColorLookup.read(BytesIO(bytes.fromhex(sys.argv[1])))
+print(cl.data_version, cl[b'lookupType'].enum.decode(), cl[b'LUTFormat'].enum.decode(),
+      int(cl[b'Dthr'].value), len(cl[b'LUT3DFileData'].value))
+";
+
+/// psd-tools independently reads the framing and the lookup fields, proving the
+/// block our decoder accepts is a real Photoshop-shaped `clrL`.
+#[test]
+fn psd_tools_reads_fixture_color_lookup_prefix() {
+    if !psd_tools_available() {
+        eprintln!("skipping psd-tools check: python3 + psd_tools not available");
+        return;
+    }
+
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../pictura-codec/tests/fixtures/color_lookup.psd"
+    );
+    let bytes = std::fs::read(path).expect("read color_lookup.psd");
+    let doc = pictura_codec::read_psd(&bytes).expect("fixture parses");
+    let layer = doc
+        .layers
+        .iter()
+        .find(|l| l.name == "Color Lookup")
+        .expect("Color Lookup layer");
+    let block = layer.adjustment.as_ref().expect("clrL block");
+    let hex: String = block.data.iter().map(|b| format!("{b:02x}")).collect();
+
+    let out = Command::new("python3")
+        .args(["-c", COLOR_LOOKUP_SCRIPT, &hex])
+        .output()
+        .expect("run python3");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "psd-tools ColorLookup read failed:\n{stdout}\n{stderr}"
+    );
+    let fields: Vec<String> = stdout.split_whitespace().map(str::to_string).collect();
+    assert_eq!(fields[0], "16", "data version");
+    assert_eq!(fields[1], "3DLUT", "lookupType");
+    assert_eq!(fields[2], "LUTFormatCUBE", "LUTFormat");
+    assert_eq!(fields[3], "0", "dither off");
+    assert_eq!(
+        fields[4].parse::<usize>().expect("cube length"),
+        pictura_render::identity_cube().len(),
+        "embedded identity cube length"
+    );
+}

@@ -1,12 +1,13 @@
 //! Independent ag-psd structural oracle for `mixr` (Channel Mixer), `curv`
-//! (Curves), and `selc` (Selective Color) payloads.
+//! (Curves), `selc` (Selective Color), and `clrL` (Color Lookup) payloads.
 //!
 //! psd-tools' typed `ChannelMixer` reads only the red row (the rest lands in
 //! its `unknown` blob), so it cannot see the green/blue/gray channels; its
 //! `Curves` reads the v1 prefix but does not name the per-channel rows; its
-//! `SelectiveColor` names no plate. ag-psd reads all three fully, so these
-//! tests run it over the committed `channel_mixer.psd`, `curves.psd`, and
-//! `selective_color.psd` fixtures and assert the authored values.
+//! `SelectiveColor` names no plate; its `ColorLookup` exposes the fields but not
+//! a typed API. ag-psd reads all four fully, so these tests run it over the
+//! committed `channel_mixer.psd`, `curves.psd`, `selective_color.psd`, and
+//! `color_lookup.psd` fixtures and assert the authored values.
 //!
 //! Needs `node` with the `ag-psd` npm package resolvable from the crate's
 //! parents: `npm i ag-psd` at the repo root, or point `NODE_PATH` at an existing
@@ -375,3 +376,72 @@ fn ag_psd_reads_vector_fill_fixture() {
         "solid color vector fill: {stdout}"
     );
 }
+
+const COLOR_LOOKUP_SCRIPT: &str = r#"
+const fs = require('fs');
+const ag = require('ag-psd');
+const psd = ag.readPsd(fs.readFileSync(process.argv[1]), {
+  skipLayerImageData: true,
+  skipCompositeImageData: true,
+});
+const lines = [];
+(function walk(layers) {
+  for (const layer of layers || []) {
+    const a = layer.adjustment;
+    if (a && a.type === 'color lookup') {
+      const d = a.lut3DFileData || new Uint8Array();
+      lines.push([a.lookupType, a.lutFormat, a.dataOrder, a.tableOrder, a.dither ? 1 : 0,
+        Buffer.from(d).toString('hex')].join(' '));
+    }
+    walk(layer.children);
+  }
+})(psd.children);
+console.log(lines.join('\n'));
+"#;
+
+#[test]
+fn ag_psd_reads_color_lookup_fixture() {
+    if !node_ag_psd_available() {
+        eprintln!(
+            "skipping ag-psd check: node + ag-psd not available (run `npm i ag-psd`, or set NODE_PATH)"
+        );
+        return;
+    }
+
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/color_lookup.psd");
+    let out = Command::new("node")
+        .args([
+            "-e",
+            COLOR_LOOKUP_SCRIPT,
+            fixture.to_str().expect("utf-8 fixture path"),
+        ])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("run node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "ag-psd read failed:\n{stdout}\n{stderr}"
+    );
+
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(lines.len(), 1, "one color lookup layer:\n{stdout}");
+    let fields: Vec<&str> = lines[0].split_whitespace().collect();
+    assert_eq!(fields[0], "3dlut", "lookupType: {stdout}");
+    assert_eq!(fields[1], "cube", "lutFormat: {stdout}");
+    assert_eq!(fields[2], "rgb", "dataOrder: {stdout}");
+    assert_eq!(fields[3], "rgb", "tableOrder: {stdout}");
+    assert_eq!(fields[4], "0", "dither: {stdout}");
+    let expected: String = CUBE_IDENTITY.iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(
+        fields[5], expected,
+        "embedded identity cube bytes: {stdout}"
+    );
+}
+
+/// The identity cube embedded by `scripts/generate-fixtures.py`; must match
+/// `pictura_render::identity_cube()` byte-for-byte.
+const CUBE_IDENTITY: &[u8] = b"TITLE \"Identity\"\nLUT_3D_SIZE 2\n\
+0.0 0.0 0.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n1.0 1.0 0.0\n\
+0.0 0.0 1.0\n1.0 0.0 1.0\n0.0 1.0 1.0\n1.0 1.0 1.0\n";

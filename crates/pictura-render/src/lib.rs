@@ -50,6 +50,9 @@ mod selective_color;
 pub use pictura_adjust::{SelectiveColorMethod, SelectiveRange};
 pub use selective_color::encode_selective_color;
 
+mod color_lookup;
+pub use color_lookup::{encode_color_lookup, identity_cube};
+
 mod vector_mask;
 
 mod fill;

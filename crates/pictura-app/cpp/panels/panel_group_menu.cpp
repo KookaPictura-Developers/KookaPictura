@@ -223,6 +223,7 @@ const QList<MenuRow>& rowsForPanel(const QString& panel)
              imp(QStringLiteral("Color Balance"), QStringLiteral("adjustment:color-balance")),
              imp(QStringLiteral("Channel Mixer"), QStringLiteral("adjustment:channel-mixer")),
              imp(QStringLiteral("Selective Color"), QStringLiteral("adjustment:selective-color")),
+             imp(QStringLiteral("Color Lookup"), QStringLiteral("adjustment:color-lookup")),
              dis(QStringLiteral("Add Mask by Default"), true),
              chk(QStringLiteral("Clip to Layer")),
          }},

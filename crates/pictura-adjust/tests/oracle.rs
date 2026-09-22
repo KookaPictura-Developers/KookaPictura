@@ -41,7 +41,7 @@ struct Mapping {
     note: &'static str,
 }
 
-/// One row per classified `Adjustment` variant: the seventeen destructive
+/// One row per classified `Adjustment` variant: the eighteen destructive
 /// variants plus the two generative fills the spec names (`GradientFill`,
 /// `PatternFill`).
 /// `SolidFill` is the third refused fill; it has no `apply`, so it has no
@@ -162,10 +162,16 @@ const MAPPING: &[Mapping] = &[
         tolerance: 1,
         note: "IM modulate here computes HSL (min+max)/2, matching PS",
     },
+    Mapping {
+        adjustment: "ColorLookup",
+        im: None,
+        tolerance: 0,
+        note: "arbitrary .cube trilinear sample; no IM operator",
+    },
 ];
 
 /// Adjustments the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 16] = [
+const NO_EQUIVALENT: [&str; 17] = [
     "BlackWhite",
     "PhotoFilter",
     "GradientMap",
@@ -174,6 +180,7 @@ const NO_EQUIVALENT: [&str; 16] = [
     "Vibrance",
     "ColorBalance",
     "SelectiveColor",
+    "ColorLookup",
     "Auto",
     "Curves",
     "Exposure",
@@ -418,8 +425,8 @@ fn oracle_negate_matches_expected_bytes() {
 fn mapping_marks_no_equivalent_operators() {
     assert_eq!(
         MAPPING.len(),
-        19,
-        "one row per classified variant (17 destructive + GradientFill + PatternFill)"
+        20,
+        "one row per classified variant (18 destructive + GradientFill + PatternFill)"
     );
     let none: Vec<&str> = MAPPING
         .iter()

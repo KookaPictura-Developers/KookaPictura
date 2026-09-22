@@ -21,6 +21,7 @@ from psd_tools import PSDImage
 from psd_tools.constants import BlendMode, ColorMode, ColorSpaceID, EffectOSType, Tag
 from psd_tools.psd.adjustments import (
     BrightnessContrast,
+    ColorLookup,
     ColorStop,
     GradientMap,
     LevelRecord,
@@ -40,6 +41,7 @@ from psd_tools.psd.descriptor import (
     Double,
     Enumerated,
     List,
+    RawData,
     String,
     UnitFloat,
 )
@@ -76,6 +78,14 @@ WIDTH = HEIGHT = 8
 # match psd-tools' composite exactly (its I;16B / F;32BF scaling).
 DEPTH16_SAMPLES = [0, 1, 255, 256, 257, 32768, 65534, 65535]
 DEPTH32_SAMPLES = [0.0, 0.001, 0.5, 1.0, 1.5, -0.5, 0.99609375, 255.0]
+
+# The identity cube embedded in `color_lookup.psd`; must match
+# `pictura_render::identity_cube()` byte-for-byte.
+CUBE_IDENTITY = (
+    b'TITLE "Identity"\nLUT_3D_SIZE 2\n'
+    b"0.0 0.0 0.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n1.0 1.0 0.0\n"
+    b"0.0 0.0 1.0\n1.0 0.0 1.0\n0.0 1.0 1.0\n1.0 1.0 1.0\n"
+)
 
 
 def _solid(size: tuple[int, int], color: tuple[int, int, int]) -> Image.Image:
@@ -431,6 +441,32 @@ def selective_color() -> PSDImage:
         "Selective Color Abs",
         SelectiveColor(version=1, method=1, data=absolute),
     )
+    return psd
+
+
+def color_lookup() -> PSDImage:
+    """RGB, a Base layer plus a `clrL` Color Lookup embedding an identity cube.
+
+    psd-tools stores the ``ColorLookup`` descriptor verbatim, so the renderer
+    decodes the same `lookupType`/`LUTFormat`/`LUT3DFileData` fields ag-psd
+    reads.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    lookup = ColorLookup(version=1, data_version=16)
+    lookup[b"lookupType"] = Enumerated(typeID=b"3DLUT", enum=b"3DLUT")
+    lookup[b"Nm  "] = String("Identity.CUBE")
+    lookup[b"Dthr"] = Bool(False)
+    lookup[b"LUTFormat"] = Enumerated(
+        typeID=b"LUTFormatCUBE", enum=b"LUTFormatCUBE"
+    )
+    lookup[b"dataOrder"] = Enumerated(typeID=b"rgbOrder", enum=b"rgbOrder")
+    lookup[b"tableOrder"] = Enumerated(typeID=b"rgbOrder", enum=b"rgbOrder")
+    lookup[b"LUT3DFileName"] = String("Identity.CUBE")
+    lookup[b"LUT3DFileData"] = RawData(CUBE_IDENTITY)
+    _adj_layer(psd, Tag.COLOR_LOOKUP, "Color Lookup", lookup)
     return psd
 
 
@@ -1541,6 +1577,7 @@ FIXTURES = {
     "channel_mixer.psd": channel_mixer,
     "curves.psd": curves,
     "selective_color.psd": selective_color,
+    "color_lookup.psd": color_lookup,
     "gradient_map.psd": gradient_map,
     "solid_fill.psd": solid_fill,
     "vector_mask.psd": vector_mask,
