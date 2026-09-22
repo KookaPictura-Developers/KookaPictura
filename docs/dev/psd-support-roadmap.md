@@ -37,7 +37,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G5 | Image resources entirely dropped (ICC, EXIF, XMP, IPTC, resolution, paths, slices, alpha names, guides, print) | `read.rs` skip, `write.rs` zero | **Save destroys metadata/profile** |
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
-| G8 | Adjustment descriptor payloads preserved but not decoded/rendered (curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, color lookup) | `composite.rs` doc | Layer renders as no-op |
+| G8 | Adjustment descriptor payloads preserved but not decoded/rendered (version-3 `phfl` only; curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, and color lookup now decode) | `composite.rs` doc | Layer renders as no-op |
 | G9 | ~~PSB write missing~~ PSB write shipped: version-2 container, dimensions to 300 000; tagged-block big-key width + pad framing fixed | `write.rs` | Closed |
 | G10 | Unknown blend key aborts the whole file | `read.rs` `from_psd_key(...).ok_or` | Open blocker |
 | G11 | Absent merged composite ("Maximize Compatibility" off) unhandled | `read.rs` reads compression unconditionally | Open blocker |
@@ -155,9 +155,16 @@ panel entry; the ten-plate layout (reserved plate 0 plus nine named ranges) is
 grounded three ways (libpsd, ag-psd, psd-tools framing) and the kernel follows
 libpsd's integer CMYK pipeline (archived `selective-color-adjustment-decode`).
 Remaining:
-version-3 `phfl`, `clrL`, and the text kind (vector masks are shipped,
+version-3 `phfl` and the text kind (vector masks are shipped,
 archived `vector-mask-render`, and `vscg` vector fill content is shipped,
 archived `vector-fill-content`).
+**Color Lookup (`clrL`) is now shipped** (archived
+`2026-09-22-color-lookup-adjustment-decode`): the block decodes to
+`Adjustment::ColorLookup`, an embedded `.CUBE` `3DLUT` is sampled trilinearly,
+and `encode_color_lookup`/`identity_cube` author a block; abstract-profile,
+device-link, and non-`.CUBE` payloads are no-ops (marked ceiling, no Adobe pixel
+parity). That closes the whitelisted adjustment-key set; only version-3
+`phfl` stays deferred.
 **Curves (`curv`) is now shipped**: the original deferral reason — a
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,

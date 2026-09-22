@@ -38,8 +38,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `layer-effects-bevel`, `layer-effects-legacy-lrfx`, and
     `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
-    `vector-mask-render`, `vector-fill-content`, `color-mode-read`, and
-    `depth-read` changes;
+    `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
+    `depth-read`, and `color-lookup-adjustment-decode` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -480,6 +480,21 @@ Snapshot for resuming after a context break. Update after each milestone.
   oracles; the app gains a neutral `selective-color` kind/panel row. Ceilings:
   profile-free CMYK round-trip, the all-zero early-return deviation from libpsd,
   no Photoshop pixel parity, no GPU shader.
+- **Color Lookup adjustment decode** (roadmap P3/G8, archived
+  `2026-09-22-color-lookup-adjustment-decode`): `clrL` now decodes to a new
+  `Adjustment::ColorLookup(ColorLookupParams)` (kind plus an optional parsed
+  `Lut3d`), closing the whitelisted adjustment-key set. A `3DLUT` whose embedded
+  `LUT3DFileData` is a `.CUBE` is parsed (`pictura_adjust::parse_cube`, red index
+  fastest) and sampled trilinearly by a new `pictura_adjust::lut` kernel;
+  abstract-profile, device-link, non-`.CUBE`, and malformed payloads are no-ops.
+  `pictura-render` exposes `decode_color_lookup`/`encode_color_lookup`/
+  `identity_cube`; the app maps kind `color-lookup` to an identity-cube layer
+  (neutral composite) with an Adjustments-panel `Color Lookup` row (C++ self-test
+  code 455). The committed `color_lookup.psd` fixture is proven by psd-tools and
+  the ag-psd oracle. Ceilings (`// ponytail:`): `dataOrder`/`tableOrder` are
+  metadata only, a non-default `DOMAIN_MIN`/`DOMAIN_MAX` is treated as `0..1`,
+  and there is no Adobe pixel-parity claim. Remaining P3 adjustment key:
+  version-3 `phfl`.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
