@@ -39,8 +39,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `channel-mixer-adjustment-decode`, `curves-adjustment-decode`,
     `selective-color-adjustment-decode`, `layer-effects-stroke-fills`,
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
-    `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`, and
-    `psd-icc-convert` changes;
+    `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
+    `psd-icc-convert`, and `psd-file-info` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -523,6 +523,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   shows a status "Converted from ICC profile …" notice. The C++ link now needs
   `-llcms2` (the staticlib does not propagate it). Still open: a File Info
   surface and a user-facing Assign/Convert Profile command.
+- **Read-only File Info with decoded EXIF/IPTC/XMP** (roadmap P6/G5, archived
+  `2026-09-22-psd-file-info`): `File > File Info…` (previously a disabled menu
+  leaf) now opens a read-only dialog with Camera Data (EXIF), IPTC, and Raw Data
+  (the raw XMP packet) categories. `pictura-codec` gains dependency-free
+  `parse_exif` (TIFF/IFD walker: `Exif\0\0`-prefixed or bare TIFF, IFD0 + Exif
+  sub-IFD, ASCII/SHORT/LONG/RATIONAL/UNDEFINED; a multi-value tag decodes as raw
+  bytes), `parse_iptc` (IPTC-IIM `0x1C` record stream), and
+  `read_metadata(&Document)` gathering resources 1058/1059, 1028, 1060. Defensive
+  bounds: a per-IFD entry cap and a total cloned-value budget (a hostile resource
+  cannot amplify memory), stop-and-return on malformed input, no panic. Proven by
+  the byte-stable `metadata.psd` fixture against the independent `exiftool`
+  decoder (self-skipping when absent) and a self-test that opens an inline
+  EXIF+IPTC+XMP PSD and checks the dialog rows. Ceilings (`// ponytail:`): IFD0 +
+  Exif sub-IFD only (no GPS), XMP is raw text (no field parsing), metadata is
+  read-only, and the app decodes the three groups with separate bridge getters.
+  Still open: editing/templates, XMP field extraction, sidecars, assign/convert
+  profile.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by

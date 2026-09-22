@@ -34,7 +34,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB; Multichannel/Duotone and the lossy-in-mode save stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted and consumed on read; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit (`>>8` / `clamp(trunc(f*256))`), all channels narrowed; a true `u16`/`f32` sample model preserving depth stays open |
-| G5 | Image resources are parsed and an embedded non-sRGB ICC profile is applied on read (converted to sRGB, stale profile dropped); File Info and a user-facing assign/convert profile command are still open | `read.rs` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts | Wide-gamut files render correctly; metadata preserved |
+| G5 | Image resources are parsed; an embedded non-sRGB ICC profile is applied on read (converted to sRGB, stale profile dropped); EXIF/IPTC decode and a read-only File Info dialog ship; editing, templates, XMP field extraction, and a user-facing assign/convert profile command are open | `read.rs` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts; `metadata.rs`/`exif.rs`/`iptc.rs` decode | Wide-gamut files render correctly; metadata readable |
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
 | G8 | Adjustment descriptor payloads preserved but not decoded/rendered (version-3 `phfl` only; curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, and color lookup now decode) | `composite.rs` doc | Layer renders as no-op |
@@ -215,8 +215,15 @@ is now applied on read** (archived `2026-09-22-psd-icc-convert`): an RGB file
 with a non-sRGB profile is converted to the sRGB working space (composite and
 layer color channels, relative colorimetric), the original bytes are recorded in
 `Document.source_icc`, and resource 1039 is dropped so the save is not
-mis-tagged; a Grayscale or untransformable document is left untouched. Still
-open: a File Info surface and a user-facing Assign/Convert Profile command.
+mis-tagged; a Grayscale or untransformable document is left untouched. A
+read-only **File Info** surface is now shipped too (archived
+`2026-09-22-psd-file-info`): `File > File Info…` shows decoded EXIF (1058/1059)
+and IPTC-IIM (1028) fields plus the raw XMP packet (1060), via
+`pictura_codec::{parse_exif, parse_iptc, read_metadata}`; the fixture is proven
+against `exiftool`. Ceilings: XMP is raw text (no field extraction), metadata is
+read-only, and a multi-value EXIF tag decodes as raw bytes. Still open: editing
+and metadata templates, XMP field extraction, sidecars, and a user-facing
+Assign/Convert Profile command.
 
 ## Smart objects and Camera Raw interop
 
