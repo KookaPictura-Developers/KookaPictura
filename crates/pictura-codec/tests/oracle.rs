@@ -30,6 +30,8 @@ mod effects;
 mod fills;
 #[path = "oracle/fixtures.rs"]
 mod fixtures;
+#[path = "oracle/image_resources.rs"]
+mod image_resources;
 #[path = "oracle/imagemagick.rs"]
 mod imagemagick;
 #[path = "oracle/layers.rs"]

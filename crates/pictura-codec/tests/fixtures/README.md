@@ -21,6 +21,7 @@ not hand-edit these files.
 | File | Mode | Size | Layers |
 |---|---|---|---|
 | `two_layers.psd` | RGB | 8x8 | `Red` (0,0,4,4), `Blue` (4,4,8,8) |
+| `image_resources.psd` | RGB | 8x8 | `Base` pixel layer plus EXIF (id 1058) and XMP (id 1060) image resources |
 | `group.psd` | RGB | 8x8 | group `Group A` containing `Inner Green`, `Inner Yellow` |
 | `masked.psd` | RGB | 8x8 | `Masked` with a raster layer mask |
 | `gray.psd` | Grayscale | 8x8 | `Gray` |
