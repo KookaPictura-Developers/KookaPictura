@@ -112,6 +112,57 @@ fn unknown_adjustment_key_is_noop() {
     );
 }
 
+/// A `LUT_3D_SIZE 2` cube whose node `(r, g, b)` maps to `(1 - r, 1 - g, 1 - b)`.
+fn inverting_cube() -> Vec<u8> {
+    let mut s = String::from("LUT_3D_SIZE 2\n");
+    for b in 0..2 {
+        for g in 0..2 {
+            for r in 0..2 {
+                s.push_str(&format!("{}.0 {}.0 {}.0\n", 1 - r, 1 - g, 1 - b));
+            }
+        }
+    }
+    s.into_bytes()
+}
+
+#[test]
+fn color_lookup_identity_is_neutral_and_a_cube_changes_the_composite() {
+    let base = solid(
+        "base",
+        full(2, 2),
+        (10, 200, 60),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let plain = composite_rgba(&doc(2, 2, vec![base.clone()]));
+    let identity = adjustment_layer(
+        "lookup",
+        *b"clrL",
+        crate::encode_color_lookup(&crate::identity_cube(), "Identity").data,
+        255,
+        None,
+    );
+    let neutral = composite_rgba(&doc(2, 2, vec![base.clone(), identity]));
+    assert_eq!(
+        neutral.data, plain.data,
+        "an identity cube must not change the backdrop"
+    );
+
+    let inverting = adjustment_layer(
+        "lookup",
+        *b"clrL",
+        crate::encode_color_lookup(&inverting_cube(), "Invert").data,
+        255,
+        None,
+    );
+    let changed = composite_rgba(&doc(2, 2, vec![base, inverting]));
+    assert_ne!(
+        changed.data, plain.data,
+        "a non-identity cube must change the backdrop"
+    );
+}
+
 #[test]
 fn descriptor_solid_fill_layer_composites_to_its_color() {
     let mut fill = adjustment_layer(

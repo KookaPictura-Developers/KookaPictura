@@ -13,9 +13,9 @@ use pictura_select::CombineMode;
 pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {
     use pictura_render::{
         encode_brightness_contrast, encode_channel_mixer, encode_color_balance,
-        encode_gradient_map, encode_hue_saturation, encode_invert, encode_photo_filter,
-        encode_posterize, encode_selective_color, encode_threshold, GradientStop,
-        SelectiveColorMethod, SelectiveRange,
+        encode_color_lookup, encode_gradient_map, encode_hue_saturation, encode_invert,
+        encode_photo_filter, encode_posterize, encode_selective_color, encode_threshold,
+        identity_cube, GradientStop, SelectiveColorMethod, SelectiveRange,
     };
 
     let (name, data): (&str, AdjustmentData) = match kind {
@@ -64,6 +64,10 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
                 SelectiveColorMethod::Relative,
                 &[SelectiveRange::default(); 9],
             ),
+        ),
+        "color-lookup" => (
+            "Color Lookup",
+            encode_color_lookup(&identity_cube(), "Identity.CUBE"),
         ),
         _ => return None,
     };

@@ -658,11 +658,6 @@ fn fixture_solid_fill_decodes_descriptor() {
 
 #[test]
 fn deferred_keys_still_none() {
-    assert_eq!(
-        decode_adjustment(&adjdata(*b"clrL", vec![1, 2, 3, 4])),
-        None,
-        "deferred key clrL"
-    );
     // Version-3 `phfl` (three u32 CIE XYZ values) is still deferred.
     let mut v3 = 3u16.to_be_bytes().to_vec();
     v3.extend_from_slice(&[0u8; 12]);
@@ -674,6 +669,18 @@ fn deferred_keys_still_none() {
         None,
         "version-3 phfl is deferred"
     );
+}
+
+#[test]
+fn color_lookup_decodes_an_embedded_cube() {
+    let encoded = crate::encode_color_lookup(&crate::identity_cube(), "Identity");
+    let Some(Adjustment::ColorLookup(params)) = decode_adjustment(&encoded) else {
+        panic!("clrL must decode to ColorLookup");
+    };
+    assert_eq!(params.kind, pictura_adjust::ColorLookupKind::ThreeDLut);
+    let lut = params.lookup.expect("identity cube parses");
+    assert_eq!(lut.size, 2);
+    assert_eq!(lut.points.len(), 8);
 }
 
 #[test]

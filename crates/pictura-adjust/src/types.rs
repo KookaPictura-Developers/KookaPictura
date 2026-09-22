@@ -182,6 +182,33 @@ pub struct PatternFillParams {
     pub origin: (i32, i32),
 }
 
+/// The `lookupType` of a Color Lookup (`clrL`) adjustment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorLookupKind {
+    /// A 3-D LUT (the only kind this engine renders).
+    ThreeDLut,
+    AbstractProfile,
+    DeviceLinkProfile,
+}
+
+/// A parsed 3-D lookup table: `size` grid steps per axis and `size³` RGB points
+/// in `.CUBE` order (red index varies fastest, then green, then blue), each
+/// component in `0.0..=1.0`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lut3d {
+    pub size: usize,
+    pub points: Vec<[f32; 3]>,
+}
+
+/// A Color Lookup (`clrL`) adjustment. `lookup` is the parsed embedded `.CUBE`
+/// for a 3-D LUT; it is `None` for an abstract-profile or device-link kind, a
+/// non-`.CUBE` embedded format, or malformed data, and such a layer is a no-op.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorLookupParams {
+    pub kind: ColorLookupKind,
+    pub lookup: Option<Lut3d>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoKind {
     Tone,
@@ -221,4 +248,7 @@ pub enum Adjustment {
     /// layer rect (see `pictura-render`'s `composite_pattern_fill`), refused by
     /// [`apply`] like [`Adjustment::SolidFill`].
     PatternFill(PatternFillParams),
+    /// Color Lookup (`clrL`): samples a parsed 3-D lookup, or is a no-op when
+    /// [`ColorLookupParams::lookup`] is `None`.
+    ColorLookup(ColorLookupParams),
 }

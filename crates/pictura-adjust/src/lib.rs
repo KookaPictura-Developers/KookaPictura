@@ -13,6 +13,7 @@ mod apply;
 mod auto;
 mod color;
 mod common;
+mod lut;
 mod tonal;
 mod types;
 
@@ -20,10 +21,11 @@ mod types;
 mod tests;
 
 pub use apply::apply;
+pub use lut::parse_cube;
 pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
-    ChannelMixerParams, ColorBalanceParams, CurvesParams, ExposureParams, GradientFillParams,
-    GradientKind, GradientMapParams, GradientStop, HueSaturationParams, LevelsParams,
-    PatternFillParams, PhotoFilterParams, SelectiveColorMethod, SelectiveColorParams,
-    SelectiveRange, VibranceParams,
+    ChannelMixerParams, ColorBalanceParams, ColorLookupKind, ColorLookupParams, CurvesParams,
+    ExposureParams, GradientFillParams, GradientKind, GradientMapParams, GradientStop,
+    HueSaturationParams, LevelsParams, Lut3d, PatternFillParams, PhotoFilterParams,
+    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, VibranceParams,
 };

@@ -47,5 +47,6 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
         Adjustment::PatternFill(_) => Err(AdjustError::Unsupported(
             "pattern fill is composited, not applied destructively".into(),
         )),
+        Adjustment::ColorLookup(p) => crate::lut::apply_color_lookup(p, buf),
     }
 }

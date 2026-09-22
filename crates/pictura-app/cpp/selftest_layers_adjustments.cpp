@@ -186,6 +186,37 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             frame.closeDocument(selDoc, false);
         }
 
+        // lpr_color_lookup (455): the neutral `color-lookup` kind becomes an
+        // adjustment layer carrying an identity cube that leaves the composite
+        // unchanged, and the Adjustments panel offers a `Color Lookup` row.
+        {
+            const bool clCreated = frame.newDocument(QStringLiteral("ColorLookupCtl"), 4, 4,
+                                                     QStringLiteral("rgb"), 8,
+                                                     QStringLiteral("white"));
+            pictura::PictureView* clView = frame.activeView();
+            if (!clCreated || !clView) {
+                return pictura::selfTest().fail(455, "color lookup fixture");
+            }
+            const int clDoc = frame.activeDocumentIndex();
+            const unsigned int clBefore = clView->sample_argb(1, 1);
+            const bool clAdded = clView->add_adjustment(QStringLiteral("color-lookup"));
+            const bool clAdjustment =
+                clView->layer_kind(clView->layer_count() - 1) == QStringLiteral("adjustment");
+            const unsigned int clAfter = clView->sample_argb(1, 1);
+            const bool clNeutral = clAfter == clBefore;
+            const pictura::PanelColumn* clColumn = frame.panelColumn();
+            const bool clMenu = clColumn
+                && clColumn->widgetMenuTextsForTest(QStringLiteral("adjustmentsPanel"))
+                       .contains(QStringLiteral("Color Lookup"));
+            ST_BEGIN("lpr_color_lookup");
+            ST_PASS("lpr_color_lookup added=%d adjustment=%d neutral=%d menu=%d",
+                    clAdded ? 1 : 0, clAdjustment ? 1 : 0, clNeutral ? 1 : 0, clMenu ? 1 : 0);
+            if (!clAdded || !clAdjustment || !clNeutral || !clMenu) {
+                return pictura::selfTest().fail(455, "color lookup adjustment");
+            }
+            frame.closeDocument(clDoc, false);
+        }
+
         // color_mode_open (297): a minimal flat CMYK PSD opens as a normalized
         // RGB document and the view reports the CMYK conversion notice.
         {

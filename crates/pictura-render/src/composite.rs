@@ -434,10 +434,10 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `mixr`
 /// (Channel Mixer), `curv` (Curves), `selc` (Selective Color), `SoCo`
 /// (solid-color fill content, either the 4-byte in-house RGBA tuple or the
-/// standard Photoshop descriptor), `GdFl` (gradient fill content), and `PtFl`
-/// (pattern fill content), both fill descriptors. Descriptor/custom
-/// payloads (`clrL` and a version-3 `phfl`) are
-/// preserved on disk but not decoded here.
+/// standard Photoshop descriptor), `GdFl` (gradient fill content), `PtFl`
+/// (pattern fill content), both fill descriptors, and `clrL` (Color Lookup,
+/// whose embedded `.CUBE` is parsed when the kind is a 3-D LUT). A version-3
+/// `phfl` is preserved on disk but not decoded here.
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -459,6 +459,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"mixr" => crate::channel_mixer::decode_channel_mixer(&data.data),
         b"curv" => crate::curves::decode_curves(&data.data),
         b"selc" => crate::selective_color::decode_selective_color(&data.data),
+        b"clrL" => crate::color_lookup::decode_color_lookup(&data.data),
         b"SoCo" => match data.data.as_slice() {
             [r, g, b, a] => Some(Adjustment::SolidFill([*r, *g, *b, *a])),
             _ => decode_solid_fill(&data.data),
