@@ -37,6 +37,32 @@ impl Iptc {
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
     }
+
+    /// Replace the value of `record:dataset` in place, or append it. Returns
+    /// whether the record set changed.
+    pub fn set(&mut self, record: u8, dataset: u8, value: &[u8]) -> bool {
+        if let Some((_, _, existing)) = self
+            .records
+            .iter_mut()
+            .find(|(r, d, _)| *r == record && *d == dataset)
+        {
+            if existing.as_slice() == value {
+                return false;
+            }
+            *existing = value.to_vec();
+            return true;
+        }
+        self.records.push((record, dataset, value.to_vec()));
+        true
+    }
+
+    /// Drop `record:dataset`. Returns whether a record was removed.
+    pub fn remove(&mut self, record: u8, dataset: u8) -> bool {
+        let before = self.records.len();
+        self.records
+            .retain(|(r, d, _)| !(*r == record && *d == dataset));
+        before != self.records.len()
+    }
 }
 
 /// A display name for a common IPTC-IIM `record:dataset` pair, or `None`.
@@ -91,6 +117,23 @@ pub fn parse_iptc(data: &[u8]) -> Iptc {
     Iptc { records }
 }
 
+/// Encode an [`Iptc`] back into an IIM byte stream (the inverse of
+/// [`parse_iptc`]).
+pub fn encode_iptc(iptc: &Iptc) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (record, dataset, value) in iptc.records() {
+        // ponytail: an IIM record length is a u16, so a longer value is
+        // truncated to fit rather than corrupting the stream.
+        let value = &value[..value.len().min(u16::MAX as usize)];
+        out.push(0x1c);
+        out.push(*record);
+        out.push(*dataset);
+        out.extend_from_slice(&(value.len() as u16).to_be_bytes());
+        out.extend_from_slice(value);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +180,35 @@ mod tests {
         for cut in 0..full.len() {
             let _ = parse_iptc(&full[..cut]);
         }
+    }
+
+    #[test]
+    fn set_remove_and_encode_round_trip() {
+        let mut iptc = parse_iptc(&sample());
+        assert!(iptc.set(2, 5, b"New Title"), "replace returns true");
+        assert_eq!(iptc.text(2, 5).as_deref(), Some("New Title"));
+        assert_eq!(
+            iptc.records()[0],
+            (2, 5, b"New Title".to_vec()),
+            "replaced in place"
+        );
+        assert!(!iptc.set(2, 5, b"New Title"), "unchanged returns false");
+        assert!(iptc.set(2, 90, b"Paris"), "append returns true");
+        assert_eq!(iptc.text(2, 90).as_deref(), Some("Paris"));
+        assert!(iptc.remove(2, 80), "remove returns true");
+        assert_eq!(iptc.get(2, 80), None);
+        assert!(!iptc.remove(2, 80), "absent remove returns false");
+        assert_eq!(parse_iptc(&encode_iptc(&iptc)), iptc, "encode round-trips");
+    }
+
+    #[test]
+    fn encode_caps_values_to_the_iim_length() {
+        let mut iptc = Iptc::default();
+        assert!(iptc.set(2, 5, &vec![b'a'; 70_000]));
+        assert!(iptc.set(2, 80, b"Author"));
+        let parsed = parse_iptc(&encode_iptc(&iptc));
+        assert_eq!(parsed.records().len(), 2, "the trailing record is not lost");
+        assert_eq!(parsed.get(2, 5).unwrap().len(), u16::MAX as usize);
+        assert_eq!(parsed.text(2, 80).as_deref(), Some("Author"));
     }
 }

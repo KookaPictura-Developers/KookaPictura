@@ -49,11 +49,11 @@ pub use error::PsdError;
 pub use exif::{exif_tag_name, parse_exif, Exif, ExifValue};
 pub use icc::profile_description;
 pub use image_resources::{
-    decode_image_resources, encode_image_resources, ImageResource, EXIF_DATA_1, EXIF_DATA_3,
-    ICC_PROFILE, IPTC_NAA, XMP_METADATA,
+    decode_image_resources, encode_image_resources, frame_image_resource, ImageResource,
+    EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE, IPTC_NAA, XMP_METADATA,
 };
-pub use iptc::{iptc_field_name, parse_iptc, Iptc};
-pub use metadata::{read_metadata, DocumentMetadata};
+pub use iptc::{encode_iptc, iptc_field_name, parse_iptc, Iptc};
+pub use metadata::{read_metadata, set_iptc_fields, DocumentMetadata};
 pub use patterns::{decode_patterns, PatternPixels};
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
 pub use read::read_psd;

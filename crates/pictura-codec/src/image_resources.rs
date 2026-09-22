@@ -99,6 +99,35 @@ pub fn encode_image_resources(resources: &[ImageResource]) -> Vec<u8> {
     out
 }
 
+/// Frame a single block from typed fields — the inverse of the parser — so a
+/// resource can be replaced or appended and re-emitted with
+/// [`encode_image_resources`]. The signature is always `8BIM`.
+pub fn frame_image_resource(id: u16, name: &str, data: &[u8]) -> ImageResource {
+    // ponytail: a Pascal name length is a u8, so a longer name is truncated; the
+    // stored `name` is the truncated form the parser will read back.
+    let full = name.as_bytes();
+    let name_bytes = &full[..full.len().min(u8::MAX as usize)];
+    let mut raw = Vec::with_capacity(14 + name_bytes.len() + data.len());
+    raw.extend_from_slice(b"8BIM");
+    raw.extend_from_slice(&id.to_be_bytes());
+    raw.push(name_bytes.len() as u8);
+    raw.extend_from_slice(name_bytes);
+    if !(name_bytes.len() + 1).is_multiple_of(2) {
+        raw.push(0);
+    }
+    raw.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    raw.extend_from_slice(data);
+    if !data.len().is_multiple_of(2) {
+        raw.push(0);
+    }
+    ImageResource {
+        id,
+        name: String::from_utf8_lossy(name_bytes).into_owned(),
+        data: data.to_vec(),
+        raw,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +212,28 @@ mod tests {
         section.extend_from_slice(b"nope");
         let decoded = decode_image_resources(&document_with(section));
         assert_eq!(decoded.len(), 1);
+    }
+
+    #[test]
+    fn framed_block_round_trips() {
+        let framed = frame_image_resource(IPTC_NAA, "", b"odd");
+        let expected = resource(b"8BIM", IPTC_NAA, "", b"odd");
+        assert_eq!(framed.raw, expected, "framing matches the parser's layout");
+        let decoded = decode_image_resources(&document_with(framed.raw.clone()));
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].id, IPTC_NAA);
+        assert_eq!(decoded[0].data, b"odd");
+        assert_eq!(encode_image_resources(&[framed]), expected);
+    }
+
+    #[test]
+    fn a_long_name_is_truncated_to_the_length_byte() {
+        let long = "n".repeat(300);
+        let framed = frame_image_resource(IPTC_NAA, &long, b"x");
+        assert_eq!(framed.name, "n".repeat(255));
+        let decoded = decode_image_resources(&document_with(framed.raw));
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].name, "n".repeat(255));
+        assert_eq!(decoded[0].data, b"x");
     }
 }
