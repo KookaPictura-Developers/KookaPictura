@@ -41,8 +41,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `vector-mask-render`, `vector-fill-content`, `color-mode-read`,
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
-    `xmp-metadata`, `metadata-templates`, `psd-zip-write`, and `color-settings`
-    changes;
+    `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
+    and `app-control-server` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -635,6 +635,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   (sRGB working space, policy combo). Proven by codec unit tests + `icc_oracle`
   (PIL, ran) and self-tests 461/462. Ceilings (`// ponytail:`): sRGB working
   space only, RGB policy only, no `.csf`, no mismatch/missing dialogs.
+- **Agentic control server** (archived `2026-09-22-app-control-server`, plan
+  `docs/dev/mcp-agentic-control-plan.md` P0/P1): `./build/pictura --control
+  [--control-socket PATH] [--state-home DIR]` starts a `QLocalServer` on a
+  per-user Unix socket (owner-only, default
+  `$XDG_RUNTIME_DIR/pictura-control.sock`) speaking newline-delimited JSON on
+  the GUI thread. Methods `status`, `get_pixel`, `list_layers`, `list_commands`,
+  `dispatch_command`, `document`, `edit`, `set_unsaved_policy`; errors
+  `bad_request`/`unknown_method`/`invalid_param`/`no_document`/`not_implemented`/
+  `refused`/`io_error`/`internal`. `CommandRegistry::describe()` added. Control
+  mode is non-interactive by construction: unsaved policy is non-interactive/
+  Discard, `document` uses the non-dialog entry points (a pathless `save` →
+  `invalid_param`), and `dispatch_command` refuses modal-opening commands (a
+  hand-maintained denylist, `// ponytail:`) with `refused`, so no request blocks
+  on a modal. Socket is owner-only (Qt mode 0700), no TCP, no eval, oversize
+  requests rejected. Proven by the `mcp_control` self-test block (codes 463+).
+  Ceilings: vision/input/`selection`/`filter`/`layer_op` and the `pictura-mcp`
+  stdio frontend are deferred (P2–P6 of the plan).
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by

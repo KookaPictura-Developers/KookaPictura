@@ -1,7 +1,11 @@
 # Agentic MCP Control — implementation plan
 
-- **Status:** Proposed (not scheduled). Authored before coding so the work can
-  resume cold.
+- **Status:** P0/P1 shipped — the app-side control server is archived as
+  `2026-09-22-app-control-server` (`--control`, the JSON socket protocol, and the
+  `status`/`get_pixel`/`list_layers`/`list_commands`/`dispatch_command`/
+  `document`/`edit`/`set_unsaved_policy` methods). P2–P6 (vision, input
+  synthesis, `pictura-mcp`) remain proposed and unscheduled. Authored before
+  coding so the work can resume cold.
 - **Track:** infrastructure/automation, **not** the M44 (layer filtering/search)
   milestone program.
 - **Proposed OpenSpec change:** `mcp-agentic-control`
@@ -628,24 +632,26 @@ Document both in `agentic-testing.md`; do not overwrite a user's global config.
 
 ### P0 — Proposal and docs (no code)
 
-- [ ] Write `openspec/changes/mcp-agentic-control/{proposal,design}.md`.
-- [ ] Write `specs/agentic-control/spec.md` (ADDED, scenarios above).
-- [ ] Write `tasks.md` from §13.
-- [ ] Draft `docs/11-cross-cutting/agentic-testing.md` (may land with P5).
-- [ ] `openspec validate --all --strict`.
+- [x] Write `openspec/changes/app-control-server/{proposal,design}.md` (the plan
+      is split so each slice archives; this change is P0/P1).
+- [x] Write `specs/agentic-control/spec.md` (ADDED, scenarios above).
+- [x] Write `tasks.md` from §13.
+- [ ] Draft `docs/11-cross-cutting/agentic-testing.md` (lands with P5).
+- [x] `openspec validate --all --strict`.
 
 ### P1 — Control server skeleton
 
-- [ ] `control.{h,cpp}`: socket, framing, error codes, dispatch scaffold.
-- [ ] `main.cpp`: `--control`/`--control-socket`/`--state-home`, suppress
+- [x] `control.{h,cpp}`: socket, framing, error codes, dispatch scaffold.
+- [x] `main.cpp`: `--control`/`--control-socket`/`--state-home`, suppress
       headless⇒self-test, enter the event loop.
-- [ ] `CMakeLists.txt`: `Qt6::Network` + sources.
-- [ ] `CommandRegistry::describe()`.
-- [ ] Methods: `status`, `list_commands`, `list_layers`, `dispatch_command`,
+- [x] `CMakeLists.txt`: `Qt6::Network` + sources.
+- [x] `CommandRegistry::describe()`.
+- [x] Methods: `status`, `list_commands`, `list_layers`, `dispatch_command`,
       `document`, `edit`, `set_unsaved_policy`.
-- [ ] Self-test `mcp_control` block (exit codes **128/129**): start the server,
+- [x] Self-test `mcp_control` block (next append-only code, 463+): start the
+      server,
       round-trip `status`, `dispatch_command`, `list_commands`.
-- [ ] Gates: CMake build, `./build/pictura --headless --self-test`.
+- [x] Gates: CMake build, `./build/pictura --headless --self-test`.
 
 ### P2 — Vision
 
