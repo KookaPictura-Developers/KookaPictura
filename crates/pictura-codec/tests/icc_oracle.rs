@@ -65,6 +65,10 @@ fn embedded_icc_profile_is_applied_and_dropped() {
         "the source profile is recorded"
     );
     assert!(
+        doc.document_icc.is_none(),
+        "read-normalisation must not set the working profile"
+    );
+    assert!(
         decode_image_resources(&doc)
             .iter()
             .all(|r| r.id != ICC_PROFILE),
@@ -102,6 +106,10 @@ fn embedded_icc_profile_is_applied_and_dropped() {
 fn icc_normalized_save_has_no_profile_resource() {
     let bytes = std::fs::read(fixture("icc_profile.psd")).expect("read fixture");
     let doc = read_psd(&bytes).expect("fixture parses");
+    assert!(
+        doc.document_icc.is_none(),
+        "the read-normalised document has no working profile"
+    );
     let out = write_psd(&doc).expect("write");
     let back = read_psd(&out).expect("re-read");
     assert!(
@@ -113,5 +121,19 @@ fn icc_normalized_save_has_no_profile_resource() {
     assert!(
         back.source_icc.is_none(),
         "the re-read file is not ICC-normalized"
+    );
+    assert!(
+        back.document_icc.is_none(),
+        "a plain re-read has no working profile"
+    );
+}
+
+#[test]
+fn plain_read_has_no_working_profile() {
+    let bytes = std::fs::read(fixture("two_layers.psd")).expect("read fixture");
+    let doc = read_psd(&bytes).expect("fixture parses");
+    assert!(
+        doc.document_icc.is_none(),
+        "a document without an assigned profile stays in the sRGB working space"
     );
 }

@@ -28,7 +28,7 @@ pub(super) fn build_move_preview_base(
             doc.layers[index].visible = was_visible;
             let mut base_buffer = doc.composite.clone();
             patch_buffer_region(&mut base_buffer, &region, x0, y0);
-            buffer_to_image(&base_buffer)
+            buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &base_buffer))
         }
         None => {
             // ponytail: full-composite fallback for a missing/mismatched

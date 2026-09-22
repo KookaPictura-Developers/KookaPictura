@@ -21,6 +21,7 @@
 #include "panels/placeholder_panel.h"
 #include "panels/swatches_panel.h"
 #include "preferences_dialog.h"
+#include "profile_dialog.h"
 #include "session.h"
 #include "theme.h"
 #include "tool_hint_bar.h"

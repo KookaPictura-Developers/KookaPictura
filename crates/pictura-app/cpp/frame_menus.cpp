@@ -188,6 +188,18 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::EditStepForward,
                                   [this]() { return activeView() && activeView()->can_redo(); });
 
+    registry_->setHandler(command_ids::EditAssignProfile,
+                          [this]() { showProfileCommand(false); });
+    registry_->setHandler(command_ids::EditConvertProfile,
+                          [this]() { showProfileCommand(true); });
+    for (const char* id : {command_ids::EditAssignProfile, command_ids::EditConvertProfile}) {
+        registry_->setEnabledProvider(id, [this]() {
+            PictureView* view = activeView();
+            return view && view->has_document()
+                && view->document_mode() == QStringLiteral("rgb");
+        });
+    }
+
     registry_->setHandler(command_ids::EditFreeTransform, [this]() {
         PictureView* view = activeView();
         const QString path = (layersPanel_ && layersPanel_->selectedPaths().size() == 1)

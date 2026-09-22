@@ -42,8 +42,17 @@ const SIGNATURES: [[u8; 4]; 6] = [*b"8BIM", *b"8B64", *b"MeSa", *b"AgHg", *b"PHU
 /// stored order. A truncated block or an unrecognized signature ends parsing and
 /// the records decoded so far are returned; never panics.
 pub fn decode_image_resources(document: &Document) -> Vec<ImageResource> {
+    decode_image_resources_with_len(document).0
+}
+
+/// As [`decode_image_resources`], plus the number of section bytes the parsed
+/// records consumed. The remainder is unparsed (an unknown signature or a
+/// truncated block) and must be preserved byte-for-byte when the section is
+/// rewritten.
+pub fn decode_image_resources_with_len(document: &Document) -> (Vec<ImageResource>, usize) {
     let mut reader = Reader::new(&document.image_resources);
     let mut out = Vec::new();
+    let mut consumed = 0;
     while reader.remaining() >= 4 {
         let start = reader.pos;
         let Ok(signature) = reader.take(4) else {
@@ -84,8 +93,9 @@ pub fn decode_image_resources(document: &Document) -> Vec<ImageResource> {
             data: data.to_vec(),
             raw: reader.data[start..reader.pos].to_vec(),
         });
+        consumed = reader.pos;
     }
-    out
+    (out, consumed)
 }
 
 /// Re-serialize typed records into an image-resource section by concatenating

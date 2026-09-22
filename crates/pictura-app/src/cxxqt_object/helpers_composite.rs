@@ -1,4 +1,5 @@
 use cxx_qt_lib::{QImage, QImageFormat};
+use pictura_codec::buffer_to_srgb;
 use pictura_core::{BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer, PsdRect};
 use pictura_paint::Stroke;
 use pictura_select::Selection;
@@ -138,7 +139,8 @@ pub(super) fn current_buffer(doc: &Document, gpu_compute: bool) -> PixelBuffer {
 }
 /// Convert the document to a packed RGBA `QImage`.
 pub(super) fn document_to_image(doc: &Document, gpu_compute: bool) -> QImage {
-    buffer_to_image(&current_buffer(doc, gpu_compute))
+    let buffer = current_buffer(doc, gpu_compute);
+    buffer_to_image(&buffer_to_srgb(doc, &buffer))
 }
 /// The full display image for the current state, or `None` without a document.
 ///
@@ -153,7 +155,8 @@ pub(super) fn rebuild_display(
     if let Some(stroke) = stroke {
         return Some(document_to_image(stroke.document(), gpu_compute));
     }
-    doc.as_ref().map(|doc| buffer_to_image(&doc.composite))
+    doc.as_ref()
+        .map(|doc| buffer_to_image(&buffer_to_srgb(doc, &doc.composite)))
 }
 /// The 4-byte PSD blend key as a `String` (e.g. `"mul "`).
 pub(super) fn blend_key(mode: BlendMode) -> String {

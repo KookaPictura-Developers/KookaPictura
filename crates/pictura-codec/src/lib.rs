@@ -47,7 +47,7 @@ mod tests;
 pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;
 pub use exif::{exif_tag_name, parse_exif, Exif, ExifValue};
-pub use icc::profile_description;
+pub use icc::{assign_document_profile, buffer_to_srgb, convert_document, profile_description};
 pub use image_resources::{
     decode_image_resources, encode_image_resources, frame_image_resource, ImageResource,
     EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE, IPTC_NAA, XMP_METADATA,
@@ -55,6 +55,9 @@ pub use image_resources::{
 pub use iptc::{encode_iptc, iptc_field_name, parse_iptc, Iptc};
 pub use metadata::{read_metadata, set_iptc_fields, DocumentMetadata};
 pub use patterns::{decode_patterns, PatternPixels};
+// Re-exported so the app's profile commands can name a `Profile` without adding
+// a direct dependency on `pictura-color`.
+pub use pictura_color::Profile;
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
 pub use read::read_psd;
 pub use smart_filter::set_camera_raw_option;

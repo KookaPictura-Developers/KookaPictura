@@ -96,6 +96,12 @@ pub struct Document {
     /// Deliberately not re-emitted on save: the profile is removed from
     /// `image_resources` so the converted sRGB pixels are not mis-tagged.
     pub source_icc: Option<Vec<u8>>,
+    /// The ICC bytes of the working profile the stored composite and layer color
+    /// numbers are in. `None` means the sRGB working space, so a freshly opened
+    /// or constructed document is unchanged. Distinct from `source_icc`: this
+    /// records the profile the user assigned or converted to, not one a read
+    /// normalized away.
+    pub document_icc: Option<Vec<u8>>,
     pub composite: PixelBuffer,
     /// True when the file carried a merged composite image-data section. False
     /// when the file ended after the layer section (maximize-compatibility off),
@@ -131,6 +137,7 @@ impl Document {
             source_mode: None,
             source_depth: None,
             source_icc: None,
+            document_icc: None,
             composite: PixelBuffer::new(width, height, channels),
             merged_composite_present: true,
             is_psb: false,

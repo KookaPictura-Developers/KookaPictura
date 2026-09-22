@@ -1010,3 +1010,100 @@ fn undo_profile_4000() {
 
     println!("undo_profile composite_active backend: {backend:?}");
 }
+
+/// The bridge QObject is C++-constructed (cxx-qt 0.10 exposes no Rust
+/// constructor), so this replays the public `convert_profile(1)` + `undo()`
+/// sequence against the same codec and `History` and checks the restored bytes.
+#[test]
+fn convert_profile_is_byte_reversible_through_history() {
+    let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
+    doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+    doc.layers = vec![pixel_layer("base", 2, 1, (200, 100, 50))];
+    let original = doc.clone();
+    let mut history = History::default();
+    history.capture(
+        Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        },
+        "Open",
+    );
+
+    assert!(pictura_codec::convert_document(
+        &mut doc,
+        &pictura_codec::Profile::adobe_rgb()
+    ));
+    let adobe = pictura_codec::Profile::adobe_rgb().to_icc();
+    assert_eq!(doc.document_icc.as_deref(), Some(adobe.as_slice()));
+    assert_ne!(
+        doc.composite, original.composite,
+        "convert changes the composite"
+    );
+    assert_ne!(
+        doc.layers, original.layers,
+        "convert changes the layer pixels"
+    );
+    history.capture(
+        Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        },
+        "Convert to Profile",
+    );
+
+    assert_eq!(history.depth(), 1, "exactly one undo step");
+    let restored = history.undo().expect("one undo step");
+    assert_eq!(restored.doc.composite, original.composite);
+    assert_eq!(restored.doc.layers, original.layers);
+    assert_eq!(restored.doc.document_icc, original.document_icc);
+    assert!(restored.doc.document_icc.is_none());
+}
+
+/// Bridge-equivalent byte-level check for `assign_profile(1)` + `undo()`:
+/// assign leaves every pixel byte untouched, then undo restores the working
+/// profile and the image-resource section exactly.
+#[test]
+fn assign_profile_retags_and_is_reversible_through_history() {
+    let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
+    doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+    doc.layers = vec![pixel_layer("base", 2, 1, (200, 100, 50))];
+    let original = doc.clone();
+    let mut history = History::default();
+    history.capture(
+        Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        },
+        "Open",
+    );
+
+    pictura_codec::assign_document_profile(&mut doc, &pictura_codec::Profile::adobe_rgb());
+    let adobe = pictura_codec::Profile::adobe_rgb().to_icc();
+    assert_eq!(
+        doc.composite, original.composite,
+        "assign leaves the composite bytes untouched"
+    );
+    assert_eq!(
+        doc.layers, original.layers,
+        "assign leaves the layer bytes untouched"
+    );
+    assert_eq!(doc.document_icc.as_deref(), Some(adobe.as_slice()));
+    assert_ne!(
+        doc.image_resources, original.image_resources,
+        "assign writes resource 1039"
+    );
+    history.capture(
+        Snapshot {
+            doc: doc.clone(),
+            selection: None,
+        },
+        "Assign Profile",
+    );
+
+    assert_eq!(history.depth(), 1, "exactly one undo step");
+    let restored = history.undo().expect("one undo step");
+    assert_eq!(restored.doc.composite, original.composite);
+    assert_eq!(restored.doc.layers, original.layers);
+    assert_eq!(restored.doc.document_icc, original.document_icc);
+    assert_eq!(restored.doc.image_resources, original.image_resources);
+}

@@ -14,7 +14,10 @@ impl qobject::PictureView {
             let mut rust = self.as_mut().rust_mut();
             rust.doc = Some(snapshot.doc);
             rust.selection = snapshot.selection;
-            let image = rust.doc.as_ref().map(|doc| buffer_to_image(&doc.composite));
+            let image = rust
+                .doc
+                .as_ref()
+                .map(|doc| buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &doc.composite)));
             if let Some(image) = image {
                 rust.image = image;
             }
@@ -34,7 +37,10 @@ impl qobject::PictureView {
             let mut rust = self.as_mut().rust_mut();
             rust.doc = Some(snapshot.doc);
             rust.selection = snapshot.selection;
-            let image = rust.doc.as_ref().map(|doc| buffer_to_image(&doc.composite));
+            let image = rust
+                .doc
+                .as_ref()
+                .map(|doc| buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &doc.composite)));
             if let Some(image) = image {
                 rust.image = image;
             }

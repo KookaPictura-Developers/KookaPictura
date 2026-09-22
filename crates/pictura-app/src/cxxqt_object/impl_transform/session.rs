@@ -34,7 +34,13 @@ fn build_transform_preview(
         target.visible = false;
     }
     let rendered = current_buffer(&base_doc, gpu_compute);
-    Some((buffer_to_image(&rendered), image, x, y, opacity))
+    Some((
+        buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &rendered)),
+        image,
+        x,
+        y,
+        opacity,
+    ))
 }
 
 /// Whether `path` resolves to a transformable target: a raster pixel layer, or

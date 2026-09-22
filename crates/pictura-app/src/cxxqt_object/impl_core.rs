@@ -28,6 +28,17 @@ pub(super) fn finalize_import(doc: &mut Document, rgba: &[u8]) {
     layer.channels.retain(|channel| channel.id != -1);
 }
 
+/// A built-in working profile by the command's index: 0 sRGB, 1 Adobe RGB,
+/// 2 Pro Photo RGB; `None` for any other index.
+fn builtin_profile(index: i32) -> Option<pictura_codec::Profile> {
+    match index {
+        0 => Some(pictura_codec::Profile::srgb()),
+        1 => Some(pictura_codec::Profile::adobe_rgb()),
+        2 => Some(pictura_codec::Profile::pro_photo()),
+        _ => None,
+    }
+}
+
 impl qobject::PictureView {
     pub fn open(self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
@@ -385,6 +396,54 @@ impl qobject::PictureView {
         changed
     }
 
+    /// Assign a built-in working profile to the active document (retag only,
+    /// pixels untouched): 0 sRGB, 1 Adobe RGB, 2 Pro Photo RGB. Recomposites and
+    /// records one "Assign Profile" state; false without a document or on a bad
+    /// index.
+    pub fn assign_profile(mut self: Pin<&mut Self>, profile_index: i32) -> bool {
+        let Some(target) = builtin_profile(profile_index) else {
+            return false;
+        };
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            if doc.mode != ColorMode::Rgb {
+                return false;
+            }
+            pictura_codec::assign_document_profile(doc, &target);
+        }
+        self.as_mut().recomposite();
+        self.as_mut().record("Assign Profile");
+        true
+    }
+
+    /// Convert the active document's composite and layer color channels to a
+    /// built-in destination: 0 sRGB, 1 Adobe RGB, 2 Pro Photo RGB. Recomposites
+    /// and records one "Convert to Profile" state; false without a document, on
+    /// a bad index, or when the current profile cannot be parsed.
+    pub fn convert_profile(mut self: Pin<&mut Self>, profile_index: i32) -> bool {
+        let Some(dst) = builtin_profile(profile_index) else {
+            return false;
+        };
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            if doc.mode != ColorMode::Rgb {
+                return false;
+            }
+            if !pictura_codec::convert_document(doc, &dst) {
+                return false;
+            }
+        }
+        self.as_mut().recomposite();
+        self.as_mut().record("Convert to Profile");
+        true
+    }
+
     pub fn document_mode(&self) -> QString {
         match self.rust().doc.as_ref().map(|d| d.mode) {
             Some(ColorMode::Grayscale) => QString::from("grayscale"),
@@ -655,7 +714,7 @@ impl qobject::PictureView {
         let region_image = {
             let mut rust = self.as_mut().rust_mut();
             let rust = &mut *rust;
-            let buffer = {
+            let (buffer, image) = {
                 let source: &Document = if painting {
                     rust.stroke.as_ref().unwrap().document()
                 } else if let Some(doc) = rust.doc.as_ref() {
@@ -663,18 +722,21 @@ impl qobject::PictureView {
                 } else {
                     return;
                 };
-                pictura_render::composite_region_active(source, rect, gpu_compute).0
+                let buffer = pictura_render::composite_region_active(source, rect, gpu_compute).0;
+                let image = (buffer.width != 0 && buffer.height != 0)
+                    .then(|| buffer_to_image(&pictura_codec::buffer_to_srgb(source, &buffer)));
+                (buffer, image)
             };
-            if buffer.width == 0 || buffer.height == 0 {
+            let Some(image) = image else {
                 return;
-            }
+            };
             if !painting {
                 if let Some(doc) = rust.doc.as_mut() {
                     patch_composite_region(doc, &buffer, x0, y0);
                 }
             }
             rust.display_dirty = true;
-            buffer_to_image(&buffer)
+            image
         };
         self.region_blitted(region_image, x0, y0);
     }
@@ -699,7 +761,10 @@ impl qobject::PictureView {
             if let Some(doc) = rust.doc.as_mut() {
                 store_composite(doc, &rendered);
             }
-            rust.image = buffer_to_image(&rendered);
+            rust.image = match rust.doc.as_ref() {
+                Some(doc) => buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &rendered)),
+                None => buffer_to_image(&rendered),
+            };
             rust.display_dirty = false;
         }
         self.changed();

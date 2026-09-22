@@ -98,6 +98,7 @@ add_executable(pictura
     crates/pictura-app/cpp/session.cpp
     crates/pictura-app/cpp/preferences_dialog.cpp
     crates/pictura-app/cpp/file_info_dialog.cpp
+    crates/pictura-app/cpp/profile_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/canvas_scrollbars.cpp
     crates/pictura-app/cpp/icons.cpp
@@ -160,6 +161,7 @@ add_executable(pictura
     crates/pictura-app/cpp/session.h
     crates/pictura-app/cpp/preferences_dialog.h
     crates/pictura-app/cpp/file_info_dialog.h
+    crates/pictura-app/cpp/profile_dialog.h
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/canvas_range.h
     crates/pictura-app/cpp/canvas_scrollbars.h

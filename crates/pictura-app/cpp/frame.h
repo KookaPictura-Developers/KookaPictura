@@ -196,6 +196,9 @@ public:
     void showNewDocumentDialog();
     void showOpenDialog();
     void showFileInfo();
+    // Assign (`convert == false`) or convert to a chosen built-in profile; no-op
+    // unless the active view holds an RGB document.
+    void showProfileCommand(bool convert);
 
 protected:
     void closeEvent(QCloseEvent* event) override;

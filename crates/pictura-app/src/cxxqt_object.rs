@@ -102,17 +102,19 @@ pub mod qobject {
         #[qinvokable]
         fn active_layer_visible(&self) -> bool;
 
-        /// Notice when an opened document's source color mode was normalized.
+        /// Notices for an opened document normalized from another mode, depth, or ICC profile.
         #[qinvokable]
         fn mode_notice(&self) -> QString;
-
-        /// Notice when an opened 16/32-bit document was narrowed to 8-bit.
         #[qinvokable]
         fn depth_notice(&self) -> QString;
-
-        /// Notice when an opened document was converted from an embedded ICC profile.
         #[qinvokable]
         fn icc_notice(&self) -> QString;
+
+        /// Assign (retag) or convert (transform and retag) the active document to a built-in profile: 0 sRGB, 1 Adobe RGB, 2 Pro Photo RGB. False without a document or on a bad index.
+        #[qinvokable]
+        fn assign_profile(self: Pin<&mut Self>, profile_index: i32) -> bool;
+        #[qinvokable]
+        fn convert_profile(self: Pin<&mut Self>, profile_index: i32) -> bool;
 
         /// File Info rows: EXIF, IPTC-IIM, and the raw XMP packet.
         #[qinvokable]
@@ -241,9 +243,8 @@ pub mod qobject {
         #[qinvokable]
         fn ungroup_layer(self: Pin<&mut Self>, index: i32) -> bool;
 
-        /// The RGBA content of layer `i` scaled to fit `size`×`size`, keeping
-        /// the aspect ratio with smooth filtering. Null for group or adjustment
-        /// layers and when `i` or `size` is out of range.
+        /// The RGBA content of layer `i` scaled to fit `size`×`size` keeping the
+        /// aspect ratio; null for groups/adjustments or an out-of-range argument.
         #[qinvokable]
         fn layer_thumbnail(&self, i: i32, size: i32) -> QImage;
 

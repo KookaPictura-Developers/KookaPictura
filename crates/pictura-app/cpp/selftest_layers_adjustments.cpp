@@ -5,6 +5,7 @@
 #include "file_info_dialog.h"
 #include "frame.h"
 #include "panels/panel_column.h"
+#include "profile_dialog.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
@@ -479,6 +480,69 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
             if (!fiNoop || !fiEdited || !fiApplied || !fiDirty || !fiOneState || !fiUndone) {
                 return pictura::selfTest().fail(457, "file info iptc edit");
+            }
+        }
+
+        // profile_assign_convert (458): Assign Profile retags the active RGB
+        // document as exactly one undoable dirty state, undo restores the pre-
+        // assign cursor, a bad index is refused without a state, and Convert to
+        // Profile pushes one more state. Strictly the public bridge API.
+        {
+            const bool pcfCreated = frame.newDocument(
+                QStringLiteral("ProfileCtl"), 4, 4, QStringLiteral("rgb"), 8,
+                QStringLiteral("white"));
+            pictura::PictureView* pcfView = frame.activeView();
+            ST_BEGIN("profile_assign_convert");
+            if (!pcfCreated || !pcfView) {
+                return pictura::selfTest().fail(458, "profile fixture");
+            }
+            const int pcfDoc = frame.activeDocumentIndex();
+            const int pcfBase = pcfView->history_count();
+            const int pcfBaseIndex = pcfView->history_index();
+            const QString pcfBaseLabel = pcfView->history_label(pcfBaseIndex);
+            const bool pcfAssign = pcfView->assign_profile(1);
+            const bool pcfOneState = pcfView->history_count() == pcfBase + 1
+                && pcfView->history_label(pcfView->history_count() - 1)
+                    == QStringLiteral("Assign Profile");
+            const bool pcfDirty = pcfView->is_dirty();
+            const bool pcfRestored = pcfView->undo()
+                && pcfView->history_index() == pcfBaseIndex
+                && pcfView->history_label(pcfBaseIndex) == pcfBaseLabel;
+            const bool pcfBadIndex = !pcfView->assign_profile(99)
+                && pcfView->history_count() == pcfBase + 1;
+            const int pcfConvertBase = pcfView->history_index();
+            const bool pcfConvert = pcfView->convert_profile(1);
+            const bool pcfConvertState = pcfView->history_index() == pcfConvertBase + 1
+                && pcfView->history_label(pcfView->history_index())
+                    == QStringLiteral("Convert to Profile");
+            const bool pcfConvertUndone = pcfView->undo()
+                && pcfView->history_index() == pcfConvertBase
+                && pcfView->history_label(pcfConvertBase) == pcfBaseLabel;
+
+            pictura::ProfileDialog pcfAssignDialog(false, nullptr);
+            const QStringList pcfAssignChoices = pcfAssignDialog.choicesForTest();
+            pcfAssignDialog.setChoiceForTest(0);
+            const bool pcfAssignMapping =
+                pcfAssignChoices.contains(QStringLiteral("Don't Color Manage"))
+                && pcfAssignDialog.profileIndex() == 0;
+            pictura::ProfileDialog pcfConvertDialog(true, nullptr);
+            const QStringList pcfConvertChoices = pcfConvertDialog.choicesForTest();
+            pcfConvertDialog.setChoiceForTest(1);
+            const bool pcfConvertMapping =
+                !pcfConvertChoices.contains(QStringLiteral("Don't Color Manage"))
+                && pcfConvertDialog.profileIndex() == 1;
+
+            ST_PASS("profile_assign_convert assign=%d state=%d dirty=%d restored=%d bad=%d "
+                    "convert=%d convert_state=%d convert_undo=%d map_a=%d map_c=%d",
+                    pcfAssign ? 1 : 0, pcfOneState ? 1 : 0, pcfDirty ? 1 : 0,
+                    pcfRestored ? 1 : 0, pcfBadIndex ? 1 : 0, pcfConvert ? 1 : 0,
+                    pcfConvertState ? 1 : 0, pcfConvertUndone ? 1 : 0,
+                    pcfAssignMapping ? 1 : 0, pcfConvertMapping ? 1 : 0);
+            frame.closeDocument(pcfDoc, false);
+            if (!pcfAssign || !pcfOneState || !pcfDirty || !pcfRestored || !pcfBadIndex
+                || !pcfConvert || !pcfConvertState || !pcfConvertUndone || !pcfAssignMapping
+                || !pcfConvertMapping) {
+                return pictura::selfTest().fail(458, "profile assign convert");
             }
         }
 
