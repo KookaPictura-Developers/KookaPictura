@@ -109,6 +109,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     const SessionState state = pictura::loadSession();
     recent_ = state.recent;
     gpuCompute_ = state.gpuCompute;
+    colorPolicy_ = state.colorPolicy;
     useShiftKeyForToolSwitch_ = state.useShiftKeyForToolSwitch;
     // Probe the adapter once so the toggle can be offered without a document.
     {
@@ -355,6 +356,9 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
     if (view->gpu_compute() != gpuCompute_) {
         view->set_gpu_compute(gpuCompute_);
     }
+    if (view->color_policy() != colorPolicy_) {
+        view->set_color_policy(colorPolicy_);
+    }
     gpuAvailable_ = view->gpu_available();
     DocEntry entry;
     entry.view = view;
@@ -443,6 +447,7 @@ bool PicturaMainWindow::newDocument(const QString& name, int width, int height,
 bool PicturaMainWindow::openPath(const QString& path)
 {
     auto* view = new PictureView(this);
+    view->set_color_policy(colorPolicy_);
     if (!view->open(path)) {
         delete view;
         return false;
@@ -715,6 +720,21 @@ void PicturaMainWindow::showProfileCommand(bool convert)
     if (ok) {
         refresh();
     }
+}
+
+void PicturaMainWindow::showColorSettings()
+{
+    ColorSettingsDialog dialog(colorPolicy_, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    colorPolicy_ = dialog.policyCode();
+    for (const DocEntry& entry : docs_) {
+        if (entry.view) {
+            entry.view->set_color_policy(colorPolicy_);
+        }
+    }
+    saveSession();
 }
 
 void PicturaMainWindow::showOpenDialog()

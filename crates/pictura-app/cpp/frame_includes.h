@@ -5,6 +5,7 @@
 #include "commands.h"
 #include "dialogs.h"
 #include "canvas_scrollbars.h"
+#include "color_settings_dialog.h"
 #include "file_info_dialog.h"
 #include "icons.h"
 #include "image_view.h"

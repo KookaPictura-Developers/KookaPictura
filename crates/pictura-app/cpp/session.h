@@ -14,6 +14,7 @@ struct SessionState {
                                      // mismatch discards the layout on restore
     int brightnessLevel = 1;         // Theme level
     bool gpuCompute = true;          // GPU compositing preference
+    int colorPolicy = 0;             // incoming RGB profile policy (0 Preserve)
     int layersThumbSize = 2;         // 0 None / 1 Small / 2 Medium / 3 Large
     int layersThumbContents = 0;     // 0 Entire Document / 1 Layer Bounds
     bool layersExpandNewEffects = true;

@@ -37,6 +37,7 @@ inline constexpr char EditPreferencesGeneral[] = "edit.preferences.general";
 inline constexpr char EditPreferencesInterface[] = "edit.preferences.interface";
 inline constexpr char EditAssignProfile[] = "edit.assignProfile";
 inline constexpr char EditConvertProfile[] = "edit.convertProfile";
+inline constexpr char EditColorSettings[] = "edit.colorSettings";
 inline constexpr char ImageRotate90Cw[] = "image.rotate90cw";
 inline constexpr char ImageRotate90Ccw[] = "image.rotate90ccw";
 inline constexpr char ImageRotate180[] = "image.rotate180";

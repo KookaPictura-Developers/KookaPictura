@@ -54,6 +54,7 @@ void PicturaMainWindow::saveSession()
     state.layoutRevision = kLayoutRevision;
     state.brightnessLevel = brightnessLevel_;
     state.gpuCompute = gpuCompute_;
+    state.colorPolicy = colorPolicy_;
     state.toolsColumns = toolbox_ ? toolbox_->columns() : 1;
     state.useShiftKeyForToolSwitch = useShiftKeyForToolSwitch_;
     if (panelColumn_) {

@@ -16,7 +16,8 @@ class PicturaMainWindow;
 // writes a minimal flat CMYK PSD and opens it, checking the view reports the
 // CMYK conversion notice and reads as an RGB document; depth_open (298) writes a
 // minimal flat depth-16 RGB PSD and opens it, checking the 16-bit conversion
-// notice and the `v >> 8` narrowing. Returns 0 when all pass, otherwise the
-// self-test failure code.
+// notice and the `v >> 8` narrowing. color_settings_policy (461) checks the
+// incoming-profile policy default/round-trip and the Color Settings dialog
+// mapping. Returns 0 when all pass, otherwise the self-test failure code.
 int runLayersAdjustmentChecks(PicturaMainWindow& frame);
 } // namespace pictura

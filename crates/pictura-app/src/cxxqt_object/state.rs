@@ -59,6 +59,7 @@ pub struct PictureViewRust {
     pub(super) fill_preview_changed: bool,
     pub(super) content_revision: u64,
     pub(super) gpu_compute: bool,
+    pub(super) color_policy: pictura_codec::Policy,
     pub(super) display_dirty: bool,
     pub(super) link_sets: HashMap<String, u32>,
 }
@@ -93,6 +94,7 @@ impl Default for PictureViewRust {
             fill_preview_changed: false,
             content_revision: 0,
             gpu_compute: true,
+            color_policy: pictura_codec::Policy::Preserve,
             display_dirty: false,
             link_sets: HashMap::new(),
         }

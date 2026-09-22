@@ -42,9 +42,10 @@ fn builtin_profile(index: i32) -> Option<pictura_codec::Profile> {
 impl qobject::PictureView {
     pub fn open(self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
+        let policy = self.rust().color_policy;
         let mut loaded = std::fs::read(&path)
             .ok()
-            .and_then(|bytes| pictura_codec::read_psd(&bytes).ok());
+            .and_then(|bytes| pictura_codec::read_psd_with(&bytes, policy).ok());
 
         let ok = loaded.is_some();
         let gpu_compute = self.rust().gpu_compute;
@@ -52,7 +53,12 @@ impl qobject::PictureView {
         if let (Some(doc), Some(rendered)) = (loaded.as_mut(), rendered.as_ref()) {
             store_composite(doc, rendered);
         }
-        let image = rendered.as_ref().map_or_else(test_image, buffer_to_image);
+        let image = match (loaded.as_ref(), rendered.as_ref()) {
+            (Some(doc), Some(rendered)) => {
+                buffer_to_image(&pictura_codec::buffer_to_srgb(doc, rendered))
+            }
+            _ => test_image(),
+        };
         let mut view = self.rust_mut();
         view.image = image;
         view.doc = loaded;
@@ -683,6 +689,16 @@ impl qobject::PictureView {
 
     pub fn gpu_compute(&self) -> bool {
         self.rust().gpu_compute
+    }
+
+    pub fn set_color_policy(mut self: Pin<&mut Self>, code: i32) {
+        if let Some(policy) = pictura_codec::Policy::from_code(code) {
+            self.as_mut().rust_mut().color_policy = policy;
+        }
+    }
+
+    pub fn color_policy(&self) -> i32 {
+        self.rust().color_policy.to_code()
     }
 
     pub fn gpu_available(&self) -> bool {

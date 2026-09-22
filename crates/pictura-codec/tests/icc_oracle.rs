@@ -5,12 +5,18 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use pictura_codec::{decode_image_resources, read_psd, write_psd, ICC_PROFILE};
+use pictura_codec::{
+    decode_image_resources, read_psd, read_psd_with, write_psd, Policy, ICC_PROFILE,
+};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(name)
+}
+
+fn temp_path(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("pictura_icc_{name}_{}.tmp", std::process::id()))
 }
 
 fn pil_available() -> bool {
@@ -135,5 +141,151 @@ fn plain_read_has_no_working_profile() {
     assert!(
         doc.document_icc.is_none(),
         "a document without an assigned profile stays in the sRGB working space"
+    );
+}
+
+#[test]
+fn preserve_keeps_pixels_and_the_profile_through_a_save() {
+    let embedded = std::fs::read(fixture("psd_icc_rgb.icc")).expect("read profile");
+    let bytes = std::fs::read(fixture("icc_profile.psd")).expect("read fixture");
+    let preserved = read_psd_with(&bytes, Policy::Preserve).expect("fixture parses");
+    let untouched = read_psd_with(&bytes, Policy::Off).expect("fixture parses");
+
+    assert_eq!(
+        preserved.composite.data, untouched.composite.data,
+        "the composite is byte-identical to the file"
+    );
+    assert_eq!(
+        preserved.layers, untouched.layers,
+        "the layer pixels are byte-identical to the file"
+    );
+    assert_eq!(
+        preserved.document_icc.as_deref(),
+        Some(embedded.as_slice()),
+        "the working profile is the embedded one"
+    );
+    let icc = decode_image_resources(&preserved)
+        .into_iter()
+        .find(|r| r.id == ICC_PROFILE)
+        .expect("resource 1039 is kept");
+    assert_eq!(icc.data, embedded, "1039 holds the embedded bytes");
+
+    let base = preserved
+        .layers
+        .iter()
+        .find(|l| l.name == "Base")
+        .expect("Base layer");
+    let channel = |id: i16| -> u8 {
+        base.channels
+            .iter()
+            .find(|c| c.id == id)
+            .unwrap_or_else(|| panic!("layer has channel {id}"))
+            .data[0]
+    };
+    assert_eq!(
+        [channel(0), channel(1), channel(2)],
+        [200, 100, 50],
+        "the stored source color survives Preserve untouched"
+    );
+
+    if !pil_available() {
+        eprintln!("skipping PIL profile check: PIL not available");
+        return;
+    }
+    let out = write_psd(&preserved).expect("write");
+
+    let reread = read_psd_with(&out, Policy::Preserve).expect("re-read");
+    assert_eq!(
+        reread.composite.data, preserved.composite.data,
+        "the engine re-reads the composite byte-identically"
+    );
+    assert_eq!(
+        reread.layers, preserved.layers,
+        "the engine re-reads the layer pixels byte-identically"
+    );
+    assert_eq!(
+        reread.document_icc, preserved.document_icc,
+        "the re-read document is still tagged with the embedded profile"
+    );
+    assert!(reread.source_icc.is_none());
+    assert!(
+        decode_image_resources(&reread)
+            .iter()
+            .any(|r| r.id == ICC_PROFILE),
+        "the re-read file still carries resource 1039"
+    );
+
+    if !pil_available() {
+        eprintln!("skipping PIL profile check: PIL not available");
+        return;
+    }
+    let psd = temp_path("preserved.psd");
+    std::fs::write(&psd, &out).expect("write psd");
+    let script = r#"
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1])
+data = im.info.get("icc_profile")
+if not data:
+    print("NOICC", file=sys.stderr)
+    sys.exit(1)
+sys.stdout.buffer.write(data)
+"#;
+    let out = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&psd)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_file(&psd);
+    assert!(
+        out.status.success(),
+        "PIL reads the re-saved profile: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        out.stdout, embedded,
+        "the re-saved file still carries the embedded profile"
+    );
+}
+
+#[test]
+fn off_resaves_untagged() {
+    let bytes = std::fs::read(fixture("icc_profile.psd")).expect("read fixture");
+    let off = read_psd_with(&bytes, Policy::Off).expect("fixture parses");
+    assert!(off.document_icc.is_none() && off.source_icc.is_none());
+
+    let out = write_psd(&off).expect("write");
+    assert!(
+        decode_image_resources(&read_psd(&out).expect("re-read"))
+            .iter()
+            .all(|r| r.id != ICC_PROFILE),
+        "the re-saved file carries no ICC profile resource"
+    );
+
+    if !pil_available() {
+        eprintln!("skipping PIL untagged check: PIL not available");
+        return;
+    }
+    let psd = temp_path("off.psd");
+    std::fs::write(&psd, &out).expect("write psd");
+    let script = r#"
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1])
+print("TAGGED" if im.info.get("icc_profile") else "UNTAGGED")
+"#;
+    let out = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&psd)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_file(&psd);
+    assert!(out.status.success(), "PIL opens the saved file");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "UNTAGGED",
+        "an Off save is not tagged"
     );
 }
