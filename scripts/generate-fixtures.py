@@ -18,7 +18,14 @@ from pathlib import Path
 
 from PIL import Image
 from psd_tools import PSDImage
-from psd_tools.constants import BlendMode, ColorMode, ColorSpaceID, EffectOSType, Tag
+from psd_tools.constants import (
+    BlendMode,
+    ColorMode,
+    ColorSpaceID,
+    EffectOSType,
+    Resource,
+    Tag,
+)
 from psd_tools.psd.adjustments import (
     BrightnessContrast,
     ColorLookup,
@@ -52,6 +59,7 @@ from psd_tools.psd.effects_layer import (
     ShadowInfo,
 )
 from psd_tools.psd.layer_and_mask import ChannelDataList
+from psd_tools.psd.image_resources import ImageResource
 from psd_tools.psd.patterns import (
     Pattern,
     VirtualMemoryArray,
@@ -86,6 +94,12 @@ CUBE_IDENTITY = (
     b"0.0 0.0 0.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n1.0 1.0 0.0\n"
     b"0.0 0.0 1.0\n1.0 0.0 1.0\n0.0 1.0 1.0\n1.0 1.0 1.0\n"
 )
+
+# Fixed image-resource payloads for `image_resources.psd`: an EXIF blob and a
+# small XMP packet (both raw bytes, so psd-tools' save does not try to apply
+# them as a colour profile). Only their bytes matter to the parser oracle.
+EXIF_BYTES = bytes((i * 7 + 3) % 256 for i in range(128))
+XMP_BYTES = b'<x:xmpmeta xmlns:x="adobe:ns:meta/"></x:xmpmeta>'
 
 
 def _solid(size: tuple[int, int], color: tuple[int, int, int]) -> Image.Image:
@@ -261,6 +275,21 @@ def _adj_layer(psd: PSDImage, key: Tag, name: str, data) -> None:
     rec.right = rec.left
     rec.mask_data = None
     rec.tagged_blocks[Tag(key)] = TaggedBlock(key=Tag(key), data=data)
+
+
+def image_resources() -> PSDImage:
+    """RGB, a base layer plus EXIF (1058) and XMP (1060) image resources."""
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(200, 100, 50))
+    psd.create_pixel_layer(
+        Image.new("RGBA", (WIDTH, HEIGHT), (200, 100, 50, 255)), name="Base"
+    )
+    psd._record.image_resources[Resource.EXIF_DATA_1] = ImageResource(
+        key=Resource.EXIF_DATA_1, data=EXIF_BYTES
+    )
+    psd._record.image_resources[Resource.XMP_METADATA] = ImageResource(
+        key=Resource.XMP_METADATA, data=XMP_BYTES
+    )
+    return psd
 
 
 def adjustment() -> PSDImage:
@@ -1564,6 +1593,7 @@ def legacy_effects() -> PSDImage:
 
 FIXTURES = {
     "two_layers.psd": two_layers,
+    "image_resources.psd": image_resources,
     "group.psd": group,
     "masked.psd": masked,
     "gray.psd": gray,
