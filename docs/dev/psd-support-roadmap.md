@@ -34,7 +34,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB; Multichannel/Duotone and the lossy-in-mode save stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted and consumed on read; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit (`>>8` / `clamp(trunc(f*256))`), all channels narrowed; a true `u16`/`f32` sample model preserving depth stays open |
-| G5 | Image resources are parsed; an embedded non-sRGB ICC profile is applied on read (converted to sRGB, stale profile dropped); EXIF/IPTC decode, a File Info dialog, IPTC core-field editing, and user Assign/Convert Profile commands ship; EXIF/XMP editing, templates, XMP field extraction, and a Color Settings policy layer are open | `read.rs` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns; `metadata.rs`/`exif.rs`/`iptc.rs` decode and edit | Wide-gamut files render correctly; metadata readable/editable; profiles assignable and convertible |
+| G5 | Image resources are parsed; an embedded non-sRGB ICC profile is applied on read (converted to sRGB, stale profile dropped); EXIF/IPTC decode, XMP parse + edit with IIM sync, a File Info dialog, IPTC core-field editing, and user Assign/Convert Profile commands ship; metadata templates, sidecars, and a Color Settings policy layer are open | `read.rs` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode and edit | Wide-gamut files render correctly; metadata readable/editable; profiles assignable and convertible |
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
 | G8 | Adjustment descriptor payloads preserved but not decoded/rendered (version-3 `phfl` only; curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, and color lookup now decode) | `composite.rs` doc | Layer renders as no-op |
@@ -237,8 +237,17 @@ retags, the canvas converts the final composite to sRGB for display, and a save
 tags resource 1039; each is one undo step. Ceilings: RGB 8-bit only, the three
 built-in profiles only (no installed-profile discovery), fixed
 relative-colorimetric intent with no black-point compensation, dither, or
-flatten. Still open: EXIF/XMP editing, metadata templates, sidecars, and a
-Color Settings policy layer (`WF-011`).
+flatten. **XMP is now parsed and edited** (archived
+`2026-09-22-xmp-metadata`): resource 1060 is decoded into a fixed typed property
+set shown in a read-only Description category, and editing the six IPTC-Core
+fields writes both the XMP packet and the IIM record so the two channels agree.
+The packet is patched by byte-span — unmanaged bytes, unknown namespaces, and
+the wrapper survive verbatim — and a packet that cannot be safely rewritten is
+left untouched. Ceilings: only the nine managed properties are modelled (IPTC
+Extension and arbitrary RDF are preserved but not editable), the raw packet is
+read-only, EXIF is not editable (camera data is read-only per `WF-010`), and a
+non-primary `x-default` alternative collapses to the edited scalar. Still open:
+metadata templates, sidecars, and a Color Settings policy layer (`WF-011`).
 
 ## Smart objects and Camera Raw interop
 
