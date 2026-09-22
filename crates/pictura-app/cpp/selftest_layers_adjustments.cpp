@@ -2,6 +2,7 @@
 #include "selftest_report.h"
 
 #include "commands.h"
+#include "color_settings_dialog.h"
 #include "file_info_dialog.h"
 #include "frame.h"
 #include "panels/panel_column.h"
@@ -700,6 +701,56 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
             if (!mtOk) {
                 return pictura::selfTest().fail(460, "metadata template apply");
+            }
+        }
+
+        // color_settings_policy (461): a fresh view defaults to Preserve; the
+        // setter/getter round-trip the three codes and ignore an unknown one;
+        // the Color Settings dialog maps each choice to its code, shows the
+        // sRGB working space, and a rejected dialog changes nothing.
+        {
+            pictura::PictureView cspView;
+            const bool cspDefault = cspView.color_policy() == 0;
+            bool cspRoundTrip = true;
+            for (const int code : {0, 1, 2}) {
+                cspView.set_color_policy(code);
+                cspRoundTrip = cspRoundTrip && cspView.color_policy() == code;
+            }
+            cspView.set_color_policy(1);
+            cspView.set_color_policy(99);
+            const bool cspRejectsInvalid = cspView.color_policy() == 1;
+
+            pictura::ColorSettingsDialog cspDialog(1);
+            const QStringList cspChoices = cspDialog.policyChoicesForTest();
+            const bool cspWorkingSpace =
+                cspDialog.workingSpaceForTest() == QStringLiteral("sRGB IEC61966-2.1");
+            const bool cspDefaultStored = cspDialog.policyCode() == 1;
+            cspDialog.setPolicyForTest(0);
+            const bool cspOff = cspDialog.policyCode() == 2;
+            cspDialog.setPolicyForTest(1);
+            const bool cspPreserve = cspDialog.policyCode() == 0;
+            cspDialog.setPolicyForTest(2);
+            const bool cspConvert = cspDialog.policyCode() == 1;
+            const bool cspLabels = cspChoices.contains(QStringLiteral("Off"))
+                && cspChoices.contains(QStringLiteral("Preserve Embedded Profiles"))
+                && cspChoices.contains(QStringLiteral("Convert to Working RGB"));
+            cspDialog.setPolicyForTest(0);
+            cspDialog.reject();
+            const bool cspCancel =
+                cspDialog.result() != QDialog::Accepted && cspView.color_policy() == 1;
+
+            ST_BEGIN("color_settings_policy");
+            ST_PASS("color_settings_policy default=%d round_trip=%d invalid=%d "
+                    "working_space=%d stored=%d off=%d preserve=%d convert=%d labels=%d "
+                    "cancel=%d",
+                    cspDefault ? 1 : 0, cspRoundTrip ? 1 : 0, cspRejectsInvalid ? 1 : 0,
+                    cspWorkingSpace ? 1 : 0, cspDefaultStored ? 1 : 0, cspOff ? 1 : 0,
+                    cspPreserve ? 1 : 0, cspConvert ? 1 : 0, cspLabels ? 1 : 0,
+                    cspCancel ? 1 : 0);
+            if (!cspDefault || !cspRoundTrip || !cspRejectsInvalid || !cspWorkingSpace
+                || !cspDefaultStored || !cspOff || !cspPreserve || !cspConvert || !cspLabels
+                || !cspCancel) {
+                return pictura::selfTest().fail(461, "color settings policy");
             }
         }
 

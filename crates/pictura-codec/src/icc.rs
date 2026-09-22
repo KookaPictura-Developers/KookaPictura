@@ -10,7 +10,7 @@
 //! has no profile compare); a differently-named sRGB profile is converted within
 //! a rounding LSB. Rendering intent is fixed at relative-colorimetric.
 
-use pictura_color::{convert, Intent, Profile};
+use pictura_color::{convert, Intent, Policy, Profile};
 use pictura_core::{ColorMode, Document, Layer, PixelBuffer};
 
 use crate::image_resources::{
@@ -54,6 +54,50 @@ pub(crate) fn apply_icc(doc: Document) -> Document {
     doc.source_icc = Some(profile_bytes);
     let section = rebuild_resources(&doc, resources, consumed, None);
     doc.image_resources = section;
+    doc
+}
+
+/// Apply the incoming-profile [`Policy`] to a freshly read document.
+///
+/// `Convert` is the historical normalisation ([`apply_icc`]); `Preserve` and
+/// `Off` leave the pixel bytes alone and only decide the profile tagging.
+pub(crate) fn apply_icc_policy(doc: Document, policy: Policy) -> Document {
+    match policy {
+        Policy::Convert => apply_icc(doc),
+        Policy::Preserve => apply_passthrough_policy(doc, true),
+        Policy::Off => apply_passthrough_policy(doc, false),
+    }
+}
+
+/// Preserve and Off share the profile lookup [`apply_icc`] does, but neither
+/// transforms pixels, so a profile the engine cannot transform is still honoured.
+fn apply_passthrough_policy(mut doc: Document, preserve: bool) -> Document {
+    if doc.mode != ColorMode::Rgb || doc.image_resources.is_empty() {
+        return doc;
+    }
+    let (resources, consumed) = decode_image_resources_with_len(&doc);
+    let Some(profile) = resources.iter().find(|r| r.id == ICC_PROFILE) else {
+        return doc;
+    };
+    let Ok(src) = Profile::from_icc(&profile.data) else {
+        return doc;
+    };
+    if src.is_srgb() {
+        return doc;
+    }
+    if preserve {
+        // A profile the normalized RGB pixels no longer match (a CMYK resource on
+        // a document normalize converted to RGB) cannot drive a display transform;
+        // leave the document byte-unchanged, as Convert does.
+        if convert_buffer(&doc.composite, &src, &Profile::srgb()).is_none() {
+            return doc;
+        }
+        // The embedded bytes stay resource 1039 and drive the display
+        // conversion; `source_icc` records only a conversion the read threw away.
+        doc.document_icc = Some(profile.data.clone());
+    } else {
+        doc.image_resources = rebuild_resources(&doc, resources, consumed, None);
+    }
     doc
 }
 
@@ -656,5 +700,147 @@ mod tests {
         assert!(decode_image_resources(&doc)
             .iter()
             .all(|r| r.id != ICC_PROFILE));
+    }
+
+    fn has_icc(resources: &[ImageResource]) -> bool {
+        resources.iter().any(|r| r.id == ICC_PROFILE)
+    }
+
+    #[test]
+    fn policy_preserve_keeps_the_embedded_profile_and_pixels() {
+        let raw = include_bytes!("../tests/fixtures/icc_profile.psd");
+        let embedded = include_bytes!("../tests/fixtures/psd_icc_rgb.icc");
+        let preserved = crate::read_psd_with(raw, Policy::Preserve).expect("parses");
+        let off = crate::read_psd_with(raw, Policy::Off).expect("parses");
+
+        assert_eq!(preserved.composite.data, off.composite.data);
+        assert_eq!(preserved.layers, off.layers, "layer pixels unchanged");
+        let icc = decode_image_resources(&preserved)
+            .into_iter()
+            .find(|r| r.id == ICC_PROFILE)
+            .expect("resource 1039 is kept");
+        assert_eq!(icc.data.as_slice(), embedded);
+        assert_eq!(preserved.document_icc.as_deref(), Some(embedded.as_slice()));
+        assert!(preserved.source_icc.is_none());
+    }
+
+    #[test]
+    fn policy_convert_is_the_read_normalisation_and_drops_the_profile() {
+        let raw = include_bytes!("../tests/fixtures/icc_profile.psd");
+        let converted = crate::read_psd_with(raw, Policy::Convert).expect("parses");
+        let preserved = crate::read_psd_with(raw, Policy::Preserve).expect("parses");
+
+        assert_ne!(converted.composite.data, preserved.composite.data);
+        assert!(converted.source_icc.is_some());
+        assert!(converted.document_icc.is_none());
+        assert!(!has_icc(&decode_image_resources(&converted)));
+
+        let legacy = crate::read_psd(raw).expect("parses");
+        assert_eq!(legacy.composite.data, converted.composite.data);
+        assert_eq!(legacy.source_icc, converted.source_icc);
+    }
+
+    #[test]
+    fn policy_off_untags_and_leaves_pixels_byte_identical() {
+        let raw = include_bytes!("../tests/fixtures/icc_profile.psd");
+        let off = crate::read_psd_with(raw, Policy::Off).expect("parses");
+        let preserved = crate::read_psd_with(raw, Policy::Preserve).expect("parses");
+
+        assert_eq!(off.composite.data, preserved.composite.data);
+        assert!(!has_icc(&decode_image_resources(&off)));
+        assert!(off.document_icc.is_none());
+        assert!(off.source_icc.is_none());
+    }
+
+    #[test]
+    fn policy_leaves_a_profile_less_file_unchanged() {
+        let raw = include_bytes!("../tests/fixtures/two_layers.psd");
+        let baseline = crate::read_psd(raw).expect("parses");
+        for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
+            let doc = crate::read_psd_with(raw, policy).expect("parses");
+            assert_eq!(doc.composite.data, baseline.composite.data, "{policy:?}");
+            assert_eq!(doc.layers, baseline.layers, "{policy:?}");
+            assert!(doc.document_icc.is_none(), "{policy:?}");
+            assert!(doc.source_icc.is_none(), "{policy:?}");
+        }
+    }
+
+    #[test]
+    fn policy_leaves_an_srgb_profile_unchanged() {
+        let profile = Profile::srgb().to_icc();
+        for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
+            let mut doc = rgb_document();
+            let section = icc_resource(&profile);
+            doc.image_resources = section.clone();
+            let original = doc.composite.data.clone();
+
+            let out = apply_icc_policy(doc, policy);
+            assert_eq!(out.composite.data, original, "{policy:?}");
+            assert_eq!(out.image_resources, section, "{policy:?}");
+            assert!(out.document_icc.is_none(), "{policy:?}");
+            assert!(out.source_icc.is_none(), "{policy:?}");
+        }
+    }
+
+    #[test]
+    fn policy_leaves_a_grayscale_document_unchanged() {
+        let profile = Profile::adobe_rgb().to_icc();
+        for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
+            let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
+            doc.composite.data = vec![10, 200];
+            let section = icc_resource(&profile);
+            doc.image_resources = section.clone();
+
+            let out = apply_icc_policy(doc, policy);
+            assert_eq!(out.composite.data, vec![10, 200], "{policy:?}");
+            assert_eq!(out.image_resources, section, "{policy:?}");
+            assert!(out.source_icc.is_none(), "{policy:?}");
+            assert!(out.document_icc.is_none(), "{policy:?}");
+        }
+    }
+
+    #[test]
+    fn policy_leaves_an_undecodable_profile_unchanged() {
+        for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
+            let mut doc = rgb_document();
+            doc.image_resources = icc_resource(b"not an ICC profile");
+            let original = doc.image_resources.clone();
+
+            let out = apply_icc_policy(doc, policy);
+            assert_eq!(out.image_resources, original, "{policy:?}");
+            assert!(out.source_icc.is_none(), "{policy:?}");
+            assert!(out.document_icc.is_none(), "{policy:?}");
+        }
+    }
+
+    #[test]
+    fn policy_preserve_rejects_a_profile_the_pixels_cannot_transform() {
+        // A CMYK profile on a document `normalize` turned into RGB: it parses and
+        // is not sRGB, but no RGB->sRGB transform can be built from it.
+        let mut profile = include_bytes!("../tests/fixtures/psd_icc_rgb.icc").to_vec();
+        profile[16..20].copy_from_slice(b"CMYK");
+        let mut doc = rgb_document();
+        doc.image_resources = icc_resource(&profile);
+        let composite = doc.composite.data.clone();
+        let resources = doc.image_resources.clone();
+
+        let out = apply_icc_policy(doc, Policy::Preserve);
+        assert!(out.document_icc.is_none());
+        assert!(out.source_icc.is_none());
+        assert_eq!(out.composite.data, composite);
+        assert_eq!(out.image_resources, resources, "1039 is left in place");
+    }
+
+    #[test]
+    fn policy_leaves_a_cmyk_fixture_unchanged() {
+        let raw = include_bytes!("../tests/fixtures/cmyk.psd");
+        let baseline = crate::read_psd(raw).expect("parses");
+        for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
+            let doc = crate::read_psd_with(raw, policy).expect("parses");
+            assert_eq!(doc.composite.data, baseline.composite.data, "{policy:?}");
+            assert_eq!(doc.image_resources, baseline.image_resources, "{policy:?}");
+            assert!(doc.document_icc.is_none(), "{policy:?}");
+            assert!(doc.source_icc.is_none(), "{policy:?}");
+        }
     }
 }

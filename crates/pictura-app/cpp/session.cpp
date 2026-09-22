@@ -65,6 +65,8 @@ SessionState loadSession()
     state.schemaVersion = obj.value(QStringLiteral("schemaVersion")).toInt(1);
     state.brightnessLevel = obj.value(QStringLiteral("brightnessLevel")).toInt(1);
     state.gpuCompute = obj.value(QStringLiteral("gpuCompute")).toBool(true);
+    const int colorPolicy = obj.value(QStringLiteral("colorPolicy")).toInt(0);
+    state.colorPolicy = (colorPolicy == 1 || colorPolicy == 2) ? colorPolicy : 0;
     state.layersThumbSize = obj.value(QStringLiteral("layersThumbSize")).toInt(2);
     state.layersThumbContents = obj.value(QStringLiteral("layersThumbContents")).toInt(0);
     state.layersExpandNewEffects =
@@ -117,6 +119,7 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("schemaVersion"), state.schemaVersion);
     obj.insert(QStringLiteral("brightnessLevel"), state.brightnessLevel);
     obj.insert(QStringLiteral("gpuCompute"), state.gpuCompute);
+    obj.insert(QStringLiteral("colorPolicy"), state.colorPolicy);
     obj.insert(QStringLiteral("layersThumbSize"), state.layersThumbSize);
     obj.insert(QStringLiteral("layersThumbContents"), state.layersThumbContents);
     obj.insert(QStringLiteral("layersExpandNewEffects"), state.layersExpandNewEffects);

@@ -192,6 +192,8 @@ void PicturaMainWindow::registerHandlers()
                           [this]() { showProfileCommand(false); });
     registry_->setHandler(command_ids::EditConvertProfile,
                           [this]() { showProfileCommand(true); });
+    registry_->setHandler(command_ids::EditColorSettings,
+                          [this]() { showColorSettings(); });
     for (const char* id : {command_ids::EditAssignProfile, command_ids::EditConvertProfile}) {
         registry_->setEnabledProvider(id, [this]() {
             PictureView* view = activeView();

@@ -61,9 +61,9 @@ pub use metadata::{
 pub use patterns::{decode_patterns, PatternPixels};
 // Re-exported so the app's profile commands can name a `Profile` without adding
 // a direct dependency on `pictura-color`.
-pub use pictura_color::Profile;
+pub use pictura_color::{Policy, Profile};
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
-pub use read::read_psd;
+pub use read::{read_psd, read_psd_with};
 pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;
 pub use write::{write_psb, write_psd};

@@ -130,10 +130,10 @@ pub struct Document {
     /// `image_resources` so the converted sRGB pixels are not mis-tagged.
     pub source_icc: Option<Vec<u8>>,
     /// The ICC bytes of the working profile the stored composite and layer color
-    /// numbers are in. `None` means the sRGB working space, so a freshly opened
-    /// or constructed document is unchanged. Distinct from `source_icc`: this
-    /// records the profile the user assigned or converted to, not one a read
-    /// normalized away.
+    /// numbers are in. `None` means the sRGB working space. Set by an
+    /// assign/convert command, or by a Preserve incoming-policy read that kept the
+    /// embedded non-sRGB profile; distinct from `source_icc`, which records a
+    /// profile a read converted away.
     pub document_icc: Option<Vec<u8>>,
     pub composite: PixelBuffer,
     /// True when the file carried a merged composite image-data section. False

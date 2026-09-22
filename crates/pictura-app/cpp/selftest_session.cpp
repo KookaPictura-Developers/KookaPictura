@@ -11,6 +11,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonValue>
 #include <QtCore/QMetaObject>
@@ -393,6 +394,51 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             frame.closeDocument(frame.activeDocumentIndex(), false);
         }
         QFile::remove(alphaPath);
+
+        // session_color_policy (462): the incoming-profile policy round-trips
+        // through the session store, an out-of-range stored code normalizes to
+        // Preserve, and a fresh SessionState defaults to Preserve.
+        {
+            pictura::SessionState cpsState = pictura::loadSession();
+            cpsState.colorPolicy = 1;
+            const bool cpsSavedConvert = pictura::saveSession(cpsState);
+            const bool cpsRoundConvert = pictura::loadSession().colorPolicy == 1;
+            cpsState.colorPolicy = 2;
+            const bool cpsSavedOff = pictura::saveSession(cpsState);
+            const bool cpsRoundOff = pictura::loadSession().colorPolicy == 2;
+            cpsState.colorPolicy = 0;
+            pictura::saveSession(cpsState);
+
+            const QString cpsPath = pictura::sessionFilePath();
+            QJsonObject cpsRaw;
+            {
+                QFile cpsFile(cpsPath);
+                if (cpsFile.open(QIODevice::ReadOnly)) {
+                    cpsRaw = QJsonDocument::fromJson(cpsFile.readAll()).object();
+                }
+            }
+            cpsRaw.insert(QStringLiteral("colorPolicy"), 7);
+            bool cpsWrote = false;
+            {
+                QFile cpsFile(cpsPath);
+                if (cpsFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                    cpsWrote = cpsFile.write(QJsonDocument(cpsRaw).toJson()) >= 0;
+                    cpsFile.close();
+                }
+            }
+            const bool cpsNormalized = cpsWrote && pictura::loadSession().colorPolicy == 0;
+            const bool cpsDefault = pictura::SessionState{}.colorPolicy == 0;
+
+            ST_BEGIN("session_color_policy");
+            ST_PASS("session_color_policy convert=%d off=%d normalized=%d default=%d",
+                    (cpsSavedConvert && cpsRoundConvert) ? 1 : 0,
+                    (cpsSavedOff && cpsRoundOff) ? 1 : 0, cpsNormalized ? 1 : 0,
+                    cpsDefault ? 1 : 0);
+            if (!cpsSavedConvert || !cpsRoundConvert || !cpsSavedOff || !cpsRoundOff
+                || !cpsNormalized || !cpsDefault) {
+                return pictura::selfTest().fail(462, "session color policy");
+            }
+        }
 
         return 0;
 }

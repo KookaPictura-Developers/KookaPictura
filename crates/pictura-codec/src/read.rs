@@ -1,4 +1,5 @@
 use flate2::read::{DeflateDecoder, ZlibDecoder};
+use pictura_color::Policy;
 use pictura_core::*;
 use std::io::Read;
 
@@ -10,9 +11,19 @@ use crate::error::PsdError;
 /// `palette_from` errors on a malformed Indexed palette before conversion.
 const EMPTY_PALETTE: [u8; 768] = [0; 768];
 
-/// Parse a PSD (or PSB) file into a [`Document`] holding the composite image and
-/// the layer tree (bottom-first, matching PSD on-disk z-order).
+/// Read a PSD/PSB applying the historical **Convert** incoming-profile policy.
+///
+/// ponytail: this is the Convert convenience kept for existing callers (including
+/// the render smart-object payload read); the application opens with the user's
+/// persisted policy through [`read_psd_with`].
 pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
+    read_psd_with(bytes, Policy::Convert)
+}
+
+/// Parse a PSD (or PSB) file into a [`Document`] holding the composite image and
+/// the layer tree (bottom-first, matching PSD on-disk z-order), applying an
+/// incoming-profile `policy` to an RGB document's embedded non-sRGB profile.
+pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError> {
     let mut r = Reader::new(bytes);
     let sig = r.u32()?;
     if sig != SIGNATURE {
@@ -110,12 +121,10 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
             global_layer_mask,
             layer_section_extra,
         };
-        return Ok(crate::icc::apply_icc(normalize(
-            doc,
-            mode,
-            depth,
-            palette.as_ref(),
-        )));
+        return Ok(crate::icc::apply_icc_policy(
+            normalize(doc, mode, depth, palette.as_ref()),
+            policy,
+        ));
     }
 
     // Image data section: 2-byte compression method, then one plane per header
@@ -178,12 +187,10 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
         global_layer_mask,
         layer_section_extra,
     };
-    Ok(crate::icc::apply_icc(normalize(
-        doc,
-        mode,
-        depth,
-        palette.as_ref(),
-    )))
+    Ok(crate::icc::apply_icc_policy(
+        normalize(doc, mode, depth, palette.as_ref()),
+        policy,
+    ))
 }
 
 /// The PSD `header.color_mode` code to the engine's [`ColorMode`]. Bitmap,

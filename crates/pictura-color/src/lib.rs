@@ -41,6 +41,44 @@ pub enum ColorError {
     Unsupported(String),
 }
 
+/// How an opened RGB document's embedded ICC profile is treated.
+///
+/// This is an application preference, not document or history state. Persisted
+/// as a stable integer by [`Policy::to_code`] / [`Policy::from_code`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Policy {
+    /// Keep the embedded profile: pixels stay in it, resource 1039 stays, and
+    /// `Document.document_icc` drives the display conversion.
+    #[default]
+    Preserve,
+    /// Convert the pixels to the sRGB working space and drop the profile.
+    Convert,
+    /// Ignore the embedded profile: pixels unchanged, untagged.
+    Off,
+}
+
+impl Policy {
+    /// The stable persistence code: `0` Preserve, `1` Convert, `2` Off.
+    pub fn to_code(self) -> i32 {
+        match self {
+            Policy::Preserve => 0,
+            Policy::Convert => 1,
+            Policy::Off => 2,
+        }
+    }
+
+    /// Parse a persistence code written by [`Policy::to_code`]; unknown codes
+    /// yield `None` so a caller can fall back to the default.
+    pub fn from_code(code: i32) -> Option<Policy> {
+        match code {
+            0 => Some(Policy::Preserve),
+            1 => Some(Policy::Convert),
+            2 => Some(Policy::Off),
+            _ => None,
+        }
+    }
+}
+
 /// An ICC profile handle.
 #[derive(Debug)]
 pub struct Profile(LcmsProfile);
@@ -473,5 +511,15 @@ mod tests {
         let (out, profile) = assign(&img, Profile::adobe_rgb());
         assert_eq!(out, img);
         assert_eq!(profile.0.color_space(), lcms2::ColorSpaceSignature::RgbData);
+    }
+
+    #[test]
+    fn policy_defaults_to_preserve_and_codes_round_trip() {
+        assert_eq!(Policy::default(), Policy::Preserve);
+        for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
+            assert_eq!(Policy::from_code(policy.to_code()), Some(policy));
+        }
+        assert_eq!(Policy::from_code(-1), None);
+        assert_eq!(Policy::from_code(3), None);
     }
 }

@@ -1107,3 +1107,29 @@ fn assign_profile_retags_and_is_reversible_through_history() {
     assert_eq!(restored.doc.document_icc, original.document_icc);
     assert_eq!(restored.doc.image_resources, original.image_resources);
 }
+
+/// The first frame `open` builds (and `File > Revert`, which reuses `open`) must
+/// show the working-space conversion, not the raw embedded-space composite: an
+/// Adobe RGB document displays through `buffer_to_srgb`, so its first frame
+/// differs from the untagged one.
+#[test]
+fn open_first_frame_converts_the_document_profile() {
+    let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
+    doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+    doc.layers = vec![pixel_layer("base", 2, 1, (200, 100, 50))];
+    doc.document_icc = Some(pictura_codec::Profile::adobe_rgb().to_icc());
+
+    let rendered = current_buffer(&doc, false);
+    let converted = pictura_codec::buffer_to_srgb(&doc, &rendered);
+    assert_ne!(
+        converted, rendered,
+        "an Adobe RGB document must be converted for display"
+    );
+    let first_frame = buffer_to_image(&converted);
+    let raw_frame = buffer_to_image(&rendered);
+    assert_ne!(
+        first_frame.pixel_color(0, 0),
+        raw_frame.pixel_color(0, 0),
+        "the displayed first frame must not be the embedded-space pixels"
+    );
+}

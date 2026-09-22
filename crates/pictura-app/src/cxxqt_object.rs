@@ -853,20 +853,13 @@ pub mod qobject {
         #[qinvokable]
         fn move_preview(self: Pin<&mut Self>, dx: i32, dy: i32) -> bool;
 
-        /// Enter move-preview mode: cache the document composited with the
-        /// topmost raster layer hidden, that layer's own image, its
-        /// document-space top-left, and its opacity (0..=255). Returns false
-        /// without a document or raster layer. Reuses the cached base when the
-        /// document content, topmost layer, and clamped rect are unchanged.
+        /// Enter move-preview mode for the topmost raster layer; reuses the cached base when unchanged, false without one.
         #[qinvokable]
         fn begin_move_preview(self: Pin<&mut Self>) -> bool;
         #[qinvokable]
         fn begin_move_duplicate(self: Pin<&mut Self>) -> bool;
 
-        /// Warm the move-preview cache without entering preview mode, so the
-        /// next `begin_move_preview` is a cache hit. Returns true when the
-        /// cache is valid (reused or just rebuilt), false without a document
-        /// or raster layer.
+        /// Warm the move-preview cache without entering preview mode; true when valid, false without a document or raster layer.
         #[qinvokable]
         fn prepare_move_preview(self: Pin<&mut Self>) -> bool;
 
@@ -1157,9 +1150,7 @@ pub mod qobject {
         #[qinvokable]
         fn remove_layer(self: Pin<&mut Self>, i: i32);
 
-        /// M0.5 offscreen GPU spike. Renders a gradient on Vulkan and replaces
-        /// the image on success. Returns 0 = no GPU (CPU fallback kept),
-        /// 1 = rendered non-blank, 2 = rendered blank.
+        /// Offscreen GPU spike: renders a gradient on Vulkan; 0 no GPU, 1 non-blank, 2 blank.
         #[qinvokable]
         fn render_gpu(self: Pin<&mut Self>) -> i32;
 
@@ -1196,5 +1187,12 @@ pub mod qobject {
         /// Active backend label: `"GPU"`, `"CPU"`, or `"CPU (no GPU)"`.
         #[qinvokable]
         fn active_backend(&self) -> QString;
+
+        /// Set the incoming-profile policy from its persistence code; unknown codes are ignored.
+        #[qinvokable]
+        fn set_color_policy(self: Pin<&mut Self>, code: i32);
+        /// The incoming-profile policy code (0 Preserve, 1 Convert, 2 Off).
+        #[qinvokable]
+        fn color_policy(&self) -> i32;
     }
 }

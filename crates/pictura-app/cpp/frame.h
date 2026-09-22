@@ -199,6 +199,9 @@ public:
     // Assign (`convert == false`) or convert to a chosen built-in profile; no-op
     // unless the active view holds an RGB document.
     void showProfileCommand(bool convert);
+    // Edit > Color Settings…: show the sRGB working space and incoming-profile
+    // policy; on OK persist the choice and apply it to every open view.
+    void showColorSettings();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -293,6 +296,7 @@ private:
     int untitledCounter_ = 0;
     int brightnessLevel_ = 1;
     bool gpuCompute_ = true;
+    int colorPolicy_ = 0;
     bool gpuAvailable_ = true;
     bool useShiftKeyForToolSwitch_ = true;
     ScreenMode screenMode_ = ScreenMode::Standard;
