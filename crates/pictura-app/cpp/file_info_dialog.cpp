@@ -18,6 +18,7 @@
 namespace pictura {
 
 const QString FileInfoDialog::kCameraData = QStringLiteral("Camera Data");
+const QString FileInfoDialog::kDescription = QStringLiteral("Description");
 const QString FileInfoDialog::kIptc = QStringLiteral("IPTC");
 const QString FileInfoDialog::kRawData = QStringLiteral("Raw Data");
 
@@ -43,10 +44,10 @@ QTableWidget* makeRowTable(const QStringList& rows, QWidget* parent)
 
 } // namespace
 
-FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& iptcEditFields,
-                               const QStringList& iptcOtherRows, const QString& xmp,
-                               QWidget* parent)
-    : QDialog(parent), exifRows_(exifRows), xmp_(xmp)
+FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& xmpRows,
+                               const QStringList& iptcEditFields, const QStringList& iptcOtherRows,
+                               const QString& xmp, QWidget* parent)
+    : QDialog(parent), exifRows_(exifRows), xmpRows_(xmpRows), xmp_(xmp)
 {
     // The read-only list holds only records outside the editable core set,
     // matched by field label.
@@ -67,13 +68,14 @@ FileInfoDialog::FileInfoDialog(const QStringList& exifRows, const QStringList& i
     categoryList_ = new QListWidget(this);
     categoryList_->setObjectName(QStringLiteral("fileInfoCategories"));
     categoryList_->setFixedWidth(150);
-    for (const QString& name : {kCameraData, kIptc, kRawData}) {
+    for (const QString& name : {kCameraData, kDescription, kIptc, kRawData}) {
         new QListWidgetItem(name, categoryList_);
     }
 
     stack_ = new QStackedWidget(this);
     stack_->setObjectName(QStringLiteral("fileInfoStack"));
     stack_->addWidget(makeRowTable(exifRows_, stack_));
+    stack_->addWidget(makeRowTable(xmpRows_, stack_));
     stack_->addWidget(buildIptcPage(iptcEditFields, iptcOtherRows_));
     xmpEdit_ = new QPlainTextEdit(xmp_, stack_);
     xmpEdit_->setObjectName(QStringLiteral("fileInfoXmp"));
@@ -147,6 +149,9 @@ QStringList FileInfoDialog::rowsForTest(const QString& category) const
 {
     if (category == kCameraData) {
         return exifRows_;
+    }
+    if (category == kDescription) {
+        return xmpRows_;
     }
     if (category == kIptc) {
         return iptcOtherRows_;

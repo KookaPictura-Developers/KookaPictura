@@ -116,7 +116,7 @@ pub mod qobject {
         #[qinvokable]
         fn convert_profile(self: Pin<&mut Self>, profile_index: i32) -> bool;
 
-        /// File Info rows: EXIF, IPTC-IIM, and the raw XMP packet.
+        /// File Info rows: EXIF, parsed XMP properties, IPTC-IIM, and the raw XMP packet.
         #[qinvokable]
         fn exif_rows(&self) -> QStringList;
         #[qinvokable]
@@ -124,9 +124,11 @@ pub mod qobject {
         #[qinvokable]
         fn xmp_packet(&self) -> QString;
         #[qinvokable]
+        fn xmp_rows(&self) -> QStringList;
+        #[qinvokable]
         fn iptc_edit_fields(&self) -> QStringList;
         #[qinvokable]
-        fn apply_iptc_edits(self: Pin<&mut Self>, edits: &QStringList) -> bool;
+        fn apply_metadata_edits(self: Pin<&mut Self>, edits: &QStringList) -> bool;
 
         /// Working mode: `"rgb"` or `"grayscale"`; empty without a document.
         #[qinvokable]
@@ -341,8 +343,7 @@ pub mod qobject {
         #[qinvokable]
         fn next_layer_name(&self, prefix: &QString) -> QString;
 
-        /// Rename the node at `path`. Recomposites and records one undo state
-        /// on success. Returns false for a path that does not resolve.
+        /// Rename the node at `path` (one undo state); false when unresolved.
         #[qinvokable]
         fn set_layer_name_path(self: Pin<&mut Self>, path: &QString, name: &QString) -> bool;
 
@@ -363,8 +364,7 @@ pub mod qobject {
         #[qinvokable]
         fn can_move_layer_to(&self, path: &QString, target: &QString, mode: i32) -> bool;
 
-        /// Set visibility on every path (always eligible). Returns the number of
-        /// nodes changed; records one undo state only when that count is non-zero.
+        /// Set visibility on every path; returns the number changed (one state if non-zero).
         #[qinvokable]
         fn set_layers_visible(self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32;
 

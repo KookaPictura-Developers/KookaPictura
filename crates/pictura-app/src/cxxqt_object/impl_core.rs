@@ -351,6 +351,45 @@ impl qobject::PictureView {
             .unwrap_or_default()
     }
 
+    /// The parsed XMP properties as `"Label\tValue"` rows, omitting absent ones.
+    pub fn xmp_rows(&self) -> QStringList {
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return QStringList::default();
+        };
+        let props = pictura_codec::xmp_properties(doc);
+        let mut rows: Vec<(&str, String)> = Vec::new();
+        if let Some(title) = &props.title {
+            rows.push(("Title", title.clone()));
+        }
+        if !props.creator.is_empty() {
+            rows.push(("Creator", props.creator.join(", ")));
+        }
+        if let Some(description) = &props.description {
+            rows.push(("Description", description.clone()));
+        }
+        if !props.subject.is_empty() {
+            rows.push(("Subject", props.subject.join(", ")));
+        }
+        if let Some(rights) = &props.rights {
+            rows.push(("Rights", rights.clone()));
+        }
+        if let Some(credit) = &props.credit {
+            rows.push(("Credit", credit.clone()));
+        }
+        if let Some(source) = &props.source {
+            rows.push(("Source", source.clone()));
+        }
+        if let Some(headline) = &props.headline {
+            rows.push(("Headline", headline.clone()));
+        }
+        if let Some(marked) = props.marked {
+            rows.push(("Marked", if marked { "Yes" } else { "No" }.to_string()));
+        }
+        rows.into_iter()
+            .map(|(label, value)| QString::from(format!("{label}\t{value}")))
+            .collect()
+    }
+
     /// The six editable IPTC core fields as `"record:dataset\tLabel\tValue"`.
     pub fn iptc_edit_fields(&self) -> QStringList {
         const EDITABLE: &[(u8, u8)] = &[(2, 5), (2, 80), (2, 116), (2, 120), (2, 110), (2, 115)];
@@ -368,9 +407,10 @@ impl qobject::PictureView {
             .collect()
     }
 
-    /// Apply `"record:dataset\tValue"` IPTC edits to the document as one undo
-    /// state. Returns whether anything changed.
-    pub fn apply_iptc_edits(mut self: Pin<&mut Self>, edits: &QStringList) -> bool {
+    /// Apply `"record:dataset\tValue"` edits to the document as one undo state,
+    /// writing the shared IPTC-Core fields to both XMP and IIM. Returns whether
+    /// anything changed.
+    pub fn apply_metadata_edits(mut self: Pin<&mut Self>, edits: &QStringList) -> bool {
         let mut fields = Vec::new();
         for row in edits.iter() {
             let row = row.to_string();
@@ -386,7 +426,7 @@ impl qobject::PictureView {
             fields.push((record, dataset, value.to_string()));
         }
         let changed = match self.as_mut().rust_mut().doc.as_mut() {
-            Some(doc) => pictura_codec::set_iptc_fields(doc, &fields),
+            Some(doc) => pictura_codec::set_file_info_fields(doc, &fields),
             None => false,
         };
         if changed {

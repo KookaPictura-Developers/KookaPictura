@@ -36,6 +36,7 @@ mod smart_object;
 mod smart_writer;
 mod vector_mask;
 mod write;
+mod xmp;
 
 #[cfg(test)]
 mod probe_tests;
@@ -53,7 +54,10 @@ pub use image_resources::{
     EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE, IPTC_NAA, XMP_METADATA,
 };
 pub use iptc::{encode_iptc, iptc_field_name, parse_iptc, Iptc};
-pub use metadata::{read_metadata, set_iptc_fields, DocumentMetadata};
+pub use metadata::{
+    read_metadata, set_file_info_fields, set_iptc_fields, set_xmp_fields, xmp_properties,
+    DocumentMetadata,
+};
 pub use patterns::{decode_patterns, PatternPixels};
 // Re-exported so the app's profile commands can name a `Profile` without adding
 // a direct dependency on `pictura-color`.
@@ -63,6 +67,7 @@ pub use read::read_psd;
 pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;
 pub use write::{write_psb, write_psd};
+pub use xmp::{parse_xmp, patch_xmp, XmpField, XmpProperties};
 
 /// Read a Camera Raw Filter's `Fltr` options from a
 /// [`pictura_core::SmartFilter::options`] byte buffer.
