@@ -44,7 +44,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
     `agentic-control-actions`, `color-mode-write-back`, `cmyk-write-back`,
-    `icc-output-mode-consistency`, `indexed-write-back`, and `bitmap-write-back`
+    `icc-output-mode-consistency`, `indexed-write-back`, `bitmap-write-back`,
+    and `agentic-control-input`
     changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -667,9 +668,21 @@ Snapshot for resuming after a context break. Update after each milestone.
   `filter`/`adjustment` (kind-only, fixed seed; unknown → `invalid_param`,
   locked/hidden target → `refused`), `layer_op` (name/opacity/visible/blend/
   fill/lock/color/move/translate/delete/duplicate/add → `{ok,layers}`), and
-  `set_gpu_compute`; action self-test block codes 493–517. Ceilings: input
-  synthesis (`pointer`/`key`) and the `pictura-mcp` stdio frontend are deferred
-  (P3 input half and P4–P6 of the plan); `filter` takes no caller seed/params.
+  `set_gpu_compute`; action self-test block codes 493–517. **Input synthesis**
+  shipped (archived `2026-09-23-agentic-control-input`): `pointer`
+  (click/dblclick/move/drag/scroll in `window` or `image` space; image
+  coordinates map as the exact inverse of `ImageView::widgetToImage`,
+  `w = image*zoom + offset`) and `key` (a sequence such as `Ctrl+Z`/`Shift+F2`
+  parsed to a modifier set and key, sent as a `QKeyEvent` press/release to the
+  focused widget else the frame), both via `QApplication::sendEvent` with no
+  `Qt6::Test`/private API. Qt 6.11 routes a non-spontaneous key press through the
+  shortcut machinery (a `ShortcutOverride` is sent first), so a shortcut fires in
+  an active window and a key no shortcut claims reaches the widget handler; a
+  window-scoped shortcut matches only while the window is active, so the
+  in-process self-test (pre-activation) asserts the widget path with the Move
+  tool's arrow nudge and the shortcut path is left to the live `verify-control.sh`
+  (P5). Input self-test codes 522–524. Ceilings: `pictura-mcp` stdio frontend
+  (P4–P6), native/global shortcuts, and `filter` caller seed/params remain.
 - **Bit-depth preservation** (roadmap P4/G4, archived `2026-09-23-depth-preserve`):
   a 16/32-bit **Grayscale or RGB** document no longer downgrades to 8-bit on
   save. `read_psd` retains the decoded source-depth samples of the composite

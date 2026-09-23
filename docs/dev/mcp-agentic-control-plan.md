@@ -1,15 +1,15 @@
 # Agentic MCP Control — implementation plan
 
-- **Status:** P0–P2 shipped plus the engine-action half of P3 — the app-side
-  control server is archived as `2026-09-22-app-control-server` (`--control`, the
-  JSON socket protocol, and the `status`/`get_pixel`/`list_layers`/
-  `list_commands`/`dispatch_command`/`document`/`edit`/`set_unsaved_policy`
-  methods), its vision half as `2026-09-23-agentic-control-vision`
-  (`screenshot`, `ui_tree`, `layer_thumbnail`), and its action half as
-  `2026-09-23-agentic-control-actions` (`set_tool`, `selection`, `filter`,
-  `adjustment`, `layer_op`, `set_gpu_compute`). Remaining: input synthesis
-  (`pointer`/`key`) and P4–P6 (`pictura-mcp`). Authored before coding so the
-  work can resume cold.
+- **Status:** P0–P3 shipped — the app-side control server is archived as
+  `2026-09-22-app-control-server` (`--control`, the JSON socket protocol, and the
+  `status`/`get_pixel`/`list_layers`/`list_commands`/`dispatch_command`/
+  `document`/`edit`/`set_unsaved_policy` methods), its vision half as
+  `2026-09-23-agentic-control-vision` (`screenshot`, `ui_tree`,
+  `layer_thumbnail`), its action half as `2026-09-23-agentic-control-actions`
+  (`set_tool`, `selection`, `filter`, `adjustment`, `layer_op`,
+  `set_gpu_compute`), and its input half as `2026-09-23-agentic-control-input`
+  (`pointer`, `key`). Remaining: P4–P6 (`pictura-mcp`). Authored before coding so
+  the work can resume cold.
 - **Track:** infrastructure/automation, **not** the M44 (layer filtering/search)
   milestone program.
 - **Proposed OpenSpec change:** `mcp-agentic-control`
@@ -668,12 +668,17 @@ Document both in `agentic-testing.md`; do not overwrite a user's global config.
 
 ### P3 — Input + engine actions
 
-- [ ] `pointer`, `key` (event synthesis) — remaining; needs an image→widget
-      inverse (`image*zoom+offset`) and key-focus handling.
+- [x] `pointer`, `key` (event synthesis) — archived
+      `2026-09-23-agentic-control-input`. Image-space coordinates map through the
+      inverse of `ImageView::widgetToImage`; Qt 6.11 routes a non-spontaneous key
+      press through the shortcut machinery, so a shortcut fires in an active
+      window and the widget handler runs otherwise.
 - [x] `set_tool`, `selection`, `filter`, `adjustment`, `layer_op`,
       `set_gpu_compute` (archived `2026-09-23-agentic-control-actions`).
-- [~] Self-test: the marquee-drag (`pointer`) half is pending with `pointer`;
-      a seeded filter's determinism is asserted in the action block.
+- [x] Self-test: the marquee-drag (`pointer`) and arrow-nudge (`key`) halves
+      plus the `no_document` and `invalid_param` cases are asserted in the
+      in-process `mcp_control` block; the shortcut path is left to the live
+      `verify-control.sh` (P5).
 
 ### P4 — `pictura-mcp`
 
