@@ -436,5 +436,348 @@ int pictura::runControlChecks(pictura::PicturaMainWindow& frame)
     }
     ST_PASS("code=%s", qPrintable(errorCode(response)));
 
+    // Action surface.
+    response = request(visionSocket, 40, QStringLiteral("set_tool"),
+                       QJsonObject{{QStringLiteral("tool"), QStringLiteral("marquee")}}, &parsed);
+    QJsonObject actionResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_action_tool");
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || actionResult.value(QStringLiteral("active_tool")).toString()
+               != QStringLiteral("marquee")) {
+        return pictura::selfTest().fail(493, "set_tool did not switch to marquee");
+    }
+    ST_PASS("active_tool=%s", qPrintable(actionResult.value("active_tool").toString()));
+
+    response = request(visionSocket, 41, QStringLiteral("status"), QJsonObject(), &parsed);
+    if (!parsed
+        || response.value(QStringLiteral("result"))
+                   .toObject()
+                   .value(QStringLiteral("active_tool"))
+                   .toString()
+               != QStringLiteral("marquee")) {
+        return pictura::selfTest().fail(494, "status disagrees with set_tool");
+    }
+
+    response = request(visionSocket, 42, QStringLiteral("set_tool"),
+                       QJsonObject{{QStringLiteral("tool"), QStringLiteral("no-such-tool")}},
+                       &parsed);
+    ST_BEGIN("mcp_control_action_tool_unknown");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(495, "unknown tool did not yield invalid_param");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    const int scratchDocuments = frame.documentCount();
+    response = request(visionSocket, 43, QStringLiteral("document"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("new")},
+                                   {QStringLiteral("width"), 8},
+                                   {QStringLiteral("height"), 8}},
+                       &parsed);
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()) {
+        return pictura::selfTest().fail(496, "action document new failed");
+    }
+
+    response = request(visionSocket, 44, QStringLiteral("selection"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("rect")},
+                                   {QStringLiteral("x"), 1},
+                                   {QStringLiteral("y"), 1},
+                                   {QStringLiteral("w"), 4},
+                                   {QStringLiteral("h"), 4}},
+                       &parsed);
+    actionResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_action_selection");
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || !actionResult.contains(QStringLiteral("has_selection"))
+        || !actionResult.contains(QStringLiteral("count"))
+        || !actionResult.value(QStringLiteral("has_selection")).toBool()
+        || actionResult.value(QStringLiteral("count")).toInt() <= 0
+        || actionResult.value(QStringLiteral("bounds")).toString().isEmpty()) {
+        return pictura::selfTest().fail(497, "rect selection produced no selection");
+    }
+    ST_PASS("count=%d bounds=%s", actionResult.value("count").toInt(),
+            qPrintable(actionResult.value("bounds").toString()));
+
+    response = request(visionSocket, 45, QStringLiteral("selection"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("deselect")}}, &parsed);
+    actionResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_action_deselect");
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || actionResult.value(QStringLiteral("has_selection")).toBool()
+        || actionResult.value(QStringLiteral("count")).toInt() != 0) {
+        return pictura::selfTest().fail(498, "deselect did not clear the selection");
+    }
+    ST_PASS("has_selection=0 count=0");
+
+    response = request(visionSocket, 60, QStringLiteral("selection"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("rect")},
+                                   {QStringLiteral("x"), 0},
+                                   {QStringLiteral("y"), 0},
+                                   {QStringLiteral("w"), 0},
+                                   {QStringLiteral("h"), 4}},
+                       &parsed);
+    ST_BEGIN("mcp_control_action_selection_zero");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(507, "zero-size rect did not yield invalid_param");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    response = request(visionSocket, 61, QStringLiteral("selection"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("rect")},
+                                   {QStringLiteral("x"), 0},
+                                   {QStringLiteral("y"), 0},
+                                   {QStringLiteral("w"), 4},
+                                   {QStringLiteral("h"), 4},
+                                   {QStringLiteral("mode"), QStringLiteral("union")}},
+                       &parsed);
+    ST_BEGIN("mcp_control_action_selection_mode");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(508, "unknown selection mode did not yield invalid_param");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    // A fixed-seed filter is deterministic: apply, undo, apply again and the
+    // pixel must match the first application and differ from the pre-filter one.
+    response = request(visionSocket, 46, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString pixelBefore =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+    response = request(visionSocket, 47, QStringLiteral("filter"),
+                       QJsonObject{{QStringLiteral("kind"), QStringLiteral("add-noise")}}, &parsed);
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()) {
+        return pictura::selfTest().fail(499, "add-noise filter failed");
+    }
+    response = request(visionSocket, 48, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString pixelFiltered =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+    ST_BEGIN("mcp_control_action_filter");
+    if (pixelFiltered == pixelBefore) {
+        return pictura::selfTest().fail(500, "filter did not change the pixel");
+    }
+    response = request(visionSocket, 49, QStringLiteral("edit"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("undo")}}, &parsed);
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || !response.value(QStringLiteral("result"))
+                .toObject()
+                .value(QStringLiteral("success"))
+                .toBool()) {
+        return pictura::selfTest().fail(509, "edit undo after filter failed");
+    }
+    response = request(visionSocket, 50, QStringLiteral("filter"),
+                       QJsonObject{{QStringLiteral("kind"), QStringLiteral("add-noise")}}, &parsed);
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()) {
+        return pictura::selfTest().fail(501, "second add-noise filter failed");
+    }
+    response = request(visionSocket, 51, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString pixelRefiltered =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+    if (pixelRefiltered != pixelFiltered) {
+        return pictura::selfTest().fail(502, "filter is not deterministic");
+    }
+    ST_PASS("deterministic=1 argb=%s", qPrintable(pixelFiltered));
+
+    response = request(visionSocket, 52, QStringLiteral("filter"),
+                       QJsonObject{{QStringLiteral("kind"), QStringLiteral("no-such-kind")}}, &parsed);
+    ST_BEGIN("mcp_control_action_filter_unknown");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(503, "unknown filter kind did not yield invalid_param");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    response = request(visionSocket, 53, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("set_opacity")},
+                                   {QStringLiteral("index"), 0},
+                                   {QStringLiteral("value"), 128}},
+                       &parsed);
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()) {
+        return pictura::selfTest().fail(504, "layer_op set_opacity failed");
+    }
+    response = request(visionSocket, 54, QStringLiteral("list_layers"), QJsonObject(), &parsed);
+    const QJsonArray actionLayers =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("layers")).toArray();
+    ST_BEGIN("mcp_control_action_layer");
+    if (!parsed || actionLayers.isEmpty()
+        || actionLayers.at(0).toObject().value(QStringLiteral("opacity")).toInt() != 128) {
+        return pictura::selfTest().fail(505, "layer opacity did not round-trip");
+    }
+    ST_PASS("opacity=%d", actionLayers.at(0).toObject().value("opacity").toInt());
+
+    response = request(visionSocket, 55, QStringLiteral("set_gpu_compute"),
+                       QJsonObject{{QStringLiteral("on"), false}}, &parsed);
+    actionResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_action_gpu");
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || !actionResult.contains(QStringLiteral("gpu_compute"))
+        || actionResult.value(QStringLiteral("gpu_compute")).toBool()
+        || !actionResult.contains(QStringLiteral("backend"))
+        || actionResult.value(QStringLiteral("backend")).toString().isEmpty()) {
+        return pictura::selfTest().fail(506, "set_gpu_compute false not reported");
+    }
+    ST_PASS("gpu_compute=0 backend=%s", qPrintable(actionResult.value("backend").toString()));
+
+    // A handler that ignored `on` would fail this half.
+    response = request(visionSocket, 57, QStringLiteral("set_gpu_compute"),
+                       QJsonObject{{QStringLiteral("on"), true}}, &parsed);
+    actionResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_action_gpu_on");
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || !actionResult.contains(QStringLiteral("gpu_compute"))
+        || !actionResult.value(QStringLiteral("gpu_compute")).toBool()
+        || actionResult.value(QStringLiteral("backend")).toString().isEmpty()) {
+        return pictura::selfTest().fail(512, "set_gpu_compute true not reported");
+    }
+    ST_PASS("gpu_compute=1 backend=%s", qPrintable(actionResult.value("backend").toString()));
+
+    // set_visible must honor an explicit bool in either key form and reject a
+    // non-bool value.
+    response = request(visionSocket, 62, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("set_visible")},
+                                   {QStringLiteral("index"), 0},
+                                   {QStringLiteral("visible"), false}},
+                       &parsed);
+    const bool hidOk = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 63, QStringLiteral("list_layers"), QJsonObject(), &parsed);
+    const QJsonArray hiddenLayers =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("layers")).toArray();
+    ST_BEGIN("mcp_control_action_visible");
+    if (!hidOk || !parsed || hiddenLayers.isEmpty()
+        || hiddenLayers.at(0).toObject().value(QStringLiteral("visible")).toBool()) {
+        return pictura::selfTest().fail(513, "set_visible visible:false did not hide the layer");
+    }
+    ST_PASS("visible=0");
+
+    response = request(visionSocket, 64, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("set_visible")},
+                                   {QStringLiteral("index"), 0},
+                                   {QStringLiteral("on"), true}},
+                       &parsed);
+    const bool showOk = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 65, QStringLiteral("list_layers"), QJsonObject(), &parsed);
+    const QJsonArray shownLayers =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("layers")).toArray();
+    ST_BEGIN("mcp_control_action_visible_on");
+    if (!showOk || !parsed || shownLayers.isEmpty()
+        || !shownLayers.at(0).toObject().value(QStringLiteral("visible")).toBool()) {
+        return pictura::selfTest().fail(514, "set_visible on:true did not show the layer");
+    }
+    ST_PASS("visible=1");
+
+    response = request(visionSocket, 66, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("set_visible")},
+                                   {QStringLiteral("index"), 0},
+                                   {QStringLiteral("visible"), QStringLiteral("yes")}},
+                       &parsed);
+    ST_BEGIN("mcp_control_action_visible_type");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(515, "non-bool set_visible did not yield invalid_param");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    // A pixel-locked, confirmed-visible layer must refuse the filter: assert the
+    // layer is visible first so `refused` cannot come from a hidden layer.
+    response = request(visionSocket, 67, QStringLiteral("list_layers"), QJsonObject(), &parsed);
+    const QJsonArray visibleBeforeLock =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("layers")).toArray();
+    const bool layerShown = !visibleBeforeLock.isEmpty()
+                            && visibleBeforeLock.at(0).toObject().value(QStringLiteral("visible")).toBool();
+    response = request(visionSocket, 68, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("set_lock")},
+                                   {QStringLiteral("index"), 0},
+                                   {QStringLiteral("flag"), QStringLiteral("pixels")},
+                                   {QStringLiteral("on"), true}},
+                       &parsed);
+    const bool lockedOk = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 69, QStringLiteral("filter"),
+                       QJsonObject{{QStringLiteral("kind"), QStringLiteral("add-noise")}}, &parsed);
+    ST_BEGIN("mcp_control_action_filter_locked");
+    if (!layerShown || !lockedOk || !parsed
+        || errorCode(response) != QStringLiteral("refused")) {
+        return pictura::selfTest().fail(511, "filter on a pixel-locked layer did not yield refused");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+    request(visionSocket, 70, QStringLiteral("layer_op"),
+            QJsonObject{{QStringLiteral("op"), QStringLiteral("set_lock")},
+                        {QStringLiteral("index"), 0},
+                        {QStringLiteral("flag"), QStringLiteral("pixels")},
+                        {QStringLiteral("on"), false}},
+            &parsed);
+
+    // translate must honor `index`. Make the top layer opaque so moving the
+    // bottom layer is invisible: with index handling, translating index 0 leaves
+    // the composite unchanged and index 1 changes it; if `index` were ignored
+    // both would move the active layer and the index-1 check would fail.
+    response = request(visionSocket, 71, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("duplicate")},
+                                   {QStringLiteral("index"), 0}},
+                       &parsed);
+    const int layersAfterDuplicate =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("layers")).toInt();
+    response = request(visionSocket, 78, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("set_opacity")},
+                                   {QStringLiteral("index"), 1},
+                                   {QStringLiteral("value"), 255}},
+                       &parsed);
+    const bool opaqueTop = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 72, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString translatePixelBefore =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+
+    response = request(visionSocket, 73, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("translate")},
+                                   {QStringLiteral("index"), 0},
+                                   {QStringLiteral("dx"), 2},
+                                   {QStringLiteral("dy"), 2}},
+                       &parsed);
+    const bool translate0Ok = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 74, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString pixelAfterBottom =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+    response = request(visionSocket, 79, QStringLiteral("edit"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("undo")}}, &parsed);
+    const bool undoOk = parsed && response.value(QStringLiteral("ok")).toBool();
+
+    response = request(visionSocket, 75, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("translate")},
+                                   {QStringLiteral("index"), 1},
+                                   {QStringLiteral("dx"), 2},
+                                   {QStringLiteral("dy"), 2}},
+                       &parsed);
+    const bool translate1Ok = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 76, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString pixelAfterTop =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+
+    ST_BEGIN("mcp_control_action_translate");
+    if (layersAfterDuplicate != 2 || !opaqueTop || translatePixelBefore.isEmpty() || !translate0Ok
+        || !undoOk || !translate1Ok || pixelAfterBottom != translatePixelBefore
+        || pixelAfterTop == translatePixelBefore) {
+        return pictura::selfTest().fail(516, "translate did not move only the indexed layer");
+    }
+    ST_PASS("layer1_moved=1 layer0_intact=1");
+
+    response = request(visionSocket, 77, QStringLiteral("layer_op"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("translate")},
+                                   {QStringLiteral("index"), 99},
+                                   {QStringLiteral("dx"), 1},
+                                   {QStringLiteral("dy"), 1}},
+                       &parsed);
+    ST_BEGIN("mcp_control_action_translate_oob");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(517, "out-of-range translate index not rejected");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    // Close only the documents this block created, leaving earlier state intact.
+    while (frame.documentCount() > scratchDocuments) {
+        frame.closeDocument(frame.documentCount() - 1, false);
+    }
+
+    // Best-effort: restore the tool the self-test started with.
+    request(visionSocket, 56, QStringLiteral("set_tool"),
+            QJsonObject{{QStringLiteral("tool"), QStringLiteral("move")}}, &parsed);
     return 0;
 }
