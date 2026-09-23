@@ -43,7 +43,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
-    `agentic-control-actions`, and `color-mode-write-back` changes;
+    `agentic-control-actions`, `color-mode-write-back`, and `cmyk-write-back`
+    changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -705,6 +706,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   Bitmap/Indexed write-back (CMYK has no profile-free inverse; needs a
   color-management decision), Multichannel/Duotone, and an edited Lab plane's
   approximation.
+- **CMYK write-back** (roadmap P4/G2, archived `2026-09-23-cmyk-write-back`): an
+  8-bit CMYK PSD now saves back as CMYK (header mode 4, four color planes).
+  `read_psd` retains the pre-normalization CMYK color planes (composite and every
+  layer, recursing groups) in the same store; `write_psd` re-emits them
+  byte-for-byte when unchanged, else converts the working RGB with `rgb_to_cmyk`,
+  an **exact** right-inverse of `cmyk_to_rgb` (no-black `K=255`), so an edited
+  pixel reads back to exactly the edited RGB. The 4-channel layout adds the extra
+  color channel to the header count, the document-extra offset (`4 + i`), and the
+  synthesized per-layer `(C,M,Y,K)` channels. Bitmap, Indexed, and a 16/32-bit
+  CMYK source still save the working mode; the app notice reports a
+  CMYK-preserving save only for an 8-bit source. Proven by the `color_mode_oracle`
+  (mode 4, four channels, retained planes byte-identical; lcms2/psd-tools ran) and
+  unit tests (edited plane, layer, extra channel). Ceilings: an edited CMYK pixel
+  uses a fixed no-black convention, not color management; a 16/32-bit CMYK source
+  still writes RGB with the CMYK profile intact (pre-existing mis-tag); Bitmap/
+  Indexed write-back and Multichannel/Duotone remain open.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
