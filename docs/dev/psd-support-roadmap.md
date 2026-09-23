@@ -32,7 +32,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | # | Gap | Evidence | Impact |
 |---|---|---|---|
 | G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
-| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB, and an 8-bit Lab document now saves back as Lab (`color-mode-write-back`, retained planes exact for unedited, approximate inverse for edited); CMYK/Bitmap/Indexed still save the working mode; Multichannel/Duotone stay open |
+| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB, and an 8-bit Lab or CMYK document now saves back in its source mode (`color-mode-write-back`, `cmyk-write-back`; retained planes exact for unedited, profile-free inverse for edited); Bitmap/Indexed and a 16/32-bit converted source still save the working mode; Multichannel/Duotone stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted and consumed on read; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth (archived `depth-preserve`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
@@ -188,15 +188,18 @@ within a category normalize to the first seen.
 Indexed/Bitmap/CMYK/Lab now read and normalize to RGB (G2/G3, archived
 `color-mode-read`), with a status-bar conversion notice in the app and a
 documented lossy-in-mode save for the modes that still write the working mode.
-**An 8-bit Lab document now saves back as Lab** (archived
-`2026-09-23-color-mode-write-back`): `read_psd` retains the pre-normalization Lab
-color planes (composite and every layer color channel, recursing into groups) and
-`write_psd` re-emits them exactly when unchanged — avoiding the up-to-19-LSB
-drift an 8-bit Lab re-encode would cause — or converts the working RGB with a
-profile-free `rgb_to_lab` inverse when edited (approximate, marked `ponytail:`).
-That change also fixed a pre-existing read bug: the color-mode normalization now
-recurses into layer groups. CMYK/Bitmap/Indexed (and a 16/32-bit Lab source) still
-save the working mode. 16/32-bit depth now
+**An 8-bit Lab or CMYK document now saves back in its source mode** (archived
+`2026-09-23-color-mode-write-back` and `2026-09-23-cmyk-write-back`): `read_psd`
+retains the pre-normalization Lab or CMYK color planes (composite and every layer
+color channel, recursing into groups) and `write_psd` re-emits them exactly when
+unchanged — avoiding the up-to-19-LSB drift an 8-bit Lab re-encode would cause —
+or converts the working RGB with a profile-free inverse when edited (Lab
+quantizes; the CMYK `rgb_to_cmyk` is an exact right-inverse). CMYK output adds a
+fourth color channel (the composite plane loop, the document-extra offset, and
+each layer's synthesized `(C,M,Y,K)` channels). The Lab change also fixed a
+pre-existing read bug: the color-mode normalization now recurses into layer
+groups. Bitmap and Indexed (and a 16/32-bit Lab/CMYK source) still save the
+working mode. 16/32-bit depth now
 reads and normalizes to 8-bit on load too (G4, archived `depth-read`):
 `source_depth` records the original, every channel (color, alpha/mask,
 spot/extra, and document extras) is narrowed, and the app shows a conversion
