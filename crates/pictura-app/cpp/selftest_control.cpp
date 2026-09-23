@@ -776,6 +776,114 @@ int pictura::runControlChecks(pictura::PicturaMainWindow& frame)
         frame.closeDocument(frame.documentCount() - 1, false);
     }
 
+    // Input synthesis: drive the real event path. A `pointer` drag in image
+    // space over the marquee tool commits a selection. The `key` half uses the
+    // Move tool's arrow-key nudge: `PicturaMainWindow::keyPressEvent` handles it
+    // (frame.cpp) and no `QShortcut`/`QAction` claims an arrow key, so it reaches
+    // the widget handler whether or not the window is active. (A tool-selection
+    // letter is itself a `QShortcut`, and a lone `F` is the first key of the
+    // `F,F` chord, so the shortcut machinery consumes both once the window is
+    // active.)
+    ST_BEGIN("mcp_control_pointer_key_input");
+    const int inputScratch = frame.documentCount();
+    response = request(visionSocket, 80, QStringLiteral("document"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("new")},
+                                   {QStringLiteral("width"), 32},
+                                   {QStringLiteral("height"), 32}},
+                       &parsed);
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()) {
+        return pictura::selfTest().fail(523, "input fixture document new failed");
+    }
+    request(visionSocket, 81, QStringLiteral("set_tool"),
+            QJsonObject{{QStringLiteral("tool"), QStringLiteral("marquee")}}, &parsed);
+
+    response = request(visionSocket, 82, QStringLiteral("pointer"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("drag")},
+                                   {QStringLiteral("space"), QStringLiteral("image")},
+                                   {QStringLiteral("x"), 4},
+                                   {QStringLiteral("y"), 4},
+                                   {QStringLiteral("x2"), 20},
+                                   {QStringLiteral("y2"), 20},
+                                   {QStringLiteral("steps"), 6}},
+                       &parsed);
+    const bool dragOk = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 83, QStringLiteral("status"), QJsonObject(), &parsed);
+    const QJsonObject inputStatus = response.value(QStringLiteral("result")).toObject();
+    const QJsonArray inputInfos = inputStatus.value(QStringLiteral("documents_info")).toArray();
+    const int inputActive = inputStatus.value(QStringLiteral("active")).toInt();
+    const int selectionPx =
+        (inputActive >= 0 && inputActive < inputInfos.size())
+            ? inputInfos.at(inputActive).toObject().value(QStringLiteral("selection_px")).toInt()
+            : 0;
+
+    response = request(visionSocket, 84, QStringLiteral("pointer"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("zoom")},
+                                   {QStringLiteral("space"), QStringLiteral("image")},
+                                   {QStringLiteral("x"), 1},
+                                   {QStringLiteral("y"), 1}},
+                       &parsed);
+    const bool badOp = errorCode(response) == QStringLiteral("invalid_param");
+    response = request(visionSocket, 85, QStringLiteral("pointer"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("drag")},
+                                   {QStringLiteral("space"), QStringLiteral("image")},
+                                   {QStringLiteral("x"), 1},
+                                   {QStringLiteral("y"), 1}},
+                       &parsed);
+    const bool dragNoEnd = errorCode(response) == QStringLiteral("invalid_param");
+    response = request(visionSocket, 86, QStringLiteral("key"),
+                       QJsonObject{{QStringLiteral("sequence"), QStringLiteral("Ctrl+NotAKey")}},
+                       &parsed);
+    const bool badKey = errorCode(response) == QStringLiteral("invalid_param");
+
+    // Nudge the active layer right, then left. `get_pixel` is the readback: a
+    // 1 px move of the full-canvas white layer exposes transparency at (0,0),
+    // and the reverse nudge restores it.
+    response = request(visionSocket, 87, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString nudgeBefore =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+    request(visionSocket, 88, QStringLiteral("set_tool"),
+            QJsonObject{{QStringLiteral("tool"), QStringLiteral("move")}}, &parsed);
+    response = request(visionSocket, 89, QStringLiteral("key"),
+                       QJsonObject{{QStringLiteral("sequence"), QStringLiteral("Right")}}, &parsed);
+    const bool keyOk = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 90, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString nudgeMoved =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+    response = request(visionSocket, 91, QStringLiteral("key"),
+                       QJsonObject{{QStringLiteral("sequence"), QStringLiteral("Left")}}, &parsed);
+    const bool restoreOk = parsed && response.value(QStringLiteral("ok")).toBool();
+    response = request(visionSocket, 92, QStringLiteral("get_pixel"),
+                       QJsonObject{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0}}, &parsed);
+    const QString nudgeRestored =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("argb")).toString();
+
+    while (frame.documentCount() > inputScratch) {
+        frame.closeDocument(frame.documentCount() - 1, false);
+    }
+    if (!dragOk || selectionPx <= 0 || !badOp || !dragNoEnd || !badKey || !keyOk || !restoreOk
+        || nudgeBefore.isEmpty() || nudgeMoved == nudgeBefore || nudgeRestored != nudgeBefore) {
+        return pictura::selfTest().fail(522, "pointer/key input synthesis");
+    }
+    ST_PASS("selection_px=%d nudge=%s->%s->%s", selectionPx, qPrintable(nudgeBefore),
+            qPrintable(nudgeMoved), qPrintable(nudgeRestored));
+
+    // With every document closed, an image-space pointer has no target.
+    response = request(visionSocket, 93, QStringLiteral("pointer"),
+                       QJsonObject{{QStringLiteral("op"), QStringLiteral("drag")},
+                                   {QStringLiteral("space"), QStringLiteral("image")},
+                                   {QStringLiteral("x"), 1},
+                                   {QStringLiteral("y"), 1},
+                                   {QStringLiteral("x2"), 2},
+                                   {QStringLiteral("y2"), 2}},
+                       &parsed);
+    ST_BEGIN("mcp_control_pointer_no_document");
+    if (!parsed || errorCode(response) != QStringLiteral("no_document")) {
+        return pictura::selfTest().fail(524, "image-space pointer with no document not reported");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
     // Best-effort: restore the tool the self-test started with.
     request(visionSocket, 56, QStringLiteral("set_tool"),
             QJsonObject{{QStringLiteral("tool"), QStringLiteral("move")}}, &parsed);
