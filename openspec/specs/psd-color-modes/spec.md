@@ -227,16 +227,18 @@ normalized document and SHALL instead retain that palette (and each Indexed
 index plane, the composite's and every layer's) in the source store, so an
 unchanged Indexed document can be written back.
 
-`write_psd` SHALL write a document whose `source_mode` is `Lab` or `Cmyk` (read
-from an 8-bit Lab or CMYK file) back with that header color mode, preferring the
-source color planes the read retained: it SHALL re-emit a plane — the composite's
-or every layer's color channels — byte-identically when the plane is unchanged,
-and SHALL otherwise convert it from the working RGB with a profile-free inverse
-of the read-side conversion for that mode. The Lab inverse quantizes; the CMYK
-inverse (`rgb_to_cmyk`) SHALL be an exact right-inverse of `cmyk_to_rgb` so an
-edited CMYK pixel reads back to the edited RGB. Each such conversion SHALL be
-documented as an approximation for an edited plane (the read is profile-free)
-and SHALL NOT claim Photoshop color-management parity.
+`write_psd` SHALL write a document whose `source_mode` is `Lab` or `Cmyk` back
+with that header color mode and, when the read retained native samples, at that
+source depth, preferring the source color planes the read retained: it SHALL
+re-emit a plane — the composite's or every layer's color channels —
+byte-identically at the source depth when the plane is unchanged, and SHALL
+otherwise convert it from the working RGB with a profile-free inverse of the
+read-side conversion for that mode (8-bit, widened to the source depth when it is
+16/32). The Lab inverse quantizes; the CMYK inverse (`rgb_to_cmyk`) SHALL be an
+exact right-inverse of `cmyk_to_rgb` so an edited CMYK pixel reads back to the
+edited RGB. Each such conversion SHALL be documented as an approximation for an
+edited plane (the read is profile-free) and SHALL NOT claim Photoshop
+color-management parity.
 
 `write_psd` SHALL write an Indexed document back with header color mode Indexed
 (one index channel and the retained palette) when its `source_mode` is `Indexed`
@@ -302,10 +304,10 @@ a document with no source mode it SHALL continue to write the working mode.
 - **WHEN** an 8-bit Lab document has a pixel layer nested in a group
 - **THEN** the nested layer's color channels are converted to RGB on read, like a top-level layer, and the save→read round trip keeps the same pixels
 
-#### Scenario: A 16-bit Lab or CMYK source keeps writing the working mode
+#### Scenario: A 16/32-bit Lab or CMYK source saves back in its source mode and depth
 
-- **WHEN** a 16/32-bit Lab or CMYK document is read and written
-- **THEN** the output's header color mode is RGB, because the mode write-back is scoped to an 8-bit source
+- **WHEN** a 16/32-bit Lab or CMYK document is read and written unchanged
+- **THEN** the output's header color mode is Lab or CMYK and its header depth is the source depth, and the retained native color planes are byte-identical to the input's
 
 #### Scenario: Source mode is recorded
 

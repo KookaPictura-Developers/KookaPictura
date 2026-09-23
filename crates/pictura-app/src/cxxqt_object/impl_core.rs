@@ -287,9 +287,9 @@ impl qobject::PictureView {
             ColorMode::Lab => "Lab",
             _ => return QString::default(),
         };
-        // Only an 8-bit Lab, CMYK, Indexed, or flat Bitmap source re-encodes as
-        // its source mode on save; a 16/32-bit source (no retained samples) and
-        // every other converted mode write RGB.
+        // An 8-bit Lab, CMYK, Indexed, or flat Bitmap source re-encodes as its
+        // source mode on save, and so does a 16/32-bit Lab or CMYK source whose
+        // depth was retained; every other converted mode writes RGB.
         // ponytail: the edit and the layer/extra-channel fallback are not
         // consulted, so an edited Indexed or a layered/edited Bitmap document
         // still claims its source mode though the writer then falls back to RGB;
@@ -297,7 +297,7 @@ impl qobject::PictureView {
         let preserves_source = matches!(
             mode,
             ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed | ColorMode::Bitmap
-        ) && doc.source_depth.is_none();
+        ) && (doc.source_depth.is_none() || doc.retains_source_depth());
         let saved = if preserves_source { name } else { "RGB" };
         QString::from(format!("Converted from {name}; saved as {saved}"))
     }
@@ -314,9 +314,9 @@ impl qobject::PictureView {
             BitDepth::ThirtyTwo => "32-bit",
             _ => return QString::default(),
         };
-        // A retained Grayscale/RGB read re-emits the source depth on save; a
-        // converted mode (CMYK/Lab) keeps the plain conversion notice because
-        // its save is 8-bit.
+        // A retained Grayscale/RGB/Lab/CMYK read re-emits the source depth on
+        // save; every other converted mode keeps the plain conversion notice
+        // because its save is 8-bit.
         if doc.retains_source_depth() {
             QString::from(format!(
                 "Converted from {name} to 8-bit for editing; saved at {name}"

@@ -72,12 +72,15 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         return Err(PsdError::Unsupported(format!("bit depth {depth}")));
     }
     // A 16/32-bit header is always recorded so the app can report the
-    // conversion; a Grayscale/RGB read retains native-depth planes, an 8-bit
-    // Lab, CMYK, or Indexed read retains its source planes, and a depth-1 Bitmap
-    // read retains the packed plane, so an unchanged plane re-emits exactly. A
-    // 16/32-bit Lab or CMYK read keeps no samples and still saves 8-bit.
+    // conversion; a Grayscale/RGB/Lab/CMYK read retains native-depth planes, an
+    // 8-bit Lab, CMYK, or Indexed read retains its source planes, and a depth-1
+    // Bitmap read retains the packed plane, so an unchanged plane re-emits
+    // exactly.
     let retain_planes = (matches!(depth, 16 | 32)
-        && matches!(mode, ColorMode::Grayscale | ColorMode::Rgb))
+        && matches!(
+            mode,
+            ColorMode::Grayscale | ColorMode::Rgb | ColorMode::Lab | ColorMode::Cmyk
+        ))
         || (depth == 8 && matches!(mode, ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed))
         || (depth == 1 && mode == ColorMode::Bitmap);
     let source_depth = depth_bits(depth);

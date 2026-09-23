@@ -679,6 +679,137 @@ print(int(psd.color_mode))
     );
 }
 
+/// A flat 1x1 PSD at `depth` bits with a raw-compressed composite of `planes`.
+fn flat_depth_psd(depth: u16, mode: u16, channels: u16, planes: &[&[u8]]) -> Vec<u8> {
+    let mut p = Vec::new();
+    p.extend_from_slice(b"8BPS");
+    p.extend_from_slice(&1u16.to_be_bytes());
+    p.extend_from_slice(&[0u8; 6]);
+    p.extend_from_slice(&channels.to_be_bytes());
+    p.extend_from_slice(&1u32.to_be_bytes()); // height
+    p.extend_from_slice(&1u32.to_be_bytes()); // width
+    p.extend_from_slice(&depth.to_be_bytes());
+    p.extend_from_slice(&mode.to_be_bytes());
+    p.extend_from_slice(&0u32.to_be_bytes()); // color mode data
+    p.extend_from_slice(&0u32.to_be_bytes()); // image resources
+    p.extend_from_slice(&0u32.to_be_bytes()); // layer/mask section
+    p.extend_from_slice(&0u16.to_be_bytes()); // raw compression
+    for plane in planes {
+        p.extend_from_slice(plane);
+    }
+    p
+}
+
+/// `"<color_mode> <depth>"` as reported by `psd-tools` for the PSD at `path`.
+fn psd_tools_mode_and_depth(path: &std::path::Path) -> String {
+    let script = r#"
+import sys
+from psd_tools import PSDImage
+psd = PSDImage.open(sys.argv[1])
+print(int(psd.color_mode), int(psd.depth))
+"#;
+    let result = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(path)
+        .output()
+        .expect("run python3");
+    assert!(
+        result.status.success(),
+        "psd-tools failed on {}:\n{}",
+        path.display(),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    String::from_utf8_lossy(&result.stdout).trim().to_string()
+}
+
+/// A 16-bit CMYK or Lab source retains its native samples, so the save keeps the
+/// source mode and depth; `psd-tools` opens the output as mode 4/9 at depth 16.
+#[test]
+fn sixteen_bit_cmyk_and_lab_save_back_in_source_mode_and_depth() {
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+    let cmyk = [[0x80u8, 0x00], [0x40, 0x00], [0x20, 0x00], [0xc8, 0x00]];
+    let lab = [[0x80u8, 0x00], [0x40, 0x00], [0x20, 0x00]];
+    for (mode, planes, expected) in [
+        (
+            4u16,
+            cmyk.iter().map(|p| &p[..]).collect::<Vec<_>>(),
+            "4 16",
+        ),
+        (9u16, lab.iter().map(|p| &p[..]).collect::<Vec<_>>(), "9 16"),
+    ] {
+        let doc = read_psd(&flat_depth_psd(16, mode, planes.len() as u16, &planes)).unwrap();
+        let out = write_psd(&doc).unwrap();
+        assert_eq!(
+            u16::from_be_bytes(out[22..24].try_into().unwrap()),
+            16,
+            "mode {mode}: output depth"
+        );
+        assert_eq!(
+            u16::from_be_bytes(out[24..26].try_into().unwrap()),
+            mode,
+            "mode {mode}: output header mode"
+        );
+
+        let dir = scratch_dir("color16-write-back");
+        let path = dir.join(format!("mode{mode}.psd"));
+        std::fs::write(&path, &out).unwrap();
+        let got = psd_tools_mode_and_depth(&path);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            got, expected,
+            "psd-tools reads mode {mode} at its source depth"
+        );
+    }
+}
+
+/// A 32-bit CMYK or Lab source retains its native samples, so the save keeps the
+/// source mode and depth; `psd-tools` opens the output as mode 4/9 at depth 32.
+#[test]
+fn thirtytwo_bit_cmyk_and_lab_save_back_in_source_mode_and_depth() {
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+    let sample = 0.5f32.to_be_bytes();
+    let cmyk = [sample; 4];
+    let lab = [sample; 3];
+    for (mode, planes, expected) in [
+        (
+            4u16,
+            cmyk.iter().map(|p| &p[..]).collect::<Vec<_>>(),
+            "4 32",
+        ),
+        (9u16, lab.iter().map(|p| &p[..]).collect::<Vec<_>>(), "9 32"),
+    ] {
+        let doc = read_psd(&flat_depth_psd(32, mode, planes.len() as u16, &planes)).unwrap();
+        let out = write_psd(&doc).unwrap();
+        assert_eq!(
+            u16::from_be_bytes(out[22..24].try_into().unwrap()),
+            32,
+            "mode {mode}: output depth"
+        );
+        assert_eq!(
+            u16::from_be_bytes(out[24..26].try_into().unwrap()),
+            mode,
+            "mode {mode}: output header mode"
+        );
+
+        let dir = scratch_dir("color32-write-back");
+        let path = dir.join(format!("mode{mode}.psd"));
+        std::fs::write(&path, &out).unwrap();
+        let got = psd_tools_mode_and_depth(&path);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            got, expected,
+            "psd-tools reads mode {mode} at its source depth"
+        );
+    }
+}
+
 fn scratch_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);

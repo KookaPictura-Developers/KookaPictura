@@ -17,7 +17,8 @@ class PicturaMainWindow;
 // CMYK conversion notice and reads as an RGB document; lab_mode_open (518)
 // writes a minimal flat 8-bit Lab PSD and opens it, checking the view reports
 // the Lab-preserving save notice; lab16_mode_open (519) writes a 16-bit Lab PSD
-// and checks the view reports an RGB save notice instead; depth_open (298) writes
+// and checks the view reports a Lab-preserving save notice at the source depth;
+// depth_open (298) writes
 // a minimal flat depth-16 RGB PSD and opens it, checking the 16-bit conversion
 // notice and the `v >> 8` narrowing. color_settings_policy (461) checks the
 // incoming-profile policy default/round-trip and the Color Settings dialog

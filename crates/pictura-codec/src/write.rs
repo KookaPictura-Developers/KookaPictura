@@ -91,8 +91,9 @@ fn record_name(layer: &Layer) -> &str {
 /// The Lab bytes to emit for a Lab output's composite color planes: the
 /// retained Lab planes exactly when every plane's forward RGB conversion still
 /// matches the working composite, else the working RGB re-encoded with the
-/// approximate inverse. The document is never mutated. A retained plane comes
-/// from the 8-bit Lab read store; for an RGB/Grayscale document there is none.
+/// approximate inverse. The document is never mutated. The retained plane is
+/// the 8-bit Lab read store at depth 8, or the native store narrowed to 8-bit
+/// at 16/32; for an RGB/Grayscale document there is none.
 ///
 /// ponytail: the three Lab planes are re-encoded as a unit, so editing one
 /// channel also re-encodes its unchanged siblings (Lab `a`/`b` depend on all of
@@ -100,8 +101,8 @@ fn record_name(layer: &Layer) -> &str {
 fn lab_composite_planes(doc: &Document, depth: u16, plane: usize) -> Vec<u8> {
     let color_channels = doc.composite.channels as usize;
     let current = &doc.composite.data[..color_channels * plane];
-    let retained: Option<Vec<&[u8]>> = (0..color_channels)
-        .map(|c| composite_retained(doc, depth, c))
+    let retained: Option<Vec<Vec<u8>>> = (0..color_channels)
+        .map(|c| crate::color_mode::composite_retained_8(doc, depth, c))
         .collect();
     if let Some(retained) = retained {
         let retained: Vec<u8> = retained.concat();
@@ -144,9 +145,9 @@ fn lab_layer_color_planes(layer: &Layer, depth: u16) -> Vec<Option<Vec<u8>>> {
     for &i in &positions {
         current.extend_from_slice(&layer.channels[i].data);
     }
-    let retained: Option<Vec<&[u8]>> = positions
+    let retained: Option<Vec<Vec<u8>>> = positions
         .iter()
-        .map(|&i| layer_retained(layer, depth, layer.channels[i].id))
+        .map(|&i| crate::color_mode::layer_retained_8(layer, depth, layer.channels[i].id))
         .collect();
     let lab = match retained.map(|planes| planes.concat()) {
         Some(retained)
@@ -168,8 +169,9 @@ fn lab_layer_color_planes(layer: &Layer, depth: u16) -> Vec<Option<Vec<u8>>> {
 /// retained source planes exactly when their forward RGB conversion still matches
 /// the working composite, else the working RGB re-encoded with the exact
 /// [`crate::color_mode::rgb_to_cmyk`] right-inverse. The document is never
-/// mutated. A retained plane comes from the 8-bit CMYK read store; for an
-/// RGB/Grayscale document there is none.
+/// mutated. The retained plane is the 8-bit CMYK read store at depth 8, or the
+/// native store narrowed to 8-bit at 16/32; for an RGB/Grayscale document there
+/// is none.
 ///
 /// ponytail: the four planes are re-encoded as a unit, so an edited channel also
 /// re-encodes its unchanged siblings. Per-channel change tracking would be the
@@ -177,7 +179,9 @@ fn lab_layer_color_planes(layer: &Layer, depth: u16) -> Vec<Option<Vec<u8>>> {
 fn cmyk_composite_planes(doc: &Document, depth: u16, plane: usize) -> Vec<u8> {
     let color_channels = doc.composite.channels as usize;
     let current = &doc.composite.data[..color_channels * plane];
-    let retained: Option<Vec<&[u8]>> = (0..4).map(|c| composite_retained(doc, depth, c)).collect();
+    let retained: Option<Vec<Vec<u8>>> = (0..4)
+        .map(|c| crate::color_mode::composite_retained_8(doc, depth, c))
+        .collect();
     if let Some(retained) = retained {
         let retained: Vec<u8> = retained.concat();
         if retained.len() == plane * 4
@@ -217,7 +221,7 @@ fn cmyk_layer_color_planes(layer: &Layer, depth: u16) -> Vec<Vec<u8>> {
         current.extend_from_slice(&layer.channels[i].data);
     }
     let retained: Option<Vec<Vec<u8>>> = (0..4)
-        .map(|c| layer_retained(layer, depth, c).map(<[u8]>::to_vec))
+        .map(|c| crate::color_mode::layer_retained_8(layer, depth, c))
         .collect();
     let flat = match retained {
         Some(retained) => {
@@ -976,20 +980,20 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     let bitmap_mode = crate::write_bitmap::writes_bitmap(doc);
     let depth = if bitmap_mode { 1 } else { output_depth(doc)? };
     let plane = doc.width as usize * doc.height as usize;
-    // A document read from an 8-bit Lab file keeps its three color channels but
-    // re-encodes them from the working RGB, so the output header is Lab. A
-    // 16/32-bit Lab source retains nothing and keeps writing the working mode.
-    let lab_mode = depth == 8
-        && doc.source_depth.is_none()
-        && doc.source_mode == Some(ColorMode::Lab)
-        && doc.composite.channels == 3;
-    // An 8-bit CMYK source writes header mode CMYK with four color channels: the
-    // working RGB composite re-encodes to C/M/Y/K, and a 16/32-bit CMYK source
-    // retains nothing and keeps writing the working mode.
-    let cmyk_mode = depth == 8
-        && doc.source_depth.is_none()
-        && doc.source_mode == Some(ColorMode::Cmyk)
-        && doc.composite.channels == 3;
+    // A Lab source writes header mode Lab with three color channels: an 8-bit
+    // read re-encodes the working RGB, and a 16/32-bit read re-emits the
+    // retained native planes (see `lab_composite_planes`). At depth 8 a
+    // construct with no recorded depth still fires; a 16/32 doc does because it
+    // retained a native store, hence `depth != 8`.
+    let lab_mode = doc.source_mode == Some(ColorMode::Lab)
+        && doc.composite.channels == 3
+        && (depth != 8 || doc.source_depth.is_none());
+    // A CMYK source writes header mode CMYK with four color channels: an 8-bit
+    // read re-encodes the working RGB, and a 16/32-bit read re-emits the
+    // retained native planes.
+    let cmyk_mode = doc.source_mode == Some(ColorMode::Cmyk)
+        && doc.composite.channels == 3
+        && (depth != 8 || doc.source_depth.is_none());
     // An 8-bit Indexed source writes header mode Indexed with one index channel
     // and the retained palette, but only while the composite and every pixel
     // layer still expand to the working RGB; an edit falls back to RGB.

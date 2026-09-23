@@ -906,9 +906,9 @@ fn grouped_cmyk_layers_convert_on_read() {
 }
 
 #[test]
-fn sixteen_bit_lab_saves_as_rgb() {
-    // A 16-bit Lab source retains no planes and keeps writing the working RGB;
-    // Lab write-back is scoped to an 8-bit source.
+fn sixteen_bit_lab_preserves_source_mode_and_depth() {
+    // A 16-bit Lab source retains its native planes, so the save keeps Lab and
+    // the source depth rather than writing 8-bit RGB.
     let p = flat_psd(
         16,
         9,
@@ -922,20 +922,20 @@ fn sixteen_bit_lab_saves_as_rgb() {
     assert_eq!(doc.source_mode, Some(ColorMode::Lab));
     assert_eq!(doc.source_depth, Some(BitDepth::Sixteen));
     assert!(
-        doc.source_planes.is_none(),
-        "a 16-bit Lab read retains nothing"
+        doc.retains_source_depth(),
+        "a 16-bit Lab read retains samples"
     );
 
     let out = write_psd(&doc).unwrap();
     assert_eq!(
         u16::from_be_bytes(out[22..24].try_into().unwrap()),
-        8,
-        "output depth stays 8"
+        16,
+        "output depth is the source depth"
     );
     assert_eq!(
         u16::from_be_bytes(out[24..26].try_into().unwrap()),
-        3,
-        "16-bit Lab saves as RGB, not Lab"
+        9,
+        "16-bit Lab saves as Lab, not RGB"
     );
 }
 
