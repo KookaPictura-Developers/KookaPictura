@@ -224,6 +224,48 @@ fn depth16_cmyk_narrows_then_converts_and_saves_8bit() {
         8,
         "a 16-bit converted mode saves 8-bit"
     );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "a 16-bit CMYK source saves as RGB, not CMYK"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.source_depth, None);
+    assert_eq!(back.composite, doc.composite);
+}
+
+#[test]
+fn depth32_cmyk_narrows_then_converts_and_saves_rgb() {
+    // A 32-bit CMYK source retains no samples like the 16-bit case, so its save
+    // must write the working RGB, not synthesize a four-plane CMYK file.
+    let plane = |v: f32| be32(&[v, 0.0, 1.0]);
+    let p = flat_psd(
+        32,
+        4,
+        4,
+        3,
+        1,
+        &[&plane(0.5), &plane(0.25), &plane(0.125), &plane(0.75)],
+    );
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.mode, ColorMode::Rgb);
+    assert_eq!(doc.source_depth, Some(BitDepth::ThirtyTwo));
+    assert!(
+        !doc.retains_source_depth(),
+        "a converted mode retains no native samples"
+    );
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        8,
+        "a 32-bit converted mode saves 8-bit"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "a 32-bit CMYK source saves as RGB, not CMYK"
+    );
     let back = read_psd(&out).unwrap();
     assert_eq!(back.source_depth, None);
     assert_eq!(back.composite, doc.composite);

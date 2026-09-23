@@ -427,6 +427,187 @@ fn lab_document_writes_back_as_lab() {
 }
 
 #[test]
+fn cmyk_document_writes_back_as_cmyk() {
+    // An unedited flat CMYK composite is retained on read and re-emitted
+    // byte-identically on write, so re-reading reproduces the working RGB.
+    let source_cmyk = vec![128, 0, 255, 64, 0, 255, 32, 0, 255, 200, 0, 255];
+    let p = flat_psd(
+        8,
+        4,
+        4,
+        3,
+        1,
+        &[&[128, 0, 255], &[64, 0, 255], &[32, 0, 255], &[200, 0, 255]],
+    );
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.mode, ColorMode::Rgb);
+    assert_eq!(doc.source_mode, Some(ColorMode::Cmyk));
+    assert!(doc.source_planes.is_some());
+    assert!(!doc.retains_source_depth());
+    assert_eq!(
+        doc.source_planes
+            .as_ref()
+            .expect("CMYK planes retained")
+            .data,
+        source_cmyk
+    );
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        4,
+        "channels become four"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        8,
+        "output depth stays 8"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        4,
+        "output header color mode is CMYK"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb);
+    assert_eq!(back.source_mode, Some(ColorMode::Cmyk));
+    assert_eq!(
+        back.source_planes
+            .as_ref()
+            .expect("re-read CMYK planes")
+            .data,
+        source_cmyk,
+        "the written CMYK planes equal the source exactly"
+    );
+    assert_eq!(
+        back.composite, doc.composite,
+        "re-reading the retained planes reproduces the working RGB exactly"
+    );
+}
+
+#[test]
+fn cmyk_document_extra_channel_round_trips_at_offset_four() {
+    // A four-plane CMYK composite plus one document extra channel: the writer
+    // must count the header as 4 color channels plus the extra, and must not
+    // mistake a color plane for the extra. The retained store lays the extra
+    // after the four color planes, so a wrong count shifts the K plane into the
+    // extra slot on re-read.
+    let c = [128u8, 0, 255];
+    let m = [64, 0, 255];
+    let y = [32, 0, 255];
+    let k = [200, 0, 255];
+    let extra = [11u8, 22, 33];
+    let p = flat_psd(8, 4, 5, 3, 1, &[&c, &m, &y, &k, &extra]);
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.mode, ColorMode::Rgb);
+    assert_eq!(doc.source_mode, Some(ColorMode::Cmyk));
+    assert_eq!(doc.channels.len(), 1, "one document extra channel");
+    assert_eq!(doc.channels[0].data, extra);
+    let source_planes = doc.source_planes.as_ref().expect("retained").data.clone();
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        5,
+        "header channel count is four color planes plus the extra"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        4,
+        "header mode is CMYK"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.channels.len(), 1, "one extra channel after the save");
+    assert_eq!(
+        back.channels[0].data, extra,
+        "the extra channel round-trips unchanged"
+    );
+    assert_eq!(
+        back.source_planes.as_ref().unwrap().data,
+        source_planes,
+        "the four color planes are re-emitted, not confused with the extra"
+    );
+    assert_eq!(back.composite, doc.composite);
+}
+
+#[test]
+fn cmyk_layer_color_channels_write_back_as_cmyk() {
+    let p = layered_psd(
+        4,
+        4,
+        &[&[128], &[64], &[32], &[200]],
+        &[
+            (0, &[128]),
+            (1, &[64]),
+            (2, &[32]),
+            (3, &[200]),
+            (-1, &[200]),
+        ],
+    );
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.source_mode, Some(ColorMode::Cmyk));
+    let retained = doc.layers[0]
+        .source_channels
+        .as_ref()
+        .expect("CMYK layer planes retained");
+    assert_eq!(retained.depth, BitDepth::Eight);
+    assert_eq!(
+        retained.planes,
+        vec![(0, vec![128]), (1, vec![64]), (2, vec![32]), (3, vec![200])]
+    );
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        4,
+        "output header color mode is CMYK"
+    );
+
+    let back = read_psd(&out).unwrap();
+    let layer = &back.layers[0];
+    assert_eq!(
+        layer.channels.iter().map(|c| c.id).collect::<Vec<_>>(),
+        vec![0, 1, 2, -1],
+        "the layer carries four CMYK channels plus transparency"
+    );
+    // The layer's CMYK planes were re-emitted exactly, so its color channels
+    // round-trip to the same RGB bytes.
+    for c in 0..3 {
+        assert_eq!(
+            layer.channels[c].data, doc.layers[0].channels[c].data,
+            "layer color channel {c} is exact"
+        );
+    }
+    assert_eq!(layer.channels[3].data, vec![200], "transparency untouched");
+}
+
+#[test]
+fn edited_cmyk_plane_uses_the_exact_inverse() {
+    // An edit replaces the retained plane, so the writer re-encodes with
+    // `rgb_to_cmyk`; K = 255 makes it an exact right-inverse, so the edited RGB
+    // reads back byte-for-byte (unlike the quantizing Lab inverse).
+    let p = flat_psd(8, 4, 4, 1, 1, &[&[128], &[64], &[32], &[200]]);
+    let mut doc = read_psd(&p).unwrap();
+    assert_eq!(doc.composite.data, vec![100, 50, 25]);
+    let edited = [7u8, 200, 123];
+    doc.composite.data[..3].copy_from_slice(&edited);
+
+    let out = write_psd(&doc).unwrap();
+    let back = read_psd(&out).unwrap();
+    assert_eq!(
+        back.source_planes.as_ref().unwrap().data,
+        crate::color_mode::rgb_to_cmyk(&edited),
+        "an edited plane is re-encoded with rgb_to_cmyk"
+    );
+    assert_eq!(
+        back.composite.data, edited,
+        "the CMYK inverse is exact, not approximate"
+    );
+}
+
+#[test]
 fn lab_layer_color_channels_write_back_as_lab() {
     let p = layered_psd(
         9,

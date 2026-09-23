@@ -87,6 +87,21 @@ pub(crate) fn cmyk_to_rgb(cmyk: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The exact profile-free right-inverse of [`cmyk_to_rgb`]: the working RGB
+/// planar planes become `[R, G, B, 255]` (a full black plate, i.e. no black), so
+/// `cmyk_to_rgb(rgb_to_cmyk(rgb)) == rgb` byte for byte (`v * 255 / 255 == v`).
+/// This is stronger than the Lab inverse, which quantizes the 8-bit Lab bytes.
+pub(crate) fn rgb_to_cmyk(rgb: &[u8]) -> Vec<u8> {
+    let plane = rgb.len() / 3;
+    let (r, rest) = rgb.split_at(plane);
+    let (g, b) = rest.split_at(plane);
+    let mut out = vec![255u8; plane * 4];
+    out[..plane].copy_from_slice(r);
+    out[plane..2 * plane].copy_from_slice(g);
+    out[2 * plane..3 * plane].copy_from_slice(b);
+    out
+}
+
 /// ponytail: approximation of a color-managed Lab->sRGB transform. This is the
 /// standard CIELAB(D50) -> sRGB(D65) conversion (D50 white through the Bradford
 /// D50->D65 matrix) and matches lcms2's exact, unoptimized transform within 1
@@ -220,6 +235,31 @@ pub(crate) fn retain_lab_layer_planes(layers: &mut [Layer], depth: u16) {
     }
 }
 
+/// Retain a CMYK document's decoded 8-bit CMYK layer color channels before
+/// `normalize` converts them to RGB, so `write_psd` re-emits an unedited layer
+/// exactly. Only color channels (ids `0..4`) are stored; masks and alpha are not
+/// CMYK-encoded. No-op at any depth other than 8.
+pub(crate) fn retain_cmyk_layer_planes(layers: &mut [Layer], depth: u16) {
+    if depth != 8 {
+        return;
+    }
+    for layer in layers {
+        if layer.source_channels.is_none() {
+            let planes: Vec<(i16, Vec<u8>)> = layer
+                .channels
+                .iter()
+                .filter(|c| c.id >= 0 && c.id < 4)
+                .map(|c| (c.id, c.data.clone()))
+                .collect();
+            if planes.len() == 4 {
+                layer.source_channels =
+                    Some(SourceChannels::new(BitDepth::Eight, layer.rect, planes));
+            }
+        }
+        retain_cmyk_layer_planes(&mut layer.children, depth);
+    }
+}
+
 /// Replace a layer's color channels (`0..color_channels`) with converted RGB
 /// planes, then recurse into the layer's children so a pixel layer nested in a
 /// group is converted too (not just a top-level one). Non-color channels are
@@ -329,6 +369,30 @@ mod tests {
         assert_eq!(&rgb[2..3], &[25]);
         assert_eq!(cmyk_to_rgb(&[0, 0, 0, 0]), vec![0, 0, 0]);
         assert_eq!(cmyk_to_rgb(&[255, 255, 255, 255]), vec![255, 255, 255]);
+    }
+
+    #[test]
+    fn rgb_to_cmyk_is_the_exact_right_inverse_of_cmyk_to_rgb() {
+        // K = 255 (no black) makes the product an identity, so this is exact for
+        // every byte value, not a 1-LSB approximation.
+        for r in 0..=255u8 {
+            for g in [0u8, 1, 127, 128, 254, 255] {
+                for b in [0u8, 1, 127, 128, 254, 255] {
+                    let rgb = [r, g, b];
+                    let cmyk = rgb_to_cmyk(&rgb);
+                    assert_eq!(cmyk, [r, g, b, 255], "rgb {r},{g},{b}");
+                    assert_eq!(cmyk_to_rgb(&cmyk), rgb, "round trip {r},{g},{b}");
+                }
+            }
+        }
+        // A multi-pixel planar layout: three pixels, plane-major.
+        let rgb = [10, 20, 30, 40, 50, 60, 70, 80, 90];
+        let cmyk = rgb_to_cmyk(&rgb);
+        assert_eq!(cmyk[0..3], [10, 20, 30]);
+        assert_eq!(cmyk[3..6], [40, 50, 60]);
+        assert_eq!(cmyk[6..9], [70, 80, 90]);
+        assert_eq!(cmyk[9..12], [255, 255, 255]);
+        assert_eq!(cmyk_to_rgb(&cmyk), rgb);
     }
 
     #[test]
