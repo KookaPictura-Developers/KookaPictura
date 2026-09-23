@@ -77,7 +77,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     // exactly. A 16/32-bit Lab or CMYK read keeps no samples and still saves 8-bit.
     let retain_planes = (matches!(depth, 16 | 32)
         && matches!(mode, ColorMode::Grayscale | ColorMode::Rgb))
-        || (depth == 8 && matches!(mode, ColorMode::Lab | ColorMode::Cmyk));
+        || (depth == 8 && matches!(mode, ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed));
     let source_depth = depth_bits(depth);
 
     // Color mode data section: 4-byte length + opaque bytes, kept verbatim.
@@ -117,6 +117,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             source_mode: None,
             source_depth,
             source_planes: None,
+            source_palette: None,
             source_icc: None,
             document_icc: None,
             composite: PixelBuffer::new(width, height, mode.color_channels()),
@@ -194,6 +195,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         source_mode: None,
         source_depth,
         source_planes,
+        source_palette: None,
         source_icc: None,
         document_icc: None,
         composite,
@@ -268,6 +270,9 @@ fn normalize(
     if header_mode == ColorMode::Cmyk {
         crate::color_mode::retain_cmyk_layer_planes(&mut doc.layers, depth);
     }
+    if header_mode == ColorMode::Indexed {
+        crate::color_mode::retain_indexed_layer_planes(&mut doc.layers, depth);
+    }
     let palette = palette.unwrap_or(&EMPTY_PALETTE);
     doc.composite = convert_pixels(doc.composite, header_mode, depth, Some(palette));
     for layer in &mut doc.layers {
@@ -277,6 +282,7 @@ fn normalize(
     doc.depth = BitDepth::Eight;
     doc.source_mode = Some(header_mode);
     if header_mode == ColorMode::Indexed {
+        doc.source_palette = Some(*palette);
         doc.color_mode_data.clear();
     }
     doc

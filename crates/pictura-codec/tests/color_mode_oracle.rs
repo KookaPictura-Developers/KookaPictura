@@ -199,73 +199,154 @@ fn bitmap_fixture_matches_psd_tools() {
     ours_matching("bitmap.psd", 0, psd_tools_composite_planes);
 }
 
-/// A non-Lab, non-CMYK normalized document still saves as RGB: re-reading the
-/// written file yields the same working mode and pixels with no source mode, and
-/// `psd-tools` opens it as an RGB document. (Lab and CMYK save back as
-/// themselves; see the tests below.)
+/// A Bitmap document still saves as RGB: re-reading the written file yields the
+/// same working mode and pixels with no source mode, and `psd-tools` opens it as
+/// an RGB document. (An Indexed document saves back as Indexed; see below.)
 #[test]
-fn normalized_documents_round_trip_as_rgb() {
-    for (name, source) in [
-        ("indexed.psd", ColorMode::Indexed),
-        ("bitmap.psd", ColorMode::Bitmap),
-    ] {
-        let doc = load(name);
-        assert_eq!(doc.mode, ColorMode::Rgb, "{name}: working mode");
-        assert_eq!(
-            doc.source_mode,
-            Some(source),
-            "{name}: recorded source mode"
-        );
-        assert_eq!(doc.depth, BitDepth::Eight, "{name}: normalized depth");
-        if source == ColorMode::Indexed {
-            assert!(doc.color_mode_data.is_empty(), "{name}: palette consumed");
-        }
+fn bitmap_document_round_trips_as_rgb() {
+    let name = "bitmap.psd";
+    let doc = load(name);
+    assert_eq!(doc.mode, ColorMode::Rgb, "{name}: working mode");
+    assert_eq!(
+        doc.source_mode,
+        Some(ColorMode::Bitmap),
+        "{name}: recorded source mode"
+    );
+    assert_eq!(doc.depth, BitDepth::Eight, "{name}: normalized depth");
 
-        let out = write_psd(&doc).unwrap();
-        assert_eq!(
-            u16::from_be_bytes(out[24..26].try_into().unwrap()),
-            3,
-            "{name}: output header color mode is RGB"
-        );
-        let back = read_psd(&out).unwrap();
-        assert_eq!(back.mode, ColorMode::Rgb, "{name}: re-read mode");
-        assert_eq!(back.source_mode, None, "{name}: no source mode after save");
-        assert_eq!(
-            back.composite, doc.composite,
-            "{name}: normalized pixels are stable across a save"
-        );
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "{name}: output header color mode is RGB"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb, "{name}: re-read mode");
+    assert_eq!(back.source_mode, None, "{name}: no source mode after save");
+    assert_eq!(
+        back.composite, doc.composite,
+        "{name}: normalized pixels are stable across a save"
+    );
 
-        if !psd_tools_available() {
-            eprintln!("skipping: python3 + psd-tools not available");
-            continue;
-        }
-        let dir = scratch_dir("color-mode-roundtrip");
-        let path = dir.join(name);
-        std::fs::write(&path, &out).unwrap();
-        let script = r#"
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+    let dir = scratch_dir("color-mode-roundtrip");
+    let path = dir.join(name);
+    std::fs::write(&path, &out).unwrap();
+    let script = r#"
 import sys
 from psd_tools import PSDImage
 psd = PSDImage.open(sys.argv[1])
 print(int(psd.color_mode))
 "#;
-        let result = Command::new("python3")
-            .arg("-c")
-            .arg(script)
-            .arg(&path)
-            .output()
-            .expect("run python3");
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(
-            result.status.success(),
-            "psd-tools failed on the written {name}:\n{}",
-            String::from_utf8_lossy(&result.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&result.stdout).trim(),
-            "3",
-            "{name}: psd-tools opens the output as RGB"
-        );
+    let result = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        result.status.success(),
+        "psd-tools failed on the written {name}:\n{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        "3",
+        "{name}: psd-tools opens the output as RGB"
+    );
+}
+
+/// An unchanged Indexed document saves back as Indexed: header mode 2 with one
+/// index channel, the retained palette and index plane re-emitted byte-identically,
+/// so a re-read reproduces the working RGB exactly. `psd-tools` opens it as mode 2.
+#[test]
+fn indexed_document_saves_as_indexed() {
+    let doc = load("indexed.psd");
+    assert_eq!(doc.mode, ColorMode::Rgb, "working mode");
+    assert_eq!(
+        doc.source_mode,
+        Some(ColorMode::Indexed),
+        "recorded source mode"
+    );
+    assert!(doc.color_mode_data.is_empty(), "palette consumed");
+    let palette = doc.source_palette.expect("palette retained");
+    let plane = doc.composite.pixel_count();
+    let retained = doc.source_planes.clone().expect("index plane retained");
+    assert_eq!(retained.depth, BitDepth::Eight, "8-bit index store");
+    assert!(
+        !doc.retains_source_depth(),
+        "the index store is not a native-depth store"
+    );
+    let source_index = retained.data[..plane].to_vec();
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        1,
+        "output has one color channel"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        2,
+        "output header color mode is Indexed"
+    );
+    assert_eq!(
+        &out[30..30 + 768],
+        &palette[..],
+        "palette is byte-identical"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb, "re-read working mode");
+    assert_eq!(
+        back.source_mode,
+        Some(ColorMode::Indexed),
+        "re-read source mode"
+    );
+    assert_eq!(
+        back.source_planes.as_ref().unwrap().data[..plane],
+        source_index[..],
+        "the written index plane is byte-identical"
+    );
+    assert_eq!(
+        back.composite, doc.composite,
+        "re-reading the retained palette reproduces the working RGB exactly"
+    );
+
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
     }
+    let dir = scratch_dir("indexed-write-back");
+    let path = dir.join("indexed.psd");
+    std::fs::write(&path, &out).unwrap();
+    let script = r#"
+import sys
+from psd_tools import PSDImage
+psd = PSDImage.open(sys.argv[1])
+print(int(psd.color_mode))
+"#;
+    let result = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        result.status.success(),
+        "psd-tools failed on the written indexed.psd:\n{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        "2",
+        "psd-tools opens the output as Indexed"
+    );
 }
 
 /// A Lab document saves back as Lab: the output header color mode is Lab, the

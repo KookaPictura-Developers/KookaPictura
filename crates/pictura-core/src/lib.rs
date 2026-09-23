@@ -132,6 +132,12 @@ pub struct Document {
     /// `None` for an 8-bit RGB/Grayscale read, a constructed document, and a
     /// 16/32-bit converted mode.
     pub source_planes: Option<SourcePlanes>,
+    /// The 768-byte Indexed palette (256 red, then green, then blue) read from an
+    /// Indexed file, retained so an unchanged document can re-emit it. `None` for
+    /// every other mode, an RGB/Grayscale read, and a constructed document.
+    /// Deliberately separate from `color_mode_data`, which stays cleared on an
+    /// Indexed read (normalization consumes the palette).
+    pub source_palette: Option<[u8; 768]>,
     /// The embedded ICC profile bytes of the file this document was read from,
     /// when it was converted to the sRGB working space on read. `None` for a
     /// file with no decodable non-sRGB profile and for a constructed document.
@@ -187,6 +193,7 @@ impl Document {
             source_mode: None,
             source_depth: None,
             source_planes: None,
+            source_palette: None,
             source_icc: None,
             document_icc: None,
             composite: PixelBuffer::new(width, height, channels),

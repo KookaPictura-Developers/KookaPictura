@@ -36,6 +36,7 @@ mod smart_object;
 mod smart_writer;
 mod vector_mask;
 mod write;
+mod write_indexed;
 mod xmp;
 
 #[cfg(test)]
