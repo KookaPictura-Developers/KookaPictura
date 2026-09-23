@@ -34,7 +34,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB; Multichannel/Duotone and the lossy-in-mode save stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted and consumed on read; the Duotone spec stays preserve-only |
-| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit (`>>8` / `clamp(trunc(f*256))`), all channels narrowed; a true `u16`/`f32` sample model preserving depth stays open |
+| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth (archived `depth-preserve`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
 | G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
@@ -190,13 +190,21 @@ Indexed/Bitmap/CMYK/Lab now read and normalize to RGB (G2/G3, archived
 working mode) and a status-bar conversion notice in the app. 16/32-bit depth now
 reads and normalizes to 8-bit on load too (G4, archived `depth-read`):
 `source_depth` records the original, every channel (color, alpha/mask,
-spot/extra, and document extras) is narrowed, `write_psd` writes 8-bit
-(lossy-in-depth), and the app shows a conversion notice. Multichannel/Duotone
-(no natural RGB mapping / needs the spot-ink spec) remains open, along with
-write-side re-encoding to the source mode. The remaining depth work is a true
-`u16`/`f32` sample model in `PixelBuffer` that preserves depth (no narrowing on
-load) and a 32-bit HDR tone map (the shipped path is display-referred, clipping
-at 1.0).
+spot/extra, and document extras) is narrowed, and the app shows a conversion
+notice. **The source depth is now preserved on save** (archived
+`2026-09-23-depth-preserve`): for a 16/32-bit Grayscale/RGB document `read_psd`
+retains the decoded source-depth samples of the composite, extra, and layer
+channels, and `write_psd` writes the header at the source depth — re-encoding an
+unchanged plane exactly at the recorded compression, and widening an edited (or
+moved) plane's 8-bit bytes (`v*257` at 16, scaled to `[0,1]` at 32). All four
+compression kinds are depth-aware; the retained copy is dropped on a
+scale/rotate/flip. A mode the read path converts (CMYK/Lab) still saves 8-bit,
+and the app notice no longer claims an 8-bit save. The remaining depth work is a
+true `u16`/`f32` sample model in `PixelBuffer` that preserves depth through
+*editing* (the model is still 8-bit) and a 32-bit HDR tone map (the shipped path
+is display-referred, clipping at 1.0); Multichannel/Duotone (no natural RGB
+mapping / needs the spot-ink spec) and write-side color-mode re-encoding remain
+open.
 
 **P5 — PSB write / large documents.** *(shipped)* (G9)
 `write_psd` emits a version-2 container when the source document was a PSB

@@ -42,7 +42,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
-    and `app-control-server` changes;
+    `app-control-server`, and `depth-preserve` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -652,6 +652,26 @@ Snapshot for resuming after a context break. Update after each milestone.
   requests rejected. Proven by the `mcp_control` self-test block (codes 463+).
   Ceilings: vision/input/`selection`/`filter`/`layer_op` and the `pictura-mcp`
   stdio frontend are deferred (P2–P6 of the plan).
+- **Bit-depth preservation** (roadmap P4/G4, archived `2026-09-23-depth-preserve`):
+  a 16/32-bit **Grayscale or RGB** document no longer downgrades to 8-bit on
+  save. `read_psd` retains the decoded source-depth samples of the composite
+  color planes, document extra channels, and every layer channel (stored on
+  `Document.source_planes` / `Layer.source_channels`, keyed by channel id in
+  canonical order); the 8-bit engine model is unchanged. `write_psd` writes the
+  header at the source depth and, per plane, re-encodes the retained samples at
+  the recorded compression when the plane is unchanged (its narrowing still
+  equals its 8-bit bytes) and widens the 8-bit plane (`v*257` at 16, scaled to
+  `[0,1]` at 32) when it changed. Compression is depth-aware: PackBits stays
+  byte-wise with a native row stride, ZIP-with-prediction uses the depth-specific
+  forward predictor (inverse of the read-side undo). An 8-bit or constructed
+  document is byte-identical; a mode the read path converts (CMYK/Lab) still
+  saves 8-bit (the app notice reports that case); the retained copy is dropped on
+  a scale/rotate/flip (`// ponytail:` an unmodeled channel cannot be resampled)
+  and kept on a pure translation. Proven by the `psd-tools` write oracle
+  (composite + layer channels, all four compressions, both depths, and a grouped
+  document whole-`Document`-equal). Ceilings: editing stays 8-bit (a true
+  `u16`/`f32` sample model), no HDR tone map, retained samples cost 2×/4× while
+  open.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
