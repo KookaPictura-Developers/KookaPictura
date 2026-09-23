@@ -444,6 +444,12 @@ QJsonObject ControlServer::dispatch(const QString& method, const QJsonObject& pa
     if (method == QStringLiteral("set_gpu_compute")) {
         return methodSetGpuCompute(params);
     }
+    if (method == QStringLiteral("pointer")) {
+        return methodPointer(params);
+    }
+    if (method == QStringLiteral("key")) {
+        return methodKey(params);
+    }
     return error(QStringLiteral("unknown_method"),
                  QStringLiteral("unknown method: %1").arg(method));
 }

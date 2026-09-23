@@ -76,6 +76,8 @@ private:
     QJsonObject methodAdjustment(const QJsonObject& params);
     QJsonObject methodLayerOp(const QJsonObject& params);
     QJsonObject methodSetGpuCompute(const QJsonObject& params);
+    QJsonObject methodPointer(const QJsonObject& params);
+    QJsonObject methodKey(const QJsonObject& params);
 
     void handleLine(QLocalSocket* socket, const QByteArray& line);
     void writeLine(QLocalSocket* socket, const QJsonObject& response);

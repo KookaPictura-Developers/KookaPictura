@@ -96,6 +96,7 @@ add_executable(pictura
     crates/pictura-app/cpp/commands.cpp
     crates/pictura-app/cpp/control_server.cpp
     crates/pictura-app/cpp/control_server_actions.cpp
+    crates/pictura-app/cpp/control_server_input.cpp
     crates/pictura-app/cpp/command_tree.cpp
     crates/pictura-app/cpp/theme.cpp
     crates/pictura-app/cpp/session.cpp
