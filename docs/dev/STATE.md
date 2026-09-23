@@ -45,7 +45,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
     `agentic-control-actions`, `color-mode-write-back`, `cmyk-write-back`,
     `icc-output-mode-consistency`, `indexed-write-back`, `bitmap-write-back`,
-    `agentic-control-input`, and `depth-color-mode-write-back`
+    `agentic-control-input`, `depth-color-mode-write-back`, and
+    `agentic-control-e2e`
     changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -681,8 +682,19 @@ Snapshot for resuming after a context break. Update after each milestone.
   window-scoped shortcut matches only while the window is active, so the
   in-process self-test (pre-activation) asserts the widget path with the Move
   tool's arrow nudge and the shortcut path is left to the live `verify-control.sh`
-  (P5). Input self-test codes 522–524. Ceilings: `pictura-mcp` stdio frontend
-  (P4–P6), native/global shortcuts, and `filter` caller seed/params remain.
+  (P5). Input self-test codes 522–524. **Live e2e** (archived
+  `2026-09-23-agentic-control-e2e`): `scripts/verify-control.sh` launches a
+  throwaway `pictura --headless --control` on a temp socket, drives
+  status→rect-select→`add-noise`→a 64-pixel diff (changed inside the selection,
+  none outside)→undo→screenshot over the real newline-JSON protocol, and exits
+  non-zero on a mismatch or a missing binary; a trap kills the process and
+  removes the socket. It is the only check that exercises
+  `QLocalServer`/`QLocalSocket` and a separate process (the in-process block
+  calls `dispatch` directly); a subset-of-the-active-layer selection makes a
+  mask-ignoring filter fail. Wired into `verify-full.sh` after the build and into
+  the CI `qt-headless` job; `verify-fast.sh` stays build-free. Ceilings:
+  `pictura-mcp` stdio frontend (P4), the P5 client registration/long-form docs,
+  native/global shortcuts, and `filter` caller seed/params remain.
 - **Bit-depth preservation** (roadmap P4/G4, archived `2026-09-23-depth-preserve`):
   a 16/32-bit **Grayscale or RGB** document no longer downgrades to 8-bit on
   save. `read_psd` retains the decoded source-depth samples of the composite

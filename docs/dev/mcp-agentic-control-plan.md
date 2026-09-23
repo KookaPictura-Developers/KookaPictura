@@ -8,8 +8,10 @@
   `layer_thumbnail`), its action half as `2026-09-23-agentic-control-actions`
   (`set_tool`, `selection`, `filter`, `adjustment`, `layer_op`,
   `set_gpu_compute`), and its input half as `2026-09-23-agentic-control-input`
-  (`pointer`, `key`). Remaining: P4–P6 (`pictura-mcp`). Authored before coding so
-  the work can resume cold.
+  (`pointer`, `key`). Its live end-to-end script is archived as
+  `2026-09-23-agentic-control-e2e`. Remaining: P4 `pictura-mcp`, and the P5
+  client registration plus long-form docs. Authored before coding so the work can
+  resume cold.
 - **Track:** infrastructure/automation, **not** the M44 (layer filtering/search)
   milestone program.
 - **Proposed OpenSpec change:** `mcp-agentic-control`
@@ -692,9 +694,13 @@ Document both in `agentic-testing.md`; do not overwrite a user's global config.
 ### P5 — Registration + e2e
 
 - [ ] `opencode.json` + `.mcp.json` (or documented snippets).
-- [ ] `scripts/verify-control.sh`: launch `--headless --control`, drive
-      open→wand→`add-noise`→pixel assert→undo, fail on mismatch.
-- [ ] Wire the script into `scripts/verify-full.sh` and/or the CI headless job.
+- [x] `scripts/verify-control.sh`: launch `--headless --control`, drive
+      status→rect-select→`add-noise`→64-pixel diff (changed inside the selection,
+      none outside)→undo→screenshot, fail on mismatch (archived
+      `2026-09-23-agentic-control-e2e`). The recipe uses a rect that is a strict
+      subset of the active layer so a mask-ignoring filter fails (the plan's
+      `wand` selects the whole layer and could not).
+- [x] Wire the script into `scripts/verify-full.sh` and the CI `qt-headless` job.
 - [ ] `AGENTS.md`, `agentic-testing.md`, `INDEX.md`, `TRACEABILITY.md`.
 
 ### P6 — Verify, archive, commit
