@@ -70,6 +70,12 @@ private:
     QJsonObject methodScreenshot(const QJsonObject& params);
     QJsonObject methodUiTree(const QJsonObject& params);
     QJsonObject methodLayerThumbnail(const QJsonObject& params);
+    QJsonObject methodSetTool(const QJsonObject& params);
+    QJsonObject methodSelection(const QJsonObject& params);
+    QJsonObject methodFilter(const QJsonObject& params);
+    QJsonObject methodAdjustment(const QJsonObject& params);
+    QJsonObject methodLayerOp(const QJsonObject& params);
+    QJsonObject methodSetGpuCompute(const QJsonObject& params);
 
     void handleLine(QLocalSocket* socket, const QByteArray& line);
     void writeLine(QLocalSocket* socket, const QJsonObject& response);

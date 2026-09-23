@@ -426,6 +426,24 @@ QJsonObject ControlServer::dispatch(const QString& method, const QJsonObject& pa
     if (method == QStringLiteral("layer_thumbnail")) {
         return methodLayerThumbnail(params);
     }
+    if (method == QStringLiteral("set_tool")) {
+        return methodSetTool(params);
+    }
+    if (method == QStringLiteral("selection")) {
+        return methodSelection(params);
+    }
+    if (method == QStringLiteral("filter")) {
+        return methodFilter(params);
+    }
+    if (method == QStringLiteral("adjustment")) {
+        return methodAdjustment(params);
+    }
+    if (method == QStringLiteral("layer_op")) {
+        return methodLayerOp(params);
+    }
+    if (method == QStringLiteral("set_gpu_compute")) {
+        return methodSetGpuCompute(params);
+    }
     return error(QStringLiteral("unknown_method"),
                  QStringLiteral("unknown method: %1").arg(method));
 }
