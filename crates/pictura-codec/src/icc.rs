@@ -1027,7 +1027,7 @@ mod tests {
     const PLANE16: &[u8] = &[0x80, 0x00, 0x40, 0x00, 0x20, 0x00];
 
     #[test]
-    fn read_sixteen_bit_cmyk_then_write_saves_rgb_without_the_profile() {
+    fn read_sixteen_bit_cmyk_then_write_keeps_cmyk_and_its_profile() {
         let psd = flat_psd_with_icc(16, MODE_CMYK, 4, 3, 1, &profiled(b"CMYK"), &[PLANE16; 4]);
 
         let convert = crate::read_psd(&psd).expect("parses");
@@ -1043,19 +1043,21 @@ mod tests {
                 "the CMYK profile is retained on read ({policy})"
             );
 
+            // The native samples are retained, so the save keeps CMYK at 16 bits
+            // and the CMYK-space profile matches the output mode.
             let out = crate::write_psd(&doc).expect("writes");
-            assert_eq!(header_mode(&out), MODE_RGB, "{policy}");
+            assert_eq!(header_mode(&out), MODE_CMYK, "{policy}");
             assert!(
                 decode_section(written_resources(&out))
                     .iter()
-                    .all(|r| r.id != ICC_PROFILE),
-                "the stale CMYK profile was dropped on write ({policy})"
+                    .any(|r| r.id == ICC_PROFILE),
+                "the matching CMYK profile is kept on write ({policy})"
             );
         }
     }
 
     #[test]
-    fn read_sixteen_bit_lab_then_write_saves_rgb_without_the_profile() {
+    fn read_sixteen_bit_lab_then_write_keeps_lab_and_its_profile() {
         let psd = flat_psd_with_icc(16, MODE_LAB, 3, 3, 1, &profiled(b"Lab "), &[PLANE16; 3]);
 
         let convert = crate::read_psd(&psd).expect("parses");
@@ -1071,13 +1073,15 @@ mod tests {
                 "the Lab profile is retained on read ({policy})"
             );
 
+            // The native samples are retained, so the save keeps Lab at 16 bits
+            // and the Lab-space profile matches the output mode.
             let out = crate::write_psd(&doc).expect("writes");
-            assert_eq!(header_mode(&out), MODE_RGB, "{policy}");
+            assert_eq!(header_mode(&out), MODE_LAB, "{policy}");
             assert!(
                 decode_section(written_resources(&out))
                     .iter()
-                    .all(|r| r.id != ICC_PROFILE),
-                "the stale Lab profile was dropped on write ({policy})"
+                    .any(|r| r.id == ICC_PROFILE),
+                "the matching Lab profile is kept on write ({policy})"
             );
         }
     }

@@ -335,9 +335,9 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
         }
 
-        // lab16_mode_open (519): a 16-bit Lab PSD normalizes to 8-bit RGB and the
-        // view reports an RGB save notice, because Lab write-back is scoped to an
-        // 8-bit source.
+        // lab16_mode_open (519): a 16-bit Lab PSD normalizes to 8-bit RGB but
+        // retains its native samples, so the view reports a Lab-preserving save
+        // notice at the source depth.
         {
             QTemporaryDir lab16Dir;
             const QString lab16Path = lab16Dir.filePath(QStringLiteral("lab16.psd"));
@@ -376,7 +376,7 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             const bool lab16Opened = lab16Written && frame.openPath(lab16Path);
             pictura::PictureView* lab16View = frame.activeView();
             const bool lab16Ok = lab16Opened && frame.documentCount() == lab16Docs + 1 && lab16View
-                && lab16View->mode_notice() == QStringLiteral("Converted from Lab; saved as RGB")
+                && lab16View->mode_notice() == QStringLiteral("Converted from Lab; saved as Lab")
                 && lab16View->document_mode() == QStringLiteral("rgb");
             ST_BEGIN("lab16_mode_open");
             ST_PASS("lab16_mode_open open=%d notice=%s mode=%s",

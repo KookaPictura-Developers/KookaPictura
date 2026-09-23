@@ -2,7 +2,9 @@
 //! 8-bit RGB. Bitmap and Indexed are exact; CMYK and Lab are approximations of
 //! Photoshop's color-managed transforms.
 
-use pictura_core::{BitDepth, Channel, ColorMode, Layer, SourceChannels};
+use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, SourceChannels};
+
+use crate::depth::{narrow_channel, row_bytes};
 
 /// Expand a depth-1 Bitmap plane into planar RGB. Rows are `ceil(width / 8)`
 /// bytes, MSB-first; a set bit is black (0) and a clear bit is white (255).
@@ -283,6 +285,48 @@ pub(crate) fn retain_indexed_layer_planes(layers: &mut [Layer], depth: u16) {
         }
         retain_indexed_layer_planes(&mut layer.children, depth);
     }
+}
+
+/// The retained native composite plane at `index`, narrowed to 8-bit.
+///
+/// `native_plane` (`write.rs`) borrows a retained native plane only when
+/// narrowing it reproduces the plane the builder passes as `current`. For
+/// Lab/CMYK the planes are color-encoded and the 8-bit store is the *narrowed*
+/// encoding, so `current` must be this narrowed-retained plane, not
+/// `rgb_to_lab`/`rgb_to_cmyk` of the working RGB. At depth 8 the store is
+/// already 8-bit, so this is the identity.
+pub(crate) fn composite_retained_8(doc: &Document, depth: u16, index: usize) -> Option<Vec<u8>> {
+    let retained = crate::write::composite_retained(doc, depth, index)?;
+    let width = doc.width as usize;
+    let height = doc.height as usize;
+    let stride = row_bytes(width, depth);
+    if retained.len() != stride * height {
+        return None;
+    }
+    if depth == 8 {
+        return Some(retained.to_vec());
+    }
+    Some(narrow_channel(retained, width, height, stride, depth))
+}
+
+/// The retained native layer channel `id`, narrowed to 8-bit (identity at
+/// depth 8). See [`composite_retained_8`].
+///
+/// A hand-built or corrupt store can carry a plane shorter than the layer rect
+/// demands; rejecting it here keeps `narrow_channel` in bounds and lets the
+/// caller fall back to re-encoding, matching the old typed-error behavior.
+pub(crate) fn layer_retained_8(layer: &Layer, depth: u16, id: i16) -> Option<Vec<u8>> {
+    let retained = crate::write::layer_retained(layer, depth, id)?;
+    let width = layer.rect.width().max(0) as usize;
+    let height = layer.rect.height().max(0) as usize;
+    let stride = row_bytes(width, depth);
+    if retained.len() != stride * height {
+        return None;
+    }
+    if depth == 8 {
+        return Some(retained.to_vec());
+    }
+    Some(narrow_channel(retained, width, height, stride, depth))
 }
 
 /// Replace a layer's color channels (`0..color_channels`) with converted RGB

@@ -195,7 +195,7 @@ fn depth16_document_extra_channel_is_narrowed() {
 }
 
 #[test]
-fn depth16_cmyk_narrows_then_converts_and_saves_8bit() {
+fn depth16_cmyk_preserves_source_mode_and_depth() {
     let c = be16(&[128 << 8, 0, 255 << 8]);
     let m = be16(&[64 << 8, 0, 255 << 8]);
     let y = be16(&[32 << 8, 0, 255 << 8]);
@@ -203,41 +203,38 @@ fn depth16_cmyk_narrows_then_converts_and_saves_8bit() {
     let p = flat_psd(16, 4, 4, 3, 1, &[&c, &m, &y, &k]);
     let doc = read_psd(&p).unwrap();
     assert_eq!(doc.mode, ColorMode::Rgb);
-    assert_eq!(
-        doc.source_depth,
-        Some(BitDepth::Sixteen),
-        "a converted mode still records the source depth for the app"
-    );
-    assert!(
-        !doc.retains_source_depth(),
-        "a converted mode retains no native samples"
-    );
+    assert_eq!(doc.source_mode, Some(ColorMode::Cmyk));
+    assert_eq!(doc.source_depth, Some(BitDepth::Sixteen));
+    assert!(doc.retains_source_depth(), "native samples retained");
     assert_eq!(
         doc.composite.data,
         vec![100, 0, 255, 50, 0, 255, 25, 0, 255]
     );
 
-    // The save stays 8-bit because no samples were retained.
+    let native: Vec<u8> = [c, m, y, k].concat();
     let out = write_psd(&doc).unwrap();
     assert_eq!(
         u16::from_be_bytes(out[22..24].try_into().unwrap()),
-        8,
-        "a 16-bit converted mode saves 8-bit"
+        16,
+        "output depth is the source depth"
     );
     assert_eq!(
         u16::from_be_bytes(out[24..26].try_into().unwrap()),
-        3,
-        "a 16-bit CMYK source saves as RGB, not CMYK"
+        4,
+        "output header color mode is CMYK"
     );
     let back = read_psd(&out).unwrap();
-    assert_eq!(back.source_depth, None);
+    assert_eq!(back.source_depth, Some(BitDepth::Sixteen));
+    assert_eq!(
+        back.source_planes.as_ref().unwrap().data,
+        native,
+        "the retained native CMYK planes are byte-identical"
+    );
     assert_eq!(back.composite, doc.composite);
 }
 
 #[test]
-fn depth32_cmyk_narrows_then_converts_and_saves_rgb() {
-    // A 32-bit CMYK source retains no samples like the 16-bit case, so its save
-    // must write the working RGB, not synthesize a four-plane CMYK file.
+fn depth32_cmyk_preserves_source_mode_and_depth() {
     let plane = |v: f32| be32(&[v, 0.0, 1.0]);
     let p = flat_psd(
         32,
@@ -250,25 +247,230 @@ fn depth32_cmyk_narrows_then_converts_and_saves_rgb() {
     let doc = read_psd(&p).unwrap();
     assert_eq!(doc.mode, ColorMode::Rgb);
     assert_eq!(doc.source_depth, Some(BitDepth::ThirtyTwo));
-    assert!(
-        !doc.retains_source_depth(),
-        "a converted mode retains no native samples"
-    );
+    assert!(doc.retains_source_depth(), "native samples retained");
 
+    let native: Vec<u8> = [plane(0.5), plane(0.25), plane(0.125), plane(0.75)].concat();
     let out = write_psd(&doc).unwrap();
     assert_eq!(
         u16::from_be_bytes(out[22..24].try_into().unwrap()),
-        8,
-        "a 32-bit converted mode saves 8-bit"
+        32,
+        "output depth is the source depth"
     );
     assert_eq!(
         u16::from_be_bytes(out[24..26].try_into().unwrap()),
-        3,
-        "a 32-bit CMYK source saves as RGB, not CMYK"
+        4,
+        "output header color mode is CMYK"
     );
     let back = read_psd(&out).unwrap();
-    assert_eq!(back.source_depth, None);
+    assert_eq!(back.source_depth, Some(BitDepth::ThirtyTwo));
+    assert_eq!(
+        back.source_planes.as_ref().unwrap().data,
+        native,
+        "the retained native CMYK planes are byte-identical"
+    );
     assert_eq!(back.composite, doc.composite);
+}
+
+#[test]
+fn high_depth_lab_preserves_source_mode_and_depth() {
+    for (depth, bits, native) in [
+        (16u16, BitDepth::Sixteen, be16(&[0x8000, 0x1234])),
+        (32u16, BitDepth::ThirtyTwo, be32(&[0.25, 0.75])),
+    ] {
+        let p = flat_psd(depth, 9, 3, 2, 1, &[&native, &native, &native]);
+        let doc = read_psd(&p).unwrap();
+        assert_eq!(doc.mode, ColorMode::Rgb);
+        assert_eq!(doc.source_mode, Some(ColorMode::Lab));
+        assert_eq!(doc.source_depth, Some(bits));
+        assert!(doc.retains_source_depth(), "depth {depth}: native retained");
+
+        let expected: Vec<u8> = [native.clone(), native.clone(), native.clone()].concat();
+        let out = write_psd(&doc).unwrap();
+        assert_eq!(
+            u16::from_be_bytes(out[22..24].try_into().unwrap()),
+            depth,
+            "depth {depth}: output header"
+        );
+        assert_eq!(
+            u16::from_be_bytes(out[24..26].try_into().unwrap()),
+            9,
+            "depth {depth}: Lab header mode"
+        );
+        let back = read_psd(&out).unwrap();
+        assert_eq!(
+            back.source_planes.as_ref().unwrap().data,
+            expected,
+            "depth {depth}: native Lab planes are byte-identical"
+        );
+        assert_eq!(back.composite, doc.composite);
+    }
+}
+
+#[test]
+fn high_depth_cmyk_layer_preserves_source_samples() {
+    for (depth, bits, native) in [
+        (16u16, BitDepth::Sixteen, be16(&[0x8040])),
+        (32u16, BitDepth::ThirtyTwo, be32(&[0.5])),
+    ] {
+        let cmyk: Vec<(i16, Vec<u8>)> = (0i16..4).map(|id| (id, native.clone())).collect();
+        let composite: Vec<&[u8]> = cmyk.iter().map(|(_, p)| p.as_slice()).collect();
+        let layer_channels: Vec<(i16, &[u8])> = cmyk
+            .iter()
+            .map(|(id, data)| (*id, data.as_slice()))
+            .collect();
+        let p = layered_psd_depth(depth, 4, 4, &composite, &layer_channels);
+        let doc = read_psd(&p).unwrap();
+        assert_eq!(doc.source_mode, Some(ColorMode::Cmyk));
+        assert_eq!(doc.source_depth, Some(bits));
+        assert!(doc.retains_source_depth(), "depth {depth}: native retained");
+        assert_eq!(
+            doc.layers[0].source_channels.as_ref().unwrap().depth,
+            bits,
+            "depth {depth}: layer native store"
+        );
+
+        let out = write_psd(&doc).unwrap();
+        assert_eq!(
+            u16::from_be_bytes(out[22..24].try_into().unwrap()),
+            depth,
+            "depth {depth}: output header"
+        );
+        assert_eq!(
+            u16::from_be_bytes(out[24..26].try_into().unwrap()),
+            4,
+            "depth {depth}: CMYK header mode"
+        );
+        let back = read_psd(&out).unwrap();
+        assert_eq!(
+            back.layers[0].source_channels.as_ref().unwrap().planes,
+            cmyk,
+            "depth {depth}: the native layer planes are byte-identical"
+        );
+    }
+}
+
+#[test]
+fn high_depth_lab_layer_preserves_source_samples() {
+    for (depth, bits, native) in [
+        (16u16, BitDepth::Sixteen, be16(&[0x8040])),
+        (32u16, BitDepth::ThirtyTwo, be32(&[0.5])),
+    ] {
+        let lab: Vec<(i16, Vec<u8>)> = (0i16..3).map(|id| (id, native.clone())).collect();
+        let composite: Vec<&[u8]> = lab.iter().map(|(_, p)| p.as_slice()).collect();
+        let layer_channels: Vec<(i16, &[u8])> = lab
+            .iter()
+            .map(|(id, data)| (*id, data.as_slice()))
+            .collect();
+        let p = layered_psd_depth(depth, 9, 3, &composite, &layer_channels);
+        let doc = read_psd(&p).unwrap();
+        assert_eq!(doc.source_mode, Some(ColorMode::Lab));
+        assert_eq!(doc.source_depth, Some(bits));
+        assert!(doc.retains_source_depth(), "depth {depth}: native retained");
+        assert_eq!(
+            doc.layers[0].source_channels.as_ref().unwrap().depth,
+            bits,
+            "depth {depth}: layer native store"
+        );
+
+        let out = write_psd(&doc).unwrap();
+        assert_eq!(
+            u16::from_be_bytes(out[22..24].try_into().unwrap()),
+            depth,
+            "depth {depth}: output header"
+        );
+        assert_eq!(
+            u16::from_be_bytes(out[24..26].try_into().unwrap()),
+            9,
+            "depth {depth}: Lab header mode"
+        );
+        let back = read_psd(&out).unwrap();
+        assert_eq!(
+            back.layers[0].source_channels.as_ref().unwrap().planes,
+            lab,
+            "depth {depth}: the native layer planes are byte-identical"
+        );
+    }
+}
+
+#[test]
+fn high_depth_edited_plane_widens_the_reencode() {
+    // 16-bit CMYK: an edit replaces the working composite, so the writer
+    // re-encodes from the edited RGB with rgb_to_cmyk and widens `v * 257`.
+    let c = be16(&[128 << 8]);
+    let m = be16(&[64 << 8]);
+    let y = be16(&[32 << 8]);
+    let k = be16(&[200 << 8]);
+    let p = flat_psd(16, 4, 4, 1, 1, &[&c, &m, &y, &k]);
+    let mut doc = read_psd(&p).unwrap();
+    let edited = [7u8, 200, 123];
+    doc.composite.data[..3].copy_from_slice(&edited);
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(u16::from_be_bytes(out[22..24].try_into().unwrap()), 16);
+    assert_eq!(u16::from_be_bytes(out[24..26].try_into().unwrap()), 4);
+    let reencoded = crate::color_mode::rgb_to_cmyk(&edited);
+    assert_eq!(
+        read_psd(&out).unwrap().source_planes.unwrap().data,
+        crate::depth::widen_planes(&reencoded, 4, 1, 1, 16),
+        "the edited CMYK plane is the 8-bit re-encode widened"
+    );
+
+    // 32-bit Lab: the re-encode is the approximate inverse, widened to [0, 1].
+    let lab = be32(&[0.5]);
+    let p = flat_psd(32, 9, 3, 1, 1, &[&lab, &lab, &lab]);
+    let mut doc = read_psd(&p).unwrap();
+    let edited = [10u8, 240, 60];
+    doc.composite.data[..3].copy_from_slice(&edited);
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(u16::from_be_bytes(out[22..24].try_into().unwrap()), 32);
+    assert_eq!(u16::from_be_bytes(out[24..26].try_into().unwrap()), 9);
+    let reencoded = crate::color_mode::rgb_to_lab(&edited);
+    assert_eq!(
+        read_psd(&out).unwrap().source_planes.unwrap().data,
+        crate::depth::widen_planes(&reencoded, 3, 1, 1, 32),
+        "the edited Lab plane is the 8-bit re-encode widened"
+    );
+}
+
+/// A high-depth Lab or CMYK layer whose retained native plane is shorter than
+/// its rect must fall back, not panic in `narrow_channel`. The short working
+/// channels then surface as a typed error. Regression for an index-out-of-bounds
+/// on a short `source_channels` plane.
+#[test]
+fn short_high_depth_lab_cmyk_source_plane_is_a_typed_error() {
+    for (mode, bits, native_len) in [
+        (ColorMode::Lab, BitDepth::Sixteen, 2usize),
+        (ColorMode::Cmyk, BitDepth::ThirtyTwo, 4usize),
+    ] {
+        let rect = PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 2,
+            right: 2,
+        };
+        let mut doc = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
+        doc.source_mode = Some(mode);
+        doc.source_depth = Some(bits);
+        doc.source_planes = Some(SourcePlanes {
+            depth: bits,
+            width: 2,
+            height: 2,
+            data: vec![0u8; 48],
+        });
+        doc.layers.push(Layer {
+            rect,
+            channels: (0i16..3).map(|id| Channel { id, data: vec![1] }).collect(),
+            source_channels: Some(SourceChannels::new(
+                bits,
+                rect,
+                vec![(0, vec![0u8; native_len])],
+            )),
+            ..Default::default()
+        });
+        assert!(
+            matches!(write_psd(&doc), Err(PsdError::Invalid(_))),
+            "{mode:?}: a short native plane is a typed error, not a panic"
+        );
+    }
 }
 
 #[test]
