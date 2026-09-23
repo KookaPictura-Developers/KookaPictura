@@ -8,46 +8,68 @@ close it in.
 
 ## Where we are
 
-`pictura-codec` reads and writes a narrow native subset:
+`pictura-codec` reads and writes the following (as of the archived changes named
+below):
 
-- 8-bit only, RGB or Grayscale only.
-- Composite compression 0 (raw) / 1 (RLE) / 2 (ZIP) / 3 (ZIP-with-prediction)
-  on read and write; the source kind is preserved on save.
-- Pixel layers, groups (`lsct`), raster masks (`-2`), `luni`/`lspf`/`lclr`/`iOpa`.
-- 18 adjustment keys preserved opaquely; `pictura-render` decodes a subset
-  (`nvrt`/`invr`, `post`, `thrs`, `brit`, `levl`, `hue2`, `SoCo` in both the
-  4-byte and descriptor forms).
-- Document extra channels (saved selections) in the image-data section.
+- **Depth.** The editing model is 8-bit. 16/32-bit files read and normalize to
+  8-bit, and the source depth is preserved on save for Grayscale/RGB (archived
+  `depth-preserve`) and for Lab/CMYK (`depth-color-mode-write-back`): an
+  unchanged plane re-emits the native samples, an edited one widens.
+  Depth-1 Bitmap reads and, when flat and unchanged, writes back.
+- **Color modes.** Gray/RGB/Lab/CMYK/Indexed/Bitmap read and normalize to the
+  RGB working space. An 8-bit Lab, CMYK, Indexed, or flat unchanged Bitmap
+  document saves back in its source mode (`color-mode-write-back`,
+  `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`), as does a
+  16/32-bit Lab/CMYK document (`depth-color-mode-write-back`).
+  Multichannel/Duotone are refused (no grounded RGB mapping).
+- **Compression** 0 (raw) / 1 (RLE) / 2 (ZIP) / 3 (ZIP-with-prediction) on read
+  and write; the source kind is preserved on save and all four are depth-aware.
+- **Layers.** Pixel layers, groups (`lsct`), raster masks (`-2`), and
+  `luni`/`lspf`/`lclr`/`iOpa`. Unmodeled per-layer tagged blocks, the `-3`
+  real-user-mask channel, global layer mask, mask params, and blend ranges are
+  preserved opaquely (P2).
+- **Rendering.** The whitelisted adjustment keys decode and render (only
+  version-3 `phfl` is deferred); layer effects (`lfx2` and legacy `lrFX`),
+  solid/gradient/pattern fills, `vmsk` vector masks, and `vscg` vector fill
+  content rasterize and author.
+- **Smart objects / Camera Raw.** Embedded smart objects are modeled,
+  authored, rendered, and edited; the CC Camera Raw Filter settings
+  (`SoLd.filterFX[].Fltr`, `FEid`/`FMsk`) read and write (P2.5).
+- **Metadata / ICC.** Image resources parse; an embedded non-sRGB profile is
+  honored per the incoming-profile policy; EXIF/IPTC/XMP read, IPTC and managed
+  XMP edit, templates export/apply; Assign/Convert Profile; the saved resource
+  `1039` matches the output color mode.
+- **Document extra channels** (saved selections) in the image-data section.
 
-Anything else is either `PsdError::Unsupported` on read or silently dropped.
+Still open: text (`TySh`), Multichannel/Duotone, a true `u16`/`f32` sample model,
+a 32-bit HDR tone map, `crs:` XMP, sidecars, and a manual Photoshop round-trip.
+Anything else is `PsdError::Unsupported` on read or preserved opaquely where P2
+captured it.
 
-Shipped: `2026-09-19-psd-opaque-preservation` (P2) captures unmodeled blocks. It
-covers document-level tagged blocks including the smart-object source records
-`lnkD`/`lnk2`/`lnk3`/`lnkE`, and per-layer `SoLd`/`SoLE`/`plLd`, so a smart
-object's bytes and any settings they carry already survive an open→save. What is
-missing is owning them: a model to resolve, render, edit, and author them.
+The gap table below tracks the distance to "fully supports PSD"; the phases after
+it record the order it was closed in.
 
 ## Gap list
 
 | # | Gap | Evidence | Impact |
 |---|---|---|---|
 | G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
-| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB, and an 8-bit Lab, CMYK, unchanged Indexed, or flat unchanged Bitmap document now saves back in its source mode (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`; retained planes exact for unedited, profile-free inverse for edited Lab/CMYK, RGB fallback for edited Indexed/Bitmap); a 16/32-bit converted source still saves the working mode; Multichannel/Duotone stay open |
+| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB, and a Lab, CMYK, unchanged Indexed, or flat unchanged Bitmap document now saves back in its source mode (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`, and `depth-color-mode-write-back` for a 16/32-bit Lab/CMYK source; retained planes exact for unedited, profile-free inverse for edited Lab/CMYK, RGB fallback for edited Indexed/Bitmap); Multichannel/Duotone stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
-| G6 | Unknown additional-layer-info keys dropped (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Loss on open→save; unrendered |
-| G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask dropped | `read.rs`, `write.rs` | Loss/propagation |
-| G8 | Adjustment descriptor payloads preserved but not decoded/rendered (version-3 `phfl` only; curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, and color lookup now decode) | `composite.rs` doc | Layer renders as no-op |
+| G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Mostly shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); unmodeled keys are preserved opaquely (P2); text (`TySh`), blend-if, and knockout remain |
+| G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque): captured and re-emitted verbatim on open→save (P2); not modeled or rendered |
+| G8 | Adjustment descriptor payloads (version-3 `phfl` only; curves, exposure, vibrance, B&W, photo filter, channel mixer, gradient map, selective color, and color lookup now decode) | `composite.rs` doc | Closed except version-3 `phfl` (deferred): the whitelisted keys decode and render; an undecoded block is a no-op |
 | G9 | ~~PSB write missing~~ PSB write shipped: version-2 container, dimensions to 300 000; tagged-block big-key width + pad framing fixed | `write.rs` | Closed |
-| G10 | Unknown blend key aborts the whole file | `read.rs` `from_psd_key(...).ok_or` | Open blocker |
-| G11 | Absent merged composite ("Maximize Compatibility" off) unhandled | `read.rs` reads compression unconditionally | Open blocker |
+| G10 | ~~Unknown blend key aborts the whole file~~ an unknown blend key degrades to Normal instead of aborting (P1) | `read.rs` `from_psd_key(...).ok_or` | Closed |
+| G11 | ~~Absent merged composite ("Maximize Compatibility" off) unhandled~~ an absent merged composite is tolerated on read and writes no image-data section (P1) | `read.rs` reads compression unconditionally | Closed |
 | G12 | ~~Write always raw~~ RLE and ZIP/ZIP-prediction write shipped; the document's recorded source compression is preserved on save | `write.rs`, `compression` model | RLE/raw/ZIP/ZIP-prediction composite/layer channels/mask; per-channel mixed kinds normalize per category |
-| G13 | Smart objects are preserved opaquely but not modeled: no embedded-source node, so a smart object cannot be resolved, rendered, or re-edited | P2 holds `SoLd`/`SoLE`/`plLd` and `lnkD`/`lnk2`/`lnk3` bytes; nothing consumes them | Open blocker for Camera Raw |
-| G14 | No writer for a valid smart-object pair: the `SoLd`/`SoLE` config descriptor, its `lnkD`/`lnk2`/`lnk3` source record, and the matching `uuid` that links them | `write_psd` re-emits preserved bytes but cannot author a new smart object | Open blocker for raw interop |
-| G15 | Camera Raw settings are not read or written. Two storage models: `crs:` XMP for a raw opened as a Smart Object, and the `SoLd.filterFX[].Fltr` descriptor for a Camera Raw Filter smart filter | settings are preserved opaquely only; no edit round-trip | Open blocker for Camera Raw |
-| G16 | No Adobe round-trip oracle or automated check; Photoshop reopening our PSD is unverified | interop is a claim with no test | Verification gap |
-| G17 | Smart filters are unmodeled: `SoLd.filterFX` (Camera Raw Filter, `filterID` 2683), document `FEid`/`FXid`, and the filter mask `FMsk` | P2 preserves the bytes; nothing parses `Fltr` | Open for the CC Camera Raw Filter |
+| G13 | Smart objects are preserved opaquely but not modeled: no embedded-source node, so a smart object cannot be resolved, rendered, or re-edited | P2 holds `SoLd`/`SoLE`/`plLd` and `lnkD`/`lnk2`/`lnk3` bytes; nothing consumes them | Closed: an embedded smart object is modeled (source bytes, filename, filetype, config descriptor, linking `uuid`) and rendered (P2.5, `smart-object-source-render`) |
+| G14 | No writer for a valid smart-object pair: the `SoLd`/`SoLE` config descriptor, its `lnkD`/`lnk2`/`lnk3` source record, and the matching `uuid` that links them | `write_psd` re-emits preserved bytes but cannot author a new smart object | Closed: `SoLd`/`SoLE` and the matching `lnk*` record are authored (P2.5) |
+| G15 | Camera Raw settings are not read or written. Two storage models: `crs:` XMP for a raw opened as a Smart Object, and the `SoLd.filterFX[].Fltr` descriptor for a Camera Raw Filter smart filter | settings are preserved opaquely only; no edit round-trip | Partly shipped: the CC Camera Raw Filter settings (`filterFX`/`Fltr`, `filterID` 2683) read and write (P2.5); `crs:` XMP stays preserve-only (no fixture) |
+| G16 | No **manual** Adobe round-trip check; the automated `psd-tools` oracle ships | interop is proven against `psd-tools`, not Photoshop | Partly closed: a `psd-tools` round-trip oracle ships (P2.5); a manual Photoshop reopen and a CS6/16-bit fixture are deferred |
+| G17 | Smart filters are unmodeled: `SoLd.filterFX` (Camera Raw Filter, `filterID` 2683), document `FEid`/`FXid`, and the filter mask `FMsk` | P2 preserves the bytes; nothing parses `Fltr` | Closed: `SoLd.filterFX`, document `FEid`/`FXid`, and the `FMsk` filter mask parse as settings (P2.5) |
 
 ## Phases
 
@@ -170,8 +192,8 @@ parity). That closes the whitelisted adjustment-key set; only version-3
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,
 with the per-channel-then-composite order marked an assumption (not
-Photoshop-verified). Remaining P3:
-those keys and kinds, and write RLE by default (G12).
+Photoshop-verified). Remaining P3: version-3 `phfl` and the text (`TySh`) kind;
+RLE and ZIP write shipped (`psd-rle-write`, `psd-zip-write`).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
 channels), layer color channels, and the raster mask are PackBits-encoded;
@@ -232,8 +254,9 @@ the Indexed/Bitmap paths save 8-bit as before. The remaining depth work is a
 true `u16`/`f32` sample model in `PixelBuffer` that preserves depth through
 *editing* (the model is still 8-bit) and a 32-bit HDR tone map (the shipped path
 is display-referred, clipping at 1.0); Multichannel/Duotone (no natural RGB
-mapping / needs the spot-ink spec) and write-side color-mode re-encoding remain
-open.
+mapping / needs the spot-ink spec), and text (`TySh`) remain open. Color-mode
+write-back is complete for the modes with an exact representation (8-bit
+Lab/CMYK/Indexed, flat Bitmap, and 16/32-bit Lab/CMYK).
 
 **P5 — PSB write / large documents.** *(shipped)* (G9)
 `write_psd` emits a version-2 container when the source document was a PSB
