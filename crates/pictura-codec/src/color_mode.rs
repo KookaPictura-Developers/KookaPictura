@@ -2,6 +2,8 @@
 //! 8-bit RGB. Bitmap and Indexed are exact; CMYK and Lab are approximations of
 //! Photoshop's color-managed transforms.
 
+use pictura_core::{BitDepth, Channel, ColorMode, Layer, SourceChannels};
+
 /// Expand a depth-1 Bitmap plane into planar RGB. Rows are `ceil(width / 8)`
 /// bytes, MSB-first; a set bit is black (0) and a clear bit is white (255).
 pub(crate) fn bitmap_rows_to_rgb(bits: &[u8], width: usize, height: usize) -> Vec<u8> {
@@ -117,6 +119,38 @@ pub(crate) fn lab_to_rgb(lab: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The profile-free algebraic inverse of [`lab_to_rgb`]: decode sRGB, rotate the
+/// linear RGB back to XYZ D50 with the inverse Bradford matrix, then express it
+/// as CIELAB bytes. Same approximation class as the read side; no profile.
+pub(crate) fn rgb_to_lab(rgb: &[u8]) -> Vec<u8> {
+    const M_INV: [[f64; 3]; 3] = [
+        [0.4360747, 0.3850649, 0.1430804],
+        [0.2225045, 0.7168786, 0.0606169],
+        [0.0139322, 0.0971045, 0.7141733],
+    ];
+    const XN: f64 = 0.96422;
+    const ZN: f64 = 0.82521;
+    let plane = rgb.len() / 3;
+    let (r, rest) = rgb.split_at(plane);
+    let (g, b) = rest.split_at(plane);
+    let mut out = vec![0u8; plane * 3];
+    for i in 0..plane {
+        let linear = [srgb_decode(r[i]), srgb_decode(g[i]), srgb_decode(b[i])];
+        let xyz = [
+            M_INV[0][0] * linear[0] + M_INV[0][1] * linear[1] + M_INV[0][2] * linear[2],
+            M_INV[1][0] * linear[0] + M_INV[1][1] * linear[1] + M_INV[1][2] * linear[2],
+            M_INV[2][0] * linear[0] + M_INV[2][1] * linear[1] + M_INV[2][2] * linear[2],
+        ];
+        let fx = lab_fwd(xyz[0] / XN);
+        let fy = lab_fwd(xyz[1]);
+        let fz = lab_fwd(xyz[2] / ZN);
+        out[i] = lab_byte((116.0 * fy - 16.0) * 255.0 / 100.0);
+        out[plane + i] = lab_byte(128.0 + 500.0 * (fx - fy));
+        out[2 * plane + i] = lab_byte(128.0 + 200.0 * (fy - fz));
+    }
+    out
+}
+
 fn lab_f(t: f64) -> f64 {
     const EPSILON: f64 = 216.0 / 24389.0;
     const KAPPA: f64 = 24389.0 / 27.0;
@@ -128,6 +162,17 @@ fn lab_f(t: f64) -> f64 {
     }
 }
 
+/// The forward CIELAB `f` function: the exact inverse of [`lab_f`].
+fn lab_fwd(t: f64) -> f64 {
+    const EPSILON: f64 = 216.0 / 24389.0;
+    const KAPPA: f64 = 24389.0 / 27.0;
+    if t > EPSILON {
+        t.cbrt()
+    } else {
+        (KAPPA * t + 16.0) / 116.0
+    }
+}
+
 fn srgb_encode(linear: f64) -> u8 {
     let value = if linear <= 0.0031308 {
         12.92 * linear
@@ -135,6 +180,113 @@ fn srgb_encode(linear: f64) -> u8 {
         1.055 * linear.powf(1.0 / 2.4) - 0.055
     };
     (value.clamp(0.0, 1.0) * 255.0 + 0.5).floor() as u8
+}
+
+fn srgb_decode(value: u8) -> f64 {
+    let value = value as f64 / 255.0;
+    if value <= 0.04045 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn lab_byte(value: f64) -> u8 {
+    value.clamp(0.0, 255.0).round() as u8
+}
+
+/// Retain a Lab document's decoded 8-bit Lab layer color channels before
+/// `normalize` converts them to RGB, so `write_psd` re-emits an unedited layer
+/// exactly. Only color channels (ids `0..3`) are stored; masks and alpha are not
+/// Lab-encoded. No-op at any depth other than 8.
+pub(crate) fn retain_lab_layer_planes(layers: &mut [Layer], depth: u16) {
+    if depth != 8 {
+        return;
+    }
+    for layer in layers {
+        if layer.source_channels.is_none() {
+            let planes: Vec<(i16, Vec<u8>)> = layer
+                .channels
+                .iter()
+                .filter(|c| c.id >= 0 && c.id < 3)
+                .map(|c| (c.id, c.data.clone()))
+                .collect();
+            if planes.len() == 3 {
+                layer.source_channels =
+                    Some(SourceChannels::new(BitDepth::Eight, layer.rect, planes));
+            }
+        }
+        retain_lab_layer_planes(&mut layer.children, depth);
+    }
+}
+
+/// Replace a layer's color channels (`0..color_channels`) with converted RGB
+/// planes, then recurse into the layer's children so a pixel layer nested in a
+/// group is converted too (not just a top-level one). Non-color channels are
+/// untouched; a layer whose color channels do not match the mode's layout is
+/// left unchanged.
+pub(crate) fn convert_layer_color_channels(
+    layer: &mut Layer,
+    mode: ColorMode,
+    palette: &[u8; 768],
+) {
+    convert_one_layer(layer, mode, palette);
+    for child in &mut layer.children {
+        convert_layer_color_channels(child, mode, palette);
+    }
+}
+
+fn convert_one_layer(layer: &mut Layer, mode: ColorMode, palette: &[u8; 768]) {
+    let color_channels = mode.color_channels() as usize;
+    if color_channels == 0 {
+        return;
+    }
+    let positions: Vec<usize> = layer
+        .channels
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.id >= 0 && (c.id as usize) < color_channels)
+        .map(|(i, _)| i)
+        .collect();
+    if positions.len() != color_channels {
+        return;
+    }
+    let plane = layer.channels[positions[0]].data.len();
+    if positions
+        .iter()
+        .any(|&i| layer.channels[i].data.len() != plane)
+    {
+        return;
+    }
+    let mut planar = Vec::with_capacity(plane * color_channels);
+    for &i in &positions {
+        planar.extend_from_slice(&layer.channels[i].data);
+    }
+    let rgb = match mode {
+        ColorMode::Indexed => indexed_to_rgb(&planar, palette),
+        ColorMode::Cmyk => cmyk_to_rgb(&planar),
+        ColorMode::Lab => lab_to_rgb(&planar),
+        // A Bitmap layer's single gray plane is bit-expanded to an 8-bit plane
+        // at read time (depth 1 or 8), so it replicates to RGB.
+        ColorMode::Bitmap => gray_to_rgb(&planar),
+        ColorMode::Grayscale | ColorMode::Rgb => return,
+        ColorMode::Multichannel | ColorMode::Duotone => return,
+    };
+    let others: Vec<Channel> = layer
+        .channels
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !positions.contains(i))
+        .map(|(_, c)| c.clone())
+        .collect();
+    let mut channels: Vec<Channel> = (0..3)
+        .map(|c| Channel {
+            id: c as i16,
+            data: rgb[c * plane..(c + 1) * plane].to_vec(),
+        })
+        .collect();
+    channels.extend(others);
+    layer.channels = channels;
 }
 
 #[cfg(test)]
@@ -209,6 +361,44 @@ mod tests {
             let rgb = lab_to_rgb(&lab);
             for c in 0..3 {
                 assert_eq!(rgb[c], expected[c], "lab {lab:?} channel {c}");
+            }
+        }
+    }
+
+    #[test]
+    fn rgb_to_lab_inverts_lab_to_rgb_on_the_read_grid() {
+        // rgb_to_lab is the algebraic inverse of lab_to_rgb: reversing the exact
+        // read-oracle values recovers them within the 1-LSB read tolerance.
+        for (lab, rgb) in [
+            ([225u8, 82, 114], [60u8, 246, 246]),
+            ([200, 110, 100], [123, 205, 245]),
+            ([150, 110, 110], [84, 152, 172]),
+            ([120, 160, 140], [164, 89, 93]),
+            ([90, 120, 160], [82, 86, 28]),
+            ([160, 90, 120], [17, 170, 165]),
+            ([110, 100, 160], [64, 114, 45]),
+            ([200, 140, 160], [230, 185, 135]),
+        ] {
+            let back = rgb_to_lab(&rgb);
+            for c in 0..3 {
+                assert!(
+                    (back[c] as i32 - lab[c] as i32).abs() <= 1,
+                    "lab {lab:?} rgb {rgb:?} channel {c} -> {back:?}"
+                );
+            }
+        }
+        // Every 8-bit gray round-trips within 1 LSB. ponytail: 8-bit Lab
+        // quantizes saturated colors coarsely, so rgb_to_lab is not a 1-LSB
+        // right-inverse over the whole RGB cube (only in-gamut, well-conditioned
+        // colors); the read side is approximate in the same way.
+        for v in 0..=255u16 {
+            let gray = [v as u8; 3];
+            let back = lab_to_rgb(&rgb_to_lab(&gray));
+            for c in 0..3 {
+                assert!(
+                    (back[c] as i32 - v as i32).abs() <= 1,
+                    "gray {v} channel {c} -> {back:?}"
+                );
             }
         }
     }

@@ -264,7 +264,7 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             const bool cmOpened = cmWritten && frame.openPath(cmPath);
             pictura::PictureView* cmView = frame.activeView();
             const bool cmOk = cmOpened && frame.documentCount() == cmDocs + 1 && cmView
-                && cmView->mode_notice() == QStringLiteral("Converted from CMYK")
+                && cmView->mode_notice() == QStringLiteral("Converted from CMYK; saved as RGB")
                 && cmView->document_mode() == QStringLiteral("rgb")
                 && cmView->sample_argb(0, 0) == 0xff643219u;
             ST_BEGIN("color_mode_open");
@@ -277,6 +277,116 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
             if (!cmOk) {
                 return pictura::selfTest().fail(297, "color mode open");
+            }
+        }
+
+        // lab_mode_open (518): a minimal flat Lab PSD opens as a normalized RGB
+        // document; the view reports a Lab-preserving save notice rather than an
+        // RGB one.
+        {
+            QTemporaryDir labDir;
+            const QString labPath = labDir.filePath(QStringLiteral("lab.psd"));
+            QByteArray labBytes;
+            const auto labAppend16 = [&labBytes](unsigned short value) {
+                labBytes.append(char((value >> 8) & 0xff));
+                labBytes.append(char(value & 0xff));
+            };
+            const auto labAppend32 = [&labBytes](unsigned int value) {
+                labBytes.append(char((value >> 24) & 0xff));
+                labBytes.append(char((value >> 16) & 0xff));
+                labBytes.append(char((value >> 8) & 0xff));
+                labBytes.append(char(value & 0xff));
+            };
+            labBytes.append("8BPS", 4);
+            labAppend16(1);              // version
+            labBytes.append(6, char(0)); // reserved
+            labAppend16(3);              // channels
+            labAppend32(1);              // height
+            labAppend32(1);              // width
+            labAppend16(8);              // depth
+            labAppend16(9);              // color mode Lab
+            labAppend32(0);              // color mode data
+            labAppend32(0);              // image resources
+            labAppend32(0);              // layer/mask section
+            labAppend16(0);              // raw compression
+            labBytes.append(char(225));  // L
+            labBytes.append(char(82));   // a
+            labBytes.append(char(114));  // b
+            QFile labFile(labPath);
+            const bool labWritten = labFile.open(QIODevice::WriteOnly)
+                && labFile.write(labBytes) == labBytes.size();
+            labFile.close();
+
+            const int labDocs = frame.documentCount();
+            const bool labOpened = labWritten && frame.openPath(labPath);
+            pictura::PictureView* labView = frame.activeView();
+            const bool labOk = labOpened && frame.documentCount() == labDocs + 1 && labView
+                && labView->mode_notice() == QStringLiteral("Converted from Lab; saved as Lab")
+                && labView->document_mode() == QStringLiteral("rgb");
+            ST_BEGIN("lab_mode_open");
+            ST_PASS("lab_mode_open open=%d notice=%s mode=%s",
+                    labOpened ? 1 : 0, labView ? qPrintable(labView->mode_notice()) : "-",
+                    labView ? qPrintable(labView->document_mode()) : "-");
+            if (labView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!labOk) {
+                return pictura::selfTest().fail(518, "Lab mode open");
+            }
+        }
+
+        // lab16_mode_open (519): a 16-bit Lab PSD normalizes to 8-bit RGB and the
+        // view reports an RGB save notice, because Lab write-back is scoped to an
+        // 8-bit source.
+        {
+            QTemporaryDir lab16Dir;
+            const QString lab16Path = lab16Dir.filePath(QStringLiteral("lab16.psd"));
+            QByteArray lab16Bytes;
+            const auto lab16Append16 = [&lab16Bytes](unsigned short value) {
+                lab16Bytes.append(char((value >> 8) & 0xff));
+                lab16Bytes.append(char(value & 0xff));
+            };
+            const auto lab16Append32 = [&lab16Bytes](unsigned int value) {
+                lab16Bytes.append(char((value >> 24) & 0xff));
+                lab16Bytes.append(char((value >> 16) & 0xff));
+                lab16Bytes.append(char((value >> 8) & 0xff));
+                lab16Bytes.append(char(value & 0xff));
+            };
+            lab16Bytes.append("8BPS", 4);
+            lab16Append16(1);              // version
+            lab16Bytes.append(6, char(0)); // reserved
+            lab16Append16(3);              // channels
+            lab16Append32(1);              // height
+            lab16Append32(1);              // width
+            lab16Append16(16);             // depth
+            lab16Append16(9);              // color mode Lab
+            lab16Append32(0);              // color mode data
+            lab16Append32(0);              // image resources
+            lab16Append32(0);              // layer/mask section
+            lab16Append16(0);              // raw compression
+            for (int c = 0; c < 3; ++c) {
+                lab16Append16(0x8000);     // one 16-bit sample per plane
+            }
+            QFile lab16File(lab16Path);
+            const bool lab16Written = lab16File.open(QIODevice::WriteOnly)
+                && lab16File.write(lab16Bytes) == lab16Bytes.size();
+            lab16File.close();
+
+            const int lab16Docs = frame.documentCount();
+            const bool lab16Opened = lab16Written && frame.openPath(lab16Path);
+            pictura::PictureView* lab16View = frame.activeView();
+            const bool lab16Ok = lab16Opened && frame.documentCount() == lab16Docs + 1 && lab16View
+                && lab16View->mode_notice() == QStringLiteral("Converted from Lab; saved as RGB")
+                && lab16View->document_mode() == QStringLiteral("rgb");
+            ST_BEGIN("lab16_mode_open");
+            ST_PASS("lab16_mode_open open=%d notice=%s mode=%s",
+                    lab16Opened ? 1 : 0, lab16View ? qPrintable(lab16View->mode_notice()) : "-",
+                    lab16View ? qPrintable(lab16View->document_mode()) : "-");
+            if (lab16View) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!lab16Ok) {
+                return pictura::selfTest().fail(519, "16-bit Lab mode open");
             }
         }
 

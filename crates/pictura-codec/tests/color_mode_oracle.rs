@@ -108,6 +108,27 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+fn assert_planes_within(label: &str, planes: &[&[u8]], reference: &[String], tolerance: u8) {
+    assert_eq!(
+        reference.len(),
+        planes.len(),
+        "{label}: reference plane count"
+    );
+    for (c, (ours, expected_hex)) in planes.iter().zip(reference.iter()).enumerate() {
+        let expected: Vec<u8> = (0..expected_hex.len() / 2)
+            .map(|i| u8::from_str_radix(&expected_hex[i * 2..i * 2 + 2], 16).unwrap())
+            .collect();
+        assert_eq!(ours.len(), expected.len(), "{label}: plane {c} length");
+        for (i, (ours, theirs)) in ours.iter().zip(expected.iter()).enumerate() {
+            let diff = (*ours as i32 - *theirs as i32).abs();
+            assert!(
+                diff <= tolerance as i32,
+                "{label}: plane {c} pixel {i} ours={ours} reference={theirs} diff={diff}"
+            );
+        }
+    }
+}
+
 fn ours_matching(name: &str, tolerance: u8, reference: fn(&std::path::Path) -> Vec<String>) {
     let path = fixture_dir().join(name);
     let doc = load(name);
@@ -115,24 +136,7 @@ fn ours_matching(name: &str, tolerance: u8, reference: fn(&std::path::Path) -> V
     let plane = doc.composite.pixel_count();
     let our_planes: Vec<&[u8]> = (0..3).map(|c| &data[c * plane..(c + 1) * plane]).collect();
     let theirs = reference(&path);
-    assert_eq!(theirs.len(), 3, "psd-tools printed three RGB planes");
-    for (c, expected_hex) in theirs.iter().enumerate() {
-        let expected: Vec<u8> = (0..expected_hex.len() / 2)
-            .map(|i| u8::from_str_radix(&expected_hex[i * 2..i * 2 + 2], 16).unwrap())
-            .collect();
-        assert_eq!(
-            our_planes[c].len(),
-            expected.len(),
-            "{name}: plane {c} length"
-        );
-        for (i, (ours, theirs)) in our_planes[c].iter().zip(expected.iter()).enumerate() {
-            let diff = (*ours as i32 - *theirs as i32).abs();
-            assert!(
-                diff <= tolerance as i32,
-                "{name}: plane {c} pixel {i} ours={ours} psd-tools={theirs} diff={diff}"
-            );
-        }
-    }
+    assert_planes_within(name, &our_planes, &theirs, tolerance);
 }
 
 #[test]
@@ -195,15 +199,14 @@ fn bitmap_fixture_matches_psd_tools() {
     ours_matching("bitmap.psd", 0, psd_tools_composite_planes);
 }
 
-/// A normalized document saves as RGB: re-reading the written file yields the
-/// same working mode and pixels with no source mode, and `psd-tools` opens it
-/// as an RGB document.
+/// A non-Lab normalized document still saves as RGB: re-reading the written file
+/// yields the same working mode and pixels with no source mode, and `psd-tools`
+/// opens it as an RGB document. (Lab saves back as Lab; see the next test.)
 #[test]
 fn normalized_documents_round_trip_as_rgb() {
     for (name, source) in [
         ("indexed.psd", ColorMode::Indexed),
         ("cmyk.psd", ColorMode::Cmyk),
-        ("lab.psd", ColorMode::Lab),
         ("bitmap.psd", ColorMode::Bitmap),
     ] {
         let doc = load(name);
@@ -263,6 +266,97 @@ print(int(psd.color_mode))
             "{name}: psd-tools opens the output as RGB"
         );
     }
+}
+
+/// A Lab document saves back as Lab: the output header color mode is Lab, the
+/// planes stay three channels, and an **unedited** document re-emits the retained
+/// Lab planes byte-identically, so a re-read reproduces the working RGB exactly.
+/// lcms2's exact transform of the written Lab planes is the independent
+/// reference; lcms2 and psd-tools are test-only.
+#[test]
+fn lab_document_saves_as_lab() {
+    let doc = load("lab.psd");
+    assert_eq!(
+        doc.source_mode,
+        Some(ColorMode::Lab),
+        "recorded source mode"
+    );
+    let plane = doc.composite.pixel_count();
+    let retained = doc.source_planes.clone().expect("Lab planes retained");
+    assert_eq!(retained.depth, BitDepth::Eight, "8-bit Lab store");
+    assert!(
+        !doc.retains_source_depth(),
+        "the Lab store is not a native-depth store"
+    );
+    let source_lab = retained.data[..3 * plane].to_vec();
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        3,
+        "output keeps three color channels"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        9,
+        "output header color mode is Lab"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb, "re-read working mode");
+    assert_eq!(
+        back.source_mode,
+        Some(ColorMode::Lab),
+        "re-read source mode"
+    );
+    let back_retained = back.source_planes.clone().expect("re-read Lab planes");
+    assert_eq!(
+        back_retained.data[..3 * plane],
+        source_lab[..],
+        "unedited Lab planes are re-emitted byte-identically"
+    );
+    assert_eq!(
+        back.composite, doc.composite,
+        "re-reading the retained planes reproduces the working RGB exactly"
+    );
+    let working: Vec<&[u8]> = (0..3)
+        .map(|c| &doc.composite.data[c * plane..(c + 1) * plane])
+        .collect();
+
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+    let dir = scratch_dir("lab-write-back");
+    let path = dir.join("lab.psd");
+    std::fs::write(&path, &out).unwrap();
+    // lcms2's exact transform of the written Lab planes must reproduce the working
+    // RGB the document was editing within tolerance.
+    let reference = lcms2_exact_lab_planes(&path);
+    assert_planes_within("lab.psd lcms2", &working, &reference, 1);
+    let script = r#"
+import sys
+from psd_tools import PSDImage
+psd = PSDImage.open(sys.argv[1])
+print(int(psd.color_mode))
+"#;
+    let result = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        result.status.success(),
+        "psd-tools failed on the written lab.psd:\n{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        "9",
+        "psd-tools opens the output as Lab"
+    );
 }
 
 fn scratch_dir(tag: &str) -> PathBuf {

@@ -4,6 +4,21 @@
 
 use pictura_core::BitDepth;
 
+use crate::error::PsdError;
+
+/// The length in bytes of `channels` planar `row_bytes`-wide rows, or a typed
+/// error when the product overflows `usize`.
+pub(crate) fn planar_len(
+    channels: usize,
+    row_bytes: usize,
+    height: usize,
+) -> Result<usize, PsdError> {
+    channels
+        .checked_mul(row_bytes)
+        .and_then(|n| n.checked_mul(height))
+        .ok_or_else(|| PsdError::Invalid("image dimensions overflow".into()))
+}
+
 /// The [`BitDepth`] for a 16/32-bit sample width, else `None`.
 pub(crate) fn depth_bits(depth: u16) -> Option<BitDepth> {
     match depth {

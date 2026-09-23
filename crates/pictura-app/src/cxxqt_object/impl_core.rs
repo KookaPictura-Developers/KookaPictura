@@ -274,7 +274,10 @@ impl qobject::PictureView {
     }
 
     pub fn mode_notice(&self) -> QString {
-        let Some(mode) = self.rust().doc.as_ref().and_then(|d| d.source_mode) else {
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return QString::default();
+        };
+        let Some(mode) = doc.source_mode else {
             return QString::default();
         };
         let name = match mode {
@@ -284,7 +287,11 @@ impl qobject::PictureView {
             ColorMode::Lab => "Lab",
             _ => return QString::default(),
         };
-        QString::from(format!("Converted from {name}"))
+        // Only an 8-bit Lab source re-encodes as Lab on save; a 16/32-bit Lab
+        // source (no retained samples) and every other converted mode write RGB.
+        let preserves_lab = mode == ColorMode::Lab && doc.source_depth.is_none();
+        let saved = if preserves_lab { "Lab" } else { "RGB" };
+        QString::from(format!("Converted from {name}; saved as {saved}"))
     }
 
     pub fn depth_notice(&self) -> QString {
