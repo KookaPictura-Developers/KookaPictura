@@ -42,7 +42,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
-    `app-control-server`, and `depth-preserve` changes;
+    `app-control-server`, `depth-preserve`, and `agentic-control-vision`
+    changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -650,8 +651,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   hand-maintained denylist, `// ponytail:`) with `refused`, so no request blocks
   on a modal. Socket is owner-only (Qt mode 0700), no TCP, no eval, oversize
   requests rejected. Proven by the `mcp_control` self-test block (codes 463+).
-  Ceilings: vision/input/`selection`/`filter`/`layer_op` and the `pictura-mcp`
-  stdio frontend are deferred (P2–P6 of the plan).
+  **Vision methods** shipped (archived `2026-09-23-agentic-control-vision`):
+  `screenshot` (`scope` window/canvas/document, `max_dim` default 1280, PNG as
+  base64 with source dimensions), `ui_tree` (capped widget tree with
+  window-local rects, `max_depth` default 12, `max_children` 64), and
+  `layer_thumbnail` (`index`, `size` default 64). Caller-supplied image sizes are
+  capped at the trust boundary (thumbnails 1024, screenshots 4096) because the
+  engine allocates `size²` and `max_dim` would otherwise bypass the response-size
+  guard; the vision self-test block is codes 483–492. Ceilings: input synthesis
+  (`pointer`/`key`/`set_tool`), the engine actions, and the `pictura-mcp` stdio
+  frontend are deferred (P3–P6 of the plan).
 - **Bit-depth preservation** (roadmap P4/G4, archived `2026-09-23-depth-preserve`):
   a 16/32-bit **Grayscale or RGB** document no longer downgrades to 8-bit on
   save. `read_psd` retains the decoded source-depth samples of the composite
