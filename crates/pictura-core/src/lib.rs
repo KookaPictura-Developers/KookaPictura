@@ -118,11 +118,16 @@ pub struct Document {
     /// or RGB file and for a constructed document.
     pub source_mode: Option<ColorMode>,
     /// The header bit depth of the file this document was read from, when a
-    /// 16/32-bit file was normalized to the 8-bit working model on read. `None`
-    /// for an 8-bit file, a depth-1 Bitmap file (recorded by `source_mode`), and
-    /// a constructed document. Deliberately not re-emitted on save: `write_psd`
-    /// stays 8-bit, so this records the source depth the save does not preserve.
+    /// 16/32-bit Grayscale or RGB file was normalized to the 8-bit working
+    /// model on read. `None` for an 8-bit file, a depth-1 Bitmap file (recorded
+    /// by `source_mode`), a constructed document, and a mode the read path
+    /// converted (CMYK/Lab). `write_psd` re-emits this depth on save, so an
+    /// unchanged plane keeps its source precision.
     pub source_depth: Option<BitDepth>,
+    /// Retained native-depth samples of the composite color planes and the
+    /// document extra channels, re-emitted on save when the plane is unchanged.
+    /// `None` for an 8-bit or constructed document and for a converted mode.
+    pub source_planes: Option<SourcePlanes>,
     /// The embedded ICC profile bytes of the file this document was read from,
     /// when it was converted to the sRGB working space on read. `None` for a
     /// file with no decodable non-sRGB profile and for a constructed document.
@@ -177,6 +182,7 @@ impl Document {
             depth,
             source_mode: None,
             source_depth: None,
+            source_planes: None,
             source_icc: None,
             document_icc: None,
             composite: PixelBuffer::new(width, height, channels),
@@ -256,6 +262,21 @@ impl Document {
         });
         doc
     }
+
+    /// True when a read retained source-depth samples for some plane (a 16/32-bit
+    /// Grayscale or RGB document), so `write_psd` re-emits the source depth.
+    /// False for a mode the read path converted (CMYK/Lab) and for an 8-bit or
+    /// constructed document, which still save 8-bit.
+    pub fn retains_source_depth(&self) -> bool {
+        self.source_planes.is_some() || retains_source_depth(&self.layers)
+    }
+}
+
+/// Whether any layer in a tree retained source-depth channel samples.
+fn retains_source_depth(layers: &[Layer]) -> bool {
+    layers
+        .iter()
+        .any(|l| l.source_channels.is_some() || retains_source_depth(&l.children))
 }
 
 impl Default for Document {
@@ -434,6 +455,46 @@ pub struct LayerBlock {
 pub struct RawChannel {
     pub id: i16,
     pub data: Vec<u8>,
+}
+
+/// Retained native-depth samples of a document's color planes and extra
+/// channels, kept so an unchanged plane can be re-emitted at its source depth.
+///
+/// `data` is the planar image-data buffer: the composite color channels
+/// followed by the document extra channels, each `row_bytes(width, depth) *
+/// height` native bytes, in PSD order. It is set only for a 16/32-bit
+/// Grayscale or RGB read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourcePlanes {
+    pub depth: BitDepth,
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
+
+/// A layer's retained native-depth channel samples, keyed by channel id and
+/// carrying the layer rect they were decoded for. A saved layer whose rect
+/// still matches can re-emit them; a moved layer falls back to widening.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceChannels {
+    pub depth: BitDepth,
+    pub rect: PsdRect,
+    /// `(channel id, native plane bytes)` sorted by channel id. Includes the
+    /// color channels, `-1` transparency, `-2` mask, and unmodeled ids.
+    pub planes: Vec<(i16, Vec<u8>)>,
+}
+
+impl SourceChannels {
+    /// Build a store, sorting the planes by channel id so equality does not
+    /// depend on whether they were captured in read or write emission order.
+    pub fn new(depth: BitDepth, rect: PsdRect, mut planes: Vec<(i16, Vec<u8>)>) -> Self {
+        planes.sort_by_key(|(id, _)| *id);
+        Self {
+            depth,
+            rect,
+            planes,
+        }
+    }
 }
 
 /// How a smart object's source is linked.
@@ -651,6 +712,9 @@ pub struct Layer {
     /// Derived `vmsk` vector-mask view; `None` when absent or unparseable. The
     /// raw block remains in `extra_blocks` and is the serialization source.
     pub vector_mask: Option<VectorMask>,
+    /// Retained native-depth channel samples for a 16/32-bit Grayscale/RGB read,
+    /// re-emitted on save when the layer has not moved.
+    pub source_channels: Option<SourceChannels>,
 }
 
 impl Default for Layer {
@@ -682,6 +746,7 @@ impl Default for Layer {
             raw_channels: Vec::new(),
             smart_object: None,
             vector_mask: None,
+            source_channels: None,
         }
     }
 }
@@ -1043,5 +1108,39 @@ mod tests {
         assert_eq!(channel(layer, 0)[1], 0, "missing pixels stay transparent");
         assert_eq!(channel(layer, -1)[3], 0);
         assert_eq!(doc.composite.data.len(), 16);
+    }
+
+    #[test]
+    fn retains_source_depth_tracks_the_retained_store() {
+        let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+        assert!(!doc.retains_source_depth(), "8-bit retains nothing");
+        // A converted mode records the depth for the notice but keeps no samples.
+        doc.source_depth = Some(BitDepth::Sixteen);
+        assert!(!doc.retains_source_depth());
+        doc.source_planes = Some(SourcePlanes {
+            depth: BitDepth::Sixteen,
+            width: 1,
+            height: 1,
+            data: vec![0, 0],
+        });
+        assert!(doc.retains_source_depth());
+
+        // A layer store alone also counts (a layered file with no composite).
+        let mut layered = Document::new(1, 1, ColorMode::Rgb, BitDepth::Sixteen);
+        layered.source_depth = Some(BitDepth::Sixteen);
+        layered.layers.push(Layer {
+            source_channels: Some(SourceChannels {
+                depth: BitDepth::Sixteen,
+                rect: PsdRect {
+                    top: 0,
+                    left: 0,
+                    bottom: 1,
+                    right: 1,
+                },
+                planes: vec![(0, vec![0, 0])],
+            }),
+            ..Default::default()
+        });
+        assert!(layered.retains_source_depth());
     }
 }

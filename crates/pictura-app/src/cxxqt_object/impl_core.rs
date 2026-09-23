@@ -288,7 +288,10 @@ impl qobject::PictureView {
     }
 
     pub fn depth_notice(&self) -> QString {
-        let Some(depth) = self.rust().doc.as_ref().and_then(|d| d.source_depth) else {
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return QString::default();
+        };
+        let Some(depth) = doc.source_depth else {
             return QString::default();
         };
         let name = match depth {
@@ -296,7 +299,16 @@ impl qobject::PictureView {
             BitDepth::ThirtyTwo => "32-bit",
             _ => return QString::default(),
         };
-        QString::from(format!("Converted from {name}"))
+        // A retained Grayscale/RGB read re-emits the source depth on save; a
+        // converted mode (CMYK/Lab) keeps the plain conversion notice because
+        // its save is 8-bit.
+        if doc.retains_source_depth() {
+            QString::from(format!(
+                "Converted from {name} to 8-bit for editing; saved at {name}"
+            ))
+        } else {
+            QString::from(format!("Converted from {name}"))
+        }
     }
 
     pub fn icc_notice(&self) -> QString {

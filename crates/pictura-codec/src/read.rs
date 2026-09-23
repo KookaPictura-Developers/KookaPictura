@@ -4,7 +4,7 @@ use pictura_core::*;
 use std::io::Read;
 
 use crate::common::*;
-use crate::depth::{narrow_channel, narrow_planes, row_bytes, undo_prediction};
+use crate::depth::{depth_bits, narrow_channel, narrow_planes, row_bytes, undo_prediction};
 use crate::error::PsdError;
 
 /// Fallback for an Indexed document's palette; unreachable because
@@ -69,13 +69,12 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     if !depth_ok {
         return Err(PsdError::Unsupported(format!("bit depth {depth}")));
     }
-    // A 16/32-bit header is recorded and narrowed to the 8-bit working model;
-    // depth 1 Bitmap and depth 8 keep the shipped `source_mode`-only behaviour.
-    let source_depth = match depth {
-        16 => Some(BitDepth::Sixteen),
-        32 => Some(BitDepth::ThirtyTwo),
-        _ => None,
-    };
+    // A 16/32-bit header is always recorded so the app can report the
+    // conversion; only a Grayscale/RGB read also retains the native planes
+    // (below). A normalized mode (CMYK/Lab) records no samples and saves 8-bit.
+    let retain_depth =
+        matches!(depth, 16 | 32) && matches!(mode, ColorMode::Grayscale | ColorMode::Rgb);
+    let source_depth = depth_bits(depth);
 
     // Color mode data section: 4-byte length + opaque bytes, kept verbatim.
     // An Indexed palette is interpreted and consumed (see `normalize`).
@@ -87,7 +86,13 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     let image_resources = r.take(resources_len)?.to_vec();
     // Layer and mask information section: 4-byte length (8 in PSB).
     let (mut layers, global_layer_mask, layer_section_extra, layer_compression) =
-        read_layer_section(&mut r, is_psb, mode.color_channels() as usize, depth)?;
+        read_layer_section(
+            &mut r,
+            is_psb,
+            mode.color_channels() as usize,
+            depth,
+            retain_depth,
+        )?;
     // Derive the smart-object view from the preserved bytes; a malformed
     // descriptor or linked-layer record degrades to Unresolved (design D5).
     crate::smart_object::resolve_smart_objects(&mut layers, &layer_section_extra, is_psb);
@@ -107,6 +112,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             depth: BitDepth::Eight,
             source_mode: None,
             source_depth,
+            source_planes: None,
             source_icc: None,
             document_icc: None,
             composite: PixelBuffer::new(width, height, mode.color_channels()),
@@ -155,9 +161,19 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             data
         }
     };
-    // Narrow 16/32-bit samples to the 8-bit layout before `split_planes`, so
-    // `normalize` and every color-mode conversion see the 8-bit planes they
-    // assume. `split_planes`'s per-plane length is the 8-bit `width * height`.
+    // Narrow 16/32-bit samples before `split_planes` so every later step sees
+    // 8-bit planes; the pre-narrow buffer is kept so an unchanged plane re-emits
+    // at the source depth. ponytail: costs 2x/4x the plane size while open.
+    let source_planes = if retain_depth {
+        Some(SourcePlanes {
+            depth: depth_bits(depth).unwrap_or(BitDepth::Eight),
+            width: width as u32,
+            height: height as u32,
+            data: data.clone(),
+        })
+    } else {
+        None
+    };
     let plane = if matches!(depth, 16 | 32) {
         data = narrow_planes(&data, header_channels, stride, width, height, depth);
         width * height
@@ -173,6 +189,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         depth: BitDepth::Eight,
         source_mode: None,
         source_depth,
+        source_planes,
         source_icc: None,
         document_icc: None,
         composite,
@@ -499,6 +516,7 @@ fn read_layer_section(
     is_psb: bool,
     color_channels: usize,
     depth: u16,
+    retain: bool,
 ) -> Result<LayerSection, PsdError> {
     let section_len = if is_psb {
         r.u64()? as usize
@@ -531,7 +549,8 @@ fn read_layer_section(
         if info_end > section_end {
             return Err(PsdError::Invalid("layer info exceeds layer section".into()));
         }
-        (layers, layer_compression) = read_layer_info(r, is_psb, info_end, color_channels, depth)?;
+        (layers, layer_compression) =
+            read_layer_info(r, is_psb, info_end, color_channels, depth, retain)?;
         r.pos = info_end;
     }
 
@@ -560,6 +579,7 @@ fn read_layer_info(
     info_end: usize,
     color_channels: usize,
     depth: u16,
+    retain: bool,
 ) -> Result<(Vec<Layer>, Option<Compression>), PsdError> {
     let count = r.i16()?;
     let n = count.unsigned_abs() as usize;
@@ -586,25 +606,31 @@ fn read_layer_info(
         let mut channels = Vec::new();
         let mut raw_channels = Vec::new();
         let mut mask_data = None;
+        let mut retained: Vec<(i16, Vec<u8>)> = Vec::new();
         for (&id, &len) in raw.channel_ids.iter().zip(raw.channel_lens.iter()) {
             // Channels outside the modeled set (a mode's extra color planes are
             // decoded; spot/selection channels, notably -3, and any positive id
             // beyond the color channels). At depth 8 the full on-disk stream
             // (compression header included) is preserved verbatim; at depth
             // 1/16/32 it is decoded at the document depth, narrowed to an 8-bit
-            // plane, and re-wrapped as a raw 8-bit stream so the writer never
-            // re-emits source-depth bytes under the output's 8-bit header.
+            // plane, and re-wrapped as a raw 8-bit stream for the engine.
             let is_color = id >= 0 && (id as usize) < color_channels;
             if id != -2 && id != -1 && !is_color {
-                let data = if depth == 8 {
-                    r.take(len)?.to_vec()
+                let (data, native) = if depth == 8 {
+                    (r.take(len)?.to_vec(), None)
                 } else {
-                    let (plane, _) = read_channel_data(r, len, layer_w, layer_h, is_psb, depth)?;
+                    let (plane, _, native) =
+                        read_channel_data(r, len, layer_w, layer_h, is_psb, depth)?;
                     let mut stream = Vec::with_capacity(2 + plane.len());
                     stream.extend_from_slice(&COMPRESSION_RAW.to_be_bytes());
                     stream.extend_from_slice(&plane);
-                    stream
+                    (stream, native)
                 };
+                if retain {
+                    if let Some(native) = native {
+                        retained.push((id, native));
+                    }
+                }
                 raw_channels.push(RawChannel { id, data });
                 continue;
             }
@@ -615,7 +641,12 @@ fn read_layer_info(
             } else {
                 (layer_w, layer_h)
             };
-            let (data, code) = read_channel_data(r, len, w, h, is_psb, depth)?;
+            let (data, code, native) = read_channel_data(r, len, w, h, is_psb, depth)?;
+            if retain {
+                if let Some(native) = native {
+                    retained.push((id, native));
+                }
+            }
             // Section dividers and folder records carry placeholder channels that
             // `build_tree` drops; only a normal record's channel is a survivor.
             if raw.section.is_none() && layer_compression.is_none() {
@@ -624,6 +655,17 @@ fn read_layer_info(
             match id {
                 -2 => mask_data = Some(data),
                 _ => channels.push(Channel { id, data }),
+            }
+        }
+        // `build_tree` drops folder/divider records; an `lsct=0` layer is kept.
+        let dropped = matches!(
+            raw.section,
+            Some(SECTION_DIVIDER | SECTION_OPEN_FOLDER | SECTION_CLOSED_FOLDER)
+        );
+        if retain && !dropped && !retained.is_empty() {
+            if let Some(bits) = depth_bits(depth) {
+                raw.layer.source_channels =
+                    Some(SourceChannels::new(bits, raw.layer.rect, retained));
             }
         }
         raw.layer.channels = channels;
@@ -856,6 +898,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             raw_channels: Vec::new(),
             smart_object: None,
             vector_mask: None,
+            source_channels: None,
         },
         channel_ids,
         channel_lens,
@@ -905,12 +948,14 @@ fn read_rle_count(r: &mut Reader, is_psb: bool) -> Result<usize, PsdError> {
     })
 }
 
-/// Read one layer channel's image data. `declared_len` comes from the channel
-/// info and **includes** the 2-byte compression header. At depth 1 (Bitmap only)
-/// a channel is bit-packed with a `ceil(width / 8)` row stride and expanded to an
-/// 8-bit `width * height` plane; at 16/32 it is decoded at the document depth and
-/// narrowed to one, so the layer path matches the composite path. Returns the
-/// decoded plane and the observed compression word.
+/// A decoded layer channel: 8-bit plane, compression word, optional native plane.
+type ChannelRead = (Vec<u8>, u16, Option<Vec<u8>>);
+
+/// Read one layer channel's image data. `declared_len` includes the 2-byte
+/// compression header. A depth-1 channel is bit-packed and expanded to an 8-bit
+/// plane; a 16/32-bit channel is decoded at the document depth and narrowed, so
+/// the layer path matches the composite. Returns the 8-bit plane, the
+/// compression word, and at 16/32 the pre-narrow native plane for retention.
 fn read_channel_data(
     r: &mut Reader,
     declared_len: usize,
@@ -918,9 +963,9 @@ fn read_channel_data(
     height: usize,
     is_psb: bool,
     depth: u16,
-) -> Result<(Vec<u8>, u16), PsdError> {
+) -> Result<ChannelRead, PsdError> {
     if declared_len == 0 {
-        return Ok((Vec::new(), COMPRESSION_RAW));
+        return Ok((Vec::new(), COMPRESSION_RAW, None));
     }
     if declared_len < 2 {
         return Err(PsdError::Invalid(format!(
@@ -929,17 +974,29 @@ fn read_channel_data(
     }
     let compression = r.u16()?;
     let payload = r.take(declared_len - 2)?;
-    let data = match depth {
-        1 => decode_bitmap_channel(compression, payload, width, height, is_psb),
-        8 => decode_channel_data(compression, payload, width, height, is_psb),
-        _ => decode_depth_channel(compression, payload, width, height, is_psb, depth),
-    }?;
-    Ok((data, compression))
+    match depth {
+        1 => Ok((
+            decode_bitmap_channel(compression, payload, width, height, is_psb)?,
+            compression,
+            None,
+        )),
+        8 => Ok((
+            decode_channel_data(compression, payload, width, height, is_psb)?,
+            compression,
+            None,
+        )),
+        _ => {
+            let (data, native) =
+                decode_depth_channel(compression, payload, width, height, is_psb, depth)?;
+            Ok((data, compression, Some(native)))
+        }
+    }
 }
 
-/// Decode a 16/32-bit layer channel to an 8-bit `width * height` plane: it is
-/// decoded at the document depth (raw, RLE, or ZIP/ZIP-with-prediction) and then
-/// narrowed, mirroring the composite path so layer and composite agree.
+/// Decode a 16/32-bit layer channel: it is decoded at the document depth (raw,
+/// RLE, or ZIP/ZIP-with-prediction) and returned both narrowed to an 8-bit
+/// `width * height` plane and as its native pre-narrow bytes, mirroring the
+/// composite path so layer and composite agree.
 fn decode_depth_channel(
     compression: u16,
     payload: &[u8],
@@ -947,7 +1004,7 @@ fn decode_depth_channel(
     height: usize,
     is_psb: bool,
     depth: u16,
-) -> Result<Vec<u8>, PsdError> {
+) -> Result<(Vec<u8>, Vec<u8>), PsdError> {
     let stride = row_bytes(width, depth);
     let plane = stride
         .checked_mul(height)
@@ -969,7 +1026,8 @@ fn decode_depth_channel(
         }
         c => return Err(PsdError::Unsupported(format!("channel compression {c}"))),
     };
-    Ok(narrow_channel(&raw, width, height, stride, depth))
+    let narrowed = narrow_channel(&raw, width, height, stride, depth);
+    Ok((narrowed, raw))
 }
 
 /// Decode a depth-1 layer channel to an 8-bit `width * height` plane. Raw and RLE

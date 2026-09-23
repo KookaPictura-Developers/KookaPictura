@@ -1,8 +1,8 @@
 use super::paths::resolve_path;
 use super::transform::{transform_layer, LayerTransform};
 use pictura_core::{
-    BitDepth, Channel, ColorMode, Document, Layer, LayerMask, LockFlags, PsdRect, SmartObject,
-    SmartObjectKind,
+    BitDepth, Channel, ColorMode, Document, Layer, LayerMask, LockFlags, PsdRect, RawChannel,
+    SmartObject, SmartObjectKind, SourceChannels, SourcePlanes,
 };
 
 fn rect(w: i32, h: i32) -> PsdRect {
@@ -86,6 +86,70 @@ fn scale_two_doubles_rect_and_planes() {
     for ch in &layer.channels {
         assert_eq!(ch.data.len(), 32, "channel {} plane", ch.id);
     }
+}
+
+#[test]
+fn high_depth_transform_move_keeps_and_scale_drops_unmodeled_channels() {
+    let mut layer = pixel_layer(4, 4);
+    layer.raw_channels = vec![RawChannel {
+        id: 3,
+        data: vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    }];
+    layer.source_channels = Some(SourceChannels {
+        depth: BitDepth::Sixteen,
+        rect: rect(4, 4),
+        planes: vec![(3, vec![0; 32])],
+    });
+    let mut doc = doc_with(layer);
+    doc.source_depth = Some(BitDepth::Sixteen);
+    doc.source_planes = Some(SourcePlanes {
+        depth: BitDepth::Sixteen,
+        width: 4,
+        height: 4,
+        data: vec![0; 3 * 4 * 4 * 2],
+    });
+
+    // A pure integer translation keeps the channel and re-anchors the store.
+    assert!(transform_layer(
+        &mut doc,
+        "0",
+        transform(1.0, 1.0, 0.0, 2.0, 1.0)
+    ));
+    let moved = resolve_path(&doc, "0").unwrap();
+    assert_eq!(
+        moved.raw_channels.len(),
+        1,
+        "a pure move keeps the unmodeled channel"
+    );
+    assert_eq!(moved.source_channels.as_ref().unwrap().rect, moved.rect);
+    assert_eq!(
+        moved.rect,
+        PsdRect {
+            top: 1,
+            left: 2,
+            bottom: 5,
+            right: 6
+        }
+    );
+    assert!(
+        pictura_codec::write_psd(&doc).is_ok(),
+        "a moved layer saves"
+    );
+
+    // A scale cannot resample a raw plane, so it drops the channel.
+    assert!(transform_layer(
+        &mut doc,
+        "0",
+        transform(2.0, 2.0, 0.0, 0.0, 0.0)
+    ));
+    let scaled = resolve_path(&doc, "0").unwrap();
+    assert!(
+        scaled.raw_channels.is_empty(),
+        "a scale drops the unmodeled channel"
+    );
+    assert!(scaled.source_channels.is_none());
+    let bytes = pictura_codec::write_psd(&doc).expect("a scaled high-depth layer saves");
+    assert_eq!(u16::from_be_bytes(bytes[22..24].try_into().unwrap()), 16);
 }
 
 #[test]

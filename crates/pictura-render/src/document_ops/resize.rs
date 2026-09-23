@@ -86,6 +86,11 @@ fn resize_layer(
             }
         }
     }
+    if sx != 1.0 || sy != 1.0 {
+        // ponytail: a raw plane cannot be resampled, so a real scale drops it
+        layer.raw_channels.clear();
+        layer.source_channels = None;
+    }
 }
 
 #[cfg(test)]
@@ -93,7 +98,7 @@ mod tests {
     use super::*;
     use pictura_core::{
         BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
-        PsdRect,
+        PsdRect, RawChannel, SourceChannels, SourcePlanes,
     };
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
@@ -231,5 +236,45 @@ mod tests {
                 assert_eq!(channel.data.len(), area);
             }
         }
+    }
+
+    #[test]
+    fn resize_drops_stale_unmodeled_channels_and_saves() {
+        let mut doc = sample_doc();
+        doc.source_depth = Some(BitDepth::Sixteen);
+        doc.source_planes = Some(SourcePlanes {
+            depth: BitDepth::Sixteen,
+            width: 4,
+            height: 4,
+            data: vec![0; 3 * 8 * 4],
+        });
+        doc.layers[0].raw_channels = vec![RawChannel {
+            id: 3,
+            data: vec![0, 0, 1],
+        }];
+        doc.layers[0].source_channels = Some(SourceChannels {
+            depth: BitDepth::Sixteen,
+            rect: rect(0, 0, 4, 4),
+            planes: vec![(3, vec![0; 8])],
+        });
+
+        // A no-op resize (unchanged dimensions) keeps the channel.
+        resize_document(&mut doc, 4, 4, pictura_ops::Resample::Nearest).unwrap();
+        assert_eq!(
+            doc.layers[0].raw_channels.len(),
+            1,
+            "a no-op resize keeps the unmodeled channel"
+        );
+        assert!(doc.layers[0].source_channels.is_some());
+
+        resize_document(&mut doc, 8, 8, pictura_ops::Resample::Nearest).unwrap();
+        assert!(
+            doc.layers[0].raw_channels.is_empty(),
+            "stale unmodeled channel dropped"
+        );
+        assert!(doc.layers[0].source_channels.is_none());
+
+        let bytes = pictura_codec::write_psd(&doc).expect("a resized high-depth doc saves");
+        assert_eq!(u16::from_be_bytes(bytes[22..24].try_into().unwrap()), 16);
     }
 }
