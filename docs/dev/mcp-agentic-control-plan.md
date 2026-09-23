@@ -1,11 +1,13 @@
 # Agentic MCP Control — implementation plan
 
-- **Status:** P0/P1 shipped — the app-side control server is archived as
+- **Status:** P0–P2 shipped — the app-side control server is archived as
   `2026-09-22-app-control-server` (`--control`, the JSON socket protocol, and the
   `status`/`get_pixel`/`list_layers`/`list_commands`/`dispatch_command`/
-  `document`/`edit`/`set_unsaved_policy` methods). P2–P6 (vision, input
-  synthesis, `pictura-mcp`) remain proposed and unscheduled. Authored before
-  coding so the work can resume cold.
+  `document`/`edit`/`set_unsaved_policy` methods) and its vision half as
+  `2026-09-23-agentic-control-vision` (`screenshot`, `ui_tree`,
+  `layer_thumbnail`). P3–P6 (input synthesis, engine actions, `pictura-mcp`)
+  remain proposed and unscheduled. Authored before coding so the work can resume
+  cold.
 - **Track:** infrastructure/automation, **not** the M44 (layer filtering/search)
   milestone program.
 - **Proposed OpenSpec change:** `mcp-agentic-control`
@@ -655,11 +657,11 @@ Document both in `agentic-testing.md`; do not overwrite a user's global config.
 
 ### P2 — Vision
 
-- [ ] `screenshot` (`window|canvas|document`, `max_dim`).
-- [ ] `layer_thumbnail`.
-- [ ] `ui_tree`.
-- [ ] `get_pixel`.
-- [ ] Self-test assertions (PNG magic bytes, dimensions, tree contains
+- [x] `screenshot` (`window|canvas|document`, `max_dim`).
+- [x] `layer_thumbnail`.
+- [x] `ui_tree`.
+- [x] `get_pixel`.
+- [x] Self-test assertions (PNG magic bytes, dimensions, tree contains
       `layersPanel`).
 
 ### P3 — Input + engine actions
