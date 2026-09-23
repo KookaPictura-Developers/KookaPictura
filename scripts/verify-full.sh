@@ -15,4 +15,7 @@ echo "cmake_build=ok"
 
 bash scripts/verify-fast.sh
 
+echo "== control =="
+bash scripts/verify-control.sh
+
 echo "verify-full: OK"
