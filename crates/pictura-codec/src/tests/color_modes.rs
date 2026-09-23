@@ -57,6 +57,19 @@ pub(super) fn layered_psd_depth(
     composite: &[&[u8]],
     layer_channels: &[(i16, &[u8])],
 ) -> Vec<u8> {
+    layered_psd_with_data(depth, mode, header_channels, &[], composite, layer_channels)
+}
+
+/// As [`layered_psd_depth`] with an explicit `color_mode_data` section (the
+/// Indexed palette).
+fn layered_psd_with_data(
+    depth: u16,
+    mode: u16,
+    header_channels: u16,
+    color_mode_data: &[u8],
+    composite: &[&[u8]],
+    layer_channels: &[(i16, &[u8])],
+) -> Vec<u8> {
     let mut rec = Vec::new();
     for v in [0i32, 0, 1, 1] {
         rec.extend_from_slice(&v.to_be_bytes());
@@ -91,7 +104,8 @@ pub(super) fn layered_psd_depth(
     }
 
     let mut out = header_depth(1, header_channels, 1, 1, depth, mode);
-    out.extend_from_slice(&0u32.to_be_bytes()); // color mode data
+    out.extend_from_slice(&(color_mode_data.len() as u32).to_be_bytes()); // color mode data
+    out.extend_from_slice(color_mode_data);
     out.extend_from_slice(&0u32.to_be_bytes()); // image resources
     let section_len = 4 + info.len() + 4;
     out.extend_from_slice(&(section_len as u32).to_be_bytes());
@@ -692,6 +706,18 @@ fn grouped_psd(
     composite: &[&[u8]],
     child: &[(i16, &[u8])],
 ) -> Vec<u8> {
+    grouped_psd_with_data(mode, header_channels, &[], composite, child)
+}
+
+/// As [`grouped_psd`] with an explicit `color_mode_data` section (the Indexed
+/// palette).
+fn grouped_psd_with_data(
+    mode: u16,
+    header_channels: u16,
+    color_mode_data: &[u8],
+    composite: &[&[u8]],
+    child: &[(i16, &[u8])],
+) -> Vec<u8> {
     fn record(channels: &[(i16, &[u8])], section: Option<u32>) -> Vec<u8> {
         let mut rec = Vec::new();
         for v in [0i32, 0, 1, 1] {
@@ -738,7 +764,8 @@ fn grouped_psd(
     }
 
     let mut out = header_depth(1, header_channels, 1, 1, 8, mode);
-    out.extend_from_slice(&0u32.to_be_bytes()); // color mode data
+    out.extend_from_slice(&(color_mode_data.len() as u32).to_be_bytes()); // color mode data
+    out.extend_from_slice(color_mode_data);
     out.extend_from_slice(&0u32.to_be_bytes()); // image resources
     let section_len = 4 + info.len() + 4;
     out.extend_from_slice(&(section_len as u32).to_be_bytes());
@@ -895,4 +922,323 @@ fn lab_document_without_a_merged_composite_writes_lab() {
         9,
         "a re-save keeps Lab"
     );
+}
+
+// -- Indexed write-back -------------------------------------------------
+
+/// The fixture-style palette: index `i` maps to `(i, 255 - i, (i * 7) % 256)`.
+fn indexed_palette() -> [u8; 768] {
+    let mut palette = [0u8; 768];
+    for i in 0..256 {
+        palette[i] = i as u8;
+        palette[256 + i] = (255 - i) as u8;
+        palette[512 + i] = ((i * 7) % 256) as u8;
+    }
+    palette
+}
+
+#[test]
+fn indexed_document_writes_back_as_indexed() {
+    // An unedited flat Indexed composite is retained on read and re-emitted
+    // byte-identically on write, so re-reading reproduces the working RGB.
+    let palette = indexed_palette();
+    let indices = [0u8, 1, 2, 3];
+    let p = flat_psd_with_data(8, 2, 1, 4, 1, &palette, &[&indices]);
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.mode, ColorMode::Rgb);
+    assert_eq!(doc.source_mode, Some(ColorMode::Indexed));
+    assert!(doc.color_mode_data.is_empty(), "palette consumed");
+    assert_eq!(doc.source_palette, Some(palette));
+    assert_eq!(
+        doc.source_planes
+            .as_ref()
+            .expect("index plane retained")
+            .data,
+        indices.to_vec(),
+        "the index plane is retained"
+    );
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        1,
+        "one index channel"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        8,
+        "output depth stays 8"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        2,
+        "output header color mode is Indexed"
+    );
+    assert_eq!(&out[30..30 + 768], &palette[..], "palette re-emitted");
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb);
+    assert_eq!(back.source_mode, Some(ColorMode::Indexed));
+    assert_eq!(back.source_palette, Some(palette));
+    assert_eq!(
+        back.source_planes.as_ref().expect("index retained").data,
+        indices.to_vec(),
+        "the written index plane equals the source exactly"
+    );
+    assert_eq!(
+        back.composite, doc.composite,
+        "re-reading the palette reproduces the working RGB exactly"
+    );
+}
+
+#[test]
+fn indexed_layer_color_channel_writes_back_as_indexed() {
+    let palette = indexed_palette();
+    let p = layered_psd_with_data(8, 2, 1, &palette, &[&[2]], &[(0, &[5]), (-1, &[200])]);
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.source_mode, Some(ColorMode::Indexed));
+    let layer = &doc.layers[0];
+    assert_eq!(
+        layer.channels.iter().map(|c| c.id).collect::<Vec<_>>(),
+        vec![0, 1, 2, -1],
+        "the index layer becomes RGB plus transparency"
+    );
+    let retained = layer.source_channels.as_ref().expect("index retained");
+    assert_eq!(retained.depth, BitDepth::Eight);
+    assert_eq!(retained.planes, vec![(0, vec![5])]);
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        2,
+        "output header color mode is Indexed"
+    );
+
+    let back = read_psd(&out).unwrap();
+    let back_layer = &back.layers[0];
+    assert_eq!(
+        back_layer.channels.iter().map(|c| c.id).collect::<Vec<_>>(),
+        vec![0, 1, 2, -1]
+    );
+    for c in 0..3 {
+        assert_eq!(
+            back_layer.channels[c].data, layer.channels[c].data,
+            "layer color channel {c} is exact"
+        );
+    }
+    assert_eq!(
+        back_layer.channels[3].data,
+        vec![200],
+        "transparency untouched"
+    );
+    assert_eq!(back.composite, doc.composite);
+}
+
+#[test]
+fn grouped_indexed_layer_round_trips() {
+    // A pixel layer nested in a group must have its index channel retained and
+    // re-emitted like a top-level one.
+    let palette = indexed_palette();
+    let p = grouped_psd_with_data(2, 1, &palette, &[&[2]], &[(0, &[5])]);
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.mode, ColorMode::Rgb);
+    assert_eq!(doc.source_mode, Some(ColorMode::Indexed));
+    assert!(doc.layers[0].is_group());
+    let child = &doc.layers[0].children[0];
+    assert_eq!(
+        child.channels.iter().map(|c| c.id).collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert_eq!(
+        child.source_channels.as_ref().unwrap().planes,
+        vec![(0, vec![5])],
+        "the nested index channel is retained"
+    );
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        2,
+        "output header color mode is Indexed"
+    );
+
+    let back = read_psd(&out).unwrap();
+    let back_child = &back.layers[0].children[0];
+    for c in 0..3 {
+        assert_eq!(
+            back_child.channels[c].data, child.channels[c].data,
+            "nested channel {c} after save"
+        );
+    }
+    assert_eq!(back.composite, doc.composite);
+}
+
+#[test]
+fn edited_indexed_composite_falls_back_to_rgb() {
+    // An edit cannot be re-quantized: the whole document writes the working RGB.
+    let palette = indexed_palette();
+    let p = flat_psd_with_data(8, 2, 1, 2, 1, &palette, &[&[1, 2]]);
+    let mut doc = read_psd(&p).unwrap();
+    doc.composite.data[0] ^= 1;
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "an edited composite writes RGB, not an invented quantization"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb);
+    assert_eq!(back.source_mode, None);
+    assert_eq!(back.composite, doc.composite);
+}
+
+#[test]
+fn edited_indexed_layer_falls_back_to_rgb() {
+    // One edited layer flips the document-wide header mode to RGB.
+    let palette = indexed_palette();
+    let p = layered_psd_with_data(8, 2, 1, &palette, &[&[2]], &[(0, &[5]), (-1, &[200])]);
+    let mut doc = read_psd(&p).unwrap();
+    doc.layers[0].channels[0].data[0] ^= 1;
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "an edited layer writes the whole document as RGB"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb);
+    assert_eq!(back.source_mode, None);
+    assert_eq!(
+        back.layers[0].channels[0].data, doc.layers[0].channels[0].data,
+        "the edited layer round-trips in RGB"
+    );
+}
+
+#[test]
+fn indexed_layer_with_raster_mask_round_trips_as_indexed() {
+    // A layer's raster mask (channel -2) is not palette-encoded, so it must ride
+    // through an Indexed save unchanged alongside the re-emitted index channel.
+    let palette = indexed_palette();
+    let p = layered_psd_with_data(8, 2, 1, &palette, &[&[2]], &[(0, &[5]), (-2, &[222])]);
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.source_mode, Some(ColorMode::Indexed));
+    assert_eq!(
+        doc.layers[0].mask.as_ref().and_then(|m| m.data.as_deref()),
+        Some(&[222u8][..]),
+        "the raster mask is read from channel -2"
+    );
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        2,
+        "output header color mode is Indexed"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.source_mode, Some(ColorMode::Indexed));
+    assert_eq!(
+        back.layers[0].mask.as_ref().and_then(|m| m.data.as_deref()),
+        Some(&[222u8][..]),
+        "the mask bytes survive the Indexed save"
+    );
+    assert_eq!(
+        back.layers[0].source_channels.as_ref().unwrap().planes,
+        vec![(0, vec![5])],
+        "the index channel is byte-identical"
+    );
+}
+
+#[test]
+fn indexed_document_without_a_merged_composite_writes_indexed() {
+    // "Maximize Compatibility" off: the read retains the palette and each layer
+    // index but no composite plane. The writer must still choose Indexed, skip
+    // the composite requirement, and emit no image-data section.
+    let palette = indexed_palette();
+    let p = layered_psd_with_data(8, 2, 1, &palette, &[&[2]], &[(0, &[5])]);
+    let mut doc = read_psd(&p).unwrap();
+    doc.merged_composite_present = false;
+    doc.source_planes = None;
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        1,
+        "one index channel"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        2,
+        "output header color mode is Indexed"
+    );
+    assert_eq!(&out[30..30 + 768], &palette[..], "palette re-emitted");
+
+    let back = read_psd(&out).unwrap();
+    assert!(
+        !back.merged_composite_present,
+        "no image-data section is written"
+    );
+    assert_eq!(back.source_mode, Some(ColorMode::Indexed));
+    assert_eq!(back.source_palette, Some(palette));
+    assert_eq!(
+        back.layers[0].source_channels.as_ref().unwrap().planes,
+        vec![(0, vec![5])],
+        "the layer index channel is byte-identical"
+    );
+}
+
+#[test]
+fn added_empty_layer_keeps_indexed_on_save() {
+    // An added layer with no RGB color channels (an empty/adjustment layer)
+    // participates in nothing, so the document stays Indexed.
+    let palette = indexed_palette();
+    let p = layered_psd_with_data(8, 2, 1, &palette, &[&[2]], &[(0, &[5]), (-1, &[200])]);
+    let mut doc = read_psd(&p).unwrap();
+    doc.layers.push(Layer {
+        name: "adjustment".into(),
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 1,
+            right: 1,
+        },
+        ..Default::default()
+    });
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        2,
+        "an added empty layer keeps the document Indexed"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.source_mode, Some(ColorMode::Indexed));
+    assert_eq!(back.layers.len(), 2, "both layers survive the save");
+    assert_eq!(
+        back.layers[0].source_channels.as_ref().unwrap().planes,
+        vec![(0, vec![5])],
+        "the original index channel is byte-identical"
+    );
+}
+
+#[test]
+fn short_indexed_composite_data_is_a_typed_error_not_a_panic() {
+    // `write_psd` is public: a short `composite.data` on an otherwise
+    // Indexed-looking document must fall back to RGB and reach the length
+    // validation, never slice out of bounds.
+    let mut doc = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
+    doc.source_mode = Some(ColorMode::Indexed);
+    doc.source_palette = Some(indexed_palette());
+    doc.composite.channels = 3;
+    doc.composite.data = vec![0u8; 4];
+    doc.source_planes = Some(SourcePlanes {
+        depth: BitDepth::Eight,
+        width: 2,
+        height: 2,
+        data: vec![0u8; 4],
+    });
+    assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
 }

@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use crate::common::*;
 use crate::depth::{apply_prediction, depth_of, narrow_channel, row_bytes, widen_channel};
 use crate::error::PsdError;
+use crate::write_indexed::{index_layer_plane, writes_indexed};
 
 /// The output sample width: the recorded source depth when a read retained
 /// native 16/32-bit samples, else 8. An 8-bit Lab read retains an 8-bit store
@@ -250,6 +251,7 @@ fn write_layer_info(
     psb: bool,
     lab_mode: bool,
     cmyk_mode: bool,
+    indexed_mode: bool,
 ) -> Result<Vec<u8>, PsdError> {
     let records = flatten(&doc.layers);
     if records.len() > i16::MAX as usize {
@@ -302,9 +304,37 @@ fn write_layer_info(
                     ));
                 }
             }
+            // An Indexed layer's three working RGB channels are reconstructed
+            // from one retained index plane (id 0); the rest are kept below.
+            let indexed_plane = if indexed_mode {
+                index_layer_plane(layer, depth)
+            } else {
+                None
+            };
+            let indexed_active = indexed_plane.is_some();
+            if let Some(data) = &indexed_plane {
+                let plane = native_plane(
+                    layer_retained(layer, depth, 0),
+                    data,
+                    layer_w,
+                    layer_h,
+                    depth,
+                )?;
+                channels.push((
+                    0,
+                    OutChannel::Encoded(channel_stream(
+                        doc.layer_compression,
+                        layer_w,
+                        layer_h,
+                        &plane,
+                        depth,
+                        psb,
+                    )?),
+                ));
+            }
             for (index, channel) in layer.channels.iter().enumerate() {
-                // The CMYK color channels are already synthesized above.
-                if cmyk_active && channel.id >= 0 && channel.id < 3 {
+                // The CMYK / Indexed color channels are already synthesized above.
+                if (cmyk_active || indexed_active) && channel.id >= 0 && channel.id < 3 {
                     continue;
                 }
                 let data = lab_channels
@@ -788,7 +818,7 @@ fn native_plane<'a>(
 
 /// The retained native plane at `index` (composite color channels then document
 /// extras) when the document's store matches the output `depth` and canvas.
-fn composite_retained(doc: &Document, depth: u16, index: usize) -> Option<&[u8]> {
+pub(crate) fn composite_retained(doc: &Document, depth: u16, index: usize) -> Option<&[u8]> {
     let store = doc.source_planes.as_ref()?;
     if depth_of(Some(store.depth)) != depth
         || store.width != doc.width
@@ -802,7 +832,7 @@ fn composite_retained(doc: &Document, depth: u16, index: usize) -> Option<&[u8]>
 
 /// The retained native plane for layer channel `id`, when the layer's store
 /// matches the output `depth` and the layer has not moved.
-fn layer_retained(layer: &Layer, depth: u16, id: i16) -> Option<&[u8]> {
+pub(crate) fn layer_retained(layer: &Layer, depth: u16, id: i16) -> Option<&[u8]> {
     let store = layer.source_channels.as_ref()?;
     if depth_of(Some(store.depth)) != depth || store.rect != layer.rect {
         return None;
@@ -952,6 +982,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     // depth (8 when the read retained no samples, including a converted mode),
     // so an open→save of a 16/32-bit file is not a silent downgrade.
     let depth = output_depth(doc);
+    let plane = doc.width as usize * doc.height as usize;
     // A document read from an 8-bit Lab file keeps its three color channels but
     // re-encodes them from the working RGB, so the output header is Lab. A
     // 16/32-bit Lab source retains nothing and keeps writing the working mode.
@@ -966,10 +997,16 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         && doc.source_depth.is_none()
         && doc.source_mode == Some(ColorMode::Cmyk)
         && doc.composite.channels == 3;
+    // An 8-bit Indexed source writes header mode Indexed with one index channel
+    // and the retained palette, but only while the composite and every pixel
+    // layer still expand to the working RGB; an edit falls back to RGB.
+    let indexed_mode = writes_indexed(doc, depth, plane);
     let mode_code = if lab_mode {
         MODE_LAB
     } else if cmyk_mode {
         MODE_CMYK
+    } else if indexed_mode {
+        MODE_INDEXED
     } else {
         match doc.mode {
             ColorMode::Grayscale => MODE_GRAYSCALE,
@@ -979,9 +1016,15 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     };
     let color_channels = doc.composite.channels as usize;
     // The header channel count and composite plane loop follow the output mode:
-    // four for CMYK, the working count otherwise. `doc.composite.data` validation
-    // stays in working terms.
-    let out_color_channels = if cmyk_mode { 4 } else { color_channels };
+    // four for CMYK, one index for Indexed, the working count otherwise.
+    // `doc.composite.data` validation stays in working terms.
+    let out_color_channels = if cmyk_mode {
+        4
+    } else if indexed_mode {
+        1
+    } else {
+        color_channels
+    };
     let channels = out_color_channels + doc.channels.len();
     if channels == 0 || channels > MAX_CHANNELS as usize {
         return Err(PsdError::Invalid(format!("channel count {channels}")));
@@ -998,7 +1041,6 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             "composite size does not match document".into(),
         ));
     }
-    let plane = doc.width as usize * doc.height as usize;
     if doc.composite.data.len() != color_channels * plane {
         return Err(PsdError::Invalid("composite data length mismatch".into()));
     }
@@ -1020,8 +1062,14 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&doc.width.to_be_bytes());
     out.extend_from_slice(&depth.to_be_bytes()); // depth
     out.extend_from_slice(&mode_code.to_be_bytes());
-    out.extend_from_slice(&(doc.color_mode_data.len() as u32).to_be_bytes());
-    out.extend_from_slice(&doc.color_mode_data);
+    // An Indexed output re-emits the retained palette (the read consumed
+    // `color_mode_data`); every other mode replays the preserved section.
+    let color_mode_data: &[u8] = match (indexed_mode, doc.source_palette.as_ref()) {
+        (true, Some(palette)) => palette,
+        _ => &doc.color_mode_data,
+    };
+    out.extend_from_slice(&(color_mode_data.len() as u32).to_be_bytes());
+    out.extend_from_slice(color_mode_data);
     let resources = crate::icc::resources_for_output(doc, mode_code);
     out.extend_from_slice(&(resources.len() as u32).to_be_bytes());
     out.extend_from_slice(&resources);
@@ -1043,7 +1091,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
         }
     } else {
-        let info = write_layer_info(doc, psb, lab_mode, cmyk_mode)?;
+        let info = write_layer_info(doc, psb, lab_mode, cmyk_mode, indexed_mode)?;
         let len_width = if psb { 8 } else { 4 };
         let section_len = len_width + info.len() + 4 + doc.global_layer_mask.len() + extra.len();
         if psb {
@@ -1068,16 +1116,24 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&doc.composite_compression.to_code().to_be_bytes());
     let width = doc.width as usize;
     let height = doc.height as usize;
-    // The Lab or CMYK output re-emits retained planes exactly when they are
-    // unchanged, and otherwise re-encodes from the working RGB into a temp buffer.
+    // The Lab, CMYK, or Indexed output re-emits retained planes exactly when
+    // they are unchanged, and otherwise re-encodes from the working RGB into a
+    // temp buffer (Indexed never re-encodes: an edit already chose the RGB mode).
     let lab_composite = lab_mode.then(|| lab_composite_planes(doc, depth, plane));
     let cmyk_composite = cmyk_mode.then(|| cmyk_composite_planes(doc, depth, plane));
+    let indexed_composite = indexed_mode.then(|| {
+        composite_retained(doc, depth, 0)
+            .expect("indexed_mode checked the composite plane")
+            .to_vec()
+    });
     let mut planes: Vec<Cow<[u8]>> = Vec::with_capacity(channels);
     for c in 0..out_color_channels {
         let current = if let Some(lab) = &lab_composite {
             &lab[c * plane..(c + 1) * plane]
         } else if let Some(cmyk) = &cmyk_composite {
             &cmyk[c * plane..(c + 1) * plane]
+        } else if let Some(indexed) = &indexed_composite {
+            indexed.as_slice()
         } else {
             &doc.composite.data[c * plane..(c + 1) * plane]
         };

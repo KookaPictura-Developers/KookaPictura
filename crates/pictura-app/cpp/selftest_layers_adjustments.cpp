@@ -390,6 +390,68 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
         }
 
+        // indexed_mode_open (520): a minimal flat Indexed PSD opens as a
+        // normalized RGB document and the view reports an Indexed-preserving
+        // save notice.
+        {
+            QTemporaryDir idxDir;
+            const QString idxPath = idxDir.filePath(QStringLiteral("indexed.psd"));
+            QByteArray idxBytes;
+            const auto idxAppend16 = [&idxBytes](unsigned short value) {
+                idxBytes.append(char((value >> 8) & 0xff));
+                idxBytes.append(char(value & 0xff));
+            };
+            const auto idxAppend32 = [&idxBytes](unsigned int value) {
+                idxBytes.append(char((value >> 24) & 0xff));
+                idxBytes.append(char((value >> 16) & 0xff));
+                idxBytes.append(char((value >> 8) & 0xff));
+                idxBytes.append(char(value & 0xff));
+            };
+            idxBytes.append("8BPS", 4);
+            idxAppend16(1);              // version
+            idxBytes.append(6, char(0)); // reserved
+            idxAppend16(1);              // channels
+            idxAppend32(1);              // height
+            idxAppend32(1);              // width
+            idxAppend16(8);              // depth
+            idxAppend16(2);              // color mode Indexed
+            idxAppend32(768);            // color mode data length
+            QByteArray idxPalette(768, char(0));
+            for (int i = 0; i < 256; ++i) {
+                idxPalette[i] = char(i);
+                idxPalette[256 + i] = char(255 - i);
+                idxPalette[512 + i] = char((i * 7) % 256);
+            }
+            idxBytes.append(idxPalette);
+            idxAppend32(0);              // image resources
+            idxAppend32(0);              // layer/mask section
+            idxAppend16(0);              // raw compression
+            idxBytes.append(char(2));    // index 2 -> RGB (2, 253, 14)
+            QFile idxFile(idxPath);
+            const bool idxWritten = idxFile.open(QIODevice::WriteOnly)
+                && idxFile.write(idxBytes) == idxBytes.size();
+            idxFile.close();
+
+            const int idxDocs = frame.documentCount();
+            const bool idxOpened = idxWritten && frame.openPath(idxPath);
+            pictura::PictureView* idxView = frame.activeView();
+            const bool idxOk = idxOpened && frame.documentCount() == idxDocs + 1 && idxView
+                && idxView->mode_notice() == QStringLiteral("Converted from Indexed; saved as Indexed")
+                && idxView->document_mode() == QStringLiteral("rgb")
+                && idxView->sample_argb(0, 0) == 0xff02fd0eu;
+            ST_BEGIN("indexed_mode_open");
+            ST_PASS("indexed_mode_open open=%d notice=%s mode=%s pixel=%08x",
+                    idxOpened ? 1 : 0, idxView ? qPrintable(idxView->mode_notice()) : "-",
+                    idxView ? qPrintable(idxView->document_mode()) : "-",
+                    idxView ? idxView->sample_argb(0, 0) : 0u);
+            if (idxView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!idxOk) {
+                return pictura::selfTest().fail(520, "Indexed mode open");
+            }
+        }
+
         // depth_open (298): a minimal flat depth-16 RGB PSD opens as a
         // normalized 8-bit RGB document, the view reports the 16-bit conversion
         // notice, and a composite pixel is the `v >> 8` narrowing.

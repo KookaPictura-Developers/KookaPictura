@@ -260,6 +260,31 @@ pub(crate) fn retain_cmyk_layer_planes(layers: &mut [Layer], depth: u16) {
     }
 }
 
+/// Retain an Indexed document's decoded 8-bit index layer channel before
+/// `normalize` expands it through the palette to RGB, so `write_psd` re-emits an
+/// unedited layer exactly. Only the single index channel (id `0`) is stored;
+/// masks and alpha are not palette-encoded. No-op at any depth other than 8.
+pub(crate) fn retain_indexed_layer_planes(layers: &mut [Layer], depth: u16) {
+    if depth != 8 {
+        return;
+    }
+    for layer in layers {
+        if layer.source_channels.is_none() {
+            let planes: Vec<(i16, Vec<u8>)> = layer
+                .channels
+                .iter()
+                .filter(|c| c.id == 0)
+                .map(|c| (c.id, c.data.clone()))
+                .collect();
+            if planes.len() == 1 {
+                layer.source_channels =
+                    Some(SourceChannels::new(BitDepth::Eight, layer.rect, planes));
+            }
+        }
+        retain_indexed_layer_planes(&mut layer.children, depth);
+    }
+}
+
 /// Replace a layer's color channels (`0..color_channels`) with converted RGB
 /// planes, then recurse into the layer's children so a pixel layer nested in a
 /// group is converted too (not just a top-level one). Non-color channels are
