@@ -4,6 +4,8 @@
 #include "control_server.h"
 #include "frame.h"
 
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+
 #include <QtCore/QEventLoop>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
@@ -75,6 +77,14 @@ QString errorCode(const QJsonObject& response)
         .toString();
 }
 
+QImage decodePng(const QString& base64, bool* ok)
+{
+    const QByteArray bytes = QByteArray::fromBase64(base64.toLatin1());
+    QImage image;
+    *ok = image.loadFromData(bytes, "PNG");
+    return *ok ? image : QImage();
+}
+
 } // namespace
 
 int pictura::runControlChecks(pictura::PicturaMainWindow& frame)
@@ -128,7 +138,6 @@ int pictura::runControlChecks(pictura::PicturaMainWindow& frame)
     ST_PASS("documents=%d active_tool=%s", statusResult.value("documents").toInt(),
             qPrintable(statusResult.value("active_tool").toString()));
 
-    const int initialDocuments = frame.documentCount();
     response = request(socket, 3, QStringLiteral("document"),
                        QJsonObject{{QStringLiteral("op"), QStringLiteral("new")},
                                    {QStringLiteral("width"), 8},
@@ -297,8 +306,135 @@ int pictura::runControlChecks(pictura::PicturaMainWindow& frame)
     }
     ST_PASS("code=%s", qPrintable(errorCode(response)));
 
-    while (frame.documentCount() > initialDocuments) {
-        frame.closeDocument(frame.documentCount() - 1, false);
+    // The oversized request disconnected that socket; open a fresh one for the
+    // vision checks. `ui_tree` below uses a default call.
+    QLocalSocket visionSocket;
+    ST_BEGIN("mcp_control_vision_connect");
+    visionSocket.connectToServer(socketPath);
+    if (!visionSocket.waitForConnected(2000)) {
+        return pictura::selfTest().fail(483, "vision client reconnect");
     }
+
+    response = request(visionSocket, 20, QStringLiteral("screenshot"),
+                       QJsonObject{{QStringLiteral("scope"), QStringLiteral("window")}}, &parsed);
+    QJsonObject imageResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_vision_shot");
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || imageResult.value(QStringLiteral("mime")).toString() != QStringLiteral("image/png")
+        || imageResult.value(QStringLiteral("base64")).toString().isEmpty()) {
+        return pictura::selfTest().fail(484, "screenshot response malformed");
+    }
+    bool pngOk = false;
+    QImage png = decodePng(imageResult.value(QStringLiteral("base64")).toString(), &pngOk);
+    if (!pngOk || png.width() != imageResult.value(QStringLiteral("width")).toInt()
+        || png.height() != imageResult.value(QStringLiteral("height")).toInt()) {
+        return pictura::selfTest().fail(485, "screenshot PNG/dimensions mismatch");
+    }
+    ST_PASS("png=%dx%d source=%dx%d", png.width(), png.height(),
+            imageResult.value("source_width").toInt(),
+            imageResult.value("source_height").toInt());
+
+    response = request(visionSocket, 21, QStringLiteral("screenshot"),
+                       QJsonObject{{QStringLiteral("scope"), QStringLiteral("window")},
+                                   {QStringLiteral("max_dim"), 64}},
+                       &parsed);
+    imageResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_vision_downscale");
+    const int scaledLong =
+        qMax(imageResult.value("width").toInt(), imageResult.value("height").toInt());
+    const int sourceLong =
+        qMax(imageResult.value("source_width").toInt(), imageResult.value("source_height").toInt());
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool() || scaledLong > 64
+        || sourceLong <= scaledLong) {
+        return pictura::selfTest().fail(486, "screenshot downscale did not report source");
+    }
+    ST_PASS("scaled=%d source=%d", scaledLong, sourceLong);
+
+    response = request(visionSocket, 22, QStringLiteral("ui_tree"), QJsonObject(), &parsed);
+    const QJsonArray nodes =
+        response.value(QStringLiteral("result")).toObject().value(QStringLiteral("nodes")).toArray();
+    QJsonObject layersPanelRect;
+    for (const QJsonValue& value : nodes) {
+        const QJsonObject node = value.toObject();
+        if (node.value(QStringLiteral("objectName")).toString() != QStringLiteral("layersPanel")) {
+            continue;
+        }
+        layersPanelRect = node.value(QStringLiteral("rect")).toObject();
+        break;
+    }
+    ST_BEGIN("mcp_control_vision_tree");
+    const int rectX = layersPanelRect.value(QStringLiteral("x")).toInt(-1);
+    const int rectY = layersPanelRect.value(QStringLiteral("y")).toInt(-1);
+    const int rectW = layersPanelRect.value(QStringLiteral("w")).toInt(-1);
+    const int rectH = layersPanelRect.value(QStringLiteral("h")).toInt(-1);
+    const bool rectSane = rectX > 0 && rectY >= 0 && rectW > 0 && rectH > 0
+                          && rectX < frame.width() && rectY < frame.height();
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool() || !rectSane) {
+        return pictura::selfTest().fail(
+            487, "ui_tree layersPanel rect x=%d y=%d w=%d h=%d frame=%dx%d", rectX, rectY, rectW,
+            rectH, frame.width(), frame.height());
+    }
+    ST_PASS("nodes=%d layersPanel_rect=(%d,%d,%d,%d)", static_cast<int>(nodes.size()), rectX, rectY,
+            rectW, rectH);
+
+    response = request(visionSocket, 23, QStringLiteral("layer_thumbnail"),
+                       QJsonObject{{QStringLiteral("index"), 0}, {QStringLiteral("size"), 64}},
+                       &parsed);
+    imageResult = response.value(QStringLiteral("result")).toObject();
+    ST_BEGIN("mcp_control_vision_layer");
+    bool thumbOk = false;
+    const QImage thumb = decodePng(imageResult.value(QStringLiteral("base64")).toString(), &thumbOk);
+    if (!parsed || !response.value(QStringLiteral("ok")).toBool()
+        || imageResult.value(QStringLiteral("mime")).toString() != QStringLiteral("image/png")
+        || !thumbOk || qMax(thumb.width(), thumb.height()) > 64) {
+        return pictura::selfTest().fail(488, "pixel layer thumbnail is not a PNG");
+    }
+    ST_PASS("thumbnail=%dx%d", thumb.width(), thumb.height());
+
+    PictureView* active = frame.activeView();
+    const int groupIndex = active ? active->add_group(0) : -1;
+    response = request(visionSocket, 24, QStringLiteral("layer_thumbnail"),
+                       QJsonObject{{QStringLiteral("index"), groupIndex},
+                                   {QStringLiteral("size"), 64}},
+                       &parsed);
+    ST_BEGIN("mcp_control_vision_group");
+    if (groupIndex < 0 || !parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(489, "group layer thumbnail did not yield invalid_param");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    // Caller-supplied image dimensions are bounded at the trust boundary.
+    response = request(visionSocket, 25, QStringLiteral("layer_thumbnail"),
+                       QJsonObject{{QStringLiteral("index"), 0},
+                                   {QStringLiteral("size"), 100000}},
+                       &parsed);
+    ST_BEGIN("mcp_control_vision_thumb_cap");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(490, "oversized thumbnail size not rejected");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    response = request(visionSocket, 26, QStringLiteral("screenshot"),
+                       QJsonObject{{QStringLiteral("scope"), QStringLiteral("window")},
+                                   {QStringLiteral("max_dim"), 0}},
+                       &parsed);
+    ST_BEGIN("mcp_control_vision_maxdim");
+    if (!parsed || errorCode(response) != QStringLiteral("invalid_param")) {
+        return pictura::selfTest().fail(491, "non-positive max_dim not rejected");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
+    // Close every document so the canvas-with-no-document scenario is testable.
+    while (frame.documentCount() > 0) {
+        frame.closeDocument(0, false);
+    }
+    response = request(visionSocket, 27, QStringLiteral("screenshot"),
+                       QJsonObject{{QStringLiteral("scope"), QStringLiteral("canvas")}}, &parsed);
+    ST_BEGIN("mcp_control_vision_canvas");
+    if (!parsed || errorCode(response) != QStringLiteral("no_document")) {
+        return pictura::selfTest().fail(492, "canvas screenshot with no document not reported");
+    }
+    ST_PASS("code=%s", qPrintable(errorCode(response)));
+
     return 0;
 }

@@ -33,6 +33,13 @@ public:
     // buffer is rejected with `bad_request` and the socket is disconnected.
     static constexpr int kMaxRequestBytes = 1024 * 1024;
 
+    // ponytail: caller-supplied image ceilings at the trust boundary.
+    // `layer_thumbnail` allocates size^2 in the engine (u32 overflow/OOB for
+    // size >= 65536), so cap it; `max_dim` bounds the screenshot response size
+    // so a hostile value cannot bypass the guard.
+    static constexpr int kMaxThumbnailDim = 1024;
+    static constexpr int kMaxScreenshotDim = 4096;
+
     bool listen();
     QString socketPath() const { return socketPath_; }
 
@@ -60,6 +67,9 @@ private:
     QJsonObject methodDocument(const QJsonObject& params);
     QJsonObject methodEdit(const QJsonObject& params);
     QJsonObject methodSetUnsavedPolicy(const QJsonObject& params);
+    QJsonObject methodScreenshot(const QJsonObject& params);
+    QJsonObject methodUiTree(const QJsonObject& params);
+    QJsonObject methodLayerThumbnail(const QJsonObject& params);
 
     void handleLine(QLocalSocket* socket, const QByteArray& line);
     void writeLine(QLocalSocket* socket, const QJsonObject& response);
