@@ -452,6 +452,62 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
         }
 
+        // bitmap_mode_open (521): a minimal flat depth-1 Bitmap PSD opens as a
+        // normalized RGB document and the view reports a Bitmap-preserving save
+        // notice.
+        {
+            QTemporaryDir bmpDir;
+            const QString bmpPath = bmpDir.filePath(QStringLiteral("bitmap.psd"));
+            QByteArray bmpBytes;
+            const auto bmpAppend16 = [&bmpBytes](unsigned short value) {
+                bmpBytes.append(char((value >> 8) & 0xff));
+                bmpBytes.append(char(value & 0xff));
+            };
+            const auto bmpAppend32 = [&bmpBytes](unsigned int value) {
+                bmpBytes.append(char((value >> 24) & 0xff));
+                bmpBytes.append(char((value >> 16) & 0xff));
+                bmpBytes.append(char((value >> 8) & 0xff));
+                bmpBytes.append(char(value & 0xff));
+            };
+            bmpBytes.append("8BPS", 4);
+            bmpAppend16(1);              // version
+            bmpBytes.append(6, char(0)); // reserved
+            bmpAppend16(1);              // channels
+            bmpAppend32(1);              // height
+            bmpAppend32(1);              // width
+            bmpAppend16(1);              // depth (1-bit)
+            bmpAppend16(0);              // color mode Bitmap
+            bmpAppend32(0);              // color mode data
+            bmpAppend32(0);              // image resources
+            bmpAppend32(0);              // layer/mask section
+            bmpAppend16(0);              // raw compression
+            bmpBytes.append(char(0x80)); // one row byte, MSB set -> pixel 0
+            QFile bmpFile(bmpPath);
+            const bool bmpWritten = bmpFile.open(QIODevice::WriteOnly)
+                && bmpFile.write(bmpBytes) == bmpBytes.size();
+            bmpFile.close();
+
+            const int bmpDocs = frame.documentCount();
+            const bool bmpOpened = bmpWritten && frame.openPath(bmpPath);
+            pictura::PictureView* bmpView = frame.activeView();
+            const bool bmpOk = bmpOpened && frame.documentCount() == bmpDocs + 1
+                && bmpView
+                && bmpView->mode_notice() == QStringLiteral("Converted from Bitmap; saved as Bitmap")
+                && bmpView->document_mode() == QStringLiteral("rgb")
+                && bmpView->sample_argb(0, 0) == 0xff000000u;
+            ST_BEGIN("bitmap_mode_open");
+            ST_PASS("bitmap_mode_open open=%d notice=%s mode=%s pixel=%08x",
+                    bmpOpened ? 1 : 0, bmpView ? qPrintable(bmpView->mode_notice()) : "-",
+                    bmpView ? qPrintable(bmpView->document_mode()) : "-",
+                    bmpView ? bmpView->sample_argb(0, 0) : 0u);
+            if (bmpView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!bmpOk) {
+                return pictura::selfTest().fail(521, "Bitmap mode open");
+            }
+        }
+
         // depth_open (298): a minimal flat depth-16 RGB PSD opens as a
         // normalized 8-bit RGB document, the view reports the 16-bit conversion
         // notice, and a composite pixel is the `v >> 8` narrowing.

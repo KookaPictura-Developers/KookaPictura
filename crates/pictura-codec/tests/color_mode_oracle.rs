@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use pictura_codec::{read_psd, write_psd};
-use pictura_core::{BitDepth, ColorMode, Document};
+use pictura_core::{BitDepth, ColorMode, Compression, Document};
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -199,11 +199,12 @@ fn bitmap_fixture_matches_psd_tools() {
     ours_matching("bitmap.psd", 0, psd_tools_composite_planes);
 }
 
-/// A Bitmap document still saves as RGB: re-reading the written file yields the
-/// same working mode and pixels with no source mode, and `psd-tools` opens it as
-/// an RGB document. (An Indexed document saves back as Indexed; see below.)
+/// A flat, unchanged Bitmap document saves back as Bitmap: the output header is
+/// mode 0, depth 1, one color channel, and the retained packed plane re-emits
+/// byte-identically, so a re-read reproduces the working RGB. `psd-tools` opens
+/// the written file as mode 0.
 #[test]
-fn bitmap_document_round_trips_as_rgb() {
+fn bitmap_document_saves_as_bitmap() {
     let name = "bitmap.psd";
     let doc = load(name);
     assert_eq!(doc.mode, ColorMode::Rgb, "{name}: working mode");
@@ -213,26 +214,54 @@ fn bitmap_document_round_trips_as_rgb() {
         "{name}: recorded source mode"
     );
     assert_eq!(doc.depth, BitDepth::Eight, "{name}: normalized depth");
+    let store = doc.source_planes.as_ref().expect("packed plane retained");
+    assert_eq!(store.depth, BitDepth::One, "{name}: depth-1 store");
+    let packed = store.data.clone();
+    assert_eq!(
+        packed.len(),
+        doc.height as usize,
+        "{name}: one packed row byte per row"
+    );
 
     let out = write_psd(&doc).unwrap();
     assert_eq!(
-        u16::from_be_bytes(out[24..26].try_into().unwrap()),
-        3,
-        "{name}: output header color mode is RGB"
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        1,
+        "{name}: output has one color channel"
     );
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        1,
+        "{name}: output depth is 1"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        0,
+        "{name}: output header color mode is Bitmap"
+    );
+
     let back = read_psd(&out).unwrap();
-    assert_eq!(back.mode, ColorMode::Rgb, "{name}: re-read mode");
-    assert_eq!(back.source_mode, None, "{name}: no source mode after save");
+    assert_eq!(back.mode, ColorMode::Rgb, "{name}: re-read working mode");
+    assert_eq!(
+        back.source_mode,
+        Some(ColorMode::Bitmap),
+        "{name}: re-read source mode"
+    );
+    assert_eq!(
+        back.source_planes.as_ref().expect("re-read packed").data,
+        packed,
+        "{name}: the written packed plane is byte-identical"
+    );
     assert_eq!(
         back.composite, doc.composite,
-        "{name}: normalized pixels are stable across a save"
+        "{name}: re-reading the packed plane reproduces the working RGB exactly"
     );
 
     if !psd_tools_available() {
         eprintln!("skipping: python3 + psd-tools not available");
         return;
     }
-    let dir = scratch_dir("color-mode-roundtrip");
+    let dir = scratch_dir("bitmap-write-back");
     let path = dir.join(name);
     std::fs::write(&path, &out).unwrap();
     let script = r#"
@@ -255,8 +284,126 @@ print(int(psd.color_mode))
     );
     assert_eq!(
         String::from_utf8_lossy(&result.stdout).trim(),
-        "3",
-        "{name}: psd-tools opens the output as RGB"
+        "0",
+        "{name}: psd-tools opens the output as Bitmap"
+    );
+}
+
+/// A flat depth-1 Bitmap PSD (`mode 0`) with hand-built RLE image data: one
+/// pre-encoded PackBits stream per scanline, `rows` in order.
+fn bitmap_rle_psd(width: u32, rows: &[&[u8]]) -> Vec<u8> {
+    let mut p = Vec::new();
+    p.extend_from_slice(b"8BPS");
+    p.extend_from_slice(&1u16.to_be_bytes());
+    p.extend_from_slice(&[0u8; 6]);
+    p.extend_from_slice(&1u16.to_be_bytes()); // channels
+    p.extend_from_slice(&(rows.len() as u32).to_be_bytes()); // height
+    p.extend_from_slice(&width.to_be_bytes());
+    p.extend_from_slice(&1u16.to_be_bytes()); // depth
+    p.extend_from_slice(&0u16.to_be_bytes()); // mode Bitmap
+    p.extend_from_slice(&0u32.to_be_bytes()); // color mode data
+    p.extend_from_slice(&0u32.to_be_bytes()); // image resources
+    p.extend_from_slice(&0u32.to_be_bytes()); // layer/mask section
+    p.extend_from_slice(&1u16.to_be_bytes()); // RLE
+    for row in rows {
+        p.extend_from_slice(&(row.len() as u16).to_be_bytes());
+    }
+    for row in rows {
+        p.extend_from_slice(row);
+    }
+    p
+}
+
+/// The byte offset of the image-data compression word: skip the 26-byte header
+/// and the color-mode-data, image-resource, and layer/mask sections.
+fn image_data_offset(psd: &[u8]) -> usize {
+    let mut o = 26;
+    for _ in 0..3 {
+        let len = u32::from_be_bytes(psd[o..o + 4].try_into().unwrap()) as usize;
+        o += 4 + len;
+    }
+    o
+}
+
+/// A flat unchanged depth-1 Bitmap source read from RLE keeps its source
+/// compression on save: the output compression word is RLE (not Raw), the
+/// retained packed plane is byte-identical, a re-read matches the original RGB,
+/// and psd-tools opens the output as mode 0.
+#[test]
+fn bitmap_rle_document_saves_as_bitmap() {
+    // A whole-byte-run packed plane: row 0 is one 3-copy run, row 1 a 3-byte
+    // literal, so both PackBits arms are exercised.
+    let rows: [&[u8]; 2] = [&[0xFE, 0xF0], &[0x02, 0x0F, 0xC3, 0x8A]];
+    let packed = [0xF0u8, 0xF0, 0xF0, 0x0F, 0xC3, 0x8A];
+    let doc = read_psd(&bitmap_rle_psd(24, &rows)).unwrap();
+    assert_eq!(doc.mode, ColorMode::Rgb, "working mode");
+    assert_eq!(doc.source_mode, Some(ColorMode::Bitmap), "source mode");
+    assert_eq!(
+        doc.composite_compression,
+        Compression::Rle,
+        "read compression"
+    );
+    assert_eq!(
+        doc.source_planes
+            .as_ref()
+            .expect("packed plane retained")
+            .data,
+        packed,
+        "the RLE rows decode to the known bytes"
+    );
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        0,
+        "output header color mode is Bitmap"
+    );
+    let off = image_data_offset(&out);
+    assert_eq!(
+        u16::from_be_bytes(out[off..off + 2].try_into().unwrap()),
+        1,
+        "the output source compression is RLE, not Raw"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(
+        back.source_planes.as_ref().expect("re-read packed").data,
+        packed,
+        "the written packed plane is byte-identical"
+    );
+    assert_eq!(
+        back.composite, doc.composite,
+        "a re-read reproduces the original working RGB"
+    );
+
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+    let dir = scratch_dir("bitmap-rle-write-back");
+    let path = dir.join("bitmap_rle.psd");
+    std::fs::write(&path, &out).unwrap();
+    let script = r#"
+import sys
+from psd_tools import PSDImage
+print(int(PSDImage.open(sys.argv[1]).color_mode))
+"#;
+    let result = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        result.status.success(),
+        "psd-tools failed on the written RLE Bitmap:\n{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        "0",
+        "psd-tools opens the RLE output as Bitmap"
     );
 }
 

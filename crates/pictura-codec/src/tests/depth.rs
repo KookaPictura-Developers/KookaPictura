@@ -384,3 +384,35 @@ fn short_high_depth_layer_plane_is_a_typed_error() {
     }];
     assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
 }
+
+/// A hand-built document cannot pair a depth-1 retained store with a non-Bitmap
+/// source mode: `write_psd` is public, so it must return a typed error rather
+/// than narrow the packed plane at a sample width it cannot handle and panic.
+#[test]
+fn depth1_store_without_bitmap_write_back_is_a_typed_error() {
+    let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+    doc.source_depth = Some(BitDepth::One);
+    doc.source_mode = Some(ColorMode::Rgb);
+    doc.source_planes = Some(SourcePlanes {
+        depth: BitDepth::One,
+        width: 1,
+        height: 1,
+        data: vec![0],
+    });
+    assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
+
+    // A legitimate depth-1 Bitmap still writes back as mode 0 / depth 1.
+    let p = flat_psd(1, 0, 1, 8, 1, &[&[0xAA]]);
+    let bitmap = read_psd(&p).unwrap();
+    let out = write_psd(&bitmap).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        1,
+        "a normal Bitmap output depth is 1"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        0,
+        "a normal Bitmap output header mode is Bitmap"
+    );
+}

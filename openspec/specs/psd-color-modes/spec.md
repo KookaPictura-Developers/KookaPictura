@@ -245,9 +245,17 @@ present, and every pixel layer's — still forward-converts through the palette 
 the current working RGB; otherwise it SHALL write the working mode. It SHALL NOT
 invent an RGB-to-palette quantization for an edited document.
 
+`write_psd` SHALL write a flat, unchanged Bitmap document back with header color
+mode Bitmap (mode 0, depth 1, one 1-bit channel) at its source compression,
+re-emitting the retained packed plane byte-identically, when its `source_mode` is
+`Bitmap`, it carries no layers or extra channels, and the retained packed plane
+still expands to the working RGB. A Bitmap document that has been edited, or that
+carries layers or extra channels, SHALL write the working mode; no RGB-to-1-bit
+threshold SHALL be invented, and layered or extra-channel Bitmap write-back is
+out of scope.
+
 It SHALL re-emit the preserved color-mode-data and image-resource sections. For
-Bitmap and for a document with no source mode it SHALL continue to write the
-working mode.
+a document with no source mode it SHALL continue to write the working mode.
 
 #### Scenario: A Lab document saves as Lab
 
@@ -314,10 +322,15 @@ working mode.
 - **WHEN** an Indexed file is read
 - **THEN** the returned document's `color_mode_data` is empty
 
-#### Scenario: Bitmap saves as the working mode
+#### Scenario: A flat unchanged Bitmap document saves as Bitmap
 
-- **WHEN** a document read from a Bitmap file is written and read back
-- **THEN** the output's header color mode is RGB and the round-tripped document's `mode` is `Rgb`
+- **WHEN** a flat depth-1 Bitmap file with no layers or extra channels is read and written without an edit
+- **THEN** the output's header color mode is Bitmap with depth 1 and one color channel, its packed plane is byte-identical to the input's, and a re-read's working RGB equals the original
+
+#### Scenario: An edited or layered Bitmap document saves as the working mode
+
+- **WHEN** a Bitmap document's composite is edited, or the document carries a pixel layer or an extra channel, and it is written
+- **THEN** the output's header color mode is RGB and the round-tripped document's `mode` is `Rgb`, because no RGB-to-1-bit threshold is invented and layered/extra-channel Bitmap output is out of scope
 
 #### Scenario: An unchanged Indexed document saves back as Indexed
 
