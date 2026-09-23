@@ -45,7 +45,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
     `agentic-control-actions`, `color-mode-write-back`, `cmyk-write-back`,
     `icc-output-mode-consistency`, `indexed-write-back`, `bitmap-write-back`,
-    and `agentic-control-input`
+    `agentic-control-input`, and `depth-color-mode-write-back`
     changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -785,7 +785,28 @@ Snapshot for resuming after a context break. Update after each milestone.
   identically. The read-time `Preserve` policy is untouched. Tests cover a
   read→write 16-bit CMYK and Lab source (Convert and Preserve), Grayscale keeping
   its `GRAY` profile, and the CMYK/RGB cases. Ceiling: a `1039` the parser cannot
-  frame (behind an unrecognized signature) is preserved, not filtered.
+  frame (behind an unrecognized signature) is preserved, not filtered. The later
+  `depth-color-mode-write-back` change makes a 16/32-bit CMYK/Lab save in its
+  source mode, so that path's profile now matches and is kept; the guard remains
+  the general invariant against any mode/profile mismatch.
+- **16/32-bit CMYK/Lab write-back** (roadmap P4/G2/G4, archived
+  `2026-09-23-depth-color-mode-write-back`): a 16/32-bit CMYK or Lab PSD now saves
+  back in its source color mode **and** source depth; before, it saved 8-bit RGB
+  (both lost). `read_psd` retains the native Lab/CMYK color planes (composite and
+  every layer; the native layer store already existed) and `write_psd` re-emits an
+  unchanged plane byte-identically, else re-encodes the working RGB with the
+  profile-free 8-bit inverse and widens (Lab approximate, CMYK exact). The
+  unchanged test runs in the narrowed-retained domain: two helpers
+  (`composite_retained_8`/`layer_retained_8` in `color_mode.rs`, since `write.rs`
+  is at the size cap) narrow the retained native plane before comparison, because
+  comparing it to `rgb_to_lab`/`rgb_to_cmyk` fails (Lab ±1 LSB, `rgb_to_cmyk`
+  forces `K=255`). A short retained plane is a typed error, not a panic. The app
+  notice keeps the mode-preserving wording when the depth is retained. Proven by
+  the `color_mode_oracle` (16- and 32-bit CMYK/Lab, psd-tools mode 4/9 at source
+  depth) and `tests/depth.rs` (composite + layered Lab/CMYK byte-identity, edited
+  widening, typed-error guard). Ceilings: editing stays 8-bit (a true `u16`/`f32`
+  sample model); a mode with no retained native store (8-bit Lab/CMYK) and
+  Indexed/Bitmap save as before; Multichannel/Duotone remain open.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
