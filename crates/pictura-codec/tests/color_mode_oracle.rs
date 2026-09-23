@@ -199,14 +199,14 @@ fn bitmap_fixture_matches_psd_tools() {
     ours_matching("bitmap.psd", 0, psd_tools_composite_planes);
 }
 
-/// A non-Lab normalized document still saves as RGB: re-reading the written file
-/// yields the same working mode and pixels with no source mode, and `psd-tools`
-/// opens it as an RGB document. (Lab saves back as Lab; see the next test.)
+/// A non-Lab, non-CMYK normalized document still saves as RGB: re-reading the
+/// written file yields the same working mode and pixels with no source mode, and
+/// `psd-tools` opens it as an RGB document. (Lab and CMYK save back as
+/// themselves; see the tests below.)
 #[test]
 fn normalized_documents_round_trip_as_rgb() {
     for (name, source) in [
         ("indexed.psd", ColorMode::Indexed),
-        ("cmyk.psd", ColorMode::Cmyk),
         ("bitmap.psd", ColorMode::Bitmap),
     ] {
         let doc = load(name);
@@ -356,6 +356,98 @@ print(int(psd.color_mode))
         String::from_utf8_lossy(&result.stdout).trim(),
         "9",
         "psd-tools opens the output as Lab"
+    );
+}
+
+/// A CMYK document saves back as CMYK: the output header color mode is CMYK with
+/// four color channels, and an **unedited** document re-emits the retained source
+/// planes byte-identically, so a re-read reproduces the working RGB exactly. Our
+/// own `read_psd` is the authority for the retained bytes (psd-tools reports mode
+/// 4 but its raw channel bytes are `255 - stored`); psd-tools is used for the
+/// mode and the independent RGB conversion. lcms2 and psd-tools are test-only.
+#[test]
+fn cmyk_document_saves_as_cmyk() {
+    let doc = load("cmyk.psd");
+    assert_eq!(
+        doc.source_mode,
+        Some(ColorMode::Cmyk),
+        "recorded source mode"
+    );
+    let plane = doc.composite.pixel_count();
+    let retained = doc.source_planes.clone().expect("CMYK planes retained");
+    assert_eq!(retained.depth, BitDepth::Eight, "8-bit CMYK store");
+    assert!(
+        !doc.retains_source_depth(),
+        "the CMYK store is not a native-depth store"
+    );
+    let source_cmyk = retained.data[..4 * plane].to_vec();
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[12..14].try_into().unwrap()),
+        4,
+        "output keeps four color channels"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        4,
+        "output header color mode is CMYK"
+    );
+
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb, "re-read working mode");
+    assert_eq!(
+        back.source_mode,
+        Some(ColorMode::Cmyk),
+        "re-read source mode"
+    );
+    let back_retained = back.source_planes.clone().expect("re-read CMYK planes");
+    assert_eq!(
+        back_retained.data[..4 * plane],
+        source_cmyk[..],
+        "unedited CMYK planes are re-emitted byte-identically"
+    );
+    assert_eq!(
+        back.composite, doc.composite,
+        "re-reading the retained planes reproduces the working RGB exactly"
+    );
+    let working: Vec<&[u8]> = (0..3)
+        .map(|c| &doc.composite.data[c * plane..(c + 1) * plane])
+        .collect();
+
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+    let dir = scratch_dir("cmyk-write-back");
+    let path = dir.join("cmyk.psd");
+    std::fs::write(&path, &out).unwrap();
+    // psd-tools' RGB conversion of the written CMYK file agrees with the working
+    // RGB within the documented tolerance.
+    let reference = psd_tools_composite_planes(&path);
+    assert_planes_within("cmyk.psd psd-tools", &working, &reference, 1);
+    let script = r#"
+import sys
+from psd_tools import PSDImage
+psd = PSDImage.open(sys.argv[1])
+print(int(psd.color_mode))
+"#;
+    let result = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&path)
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        result.status.success(),
+        "psd-tools failed on the written cmyk.psd:\n{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        "4",
+        "psd-tools opens the output as CMYK"
     );
 }
 

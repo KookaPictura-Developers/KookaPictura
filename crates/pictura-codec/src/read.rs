@@ -73,11 +73,11 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     }
     // A 16/32-bit header is always recorded so the app can report the
     // conversion; a Grayscale/RGB read retains native-depth planes, and an 8-bit
-    // Lab read retains its Lab planes, so an unchanged plane re-emits exactly.
-    // A 16/32-bit Lab read keeps no samples and still saves 8-bit.
+    // Lab or CMYK read retains its source planes, so an unchanged plane re-emits
+    // exactly. A 16/32-bit Lab or CMYK read keeps no samples and still saves 8-bit.
     let retain_planes = (matches!(depth, 16 | 32)
         && matches!(mode, ColorMode::Grayscale | ColorMode::Rgb))
-        || (depth == 8 && mode == ColorMode::Lab);
+        || (depth == 8 && matches!(mode, ColorMode::Lab | ColorMode::Cmyk));
     let source_depth = depth_bits(depth);
 
     // Color mode data section: 4-byte length + opaque bytes, kept verbatim.
@@ -264,6 +264,9 @@ fn normalize(
     }
     if header_mode == ColorMode::Lab {
         crate::color_mode::retain_lab_layer_planes(&mut doc.layers, depth);
+    }
+    if header_mode == ColorMode::Cmyk {
+        crate::color_mode::retain_cmyk_layer_planes(&mut doc.layers, depth);
     }
     let palette = palette.unwrap_or(&EMPTY_PALETTE);
     doc.composite = convert_pixels(doc.composite, header_mode, depth, Some(palette));

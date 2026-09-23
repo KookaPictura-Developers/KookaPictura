@@ -172,7 +172,85 @@ fn lab_layer_color_planes(layer: &Layer, depth: u16) -> Vec<Option<Vec<u8>>> {
     out
 }
 
-fn write_layer_info(doc: &Document, psb: bool, lab_mode: bool) -> Result<Vec<u8>, PsdError> {
+/// The CMYK bytes to emit for a CMYK output's composite color planes: the four
+/// retained source planes exactly when their forward RGB conversion still matches
+/// the working composite, else the working RGB re-encoded with the exact
+/// [`crate::color_mode::rgb_to_cmyk`] right-inverse. The document is never
+/// mutated. A retained plane comes from the 8-bit CMYK read store; for an
+/// RGB/Grayscale document there is none.
+///
+/// ponytail: the four planes are re-encoded as a unit, so an edited channel also
+/// re-encodes its unchanged siblings. Per-channel change tracking would be the
+/// upgrade if that matters.
+fn cmyk_composite_planes(doc: &Document, depth: u16, plane: usize) -> Vec<u8> {
+    let color_channels = doc.composite.channels as usize;
+    let current = &doc.composite.data[..color_channels * plane];
+    let retained: Option<Vec<&[u8]>> = (0..4).map(|c| composite_retained(doc, depth, c)).collect();
+    if let Some(retained) = retained {
+        let retained: Vec<u8> = retained.concat();
+        if retained.len() == plane * 4
+            && crate::color_mode::cmyk_to_rgb(&retained).as_slice() == current
+        {
+            return retained;
+        }
+    }
+    crate::color_mode::rgb_to_cmyk(current)
+}
+
+/// The four CMYK planes to emit for a layer's color channels, or empty when the
+/// layer does not carry exactly three id-0/1/2 color channels of equal length.
+/// The retained source planes are re-emitted when their forward conversion still
+/// matches the working RGB; an edited layer is re-encoded with the exact
+/// [`crate::color_mode::rgb_to_cmyk`] inverse. The returned planes are C, M, Y, K.
+fn cmyk_layer_color_planes(layer: &Layer, depth: u16) -> Vec<Vec<u8>> {
+    let positions: Vec<usize> = layer
+        .channels
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.id >= 0 && c.id < 3)
+        .map(|(i, _)| i)
+        .collect();
+    if positions.len() != 3 {
+        return Vec::new();
+    }
+    let plane = layer.channels[positions[0]].data.len();
+    if positions
+        .iter()
+        .any(|&i| layer.channels[i].data.len() != plane)
+    {
+        return Vec::new();
+    }
+    let mut current = Vec::with_capacity(plane * 3);
+    for &i in &positions {
+        current.extend_from_slice(&layer.channels[i].data);
+    }
+    let retained: Option<Vec<Vec<u8>>> = (0..4)
+        .map(|c| layer_retained(layer, depth, c).map(<[u8]>::to_vec))
+        .collect();
+    let flat = match retained {
+        Some(retained) => {
+            let flat: Vec<u8> = retained.concat();
+            if flat.len() == plane * 4
+                && crate::color_mode::cmyk_to_rgb(&flat).as_slice() == current.as_slice()
+            {
+                flat
+            } else {
+                crate::color_mode::rgb_to_cmyk(&current)
+            }
+        }
+        None => crate::color_mode::rgb_to_cmyk(&current),
+    };
+    (0..4)
+        .map(|c| flat[c * plane..(c + 1) * plane].to_vec())
+        .collect()
+}
+
+fn write_layer_info(
+    doc: &Document,
+    psb: bool,
+    lab_mode: bool,
+    cmyk_mode: bool,
+) -> Result<Vec<u8>, PsdError> {
     let records = flatten(&doc.layers);
     if records.len() > i16::MAX as usize {
         return Err(PsdError::Unsupported("too many layer records".into()));
@@ -193,7 +271,42 @@ fn write_layer_info(doc: &Document, psb: bool, lab_mode: bool) -> Result<Vec<u8>
             } else {
                 Vec::new()
             };
+            // A CMYK layer's working channels are three RGB planes; the output
+            // synthesizes `(0,C),(1,M),(2,Y),(3,K)` and keeps the rest.
+            let cmyk_planes = if cmyk_mode {
+                cmyk_layer_color_planes(layer, depth)
+            } else {
+                Vec::new()
+            };
+            let cmyk_active = cmyk_planes.len() == 4;
+            if cmyk_active {
+                for (id, data) in cmyk_planes.iter().enumerate() {
+                    let id = id as i16;
+                    let plane = native_plane(
+                        layer_retained(layer, depth, id),
+                        data,
+                        layer_w,
+                        layer_h,
+                        depth,
+                    )?;
+                    channels.push((
+                        id,
+                        OutChannel::Encoded(channel_stream(
+                            doc.layer_compression,
+                            layer_w,
+                            layer_h,
+                            &plane,
+                            depth,
+                            psb,
+                        )?),
+                    ));
+                }
+            }
             for (index, channel) in layer.channels.iter().enumerate() {
+                // The CMYK color channels are already synthesized above.
+                if cmyk_active && channel.id >= 0 && channel.id < 3 {
+                    continue;
+                }
                 let data = lab_channels
                     .get(index)
                     .and_then(|plane| plane.as_deref())
@@ -846,8 +959,17 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         && doc.source_depth.is_none()
         && doc.source_mode == Some(ColorMode::Lab)
         && doc.composite.channels == 3;
+    // An 8-bit CMYK source writes header mode CMYK with four color channels: the
+    // working RGB composite re-encodes to C/M/Y/K, and a 16/32-bit CMYK source
+    // retains nothing and keeps writing the working mode.
+    let cmyk_mode = depth == 8
+        && doc.source_depth.is_none()
+        && doc.source_mode == Some(ColorMode::Cmyk)
+        && doc.composite.channels == 3;
     let mode_code = if lab_mode {
         MODE_LAB
+    } else if cmyk_mode {
+        MODE_CMYK
     } else {
         match doc.mode {
             ColorMode::Grayscale => MODE_GRAYSCALE,
@@ -856,7 +978,11 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         }
     };
     let color_channels = doc.composite.channels as usize;
-    let channels = color_channels + doc.channels.len();
+    // The header channel count and composite plane loop follow the output mode:
+    // four for CMYK, the working count otherwise. `doc.composite.data` validation
+    // stays in working terms.
+    let out_color_channels = if cmyk_mode { 4 } else { color_channels };
+    let channels = out_color_channels + doc.channels.len();
     if channels == 0 || channels > MAX_CHANNELS as usize {
         return Err(PsdError::Invalid(format!("channel count {channels}")));
     }
@@ -916,7 +1042,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
         }
     } else {
-        let info = write_layer_info(doc, psb, lab_mode)?;
+        let info = write_layer_info(doc, psb, lab_mode, cmyk_mode)?;
         let len_width = if psb { 8 } else { 4 };
         let section_len = len_width + info.len() + 4 + doc.global_layer_mask.len() + extra.len();
         if psb {
@@ -941,14 +1067,18 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&doc.composite_compression.to_code().to_be_bytes());
     let width = doc.width as usize;
     let height = doc.height as usize;
-    // The Lab output re-emits a retained plane exactly when it is unchanged, and
-    // otherwise re-encodes from the working RGB into a temp buffer.
+    // The Lab or CMYK output re-emits retained planes exactly when they are
+    // unchanged, and otherwise re-encodes from the working RGB into a temp buffer.
     let lab_composite = lab_mode.then(|| lab_composite_planes(doc, depth, plane));
+    let cmyk_composite = cmyk_mode.then(|| cmyk_composite_planes(doc, depth, plane));
     let mut planes: Vec<Cow<[u8]>> = Vec::with_capacity(channels);
-    for c in 0..color_channels {
-        let current = match &lab_composite {
-            Some(lab) => &lab[c * plane..(c + 1) * plane],
-            None => &doc.composite.data[c * plane..(c + 1) * plane],
+    for c in 0..out_color_channels {
+        let current = if let Some(lab) = &lab_composite {
+            &lab[c * plane..(c + 1) * plane]
+        } else if let Some(cmyk) = &cmyk_composite {
+            &cmyk[c * plane..(c + 1) * plane]
+        } else {
+            &doc.composite.data[c * plane..(c + 1) * plane]
         };
         planes.push(native_plane(
             composite_retained(doc, depth, c),
@@ -960,7 +1090,9 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     }
     for (i, channel) in doc.channels.iter().enumerate() {
         planes.push(native_plane(
-            composite_retained(doc, depth, color_channels + i),
+            // A CMYK output stores four color planes before the extras, so the
+            // retained extras offset is the output color count, not the working 3.
+            composite_retained(doc, depth, out_color_channels + i),
             &channel.data,
             width,
             height,

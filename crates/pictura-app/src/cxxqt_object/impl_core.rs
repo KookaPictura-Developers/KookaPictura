@@ -287,10 +287,12 @@ impl qobject::PictureView {
             ColorMode::Lab => "Lab",
             _ => return QString::default(),
         };
-        // Only an 8-bit Lab source re-encodes as Lab on save; a 16/32-bit Lab
-        // source (no retained samples) and every other converted mode write RGB.
-        let preserves_lab = mode == ColorMode::Lab && doc.source_depth.is_none();
-        let saved = if preserves_lab { "Lab" } else { "RGB" };
+        // Only an 8-bit Lab or CMYK source re-encodes as its source mode on save;
+        // a 16/32-bit source (no retained samples) and every other converted mode
+        // write RGB.
+        let preserves_source =
+            matches!(mode, ColorMode::Lab | ColorMode::Cmyk) && doc.source_depth.is_none();
+        let saved = if preserves_source { name } else { "RGB" };
         QString::from(format!("Converted from {name}; saved as {saved}"))
     }
 
