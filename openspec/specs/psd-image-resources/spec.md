@@ -17,7 +17,10 @@ signatures `8BIM`, `8B64`, `MeSa`, `AgHg`, `PHUT`, and `DCSR` SHALL be accepted;
 any other signature, a truncated block, or trailing bytes too short to frame a
 block SHALL end parsing and the records decoded so far SHALL be returned. The
 parser SHALL NOT panic and SHALL NOT allocate without bound on a malformed
-section.
+section. When the section is written, `write_psd` SHALL reproduce it
+byte-for-byte except that a resource `1039` the parser framed whose ICC
+data-space signature does not match the output header color mode SHALL be
+dropped.
 
 #### Scenario: A resource section decodes to typed records
 
@@ -37,7 +40,7 @@ section.
 #### Scenario: Byte preservation is unchanged for unnormalized documents
 
 - **WHEN** a document read from a file with a non-empty image-resource section that was not ICC-normalized is written back
-- **THEN** the output's image-resource bytes are identical to the input's, because the raw section is still re-emitted verbatim
+- **THEN** the output's image-resource bytes are identical to the input's, except that a resource `1039` whose ICC data-space signature does not match the output header color mode is dropped
 
 ### Requirement: Image-resource data is parsed with the shared codec reader
 

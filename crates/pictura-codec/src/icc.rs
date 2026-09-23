@@ -13,6 +13,7 @@
 use pictura_color::{convert, Intent, Policy, Profile};
 use pictura_core::{ColorMode, Document, Layer, PixelBuffer};
 
+use crate::common::{MODE_CMYK, MODE_GRAYSCALE, MODE_LAB, MODE_RGB};
 use crate::image_resources::{
     decode_image_resources_with_len, encode_image_resources, frame_image_resource, ImageResource,
     ICC_PROFILE,
@@ -172,6 +173,46 @@ fn rebuild_resources(
     let mut section = encode_image_resources(&kept);
     section.extend_from_slice(&doc.image_resources[consumed..]);
     section
+}
+
+/// The image-resource section to emit for an output header mode `mode_code`.
+///
+/// A resource `1039` whose ICC data-space signature (header bytes 16..20) does
+/// not match `mode_code`'s expected space is dropped, so an RGB save of a
+/// document normalized from a CMYK/Lab source is not mis-tagged. A matching
+/// profile, a profile too short to carry the signature, every other resource,
+/// and the unparsed tail are byte-identical; a section with no mismatching
+/// `1039` is returned unchanged.
+pub(crate) fn resources_for_output(doc: &Document, mode_code: u16) -> Vec<u8> {
+    let Some(expected) = output_data_space(mode_code) else {
+        return doc.image_resources.clone();
+    };
+    let (resources, consumed) = decode_image_resources_with_len(doc);
+    let mismatched = |r: &ImageResource| {
+        r.id == ICC_PROFILE
+            && r.data
+                .get(16..20)
+                .is_some_and(|sig| sig != expected.as_slice())
+    };
+    if !resources.iter().any(mismatched) {
+        return doc.image_resources.clone();
+    }
+    let kept: Vec<ImageResource> = resources.into_iter().filter(|r| !mismatched(r)).collect();
+    let mut section = encode_image_resources(&kept);
+    section.extend_from_slice(&doc.image_resources[consumed..]);
+    section
+}
+
+/// The ICC data-space signature the output header mode must carry, or `None`
+/// for a mode with no mapped ICC space (the section is then left unchanged).
+fn output_data_space(mode_code: u16) -> Option<[u8; 4]> {
+    Some(match mode_code {
+        MODE_RGB => *b"RGB ",
+        MODE_GRAYSCALE => *b"GRAY",
+        MODE_CMYK => *b"CMYK",
+        MODE_LAB => *b"Lab ",
+        _ => return None,
+    })
 }
 
 /// Interleave 1 or 3 equal-length planes, convert, and split back. The planes
@@ -842,5 +883,218 @@ mod tests {
             assert!(doc.document_icc.is_none(), "{policy:?}");
             assert!(doc.source_icc.is_none(), "{policy:?}");
         }
+    }
+
+    use crate::common::{MODE_CMYK, MODE_GRAYSCALE, MODE_LAB, MODE_RGB};
+
+    /// A converted CMYK source: RGB working pixels, the CMYK mode recorded, and
+    /// `source_depth` set for a 16/32-bit read that retained no planes.
+    fn converted_cmyk_document(source_depth: Option<BitDepth>) -> Document {
+        let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
+        doc.source_mode = Some(ColorMode::Cmyk);
+        doc.source_depth = source_depth;
+        doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+        doc
+    }
+
+    /// A real RGB profile with its ICC data-space signature patched.
+    fn profiled(data_space: &[u8; 4]) -> Vec<u8> {
+        let mut profile = include_bytes!("../tests/fixtures/psd_icc_rgb.icc").to_vec();
+        profile[16..20].copy_from_slice(data_space);
+        profile
+    }
+
+    /// The image-resource section of a written PSD (26-byte header, then a
+    /// 4-byte color-mode-data length and data, then the resource length and data).
+    fn written_resources(psd: &[u8]) -> Vec<u8> {
+        let color_mode_data = u32::from_be_bytes(psd[26..30].try_into().unwrap()) as usize;
+        let at = 30 + color_mode_data;
+        let len = u32::from_be_bytes(psd[at..at + 4].try_into().unwrap()) as usize;
+        psd[at + 4..at + 4 + len].to_vec()
+    }
+
+    fn header_mode(psd: &[u8]) -> u16 {
+        u16::from_be_bytes(psd[24..26].try_into().unwrap())
+    }
+
+    fn decode_section(section: Vec<u8>) -> Vec<ImageResource> {
+        let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
+        doc.image_resources = section;
+        decode_image_resources(&doc)
+    }
+
+    #[test]
+    fn converted_sixteen_bit_cmyk_saves_as_rgb_without_its_profile() {
+        let mut doc = converted_cmyk_document(Some(BitDepth::Sixteen));
+        doc.image_resources = icc_resource(&profiled(b"CMYK"));
+
+        let out = crate::write_psd(&doc).expect("writes");
+        assert_eq!(header_mode(&out), MODE_RGB, "the converted mode is RGB");
+        let resources = decode_section(written_resources(&out));
+        assert!(
+            resources.iter().all(|r| r.id != ICC_PROFILE),
+            "the stale CMYK profile was dropped"
+        );
+    }
+
+    #[test]
+    fn eight_bit_cmyk_keeps_its_profile() {
+        let mut doc = converted_cmyk_document(None);
+        let section = icc_resource(&profiled(b"CMYK"));
+        doc.image_resources = section.clone();
+
+        let out = crate::write_psd(&doc).expect("writes");
+        assert_eq!(header_mode(&out), MODE_CMYK, "the CMYK header is kept");
+        assert_eq!(
+            written_resources(&out),
+            section,
+            "the matching profile is re-emitted byte-for-byte"
+        );
+    }
+
+    #[test]
+    fn matching_rgb_profile_is_re_emitted_byte_for_byte() {
+        let mut doc = rgb_document();
+        let section = icc_resource(&profiled(b"RGB "));
+        doc.image_resources = section.clone();
+
+        let out = crate::write_psd(&doc).expect("writes");
+        assert_eq!(header_mode(&out), MODE_RGB);
+        assert_eq!(written_resources(&out), section);
+    }
+
+    #[test]
+    fn mismatched_profile_leaves_a_sibling_xmp_intact() {
+        let mut doc = converted_cmyk_document(Some(BitDepth::Sixteen));
+        let mut section = icc_resource(&profiled(b"CMYK"));
+        section.extend(xmp_resource(b"<x/>"));
+        doc.image_resources = section;
+        let xmp = xmp_resource(b"<x/>");
+
+        let out = crate::write_psd(&doc).expect("writes");
+        let resources = decode_section(written_resources(&out));
+        assert!(resources.iter().all(|r| r.id != ICC_PROFILE));
+        let kept = resources
+            .iter()
+            .find(|r| r.id == crate::image_resources::XMP_METADATA)
+            .expect("XMP survives");
+        assert_eq!(kept.raw, xmp, "the XMP block is byte-identical");
+    }
+
+    #[test]
+    fn profile_too_short_to_classify_is_preserved() {
+        let mut doc = rgb_document();
+        let section = icc_resource(b"short");
+        doc.image_resources = section.clone();
+
+        let out = crate::write_psd(&doc).expect("writes");
+        assert_eq!(written_resources(&out), section);
+    }
+
+    /// A flat PSD with an image-resource section carrying one `1039` block whose
+    /// data is `icc`, then a raw merged composite of the native `planes`.
+    fn flat_psd_with_icc(
+        depth: u16,
+        mode: u16,
+        channels: u16,
+        width: u32,
+        height: u32,
+        icc: &[u8],
+        planes: &[&[u8]],
+    ) -> Vec<u8> {
+        let resources = icc_resource(icc);
+        let mut p = Vec::new();
+        p.extend_from_slice(b"8BPS");
+        p.extend_from_slice(&1u16.to_be_bytes());
+        p.extend_from_slice(&[0u8; 6]);
+        p.extend_from_slice(&channels.to_be_bytes());
+        p.extend_from_slice(&height.to_be_bytes());
+        p.extend_from_slice(&width.to_be_bytes());
+        p.extend_from_slice(&depth.to_be_bytes());
+        p.extend_from_slice(&mode.to_be_bytes());
+        p.extend_from_slice(&0u32.to_be_bytes()); // color mode data
+        p.extend_from_slice(&(resources.len() as u32).to_be_bytes());
+        p.extend_from_slice(&resources);
+        p.extend_from_slice(&0u32.to_be_bytes()); // layer/mask section
+        p.extend_from_slice(&crate::common::COMPRESSION_RAW.to_be_bytes());
+        for plane in planes {
+            p.extend_from_slice(plane);
+        }
+        p
+    }
+
+    /// Three 16-bit samples; only their length matters once the reader narrows.
+    const PLANE16: &[u8] = &[0x80, 0x00, 0x40, 0x00, 0x20, 0x00];
+
+    #[test]
+    fn read_sixteen_bit_cmyk_then_write_saves_rgb_without_the_profile() {
+        let psd = flat_psd_with_icc(16, MODE_CMYK, 4, 3, 1, &profiled(b"CMYK"), &[PLANE16; 4]);
+
+        let convert = crate::read_psd(&psd).expect("parses");
+        let preserve = crate::read_psd_with(&psd, Policy::Preserve).expect("parses");
+        for (policy, doc) in [("convert", convert), ("preserve", preserve)] {
+            assert_eq!(doc.source_mode, Some(ColorMode::Cmyk), "{policy}");
+            assert_eq!(doc.source_depth, Some(BitDepth::Sixteen), "{policy}");
+            assert_eq!(doc.mode, ColorMode::Rgb, "{policy}");
+            assert!(
+                decode_section(doc.image_resources.clone())
+                    .iter()
+                    .any(|r| r.id == ICC_PROFILE),
+                "the CMYK profile is retained on read ({policy})"
+            );
+
+            let out = crate::write_psd(&doc).expect("writes");
+            assert_eq!(header_mode(&out), MODE_RGB, "{policy}");
+            assert!(
+                decode_section(written_resources(&out))
+                    .iter()
+                    .all(|r| r.id != ICC_PROFILE),
+                "the stale CMYK profile was dropped on write ({policy})"
+            );
+        }
+    }
+
+    #[test]
+    fn read_sixteen_bit_lab_then_write_saves_rgb_without_the_profile() {
+        let psd = flat_psd_with_icc(16, MODE_LAB, 3, 3, 1, &profiled(b"Lab "), &[PLANE16; 3]);
+
+        let convert = crate::read_psd(&psd).expect("parses");
+        let preserve = crate::read_psd_with(&psd, Policy::Preserve).expect("parses");
+        for (policy, doc) in [("convert", convert), ("preserve", preserve)] {
+            assert_eq!(doc.source_mode, Some(ColorMode::Lab), "{policy}");
+            assert_eq!(doc.source_depth, Some(BitDepth::Sixteen), "{policy}");
+            assert_eq!(doc.mode, ColorMode::Rgb, "{policy}");
+            assert!(
+                decode_section(doc.image_resources.clone())
+                    .iter()
+                    .any(|r| r.id == ICC_PROFILE),
+                "the Lab profile is retained on read ({policy})"
+            );
+
+            let out = crate::write_psd(&doc).expect("writes");
+            assert_eq!(header_mode(&out), MODE_RGB, "{policy}");
+            assert!(
+                decode_section(written_resources(&out))
+                    .iter()
+                    .all(|r| r.id != ICC_PROFILE),
+                "the stale Lab profile was dropped on write ({policy})"
+            );
+        }
+    }
+
+    #[test]
+    fn grayscale_output_keeps_a_matching_gray_profile() {
+        let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
+        doc.composite.data = vec![10, 200];
+        let section = icc_resource(&profiled(b"GRAY"));
+        doc.image_resources = section.clone();
+
+        let out = crate::write_psd(&doc).expect("writes");
+        assert_eq!(header_mode(&out), MODE_GRAYSCALE);
+        assert_eq!(
+            written_resources(&out),
+            section,
+            "the matching GRAY profile is re-emitted byte-for-byte"
+        );
     }
 }

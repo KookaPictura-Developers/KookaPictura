@@ -1022,8 +1022,9 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&mode_code.to_be_bytes());
     out.extend_from_slice(&(doc.color_mode_data.len() as u32).to_be_bytes());
     out.extend_from_slice(&doc.color_mode_data);
-    out.extend_from_slice(&(doc.image_resources.len() as u32).to_be_bytes());
-    out.extend_from_slice(&doc.image_resources);
+    let resources = crate::icc::resources_for_output(doc, mode_code);
+    out.extend_from_slice(&(resources.len() as u32).to_be_bytes());
+    out.extend_from_slice(&resources);
 
     // Authored smart objects append a document-level linked-record block; the
     // preserved trailing bytes stay untouched, so an existing file is unchanged.
