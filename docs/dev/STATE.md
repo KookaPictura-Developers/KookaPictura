@@ -44,7 +44,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
     `agentic-control-actions`, `color-mode-write-back`, `cmyk-write-back`,
-    and `icc-output-mode-consistency`
+    `icc-output-mode-consistency`, and `indexed-write-back`
     changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -721,8 +721,27 @@ Snapshot for resuming after a context break. Update after each milestone.
   (mode 4, four channels, retained planes byte-identical; lcms2/psd-tools ran) and
   unit tests (edited plane, layer, extra channel). Ceilings: an edited CMYK pixel
   uses a fixed no-black convention, not color management; a 16/32-bit CMYK source
-  still writes RGB (now untagged — see the ICC consistency bullet); Bitmap/
-  Indexed write-back and Multichannel/Duotone remain open.
+  still writes RGB (now untagged — see the ICC consistency bullet); Bitmap
+  write-back and Multichannel/Duotone remain open.
+- **Indexed write-back** (roadmap P4/G2/G3, archived
+  `2026-09-23-indexed-write-back`): an **unchanged** 8-bit Indexed PSD now saves
+  back as Indexed (header mode 2, one index channel, the 768-byte palette).
+  `read_psd` retains the palette in a new `Document.source_palette` and each
+  index plane (the composite's and every pixel layer's, recursing groups) in the
+  existing source store, while `color_mode_data` stays cleared (the "palette is
+  consumed" contract is unchanged). `write_psd` emits Indexed only when every
+  retained plane still expands through the palette to the current working RGB;
+  the header mode is document-wide, so an edited composite or layer, or an added
+  color layer, falls back to writing the working RGB. No RGB-to-palette
+  quantization is invented (a no-oracle path, like the Lab/CMYK edits). A file
+  with no merged composite still writes Indexed (palette + layer index channels,
+  no image-data section). The mode notice reports an Indexed-preserving save;
+  ceiling: it does not consult the edit, so an edited Indexed document still
+  claims "saved as Indexed". Proven by the `color_mode_oracle` (mode 2, palette
+  and index planes byte-identical; psd-tools ran) and unit tests (grouped layer,
+  raster mask, edited composite/layer fallback, no-merged-composite, added empty
+  layer, malformed-input typed error). Ceiling: Bitmap write-back and
+  Multichannel/Duotone remain open.
 - **ICC profile matches the output mode** (roadmap P4/P6, archived
   `2026-09-23-icc-output-mode-consistency`): a 16/32-bit CMYK or Lab source is
   normalized to RGB but keeps its CMYK/Lab resource `1039` (the profile cannot
