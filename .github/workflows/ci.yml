@@ -92,6 +92,9 @@ jobs:
       - name: Self-test with document
         run: ./build/pictura --headless --self-test crates/pictura-codec/tests/fixtures/two_layers.psd
 
+      - name: Control e2e
+        run: bash scripts/verify-control.sh
+
   oracles:
     runs-on: ubuntu-24.04
     steps:
