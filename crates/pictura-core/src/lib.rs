@@ -117,16 +117,20 @@ pub struct Document {
     /// mode was normalized to the working mode on read. `None` for a Grayscale
     /// or RGB file and for a constructed document.
     pub source_mode: Option<ColorMode>,
-    /// The header bit depth of the file this document was read from, when a
-    /// 16/32-bit Grayscale or RGB file was normalized to the 8-bit working
-    /// model on read. `None` for an 8-bit file, a depth-1 Bitmap file (recorded
-    /// by `source_mode`), a constructed document, and a mode the read path
-    /// converted (CMYK/Lab). `write_psd` re-emits this depth on save, so an
-    /// unchanged plane keeps its source precision.
+    /// The header bit depth of the file this document was read from when it was
+    /// not 8-bit. `None` for an 8-bit file, a depth-1 Bitmap file (whose mode
+    /// `source_mode` records), and a constructed document; `Some(16/32)` for a
+    /// 16/32-bit file of any mode, including a converted CMYK/Lab read. A
+    /// Grayscale/RGB 16/32-bit read also retains native planes and re-emits this
+    /// depth on save; a converted mode records it for the notice but retains no
+    /// samples and still saves 8-bit.
     pub source_depth: Option<BitDepth>,
-    /// Retained native-depth samples of the composite color planes and the
-    /// document extra channels, re-emitted on save when the plane is unchanged.
-    /// `None` for an 8-bit or constructed document and for a converted mode.
+    /// Retained source planes of the composite color channels and the document
+    /// extra channels, re-emitted on save when the plane is unchanged. Set for a
+    /// 16/32-bit Grayscale or RGB read (native-depth samples) and for an 8-bit
+    /// Lab read (the Lab color planes, so an unedited Lab file saves exactly).
+    /// `None` for an 8-bit RGB/Grayscale read, a constructed document, and a
+    /// 16/32-bit converted mode.
     pub source_planes: Option<SourcePlanes>,
     /// The embedded ICC profile bytes of the file this document was read from,
     /// when it was converted to the sRGB working space on read. `None` for a
@@ -263,20 +267,26 @@ impl Document {
         doc
     }
 
-    /// True when a read retained source-depth samples for some plane (a 16/32-bit
-    /// Grayscale or RGB document), so `write_psd` re-emits the source depth.
-    /// False for a mode the read path converted (CMYK/Lab) and for an 8-bit or
-    /// constructed document, which still save 8-bit.
+    /// True when a read retained native 16/32-bit samples for some plane, so
+    /// `write_psd` re-emits the source depth. False for an 8-bit read (including
+    /// an 8-bit Lab read, whose retained store is 8-bit) and a constructed
+    /// document, which still save 8-bit.
     pub fn retains_source_depth(&self) -> bool {
-        self.source_planes.is_some() || retains_source_depth(&self.layers)
+        self.source_planes
+            .as_ref()
+            .is_some_and(|store| store.depth != BitDepth::Eight)
+            || retains_source_depth(&self.layers)
     }
 }
 
-/// Whether any layer in a tree retained source-depth channel samples.
+/// Whether any layer in a tree retained native 16/32-bit channel samples.
 fn retains_source_depth(layers: &[Layer]) -> bool {
-    layers
-        .iter()
-        .any(|l| l.source_channels.is_some() || retains_source_depth(&l.children))
+    layers.iter().any(|l| {
+        l.source_channels
+            .as_ref()
+            .is_some_and(|store| store.depth != BitDepth::Eight)
+            || retains_source_depth(&l.children)
+    })
 }
 
 impl Default for Document {
@@ -457,13 +467,14 @@ pub struct RawChannel {
     pub data: Vec<u8>,
 }
 
-/// Retained native-depth samples of a document's color planes and extra
-/// channels, kept so an unchanged plane can be re-emitted at its source depth.
+/// Retained source-depth samples of a document's color planes and extra
+/// channels, kept so an unchanged plane can be re-emitted exactly.
 ///
 /// `data` is the planar image-data buffer: the composite color channels
 /// followed by the document extra channels, each `row_bytes(width, depth) *
-/// height` native bytes, in PSD order. It is set only for a 16/32-bit
-/// Grayscale or RGB read.
+/// height` native bytes, in PSD order. Set for a 16/32-bit Grayscale or RGB
+/// read, and for an 8-bit Lab read (whose `depth` is `Eight` and whose bytes
+/// are the Lab color planes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcePlanes {
     pub depth: BitDepth,
@@ -479,8 +490,9 @@ pub struct SourcePlanes {
 pub struct SourceChannels {
     pub depth: BitDepth,
     pub rect: PsdRect,
-    /// `(channel id, native plane bytes)` sorted by channel id. Includes the
-    /// color channels, `-1` transparency, `-2` mask, and unmodeled ids.
+    /// `(channel id, plane bytes)` sorted by channel id. A native-depth store
+    /// holds the color channels, `-1` transparency, `-2` mask, and unmodeled
+    /// ids; an 8-bit Lab store holds only the color channels (`0..3`).
     pub planes: Vec<(i16, Vec<u8>)>,
 }
 
@@ -712,8 +724,9 @@ pub struct Layer {
     /// Derived `vmsk` vector-mask view; `None` when absent or unparseable. The
     /// raw block remains in `extra_blocks` and is the serialization source.
     pub vector_mask: Option<VectorMask>,
-    /// Retained native-depth channel samples for a 16/32-bit Grayscale/RGB read,
-    /// re-emitted on save when the layer has not moved.
+    /// Retained source channel samples, re-emitted on save when the layer has
+    /// not moved: native `16`/`32`-bit samples for a Grayscale/RGB read, or the
+    /// 8-bit Lab color planes for a Lab read.
     pub source_channels: Option<SourceChannels>,
 }
 

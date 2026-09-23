@@ -4,7 +4,9 @@ use pictura_core::*;
 use std::io::Read;
 
 use crate::common::*;
-use crate::depth::{depth_bits, narrow_channel, narrow_planes, row_bytes, undo_prediction};
+use crate::depth::{
+    depth_bits, narrow_channel, narrow_planes, planar_len, row_bytes, undo_prediction,
+};
 use crate::error::PsdError;
 
 /// Fallback for an Indexed document's palette; unreachable because
@@ -70,10 +72,12 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         return Err(PsdError::Unsupported(format!("bit depth {depth}")));
     }
     // A 16/32-bit header is always recorded so the app can report the
-    // conversion; only a Grayscale/RGB read also retains the native planes
-    // (below). A normalized mode (CMYK/Lab) records no samples and saves 8-bit.
-    let retain_depth =
-        matches!(depth, 16 | 32) && matches!(mode, ColorMode::Grayscale | ColorMode::Rgb);
+    // conversion; a Grayscale/RGB read retains native-depth planes, and an 8-bit
+    // Lab read retains its Lab planes, so an unchanged plane re-emits exactly.
+    // A 16/32-bit Lab read keeps no samples and still saves 8-bit.
+    let retain_planes = (matches!(depth, 16 | 32)
+        && matches!(mode, ColorMode::Grayscale | ColorMode::Rgb))
+        || (depth == 8 && mode == ColorMode::Lab);
     let source_depth = depth_bits(depth);
 
     // Color mode data section: 4-byte length + opaque bytes, kept verbatim.
@@ -91,7 +95,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             is_psb,
             mode.color_channels() as usize,
             depth,
-            retain_depth,
+            retain_planes,
         )?;
     // Derive the smart-object view from the preserved bytes; a malformed
     // descriptor or linked-layer record degrades to Unresolved (design D5).
@@ -164,7 +168,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     // Narrow 16/32-bit samples before `split_planes` so every later step sees
     // 8-bit planes; the pre-narrow buffer is kept so an unchanged plane re-emits
     // at the source depth. ponytail: costs 2x/4x the plane size while open.
-    let source_planes = if retain_depth {
+    let source_planes = if retain_planes {
         Some(SourcePlanes {
             depth: depth_bits(depth).unwrap_or(BitDepth::Eight),
             width: width as u32,
@@ -247,7 +251,8 @@ fn palette_from(mode: ColorMode, data: &[u8]) -> Result<Option<[u8; 768]>, PsdEr
 
 /// Normalize a non-RGB document to the engine's working mode. Grayscale and RGB
 /// pass through untouched; Bitmap/Indexed/CMYK/Lab become RGB, record the source
-/// mode, and convert every color plane (composite and layers).
+/// mode, and convert every color plane (composite and every layer, including a
+/// grouped layer's descendants).
 fn normalize(
     mut doc: Document,
     header_mode: ColorMode,
@@ -257,9 +262,13 @@ fn normalize(
     if matches!(header_mode, ColorMode::Grayscale | ColorMode::Rgb) {
         return doc;
     }
-    doc.composite = convert_pixels(doc.composite, header_mode, depth, palette);
+    if header_mode == ColorMode::Lab {
+        crate::color_mode::retain_lab_layer_planes(&mut doc.layers, depth);
+    }
+    let palette = palette.unwrap_or(&EMPTY_PALETTE);
+    doc.composite = convert_pixels(doc.composite, header_mode, depth, Some(palette));
     for layer in &mut doc.layers {
-        convert_layer_color_channels(layer, header_mode, palette);
+        crate::color_mode::convert_layer_color_channels(layer, header_mode, palette);
     }
     doc.mode = ColorMode::Rgb;
     doc.depth = BitDepth::Eight;
@@ -297,63 +306,6 @@ fn convert_pixels(
     }
 }
 
-/// Replace a layer's color channels (`0..color_channels`) with converted RGB
-/// planes. Non-color channels are untouched; a layer whose color channels do not
-/// match the mode's layout is left unchanged.
-fn convert_layer_color_channels(layer: &mut Layer, mode: ColorMode, palette: Option<&[u8; 768]>) {
-    let color_channels = mode.color_channels() as usize;
-    if color_channels == 0 {
-        return;
-    }
-    let positions: Vec<usize> = layer
-        .channels
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| c.id >= 0 && (c.id as usize) < color_channels)
-        .map(|(i, _)| i)
-        .collect();
-    if positions.len() != color_channels {
-        return;
-    }
-    let plane = layer.channels[positions[0]].data.len();
-    if positions
-        .iter()
-        .any(|&i| layer.channels[i].data.len() != plane)
-    {
-        return;
-    }
-    let mut planar = Vec::with_capacity(plane * color_channels);
-    for &i in &positions {
-        planar.extend_from_slice(&layer.channels[i].data);
-    }
-    use crate::color_mode::*;
-    let rgb = match mode {
-        ColorMode::Indexed => indexed_to_rgb(&planar, palette.unwrap_or(&EMPTY_PALETTE)),
-        ColorMode::Cmyk => cmyk_to_rgb(&planar),
-        ColorMode::Lab => lab_to_rgb(&planar),
-        // A Bitmap layer's single gray plane is bit-expanded to an 8-bit plane
-        // at read time (depth 1 or 8), so it replicates to RGB.
-        ColorMode::Bitmap => gray_to_rgb(&planar),
-        ColorMode::Grayscale | ColorMode::Rgb => return,
-        ColorMode::Multichannel | ColorMode::Duotone => return,
-    };
-    let others: Vec<Channel> = layer
-        .channels
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !positions.contains(i))
-        .map(|(_, c)| c.clone())
-        .collect();
-    let mut channels: Vec<Channel> = (0..3)
-        .map(|c| Channel {
-            id: c as i16,
-            data: rgb[c * plane..(c + 1) * plane].to_vec(),
-        })
-        .collect();
-    channels.extend(others);
-    layer.channels = channels;
-}
-
 /// Split the planar image-data section into the mode's color planes (the
 /// composite) and the trailing extra channels (saved selections / alpha).
 /// `plane` is one channel's byte length (depth-aware).
@@ -389,13 +341,6 @@ fn split_planes(
         },
         channels,
     ))
-}
-
-fn planar_len(channels: usize, row_bytes: usize, height: usize) -> Result<usize, PsdError> {
-    channels
-        .checked_mul(row_bytes)
-        .and_then(|n| n.checked_mul(height))
-        .ok_or_else(|| PsdError::Invalid("image dimensions overflow".into()))
 }
 
 /// Inflate a ZIP channel payload. Photoshop writes a zlib-framed stream; some

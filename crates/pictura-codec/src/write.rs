@@ -5,9 +5,9 @@ use crate::common::*;
 use crate::depth::{apply_prediction, depth_of, narrow_channel, row_bytes, widen_channel};
 use crate::error::PsdError;
 
-/// The output sample width: the source depth when a read retained samples, else
-/// 8. A converted mode (CMYK/Lab) records `source_depth` but no samples, so it
-/// still saves 8-bit.
+/// The output sample width: the recorded source depth when a read retained
+/// native 16/32-bit samples, else 8. An 8-bit Lab read retains an 8-bit store
+/// and a 16/32-bit converted mode retains nothing, so both still save 8-bit.
 fn output_depth(doc: &Document) -> u16 {
     if doc.retains_source_depth() {
         depth_of(doc.source_depth)
@@ -96,7 +96,83 @@ fn record_name(layer: &Layer) -> &str {
     }
 }
 
-fn write_layer_info(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
+/// The Lab bytes to emit for a Lab output's composite color planes: the
+/// retained Lab planes exactly when every plane's forward RGB conversion still
+/// matches the working composite, else the working RGB re-encoded with the
+/// approximate inverse. The document is never mutated. A retained plane comes
+/// from the 8-bit Lab read store; for an RGB/Grayscale document there is none.
+///
+/// ponytail: the three Lab planes are re-encoded as a unit, so editing one
+/// channel also re-encodes its unchanged siblings (Lab `a`/`b` depend on all of
+/// R/G/B). Per-channel change tracking would be the upgrade if that matters.
+fn lab_composite_planes(doc: &Document, depth: u16, plane: usize) -> Vec<u8> {
+    let color_channels = doc.composite.channels as usize;
+    let current = &doc.composite.data[..color_channels * plane];
+    let retained: Option<Vec<&[u8]>> = (0..color_channels)
+        .map(|c| composite_retained(doc, depth, c))
+        .collect();
+    if let Some(retained) = retained {
+        let retained: Vec<u8> = retained.concat();
+        if retained.len() == plane * color_channels
+            && crate::color_mode::lab_to_rgb(&retained).as_slice() == current
+        {
+            return retained;
+        }
+    }
+    crate::color_mode::rgb_to_lab(current)
+}
+
+/// The Lab planes to emit for a layer's three color channels, aligned to
+/// `layer.channels` (a `None` entry for every non-color channel). Prefers the
+/// retained Lab plane when its forward conversion still matches the working
+/// planes; empty when the layer does not carry exactly three id-0/1/2 color
+/// channels of equal length, letting the caller keep the original planes.
+///
+/// ponytail: same grouped ceiling as [`lab_composite_planes`] — one edited
+/// channel re-encodes all three.
+fn lab_layer_color_planes(layer: &Layer, depth: u16) -> Vec<Option<Vec<u8>>> {
+    let positions: Vec<usize> = layer
+        .channels
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.id >= 0 && c.id < 3)
+        .map(|(i, _)| i)
+        .collect();
+    if positions.len() != 3 {
+        return Vec::new();
+    }
+    let plane = layer.channels[positions[0]].data.len();
+    if positions
+        .iter()
+        .any(|&i| layer.channels[i].data.len() != plane)
+    {
+        return Vec::new();
+    }
+    let mut current = Vec::with_capacity(plane * 3);
+    for &i in &positions {
+        current.extend_from_slice(&layer.channels[i].data);
+    }
+    let retained: Option<Vec<&[u8]>> = positions
+        .iter()
+        .map(|&i| layer_retained(layer, depth, layer.channels[i].id))
+        .collect();
+    let lab = match retained.map(|planes| planes.concat()) {
+        Some(retained)
+            if retained.len() == plane * 3
+                && crate::color_mode::lab_to_rgb(&retained).as_slice() == current.as_slice() =>
+        {
+            retained
+        }
+        _ => crate::color_mode::rgb_to_lab(&current),
+    };
+    let mut out = vec![None; layer.channels.len()];
+    for (c, &i) in positions.iter().enumerate() {
+        out[i] = Some(lab[c * plane..(c + 1) * plane].to_vec());
+    }
+    out
+}
+
+fn write_layer_info(doc: &Document, psb: bool, lab_mode: bool) -> Result<Vec<u8>, PsdError> {
     let records = flatten(&doc.layers);
     if records.len() > i16::MAX as usize {
         return Err(PsdError::Unsupported("too many layer records".into()));
@@ -112,10 +188,19 @@ fn write_layer_info(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         if let Some(layer) = record.layer {
             let layer_w = layer.rect.width().max(0) as usize;
             let layer_h = layer.rect.height().max(0) as usize;
-            for channel in &layer.channels {
+            let lab_channels = if lab_mode {
+                lab_layer_color_planes(layer, depth)
+            } else {
+                Vec::new()
+            };
+            for (index, channel) in layer.channels.iter().enumerate() {
+                let data = lab_channels
+                    .get(index)
+                    .and_then(|plane| plane.as_deref())
+                    .unwrap_or(&channel.data);
                 let plane = native_plane(
                     layer_retained(layer, depth, channel.id),
-                    &channel.data,
+                    data,
                     layer_w,
                     layer_h,
                     depth,
@@ -754,10 +839,21 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     // depth (8 when the read retained no samples, including a converted mode),
     // so an open→save of a 16/32-bit file is not a silent downgrade.
     let depth = output_depth(doc);
-    let mode_code = match doc.mode {
-        ColorMode::Grayscale => MODE_GRAYSCALE,
-        ColorMode::Rgb => MODE_RGB,
-        m => return Err(PsdError::Unsupported(format!("write color mode {m:?}"))),
+    // A document read from an 8-bit Lab file keeps its three color channels but
+    // re-encodes them from the working RGB, so the output header is Lab. A
+    // 16/32-bit Lab source retains nothing and keeps writing the working mode.
+    let lab_mode = depth == 8
+        && doc.source_depth.is_none()
+        && doc.source_mode == Some(ColorMode::Lab)
+        && doc.composite.channels == 3;
+    let mode_code = if lab_mode {
+        MODE_LAB
+    } else {
+        match doc.mode {
+            ColorMode::Grayscale => MODE_GRAYSCALE,
+            ColorMode::Rgb => MODE_RGB,
+            m => return Err(PsdError::Unsupported(format!("write color mode {m:?}"))),
+        }
     };
     let color_channels = doc.composite.channels as usize;
     let channels = color_channels + doc.channels.len();
@@ -820,7 +916,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             out.extend_from_slice(&0u32.to_be_bytes()); // zero-length layer/mask section
         }
     } else {
-        let info = write_layer_info(doc, psb)?;
+        let info = write_layer_info(doc, psb, lab_mode)?;
         let len_width = if psb { 8 } else { 4 };
         let section_len = len_width + info.len() + 4 + doc.global_layer_mask.len() + extra.len();
         if psb {
@@ -845,9 +941,15 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&doc.composite_compression.to_code().to_be_bytes());
     let width = doc.width as usize;
     let height = doc.height as usize;
+    // The Lab output re-emits a retained plane exactly when it is unchanged, and
+    // otherwise re-encodes from the working RGB into a temp buffer.
+    let lab_composite = lab_mode.then(|| lab_composite_planes(doc, depth, plane));
     let mut planes: Vec<Cow<[u8]>> = Vec::with_capacity(channels);
     for c in 0..color_channels {
-        let current = &doc.composite.data[c * plane..(c + 1) * plane];
+        let current = match &lab_composite {
+            Some(lab) => &lab[c * plane..(c + 1) * plane],
+            None => &doc.composite.data[c * plane..(c + 1) * plane],
+        };
         planes.push(native_plane(
             composite_retained(doc, depth, c),
             current,

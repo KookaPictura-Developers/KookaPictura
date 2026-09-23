@@ -14,8 +14,11 @@ class PicturaMainWindow;
 // adds the neutral `color-lookup` kind (an identity cube) and checks the same
 // neutrality plus its panel row; color_mode_open (297)
 // writes a minimal flat CMYK PSD and opens it, checking the view reports the
-// CMYK conversion notice and reads as an RGB document; depth_open (298) writes a
-// minimal flat depth-16 RGB PSD and opens it, checking the 16-bit conversion
+// CMYK conversion notice and reads as an RGB document; lab_mode_open (518)
+// writes a minimal flat 8-bit Lab PSD and opens it, checking the view reports
+// the Lab-preserving save notice; lab16_mode_open (519) writes a 16-bit Lab PSD
+// and checks the view reports an RGB save notice instead; depth_open (298) writes
+// a minimal flat depth-16 RGB PSD and opens it, checking the 16-bit conversion
 // notice and the `v >> 8` narrowing. color_settings_policy (461) checks the
 // incoming-profile policy default/round-trip and the Color Settings dialog
 // mapping. Returns 0 when all pass, otherwise the self-test failure code.
