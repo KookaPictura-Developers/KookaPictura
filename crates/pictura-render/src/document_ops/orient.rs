@@ -115,6 +115,9 @@ fn transform_document(doc: &mut Document, kind: Kind) {
             channel.data = remap_plane(&channel.data, lw, lh, op);
         }
         layer.rect = transform_rect(layer.rect, w, h, kind);
+        // ponytail: flips and 90° rotations drop unmodeled channels (no resampler)
+        layer.raw_channels.clear();
+        layer.source_channels = None;
 
         if let Some(mask) = &mut layer.mask {
             let mw = mask.rect.width().max(0) as u32;

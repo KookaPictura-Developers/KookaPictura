@@ -1,7 +1,20 @@
 use pictura_core::*;
+use std::borrow::Cow;
 
 use crate::common::*;
+use crate::depth::{apply_prediction, depth_of, narrow_channel, row_bytes, widen_channel};
 use crate::error::PsdError;
+
+/// The output sample width: the source depth when a read retained samples, else
+/// 8. A converted mode (CMYK/Lab) records `source_depth` but no samples, so it
+/// still saves 8-bit.
+fn output_depth(doc: &Document) -> u16 {
+    if doc.retains_source_depth() {
+        depth_of(doc.source_depth)
+    } else {
+        8
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Layer and mask information section — writing
@@ -93,25 +106,59 @@ fn write_layer_info(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     info.extend_from_slice(&(records.len() as i16).to_be_bytes());
 
     let mut channel_data: Vec<Vec<(i16, OutChannel)>> = Vec::with_capacity(records.len());
+    let depth = output_depth(doc);
     for record in &records {
         let mut channels: Vec<(i16, OutChannel)> = Vec::new();
         if let Some(layer) = record.layer {
             let layer_w = layer.rect.width().max(0) as usize;
             let layer_h = layer.rect.height().max(0) as usize;
             for channel in &layer.channels {
+                let plane = native_plane(
+                    layer_retained(layer, depth, channel.id),
+                    &channel.data,
+                    layer_w,
+                    layer_h,
+                    depth,
+                )?;
                 channels.push((
                     channel.id,
                     OutChannel::Encoded(channel_stream(
                         doc.layer_compression,
                         layer_w,
                         layer_h,
-                        &channel.data,
+                        &plane,
+                        depth,
                         psb,
                     )?),
                 ));
             }
             for channel in &layer.raw_channels {
-                channels.push((channel.id, OutChannel::Verbatim(channel.data.clone())));
+                // A depth-8 read keeps the original on-disk stream verbatim. A
+                // 16/32-bit read re-wrapped it as a raw 8-bit stream, so replay
+                // the retained native plane (or widen) under the output depth.
+                if depth == 8 {
+                    channels.push((channel.id, OutChannel::Verbatim(channel.data.clone())));
+                    continue;
+                }
+                let plane8 = channel.data.get(2..).unwrap_or(&[]);
+                let plane = native_plane(
+                    layer_retained(layer, depth, channel.id),
+                    plane8,
+                    layer_w,
+                    layer_h,
+                    depth,
+                )?;
+                channels.push((
+                    channel.id,
+                    OutChannel::Encoded(channel_stream(
+                        doc.layer_compression,
+                        layer_w,
+                        layer_h,
+                        &plane,
+                        depth,
+                        psb,
+                    )?),
+                ));
             }
             if let Some(mask) = &layer.mask {
                 let width = mask.rect.width().max(0) as usize;
@@ -130,13 +177,21 @@ fn write_layer_info(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
                     }
                     None => vec![mask.default_color; pixels],
                 };
+                let plane = native_plane(
+                    layer_retained(layer, depth, -2),
+                    &data,
+                    width,
+                    height,
+                    depth,
+                )?;
                 channels.push((
                     -2,
                     OutChannel::Encoded(channel_stream(
                         doc.layer_compression,
                         width,
                         height,
-                        &data,
+                        &plane,
+                        depth,
                         psb,
                     )?),
                 ));
@@ -500,17 +555,80 @@ fn encode_packbits_row(row: &[u8], out: &mut Vec<u8>) {
     }
 }
 
-/// Encode `planes` (each `width * height`, plane-major) into one RLE payload:
-/// all 2-byte (PSD) or 4-byte (PSB) scanline byte counts first (plane-major,
-/// then row-major), then the packed rows in the same order. The compression word
-/// is not included.
+/// The native-depth plane to emit for one channel. When `depth` is 8 the
+/// current plane is borrowed unchanged. At 16/32, `retained` (the decoded source
+/// samples, when its length matches the plane) is used if narrowing it yields
+/// `current`; otherwise `current` is widened. A length that is not exactly
+/// `width * height` is rejected, so [`widen_channel`] can never index out of
+/// bounds on a malformed or stale plane.
+fn native_plane<'a>(
+    retained: Option<&'a [u8]>,
+    current: &'a [u8],
+    width: usize,
+    height: usize,
+    depth: u16,
+) -> Result<Cow<'a, [u8]>, PsdError> {
+    let pixels = width
+        .checked_mul(height)
+        .ok_or_else(|| PsdError::Invalid("channel plane size overflow".into()))?;
+    if current.len() != pixels {
+        return Err(PsdError::Invalid("channel plane length mismatch".into()));
+    }
+    if depth == 8 {
+        return Ok(Cow::Borrowed(current));
+    }
+    if let Some(ret) = retained {
+        let stride = row_bytes(width, depth);
+        if ret.len() == stride * height
+            && narrow_channel(ret, width, height, stride, depth).as_slice() == current
+        {
+            return Ok(Cow::Borrowed(ret));
+        }
+    }
+    Ok(Cow::Owned(widen_channel(current, width, height, depth)))
+}
+
+/// The retained native plane at `index` (composite color channels then document
+/// extras) when the document's store matches the output `depth` and canvas.
+fn composite_retained(doc: &Document, depth: u16, index: usize) -> Option<&[u8]> {
+    let store = doc.source_planes.as_ref()?;
+    if depth_of(Some(store.depth)) != depth
+        || store.width != doc.width
+        || store.height != doc.height
+    {
+        return None;
+    }
+    let plane = row_bytes(doc.width as usize, depth) * doc.height as usize;
+    store.data.get(index * plane..(index + 1) * plane)
+}
+
+/// The retained native plane for layer channel `id`, when the layer's store
+/// matches the output `depth` and the layer has not moved.
+fn layer_retained(layer: &Layer, depth: u16, id: i16) -> Option<&[u8]> {
+    let store = layer.source_channels.as_ref()?;
+    if depth_of(Some(store.depth)) != depth || store.rect != layer.rect {
+        return None;
+    }
+    store
+        .planes
+        .iter()
+        .find(|(channel, _)| *channel == id)
+        .map(|(_, data)| data.as_slice())
+}
+
+/// Encode `planes` (each `row_bytes * height`, plane-major) into one RLE
+/// payload: all 2-byte (PSD) or 4-byte (PSB) scanline byte counts first
+/// (plane-major, then row-major), then the packed rows in the same order. The
+/// compression word is not included. PackBits is byte-wise, so `row_bytes` is
+/// the native row stride (`width` at depth 8, `2 * width` at 16, `4 * width` at
+/// 32).
 pub(crate) fn encode_scanlines(
     planes: &[&[u8]],
-    width: usize,
+    row_bytes: usize,
     height: usize,
     psb: bool,
 ) -> Result<Vec<u8>, PsdError> {
-    let plane_len = width
+    let plane_len = row_bytes
         .checked_mul(height)
         .ok_or_else(|| PsdError::Invalid("RLE plane size overflow".into()))?;
     let count_width = if psb { 4 } else { 2 };
@@ -521,9 +639,9 @@ pub(crate) fn encode_scanlines(
             return Err(PsdError::Invalid("RLE plane length mismatch".into()));
         }
         for row in 0..height {
-            let start = row * width;
+            let start = row * row_bytes;
             let mut packed = Vec::new();
-            encode_packbits_row(&plane[start..start + width], &mut packed);
+            encode_packbits_row(&plane[start..start + row_bytes], &mut packed);
             // The PSD maximum width (30 000) cannot reach the u16 limit, so the
             // guard only fires for a PSB row approaching u32; it errs rather
             // than truncate. ponytail: one uncompressed row, not the whole plane.
@@ -549,17 +667,19 @@ pub(crate) fn encode_scanlines(
     Ok(counts)
 }
 
-/// Concatenate `planes` (each `width * height`, plane-major) and zlib-wrap the
-/// result. When `predict`, apply the forward 8-bit per-row delta first (the
-/// inverse of the reader's `undo_prediction`); no scanline count table.
+/// Concatenate the native-depth `planes` (`width` pixels by `height` rows each,
+/// plane-major) and zlib-wrap the result. When `predict`, apply the forward
+/// depth-specific per-row delta first (the inverse of the reader's
+/// `undo_prediction`); no scanline count table.
 pub(crate) fn zip_scanlines(
     planes: &[&[u8]],
-    width: u32,
-    height: u32,
+    width: usize,
+    height: usize,
     predict: bool,
+    depth: u16,
 ) -> Result<Vec<u8>, PsdError> {
-    let plane_len = (width as usize)
-        .checked_mul(height as usize)
+    let plane_len = row_bytes(width, depth)
+        .checked_mul(height)
         .ok_or_else(|| PsdError::Invalid("ZIP plane size overflow".into()))?;
     let mut data = Vec::with_capacity(planes.len() * plane_len);
     for plane in planes {
@@ -569,7 +689,7 @@ pub(crate) fn zip_scanlines(
         data.extend_from_slice(plane);
     }
     if predict {
-        forward_prediction(&mut data, width as usize);
+        apply_prediction(&mut data, width, planes.len() * height, depth);
     }
     use flate2::write::ZlibEncoder;
     use std::io::Write;
@@ -580,48 +700,35 @@ pub(crate) fn zip_scanlines(
         .map_err(|_| PsdError::Invalid("ZIP encode".into()))
 }
 
-/// Apply the forward per-row delta `out[i] = data[i] - data[i-1]` over each
-/// `row_len`-byte scanline, in place. Written right-to-left so the original
-/// left neighbour is still available; the first byte of each row is unchanged.
-fn forward_prediction(data: &mut [u8], row_len: usize) {
-    if row_len == 0 {
-        return;
-    }
-    for row_start in (0..data.len()).step_by(row_len) {
-        let row_end = (row_start + row_len).min(data.len());
-        for i in (row_start + 1..row_end).rev() {
-            data[i] = data[i].wrapping_sub(data[i - 1]);
-        }
-    }
-}
-
 /// The complete on-disk layer-channel stream for one engine-encoded plane: the
-/// compression word followed by the payload for `kind`.
+/// compression word followed by the payload for `kind` at `depth`. `plane` is
+/// the native-depth plane (`row_bytes(width, depth) * height` bytes).
 fn channel_stream(
     kind: Compression,
     width: usize,
     height: usize,
     plane: &[u8],
+    depth: u16,
     psb: bool,
 ) -> Result<Vec<u8>, PsdError> {
+    let stride = row_bytes(width, depth);
     let mut out = Vec::with_capacity(2 + plane.len());
     out.extend_from_slice(&kind.to_code().to_be_bytes());
     match kind {
-        Compression::Rle => out.extend_from_slice(&encode_scanlines(&[plane], width, height, psb)?),
+        Compression::Rle => {
+            out.extend_from_slice(&encode_scanlines(&[plane], stride, height, psb)?)
+        }
         Compression::Raw => {
-            if plane.len() != width * height {
+            if plane.len() != stride * height {
                 return Err(PsdError::Invalid("raw channel length mismatch".into()));
             }
             out.extend_from_slice(plane);
         }
-        Compression::Zip => out.extend_from_slice(&zip_scanlines(
-            &[plane],
-            width as u32,
-            height as u32,
-            false,
-        )?),
+        Compression::Zip => {
+            out.extend_from_slice(&zip_scanlines(&[plane], width, height, false, depth)?)
+        }
         Compression::ZipPrediction => {
-            out.extend_from_slice(&zip_scanlines(&[plane], width as u32, height as u32, true)?)
+            out.extend_from_slice(&zip_scanlines(&[plane], width, height, true, depth)?)
         }
     }
     Ok(out)
@@ -643,6 +750,10 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     if doc.depth != BitDepth::Eight {
         return Err(PsdError::Unsupported("write supports 8-bit only".into()));
     }
+    // The working model stays 8-bit; the output depth is the recorded source
+    // depth (8 when the read retained no samples, including a converted mode),
+    // so an open→save of a 16/32-bit file is not a silent downgrade.
+    let depth = output_depth(doc);
     let mode_code = match doc.mode {
         ColorMode::Grayscale => MODE_GRAYSCALE,
         ColorMode::Rgb => MODE_RGB,
@@ -685,7 +796,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     out.extend_from_slice(&(channels as u16).to_be_bytes());
     out.extend_from_slice(&doc.height.to_be_bytes());
     out.extend_from_slice(&doc.width.to_be_bytes());
-    out.extend_from_slice(&8u16.to_be_bytes()); // depth
+    out.extend_from_slice(&depth.to_be_bytes()); // depth
     out.extend_from_slice(&mode_code.to_be_bytes());
     out.extend_from_slice(&(doc.color_mode_data.len() as u32).to_be_bytes());
     out.extend_from_slice(&doc.color_mode_data);
@@ -732,18 +843,34 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     }
 
     out.extend_from_slice(&doc.composite_compression.to_code().to_be_bytes());
-    let mut planes: Vec<&[u8]> = Vec::with_capacity(channels);
+    let width = doc.width as usize;
+    let height = doc.height as usize;
+    let mut planes: Vec<Cow<[u8]>> = Vec::with_capacity(channels);
     for c in 0..color_channels {
-        planes.push(&doc.composite.data[c * plane..(c + 1) * plane]);
+        let current = &doc.composite.data[c * plane..(c + 1) * plane];
+        planes.push(native_plane(
+            composite_retained(doc, depth, c),
+            current,
+            width,
+            height,
+            depth,
+        )?);
     }
-    for channel in &doc.channels {
-        planes.push(&channel.data);
+    for (i, channel) in doc.channels.iter().enumerate() {
+        planes.push(native_plane(
+            composite_retained(doc, depth, color_channels + i),
+            &channel.data,
+            width,
+            height,
+            depth,
+        )?);
     }
+    let planes: Vec<&[u8]> = planes.iter().map(Cow::as_ref).collect();
     match doc.composite_compression {
         Compression::Rle => out.extend_from_slice(&encode_scanlines(
             &planes,
-            doc.width as usize,
-            doc.height as usize,
+            row_bytes(width, depth),
+            height,
             psb,
         )?),
         Compression::Raw => {
@@ -752,10 +879,10 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             }
         }
         Compression::Zip => {
-            out.extend_from_slice(&zip_scanlines(&planes, doc.width, doc.height, false)?)
+            out.extend_from_slice(&zip_scanlines(&planes, width, height, false, depth)?)
         }
         Compression::ZipPrediction => {
-            out.extend_from_slice(&zip_scanlines(&planes, doc.width, doc.height, true)?)
+            out.extend_from_slice(&zip_scanlines(&planes, width, height, true, depth)?)
         }
     }
     Ok(out)

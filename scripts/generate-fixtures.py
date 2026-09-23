@@ -359,6 +359,163 @@ def rgb32() -> PSDImage:
     return psd
 
 
+def _depth_layered(depth: int) -> bytes:
+    """A depth-16/32 RGB PSD that also exercises the layer and extra-channel
+    paths: a composite extra channel and one pixel layer carrying color,
+    transparency, a mask, and an unmodeled spot channel.
+
+    Hand-authored because psd-tools cannot write 16/32-bit layer channels. The
+    independent decoder still opens it (see `main`).
+    """
+    samples = DEPTH16_SAMPLES if depth == 16 else DEPTH32_SAMPLES
+
+    def plane(shift: int) -> bytes:
+        rotated = list(samples[shift:]) + list(samples[:shift])
+        if depth == 16:
+            row = b"".join(struct.pack(">H", v) for v in rotated)
+        else:
+            row = b"".join(struct.pack(">f", v) for v in rotated)
+        return row * HEIGHT
+
+    color = [plane(0), plane(1), plane(2)]
+    extra = plane(3)
+    channel_ids = [0, 1, 2, -1, -2, 3]
+    channel_planes = [color[0], color[1], color[2], plane(4), plane(5), plane(6)]
+
+    rec = bytearray()
+    for v in (0, 0, HEIGHT, WIDTH):
+        rec += struct.pack(">i", v)
+    rec += struct.pack(">H", len(channel_ids))
+    for cid, cp in zip(channel_ids, channel_planes):
+        rec += struct.pack(">h", cid)
+        rec += struct.pack(">I", 2 + len(cp))
+    rec += b"8BIMnorm" + bytes([255, 0, 0, 0])
+    mask = struct.pack(">I", 18) + struct.pack(">iiii", 0, 0, HEIGHT, WIDTH) + bytes([0, 0])
+    extra_block = mask + struct.pack(">I", 0) + bytes([1, ord("L"), 0, 0])
+    rec += struct.pack(">I", len(extra_block)) + extra_block
+
+    info = bytearray(struct.pack(">h", 1) + rec)
+    for cp in channel_planes:
+        info += struct.pack(">H", 0) + cp
+    while len(info) % 4:
+        info += b"\x00"
+
+    out = bytearray(b"8BPS" + struct.pack(">H", 1) + bytes(6))
+    out += struct.pack(">H", 4)  # channels: three color + one extra
+    out += struct.pack(">II", HEIGHT, WIDTH)
+    out += struct.pack(">H", depth)
+    out += struct.pack(">H", 3)  # RGB
+    out += struct.pack(">I", 0)  # color mode data
+    out += struct.pack(">I", 0)  # image resources
+    out += struct.pack(">I", 4 + len(info) + 4)  # layer/mask section length
+    out += struct.pack(">I", len(info))
+    out += info
+    out += struct.pack(">I", 0)  # global layer mask
+    out += struct.pack(">H", 0)  # raw composite
+    for cp in color + [extra]:
+        out += cp
+    return bytes(out)
+
+
+def rgb16_layered() -> bytes:
+    """Depth-16 RGB with a composite extra channel and a multi-channel layer."""
+    return _depth_layered(16)
+
+
+def rgb32_layered() -> bytes:
+    """Depth-32 RGB with a composite extra channel and a multi-channel layer."""
+    return _depth_layered(32)
+
+
+def _grouped_psd(depth: int) -> bytes:
+    """A depth-16/32 RGB PSD with a group of two pixel layers.
+
+    Hand-authored because psd-tools cannot write 16/32-bit layer channels; the
+    independent decoder still opens it (see `main`). A folder record carries
+    placeholder channels (declared length 2, empty plane), so the read path must
+    not keep them as source samples or a group would desync from its (empty)
+    saved channels.
+    """
+    samples = DEPTH16_SAMPLES if depth == 16 else DEPTH32_SAMPLES
+
+    def plane(shift: int) -> bytes:
+        rotated = list(samples[shift:]) + list(samples[:shift])
+        if depth == 16:
+            row = b"".join(struct.pack(">H", v) for v in rotated)
+        else:
+            row = b"".join(struct.pack(">f", v) for v in rotated)
+        return row * HEIGHT
+
+    def record(name: str, rect, channels, section=None):
+        rec = bytearray()
+        for v in rect:
+            rec += struct.pack(">i", v)
+        rec += struct.pack(">H", len(channels))
+        for cid, cp in channels:
+            rec += struct.pack(">h", cid)
+            rec += struct.pack(">I", 2 + len(cp))
+        rec += b"8BIMnorm" + bytes([255, 0, 0, 0])
+        extra = bytearray(struct.pack(">I", 0) + struct.pack(">I", 0))
+        nb = name.encode()
+        extra += bytes([len(nb)]) + nb
+        while len(extra) % 4:
+            extra += b"\x00"
+        if section is not None:
+            lsct = struct.pack(">I", section) + b"8BIMnorm"
+            extra += b"8BIM" + b"lsct" + struct.pack(">I", len(lsct)) + lsct
+        rec += struct.pack(">I", len(extra)) + extra
+        return bytes(rec), channels
+
+    inner = [(0, plane(0)), (1, plane(1)), (2, plane(2))]
+    # Photoshop folder/divider records carry placeholder channels: a declared
+    # length of 2 (the compression word only) on a zero-area rect. The read path
+    # must not retain these as source samples. `Plain` carries an ordinary
+    # `lsct=0` (SectionDivider::OTHER), which `build_tree` keeps, so it must keep
+    # its retained samples.
+    placeholders = [(-1, b""), (0, b""), (1, b""), (2, b"")]
+    recs = [
+        record("Plain", (0, 0, HEIGHT, WIDTH), inner, section=0),
+        record("</Layer group>", (0, 0, 0, 0), placeholders, section=3),
+        record("Inner Green", (0, 0, HEIGHT, WIDTH), inner),
+        record("Inner Yellow", (0, 0, HEIGHT, WIDTH), inner),
+        record("Group A", (0, 0, 0, 0), placeholders, section=1),
+    ]
+
+    info = bytearray(struct.pack(">h", len(recs)))
+    for rec, _ in recs:
+        info += rec
+    for _, channels in recs:
+        for _, cp in channels:
+            info += struct.pack(">H", 0) + cp
+    while len(info) % 4:
+        info += b"\x00"
+
+    out = bytearray(b"8BPS" + struct.pack(">H", 1) + bytes(6))
+    out += struct.pack(">H", 3)
+    out += struct.pack(">II", HEIGHT, WIDTH)
+    out += struct.pack(">H", depth)
+    out += struct.pack(">H", 3)  # RGB
+    out += struct.pack(">I", 0) + struct.pack(">I", 0)
+    out += struct.pack(">I", 4 + len(info) + 4)
+    out += struct.pack(">I", len(info))
+    out += info
+    out += struct.pack(">I", 0)  # global layer mask
+    out += struct.pack(">H", 0)  # raw composite
+    for p in (plane(0), plane(1), plane(2)):
+        out += p
+    return bytes(out)
+
+
+def rgb16_grouped() -> bytes:
+    """Depth-16 RGB with a group of two pixel layers."""
+    return _grouped_psd(16)
+
+
+def rgb32_grouped() -> bytes:
+    """Depth-32 RGB with a group of two pixel layers."""
+    return _grouped_psd(32)
+
+
 def _adj_layer(psd: PSDImage, key: Tag, name: str, data) -> None:
     """Turn a fresh empty pixel layer into an adjustment layer for `key`."""
     layer = psd.create_pixel_layer(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), name=name)
@@ -1734,6 +1891,10 @@ FIXTURES = {
     "bitmap.psd": bitmap,
     "rgb16.psd": rgb16,
     "rgb32.psd": rgb32,
+    "rgb16_layered.psd": rgb16_layered,
+    "rgb32_layered.psd": rgb32_layered,
+    "rgb16_grouped.psd": rgb16_grouped,
+    "rgb32_grouped.psd": rgb32_grouped,
     "adjustment.psd": adjustment,
     "channel_mixer.psd": channel_mixer,
     "curves.psd": curves,
@@ -1774,9 +1935,13 @@ def _dump_tree(layer, indent: int = 0) -> None:
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     for name, build in FIXTURES.items():
-        buffer = io.BytesIO()
-        build().save(buffer)
-        data = buffer.getvalue()
+        built = build()
+        if isinstance(built, (bytes, bytearray)):
+            data = bytes(built)
+        else:
+            buffer = io.BytesIO()
+            built.save(buffer)
+            data = buffer.getvalue()
         path = FIXTURE_DIR / name
         path.write_bytes(data)
 

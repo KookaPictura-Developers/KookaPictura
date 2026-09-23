@@ -322,7 +322,7 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             pictura::PictureView* depthView = frame.activeView();
             const bool depthOk = depthOpened && frame.documentCount() == depthDocs + 1
                 && depthView
-                && depthView->depth_notice() == QStringLiteral("Converted from 16-bit")
+                && depthView->depth_notice() == QStringLiteral("Converted from 16-bit to 8-bit for editing; saved at 16-bit")
                 && depthView->document_mode() == QStringLiteral("rgb")
                 && depthView->sample_argb(0, 0) == 0xff12569au;
             ST_BEGIN("depth_open");

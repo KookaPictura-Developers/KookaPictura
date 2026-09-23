@@ -3,6 +3,7 @@
 
 use super::color_modes::{flat_psd, layered_psd_depth};
 use super::*;
+use crate::depth::{predict16, predict32};
 
 fn be16(values: &[u16]) -> Vec<u8> {
     values.iter().flat_map(|v| v.to_be_bytes()).collect()
@@ -10,48 +11,6 @@ fn be16(values: &[u16]) -> Vec<u8> {
 
 fn be32(values: &[f32]) -> Vec<u8> {
     values.iter().flat_map(|v| v.to_be_bytes()).collect()
-}
-
-/// Forward of the depth-16 per-`u16` running sum: each row stores its first
-/// sample then big-endian differences, matching psd-tools `encode_prediction`.
-fn predict16(samples: &[u16], width: usize) -> Vec<u8> {
-    let mut out = Vec::with_capacity(samples.len() * 2);
-    for (i, &v) in samples.iter().enumerate() {
-        let encoded = if i % width == 0 {
-            v
-        } else {
-            v.wrapping_sub(samples[i - 1])
-        };
-        out.extend_from_slice(&encoded.to_be_bytes());
-    }
-    out
-}
-
-/// Forward of the depth-32 codec: shuffle the four byte planes of each row
-/// together, then byte-wise delta. Matches psd-tools `encode_prediction`.
-fn predict32(be: &[u8], width: usize, rows: usize) -> Vec<u8> {
-    let row = 4 * width;
-    let mut shuffled = vec![0u8; be.len()];
-    let mut k = 0;
-    for r in 0..rows {
-        let base = r * row;
-        for offset in base..base + width {
-            let mut x = offset;
-            while x < base + row {
-                shuffled[x] = be[k];
-                k += 1;
-                x += width;
-            }
-        }
-    }
-    let mut out = shuffled.clone();
-    for r in 0..rows {
-        let base = r * row;
-        for i in (1..row).rev() {
-            out[base + i] = shuffled[base + i].wrapping_sub(shuffled[base + i - 1]);
-        }
-    }
-    out
 }
 
 #[test]
@@ -164,7 +123,7 @@ fn depth16_layer_and_mask_channels_are_narrowed() {
 }
 
 #[test]
-fn depth16_unmodeled_layer_channel_narrows_and_saves_as_8bit() {
+fn depth16_unmodeled_layer_channel_round_trips_at_source_depth() {
     let composite = [be16(&[0x0100]), be16(&[0x0200]), be16(&[0x0300])];
     let spot = be16(&[0xab00]);
     let p = layered_psd_depth(
@@ -184,14 +143,20 @@ fn depth16_unmodeled_layer_channel_narrows_and_saves_as_8bit() {
         vec![0, 0, 0xab],
         "spot channel is decoded at 16 bits and re-wrapped as an 8-bit raw stream"
     );
+    assert_eq!(
+        doc.layers[0].source_channels.as_ref().unwrap().planes,
+        vec![(3, spot.clone())],
+        "the native spot samples are retained"
+    );
 
-    // The narrowed stream round-trips; the writer never re-emits 16-bit payload.
+    // The narrowed stream round-trips; the save re-emits the native samples, so
+    // reading the output narrows back to the same 8-bit stream.
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back.layers[0].raw_channels[0].data, vec![0, 0, 0xab]);
 }
 
 #[test]
-fn depth32_unmodeled_layer_channel_narrows_and_saves_as_8bit() {
+fn depth32_unmodeled_layer_channel_round_trips_at_source_depth() {
     let composite = [be32(&[0.0]), be32(&[0.5]), be32(&[1.0])];
     let spot = be32(&[0.5]);
     let p = layered_psd_depth(
@@ -202,6 +167,7 @@ fn depth32_unmodeled_layer_channel_narrows_and_saves_as_8bit() {
         &[(-3, &spot)],
     );
     let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.source_depth, Some(BitDepth::ThirtyTwo));
     assert_eq!(doc.layers[0].raw_channels[0].data, vec![0, 0, 128]);
     let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
     assert_eq!(back.layers[0].raw_channels[0].data, vec![0, 0, 128]);
@@ -229,7 +195,7 @@ fn depth16_document_extra_channel_is_narrowed() {
 }
 
 #[test]
-fn depth16_cmyk_narrows_then_converts() {
+fn depth16_cmyk_narrows_then_converts_and_saves_8bit() {
     let c = be16(&[128 << 8, 0, 255 << 8]);
     let m = be16(&[64 << 8, 0, 255 << 8]);
     let y = be16(&[32 << 8, 0, 255 << 8]);
@@ -237,11 +203,30 @@ fn depth16_cmyk_narrows_then_converts() {
     let p = flat_psd(16, 4, 4, 3, 1, &[&c, &m, &y, &k]);
     let doc = read_psd(&p).unwrap();
     assert_eq!(doc.mode, ColorMode::Rgb);
-    assert_eq!(doc.source_depth, Some(BitDepth::Sixteen));
+    assert_eq!(
+        doc.source_depth,
+        Some(BitDepth::Sixteen),
+        "a converted mode still records the source depth for the app"
+    );
+    assert!(
+        !doc.retains_source_depth(),
+        "a converted mode retains no native samples"
+    );
     assert_eq!(
         doc.composite.data,
         vec![100, 0, 255, 50, 0, 255, 25, 0, 255]
     );
+
+    // The save stays 8-bit because no samples were retained.
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        8,
+        "a 16-bit converted mode saves 8-bit"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.source_depth, None);
+    assert_eq!(back.composite, doc.composite);
 }
 
 #[test]
@@ -264,6 +249,21 @@ fn depth16_malformed_inputs_are_typed_errors() {
 }
 
 #[test]
+fn depth16_grayscale_preserves_source_depth() {
+    let plane = be16(&[0x0100, 0x0200]);
+    let p = flat_psd(16, 1, 1, 2, 1, &[&plane]);
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.mode, ColorMode::Grayscale);
+    assert_eq!(doc.source_depth, Some(BitDepth::Sixteen));
+    assert!(doc.source_planes.is_some(), "native gray plane retained");
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(u16::from_be_bytes(out[22..24].try_into().unwrap()), 16);
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.composite, doc.composite);
+    assert_eq!(back.source_depth, Some(BitDepth::Sixteen));
+}
+
+#[test]
 fn native_and_constructed_documents_have_no_source_depth() {
     let plane = vec![7u8; 3];
     let p = flat_psd(8, 3, 3, 1, 1, &[&plane, &plane, &plane]);
@@ -273,4 +273,72 @@ fn native_and_constructed_documents_have_no_source_depth() {
         None
     );
     assert_eq!(Document::from_rgba("x", 1, 1, &[0u8; 4]).source_depth, None);
+}
+
+#[test]
+fn widening_narrows_back_to_the_8bit_byte() {
+    for depth in [16u16, 32] {
+        let plane: Vec<u8> = (0..=255).collect();
+        let stride = crate::depth::row_bytes(256, depth);
+        let native = crate::depth::widen_channel(&plane, 256, 1, depth);
+        assert_eq!(
+            crate::depth::narrow_channel(&native, 256, 1, stride, depth),
+            plane,
+            "widen_channel depth {depth}"
+        );
+        let planes = crate::depth::widen_planes(&plane, 1, 256, 1, depth);
+        assert_eq!(planes, native, "widen_planes depth {depth}");
+    }
+}
+
+#[test]
+fn apply_prediction_inverts_undo_prediction() {
+    for depth in [8u16, 16, 32] {
+        let (width, rows) = (5usize, 3usize);
+        let samples: Vec<u8> = (0..width * rows * (depth as usize / 8))
+            .map(|i| (i * 37 + 11) as u8)
+            .collect();
+        let mut encoded = samples.clone();
+        crate::depth::apply_prediction(&mut encoded, width, rows, depth);
+        crate::depth::undo_prediction(&mut encoded, width, rows, depth);
+        assert_eq!(encoded, samples, "depth {depth}");
+    }
+}
+
+/// A high-depth layer plane whose length is not `width * height` must be a
+/// typed error, not an out-of-bounds panic in `widen_channel`.
+#[test]
+fn short_high_depth_layer_plane_is_a_typed_error() {
+    let mut doc = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
+    doc.source_depth = Some(BitDepth::Sixteen);
+    doc.source_planes = Some(SourcePlanes {
+        depth: BitDepth::Sixteen,
+        width: 2,
+        height: 2,
+        data: vec![0u8; 3 * 8],
+    });
+    doc.layers.push(Layer {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 2,
+            right: 2,
+        },
+        ..Default::default()
+    });
+
+    // A modeled color channel with a one-byte plane.
+    doc.layers[0].channels = vec![Channel {
+        id: 0,
+        data: vec![1],
+    }];
+    assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
+
+    // An unmodeled raw channel with a one-byte plane (after its header).
+    doc.layers[0].channels.clear();
+    doc.layers[0].raw_channels = vec![RawChannel {
+        id: 3,
+        data: vec![0, 0, 1],
+    }];
+    assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
 }

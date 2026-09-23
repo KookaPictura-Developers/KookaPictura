@@ -337,6 +337,23 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
         bottom: dest.3,
         right: dest.2,
     };
+    // A raw channel stream carries no position, so a pure integer translation
+    // (Free Transform's move handle) keeps it and only re-anchors the rect.
+    let pure_translate = transform.scale_x == 1.0
+        && transform.scale_y == 1.0
+        && transform.angle_radians == 0.0
+        && transform.dx.fract() == 0.0
+        && transform.dy.fract() == 0.0;
+    if pure_translate {
+        if let Some(store) = layer.source_channels.as_mut() {
+            store.rect = layer.rect;
+        }
+    } else {
+        // ponytail: a raw plane cannot be resampled, so scale/rotate/fractional
+        // moves drop unmodeled channels.
+        layer.raw_channels.clear();
+        layer.source_channels = None;
+    }
     if let Some(mask) = new_mask {
         layer.mask = Some(mask);
     }
