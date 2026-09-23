@@ -44,7 +44,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
     `agentic-control-actions`, `color-mode-write-back`, `cmyk-write-back`,
-    `icc-output-mode-consistency`, and `indexed-write-back`
+    `icc-output-mode-consistency`, `indexed-write-back`, and `bitmap-write-back`
     changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -742,6 +742,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   raster mask, edited composite/layer fallback, no-merged-composite, added empty
   layer, malformed-input typed error). Ceiling: Bitmap write-back and
   Multichannel/Duotone remain open.
+- **Bitmap write-back** (roadmap P4/G2, archived `2026-09-23-bitmap-write-back`):
+  a **flat, unchanged** depth-1 Bitmap PSD now saves back as Bitmap (header mode
+  0, depth 1, one 1-bit channel) at its source compression (Raw or RLE). `read`
+  retains the raw packed composite plane (store depth `BitDepth::One`), and
+  `write_psd` borrows it directly (bypassing the `width*height` widening path).
+  `depth_of(One)` now yields 1 so the writer finds the packed plane; `depth_bits(1)`
+  stays unmapped so a Bitmap read's `source_depth` is unchanged, and
+  `output_depth` only honors a 16/32-bit source depth (an inconsistent hand-built
+  depth-1 store is a typed error, so `write_psd` never panics). Scope is the flat
+  case: an edited Bitmap, a layered Bitmap, or one with an extra channel writes
+  the working RGB (a per-channel packed store plus a depth-1 layer path is the
+  ceiling; no RGB→1-bit threshold is invented). The mode notice reports a
+  Bitmap-preserving save; ceiling: the edit and the flat-only fallback are not
+  consulted. Proven by the `color_mode_oracle` (Raw and RLE round trips, packed
+  plane byte-identical, psd-tools mode 0) and unit tests (edited/layered/
+  extra-channel fallback, typed-error guard). Ceiling: Multichannel/Duotone
+  remain open (no natural RGB mapping / spot-ink spec).
 - **ICC profile matches the output mode** (roadmap P4/P6, archived
   `2026-09-23-icc-output-mode-consistency`): a 16/32-bit CMYK or Lab source is
   normalized to RGB but keeps its CMYK/Lab resource `1039` (the profile cannot

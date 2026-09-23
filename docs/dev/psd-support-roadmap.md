@@ -32,7 +32,7 @@ missing is owning them: a model to resolve, render, edit, and author them.
 | # | Gap | Evidence | Impact |
 |---|---|---|---|
 | G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
-| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB, and an 8-bit Lab, CMYK, or unchanged Indexed document now saves back in its source mode (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`; retained planes exact for unedited, profile-free inverse for edited Lab/CMYK, RGB fallback for edited Indexed); Bitmap and a 16/32-bit converted source still save the working mode; Multichannel/Duotone stay open |
+| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB, and an 8-bit Lab, CMYK, unchanged Indexed, or flat unchanged Bitmap document now saves back in its source mode (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`; retained planes exact for unedited, profile-free inverse for edited Lab/CMYK, RGB fallback for edited Indexed/Bitmap); a 16/32-bit converted source still saves the working mode; Multichannel/Duotone stay open |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth (archived `depth-preserve`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
@@ -204,8 +204,12 @@ groups. For Indexed, the read retains the 768-byte palette
 and the writer emits mode Indexed with the palette and one index channel only
 while every retained plane still expands to the working RGB; the mode is
 document-wide, so any edit or an added color layer falls back to RGB (no
-RGB-to-palette quantization is invented). Bitmap (and a 16/32-bit Lab/CMYK
-source) still save the working mode. 16/32-bit depth now
+RGB-to-palette quantization is invented). For Bitmap, the read retains the raw
+packed composite plane and the writer re-emits mode 0 / depth 1 at the source
+compression while the document is flat and unchanged; an edited, layered, or
+extra-channel Bitmap falls back to RGB (no RGB-to-1-bit threshold is invented,
+and layered/extra-channel Bitmap output is out of scope). A 16/32-bit Lab/CMYK
+source still saves the working mode. 16/32-bit depth now
 reads and normalizes to 8-bit on load too (G4, archived `depth-read`):
 `source_depth` records the original, every channel (color, alpha/mask,
 spot/extra, and document extras) is narrowed, and the app shows a conversion
