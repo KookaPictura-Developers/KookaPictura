@@ -2,20 +2,11 @@ use pictura_core::*;
 use std::borrow::Cow;
 
 use crate::common::*;
-use crate::depth::{apply_prediction, depth_of, narrow_channel, row_bytes, widen_channel};
+use crate::depth::{
+    apply_prediction, depth_of, narrow_channel, output_depth, row_bytes, widen_channel,
+};
 use crate::error::PsdError;
 use crate::write_indexed::{index_layer_plane, writes_indexed};
-
-/// The output sample width: the recorded source depth when a read retained
-/// native 16/32-bit samples, else 8. An 8-bit Lab read retains an 8-bit store
-/// and a 16/32-bit converted mode retains nothing, so both still save 8-bit.
-fn output_depth(doc: &Document) -> u16 {
-    if doc.retains_source_depth() {
-        depth_of(doc.source_depth)
-    } else {
-        8
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Layer and mask information section — writing
@@ -262,7 +253,7 @@ fn write_layer_info(
     info.extend_from_slice(&(records.len() as i16).to_be_bytes());
 
     let mut channel_data: Vec<Vec<(i16, OutChannel)>> = Vec::with_capacity(records.len());
-    let depth = output_depth(doc);
+    let depth = output_depth(doc)?;
     for record in &records {
         let mut channels: Vec<(i16, OutChannel)> = Vec::new();
         if let Some(layer) = record.layer {
@@ -980,8 +971,10 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     }
     // The working model stays 8-bit; the output depth is the recorded source
     // depth (8 when the read retained no samples, including a converted mode),
-    // so an open→save of a 16/32-bit file is not a silent downgrade.
-    let depth = output_depth(doc);
+    // so an open→save of a 16/32-bit file is not a silent downgrade. A flat,
+    // unchanged depth-1 Bitmap source forces depth 1 and header mode Bitmap.
+    let bitmap_mode = crate::write_bitmap::writes_bitmap(doc);
+    let depth = if bitmap_mode { 1 } else { output_depth(doc)? };
     let plane = doc.width as usize * doc.height as usize;
     // A document read from an 8-bit Lab file keeps its three color channels but
     // re-encodes them from the working RGB, so the output header is Lab. A
@@ -1001,7 +994,9 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     // and the retained palette, but only while the composite and every pixel
     // layer still expand to the working RGB; an edit falls back to RGB.
     let indexed_mode = writes_indexed(doc, depth, plane);
-    let mode_code = if lab_mode {
+    let mode_code = if bitmap_mode {
+        MODE_BITMAP
+    } else if lab_mode {
         MODE_LAB
     } else if cmyk_mode {
         MODE_CMYK
@@ -1018,7 +1013,9 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     // The header channel count and composite plane loop follow the output mode:
     // four for CMYK, one index for Indexed, the working count otherwise.
     // `doc.composite.data` validation stays in working terms.
-    let out_color_channels = if cmyk_mode {
+    let out_color_channels = if bitmap_mode {
+        1
+    } else if cmyk_mode {
         4
     } else if indexed_mode {
         1
@@ -1127,23 +1124,32 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             .to_vec()
     });
     let mut planes: Vec<Cow<[u8]>> = Vec::with_capacity(channels);
-    for c in 0..out_color_channels {
-        let current = if let Some(lab) = &lab_composite {
-            &lab[c * plane..(c + 1) * plane]
-        } else if let Some(cmyk) = &cmyk_composite {
-            &cmyk[c * plane..(c + 1) * plane]
-        } else if let Some(indexed) = &indexed_composite {
-            indexed.as_slice()
-        } else {
-            &doc.composite.data[c * plane..(c + 1) * plane]
-        };
-        planes.push(native_plane(
-            composite_retained(doc, depth, c),
-            current,
-            width,
-            height,
-            depth,
-        )?);
+    if bitmap_mode {
+        // The retained depth-1 store holds the raw packed plane (row stride
+        // `ceil(width / 8)`), not a `width * height` plane, so `native_plane`
+        // does not apply; borrow it directly at the output depth 1.
+        let retained =
+            composite_retained(doc, depth, 0).expect("writes_bitmap checked the packed plane");
+        planes.push(Cow::Borrowed(retained));
+    } else {
+        for c in 0..out_color_channels {
+            let current = if let Some(lab) = &lab_composite {
+                &lab[c * plane..(c + 1) * plane]
+            } else if let Some(cmyk) = &cmyk_composite {
+                &cmyk[c * plane..(c + 1) * plane]
+            } else if let Some(indexed) = &indexed_composite {
+                indexed.as_slice()
+            } else {
+                &doc.composite.data[c * plane..(c + 1) * plane]
+            };
+            planes.push(native_plane(
+                composite_retained(doc, depth, c),
+                current,
+                width,
+                height,
+                depth,
+            )?);
+        }
     }
     for (i, channel) in doc.channels.iter().enumerate() {
         planes.push(native_plane(

@@ -72,12 +72,14 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         return Err(PsdError::Unsupported(format!("bit depth {depth}")));
     }
     // A 16/32-bit header is always recorded so the app can report the
-    // conversion; a Grayscale/RGB read retains native-depth planes, and an 8-bit
-    // Lab or CMYK read retains its source planes, so an unchanged plane re-emits
-    // exactly. A 16/32-bit Lab or CMYK read keeps no samples and still saves 8-bit.
+    // conversion; a Grayscale/RGB read retains native-depth planes, an 8-bit
+    // Lab, CMYK, or Indexed read retains its source planes, and a depth-1 Bitmap
+    // read retains the packed plane, so an unchanged plane re-emits exactly. A
+    // 16/32-bit Lab or CMYK read keeps no samples and still saves 8-bit.
     let retain_planes = (matches!(depth, 16 | 32)
         && matches!(mode, ColorMode::Grayscale | ColorMode::Rgb))
-        || (depth == 8 && matches!(mode, ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed));
+        || (depth == 8 && matches!(mode, ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed))
+        || (depth == 1 && mode == ColorMode::Bitmap);
     let source_depth = depth_bits(depth);
 
     // Color mode data section: 4-byte length + opaque bytes, kept verbatim.
@@ -171,7 +173,14 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     // at the source depth. ponytail: costs 2x/4x the plane size while open.
     let source_planes = if retain_planes {
         Some(SourcePlanes {
-            depth: depth_bits(depth).unwrap_or(BitDepth::Eight),
+            // A depth-1 read keeps its store at `One` (the raw packed plane); a
+            // 16/32-bit read keeps its native sample width. `depth_bits(1)` stays
+            // unmapped so `source_depth` is `None` for a Bitmap read.
+            depth: if depth == 1 {
+                BitDepth::One
+            } else {
+                depth_bits(depth).unwrap_or(BitDepth::Eight)
+            },
             width: width as u32,
             height: height as u32,
             data: data.clone(),

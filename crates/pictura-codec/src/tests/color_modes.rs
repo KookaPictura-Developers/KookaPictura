@@ -358,6 +358,76 @@ fn bitmap_depth1_layer_color_channel_expands() {
     }
 }
 
+// -- Bitmap write-back fallbacks ---------------------------------------
+
+#[test]
+fn edited_bitmap_composite_falls_back_to_rgb() {
+    // A Bitmap read expands the packed bits to RGB; an edit no longer matches,
+    // so the document writes the working RGB, not an invented 1-bit threshold.
+    let p = flat_psd(1, 0, 1, 8, 2, &[&[0xAA, 0xF0]]);
+    let mut doc = read_psd(&p).unwrap();
+    assert_eq!(doc.source_mode, Some(ColorMode::Bitmap));
+    doc.composite.data[0] ^= 1;
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        8,
+        "an edited Bitmap writes at depth 8"
+    );
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "an edited Bitmap writes RGB"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb);
+    assert_eq!(back.source_mode, None);
+    assert_eq!(back.composite, doc.composite);
+}
+
+#[test]
+fn layered_bitmap_falls_back_to_rgb() {
+    // Layered Bitmap write-back is out of scope: a document carrying a pixel
+    // layer writes the working RGB instead of a one-channel Bitmap.
+    let p = layered_psd_depth(1, 0, 1, &[&[0x80]], &[(0, &[0x80])]);
+    let doc = read_psd(&p).unwrap();
+    assert_eq!(doc.source_mode, Some(ColorMode::Bitmap));
+    assert_eq!(doc.layers.len(), 1);
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "a layered Bitmap writes RGB"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb);
+    assert_eq!(back.source_mode, None);
+}
+
+#[test]
+fn bitmap_with_a_document_channel_falls_back_to_rgb() {
+    // An extra channel makes the flat predicate false, so the document writes
+    // the working RGB rather than one 1-bit channel.
+    let p = flat_psd(1, 0, 1, 8, 2, &[&[0xAA, 0xF0]]);
+    let mut doc = read_psd(&p).unwrap();
+    doc.channels.push(Channel {
+        id: -3,
+        data: vec![7u8; doc.width as usize * doc.height as usize],
+    });
+
+    let out = write_psd(&doc).unwrap();
+    assert_eq!(
+        u16::from_be_bytes(out[24..26].try_into().unwrap()),
+        3,
+        "a Bitmap with an extra channel writes RGB"
+    );
+    let back = read_psd(&out).unwrap();
+    assert_eq!(back.mode, ColorMode::Rgb);
+    assert_eq!(back.source_mode, None);
+}
+
 #[test]
 fn unsupported_depths_and_color_modes_are_rejected() {
     // An invalid depth and Multichannel (7) / Duotone (8) are typed Unsupported;

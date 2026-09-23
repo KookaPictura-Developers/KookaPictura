@@ -2,7 +2,7 @@
 //! inversion. Kept out of `read.rs` only to respect the file-size cap; the
 //! encodings mirror `psd-tools`' `compression/__init__.py`.
 
-use pictura_core::BitDepth;
+use pictura_core::{BitDepth, Document};
 
 use crate::error::PsdError;
 
@@ -31,9 +31,29 @@ pub(crate) fn depth_bits(depth: u16) -> Option<BitDepth> {
 /// The PSD sample width for a recorded source depth, defaulting to 8.
 pub(crate) fn depth_of(source: Option<BitDepth>) -> u16 {
     match source {
+        Some(BitDepth::One) => 1,
         Some(BitDepth::Sixteen) => 16,
         Some(BitDepth::ThirtyTwo) => 32,
         _ => 8,
+    }
+}
+
+/// The PSD sample width to emit for `doc`: the recorded 16/32-bit source depth
+/// when a read retained native samples, else 8. An 8-bit Lab read retains an
+/// 8-bit store and a 16/32-bit converted mode retains nothing, so both save
+/// 8-bit. A depth-1 Bitmap store is handled by the Bitmap write-back path; a
+/// `One` reaching here is an inconsistent hand-built document (the fields are
+/// `pub`), so it is a typed error rather than a sample width the narrowing code
+/// cannot handle.
+pub(crate) fn output_depth(doc: &Document) -> Result<u16, PsdError> {
+    if !doc.retains_source_depth() {
+        return Ok(8);
+    }
+    match doc.source_depth {
+        Some(BitDepth::Sixteen) => Ok(16),
+        Some(BitDepth::ThirtyTwo) => Ok(32),
+        Some(BitDepth::One) => Err(PsdError::Invalid("depth-1 source store".into())),
+        _ => Ok(8),
     }
 }
 

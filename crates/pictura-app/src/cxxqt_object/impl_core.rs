@@ -287,15 +287,17 @@ impl qobject::PictureView {
             ColorMode::Lab => "Lab",
             _ => return QString::default(),
         };
-        // Only an 8-bit Lab, CMYK, or Indexed source re-encodes as its source
-        // mode on save; a 16/32-bit source (no retained samples) and every other
-        // converted mode write RGB.
-        // ponytail: the edit is not consulted, so an edited Indexed document still
-        // claims "saved as Indexed" though the writer then falls back to RGB;
+        // Only an 8-bit Lab, CMYK, Indexed, or flat Bitmap source re-encodes as
+        // its source mode on save; a 16/32-bit source (no retained samples) and
+        // every other converted mode write RGB.
+        // ponytail: the edit and the layer/extra-channel fallback are not
+        // consulted, so an edited Indexed or a layered/edited Bitmap document
+        // still claims its source mode though the writer then falls back to RGB;
         // calling the codec's unchanged predicate live would be the upgrade.
-        let preserves_source =
-            matches!(mode, ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed)
-                && doc.source_depth.is_none();
+        let preserves_source = matches!(
+            mode,
+            ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed | ColorMode::Bitmap
+        ) && doc.source_depth.is_none();
         let saved = if preserves_source { name } else { "RGB" };
         QString::from(format!("Converted from {name}; saved as {saved}"))
     }
