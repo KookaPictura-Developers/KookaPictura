@@ -42,8 +42,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
-    `app-control-server`, `depth-preserve`, and `agentic-control-vision`
-    changes;
+    `app-control-server`, `depth-preserve`, `agentic-control-vision`, and
+    `agentic-control-actions` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -658,9 +658,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   `layer_thumbnail` (`index`, `size` default 64). Caller-supplied image sizes are
   capped at the trust boundary (thumbnails 1024, screenshots 4096) because the
   engine allocates `size²` and `max_dim` would otherwise bypass the response-size
-  guard; the vision self-test block is codes 483–492. Ceilings: input synthesis
-  (`pointer`/`key`/`set_tool`), the engine actions, and the `pictura-mcp` stdio
-  frontend are deferred (P3–P6 of the plan).
+  guard; the vision self-test block is codes 483–492. **Engine actions**
+  shipped (archived `2026-09-23-agentic-control-actions`): `set_tool` (a
+  string→`ToolId` lookup accepting the `status` name or label), `selection`
+  (all/deselect/rect/ellipse/lasso/quick/wand → `{has_selection,count,bounds}`),
+  `filter`/`adjustment` (kind-only, fixed seed; unknown → `invalid_param`,
+  locked/hidden target → `refused`), `layer_op` (name/opacity/visible/blend/
+  fill/lock/color/move/translate/delete/duplicate/add → `{ok,layers}`), and
+  `set_gpu_compute`; action self-test block codes 493–517. Ceilings: input
+  synthesis (`pointer`/`key`) and the `pictura-mcp` stdio frontend are deferred
+  (P3 input half and P4–P6 of the plan); `filter` takes no caller seed/params.
 - **Bit-depth preservation** (roadmap P4/G4, archived `2026-09-23-depth-preserve`):
   a 16/32-bit **Grayscale or RGB** document no longer downgrades to 8-bit on
   save. `read_psd` retains the decoded source-depth samples of the composite

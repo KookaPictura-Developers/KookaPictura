@@ -1,13 +1,15 @@
 # Agentic MCP Control — implementation plan
 
-- **Status:** P0–P2 shipped — the app-side control server is archived as
-  `2026-09-22-app-control-server` (`--control`, the JSON socket protocol, and the
-  `status`/`get_pixel`/`list_layers`/`list_commands`/`dispatch_command`/
-  `document`/`edit`/`set_unsaved_policy` methods) and its vision half as
-  `2026-09-23-agentic-control-vision` (`screenshot`, `ui_tree`,
-  `layer_thumbnail`). P3–P6 (input synthesis, engine actions, `pictura-mcp`)
-  remain proposed and unscheduled. Authored before coding so the work can resume
-  cold.
+- **Status:** P0–P2 shipped plus the engine-action half of P3 — the app-side
+  control server is archived as `2026-09-22-app-control-server` (`--control`, the
+  JSON socket protocol, and the `status`/`get_pixel`/`list_layers`/
+  `list_commands`/`dispatch_command`/`document`/`edit`/`set_unsaved_policy`
+  methods), its vision half as `2026-09-23-agentic-control-vision`
+  (`screenshot`, `ui_tree`, `layer_thumbnail`), and its action half as
+  `2026-09-23-agentic-control-actions` (`set_tool`, `selection`, `filter`,
+  `adjustment`, `layer_op`, `set_gpu_compute`). Remaining: input synthesis
+  (`pointer`/`key`) and P4–P6 (`pictura-mcp`). Authored before coding so the
+  work can resume cold.
 - **Track:** infrastructure/automation, **not** the M44 (layer filtering/search)
   milestone program.
 - **Proposed OpenSpec change:** `mcp-agentic-control`
@@ -666,10 +668,12 @@ Document both in `agentic-testing.md`; do not overwrite a user's global config.
 
 ### P3 — Input + engine actions
 
-- [ ] `set_tool`, `pointer`, `key` (event synthesis).
-- [ ] `selection`, `filter`, `adjustment`, `layer_op`, `set_gpu_compute`.
-- [ ] Self-test: synthesize a marquee drag, assert selection count; apply a
-      seeded filter, assert determinism.
+- [ ] `pointer`, `key` (event synthesis) — remaining; needs an image→widget
+      inverse (`image*zoom+offset`) and key-focus handling.
+- [x] `set_tool`, `selection`, `filter`, `adjustment`, `layer_op`,
+      `set_gpu_compute` (archived `2026-09-23-agentic-control-actions`).
+- [~] Self-test: the marquee-drag (`pointer`) half is pending with `pointer`;
+      a seeded filter's determinism is asserted in the action block.
 
 ### P4 — `pictura-mcp`
 
