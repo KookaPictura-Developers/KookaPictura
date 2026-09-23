@@ -42,8 +42,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `depth-read`, `color-lookup-adjustment-decode`, `psd-image-resources`,
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
-    `app-control-server`, `depth-preserve`, `agentic-control-vision`, and
-    `agentic-control-actions` changes;
+    `app-control-server`, `depth-preserve`, `agentic-control-vision`,
+    `agentic-control-actions`, and `color-mode-write-back` changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
@@ -688,6 +688,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   document whole-`Document`-equal). Ceilings: editing stays 8-bit (a true
   `u16`/`f32` sample model), no HDR tone map, retained samples cost 2×/4× while
   open.
+- **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
+  an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
+  pre-normalization Lab color planes (composite and every layer color channel,
+  recursing into groups) in the same store as `depth-preserve`; `write_psd`
+  writes header mode Lab, re-emitting the retained planes byte-for-byte when
+  unchanged (an 8-bit Lab re-encode would drift saturated colors up to ~19 LSB)
+  and converting the working RGB with a profile-free `rgb_to_lab` inverse when
+  edited (approximate, `// ponytail:`). RGB/Grayscale/constructed documents are
+  unchanged; CMYK/Bitmap/Indexed and a 16/32-bit Lab source still save the
+  working mode (the app notice reports Lab only for an 8-bit Lab source). The
+  change also fixed a pre-existing read bug: the color-mode normalization now
+  recurses into layer groups, so nested layers in a grouped Lab/CMYK/Bitmap/
+  Indexed document convert correctly. Proven by the `color_mode_oracle`
+  (lcms2/psd-tools, ran) and grouped/16-bit unit tests. Ceilings: CMYK/
+  Bitmap/Indexed write-back (CMYK has no profile-free inverse; needs a
+  color-management decision), Multichannel/Duotone, and an edited Lab plane's
+  approximation.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
