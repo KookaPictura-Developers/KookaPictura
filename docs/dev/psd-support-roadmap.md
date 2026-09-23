@@ -288,7 +288,13 @@ profile tagged, display-converted via `document_icc`), converted to sRGB (the
 old behaviour), or ignored; the policy is a persisted application preference
 (default Preserve) and `Edit > Color Settings…` is a real dialog. `read_psd`
 keeps Convert for existing callers. Ceilings: sRGB working space only, RGB
-policy only, no `.csf`, no mismatch/missing dialogs. Still open: sidecars.
+policy only, no `.csf`, no mismatch/missing dialogs. **The saved profile now
+always matches the output color mode** (archived
+`2026-09-23-icc-output-mode-consistency`): a framable resource `1039` whose ICC
+data-space signature does not match the output header color mode is dropped at
+the writer, closing the path where a 16/32-bit CMYK or Lab source (normalized to
+RGB, its CMYK/Lab profile preserved) saved RGB bytes still tagged CMYK/Lab.
+Still open: sidecars.
 
 ## Smart objects and Camera Raw interop
 

@@ -43,7 +43,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `psd-icc-convert`, `psd-file-info`, `psd-iptc-write`, `assign-convert-profile`,
     `xmp-metadata`, `metadata-templates`, `psd-zip-write`, `color-settings`,
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
-    `agentic-control-actions`, `color-mode-write-back`, and `cmyk-write-back`
+    `agentic-control-actions`, `color-mode-write-back`, `cmyk-write-back`,
+    and `icc-output-mode-consistency`
     changes;
     canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -720,8 +721,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   (mode 4, four channels, retained planes byte-identical; lcms2/psd-tools ran) and
   unit tests (edited plane, layer, extra channel). Ceilings: an edited CMYK pixel
   uses a fixed no-black convention, not color management; a 16/32-bit CMYK source
-  still writes RGB with the CMYK profile intact (pre-existing mis-tag); Bitmap/
+  still writes RGB (now untagged — see the ICC consistency bullet); Bitmap/
   Indexed write-back and Multichannel/Duotone remain open.
+- **ICC profile matches the output mode** (roadmap P4/P6, archived
+  `2026-09-23-icc-output-mode-consistency`): a 16/32-bit CMYK or Lab source is
+  normalized to RGB but keeps its CMYK/Lab resource `1039` (the profile cannot
+  build an RGB transform, so both the Convert and Preserve read paths leave it).
+  `write_psd` now drops a framable `1039` whose ICC data-space signature (header
+  bytes 16..20) does not match the output header color mode (`RGB `/`GRAY`/`CMYK`/
+  `Lab `), at the single resource-emit choke point, so the saved file is never
+  mis-tagged. A matching profile, a profile too short to carry the signature,
+  every other resource, and the unparsed tail re-emit byte-for-byte; the section
+  is returned unchanged when nothing mismatches, so existing files write
+  identically. The read-time `Preserve` policy is untouched. Tests cover a
+  read→write 16-bit CMYK and Lab source (Convert and Preserve), Grayscale keeping
+  its `GRAY` profile, and the CMYK/RGB cases. Ceiling: a `1039` the parser cannot
+  frame (behind an unrecognized signature) is preserved, not filtered.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
   and clip the layer through `mask_alpha`, combined with the raster mask by
