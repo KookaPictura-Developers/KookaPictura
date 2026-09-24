@@ -94,6 +94,21 @@ The scenes are pure functions of pixel coordinates, so generation is
 deterministic; `check` is exercised by `imagemagick_fixtures_reproduce` in
 `oracle.rs`.
 
+# Knockout psd-tools oracle
+
+`tests/knockout_oracle.rs` diffs `pictura_render::composite_rgba` against
+**psd-tools**' own compositor, an independent implementation of deep knockout
+(`psd_tools/composite/composite.py`, "Verified against Photoshop"). The fixture
+`../pictura-codec/tests/fixtures/knockout.psd` is a red Background, an
+intermediate green layer, and a half-fill blue layer carrying `knko = Deep`;
+`tests/fixtures/knockout_deep.rgba` is the raw interleaved-RGBA8 reference from
+`python3 scripts/psd_knockout_reference.py gen`. The test self-skips when
+`psd_tools` is missing. The tolerance is **1**: psd-tools floors the 8-bit
+result while the CPU rounds, so the half-fill blue over red lands on 126 vs 127
+at every sample; a larger disagreement is a behavior bug, not rounding. The test
+also asserts the semantic punch-through (the intermediate green channel is
+exactly 0 at a covered pixel).
+
 # M12-B — structural document-ops oracle
 
 `tests/document_oracle.rs` covers the M12 document operations
