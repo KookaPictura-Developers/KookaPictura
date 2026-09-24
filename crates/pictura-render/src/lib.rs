@@ -93,7 +93,7 @@ pub use document_ops::{
     flip_document, group_layer, group_paths, is_background, is_fill_content_layer,
     is_visible_in_panel, layer_from_background, layer_via_copy, layer_via_cut, merge_scope,
     move_path, move_path_to, move_selection_content, neutral_color, next_layer_name,
-    open_as_smart_object, parent_path, place_smart_object, rasterize_all_fill_content,
+    open_as_smart_object, parent_path, place_smart_object, rasterize_all_layers,
     rasterize_fill_content, rasterize_smart_object, rename_path, replace_smart_object_contents,
     resize_canvas_document, resize_document, resolve_path, resolve_path_mut, rotate_document,
     select_similar, set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths,

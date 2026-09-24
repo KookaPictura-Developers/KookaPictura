@@ -252,11 +252,11 @@ fn rasterize_all_counts_fill_layers() {
     let first = add_solid_fill(&mut d, "0", [1, 1, 1, 255]);
     let second = add_solid_fill(&mut d, &first, [2, 2, 2, 255]);
     let third = add_gradient_fill(&mut d, &second);
-    assert_eq!(rasterize_all_fill_content(&mut d), 3);
+    assert_eq!(rasterize_all_layers(&mut d), 3);
     assert!(resolve_path(&d, &first).unwrap().adjustment.is_none());
     assert!(resolve_path(&d, &second).unwrap().adjustment.is_none());
     assert!(resolve_path(&d, &third).unwrap().adjustment.is_none());
-    assert_eq!(rasterize_all_fill_content(&mut d), 0, "already rasterized");
+    assert_eq!(rasterize_all_layers(&mut d), 0, "already rasterized");
 }
 
 #[test]
@@ -330,4 +330,39 @@ fn rasterize_refuses_colour_noise_gradient() {
     assert!(!is_fill_content_layer(resolve_path(&d, "0").unwrap()));
     assert!(!rasterize_fill_content(&mut d, "0"));
     assert!(resolve_path(&d, "0").unwrap().adjustment.is_some());
+}
+
+#[test]
+fn rasterize_all_layers_rasterizes_a_type_layer() {
+    let mut d = doc(200, 80, Vec::new());
+    add_solid_fill(&mut d, "", [1, 1, 1, 255]);
+    d.layers.push(Layer {
+        name: "text".into(),
+        rect: full(200, 80),
+        type_tool: Some(pictura_core::TypeTool {
+            transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            text: "Hi".into(),
+            bounds: [0, 0, 200, 80],
+            text_desc: Vec::new(),
+            warp_desc: Vec::new(),
+            fonts: Vec::new(),
+            style: Some(pictura_core::TextStyle {
+                font: Some("Arial".into()),
+                font_size: 48.0,
+                fill_color: [0.0, 0.0, 0.0, 1.0],
+                tracking: 0.0,
+                justification: 0,
+            }),
+        }),
+        ..Default::default()
+    });
+    assert_eq!(
+        rasterize_all_layers(&mut d),
+        2,
+        "fill and type both rasterize"
+    );
+    assert!(
+        resolve_path(&d, "1").unwrap().type_tool.is_none(),
+        "the type layer is materialized"
+    );
 }

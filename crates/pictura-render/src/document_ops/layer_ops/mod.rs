@@ -39,7 +39,7 @@ pub use properties::{
     set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths, set_visible_paths,
     ungroup_paths,
 };
-pub use rasterize::{is_fill_content_layer, rasterize_all_fill_content, rasterize_fill_content};
+pub use rasterize::{is_fill_content_layer, rasterize_all_layers, rasterize_fill_content};
 pub use smart_object::{
     can_convert_to_smart_object, can_edit_smart_object_contents, can_rasterize_smart_object,
     can_replace_smart_object_contents, convert_to_smart_object, open_as_smart_object,
