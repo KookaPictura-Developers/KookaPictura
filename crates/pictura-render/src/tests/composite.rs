@@ -830,3 +830,68 @@ fn gpu_declines_a_knockout_layer() {
         Err(GpuError::UnsupportedAdvancedBlending)
     ));
 }
+
+/// 1x1 stack: opaque red background, then a group of opaque green and a
+/// half-fill blue top carrying `knockout`. `group_blend` selects pass-through
+/// (the knockout reaches the background) or an isolated mode (it stays inert).
+fn knockout_group_stack(knockout: Knockout, group_blend: BlendMode) -> Document {
+    let mut top = solid("blue", full(1, 1), (0, 0, 255), 255, BlendMode::Normal, 255);
+    top.fill = 128;
+    top.knockout = knockout;
+    doc(
+        1,
+        1,
+        vec![
+            solid("red", full(1, 1), (255, 0, 0), 255, BlendMode::Normal, 255),
+            group(
+                "group",
+                group_blend,
+                255,
+                None,
+                vec![
+                    solid(
+                        "green",
+                        full(1, 1),
+                        (0, 255, 0),
+                        255,
+                        BlendMode::Normal,
+                        255,
+                    ),
+                    top,
+                ],
+            ),
+        ],
+    )
+}
+
+#[test]
+fn pass_through_group_knockout_punches_green_through() {
+    let out = px(
+        &composite_rgba(&knockout_group_stack(
+            Knockout::Deep,
+            BlendMode::PassThrough,
+        )),
+        0,
+        0,
+    );
+    assert_eq!(
+        out[1], 0,
+        "the group's green is punched through, got {out:?}"
+    );
+    assert!(out[0] > 0, "the red background shows through, got {out:?}");
+    assert!(
+        out[2] > 0,
+        "the blue knockout layer is still present, got {out:?}"
+    );
+}
+
+#[test]
+fn isolated_group_knockout_is_byte_identical_to_none() {
+    // A non-PassThrough group is isolated, so its knockout child is inert.
+    let with = composite_rgba(&knockout_group_stack(Knockout::Deep, BlendMode::Normal));
+    let without = composite_rgba(&knockout_group_stack(Knockout::None, BlendMode::Normal));
+    assert_eq!(
+        with.data, without.data,
+        "an isolated group's knockout must composite byte-identically to none"
+    );
+}
