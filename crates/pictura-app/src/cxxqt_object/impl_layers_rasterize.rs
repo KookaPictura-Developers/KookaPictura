@@ -96,7 +96,7 @@ impl qobject::PictureView {
         changed
     }
 
-    /// `Rasterize All Layers`: rasterize every fill-content layer. Records one
+    /// `Rasterize All Layers`: rasterize every fill-content or type layer. Records one
     /// "Rasterize All Layers" state only when at least one was rasterized.
     /// Returns how many were rasterized.
     pub fn rasterize_all_layers(mut self: Pin<&mut Self>) -> i32 {
@@ -110,6 +110,35 @@ impl qobject::PictureView {
             self.as_mut().record("Rasterize All Layers");
         }
         count as i32
+    }
+
+    /// `Rasterize Type`: materialize the type layer at `path` through the
+    /// bundled backend and record one "Rasterize Type" state on success.
+    /// Returns false (no state) for a non-type layer.
+    pub fn rasterize_type(mut self: Pin<&mut Self>, path: &QString) -> bool {
+        let path = path.to_string();
+        if path.is_empty() {
+            return false;
+        }
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => pictura_render::render_text_layer(doc, &path),
+            None => false,
+        };
+        if changed {
+            self.as_mut().clear_link_sets();
+            self.as_mut().recomposite();
+            self.as_mut().record("Rasterize Type");
+        }
+        changed
+    }
+
+    /// Whether the layer at `path` is a type layer. Read-only.
+    pub fn layer_is_type(&self, path: &QString) -> bool {
+        self.rust()
+            .doc
+            .as_ref()
+            .and_then(|doc| pictura_render::resolve_path(doc, &path.to_string()))
+            .is_some_and(|layer| layer.is_type())
     }
 
     fn rasterize_path(mut self: Pin<&mut Self>, path: &str, label: &str) -> bool {

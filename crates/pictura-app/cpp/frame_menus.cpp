@@ -577,13 +577,21 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::LayerNewFillGradient,
                                   [this]() { return activeView() && activeView()->has_document(); });
 
-    // Rasterize. Fill Content and Layer both need a current fill-content layer;
-    // All Layers needs a document with at least one. Type/Shape/Layer Style/
-    // Video/3D have no handler and stay disabled (their kinds do not exist).
+    // Rasterize. Fill Content and Type each need a current layer of that kind;
+    // Layer tries type then fill; All Layers needs a document. Shape/Vector
+    // Mask/Layer Style/Video/3D have no handler and stay disabled.
     const auto currentFillPath = [this]() -> QString {
         PictureView* view = activeView();
         const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
         if (!view || path.isEmpty() || !view->layer_is_fill_content(path)) {
+            return QString();
+        }
+        return path;
+    };
+    const auto currentTypePath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty() || !view->layer_is_type(path)) {
             return QString();
         }
         return path;
@@ -608,6 +616,16 @@ void PicturaMainWindow::registerHandlers()
     });
     registry_->setEnabledProvider(command_ids::LayerRasterizeLayer,
                                   [currentFillPath]() { return !currentFillPath().isEmpty(); });
+    registry_->setHandler(command_ids::LayerRasterizeType, [this, currentTypePath]() {
+        if (PictureView* view = activeView()) {
+            const QString path = currentTypePath();
+            if (!path.isEmpty() && view->rasterize_type(path)) {
+                refresh();
+            }
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerRasterizeType,
+                                  [currentTypePath]() { return !currentTypePath().isEmpty(); });
     registry_->setHandler(command_ids::LayerRasterizeAllLayers, [this]() {
         PictureView* view = activeView();
         if (view && view->rasterize_all_layers() > 0) {

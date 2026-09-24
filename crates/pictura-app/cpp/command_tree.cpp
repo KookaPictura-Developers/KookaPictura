@@ -397,11 +397,12 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Video Layers", "Replace Footage"}, QStringLiteral("Replace Footage"));
     leaf(registry, {"Layer", "Video Layers", "Interpret Footage"},
          QStringLiteral("Interpret Footage"));
-    // Rasterize: Fill Content, Layer, and Smart Object have a model kind to
-    // rasterize. Type, Shape, Vector Mask, Layer Style, Video, and 3D stay
-    // disabled because their layer kinds do not exist; `All Layers` is the
-    // document-wide fill rasterizer.
-    leaf(registry, {"Layer", "Rasterize", "Type"}, QStringLiteral("Type"));
+    // Rasterize: Fill Content, Type, Layer, and Smart Object have a model kind
+    // to rasterize. Shape, Vector Mask, Layer Style, Video, and 3D stay
+    // disabled because their layer kinds do not exist; `All Layers` rasterizes
+    // both fill content and type layers.
+    registry.add(command_ids::LayerRasterizeType, {"Layer", "Rasterize", "Type"},
+                 QStringLiteral("Type"), QKeySequence(), true);
     leaf(registry, {"Layer", "Rasterize", "Shape"}, QStringLiteral("Shape"));
     leaf(registry, {"Layer", "Rasterize", "Vector Mask"}, QStringLiteral("Vector Mask"));
     registry.add(command_ids::LayerRasterizeSmartObject, {"Layer", "Rasterize", "Smart Object"},
