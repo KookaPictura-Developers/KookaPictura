@@ -1,8 +1,7 @@
-# text-shaping Specification
+# Specs delta: text-shaping-offsets
 
-## Purpose
-TBD - created by archiving change text-shaping-rustybuzz. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: The bundled backend shapes lines with a HarfBuzz-compatible shaper
 
 `pictura-render`'s bundled text backend SHALL shape each line with a
@@ -40,4 +39,3 @@ dependency.
 
 - **WHEN** the crate is built
 - **THEN** the shaper is a pure-Rust dependency that links no C library
-

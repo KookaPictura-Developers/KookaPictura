@@ -8,7 +8,7 @@
 
 use pictura_core::{
     layout_lines, Channel, Document, GlyphMask, Layer, LayoutParams, PixelBuffer, PsdRect,
-    RasterRequest, Rasterizer, ShapedGlyph, TextAlign, TextProvenance, TypeTool,
+    RasterRequest, Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance, TypeTool,
 };
 
 const FONT_BYTES: &[u8] = include_bytes!("../assets/LiberationSans-Regular.ttf");
@@ -62,6 +62,8 @@ impl BundledText {
                 Some(ShapedGlyph {
                     id,
                     advance: pos.x_advance as f32 * scale,
+                    x_offset: pos.x_offset as f32 * scale,
+                    y_offset: pos.y_offset as f32 * scale,
                 })
             })
             .collect()
@@ -248,6 +250,19 @@ pub(crate) fn render_text_buffer(
         return None;
     }
 
+    paint_layout(bundled, &layout, width, height, font_size, color)
+}
+
+/// Paint a laid-out run into a `width × height` buffer: each glyph's baseline
+/// is its own (offset-adjusted) `y`, so GPOS marks land on the right row.
+fn paint_layout(
+    bundled: &BundledText,
+    layout: &TextLayout,
+    width: i32,
+    height: i32,
+    font_size: f32,
+    color: [f64; 4],
+) -> Option<PixelBuffer> {
     let n = width as usize * height as usize;
     let mut out = PixelBuffer::new(width as u32, height as u32, 4);
 
@@ -255,8 +270,8 @@ pub(crate) fn render_text_buffer(
     let baseline_shift = bundled.ascent(font_size);
     let mut painted = false;
     for line in &layout.lines {
-        let baseline = (line.baseline + baseline_shift).round() as i32;
         for glyph in &line.glyphs {
+            let baseline = (glyph.y + baseline_shift).round() as i32;
             let Some(mask) = rasterizer.rasterize(&RasterRequest {
                 glyph: glyph.id,
                 px_size: font_size,
@@ -447,6 +462,51 @@ mod tests {
         let glyphs = bundled().shape_line("AB", 48.0, 0.0);
         assert_eq!(glyphs.len(), 2);
         assert!(glyphs.iter().all(|g| g.advance > 0.0));
+    }
+
+    #[test]
+    fn shape_line_plain_latin_has_zero_offsets() {
+        let glyphs = bundled().shape_line("AB", 48.0, 0.0);
+        assert!(glyphs
+            .iter()
+            .all(|g| g.x_offset == 0.0 && g.y_offset == 0.0));
+    }
+
+    #[test]
+    fn y_offset_paints_a_shifted_row() {
+        let bundled = bundled();
+        let font_size = 48.0;
+        let id = bundled.font.lookup_glyph_index('A');
+        assert_ne!(id, 0);
+        let params = LayoutParams {
+            font_size,
+            units_per_em: font_size,
+            tracking: 0.0,
+            leading: font_size * 1.2,
+            align: TextAlign::Left,
+            wrap_width: None,
+        };
+        let plain = layout_lines(&[vec![ShapedGlyph::new(id, 0.0)]], &params);
+        let mut raised = ShapedGlyph::new(id, 0.0);
+        raised.y_offset = 5.0;
+        let marked = layout_lines(&[vec![raised]], &params);
+
+        let width = 200;
+        let height = 120;
+        let color = [0.0, 0.0, 0.0, 1.0];
+        let plain_buf =
+            paint_layout(&bundled, &plain, width, height, font_size, color).expect("plain paints");
+        let marked_buf =
+            paint_layout(&bundled, &marked, width, height, font_size, color).expect("mark paints");
+
+        let top_row = |buf: &PixelBuffer| {
+            let plane = buf.pixel_count();
+            let w = width as usize;
+            (0..height as usize)
+                .find(|&row| (0..w).any(|col| buf.data[3 * plane + row * w + col] > 0))
+                .expect("row painted")
+        };
+        assert_eq!(top_row(&plain_buf), top_row(&marked_buf) + 5);
     }
 
     #[test]
