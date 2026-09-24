@@ -34,6 +34,7 @@ mod read;
 mod smart_filter;
 mod smart_object;
 mod smart_writer;
+mod type_tool;
 mod vector_mask;
 mod write;
 mod write_bitmap;
@@ -69,6 +70,7 @@ pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, 
 pub use read::{read_psd, read_psd_with};
 pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;
+pub use type_tool::encode_type_tool;
 pub use write::{write_psb, write_psd};
 pub use xmp::{parse_xmp, patch_xmp, patch_xmp_values, to_xmp_packet, XmpField, XmpProperties};
 

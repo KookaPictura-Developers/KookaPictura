@@ -109,6 +109,8 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     // ponytail: this is a read snapshot. In-session resize/crop/orientation do
     // not re-derive it; the raw block stays authoritative and a reload re-derives.
     crate::vector_mask::resolve_vector_masks(&mut layers, width, height);
+    // Derive the type-tool view from the preserved `TySh` blocks.
+    crate::type_tool::resolve_type_tools(&mut layers);
 
     // "Maximize Compatibility" off: a layered file may end after the layer
     // section with no merged composite. A file with no layers at all and no
@@ -871,6 +873,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             raw_channels: Vec::new(),
             smart_object: None,
             vector_mask: None,
+            type_tool: None,
             source_channels: None,
         },
         channel_ids,
