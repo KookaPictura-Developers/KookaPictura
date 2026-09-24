@@ -43,6 +43,7 @@ constexpr KindOption kKinds[] = {
     {"adjustment", "Adjustment"},
     {"group", "Group"},
     {"background", "Background"},
+    {"type", "Type"},
 };
 
 struct AttributeOption {
@@ -126,6 +127,9 @@ LayerFilterBar::LayerFilterBar(QWidget* parent)
         }
         if (key == QLatin1String("group")) {
             return QStringLiteral("layers.kindGroup");
+        }
+        if (key == QLatin1String("type")) {
+            return QStringLiteral("layers.kindType");
         }
         return QStringLiteral("layers.kindBackground");
     };

@@ -911,6 +911,51 @@ fn reads_hand_built_attribute_tags_and_folds_legacy_flag() {
     assert!(!layer.lock.contains(LockFlags::POSITION));
 }
 
+#[test]
+fn tysh_forces_type_locks_and_round_trips() {
+    let tysh = [0xAB, 0xCD];
+    let lspf_clear = 0u32.to_be_bytes();
+    let psd = tagged_layer_psd(0, &[(b"lspf", &lspf_clear), (b"TySh", &tysh)]);
+    let doc = read_psd(&psd).unwrap();
+    let layer = &doc.layers[0];
+    assert!(layer.is_type());
+    assert_eq!(layer.lock.bits(), 0x03, "TRANSPARENCY|PIXELS forced");
+    assert_eq!(layer.extra_block(b"TySh").unwrap().data, tysh);
+
+    let plain = read_psd(&tagged_layer_psd(0, &[(b"lspf", &lspf_clear)])).unwrap();
+    assert!(!plain.layers[0].is_type());
+    assert_eq!(plain.layers[0].lock.bits(), 0, "no TySh keeps stored locks");
+
+    // POSITION stays set while TySh forces the two CS6 type locks.
+    let lspf_pos = 4u32.to_be_bytes();
+    let with_pos = read_psd(&tagged_layer_psd(
+        0,
+        &[(b"lspf", &lspf_pos), (b"TySh", &tysh)],
+    ))
+    .unwrap();
+    assert_eq!(with_pos.layers[0].lock.bits(), 0x07);
+
+    // open→save keeps TySh bytes; source locks match the forced defaults so
+    // the full document still round-trips equal.
+    let mut out = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut type_layer = pixel("Type", rect(0, 0, 2, 2), 3, BlendMode::Normal, 255);
+    type_layer.lock = LockFlags::default()
+        .with(LockFlags::TRANSPARENCY, true)
+        .with(LockFlags::PIXELS, true);
+    type_layer.extra_blocks = vec![LayerBlock {
+        key: *b"TySh",
+        data: vec![9, 8, 7, 6],
+    }];
+    out.layers = vec![type_layer];
+    let back = read_psd(&write_psd(&out).unwrap()).unwrap();
+    assert_eq!(back, out);
+    assert!(back.layers[0].is_type());
+    assert_eq!(
+        back.layers[0].extra_block(b"TySh").unwrap().data,
+        vec![9, 8, 7, 6]
+    );
+}
+
 // -- ZIP compression and tolerant open ----------------------------------
 
 #[test]

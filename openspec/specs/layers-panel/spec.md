@@ -576,7 +576,8 @@ M39 does not implement SHALL NOT be shown in these menus.
 ### Requirement: Layer row tooltips
 
 The system SHALL provide a tooltip for each row that includes the layer's name
-and its kind, where the kind is one of pixel, group, adjustment, or background.
+and its kind, where the kind is one of pixel, group, adjustment, background,
+or type.
 
 #### Scenario: A group row tooltip names the kind [m39_tooltip]
 

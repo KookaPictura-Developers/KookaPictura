@@ -780,6 +780,11 @@ impl Layer {
     pub fn extra_block(&self, key: &[u8; 4]) -> Option<&LayerBlock> {
         self.extra_blocks.iter().find(|b| &b.key == key)
     }
+
+    /// A type layer: any preserved `TySh` (type tool) block is present.
+    pub fn is_type(&self) -> bool {
+        self.extra_block(b"TySh").is_some()
+    }
 }
 
 #[cfg(test)]

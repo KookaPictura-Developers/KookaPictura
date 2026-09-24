@@ -129,6 +129,8 @@ pub(super) fn layer_kind_str(doc: &Document, path: &str, layer: &Layer) -> QStri
         QString::from("adjustment")
     } else if pictura_render::is_background(doc, path) {
         QString::from("background")
+    } else if layer.is_type() {
+        QString::from("type")
     } else {
         QString::from("pixel")
     }

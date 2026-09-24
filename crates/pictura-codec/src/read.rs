@@ -841,6 +841,13 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
         lock = lock.with(LockFlags::TRANSPARENCY, true);
     }
 
+    // CS6 default type locks when the layer carries a preserved TySh block.
+    if extra_blocks.iter().any(|b| b.key == *b"TySh") {
+        lock = lock
+            .with(LockFlags::TRANSPARENCY, true)
+            .with(LockFlags::PIXELS, true);
+    }
+
     Ok(RawLayer {
         layer: Layer {
             name,
