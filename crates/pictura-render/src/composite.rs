@@ -31,25 +31,23 @@ fn composite_layers(canvas: &mut Canvas, doc: &Document) {
 }
 
 /// The document background (the bottom layer composited alone), built only when
-/// a non-bottom layer actually knocks out.
-///
-/// ponytail: the model has no Background flag, so the bottom layer is assumed to
-/// be the background; a non-background bottom resolves to its content rather
-/// than transparency. A knockout that is the bottom layer composites as a plain
-/// layer (no base).
+/// a non-bottom layer knocks out. ponytail: no Background flag in the model, so
+/// the bottom layer is assumed to be the background; a non-background bottom
+/// resolves to its content rather than transparency.
 fn knockout_base(region: &Canvas, doc: &Document) -> Option<Canvas> {
-    let present = doc
-        .layers
-        .iter()
-        .skip(1)
-        .any(|l| l.knockout != Knockout::None);
+    let present = doc.layers.iter().skip(1).any(has_knockout);
     present.then(|| {
         let mut base = Canvas::new_region(region.ox, region.oy, region.w, region.h);
         if let Some(background) = doc.layers.first() {
-            composite_layer_inner(&mut base, background, doc);
+            composite_layer_inner(&mut base, background, doc, None);
         }
         base
     })
+}
+
+/// Whether `layer` or any descendant carries a non-`None` knockout (recursive).
+fn has_knockout(layer: &Layer) -> bool {
+    layer.knockout != Knockout::None || layer.children.iter().any(has_knockout)
 }
 
 /// Composite only the document-space region `[x0, x0+rw) × [y0, y0+rh)`.
@@ -212,15 +210,14 @@ fn to_u8(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-/// Composite `layer` onto the running `canvas`. A non-`None` knockout with a
-/// `base` (the document background) routes through [`composite_knockout`];
-/// everything else is the plain inner dispatch.
+/// Composite `layer`; a non-`None` knockout with a `base` routes through
+/// [`composite_knockout`], everything else through the inner dispatch.
 fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: Option<&Canvas>) {
     match base {
         Some(base) if layer.knockout != Knockout::None => {
             composite_knockout(canvas, layer, doc, base);
         }
-        _ => composite_layer_inner(canvas, layer, doc),
+        _ => composite_layer_inner(canvas, layer, doc, base),
     }
 }
 
@@ -228,16 +225,13 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: Opt
 /// running backdrop only where the layer contributed, punching the layers
 /// between it and the background through at those pixels.
 ///
-/// ponytail: the per-pixel mechanism is inferred from the documented
-/// shape-composited-against-the-stopping-point rule
-/// (`docs/05-layers/layers-overview.md:181`); there is no Photoshop oracle. A
-/// shallow stopping point inside a nested group and the clipping-mask base are
-/// not resolved (a knockout inside a group is inert), `Transparency Shapes
-/// Layers` (restricting coverage to the content's opaque pixels) is not applied,
-/// and the bottom layer is assumed to be the background.
+/// ponytail: inferred from the documented shape-composited-against-the-
+/// stopping-point rule (`docs/05-layers/layers-overview.md:181`); no Photoshop
+/// oracle. Nested-group shallow targets, clipping bases, and `Transparency
+/// Shapes Layers` are unresolved/unapplied.
 fn composite_knockout(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: &Canvas) {
     let mut tmp = Canvas::with_cover_from(base);
-    composite_layer_inner(&mut tmp, layer, doc);
+    composite_layer_inner(&mut tmp, layer, doc, None);
     let cover = tmp.cover.take().unwrap_or_default();
     for (i, covered) in cover.iter().enumerate() {
         if *covered {
@@ -246,27 +240,33 @@ fn composite_knockout(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: 
     }
 }
 
-fn composite_layer_inner(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
+fn composite_layer_inner(
+    canvas: &mut Canvas,
+    layer: &Layer,
+    doc: &Document,
+    base: Option<&Canvas>,
+) {
     if !layer.visible {
         return;
     }
-    // The below-content effects (drop shadow, outer glow) render behind the
-    // layer's own content.
+    // Below-content effects (drop shadow, outer glow) render behind the content.
     crate::layer_effects::composite_layer_effects(canvas, layer, doc);
     if layer.is_group {
-        // True pass-through: recurse children straight onto the running canvas
-        // so their blend modes see content outside the group. Only exact for
-        // opacity 255 / no mask; otherwise fall back to isolated compositing
-        // (see the crate-level note).
+        // True pass-through: recurse children onto the running canvas so their
+        // blend modes see outside the group (exact only at opacity 255, no
+        // mask; else isolated). The base threads through so a knockout child
+        // punches through the group to the document background.
         if matches!(layer.blend, BlendMode::PassThrough)
             && layer.opacity == 255
             && layer.mask.is_none()
         {
             for child in &layer.children {
-                composite_layer(canvas, child, doc, None);
+                composite_layer(canvas, child, doc, base);
             }
             return;
         }
+        // ponytail: isolated-group knockout stays inert; wire the stopping
+        // point if a mask/opacity case needs it.
         let mut inner = Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h);
         for child in &layer.children {
             composite_layer(&mut inner, child, doc, None);

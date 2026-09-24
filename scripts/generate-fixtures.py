@@ -264,6 +264,37 @@ def knockout() -> PSDImage:
     return psd
 
 
+def knockout_group() -> PSDImage:
+    """RGB, a red Background plus a pass-through group of green and a half-fill
+    blue carrying `knko = Deep` (2) that punches the green through.
+
+    The top layer's knockout punches through the grouped layers to the layer
+    below the group (`docs/05-layers/layer-groups.md:81`). psd-tools defaults a
+    `create_group` folder to blend mode ``pass`` (`lsct``), which is exactly the
+    pass-through context the CPU compositor now recurses; the same
+    channel-stripped Background as `knockout()` is the stopping point.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(255, 0, 0))
+    background = psd.create_pixel_layer(
+        _solid((WIDTH, HEIGHT), (255, 0, 0)), name="Background"
+    )
+    rec = background._record
+    channels = [
+        (info, data)
+        for info, data in zip(rec.channel_info, background._channels)
+        if info.id != ChannelID.TRANSPARENCY_MASK
+    ]
+    rec.channel_info = [info for info, _ in channels]
+    background._channels = ChannelDataList([data for _, data in channels])
+
+    green = psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 255, 0)), name="Green")
+    blue = psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 0, 255)), name="Blue")
+    blue.opacity = 128
+    blue._record.tagged_blocks.set_data(Tag.KNOCKOUT_SETTING, 2)
+    psd.create_group([green, blue], name="Group")
+    return psd
+
+
 def masked() -> PSDImage:
     """RGB, one pixel layer with a raster layer mask."""
     psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
@@ -1919,6 +1950,7 @@ def legacy_effects() -> PSDImage:
 FIXTURES = {
     "two_layers.psd": two_layers,
     "knockout.psd": knockout,
+    "knockout_group.psd": knockout_group,
     "image_resources.psd": image_resources,
     "icc_profile.psd": icc_profile,
     "metadata.psd": metadata,

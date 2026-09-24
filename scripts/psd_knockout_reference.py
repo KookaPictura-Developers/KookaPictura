@@ -6,15 +6,16 @@
 second implementation for the CPU knockout path, exactly as ImageMagick is for
 the blend modes and psd-tools itself is for the codec.
 
-`gen` opens the committed `knockout.psd`, composites it, converts to RGBA, and
-writes raw interleaved RGBA8 to
-`crates/pictura-render/tests/fixtures/knockout_deep.rgba`, which
-`tests/knockout_oracle.rs` reads without a codec dependency.
+`gen` opens a committed fixture, composites it, converts to RGBA, and writes raw
+interleaved RGBA8 to the fixture's reference path, which
+`tests/knockout_oracle.rs` reads without a codec dependency. The fixture is
+chosen from the `--out` stem (`knockout_deep` -> `knockout.psd`,
+`knockout_group` -> `knockout_group.psd`); pass `--fixture` to override.
 
 Formats: raw interleaved RGBA8 (`r,g,b,a` per pixel, row major), 8x8.
 
 Usage:
-    python3 scripts/psd_knockout_reference.py gen [--out PATH]
+    python3 scripts/psd_knockout_reference.py gen [--out PATH] [--fixture PATH]
 """
 
 from __future__ import annotations
@@ -25,14 +26,24 @@ from pathlib import Path
 from psd_tools import PSDImage
 
 ROOT = Path(__file__).resolve().parent.parent
-FIXTURE = ROOT / "crates" / "pictura-codec" / "tests" / "fixtures" / "knockout.psd"
-DEFAULT_OUT = ROOT / "crates" / "pictura-render" / "tests" / "fixtures" / "knockout_deep.rgba"
+FIXTURE_DIR = ROOT / "crates" / "pictura-codec" / "tests" / "fixtures"
+OUT_DIR = ROOT / "crates" / "pictura-render" / "tests" / "fixtures"
+FIXTURES = {
+    "knockout_deep": FIXTURE_DIR / "knockout.psd",
+    "knockout_group": FIXTURE_DIR / "knockout_group.psd",
+}
+DEFAULT_OUT = OUT_DIR / "knockout_deep.rgba"
 
 
-def gen(out: Path) -> None:
-    image = PSDImage.open(FIXTURE).composite().convert("RGBA")
+def gen(out: Path, fixture: Path | None = None) -> None:
+    if fixture is None:
+        fixture = FIXTURES.get(out.stem, FIXTURES["knockout_deep"])
+    image = PSDImage.open(fixture).composite().convert("RGBA")
     out.write_bytes(image.tobytes())
-    print(f"wrote {out.relative_to(ROOT)} ({image.width}x{image.height})")
+    print(
+        f"wrote {out.relative_to(ROOT)} from {fixture.name} "
+        f"({image.width}x{image.height})"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,7 +52,17 @@ def main(argv: list[str] | None = None) -> int:
 
     p_gen = sub.add_parser("gen", help="regenerate the committed reference")
     p_gen.add_argument("--out", default=str(DEFAULT_OUT))
-    p_gen.set_defaults(func=lambda args: gen(Path(args.out)))
+    p_gen.add_argument(
+        "--fixture",
+        default=None,
+        help="source PSD (default: inferred from --out stem)",
+    )
+    p_gen.set_defaults(
+        func=lambda args: gen(
+            Path(args.out).resolve(),
+            Path(args.fixture).resolve() if args.fixture else None,
+        )
+    )
 
     args = parser.parse_args(argv)
     return args.func(args)

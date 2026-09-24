@@ -21,14 +21,16 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use pictura_core::Knockout;
+use pictura_core::{BlendMode, Knockout};
 use pictura_testkit::compare;
 
 /// One LSB of 8-bit rounding between psd-tools' floor and the CPU's round.
 const TOLERANCE: u8 = 1;
 
-fn reference_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/knockout_deep.rgba")
+fn reference_path(stem: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(format!("{stem}.rgba"))
 }
 
 fn psd_tools_available() -> bool {
@@ -77,7 +79,7 @@ fn knockout_composite_matches_psd_tools() {
     );
 
     let actual = interleaved(&pictura_render::composite_rgba(&doc));
-    let reference = std::fs::read(reference_path()).unwrap_or_else(|e| {
+    let reference = std::fs::read(reference_path("knockout_deep")).unwrap_or_else(|e| {
         panic!("cannot read reference ({e}); run `python3 scripts/psd_knockout_reference.py gen`")
     });
 
@@ -97,6 +99,77 @@ fn knockout_composite_matches_psd_tools() {
         actual[1],
         0,
         "intermediate green must be punched through, got pixel {:?}",
+        &actual[0..4]
+    );
+}
+
+/// The same differential check for `knockout_group.psd`: a red Background, a
+/// **pass-through** group of green and a half-fill `knko = Deep` blue. The
+/// fixture is authored so psd-tools writes the folder as `pass`; the test
+/// asserts the typed `PassThrough` blend so a silently-isolated fixture fails
+/// loudly instead of passing for the wrong reason.
+#[test]
+fn knockout_in_pass_through_group_matches_psd_tools() {
+    if !psd_tools_available() {
+        eprintln!("skipping psd-tools check: python3 + psd_tools not available");
+        return;
+    }
+
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../pictura-codec/tests/fixtures/knockout_group.psd");
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let doc = pictura_codec::read_psd(&bytes).expect("fixture parses");
+
+    let group = doc.layers.last().expect("top group");
+    assert!(
+        group.is_group && group.blend == BlendMode::PassThrough,
+        "top layer {:?} must decode as a pass-through group (blend {:?}, group {})",
+        group.name,
+        group.blend,
+        group.is_group
+    );
+    let child = group.children.last().expect("knockout child");
+    assert_eq!(
+        child.knockout,
+        Knockout::Deep,
+        "child {:?} must decode as Deep",
+        child.name
+    );
+
+    let actual = interleaved(&pictura_render::composite_rgba(&doc));
+    let reference = std::fs::read(reference_path("knockout_group")).unwrap_or_else(|e| {
+        panic!(
+            "cannot read reference ({e}); run `python3 scripts/psd_knockout_reference.py gen \
+             --out crates/pictura-render/tests/fixtures/knockout_group.rgba`"
+        )
+    });
+
+    let diff = compare(&actual, &reference, TOLERANCE).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        diff.is_empty(),
+        "group knockout composite differs from psd-tools by up to {} LSB over {} samples \
+         (mean {:.3}); tolerance {TOLERANCE}, not widened on purpose",
+        diff.max_delta,
+        diff.differing,
+        diff.mean_delta()
+    );
+
+    // Independent of tolerance: the group's intermediate green is punched
+    // through to the red background, with the half-fill blue on top.
+    assert_eq!(
+        actual[1],
+        0,
+        "group green must be punched through, got pixel {:?}",
+        &actual[0..4]
+    );
+    assert!(
+        actual[0] > 0,
+        "red background shows through, got {:?}",
+        &actual[0..4]
+    );
+    assert!(
+        actual[2] > 0,
+        "blue knockout layer is present, got {:?}",
         &actual[0..4]
     );
 }
