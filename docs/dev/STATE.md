@@ -56,7 +56,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `type-rasterize-command`, and
     `type-live-composite`, and
     `rasterize-all-type`, and
-    `rasterize-type-command`
+    `rasterize-type-command`, and
+    `text-qt-backend`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -609,8 +610,18 @@ Snapshot for resuming after a context break. Update after each milestone.
   (`rasterize-type-command`): `PictureView::rasterize_type` materializes a type
   layer (else returns false with no history) and `layer_is_type` gates the menu
   entry, which was a disabled leaf; the C++ self-test `lpr_rasterize_refuse`
-  (238) now asserts the type command refuses a plain pixel layer. The optional
-  Qt backend and complex shaping/kerning/warp remain.
+  (238) now asserts the type command refuses a plain pixel layer. **The Qt
+  backend renders it** (`text-qt-backend`): `pictura-render::materialize_text_rgba`
+  replaces a layer's channels from a packed RGBA buffer (wrong size/missing →
+  false, no mutation); `crates/pictura-app/cpp/render_text.{h,cpp}` draws the
+  text with `QFont`/`QPainter` into an RGBA `QImage` (system family resolution,
+  justify, word wrap); `PictureView::rasterize_type` tries Qt first and falls
+  back to the bundled `render_text_layer` on an empty render. `render_text_layer`
+  now delegates its tail to `materialize_text_rgba` (behavior unchanged). C++
+  self-test `lpr_qt_text` (code 525) rasterizes "Hi" and asserts non-empty
+  coverage. Live compositing (`composite_type_source`) stays bundled, so goldens
+  are unchanged. Remaining: complex shaping/kerning, transform/warp, subpixel
+  placement, and a Qt live-composite path.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
