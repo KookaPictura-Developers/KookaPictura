@@ -4,7 +4,7 @@ use pictura_adjust::{
 };
 use pictura_codec::DescValue;
 use pictura_core::{
-    AdjustmentData, BlendIf, BlendMode, ColorMode, Document, Layer, PixelBuffer, PsdRect,
+    AdjustmentData, BlendIf, BlendMode, ColorMode, Document, Knockout, Layer, PixelBuffer, PsdRect,
     SmartObject, SmartObjectKind,
 };
 
@@ -16,10 +16,40 @@ pub(crate) use crate::blend::blend;
 /// document resolution.
 pub fn composite_rgba(doc: &Document) -> PixelBuffer {
     let mut canvas = Canvas::new(doc.width as usize, doc.height as usize);
-    for layer in &doc.layers {
-        composite_layer(&mut canvas, layer, doc);
-    }
+    composite_layers(&mut canvas, doc);
     canvas.into_pixel_buffer()
+}
+
+/// Composite `doc.layers` (bottom-first) onto `canvas`, applying each non-bottom
+/// layer's knockout against the document background.
+fn composite_layers(canvas: &mut Canvas, doc: &Document) {
+    let base = knockout_base(canvas, doc);
+    for (i, layer) in doc.layers.iter().enumerate() {
+        let base = if i == 0 { None } else { base.as_ref() };
+        composite_layer(canvas, layer, doc, base);
+    }
+}
+
+/// The document background (the bottom layer composited alone), built only when
+/// a non-bottom layer actually knocks out.
+///
+/// ponytail: the model has no Background flag, so the bottom layer is assumed to
+/// be the background; a non-background bottom resolves to its content rather
+/// than transparency. A knockout that is the bottom layer composites as a plain
+/// layer (no base).
+fn knockout_base(region: &Canvas, doc: &Document) -> Option<Canvas> {
+    let present = doc
+        .layers
+        .iter()
+        .skip(1)
+        .any(|l| l.knockout != Knockout::None);
+    present.then(|| {
+        let mut base = Canvas::new_region(region.ox, region.oy, region.w, region.h);
+        if let Some(background) = doc.layers.first() {
+            composite_layer_inner(&mut base, background, doc);
+        }
+        base
+    })
 }
 
 /// Composite only the document-space region `[x0, x0+rw) × [y0, y0+rh)`.
@@ -47,9 +77,7 @@ pub(crate) fn composite_rgba_region(
         return slice_region(&composite_rgba(doc), doc.width, x0, y0, rw, rh);
     }
     let mut canvas = Canvas::new_region(x0 as i32, y0 as i32, rw as usize, rh as usize);
-    for layer in &doc.layers {
-        composite_layer(&mut canvas, layer, doc);
-    }
+    composite_layers(&mut canvas, doc);
     canvas.into_pixel_buffer()
 }
 
@@ -111,6 +139,10 @@ pub(crate) struct Canvas {
     /// Document y of canvas row 0.
     pub(crate) oy: i32,
     px: Vec<Px>,
+    /// Per-pixel "the layer contributed here" flag, set only for the temporary
+    /// canvas a knockout layer composites into. `None` on the output canvas so
+    /// the normal path stays allocation-free.
+    cover: Option<Vec<bool>>,
 }
 
 impl Canvas {
@@ -126,6 +158,20 @@ impl Canvas {
             ox,
             oy,
             px: vec![Px::default(); w * h],
+            cover: None,
+        }
+    }
+
+    /// A copy of `base`'s pixels with a fresh all-false coverage mask, so a
+    /// knockout composite can record which pixels it actually covered.
+    fn with_cover_from(base: &Canvas) -> Canvas {
+        Canvas {
+            w: base.w,
+            h: base.h,
+            ox: base.ox,
+            oy: base.oy,
+            px: base.px.clone(),
+            cover: Some(vec![false; base.px.len()]),
         }
     }
 
@@ -166,7 +212,41 @@ fn to_u8(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
+/// Composite `layer` onto the running `canvas`. A non-`None` knockout with a
+/// `base` (the document background) routes through [`composite_knockout`];
+/// everything else is the plain inner dispatch.
+fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: Option<&Canvas>) {
+    match base {
+        Some(base) if layer.knockout != Knockout::None => {
+            composite_knockout(canvas, layer, doc, base);
+        }
+        _ => composite_layer_inner(canvas, layer, doc),
+    }
+}
+
+/// Composite `layer` against the document background `base`, then replace the
+/// running backdrop only where the layer contributed, punching the layers
+/// between it and the background through at those pixels.
+///
+/// ponytail: the per-pixel mechanism is inferred from the documented
+/// shape-composited-against-the-stopping-point rule
+/// (`docs/05-layers/layers-overview.md:181`); there is no Photoshop oracle. A
+/// shallow stopping point inside a nested group and the clipping-mask base are
+/// not resolved (a knockout inside a group is inert), `Transparency Shapes
+/// Layers` (restricting coverage to the content's opaque pixels) is not applied,
+/// and the bottom layer is assumed to be the background.
+fn composite_knockout(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: &Canvas) {
+    let mut tmp = Canvas::with_cover_from(base);
+    composite_layer_inner(&mut tmp, layer, doc);
+    let cover = tmp.cover.take().unwrap_or_default();
+    for (i, covered) in cover.iter().enumerate() {
+        if *covered {
+            canvas.px[i] = tmp.px[i];
+        }
+    }
+}
+
+fn composite_layer_inner(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
     if !layer.visible {
         return;
     }
@@ -183,13 +263,13 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             && layer.mask.is_none()
         {
             for child in &layer.children {
-                composite_layer(canvas, child, doc);
+                composite_layer(canvas, child, doc, None);
             }
             return;
         }
         let mut inner = Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h);
         for child in &layer.children {
-            composite_layer(&mut inner, child, doc);
+            composite_layer(&mut inner, child, doc, None);
         }
         composite_canvas(canvas, layer, &inner);
     } else if let Some(adjustment) = crate::fill::decode_layer_fill(layer) {
@@ -1112,6 +1192,9 @@ pub(crate) fn blend_parts(
             return;
         }
         as_ = 1.0;
+    }
+    if let Some(cover) = canvas.cover.as_mut() {
+        cover[i] = true;
     }
 
     let ab = cb.a;
