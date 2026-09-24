@@ -1347,4 +1347,6 @@ mod color_modes;
 
 mod depth;
 
+mod duotone_multichannel;
+
 mod psb;

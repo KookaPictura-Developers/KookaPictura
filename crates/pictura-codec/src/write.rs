@@ -998,8 +998,12 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     // and the retained palette, but only while the composite and every pixel
     // layer still expand to the working RGB; an edit falls back to RGB.
     let indexed_mode = writes_indexed(doc, depth, plane);
+    // Flat unedited Duotone/Multichannel re-emits retained plates; edits fall back to RGB.
+    let flat_source = crate::write_duotone::flat_source_mode(doc, depth, plane);
     let mode_code = if bitmap_mode {
         MODE_BITMAP
+    } else if let Some((code, _, _)) = flat_source {
+        code
     } else if lab_mode {
         MODE_LAB
     } else if cmyk_mode {
@@ -1014,15 +1018,16 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         }
     };
     let color_channels = doc.composite.channels as usize;
-    // The header channel count and composite plane loop follow the output mode:
-    // four for CMYK, one index for Indexed, the working count otherwise.
-    // `doc.composite.data` validation stays in working terms.
+    // Header channel count follows the output mode: 4 CMYK, 1 Indexed, 1-or-3
+    // flat Duotone/Multichannel, else the working count. Composite data stays working-term.
     let out_color_channels = if bitmap_mode {
         1
     } else if cmyk_mode {
         4
     } else if indexed_mode {
         1
+    } else if let Some((_, n, _)) = flat_source {
+        n
     } else {
         color_channels
     };
@@ -1127,6 +1132,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
             .expect("indexed_mode checked the composite plane")
             .to_vec()
     });
+    let flat_composite = flat_source.as_ref().map(|(_, _, planes)| planes);
     let mut planes: Vec<Cow<[u8]>> = Vec::with_capacity(channels);
     if bitmap_mode {
         // The retained depth-1 store holds the raw packed plane (row stride
@@ -1143,6 +1149,8 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
                 &cmyk[c * plane..(c + 1) * plane]
             } else if let Some(indexed) = &indexed_composite {
                 indexed.as_slice()
+            } else if let Some(flat) = &flat_composite {
+                &flat[c * plane..(c + 1) * plane]
             } else {
                 &doc.composite.data[c * plane..(c + 1) * plane]
             };

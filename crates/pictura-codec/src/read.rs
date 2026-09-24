@@ -59,29 +59,48 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         )));
     }
     let mode = color_mode_from_code(mode_code)?;
-    // Depth 1 is Photoshop's Bitmap; Bitmap and Indexed are meaningless at 16/32
-    // (Bitmap is 1-bit, Indexed's indices are 8-bit), and every other depth is
-    // unsupported. Grayscale/RGB/CMYK/Lab read at 16 and 32 (see `psd-bit-depth`).
+    // Depth 1 is Bitmap-only; Multichannel/Duotone open only at depth 8;
+    // 16/32 is Grayscale/RGB/CMYK/Lab only (see `psd-bit-depth`).
     let depth_ok = match depth {
         1 => mode == ColorMode::Bitmap,
         8 => true,
-        16 | 32 => !matches!(mode, ColorMode::Bitmap | ColorMode::Indexed),
+        16 | 32 => matches!(
+            mode,
+            ColorMode::Grayscale | ColorMode::Rgb | ColorMode::Lab | ColorMode::Cmyk
+        ),
         _ => false,
     };
     if !depth_ok {
         return Err(PsdError::Unsupported(format!("bit depth {depth}")));
     }
-    // A 16/32-bit header is always recorded so the app can report the
-    // conversion; a Grayscale/RGB/Lab/CMYK read retains native-depth planes, an
-    // 8-bit Lab, CMYK, or Indexed read retains its source planes, and a depth-1
-    // Bitmap read retains the packed plane, so an unchanged plane re-emits
-    // exactly.
+    // Multichannel opens only for header channel count 1 or 3; other counts stay Unsupported.
+    if mode == ColorMode::Multichannel && !matches!(channels, 1 | 3) {
+        return Err(PsdError::Unsupported(format!(
+            "Multichannel channel count {channels}"
+        )));
+    }
+    // Multichannel has no fixed `color_channels()`; the header count is authoritative.
+    let color_count = if mode == ColorMode::Multichannel {
+        channels as usize
+    } else {
+        mode.color_channels() as usize
+    };
+    // Retain native planes for 16/32 Grayscale/RGB/Lab/CMYK, and 8-bit Lab/
+    // CMYK/Indexed/Duotone/Multichannel, plus the depth-1 Bitmap packed plane.
     let retain_planes = (matches!(depth, 16 | 32)
         && matches!(
             mode,
             ColorMode::Grayscale | ColorMode::Rgb | ColorMode::Lab | ColorMode::Cmyk
         ))
-        || (depth == 8 && matches!(mode, ColorMode::Lab | ColorMode::Cmyk | ColorMode::Indexed))
+        || (depth == 8
+            && matches!(
+                mode,
+                ColorMode::Lab
+                    | ColorMode::Cmyk
+                    | ColorMode::Indexed
+                    | ColorMode::Duotone
+                    | ColorMode::Multichannel
+            ))
         || (depth == 1 && mode == ColorMode::Bitmap);
     let source_depth = depth_bits(depth);
 
@@ -95,13 +114,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     let image_resources = r.take(resources_len)?.to_vec();
     // Layer and mask information section: 4-byte length (8 in PSB).
     let (mut layers, global_layer_mask, layer_section_extra, layer_compression) =
-        read_layer_section(
-            &mut r,
-            is_psb,
-            mode.color_channels() as usize,
-            depth,
-            retain_planes,
-        )?;
+        read_layer_section(&mut r, is_psb, color_count, depth, retain_planes)?;
     // Derive the smart-object view from the preserved bytes; a malformed
     // descriptor or linked-layer record degrades to Unresolved (design D5).
     crate::smart_object::resolve_smart_objects(&mut layers, &layer_section_extra, is_psb);
@@ -127,7 +140,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             source_palette: None,
             source_icc: None,
             document_icc: None,
-            composite: PixelBuffer::new(width, height, mode.color_channels()),
+            composite: PixelBuffer::new(width, height, color_count as u8),
             merged_composite_present: false,
             composite_compression: Compression::Rle,
             layer_compression: layer_compression.unwrap_or_default(),
@@ -199,7 +212,8 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
     } else {
         stride * height
     };
-    let (composite, channels) = split_planes(data, mode, width, height, plane, header_channels)?;
+    let (composite, channels) =
+        split_planes(data, color_count, width, height, plane, header_channels)?;
 
     let doc = Document {
         width: width as u32,
@@ -231,8 +245,8 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
 }
 
 /// The PSD `header.color_mode` code to the engine's [`ColorMode`]. Bitmap,
-/// Grayscale, Indexed, RGB, CMYK, and Lab are accepted; Multichannel, Duotone,
-/// and every other code are unsupported.
+/// Grayscale, Indexed, RGB, CMYK, Multichannel, Duotone, and Lab are accepted;
+/// every other code is unsupported.
 fn color_mode_from_code(code: u16) -> Result<ColorMode, PsdError> {
     Ok(match code {
         MODE_BITMAP => ColorMode::Bitmap,
@@ -240,10 +254,9 @@ fn color_mode_from_code(code: u16) -> Result<ColorMode, PsdError> {
         MODE_INDEXED => ColorMode::Indexed,
         MODE_RGB => ColorMode::Rgb,
         MODE_CMYK => ColorMode::Cmyk,
+        MODE_MULTICHANNEL => ColorMode::Multichannel,
+        MODE_DUOTONE => ColorMode::Duotone,
         MODE_LAB => ColorMode::Lab,
-        MODE_MULTICHANNEL | MODE_DUOTONE => {
-            return Err(PsdError::Unsupported(format!("color mode {code}")))
-        }
         c => return Err(PsdError::Unsupported(format!("color mode {c}"))),
     })
 }
@@ -318,8 +331,10 @@ fn convert_pixels(
         ColorMode::Indexed => indexed_to_rgb(&buf.data, palette.unwrap_or(&EMPTY_PALETTE)),
         ColorMode::Cmyk => cmyk_to_rgb(&buf.data),
         ColorMode::Lab => lab_to_rgb(&buf.data),
+        ColorMode::Duotone => gray_to_rgb(&buf.data),
+        ColorMode::Multichannel if buf.channels == 1 => gray_to_rgb(&buf.data),
+        ColorMode::Multichannel => cmy_to_rgb(&buf.data),
         ColorMode::Grayscale | ColorMode::Rgb => buf.data,
-        ColorMode::Multichannel | ColorMode::Duotone => buf.data,
     };
     PixelBuffer {
         width: buf.width,
@@ -331,16 +346,17 @@ fn convert_pixels(
 
 /// Split the planar image-data section into the mode's color planes (the
 /// composite) and the trailing extra channels (saved selections / alpha).
-/// `plane` is one channel's byte length (depth-aware).
+/// `plane` is one channel's byte length (depth-aware). `color_channels` is the
+/// header-authoritative color count (Multichannel's channel count, else the
+/// mode's fixed count).
 fn split_planes(
     mut data: Vec<u8>,
-    mode: ColorMode,
+    color_channels: usize,
     width: usize,
     height: usize,
     plane: usize,
     header_channels: usize,
 ) -> Result<(PixelBuffer, Vec<Channel>), PsdError> {
-    let color_channels = mode.color_channels() as usize;
     if header_channels < color_channels {
         return Err(PsdError::Invalid(format!(
             "header has {header_channels} channels for a {color_channels}-channel mode"
