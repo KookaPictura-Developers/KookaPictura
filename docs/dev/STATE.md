@@ -54,7 +54,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `type-engine-data`, and
     `text-render-seam`, `text-rasterize-bundled`, and
     `type-rasterize-command`, and
-    `type-live-composite`
+    `type-live-composite`, and
+    `rasterize-all-type`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -597,7 +598,13 @@ Snapshot for resuming after a context break. Update after each milestone.
   with a stored raster proxy is unchanged. The GPU declines a proxy-less type
   layer (`GpuError::UnsupportedText`) to the CPU oracle. Ceiling: axis-aligned
   placement at the layer rect, first-run style, no kerning. Proven by three
-  compositor tests plus the six renderer tests. No app change.
+  compositor tests plus the six renderer tests. No app change. **Rasterize All
+  Layers now covers type** (`rasterize-all-type`): the engine
+  `rasterize_all_fill_content` was renamed and widened to
+  `rasterize_all_layers(doc)`, dispatching each flattened layer to the
+  fill-content baker or `render_text_layer`; `PictureView::rasterize_all_layers`
+  calls it, so one document-wide command bakes fills and type in one history
+  state.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
