@@ -52,8 +52,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `crs-xmp-edit`, and
     `blend-if-render`, and
     `type-engine-data`, and
-    `text-render-seam`, and
-    `text-rasterize-bundled`
+    `text-render-seam`, `text-rasterize-bundled`, and
+    `type-rasterize-command`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -580,7 +580,12 @@ Snapshot for resuming after a context break. Update after each milestone.
   the file name is a substitution. Proven by six render unit tests. The app
   `Rasterize Type` command and the optional Qt backend are deferred follow-ups.
   Adds the `fontdue` dependency (pure Rust, no C deps, keeps the engine
-  Qt-free) and the bundled font asset.
+  Qt-free) and the bundled font asset. **The command now reaches it**
+  (`type-rasterize-command`): `PictureView::rasterize_layer` tries
+  `render_text_layer` first and records `Rasterize Type`, else falls back to
+  `rasterize_fill_content`; `Layer > Rasterize > Layer` needs no C++ change. A
+  dedicated `Rasterize Type` menu entry and `Rasterize All Layers` covering type
+  remain follow-ups.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
