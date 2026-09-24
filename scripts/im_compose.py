@@ -213,16 +213,19 @@ def cmd_check(_args: argparse.Namespace) -> int:
         generate(Path(tmp_name))
         fresh = _fixture_bytes(Path(tmp_name))
     if committed.keys() != fresh.keys():
-        missing = committed.keys() - fresh.keys()
-        extra = fresh.keys() - committed.keys()
-        print(f"FAIL: fixture set changed; missing={sorted(missing)} extra={sorted(extra)}",
-              file=sys.stderr)
-        return 1
-    for name in committed:
+        missing = fresh.keys() - committed.keys()
+        extra = committed.keys() - fresh.keys()
+        if missing:
+            print(f"FAIL: missing fixtures {sorted(missing)}; run `gen`", file=sys.stderr)
+            return 1
+        # Non-ImageMagick references (for example the psd-tools knockout oracle)
+        # share the directory; only the files this script generates are checked.
+        print(f"note: ignoring {len(extra)} non-ImageMagick fixture(s): {sorted(extra)}")
+    for name in fresh:
         if committed[name] != fresh[name]:
             print(f"FAIL: {name} not reproducible (bytes differ)", file=sys.stderr)
             return 1
-    print(f"OK: {len(committed)} fixtures reproduce byte-for-byte")
+    print(f"OK: {len(fresh)} fixtures reproduce byte-for-byte")
     return 0
 
 

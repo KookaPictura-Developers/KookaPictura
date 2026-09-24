@@ -20,6 +20,7 @@ from PIL import Image
 from psd_tools import PSDImage
 from psd_tools.constants import (
     BlendMode,
+    ChannelID,
     ColorMode,
     ColorSpaceID,
     EffectOSType,
@@ -222,6 +223,44 @@ def group() -> PSDImage:
         _solid((WIDTH, HEIGHT), (255, 255, 0)), name="Inner Yellow"
     )
     psd.create_group([inner_green, inner_yellow], name="Group A")
+    return psd
+
+
+def knockout() -> PSDImage:
+    """RGB, a red Background, an intermediate green layer, and a half-fill blue
+    layer carrying `knko = Deep` (2) that punches the green through.
+
+    The bottom layer is a genuine Background -- opaque by construction, with no
+    transparency channel -- which is what psd-tools' compositor
+    (`_is_background_layer`) and the CPU's bottom-layer assumption both use as the
+    deep-knockout target. `PSDImage.new(..., color=...)` alone only sets
+    psd-tools' `_background_color` and the merged composite; it emits no layer
+    record, so a channel-stripped pixel layer is authored explicitly.
+
+    `knko` is a `ByteElement`, so it is authored through `set_data`; assigning a
+    raw `TaggedBlock(data=b"\\x02\\x00\\x00\\x00")` is re-encoded to two bytes and
+    the value is lost.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(255, 0, 0))
+    background = psd.create_pixel_layer(
+        _solid((WIDTH, HEIGHT), (255, 0, 0)), name="Background"
+    )
+    # psd-tools' `create_pixel_layer` always appends a transparency channel; a
+    # real Background has none, and that absence is how its own compositor
+    # identifies the knockout target. Keep channel_info and data aligned.
+    rec = background._record
+    channels = [
+        (info, data)
+        for info, data in zip(rec.channel_info, background._channels)
+        if info.id != ChannelID.TRANSPARENCY_MASK
+    ]
+    rec.channel_info = [info for info, _ in channels]
+    background._channels = ChannelDataList([data for _, data in channels])
+
+    psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 255, 0)), name="Green")
+    blue = psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 0, 255)), name="Blue")
+    blue.opacity = 128
+    blue._record.tagged_blocks.set_data(Tag.KNOCKOUT_SETTING, 2)
     return psd
 
 
@@ -1879,6 +1918,7 @@ def legacy_effects() -> PSDImage:
 
 FIXTURES = {
     "two_layers.psd": two_layers,
+    "knockout.psd": knockout,
     "image_resources.psd": image_resources,
     "icc_profile.psd": icc_profile,
     "metadata.psd": metadata,

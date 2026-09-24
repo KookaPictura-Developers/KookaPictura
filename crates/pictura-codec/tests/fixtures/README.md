@@ -21,6 +21,7 @@ not hand-edit these files.
 | File | Mode | Size | Layers |
 |---|---|---|---|
 | `two_layers.psd` | RGB | 8x8 | `Red` (0,0,4,4), `Blue` (4,4,8,8) |
+| `knockout.psd` | RGB | 8x8 | `Background` (red, no transparency channel), `Green`, and a half-fill `Blue` carrying a `knko` Deep knockout |
 | `image_resources.psd` | RGB | 8x8 | `Base` pixel layer plus EXIF (id 1058) and XMP (id 1060) image resources |
 | `icc_profile.psd` | RGB | 8x8 | `Base` pixel layer plus an embedded Adobe-RGB ICC profile (id 1039); `psd_icc_rgb.icc` is the profile, synthesized by `cargo run -p pictura-color --example dump_adobe_rgb` |
 | `metadata.psd` | RGB | 8x8 | `Base` pixel layer plus a real EXIF IFD (id 1058), an IPTC-IIM stream (id 1028), and an XMP packet (id 1060); decoded and checked against `exiftool` |
@@ -59,6 +60,19 @@ by `psd-tools`' `EngineData` writer. It is the differential fixture for
 set (`AdobeInvisFont`, `MyriadPro-Regular`), the first run's resolved font
 (`MyriadPro-Regular`), size `150.0`, fill `[1,1,1,1]`, and justification `0`.
 The blob is a `tdta` descriptor value (EngineData is stable across CS6→CC).
+
+`knockout.psd` is authored by the `knockout()` builder: a red Background, a
+green layer, and a blue layer at opacity 128 carrying `knko = Deep` (2). The
+background is written as a channel-stripped pixel layer named `Background`,
+because `PSDImage.new(..., color=...)` alone sets only psd-tools'
+`_background_color` and emits no layer record; a genuine Background carries no
+transparency channel, so the `-1` channel psd-tools appends in
+`create_pixel_layer` is stripped from both `channel_info` and `_channels`. `knko`
+is a `ByteElement`, authored through
+`tagged_blocks.set_data(Tag.KNOCKOUT_SETTING, 2)` so its single value byte
+survives; `read_psd` decodes it as `Knockout::Deep`, and
+`crates/pictura-render/tests/knockout_oracle.rs` uses it to diff the CPU
+compositor against psd-tools' own compositor.
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
