@@ -57,7 +57,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `type-live-composite`, and
     `rasterize-all-type`, and
     `rasterize-type-command`, and
-    `text-qt-backend`
+    `text-qt-backend`, and
+    `knockout-composite`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -651,9 +652,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   path declines a non-default layer (`GpuError::UnsupportedAdvancedBlending`)
   and falls back to the CPU oracle. Ceilings (`ponytail:`): Rec.601 composite
   gray and a hard 0/1 gate (no feather/split); channel groups assumed R,G,B in
-  order; **knockout punch-through is not applied**; no Photoshop oracle. Proven
-  by seven render unit tests plus the GPU parity suites (a real Vulkan device
-  ran them).
+  order; no Photoshop oracle. Proven by seven render unit tests plus the GPU
+  parity suites (a real Vulkan device ran them).
+- **Knockout punch-through** (roadmap G6/G7, change `knockout-composite`,
+  archived): a top-level, non-bottom layer whose `Layer.knockout` is `Shallow`
+  or `Deep` composites its content against the document background (the bottom
+  layer, or transparency when it is the bottom) instead of the running backdrop,
+  and replaces the running backdrop at its covered pixels, so the intermediate
+  layers are punched through. `Canvas` gained an optional coverage mask that
+  `blend_parts` sets; `composite_knockout` renders the layer into a background
+  clone and copies only covered pixels back. The GPU declines a non-`None`
+  knockout (`GpuError::UnsupportedAdvancedBlending`). Ceilings (`ponytail:`):
+  the mechanism is inferred from the documented shape-against-the-stopping-point
+  rule (no Photoshop oracle); nested-group shallow targets and clipping bases
+  are not resolved (a knockout inside a group is inert); `Transparency Shapes
+  Layers` is not applied; the bottom layer is assumed to be the background.
+  Proven by six render unit tests; `Knockout::None` and knockout-free documents
+  compose byte-identically.
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed
