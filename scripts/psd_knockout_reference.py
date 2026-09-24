@@ -31,6 +31,7 @@ OUT_DIR = ROOT / "crates" / "pictura-render" / "tests" / "fixtures"
 FIXTURES = {
     "knockout_deep": FIXTURE_DIR / "knockout.psd",
     "knockout_group": FIXTURE_DIR / "knockout_group.psd",
+    "knockout_isolated_group": FIXTURE_DIR / "knockout_isolated_group.psd",
 }
 DEFAULT_OUT = OUT_DIR / "knockout_deep.rgba"
 

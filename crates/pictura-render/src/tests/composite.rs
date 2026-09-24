@@ -886,12 +886,32 @@ fn pass_through_group_knockout_punches_green_through() {
 }
 
 #[test]
-fn isolated_group_knockout_is_byte_identical_to_none() {
-    // A non-PassThrough group is isolated, so its knockout child is inert.
-    let with = composite_rgba(&knockout_group_stack(Knockout::Deep, BlendMode::Normal));
-    let without = composite_rgba(&knockout_group_stack(Knockout::None, BlendMode::Normal));
-    assert_eq!(
-        with.data, without.data,
-        "an isolated group's knockout must composite byte-identically to none"
+fn isolated_group_knockout_punches_green_through() {
+    // The isolated group's knockout child bases on the group's transparent
+    // initial backdrop, so the group's green is punched through; the group
+    // (blue over transparency) then composites over the red background.
+    let out = px(
+        &composite_rgba(&knockout_group_stack(Knockout::Deep, BlendMode::Normal)),
+        0,
+        0,
     );
+    assert_eq!(
+        out[1], 0,
+        "the group's green is punched through, got {out:?}"
+    );
+    assert!(out[0] > 0, "the red background shows through, got {out:?}");
+    assert!(out[2] > 0, "blue knockout layer is present, got {out:?}");
+}
+
+#[test]
+fn isolated_group_without_knockout_is_unchanged() {
+    // No child carries a knockout, so the isolated branch threads `None` and the
+    // group composites as before the change: blue half-fill over green inside
+    // the group, then over red.
+    let out = px(
+        &composite_rgba(&knockout_group_stack(Knockout::None, BlendMode::Normal)),
+        0,
+        0,
+    );
+    assert_eq!(out, [0, 127, 128, 255]);
 }

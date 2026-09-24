@@ -295,6 +295,40 @@ def knockout_group() -> PSDImage:
     return psd
 
 
+def knockout_isolated_group() -> PSDImage:
+    """RGB, a red Background, a yellow layer, and an isolated (Normal) group of
+    green and a half-fill blue carrying `knko = Deep` (2).
+
+    psd-tools' compositor stops deep knockout at an isolated group
+    (`composite.py`: it "escapes pass-through groups but stops at an isolated
+    one"), so the blue punches the group's green through to the group's initial
+    backdrop, then the group composites over the yellow layer below. The same
+    channel-stripped Background as `knockout()` is the document base; the group
+    is made isolated by writing an explicit non-`pass` blend.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(255, 0, 0))
+    background = psd.create_pixel_layer(
+        _solid((WIDTH, HEIGHT), (255, 0, 0)), name="Background"
+    )
+    rec = background._record
+    channels = [
+        (info, data)
+        for info, data in zip(rec.channel_info, background._channels)
+        if info.id != ChannelID.TRANSPARENCY_MASK
+    ]
+    rec.channel_info = [info for info, _ in channels]
+    background._channels = ChannelDataList([data for _, data in channels])
+
+    psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (255, 255, 0)), name="Yellow")
+    green = psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 255, 0)), name="Green")
+    blue = psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 0, 255)), name="Blue")
+    blue.opacity = 128
+    blue._record.tagged_blocks.set_data(Tag.KNOCKOUT_SETTING, 2)
+    isolated = psd.create_group([green, blue], name="Group")
+    isolated.blend_mode = BlendMode.NORMAL
+    return psd
+
+
 def masked() -> PSDImage:
     """RGB, one pixel layer with a raster layer mask."""
     psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
@@ -1951,6 +1985,7 @@ FIXTURES = {
     "two_layers.psd": two_layers,
     "knockout.psd": knockout,
     "knockout_group.psd": knockout_group,
+    "knockout_isolated_group.psd": knockout_isolated_group,
     "image_resources.psd": image_resources,
     "icc_profile.psd": icc_profile,
     "metadata.psd": metadata,

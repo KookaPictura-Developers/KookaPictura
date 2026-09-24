@@ -173,3 +173,78 @@ fn knockout_in_pass_through_group_matches_psd_tools() {
         &actual[0..4]
     );
 }
+
+/// The differential check for `knockout_isolated_group.psd`: a red Background, a
+/// yellow layer, then an **isolated** (explicit Normal) group of green and a
+/// half-fill `knko = Deep` blue. psd-tools stops the deep knockout at the
+/// isolated group, so the group's green is punched through to the group's
+/// transparent initial backdrop and the group then blends over the yellow below
+/// it. The test asserts the decoded group is not `PassThrough` (a silently
+/// pass-through fixture would give the wrong `(126, 0, 128)`) and the child is
+/// `Deep`, then diffs against the reference.
+#[test]
+fn knockout_in_isolated_group_matches_psd_tools() {
+    if !psd_tools_available() {
+        eprintln!("skipping psd-tools check: python3 + psd_tools not available");
+        return;
+    }
+
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../pictura-codec/tests/fixtures/knockout_isolated_group.psd");
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let doc = pictura_codec::read_psd(&bytes).expect("fixture parses");
+
+    let group = doc.layers.last().expect("top group");
+    assert!(
+        group.is_group && group.blend != BlendMode::PassThrough,
+        "top layer {:?} must decode as an isolated group (blend {:?}, group {})",
+        group.name,
+        group.blend,
+        group.is_group
+    );
+    let child = group.children.last().expect("knockout child");
+    assert_eq!(
+        child.knockout,
+        Knockout::Deep,
+        "child {:?} must decode as Deep",
+        child.name
+    );
+
+    let actual = interleaved(&pictura_render::composite_rgba(&doc));
+    let reference = std::fs::read(reference_path("knockout_isolated_group")).unwrap_or_else(|e| {
+        panic!(
+            "cannot read reference ({e}); run `python3 scripts/psd_knockout_reference.py gen \
+             --out crates/pictura-render/tests/fixtures/knockout_isolated_group.rgba`"
+        )
+    });
+
+    let diff = compare(&actual, &reference, TOLERANCE).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        diff.is_empty(),
+        "isolated-group knockout differs from psd-tools by up to {} LSB over {} samples \
+         (mean {:.3}); tolerance {TOLERANCE}, not widened on purpose",
+        diff.max_delta,
+        diff.differing,
+        diff.mean_delta()
+    );
+
+    // Independent of tolerance: the group's green is punched through to the
+    // group's initial backdrop, so the green the pixel shows comes only from the
+    // yellow layer below the group. A deep knockout that reached the document
+    // background (red) would leave green at zero.
+    assert!(
+        actual[1] > 0,
+        "the yellow layer below the group contributes green, got pixel {:?}",
+        &actual[0..4]
+    );
+    assert!(
+        actual[0] > 0,
+        "the layer below the group contributes red, got {:?}",
+        &actual[0..4]
+    );
+    assert!(
+        actual[2] > 0,
+        "blue knockout layer is present, got {:?}",
+        &actual[0..4]
+    );
+}

@@ -23,6 +23,7 @@ not hand-edit these files.
 | `two_layers.psd` | RGB | 8x8 | `Red` (0,0,4,4), `Blue` (4,4,8,8) |
 | `knockout.psd` | RGB | 8x8 | `Background` (red, no transparency channel), `Green`, and a half-fill `Blue` carrying a `knko` Deep knockout |
 | `knockout_group.psd` | RGB | 8x8 | red `Background` (no transparency channel) plus a pass-through group `Group` of `Green` and a half-fill `Blue` carrying a `knko` Deep knockout |
+| `knockout_isolated_group.psd` | RGB | 8x8 | red `Background` (no transparency channel), a `Yellow` layer, and an isolated (Normal) group `Group` of `Green` and a half-fill `Blue` carrying a `knko` Deep knockout |
 | `image_resources.psd` | RGB | 8x8 | `Base` pixel layer plus EXIF (id 1058) and XMP (id 1060) image resources |
 | `icc_profile.psd` | RGB | 8x8 | `Base` pixel layer plus an embedded Adobe-RGB ICC profile (id 1039); `psd_icc_rgb.icc` is the profile, synthesized by `cargo run -p pictura-color --example dump_adobe_rgb` |
 | `metadata.psd` | RGB | 8x8 | `Base` pixel layer plus a real EXIF IFD (id 1058), an IPTC-IIM stream (id 1028), and an XMP packet (id 1060); decoded and checked against `exiftool` |
@@ -81,6 +82,14 @@ channel-stripped red `Background`, then a `create_group` folder containing
 to blend mode `pass` (`lsct`), the pass-through context in which the CPU
 compositor recurses the group and lets the top child punch through to the layer
 below the group; the fixture is what proves that recursion.
+
+`knockout_isolated_group.psd` is authored by the `knockout_isolated_group()`
+builder: the same channel-stripped red `Background`, then a `Yellow` layer, then
+a `create_group` folder containing `Green` and a half-fill `Blue` with
+`knko = Deep`. The folder's blend is written as an explicit non-`pass`
+isolation (`BlendMode.NORMAL`), so the group is its own knockout stopping point;
+the layer below the group is the discriminating signature, which a pass-through
+group would punch through to the document background.
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
