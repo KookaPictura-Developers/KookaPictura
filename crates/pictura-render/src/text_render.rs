@@ -122,6 +122,50 @@ fn bundled() -> Option<&'static BundledText> {
     CACHE.get_or_init(BundledText::new).as_ref()
 }
 
+/// Replace the layer at `path`'s `0/1/2/-1` channels from a packed straight-alpha
+/// RGBA buffer of the layer-rect size, drop `TySh`, and clear the type tool.
+/// Returns false without mutating for a missing layer, a non-positive rect, or a
+/// buffer that is not `width * height * 4` bytes.
+pub fn materialize_text_rgba(doc: &mut Document, path: &str, rgba: &[u8]) -> bool {
+    let Some(layer) = crate::resolve_path(doc, path) else {
+        return false;
+    };
+    let width = layer.rect.width();
+    let height = layer.rect.height();
+    if width <= 0 || height <= 0 {
+        return false;
+    }
+    let Some(expected) = (width as usize * height as usize).checked_mul(4) else {
+        return false;
+    };
+    if rgba.len() != expected {
+        return false;
+    }
+    let plane = expected / 4;
+    let Some(layer) = crate::resolve_path_mut(doc, path) else {
+        return false;
+    };
+    let mut r = Vec::with_capacity(plane);
+    let mut g = Vec::with_capacity(plane);
+    let mut b = Vec::with_capacity(plane);
+    let mut a = Vec::with_capacity(plane);
+    for px in rgba.as_chunks::<4>().0 {
+        r.push(px[0]);
+        g.push(px[1]);
+        b.push(px[2]);
+        a.push(px[3]);
+    }
+    layer.channels = vec![
+        Channel { id: 0, data: r },
+        Channel { id: 1, data: g },
+        Channel { id: 2, data: b },
+        Channel { id: -1, data: a },
+    ];
+    layer.extra_blocks.retain(|block| &block.key != b"TySh");
+    layer.type_tool = None;
+    true
+}
+
 /// Shape, lay out, and paint a type layer over its rect, then drop the type
 /// tool: the layer becomes raster. Returns false without mutating when there is
 /// no type tool or style, the rect has no area, or no glyph rendered.
@@ -137,30 +181,14 @@ pub fn render_text_layer(doc: &mut Document, path: &str) -> bool {
         return false;
     };
     let plane = buffer.pixel_count();
-    let Some(layer) = crate::resolve_path_mut(doc, path) else {
-        return false;
-    };
-    layer.channels = vec![
-        Channel {
-            id: 0,
-            data: buffer.data[..plane].to_vec(),
-        },
-        Channel {
-            id: 1,
-            data: buffer.data[plane..2 * plane].to_vec(),
-        },
-        Channel {
-            id: 2,
-            data: buffer.data[2 * plane..3 * plane].to_vec(),
-        },
-        Channel {
-            id: -1,
-            data: buffer.data[3 * plane..4 * plane].to_vec(),
-        },
-    ];
-    layer.extra_blocks.retain(|block| &block.key != b"TySh");
-    layer.type_tool = None;
-    true
+    let mut rgba = vec![0u8; plane * 4];
+    for i in 0..plane {
+        rgba[4 * i] = buffer.data[i];
+        rgba[4 * i + 1] = buffer.data[plane + i];
+        rgba[4 * i + 2] = buffer.data[2 * plane + i];
+        rgba[4 * i + 3] = buffer.data[3 * plane + i];
+    }
+    materialize_text_rgba(doc, path, &rgba)
 }
 
 /// Shape, lay out, and paint a type tool into a straight-alpha RGBA buffer of
@@ -424,6 +452,42 @@ mod tests {
         let before = doc.clone();
         assert!(!render_text_layer(&mut doc, "0"));
         assert_eq!(doc, before, "refusal leaves the document unchanged");
+    }
+
+    #[test]
+    fn materialize_text_rgba_refuses_a_wrong_size_buffer_without_mutating() {
+        let mut doc = doc_with(type_layer(Some(style())));
+        let before = doc.clone();
+        assert!(!materialize_text_rgba(&mut doc, "0", &[0u8; 10]));
+        assert_eq!(doc, before, "refusal leaves the document unchanged");
+    }
+
+    #[test]
+    fn materialize_text_rgba_refuses_a_missing_layer() {
+        let mut doc = doc_with(type_layer(Some(style())));
+        assert!(!materialize_text_rgba(&mut doc, "9", &[]));
+    }
+
+    #[test]
+    fn materialize_text_rgba_sets_channels_and_clears_the_type_tool() {
+        let mut doc = doc_with(type_layer(Some(style())));
+        let n = 200 * 80;
+        let mut rgba = vec![0u8; n * 4];
+        rgba[0] = 10;
+        rgba[1] = 20;
+        rgba[2] = 30;
+        rgba[3] = 40;
+        assert!(materialize_text_rgba(&mut doc, "0", &rgba));
+        let layer = crate::resolve_path(&doc, "0").unwrap();
+        assert!(layer.type_tool.is_none(), "type tool is cleared");
+        assert!(
+            layer.extra_blocks.iter().all(|b| &b.key != b"TySh"),
+            "TySh block is gone"
+        );
+        assert_eq!(crate::channel(layer, 0).unwrap()[0], 10);
+        assert_eq!(crate::channel(layer, 1).unwrap()[0], 20);
+        assert_eq!(crate::channel(layer, 2).unwrap()[0], 30);
+        assert_eq!(crate::channel(layer, -1).unwrap()[0], 40);
     }
 
     #[test]

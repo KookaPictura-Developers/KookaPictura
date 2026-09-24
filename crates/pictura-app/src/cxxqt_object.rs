@@ -26,6 +26,7 @@ mod tests_impl;
 
 #[cxx_qt::bridge]
 pub mod qobject {
+    #[rustfmt::skip]
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -39,6 +40,10 @@ pub mod qobject {
         include!("decode_image.h");
         /// Decode `data` with Qt to tightly packed RGBA8888 and report the decoded size; empty with zero dimensions when Qt cannot read it.
         fn decode_image_rgba(data: &[u8], width: &mut i32, height: &mut i32) -> Vec<u8>;
+
+        include!("render_text.h");
+        /// Render `text` with the system `family` font to packed RGBA8888 of the given size.
+        fn render_text_rgba(family: &str, pixel_size: f64, text: &str, justify: i32, r: u8, g: u8, b: u8, a: u8, width: i32, height: i32) -> Vec<u8>;
     }
 
     extern "RustQt" {
@@ -349,20 +354,17 @@ pub mod qobject {
         #[qinvokable]
         fn set_layer_name_path(self: Pin<&mut Self>, path: &QString, name: &QString) -> bool;
 
-        /// Move the node at `path` `delta` places within its own container.
-        /// Refuses the Background and fully-locked nodes; records one undo state.
+        /// Move the node at `path` `delta` places within its container; one undo state.
         #[qinvokable]
         fn move_layer_path(self: Pin<&mut Self>, path: &QString, delta: i32) -> bool;
 
-        /// Move node `path` next to (or into) `target`: 0 = above, 1 = below,
-        /// 2 = into a group (empty target = document top). Refuses the Background,
-        /// locked sources, a self/descendant drop, and a non-group `Into` target.
+        /// Move node `path` next to (or into) `target`: 0 above, 1 below, 2 into a
+        /// group. Refuses the Background, locked sources, and a bad drop target.
         #[qinvokable]
         fn move_layer_to(self: Pin<&mut Self>, path: &QString, target: &QString, mode: i32)
             -> bool;
 
-        /// Dry-run of [`move_layer_to`]: whether the move would be accepted.
-        /// Reads the document only — no recomposite, no history state.
+        /// Dry-run of [`move_layer_to`]: whether the move would be accepted; no history.
         #[qinvokable]
         fn can_move_layer_to(&self, path: &QString, target: &QString, mode: i32) -> bool;
 
