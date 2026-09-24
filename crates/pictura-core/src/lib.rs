@@ -4,8 +4,10 @@
 //! layer/channel/mask model is specified in `docs/01-architecture/document-model.md`
 //! and is **not** implemented here yet.
 
+mod advanced_blending;
 mod type_tool;
 mod vector;
+pub use advanced_blending::{BlendIf, Knockout};
 pub use type_tool::TypeTool;
 pub use vector::{VectorFillRule, VectorMask, VectorSubpath};
 
@@ -722,6 +724,14 @@ pub struct Layer {
     pub blend_key: Option<[u8; 4]>,
     /// Raw blending-ranges block bytes, preserved verbatim for lossless re-save.
     pub blending_ranges: Vec<u8>,
+    /// `knko` knockout mode (`None` when the block is absent).
+    pub knockout: Knockout,
+    /// `clbl` blend clipped elements (CS6 default `true` when absent).
+    pub blend_clipping: bool,
+    /// `infx` blend interior elements (CS6 default `true` when absent).
+    pub blend_interior: bool,
+    /// Typed Blend If view of `blending_ranges`; `None` when empty or malformed.
+    pub blend_if: Option<BlendIf>,
     /// Additional-layer-info tagged blocks the engine does not model, preserved
     /// verbatim for lossless re-save.
     pub extra_blocks: Vec<LayerBlock>,
@@ -767,6 +777,10 @@ impl Default for Layer {
             background: false,
             blend_key: None,
             blending_ranges: Vec::new(),
+            knockout: Knockout::None,
+            blend_clipping: true,
+            blend_interior: true,
+            blend_if: None,
             extra_blocks: Vec::new(),
             raw_channels: Vec::new(),
             smart_object: None,

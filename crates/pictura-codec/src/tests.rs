@@ -1343,6 +1343,7 @@ fn truncated_preserved_blocks_error() {
     assert!(matches!(read_psd(&bytes[..cut]), Err(PsdError::Truncated)));
 }
 
+mod advanced_blending;
 mod color_modes;
 
 mod depth;

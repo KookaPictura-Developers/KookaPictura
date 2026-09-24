@@ -739,6 +739,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     let mut fill = 255u8;
     let mut lock = LockFlags::default();
     let mut color = ColorLabel::None;
+    let (mut knockout, mut blend_clipping, mut blend_interior) = (Knockout::None, true, true);
 
     let extra_len = r.u32()? as usize;
     let extra = r.take(extra_len)?;
@@ -771,6 +772,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     // Layer blending ranges, kept verbatim for lossless re-save.
     let ranges_len = er.u32()? as usize;
     let blending_ranges = er.take(ranges_len)?.to_vec();
+    let blend_if = crate::advanced_blending::parse_blend_if(&blending_ranges);
 
     // Legacy Pascal name, padded so (length byte + chars) is a multiple of 4.
     let name_len = er.u8()? as usize;
@@ -819,6 +821,9 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             b"iOpa" if !data.is_empty() => {
                 fill = data[0];
             }
+            b"knko" => knockout = Knockout::from_byte(data.first().copied().unwrap_or(0)),
+            b"clbl" => blend_clipping = data.first().is_none_or(|&b| b != 0),
+            b"infx" => blend_interior = data.first().is_none_or(|&b| b != 0),
             b"lsct" if data.len() >= 4 => {
                 section = Some(u32::from_be_bytes(data[0..4].try_into().unwrap()));
                 // Photoshop/psd-tools store a group's blend key inside 'lsct'
@@ -885,6 +890,10 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             background: false,
             blend_key,
             blending_ranges,
+            knockout,
+            blend_clipping,
+            blend_interior,
+            blend_if,
             extra_blocks,
             raw_channels: Vec::new(),
             smart_object: None,
