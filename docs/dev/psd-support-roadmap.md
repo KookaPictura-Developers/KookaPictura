@@ -43,11 +43,15 @@ below):
   `1039` matches the output color mode.
 - **Document extra channels** (saved selections) in the image-data section.
 
-Still open: live text render / Type tool (the `TySh` kind detection and typed
-model ship; EngineData styles and glyph rasterization do not), Multichannel
+Still open: live text render / Type tool (the `TySh` kind detection, typed model,
+and EngineData font/size/colour decode ship — `type-layer-kind`,
+`tysh-model-roundtrip`, `type-engine-data`; the deterministic layout and the
+glyph-rasterizer seam ship (`text-render-seam`); the bundled and Qt backends do
+not), Multichannel
 channel counts other than 1 or 3, a true `u16`/`f32` sample model, a 32-bit HDR
-tone map, `crs:` XMP, sidecars, a manual Photoshop round-trip, and applying
-knockout / Blend If in the compositor (the model ships; the math does not).
+tone map, sidecars, a manual Photoshop round-trip, and applying
+knockout in the compositor (the model ships; the punch-through math does not).
+Blend If now gates the CPU compositor (`blend-if-render`).
 Anything else is `PsdError::Unsupported` on read or preserved opaquely where P2
 captured it.
 
@@ -63,8 +67,8 @@ it record the order it was closed in.
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only and is re-emitted on write-back (`multichannel-duotone-read`) |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
-| G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); text is modeled (`TypeTool` view, `tysh-model-roundtrip`); knockout and blend-if/blending-ranges are typed and round-trip (`knko-blend-if-model`) but do not yet affect the compositor; other unmodeled keys stay opaque (P2) |
-| G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque → partly modeled): captured and re-emitted verbatim on open→save (P2); blending-ranges now also parse into a typed `BlendIf` view (`knko-blend-if-model`); still not applied in the compositor |
+| G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); text is modeled (`TypeTool` view, `tysh-model-roundtrip`); knockout is typed and round-trips (`knko-blend-if-model`) but does not affect the compositor; Blend If/blending-ranges now gate the CPU compositor (`blend-if-render`, GPU declines a non-default layer); other unmodeled keys stay opaque (P2) |
+| G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque → partly modeled): captured and re-emitted verbatim on open→save (P2); blending-ranges now also parse into a typed `BlendIf` view (`knko-blend-if-model`) and gate the CPU compositor (`blend-if-render`); knockout punch-through is still not applied |
 | G8 | ~~Adjustment descriptor payloads~~ all whitelisted keys decode and render, including version-3 `phfl` (XYZ, `phfl-v3-xyz-decode`) | `composite.rs` doc | Closed |
 | G9 | ~~PSB write missing~~ PSB write shipped: version-2 container, dimensions to 300 000; tagged-block big-key width + pad framing fixed | `write.rs` | Closed |
 | G10 | ~~Unknown blend key aborts the whole file~~ an unknown blend key degrades to Normal instead of aborting (P1) | `read.rs` `from_psd_key(...).ok_or` | Closed |
@@ -72,7 +76,7 @@ it record the order it was closed in.
 | G12 | ~~Write always raw~~ RLE and ZIP/ZIP-prediction write shipped; the document's recorded source compression is preserved on save | `write.rs`, `compression` model | RLE/raw/ZIP/ZIP-prediction composite/layer channels/mask; per-channel mixed kinds normalize per category |
 | G13 | Smart objects are preserved opaquely but not modeled: no embedded-source node, so a smart object cannot be resolved, rendered, or re-edited | P2 holds `SoLd`/`SoLE`/`plLd` and `lnkD`/`lnk2`/`lnk3` bytes; nothing consumes them | Closed: an embedded smart object is modeled (source bytes, filename, filetype, config descriptor, linking `uuid`) and rendered (P2.5, `smart-object-source-render`) |
 | G14 | No writer for a valid smart-object pair: the `SoLd`/`SoLE` config descriptor, its `lnkD`/`lnk2`/`lnk3` source record, and the matching `uuid` that links them | `write_psd` re-emits preserved bytes but cannot author a new smart object | Closed: `SoLd`/`SoLE` and the matching `lnk*` record are authored (P2.5) |
-| G15 | Camera Raw settings are not read or written. Two storage models: `crs:` XMP for a raw opened as a Smart Object, and the `SoLd.filterFX[].Fltr` descriptor for a Camera Raw Filter smart filter | settings are preserved opaquely only; no edit round-trip | Partly shipped: the CC Camera Raw Filter settings (`filterFX`/`Fltr`, `filterID` 2683) read and write (P2.5); `crs:` XMP stays preserve-only (no fixture) |
+| G15 | Camera Raw settings are not read or written. Two storage models: `crs:` XMP for a raw opened as a Smart Object, and the `SoLd.filterFX[].Fltr` descriptor for a Camera Raw Filter smart filter | settings are preserved opaquely only; no edit round-trip | Shipped: the CC Camera Raw Filter settings (`filterFX`/`Fltr`, `filterID` 2683) read and write (P2.5); `crs:` XMP is lifted to a typed `CrsSettings` view and edited in place (`crs-xmp-edit`), proven on a synthetic packet (no real ACR fixture) |
 | G16 | No **manual** Adobe round-trip check; the automated `psd-tools` oracle ships | interop is proven against `psd-tools`, not Photoshop | Partly closed: a `psd-tools` round-trip oracle ships (P2.5); a manual Photoshop reopen and a CS6/16-bit fixture are deferred |
 | G17 | Smart filters are unmodeled: `SoLd.filterFX` (Camera Raw Filter, `filterID` 2683), document `FEid`/`FXid`, and the filter mask `FMsk` | P2 preserves the bytes; nothing parses `Fltr` | Closed: `SoLd.filterFX`, document `FEid`/`FXid`, and the `FMsk` filter mask parse as settings (P2.5) |
 
@@ -106,7 +110,8 @@ model: `SoLd.filterFX[].Fltr` with `filterID` 2683, plus the document `FEid` and
 `FMsk` blocks, read and written as settings (G15/G17). Smart objects are
 CS6→current CC (tolerant read plus byte-preserving write, proven only on the CC
 2021 fixture). The Camera Raw settings model targets the earliest CC Camera Raw
-Filter (ACR 8 / PV2012); `crs:` stays preserve-only. The round-trip is proven
+Filter (ACR 8 / PV2012); `crs:` XMP is now lifted to a typed view and edited in
+place (archived `2026-09-24-crs-xmp-edit`). The round-trip is proven
 against the supplied Photoshop fixtures (G16) by the `psd-tools` oracle; a
 manual Photoshop reopen and a CS6/earliest-CC fixture are deferred follow-ups.
 Shipped as the archived change `2026-09-19-psd-smart-object-roundtrip`.
@@ -197,7 +202,7 @@ Ceiling: the scale and white point are unproven without a CS6 v3 fixture.
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,
 with the per-channel-then-composite order marked an assumption (not
-Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship; see `type-layer-kind` and `tysh-model-roundtrip`);
+Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship, and EngineData font/size/colour decode ships — `type-engine-data`, proven by a real Photoshop-2021 text-layer fixture against psd-tools; the deterministic layout and POD glyph-rasterizer seam also ship — `text-render-seam`; the bundled pure-Rust and optional Qt rasterizer backends do not);
 RLE and ZIP write shipped (`psd-rle-write`, `psd-zip-write`).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
@@ -359,7 +364,9 @@ NUL, `mod_time` 0.0, `lock_state` 0.
 **Camera Raw settings, two models.**
 
 - A raw opened as a Smart Object stores `crs:` XMP in the embedded raw payload.
-  This is the CS6 path; we have no reference file for it.
+  This is the CS6 path; `CrsSettings` lifts the eleven PV2012 Basic scalars and
+  `set_crs_property` edits one in place (archived `crs-xmp-edit`), but no real
+  ACR fixture exists to prove it.
 - A Camera Raw Filter applied as a smart filter stores its settings inside the
   layer's `SoLd` descriptor at `filterFX.filterFXList[].Fltr`, with `filterID`
   2683. This is the a reference build path and `assets/test_with_smart_object02.psd`
@@ -374,7 +381,8 @@ NUL, `mod_time` 0.0, `lock_state` 0.
 
 **Scope.** Smart objects are CS6→current CC: tolerant read plus byte-preserving
 write, proven only on the a reference build fixture. The Camera Raw settings model targets
-the earliest CC Camera Raw Filter (ACR 8 / PV2012); `crs:` stays preserve-only.
+the earliest CC Camera Raw Filter (ACR 8 / PV2012); `crs:` XMP is typed and
+editable (`crs-xmp-edit`), preserve-only for keys outside the fixed set.
 The app exposes `Layer > Smart Objects > Convert to Smart Object` (archived
 `2026-09-19-convert-to-smart-object`): it keeps the raster proxy and authors the
 embedded `SoLd`/`lnk2`. `Layer > Rasterize > Smart Object` (archived

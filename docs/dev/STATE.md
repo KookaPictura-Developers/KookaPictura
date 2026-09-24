@@ -48,7 +48,11 @@ Snapshot for resuming after a context break. Update after each milestone.
     `agentic-control-input`, `depth-color-mode-write-back`,
     `agentic-control-e2e`, `phfl-v3-xyz-decode`, `type-layer-kind`,
     `tysh-model-roundtrip`, `multichannel-duotone-read`, and
-    `knko-blend-if-model`
+    `knko-blend-if-model`, and
+    `crs-xmp-edit`, and
+    `blend-if-render`, and
+    `type-engine-data`, and
+    `text-render-seam`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -70,7 +74,8 @@ Snapshot for resuming after a context break. Update after each milestone.
   objects CS6→current CC by *tolerant read + byte-preserving write*, proven only
   on the a reference build fixtures `assets/test_with_smart_object0{1,2}.psd`; the Camera
   Raw settings model targets the earliest CC (ACR 8 / PV2012) `Fltr` key set,
-  later-CC keys preserved, and `crs:` XMP is preserve-only. A CS6/earliest-CC
+  later-CC keys preserved, and `crs:` XMP is lifted to a typed `CrsSettings`
+  view and editable in place (`crs-xmp-edit`). A CS6/earliest-CC
   fixture and the manual Photoshop reopen are deferred follow-ups.
 - **Color-mode read** (roadmap P4/G2/G3, change `color-mode-read`, archived):
   `read_psd` now opens Bitmap (depth 1), Indexed, CMYK, and Lab 8-bit documents
@@ -528,9 +533,36 @@ Snapshot for resuming after a context break. Update after each milestone.
   `TySh` leaves the view `None` without failing the document; kind detection
   stays presence-only (`type-layer-kind`). Ceilings (`ponytail:`): bounds are
   `i32` per psd-tools (Adobe table says "4 * 8"); EngineData styles/fonts are
-  opaque inside the descriptor bytes; no glyph rasterization or Type tool.
+  now decoded (`type-engine-data`); no glyph rasterization or Type tool.
   Proven by synthetic TySh unit tests (decode, encode round-trip, open→save,
   malformed). No app UI change, no new dependency.
+- **EngineData text styles** (roadmap P3, change `type-engine-data`, archived):
+  `pictura_codec::parse_engine_data` decodes the `Txt ` descriptor's `EngineData`
+  (`tdta`) blob into a typed `EngineValue` tree (bounded depth/token/byte caps;
+  UTF-16BE strings with escapes; MacRoman names; malformed → error, never a
+  panic). `TypeTool.fonts` holds the font-set names and `TypeTool.style`
+  (`pictura_core::TextStyle`: resolved font, size, fill colour, tracking,
+  justification) the first run's effective values with the style/paragraph
+  defaults applied. Proven by a real Photoshop-2021 text-layer EngineData
+  fixture (`tests/fixtures/engine_data.bin`) and a psd-tools differential
+  oracle, plus unit tests. Ceilings (`ponytail:`): first run only, no per-run
+  layout or font-file resolution, EngineData2 (`TEXT_ENGINE_DATA`) not decoded,
+  no glyph rasterization. No app UI change, no new dependency.
+- **Text render seam** (roadmap P3, change `text-render-seam`, archived): the
+  ADHD architecture decision for live text — the Qt-free engine owns a
+  deterministic layout pass, and glyph rasterization sits behind a POD port.
+  `pictura_core::layout_lines(lines, params) -> TextLayout` positions
+  already-shaped glyphs (advance scaling by `size/units_per_em`, 1/1000-em
+  tracking, leading, left/center/right alignment inside a `wrap_width`) with
+  pure `f32` arithmetic and no font parsing; `TextAlign::from_justification`
+  maps the EngineData paragraph byte. `RasterRequest`/`GlyphMask`/`trait
+  Rasterizer` are the font- and Qt-free seam (a test backend ships);
+  `FontPolicy` and `TextProvenance` (requested/resolved family, font content
+  hash, backend+version) make substitution auditable. Ceilings (`ponytail:`):
+  justification variants beyond 0/1/2 map to Left; automatic line-break/wrap
+  is out of scope (the host supplies lines); no rasterizer backend, font, or
+  pixels yet. Proven by layout/port/provenance unit tests. No app UI change,
+  no new dependency.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
@@ -547,10 +579,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   `blending_ranges` parse into a typed `BlendIf` view (composite + per-channel
   black/white ranges, big-endian `u16`; empty/malformed → `None`, raw kept).
   `encode_blend_if` rebuilds the body for an edited view; unmodified open→save
-  still re-emits raw ranges. Ceilings: no compositor knockout punch-through or
-  Blend If filtering yet; Adobe labels `knko` a boolean while 0/1/2 is accepted
-  per psd-tools. Proven by seven codec unit tests (decode, defaults, round-trip,
+  still re-emits raw ranges. Ceilings: Adobe labels `knko` a boolean while 0/1/2
+  is accepted per psd-tools; the render is now in `blend-if-render`. Proven by
+  seven codec unit tests (decode, defaults, round-trip,
   ranges, encode). No app UI, no new dependency.
+- **Blend If compositing** (roadmap G6, change `blend-if-render`, archived):
+  `composite.rs::blend_if_factor` gates a layer's CPU blend weight by its typed
+  `BlendIf` view — the composite source range on the source pixel's gray, the
+  composite destination range on the running backdrop's gray, and each
+  per-channel group (`i < 3`) on that channel. A full `(0, 65535)` range is
+  inactive, so a document without Blend If composites byte-identically. The GPU
+  path declines a non-default layer (`GpuError::UnsupportedAdvancedBlending`)
+  and falls back to the CPU oracle. Ceilings (`ponytail:`): Rec.601 composite
+  gray and a hard 0/1 gate (no feather/split); channel groups assumed R,G,B in
+  order; **knockout punch-through is not applied**; no Photoshop oracle. Proven
+  by seven render unit tests plus the GPU parity suites (a real Vulkan device
+  ran them).
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed
