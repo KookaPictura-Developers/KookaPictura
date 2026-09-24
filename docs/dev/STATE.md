@@ -62,7 +62,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `knockout-oracle`, and
     `knockout-groups`, and
     `knockout-isolated-groups`, and
-    `text-shaping-rustybuzz`
+    `text-shaping-rustybuzz`, and
+    `text-shaping-offsets`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -628,8 +629,12 @@ Snapshot for resuming after a context break. Update after each milestone.
   `shape_line` shapes each line with `rustybuzz` (a pure-Rust HarfBuzz port,
   `rustybuzz = "0.20"`, no C), so the font's `kern`/GPOS applies — `AV` at 48 px
   advances 60.47 instead of 64.03 — and provenance records
-  `rustybuzz/fontdue`. Remaining: transform/warp, subpixel placement, and a Qt
-  live-composite path.
+  `rustybuzz/fontdue`. `ShapedGlyph` now also carries the shaper's `x_offset`/
+  `y_offset` (`text-shaping-offsets`), applied by `layout_lines` (glyph at
+  `pen + x_offset`, `baseline - y_offset`, pen advanced by the advance alone) and
+  painted per glyph — so GPOS mark positioning carries through; plain Latin has
+  zero offsets, so existing output is byte-identical. Remaining: transform/warp,
+  subpixel placement, and a Qt live-composite path.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
