@@ -79,6 +79,9 @@ pub enum GpuError {
     /// A channel-less smart-object layer is present: it renders from its
     /// embedded source, which the GPU has no path for.
     UnsupportedSmartObject,
+    /// A channel-less type layer is present: it renders from its text model,
+    /// which the GPU has no path for.
+    UnsupportedText,
     /// A visible layer carries an enabled object-based layer effect.
     UnsupportedLayerEffect,
     /// A layer carries a non-default Blend If range, which the GPU has no
@@ -96,6 +99,9 @@ impl fmt::Display for GpuError {
             GpuError::UnsupportedAdjustment => write!(f, "adjustment kind is CPU-only"),
             GpuError::UnsupportedSmartObject => {
                 write!(f, "channel-less smart-object source is CPU-only")
+            }
+            GpuError::UnsupportedText => {
+                write!(f, "channel-less type layer is CPU-only")
             }
             GpuError::UnsupportedLayerEffect => {
                 write!(f, "layer effect is CPU-only")
@@ -339,6 +345,9 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         }
         if layer.smart_object.is_some() && !layer.channels.iter().any(|c| c.id == 0) {
             return Err(GpuError::UnsupportedSmartObject);
+        }
+        if layer.type_tool.is_some() && !layer.channels.iter().any(|c| c.id == 0) {
+            return Err(GpuError::UnsupportedText);
         }
         for child in &layer.children {
             walk(child)?;
