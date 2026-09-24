@@ -60,7 +60,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `text-qt-backend`, and
     `knockout-composite`, and
     `knockout-oracle`, and
-    `knockout-groups`
+    `knockout-groups`, and
+    `knockout-isolated-groups`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -684,9 +685,15 @@ Snapshot for resuming after a context break. Update after each milestone.
   `knockout-groups`, archived): the base threads through a group whose blend is
   Pass Through with full opacity and no mask, so a knockout child punches
   through the group to the document background — verified by a
-  `knockout_group.psd` fixture in the same oracle; an isolated group (non-
-  PassThrough blend, reduced opacity, or a mask) keeps its knockout child inert.
-  No Photoshop pixel dump exists (the manual reopen stays deferred).
+  `knockout_group.psd` fixture in the same oracle; **an isolated group** (change
+  `knockout-isolated-groups`, archived) stops the knockout at the group's own
+  initial backdrop instead — its child punches through the group's earlier
+  children only, and the group then composites over the layers below, verified by
+  a `knockout_isolated_group.psd` fixture (red Background, yellow layer, isolated
+  group of green + half-fill blue) whose psd-tools reference is `(126,127,128)`
+  (the CPU gives `(127,127,128)`), discriminating the isolated base from the
+  document background. No Photoshop pixel dump exists (the manual reopen stays
+  deferred).
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed
