@@ -104,6 +104,24 @@ pub(crate) fn rgb_to_cmyk(rgb: &[u8]) -> Vec<u8> {
     out
 }
 
+/// D50 XYZ → linear sRGB (Bradford D50→D65), shared by [`lab_to_rgb`] and
+/// [`xyz_d50_to_srgb_u8`].
+const XYZ_D50_TO_LINEAR_SRGB: [[f64; 3]; 3] = [
+    [3.1338561, -1.6168667, -0.4906146],
+    [-0.9787684, 1.9161415, 0.0334540],
+    [0.0719453, -0.2289914, 1.4052427],
+];
+
+/// Profile-free CIE XYZ (D50) → 8-bit sRGB with the same matrix class as
+/// [`lab_to_rgb`]; out-of-gamut components clamp.
+pub fn xyz_d50_to_srgb_u8(xyz: [f64; 3]) -> [u8; 3] {
+    let mut out = [0u8; 3];
+    for (c, row) in XYZ_D50_TO_LINEAR_SRGB.iter().enumerate() {
+        out[c] = srgb_encode(row[0] * xyz[0] + row[1] * xyz[1] + row[2] * xyz[2]);
+    }
+    out
+}
+
 /// ponytail: approximation of a color-managed Lab->sRGB transform. This is the
 /// standard CIELAB(D50) -> sRGB(D65) conversion (D50 white through the Bradford
 /// D50->D65 matrix) and matches lcms2's exact, unoptimized transform within 1
@@ -112,11 +130,6 @@ pub(crate) fn rgb_to_cmyk(rgb: &[u8]) -> Vec<u8> {
 /// up to ~20 LSB on some in-gamut colors, so that optimized path is not the
 /// reference; saturated out-of-gamut colors also clip instead of gamut-mapping.
 pub(crate) fn lab_to_rgb(lab: &[u8]) -> Vec<u8> {
-    const M: [[f64; 3]; 3] = [
-        [3.1338561, -1.6168667, -0.4906146],
-        [-0.9787684, 1.9161415, 0.0334540],
-        [0.0719453, -0.2289914, 1.4052427],
-    ];
     const XN: f64 = 0.96422;
     const ZN: f64 = 0.82521;
     let plane = lab.len() / 3;
@@ -128,7 +141,7 @@ pub(crate) fn lab_to_rgb(lab: &[u8]) -> Vec<u8> {
         let fx = fy + (a[i] as f64 - 128.0) / 500.0;
         let fz = fy - (b[i] as f64 - 128.0) / 200.0;
         let xyz = [XN * lab_f(fx), lab_f(fy), ZN * lab_f(fz)];
-        for (c, row) in M.iter().enumerate() {
+        for (c, row) in XYZ_D50_TO_LINEAR_SRGB.iter().enumerate() {
             let linear = row[0] * xyz[0] + row[1] * xyz[1] + row[2] * xyz[2];
             out[c * plane + i] = srgb_encode(linear);
         }

@@ -47,6 +47,7 @@ mod smart_writer_tests;
 #[cfg(test)]
 mod tests;
 
+pub use color_mode::xyz_d50_to_srgb_u8;
 pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;
 pub use exif::{exif_tag_name, parse_exif, Exif, ExifValue};

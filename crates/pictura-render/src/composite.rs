@@ -430,14 +430,13 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
 /// Supported keys: `nvrt`/`invr` (Invert, no payload), `post` (Posterize),
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
-/// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, version 2),
+/// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, versions 2/3),
 /// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `mixr`
 /// (Channel Mixer), `curv` (Curves), `selc` (Selective Color), `SoCo`
 /// (solid-color fill content, either the 4-byte in-house RGBA tuple or the
 /// standard Photoshop descriptor), `GdFl` (gradient fill content), `PtFl`
 /// (pattern fill content), both fill descriptors, and `clrL` (Color Lookup,
-/// whose embedded `.CUBE` is parsed when the kind is a 3-D LUT). A version-3
-/// `phfl` is preserved on disk but not decoded here.
+/// whose embedded `.CUBE` is parsed when the kind is a 3-D LUT).
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     match &data.key {
         b"nvrt" | b"invr" => Some(Adjustment::Invert),
@@ -603,35 +602,51 @@ fn decode_exposure(d: &[u8]) -> Option<Adjustment> {
     }))
 }
 
-/// `phfl` (version 2): `u16` version, `u16` colour space (ignored), four `u16`
+/// `phfl` version 2: `u16` version, `u16` colour space (ignored), four `u16`
 /// colour components (first three = R, G, B; fourth ignored), `u32` density,
 /// `u8` luminosity. A colour space other than RGB is decoded as RGB.
+/// Version 3: three `be_u32` CIE XYZ values (offsets 2/6/10), `u32` density
+/// (14), `u8` luminosity (18).
 ///
-/// ponytail: the block length is flexible — only the 17 field bytes are read, so
-/// an unpadded 17–19 byte payload still decodes while 20-byte writers round-trip.
-///
-/// ponytail: version 3 stores three `u32` CIE XYZ values and needs an XYZ→sRGB
-/// transform that is not groundable here; it stays a no-op until a real CS6
-/// `phfl` baseline exists.
+/// ponytail: the version-2 block length is flexible — only the 17 field bytes
+/// are read, so an unpadded 17–19 byte payload still decodes while 20-byte
+/// writers round-trip.
 fn decode_photo_filter(d: &[u8]) -> Option<Adjustment> {
-    if be_u16(d, 0)? != 2 {
-        return None;
-    }
-    let component = |at: usize| -> Option<u8> {
-        let v = be_u16(d, at)?;
-        (v <= 255).then_some(v as u8)
+    let (color, density, preserve_luminosity) = match be_u16(d, 0)? {
+        2 => {
+            let component = |at: usize| -> Option<u8> {
+                let v = be_u16(d, at)?;
+                (v <= 255).then_some(v as u8)
+            };
+            (
+                [component(4)?, component(6)?, component(8)?],
+                be_u32(d, 12)?,
+                *d.get(16)? != 0,
+            )
+        }
+        3 => (
+            xyz_d50_to_srgb_u8([be_u32(d, 2)?, be_u32(d, 6)?, be_u32(d, 10)?]),
+            be_u32(d, 14)?,
+            *d.get(18)? != 0,
+        ),
+        _ => return None,
     };
-    let color = [component(4)?, component(6)?, component(8)?];
-    let density = be_u32(d, 12)?;
     if density > 100 {
         return None;
     }
-    let preserve_luminosity = *d.get(16)? != 0;
     Some(Adjustment::PhotoFilter(PhotoFilterParams {
         color,
         density: density as f64,
         preserve_luminosity,
     }))
+}
+
+// ponytail: 16.16 scale and D50 white are unproven without a CS6 v3 fixture;
+// layout grounded on psd-tools. If a real file disagrees, only the scale
+// constant / white adaptation changes, not the field layout.
+fn xyz_d50_to_srgb_u8(xyz: [u32; 3]) -> [u8; 3] {
+    let scale = |v: u32| v as f64 / 65536.0;
+    pictura_codec::xyz_d50_to_srgb_u8([scale(xyz[0]), scale(xyz[1]), scale(xyz[2])])
 }
 
 /// `vibA`: descriptor block with `vibrance` and the legacy `Strt` (saturation)

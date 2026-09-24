@@ -525,13 +525,7 @@ fn phfl_decodes_version_two() {
             "cut {cut}"
         );
     }
-    // Version 3 (CIE XYZ), a component above 255, and density above 100 are
-    // all rejected.
-    assert_eq!(
-        decode_adjustment(&adjdata(*b"phfl", phfl_payload(3, [0, 0, 0, 0], 25, 1))),
-        None,
-        "version must be 2"
-    );
+    // A component above 255 and density above 100 are rejected.
     assert_eq!(
         decode_adjustment(&adjdata(
             *b"phfl",
@@ -657,17 +651,57 @@ fn fixture_solid_fill_decodes_descriptor() {
 }
 
 #[test]
-fn deferred_keys_still_none() {
-    // Version-3 `phfl` (three u32 CIE XYZ values) is still deferred.
-    let mut v3 = 3u16.to_be_bytes().to_vec();
-    v3.extend_from_slice(&[0u8; 12]);
-    v3.extend_from_slice(&25u32.to_be_bytes());
-    v3.push(1);
-    v3.extend_from_slice(&[0, 0, 0]);
+fn phfl_decodes_version_three() {
+    // D50 white at 16.16: converts to sRGB white.
+    let white = [63191, 65536, 54081];
+    let decoded = decode_adjustment(&adjdata(*b"phfl", phfl_v3_payload(white, 25, 1)));
+    let params = match decoded {
+        Some(Adjustment::PhotoFilter(p)) => p,
+        other => panic!("version-3 phfl must decode, got {other:?}"),
+    };
+    assert_eq!(params.color, [255, 255, 255]);
+    assert_eq!(params.density, 25.0);
+    assert!(params.preserve_luminosity);
+
+    // A warm XYZ converts to a stable non-white colour.
     assert_eq!(
-        decode_adjustment(&adjdata(*b"phfl", v3)),
+        decode_adjustment(&adjdata(
+            *b"phfl",
+            phfl_v3_payload([68813, 65536, 32768], 40, 0)
+        )),
+        Some(Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [255, 244, 196],
+            density: 40.0,
+            preserve_luminosity: false,
+        }))
+    );
+
+    // Round-trip: v3 decode → v2 encode → same params.
+    let reencoded = encode_photo_filter(params.color, params.density, params.preserve_luminosity);
+    assert_eq!(reencoded.data[0..2], [0, 2], "encoder stays version 2");
+    assert_eq!(
+        decode_adjustment(&reencoded),
+        Some(Adjustment::PhotoFilter(params))
+    );
+
+    // Truncated before luminosity, density above 100, unknown version: None.
+    let full = phfl_v3_payload(white, 25, 1);
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"phfl", full[..18].to_vec())),
         None,
-        "version-3 phfl is deferred"
+        "truncated before luminosity"
+    );
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"phfl", phfl_v3_payload(white, 101, 1))),
+        None,
+        "density must be 0..=100"
+    );
+    let mut v4 = phfl_v3_payload(white, 25, 1);
+    v4[1] = 4;
+    assert_eq!(
+        decode_adjustment(&adjdata(*b"phfl", v4)),
+        None,
+        "version must be 2 or 3"
     );
 }
 
