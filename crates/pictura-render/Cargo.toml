@@ -20,6 +20,8 @@ wgpu = { version = "30.0.1", default-features = false, features = ["std", "vulka
 pollster = "1"
 # Pure-Rust TTF parser + CPU glyph rasterizer for the bundled text backend.
 fontdue = "0.9"
+# Pure-Rust HarfBuzz port for line shaping (kerning + default GPOS/GSUB).
+rustybuzz = "0.20"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }

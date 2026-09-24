@@ -3,7 +3,8 @@
 //!
 //! The engine (`pictura_core`) owns deterministic layout and the `Rasterizer`
 //! port; this module is the pure-Rust backend over a bundled Liberation Sans
-//! face. No Qt, no C dependency, no GSUB/GPOS shaping (a marked ceiling).
+//! face. No Qt, no C dependency: `rustybuzz` shapes each line (applying the
+//! font's default `kern`/GPOS and GSUB), `fontdue` rasterizes the glyphs.
 
 use pictura_core::{
     layout_lines, Channel, Document, GlyphMask, Layer, LayoutParams, PixelBuffer, PsdRect,
@@ -12,20 +13,23 @@ use pictura_core::{
 
 const FONT_BYTES: &[u8] = include_bytes!("../assets/LiberationSans-Regular.ttf");
 const RESOLVED_FAMILY: &str = "Liberation Sans";
-const BACKEND: &str = "fontdue";
-// Literal pin of the `fontdue` version in Cargo.toml; bump with the dependency.
-const BACKEND_VERSION: &str = "0.9.4";
+const BACKEND: &str = "rustybuzz/fontdue";
+// Literal pins of the `rustybuzz` shaper and `fontdue` rasterizer versions in
+// Cargo.toml; bump with the dependencies.
+const BACKEND_VERSION: &str = "0.20.1/0.9.4";
 
 /// The bundled face, parsed once.
 pub struct BundledText {
     font: fontdue::Font,
+    face: rustybuzz::Face<'static>,
 }
 
 impl BundledText {
     /// Parse the bundled font; `None` if the embedded bytes fail to parse.
     pub fn new() -> Option<Self> {
         let font = fontdue::Font::from_bytes(FONT_BYTES, fontdue::FontSettings::default()).ok()?;
-        Some(Self { font })
+        let face = rustybuzz::Face::from_slice(FONT_BYTES, 0)?;
+        Some(Self { font, face })
     }
 
     /// A rasterizer borrowing this face.
@@ -38,12 +42,27 @@ impl BundledText {
     ///
     /// `_tracking` is ignored here: spacing is the layout's job (design D2).
     pub fn shape_line(&self, text: &str, font_size: f32, _tracking: f32) -> Vec<ShapedGlyph> {
-        text.chars()
-            .filter(|c| *c != '\n' && *c != '\r')
-            .map(|c| {
-                let id = self.font.lookup_glyph_index(c);
-                let advance = self.font.metrics_indexed(id, font_size).advance_width;
-                ShapedGlyph { id, advance }
+        let upem = self.face.units_per_em() as f32;
+        if upem <= 0.0 {
+            return Vec::new();
+        }
+        let cleaned: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+        let mut buffer = rustybuzz::UnicodeBuffer::new();
+        buffer.push_str(&cleaned);
+        buffer.set_direction(rustybuzz::Direction::LeftToRight);
+        buffer.guess_segment_properties();
+        let shaped = rustybuzz::shape(&self.face, &[], buffer);
+        let scale = font_size / upem;
+        shaped
+            .glyph_infos()
+            .iter()
+            .zip(shaped.glyph_positions())
+            .filter_map(|(info, pos)| {
+                let id = u16::try_from(info.glyph_id).ok()?;
+                Some(ShapedGlyph {
+                    id,
+                    advance: pos.x_advance as f32 * scale,
+                })
             })
             .collect()
     }
@@ -283,9 +302,8 @@ pub(crate) fn render_text_buffer(
 /// when there is no type tool, a colour channel is present, or nothing painted,
 /// so the caller's normal path runs.
 ///
-/// ponytail: axis-aligned placement at the layer rect, first-run style, no
-/// kerning — inherited from the bundled renderer; add transform/rotation when
-/// the type model carries one.
+/// ponytail: axis-aligned placement at the layer rect, first-run style — the
+/// bundled renderer; add transform/rotation when the type model carries one.
 pub(crate) fn composite_type_source(canvas: &mut crate::composite::Canvas, layer: &Layer) -> bool {
     let Some(type_tool) = layer.type_tool.as_ref() else {
         return false;
@@ -432,6 +450,46 @@ mod tests {
     }
 
     #[test]
+    fn kerning_reduces_a_kerned_pair_but_not_an_unkerned_control() {
+        let bundled = bundled();
+        let size = 48.0;
+        let total = |glyphs: &[ShapedGlyph]| glyphs.iter().map(|g| g.advance).sum::<f32>();
+        let pair_total = |pair: &str| total(&bundled.shape_line(pair, size, 0.0));
+        let alone = |pair: &str| {
+            pair.chars()
+                .map(|c| total(&bundled.shape_line(&c.to_string(), size, 0.0)))
+                .sum::<f32>()
+        };
+        let fontdue_standalone = |c: char| {
+            bundled
+                .font
+                .metrics_indexed(bundled.font.lookup_glyph_index(c), size)
+                .advance_width
+        };
+
+        let candidates = ["AV", "AW", "To", "Va", "Ya", "We", "LT", "Ty"];
+        let pair = candidates
+            .into_iter()
+            .find(|pair| pair_total(pair) < alone(pair))
+            .expect("Liberation Sans kerns at least one known pair");
+        assert!(
+            pair_total(pair) < alone(pair),
+            "{pair} kerns below the glyphs shaped alone"
+        );
+        let fontdue_sum: f32 = pair.chars().map(fontdue_standalone).sum();
+        assert!(
+            pair_total(pair) < fontdue_sum,
+            "{pair} kerns below the fontdue standalone advances"
+        );
+
+        let control = "AA";
+        assert!(
+            pair_total(control) >= alone(control) - 1e-4,
+            "unkerned {control} is not reduced"
+        );
+    }
+
+    #[test]
     fn render_text_layer_paints_and_clears_the_type_tool() {
         let mut doc = doc_with(type_layer(Some(style())));
         assert!(render_text_layer(&mut doc, "0"));
@@ -495,7 +553,7 @@ mod tests {
         let provenance = bundled().provenance("Arial");
         assert_eq!(provenance.requested_family, "Arial");
         assert_eq!(provenance.resolved_family, "Liberation Sans");
-        assert_eq!(provenance.backend, "fontdue");
+        assert_eq!(provenance.backend, "rustybuzz/fontdue");
         assert_ne!(provenance.font_hash, [0u8; 32]);
     }
 }
