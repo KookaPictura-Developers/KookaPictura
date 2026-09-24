@@ -501,8 +501,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   code 455). The committed `color_lookup.psd` fixture is proven by psd-tools and
   the ag-psd oracle. Ceilings (`// ponytail:`): `dataOrder`/`tableOrder` are
   metadata only, a non-default `DOMAIN_MIN`/`DOMAIN_MAX` is treated as `0..1`,
-  and there is no Adobe pixel-parity claim. Remaining P3 adjustment key:
-  version-3 `phfl`.
+  and there is no Adobe pixel-parity claim. Remaining P3 adjustment key at the
+  time: version-3 `phfl` (now shipped, below).
+- **Version-3 Photo Filter decode** (roadmap P3/G8, change
+  `phfl-v3-xyz-decode`): `decode_photo_filter` now accepts version 3 as well as
+  version 2. The v3 payload is three big-endian `u32` CIE XYZ values, a `u32`
+  density, and a `u8` luminosity flag (offsets 2/6/10, 14, 18 — layout grounded
+  on psd-tools). XYZ is read as 16.16 fixed-point relative to D50 and converted
+  with the same profile-free matrix as Lab document read
+  (`pictura_codec::xyz_d50_to_srgb_u8`, shared with `lab_to_rgb`).
+  `encode_photo_filter` stays version 2, so open→save of a v3 layer re-emits v2
+  with the decoded colour. Truncated payloads, versions other than 2/3, and
+  density `> 100` remain `None`. Ceilings (`ponytail:`): the 16.16 scale and
+  D50 white are unproven without a CS6-authored v3 fixture; out-of-gamut
+  components clip. This closes the last deferred adjustment key (G8); remaining
+  P3 is the text (`TySh`) kind. Proven by unit tests
+  (`phfl_decodes_version_three`, v2 still green, encoder round-trip); no
+  app/UI change, no new dependency.
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed
