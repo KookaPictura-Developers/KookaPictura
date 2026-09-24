@@ -55,7 +55,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `text-render-seam`, `text-rasterize-bundled`, and
     `type-rasterize-command`, and
     `type-live-composite`, and
-    `rasterize-all-type`
+    `rasterize-all-type`, and
+    `rasterize-type-command`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -604,7 +605,12 @@ Snapshot for resuming after a context break. Update after each milestone.
   `rasterize_all_layers(doc)`, dispatching each flattened layer to the
   fill-content baker or `render_text_layer`; `PictureView::rasterize_all_layers`
   calls it, so one document-wide command bakes fills and type in one history
-  state.
+  state. **`Layer > Rasterize > Type` is now a real command**
+  (`rasterize-type-command`): `PictureView::rasterize_type` materializes a type
+  layer (else returns false with no history) and `layer_is_type` gates the menu
+  entry, which was a disabled leaf; the C++ self-test `lpr_rasterize_refuse`
+  (238) now asserts the type command refuses a plain pixel layer. The optional
+  Qt backend and complex shaping/kerning/warp remain.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
