@@ -46,7 +46,7 @@
 use std::fmt;
 
 use pictura_adjust::Adjustment;
-use pictura_core::{BlendMode, Document, Layer, PixelBuffer, PsdRect};
+use pictura_core::{BlendMode, Document, Knockout, Layer, PixelBuffer, PsdRect};
 
 use crate::decode_adjustment;
 
@@ -107,7 +107,7 @@ impl fmt::Display for GpuError {
                 write!(f, "layer effect is CPU-only")
             }
             GpuError::UnsupportedAdvancedBlending => {
-                write!(f, "advanced blending (Blend If) is CPU-only")
+                write!(f, "advanced blending (Blend If/knockout) is CPU-only")
             }
         }
     }
@@ -340,7 +340,9 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         if matches!(layer.blend, BlendMode::Dissolve) {
             return Err(GpuError::UnsupportedMode(layer.blend));
         }
-        if layer.blend_if.as_ref().is_some_and(|v| !v.is_default()) {
+        if layer.blend_if.as_ref().is_some_and(|v| !v.is_default())
+            || layer.knockout != Knockout::None
+        {
             return Err(GpuError::UnsupportedAdvancedBlending);
         }
         if layer.smart_object.is_some() && !layer.channels.iter().any(|c| c.id == 0) {

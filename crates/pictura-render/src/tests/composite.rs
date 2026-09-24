@@ -1,5 +1,5 @@
 use super::*;
-use pictura_core::{BlendIf, TextStyle, TypeTool};
+use pictura_core::{BlendIf, Knockout, TextStyle, TypeTool};
 
 // --- compositing pipeline ----------------------------------------------
 
@@ -738,4 +738,95 @@ fn type_layer_with_channel_composites_from_the_raster() {
 fn gpu_declines_a_proxy_less_type_layer() {
     let d = doc(200, 80, vec![type_layer(Some(type_style()))]);
     assert!(matches!(composite_gpu(&d), Err(GpuError::UnsupportedText)));
+}
+
+// --- Knockout ------------------------------------------------------------
+
+/// 1x1 stack: opaque red background, opaque green, and a half-fill blue top
+/// carrying `knockout`.
+fn knockout_stack(knockout: Knockout) -> Document {
+    let mut top = solid("blue", full(1, 1), (0, 0, 255), 255, BlendMode::Normal, 255);
+    top.fill = 128;
+    top.knockout = knockout;
+    doc(
+        1,
+        1,
+        vec![
+            solid("red", full(1, 1), (255, 0, 0), 255, BlendMode::Normal, 255),
+            solid(
+                "green",
+                full(1, 1),
+                (0, 255, 0),
+                255,
+                BlendMode::Normal,
+                255,
+            ),
+            top,
+        ],
+    )
+}
+
+#[test]
+fn none_knockout_shows_the_intermediate_layer() {
+    let out = px(&composite_rgba(&knockout_stack(Knockout::None)), 0, 0);
+    assert!(out[1] > 0, "green survives with no knockout, got {out:?}");
+    assert!(out[2] > 0, "blue is present, got {out:?}");
+}
+
+#[test]
+fn deep_knockout_punches_through_to_the_background() {
+    let out = px(&composite_rgba(&knockout_stack(Knockout::Deep)), 0, 0);
+    assert_eq!(out[1], 0, "the intermediate green is punched through");
+    assert!(out[0] > 0, "the red background shows through, got {out:?}");
+    assert!(out[2] > 0, "the blue knockout layer is still present");
+}
+
+#[test]
+fn shallow_equals_deep_at_the_root() {
+    assert_eq!(
+        composite_rgba(&knockout_stack(Knockout::Shallow)).data,
+        composite_rgba(&knockout_stack(Knockout::Deep)).data,
+    );
+}
+
+#[test]
+fn none_knockout_is_byte_identical_to_no_field() {
+    let with_field = composite_rgba(&knockout_stack(Knockout::None));
+    let mut layers = knockout_stack(Knockout::None).layers;
+    layers[2].knockout = Knockout::None;
+    let without = composite_rgba(&doc(1, 1, layers));
+    assert_eq!(with_field.data, without.data);
+}
+
+#[test]
+fn transparent_knockout_pixel_leaves_the_backdrop() {
+    // A zero-alpha knockout layer covers no pixels, so the intermediate green
+    // running backdrop survives.
+    let mut top = solid("top", full(1, 1), (0, 0, 255), 0, BlendMode::Normal, 255);
+    top.knockout = Knockout::Deep;
+    let d = doc(
+        1,
+        1,
+        vec![
+            solid("red", full(1, 1), (255, 0, 0), 255, BlendMode::Normal, 255),
+            solid(
+                "green",
+                full(1, 1),
+                (0, 255, 0),
+                255,
+                BlendMode::Normal,
+                255,
+            ),
+            top,
+        ],
+    );
+    assert_eq!(px(&composite_rgba(&d), 0, 0), [0, 255, 0, 255]);
+}
+
+#[test]
+fn gpu_declines_a_knockout_layer() {
+    assert!(matches!(
+        composite_gpu(&knockout_stack(Knockout::Deep)),
+        Err(GpuError::UnsupportedAdvancedBlending)
+    ));
 }
