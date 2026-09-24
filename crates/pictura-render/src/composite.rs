@@ -225,10 +225,8 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: Opt
 /// running backdrop only where the layer contributed, punching the layers
 /// between it and the background through at those pixels.
 ///
-/// ponytail: inferred from the documented shape-composited-against-the-
-/// stopping-point rule (`docs/05-layers/layers-overview.md:181`); no Photoshop
-/// oracle. Nested-group shallow targets, clipping bases, and `Transparency
-/// Shapes Layers` are unresolved/unapplied.
+/// ponytail: shape-composited-against-the-stopping-point rule from
+/// `docs/05-layers/layers-overview.md:181`; clipping/Transparency-Shapes unresolved.
 fn composite_knockout(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: &Canvas) {
     let mut tmp = Canvas::with_cover_from(base);
     composite_layer_inner(&mut tmp, layer, doc, None);
@@ -265,11 +263,13 @@ fn composite_layer_inner(
             }
             return;
         }
-        // ponytail: isolated-group knockout stays inert; wire the stopping
-        // point if a mask/opacity case needs it.
+        // The isolated group's initial backdrop is its knockout stopping point;
+        // the incoming base is ignored.
         let mut inner = Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h);
+        let ko_base = has_knockout(layer)
+            .then(|| Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h));
         for child in &layer.children {
-            composite_layer(&mut inner, child, doc, None);
+            composite_layer(&mut inner, child, doc, ko_base.as_ref());
         }
         composite_canvas(canvas, layer, &inner);
     } else if let Some(adjustment) = crate::fill::decode_layer_fill(layer) {
