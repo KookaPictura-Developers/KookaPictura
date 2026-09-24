@@ -52,7 +52,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `crs-xmp-edit`, and
     `blend-if-render`, and
     `type-engine-data`, and
-    `text-render-seam`
+    `text-render-seam`, and
+    `text-rasterize-bundled`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -563,6 +564,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   is out of scope (the host supplies lines); no rasterizer backend, font, or
   pixels yet. Proven by layout/port/provenance unit tests. No app UI change,
   no new dependency.
+- **Bundled text rasterizer** (roadmap P3, change `text-rasterize-bundled`,
+  archived): `pictura-render` now depends on `fontdue` 0.9.4 and bundles
+  `LiberationSans-Regular.ttf` (SIL OFL 1.1, license + provenance in
+  `crates/pictura-render/assets/`). `BundledText::shape_line` maps chars to
+  glyph ids + device-pixel advances; `BundledRasterizer` implements the core
+  `Rasterizer` port via `rasterize_indexed` (guarded against the out-of-range
+  panic); `BundledText::provenance` records the requested→Liberation-Sans
+  substitution with a non-crypto font hash. `render_text_layer(doc, path)`
+  shapes/lays out a type layer's `TypeTool` text+style, paints the glyph
+  coverage in the fill colour into fresh `0/1/2/-1` channels, removes `TySh`,
+  and clears `type_tool`; a refusal (no style, zero area, nothing painted)
+  leaves the document unchanged. Ceilings (`ponytail:`): no GSUB/GPOS
+  shaping/kerning, no warp/rotation, integer glyph placement ignores subpixel,
+  the file name is a substitution. Proven by six render unit tests. The app
+  `Rasterize Type` command and the optional Qt backend are deferred follow-ups.
+  Adds the `fontdue` dependency (pure Rust, no C deps, keeps the engine
+  Qt-free) and the bundled font asset.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
