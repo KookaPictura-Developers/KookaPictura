@@ -45,10 +45,12 @@ Snapshot for resuming after a context break. Update after each milestone.
     `app-control-server`, `depth-preserve`, `agentic-control-vision`,
     `agentic-control-actions`, `color-mode-write-back`, `cmyk-write-back`,
     `icc-output-mode-consistency`, `indexed-write-back`, `bitmap-write-back`,
-    `agentic-control-input`, `depth-color-mode-write-back`, and
-    `agentic-control-e2e`
+    `agentic-control-input`, `depth-color-mode-write-back`,
+    `agentic-control-e2e`, `phfl-v3-xyz-decode`, `type-layer-kind`,
+    `tysh-model-roundtrip`, `multichannel-duotone-read`, and
+    `knko-blend-if-model`
     changes;
-    canonical specs are in `openspec/specs/` (77 specs, `validate --all --strict`
+    canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
@@ -539,6 +541,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   plates; edited/layered falls back to RGB. Other channel counts stay
   `Unsupported`. Ceilings: Multichannel layer color ids are not converted;
   no plate layout or duotone curve is invented on edit.
+- **Advanced-blending model** (roadmap G6/G7, change `knko-blend-if-model`):
+  `knko`/`clbl`/`infx` consume into `Layer.knockout` / `blend_clipping` /
+  `blend_interior` (defaults None/true/true; write only non-defaults) and
+  `blending_ranges` parse into a typed `BlendIf` view (composite + per-channel
+  black/white ranges, big-endian `u16`; empty/malformed → `None`, raw kept).
+  `encode_blend_if` rebuilds the body for an edited view; unmodified open→save
+  still re-emits raw ranges. Ceilings: no compositor knockout punch-through or
+  Blend If filtering yet; Adobe labels `knko` a boolean while 0/1/2 is accepted
+  per psd-tools. Proven by seven codec unit tests (decode, defaults, round-trip,
+  ranges, encode). No app UI, no new dependency.
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed

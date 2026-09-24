@@ -24,9 +24,11 @@ below):
   Multichannel opens for 1 or 3 channels (gray / profile-free CMY); other channel counts are refused. Duotone opens as grayscale with the duotone spec preserved.
 - **Compression** 0 (raw) / 1 (RLE) / 2 (ZIP) / 3 (ZIP-with-prediction) on read
   and write; the source kind is preserved on save and all four are depth-aware.
-- **Layers.** Pixel layers, groups (`lsct`), raster masks (`-2`), and
-  `luni`/`lspf`/`lclr`/`iOpa`. Unmodeled per-layer tagged blocks, the `-3`
-  real-user-mask channel, global layer mask, mask params, and blend ranges are
+- **Layers.** Pixel layers, groups (`lsct`), raster masks (`-2`),
+  `luni`/`lspf`/`lclr`/`iOpa`, and advanced blending (`knko`/`clbl`/`infx`
+  plus a typed Blend If view of the blending-ranges body — modeled, not yet
+  composited). Unmodeled per-layer tagged blocks, the `-3`
+  real-user-mask channel, global layer mask, and mask params are
   preserved opaquely (P2).
 - **Rendering.** The whitelisted adjustment keys decode and render (including
   version-3 `phfl`); layer effects (`lfx2` and legacy `lrFX`),
@@ -44,7 +46,8 @@ below):
 Still open: live text render / Type tool (the `TySh` kind detection and typed
 model ship; EngineData styles and glyph rasterization do not), Multichannel
 channel counts other than 1 or 3, a true `u16`/`f32` sample model, a 32-bit HDR
-tone map, `crs:` XMP, sidecars, and a manual Photoshop round-trip.
+tone map, `crs:` XMP, sidecars, a manual Photoshop round-trip, and applying
+knockout / Blend If in the compositor (the model ships; the math does not).
 Anything else is `PsdError::Unsupported` on read or preserved opaquely where P2
 captured it.
 
@@ -60,8 +63,8 @@ it record the order it was closed in.
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only and is re-emitted on write-back (`multichannel-duotone-read`) |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
-| G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Mostly shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); unmodeled keys are preserved opaquely (P2); text is partly modeled (`TypeTool` view, `tysh-model-roundtrip`); blend-if and knockout remain |
-| G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque): captured and re-emitted verbatim on open→save (P2); not modeled or rendered |
+| G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); text is modeled (`TypeTool` view, `tysh-model-roundtrip`); knockout and blend-if/blending-ranges are typed and round-trip (`knko-blend-if-model`) but do not yet affect the compositor; other unmodeled keys stay opaque (P2) |
+| G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque → partly modeled): captured and re-emitted verbatim on open→save (P2); blending-ranges now also parse into a typed `BlendIf` view (`knko-blend-if-model`); still not applied in the compositor |
 | G8 | ~~Adjustment descriptor payloads~~ all whitelisted keys decode and render, including version-3 `phfl` (XYZ, `phfl-v3-xyz-decode`) | `composite.rs` doc | Closed |
 | G9 | ~~PSB write missing~~ PSB write shipped: version-2 container, dimensions to 300 000; tagged-block big-key width + pad framing fixed | `write.rs` | Closed |
 | G10 | ~~Unknown blend key aborts the whole file~~ an unknown blend key degrades to Normal instead of aborting (P1) | `read.rs` `from_psd_key(...).ok_or` | Closed |
