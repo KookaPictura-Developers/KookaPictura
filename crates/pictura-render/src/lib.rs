@@ -107,6 +107,8 @@ pub use pictura_ops::{Anchor, Resample};
 
 #[cfg(test)]
 use composite::blend;
+#[cfg(test)]
+use composite::blend_if_factor;
 
 #[cfg(test)]
 mod tests;

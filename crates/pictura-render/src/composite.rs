@@ -4,8 +4,8 @@ use pictura_adjust::{
 };
 use pictura_codec::DescValue;
 use pictura_core::{
-    AdjustmentData, BlendMode, ColorMode, Document, Layer, PixelBuffer, PsdRect, SmartObject,
-    SmartObjectKind,
+    AdjustmentData, BlendIf, BlendMode, ColorMode, Document, Layer, PixelBuffer, PsdRect,
+    SmartObject, SmartObjectKind,
 };
 
 pub(crate) use crate::blend::blend;
@@ -1015,6 +1015,42 @@ fn composite_adjustment(
     }
 }
 
+/// The Blend If weight for a source colour over a running backdrop: `1.0` when
+/// the layer carries no non-default ranges, else the product of the active
+/// composite and per-channel gates (each `0` or `1`).
+///
+/// ponytail: Rec.601 composite gray and a hard 0/1 gate; Photoshop's weighting
+/// and split-slider feather are unpublished and the model stores no feather.
+/// ponytail: channel groups are assumed R,G,B in order; the model does not label
+/// them, and groups beyond RGB are ignored.
+pub(crate) fn blend_if_factor(view: Option<&BlendIf>, cs: [f32; 3], backdrop: [f32; 3]) -> f32 {
+    let Some(view) = view else {
+        return 1.0;
+    };
+    if view.is_default() {
+        return 1.0;
+    }
+    let gate = |(black, white): (u16, u16), value: f32| {
+        if (black, white) == (0, 65535) || black > white {
+            return 1.0;
+        }
+        let lo = black as f32 / 65535.0;
+        let hi = white as f32 / 65535.0;
+        if value <= lo || value >= hi {
+            0.0
+        } else {
+            1.0
+        }
+    };
+    let gray = |c: [f32; 3]| 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    let mut factor =
+        gate(view.composite_source, gray(cs)) * gate(view.composite_dest, gray(backdrop));
+    for (i, (source, dest)) in view.channel_ranges.iter().enumerate().take(3) {
+        factor *= gate(*source, cs[i]) * gate(*dest, backdrop[i]);
+    }
+    factor
+}
+
 /// Composite one source sample over the running backdrop, applying the layer's
 /// opacity, fill (ignored for groups) and mask to the source alpha.
 pub(crate) fn blend_into(
@@ -1032,7 +1068,21 @@ pub(crate) fn blend_into(
         layer.fill as f32 / 255.0
     };
     let mask = mask_alpha(layer, x as i32, y as i32) as f32 / 255.0;
-    blend_parts(canvas, x, y, cs, src_a * opacity * fill * mask, layer.blend);
+    let gate = match layer.blend_if.as_ref() {
+        Some(view) if !view.is_default() => {
+            let backdrop = canvas.px[canvas.idx(x, y)];
+            blend_if_factor(Some(view), cs, [backdrop.r, backdrop.g, backdrop.b])
+        }
+        _ => 1.0,
+    };
+    blend_parts(
+        canvas,
+        x,
+        y,
+        cs,
+        src_a * opacity * fill * mask * gate,
+        layer.blend,
+    );
 }
 
 /// Composite one already-opacity-weighted source sample over the running

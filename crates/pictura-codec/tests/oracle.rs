@@ -67,3 +67,5 @@ mod stroke;
 mod stroke_gradient;
 #[path = "oracle/stroke_pattern.rs"]
 mod stroke_pattern;
+#[path = "oracle/type_engine_data.rs"]
+mod type_engine_data;

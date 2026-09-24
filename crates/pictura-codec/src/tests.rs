@@ -973,6 +973,8 @@ fn synthetic_tysh() -> Vec<u8> {
         bounds: [0, 0, 100, 50],
         text_desc,
         warp_desc,
+        fonts: Vec::new(),
+        style: None,
     })
 }
 

@@ -81,6 +81,7 @@ fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartOb
         b"liFD" => {
             so.kind = SmartObjectKind::Embedded;
             so.crs_xmp = record.payload.as_deref().and_then(extract_crs);
+            so.crs = so.crs_xmp.as_deref().map(crate::crs_xmp::parse_crs);
             so.payload = record.payload.clone();
         }
         b"liFE" => so.kind = SmartObjectKind::External,
@@ -346,6 +347,133 @@ fn remove_linked_records(data: &[u8], uuid: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Replace the payload of the `liFD` record whose Pascal uuid equals `uuid` in
+/// the preserved top-level tagged blocks, keeping every other byte verbatim
+/// (padding and framing included). Returns `Some` only when a record's payload
+/// was rewritten, `None` otherwise.
+pub(crate) fn replace_embedded_payload(
+    layer_section_extra: &[u8],
+    uuid: &str,
+    new_payload: &[u8],
+    is_psb: bool,
+) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(layer_section_extra.len());
+    let mut changed = false;
+    let mut r = Reader::new(layer_section_extra);
+    while r.remaining() >= 12 {
+        let start = r.pos;
+        let Ok(sig) = r.take(4) else { break };
+        if sig != b"8BIM" {
+            r.pos = start;
+            break;
+        }
+        let Ok(key) = r.take(4) else {
+            r.pos = start;
+            break;
+        };
+        let big = is_psb && is_psb_big_key(&arr4(key));
+        let len = if big {
+            let Ok(len) = r.u64() else {
+                r.pos = start;
+                break;
+            };
+            usize::try_from(len).unwrap_or(usize::MAX)
+        } else {
+            let Ok(len) = r.u32() else {
+                r.pos = start;
+                break;
+            };
+            len as usize
+        };
+        let Ok(data) = r.take(len) else {
+            r.pos = start;
+            break;
+        };
+        if r.skip((4 - len % 4) % 4).is_err() {
+            r.pos = start;
+            break;
+        }
+        let end = r.pos;
+        if matches!(key, b"lnkD" | b"lnk2" | b"lnk3" | b"lnkE") {
+            if let Some(kept) = replace_linked_payload(data, uuid, new_payload) {
+                crate::write::write_tag_document(&mut out, &arr4(key), &kept, is_psb);
+                changed = true;
+                continue;
+            }
+        }
+        out.extend_from_slice(&layer_section_extra[start..end]);
+    }
+    if r.remaining() > 0 {
+        out.extend_from_slice(&layer_section_extra[r.pos..]);
+    }
+    changed.then_some(out)
+}
+
+/// Replace the payload of the matched `liFD` record inside a linked-layer list,
+/// re-framing that record's `u64` length and 4-byte pad. Other records are
+/// copied byte-for-byte. `None` when the list is malformed or no `liFD` record
+/// has the uuid.
+fn replace_linked_payload(data: &[u8], uuid: &str, new_payload: &[u8]) -> Option<Vec<u8>> {
+    let records = parse_linked_layers(data).ok()?;
+    if !records
+        .iter()
+        .any(|record| record.uuid == uuid && record.kind == *b"liFD")
+    {
+        return None;
+    }
+    let mut r = Reader::new(data);
+    let mut out = Vec::with_capacity(data.len() + new_payload.len());
+    for record in &records {
+        let start = r.pos;
+        let len = r.u64().ok()? as usize;
+        let block = r.take(len).ok()?;
+        let pad = (4 - len % 4) % 4;
+        r.skip(pad).ok()?;
+        let end = r.pos;
+        if record.uuid == uuid && record.kind == *b"liFD" {
+            let new_block = splice_payload(block, new_payload)?;
+            out.extend_from_slice(&(new_block.len() as u64).to_be_bytes());
+            out.extend_from_slice(&new_block);
+            let pad = (4 - new_block.len() % 4) % 4;
+            out.extend(std::iter::repeat_n(0u8, pad));
+        } else {
+            out.extend_from_slice(&data[start..end]);
+        }
+    }
+    if r.remaining() > 0 {
+        out.extend_from_slice(&data[r.pos..]);
+    }
+    Some(out)
+}
+
+/// Replace the payload span of one `liFD` record block, updating its `u64`
+/// size field; the uuid/filename/type headers and version trailer stay verbatim.
+fn splice_payload(block: &[u8], new_payload: &[u8]) -> Option<Vec<u8>> {
+    let mut r = Reader::new(block);
+    r.take(4).ok()?;
+    r.u32().ok()?;
+    read_pascal_string(&mut r).ok()?;
+    read_unicode_string(&mut r).ok()?;
+    r.take(4).ok()?;
+    r.take(4).ok()?;
+    let size_off = r.pos;
+    let datasize = r.u64().ok()? as usize;
+    if r.u8().ok()? != 0 {
+        skip_descriptor_block(&mut r).ok()?;
+    }
+    let payload_start = r.pos;
+    if payload_start + datasize > block.len() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(block.len() - datasize + new_payload.len());
+    out.extend_from_slice(&block[..size_off]);
+    out.extend_from_slice(&(new_payload.len() as u64).to_be_bytes());
+    out.extend_from_slice(&block[size_off + 8..payload_start]);
+    out.extend_from_slice(new_payload);
+    out.extend_from_slice(&block[payload_start + datasize..]);
+    Some(out)
+}
+
 // ---------------------------------------------------------------------------
 // Layer config descriptors
 // ---------------------------------------------------------------------------
@@ -394,7 +522,7 @@ fn extract_crs(payload: &[u8]) -> Option<Vec<u8>> {
 
 /// Naive substring search; payloads are ~1 MiB and this runs once per embedded
 /// object, so a two-pointer scan is plenty.
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+pub(crate) fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
@@ -406,6 +534,7 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pictura_core::CrsSettings;
     use std::path::PathBuf;
 
     fn pascal(s: &str) -> Vec<u8> {
@@ -578,6 +707,13 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
         assert!(
             crs.windows(4).any(|window| window == b"crs:"),
             "the packet carries a crs: property"
+        );
+        assert_eq!(
+            so.crs,
+            Some(CrsSettings {
+                exposure: Some(0.5),
+                ..Default::default()
+            })
         );
     }
 

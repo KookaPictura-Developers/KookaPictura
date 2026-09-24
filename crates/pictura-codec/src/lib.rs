@@ -21,8 +21,10 @@
 mod advanced_blending;
 mod color_mode;
 mod common;
+mod crs_xmp;
 mod depth;
 mod descriptor;
+mod engine_data;
 mod error;
 mod exif;
 mod icc;
@@ -52,7 +54,9 @@ mod tests;
 
 pub use advanced_blending::encode_blend_if;
 pub use color_mode::xyz_d50_to_srgb_u8;
+pub use crs_xmp::set_crs_property;
 pub use descriptor::{write_descriptor, DescValue};
+pub use engine_data::{extract_fonts, extract_style, parse_engine_data, EngineValue};
 pub use error::PsdError;
 pub use exif::{exif_tag_name, parse_exif, Exif, ExifValue};
 pub use icc::{assign_document_profile, buffer_to_srgb, convert_document, profile_description};

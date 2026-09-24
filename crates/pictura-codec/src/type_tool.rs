@@ -7,10 +7,11 @@
 //! re-encode framing-only (EngineData stays opaque inside those bytes). A
 //! malformed block leaves the view unset rather than failing the document.
 
-use pictura_core::{Layer, TypeTool};
+use pictura_core::{Layer, TextStyle, TypeTool};
 
 use crate::common::Reader;
 use crate::descriptor::{self, get_object_item, DescValue};
+use crate::engine_data::{extract_fonts, extract_style, parse_engine_data};
 
 /// Resolve `TySh` for `layers` (and their children). Never fails: an absent or
 /// unparseable block leaves `type_tool` unset.
@@ -48,13 +49,45 @@ pub(crate) fn decode_type_tool(data: &[u8]) -> Option<TypeTool> {
     descriptor::read_descriptor(&mut r).ok()?;
     let warp_desc = data.get(warp_start..r.pos)?.to_vec();
     let bounds = [r.i32().ok()?, r.i32().ok()?, r.i32().ok()?, r.i32().ok()?];
+    let (fonts, style) = engine_data_view(&text_value);
     Some(TypeTool {
         transform,
         text: extract_text(&text_value),
         bounds,
         text_desc,
         warp_desc,
+        fonts,
+        style,
     })
+}
+
+/// Best-effort view of the `Txt ` descriptor's opaque `EngineData` blob; a
+/// missing or malformed blob leaves the style unset rather than failing.
+fn engine_data_view(text: &DescValue) -> (Vec<String>, Option<TextStyle>) {
+    let DescValue::Object { items, .. } = text else {
+        return (Vec::new(), None);
+    };
+    let Some(DescValue::Raw(raw)) = get_object_item(items, b"EngineData") else {
+        return (Vec::new(), None);
+    };
+    let Ok(root) = parse_engine_data(engine_data_payload(raw)) else {
+        return (Vec::new(), None);
+    };
+    let fonts = extract_fonts(&root);
+    let style = extract_style(&root, &fonts);
+    (fonts, Some(style))
+}
+
+/// `tdta` raw values are `ostype + u32 length + bytes`; other shapes pass
+/// through so the parser can reject them.
+fn engine_data_payload(raw: &[u8]) -> &[u8] {
+    if raw.len() >= 8 && &raw[..4] == b"tdta" {
+        let len = u32::from_be_bytes(raw[4..8].try_into().unwrap()) as usize;
+        let end = (8 + len).min(raw.len());
+        &raw[8..end]
+    } else {
+        raw
+    }
 }
 
 /// Rebuild the `TySh` payload from a view: framing plus the preserved
@@ -108,20 +141,46 @@ mod tests {
         })
     }
 
-    fn synthetic_tysh() -> Vec<u8> {
+    fn tysh_from(text_desc: Vec<u8>) -> Vec<u8> {
         let mut data = Vec::new();
         data.extend_from_slice(&1u16.to_be_bytes());
         for value in [1.0f64, 0.0, 0.0, 1.0, 10.0, 20.0] {
             data.extend_from_slice(&value.to_bits().to_be_bytes());
         }
         data.extend_from_slice(&50u16.to_be_bytes());
-        data.extend_from_slice(&text_desc());
+        data.extend_from_slice(&text_desc);
         data.extend_from_slice(&1u16.to_be_bytes());
         data.extend_from_slice(&empty_desc());
         for value in [0i32, 0, 100, 50] {
             data.extend_from_slice(&value.to_be_bytes());
         }
         data
+    }
+
+    fn synthetic_tysh() -> Vec<u8> {
+        tysh_from(text_desc())
+    }
+
+    /// A `Txt ` descriptor whose `EngineData` is a `tdta` raw blob with a
+    /// first run that omits `Font`, so the default font index 1 resolves.
+    fn engine_data_desc() -> Vec<u8> {
+        let payload = b"<< /EngineDict << /StyleRun << /RunArray [ << /StyleSheet << \
+            /StyleSheetData << /FontSize 150.0 /FillColor << /Values [ 1.0 1.0 1.0 1.0 ] >> \
+            >> >> >> ] >> /ParagraphRun << /RunArray [ << /ParagraphSheet << /Properties << \
+            /Justification 0 >> >> >> ] >> >> /ResourceDict << \
+            /FontSet [ << /Name (AdobeInvisFont) >> << /Name (MyriadPro-Regular) >> ] \
+            /StyleSheetSet [ << /StyleSheetData << /Font 1 /FontSize 12.0 >> >> ] >> >>";
+        let mut raw = b"tdta".to_vec();
+        raw.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        raw.extend_from_slice(payload);
+        write_descriptor(&DescValue::Object {
+            name: String::new(),
+            class_id: b"TxtX".to_vec(),
+            items: vec![
+                (b"Txt ".to_vec(), DescValue::Text(TEXT.into())),
+                (b"EngineData".to_vec(), DescValue::Raw(raw)),
+            ],
+        })
     }
 
     #[test]
@@ -132,6 +191,19 @@ mod tests {
         assert_eq!(tool.bounds, [0, 0, 100, 50]);
         assert_eq!(tool.text_desc, text_desc());
         assert_eq!(tool.warp_desc, empty_desc());
+        assert!(tool.fonts.is_empty());
+        assert!(tool.style.is_none(), "no EngineData leaves the style unset");
+    }
+
+    #[test]
+    fn type_tool_reads_engine_data_style() {
+        let tool = decode_type_tool(&tysh_from(engine_data_desc())).expect("decodes");
+        assert_eq!(tool.fonts, ["AdobeInvisFont", "MyriadPro-Regular"]);
+        let style = tool.style.expect("style decodes");
+        assert_eq!(style.font.as_deref(), Some("MyriadPro-Regular"));
+        assert_eq!(style.font_size, 150.0);
+        assert_eq!(style.fill_color, [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(style.justification, 0);
     }
 
     #[test]
