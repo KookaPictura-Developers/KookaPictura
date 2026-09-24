@@ -25,6 +25,17 @@ pub(super) fn phfl_payload(
     data
 }
 
+pub(super) fn phfl_v3_payload(xyz: [u32; 3], density: u32, luminosity: u8) -> Vec<u8> {
+    let mut data = 3u16.to_be_bytes().to_vec();
+    for c in xyz {
+        data.extend_from_slice(&c.to_be_bytes());
+    }
+    data.extend_from_slice(&density.to_be_bytes());
+    data.push(luminosity);
+    data.push(0);
+    data
+}
+
 pub(super) fn blnc_payload(
     shadows: [i16; 3],
     midtones: [i16; 3],
