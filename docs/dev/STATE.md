@@ -61,7 +61,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `knockout-composite`, and
     `knockout-oracle`, and
     `knockout-groups`, and
-    `knockout-isolated-groups`
+    `knockout-isolated-groups`, and
+    `text-shaping-rustybuzz`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -583,8 +584,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   shapes/lays out a type layer's `TypeTool` text+style, paints the glyph
   coverage in the fill colour into fresh `0/1/2/-1` channels, removes `TySh`,
   and clears `type_tool`; a refusal (no style, zero area, nothing painted)
-  leaves the document unchanged. Ceilings (`ponytail:`): no GSUB/GPOS
-  shaping/kerning, no warp/rotation, integer glyph placement ignores subpixel,
+  leaves the document unchanged. Ceilings (`ponytail:`): no warp/rotation, integer glyph placement ignores subpixel,
   the file name is a substitution. Proven by six render unit tests. The app
   `Rasterize Type` command and the optional Qt backend are deferred follow-ups.
   Adds the `fontdue` dependency (pure Rust, no C deps, keeps the engine
@@ -603,7 +603,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   (`composite_type_source`, mirroring `composite_smart_source`); a type layer
   with a stored raster proxy is unchanged. The GPU declines a proxy-less type
   layer (`GpuError::UnsupportedText`) to the CPU oracle. Ceiling: axis-aligned
-  placement at the layer rect, first-run style, no kerning. Proven by three
+  placement at the layer rect, first-run style. Proven by three
   compositor tests plus the six renderer tests. No app change. **Rasterize All
   Layers now covers type** (`rasterize-all-type`): the engine
   `rasterize_all_fill_content` was renamed and widened to
@@ -624,8 +624,12 @@ Snapshot for resuming after a context break. Update after each milestone.
   now delegates its tail to `materialize_text_rgba` (behavior unchanged). C++
   self-test `lpr_qt_text` (code 525) rasterizes "Hi" and asserts non-empty
   coverage. Live compositing (`composite_type_source`) stays bundled, so goldens
-  are unchanged. Remaining: complex shaping/kerning, transform/warp, subpixel
-  placement, and a Qt live-composite path.
+  are unchanged. **Harfbuzz-grade shaping now ships** (`text-shaping-rustybuzz`):
+  `shape_line` shapes each line with `rustybuzz` (a pure-Rust HarfBuzz port,
+  `rustybuzz = "0.20"`, no C), so the font's `kern`/GPOS applies — `AV` at 48 px
+  advances 60.47 instead of 64.03 — and provenance records
+  `rustybuzz/fontdue`. Remaining: transform/warp, subpixel placement, and a Qt
+  live-composite path.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
