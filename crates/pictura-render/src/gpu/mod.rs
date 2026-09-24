@@ -81,6 +81,9 @@ pub enum GpuError {
     UnsupportedSmartObject,
     /// A visible layer carries an enabled object-based layer effect.
     UnsupportedLayerEffect,
+    /// A layer carries a non-default Blend If range, which the GPU has no
+    /// shader for.
+    UnsupportedAdvancedBlending,
 }
 
 impl fmt::Display for GpuError {
@@ -96,6 +99,9 @@ impl fmt::Display for GpuError {
             }
             GpuError::UnsupportedLayerEffect => {
                 write!(f, "layer effect is CPU-only")
+            }
+            GpuError::UnsupportedAdvancedBlending => {
+                write!(f, "advanced blending (Blend If) is CPU-only")
             }
         }
     }
@@ -327,6 +333,9 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         }
         if matches!(layer.blend, BlendMode::Dissolve) {
             return Err(GpuError::UnsupportedMode(layer.blend));
+        }
+        if layer.blend_if.as_ref().is_some_and(|v| !v.is_default()) {
+            return Err(GpuError::UnsupportedAdvancedBlending);
         }
         if layer.smart_object.is_some() && !layer.channels.iter().any(|c| c.id == 0) {
             return Err(GpuError::UnsupportedSmartObject);

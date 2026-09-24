@@ -15,6 +15,19 @@ pub struct TypeTool {
     pub bounds: [i32; 4],
     pub text_desc: Vec<u8>,
     pub warp_desc: Vec<u8>,
+    pub fonts: Vec<String>,
+    pub style: Option<TextStyle>,
+}
+
+/// Effective text style of a type layer's first style run, with the
+/// paragraph/style defaults already applied.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TextStyle {
+    pub font: Option<String>,
+    pub font_size: f64,
+    pub fill_color: [f64; 4],
+    pub tracking: f64,
+    pub justification: u8,
 }
 
 impl PartialEq for TypeTool {
@@ -24,6 +37,8 @@ impl PartialEq for TypeTool {
             && self.bounds == other.bounds
             && self.text_desc == other.text_desc
             && self.warp_desc == other.warp_desc
+            && self.fonts == other.fonts
+            && self.style == other.style
     }
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use pictura_core::BlendIf;
 
 // --- compositing pipeline ----------------------------------------------
 
@@ -523,4 +524,133 @@ fn grayscale_layer_replicates_channel() {
         ..Default::default()
     }];
     assert_eq!(px(&composite_rgba(&d), 0, 0), [120, 120, 120, 255]);
+}
+
+// --- Blend If gating -----------------------------------------------------
+
+/// A `BlendIf` view whose every range is the full `(0, 65535)` default.
+fn default_blend_if() -> BlendIf {
+    BlendIf {
+        composite_source: (0, 65535),
+        composite_dest: (0, 65535),
+        channel_ranges: Vec::new(),
+    }
+}
+
+#[test]
+fn blend_if_absent_or_default_is_identity() {
+    assert_eq!(blend_if_factor(None, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]), 1.0);
+    assert_eq!(
+        blend_if_factor(Some(&default_blend_if()), [0.5, 0.2, 0.9], [0.1, 0.8, 0.3]),
+        1.0
+    );
+}
+
+#[test]
+fn blend_if_source_gate_hides_below_black_and_keeps_above() {
+    // Source black at 0.5: a dark source is gated out, a light one blends.
+    let view = BlendIf {
+        composite_source: (32768, 65535),
+        composite_dest: (0, 65535),
+        channel_ranges: Vec::new(),
+    };
+    let backdrop = [0.0, 0.0, 0.0];
+    assert_eq!(
+        blend_if_factor(Some(&view), [0.24, 0.24, 0.24], backdrop),
+        0.0
+    );
+    assert_eq!(blend_if_factor(Some(&view), [0.8, 0.8, 0.8], backdrop), 1.0);
+}
+
+#[test]
+fn blend_if_dest_gate_gates_on_backdrop() {
+    let view = BlendIf {
+        composite_source: (0, 65535),
+        composite_dest: (32768, 65535),
+        channel_ranges: Vec::new(),
+    };
+    let source = [0.5, 0.5, 0.5];
+    assert_eq!(blend_if_factor(Some(&view), source, [0.2, 0.2, 0.2]), 0.0);
+    assert_eq!(blend_if_factor(Some(&view), source, [0.8, 0.8, 0.8]), 1.0);
+}
+
+#[test]
+fn blend_if_per_channel_gate_gates_that_channel() {
+    // Group 0 (R) source black above the source red value hides the layer.
+    let view = BlendIf {
+        composite_source: (0, 65535),
+        composite_dest: (0, 65535),
+        channel_ranges: vec![((32768, 65535), (0, 65535))],
+    };
+    let backdrop = [0.0, 0.0, 0.0];
+    assert_eq!(blend_if_factor(Some(&view), [0.2, 0.9, 0.9], backdrop), 0.0);
+    assert_eq!(blend_if_factor(Some(&view), [0.9, 0.2, 0.2], backdrop), 1.0);
+}
+
+#[test]
+fn blend_if_channel_group_beyond_rgb_is_ignored() {
+    // A 4th group (alpha in Photoshop's layout) must not gate the pixel.
+    let view = BlendIf {
+        composite_source: (0, 65535),
+        composite_dest: (0, 65535),
+        channel_ranges: vec![
+            ((0, 65535), (0, 65535)),
+            ((0, 65535), (0, 65535)),
+            ((0, 65535), (0, 65535)),
+            ((50000, 65535), (50000, 65535)),
+        ],
+    };
+    assert_eq!(
+        blend_if_factor(Some(&view), [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+        1.0
+    );
+}
+
+#[test]
+fn blend_if_source_gate_changes_composite_output() {
+    let scene = |blend_if: Option<BlendIf>| {
+        let mut top = solid(
+            "top",
+            full(1, 1),
+            (255, 255, 255),
+            255,
+            BlendMode::Normal,
+            255,
+        );
+        top.blend_if = blend_if;
+        doc(
+            1,
+            1,
+            vec![
+                solid(
+                    "base",
+                    full(1, 1),
+                    (64, 64, 64),
+                    255,
+                    BlendMode::Normal,
+                    255,
+                ),
+                top,
+            ],
+        )
+    };
+    // Absent or full-default ranges: the white layer covers the backdrop.
+    assert_eq!(
+        px(&composite_rgba(&scene(None)), 0, 0),
+        [255, 255, 255, 255]
+    );
+    assert_eq!(
+        px(&composite_rgba(&scene(Some(default_blend_if()))), 0, 0),
+        [255, 255, 255, 255]
+    );
+    // A source white endpoint below the source gray hides the layer entirely.
+    let hidden = BlendIf {
+        composite_source: (0, 40000),
+        composite_dest: (0, 65535),
+        channel_ranges: Vec::new(),
+    };
+    assert_eq!(
+        px(&composite_rgba(&scene(Some(hidden))), 0, 0),
+        [64, 64, 64, 255]
+    );
 }

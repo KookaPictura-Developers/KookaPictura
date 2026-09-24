@@ -5,10 +5,17 @@
 //! and is **not** implemented here yet.
 
 mod advanced_blending;
+mod crs;
+mod text_render;
 mod type_tool;
 mod vector;
 pub use advanced_blending::{BlendIf, Knockout};
-pub use type_tool::TypeTool;
+pub use crs::CrsSettings;
+pub use text_render::{
+    layout_lines, FontPolicy, GlyphMask, LayoutLine, LayoutParams, PlacedGlyph, RasterRequest,
+    Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance,
+};
+pub use type_tool::{TextStyle, TypeTool};
 pub use vector::{VectorFillRule, VectorMask, VectorSubpath};
 
 /// PSD color modes (`header.color_mode`).
@@ -111,7 +118,7 @@ impl PixelBuffer {
 
 /// A minimal document: dimensions, mode, depth, one composite image, and a
 /// layer tree (bottom-first, matching PSD z-order on disk).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Document {
     pub width: u32,
     pub height: u32,
@@ -553,7 +560,7 @@ pub struct SmartFilter {
 /// The raw config descriptor and the document-level linked record are preserved
 /// separately and remain the source of truth for re-emission; this view only
 /// exposes what the engine can resolve.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SmartObject {
     /// The `Idnt`/`PlLd` uuid that links the layer config to its record.
     pub uuid: String,
@@ -570,6 +577,8 @@ pub struct SmartObject {
     pub payload: Option<Vec<u8>>,
     /// The `crs:` XMP packet found in an embedded payload, if any.
     pub crs_xmp: Option<Vec<u8>>,
+    /// Typed view of the fixed `crs:` property set in [`SmartObject::crs_xmp`].
+    pub crs: Option<CrsSettings>,
     /// Smart filters derived from the descriptor's `filterFX` list. The raw
     /// `config_descriptor` bytes remain the source of truth for re-emission.
     pub smart_filters: Vec<SmartFilter>,
@@ -699,7 +708,7 @@ pub fn layer_transparency_locked(layer: &Layer) -> bool {
 ///
 /// An adjustment layer carries `adjustment` and, in PSD, no color channels (its
 /// mask still uses channel `-2`). `adjustment` is opaque to this crate.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
     pub name: String,
     pub rect: PsdRect,

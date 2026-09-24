@@ -36,3 +36,17 @@ pub struct BlendIf {
     pub composite_dest: (u16, u16),
     pub channel_ranges: Vec<((u16, u16), (u16, u16))>,
 }
+
+impl BlendIf {
+    /// True when every range is the full `(0, 65535)` default, making the view
+    /// a no-op gate.
+    pub fn is_default(&self) -> bool {
+        const FULL: (u16, u16) = (0, 65535);
+        self.composite_source == FULL
+            && self.composite_dest == FULL
+            && self
+                .channel_ranges
+                .iter()
+                .all(|(source, dest)| *source == FULL && *dest == FULL)
+    }
+}

@@ -50,6 +50,15 @@ not hand-edit these files.
 | `bevel.psd` | RGB | 8x8 | `Base` pixel layer + `Beveled` layer carrying an `lfx2` `ebbl` bevel & emboss |
 | `legacy_effects.psd` | RGB | 8x8 | `Base` pixel layer + `Legacy` layer carrying a legacy `lrFX` `EffectsLayer` (`cmnS` + `dsdw` + `oglw`) |
 | `vector_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Shape` shape layer with a `vscg` `SoCo` solid fill clipped by a closed `(1,1)-(5,5)` `vmsk` |
+| `engine_data.bin` | — | 7960 B | raw EngineData blob from a a reference build text layer (not a PSD) |
+
+`engine_data.bin` is the `EngineData` value of the `Txt ` descriptor of a real
+a reference build (`the synthetic source`) text layer, extracted and re-serialized
+by `psd-tools`' `EngineData` writer. It is the differential fixture for
+`engine_data.rs`: psd-tools parses the same bytes and the oracle checks the font
+set (`AdobeInvisFont`, `MyriadPro-Regular`), the first run's resolved font
+(`MyriadPro-Regular`), size `150.0`, fill `[1,1,1,1]`, and justification `0`.
+The blob is a `tdta` descriptor value (EngineData is stable across CS6→CC).
 
 `adjustment.psd` is authored by `psd-tools`, via the `adjustment()` builder in
 `scripts/generate-fixtures.py`. psd-tools has no high-level adjustment-layer
