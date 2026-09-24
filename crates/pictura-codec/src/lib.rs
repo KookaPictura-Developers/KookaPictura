@@ -18,6 +18,7 @@
 //! - Anything outside the supported subset returns [`PsdError::Unsupported`],
 //!   never a panic.
 
+mod advanced_blending;
 mod color_mode;
 mod common;
 mod depth;
@@ -49,6 +50,7 @@ mod smart_writer_tests;
 #[cfg(test)]
 mod tests;
 
+pub use advanced_blending::encode_blend_if;
 pub use color_mode::xyz_d50_to_srgb_u8;
 pub use descriptor::{write_descriptor, DescValue};
 pub use error::PsdError;

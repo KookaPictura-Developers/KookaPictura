@@ -577,9 +577,7 @@ fn write_extra(
         }
         None => out.extend_from_slice(&0u32.to_be_bytes()),
     }
-    // Layer blending ranges, re-emitted verbatim (empty for engine documents).
-    out.extend_from_slice(&(layer.blending_ranges.len() as u32).to_be_bytes());
-    out.extend_from_slice(&layer.blending_ranges);
+    crate::advanced_blending::write_ranges(out, layer);
     write_pascal(out, name);
     write_tag(out, b"luni", &luni_data(name), psb);
     // M36 layer attributes, each omitted at its default so default documents
@@ -602,6 +600,7 @@ fn write_extra(
         // only uses the first byte.
         write_tag(out, b"iOpa", &[layer.fill, 0, 0, 0], psb);
     }
+    crate::advanced_blending::write_advanced_tags(out, layer, psb);
     if let Some(adjustment) = &layer.adjustment {
         // Adjustment payload is opaque here; write the key and bytes back as read.
         write_tag(out, &adjustment.key, &adjustment.data, psb);
