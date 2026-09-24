@@ -67,12 +67,33 @@ impl qobject::PictureView {
             .rasterize_path(&path.to_string(), "Rasterize Fill Content")
     }
 
-    /// `Rasterize Layer` on a fill-content layer (the only rasterizable kind in
-    /// the model). Records one "Rasterize Layer" state on success. Returns false
-    /// (no state) for any other kind.
+    /// `Rasterize Layer` on a type layer or a fill-content layer. A type layer
+    /// is rasterized through the bundled text backend and records one
+    /// "Rasterize Type" state; a fill layer records "Rasterize Layer". Returns
+    /// false (no state) for any other kind.
     pub fn rasterize_layer(mut self: Pin<&mut Self>, path: &QString) -> bool {
-        self.as_mut()
-            .rasterize_path(&path.to_string(), "Rasterize Layer")
+        let path = path.to_string();
+        if path.is_empty() {
+            return false;
+        }
+        let (changed, label) = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => {
+                if pictura_render::render_text_layer(doc, &path) {
+                    (true, "Rasterize Type")
+                } else if pictura_render::rasterize_fill_content(doc, &path) {
+                    (true, "Rasterize Layer")
+                } else {
+                    (false, "Rasterize Layer")
+                }
+            }
+            None => (false, "Rasterize Layer"),
+        };
+        if changed {
+            self.as_mut().clear_link_sets();
+            self.as_mut().recomposite();
+            self.as_mut().record(label);
+        }
+        changed
     }
 
     /// `Rasterize All Layers`: rasterize every fill-content layer. Records one
