@@ -21,7 +21,7 @@ below):
   document saves back in its source mode (`color-mode-write-back`,
   `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`), as does a
   16/32-bit Lab/CMYK document (`depth-color-mode-write-back`).
-  Multichannel/Duotone are refused (no grounded RGB mapping).
+  Multichannel opens for 1 or 3 channels (gray / profile-free CMY); other channel counts are refused. Duotone opens as grayscale with the duotone spec preserved.
 - **Compression** 0 (raw) / 1 (RLE) / 2 (ZIP) / 3 (ZIP-with-prediction) on read
   and write; the source kind is preserved on save and all four are depth-aware.
 - **Layers.** Pixel layers, groups (`lsct`), raster masks (`-2`), and
@@ -42,9 +42,9 @@ below):
 - **Document extra channels** (saved selections) in the image-data section.
 
 Still open: live text render / Type tool (the `TySh` kind detection and typed
-model ship; EngineData styles and glyph rasterization do not), Multichannel/
-Duotone, a true `u16`/`f32` sample model, a 32-bit HDR tone map, `crs:` XMP,
-sidecars, and a manual Photoshop round-trip.
+model ship; EngineData styles and glyph rasterization do not), Multichannel
+channel counts other than 1 or 3, a true `u16`/`f32` sample model, a 32-bit HDR
+tone map, `crs:` XMP, sidecars, and a manual Photoshop round-trip.
 Anything else is `PsdError::Unsupported` on read or preserved opaquely where P2
 captured it.
 
@@ -56,8 +56,8 @@ it record the order it was closed in.
 | # | Gap | Evidence | Impact |
 |---|---|---|---|
 | G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
-| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Partly shipped: Bitmap/Indexed/CMYK/Lab read and normalize to RGB, and a Lab, CMYK, unchanged Indexed, or flat unchanged Bitmap document now saves back in its source mode (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`, and `depth-color-mode-write-back` for a 16/32-bit Lab/CMYK source; retained planes exact for unedited, profile-free inverse for edited Lab/CMYK, RGB fallback for edited Indexed/Bitmap); Multichannel/Duotone stay open |
-| G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only |
+| G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Shipped for Bitmap/Indexed/CMYK/Lab/Multichannel/Duotone (1- or 3-channel Multichannel) with source-mode write-back where the mode maps (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`, `depth-color-mode-write-back`, `multichannel-duotone-read`); Multichannel channel counts other than 1 or 3 stay Unsupported |
+| G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only and is re-emitted on write-back (`multichannel-duotone-read`) |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
 | G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Mostly shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); unmodeled keys are preserved opaquely (P2); text is partly modeled (`TypeTool` view, `tysh-model-roundtrip`); blend-if and knockout remain |

@@ -529,6 +529,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   opaque inside the descriptor bytes; no glyph rasterization or Type tool.
   Proven by synthetic TySh unit tests (decode, encode round-trip, open→save,
   malformed). No app UI change, no new dependency.
+- **Multichannel and Duotone read** (roadmap P4/G2/G3, change
+  `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
+  like grayscale, retains the plane and `color_mode_data` (the undocumented
+  duotone spec), and an unchanged flat document saves back as mode 8.
+  Multichannel opens only for header channel counts 1 or 3 at depth 8: 1 channel
+  maps like grayscale; 3 channels map as profile-free CMY→RGB (`255-x`, marked
+  ungrounded). Unchanged flat Multichannel saves back as mode 7 with retained
+  plates; edited/layered falls back to RGB. Other channel counts stay
+  `Unsupported`. Ceilings: Multichannel layer color ids are not converted;
+  no plate layout or duotone curve is invented on edit.
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed
