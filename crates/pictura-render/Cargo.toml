@@ -18,6 +18,8 @@ pictura-codec = { path = "../pictura-codec" }
 # wgpu/pollster versions track `pictura-app`, which already pulls wgpu 30.0.1.
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "vulkan", "wgsl"] }
 pollster = "1"
+# Pure-Rust TTF parser + CPU glyph rasterizer for the bundled text backend.
+fontdue = "0.9"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }

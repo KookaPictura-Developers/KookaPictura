@@ -103,6 +103,9 @@ pub use document_ops::{
     NewLayerSpec,
 };
 
+mod text_render;
+pub use text_render::{render_text_layer, BundledRasterizer, BundledText};
+
 pub use pictura_ops::{Anchor, Resample};
 
 #[cfg(test)]
