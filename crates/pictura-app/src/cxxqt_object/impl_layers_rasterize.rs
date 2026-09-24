@@ -101,7 +101,7 @@ impl qobject::PictureView {
     /// Returns how many were rasterized.
     pub fn rasterize_all_layers(mut self: Pin<&mut Self>) -> i32 {
         let count = match self.as_mut().rust_mut().doc.as_mut() {
-            Some(doc) => pictura_render::rasterize_all_fill_content(doc),
+            Some(doc) => pictura_render::rasterize_all_layers(doc),
             None => 0,
         };
         if count > 0 {

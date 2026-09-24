@@ -12,7 +12,7 @@ use pictura_adjust::{Adjustment, GradientFillParams, PatternFillParams};
 use pictura_codec::PatternPixels;
 use pictura_core::{Channel, Document, Layer};
 
-use super::paths::{flatten_rows, resolve_path, resolve_path_mut};
+use super::paths::{flatten_rows, resolve_path_mut};
 
 /// A decodable fill-content layer: a `SoCo`/`GdFl`/`PtFl` block whose payload
 /// decodes to a fill [`Adjustment`]. Routing both this predicate and the bakers
@@ -50,15 +50,18 @@ pub fn rasterize_fill_content(doc: &mut Document, path: &str) -> bool {
 /// Rasterize every fill-content layer in the tree. Returns how many were
 /// rasterized; a nil result leaves the document untouched. Rasterizing keeps
 /// the tree shape, so the pre-collected paths stay valid.
-pub fn rasterize_all_fill_content(doc: &mut Document) -> usize {
+/// Rasterize every flattened layer that can be baked: fill content through
+/// [`rasterize_fill_content`], else a type layer through the bundled text
+/// renderer. Neither operation adds or removes layers, so the path list stays
+/// valid. Returns how many were rasterized.
+pub fn rasterize_all_layers(doc: &mut Document) -> usize {
     let paths: Vec<String> = flatten_rows(doc)
         .into_iter()
-        .filter(|(path, _)| resolve_path(doc, path).is_some_and(is_fill_content_layer))
         .map(|(path, _)| path)
         .collect();
     paths
         .iter()
-        .filter(|path| rasterize_fill_content(doc, path))
+        .filter(|path| rasterize_fill_content(doc, path) || crate::render_text_layer(doc, path))
         .count()
 }
 
