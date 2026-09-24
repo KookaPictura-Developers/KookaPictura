@@ -38,6 +38,7 @@ mod type_tool;
 mod vector_mask;
 mod write;
 mod write_bitmap;
+mod write_duotone;
 mod write_indexed;
 mod xmp;
 

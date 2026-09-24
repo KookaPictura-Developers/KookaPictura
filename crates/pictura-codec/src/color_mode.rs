@@ -39,6 +39,23 @@ pub(crate) fn gray_to_rgb(gray: &[u8]) -> Vec<u8> {
     out
 }
 
+/// ponytail: ungrounded CMY assumption for 3-channel Multichannel — the plates
+/// are treated as subtractive CMY with no black (`r = 255 - c`, etc.), not an
+/// ICC-managed transform. Only N=1 and N=3 Multichannel open; other counts are
+/// Unsupported.
+pub(crate) fn cmy_to_rgb(cmy: &[u8]) -> Vec<u8> {
+    let plane = cmy.len() / 3;
+    let (c, rest) = cmy.split_at(plane);
+    let (m, y) = rest.split_at(plane);
+    let mut out = vec![0u8; plane * 3];
+    for i in 0..plane {
+        out[i] = 255 - c[i];
+        out[plane + i] = 255 - m[i];
+        out[2 * plane + i] = 255 - y[i];
+    }
+    out
+}
+
 /// Narrow a big-endian depth-16 sample to 8-bit by its high byte.
 ///
 /// ponytail: this is psd-tools' `I;16B` scaling convention (`v >> 8`), not
@@ -361,6 +378,8 @@ pub(crate) fn convert_layer_color_channels(
 fn convert_one_layer(layer: &mut Layer, mode: ColorMode, palette: &[u8; 768]) {
     let color_channels = mode.color_channels() as usize;
     if color_channels == 0 {
+        // ponytail: Multichannel layer color ids are not converted — the mode has
+        // no fixed color-channel count, so only the document composite is mapped.
         return;
     }
     let positions: Vec<usize> = layer
@@ -388,11 +407,9 @@ fn convert_one_layer(layer: &mut Layer, mode: ColorMode, palette: &[u8; 768]) {
         ColorMode::Indexed => indexed_to_rgb(&planar, palette),
         ColorMode::Cmyk => cmyk_to_rgb(&planar),
         ColorMode::Lab => lab_to_rgb(&planar),
-        // A Bitmap layer's single gray plane is bit-expanded to an 8-bit plane
-        // at read time (depth 1 or 8), so it replicates to RGB.
-        ColorMode::Bitmap => gray_to_rgb(&planar),
-        ColorMode::Grayscale | ColorMode::Rgb => return,
-        ColorMode::Multichannel | ColorMode::Duotone => return,
+        // A Bitmap or Duotone layer's single gray plane replicates to RGB.
+        ColorMode::Bitmap | ColorMode::Duotone => gray_to_rgb(&planar),
+        ColorMode::Grayscale | ColorMode::Rgb | ColorMode::Multichannel => return,
     };
     let others: Vec<Channel> = layer
         .channels

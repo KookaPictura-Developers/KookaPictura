@@ -430,9 +430,10 @@ fn bitmap_with_a_document_channel_falls_back_to_rgb() {
 
 #[test]
 fn unsupported_depths_and_color_modes_are_rejected() {
-    // An invalid depth and Multichannel (7) / Duotone (8) are typed Unsupported;
-    // depth 16/32 for Bitmap (0) or Indexed (2) stays rejected too.
-    for (depth, mode) in [(4u16, 3u16), (8, 7), (8, 8), (16, 0), (32, 2)] {
+    // An invalid depth, Multichannel/Duotone at a non-8 depth, and depth 16/32
+    // for Bitmap (0) or Indexed (2) are typed Unsupported. Multichannel N=2 and
+    // unknown mode codes are covered by their own tests.
+    for (depth, mode) in [(4u16, 3u16), (16, 7), (16, 8), (1, 7), (16, 0), (32, 2)] {
         let p = header_depth(1, 3, 1, 1, depth, mode);
         assert!(
             matches!(read_psd(&p), Err(PsdError::Unsupported(_))),
