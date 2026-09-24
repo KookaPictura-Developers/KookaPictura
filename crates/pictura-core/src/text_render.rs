@@ -5,11 +5,26 @@
 //! and advances in font units, and [`layout_lines`] turns them into device
 //! positions with pure `f32` arithmetic.
 
-/// One shaped glyph: a font glyph id and its advance in font units.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// One shaped glyph: a font glyph id, its advance, and its x/y offsets, all in
+/// font units.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ShapedGlyph {
     pub id: u16,
     pub advance: f32,
+    pub x_offset: f32,
+    pub y_offset: f32,
+}
+
+impl ShapedGlyph {
+    /// A glyph with no offsets; the shaper's marks override the offset fields.
+    pub fn new(id: u16, advance: f32) -> Self {
+        Self {
+            id,
+            advance,
+            x_offset: 0.0,
+            y_offset: 0.0,
+        }
+    }
 }
 
 /// Paragraph alignment, mapped from the EngineData justification byte.
@@ -53,7 +68,8 @@ pub struct LayoutParams {
     pub wrap_width: Option<f32>,
 }
 
-/// A glyph positioned in device pixels; `y` is the line baseline.
+/// A glyph positioned in device pixels; `y` is the line baseline adjusted by
+/// the shaper's y-offset.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlacedGlyph {
     pub id: u16,
@@ -79,8 +95,11 @@ pub struct TextLayout {
 }
 
 fn device_advance(glyph: &ShapedGlyph, params: &LayoutParams) -> f32 {
-    glyph.advance * params.font_size / params.units_per_em
-        + params.tracking * params.font_size / 1000.0
+    device(glyph.advance, params) + params.tracking * params.font_size / 1000.0
+}
+
+fn device(value: f32, params: &LayoutParams) -> f32 {
+    value * params.font_size / params.units_per_em
 }
 
 /// Lay out shaped glyph runs, one inner slice per explicit line.
@@ -102,8 +121,8 @@ pub fn layout_lines(lines: &[Vec<ShapedGlyph>], params: &LayoutParams) -> TextLa
         for glyph in line {
             glyphs.push(PlacedGlyph {
                 id: glyph.id,
-                x,
-                y: baseline,
+                x: x + device(glyph.x_offset, params),
+                y: baseline - device(glyph.y_offset, params),
             });
             x += device_advance(glyph, params);
         }
@@ -216,16 +235,7 @@ mod tests {
 
     #[test]
     fn advances_accumulate_left_to_right() {
-        let lines = vec![vec![
-            ShapedGlyph {
-                id: 1,
-                advance: 500.0,
-            },
-            ShapedGlyph {
-                id: 2,
-                advance: 300.0,
-            },
-        ]];
+        let lines = vec![vec![ShapedGlyph::new(1, 500.0), ShapedGlyph::new(2, 300.0)]];
         let out = layout_lines(&lines, &params());
         let line = &out.lines[0];
         assert_eq!(line.advance, 800.0);
@@ -242,28 +252,32 @@ mod tests {
     fn font_units_scale_to_device_pixels() {
         let mut p = params();
         p.units_per_em = 2000.0;
-        let lines = vec![vec![ShapedGlyph {
-            id: 1,
-            advance: 500.0,
-        }]];
+        let lines = vec![vec![ShapedGlyph::new(1, 500.0)]];
         let out = layout_lines(&lines, &p);
         assert_eq!(out.lines[0].advance, 250.0);
+    }
+
+    #[test]
+    fn offsets_shift_a_glyph_without_moving_the_pen() {
+        let mut first = ShapedGlyph::new(1, 500.0);
+        first.x_offset = 100.0;
+        first.y_offset = 200.0;
+        let lines = vec![vec![first, ShapedGlyph::new(2, 300.0)]];
+        let out = layout_lines(&lines, &params());
+        let line = &out.lines[0];
+        assert_eq!(line.glyphs[0].x, 100.0);
+        assert_eq!(line.glyphs[0].y, -200.0);
+        assert_eq!(line.glyphs[1].x, 500.0);
+        assert_eq!(line.glyphs[1].y, 0.0);
+        assert_eq!(line.advance, 800.0);
+        assert_eq!(out.width, 800.0);
     }
 
     #[test]
     fn tracking_includes_per_glyph_tracking() {
         let mut p = params();
         p.tracking = 100.0;
-        let lines = vec![vec![
-            ShapedGlyph {
-                id: 1,
-                advance: 500.0,
-            },
-            ShapedGlyph {
-                id: 2,
-                advance: 500.0,
-            },
-        ]];
+        let lines = vec![vec![ShapedGlyph::new(1, 500.0), ShapedGlyph::new(2, 500.0)]];
         let out = layout_lines(&lines, &p);
         assert_eq!(out.lines[0].advance, 1200.0);
         assert_eq!(out.lines[0].glyphs[1].x, 600.0);
@@ -274,14 +288,8 @@ mod tests {
         let mut p = params();
         p.leading = 20.0;
         let lines = vec![
-            vec![ShapedGlyph {
-                id: 1,
-                advance: 1000.0,
-            }],
-            vec![ShapedGlyph {
-                id: 1,
-                advance: 1000.0,
-            }],
+            vec![ShapedGlyph::new(1, 1000.0)],
+            vec![ShapedGlyph::new(1, 1000.0)],
         ];
         let out = layout_lines(&lines, &p);
         assert_eq!(out.lines[0].baseline, 0.0);
@@ -295,10 +303,7 @@ mod tests {
         let mut p = params();
         p.align = TextAlign::Center;
         p.wrap_width = Some(1000.0);
-        let lines = vec![vec![ShapedGlyph {
-            id: 1,
-            advance: 600.0,
-        }]];
+        let lines = vec![vec![ShapedGlyph::new(1, 600.0)]];
         let out = layout_lines(&lines, &p);
         assert_eq!(out.lines[0].glyphs[0].x, 200.0);
     }
@@ -308,16 +313,7 @@ mod tests {
         let mut p = params();
         p.align = TextAlign::Right;
         p.wrap_width = Some(1000.0);
-        let lines = vec![vec![
-            ShapedGlyph {
-                id: 1,
-                advance: 400.0,
-            },
-            ShapedGlyph {
-                id: 2,
-                advance: 200.0,
-            },
-        ]];
+        let lines = vec![vec![ShapedGlyph::new(1, 400.0), ShapedGlyph::new(2, 200.0)]];
         let out = layout_lines(&lines, &p);
         let last = out.lines[0].glyphs[1];
         assert_eq!(last.x + 200.0, 1000.0);
@@ -327,10 +323,7 @@ mod tests {
     fn no_wrap_width_means_no_alignment_shift() {
         let mut p = params();
         p.align = TextAlign::Right;
-        let lines = vec![vec![ShapedGlyph {
-            id: 1,
-            advance: 600.0,
-        }]];
+        let lines = vec![vec![ShapedGlyph::new(1, 600.0)]];
         let out = layout_lines(&lines, &p);
         assert_eq!(out.lines[0].glyphs[0].x, 0.0);
     }
