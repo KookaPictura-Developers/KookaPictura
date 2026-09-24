@@ -1,5 +1,5 @@
 use super::*;
-use pictura_core::BlendIf;
+use pictura_core::{BlendIf, TextStyle, TypeTool};
 
 // --- compositing pipeline ----------------------------------------------
 
@@ -653,4 +653,89 @@ fn blend_if_source_gate_changes_composite_output() {
         px(&composite_rgba(&scene(Some(hidden))), 0, 0),
         [64, 64, 64, 255]
     );
+}
+
+// --- Live type compositing ----------------------------------------------
+
+fn type_style() -> TextStyle {
+    TextStyle {
+        font: Some("Arial".into()),
+        font_size: 48.0,
+        fill_color: [0.0, 0.0, 0.0, 1.0],
+        tracking: 0.0,
+        justification: 0,
+    }
+}
+
+fn type_layer(style: Option<TextStyle>) -> Layer {
+    Layer {
+        name: "text".into(),
+        rect: rect(0, 0, 80, 200),
+        type_tool: Some(TypeTool {
+            transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            text: "Hi".into(),
+            bounds: [0, 0, 80, 200],
+            text_desc: Vec::new(),
+            warp_desc: Vec::new(),
+            fonts: vec!["Arial".into()],
+            style,
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn proxy_less_type_layer_composites_live_coverage() {
+    let layer = type_layer(Some(type_style()));
+    assert!(
+        layer.channels.is_empty(),
+        "proxy-less type carries no channel"
+    );
+    let out = composite_rgba(&doc(200, 80, vec![layer]));
+    let plane = (200 * 80) as usize;
+    let covered = out.data[3 * plane..4 * plane]
+        .iter()
+        .filter(|&&a| a > 0)
+        .count();
+    assert!(covered > 0, "live type must paint coverage");
+    assert!(
+        covered < plane,
+        "a proxy-less type layer is not an opaque black rect"
+    );
+}
+
+#[test]
+fn type_layer_with_channel_composites_from_the_raster() {
+    let n = (200 * 80) as usize;
+    let mut layer = type_layer(Some(type_style()));
+    layer.channels = vec![
+        Channel {
+            id: 0,
+            data: vec![10; n],
+        },
+        Channel {
+            id: 1,
+            data: vec![20; n],
+        },
+        Channel {
+            id: 2,
+            data: vec![30; n],
+        },
+        Channel {
+            id: -1,
+            data: vec![255; n],
+        },
+    ];
+    let out = composite_rgba(&doc(200, 80, vec![layer]));
+    for y in 0..80 {
+        for x in 0..200 {
+            assert_eq!(px(&out, x, y), [10, 20, 30, 255], "at {x},{y}");
+        }
+    }
+}
+
+#[test]
+fn gpu_declines_a_proxy_less_type_layer() {
+    let d = doc(200, 80, vec![type_layer(Some(type_style()))]);
+    assert!(matches!(composite_gpu(&d), Err(GpuError::UnsupportedText)));
 }

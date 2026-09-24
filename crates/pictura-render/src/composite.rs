@@ -196,6 +196,7 @@ fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
         composite_adjustment(canvas, layer, doc, &adjustment);
     } else if layer.adjustment.is_none()
         && !composite_smart_source(canvas, layer, layer.smart_object.as_ref())
+        && !crate::text_render::composite_type_source(canvas, layer)
     {
         // A layer with no decoded fill but an adjustment block is a no-op here
         // (the guard above). With no adjustment block a channel-less layer (for

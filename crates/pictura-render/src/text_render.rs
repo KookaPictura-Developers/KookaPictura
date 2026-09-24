@@ -6,8 +6,8 @@
 //! face. No Qt, no C dependency, no GSUB/GPOS shaping (a marked ceiling).
 
 use pictura_core::{
-    layout_lines, Channel, Document, GlyphMask, LayoutParams, RasterRequest, Rasterizer,
-    ShapedGlyph, TextAlign, TextProvenance,
+    layout_lines, Channel, Document, GlyphMask, Layer, LayoutParams, PixelBuffer, PsdRect,
+    RasterRequest, Rasterizer, ShapedGlyph, TextAlign, TextProvenance, TypeTool,
 };
 
 const FONT_BYTES: &[u8] = include_bytes!("../assets/LiberationSans-Regular.ttf");
@@ -114,6 +114,14 @@ fn font_hash() -> [u8; 32] {
     out
 }
 
+/// The bundled face parsed once per process: compositing a proxy-less type
+/// layer must not reparse the ~400 KB font every frame.
+fn bundled() -> Option<&'static BundledText> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Option<BundledText>> = OnceLock::new();
+    CACHE.get_or_init(BundledText::new).as_ref()
+}
+
 /// Shape, lay out, and paint a type layer over its rect, then drop the type
 /// tool: the layer becomes raster. Returns false without mutating when there is
 /// no type tool or style, the rect has no area, or no glyph rendered.
@@ -124,24 +132,57 @@ pub fn render_text_layer(doc: &mut Document, path: &str) -> bool {
     let Some(type_tool) = layer.type_tool.as_ref() else {
         return false;
     };
-    let Some(style) = type_tool.style.as_ref() else {
+    let Some(buffer) = render_text_buffer(type_tool, layer.rect.width(), layer.rect.height())
+    else {
         return false;
     };
-    let width = layer.rect.width();
-    let height = layer.rect.height();
-    if width <= 0 || height <= 0 {
+    let plane = buffer.pixel_count();
+    let Some(layer) = crate::resolve_path_mut(doc, path) else {
         return false;
+    };
+    layer.channels = vec![
+        Channel {
+            id: 0,
+            data: buffer.data[..plane].to_vec(),
+        },
+        Channel {
+            id: 1,
+            data: buffer.data[plane..2 * plane].to_vec(),
+        },
+        Channel {
+            id: 2,
+            data: buffer.data[2 * plane..3 * plane].to_vec(),
+        },
+        Channel {
+            id: -1,
+            data: buffer.data[3 * plane..4 * plane].to_vec(),
+        },
+    ];
+    layer.extra_blocks.retain(|block| &block.key != b"TySh");
+    layer.type_tool = None;
+    true
+}
+
+/// Shape, lay out, and paint a type tool into a straight-alpha RGBA buffer of
+/// `width × height` (layer-rect-local). `None` when the style is absent, the
+/// size is non-positive, or no glyph painted a pixel.
+pub(crate) fn render_text_buffer(
+    type_tool: &TypeTool,
+    width: i32,
+    height: i32,
+) -> Option<PixelBuffer> {
+    let style = type_tool.style.as_ref()?;
+    if width <= 0 || height <= 0 {
+        return None;
     }
-    let text = type_tool.text.clone();
     let font_size = style.font_size as f32;
     let tracking = style.tracking as f32;
     let color = style.fill_color;
     let align = TextAlign::from_justification(style.justification);
 
-    let Some(bundled) = BundledText::new() else {
-        return false;
-    };
-    let lines: Vec<Vec<ShapedGlyph>> = text
+    let bundled = bundled()?;
+    let lines: Vec<Vec<ShapedGlyph>> = type_tool
+        .text
         .lines()
         .map(|line| bundled.shape_line(line, font_size, tracking))
         .collect();
@@ -157,14 +198,11 @@ pub fn render_text_layer(doc: &mut Document, path: &str) -> bool {
         },
     );
     if layout.lines.iter().all(|line| line.glyphs.is_empty()) {
-        return false;
+        return None;
     }
 
     let n = width as usize * height as usize;
-    let mut red = vec![0u8; n];
-    let mut green = vec![0u8; n];
-    let mut blue = vec![0u8; n];
-    let mut alpha = vec![0u8; n];
+    let mut out = PixelBuffer::new(width as u32, height as u32, 4);
 
     let rasterizer = bundled.rasterizer();
     let baseline_shift = bundled.ascent(font_size);
@@ -197,33 +235,71 @@ pub fn render_text_layer(doc: &mut Document, path: &str) -> bool {
                         continue;
                     }
                     let index = y as usize * width as usize + x as usize;
-                    red[index] = tint(coverage, color[0]);
-                    green[index] = tint(coverage, color[1]);
-                    blue[index] = tint(coverage, color[2]);
-                    alpha[index] = alpha[index].max(coverage);
+                    out.data[index] = tint(coverage, color[0]);
+                    out.data[n + index] = tint(coverage, color[1]);
+                    out.data[2 * n + index] = tint(coverage, color[2]);
+                    out.data[3 * n + index] = out.data[3 * n + index].max(coverage);
                     painted = true;
                 }
             }
         }
     }
     if !painted {
-        return false;
+        return None;
     }
+    Some(out)
+}
 
-    let Some(layer) = crate::resolve_path_mut(doc, path) else {
+/// Composite a proxy-less type layer live: render its text buffer and blend it
+/// over the canvas-clipped region with the layer's opacity/mask/blend. `false`
+/// when there is no type tool, a colour channel is present, or nothing painted,
+/// so the caller's normal path runs.
+///
+/// ponytail: axis-aligned placement at the layer rect, first-run style, no
+/// kerning — inherited from the bundled renderer; add transform/rotation when
+/// the type model carries one.
+pub(crate) fn composite_type_source(canvas: &mut crate::composite::Canvas, layer: &Layer) -> bool {
+    let Some(type_tool) = layer.type_tool.as_ref() else {
         return false;
     };
-    layer.channels = vec![
-        Channel { id: 0, data: red },
-        Channel { id: 1, data: green },
-        Channel { id: 2, data: blue },
-        Channel {
-            id: -1,
-            data: alpha,
-        },
-    ];
-    layer.extra_blocks.retain(|block| &block.key != b"TySh");
-    layer.type_tool = None;
+    if crate::channel(layer, 0).is_some() {
+        return false;
+    }
+    let region = PsdRect {
+        top: layer.rect.top.max(canvas.y0()),
+        left: layer.rect.left.max(canvas.x0()),
+        bottom: layer.rect.bottom.min(canvas.y1()),
+        right: layer.rect.right.min(canvas.x1()),
+    };
+    if region.width() <= 0 || region.height() <= 0 {
+        return false;
+    }
+    let Some(buf) = render_text_buffer(type_tool, layer.rect.width(), layer.rect.height()) else {
+        return false;
+    };
+    let lw = layer.rect.width() as usize;
+    let plane = buf.pixel_count();
+    let rw = region.width() as usize;
+    let rh = region.height() as usize;
+    for by in 0..rh {
+        for bx in 0..rw {
+            let lx = (region.left - layer.rect.left) as usize + bx;
+            let ly = (region.top - layer.rect.top) as usize + by;
+            let i = ly * lw + lx;
+            crate::composite::blend_into(
+                canvas,
+                layer,
+                region.left as usize + bx,
+                region.top as usize + by,
+                [
+                    buf.data[i] as f32 / 255.0,
+                    buf.data[plane + i] as f32 / 255.0,
+                    buf.data[2 * plane + i] as f32 / 255.0,
+                ],
+                buf.data[3 * plane + i] as f32 / 255.0,
+            );
+        }
+    }
     true
 }
 
