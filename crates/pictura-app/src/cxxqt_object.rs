@@ -574,15 +574,11 @@ pub mod qobject {
         #[qinvokable]
         fn delete_hidden_layers(self: Pin<&mut Self>) -> i32;
 
-        /// Append a solid-color fill layer for `rgba` (`0xAARRGGBB`) at the top
-        /// of the stack, recomposite, and record one "Color Fill" state on
-        /// success. Returns the new path, or empty without a document.
+        /// Append a solid-color fill layer for `rgba` (`0xAARRGGBB`); records "Color Fill".
         #[qinvokable]
         fn add_solid_fill(self: Pin<&mut Self>, rgba: u32) -> QString;
 
-        /// Append a black-to-white Linear gradient fill layer at the top of the
-        /// stack, recomposite, and record one "Gradient Fill" state on success.
-        /// Returns the new path, or empty without a document.
+        /// Append a black-to-white Linear gradient fill layer; records "Gradient Fill".
         #[qinvokable]
         fn add_gradient_fill(self: Pin<&mut Self>) -> QString;
 
@@ -590,19 +586,23 @@ pub mod qobject {
         #[qinvokable]
         fn layer_is_fill_content(&self, path: &QString) -> bool;
 
-        /// `Rasterize Fill Content`: bake `path`'s fill into pixels, clear its fill
-        /// data, and record one state. False (no state) for a non-decodable fill.
+        /// `Rasterize Fill Content`: bake `path`'s fill into pixels.
         #[qinvokable]
         fn rasterize_fill_content(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// `Rasterize Layer` on a fill-content layer. Records one "Rasterize
-        /// Layer" state on success. Returns false (no state) for any other kind.
+        /// `Rasterize Layer` on a fill-content or type layer.
         #[qinvokable]
         fn rasterize_layer(self: Pin<&mut Self>, path: &QString) -> bool;
 
-        /// `Rasterize All Layers`: rasterize every fill-content layer, recording
-        /// one "Rasterize All Layers" state only when at least one was. Returns
-        /// how many were rasterized.
+        /// `Rasterize Type`: materialize the type layer at `path`.
+        #[qinvokable]
+        fn rasterize_type(self: Pin<&mut Self>, path: &QString) -> bool;
+
+        /// Whether the layer at `path` is a type layer. Read-only.
+        #[qinvokable]
+        fn layer_is_type(&self, path: &QString) -> bool;
+
+        /// `Rasterize All Layers`: bake every fill-content or type layer.
         #[qinvokable]
         fn rasterize_all_layers(self: Pin<&mut Self>) -> i32;
 

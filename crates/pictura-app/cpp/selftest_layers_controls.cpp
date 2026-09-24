@@ -892,9 +892,10 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         }
         frame.closeDocument(rfDoc, false);
 
-        // lpr_rasterize_refuse (238): a plain layer is not rasterizable and All
-        // Layers finds nothing, both without history; the kind-less Rasterize
-        // variants (Type/Shape/Layer Style/Video/3D) stay disabled.
+        // lpr_rasterize_refuse (238): a plain layer is not rasterizable by the
+        // generic, type, or all-layers commands, all without history; the
+        // kind-less Rasterize variants (Shape/Layer Style/Video/3D) stay
+        // disabled.
         const bool rrCreated = frame.newDocument(QStringLiteral("RasterRefuseCtl"), 4, 4,
                                                  QStringLiteral("rgb"), 8,
                                                  QStringLiteral("white"));
@@ -906,10 +907,10 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         const int rrBase = rrView->history_count();
         const bool rrPlain = rrView->rasterize_layer(QStringLiteral("0"));
         const int rrAll = rrView->rasterize_all_layers();
+        const bool rrType = rrView->rasterize_type(QStringLiteral("0"));
         const bool rrHistory = rrView->history_count() == rrBase;
         bool kindlessDisabled = true;
-        for (const QString& command : {QStringLiteral("layer.rasterize.type"),
-                                       QStringLiteral("layer.rasterize.shape"),
+        for (const QString& command : {QStringLiteral("layer.rasterize.shape"),
                                        QStringLiteral("layer.rasterize.layer.style"),
                                        QStringLiteral("layer.rasterize.video"),
                                        QStringLiteral("layer.rasterize.3d")}) {
@@ -918,10 +919,11 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
                 kindlessDisabled = false;
             }
         }
-        const bool rrOk = !rrPlain && rrAll == 0 && rrHistory && kindlessDisabled;
+        const bool rrOk = !rrPlain && rrAll == 0 && !rrType && rrHistory && kindlessDisabled;
         ST_BEGIN("lpr_rasterize_refuse");
-        ST_PASS("lpr_rasterize_refuse plain=%d all=%d history=%d kindless=%d", rrPlain ? 1 : 0,
-                rrAll, rrView->history_count() - rrBase, kindlessDisabled ? 1 : 0);
+        ST_PASS("lpr_rasterize_refuse plain=%d all=%d type=%d history=%d kindless=%d",
+                rrPlain ? 1 : 0, rrAll, rrType ? 1 : 0, rrView->history_count() - rrBase,
+                kindlessDisabled ? 1 : 0);
         if (!rrOk) {
             return pictura::selfTest().fail(238, "rasterize refusal");
         }
