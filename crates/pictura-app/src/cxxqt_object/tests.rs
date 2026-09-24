@@ -1141,3 +1141,24 @@ fn placed_smart_object_predicate_accepts_external_and_alias() {
         (1, 2, 3)
     )));
 }
+
+#[test]
+fn type_layer_kind_reports_type() {
+    use pictura_core::LayerBlock;
+
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut layer = pixel_layer("type", 2, 2, (10, 20, 30));
+    layer.extra_blocks = vec![LayerBlock {
+        key: *b"TySh",
+        data: vec![1, 2, 3, 4],
+    }];
+    doc.layers = vec![layer];
+    assert_eq!(
+        layer_kind_str(&doc, "0", &doc.layers[0]).to_string(),
+        "type"
+    );
+    assert_eq!(
+        layer_kind_str(&doc, "0", &pixel_layer("plain", 2, 2, (1, 2, 3))).to_string(),
+        "pixel"
+    );
+}

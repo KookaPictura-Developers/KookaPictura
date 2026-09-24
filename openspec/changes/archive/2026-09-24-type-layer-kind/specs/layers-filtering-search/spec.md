@@ -1,8 +1,7 @@
-# layers-filtering-search Specification
+# Specs delta: type-layer-kind
 
-## Purpose
-TBD - created by archiving change layers-filtering-search. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: Filter row and controls
 
 The Layers panel SHALL provide a filter/search row at the top of the header,
@@ -106,57 +105,3 @@ that matches no layer SHALL show an empty list without changing the document.
 - **WHEN** the filter matches no layer
 - **THEN** the panel is empty, the document's layers and visibility are
   unchanged, and toggling the filter off restores every row
-
-### Requirement: Ancestor promotion
-
-When a layer inside a group matches the filter, the panel SHALL show the group
-ancestors of that layer so the hierarchy stays navigable, even when the
-ancestors do not themselves match. Non-matching siblings SHALL remain hidden. A
-group shown only by ancestor promotion SHALL be treated as a container, not as a
-match: it SHALL be auto-expanded so its matching descendant is reachable.
-
-#### Scenario: A matching child keeps its group visible [lfs_ancestor]
-
-- **WHEN** a group contains one matching child and one non-matching child and
-  the filter is active
-- **THEN** the group row and the matching child are shown, and the non-matching
-  child is hidden
-
-#### Scenario: The promoted group auto-expands [lfs_ancestor]
-
-- **WHEN** the filter is activated and a collapsed group contains a match
-- **THEN** the group is expanded so the matching descendant is visible
-
-### Requirement: View-only, live, and transient
-
-Filtering SHALL be a view-level predicate: it SHALL NOT mutate the document,
-SHALL NOT add a history state, and SHALL NOT be serialized or persisted. The
-filtered view SHALL re-evaluate when the document changes — a rename, a
-visibility, blend-mode, lock, or color-label change, or a structural change
-SHALL add or remove rows from the filtered view as the predicate dictates.
-Toggling the filter off SHALL restore the full tree, and switching documents
-SHALL reset the filter to its default (Kind, on) without losing document state;
-with no criterion active the reset shows the full tree.
-
-#### Scenario: Filtering adds no history [lfs_toggle]
-
-- **WHEN** the filter is enabled, changed, and disabled
-- **THEN** the history count is unchanged and the document is not marked
-  modified by the filtering itself
-
-#### Scenario: A rename updates the filtered view [lfs_live]
-
-- **WHEN** a layer is renamed to match the active Name filter
-- **THEN** the layer appears in the filtered view without re-entering the filter
-
-#### Scenario: Toggling off restores every row [lfs_toggle]
-
-- **WHEN** the on/off switch is turned off after filtering
-- **THEN** the full layer tree is shown again with the prior expansion preserved
-
-#### Scenario: Switching documents resets the filter [lfs_reset]
-
-- **WHEN** the active document changes while a filter is active
-- **THEN** the filter returns to Kind/on with no criterion and the new
-  document's full tree is shown
-

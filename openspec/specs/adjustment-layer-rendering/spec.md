@@ -25,7 +25,12 @@ version equal to 16 followed by a descriptor object whose keys carry the slider
 values. A version-2 `phfl` payload SHALL be read as a `u16` colour space, four
 `u16` colour components, a `u32` density, and a `u8` luminosity flag; the first
 three components SHALL be the filter colour, each in `0..=255`, and the fourth
-and the colour space SHALL be ignored. A `grdm` payload SHALL be read as a `u16`
+and the colour space SHALL be ignored. A version-3 `phfl` payload SHALL be read
+as three big-endian `u32` CIE XYZ values, a `u32` density, and a `u8` luminosity
+flag; the XYZ values SHALL be interpreted as 16.16 fixed-point relative to D50
+white and converted to an sRGB filter colour with the same profile-free D50→sRGB
+matrix class used for Lab document read; density SHALL be in `0..=100`. A
+`grdm` payload SHALL be read as a `u16`
 version (`1` or `3`, a `4`-byte method following the two flag bytes when the
 version is 3), a `u8` reverse flag, a `u8` dither flag, a unicode gradient name,
 and a colour-stop list; each stop SHALL be read as a `u32` location, a `u32`
@@ -115,6 +120,11 @@ default to true.
 
 - **WHEN** a `phfl` payload has version 2, four colour components whose first three are each `0..=255`, and a density in `0..=100`
 - **THEN** `decode_adjustment` returns `Adjustment::PhotoFilter` whose `color` is the first three components, whose `density` is the stored percent, and whose `preserve_luminosity` is the luminosity byte interpreted as a boolean
+
+#### Scenario: Photo Filter version 3 decodes from XYZ
+
+- **WHEN** a `phfl` payload has version 3, three big-endian `u32` XYZ values, a density in `0..=100`, and a luminosity flag
+- **THEN** `decode_adjustment` returns `Adjustment::PhotoFilter` whose `color` is the sRGB conversion of those XYZ values, whose `density` is the stored percent, and whose `preserve_luminosity` is the luminosity byte interpreted as a boolean
 
 #### Scenario: Gradient Map payload decodes to GradientMapParams
 
@@ -223,7 +233,7 @@ default to true.
 
 #### Scenario: Malformed Photo Filter payload is a no-op
 
-- **WHEN** a `phfl` payload is truncated, has a version other than 2, has a colour component above 255, or has a density above 100
+- **WHEN** a `phfl` payload is truncated, has a version other than 2 or 3, has a version-2 colour component above 255, or has a density above 100
 - **THEN** `decode_adjustment` returns `None`
 
 #### Scenario: Malformed Gradient Map payload is a no-op
@@ -255,11 +265,6 @@ default to true.
 
 - **WHEN** a `SoCo` payload is neither a 4-byte RGBA tuple nor a version-16 descriptor object whose `Clr ` object carries `Rd  `, `Grn `, and `Bl  ` finite doubles
 - **THEN** `decode_adjustment` returns `None` and does not panic
-
-#### Scenario: Photo Filter version 3 is deferred
-
-- **WHEN** a `phfl` payload has version 3
-- **THEN** `decode_adjustment` returns `None`
 
 ### Requirement: Descriptor payloads are parsed with the shared codec DOM
 
@@ -318,22 +323,6 @@ layer absent.
 - **WHEN** such a layer's mask hides the whole canvas
 - **THEN** the composite equals the backdrop-only composite
 
-### Requirement: Deferred adjustment payloads remain no-ops
-
-The renderer SHALL return `None` from `decode_adjustment` for the deferred
-payload version-3 `phfl`. This payload SHALL remain preserved on disk and its
-layer SHALL leave the backdrop unchanged.
-
-#### Scenario: Deferred keys return None
-
-- **WHEN** a version-3 `phfl` payload is decoded
-- **THEN** `decode_adjustment` returns `None`
-
-#### Scenario: Deferred layer does not change the composite
-
-- **WHEN** a document contains an adjustment layer with a deferred payload over a backdrop
-- **THEN** the composite equals the backdrop-only composite
-
 ### Requirement: Photo Filter payloads encode and round-trip
 
 `pictura-render` SHALL expose `encode_photo_filter(color: [u8; 3], density:
@@ -343,6 +332,9 @@ f64, preserve_luminosity: bool) -> AdjustmentData` that builds the version-2
 decodes. `decode_adjustment` on the encoder's output SHALL equal
 `Adjustment::PhotoFilter` with the input colour, the clamped density, and the
 input luminosity flag.
+Encoding SHALL remain version 2 (the app authoring
+path); a decoded version-3 payload re-emitted through this encoder becomes
+version 2 with the decoded colour.
 
 #### Scenario: Encoded Photo Filter decodes back
 
@@ -353,6 +345,11 @@ input luminosity flag.
 
 - **WHEN** `encode_photo_filter` is called with a density above 100 or below 0
 - **THEN** the encoded density is clamped into `0..=100` and the block still decodes
+
+#### Scenario: Version-3 open-save re-emits version 2 with decoded colour
+
+- **WHEN** a well-formed version-3 `phfl` decodes and is re-encoded via `encode_photo_filter` using the decoded colour, density, and flag
+- **THEN** the new payload has version 2 and `decode_adjustment` returns the same `PhotoFilterParams` colour, density, and flag (up to 8-bit colour quantisation)
 
 ### Requirement: The app can create a Photo Filter adjustment layer
 

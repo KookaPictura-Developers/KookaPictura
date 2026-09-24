@@ -39,7 +39,7 @@ private:
     QStackedWidget* stack_ = nullptr;
     QToolButton* toggle_ = nullptr;
     QLineEdit* name_ = nullptr;
-    std::array<QToolButton*, 4> kindButtons_{};
+    std::array<QToolButton*, 5> kindButtons_{};
     QComboBox* effect_ = nullptr;
     QComboBox* mode_ = nullptr;
     QComboBox* attribute_ = nullptr;
