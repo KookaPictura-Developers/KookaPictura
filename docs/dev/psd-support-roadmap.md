@@ -46,7 +46,9 @@ below):
 Still open: live text render / Type tool (the `TySh` kind detection, typed model,
 and EngineData font/size/colour decode ship — `type-layer-kind`,
 `tysh-model-roundtrip`, `type-engine-data`; the deterministic layout and the
-glyph-rasterizer seam ship (`text-render-seam`); the bundled and Qt backends do
+glyph-rasterizer seam ship (`text-render-seam`) and a bundled pure-Rust
+Liberation Sans backend now materializes a type layer (`text-rasterize-bundled`);
+the app command and the optional Qt backend do
 not), Multichannel
 channel counts other than 1 or 3, a true `u16`/`f32` sample model, a 32-bit HDR
 tone map, sidecars, a manual Photoshop round-trip, and applying
@@ -202,7 +204,7 @@ Ceiling: the scale and white point are unproven without a CS6 v3 fixture.
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,
 with the per-channel-then-composite order marked an assumption (not
-Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship, and EngineData font/size/colour decode ships — `type-engine-data`, proven by a real Photoshop-2021 text-layer fixture against psd-tools; the deterministic layout and POD glyph-rasterizer seam also ship — `text-render-seam`; the bundled pure-Rust and optional Qt rasterizer backends do not);
+Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship, and EngineData font/size/colour decode ships — `type-engine-data`, proven by a real Photoshop-2021 text-layer fixture against psd-tools; the deterministic layout and POD glyph-rasterizer seam also ship — `text-render-seam`; a bundled pure-Rust Liberation Sans backend materializes a type layer into pixels — `text-rasterize-bundled`; the app `Rasterize Type` command and the optional Qt backend do not);
 RLE and ZIP write shipped (`psd-rle-write`, `psd-zip-write`).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
