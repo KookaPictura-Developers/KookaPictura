@@ -53,7 +53,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `blend-if-render`, and
     `type-engine-data`, and
     `text-render-seam`, `text-rasterize-bundled`, and
-    `type-rasterize-command`
+    `type-rasterize-command`, and
+    `type-live-composite`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -586,6 +587,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   `rasterize_fill_content`; `Layer > Rasterize > Layer` needs no C++ change. A
   dedicated `Rasterize Type` menu entry and `Rasterize All Layers` covering type
   remain follow-ups.
+- **Live type composite** (roadmap P3, change `type-live-composite`, archived):
+  the shape/layout/paint body is now `render_text_buffer` (RGBA, layer-rect
+  local; parsed from a process-wide `OnceLock` so compositing does not reparse
+  the ~400 KB font each frame). `composite_layer` renders a **proxy-less** type
+  layer live: a non-group layer with `type_tool` and no channel `0` composites
+  the buffer over the canvas-clipped region with its opacity/mask/blend
+  (`composite_type_source`, mirroring `composite_smart_source`); a type layer
+  with a stored raster proxy is unchanged. The GPU declines a proxy-less type
+  layer (`GpuError::UnsupportedText`) to the CPU oracle. Ceiling: axis-aligned
+  placement at the layer rect, first-run style, no kerning. Proven by three
+  compositor tests plus the six renderer tests. No app change.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
