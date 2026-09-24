@@ -956,6 +956,62 @@ fn tysh_forces_type_locks_and_round_trips() {
     );
 }
 
+fn synthetic_tysh() -> Vec<u8> {
+    let text_desc = write_descriptor(&DescValue::Object {
+        name: String::new(),
+        class_id: b"TxtX".to_vec(),
+        items: vec![(b"Txt ".to_vec(), DescValue::Text("Hi\rThere".into()))],
+    });
+    let warp_desc = write_descriptor(&DescValue::Object {
+        name: String::new(),
+        class_id: b"null".to_vec(),
+        items: Vec::new(),
+    });
+    encode_type_tool(&TypeTool {
+        transform: [1.0, 0.0, 0.0, 1.0, 10.0, 20.0],
+        text: "Hi\rThere".into(),
+        bounds: [0, 0, 100, 50],
+        text_desc,
+        warp_desc,
+    })
+}
+
+#[test]
+fn type_tool_open_save_preserves_bytes() {
+    let tysh = synthetic_tysh();
+    let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+    let mut type_layer = pixel("Type", rect(0, 0, 2, 2), 3, BlendMode::Normal, 255);
+    type_layer.lock = LockFlags::default()
+        .with(LockFlags::TRANSPARENCY, true)
+        .with(LockFlags::PIXELS, true);
+    type_layer.extra_blocks = vec![LayerBlock {
+        key: *b"TySh",
+        data: tysh.clone(),
+    }];
+    doc.layers = vec![type_layer];
+
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(back.layers[0].extra_block(b"TySh").unwrap().data, tysh);
+    let tool = back.layers[0].type_tool.as_ref().expect("view decodes");
+    assert_eq!(tool.transform, [1.0, 0.0, 0.0, 1.0, 10.0, 20.0]);
+    assert_eq!(tool.text, "Hi\rThere");
+    assert_eq!(tool.bounds, [0, 0, 100, 50]);
+}
+
+#[test]
+fn malformed_tysh_leaves_view_none() {
+    let bad_version = [0u8, 2];
+    let doc = read_psd(&tagged_layer_psd(0, &[(b"TySh", &bad_version)])).unwrap();
+    assert!(doc.layers[0].is_type(), "kind detection is presence-only");
+    assert!(doc.layers[0].type_tool.is_none(), "version != 1");
+
+    let good = synthetic_tysh();
+    let truncated = &good[..20];
+    let doc = read_psd(&tagged_layer_psd(0, &[(b"TySh", truncated)])).unwrap();
+    assert!(doc.layers[0].is_type());
+    assert!(doc.layers[0].type_tool.is_none(), "truncated descriptor");
+}
+
 // -- ZIP compression and tolerant open ----------------------------------
 
 #[test]

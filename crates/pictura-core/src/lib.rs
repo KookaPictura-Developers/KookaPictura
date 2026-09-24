@@ -4,7 +4,9 @@
 //! layer/channel/mask model is specified in `docs/01-architecture/document-model.md`
 //! and is **not** implemented here yet.
 
+mod type_tool;
 mod vector;
+pub use type_tool::TypeTool;
 pub use vector::{VectorFillRule, VectorMask, VectorSubpath};
 
 /// PSD color modes (`header.color_mode`).
@@ -731,6 +733,9 @@ pub struct Layer {
     /// Derived `vmsk` vector-mask view; `None` when absent or unparseable. The
     /// raw block remains in `extra_blocks` and is the serialization source.
     pub vector_mask: Option<VectorMask>,
+    /// Derived `TySh` type-tool view; `None` when absent or unparseable. The
+    /// raw block remains in `extra_blocks` and is the serialization source.
+    pub type_tool: Option<TypeTool>,
     /// Retained source channel samples, re-emitted on save when the layer has
     /// not moved: native `16`/`32`-bit samples for a Grayscale/RGB read, or the
     /// 8-bit Lab color planes for a Lab read.
@@ -766,6 +771,7 @@ impl Default for Layer {
             raw_channels: Vec::new(),
             smart_object: None,
             vector_mask: None,
+            type_tool: None,
             source_channels: None,
         }
     }
