@@ -41,8 +41,10 @@ below):
   `1039` matches the output color mode.
 - **Document extra channels** (saved selections) in the image-data section.
 
-Still open: text (`TySh`), Multichannel/Duotone, a true `u16`/`f32` sample model,
-a 32-bit HDR tone map, `crs:` XMP, sidecars, and a manual Photoshop round-trip.
+Still open: live text render / Type tool (the `TySh` kind detection and typed
+model ship; EngineData styles and glyph rasterization do not), Multichannel/
+Duotone, a true `u16`/`f32` sample model, a 32-bit HDR tone map, `crs:` XMP,
+sidecars, and a manual Photoshop round-trip.
 Anything else is `PsdError::Unsupported` on read or preserved opaquely where P2
 captured it.
 
@@ -58,7 +60,7 @@ it record the order it was closed in.
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only |
 | G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; a true `u16`/`f32` sample model editing in 16-bit stays open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
-| G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Mostly shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); unmodeled keys are preserved opaquely (P2); text (`TySh`), blend-if, and knockout remain |
+| G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Mostly shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); unmodeled keys are preserved opaquely (P2); text is partly modeled (`TypeTool` view, `tysh-model-roundtrip`); blend-if and knockout remain |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque): captured and re-emitted verbatim on open→save (P2); not modeled or rendered |
 | G8 | ~~Adjustment descriptor payloads~~ all whitelisted keys decode and render, including version-3 `phfl` (XYZ, `phfl-v3-xyz-decode`) | `composite.rs` doc | Closed |
 | G9 | ~~PSB write missing~~ PSB write shipped: version-2 container, dimensions to 300 000; tagged-block big-key width + pad framing fixed | `write.rs` | Closed |
@@ -192,7 +194,7 @@ Ceiling: the scale and white point are unproven without a CS6 v3 fixture.
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,
 with the per-channel-then-composite order marked an assumption (not
-Photoshop-verified). Remaining P3: the text (`TySh`) kind;
+Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship; see `type-layer-kind` and `tysh-model-roundtrip`);
 RLE and ZIP write shipped (`psd-rle-write`, `psd-zip-write`).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra

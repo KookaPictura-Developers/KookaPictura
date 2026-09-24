@@ -518,6 +518,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   P3 is the text (`TySh`) kind. Proven by unit tests
   (`phfl_decodes_version_three`, v2 still green, encoder round-trip); no
   app/UI change, no new dependency.
+- **Type-tool model** (roadmap P3/G6, change `tysh-model-roundtrip`): a layer's
+  preserved `TySh` now decodes into a derived `pictura_core::TypeTool` view
+  (6×`f64` transform, `Txt ` string, four `i32` bounds, raw text/warp
+  descriptor bytes). `encode_type_tool` rebuilds framing-only for an edited
+  view; unmodified open→save still re-emits `extra_blocks` bytes. Malformed
+  `TySh` leaves the view `None` without failing the document; kind detection
+  stays presence-only (`type-layer-kind`). Ceilings (`ponytail:`): bounds are
+  `i32` per psd-tools (Adobe table says "4 * 8"); EngineData styles/fonts are
+  opaque inside the descriptor bytes; no glyph rasterization or Type tool.
+  Proven by synthetic TySh unit tests (decode, encode round-trip, open→save,
+  malformed). No app UI change, no new dependency.
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed
