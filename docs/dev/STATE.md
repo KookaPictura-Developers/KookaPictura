@@ -70,7 +70,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `bit-depth-sample-model`, and
     `native-depth-adjustments`, and
     `native-depth-color-adjustments`, and
-    `native-depth-composite`
+    `native-depth-composite`, and
+    `native-depth-layer-content`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -951,10 +952,13 @@ Snapshot for resuming after a context break. Update after each milestone.
   `to_u8`/`from u8` round-trip, `Unsupported` adjustments fall back to the 8-bit
   path, and `pictura_render::composite_native(doc)` emits the canvas at the
   source depth (`U16`/`F32`, `None` for 8-bit); the 8-bit composite is
-  byte-identical. Ceilings: layer *content* is still read at 8-bit
-  (`source_channels` native reads and masks are later work), `Auto`/`ColorLookup`
-  composite 8-bit, there is no app/UI wiring yet, no HDR tone map, retained
-  samples cost 2×/4× while open and the write path clones each retained plane.
+  byte-identical. A high-depth RGB/Grayscale pixel layer also composites from
+  its retained native samples (`native-depth-layer-content`; a channel missing
+  from the store falls back to its 8-bit plane, and a converted Lab/CMYK read
+  keeps the 8-bit path since its store is source-mode planes). Ceilings: native
+  masks (`mask_alpha` stays 8-bit), `Auto`/`ColorLookup` composite 8-bit, there
+  is no app/UI wiring yet, no HDR tone map, retained samples cost 2×/4× while
+  open and the write path clones each retained plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
