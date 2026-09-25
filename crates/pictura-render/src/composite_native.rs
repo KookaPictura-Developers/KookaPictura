@@ -3,7 +3,7 @@
 //! cap.
 
 use pictura_adjust::{AdjustError, Adjustment};
-use pictura_core::{BitDepth, Document, Layer, PixelBuffer, Samples};
+use pictura_core::{BitDepth, ColorMode, Document, Layer, PixelBuffer, Samples};
 
 use crate::composite::{blend_into, composite_layers, to_u8, Canvas};
 
@@ -249,4 +249,73 @@ fn emit_native(canvas: &Canvas, depth: BitDepth) -> Samples {
 
 fn to_u16(v: f32) -> u16 {
     (v.clamp(0.0, 1.0) * 65535.0).round() as u16
+}
+
+/// Bytes per sample for a native store; `None` for the 8-bit store, which the
+/// refresh gate excludes.
+fn sample_stride(samples: &Samples) -> Option<usize> {
+    match samples {
+        Samples::U16(_) => Some(2),
+        Samples::F32(_) => Some(4),
+        Samples::U8(_) => None,
+    }
+}
+
+/// Recompute a dirty high-depth document's composite at its source depth and
+/// splice the native color planes into the retained source planes, so a save
+/// re-emits native samples instead of widening the 8-bit working composite.
+///
+/// Returns `false` without mutation for a document outside the gate: no recorded
+/// 16/32-bit source depth, a converted source mode (whose retained planes are
+/// source-mode, not working RGB), no layers, or no retained source planes. Alpha
+/// and extra planes, and `doc.channels`, are left untouched.
+pub fn refresh_native_composite(doc: &mut Document) -> bool {
+    if !matches!(
+        doc.source_depth,
+        Some(BitDepth::Sixteen | BitDepth::ThirtyTwo)
+    ) || doc.source_mode.is_some()
+        || doc.layers.is_empty()
+    {
+        return false;
+    }
+    let Some(store) = doc.source_planes.as_ref() else {
+        return false;
+    };
+    let store_depth = store.depth;
+    let Some(sample_size) = sample_stride(&store.samples) else {
+        return false;
+    };
+    let mut bytes = store.samples.to_bytes();
+    let Some(native) = composite_native(doc) else {
+        return false;
+    };
+
+    let plane = doc.width as usize * doc.height as usize;
+    let color_channels = doc.mode.color_channels() as usize;
+    let cut = color_channels * plane * sample_size;
+    if bytes.len() < cut {
+        return false;
+    }
+    let native_bytes = native.to_bytes();
+    bytes[..cut].copy_from_slice(&native_bytes[..cut]);
+    doc.source_planes.as_mut().expect("checked above").samples =
+        Samples::from_bytes(&bytes, store_depth);
+
+    let narrowed = native.narrow_to_u8();
+    doc.composite = if doc.mode == ColorMode::Rgb {
+        PixelBuffer {
+            width: doc.width,
+            height: doc.height,
+            channels: 4,
+            data: narrowed,
+        }
+    } else {
+        PixelBuffer {
+            width: doc.width,
+            height: doc.height,
+            channels: color_channels as u8,
+            data: narrowed[..plane].to_vec(),
+        }
+    };
+    true
 }

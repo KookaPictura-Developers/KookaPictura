@@ -37,7 +37,7 @@ pub use composite::{
 };
 
 mod composite_native;
-pub use composite_native::composite_native;
+pub use composite_native::{composite_native, refresh_native_composite};
 pub use pictura_adjust::{GradientFillParams, GradientKind, GradientStop, PatternFillParams};
 
 mod color_balance;

@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use pictura_adjust::{apply_native, Adjustment, LevelsParams};
 use pictura_codec::{read_psd, write_psd};
-use pictura_core::{BitDepth, Samples};
+use pictura_core::{BitDepth, ColorMode, Samples};
+use pictura_render::refresh_native_composite;
 
 #[test]
 fn native_depth_edit_survives_a_psd_round_trip() {
@@ -49,4 +50,86 @@ fn native_depth_edit_survives_a_psd_round_trip() {
         v.iter().any(|s| (s >> 8) != (s & 0xff)),
         "expected an adjusted sample that is not the 8-bit widen high*257"
     );
+}
+
+/// `refresh_native_composite` recomposites a layered depth-16 RGB document and
+/// splices the native color planes back in: the extra plane is preserved
+/// byte-for-byte and the saved file re-reads at 16 with native (non-widened)
+/// composite samples.
+#[test]
+fn refresh_splices_native_color_planes_into_a_layered_depth_document() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../pictura-codec/tests/fixtures/rgb16_layered.psd");
+    let bytes = std::fs::read(&path).unwrap();
+    let mut doc = read_psd(&bytes).unwrap();
+    assert_eq!(doc.source_depth, Some(BitDepth::Sixteen));
+    assert!(!doc.layers.is_empty(), "fixture carries a layer");
+
+    let plane = doc.width as usize * doc.height as usize;
+    let color_channels = doc.mode.color_channels() as usize;
+    let edited = doc.composite.data[..color_channels * plane].to_vec();
+    let extras_before = doc.channels.clone();
+    let retained_before = doc.source_planes.as_ref().unwrap().samples.to_bytes();
+
+    assert!(
+        refresh_native_composite(&mut doc),
+        "refresh runs for a layered 16-bit RGB document"
+    );
+    assert_eq!(doc.channels, extras_before, "document extras untouched");
+
+    let retained_after = doc.source_planes.as_ref().unwrap().samples.to_bytes();
+    let cut = color_channels * plane * 2;
+    assert_eq!(
+        &retained_after[cut..],
+        &retained_before[cut..],
+        "native color planes replaced, extra planes kept byte-for-byte"
+    );
+
+    let out = write_psd(&doc).expect("save refreshed document");
+    assert_eq!(
+        u16::from_be_bytes(out[22..24].try_into().unwrap()),
+        16,
+        "output header keeps the source depth"
+    );
+    let back = read_psd(&out).expect("re-read saved document");
+    let Samples::U16(v) = back.source_planes.unwrap().samples else {
+        panic!("depth-16 read retains u16 samples")
+    };
+    for c in 0..color_channels {
+        let native = &v[c * plane..(c + 1) * plane];
+        assert!(
+            (0..plane).any(|i| native[i] != (edited[c * plane + i] as u16) * 257),
+            "color plane {c}: a native sample is not the 8-bit widening"
+        );
+    }
+}
+
+/// Out-of-scope documents are returned unchanged: no layers, a converted source
+/// mode, no recorded source depth, and no retained source planes.
+#[test]
+fn refresh_leaves_out_of_scope_documents_untouched() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../pictura-codec/tests/fixtures/rgb16_layered.psd");
+    let bytes = std::fs::read(&path).unwrap();
+    let base = read_psd(&bytes).unwrap();
+
+    let mut no_layers = base.clone();
+    no_layers.layers.clear();
+    let mut converted = base.clone();
+    converted.source_mode = Some(ColorMode::Cmyk);
+    let mut no_depth = base.clone();
+    no_depth.source_depth = None;
+    let mut no_planes = base.clone();
+    no_planes.source_planes = None;
+
+    for (name, mut doc) in [
+        ("no layers", no_layers),
+        ("converted mode", converted),
+        ("no source depth", no_depth),
+        ("no source planes", no_planes),
+    ] {
+        let before = doc.clone();
+        assert!(!refresh_native_composite(&mut doc), "{name}: not refreshed");
+        assert_eq!(doc, before, "{name}: document unmutated");
+    }
 }

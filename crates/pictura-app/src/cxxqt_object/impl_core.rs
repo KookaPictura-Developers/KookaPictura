@@ -237,14 +237,20 @@ impl qobject::PictureView {
         true
     }
 
-    pub fn save(self: Pin<&mut Self>, path: &QString) -> bool {
-        let Some(bytes) = self
-            .rust()
-            .doc
-            .as_ref()
-            .and_then(|doc| pictura_codec::write_psd(doc).ok())
-        else {
-            return false;
+    pub fn save(mut self: Pin<&mut Self>, path: &QString) -> bool {
+        let dirty = self.rust().dirty;
+        let bytes = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            if dirty {
+                pictura_render::refresh_native_composite(doc);
+            }
+            let Ok(bytes) = pictura_codec::write_psd(doc) else {
+                return false;
+            };
+            bytes
         };
         let path = path.to_string();
         let tmp = format!("{path}.tmp");
