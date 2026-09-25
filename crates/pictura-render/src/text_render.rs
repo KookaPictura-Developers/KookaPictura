@@ -4,13 +4,14 @@
 //! The engine (`pictura_core`) owns deterministic layout and the `Rasterizer`
 //! port; this module is the pure-Rust backend over a bundled Liberation Sans
 //! face. No Qt, no C dependency: `rustybuzz` shapes each line (applying the
-//! font's default `kern`/GPOS and GSUB), `swash` rasterizes the glyphs (with
-//! `fontdue` retained for metrics).
+//! font's default `kern`/GPOS and GSUB), `swash` rasterizes the glyphs, and
+//! `ttf-parser` answers the metrics (glyph count, lookup, ascent).
 
 use pictura_core::{
     layout_lines, Channel, Document, GlyphMask, Layer, LayoutParams, PixelBuffer, PsdRect,
     RasterRequest, Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance, TypeTool,
 };
+use rustybuzz::ttf_parser;
 use swash::scale::{Render, ScaleContext, Source};
 use swash::zeno::Vector;
 use swash::FontRef;
@@ -23,7 +24,7 @@ const BACKEND_VERSION: &str = "0.20.1/0.2.10";
 
 /// The bundled face, parsed once.
 pub struct BundledText {
-    font: fontdue::Font,
+    ttf: ttf_parser::Face<'static>,
     face: rustybuzz::Face<'static>,
     swash: FontRef<'static>,
 }
@@ -31,18 +32,24 @@ pub struct BundledText {
 impl BundledText {
     /// Parse the bundled font; `None` if the embedded bytes fail to parse.
     pub fn new() -> Option<Self> {
-        let font = fontdue::Font::from_bytes(FONT_BYTES, fontdue::FontSettings::default()).ok()?;
+        let ttf = ttf_parser::Face::parse(FONT_BYTES, 0).ok()?;
         let face = rustybuzz::Face::from_slice(FONT_BYTES, 0)?;
         let swash = FontRef::from_index(FONT_BYTES, 0)?;
-        Some(Self { font, face, swash })
+        Some(Self { ttf, face, swash })
     }
 
     /// A rasterizer borrowing this face.
     pub fn rasterizer(&self) -> BundledRasterizer<'_> {
         BundledRasterizer {
-            font: &self.font,
+            ttf: &self.ttf,
             swash: self.swash,
         }
+    }
+
+    /// The glyph id for `c`, or 0 (`.notdef`) when the face has no mapping.
+    #[cfg(test)]
+    fn glyph_for(&self, c: char) -> u16 {
+        self.ttf.glyph_index(c).map_or(0, |g| g.0)
     }
 
     /// Shape one line into glyph ids and **device-pixel** advances. Lay the
@@ -80,9 +87,11 @@ impl BundledText {
     /// The ascent at `font_size`, used to place the first baseline inside the
     /// layer rect instead of on its top edge.
     fn ascent(&self, font_size: f32) -> f32 {
-        self.font
-            .horizontal_line_metrics(font_size)
-            .map_or(font_size, |m| m.ascent)
+        let upem = self.ttf.units_per_em();
+        if upem == 0 {
+            return font_size;
+        }
+        self.ttf.ascender() as f32 * font_size / upem as f32
     }
 
     /// Record the substitution of `requested` by the bundled face.
@@ -98,19 +107,15 @@ impl BundledText {
 }
 
 /// A glyph rasterizer over the bundled face.
-//
-// ponytail: three-way face split — fontdue for `glyph_count`/`lookup_glyph_index`/
-// ascent metrics, rustybuzz for shaping, swash for rasterization. Fold the
-// fontdue metrics onto swash/rustybuzz when a caller needs one font handle.
 pub struct BundledRasterizer<'a> {
-    font: &'a fontdue::Font,
+    ttf: &'a ttf_parser::Face<'static>,
     swash: FontRef<'static>,
 }
 
 impl Rasterizer for BundledRasterizer<'_> {
     fn rasterize(&self, request: &RasterRequest) -> Option<GlyphMask> {
         // Guard the glyph count so a bogus id cannot reach a panicking lookup.
-        if request.glyph >= self.font.glyph_count() {
+        if request.glyph >= self.ttf.number_of_glyphs() {
             return None;
         }
         // ponytail: fresh ScaleContext per glyph under `rasterize(&self)`; cache
@@ -135,7 +140,7 @@ impl Rasterizer for BundledRasterizer<'_> {
             height: image.placement.height,
             left: image.placement.left,
             // swash `placement.top` is the glyph's *top* edge (y-up); `GlyphMask.top`
-            // is the bottom edge (`ymin`), matching fontdue and the painter's
+            // is the bottom edge (`ymin`), matching the painter's
             // `baseline - (height + top)` row formula.
             top: image.placement.top - image.placement.height as i32,
             coverage: image.data,
@@ -457,7 +462,7 @@ mod tests {
     #[test]
     fn rasterizer_returns_coverage_of_width_times_height() {
         let bundled = bundled();
-        let index = bundled.font.lookup_glyph_index('A');
+        let index = bundled.glyph_for('A');
         assert_ne!(index, 0, "'A' is in Liberation Sans");
         let mask = bundled
             .rasterizer()
@@ -494,7 +499,7 @@ mod tests {
     #[test]
     fn rasterizer_subpixel_offset_changes_the_mask() {
         let bundled = bundled();
-        let index = bundled.font.lookup_glyph_index('A');
+        let index = bundled.glyph_for('A');
         let render = |subpixel_x: f32| {
             bundled
                 .rasterizer()
@@ -513,50 +518,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn swash_placement_matches_fontdue_within_one_pixel() {
-        let bundled = bundled();
-        let index = bundled.font.lookup_glyph_index('A');
-        let (metrics, _) = bundled.font.rasterize_indexed(index, 48.0);
-        let mask = bundled
-            .rasterizer()
-            .rasterize(&RasterRequest {
-                glyph: index,
-                px_size: 48.0,
-                subpixel_x: 0.0,
-                subpixel_y: 0.0,
-            })
-            .expect("'A' rasterizes");
-        let within = |a: i32, b: i32| (a - b).abs() <= 1;
-        assert!(
-            within(metrics.xmin, mask.left),
-            "left {} vs {}",
-            metrics.xmin,
-            mask.left
-        );
-        assert!(
-            within(metrics.ymin, mask.top),
-            "bottom {} vs {}",
-            metrics.ymin,
-            mask.top
-        );
-        assert!(
-            within(metrics.width as i32, mask.width as i32),
-            "width {} vs {}",
-            metrics.width,
-            mask.width
-        );
-        assert!(
-            within(metrics.height as i32, mask.height as i32),
-            "height {} vs {}",
-            metrics.height,
-            mask.height
-        );
-    }
-
     fn paint_glyph_at(x: f32) -> PixelBuffer {
         let bundled = bundled();
-        let id = bundled.font.lookup_glyph_index('A');
+        let id = bundled.glyph_for('A');
         let layout = TextLayout {
             lines: vec![LayoutLine {
                 glyphs: vec![PlacedGlyph { id, x, y: 0.0 }],
@@ -595,7 +559,7 @@ mod tests {
     fn y_offset_paints_a_shifted_row() {
         let bundled = bundled();
         let font_size = 48.0;
-        let id = bundled.font.lookup_glyph_index('A');
+        let id = bundled.glyph_for('A');
         assert_ne!(id, 0);
         let params = LayoutParams {
             font_size,
@@ -639,12 +603,6 @@ mod tests {
                 .map(|c| total(&bundled.shape_line(&c.to_string(), size, 0.0)))
                 .sum::<f32>()
         };
-        let fontdue_standalone = |c: char| {
-            bundled
-                .font
-                .metrics_indexed(bundled.font.lookup_glyph_index(c), size)
-                .advance_width
-        };
 
         let candidates = ["AV", "AW", "To", "Va", "Ya", "We", "LT", "Ty"];
         let pair = candidates
@@ -654,11 +612,6 @@ mod tests {
         assert!(
             pair_total(pair) < alone(pair),
             "{pair} kerns below the glyphs shaped alone"
-        );
-        let fontdue_sum: f32 = pair.chars().map(fontdue_standalone).sum();
-        assert!(
-            pair_total(pair) < fontdue_sum,
-            "{pair} kerns below the fontdue standalone advances"
         );
 
         let control = "AA";
@@ -739,7 +692,7 @@ mod tests {
     #[test]
     fn vertical_subpixel_tracks_the_fractional_baseline() {
         let bundled = bundled();
-        let id = bundled.font.lookup_glyph_index('H');
+        let id = bundled.glyph_for('H');
         let paint = |dy: f32| {
             let layout = TextLayout {
                 lines: vec![LayoutLine {
