@@ -1745,7 +1745,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("patternsPanel"),
             QStringLiteral("propertiesPanel"),
             QStringLiteral("adjustmentsPanel"),
-            QStringLiteral("librariesPanel"),
+            QStringLiteral("notesPanel"),
             QStringLiteral("channelsPanel"),
             QStringLiteral("pathsPanel"),
             QStringLiteral("actionsPanel"),
@@ -5213,11 +5213,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                                QStringLiteral("right"));
                 const bool beside =
                     madeAnchor
-                    && frame.newColumnBesideForTest(QStringLiteral("librariesPanel"),
+                    && frame.newColumnBesideForTest(QStringLiteral("notesPanel"),
                                                     QStringLiteral("patternsPanel"));
                 const bool besideBack =
                     beside
-                    && frame.dropIntoGroupForTest(QStringLiteral("librariesPanel"),
+                    && frame.dropIntoGroupForTest(QStringLiteral("notesPanel"),
                                                   QStringLiteral("colorPanel"), -1)
                     && frame.dropIntoGroupForTest(QStringLiteral("patternsPanel"),
                                                   QStringLiteral("colorPanel"), -1);
@@ -5311,10 +5311,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 frame.panelColumn()->dragToForTest(inside);
                 const bool noIndicator = !tools->dropIndicatorVisibleForTest();
                 frame.panelColumn()->cancelDragForTest();
-                const bool made = frame.newColumnDropForTest(QStringLiteral("librariesPanel"),
+                const bool made = frame.newColumnDropForTest(QStringLiteral("notesPanel"),
                                                              QStringLiteral("tools"));
                 const bool removed =
-                    frame.dropIntoGroupForTest(QStringLiteral("librariesPanel"),
+                    frame.dropIntoGroupForTest(QStringLiteral("notesPanel"),
                                                QStringLiteral("colorPanel"), -1)
                     && frame.panelColumnCountForTest() == before;
                 besideLeft = beganInside && noIndicator && made && removed;

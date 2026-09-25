@@ -612,6 +612,7 @@ The `Type` column is one of:
 | PhotoFilterParams | code | Photo Filter colour, density, and preserve-luminosity flag. | crates/pictura-adjust/src/lib.rs:74 |
 | Photoshop PDF | format | Photoshop-saved PDF with Preserve Photoshop Editing Capabilities; can hold a single image and preserves layers, alpha, and spot color. | docs/10-workflow-io/save-and-save-as.md:148 |
 | PICA | cs6 | Plug-in Component Architecture, the string caller/selector model used by automation and legacy plug-ins (`AutoPluginMain`, `SPMessageData`). | docs/09-automation/plugin-sdk.md:63 |
+| Pictura Raw | project | Kooka Pictura's built-in reimplementation of the Camera Raw Filter: the 11 PV2012 Basic controls, rendered on the CPU and baked into a smart-object proxy. Stored on disk as Adobe's camera-raw smart filter (`filterID 2683`) for Photoshop compatibility; named descriptively rather than after Adobe's mark. | docs/dev/STATE.md:105 ; NOTICE.md |
 | pictura-adjust | code | Crate holding 15 destructive adjustments applied in place to planar channel data. | docs/dev/STATE.md:43 |
 | pictura-app | code | Crate holding the cxx-qt PictureView QObject and the Qt C++ shell: command registry, main window, theme, session, docks, and tools. | docs/dev/STATE.md:50 |
 | pictura-codec | code | Crate for PSD/PSB read and write, covering composite, layers, masks, adjustment keys, and document channels. | docs/dev/STATE.md:41 |

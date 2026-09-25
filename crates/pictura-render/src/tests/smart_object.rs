@@ -1,6 +1,6 @@
 use super::*;
-use pictura_codec::{read_psd, write_psd};
-use pictura_core::{Channel, LayerBlock, SmartObject, SmartObjectKind};
+use pictura_codec::{decode_pictura_raw_settings, read_psd, write_psd};
+use pictura_core::{Channel, LayerBlock, PicturaRawSettings, SmartObject, SmartObjectKind};
 
 fn section_has_uuid(bytes: &[u8], uuid: &str) -> bool {
     !uuid.is_empty() && bytes.windows(uuid.len()).any(|w| w == uuid.as_bytes())
@@ -1057,4 +1057,75 @@ fn source_bytes_refuses_ineligible_targets() {
 
     assert_eq!(smart_object_source_bytes(&plain, "99"), None);
     assert_eq!(smart_object_source_bytes(&plain, "bad"), None);
+}
+
+#[test]
+fn apply_pictura_raw_bakes_the_proxy_and_keeps_the_settings() {
+    let layer = solid(
+        "Raster",
+        full(4, 4),
+        (200, 100, 50),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut d = doc(4, 4, vec![layer]);
+    assert!(convert_to_smart_object(&mut d, "0"));
+    let before_channels = d.layers[0].channels.clone();
+
+    let settings = PicturaRawSettings {
+        exposure: Some(1.0),
+        temperature: Some(40.0),
+        clarity: Some(-30.0),
+        ..Default::default()
+    };
+    assert!(apply_pictura_raw(&mut d, "0", &settings));
+
+    let after_channels = &d.layers[0].channels;
+    assert_ne!(after_channels, &before_channels, "the proxy pixels change");
+    let alpha = |channels: &[Channel]| {
+        channels
+            .iter()
+            .find(|c| c.id == -1)
+            .expect("alpha channel")
+            .data
+            .clone()
+    };
+    assert_eq!(alpha(after_channels), alpha(&before_channels), "alpha kept");
+
+    let filter = &d.layers[0].smart_object.as_ref().unwrap().smart_filters[0];
+    assert_eq!(filter.filter_id, 2683);
+    assert_eq!(decode_pictura_raw_settings(&filter.options), settings);
+
+    let back = read_psd(&write_psd(&d).expect("writes")).expect("re-reads");
+    let filter = &back.layers[0].smart_object.as_ref().unwrap().smart_filters[0];
+    assert_eq!(filter.filter_id, 2683);
+    assert_eq!(decode_pictura_raw_settings(&filter.options), settings);
+}
+
+#[test]
+fn apply_pictura_raw_refuses_without_mutation() {
+    let layer = solid(
+        "Raster",
+        full(4, 4),
+        (10, 20, 30),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut d = doc(4, 4, vec![layer]);
+    let before = d.clone();
+    let settings = PicturaRawSettings {
+        exposure: Some(2.0),
+        ..Default::default()
+    };
+    assert!(
+        !apply_pictura_raw(&mut d, "0", &settings),
+        "a raster layer is refused"
+    );
+    assert!(
+        !apply_pictura_raw(&mut d, "nope", &settings),
+        "a missing path is refused"
+    );
+    assert_eq!(d, before);
 }

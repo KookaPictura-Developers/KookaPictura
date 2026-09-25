@@ -35,7 +35,7 @@ NewDocumentDialog::NewDocumentDialog(QWidget* parent)
     nameEdit_ = new QLineEdit(QStringLiteral("Untitled"), this);
 
     presetCombo_ = new QComboBox(this);
-    presetCombo_->addItem(QStringLiteral("Default Photoshop Size"), QSize(1000, 1000));
+    presetCombo_->addItem(QStringLiteral("Default Size"), QSize(1000, 1000));
     presetCombo_->addItem(QStringLiteral("Custom"), QSize());
 
     widthSpin_ = new NumericField(QString(), dimensionConfig(QStringLiteral("newDocWidth")), this);

@@ -91,7 +91,7 @@ pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 pub mod document_ops;
 pub use document_ops::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
-    add_layer_in, add_raster_layer_from_rgba, add_solid_fill, apply_visibility,
+    add_layer_in, add_raster_layer_from_rgba, add_solid_fill, apply_pictura_raw, apply_visibility,
     background_from_layer, can_convert_to_smart_object, can_edit_smart_object_contents,
     can_merge_scope, can_merge_target, can_move_path_to, can_rasterize_smart_object,
     can_replace_smart_object_contents, convert_depth_exposure_gamma, convert_to_smart_object,

@@ -37,6 +37,12 @@ defined in `OVR-001`/`OVR-002`.
   Move") may themselves be marks. User-facing strings should prefer descriptive
   names, keeping the Adobe term only where it is needed to identify the behavior
   being specified.
+- **Project feature naming.** Our camera-raw feature is user-facing as the
+  descriptive **Pictura Raw**. Adobe's "Camera Raw" terms appear only as on-disk
+  format identifiers required for compatibility (e.g. the `Adobe Camera Raw
+  Filter` descriptor class ID and smart-filter id `2683` that Photoshop writes)
+  and in nominative references to Adobe's feature. See
+  [`NOTICE.md`](../../NOTICE.md).
 - Whether a given use is defensible fair use is jurisdiction-specific. *This is
   flagged for counsel; not decided here.*
 

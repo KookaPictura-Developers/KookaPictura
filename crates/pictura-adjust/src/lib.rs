@@ -16,6 +16,7 @@ mod common;
 mod hdr_toning;
 mod lut;
 mod native;
+mod pictura_raw;
 mod tonal;
 mod types;
 
@@ -26,6 +27,7 @@ pub use apply::apply;
 pub use hdr_toning::{exposure_gamma, ExposureGamma};
 pub use lut::parse_cube;
 pub use native::apply_native;
+pub use pictura_raw::render_pictura_raw;
 pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupKind, ColorLookupParams, CurvesParams,
