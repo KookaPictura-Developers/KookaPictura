@@ -445,7 +445,12 @@ fn sample_stops(stops: &[GradientStop], z: f64) -> [u8; 4] {
 /// Unlike a destructive adjustment, every in-rect pixel is source content at
 /// the payload's alpha; the layer's mask, opacity, fill, and blend still apply
 /// through [`blend_into`]. Pixels outside the rect are untouched.
-pub(crate) fn composite_solid_fill(canvas: &mut Canvas, layer: &Layer, rgba: [u8; 4]) {
+pub(crate) fn composite_solid_fill(
+    canvas: &mut Canvas,
+    layer: &Layer,
+    doc: &Document,
+    rgba: [u8; 4],
+) {
     let x0 = layer.rect.left.max(canvas.x0());
     let y0 = layer.rect.top.max(canvas.y0());
     let x1 = layer.rect.right.min(canvas.x1());
@@ -461,7 +466,7 @@ pub(crate) fn composite_solid_fill(canvas: &mut Canvas, layer: &Layer, rgba: [u8
     let src_a = rgba[3] as f32 / 255.0;
     for y in y0..y1 {
         for x in x0..x1 {
-            blend_into(canvas, layer, x as usize, y as usize, cs, src_a);
+            blend_into(canvas, layer, doc, x as usize, y as usize, cs, src_a);
         }
     }
 }
@@ -471,6 +476,7 @@ pub(crate) fn composite_solid_fill(canvas: &mut Canvas, layer: &Layer, rgba: [u8
 pub(crate) fn composite_gradient_fill(
     canvas: &mut Canvas,
     layer: &Layer,
+    doc: &Document,
     params: &GradientFillParams,
 ) {
     let w = layer.rect.width();
@@ -494,6 +500,7 @@ pub(crate) fn composite_gradient_fill(
             blend_into(
                 canvas,
                 layer,
+                doc,
                 x as usize,
                 y as usize,
                 [
@@ -617,6 +624,7 @@ pub(crate) fn composite_pattern_fill(
             blend_into(
                 canvas,
                 layer,
+                doc,
                 x as usize,
                 y as usize,
                 [

@@ -34,6 +34,52 @@ fn sample_unit(samples: &Samples, i: usize) -> Option<f32> {
     }
 }
 
+/// The layer mask gate in the unit `f32` domain: the native `-2` mask sample
+/// when the high-depth document retains one for this layer, else the 8-bit
+/// raster byte, combined with the vector-mask coverage. Mirrors `mask_alpha`'s
+/// absent/disabled/no-data (`1.0`) and out-of-rect/empty (`default_color/255`)
+/// branches through its raster fallback.
+pub(crate) fn mask_alpha_unit(doc: &Document, layer: &Layer, x: i32, y: i32) -> f32 {
+    // No native `-2` sample (8-bit document, or absent/disabled/out-of-rect
+    // mask) keeps the exact 8-bit combine, so the fallback is byte-identical.
+    let Some(raster) = native_mask_unit(doc, layer, x, y) else {
+        return crate::composite::mask_alpha(layer, x, y) as f32 / 255.0;
+    };
+    let vector = crate::vector_mask::coverage(layer.vector_mask.as_ref(), x, y) as f32 / 255.0;
+    raster * vector
+}
+
+/// The `-2` mask sample at a canvas pixel in unit space, only for a high-depth
+/// document whose layer retains a plane whose length matches the mask rect.
+/// Masks are valid in any high-depth mode, so `source_mode` is not gated.
+fn native_mask_unit(doc: &Document, layer: &Layer, x: i32, y: i32) -> Option<f32> {
+    doc.source_depth?;
+    let mask = layer.mask.as_ref()?;
+    if mask.disabled || mask.data.is_none() {
+        return None;
+    }
+    let mw = mask.rect.width();
+    let mh = mask.rect.height();
+    if mw <= 0 || mh <= 0 {
+        return None;
+    }
+    let mx = x - mask.rect.left;
+    let my = y - mask.rect.top;
+    if mx < 0 || my < 0 || mx >= mw || my >= mh {
+        return None;
+    }
+    let (_, samples) = layer
+        .source_channels
+        .as_ref()?
+        .planes
+        .iter()
+        .find(|(id, _)| *id == -2)?;
+    if samples.len() != mw as usize * mh as usize {
+        return None;
+    }
+    sample_unit(samples, my as usize * mw as usize + mx as usize)
+}
+
 /// Apply a decoded adjustment to the running backdrop, then gate the result by
 /// the layer's mask/opacity/blend (Photoshop applies the adjustment to the
 /// backdrop and blends the adjusted result back).
@@ -46,11 +92,11 @@ pub(crate) fn composite_adjustment(
     // Fill content is generative: it adds color inside the layer's rect instead
     // of transforming the backdrop, so it takes the normal-content path.
     if let Adjustment::SolidFill(rgba) = adjustment {
-        crate::fill::composite_solid_fill(canvas, layer, *rgba);
+        crate::fill::composite_solid_fill(canvas, layer, doc, *rgba);
         return;
     }
     if let Adjustment::GradientFill(params) = adjustment {
-        crate::fill::composite_gradient_fill(canvas, layer, params);
+        crate::fill::composite_gradient_fill(canvas, layer, doc, params);
         return;
     }
     if let Adjustment::PatternFill(params) = adjustment {
@@ -67,7 +113,7 @@ pub(crate) fn composite_adjustment(
     if doc.source_depth.is_some() {
         match apply_native_rgb(canvas, adjustment) {
             Ok(adjusted) => {
-                gate_adjusted(canvas, layer, &adjusted);
+                gate_adjusted(canvas, layer, doc, &adjusted);
                 return;
             }
             Err(AdjustError::Unsupported(_)) => {}
@@ -97,7 +143,15 @@ pub(crate) fn composite_adjustment(
                 buf.data[n + i] as f32 / 255.0,
                 buf.data[2 * n + i] as f32 / 255.0,
             ];
-            blend_into(canvas, layer, x as usize, y as usize, cs, backdrop_alpha);
+            blend_into(
+                canvas,
+                layer,
+                doc,
+                x as usize,
+                y as usize,
+                cs,
+                backdrop_alpha,
+            );
         }
     }
 }
@@ -133,7 +187,7 @@ fn apply_native_rgb(
 
 /// Gate the adjusted color through the layer's mask/opacity/blend, blending it
 /// over the original backdrop still held in `canvas.px`.
-fn gate_adjusted(canvas: &mut Canvas, layer: &Layer, adjusted: &[[f32; 3]]) {
+fn gate_adjusted(canvas: &mut Canvas, layer: &Layer, doc: &Document, adjusted: &[[f32; 3]]) {
     for y in canvas.y0()..canvas.y1() {
         for x in canvas.x0()..canvas.x1() {
             let i = canvas.idx(x as usize, y as usize);
@@ -144,6 +198,7 @@ fn gate_adjusted(canvas: &mut Canvas, layer: &Layer, adjusted: &[[f32; 3]]) {
             blend_into(
                 canvas,
                 layer,
+                doc,
                 x as usize,
                 y as usize,
                 adjusted[i],
