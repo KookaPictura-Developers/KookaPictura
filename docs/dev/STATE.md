@@ -67,7 +67,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `text-subpixel-positioning`, and
     `text-backend-drop-fontdue`, and
     `psd-tagged-block-8b64`, and
-    `bit-depth-sample-model`
+    `bit-depth-sample-model`, and
+    `native-depth-adjustments`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -932,9 +933,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   `f32` samples with the shared `Samples::narrow_to_u8`/`widen_from_u8` rules and
   `PixelBuffer<T = u8>` is generic, so 16/32-bit planes are decoded to native
   values instead of raw PSD bytes (byte-exact `to_bytes`/`from_bytes` round-trip;
-  no pixel-behavior change). Ceilings: editing still runs on 8-bit ops (porting
-  them to native depth is the next phase), no HDR tone map, retained samples cost
-  2×/4× while open and the write path clones each retained plane.
+  no pixel-behavior change). The tonal adjustment family now applies at native
+  depth too (`native-depth-adjustments`): `pictura_adjust::apply_native` runs
+  `Invert`/`Desaturate`/`Levels`/`Curves`/`BrightnessContrast`/`Exposure`/
+  `Posterize`/`Threshold`/`GradientMap` on a `Samples` store in a unit-domain
+  `f64` kernel (the 8-bit `apply` is byte-identical; ImageMagick oracle unmoved),
+  and a depth-16 edit saved and re-read keeps its low bits instead of the
+  widen-on-edit `high*257`. Ceilings: the color family
+  (`HueSaturation`…`ColorLookup`) and the fill kinds return `Unsupported` at
+  native depth, there is no app/UI wiring yet, no HDR tone map, retained samples
+  cost 2×/4× while open and the write path clones each retained plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
