@@ -81,6 +81,19 @@ impl Samples {
         }
     }
 
+    /// Quantize to 16-bit: depth 8 widens `v * 257`, depth 16 is unchanged, and
+    /// depth 32 clamps to `[0, 1]` then rounds `v * 65535` (NaN maps to `0`).
+    pub fn to_u16(&self) -> Vec<u16> {
+        match self {
+            Samples::U8(v) => v.iter().map(|&s| s as u16 * 257).collect(),
+            Samples::U16(v) => v.clone(),
+            Samples::F32(v) => v
+                .iter()
+                .map(|&s| (s.clamp(0.0, 1.0) * 65535.0).round() as u16)
+                .collect(),
+        }
+    }
+
     /// Widen an 8-bit plane to `depth`: `v * 257` at depth 16, `v / 255` scaled
     /// into `[0, 1]` at depth 32, the bytes unchanged at depth 1/8.
     pub fn widen_from_u8(bytes: &[u8], depth: BitDepth) -> Samples {
@@ -241,6 +254,25 @@ mod tests {
     fn narrow_f32_matches_the_clipped_rule() {
         let store = Samples::F32(vec![1.5, -0.5, 0.0, 0.5]);
         assert_eq!(store.narrow_to_u8(), vec![255, 0, 0, 128]);
+    }
+
+    #[test]
+    fn to_u16_quantizes_and_widens() {
+        assert_eq!(
+            Samples::F32(vec![0.0, 0.5, 1.0, 1.5, -0.5]).to_u16(),
+            vec![0, 32768, 65535, 65535, 0],
+            "clamp then round v * 65535"
+        );
+        assert_eq!(
+            Samples::U8(vec![0, 1, 255]).to_u16(),
+            vec![0, 257, 65535],
+            "8-bit widens v * 257"
+        );
+        assert_eq!(
+            Samples::U16(vec![5, 60000]).to_u16(),
+            vec![5, 60000],
+            "16-bit is unchanged"
+        );
     }
 
     #[test]

@@ -843,6 +843,7 @@ dependencies = [
  "flate2",
  "pictura-color",
  "pictura-core",
+ "pictura-render",
  "thiserror 2.0.20",
 ]
 

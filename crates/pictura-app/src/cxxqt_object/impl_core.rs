@@ -569,12 +569,21 @@ impl qobject::PictureView {
     }
 
     pub fn document_depth_bits(&self) -> i32 {
-        match self.rust().doc.as_ref().map(|d| d.depth) {
-            Some(BitDepth::Eight) => 8,
-            Some(BitDepth::Sixteen) => 16,
-            Some(BitDepth::ThirtyTwo) => 32,
-            Some(BitDepth::One) => 1,
-            None => 0,
+        let Some(doc) = self.rust().doc.as_ref() else {
+            return 0;
+        };
+        // The working model is always 8-bit; a retained 16/32-bit source store is
+        // the depth a save re-emits, so report that as the document's depth.
+        let depth = if doc.retains_source_depth() {
+            doc.source_depth.unwrap_or(doc.depth)
+        } else {
+            doc.depth
+        };
+        match depth {
+            BitDepth::Eight => 8,
+            BitDepth::Sixteen => 16,
+            BitDepth::ThirtyTwo => 32,
+            BitDepth::One => 1,
         }
     }
 

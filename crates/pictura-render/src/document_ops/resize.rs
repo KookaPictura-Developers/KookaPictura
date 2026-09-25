@@ -28,6 +28,20 @@ pub fn resize_document(
     for channel in &mut doc.channels {
         channel.data = resample_plane(&channel.data, old_w, old_h, width, height, resample);
     }
+    if let Some(store) = &mut doc.source_planes {
+        if store.depth != pictura_core::BitDepth::One {
+            store.samples = super::native_store::resize_samples(
+                &store.samples,
+                old_w as usize,
+                old_h as usize,
+                width as usize,
+                height as usize,
+                resample,
+            );
+            store.width = width;
+            store.height = height;
+        }
+    }
 
     doc.width = width;
     doc.height = height;
@@ -66,14 +80,15 @@ fn resize_layer(
     sy: f64,
     resample: pictura_ops::Resample,
 ) {
-    let lw = layer.rect.width();
-    let lh = layer.rect.height();
+    let old_rect = layer.rect;
+    let lw = old_rect.width();
+    let lh = old_rect.height();
     if lw > 0 && lh > 0 {
         let (nw, nh) = scaled_dims(lw, lh, sx, sy);
         for channel in &mut layer.channels {
             channel.data = resample_plane(&channel.data, lw as u32, lh as u32, nw, nh, resample);
         }
-        layer.rect = scaled_rect(layer.rect, nw, nh, sx, sy);
+        layer.rect = scaled_rect(old_rect, nw, nh, sx, sy);
     }
     if let Some(mask) = &mut layer.mask {
         let mw = mask.rect.width();
@@ -87,10 +102,66 @@ fn resize_layer(
         }
     }
     if sx != 1.0 || sy != 1.0 {
-        // ponytail: a raw plane cannot be resampled, so a real scale drops it
+        // ponytail: an unmodeled raw on-disk stream still has no resampler.
         layer.raw_channels.clear();
-        layer.source_channels = None;
+        let mask_rect = layer.mask.as_ref().map(|m| m.rect);
+        if let Some(store) = layer.source_channels.take() {
+            layer.source_channels =
+                Some(resize_store(store, old_rect, mask_rect, sx, sy, resample));
+        }
     }
+}
+
+/// Resample a layer's retained native store to the scaled bounds; the `-2`
+/// mask plane follows the scaled mask rect.
+fn resize_store(
+    store: pictura_core::SourceChannels,
+    old_rect: pictura_core::PsdRect,
+    mask_rect: Option<pictura_core::PsdRect>,
+    sx: f64,
+    sy: f64,
+    resample: pictura_ops::Resample,
+) -> pictura_core::SourceChannels {
+    let (lw, lh) = (old_rect.width(), old_rect.height());
+    let (nw, nh) = if lw > 0 && lh > 0 {
+        scaled_dims(lw, lh, sx, sy)
+    } else {
+        (0, 0)
+    };
+    let planes = store
+        .planes
+        .iter()
+        .map(|(id, samples)| {
+            let (ow, oh, dw, dh) = if *id == -2 {
+                match mask_rect {
+                    Some(m) => {
+                        let (mw, mh) = (m.width(), m.height());
+                        let (nw, nh) = if mw > 0 && mh > 0 {
+                            scaled_dims(mw, mh, sx, sy)
+                        } else {
+                            (0, 0)
+                        };
+                        (mw, mh, nw, nh)
+                    }
+                    None => (lw, lh, nw, nh),
+                }
+            } else {
+                (lw, lh, nw, nh)
+            };
+            (
+                *id,
+                super::native_store::resize_samples(
+                    samples,
+                    ow.max(0) as usize,
+                    oh.max(0) as usize,
+                    dw as usize,
+                    dh as usize,
+                    resample,
+                ),
+            )
+        })
+        .collect();
+    pictura_core::SourceChannels::new(store.depth, scaled_rect(old_rect, nw, nh, sx, sy), planes)
 }
 
 #[cfg(test)]
@@ -239,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn resize_drops_stale_unmodeled_channels_and_saves() {
+    fn resize_resamples_the_native_store_and_saves() {
         let mut doc = sample_doc();
         doc.source_depth = Some(BitDepth::Sixteen);
         doc.source_planes = Some(SourcePlanes {
@@ -255,7 +326,7 @@ mod tests {
         doc.layers[0].source_channels = Some(SourceChannels {
             depth: BitDepth::Sixteen,
             rect: rect(0, 0, 4, 4),
-            planes: vec![(3, Samples::U16(vec![0; 4]))],
+            planes: vec![(3, Samples::U16(vec![0; 16]))],
         });
 
         // A no-op resize (unchanged dimensions) keeps the channel.
@@ -270,9 +341,20 @@ mod tests {
         resize_document(&mut doc, 8, 8, pictura_ops::Resample::Nearest).unwrap();
         assert!(
             doc.layers[0].raw_channels.is_empty(),
-            "stale unmodeled channel dropped"
+            "the unmodeled raw stream is dropped"
         );
-        assert!(doc.layers[0].source_channels.is_none());
+        let store = doc.layers[0]
+            .source_channels
+            .as_ref()
+            .expect("the native store is resampled");
+        assert_eq!(store.rect, doc.layers[0].rect);
+        assert_eq!(
+            store.planes.iter().find(|(id, _)| *id == 3).unwrap().1,
+            Samples::U16(vec![0; 64])
+        );
+        let planes = doc.source_planes.as_ref().unwrap();
+        assert_eq!((planes.width, planes.height), (8, 8));
+        assert_eq!(planes.samples.len(), 3 * 64);
 
         let bytes = pictura_codec::write_psd(&doc).expect("a resized high-depth doc saves");
         assert_eq!(u16::from_be_bytes(bytes[22..24].try_into().unwrap()), 16);

@@ -1,8 +1,8 @@
 use super::*;
 use crate::composite::{Canvas, Px};
 use crate::composite_native::mask_alpha_unit;
-use pictura_adjust::{Adjustment, AutoKind};
-use pictura_core::{LayerMask, Samples, SourceChannels};
+use pictura_adjust::{Adjustment, AutoKind, ExposureGamma};
+use pictura_core::{LayerMask, Samples, SourceChannels, SourcePlanes};
 
 fn levels_layer(output_white: u16, opacity: u8) -> Layer {
     let mut data = 2u16.to_be_bytes().to_vec();
@@ -127,6 +127,104 @@ fn composite_native_is_none_without_depth_and_f32_at_32() {
         Some(Samples::F32(v)) => assert_eq!(v.len(), 2 * 2 * 4),
         other => panic!("depth-32 document must yield f32 samples, got {other:?}"),
     }
+}
+
+#[test]
+fn depth32_conversion_to_16_tones_above_one_and_keeps_extras() {
+    let mut d = doc(1, 1, Vec::new());
+    d.source_depth = Some(BitDepth::ThirtyTwo);
+    d.source_planes = Some(SourcePlanes {
+        depth: BitDepth::ThirtyTwo,
+        width: 1,
+        height: 1,
+        samples: Samples::F32(vec![4.0, 0.5, 0.25, 0.9]),
+    });
+
+    // gain = 2^-2 = 0.25; 4.0 -> 1.0 -> 65535. A pre-clamp at 1.0 would give
+    // 0.25 -> 16384, so the retained store (not `emit_native`) supplied the 4.0.
+    convert_depth_exposure_gamma(
+        &mut d,
+        BitDepth::Sixteen,
+        ExposureGamma {
+            exposure_ev: -2.0,
+            gamma: 1.0,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(d.depth, BitDepth::Eight, "the working model stays 8-bit");
+    assert_eq!(d.source_depth, Some(BitDepth::Sixteen));
+    assert!(d.retains_source_depth());
+    let Samples::U16(v) = &d.source_planes.as_ref().unwrap().samples else {
+        panic!("expected a u16 store, got {:?}", d.source_planes);
+    };
+    assert_eq!(v[0], 65535, "4.0 tone-mapped then clamped");
+    assert_ne!(v[0], 16384, "the pre-clamped 1.0 would quantize to 16384");
+    assert_eq!(v[1], 8192, "0.5 * 0.25 -> 8192");
+    assert_eq!(v[2], 4096, "0.25 * 0.25 -> 4096");
+    assert_eq!(v[3], 58982, "the extra plane is copied untoned");
+    assert_eq!(d.composite.channels, 3);
+    assert_eq!(d.composite.data, vec![255, 32, 16]);
+}
+
+#[test]
+fn depth32_conversion_to_8_clears_the_retained_store() {
+    let mut d = doc(1, 1, Vec::new());
+    d.source_depth = Some(BitDepth::ThirtyTwo);
+    d.source_planes = Some(SourcePlanes {
+        depth: BitDepth::ThirtyTwo,
+        width: 1,
+        height: 1,
+        samples: Samples::F32(vec![0.0, 0.5, 1.0]),
+    });
+
+    convert_depth_exposure_gamma(&mut d, BitDepth::Eight, ExposureGamma::default()).unwrap();
+
+    assert_eq!(d.depth, BitDepth::Eight);
+    assert_eq!(d.source_depth, None);
+    assert!(d.source_planes.is_none());
+    assert!(!d.retains_source_depth());
+    assert_eq!(d.composite.data, vec![0, 128, 255]);
+}
+
+#[test]
+fn conversion_refusals_leave_the_document_untouched() {
+    let mut eight = doc(1, 1, Vec::new());
+    let before = eight.clone();
+    assert!(
+        convert_depth_exposure_gamma(&mut eight, BitDepth::Sixteen, ExposureGamma::default())
+            .is_err()
+    );
+    assert_eq!(eight, before, "an 8-bit source is refused");
+
+    let mut converted = doc(1, 1, Vec::new());
+    converted.source_depth = Some(BitDepth::ThirtyTwo);
+    converted.source_mode = Some(ColorMode::Cmyk);
+    let before = converted.clone();
+    assert!(convert_depth_exposure_gamma(
+        &mut converted,
+        BitDepth::Sixteen,
+        ExposureGamma::default()
+    )
+    .is_err());
+    assert_eq!(converted, before, "a converted mode is refused");
+
+    let mut thirty_two = doc(1, 1, Vec::new());
+    thirty_two.source_depth = Some(BitDepth::ThirtyTwo);
+    thirty_two.source_planes = Some(SourcePlanes {
+        depth: BitDepth::ThirtyTwo,
+        width: 1,
+        height: 1,
+        samples: Samples::F32(vec![0.5, 0.5, 0.5]),
+    });
+    let before = thirty_two.clone();
+    assert!(convert_depth_exposure_gamma(
+        &mut thirty_two,
+        BitDepth::ThirtyTwo,
+        ExposureGamma::default()
+    )
+    .is_err());
+    assert_eq!(thirty_two, before, "a 32-bit output is refused");
 }
 
 #[test]

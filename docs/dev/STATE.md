@@ -9,14 +9,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1231 tests, 0 failed, 8 skipped** (the `move_profile_*` pair,
+- Test suite: **1637 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
-  `pictura-render` doctest that `cargo test --workspace` reports as the ninth
-  skip). The C++ self-test reports **234 passed, 0 failed, 0 skipped**. The
-  full gate (`scripts/verify-full.sh`) reports **1503 passed, 9 skipped,
-  0 failed**.
+  `pictura-render` doctest that `cargo test --workspace` reports separately).
+  The C++ self-test reports **449 passed, 0 failed, 0 skipped** standalone; the
+  unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
+  probes) reports **2124 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -74,10 +74,13 @@ Snapshot for resuming after a context break. Update after each milestone.
     `native-depth-layer-content`, and
     `native-depth-remaining-adjustments`, and
     `native-depth-masks`, and
-    `native-depth-save`
+    `native-depth-save`, and
+    `hdr-exposure-gamma`
     changes;
-    canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
-   green), change history under `openspec/changes/archive/`; no change is open.
+    canonical specs are in `openspec/specs/` (107 specs, `validate --all --strict`
+   green), change history under `openspec/changes/archive/`; the
+   `hdr-conversion` and `native-depth-edit-preserve` changes are open (not yet
+   archived).
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
    `layer-effects-inner-shadow`, `layer-effects-inner-glow`,
@@ -319,10 +322,21 @@ Snapshot for resuming after a context break. Update after each milestone.
   into `prepare_layer`/`write_layer`) and `integer_bbox`. Identity
   (`identity_mesh`) is bit-exact, the four corners stay fixed under an
   interior-only edit, and a degenerate/non-finite/wrong-size net is refused.
-  Ceiling: no Photoshop oracle for the surface, and the 15 named presets, the
-  `Bend`/`X`/`Y` preset geometry, the interactive mesh overlay, and the
-  `Edit > Transform > Warp` command are **not** implemented (they need the
-  Patchy reference to avoid guessing).
+- **Preset warp styles and the Warp command** (change `transform-warp-presets`):
+  `pictura_render::{WarpStyle, style_mesh(style, bend, rotate_vertical, w, h)}`
+  port the 15 CS6 named preset control-net constructions from
+  SethRobinson/Patchy's `generate_style_warp_mesh` (MIT, commit
+  `7d14d1f6…`), which publicly documented Photoshop's own bakes to ~2.4e-6 px.
+  A golden control-point table (all 15 styles × five bends × both orientations,
+  produced by compiling the pinned Patchy source) pins them at 1e-9; `None`/
+  `Custom` produce no mesh, and `bend == 0` is the style's identity grid.
+  `Edit > Transform > Warp` is now a real command: a modal `WarpPresetDialog`
+  (Style, Bend, X/Y distortion, orientation) feeds the `apply_warp_preset`
+  bridge, which builds the mesh from the layer rect and applies it through the
+  shipped op in one `"Warp"` state (C++ self-test code 527). Ceilings: the
+  interactive mesh cage / curved overlay, `View > Extras`, the custom-net drag,
+  Warp Text, Puppet Warp, and Content-Aware Scale are not shipped; Patchy's
+  captures are Photoshop 2026, so CS6 preset equivalence is assumed.
 - PSB **write** (roadmap P5/G9, archived `2026-09-19-psb-write`): `write_psd`
   now emits a version-2 PSB when `Document.is_psb` is set or either dimension
   exceeds 30 000, and a new `write_psb` always forces a PSB; both share one
@@ -1015,12 +1029,50 @@ Snapshot for resuming after a context break. Update after each milestone.
   `pictura_render::refresh_native_composite` splices native color planes into the
   retained store and refreshes `doc.composite`; a clean, no-layer, or
   converted-mode save is untouched, so the codec depth oracles stay
-  byte-identical). The **Exposure & Gamma** HDR tone-map operator now ships as a
+  byte-identical). The **Exposure & Gamma** HDR tone-map operator ships as a
   pure linear-light function (`pictura_adjust::hdr_toning::exposure_gamma`,
-  change `hdr-exposure-gamma`); Ceilings: a moved/edited layer channel still
-  widens, the HDR Toning dialog and the other three methods (Local Adaptation,
-  Equalize Histogram, Highlight Compression — closed kernels) are open, retained
-  samples cost 2×/4× while open and the write path clones each retained plane.
+  change `hdr-exposure-gamma`), and the open `hdr-conversion` change now wires
+  it into a real 32→16/8 conversion
+  (`pictura_render::document_ops::convert_depth_exposure_gamma`): for a native
+  32-bit Grayscale/RGB document it tone-maps the retained `f32` color planes,
+  quantizes to the output depth (`Samples::to_u16` at 16, `narrow_to_u8` at 8),
+  rebuilds `source_depth`/`source_planes` so a save writes the converted depth,
+  and clears every layer's 32-bit store; the app adds the
+  `Image > Mode > 16/8 Bits/Channel` commands (real ids, gated on
+  `document_depth_bits() == 32`, which now reports the retained source depth)
+  and a two-field Exposure/Gamma `HdrConversionDialog` plus a `convert_depth`
+  bridge. Ceilings: only Exposure & Gamma is grounded (the Method combo and
+  Local Adaptation/Equalize Histogram/Highlight Compression have closed
+  kernels); the ranges beyond Exposure 0 / Gamma 1.0 are inferred; an
+  already-edited 32-bit document was clamped to `[0, 1]` by `emit_native`, so
+  only a clean open tone-maps values above white; 32-bit Lab/CMYK are refused;
+  layered documents tone-map the merged composite and drop per-layer native
+  stores; a moved/edited layer channel now keeps a resampled (or re-anchored)
+  native store (`native-depth-edit-preserve`), while unmodeled raw streams,
+  merge/flatten/via-copy/rasterize, and a true working-depth model stay open;
+  retained samples cost
+  2×/4× while open and the write path clones each retained plane.
+- **Native-store edit preservation** (roadmap P4/G4, open change
+  `native-depth-edit-preserve`): the destructive geometry ops now keep a
+  layer's retained native samples instead of widening them on save. Move/
+  translate offset `Layer.source_channels.rect` with the layer bounds; canvas
+  resize/crop offset-blit `Document.source_planes` and update its dimensions;
+  `transform_layer`/`transform_layer_quad`/`transform_layer_warp` resample every
+  stored plane through the same plane map as the 8-bit channels (`-2` via the
+  mask map) and derive each stored 8-bit channel from the resampled plane's
+  `narrow_to_u8()` so the writer's equality gate holds; `Image > Image Size`
+  resamples the layer and composite stores; rotation/flips remap them exactly
+  (index permutations, no resampler) and swap `source_planes`' recorded
+  dimensions. New `document_ops/native_store.rs` (offset blit / native resize /
+  exact remap) and `layer_ops/transform_native.rs` (inverse-map bilinear /
+  mesh warp) hold the `u8`/`u16`/`f32`-dispatched kernels; the `u8` arm delegates
+  to the byte-identical 8-bit kernels, so an 8-bit document is unchanged.
+  Ceilings: `crates/pictura-codec/src/write.rs` still requires the 8-bit working
+  model (`doc.depth == Eight`) and the store is a retention overlay, not the
+  edit representation; unmodeled `raw_channels` streams still drop on a
+  resample; merge/flatten/via-copy/rasterize build 8-bit content with no store;
+  a source-mode (Lab/CMYK) store is resampled but its working 8-bit channel is
+  not derived from it; GPU paths unchanged.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,

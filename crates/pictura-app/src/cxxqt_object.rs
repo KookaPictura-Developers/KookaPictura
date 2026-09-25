@@ -991,42 +991,49 @@ pub mod qobject {
         #[qinvokable]
         fn brush_shortcut_delta(&self, key: i32, scan: u32, shift: bool, paint: bool) -> i32;
 
-        /// Scale the document to `width`×`height` with resample `kind`
-        /// (nearest, bilinear, bicubic), clear the selection, recomposite, and
-        /// emit [`changed`]. Returns false without a document, for an unknown
-        /// kind, or when a dimension is below 1.
+        /// Scale the document to `width`×`height`, recomposite, and emit
+        /// [`changed`]. False without a document, for an unknown resample, or a
+        /// dimension below 1.
         #[qinvokable]
         fn resize_image(self: Pin<&mut Self>, kind: &QString, width: i32, height: i32) -> bool;
 
-        /// Place the document on a `width`×`height` canvas at `anchor`
-        /// (top-left, top-center, top-right, center-left, center, center-right,
-        /// bottom-left, bottom-center, bottom-right), clear the selection,
-        /// recomposite, and emit [`changed`]. Returns false without a document,
-        /// for an unknown anchor, or when a dimension is below 1.
+        /// Place the document on a `width`×`height` canvas at `anchor`,
+        /// recomposite, and emit [`changed`]. False without a document, for an
+        /// unknown anchor, or a dimension below 1.
         #[qinvokable]
         fn resize_canvas(self: Pin<&mut Self>, anchor: &QString, width: i32, height: i32) -> bool;
 
         /// Rotate the document `quarter_turns` quarter turns clockwise (1-3),
-        /// clear the selection, recomposite, and emit [`changed`]. Returns
-        /// false without a document or for a value outside 1-3.
+        /// recomposite, and emit [`changed`]. False outside 1-3.
         #[qinvokable]
         fn rotate_doc(self: Pin<&mut Self>, quarter_turns: i32) -> bool;
 
-        /// Mirror the document horizontally or vertically, clear the selection,
-        /// recomposite, and emit [`changed`]. Returns false without a document.
+        /// Mirror the document, recomposite, and emit [`changed`].
         #[qinvokable]
         fn flip_doc(self: Pin<&mut Self>, horizontal: bool) -> bool;
 
-        /// Whether `path` resolves to a transformable target for Free Transform:
-        /// a raster pixel layer, or a channel-less embedded smart object whose
-        /// source materializes. Read-only; mutates nothing.
+        /// Convert a 32-bit document to `bits` (16 or 8) with the HDR
+        /// Conversion "Exposure & Gamma" method and record "HDR Conversion".
+        #[qinvokable]
+        fn convert_depth(self: Pin<&mut Self>, bits: i32, exposure_ev: f64, gamma: f64) -> bool;
+
+        /// Apply a named warp preset and record one "Warp" state.
+        #[qinvokable]
+        fn apply_warp_preset(
+            self: Pin<&mut Self>,
+            path: &QString,
+            style: &QString,
+            bend: f64,
+            distort_x: f64,
+            distort_y: f64,
+            rotate_vertical: bool,
+        ) -> bool;
+
+        /// Whether `path` resolves to a transformable Free Transform target.
         #[qinvokable]
         fn layer_can_free_transform(&self, path: &QString) -> bool;
 
-        /// Begin a Free Transform session on the layer at `path`. A second begin
-        /// on the same active path is a no-op; a different path cancels first.
-        /// Returns false for an untransformable target (group, adjustment,
-        /// Background, position-locked, zero-area, or undecodable channel-less).
+        /// Begin a Free Transform session; false for an untransformable target.
         #[qinvokable]
         fn begin_free_transform(self: Pin<&mut Self>, path: &QString) -> bool;
 
@@ -1037,15 +1044,11 @@ pub mod qobject {
         #[qinvokable]
         fn cancel_transform(self: Pin<&mut Self>);
 
-        /// Commit the session: one `transform_layer` call, recomposite, and one
-        /// `"Free Transform"` history state on a non-identity success. Returns
-        /// false (no state) for an identity transform or an engine refusal; the
-        /// session always clears.
+        /// Commit the session in one `"Free Transform"` state; false on identity.
         #[qinvokable]
         fn commit_transform(self: Pin<&mut Self>) -> bool;
 
-        /// Begin a transform drag at document-space `(x, y)`. Returns the hit
-        /// handle (0..=7 scale, 8 rotate, 9 move) or -1 when nothing was hit.
+        /// Begin a transform drag at `(x, y)`; returns the hit handle or -1.
         #[qinvokable]
         fn transform_press(
             self: Pin<&mut Self>,
@@ -1061,9 +1064,7 @@ pub mod qobject {
         #[qinvokable]
         fn transform_hit_test(&self, x: f64, y: f64, zoom: f64) -> i32;
 
-        /// Update the active transform drag from document-space `(x, y)`. Shift
-        /// locks the corner aspect ratio and snaps rotation to 15°. Returns false
-        /// without an active drag.
+        /// Update the active drag from `(x, y)`; Shift locks aspect and snaps 15°.
         #[qinvokable]
         fn transform_move(
             self: Pin<&mut Self>,
@@ -1078,10 +1079,7 @@ pub mod qobject {
         #[qinvokable]
         fn transform_release(self: Pin<&mut Self>) -> bool;
 
-        /// Session probes: active flag, target path, and the live transform
-        /// values (`1.0`/`0.0` when inactive), plus the quad as
-        /// `"x,y x,y x,y x,y"` and the layer at `path`'s rect as
-        /// `"left top right bottom"`. All read-only.
+        /// Session probes: active flag, path, live transform values, quad, rect.
         #[qinvokable]
         fn transform_session_active(&self) -> bool;
         #[qinvokable]

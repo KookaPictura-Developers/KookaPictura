@@ -89,7 +89,7 @@ fn scale_two_doubles_rect_and_planes() {
 }
 
 #[test]
-fn high_depth_transform_move_keeps_and_scale_drops_unmodeled_channels() {
+fn high_depth_transform_move_keeps_and_scale_resamples_the_native_store() {
     let mut layer = pixel_layer(4, 4);
     layer.raw_channels = vec![RawChannel {
         id: 3,
@@ -136,7 +136,8 @@ fn high_depth_transform_move_keeps_and_scale_drops_unmodeled_channels() {
         "a moved layer saves"
     );
 
-    // A scale cannot resample a raw plane, so it drops the channel.
+    // A scale cannot resample a raw on-disk stream, so it drops that; the native
+    // store is resampled to the new bounds.
     assert!(transform_layer(
         &mut doc,
         "0",
@@ -145,11 +146,82 @@ fn high_depth_transform_move_keeps_and_scale_drops_unmodeled_channels() {
     let scaled = resolve_path(&doc, "0").unwrap();
     assert!(
         scaled.raw_channels.is_empty(),
-        "a scale drops the unmodeled channel"
+        "a scale drops the unmodeled raw stream"
     );
-    assert!(scaled.source_channels.is_none());
+    let store = scaled
+        .source_channels
+        .as_ref()
+        .expect("a scale keeps a resampled native store");
+    assert_eq!(store.rect, scaled.rect);
+    assert_eq!(
+        store
+            .planes
+            .iter()
+            .find(|(id, _)| *id == 3)
+            .unwrap()
+            .1
+            .len(),
+        8 * 8
+    );
     let bytes = pictura_codec::write_psd(&doc).expect("a scaled high-depth layer saves");
     assert_eq!(u16::from_be_bytes(bytes[22..24].try_into().unwrap()), 16);
+}
+
+/// A 16-bit plane whose 8-bit narrowing is `plane(4, 4, seed)`, but whose low
+/// byte is non-zero so it is deliberately not the `v * 257` widening.
+fn native_color_store(seed: u8) -> Samples {
+    Samples::U16(
+        plane(4, 4, seed)
+            .into_iter()
+            .map(|v| (v as u16 * 257).saturating_add(7))
+            .collect(),
+    )
+}
+
+#[test]
+fn pure_move_reemits_native_samples_on_save() {
+    let mut layer = pixel_layer(4, 4);
+    layer.source_channels = Some(SourceChannels::new(
+        BitDepth::Sixteen,
+        layer.rect,
+        vec![
+            (0, native_color_store(3)),
+            (1, native_color_store(11)),
+            (2, native_color_store(29)),
+            (-1, Samples::U16(vec![65535; 16])),
+        ],
+    ));
+    let mut doc = doc_with(layer);
+    doc.source_depth = Some(BitDepth::Sixteen);
+    doc.source_planes = Some(SourcePlanes {
+        depth: BitDepth::Sixteen,
+        width: 4,
+        height: 4,
+        samples: Samples::U16(vec![0; 3 * 16]),
+    });
+
+    assert!(transform_layer(
+        &mut doc,
+        "0",
+        transform(1.0, 1.0, 0.0, 2.0, 1.0)
+    ));
+    let moved = resolve_path(&doc, "0").unwrap();
+    assert_eq!(moved.source_channels.as_ref().unwrap().rect, moved.rect);
+
+    let bytes = pictura_codec::write_psd(&doc).expect("a moved high-depth layer saves");
+    let back = pictura_codec::read_psd(&bytes).expect("re-read");
+    let store = back.layers[0]
+        .source_channels
+        .as_ref()
+        .expect("the native store survived");
+    let (_, samples) = store.planes.iter().find(|(id, _)| *id == 0).unwrap();
+    let Samples::U16(v) = samples else {
+        panic!("expected u16 samples")
+    };
+    assert!(
+        v.iter().any(|s| (*s >> 8) != (*s & 0xff)),
+        "the save re-emits native samples, not the 8-bit widen"
+    );
 }
 
 #[test]

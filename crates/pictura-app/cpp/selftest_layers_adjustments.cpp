@@ -18,6 +18,8 @@
 #include <QtGui/QImage>
 #include <QtWidgets/QPushButton>
 
+#include <cstring>
+
 int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
 {
         // lpr_photo_filter (283): a photo-filter adjustment layer is reported
@@ -564,6 +566,69 @@ int pictura::runLayersAdjustmentChecks(pictura::PicturaMainWindow& frame)
             }
             if (!depthOk) {
                 return pictura::selfTest().fail(298, "depth open");
+            }
+        }
+
+        // hdr_conversion (526): a 32-bit document reports depth 32 and the
+        // bridge converts it to 16 (the working model stays 8-bit; the reported
+        // and save depth becomes 16).
+        {
+            QTemporaryDir hdrDir;
+            const QString hdrPath = hdrDir.filePath(QStringLiteral("hdr32.psd"));
+            QByteArray hdrBytes;
+            const auto hdr16 = [&hdrBytes](unsigned short value) {
+                hdrBytes.append(char((value >> 8) & 0xff));
+                hdrBytes.append(char(value & 0xff));
+            };
+            const auto hdr32 = [&hdrBytes](unsigned int value) {
+                hdrBytes.append(char((value >> 24) & 0xff));
+                hdrBytes.append(char((value >> 16) & 0xff));
+                hdrBytes.append(char((value >> 8) & 0xff));
+                hdrBytes.append(char(value & 0xff));
+            };
+            const auto hdrF32 = [&hdrBytes](float value) {
+                unsigned int bits = 0;
+                std::memcpy(&bits, &value, sizeof(bits));
+                hdrBytes.append(char((bits >> 24) & 0xff));
+                hdrBytes.append(char((bits >> 16) & 0xff));
+                hdrBytes.append(char((bits >> 8) & 0xff));
+                hdrBytes.append(char(bits & 0xff));
+            };
+            hdrBytes.append("8BPS", 4);
+            hdr16(1);               // version
+            hdrBytes.append(6, char(0));  // reserved
+            hdr16(3);               // channels
+            hdr32(1);               // height
+            hdr32(1);               // width
+            hdr16(32);              // depth
+            hdr16(3);               // color mode RGB
+            hdr32(0);               // color mode data
+            hdr32(0);               // image resources
+            hdr32(0);               // layer/mask section
+            hdr16(0);               // raw compression
+            hdrF32(0.25f);          // R
+            hdrF32(0.5f);           // G
+            hdrF32(0.75f);          // B
+            QFile hdrFile(hdrPath);
+            const bool hdrWritten = hdrFile.open(QIODevice::WriteOnly)
+                && hdrFile.write(hdrBytes) == hdrBytes.size();
+            hdrFile.close();
+
+            const int hdrDocs = frame.documentCount();
+            const bool hdrOpened = hdrWritten && frame.openPath(hdrPath);
+            pictura::PictureView* hdrView = frame.activeView();
+            const bool hdrIs32 = hdrView && hdrView->document_depth_bits() == 32;
+            const bool hdrConverted = hdrView && hdrView->convert_depth(16, 0.0, 1.0);
+            const bool hdrIs16 = hdrView && hdrView->document_depth_bits() == 16;
+            ST_BEGIN("hdr_conversion");
+            ST_PASS("hdr_conversion docs=%d open=%d is32=%d convert=%d is16=%d",
+                    frame.documentCount() - hdrDocs, hdrOpened ? 1 : 0, hdrIs32 ? 1 : 0,
+                    hdrConverted ? 1 : 0, hdrIs16 ? 1 : 0);
+            if (hdrView) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!hdrOpened || !hdrIs32 || !hdrConverted || !hdrIs16) {
+                return pictura::selfTest().fail(526, "hdr conversion");
             }
         }
 

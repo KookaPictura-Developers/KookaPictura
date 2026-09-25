@@ -12,3 +12,4 @@ thiserror.workspace = true
 flate2 = "1"
 
 [dev-dependencies]
+pictura-render = { path = "../pictura-render" }

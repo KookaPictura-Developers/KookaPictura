@@ -24,6 +24,9 @@ pub fn resize_canvas_document(
 
     for_each_layer(&mut doc.layers, &mut |layer| {
         layer.rect = offset_rect(layer.rect, dx, dy);
+        if let Some(store) = &mut layer.source_channels {
+            store.rect = offset_rect(store.rect, dx, dy);
+        }
         if let Some(mask) = &mut layer.mask {
             mask.rect = offset_rect(mask.rect, dx, dy);
         }
@@ -32,11 +35,44 @@ pub fn resize_canvas_document(
     for channel in &mut doc.channels {
         channel.data = extend_channel(&channel.data, old_w, old_h, width, height, dx, dy);
     }
+    rebase_source_planes(doc, old_w, old_h, width, height, dx, dy);
 
     doc.width = width;
     doc.height = height;
     recompute(doc);
     Ok(())
+}
+
+/// Offset-blit a retained composite store into the resized canvas so its dims
+/// still match the document and `composite_retained` stays valid.
+pub(super) fn rebase_source_planes(
+    doc: &mut pictura_core::Document,
+    old_w: u32,
+    old_h: u32,
+    width: u32,
+    height: u32,
+    dx: i32,
+    dy: i32,
+) {
+    let Some(store) = &mut doc.source_planes else {
+        return;
+    };
+    if store.depth == pictura_core::BitDepth::One {
+        // The depth-1 store is a packed plane, not a `width * height` one; it is
+        // only re-emitted for an unchanged flat Bitmap, so leave it stale.
+        return;
+    }
+    store.samples = super::native_store::extend_samples(
+        &store.samples,
+        old_w as usize,
+        old_h as usize,
+        width as usize,
+        height as usize,
+        dx,
+        dy,
+    );
+    store.width = width;
+    store.height = height;
 }
 
 /// Top-left of the old canvas within the new one, per anchor.
@@ -108,7 +144,7 @@ mod tests {
     use super::*;
     use pictura_core::{
         BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
-        PsdRect,
+        PsdRect, Samples, SourcePlanes,
     };
     use pictura_ops::Anchor;
 
@@ -273,5 +309,28 @@ mod tests {
         }];
         assert!(resize_canvas_document(&mut doc, 2, 2, Anchor::Center).is_ok());
         assert!(resize_canvas_document(&mut doc, 1, 1, Anchor::BottomRight).is_ok());
+    }
+
+    #[test]
+    fn canvas_rebases_the_retained_store() {
+        let mut doc = sample_doc();
+        doc.source_depth = Some(BitDepth::Sixteen);
+        doc.source_planes = Some(SourcePlanes {
+            depth: BitDepth::Sixteen,
+            width: 4,
+            height: 4,
+            samples: Samples::U16((0..16).map(|i| i as u16).collect()),
+        });
+
+        resize_canvas_document(&mut doc, 6, 6, Anchor::Center).unwrap();
+
+        let store = doc.source_planes.as_ref().unwrap();
+        assert_eq!((store.width, store.height), (6, 6));
+        let Samples::U16(v) = &store.samples else {
+            panic!("expected a u16 store")
+        };
+        assert_eq!(v.len(), 36);
+        assert_eq!(v[6 + 1], 0, "old origin lands at (1,1)");
+        assert_eq!(v[2 * 6 + 2], 5, "old (1,1) lands at (2,2)");
     }
 }
