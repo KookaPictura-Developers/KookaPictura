@@ -18,7 +18,7 @@ fn rect_center(rect: PsdRect) -> (f64, f64) {
 }
 
 /// Source-rect corners in order top-left, top-right, bottom-right, bottom-left.
-fn source_corners(rect: PsdRect) -> [(f64, f64); 4] {
+pub(super) fn source_corners(rect: PsdRect) -> [(f64, f64); 4] {
     [
         (rect.left as f64, rect.top as f64),
         (rect.right as f64, rect.top as f64),
@@ -61,6 +61,193 @@ pub(super) fn transform_quad_points(
         *corner = forward_point(rect, sx, sy, angle, dx, dy, *corner);
     }
     out
+}
+
+/// The session's live target quad: the stored projective quad, or the
+/// similarity quad derived from the scalars in `Free` mode.
+pub(super) fn session_quad(session: &TransformSession) -> [(f64, f64); 4] {
+    session.quad.unwrap_or_else(|| {
+        transform_quad_points(
+            session.orig_rect,
+            session.scale_x,
+            session.scale_y,
+            session.angle,
+            session.dx,
+            session.dy,
+        )
+    })
+}
+
+/// Whether a candidate quad is too degenerate to keep: a non-finite corner,
+/// under 1 px² of area, or three consecutive corners on one line.
+fn quad_is_degenerate(quad: &[(f64, f64); 4]) -> bool {
+    if quad.iter().any(|(x, y)| !x.is_finite() || !y.is_finite()) {
+        return true;
+    }
+    let mut area2 = 0.0;
+    for i in 0..4 {
+        let a = quad[i];
+        let b = quad[(i + 1) % 4];
+        area2 += a.0 * b.1 - b.0 * a.1;
+    }
+    if area2.abs() / 2.0 < 1.0 {
+        return true;
+    }
+    for i in 0..4 {
+        let (a, b, c) = (quad[i], quad[(i + 1) % 4], quad[(i + 2) % 4]);
+        let cross = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+        if cross.abs() < 1e-6 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Store `quad` on the session unless it is degenerate; returns whether it was
+/// accepted.
+fn store_quad(session: &mut TransformSession, quad: [(f64, f64); 4]) -> bool {
+    if quad_is_degenerate(&quad) {
+        return false;
+    }
+    session.quad = Some(quad);
+    true
+}
+
+/// Distort: set corner `corner` to the pointer.
+pub(super) fn gesture_distort(session: &mut TransformSession, corner: i32, x: f64, y: f64) -> bool {
+    if !(0..=3).contains(&corner) {
+        return false;
+    }
+    let mut quad = session.start_quad;
+    quad[corner as usize] = (x, y);
+    store_quad(session, quad)
+}
+
+/// Perspective: set corner `corner` to the pointer and move the opposite corner
+/// by the negated delta, keeping the quad centre fixed.
+pub(super) fn gesture_perspective(
+    session: &mut TransformSession,
+    corner: i32,
+    x: f64,
+    y: f64,
+) -> bool {
+    if !(0..=3).contains(&corner) {
+        return false;
+    }
+    let start = session.start_quad;
+    let (sx, sy) = start[corner as usize];
+    let mut quad = start;
+    quad[corner as usize] = (x, y);
+    let opp = opposite_handle(corner) as usize;
+    quad[opp] = (start[opp].0 - (x - sx), start[opp].1 - (y - sy));
+    store_quad(session, quad)
+}
+
+/// Skew: slide edge `edge`'s two endpoints by the pointer delta from press,
+/// leaving the opposite edge fixed. Shift constrains the delta to the edge's own
+/// axis (top/bottom → x, left/right → y).
+pub(super) fn gesture_skew(
+    session: &mut TransformSession,
+    edge: i32,
+    x: f64,
+    y: f64,
+    shift: bool,
+) -> bool {
+    let (e0, e1) = match edge {
+        4 => (0, 1),
+        5 => (1, 2),
+        6 => (2, 3),
+        7 => (3, 0),
+        _ => return false,
+    };
+    let (mut dx, mut dy) = (x - session.press_x, y - session.press_y);
+    if shift {
+        match edge {
+            4 | 6 => dy = 0.0,
+            5 | 7 => dx = 0.0,
+            _ => {}
+        }
+    }
+    let start = session.start_quad;
+    let mut quad = start;
+    for e in [e0, e1] {
+        quad[e] = (start[e].0 + dx, start[e].1 + dy);
+    }
+    store_quad(session, quad)
+}
+
+/// Solve the homography sending `src[i]` to `dst[i]` and return its nine
+/// coefficients in the order `QTransform(m11,m12,m13,m21,m22,m23,m31,m32,m33)`
+/// expects, so the C++ preview maps source document points onto the quad.
+pub(super) fn projective_coefficients(
+    src: [(f64, f64); 4],
+    dst: [(f64, f64); 4],
+) -> Option<[f64; 9]> {
+    for (x, y) in src.iter().chain(dst.iter()) {
+        if !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+    }
+    let mut a = [[0.0f64; 8]; 8];
+    let mut b = [0.0f64; 8];
+    for i in 0..4 {
+        let (x, y) = src[i];
+        let (u, v) = dst[i];
+        a[2 * i] = [x, y, 1.0, 0.0, 0.0, 0.0, -x * u, -y * u];
+        b[2 * i] = u;
+        a[2 * i + 1] = [0.0, 0.0, 0.0, x, y, 1.0, -x * v, -y * v];
+        b[2 * i + 1] = v;
+    }
+    let s = gaussian_solve(a, b)?;
+    let h = [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], 1.0];
+    // QTransform maps x'=(m11·x+m21·y+m31)/w and y'=(m12·x+m22·y+m32)/w with
+    // w=m13·x+m23·y+m33, hence the transposed placement of the homography.
+    Some([h[0], h[3], h[6], h[1], h[4], h[7], h[2], h[5], h[8]])
+}
+
+/// Solve the 8×8 linear system by Gaussian elimination with partial pivoting.
+// ponytail: a local copy of the engine's solver (`pictura-render` is frozen for
+// this change). Expose the engine helper if a second caller ever appears.
+fn gaussian_solve(mut a: [[f64; 8]; 8], mut b: [f64; 8]) -> Option<[f64; 8]> {
+    const PIVOT_EPSILON: f64 = 1e-12;
+    for col in 0..8 {
+        let mut pivot = col;
+        let mut best = a[col][col].abs();
+        for (offset, row) in a[(col + 1)..].iter().enumerate() {
+            let v = row[col].abs();
+            if v > best {
+                best = v;
+                pivot = col + 1 + offset;
+            }
+        }
+        if !best.is_finite() || best < PIVOT_EPSILON {
+            return None;
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        let prow = a[col];
+        let p = prow[col];
+        for row in (col + 1)..8 {
+            let factor = a[row][col] / p;
+            if factor == 0.0 {
+                continue;
+            }
+            for k in col..8 {
+                a[row][k] -= factor * prow[k];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+    let mut x = [0.0f64; 8];
+    for i in (0..8).rev() {
+        let row = a[i];
+        let mut s = b[i];
+        for k in (i + 1)..8 {
+            s -= row[k] * x[k];
+        }
+        x[i] = s / row[i];
+    }
+    x.iter().all(|v| v.is_finite()).then_some(x)
 }
 
 /// Source coordinate of handle `h` (4..=7 are edge midpoints).
@@ -220,7 +407,8 @@ fn point_in_quad(p: (f64, f64), quad: &[(f64, f64); 4]) -> bool {
 }
 
 /// Which part of the session `(x, y)` hits: 0..=7 handle, 8 rotate, 9 move, -1
-/// nothing. Tolerances are in screen pixels and converted through `zoom`.
+/// nothing. Test convenience over [`hit_test_quad`] in `Free` mode.
+#[cfg(test)]
 pub(super) fn hit_test(
     rect: PsdRect,
     sx: f64,
@@ -228,6 +416,20 @@ pub(super) fn hit_test(
     angle: f64,
     dx: f64,
     dy: f64,
+    x: f64,
+    y: f64,
+    zoom: f64,
+) -> i32 {
+    let quad = transform_quad_points(rect, sx, sy, angle, dx, dy);
+    hit_test_quad(&quad, false, x, y, zoom)
+}
+
+/// Hit-test the explicit `quad`. In a projective mode only the eight handles are
+/// active: a press inside the quad away from a handle returns -1 (no move or
+/// rotate). `Free` keeps the move/rotate affordances.
+pub(super) fn hit_test_quad(
+    quad: &[(f64, f64); 4],
+    projective: bool,
     x: f64,
     y: f64,
     zoom: f64,
@@ -240,19 +442,21 @@ pub(super) fn hit_test(
     } else {
         1.0
     };
-    let quad = transform_quad_points(rect, sx, sy, angle, dx, dy);
     let p = (x, y);
     let tol = HANDLE_TOLERANCE / zoom;
-    for (i, h) in handle_points(&quad).iter().enumerate() {
+    for (i, h) in handle_points(quad).iter().enumerate() {
         if dist2(p, *h) <= tol * tol {
             return i as i32;
         }
     }
-    if point_in_quad(p, &quad) {
+    if projective {
+        return -1;
+    }
+    if point_in_quad(p, quad) {
         return MOVE_HANDLE;
     }
     let band = ROTATE_BAND / zoom;
-    for corner in &quad {
+    for corner in quad {
         if dist2(p, *corner) <= band * band {
             return ROTATE_HANDLE;
         }
@@ -262,6 +466,7 @@ pub(super) fn hit_test(
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::state::TransformMode;
     use super::*;
 
     fn rect4() -> PsdRect {
@@ -296,7 +501,17 @@ mod tests {
             press_y: 0.0,
             start: [1.0, 1.0, 0.0, 0.0, 0.0],
             dragging: true,
+            mode: TransformMode::Free,
+            quad: None,
+            start_quad: source_corners(rect4()),
         }
+    }
+
+    fn projective() -> TransformSession {
+        let mut s = session();
+        s.mode = TransformMode::Distort;
+        s.quad = Some(source_corners(rect4()));
+        s
     }
 
     #[test]
@@ -421,5 +636,83 @@ mod tests {
         s.press_y = 1.0;
         gesture_translate(&mut s, 3.0, 5.0);
         assert!((s.dx - 2.0).abs() < 1e-12 && (s.dy - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn distort_moves_one_corner() {
+        let mut s = projective();
+        assert!(gesture_distort(&mut s, 0, -2.0, -1.0));
+        let q = s.quad.unwrap();
+        assert_eq!(q[0], (-2.0, -1.0));
+        assert_eq!(q[1], (4.0, 0.0));
+        assert_eq!(q[2], (4.0, 4.0));
+        assert_eq!(q[3], (0.0, 4.0));
+    }
+
+    #[test]
+    fn perspective_mirrors_the_opposite_corner() {
+        let mut s = projective();
+        assert!(gesture_perspective(&mut s, 0, 2.0, 1.0));
+        let q = s.quad.unwrap();
+        assert_eq!(q[0], (2.0, 1.0));
+        assert_eq!(q[2], (2.0, 3.0));
+        let cx = q.iter().map(|p| p.0).sum::<f64>() / 4.0;
+        let cy = q.iter().map(|p| p.1).sum::<f64>() / 4.0;
+        assert!((cx - 2.0).abs() < 1e-9 && (cy - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn skew_slides_one_edge_and_leaves_the_opposite() {
+        let mut s = projective();
+        s.press_x = 0.0;
+        s.press_y = 0.0;
+        assert!(gesture_skew(&mut s, 4, 2.0, 1.0, false));
+        let q = s.quad.unwrap();
+        assert_eq!(q[0], (2.0, 1.0));
+        assert_eq!(q[1], (6.0, 1.0));
+        assert_eq!(q[2], (4.0, 4.0));
+        assert_eq!(q[3], (0.0, 4.0));
+
+        let mut shifted = projective();
+        shifted.press_x = 0.0;
+        shifted.press_y = 0.0;
+        assert!(gesture_skew(&mut shifted, 4, 2.0, 1.0, true));
+        assert_eq!(shifted.quad.unwrap()[0], (2.0, 0.0));
+    }
+
+    #[test]
+    fn degenerate_gesture_is_refused() {
+        let mut s = projective();
+        let before = s.quad.unwrap();
+        assert!(!gesture_distort(&mut s, 0, 4.0, 0.0));
+        assert_eq!(s.quad.unwrap(), before);
+    }
+
+    #[test]
+    fn projective_hit_test_ignores_the_inside() {
+        let q = source_corners(rect100());
+        assert_eq!(hit_test_quad(&q, true, 50.0, 50.0, 1.0), -1);
+        assert_eq!(hit_test_quad(&q, true, 0.0, 0.0, 1.0), 0);
+        assert_eq!(hit_test_quad(&q, true, 50.0, 0.0, 1.0), 4);
+        assert_eq!(hit_test_quad(&q, false, 50.0, 50.0, 1.0), MOVE_HANDLE);
+    }
+
+    #[test]
+    fn projective_coefficients_map_the_source_corners() {
+        let src = source_corners(rect4());
+        let dst = [(1.0, 1.0), (5.0, 0.0), (4.0, 5.0), (0.0, 3.0)];
+        let c = projective_coefficients(src, dst).unwrap();
+        // QTransform's map: x'=(m11·x+m21·y+m31)/w, y'=(m12·x+m22·y+m32)/w.
+        let map = |x: f64, y: f64| {
+            let w = c[2] * x + c[5] * y + c[8];
+            (
+                (c[0] * x + c[3] * y + c[6]) / w,
+                (c[1] * x + c[4] * y + c[7]) / w,
+            )
+        };
+        for (s, d) in src.iter().zip(dst.iter()) {
+            let p = map(s.0, s.1);
+            assert!((p.0 - d.0).abs() < 1e-9 && (p.1 - d.1).abs() < 1e-9);
+        }
     }
 }

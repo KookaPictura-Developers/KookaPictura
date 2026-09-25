@@ -5,6 +5,42 @@ use pictura_paint::Stroke;
 use pictura_select::Selection;
 use std::collections::HashMap;
 
+/// The live Free Transform gesture mode. `Free` is the existing similarity
+/// transform; the other three edit a document-space target quad.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum TransformMode {
+    #[default]
+    Free,
+    Skew,
+    Distort,
+    Perspective,
+}
+
+impl TransformMode {
+    /// Parse the command mode name, or `None` for an unknown string.
+    pub(super) fn parse(name: &str) -> Option<Self> {
+        match name {
+            "skew" => Some(Self::Skew),
+            "distort" => Some(Self::Distort),
+            "perspective" => Some(Self::Perspective),
+            _ => None,
+        }
+    }
+
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::Free => "free",
+            Self::Skew => "skew",
+            Self::Distort => "distort",
+            Self::Perspective => "perspective",
+        }
+    }
+
+    pub(super) fn is_projective(self) -> bool {
+        self != Self::Free
+    }
+}
+
 /// The live Free Transform session: the target path, the source rect, the
 /// current similarity transform about that rect's centre, and the drag state.
 pub struct TransformSession {
@@ -22,6 +58,12 @@ pub struct TransformSession {
     /// `[scale_x, scale_y, angle, dx, dy]` captured at press.
     pub(super) start: [f64; 5],
     pub(super) dragging: bool,
+    /// Gesture mode; `Free` uses the similarity scalars.
+    pub(super) mode: TransformMode,
+    /// Live target quad for a projective mode; `None` in `Free`.
+    pub(super) quad: Option<[(f64, f64); 4]>,
+    /// Quad captured at begin/press for a projective gesture.
+    pub(super) start_quad: [(f64, f64); 4],
 }
 
 /// Backing Rust state for [`super::qobject::PictureView`].

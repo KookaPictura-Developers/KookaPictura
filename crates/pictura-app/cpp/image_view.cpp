@@ -413,7 +413,32 @@ void ImageView::beginTransformPreview(const QImage& base, const QImage& layer,
     transformAngle_ = 0.0;
     transformDx_ = 0.0;
     transformDy_ = 0.0;
+    transformProjective_ = QTransform();
+    transformProjectiveActive_ = false;
     transformQuad_.clear();
+    update();
+}
+
+void ImageView::setTransformPreviewProjective(const QString& matrix9)
+{
+    const QStringList values = matrix9.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (values.size() != 9) {
+        transformProjectiveActive_ = false;
+        update();
+        return;
+    }
+    double c[9] = {0.0};
+    for (int i = 0; i < 9; ++i) {
+        bool ok = false;
+        c[i] = values.at(i).toDouble(&ok);
+        if (!ok) {
+            transformProjectiveActive_ = false;
+            update();
+            return;
+        }
+    }
+    transformProjective_ = QTransform(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]);
+    transformProjectiveActive_ = true;
     update();
 }
 
@@ -464,6 +489,8 @@ void ImageView::setTransformQuad(const QString& encoded)
 void ImageView::clearTransformPreview()
 {
     transformActive_ = false;
+    transformProjective_ = QTransform();
+    transformProjectiveActive_ = false;
     transformQuad_.clear();
     movePreviewActive_ = false;
     moveBase_ = QImage();
@@ -569,7 +596,8 @@ void ImageView::paintEvent(QPaintEvent*)
         painter.drawImage(QPointF(0.0, 0.0), moveBase_);
         painter.setOpacity(moveOpacity_);
         painter.save();
-        painter.setTransform(transformPreviewMatrix(), true);
+        painter.setTransform(transformProjectiveActive_ ? transformProjective_
+                                                        : transformPreviewMatrix(), true);
         painter.drawImage(moveLayerPos_, moveLayer_);
         painter.restore();
         painter.setOpacity(1.0);
