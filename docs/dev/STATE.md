@@ -713,9 +713,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   clone and copies only covered pixels back. The GPU declines a non-`None`
   knockout (`GpuError::UnsupportedAdvancedBlending`). Ceilings (`ponytail:`):
   the mechanism is inferred from the documented shape-against-the-stopping-point
-  rule (no Photoshop oracle); nested-shallow targets and clipping bases are not
-  resolved; `Transparency Shapes Layers` is not applied; the bottom layer is
-  assumed to be the background.
+  rule (no Photoshop oracle); clipping bases are not resolved; `Transparency
+  Shapes Layers` is not applied; the bottom layer is assumed to be the
+  background.
   Proven by render unit tests; `Knockout::None` and knockout-free documents
   compose byte-identically. **Independently verified** (change `knockout-oracle`,
   archived): a committed `knockout.psd` (red Background, green layer, half-fill
@@ -739,7 +739,20 @@ Snapshot for resuming after a context break. Update after each milestone.
   group of green + half-fill blue) whose psd-tools reference is `(126,127,128)`
   (the CPU gives `(127,127,128)`), discriminating the isolated base from the
   document background. No Photoshop pixel dump exists (the manual reopen stays
-  deferred).
+  deferred). **Shallow now stops at the group's entry backdrop** (change
+  `knockout-shallow-base`, archived): the compositor threads two bases (`deep` =
+  document background; `shallow` = the initial backdrop of the applying
+  compositor) and selects by `knko`, so a `Shallow` child of a pass-through group
+  no longer punches through the layers below the group while `Deep` still does;
+  at the root the two coincide. Verified by a new
+  `knockout_shallow_group.psd` fixture (red Background, yellow layer,
+  pass-through group of green + half-fill `knko = 1` blue) against psd-tools
+  **>= 1.19**, whose compositor is the first to discriminate Shallow; CI now
+  pins `psd-tools>=1.19`. The knockout entry points moved to
+  `crates/pictura-render/src/composite_knockout.rs` (keeping `composite.rs`
+  under its cap). Ceiling: clipping-mask knockout bases remain unresolved — the
+  compositor does not composite clipping masks at all and psd-tools cannot
+  discriminate them.
 - **Image-resource parsing** (roadmap P6/G5, archived
   `2026-09-22-psd-image-resources`): `pictura_codec::decode_image_resources`
   parses the preserved image-resource section into typed
