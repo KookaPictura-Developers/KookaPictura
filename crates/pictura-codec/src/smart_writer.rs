@@ -118,7 +118,7 @@ pub(crate) fn author_sold_block(
         layer.name.as_str()
     };
 
-    let descriptor = obj(vec![
+    let mut descriptor = obj(vec![
         (b"Idnt", text(&uuid)),
         (b"placed", text(&uuid)),
         (b"Nm  ", text(name)),
@@ -176,6 +176,13 @@ pub(crate) fn author_sold_block(
             obj(vec![(b"compID", long(-1)), (b"originalCompID", long(-1))]),
         ),
     ]);
+    // A converted embedded object may carry a smart filter (Pictura Raw) that
+    // the writer authors into the same `SoLd` descriptor.
+    if let Some(filter_fx) = crate::pictura_raw::author_filter_fx(&so.smart_filters) {
+        if let DescValue::Object { items, .. } = &mut descriptor {
+            items.push((b"filterFX".to_vec(), filter_fx));
+        }
+    }
 
     let mut data = b"soLD".to_vec();
     data.extend_from_slice(&4u32.to_be_bytes());

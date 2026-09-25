@@ -9,14 +9,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1637 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1665 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **449 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **451 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2124 passed, 11 skipped, 0 failed**.
+  probes) reports **2154 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -102,6 +102,28 @@ Snapshot for resuming after a context break. Update after each milestone.
   later-CC keys preserved, and `crs:` XMP is lifted to a typed `CrsSettings`
   view and editable in place (`crs-xmp-edit`). A CS6/earliest-CC
   fixture and the manual Photoshop reopen are deferred follow-ups.
+- **Pictura Raw core** (change `pictura-raw-core`, new capability `pictura-raw`):
+  the Camera Raw Filter's 11 PV2012 Basic controls now round-trip and render,
+  staying Photoshop's standard smart filter (`filterID 2683`, `"Camera Raw
+  Filter"`) inside `SoLd.filterFX`. `pictura_core::PicturaRawSettings` is a thin alias
+  of `CrsSettings`; `pictura_codec::decode_pictura_raw_settings`/`encode_pictura_raw_fltr` use
+  the fixture-grounded `Fltr` keys (`Ex12` `Double`; `Temp`, `Tint`, `Cr12`,
+  `Hi12`, `Sh12`, `Wh12`, `Bk12`, `Cl12`, `Vibr`, `Strt` `Long`).
+  `attach_pictura_raw_filter` edits an existing filter, inserts one into a preserved
+  `SoLd`/`SoLE` preserving other keys, or records it so `smart_writer` authors
+  `filterFX` into a converted object's `SoLd`. `pictura_adjust::render_pictura_raw` is an
+  `f32` pipeline (WB → exposure → contrast → highlights/shadows/whites/blacks →
+  clarity → vibrance → saturation) and a byte-identical no-op for default
+  settings; `pictura_render::apply_pictura_raw` bakes the filtered source into the layer
+  proxy and records the settings (alpha/rect preserved). Ceilings (`//
+  ponytail:`): behavioural parity only (no Adobe pixel oracle), clarity/contrast/
+  tonal approximations, integer-typed controls round on encode, and the
+  document-level `FXid`/`FEid`/`FMsk` render caches are not authored (the baked
+  proxy carries the pixels). UI/menu/C++ wiring followed in change `pictura-raw-ui`: the
+  modal `Pictura Raw` dialog (11 Basic controls; no tabs/filmstrip/
+  histogram/preview), the `Filter > Pictura Raw…` command, and the bridge (`layer_pictura_raw_settings` prefill,
+  `apply_pictura_raw_filter` convert-then-apply) record the whole raster → smart
+  object → filter flow as one `"Pictura Raw"` history state.
 - **Color-mode read** (roadmap P4/G2/G3, change `color-mode-read`, archived):
   `read_psd` now opens Bitmap (depth 1), Indexed, CMYK, and Lab 8-bit documents
   in addition to Grayscale/RGB and normalizes each to the working mode on load.

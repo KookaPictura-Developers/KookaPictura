@@ -38,6 +38,8 @@ mod imagemagick;
 mod layers;
 #[path = "oracle/opaque.rs"]
 mod opaque;
+#[path = "oracle/pictura_raw.rs"]
+mod pictura_raw;
 #[path = "oracle/smart_object.rs"]
 mod smart_object;
 #[path = "oracle/zip_prediction.rs"]

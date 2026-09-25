@@ -45,8 +45,6 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QKeySequence(QStringLiteral("Ctrl+W")), true);
     registry.add(command_ids::FileCloseAll, {"File", "Close All"}, QStringLiteral("Close All"),
                  QKeySequence(QStringLiteral("Ctrl+Alt+W")), true);
-    leaf(registry, {"File", "Close and Go to Bridge…"}, QStringLiteral("Close and Go to Bridge…"),
-         QStringLiteral("Shift+Ctrl+W"));
     registry.addSeparator({"File"});
     registry.add(command_ids::FileSave, {"File", "Save"}, QStringLiteral("Save"),
                  QKeySequence(QStringLiteral("Ctrl+S")), true);
@@ -162,7 +160,7 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Edit", "Purge", "Video Cache"}, QStringLiteral("Video Cache"));
     leaf(registry, {"Edit", "Purge", "All"}, QStringLiteral("All"));
     registry.addSeparator({"Edit"});
-    leaf(registry, {"Edit", "Adobe PDF Presets…"}, QStringLiteral("Adobe PDF Presets…"));
+    leaf(registry, {"Edit", "PDF Presets…"}, QStringLiteral("PDF Presets…"));
     leaf(registry, {"Edit", "Presets", "Preset Manager…"}, QStringLiteral("Preset Manager…"));
     leaf(registry, {"Edit", "Presets", "Migrate Presets…"}, QStringLiteral("Migrate Presets…"));
     leaf(registry, {"Edit", "Presets", "Export Presets…"}, QStringLiteral("Export Presets…"));
@@ -569,7 +567,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"Filter"});
     leaf(registry, {"Filter", "Filter Gallery…"}, QStringLiteral("Filter Gallery…"));
     leaf(registry, {"Filter", "Adaptive Wide Angle…"}, QStringLiteral("Adaptive Wide Angle…"));
-    leaf(registry, {"Filter", "Camera Raw Filter…"}, QStringLiteral("Camera Raw Filter…"));
+    registry.add(command_ids::FilterPicturaRaw, {"Filter", "Pictura Raw…"},
+                 QStringLiteral("Pictura Raw…"), QKeySequence(), true);
     leaf(registry, {"Filter", "Lens Correction…"}, QStringLiteral("Lens Correction…"));
     leaf(registry, {"Filter", "Liquify…"}, QStringLiteral("Liquify…"), QStringLiteral("Shift+Ctrl+X"));
     leaf(registry, {"Filter", "Oil Paint…"}, QStringLiteral("Oil Paint…"));
@@ -760,7 +759,7 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Window", "Arrange", "New Window For [file]"},
          QStringLiteral("New Window For [file]"));
     leaf(registry, {"Window", "Workspace", "Essentials"}, QStringLiteral("Essentials"));
-    leaf(registry, {"Window", "Workspace", "New in CS6"}, QStringLiteral("New in CS6"));
+    leaf(registry, {"Window", "Workspace", "New Features"}, QStringLiteral("New Features"));
     leaf(registry, {"Window", "Workspace", "3D"}, QStringLiteral("3D"));
     leaf(registry, {"Window", "Workspace", "Motion"}, QStringLiteral("Motion"));
     leaf(registry, {"Window", "Workspace", "Painting"}, QStringLiteral("Painting"));
@@ -799,12 +798,11 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Window", "Panels", "Layer Comps"}, QStringLiteral("Layer Comps"));
     registry.add(CommandSpec{command_ids::WindowPanelsLayers, {"Window", "Panels", "Layers"},
                              QStringLiteral("Layers"), QKeySequence(), true, true});
-    registry.add(CommandSpec{command_ids::WindowPanelsLibraries, {"Window", "Panels", "Libraries"},
-                             QStringLiteral("Libraries"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Measurement Log"}, QStringLiteral("Measurement Log"));
     registry.add(CommandSpec{command_ids::WindowPanelsNavigator, {"Window", "Panels", "Navigator"},
                              QStringLiteral("Navigator"), QKeySequence(), true, true});
-    leaf(registry, {"Window", "Panels", "Notes"}, QStringLiteral("Notes"));
+    registry.add(CommandSpec{command_ids::WindowPanelsNotes, {"Window", "Panels", "Notes"},
+                             QStringLiteral("Notes"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Paragraph"}, QStringLiteral("Paragraph"));
     leaf(registry, {"Window", "Panels", "Paragraph Styles"}, QStringLiteral("Paragraph Styles"));
     registry.add(CommandSpec{command_ids::WindowPanelsPaths, {"Window", "Panels", "Paths"},
@@ -821,23 +819,21 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(CommandSpec{command_ids::WindowPanelsTools, {"Window", "Panels", "Tools"},
                              QStringLiteral("Tools"), QKeySequence(), true, true});
     registry.addSeparator({"Window"});
-    leaf(registry, {"Window", "Extensions", "Mini Bridge"}, QStringLiteral("Mini Bridge"));
-    registry.addSeparator({"Window"});
     leaf(registry, {"Window", "3D"}, QStringLiteral("3D"));
 
     // Help
-    leaf(registry, {"Help", "Photoshop Help"}, QStringLiteral("Photoshop Help"), QStringLiteral("F1"));
-    leaf(registry, {"Help", "Photoshop Support Center"},
-         QStringLiteral("Photoshop Support Center"));
+    leaf(registry, {"Help", "Kooka Pictura Help"}, QStringLiteral("Kooka Pictura Help"),
+         QStringLiteral("F1"));
+    leaf(registry, {"Help", "Online Support"}, QStringLiteral("Online Support"));
     leaf(registry, {"Help", "Full Product Family Help"}, QStringLiteral("Full Product Family Help"));
-    leaf(registry, {"Help", "Adobe Product Improvement Program"},
-         QStringLiteral("Adobe Product Improvement Program"));
+    leaf(registry, {"Help", "Product Improvement Program"},
+         QStringLiteral("Product Improvement Program"));
     registry.addSeparator({"Help"});
     leaf(registry, {"Help", "About Plug-in"}, QStringLiteral("About Plug-in"));
     leaf(registry, {"Help", "System Info"}, QStringLiteral("System Info"));
     registry.addSeparator({"Help"});
-    registry.add(command_ids::HelpAbout, {"Help", "About Photoshop"},
-                 QStringLiteral("About Photoshop"), QKeySequence(), true);
+    registry.add(command_ids::HelpAbout, {"Help", "About Kooka Pictura"},
+                 QStringLiteral("About Kooka Pictura"), QKeySequence(), true);
 }
 
 } // namespace pictura

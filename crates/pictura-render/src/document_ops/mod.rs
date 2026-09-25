@@ -7,6 +7,7 @@ mod depth;
 mod layer_ops;
 mod native_store;
 mod orient;
+mod pictura_raw;
 mod resize;
 
 pub use canvas::resize_canvas_document;
@@ -33,6 +34,7 @@ pub use layer_ops::{
     MergeError, MergeOutcome, MergeScope, NewLayerSpec, WarpMesh, WarpParams, WarpStyle,
 };
 pub use orient::{flip_document, rotate_document};
+pub use pictura_raw::apply_pictura_raw;
 pub use resize::resize_document;
 
 /// Reject a zero width or height with `InvalidParams`.

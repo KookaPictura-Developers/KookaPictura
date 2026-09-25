@@ -33,15 +33,15 @@ void PicturaMainWindow::buildPanels()
     patternsPanel_ = new PlaceholderPanel(QStringLiteral("Patterns"), QString(), this);
     patternsPanel_->setObjectName(QStringLiteral("patternsPanel"));
 
+    notesPanel_ = new PlaceholderPanel(QStringLiteral("Notes"), QString(), this);
+    notesPanel_->setObjectName(QStringLiteral("notesPanel"));
+
     propertiesPanel_ =
         new PlaceholderPanel(QStringLiteral("Properties"), QStringLiteral("No Properties"), this);
     propertiesPanel_->setObjectName(QStringLiteral("propertiesPanel"));
 
     adjustmentsPanel_ = new PlaceholderPanel(QStringLiteral("Adjustments"), QString(), this);
     adjustmentsPanel_->setObjectName(QStringLiteral("adjustmentsPanel"));
-
-    librariesPanel_ = new PlaceholderPanel(QStringLiteral("Libraries"), QString(), this);
-    librariesPanel_->setObjectName(QStringLiteral("librariesPanel"));
 
     channelsPanel_ = new PlaceholderPanel(QStringLiteral("Channels"), QString(), this);
     channelsPanel_->setObjectName(QStringLiteral("channelsPanel"));
@@ -68,9 +68,9 @@ void PicturaMainWindow::buildPanels()
     registerPanel(histogramPanel_, Qt::RightDockWidgetArea);
     registerPanel(gradientsPanel_, Qt::RightDockWidgetArea);
     registerPanel(patternsPanel_, Qt::RightDockWidgetArea);
+    registerPanel(notesPanel_, Qt::RightDockWidgetArea);
     registerPanel(propertiesPanel_, Qt::RightDockWidgetArea);
     registerPanel(adjustmentsPanel_, Qt::RightDockWidgetArea);
-    registerPanel(librariesPanel_, Qt::RightDockWidgetArea);
     registerPanel(channelsPanel_, Qt::RightDockWidgetArea);
     registerPanel(pathsPanel_, Qt::RightDockWidgetArea);
     registerPanel(actionsPanel_, Qt::RightDockWidgetArea);
@@ -132,8 +132,8 @@ void PicturaMainWindow::buildPanels()
              QString::fromLatin1(command_ids::WindowPanelsGradients));
     addPanel(overflowGroup, patternsPanel_, tr("Patterns"),
              QString::fromLatin1(command_ids::WindowPanelsPatterns));
-    addPanel(overflowGroup, librariesPanel_, tr("Libraries"),
-             QString::fromLatin1(command_ids::WindowPanelsLibraries));
+    addPanel(overflowGroup, notesPanel_, tr("Notes"),
+             QString::fromLatin1(command_ids::WindowPanelsNotes));
     panelColumn_->addGroup(overflowGroup);
 
     // Default visibility matches the pre-M41 layout: Color/Swatches/Styles,
@@ -144,7 +144,7 @@ void PicturaMainWindow::buildPanels()
     panelColumn_->showPanel(QStringLiteral("propertiesPanel"), false);
     panelColumn_->showPanel(QStringLiteral("gradientsPanel"), false);
     panelColumn_->showPanel(QStringLiteral("patternsPanel"), false);
-    panelColumn_->showPanel(QStringLiteral("librariesPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("notesPanel"), false);
 }
 
 void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwitch)

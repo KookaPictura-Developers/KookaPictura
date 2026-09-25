@@ -72,6 +72,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_report.cpp
     crates/pictura-app/cpp/selftest_layers_controls.cpp
     crates/pictura-app/cpp/selftest_layers_smart_object.cpp
+    crates/pictura-app/cpp/selftest_pictura_raw.cpp
     crates/pictura-app/cpp/selftest_layers_filter.cpp
     crates/pictura-app/cpp/selftest_tools_selection.cpp
     crates/pictura-app/cpp/selftest_layers_adjustments.cpp
@@ -107,6 +108,7 @@ add_executable(pictura
     crates/pictura-app/cpp/file_info_dialog.cpp
     crates/pictura-app/cpp/profile_dialog.cpp
     crates/pictura-app/cpp/hdr_conversion_dialog.cpp
+    crates/pictura-app/cpp/pictura_raw_dialog.cpp
     crates/pictura-app/cpp/warp_preset_dialog.cpp
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
@@ -174,6 +176,7 @@ add_executable(pictura
     crates/pictura-app/cpp/file_info_dialog.h
     crates/pictura-app/cpp/profile_dialog.h
     crates/pictura-app/cpp/hdr_conversion_dialog.h
+    crates/pictura-app/cpp/pictura_raw_dialog.h
     crates/pictura-app/cpp/warp_preset_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.h
     crates/pictura-app/cpp/image_view.h
@@ -184,6 +187,7 @@ add_executable(pictura
     crates/pictura-app/cpp/frame.h
     crates/pictura-app/cpp/selftest_layers_controls.h
     crates/pictura-app/cpp/selftest_layers_smart_object.h
+    crates/pictura-app/cpp/selftest_pictura_raw.h
     crates/pictura-app/cpp/selftest_warp_preset.h
     crates/pictura-app/cpp/selftest_layers_filter.h
     crates/pictura-app/cpp/selftest_tools_selection.h

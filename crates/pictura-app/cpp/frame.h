@@ -274,9 +274,9 @@ private:
     HistogramPanel* histogramPanel_ = nullptr;
     PlaceholderPanel* gradientsPanel_ = nullptr;
     PlaceholderPanel* patternsPanel_ = nullptr;
+    PlaceholderPanel* notesPanel_ = nullptr;
     PlaceholderPanel* propertiesPanel_ = nullptr;
     PlaceholderPanel* adjustmentsPanel_ = nullptr;
-    PlaceholderPanel* librariesPanel_ = nullptr;
     PlaceholderPanel* channelsPanel_ = nullptr;
     PlaceholderPanel* pathsPanel_ = nullptr;
     PlaceholderPanel* actionsPanel_ = nullptr;

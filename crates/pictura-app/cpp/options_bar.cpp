@@ -252,8 +252,7 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
         ratioLayout->addWidget(ratioW);
         ratioLayout->addWidget(new QLabel(QStringLiteral(":"), ratioBox));
         ratioLayout->addWidget(ratioH);
-        ratioBox->setToolTip(
-            QStringLiteral("Inferred default 1:1; CS6 Help does not state shipped values."));
+        ratioBox->setToolTip(QStringLiteral("Inferred default 1:1."));
         layout->addWidget(ratioBox);
 
         auto* sizeBox = new QWidget(page);

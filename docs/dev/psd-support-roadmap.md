@@ -36,7 +36,16 @@ below):
   content rasterize and author.
 - **Smart objects / Camera Raw.** Embedded smart objects are modeled,
   authored, rendered, and edited; the CC Camera Raw Filter settings
-  (`SoLd.filterFX[].Fltr`, `FEid`/`FMsk`) read and write (P2.5).
+  (`SoLd.filterFX[].Fltr`) read and write (P2.5). The Pictura Raw core (`pictura-raw-core`)
+  adds the filter's 11 PV2012 Basic controls as a typed round-trip
+  (`PicturaRawSettings`, `decode_pictura_raw_settings`/`encode_pictura_raw_fltr`), authoring into a
+  converted object's `SoLd` (`attach_pictura_raw_filter` + the writer), a CPU render
+  pipeline (`render_pictura_raw`), and a bake-into-proxy op (`apply_pictura_raw`). The
+  app command `Filter > Pictura Raw…` (`pictura-raw-ui`) now converts a raster
+  layer and assigns Pictura Raw as its smart filter in one undo step, with an 11-control
+  Basic dialog and dialog prefill from the stored settings. The document-level
+  `FXid`/`FEid`/`FMsk` render caches are not authored — the baked proxy carries
+  the pixels.
 - **Metadata / ICC.** Image resources parse; an embedded non-sRGB profile is
   honored per the incoming-profile policy; EXIF/IPTC/XMP read, IPTC and managed
   XMP edit, templates export/apply; Assign/Convert Profile; the saved resource

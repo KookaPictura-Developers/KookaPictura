@@ -13,6 +13,7 @@ mod impl_layers_rasterize;
 mod impl_layers_select;
 mod impl_layers_smart_object;
 mod impl_paint;
+mod impl_pictura_raw;
 mod impl_selection;
 mod impl_transform;
 mod state;
@@ -692,6 +693,34 @@ pub mod qobject {
         /// state; true only when the write succeeds.
         #[qinvokable]
         fn export_smart_object_contents(&self, path: &QString, dest: &QString) -> bool;
+
+        /// The Pictura Raw Basic settings attached to `path` as 11 space-separated
+        /// values in dialog order (temperature, tint, exposure, contrast,
+        /// highlights, shadows, whites, blacks, clarity, vibrance, saturation),
+        /// or empty when the layer has no Pictura Raw smart filter. Read-only.
+        #[qinvokable]
+        fn layer_pictura_raw_settings(&self, path: &QString) -> QString;
+
+        /// `Filter > Pictura Raw…`: convert `path` to an embedded smart
+        /// object when it is a plain raster pixel layer, then apply the 11 Basic
+        /// controls and record one "Pictura Raw" state. False without a
+        /// document/target or when the engine refuses; records nothing then.
+        #[qinvokable]
+        fn apply_pictura_raw_filter(
+            self: Pin<&mut Self>,
+            path: &QString,
+            temperature: f64,
+            tint: f64,
+            exposure: f64,
+            contrast: f64,
+            highlights: f64,
+            shadows: f64,
+            whites: f64,
+            blacks: f64,
+            clarity: f64,
+            vibrance: f64,
+            saturation: f64,
+        ) -> bool;
 
         /// Set layer `i` visibility, recomposite, and emit [`changed`].
         #[qinvokable]

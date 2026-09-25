@@ -562,7 +562,7 @@ bool PicturaMainWindow::saveActive()
     QString path = docs_.at(index).path;
     if (path.isEmpty()) {
         path = QFileDialog::getSaveFileName(this, tr("Save As"), QString(),
-                                            QStringLiteral("Photoshop files (*.psd *.psb)"));
+                                            QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
         if (path.isEmpty()) {
             return false;
         }
@@ -741,7 +741,7 @@ void PicturaMainWindow::showOpenDialog()
 {
     const QString filter = QStringLiteral(
         "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff *.webp);;"
-        "Photoshop files (*.psd *.psb);;All files (*)");
+        "PSD/PSB documents (*.psd *.psb);;All files (*)");
     const QString path = QFileDialog::getOpenFileName(this, tr("Open"), QString(), filter);
     if (path.isEmpty()) {
         return;

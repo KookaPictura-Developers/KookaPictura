@@ -55,7 +55,7 @@ void PicturaMainWindow::registerHandlers()
     registry_->setHandler(command_ids::FileOpenAsSmartObject, [this]() {
         const QString path = QFileDialog::getOpenFileName(
             this, tr("Open As Smart Object"), QString(),
-            QStringLiteral("Photoshop files (*.psd *.psb)"));
+            QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
         if (!path.isEmpty()) {
             openAsSmartObjectPath(path);
         }
@@ -67,7 +67,7 @@ void PicturaMainWindow::registerHandlers()
         }
         const QString filter = QStringLiteral(
             "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff *.webp);;"
-            "Photoshop files (*.psd *.psb);;All files (*)");
+            "PSD/PSB documents (*.psd *.psb);;All files (*)");
         const QString path = QFileDialog::getOpenFileName(this, tr("Place"), QString(), filter);
         if (path.isEmpty()) {
             return;
@@ -87,7 +87,7 @@ void PicturaMainWindow::registerHandlers()
     registry_->setHandler(command_ids::FileSave, [this]() { saveActive(); });
     registry_->setHandler(command_ids::FileSaveAs, [this]() {
         QString path = QFileDialog::getSaveFileName(this, tr("Save As"), activeFilePath(),
-                                                    QStringLiteral("Photoshop files (*.psd *.psb)"));
+                                                    QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
         if (path.isEmpty()) {
             return;
         }
@@ -799,7 +799,7 @@ void PicturaMainWindow::registerHandlers()
                               }
                               const QString file = QFileDialog::getOpenFileName(
                                   this, tr("Replace Contents"), QString(),
-                                  QStringLiteral("Photoshop files (*.psd *.psb)"));
+                                  QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
                               if (!file.isEmpty()
                                   && view->replace_smart_object_contents(path, file)) {
                                   refresh();
@@ -829,7 +829,7 @@ void PicturaMainWindow::registerHandlers()
                               }
                               QString dest = QFileDialog::getSaveFileName(
                                   this, tr("Export Contents"), activeFilePath(),
-                                  QStringLiteral("Photoshop files (*.psd)"));
+                                  QStringLiteral("PSD documents (*.psd)"));
                               if (dest.isEmpty()) {
                                   return;
                               }
@@ -868,6 +868,40 @@ void PicturaMainWindow::registerHandlers()
                                   [currentEditableSmartPath]() {
                                       return !currentEditableSmartPath().isEmpty();
                                   });
+
+    // Filter > Pictura Raw…: prefill the dialog from the layer's stored
+    // Pictura Raw settings (empty when none), then convert a plain raster target
+    // to a smart object and apply Pictura Raw in one bridge call / one history state.
+    registry_->setHandler(command_ids::FilterPicturaRaw, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty()) {
+            return;
+        }
+        QList<double> initial;
+        const QStringList tokens =
+            view->layer_pictura_raw_settings(path).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        for (const QString& token : tokens) {
+            initial.append(token.toDouble());
+        }
+        QList<double> values;
+        if (!PicturaRawDialog::get(this, initial, &values) || values.size() != 11) {
+            return;
+        }
+        if (view->apply_pictura_raw_filter(path, values.at(0), values.at(1), values.at(2),
+                                           values.at(3), values.at(4), values.at(5),
+                                           values.at(6), values.at(7), values.at(8),
+                                           values.at(9), values.at(10))) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::FilterPicturaRaw, [this]() {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        return view && view->has_document() && !path.isEmpty()
+            && (view->layer_can_convert_to_smart_object(path)
+                || view->layer_can_replace_smart_object_contents(path));
+    });
 
     registry_->setHandler(command_ids::ViewZoomIn, [this]() {
         if (ImageView* canvas = imageView()) {
@@ -974,9 +1008,9 @@ void PicturaMainWindow::registerHandlers()
         {command_ids::WindowPanelsHistogram, "histogramPanel"},
         {command_ids::WindowPanelsGradients, "gradientsPanel"},
         {command_ids::WindowPanelsPatterns, "patternsPanel"},
+        {command_ids::WindowPanelsNotes, "notesPanel"},
         {command_ids::WindowPanelsProperties, "propertiesPanel"},
         {command_ids::WindowPanelsAdjustments, "adjustmentsPanel"},
-        {command_ids::WindowPanelsLibraries, "librariesPanel"},
         {command_ids::WindowPanelsChannels, "channelsPanel"},
         {command_ids::WindowPanelsPaths, "pathsPanel"},
         {command_ids::WindowPanelsActions, "actionsPanel"},
@@ -1004,8 +1038,11 @@ void PicturaMainWindow::registerHandlers()
     }
 
     registry_->setHandler(command_ids::HelpAbout, [this]() {
-        QMessageBox::about(this, tr("About Kooka Pictura"),
-                           tr("Kooka Pictura — a Photoshop CS6 reimplementation in Rust and Qt."));
+        QMessageBox::about(
+            this, tr("About Kooka Pictura"),
+            tr("Kooka Pictura — an open-source layered image editor for Linux, written in Rust "
+               "and Qt. Adobe, Photoshop, and Camera Raw are trademarks of Adobe Inc.; "
+               "Kooka Pictura is not affiliated with or endorsed by Adobe."));
     });
 }
 
