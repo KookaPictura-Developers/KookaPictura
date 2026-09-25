@@ -66,7 +66,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `text-shaping-offsets`, and
     `text-subpixel-positioning`, and
     `text-backend-drop-fontdue`, and
-    `psd-tagged-block-8b64`
+    `psd-tagged-block-8b64`, and
+    `bit-depth-sample-model`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -926,9 +927,14 @@ Snapshot for resuming after a context break. Update after each milestone.
   a scale/rotate/flip (`// ponytail:` an unmodeled channel cannot be resampled)
   and kept on a pure translation. Proven by the `psd-tools` write oracle
   (composite + layer channels, all four compressions, both depths, and a grouped
-  document whole-`Document`-equal). Ceilings: editing stays 8-bit (a true
-  `u16`/`f32` sample model), no HDR tone map, retained samples cost 2×/4× while
-  open.
+  document whole-`Document`-equal). The retained store is now sample-typed
+  (`bit-depth-sample-model`): `SourcePlanes`/`SourceChannels` hold `u8`/`u16`/
+  `f32` samples with the shared `Samples::narrow_to_u8`/`widen_from_u8` rules and
+  `PixelBuffer<T = u8>` is generic, so 16/32-bit planes are decoded to native
+  values instead of raw PSD bytes (byte-exact `to_bytes`/`from_bytes` round-trip;
+  no pixel-behavior change). Ceilings: editing still runs on 8-bit ops (porting
+  them to native depth is the next phase), no HDR tone map, retained samples cost
+  2×/4× while open and the write path clones each retained plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
@@ -1030,8 +1036,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   notice keeps the mode-preserving wording when the depth is retained. Proven by
   the `color_mode_oracle` (16- and 32-bit CMYK/Lab, psd-tools mode 4/9 at source
   depth) and `tests/depth.rs` (composite + layered Lab/CMYK byte-identity, edited
-  widening, typed-error guard). Ceilings: editing stays 8-bit (a true `u16`/`f32`
-  sample model); a mode with no retained native store (8-bit Lab/CMYK) and
+  widening, typed-error guard). Ceilings: editing stays 8-bit (the typed store
+  ships — `bit-depth-sample-model` — but ops are not yet ported to native depth);
+  a mode with no retained native store (8-bit Lab/CMYK) and
   Indexed/Bitmap save as before; Multichannel/Duotone remain open.
 - `vmsk` vector masks (roadmap P3, archived `vector-mask-render`): now decode
   into a derived `Layer.vector_mask` view (raw block preserved and re-emitted)
