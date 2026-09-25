@@ -329,6 +329,40 @@ def knockout_isolated_group() -> PSDImage:
     return psd
 
 
+def knockout_shallow_group() -> PSDImage:
+    """RGB, a red Background, an opaque yellow intervening layer, then a
+    pass-through group of green and a half-fill blue carrying `knko = Shallow`
+    (1).
+
+    Shallow knockout stops at the enclosing group's entry backdrop
+    (`docs/05-layers/layer-groups.md:81`), unlike `knockout_group()`'s Deep,
+    which reaches the document Background. The red-plus-yellow backdrop current
+    when the group began is the stopping point, so the blue punches the group's
+    green through while the yellow below the group still contributes. The same
+    channel-stripped Background as `knockout()` is the document base.
+    """
+    psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(255, 0, 0))
+    background = psd.create_pixel_layer(
+        _solid((WIDTH, HEIGHT), (255, 0, 0)), name="Background"
+    )
+    rec = background._record
+    channels = [
+        (info, data)
+        for info, data in zip(rec.channel_info, background._channels)
+        if info.id != ChannelID.TRANSPARENCY_MASK
+    ]
+    rec.channel_info = [info for info, _ in channels]
+    background._channels = ChannelDataList([data for _, data in channels])
+
+    psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (255, 255, 0)), name="Yellow")
+    green = psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 255, 0)), name="Green")
+    blue = psd.create_pixel_layer(_solid((WIDTH, HEIGHT), (0, 0, 255)), name="Blue")
+    blue.opacity = 128
+    blue._record.tagged_blocks.set_data(Tag.KNOCKOUT_SETTING, 1)
+    psd.create_group([green, blue], name="Group")
+    return psd
+
+
 def masked() -> PSDImage:
     """RGB, one pixel layer with a raster layer mask."""
     psd = PSDImage.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
@@ -1986,6 +2020,7 @@ FIXTURES = {
     "knockout.psd": knockout,
     "knockout_group.psd": knockout_group,
     "knockout_isolated_group.psd": knockout_isolated_group,
+    "knockout_shallow_group.psd": knockout_shallow_group,
     "image_resources.psd": image_resources,
     "icc_profile.psd": icc_profile,
     "metadata.psd": metadata,

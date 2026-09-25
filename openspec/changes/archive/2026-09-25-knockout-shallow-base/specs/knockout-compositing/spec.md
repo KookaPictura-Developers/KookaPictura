@@ -1,8 +1,7 @@
 # knockout-compositing Specification
 
-## Purpose
-TBD - created by archiving change knockout-composite. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: Knockout punches a layer through to the background
 
 The CPU compositor SHALL apply the `Knockout` mode of a non-bottom layer. When
@@ -56,90 +55,7 @@ byte-identically to before.
 - **WHEN** a knockout layer covers a pixel with zero source alpha
 - **THEN** the running backdrop at that pixel is unchanged
 
-### Requirement: The GPU compositor declines a knockout layer
-
-The GPU compositor SHALL report an advanced-blending error for a stack containing
-a layer, at any depth, whose knockout mode is `Shallow` or `Deep`, so the caller
-composites on the CPU. A stack with no such layer SHALL continue to use the GPU
-path.
-
-#### Scenario: A knockout layer forces the CPU oracle
-
-- **WHEN** a document contains a layer with `Knockout::Shallow` or `Knockout::Deep`
-- **THEN** the GPU compositor declines with the advanced-blending error and the CPU composite is the result
-
-#### Scenario: No knockout keeps the GPU path
-
-- **WHEN** no layer carries a non-`None` knockout
-- **THEN** the GPU compositor is attempted as before
-
-### Requirement: Knockout is verified against a psd-tools reference
-
-The repository SHALL carry a committed knockout PSD fixture and a pixel
-reference derived from `psd-tools`' own compositor, and a render test SHALL
-composite the fixture with the CPU compositor and compare the result to the
-reference within a documented tolerance. The reference-comparison test SHALL
-self-skip when `psd_tools` is unavailable, and SHALL independently assert that
-the knockout layer punches through the intermediate layer.
-
-#### Scenario: The fixture decodes as a knockout
-
-- **WHEN** the committed knockout fixture is read
-- **THEN** the knockout layer's typed mode is `Deep`
-
-#### Scenario: The CPU composite matches the reference
-
-- **WHEN** the fixture is composited by the CPU compositor
-- **THEN** the result is within the documented tolerance of the psd-tools-derived reference at every pixel
-
-#### Scenario: The intermediate layer is punched through
-
-- **WHEN** the result is examined at a pixel the knockout layer covers
-- **THEN** the intermediate layer's green does not contribute
-
-#### Scenario: Missing oracle self-skips
-
-- **WHEN** `psd_tools` is not importable
-- **THEN** the reference-comparison test skips rather than fails
-
-### Requirement: The pass-through-group knockout is verified against psd-tools
-
-The repository SHALL carry a committed knockout-in-a-pass-through-group PSD
-fixture and a pixel reference derived from `psd-tools`' own compositor, and a
-render test SHALL composite the fixture with the CPU compositor and compare the
-result to the reference within the documented tolerance, self-skipping when
-`psd_tools` is unavailable. The test SHALL assert that the fixture's group is
-`PassThrough` and its child is `Deep`, so a fixture that silently becomes
-isolated fails rather than passing for the wrong reason.
-
-#### Scenario: The group fixture matches the reference
-
-- **WHEN** the pass-through-group knockout fixture is composited by the CPU compositor
-- **THEN** the result is within the documented tolerance of the psd-tools-derived reference
-
-#### Scenario: The group's intermediate layer is punched through
-
-- **WHEN** the result is examined at a pixel the knockout layer covers
-- **THEN** the group's intermediate green does not contribute
-
-### Requirement: The isolated-group knockout is verified against psd-tools
-
-The repository SHALL carry a committed knockout-in-an-isolated-group PSD fixture
-whose document also holds a layer below the group, and a pixel reference derived
-from `psd-tools`' own compositor. A render test SHALL composite the fixture with
-the CPU compositor and compare the result to the reference within the documented
-tolerance, self-skipping when `psd_tools` is unavailable, and SHALL assert that
-the fixture's group is not Pass Through and its knockout child is `Deep`.
-
-#### Scenario: The isolated-group fixture matches the reference
-
-- **WHEN** the isolated-group knockout fixture is composited by the CPU compositor
-- **THEN** the result is within the documented tolerance of the psd-tools-derived reference
-
-#### Scenario: The layer below the group still contributes
-
-- **WHEN** the result is examined at a covered pixel
-- **THEN** the group's green is punched through, and the layer below the group is blended (not the document background)
+## ADDED Requirements
 
 ### Requirement: The nested pass-through Shallow knockout is verified against psd-tools
 
@@ -168,4 +84,3 @@ contributes (Shallow did not punch through it).
 
 - **WHEN** `psd_tools` is not importable or is older than 1.19
 - **THEN** the reference-comparison test skips rather than fails
-

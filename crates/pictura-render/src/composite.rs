@@ -4,11 +4,12 @@ use pictura_adjust::{
 };
 use pictura_codec::DescValue;
 use pictura_core::{
-    AdjustmentData, BlendIf, BlendMode, ColorMode, Document, Knockout, Layer, PixelBuffer, PsdRect,
+    AdjustmentData, BlendIf, BlendMode, ColorMode, Document, Layer, PixelBuffer, PsdRect,
     SmartObject, SmartObjectKind,
 };
 
 pub(crate) use crate::blend::blend;
+pub(crate) use crate::composite_knockout::{composite_layer, composite_layers, has_knockout};
 use crate::composite_native::{composite_adjustment, mask_alpha_unit, native_unit};
 
 /// Composite the document's layer stack.
@@ -19,36 +20,6 @@ pub fn composite_rgba(doc: &Document) -> PixelBuffer {
     let mut canvas = Canvas::new(doc.width as usize, doc.height as usize);
     composite_layers(&mut canvas, doc);
     canvas.into_pixel_buffer()
-}
-
-/// Composite `doc.layers` (bottom-first) onto `canvas`, applying each non-bottom
-/// layer's knockout against the document background.
-pub(crate) fn composite_layers(canvas: &mut Canvas, doc: &Document) {
-    let base = knockout_base(canvas, doc);
-    for (i, layer) in doc.layers.iter().enumerate() {
-        let base = if i == 0 { None } else { base.as_ref() };
-        composite_layer(canvas, layer, doc, base);
-    }
-}
-
-/// The document background (the bottom layer composited alone), built only when
-/// a non-bottom layer knocks out. ponytail: no Background flag in the model, so
-/// the bottom layer is assumed to be the background; a non-background bottom
-/// resolves to its content rather than transparency.
-fn knockout_base(region: &Canvas, doc: &Document) -> Option<Canvas> {
-    let present = doc.layers.iter().skip(1).any(has_knockout);
-    present.then(|| {
-        let mut base = Canvas::new_region(region.ox, region.oy, region.w, region.h);
-        if let Some(background) = doc.layers.first() {
-            composite_layer_inner(&mut base, background, doc, None);
-        }
-        base
-    })
-}
-
-/// Whether `layer` or any descendant carries a non-`None` knockout (recursive).
-fn has_knockout(layer: &Layer) -> bool {
-    layer.knockout != Knockout::None || layer.children.iter().any(has_knockout)
 }
 
 /// Composite only the document-space region `[x0, x0+rw) × [y0, y0+rh)`.
@@ -130,6 +101,7 @@ pub(crate) struct Px {
     pub(crate) a: f32,
 }
 
+#[derive(Clone)]
 pub(crate) struct Canvas {
     pub(crate) w: usize,
     pub(crate) h: usize,
@@ -141,7 +113,7 @@ pub(crate) struct Canvas {
     /// Per-pixel "the layer contributed here" flag, set only for the temporary
     /// canvas a knockout layer composites into. `None` on the output canvas so
     /// the normal path stays allocation-free.
-    cover: Option<Vec<bool>>,
+    pub(crate) cover: Option<Vec<bool>>,
 }
 
 impl Canvas {
@@ -163,7 +135,7 @@ impl Canvas {
 
     /// A copy of `base`'s pixels with a fresh all-false coverage mask, so a
     /// knockout composite can record which pixels it actually covered.
-    fn with_cover_from(base: &Canvas) -> Canvas {
+    pub(crate) fn with_cover_from(base: &Canvas) -> Canvas {
         Canvas {
             w: base.w,
             h: base.h,
@@ -211,39 +183,12 @@ pub(crate) fn to_u8(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-/// Composite `layer`; a non-`None` knockout with a `base` routes through
-/// [`composite_knockout`], everything else through the inner dispatch.
-fn composite_layer(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: Option<&Canvas>) {
-    match base {
-        Some(base) if layer.knockout != Knockout::None => {
-            composite_knockout(canvas, layer, doc, base);
-        }
-        _ => composite_layer_inner(canvas, layer, doc, base),
-    }
-}
-
-/// Composite `layer` against the document background `base`, then replace the
-/// running backdrop only where the layer contributed, punching the layers
-/// between it and the background through at those pixels.
-///
-/// ponytail: shape-composited-against-the-stopping-point rule from
-/// `docs/05-layers/layers-overview.md:181`; clipping/Transparency-Shapes unresolved.
-fn composite_knockout(canvas: &mut Canvas, layer: &Layer, doc: &Document, base: &Canvas) {
-    let mut tmp = Canvas::with_cover_from(base);
-    composite_layer_inner(&mut tmp, layer, doc, None);
-    let cover = tmp.cover.take().unwrap_or_default();
-    for (i, covered) in cover.iter().enumerate() {
-        if *covered {
-            canvas.px[i] = tmp.px[i];
-        }
-    }
-}
-
-fn composite_layer_inner(
+pub(crate) fn composite_layer_inner(
     canvas: &mut Canvas,
     layer: &Layer,
     doc: &Document,
-    base: Option<&Canvas>,
+    deep: Option<&Canvas>,
+    shallow: Option<&Canvas>,
 ) {
     if !layer.visible {
         return;
@@ -253,24 +198,29 @@ fn composite_layer_inner(
     if layer.is_group {
         // True pass-through: recurse children onto the running canvas so their
         // blend modes see outside the group (exact only at opacity 255, no
-        // mask; else isolated). The base threads through so a knockout child
-        // punches through the group to the document background.
+        // mask; else isolated). `deep` threads through so a `Deep` knockout
+        // child still reaches the document background; when the subtree knocks
+        // out, the backdrop current at group entry is snapshotted as the
+        // children's `Shallow` stopping point.
         if matches!(layer.blend, BlendMode::PassThrough)
             && layer.opacity == 255
             && layer.mask.is_none()
         {
+            let snapshot = has_knockout(layer).then(|| canvas.clone());
+            let child_shallow = snapshot.as_ref().or(shallow);
             for child in &layer.children {
-                composite_layer(canvas, child, doc, base);
+                composite_layer(canvas, child, doc, deep, child_shallow);
             }
             return;
         }
-        // The isolated group's initial backdrop is its knockout stopping point;
-        // the incoming base is ignored.
+        // An isolated group is a boundary: `deep` resets (a `Deep` child falls
+        // back to the group's own backdrop) and that backdrop is also the
+        // `Shallow` stopping point; the incoming bases are ignored.
         let mut inner = Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h);
         let ko_base = has_knockout(layer)
             .then(|| Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h));
         for child in &layer.children {
-            composite_layer(&mut inner, child, doc, ko_base.as_ref());
+            composite_layer(&mut inner, child, doc, None, ko_base.as_ref());
         }
         composite_canvas(canvas, layer, doc, &inner);
     } else if let Some(adjustment) = crate::fill::decode_layer_fill(layer) {

@@ -29,6 +29,7 @@
 
 mod blend;
 mod composite;
+mod composite_knockout;
 pub(crate) use composite::{channel, mask_alpha, render_smart_source, sample};
 pub use composite::{
     composite_rgba, decode_adjustment, encode_brightness_contrast, encode_gradient_map,

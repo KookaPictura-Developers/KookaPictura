@@ -915,3 +915,77 @@ fn isolated_group_without_knockout_is_unchanged() {
     );
     assert_eq!(out, [0, 127, 128, 255]);
 }
+
+/// 1x1 stack: opaque red background, an opaque yellow intervening layer, then a
+/// pass-through group of opaque green and a half-fill blue carrying `knockout`.
+/// The group's entry backdrop is the opaque red-plus-yellow stack.
+fn knockout_shallow_group_stack(knockout: Knockout) -> Document {
+    let mut top = solid("blue", full(1, 1), (0, 0, 255), 255, BlendMode::Normal, 255);
+    top.fill = 128;
+    top.knockout = knockout;
+    doc(
+        1,
+        1,
+        vec![
+            solid("red", full(1, 1), (255, 0, 0), 255, BlendMode::Normal, 255),
+            solid(
+                "yellow",
+                full(1, 1),
+                (255, 255, 0),
+                255,
+                BlendMode::Normal,
+                255,
+            ),
+            group(
+                "group",
+                BlendMode::PassThrough,
+                255,
+                None,
+                vec![
+                    solid(
+                        "green",
+                        full(1, 1),
+                        (0, 255, 0),
+                        255,
+                        BlendMode::Normal,
+                        255,
+                    ),
+                    top,
+                ],
+            ),
+        ],
+    )
+}
+
+#[test]
+fn shallow_group_knockout_stops_at_the_group_backdrop() {
+    // Shallow stops at the backdrop current when the group began (red+yellow =
+    // opaque yellow), so the half-fill blue composites over yellow: the group's
+    // green is punched through, yet the yellow below still contributes.
+    let shallow = px(
+        &composite_rgba(&knockout_shallow_group_stack(Knockout::Shallow)),
+        0,
+        0,
+    );
+    assert_eq!(
+        shallow,
+        [127, 127, 128, 255],
+        "shallow reveals the group backdrop, got {shallow:?}"
+    );
+}
+
+#[test]
+fn deep_group_knockout_punches_through_the_intervening_layer() {
+    // Deep reaches the document background (red), punching both the group's
+    // green and the intervening yellow through: the same stack reveals red.
+    let deep = px(
+        &composite_rgba(&knockout_shallow_group_stack(Knockout::Deep)),
+        0,
+        0,
+    );
+    assert_eq!(
+        deep,
+        [127, 0, 128, 255],
+        "deep reveals the document background, got {deep:?}"
+    );
+}
