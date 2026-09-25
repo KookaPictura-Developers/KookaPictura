@@ -7,18 +7,19 @@
 //! adjustment outside the covered set is refused with [`AdjustError::Unsupported`]
 //! and the store is left unchanged.
 
-use pictura_core::Samples;
+use pictura_core::{PixelBuffer, Sample, Samples};
 
 use crate::color::skin_bump;
 use crate::common::{
     hermite_eval, hsl_to_rgb, linear_to_srgb, luma, monotone_tangents, rgb_to_hsl, srgb_to_linear,
 };
+use crate::lut::sample;
 use crate::tonal::sample_gradient;
 use crate::types::{
-    AdjustError, Adjustment, BlackWhiteParams, BrightnessContrastParams, ChannelMixerParams,
-    ColorBalanceParams, CurvesParams, ExposureParams, GradientMapParams, HueSaturationParams,
-    LevelsParams, PhotoFilterParams, SelectiveColorMethod, SelectiveColorParams, SelectiveRange,
-    VibranceParams,
+    AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
+    ChannelMixerParams, ColorBalanceParams, ColorLookupParams, CurvesParams, ExposureParams,
+    GradientMapParams, HueSaturationParams, LevelsParams, Lut3d, PhotoFilterParams,
+    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, VibranceParams,
 };
 
 type Rgb = [f64; 3];
@@ -98,6 +99,8 @@ pub fn apply_native(
         Adjustment::SelectiveColor(p) => {
             selective_color_native(p, samples, width, height, channels)
         }
+        Adjustment::Auto(kind) => auto_native(*kind, samples, width, height, channels),
+        Adjustment::ColorLookup(p) => color_lookup_native(p, samples, width, height, channels),
         other => Err(AdjustError::Unsupported(format!(
             "native-depth apply does not support {other:?}"
         ))),
@@ -757,4 +760,287 @@ fn rgb_to_int_hue(r: i32, g: i32, b: i32) -> i32 {
 fn intcmyk_to_rgb(c: i32, m: i32, y: i32, k: i32) -> (u8, u8, u8) {
     let channel = |ink: i32| ((65535 - (ink * (255 - k) + (k << 8))) >> 8) as u8;
     (channel(c), channel(m), channel(y))
+}
+
+// ---------------------------------------------------------------------------
+// Auto and Color Lookup at native depth
+// ---------------------------------------------------------------------------
+
+/// Number of `f32` histogram bins over the unit interval: the 16-bit level count,
+/// so the `u16` and `f32` stretches agree on the percentile resolution.
+const F32_BINS: usize = 65536;
+
+fn auto_native(
+    kind: AutoKind,
+    samples: &mut Samples,
+    width: usize,
+    height: usize,
+    channels: u8,
+) -> Result<(), AdjustError> {
+    let n = width * height;
+    match samples {
+        // An 8-bit store already is the histogram kernel's own resolution, so the
+        // 8-bit implementation is the exact native one.
+        Samples::U8(data) => {
+            let mut buf = PixelBuffer {
+                width: width as u32,
+                height: height as u32,
+                channels,
+                data: std::mem::take(data),
+            };
+            let result = crate::auto::auto(kind, &mut buf, n);
+            *data = buf.data;
+            result
+        }
+        Samples::U16(data) => {
+            auto_u16(kind, data, n);
+            Ok(())
+        }
+        Samples::F32(data) => {
+            auto_f32(kind, data, n);
+            Ok(())
+        }
+    }
+}
+
+fn auto_u16(kind: AutoKind, data: &mut [u16], n: usize) {
+    match kind {
+        AutoKind::Tone => auto_per_channel_u16(data, n, 0.001),
+        AutoKind::Contrast => auto_joint_u16(data, n, 0.005),
+        AutoKind::Color => {
+            auto_per_channel_u16(data, n, 0.005);
+            snap_neutral_native(data, n);
+        }
+    }
+}
+
+fn auto_f32(kind: AutoKind, data: &mut [f32], n: usize) {
+    match kind {
+        AutoKind::Tone => auto_per_channel_f32(data, n, 0.001),
+        AutoKind::Contrast => auto_joint_f32(data, n, 0.005),
+        AutoKind::Color => {
+            auto_per_channel_f32(data, n, 0.005);
+            snap_neutral_native(data, n);
+        }
+    }
+}
+
+/// First/last histogram bin that keeps `clip` of the population out; the same
+/// walk as [`crate::auto::percentile_bounds`] generalized from 256 bins.
+fn percentile_bounds_at(hist: &[u64], total: u64, clip: f64) -> Option<(usize, usize)> {
+    if total == 0 {
+        return None;
+    }
+    let cut = (total as f64 * clip).floor() as u64;
+    let last = hist.len() - 1;
+    let mut lo = 0usize;
+    let mut acc = 0u64;
+    while lo < last {
+        if acc + hist[lo] > cut {
+            break;
+        }
+        acc += hist[lo];
+        lo += 1;
+    }
+    let mut hi = last;
+    let mut acc = 0u64;
+    while hi > 0 {
+        if acc + hist[hi] > cut {
+            break;
+        }
+        acc += hist[hi];
+        hi -= 1;
+    }
+    Some((lo, hi))
+}
+
+fn stretch_u16(plane: &mut [u16], lo: usize, hi: usize) {
+    let scale = 65535.0 / (hi as f64 - lo as f64);
+    for v in plane.iter_mut() {
+        *v = ((*v as f64 - lo as f64) * scale)
+            .round()
+            .clamp(0.0, 65535.0) as u16;
+    }
+}
+
+fn auto_per_channel_u16(data: &mut [u16], n: usize, clip: f64) {
+    let (r, rest) = data.split_at_mut(n);
+    let (g, rest) = rest.split_at_mut(n);
+    let (b, _) = rest.split_at_mut(n);
+    for plane in [r, g, b] {
+        let mut hist = vec![0u64; 65536];
+        for &v in plane.iter() {
+            hist[v as usize] += 1;
+        }
+        if let Some((lo, hi)) = percentile_bounds_at(&hist, n as u64, clip) {
+            if lo < hi {
+                stretch_u16(plane, lo, hi);
+            }
+        }
+    }
+}
+
+fn auto_joint_u16(data: &mut [u16], n: usize, clip: f64) {
+    let (r, rest) = data.split_at_mut(n);
+    let (g, rest) = rest.split_at_mut(n);
+    let (b, _) = rest.split_at_mut(n);
+    let mut hist = vec![0u64; 65536];
+    for plane in [&*r, &*g, &*b] {
+        for &v in plane.iter() {
+            hist[v as usize] += 1;
+        }
+    }
+    if let Some((lo, hi)) = percentile_bounds_at(&hist, (n * 3) as u64, clip) {
+        if lo < hi {
+            for plane in [r, g, b] {
+                stretch_u16(plane, lo, hi);
+            }
+        }
+    }
+}
+
+fn f32_bin(u: f64) -> usize {
+    ((u * F32_BINS as f64) as usize).min(F32_BINS - 1)
+}
+
+fn stretch_f32(plane: &mut [f32], lo: usize, hi: usize) {
+    // Bin centers keep the f32 stretch continuous inside a bin while the
+    // percentile extremes land on 0 and 1.
+    let center_lo = (lo as f64 + 0.5) / F32_BINS as f64;
+    let denom = (hi - lo) as f64 / F32_BINS as f64;
+    for x in plane.iter_mut() {
+        *x = ((x.to_unit() - center_lo) / denom).clamp(0.0, 1.0) as f32;
+    }
+}
+
+fn auto_per_channel_f32(data: &mut [f32], n: usize, clip: f64) {
+    let (r, rest) = data.split_at_mut(n);
+    let (g, rest) = rest.split_at_mut(n);
+    let (b, _) = rest.split_at_mut(n);
+    for plane in [r, g, b] {
+        let mut hist = vec![0u64; F32_BINS];
+        for &x in plane.iter() {
+            hist[f32_bin(x.to_unit())] += 1;
+        }
+        if let Some((lo, hi)) = percentile_bounds_at(&hist, n as u64, clip) {
+            if lo < hi {
+                stretch_f32(plane, lo, hi);
+            }
+        }
+    }
+}
+
+fn auto_joint_f32(data: &mut [f32], n: usize, clip: f64) {
+    let (r, rest) = data.split_at_mut(n);
+    let (g, rest) = rest.split_at_mut(n);
+    let (b, _) = rest.split_at_mut(n);
+    let mut hist = vec![0u64; F32_BINS];
+    for plane in [&*r, &*g, &*b] {
+        for &x in plane.iter() {
+            hist[f32_bin(x.to_unit())] += 1;
+        }
+    }
+    if let Some((lo, hi)) = percentile_bounds_at(&hist, (n * 3) as u64, clip) {
+        if lo < hi {
+            for plane in [r, g, b] {
+                stretch_f32(plane, lo, hi);
+            }
+        }
+    }
+}
+
+/// "Snap neutral midtones" in the unit domain: the same `64/255..=192/255` luma
+/// window and `0.1..=9.99` gamma clamp as the 8-bit kernel.
+fn snap_neutral_native<T: Sample>(data: &mut [T], n: usize) {
+    let (r, rest) = data.split_at_mut(n);
+    let (g, rest) = rest.split_at_mut(n);
+    let (b, _) = rest.split_at_mut(n);
+    let mut sums = [0.0f64; 3];
+    let mut count = 0u64;
+    for i in 0..n {
+        let (ru, gu, bu) = (r[i].to_unit(), g[i].to_unit(), b[i].to_unit());
+        let y = luma(ru * 255.0, gu * 255.0, bu * 255.0);
+        if (64.0..=192.0).contains(&y) {
+            sums[0] += ru;
+            sums[1] += gu;
+            sums[2] += bu;
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return;
+    }
+    let means = [
+        sums[0] / count as f64,
+        sums[1] / count as f64,
+        sums[2] / count as f64,
+    ];
+    let target = (means[0] + means[1] + means[2]) / 3.0;
+    if target <= 0.0 || target >= 1.0 {
+        return;
+    }
+    for (c, plane) in [r, g, b].into_iter().enumerate() {
+        let m = means[c];
+        if m <= 0.0 || m.ln() == 0.0 {
+            continue;
+        }
+        let gamma = (m.ln() / target.ln()).clamp(0.1, 9.99);
+        for x in plane.iter_mut() {
+            *x = T::from_unit(x.to_unit().powf(1.0 / gamma));
+        }
+    }
+}
+
+fn color_lookup_native(
+    params: &ColorLookupParams,
+    samples: &mut Samples,
+    width: usize,
+    height: usize,
+    channels: u8,
+) -> Result<(), AdjustError> {
+    let Some(lut) = &params.lookup else {
+        return Ok(());
+    };
+    if !(2..=64).contains(&lut.size) || lut.points.len() != lut.size * lut.size * lut.size {
+        return Err(AdjustError::InvalidParams("invalid 3-D LUT size".into()));
+    }
+    if lut.points.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(AdjustError::InvalidParams(
+            "non-finite LUT component".into(),
+        ));
+    }
+    // An 8-bit store is the 3-D LUT sampler's own domain, so mirror its f32
+    // arithmetic (the final rounding differs from `from_unit`'s f64 path).
+    if let Samples::U8(data) = samples {
+        lookup_u8(data, lut, width * height);
+        return Ok(());
+    }
+    samples.map_color_planes(width, height, channels, |[r, g, b]| {
+        let s = sample(lut, [r as f32, g as f32, b as f32]);
+        [s[0] as f64, s[1] as f64, s[2] as f64]
+    });
+    Ok(())
+}
+
+fn lookup_u8(data: &mut [u8], lut: &Lut3d, n: usize) {
+    let (r, rest) = data.split_at_mut(n);
+    let (g, rest) = rest.split_at_mut(n);
+    let (b, _) = rest.split_at_mut(n);
+    for i in 0..n {
+        let s = sample(
+            lut,
+            [
+                r[i] as f32 / 255.0,
+                g[i] as f32 / 255.0,
+                b[i] as f32 / 255.0,
+            ],
+        );
+        r[i] = to_u8(s[0]);
+        g[i] = to_u8(s[1]);
+        b[i] = to_u8(s[2]);
+    }
+}
+
+fn to_u8(v: f32) -> u8 {
+    (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
