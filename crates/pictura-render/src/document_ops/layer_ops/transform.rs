@@ -1,9 +1,10 @@
-//! Layer similarity transform: scale, rotation about the layer centre, and
-//! translation, resampled with bilinear interpolation.
+//! Layer transforms: a similarity map (scale, rotation about the layer centre,
+//! and translation) and a projective map (a homography sending the source rect's
+//! four corners to a target quad), both resampled with bilinear interpolation.
 //!
-//! The op is a pure `&mut Document` function alongside the other
-//! `resolve_path`-based layer ops. It mutates the document only on success and
-//! does **not** recomposite: like `translate_layer_rect`, the caller owns the
+//! The ops are pure `&mut Document` functions alongside the other
+//! `resolve_path`-based layer ops. They mutate the document only on success and
+//! do **not** recomposite: like `translate_layer_rect`, the caller owns the
 //! composite refresh.
 
 use pictura_core::{Channel, Document, LayerMask, LockFlags, PsdRect};
@@ -28,6 +29,22 @@ const SCALE_EPSILON: f64 = 1e-6;
 /// corner must not round out to the next pixel. Same intent as the slack in
 /// `pictura_ops::rotate_arbitrary`.
 const BBOX_SLACK: f64 = 1e-9;
+/// Homography determinant and homogeneous-divisor floor: a projective map whose
+/// scale collapses below this is treated as singular.
+const HOMOGRAPHY_EPSILON: f64 = 1e-12;
+/// Gaussian-elimination pivot floor; a zero (or vanishing) pivot is singular.
+const PIVOT_EPSILON: f64 = 1e-12;
+
+/// Any document-space plane map the shared resample skeleton can drive: a
+/// `forward` map used for the destination bounding box and an `inverse` map used
+/// to sample the source. Returning `None` marks a point at (or beyond) infinity.
+trait PlaneMap: Sized {
+    fn forward(&self, x: f64, y: f64) -> Option<(f64, f64)>;
+    fn inverse(&self, qx: f64, qy: f64) -> Option<(f64, f64)>;
+    /// The equivalent map for a plane occupying `rect` (a layer mask): the
+    /// similarity map re-centres on the new rect; the projective map is global.
+    fn for_rect(&self, rect: PsdRect) -> Self;
+}
 
 /// The document-space similarity map of one source rect.
 struct Map {
@@ -54,26 +71,183 @@ impl Map {
             dy: t.dy,
         }
     }
+}
 
+impl PlaneMap for Map {
     /// `p' = c + R(θ)·(S·(p − c)) + (dx, dy)`; positive θ is clockwise in the
     /// y-down screen convention.
-    fn forward(&self, x: f64, y: f64) -> (f64, f64) {
+    fn forward(&self, x: f64, y: f64) -> Option<(f64, f64)> {
         let ux = (x - self.cx) * self.sx;
         let uy = (y - self.cy) * self.sy;
-        (
+        Some((
             self.cx + self.cos * ux - self.sin * uy + self.dx,
             self.cy + self.sin * ux + self.cos * uy + self.dy,
-        )
+        ))
     }
 
     /// `src = c + S⁻¹·R(−θ)·(q − c) − (dx, dy)`.
-    fn inverse(&self, qx: f64, qy: f64) -> (f64, f64) {
+    fn inverse(&self, qx: f64, qy: f64) -> Option<(f64, f64)> {
         let vx = qx - self.cx - self.dx;
         let vy = qy - self.cy - self.dy;
         let rx = self.cos * vx + self.sin * vy;
         let ry = -self.sin * vx + self.cos * vy;
-        (self.cx + rx / self.sx, self.cy + ry / self.sy)
+        Some((self.cx + rx / self.sx, self.cy + ry / self.sy))
     }
+
+    fn for_rect(&self, rect: PsdRect) -> Self {
+        Map {
+            cx: (rect.left as f64 + rect.right as f64) / 2.0,
+            cy: (rect.top as f64 + rect.bottom as f64) / 2.0,
+            sx: self.sx,
+            sy: self.sy,
+            cos: self.cos,
+            sin: self.sin,
+            dx: self.dx,
+            dy: self.dy,
+        }
+    }
+}
+
+/// A document-space projective map. Stores the forward homography (source →
+/// destination, used for the bounding box) and its inverse (destination →
+/// source, used to resample), both row-major.
+#[derive(Clone, Copy)]
+struct QuadMap {
+    h: [f64; 9],
+    inv: [f64; 9],
+}
+
+impl PlaneMap for QuadMap {
+    fn forward(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        apply_homography(&self.h, x, y)
+    }
+
+    fn inverse(&self, qx: f64, qy: f64) -> Option<(f64, f64)> {
+        apply_homography(&self.inv, qx, qy)
+    }
+
+    fn for_rect(&self, _rect: PsdRect) -> Self {
+        *self
+    }
+}
+
+/// Apply a row-major homography in homogeneous coordinates, dividing by the
+/// third component; `None` when that divisor is non-finite or ~0.
+fn apply_homography(m: &[f64; 9], x: f64, y: f64) -> Option<(f64, f64)> {
+    let w = m[6] * x + m[7] * y + m[8];
+    if !w.is_finite() || w.abs() < HOMOGRAPHY_EPSILON {
+        return None;
+    }
+    let px = (m[0] * x + m[1] * y + m[2]) / w;
+    let py = (m[3] * x + m[4] * y + m[5]) / w;
+    (px.is_finite() && py.is_finite()).then_some((px, py))
+}
+
+/// The four source-rect corners in TL, TR, BR, BL order.
+fn source_corners(rect: PsdRect) -> [(f64, f64); 4] {
+    [
+        (rect.left as f64, rect.top as f64),
+        (rect.right as f64, rect.top as f64),
+        (rect.right as f64, rect.bottom as f64),
+        (rect.left as f64, rect.bottom as f64),
+    ]
+}
+
+/// Determinant of a row-major 3×3 matrix.
+fn det3(m: &[f64; 9]) -> f64 {
+    m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
+        + m[2] * (m[3] * m[7] - m[4] * m[6])
+}
+
+/// Row-major inverse of a 3×3 matrix, or `None` when it is singular.
+fn invert3(m: &[f64; 9]) -> Option<[f64; 9]> {
+    let det = det3(m);
+    if !det.is_finite() || det.abs() < HOMOGRAPHY_EPSILON {
+        return None;
+    }
+    let id = 1.0 / det;
+    Some([
+        (m[4] * m[8] - m[5] * m[7]) * id,
+        (m[2] * m[7] - m[1] * m[8]) * id,
+        (m[1] * m[5] - m[2] * m[4]) * id,
+        (m[5] * m[6] - m[3] * m[8]) * id,
+        (m[0] * m[8] - m[2] * m[6]) * id,
+        (m[2] * m[3] - m[0] * m[5]) * id,
+        (m[3] * m[7] - m[4] * m[6]) * id,
+        (m[1] * m[6] - m[0] * m[7]) * id,
+        (m[0] * m[4] - m[1] * m[3]) * id,
+    ])
+}
+
+/// Solve the 8×8 linear system `a·x = b` by Gaussian elimination with partial
+/// pivoting; deterministic, or `None` when the matrix is singular.
+fn gaussian_solve(mut a: [[f64; 8]; 8], mut b: [f64; 8]) -> Option<[f64; 8]> {
+    for col in 0..8 {
+        let mut pivot = col;
+        let mut best = a[col][col].abs();
+        for (offset, r) in a[(col + 1)..].iter().enumerate() {
+            let v = r[col].abs();
+            if v > best {
+                best = v;
+                pivot = col + 1 + offset;
+            }
+        }
+        if !best.is_finite() || best < PIVOT_EPSILON {
+            return None;
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        let prow = a[col];
+        let p = prow[col];
+        for row in (col + 1)..8 {
+            let factor = a[row][col] / p;
+            if factor == 0.0 {
+                continue;
+            }
+            for k in col..8 {
+                a[row][k] -= factor * prow[k];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+    let mut x = [0.0f64; 8];
+    for i in (0..8).rev() {
+        let row = a[i];
+        let mut s = b[i];
+        for k in (i + 1)..8 {
+            s -= row[k] * x[k];
+        }
+        x[i] = s / row[i];
+    }
+    if x.iter().all(|v| v.is_finite()) {
+        Some(x)
+    } else {
+        None
+    }
+}
+
+/// The homography sending `src[0..4]` to `dst[0..4]`, or `None` for a
+/// non-finite corner or a singular/near-singular map.
+fn solve_homography(src: [(f64, f64); 4], dst: [(f64, f64); 4]) -> Option<QuadMap> {
+    for (x, y) in src.iter().chain(dst.iter()) {
+        if !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+    }
+    let mut a = [[0.0f64; 8]; 8];
+    let mut b = [0.0f64; 8];
+    for i in 0..4 {
+        let (x, y) = src[i];
+        let (u, v) = dst[i];
+        a[2 * i] = [x, y, 1.0, 0.0, 0.0, 0.0, -x * u, -y * u];
+        b[2 * i] = u;
+        a[2 * i + 1] = [0.0, 0.0, 0.0, x, y, 1.0, -x * v, -y * v];
+        b[2 * i + 1] = v;
+    }
+    let s = gaussian_solve(a, b)?;
+    let h = [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], 1.0];
+    let inv = invert3(&h)?;
+    Some(QuadMap { h, inv })
 }
 
 /// Largest result area the op will allocate for one plane, in pixels. A
@@ -85,19 +259,13 @@ const MAX_RESULT_PIXELS: u64 = 1 << 30;
 
 /// Integer bounding box of the four transformed corners, or `None` when the
 /// result is empty, out of `i32` range, or implausibly large.
-fn bounding_box(map: &Map, rect: PsdRect) -> Option<(i32, i32, i32, i32)> {
-    let corners = [
-        (rect.left as f64, rect.top as f64),
-        (rect.right as f64, rect.top as f64),
-        (rect.right as f64, rect.bottom as f64),
-        (rect.left as f64, rect.bottom as f64),
-    ];
+fn bounding_box<M: PlaneMap>(map: &M, rect: PsdRect) -> Option<(i32, i32, i32, i32)> {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
     let mut max_y = f64::NEG_INFINITY;
-    for (x, y) in corners {
-        let (px, py) = map.forward(x, y);
+    for (x, y) in source_corners(rect) {
+        let (px, py) = map.forward(x, y)?;
         min_x = min_x.min(px);
         min_y = min_y.min(py);
         max_x = max_x.max(px);
@@ -153,11 +321,11 @@ fn bilinear(src: &[u8], w: usize, h: usize, lx: f64, ly: f64) -> u8 {
 }
 
 /// Resample one `w×h` plane into the destination rect; out-of-source → 0.
-fn resample_plane(
+fn resample_plane<M: PlaneMap>(
     src: &[u8],
     w: usize,
     h: usize,
-    map: &Map,
+    map: &M,
     rect: PsdRect,
     dest: (i32, i32, i32, i32),
 ) -> Vec<u8> {
@@ -171,7 +339,9 @@ fn resample_plane(
         for ox in 0..dw {
             let qx = dl as f64 + ox as f64 + 0.5;
             let qy = dt as f64 + oy as f64 + 0.5;
-            let (sx, sy) = map.inverse(qx, qy);
+            let Some((sx, sy)) = map.inverse(qx, qy) else {
+                continue;
+            };
             let lx = sx - rect.left as f64;
             let ly = sy - rect.top as f64;
             if lx < 0.0 || ly < 0.0 || lx >= wf || ly >= hf {
@@ -218,12 +388,13 @@ fn materialized_channels(doc: &Document, layer: &Layer) -> Option<Vec<Channel>> 
     Some(channels)
 }
 
-/// Resample `layer.mask` by the same transform about the mask's own rect. A mask
-/// without plane data still has its `rect` transformed (and keeps `data` `None`)
-/// so the rect follows the layer.
-fn transform_mask(mask: &LayerMask, t: LayerTransform, cos: f64, sin: f64) -> Option<LayerMask> {
+/// Resample `mask` by the same warp as the layer. A mask without plane data still
+/// has its `rect` transformed (and keeps `data` `None`) so the rect follows the
+/// layer; a similarity map re-centres on the mask's own rect, a projective map
+/// is global.
+fn transform_mask<M: PlaneMap>(mask: &LayerMask, layer_map: &M) -> Option<LayerMask> {
     let rect = mask.rect;
-    let map = Map::new(rect, t, cos, sin);
+    let map = layer_map.for_rect(rect);
     let dest = bounding_box(&map, rect)?;
     let data = match mask.data.as_ref() {
         Some(data) => {
@@ -250,28 +421,17 @@ fn transform_mask(mask: &LayerMask, t: LayerTransform, cos: f64, sin: f64) -> Op
     })
 }
 
-/// Apply a similarity transform to the layer at `path`.
+/// Shared refusal / materialization / resample / write path for both ops.
 ///
-/// On success every channel plane (and the mask, when present) is resampled into
-/// the transformed bounding rect and `layer.rect` is updated. The op refuses —
-/// leaving `doc` bit-identical — for a missing path, a group, an adjustment
-/// layer, a Background layer, a position-locked layer, a zero-area source, any
-/// non-finite parameter, a scale below [`SCALE_EPSILON`], a zero-area result, or
-/// a channel-less target that does not materialize from its embedded source.
-///
-/// A channel-less embedded smart object is materialized from its payload and, on
-/// success, consumed: the smart object, its preserved `SoLd`/`plLd` blocks, and
-/// its linked record are dropped, so no stale untransformed source survives.
-///
-/// # Ceiling
-///
-/// Bilinear resampling only: no bicubic/nearest choice and no perspective/skew.
-// ponytail: bilinear-only; add an interpolation parameter and bicubic kernel if
-// a numeric options bar ever needs it.
-pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform) -> bool {
-    if !params_ok(&transform) {
-        return false;
-    }
+/// `build_map` validates the warp for the layer rect and returns its plane map
+/// (`None` refuses). `pure_translate` selects whether an unmodeled raw channel
+/// stream survives (a similarity integer move) or is dropped. Mutates `doc` only
+/// after every refusal has passed, so a refused call is bit-identical.
+fn apply_layer_map<M, F>(doc: &mut Document, path: &str, build_map: F, pure_translate: bool) -> bool
+where
+    M: PlaneMap,
+    F: Fn(PsdRect) -> Option<M>,
+{
     let Some(layer) = resolve_path(doc, path) else {
         return false;
     };
@@ -312,8 +472,9 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
         .map(|so| so.uuid.clone())
         .unwrap_or_default();
 
-    let (sin, cos) = transform.angle_radians.sin_cos();
-    let map = Map::new(rect, transform, cos, sin);
+    let Some(map) = build_map(rect) else {
+        return false;
+    };
     let Some(dest) = bounding_box(&map, rect) else {
         return false;
     };
@@ -324,10 +485,7 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
             data: resample_plane(&c.data, w as usize, h as usize, &map, rect, dest),
         })
         .collect();
-    let new_mask = layer
-        .mask
-        .as_ref()
-        .and_then(|m| transform_mask(m, transform, cos, sin));
+    let new_mask = layer.mask.as_ref().and_then(|m| transform_mask(m, &map));
 
     let layer = resolve_path_mut(doc, path).expect("resolved above");
     layer.channels = new_channels;
@@ -339,18 +497,13 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
     };
     // A raw channel stream carries no position, so a pure integer translation
     // (Free Transform's move handle) keeps it and only re-anchors the rect.
-    let pure_translate = transform.scale_x == 1.0
-        && transform.scale_y == 1.0
-        && transform.angle_radians == 0.0
-        && transform.dx.fract() == 0.0
-        && transform.dy.fract() == 0.0;
     if pure_translate {
         if let Some(store) = layer.source_channels.as_mut() {
             store.rect = layer.rect;
         }
     } else {
         // ponytail: a raw plane cannot be resampled, so scale/rotate/fractional
-        // moves drop unmodeled channels.
+        // moves and any projective map drop unmodeled channels.
         layer.raw_channels.clear();
         layer.source_channels = None;
     }
@@ -371,4 +524,71 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
         }
     }
     true
+}
+
+/// Apply a similarity transform to the layer at `path`.
+///
+/// On success every channel plane (and the mask, when present) is resampled into
+/// the transformed bounding rect and `layer.rect` is updated. The op refuses —
+/// leaving `doc` bit-identical — for a missing path, a group, an adjustment
+/// layer, a Background layer, a position-locked layer, a zero-area source, any
+/// non-finite parameter, a scale below [`SCALE_EPSILON`], a zero-area result, or
+/// a channel-less target that does not materialize from its embedded source.
+///
+/// A channel-less embedded smart object is materialized from its payload and, on
+/// success, consumed: the smart object, its preserved `SoLd`/`plLd` blocks, and
+/// its linked record are dropped, so no stale untransformed source survives.
+///
+/// # Ceiling
+///
+/// Bilinear resampling only: no bicubic/nearest choice; skew and perspective go
+/// through [`transform_layer_quad`].
+// ponytail: bilinear-only; add an interpolation parameter and bicubic kernel if
+// a numeric options bar ever needs it.
+pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform) -> bool {
+    if !params_ok(&transform) {
+        return false;
+    }
+    let (sin, cos) = transform.angle_radians.sin_cos();
+    let pure_translate = transform.scale_x == 1.0
+        && transform.scale_y == 1.0
+        && transform.angle_radians == 0.0
+        && transform.dx.fract() == 0.0
+        && transform.dy.fract() == 0.0;
+    apply_layer_map(
+        doc,
+        path,
+        |rect| Some(Map::new(rect, transform, cos, sin)),
+        pure_translate,
+    )
+}
+
+/// Apply a projective transform to the layer at `path`.
+///
+/// `quad[i]` is the document-space target of source corner `i` in TL, TR, BR, BL
+/// order. The homography sending the source rect's corners to `quad` is solved by
+/// an 8×8 linear system and inverted to sample each channel plane and the mask.
+/// Refusals (missing path, group, adjustment, Background, position-locked,
+/// zero-area source, no materializable channel-less payload, empty/oversized
+/// result) match [`transform_layer`], plus a non-finite corner, a singular or
+/// near-singular map, or a zero-area destination. A projective map is never a
+/// pure integer translation, so an unmodeled raw channel stream is dropped.
+pub fn transform_layer_quad(doc: &mut Document, path: &str, quad: [(f64, f64); 4]) -> bool {
+    apply_layer_map(
+        doc,
+        path,
+        |rect| solve_homography(source_corners(rect), quad),
+        false,
+    )
+}
+
+/// Test hook: the forward-mapped source-rect corners of `quad`.
+#[cfg(test)]
+pub(crate) fn quad_corner_targets(rect: PsdRect, quad: [(f64, f64); 4]) -> Option<[(f64, f64); 4]> {
+    let map = solve_homography(source_corners(rect), quad)?;
+    let mut out = [(0.0, 0.0); 4];
+    for (i, (x, y)) in source_corners(rect).into_iter().enumerate() {
+        out[i] = map.forward(x, y)?;
+    }
+    Some(out)
 }

@@ -223,6 +223,39 @@ void PicturaMainWindow::registerHandlers()
             && view->layer_can_free_transform(path);
     });
 
+    const struct {
+        const char* id;
+        const char* mode;
+    } kTransformModes[] = {
+        {command_ids::EditTransformSkew, "skew"},
+        {command_ids::EditTransformDistort, "distort"},
+        {command_ids::EditTransformPerspective, "perspective"},
+    };
+    for (const auto& entry : kTransformModes) {
+        const QString id = QString::fromLatin1(entry.id);
+        const QString mode = QString::fromLatin1(entry.mode);
+        registry_->setHandler(id, [this, mode]() {
+            PictureView* view = activeView();
+            const QString path = (layersPanel_ && layersPanel_->selectedPaths().size() == 1)
+                                     ? layersPanel_->currentPath()
+                                     : QString();
+            if (!view) {
+                return;
+            }
+            if (beginTransformMode(path, mode)) {
+                refresh();
+            }
+        });
+        registry_->setEnabledProvider(id, [this]() {
+            PictureView* view = activeView();
+            const QString path = (layersPanel_ && layersPanel_->selectedPaths().size() == 1)
+                                     ? layersPanel_->currentPath()
+                                     : QString();
+            return view && view->has_document() && !path.isEmpty()
+                && view->layer_can_free_transform(path);
+        });
+    }
+
     registry_->setHandler(command_ids::ImageRotate90Cw, [this]() {
         if (PictureView* view = activeView(); view && view->rotate_doc(1)) {
             refresh();
@@ -920,6 +953,11 @@ void PicturaMainWindow::registerHandlers()
 bool PicturaMainWindow::beginFreeTransform(const QString& path)
 {
     return tools_ && tools_->beginFreeTransform(path);
+}
+
+bool PicturaMainWindow::beginTransformMode(const QString& path, const QString& mode)
+{
+    return tools_ && tools_->beginTransformMode(path, mode);
 }
 
 void PicturaMainWindow::selectLayerPath(const QString& path)

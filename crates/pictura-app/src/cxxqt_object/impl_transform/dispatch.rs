@@ -1,9 +1,10 @@
 use super::super::helpers::*;
 use super::super::helpers_composite::*;
 use super::super::qobject;
+use super::super::state::TransformMode;
 use super::geometry::{
-    gesture_rotate, gesture_scale, gesture_translate, hit_test, transform_quad_points, MOVE_HANDLE,
-    ROTATE_HANDLE,
+    gesture_distort, gesture_perspective, gesture_rotate, gesture_scale, gesture_skew,
+    gesture_translate, hit_test_quad, session_quad, MOVE_HANDLE, ROTATE_HANDLE,
 };
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
@@ -20,20 +21,14 @@ impl qobject::PictureView {
         _shift: bool,
         _alt: bool,
     ) -> i32 {
-        let hit = {
+        let (hit, start_quad) = {
             let rust = self.rust();
             match rust.transform_session.as_ref() {
-                Some(session) => hit_test(
-                    session.orig_rect,
-                    session.scale_x,
-                    session.scale_y,
-                    session.angle,
-                    session.dx,
-                    session.dy,
-                    x,
-                    y,
-                    zoom,
-                ),
+                Some(session) => {
+                    let quad = session_quad(session);
+                    let hit = hit_test_quad(&quad, session.mode.is_projective(), x, y, zoom);
+                    (hit, quad)
+                }
                 None => return -1,
             }
         };
@@ -53,6 +48,7 @@ impl qobject::PictureView {
                 session.dx,
                 session.dy,
             ];
+            session.start_quad = start_quad;
         }
         hit
     }
@@ -60,24 +56,18 @@ impl qobject::PictureView {
     /// Hover hit-test for cursor selection; no session is mutated.
     pub fn transform_hit_test(&self, x: f64, y: f64, zoom: f64) -> i32 {
         match self.rust().transform_session.as_ref() {
-            Some(session) => hit_test(
-                session.orig_rect,
-                session.scale_x,
-                session.scale_y,
-                session.angle,
-                session.dx,
-                session.dy,
-                x,
-                y,
-                zoom,
-            ),
+            Some(session) => {
+                let quad = session_quad(session);
+                hit_test_quad(&quad, session.mode.is_projective(), x, y, zoom)
+            }
             None => -1,
         }
     }
 
-    /// Update the active drag from document-space `(x, y)`. Shift locks the
-    /// aspect ratio on a corner and snaps rotation to 15°; the transformed rect
-    /// is clamped to at least 1 px per axis. Returns false without an active drag.
+    /// Update the active drag from document-space `(x, y)`. In a projective mode
+    /// the matching gesture edits the live quad; in `Free`, Shift locks the
+    /// aspect ratio on a corner and snaps rotation to 15°. Returns false without
+    /// an active drag.
     pub fn transform_move(
         mut self: Pin<&mut Self>,
         x: f64,
@@ -96,20 +86,27 @@ impl qobject::PictureView {
         if !session.dragging {
             return false;
         }
-        match session.handle {
-            MOVE_HANDLE => {
-                gesture_translate(session, x, y);
-                true
-            }
-            ROTATE_HANDLE => {
-                gesture_rotate(session, x, y, shift);
-                true
-            }
-            h @ 0..=7 => {
-                session.handle = h;
-                gesture_scale(session, x, y, shift)
-            }
-            _ => false,
+        let mode = session.mode;
+        let handle = session.handle;
+        match mode {
+            TransformMode::Distort => gesture_distort(session, handle, x, y),
+            TransformMode::Perspective => gesture_perspective(session, handle, x, y),
+            TransformMode::Skew => gesture_skew(session, handle, x, y, shift),
+            TransformMode::Free => match handle {
+                MOVE_HANDLE => {
+                    gesture_translate(session, x, y);
+                    true
+                }
+                ROTATE_HANDLE => {
+                    gesture_rotate(session, x, y, shift);
+                    true
+                }
+                h @ 0..=7 => {
+                    session.handle = h;
+                    gesture_scale(session, x, y, shift)
+                }
+                _ => false,
+            },
         }
     }
 
@@ -124,19 +121,13 @@ impl qobject::PictureView {
         true
     }
 
-    /// The session quad as `"x,y x,y x,y x,y"` (four document-space corners).
+    /// The session quad as `"x,y x,y x,y x,y"` (four document-space corners):
+    /// the live projective quad in a projective mode, else the similarity quad.
     pub fn transform_quad(&self) -> QString {
         let Some(session) = self.rust().transform_session.as_ref() else {
             return QString::default();
         };
-        let quad = transform_quad_points(
-            session.orig_rect,
-            session.scale_x,
-            session.scale_y,
-            session.angle,
-            session.dx,
-            session.dy,
-        );
+        let quad = session_quad(session);
         let encoded: Vec<String> = quad.iter().map(|(x, y)| format!("{x:.2},{y:.2}")).collect();
         QString::from(encoded.join(" "))
     }

@@ -8,8 +8,20 @@ namespace pictura {
 
 bool ToolController::beginFreeTransform(const QString& path)
 {
+    return beginTransformImpl(path, QString());
+}
+
+bool ToolController::beginTransformMode(const QString& path, const QString& mode)
+{
+    return beginTransformImpl(path, mode);
+}
+
+bool ToolController::beginTransformImpl(const QString& path, const QString& mode)
+{
     PictureView* v = view();
-    if (!v || !v->begin_free_transform(path)) {
+    const bool ok = mode.isEmpty() ? (v && v->begin_free_transform(path))
+                                   : (v && v->begin_transform_mode(path, mode));
+    if (!ok) {
         return false;
     }
     transformDragging_ = false;
@@ -37,8 +49,13 @@ void ToolController::updateTransformOverlay(PictureView* v)
         return;
     }
     canvas_->setTransformQuad(v->transform_quad());
-    canvas_->setTransformPreview(v->transform_scale_x(), v->transform_scale_y(),
-                                 v->transform_angle(), v->transform_dx(), v->transform_dy());
+    const QString projective = v->transform_preview_matrix();
+    if (!projective.isEmpty()) {
+        canvas_->setTransformPreviewProjective(projective);
+    } else {
+        canvas_->setTransformPreview(v->transform_scale_x(), v->transform_scale_y(),
+                                     v->transform_angle(), v->transform_dx(), v->transform_dy());
+    }
 }
 
 void ToolController::setTransformCursor(const QPointF& imagePos)

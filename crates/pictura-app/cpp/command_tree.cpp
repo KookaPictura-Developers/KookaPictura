@@ -130,9 +130,12 @@ void addDefaultCommands(CommandRegistry& registry) {
          QStringLiteral("Shift+Ctrl+T"));
     leaf(registry, {"Edit", "Transform", "Scale"}, QStringLiteral("Scale"));
     leaf(registry, {"Edit", "Transform", "Rotate"}, QStringLiteral("Rotate"));
-    leaf(registry, {"Edit", "Transform", "Skew"}, QStringLiteral("Skew"));
-    leaf(registry, {"Edit", "Transform", "Distort"}, QStringLiteral("Distort"));
-    leaf(registry, {"Edit", "Transform", "Perspective"}, QStringLiteral("Perspective"));
+    registry.add(command_ids::EditTransformSkew, {"Edit", "Transform", "Skew"},
+                 QStringLiteral("Skew"), QKeySequence(), true);
+    registry.add(command_ids::EditTransformDistort, {"Edit", "Transform", "Distort"},
+                 QStringLiteral("Distort"), QKeySequence(), true);
+    registry.add(command_ids::EditTransformPerspective, {"Edit", "Transform", "Perspective"},
+                 QStringLiteral("Perspective"), QKeySequence(), true);
     leaf(registry, {"Edit", "Transform", "Warp"}, QStringLiteral("Warp"));
     leaf(registry, {"Edit", "Transform", "Rotate 90° CW"}, QStringLiteral("Rotate 90° CW"));
     leaf(registry, {"Edit", "Transform", "Rotate 90° CCW"}, QStringLiteral("Rotate 90° CCW"));

@@ -142,6 +142,11 @@ public:
                                double opacity);
     void setTransformPreview(double scaleX, double scaleY, double angleRadians, double dx,
                              double dy);
+    // Projective layer preview: nine space-separated coefficients in
+    // `QTransform(m11,m12,m13,m21,m22,m23,m31,m32,m33)` order, mapping source
+    // document space onto the target quad. Overrides the similarity preview
+    // until the next `beginTransformPreview`.
+    void setTransformPreviewProjective(const QString& matrix9);
     void setTransformQuad(const QString& encoded);
     void clearTransformPreview();
     bool transformPreviewActive() const { return transformActive_; }
@@ -243,6 +248,8 @@ private:
     double transformAngle_ = 0.0;
     double transformDx_ = 0.0;
     double transformDy_ = 0.0;
+    QTransform transformProjective_;
+    bool transformProjectiveActive_ = false;
     QPolygonF transformQuad_;
 
     QString dragSizeText_;

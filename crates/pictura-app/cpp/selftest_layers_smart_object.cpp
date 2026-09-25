@@ -13,6 +13,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QMimeData>
+#include <QtCore/QRectF>
 #include <QtCore/QUrl>
 #include <QtGui/QColor>
 #include <QtGui/QDragEnterEvent>
@@ -982,22 +983,138 @@ int pictura::runFreeTransformChecks(pictura::PicturaMainWindow& frame)
         && !bgView->begin_free_transform(QStringLiteral("0"));
     const int bgDoc = bgFlagged ? frame.activeDocumentIndex() : -1;
 
+    // Projective modes: Distort commits the dragged corner and one state,
+    // Perspective mirrors the opposite corner, Skew slides one edge, and Escape
+    // in a projective mode restores the document byte-identically.
+    auto rectOf = [](pictura::PictureView* v, const QString& p) {
+        const QStringList parts = v->layer_rect(p).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        return QRectF(parts.value(0).toDouble(), parts.value(1).toDouble(),
+                      parts.value(2).toDouble() - parts.value(0).toDouble(),
+                      parts.value(3).toDouble() - parts.value(1).toDouble());
+    };
+    auto quadOf = [](pictura::PictureView* v) {
+        QList<QPointF> pts;
+        const QStringList toks =
+            v->transform_quad().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        for (const QString& tok : toks) {
+            const QStringList xy = tok.split(QLatin1Char(','));
+            if (xy.size() == 2) {
+                pts << QPointF(xy.at(0).toDouble(), xy.at(1).toDouble());
+            }
+        }
+        return pts;
+    };
+
+    // (a) Distort drags corner 0 and commits exactly one state.
+    const QRectF dRect = rectOf(view, path);
+    const QString beforeDistort = view->layer_rect(path);
+    const int distortBase = view->history_count();
+    const bool distortBegin = view->begin_transform_mode(path, QStringLiteral("distort"));
+    const bool distortHit =
+        view->transform_press(dRect.left(), dRect.top(), 1.0, false, false) == 0;
+    const bool distortMoved =
+        view->transform_move(dRect.left() - 3.0, dRect.top() - 2.0, 1.0, false, false);
+    view->transform_release();
+    const bool distortCommitted = view->commit_transform();
+    frame.imageView()->clearTransformPreview();
+    const bool distortOneState = view->history_count() == distortBase + 1
+        && view->history_label(distortBase) == QStringLiteral("Free Transform");
+    const bool distortChanged = view->layer_rect(path) != beforeDistort;
+
+    // (b) Perspective moves the opposite corner by the negated delta.
+    const QRectF pRect = rectOf(view, path);
+    const bool perspBegin = view->begin_transform_mode(path, QStringLiteral("perspective"));
+    const QList<QPointF> perspBefore = quadOf(view);
+    const bool perspHit =
+        view->transform_press(pRect.left(), pRect.top(), 1.0, false, false) == 0;
+    const bool perspMoved =
+        view->transform_move(pRect.left() + 5.0, pRect.top() + 4.0, 1.0, false, false);
+    const QList<QPointF> perspAfter = quadOf(view);
+    view->transform_release();
+    view->cancel_transform();
+    frame.imageView()->clearTransformPreview();
+    const bool perspOpposite = perspBefore.size() == 4 && perspAfter.size() == 4
+        && std::abs(perspAfter.at(0).x() - (pRect.left() + 5.0)) < 1e-6
+        && std::abs(perspAfter.at(0).y() - (pRect.top() + 4.0)) < 1e-6
+        && std::abs(perspAfter.at(2).x() - (perspBefore.at(2).x() - 5.0)) < 1e-6
+        && std::abs(perspAfter.at(2).y() - (perspBefore.at(2).y() - 4.0)) < 1e-6;
+
+    // (c) Skew slides the top edge and leaves the bottom edge fixed.
+    const QRectF sRect = rectOf(view, path);
+    const double topMidX = (sRect.left() + sRect.right()) / 2.0;
+    const bool skewBegin = view->begin_transform_mode(path, QStringLiteral("skew"));
+    const bool skewHit = view->transform_press(topMidX, sRect.top(), 1.0, false, false) == 4;
+    const bool skewMoved =
+        view->transform_move(topMidX + 2.0, sRect.top() + 3.0, 1.0, false, false);
+    const QList<QPointF> skewAfter = quadOf(view);
+    view->transform_release();
+    view->cancel_transform();
+    frame.imageView()->clearTransformPreview();
+    const bool skewEdge = skewAfter.size() == 4
+        && std::abs(skewAfter.at(0).x() - sRect.left() - 2.0) < 1e-6
+        && std::abs(skewAfter.at(1).x() - sRect.right() - 2.0) < 1e-6
+        && std::abs(skewAfter.at(1).y() - sRect.top() - 3.0) < 1e-6
+        && std::abs(skewAfter.at(2).y() - sRect.bottom()) < 1e-6
+        && std::abs(skewAfter.at(3).y() - sRect.bottom()) < 1e-6;
+
+    // (d) Escape in a projective mode restores the document and adds no state.
+    const int escBase = view->history_count();
+    const bool escSavedA = view->save(saveA);
+    const bool escBegin = view->begin_transform_mode(path, QStringLiteral("distort"));
+    const bool escHit =
+        view->transform_press(sRect.left(), sRect.top(), 1.0, false, false) >= 0;
+    const bool escMoved =
+        view->transform_move(sRect.left() - 6.0, sRect.top() - 6.0, 1.0, false, false);
+    view->cancel_transform();
+    frame.imageView()->clearTransformPreview();
+    const bool escCancelled =
+        !view->transform_session_active() && view->history_count() == escBase;
+    const bool escSavedB = view->save(saveB);
+    QFile escFileA(saveA);
+    QFile escFileB(saveB);
+    const bool escRead = escFileA.open(QIODevice::ReadOnly) && escFileB.open(QIODevice::ReadOnly);
+    const bool escIdentical = escRead && escFileA.readAll() == escFileB.readAll();
+
+    // A second begin on the same path switches modes (not a no-op): a Distort
+    // session followed by a Skew begin accepts an edge drag.
+    const bool switchDistort = view->begin_transform_mode(path, QStringLiteral("distort"));
+    const bool switchSkew = view->begin_transform_mode(path, QStringLiteral("skew"));
+    const QRectF swRect = rectOf(view, path);
+    const double swMid = (swRect.left() + swRect.right()) / 2.0;
+    const bool swHit = view->transform_press(swMid, swRect.top(), 1.0, false, false) == 4;
+    const bool swMoved = view->transform_move(swMid + 1.0, swRect.top() + 1.0, 1.0, false, false);
+    const QList<QPointF> swAfter = quadOf(view);
+    view->cancel_transform();
+    frame.imageView()->clearTransformPreview();
+    const bool switchOk = switchDistort && switchSkew && swHit && swMoved && swAfter.size() == 4
+        && std::abs(swAfter.at(0).x() - swRect.left() - 1.0) < 1e-6;
+
+    const bool distortOk = distortBegin && distortHit && distortMoved && distortCommitted
+        && distortOneState && distortChanged;
+    const bool perspOk = perspBegin && perspHit && perspMoved && perspOpposite;
+    const bool skewOk = skewBegin && skewHit && skewMoved && skewEdge;
+    const bool escOk = escBegin && escHit && escMoved && escCancelled && escSavedA && escSavedB
+        && escIdentical;
+
     const bool ok = entered && placedSelected && samePathNoop && otherPathSwitched
         && restoredPath && hit == 0 && moved && previewMatchesCommitRect && committed && oneState
         && rectChanged && savedA && reentered && rotHit == 8 && rotated && cancelled && savedB
         && identical && historyKept && identityBegin && identityNoState && keyBegin && keyCommitted
-        && keyReenter && keyCancelled && groupCan && adjCan && bgCan;
+        && keyReenter && keyCancelled && groupCan && adjCan && bgCan && distortOk && perspOk
+        && skewOk && escOk && switchOk;
     ST_BEGIN("lpr_free_transform");
     ST_PASS("lpr_free_transform entered=%d select=%d begin=%d preview=%d hit=%d moved=%d "
             "commit=%d states=%d rect=%s->%s keys=%d rotate=%d cancel=%d identical=%d "
-            "history=%d identity=%d group=%d adj=%d bg=%d",
+            "history=%d identity=%d group=%d adj=%d bg=%d distort=%d persp=%d skew=%d esc=%d "
+            "switch=%d",
             entered ? 1 : 0, placedSelected ? 1 : 0,
             (samePathNoop && otherPathSwitched && restoredPath) ? 1 : 0,
             previewMatchesCommitRect ? 1 : 0, hit, moved ? 1 : 0, committed ? 1 : 0,
             view->history_count() - base, qPrintable(beforeRect), qPrintable(afterRect),
             (keyCommitted && keyCancelled) ? 1 : 0, rotated ? 1 : 0, cancelled ? 1 : 0,
             identical ? 1 : 0, historyKept ? 1 : 0, identityNoState ? 1 : 0, groupCan ? 1 : 0,
-            adjCan ? 1 : 0, bgCan ? 1 : 0);
+            adjCan ? 1 : 0, bgCan ? 1 : 0, distortOk ? 1 : 0, perspOk ? 1 : 0, skewOk ? 1 : 0,
+            escOk ? 1 : 0, switchOk ? 1 : 0);
     if (!ok) {
         return pictura::selfTest().fail(292, "free transform");
     }

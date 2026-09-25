@@ -1,5 +1,5 @@
 use super::paths::resolve_path;
-use super::transform::{transform_layer, LayerTransform};
+use super::transform::{transform_layer, transform_layer_quad, LayerTransform};
 use pictura_core::{
     BitDepth, Channel, ColorMode, Document, Layer, LayerMask, LockFlags, PsdRect, RawChannel,
     Samples, SmartObject, SmartObjectKind, SourceChannels, SourcePlanes,
@@ -407,4 +407,148 @@ fn undecodable_channel_less_target_is_refused_untouched() {
         transform(2.0, 2.0, 0.0, 0.0, 0.0)
     ));
     assert_eq!(doc, before);
+}
+
+fn src_quad(w: i32, h: i32) -> [(f64, f64); 4] {
+    [
+        (0.0, 0.0),
+        (w as f64, 0.0),
+        (w as f64, h as f64),
+        (0.0, h as f64),
+    ]
+}
+
+#[test]
+fn quad_identity_is_bit_identical() {
+    let mut doc = doc_with(pixel_layer(4, 4));
+    let before = doc.clone();
+    assert!(transform_layer_quad(&mut doc, "0", src_quad(4, 4)));
+    assert_eq!(doc, before);
+}
+
+#[test]
+fn quad_integer_translation_matches_similarity() {
+    let mut quad_doc = doc_with(pixel_layer(4, 4));
+    let mut sim_doc = doc_with(pixel_layer(4, 4));
+    let pulled = [(2.0, 1.0), (6.0, 1.0), (6.0, 5.0), (2.0, 5.0)];
+    assert!(transform_layer_quad(&mut quad_doc, "0", pulled));
+    assert!(transform_layer(
+        &mut sim_doc,
+        "0",
+        transform(1.0, 1.0, 0.0, 2.0, 1.0)
+    ));
+    assert_eq!(quad_doc, sim_doc);
+}
+
+#[test]
+fn projective_quad_maps_source_corners_onto_targets() {
+    let quad = [(0.5, 0.0), (4.0, 1.5), (3.0, 4.5), (0.0, 3.0)];
+    let got = super::transform::quad_corner_targets(rect(4, 4), quad).unwrap();
+    for (want, g) in quad.iter().zip(got.iter()) {
+        assert!(
+            (g.0 - want.0).abs() < 1e-6 && (g.1 - want.1).abs() < 1e-6,
+            "{g:?} vs {want:?}"
+        );
+    }
+}
+
+#[test]
+fn quad_degenerate_inputs_are_refused_bit_identically() {
+    let cases: Vec<[(f64, f64); 4]> = vec![
+        // Three collinear targets: the homography is singular.
+        [(0.0, 0.0), (1.0, 1.0), (2.0, 2.0), (3.0, 3.0)],
+        // A non-finite corner.
+        [(0.0, 0.0), (f64::NAN, 0.0), (4.0, 4.0), (0.0, 4.0)],
+        // Zero-area: every corner collapses to one point.
+        [(1.0, 1.0), (1.0, 1.0), (1.0, 1.0), (1.0, 1.0)],
+    ];
+    for q in cases {
+        let mut doc = doc_with(pixel_layer(4, 4));
+        let before = doc.clone();
+        assert!(!transform_layer_quad(&mut doc, "0", q), "must refuse {q:?}");
+        assert_eq!(doc, before, "must not mutate {q:?}");
+    }
+}
+
+#[test]
+fn quad_out_of_source_pixels_are_zero() {
+    let mut doc = doc_with(pixel_layer(4, 4));
+    // A trapezoid inside the source bbox: bbox pixels outside it inverse-map
+    // outside the source square.
+    let quad = [(0.0, 0.0), (4.0, 0.0), (3.0, 4.0), (1.0, 4.0)];
+    assert!(transform_layer_quad(&mut doc, "0", quad));
+    let layer = resolve_path(&doc, "0").unwrap();
+    let alpha = layer.channels.iter().find(|c| c.id == -1).unwrap();
+    assert!(alpha.data.contains(&0), "an outside pixel is transparent");
+    assert!(alpha.data.contains(&255), "an inside pixel is opaque");
+}
+
+#[test]
+fn quad_refusals_leave_the_document_bit_identical() {
+    let cases: Vec<(&str, Document)> = vec![
+        (
+            "group",
+            doc_with(Layer {
+                is_group: true,
+                ..Default::default()
+            }),
+        ),
+        (
+            "adjustment",
+            doc_with(Layer {
+                adjustment: Some(pictura_core::AdjustmentData {
+                    key: *b"nvrt",
+                    data: Vec::new(),
+                }),
+                ..Default::default()
+            }),
+        ),
+        (
+            "background",
+            doc_with(Layer {
+                background: true,
+                ..pixel_layer(2, 2)
+            }),
+        ),
+        (
+            "position-locked",
+            doc_with(Layer {
+                lock: pictura_core::LockFlags::default().with(LockFlags::POSITION, true),
+                ..pixel_layer(2, 2)
+            }),
+        ),
+    ];
+    for (name, mut doc) in cases {
+        let before = doc.clone();
+        assert!(
+            !transform_layer_quad(&mut doc, "0", src_quad(2, 2)),
+            "{name} must refuse"
+        );
+        assert_eq!(doc, before, "{name} must not mutate");
+    }
+    let mut doc = doc_with(pixel_layer(2, 2));
+    let before = doc.clone();
+    assert!(!transform_layer_quad(&mut doc, "missing", src_quad(2, 2)));
+    assert_eq!(doc, before);
+}
+
+#[test]
+fn quad_channel_less_embedded_object_materializes_and_consumes() {
+    let mut doc = doc_with(channel_less_layer(embedded_payload(200)));
+    let quad = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)];
+    assert!(transform_layer_quad(&mut doc, "0", quad));
+    let layer = resolve_path(&doc, "0").unwrap();
+    assert!(layer.channels.iter().any(|c| c.id == 0));
+    assert!(layer.smart_object.is_none());
+}
+
+#[test]
+fn quad_one_by_one_does_not_panic() {
+    let mut doc = doc_with(pixel_layer(1, 1));
+    let _ = transform_layer_quad(&mut doc, "0", src_quad(1, 1));
+    let _ = transform_layer_quad(
+        &mut doc,
+        "0",
+        [(0.0, 0.0), (2.0, 1.0), (1.0, 2.0), (0.0, 1.0)],
+    );
 }

@@ -101,9 +101,9 @@ pub use document_ops::{
     resize_canvas_document, resize_document, resolve_path, resolve_path_mut, rotate_document,
     select_similar, set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths,
     set_opacity_paths, set_visible_paths, smart_object_source_bytes, transform_layer,
-    translate_layer, translate_layer_active, translate_layer_index, translate_layer_rect,
-    ungroup_layer, ungroup_paths, LayerTransform, MergeError, MergeOutcome, MergeScope,
-    NewLayerSpec,
+    transform_layer_quad, translate_layer, translate_layer_active, translate_layer_index,
+    translate_layer_rect, ungroup_layer, ungroup_paths, LayerTransform, MergeError, MergeOutcome,
+    MergeScope, NewLayerSpec,
 };
 
 mod text_render;

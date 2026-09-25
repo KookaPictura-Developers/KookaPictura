@@ -185,6 +185,9 @@ public:
     // Begin a Free Transform session on `path` in the active view and show its
     // overlay. Returns false without a transformable target.
     bool beginFreeTransform(const QString& path);
+    // Begin a Skew / Distort / Perspective session on `path` and show its
+    // overlay. Returns false without a transformable target or an unknown mode.
+    bool beginTransformMode(const QString& path, const QString& mode);
     // Make `path` the active Layers-panel row (refresh first so a just-created
     // layer is present in the model). No-op without the panel or an empty path.
     void selectLayerPath(const QString& path);

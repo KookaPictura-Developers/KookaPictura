@@ -284,6 +284,9 @@ public:
     // and shows its overlay; commit/cancel end it. While a session is active
     // normal tool input is suspended and routed to the session.
     bool beginFreeTransform(const QString& path);
+    // Begin a Skew / Distort / Perspective session on `path` (`mode` is
+    // "skew", "distort", or "perspective"), showing the same overlay.
+    bool beginTransformMode(const QString& path, const QString& mode);
     void commitFreeTransform();
     void cancelFreeTransform();
     bool transformSessionActive() const;
@@ -314,6 +317,9 @@ private:
 
     void updateTransformOverlay(PictureView* v);
     void setTransformCursor(const QPointF& imagePos);
+    // Shared begin: resolve the view, start `mode` (empty = Free), then set up
+    // the overlay and pan policy.
+    bool beginTransformImpl(const QString& path, const QString& mode);
 
     ToolRegistry registry_;
     ImageView* canvas_ = nullptr;

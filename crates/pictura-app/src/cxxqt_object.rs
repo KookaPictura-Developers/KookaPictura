@@ -1030,6 +1030,9 @@ pub mod qobject {
         #[qinvokable]
         fn begin_free_transform(self: Pin<&mut Self>, path: &QString) -> bool;
 
+        /// Begin a Skew/Distort/Perspective session; same rules as Free.
+        #[qinvokable]
+        fn begin_transform_mode(self: Pin<&mut Self>, path: &QString, mode: &QString) -> bool;
         /// Clear the active Free Transform session without touching the document.
         #[qinvokable]
         fn cancel_transform(self: Pin<&mut Self>);
@@ -1096,20 +1099,17 @@ pub mod qobject {
         #[qinvokable]
         fn transform_quad(&self) -> QString;
         #[qinvokable]
+        fn transform_preview_matrix(&self) -> QString;
+        #[qinvokable]
         fn layer_rect(&self, path: &QString) -> QString;
-
         #[qinvokable]
         fn undo(self: Pin<&mut Self>) -> bool;
-
         #[qinvokable]
         fn redo(self: Pin<&mut Self>) -> bool;
-
         #[qinvokable]
         fn can_undo(&self) -> bool;
-
         #[qinvokable]
         fn can_redo(&self) -> bool;
-
         #[qinvokable]
         fn history_depth(&self) -> i32;
 

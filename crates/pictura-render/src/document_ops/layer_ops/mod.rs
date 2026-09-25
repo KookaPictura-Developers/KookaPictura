@@ -46,5 +46,5 @@ pub use smart_object::{
     place_smart_object, rasterize_smart_object, replace_smart_object_contents,
     smart_object_source_bytes,
 };
-pub use transform::{transform_layer, LayerTransform};
+pub use transform::{transform_layer, transform_layer_quad, LayerTransform};
 pub use via::{layer_via_copy, layer_via_cut};

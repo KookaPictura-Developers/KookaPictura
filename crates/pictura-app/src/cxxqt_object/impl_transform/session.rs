@@ -1,7 +1,8 @@
 use super::super::helpers::*;
 use super::super::helpers_composite::*;
 use super::super::qobject;
-use super::super::state::TransformSession;
+use super::super::state::{TransformMode, TransformSession};
+use super::geometry::{projective_coefficients, session_quad, source_corners};
 use super::{build_move_preview_base, duplicate_move_target};
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
@@ -82,7 +83,36 @@ impl qobject::PictureView {
     /// Returns false without changing any session for an untransformable target.
     /// A second begin on the same active path is a no-op; a begin on a different
     /// path first cancels the active session.
-    pub fn begin_free_transform(mut self: Pin<&mut Self>, path: &QString) -> bool {
+    pub fn begin_free_transform(self: Pin<&mut Self>, path: &QString) -> bool {
+        self.begin_transform_session(path, TransformMode::Free)
+    }
+
+    /// Begin a Skew / Distort / Perspective session on the layer at `path`.
+    /// `mode` is `"skew"`, `"distort"`, or `"perspective"`; false for anything
+    /// else or an untransformable target, with the same resolution and refusal
+    /// rules as [`Self::begin_free_transform`].
+    pub fn begin_transform_mode(self: Pin<&mut Self>, path: &QString, mode: &QString) -> bool {
+        let Some(mode) = TransformMode::parse(&mode.to_string()) else {
+            return false;
+        };
+        self.begin_transform_session(path, mode)
+    }
+
+    /// The active session's mode name (`"free"`, `"skew"`, `"distort"`,
+    /// `"perspective"`), or an empty string without a session. Test hook.
+    pub fn transform_session_mode(&self) -> QString {
+        self.rust()
+            .transform_session
+            .as_ref()
+            .map(|session| QString::from(session.mode.name()))
+            .unwrap_or_default()
+    }
+
+    fn begin_transform_session(
+        mut self: Pin<&mut Self>,
+        path: &QString,
+        mode: TransformMode,
+    ) -> bool {
         let mut path = path.to_string();
         if path.is_empty() {
             let Some(active) = self.rust().active_layer.clone() else {
@@ -93,7 +123,7 @@ impl qobject::PictureView {
         {
             let rust = self.rust();
             if let Some(session) = rust.transform_session.as_ref() {
-                if session.path == path {
+                if session.path == path && session.mode == mode {
                     return true;
                 }
             }
@@ -120,6 +150,7 @@ impl qobject::PictureView {
         let Some(orig_rect) = rect else {
             return false;
         };
+        let corners = source_corners(orig_rect);
         self.as_mut().rust_mut().transform_session = Some(TransformSession {
             path,
             orig_rect,
@@ -133,6 +164,9 @@ impl qobject::PictureView {
             press_y: 0.0,
             start: [1.0, 1.0, 0.0, 0.0, 0.0],
             dragging: false,
+            mode,
+            quad: mode.is_projective().then_some(corners),
+            start_quad: corners,
         });
         true
     }
@@ -165,35 +199,58 @@ impl qobject::PictureView {
         self.as_mut().rust_mut().transform_session = None;
     }
 
-    /// Commit the session: one `transform_layer` call, a recomposite, and one
+    /// Commit the session: one `transform_layer` call in `Free` or
+    /// `transform_layer_quad` in a projective mode, a recomposite, and one
     /// `"Free Transform"` history state on success. An identity transform records
     /// nothing; an engine refusal records nothing. The session always clears.
     pub fn commit_transform(mut self: Pin<&mut Self>) -> bool {
-        let Some((path, transform)) = self.rust().transform_session.as_ref().map(|session| {
-            (
-                session.path.clone(),
-                LayerTransform {
-                    scale_x: session.scale_x,
-                    scale_y: session.scale_y,
-                    angle_radians: session.angle,
-                    dx: session.dx,
-                    dy: session.dy,
-                },
-            )
-        }) else {
+        let Some((path, mode, quad, transform, source)) =
+            self.rust().transform_session.as_ref().map(|session| {
+                (
+                    session.path.clone(),
+                    session.mode,
+                    session_quad(session),
+                    LayerTransform {
+                        scale_x: session.scale_x,
+                        scale_y: session.scale_y,
+                        angle_radians: session.angle,
+                        dx: session.dx,
+                        dy: session.dy,
+                    },
+                    source_corners(session.orig_rect),
+                )
+            })
+        else {
             return false;
         };
-        let identity = transform.scale_x == 1.0
-            && transform.scale_y == 1.0
-            && transform.angle_radians == 0.0
-            && transform.dx == 0.0
-            && transform.dy == 0.0;
-        if identity {
-            self.as_mut().rust_mut().transform_session = None;
-            return false;
+        if mode == TransformMode::Free {
+            let identity = transform.scale_x == 1.0
+                && transform.scale_y == 1.0
+                && transform.angle_radians == 0.0
+                && transform.dx == 0.0
+                && transform.dy == 0.0;
+            if identity {
+                self.as_mut().rust_mut().transform_session = None;
+                return false;
+            }
+        } else {
+            let identity = quad
+                .iter()
+                .zip(source.iter())
+                .all(|(q, s)| (q.0 - s.0).abs() <= 1e-9 && (q.1 - s.1).abs() <= 1e-9);
+            if identity {
+                self.as_mut().rust_mut().transform_session = None;
+                return false;
+            }
         }
         let changed = match self.as_mut().rust_mut().doc.as_mut() {
-            Some(doc) => pictura_render::transform_layer(doc, &path, transform),
+            Some(doc) => {
+                if mode == TransformMode::Free {
+                    pictura_render::transform_layer(doc, &path, transform)
+                } else {
+                    pictura_render::transform_layer_quad(doc, &path, quad)
+                }
+            }
             None => false,
         };
         self.as_mut().rust_mut().transform_session = None;
@@ -203,6 +260,25 @@ impl qobject::PictureView {
             self.as_mut().record("Free Transform");
         }
         changed
+    }
+
+    /// The nine coefficients of the projective map sending the source-rect
+    /// corners to the live quad, in `QTransform` constructor order, or an empty
+    /// string without a projective session.
+    pub fn transform_preview_matrix(&self) -> QString {
+        let Some(session) = self.rust().transform_session.as_ref() else {
+            return QString::default();
+        };
+        if !session.mode.is_projective() {
+            return QString::default();
+        }
+        let Some(coeffs) =
+            projective_coefficients(source_corners(session.orig_rect), session_quad(session))
+        else {
+            return QString::default();
+        };
+        let encoded: Vec<String> = coeffs.iter().map(|c| format!("{c:.12}")).collect();
+        QString::from(encoded.join(" "))
     }
 
     /// Whether a Free Transform session is active.
