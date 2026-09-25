@@ -51,10 +51,11 @@ const MAPPING: &[Mapping] = &[
     },
     Mapping {
         op: "resize Bicubic",
-        im: "-filter catrom -resize WxH!",
+        im: "-define filter:b=0 -define filter:c=0.75 -filter cubic -resize WxH!",
         tolerance: 1,
-        note: "Keys/Catmull-Rom (a = -0.5); measured max delta 1 (16->32). IM `-filter cubic` is \
-               a B-spline and measures 48, so `catrom` is the faithful operator",
+        note: "Mitchell-Netravali cubic(0, 0.75) (Keys a = -0.75), the publicly documented \
+               Photoshop Bicubic; matches within tolerance 1 (16->32). Catmull-Rom (`catrom`) \
+               is the wrong operator here",
     },
     Mapping {
         op: "resize_canvas",
@@ -359,7 +360,16 @@ fn resize_bicubic_matches_imagemagick() {
         "resize Bicubic 16->32",
         &out,
         &[
-            "--op", "resize", "--width", "32", "--height", "32", "--filter", "catrom",
+            "--op",
+            "resize",
+            "--width",
+            "32",
+            "--height",
+            "32",
+            "--filter",
+            "cubic",
+            "--im-args",
+            "-define filter:b=0 -define filter:c=0.75",
         ],
         &src.data,
         "16x16",
