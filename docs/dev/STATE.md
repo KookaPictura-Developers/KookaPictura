@@ -69,7 +69,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `psd-tagged-block-8b64`, and
     `bit-depth-sample-model`, and
     `native-depth-adjustments`, and
-    `native-depth-color-adjustments`
+    `native-depth-color-adjustments`, and
+    `native-depth-composite`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -944,10 +945,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   (`native-depth-color-adjustments`: `HueSaturation`, `Vibrance`, `ColorBalance`,
   `BlackWhite`, `PhotoFilter`, `ChannelMixer`, `SelectiveColor`), still
   byte-identical on u8 (Selective Color keeps its 8-bit integer pipeline, a
-  marked ceiling). Ceilings: `Auto`, `ColorLookup`, and the fill kinds return
-  `Unsupported` at native depth, there is no app/UI wiring yet, no HDR tone map,
-  retained samples cost 2×/4× while open and the write path clones each retained
-  plane.
+  marked ceiling). The CPU compositor now gets it too
+  (`native-depth-composite`): for a 16/32-bit document an adjustment layer is
+  applied to the `f32` canvas through `apply_native` instead of the former
+  `to_u8`/`from u8` round-trip, `Unsupported` adjustments fall back to the 8-bit
+  path, and `pictura_render::composite_native(doc)` emits the canvas at the
+  source depth (`U16`/`F32`, `None` for 8-bit); the 8-bit composite is
+  byte-identical. Ceilings: layer *content* is still read at 8-bit
+  (`source_channels` native reads and masks are later work), `Auto`/`ColorLookup`
+  composite 8-bit, there is no app/UI wiring yet, no HDR tone map, retained
+  samples cost 2×/4× while open and the write path clones each retained plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
