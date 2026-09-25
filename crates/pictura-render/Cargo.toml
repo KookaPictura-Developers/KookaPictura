@@ -18,10 +18,12 @@ pictura-codec = { path = "../pictura-codec" }
 # wgpu/pollster versions track `pictura-app`, which already pulls wgpu 30.0.1.
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "vulkan", "wgsl"] }
 pollster = "1"
-# Pure-Rust TTF parser + CPU glyph rasterizer for the bundled text backend.
+# Pure-Rust TTF parser kept for bundled-text metrics (ascent/count/lookup).
 fontdue = "0.9"
 # Pure-Rust HarfBuzz port for line shaping (kerning + default GPOS/GSUB).
 rustybuzz = "0.20"
+# Pure-Rust glyph rasterizer honoring fractional subpixel offsets.
+swash = { version = "0.2.10", features = ["scale", "render"] }
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }
