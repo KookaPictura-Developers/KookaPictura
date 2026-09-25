@@ -312,6 +312,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   and records one `"Free Transform"` state, Escape still cancels bit-identically
   (code 292). Ceilings: the gesture semantics are inferred (no Photoshop oracle);
   bilinear-only, no Warp / Puppet Warp / Content-Aware Scale.
+- **Custom mesh warp engine** (change `warp-mesh`): `pictura_render::transform_layer_warp(doc, path, &WarpMesh, WarpParams)`
+  resamples a layer through a tensor-product cubic Bézier surface defined by a
+  row-major control net, after the options-bar row/column distortion; it reuses
+  the similarity op's refusal/materialization/mask/smart-object rules (factored
+  into `prepare_layer`/`write_layer`) and `integer_bbox`. Identity
+  (`identity_mesh`) is bit-exact, the four corners stay fixed under an
+  interior-only edit, and a degenerate/non-finite/wrong-size net is refused.
+  Ceiling: no Photoshop oracle for the surface, and the 15 named presets, the
+  `Bend`/`X`/`Y` preset geometry, the interactive mesh overlay, and the
+  `Edit > Transform > Warp` command are **not** implemented (they need the
+  Patchy reference to avoid guessing).
 - PSB **write** (roadmap P5/G9, archived `2026-09-19-psb-write`): `write_psd`
   now emits a version-2 PSB when `Document.is_psb` is set or either dimension
   exceeds 30 000, and a new `write_psb` always forces a PSB; both share one
