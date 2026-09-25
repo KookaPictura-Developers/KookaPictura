@@ -2,8 +2,10 @@
 //! for `u16`/`f32` stores, and the unsupported ceiling.
 
 use pictura_adjust::{
-    apply, apply_native, AdjustError, Adjustment, BrightnessContrastParams, CurvesParams,
-    ExposureParams, GradientMapParams, GradientStop, HueSaturationParams, LevelsParams,
+    apply, apply_native, AdjustError, Adjustment, AutoKind, BlackWhiteParams,
+    BrightnessContrastParams, ChannelMixerParams, ColorBalanceParams, CurvesParams, ExposureParams,
+    GradientMapParams, GradientStop, HueSaturationParams, LevelsParams, PhotoFilterParams,
+    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, VibranceParams,
 };
 use pictura_core::{PixelBuffer, Samples};
 
@@ -94,6 +96,164 @@ fn covered() -> Vec<Adjustment> {
             ],
             reverse: true,
         }),
+        Adjustment::HueSaturation(HueSaturationParams {
+            hue: 25,
+            saturation: 35,
+            lightness: -12,
+        }),
+        Adjustment::Vibrance(VibranceParams {
+            vibrance: 45,
+            saturation: -20,
+        }),
+        Adjustment::ColorBalance(ColorBalanceParams {
+            shadows: [12.0, -6.0, 4.0],
+            midtones: [-9.0, 8.0, -3.0],
+            highlights: [6.0, 5.0, -11.0],
+            preserve_luminosity: false,
+        }),
+        Adjustment::ColorBalance(ColorBalanceParams {
+            shadows: [12.0, -6.0, 4.0],
+            midtones: [-9.0, 8.0, -3.0],
+            highlights: [6.0, 5.0, -11.0],
+            preserve_luminosity: true,
+        }),
+        Adjustment::BlackWhite(BlackWhiteParams {
+            red: 40.0,
+            yellow: -20.0,
+            green: 10.0,
+            cyan: 5.0,
+            blue: -30.0,
+            magenta: 15.0,
+            tint: false,
+            tint_color: [0, 0, 0],
+        }),
+        Adjustment::BlackWhite(BlackWhiteParams {
+            red: 30.0,
+            yellow: 10.0,
+            green: -15.0,
+            cyan: 25.0,
+            blue: 5.0,
+            magenta: -10.0,
+            tint: true,
+            tint_color: [210, 130, 45],
+        }),
+        Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [255, 200, 150],
+            density: 25.0,
+            preserve_luminosity: false,
+        }),
+        Adjustment::PhotoFilter(PhotoFilterParams {
+            color: [80, 140, 235],
+            density: 40.0,
+            preserve_luminosity: true,
+        }),
+        Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: false,
+            red: [120.0, -20.0, 10.0],
+            green: [10.0, 110.0, -15.0],
+            blue: [-10.0, 20.0, 130.0],
+            constant: [5.0, -3.0, 2.0],
+        }),
+        Adjustment::ChannelMixer(ChannelMixerParams {
+            monochrome: true,
+            red: [30.0, 59.0, 11.0],
+            green: [0.0, 0.0, 0.0],
+            blue: [0.0, 0.0, 0.0],
+            constant: [0.0, 0.0, 0.0],
+        }),
+        Adjustment::SelectiveColor(SelectiveColorParams {
+            method: SelectiveColorMethod::Relative,
+            ranges: [
+                SelectiveRange {
+                    c: 20,
+                    m: -10,
+                    y: 5,
+                    k: 0,
+                },
+                SelectiveRange {
+                    c: 0,
+                    m: 15,
+                    y: -8,
+                    k: 3,
+                },
+                SelectiveRange {
+                    c: -12,
+                    m: 0,
+                    y: 0,
+                    k: 0,
+                },
+                SelectiveRange::default(),
+                SelectiveRange {
+                    c: 0,
+                    m: 0,
+                    y: 10,
+                    k: 0,
+                },
+                SelectiveRange::default(),
+                SelectiveRange {
+                    c: 5,
+                    m: -4,
+                    y: 2,
+                    k: 1,
+                },
+                SelectiveRange {
+                    c: -3,
+                    m: 2,
+                    y: -1,
+                    k: 0,
+                },
+                SelectiveRange {
+                    c: 0,
+                    m: 0,
+                    y: 0,
+                    k: -5,
+                },
+            ],
+        }),
+        Adjustment::SelectiveColor(SelectiveColorParams {
+            method: SelectiveColorMethod::Absolute,
+            ranges: [
+                SelectiveRange {
+                    c: 10,
+                    m: 0,
+                    y: -5,
+                    k: 0,
+                },
+                SelectiveRange::default(),
+                SelectiveRange {
+                    c: 0,
+                    m: -8,
+                    y: 6,
+                    k: 0,
+                },
+                SelectiveRange {
+                    c: 7,
+                    m: 0,
+                    y: 0,
+                    k: 0,
+                },
+                SelectiveRange::default(),
+                SelectiveRange {
+                    c: 0,
+                    m: 0,
+                    y: -4,
+                    k: 0,
+                },
+                SelectiveRange {
+                    c: -6,
+                    m: 3,
+                    y: 0,
+                    k: 2,
+                },
+                SelectiveRange::default(),
+                SelectiveRange {
+                    c: 0,
+                    m: 0,
+                    y: 0,
+                    k: 4,
+                },
+            ],
+        }),
     ]
 }
 
@@ -163,15 +323,28 @@ fn depth32_native_edit_keeps_values_above_one() {
 }
 
 #[test]
+fn depth16_color_adjustment_is_not_the_widened_byte() {
+    let mut store = Samples::U16(vec![
+        1000, 5000, 20000, 40000, 60000, 12345, 1, 255, 256, 257, 32768, 65535,
+    ]);
+    let vibrance = Adjustment::Vibrance(VibranceParams {
+        vibrance: 70,
+        saturation: 0,
+    });
+    apply_native(&vibrance, &mut store, 4, 1, 3).unwrap();
+    let Samples::U16(v) = &store else { panic!() };
+    assert!(
+        v.iter().any(|s| (s >> 8) != (s & 0xff)),
+        "expected a color-adjusted sample whose low byte is not the high byte: {v:?}"
+    );
+}
+
+#[test]
 fn unsupported_adjustment_is_refused_without_mutation() {
     let mut store = Samples::U16(vec![10, 20, 30, 40, 50, 60]);
     let before = store.clone();
-    let hue = Adjustment::HueSaturation(HueSaturationParams {
-        hue: 10,
-        saturation: 20,
-        lightness: -5,
-    });
-    let err = apply_native(&hue, &mut store, 2, 1, 3).unwrap_err();
+    let auto = Adjustment::Auto(AutoKind::Color);
+    let err = apply_native(&auto, &mut store, 2, 1, 3).unwrap_err();
     assert!(matches!(err, AdjustError::Unsupported(_)));
     assert_eq!(store, before);
 }
