@@ -2,15 +2,36 @@
 //! for `u16`/`f32` stores, and the unsupported ceiling.
 
 use pictura_adjust::{
-    apply, apply_native, AdjustError, Adjustment, AutoKind, BlackWhiteParams,
-    BrightnessContrastParams, ChannelMixerParams, ColorBalanceParams, CurvesParams, ExposureParams,
-    GradientMapParams, GradientStop, HueSaturationParams, LevelsParams, PhotoFilterParams,
-    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, VibranceParams,
+    apply, apply_native, parse_cube, AdjustError, Adjustment, AutoKind, BlackWhiteParams,
+    BrightnessContrastParams, ChannelMixerParams, ColorBalanceParams, ColorLookupKind,
+    ColorLookupParams, CurvesParams, ExposureParams, GradientMapParams, GradientStop,
+    HueSaturationParams, LevelsParams, PhotoFilterParams, SelectiveColorMethod,
+    SelectiveColorParams, SelectiveRange, VibranceParams,
 };
 use pictura_core::{PixelBuffer, Samples};
 
 const W: u32 = 8;
 const H: u32 = 8;
+
+/// An inverting size-2 `.CUBE`, i.e. a parsed non-identity lookup.
+fn inverted_cube() -> Vec<u8> {
+    let mut s = String::from("LUT_3D_SIZE 2\n");
+    for b in 0..2 {
+        for g in 0..2 {
+            for r in 0..2 {
+                s.push_str(&format!("{} {} {}\n", 1 - r, 1 - g, 1 - b));
+            }
+        }
+    }
+    s.into_bytes()
+}
+
+fn color_lookup_params() -> ColorLookupParams {
+    ColorLookupParams {
+        kind: ColorLookupKind::ThreeDLut,
+        lookup: parse_cube(&inverted_cube()),
+    }
+}
 
 fn fixed_rgb() -> PixelBuffer {
     let n = (W * H) as usize;
@@ -254,6 +275,10 @@ fn covered() -> Vec<Adjustment> {
                 },
             ],
         }),
+        Adjustment::Auto(AutoKind::Tone),
+        Adjustment::Auto(AutoKind::Contrast),
+        Adjustment::Auto(AutoKind::Color),
+        Adjustment::ColorLookup(color_lookup_params()),
     ]
 }
 
@@ -343,8 +368,43 @@ fn depth16_color_adjustment_is_not_the_widened_byte() {
 fn unsupported_adjustment_is_refused_without_mutation() {
     let mut store = Samples::U16(vec![10, 20, 30, 40, 50, 60]);
     let before = store.clone();
-    let auto = Adjustment::Auto(AutoKind::Color);
-    let err = apply_native(&auto, &mut store, 2, 1, 3).unwrap_err();
+    let fill = Adjustment::SolidFill([1, 2, 3, 4]);
+    let err = apply_native(&fill, &mut store, 2, 1, 3).unwrap_err();
     assert!(matches!(err, AdjustError::Unsupported(_)));
+    assert_eq!(store, before);
+}
+
+#[test]
+fn depth16_color_lookup_keeps_precision() {
+    let input = vec![
+        1000, 5000, 20000, 40000, 60000, 12345, 1, 255, 256, 257, 32768, 65535,
+    ];
+    let mut store = Samples::U16(input.clone());
+    apply_native(
+        &Adjustment::ColorLookup(color_lookup_params()),
+        &mut store,
+        4,
+        1,
+        3,
+    )
+    .unwrap();
+    let Samples::U16(v) = &store else { panic!() };
+    assert!(
+        v.iter()
+            .zip(&input)
+            .any(|(out, inp)| *out != (*inp >> 8) * 257),
+        "expected a LUT sample that is not the 8-bit widening of its input: {v:?}"
+    );
+}
+
+#[test]
+fn unparseable_color_lookup_is_a_noop_at_native_depth() {
+    let mut store = Samples::U16(vec![10, 20, 30, 40, 50, 60]);
+    let before = store.clone();
+    let params = ColorLookupParams {
+        kind: ColorLookupKind::AbstractProfile,
+        lookup: None,
+    };
+    apply_native(&Adjustment::ColorLookup(params), &mut store, 2, 1, 3).unwrap();
     assert_eq!(store, before);
 }

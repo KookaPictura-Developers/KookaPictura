@@ -68,7 +68,7 @@ fn node(lut: &Lut3d, r: usize, g: usize, b: usize) -> [f32; 3] {
 }
 
 /// Trilinear sample of `lut` at an RGB position in `0.0..=1.0`.
-fn sample(lut: &Lut3d, rgb: [f32; 3]) -> [f32; 3] {
+pub(crate) fn sample(lut: &Lut3d, rgb: [f32; 3]) -> [f32; 3] {
     let max = (lut.size - 1) as f32;
     let mut lo = [0usize; 3];
     let mut hi = [0usize; 3];

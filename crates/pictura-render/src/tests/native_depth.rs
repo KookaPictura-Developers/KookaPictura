@@ -129,7 +129,7 @@ fn composite_native_is_none_without_depth_and_f32_at_32() {
 }
 
 #[test]
-fn auto_adjustment_on_depth16_falls_back_to_the_8bit_apply() {
+fn auto_adjustment_on_depth16_uses_the_native_path() {
     let mut d = doc(4, 4, Vec::new());
     d.source_depth = Some(BitDepth::Sixteen);
 
@@ -159,7 +159,7 @@ fn auto_adjustment_on_depth16_falls_back_to_the_8bit_apply() {
             .iter()
             .zip(&before)
             .any(|(p, b)| (p.r - b).abs() > 1.0 / 255.0),
-        "auto is outside the native set, so the 8-bit apply must still run"
+        "auto is in the native set and must adjust the depth-16 canvas"
     );
 }
 
