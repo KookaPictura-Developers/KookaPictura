@@ -114,9 +114,122 @@ impl Samples {
     }
 }
 
+/// A scalar sample that converts to and from the `[0, 1]` unit domain.
+///
+/// `to_unit` is total: an `f32` below `0.0` or above `1.0` clamps into the
+/// interval and `NaN` maps to `0.0`, so a finite store cannot feed a kernel a
+/// non-finite value. `from_unit` rounds at the store's own scale (`255` for
+/// `u8`, `65535` for `u16`); an `f32` store keeps the unit value as-is so a
+/// value above `1.0` stays representable.
+pub trait Sample: Copy {
+    fn to_unit(self) -> f64;
+    fn from_unit(v: f64) -> Self;
+}
+
+impl Sample for u8 {
+    fn to_unit(self) -> f64 {
+        self as f64 / 255.0
+    }
+
+    fn from_unit(v: f64) -> Self {
+        (v.clamp(0.0, 1.0) * 255.0).round() as u8
+    }
+}
+
+impl Sample for u16 {
+    fn to_unit(self) -> f64 {
+        self as f64 / 65535.0
+    }
+
+    fn from_unit(v: f64) -> Self {
+        (v.clamp(0.0, 1.0) * 65535.0).round() as u16
+    }
+}
+
+impl Sample for f32 {
+    fn to_unit(self) -> f64 {
+        let v = self as f64;
+        if v.is_nan() {
+            0.0
+        } else {
+            v.clamp(0.0, 1.0)
+        }
+    }
+
+    fn from_unit(v: f64) -> Self {
+        v as f32
+    }
+}
+
+impl Samples {
+    /// Map each pixel's three color planes (R, G, B) through `f` in the unit
+    /// domain, leaving any alpha plane and trailing extra channels untouched.
+    ///
+    /// `width * height * channels` must fit the store; `channels` is 3 or 4.
+    pub fn map_color_planes(
+        &mut self,
+        width: usize,
+        height: usize,
+        channels: u8,
+        mut f: impl FnMut([f64; 3]) -> [f64; 3],
+    ) {
+        let n = width * height;
+        match self {
+            Samples::U8(v) => map_pixels(v, n, channels, &mut f),
+            Samples::U16(v) => map_pixels(v, n, channels, &mut f),
+            Samples::F32(v) => map_pixels(v, n, channels, &mut f),
+        }
+    }
+}
+
+fn map_pixels<T: Sample>(
+    data: &mut [T],
+    n: usize,
+    channels: u8,
+    f: &mut impl FnMut([f64; 3]) -> [f64; 3],
+) {
+    debug_assert!(channels == 3 || channels == 4);
+    let (r, rest) = data.split_at_mut(n);
+    let (g, rest) = rest.split_at_mut(n);
+    let (b, _) = rest.split_at_mut(n);
+    for i in 0..n {
+        let out = f([r[i].to_unit(), g[i].to_unit(), b[i].to_unit()]);
+        r[i] = T::from_unit(out[0]);
+        g[i] = T::from_unit(out[1]);
+        b[i] = T::from_unit(out[2]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sample_units_convert_at_the_store_scale() {
+        assert_eq!(0u8.to_unit(), 0.0);
+        assert_eq!(255u8.to_unit(), 1.0);
+        assert_eq!(u8::from_unit(0.5), 128);
+        assert_eq!(32768u16.to_unit(), 32768.0 / 65535.0);
+        assert_eq!(u16::from_unit(1.0), 65535);
+        assert_eq!(u16::from_unit(0.5), 32768);
+    }
+
+    #[test]
+    fn f32_sample_clamps_and_maps_nan() {
+        assert_eq!((-0.5f32).to_unit(), 0.0);
+        assert_eq!(1.5f32.to_unit(), 1.0);
+        assert_eq!(f32::NAN.to_unit(), 0.0);
+        assert_eq!(0.25f32.to_unit(), 0.25);
+        assert_eq!(f32::from_unit(1.5), 1.5);
+    }
+
+    #[test]
+    fn map_color_planes_leaves_alpha_untouched() {
+        let mut store = Samples::U8(vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        store.map_color_planes(2, 1, 4, |p| p.map(|v| 1.0 - v));
+        let Samples::U8(v) = store else { panic!() };
+        assert_eq!(v, vec![254, 253, 252, 251, 250, 249, 7, 8]);
+    }
 
     #[test]
     fn narrow_u16_matches_the_byte_rule() {

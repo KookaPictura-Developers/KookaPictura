@@ -14,6 +14,7 @@ mod auto;
 mod color;
 mod common;
 mod lut;
+mod native;
 mod tonal;
 mod types;
 
@@ -22,6 +23,7 @@ mod tests;
 
 pub use apply::apply;
 pub use lut::parse_cube;
+pub use native::apply_native;
 pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupKind, ColorLookupParams, CurvesParams,
