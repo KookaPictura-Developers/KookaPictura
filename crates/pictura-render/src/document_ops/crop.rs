@@ -6,7 +6,7 @@
 
 use pictura_core::{layer_move_locked, Document, Layer};
 
-use super::canvas::{extend_channel, offset_rect};
+use super::canvas::{extend_channel, offset_rect, rebase_source_planes};
 use super::{for_each_layer, recompute};
 
 /// Crop the document to the clamped `width`×`height` rect at `(x, y)`.
@@ -29,6 +29,7 @@ pub fn crop_document(doc: &mut Document, x: i32, y: i32, width: u32, height: u32
 
     for_each_layer(&mut doc.layers, &mut |layer| {
         layer.rect = offset_rect(layer.rect, dx, dy);
+        offset_store(layer, dx, dy);
         if let Some(mask) = &mut layer.mask {
             mask.rect = offset_rect(mask.rect, dx, dy);
         }
@@ -37,11 +38,20 @@ pub fn crop_document(doc: &mut Document, x: i32, y: i32, width: u32, height: u32
     for channel in &mut doc.channels {
         channel.data = extend_channel(&channel.data, old_w, old_h, new_w, new_h, dx, dy);
     }
+    rebase_source_planes(doc, old_w, old_h, new_w, new_h, dx, dy);
 
     doc.width = new_w;
     doc.height = new_h;
     recompute(doc);
     true
+}
+
+/// Shift a layer's retained-store rect with its bounds; the plane data is
+/// layer-local, so a pure move re-anchors it without resampling.
+fn offset_store(layer: &mut Layer, dx: i32, dy: i32) {
+    if let Some(store) = &mut layer.source_channels {
+        store.rect = offset_rect(store.rect, dx, dy);
+    }
 }
 
 /// Shift the topmost pixel layer's bounds by `(dx, dy)`.
@@ -56,6 +66,7 @@ pub fn translate_layer(doc: &mut Document, dx: i32, dy: i32) -> bool {
         return false;
     }
     layer.rect = offset_rect(layer.rect, dx, dy);
+    offset_store(layer, dx, dy);
     if let Some(mask) = &mut layer.mask {
         mask.rect = offset_rect(mask.rect, dx, dy);
     }
@@ -77,6 +88,7 @@ pub fn translate_layer_rect(doc: &mut Document, dx: i32, dy: i32) -> bool {
         return false;
     }
     layer.rect = offset_rect(layer.rect, dx, dy);
+    offset_store(layer, dx, dy);
     if let Some(mask) = &mut layer.mask {
         mask.rect = offset_rect(mask.rect, dx, dy);
     }
@@ -97,6 +109,7 @@ pub fn translate_layer_active(doc: &mut Document, dx: i32, dy: i32, gpu_enabled:
         return false;
     }
     layer.rect = offset_rect(layer.rect, dx, dy);
+    offset_store(layer, dx, dy);
     if let Some(mask) = &mut layer.mask {
         mask.rect = offset_rect(mask.rect, dx, dy);
     }
@@ -119,6 +132,7 @@ pub fn translate_layer_index(doc: &mut Document, index: usize, dx: i32, dy: i32)
         return false;
     }
     layer.rect = offset_rect(layer.rect, dx, dy);
+    offset_store(layer, dx, dy);
     if let Some(mask) = &mut layer.mask {
         mask.rect = offset_rect(mask.rect, dx, dy);
     }
@@ -137,6 +151,7 @@ mod tests {
     use super::*;
     use pictura_core::{
         BitDepth, BlendMode, Channel, ColorLabel, ColorMode, LayerMask, LockFlags, PsdRect,
+        Samples, SourceChannels, SourcePlanes,
     };
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
@@ -357,6 +372,34 @@ mod tests {
         );
         assert_eq!(doc.layers[0].name, "top");
         assert_eq!(doc.layers[1].name, "layer");
+    }
+
+    #[test]
+    fn crop_rebases_the_retained_store() {
+        let mut doc = sample_doc();
+        doc.source_depth = Some(BitDepth::Sixteen);
+        doc.source_planes = Some(SourcePlanes {
+            depth: BitDepth::Sixteen,
+            width: 4,
+            height: 4,
+            samples: Samples::U16((0..16).map(|i| i as u16).collect()),
+        });
+        doc.layers[0].source_channels = Some(SourceChannels {
+            depth: BitDepth::Sixteen,
+            rect: doc.layers[0].rect,
+            planes: vec![(0, Samples::U16(vec![0; 16]))],
+        });
+
+        assert!(crop_document(&mut doc, 1, 1, 2, 2));
+
+        let store = doc.source_planes.as_ref().unwrap();
+        assert_eq!((store.width, store.height), (2, 2));
+        assert_eq!(store.samples, Samples::U16(vec![5, 6, 9, 10]));
+        assert_eq!(
+            doc.layers[0].source_channels.as_ref().unwrap().rect,
+            doc.layers[0].rect,
+            "the layer store rect follows the crop offset"
+        );
     }
 
     /// Manual M31 evidence: a small region composite against the full 4000²

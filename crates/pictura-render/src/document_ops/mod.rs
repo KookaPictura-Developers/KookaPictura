@@ -3,7 +3,9 @@
 
 mod canvas;
 mod crop;
+mod depth;
 mod layer_ops;
+mod native_store;
 mod orient;
 mod resize;
 
@@ -12,6 +14,7 @@ pub use crop::{
     crop_document, translate_layer, translate_layer_active, translate_layer_index,
     translate_layer_rect,
 };
+pub use depth::convert_depth_exposure_gamma;
 pub use layer_ops::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
     add_layer_in, add_raster_layer_from_rgba, add_solid_fill, apply_visibility,
@@ -25,9 +28,9 @@ pub use layer_ops::{
     place_smart_object, rasterize_all_layers, rasterize_fill_content, rasterize_smart_object,
     rename_path, replace_smart_object_contents, resolve_path, resolve_path_mut, select_similar,
     set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths,
-    set_visible_paths, smart_object_source_bytes, transform_layer, transform_layer_quad,
-    transform_layer_warp, ungroup_layer, ungroup_paths, LayerTransform, MergeError, MergeOutcome,
-    MergeScope, NewLayerSpec, WarpMesh, WarpParams,
+    set_visible_paths, smart_object_source_bytes, style_mesh, transform_layer,
+    transform_layer_quad, transform_layer_warp, ungroup_layer, ungroup_paths, LayerTransform,
+    MergeError, MergeOutcome, MergeScope, NewLayerSpec, WarpMesh, WarpParams, WarpStyle,
 };
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;

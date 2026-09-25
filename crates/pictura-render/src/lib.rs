@@ -39,7 +39,9 @@ pub use composite::{
 
 mod composite_native;
 pub use composite_native::{composite_native, refresh_native_composite};
-pub use pictura_adjust::{GradientFillParams, GradientKind, GradientStop, PatternFillParams};
+pub use pictura_adjust::{
+    ExposureGamma, GradientFillParams, GradientKind, GradientStop, PatternFillParams,
+};
 
 mod color_balance;
 pub use color_balance::encode_color_balance;
@@ -92,19 +94,19 @@ pub use document_ops::{
     add_layer_in, add_raster_layer_from_rgba, add_solid_fill, apply_visibility,
     background_from_layer, can_convert_to_smart_object, can_edit_smart_object_contents,
     can_merge_scope, can_merge_target, can_move_path_to, can_rasterize_smart_object,
-    can_replace_smart_object_contents, convert_to_smart_object, crop_document,
-    delete_hidden_layers, delete_paths, duplicate_layer, duplicate_paths, flatten, flatten_rows,
-    flip_document, group_layer, group_paths, identity_mesh, is_background, is_fill_content_layer,
-    is_visible_in_panel, layer_from_background, layer_via_copy, layer_via_cut, merge_scope,
-    move_path, move_path_to, move_selection_content, neutral_color, next_layer_name,
-    open_as_smart_object, parent_path, place_smart_object, rasterize_all_layers,
+    can_replace_smart_object_contents, convert_depth_exposure_gamma, convert_to_smart_object,
+    crop_document, delete_hidden_layers, delete_paths, duplicate_layer, duplicate_paths, flatten,
+    flatten_rows, flip_document, group_layer, group_paths, identity_mesh, is_background,
+    is_fill_content_layer, is_visible_in_panel, layer_from_background, layer_via_copy,
+    layer_via_cut, merge_scope, move_path, move_path_to, move_selection_content, neutral_color,
+    next_layer_name, open_as_smart_object, parent_path, place_smart_object, rasterize_all_layers,
     rasterize_fill_content, rasterize_smart_object, rename_path, replace_smart_object_contents,
     resize_canvas_document, resize_document, resolve_path, resolve_path_mut, rotate_document,
     select_similar, set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths,
-    set_opacity_paths, set_visible_paths, smart_object_source_bytes, transform_layer,
+    set_opacity_paths, set_visible_paths, smart_object_source_bytes, style_mesh, transform_layer,
     transform_layer_quad, transform_layer_warp, translate_layer, translate_layer_active,
     translate_layer_index, translate_layer_rect, ungroup_layer, ungroup_paths, LayerTransform,
-    MergeError, MergeOutcome, MergeScope, NewLayerSpec, WarpMesh, WarpParams,
+    MergeError, MergeOutcome, MergeScope, NewLayerSpec, WarpMesh, WarpParams, WarpStyle,
 };
 
 mod text_render;

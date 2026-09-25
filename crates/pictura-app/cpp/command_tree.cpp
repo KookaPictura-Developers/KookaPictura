@@ -136,7 +136,8 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QStringLiteral("Distort"), QKeySequence(), true);
     registry.add(command_ids::EditTransformPerspective, {"Edit", "Transform", "Perspective"},
                  QStringLiteral("Perspective"), QKeySequence(), true);
-    leaf(registry, {"Edit", "Transform", "Warp"}, QStringLiteral("Warp"));
+    registry.add(command_ids::EditTransformWarp, {"Edit", "Transform", "Warp"},
+                 QStringLiteral("Warp"), QKeySequence(), true);
     leaf(registry, {"Edit", "Transform", "Rotate 90° CW"}, QStringLiteral("Rotate 90° CW"));
     leaf(registry, {"Edit", "Transform", "Rotate 90° CCW"}, QStringLiteral("Rotate 90° CCW"));
     leaf(registry, {"Edit", "Transform", "Rotate 180°"}, QStringLiteral("Rotate 180°"));
@@ -205,8 +206,10 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Image", "Mode", "Multichannel"}, QStringLiteral("Multichannel"));
     leaf(registry, {"Image", "Mode", "Color Table"}, QStringLiteral("Color Table"));
     registry.addSeparator({"Image", "Mode"});
-    leaf(registry, {"Image", "Mode", "8 Bits/Channel"}, QStringLiteral("8 Bits/Channel"));
-    leaf(registry, {"Image", "Mode", "16 Bits/Channel"}, QStringLiteral("16 Bits/Channel"));
+    registry.add(command_ids::ImageMode8Bits, {"Image", "Mode", "8 Bits/Channel"},
+                 QStringLiteral("8 Bits/Channel"), QKeySequence(), true);
+    registry.add(command_ids::ImageMode16Bits, {"Image", "Mode", "16 Bits/Channel"},
+                 QStringLiteral("16 Bits/Channel"), QKeySequence(), true);
     leaf(registry, {"Image", "Mode", "32 Bits/Channel"}, QStringLiteral("32 Bits/Channel"));
     leaf(registry, {"Image", "Adjustments", "Brightness/Contrast"},
          QStringLiteral("Brightness/Contrast"));

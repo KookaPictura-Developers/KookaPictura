@@ -7,9 +7,10 @@
 //! do **not** recomposite: like `translate_layer_rect`, the caller owns the
 //! composite refresh.
 
-use pictura_core::{Channel, Document, LayerMask, LockFlags, PsdRect};
+use pictura_core::{Channel, Document, LayerMask, LockFlags, PsdRect, SourceChannels};
 
 use super::paths::{resolve_path, resolve_path_mut};
+use super::transform_native;
 
 use pictura_core::Layer;
 
@@ -38,7 +39,7 @@ const PIVOT_EPSILON: f64 = 1e-12;
 /// Any document-space plane map the shared resample skeleton can drive: a
 /// `forward` map used for the destination bounding box and an `inverse` map used
 /// to sample the source. Returning `None` marks a point at (or beyond) infinity.
-trait PlaneMap: Sized {
+pub(super) trait PlaneMap: Sized {
     fn forward(&self, x: f64, y: f64) -> Option<(f64, f64)>;
     fn inverse(&self, qx: f64, qy: f64) -> Option<(f64, f64)>;
     /// The equivalent map for a plane occupying `rect` (a layer mask): the
@@ -333,7 +334,7 @@ pub(super) fn bilinear(src: &[u8], w: usize, h: usize, lx: f64, ly: f64) -> u8 {
 }
 
 /// Resample one `w×h` plane into the destination rect; out-of-source → 0.
-fn resample_plane<M: PlaneMap>(
+pub(super) fn resample_plane<M: PlaneMap>(
     src: &[u8],
     w: usize,
     h: usize,
@@ -439,6 +440,7 @@ pub(super) struct Prepared {
     pub(super) w: i32,
     pub(super) h: i32,
     pub(super) source_channels: Vec<Channel>,
+    pub(super) native: Option<SourceChannels>,
     pub(super) mask: Option<LayerMask>,
     pub(super) materialize: bool,
     pub(super) old_uuid: String,
@@ -484,10 +486,19 @@ pub(super) fn prepare_layer(doc: &Document, path: &str) -> Option<Prepared> {
         w,
         h,
         source_channels,
+        native: layer.source_channels.clone(),
         mask: layer.mask.clone(),
         materialize,
         old_uuid,
     })
+}
+
+/// The resampled result of one layer transform, before it is written back.
+pub(super) struct LayerOutput {
+    pub(super) channels: Vec<Channel>,
+    pub(super) mask: Option<LayerMask>,
+    pub(super) native: Option<SourceChannels>,
+    pub(super) dest: (i32, i32, i32, i32),
 }
 
 /// Write a resampled channel set and rect back to the layer at `path`, applying
@@ -496,32 +507,50 @@ pub(super) fn write_layer(
     doc: &mut Document,
     path: &str,
     prepared: &Prepared,
-    new_channels: Vec<Channel>,
-    dest: (i32, i32, i32, i32),
-    new_mask: Option<LayerMask>,
+    mut out: LayerOutput,
     pure_translate: bool,
 ) -> bool {
+    // Keep the 8-bit channel equal to the resampled native plane's narrowing so
+    // the writer's `narrow(retained) == current` gate re-emits native samples.
+    // A converted source mode stores source-mode planes, not working RGB, so is
+    // excluded here.
+    if doc.source_mode.is_none() && !pure_translate {
+        if let Some(store) = &out.native {
+            for (id, samples) in &store.planes {
+                let narrowed = samples.narrow_to_u8();
+                if *id == -2 {
+                    if let Some(mask) = out.mask.as_mut() {
+                        if mask.data.is_some() {
+                            mask.data = Some(narrowed);
+                        }
+                    }
+                } else if let Some(channel) = out.channels.iter_mut().find(|c| c.id == *id) {
+                    channel.data = narrowed;
+                }
+            }
+        }
+    }
     let layer = resolve_path_mut(doc, path).expect("resolved by prepare_layer");
-    layer.channels = new_channels;
+    layer.channels = out.channels;
     layer.rect = PsdRect {
-        top: dest.1,
-        left: dest.0,
-        bottom: dest.3,
-        right: dest.2,
+        top: out.dest.1,
+        left: out.dest.0,
+        bottom: out.dest.3,
+        right: out.dest.2,
     };
     // A raw channel stream carries no position, so a pure integer translation
-    // (Free Transform's move handle) keeps it and only re-anchors the rect.
+    // (Free Transform's move handle) keeps it and only re-anchors the store rect.
     if pure_translate {
         if let Some(store) = layer.source_channels.as_mut() {
             store.rect = layer.rect;
         }
     } else {
-        // ponytail: a raw plane cannot be resampled, so scale/rotate/fractional
-        // moves, a projective map, and a mesh warp drop unmodeled channels.
+        // ponytail: an unmodeled raw on-disk stream cannot be resampled, so a
+        // scale/rotate/fractional move, projective map, or mesh warp drops it.
         layer.raw_channels.clear();
-        layer.source_channels = None;
+        layer.source_channels = out.native;
     }
-    if let Some(mask) = new_mask {
+    if let Some(mask) = out.mask {
         layer.mask = Some(mask);
     }
     if prepared.materialize {
@@ -578,15 +607,33 @@ where
         })
         .collect();
     let new_mask = prepared.mask.as_ref().and_then(|m| transform_mask(m, &map));
-    write_layer(
-        doc,
-        path,
-        &prepared,
-        new_channels,
+    let native = if pure_translate {
+        None
+    } else {
+        prepared.native.as_ref().map(|store| {
+            let mask_info = prepared
+                .mask
+                .as_ref()
+                .zip(new_mask.as_ref())
+                .map(|(m, nm)| (m.rect, transform_native::dest_tuple(nm.rect)));
+            transform_native::resample_store(
+                store,
+                prepared.w as usize,
+                prepared.h as usize,
+                &map,
+                prepared.rect,
+                dest,
+                mask_info,
+            )
+        })
+    };
+    let out = LayerOutput {
+        channels: new_channels,
+        mask: new_mask,
+        native,
         dest,
-        new_mask,
-        pure_translate,
-    )
+    };
+    write_layer(doc, path, &prepared, out, pure_translate)
 }
 
 /// Apply a similarity transform to the layer at `path`.

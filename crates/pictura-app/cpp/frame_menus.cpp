@@ -256,6 +256,32 @@ void PicturaMainWindow::registerHandlers()
         });
     }
 
+    registry_->setHandler(command_ids::EditTransformWarp, [this]() {
+        PictureView* view = activeView();
+        const QString path = (layersPanel_ && layersPanel_->selectedPaths().size() == 1)
+                                 ? layersPanel_->currentPath()
+                                 : QString();
+        if (!view) {
+            return;
+        }
+        WarpPresetSpec spec;
+        if (!WarpPresetDialog::get(this, &spec)) {
+            return;
+        }
+        if (view->apply_warp_preset(path, spec.style_id, spec.bend, spec.distort_x,
+                                    spec.distort_y, spec.vertical)) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::EditTransformWarp, [this]() {
+        PictureView* view = activeView();
+        const QString path = (layersPanel_ && layersPanel_->selectedPaths().size() == 1)
+                                 ? layersPanel_->currentPath()
+                                 : QString();
+        return view && view->has_document() && !path.isEmpty()
+            && view->layer_can_free_transform(path);
+    });
+
     registry_->setHandler(command_ids::ImageRotate90Cw, [this]() {
         if (PictureView* view = activeView(); view && view->rotate_doc(1)) {
             refresh();
@@ -286,6 +312,39 @@ void PicturaMainWindow::registerHandlers()
                            command_ids::ImageFlipVertical}) {
         registry_->setEnabledProvider(id,
                                       [this]() { return activeView() && activeView()->has_document(); });
+    }
+
+    registry_->setHandler(command_ids::ImageMode16Bits, [this]() {
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        HdrConversionSpec spec;
+        if (!HdrConversionDialog::get(this, &spec)) {
+            return;
+        }
+        if (view->convert_depth(16, spec.exposure_ev, spec.gamma)) {
+            refresh();
+        }
+    });
+    registry_->setHandler(command_ids::ImageMode8Bits, [this]() {
+        PictureView* view = activeView();
+        if (!view) {
+            return;
+        }
+        HdrConversionSpec spec;
+        if (!HdrConversionDialog::get(this, &spec)) {
+            return;
+        }
+        if (view->convert_depth(8, spec.exposure_ev, spec.gamma)) {
+            refresh();
+        }
+    });
+    for (const char* id : {command_ids::ImageMode16Bits, command_ids::ImageMode8Bits}) {
+        registry_->setEnabledProvider(id, [this]() {
+            PictureView* view = activeView();
+            return view && view->has_document() && view->document_depth_bits() == 32;
+        });
     }
 
     registry_->setHandler(command_ids::ImageCrop, [this]() {

@@ -13,7 +13,8 @@
 
 use pictura_core::{Channel, Document, LayerMask, PsdRect};
 
-use super::transform::{bilinear, integer_bbox, prepare_layer, write_layer};
+use super::transform::{bilinear, integer_bbox, prepare_layer, write_layer, LayerOutput};
+use super::transform_native;
 
 /// Number of parameter cells per axis the surface is rasterized through.
 const CELLS: usize = 16;
@@ -24,6 +25,17 @@ pub struct WarpMesh {
     pub rows: usize,
     pub cols: usize,
     pub points: Vec<(f64, f64)>,
+}
+
+impl WarpMesh {
+    /// An empty net with no points yet; preset constructions append rows.
+    pub(crate) fn new(cols: usize, rows: usize) -> WarpMesh {
+        WarpMesh {
+            rows,
+            cols,
+            points: Vec::new(),
+        }
+    }
 }
 
 /// Options-bar distortion in percent.
@@ -138,19 +150,21 @@ fn barycentric(p: (f64, f64), a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> Op
 ///
 /// `to_src(u, v)` maps the surface parameter to the sampled plane's source-local
 /// coordinate. Cells paint in forward order, so a self-intersecting mesh lets a
-/// later cell overwrite an earlier one.
-fn warp_plane(
-    src: &[u8],
+/// later cell overwrite an earlier one. `sample` is the plane's bilinear kernel
+/// (`transform::bilinear` for `u8`, the native analogue otherwise).
+pub(super) fn warp_plane<T: Copy + Default>(
+    src: &[T],
     src_w: usize,
     src_h: usize,
     mesh: &WarpMesh,
     to_src: impl Fn(f64, f64) -> (f64, f64),
     dest: (i32, i32, i32, i32),
-) -> Vec<u8> {
+    sample: impl Fn(&[T], usize, usize, f64, f64) -> T,
+) -> Vec<T> {
     let (dl, dt, dr, db) = dest;
     let dw = (dr - dl) as usize;
     let dh = (db - dt) as usize;
-    let mut out = vec![0u8; dw * dh];
+    let mut out = vec![T::default(); dw * dh];
     let wf = src_w as f64;
     let hf = src_h as f64;
     for cj in 0..CELLS {
@@ -193,7 +207,7 @@ fn warp_plane(
                     let (sx, sy) = to_src(u, v);
                     if sx >= 0.0 && sy >= 0.0 && sx < wf && sy < hf {
                         let idx = (oy - dt as i64) as usize * dw + (ox - dl as i64) as usize;
-                        out[idx] = bilinear(src, src_w, src_h, sx, sy);
+                        out[idx] = sample(src, src_w, src_h, sx, sy);
                     }
                 }
             }
@@ -238,6 +252,7 @@ fn warp_mask(mask: &LayerMask, mesh: &WarpMesh, layer_rect: PsdRect) -> Option<L
                 mesh,
                 move |u, v| (u * lw + ox, v * lh + oy),
                 dest,
+                bilinear,
             ))
         }
         None => None,
@@ -309,6 +324,7 @@ pub fn transform_layer_warp(
                 &m,
                 |u, v| (u * sw as f64, v * sh as f64),
                 dest,
+                bilinear,
             ),
         })
         .collect();
@@ -316,14 +332,28 @@ pub fn transform_layer_warp(
         .mask
         .as_ref()
         .and_then(|mk| warp_mask(mk, &m, prepared.rect));
-    write_layer(doc, path, &prepared, new_channels, dest, new_mask, false)
+    let native = prepared.native.as_ref().map(|store| {
+        let mask_info = prepared
+            .mask
+            .as_ref()
+            .zip(new_mask.as_ref())
+            .map(|(mk, nmk)| (mk.rect, transform_native::dest_tuple(nmk.rect)));
+        transform_native::warp_store(store, sw, sh, &m, prepared.rect, dest, mask_info)
+    });
+    let out = LayerOutput {
+        channels: new_channels,
+        mask: new_mask,
+        native,
+        dest,
+    };
+    write_layer(doc, path, &prepared, out, false)
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::paths::resolve_path;
     use super::*;
-    use pictura_core::{BitDepth, ColorMode, Layer};
+    use pictura_core::{BitDepth, ColorMode, Layer, Samples, SourceChannels, SourcePlanes};
 
     fn rect(w: i32, h: i32) -> PsdRect {
         PsdRect {
@@ -458,5 +488,120 @@ mod tests {
             alpha.data.contains(&0),
             "an uncovered destination pixel is transparent"
         );
+    }
+
+    #[test]
+    fn distortion_scales_rows_before_columns() {
+        // Asymmetric net so the two axis scalings do not commute: distort_v runs
+        // over rows first, then distort_h over columns (Patchy's `so_persp_*`
+        // order).
+        let mut mesh = identity_mesh(3, 3, 9, 9);
+        mesh.points[0] = (2.0, 3.0);
+        mesh.points[4] = (2.0, 7.0);
+        let both = WarpParams {
+            distort_h: 60.0,
+            distort_v: 40.0,
+        };
+        let vertical_first = distorted(
+            &distorted(
+                &mesh,
+                WarpParams {
+                    distort_h: 0.0,
+                    distort_v: both.distort_v,
+                },
+            ),
+            WarpParams {
+                distort_h: both.distort_h,
+                distort_v: 0.0,
+            },
+        );
+        let horizontal_first = distorted(
+            &distorted(
+                &mesh,
+                WarpParams {
+                    distort_h: both.distort_h,
+                    distort_v: 0.0,
+                },
+            ),
+            WarpParams {
+                distort_h: 0.0,
+                distort_v: both.distort_v,
+            },
+        );
+        let close = |a: &WarpMesh, b: &WarpMesh, tol: f64| {
+            a.points.len() == b.points.len()
+                && a.points
+                    .iter()
+                    .zip(&b.points)
+                    .all(|(p, q)| (p.0 - q.0).abs() < tol && (p.1 - q.1).abs() < tol)
+        };
+        assert!(
+            close(&distorted(&mesh, both), &vertical_first, 1e-9),
+            "distortion must run rows (vertical) before columns (horizontal)"
+        );
+        assert!(
+            !close(&distorted(&mesh, both), &horizontal_first, 1e-6),
+            "the reverse order is a different mapping on an asymmetric net"
+        );
+    }
+
+    #[test]
+    fn depth16_warp_resamples_and_keeps_the_native_store() {
+        let mut layer = pixel_layer(8, 8);
+        let n = 64;
+        let native = |seed: u8| {
+            Samples::U16(
+                plane(8, 8, seed)
+                    .into_iter()
+                    .map(|v| (v as u16 * 257).saturating_add(7))
+                    .collect(),
+            )
+        };
+        layer.source_channels = Some(SourceChannels::new(
+            BitDepth::Sixteen,
+            layer.rect,
+            vec![
+                (0, native(3)),
+                (1, native(11)),
+                (2, native(29)),
+                (-1, Samples::U16(vec![65535; n])),
+            ],
+        ));
+        let mut doc = doc_with(layer);
+        doc.source_depth = Some(BitDepth::Sixteen);
+        doc.source_planes = Some(SourcePlanes {
+            depth: BitDepth::Sixteen,
+            width: 8,
+            height: 8,
+            samples: Samples::U16(vec![0; 3 * n]),
+        });
+
+        let mut mesh = identity_mesh(4, 4, 8, 8);
+        mesh.points[5] = (2.0, 2.0);
+        assert!(transform_layer_warp(
+            &mut doc,
+            "0",
+            &mesh,
+            WarpParams::default()
+        ));
+        let layer = resolve_path(&doc, "0").unwrap();
+        let store = layer
+            .source_channels
+            .as_ref()
+            .expect("a warp keeps a resampled native store");
+        assert_eq!(store.rect, layer.rect);
+        let area = (layer.rect.width() * layer.rect.height()) as usize;
+        assert_eq!(
+            store
+                .planes
+                .iter()
+                .find(|(id, _)| *id == 0)
+                .unwrap()
+                .1
+                .len(),
+            area
+        );
+        let bytes = pictura_codec::write_psd(&doc).expect("a warped high-depth layer saves");
+        assert_eq!(u16::from_be_bytes(bytes[22..24].try_into().unwrap()), 16);
     }
 }

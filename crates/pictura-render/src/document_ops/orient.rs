@@ -4,10 +4,10 @@
 //! `doc.composite = composite_rgba(doc)`. The per-plane remap reuses the M10
 //! `pictura_ops` pixel-buffer functions.
 
-use pictura_core::{Document, PixelBuffer, PsdRect};
+use pictura_core::{Document, PixelBuffer, PsdRect, SourceChannels};
 use pictura_ops::OpsError;
 
-use super::{for_each_layer, recompute};
+use super::{for_each_layer, native_store, recompute};
 
 /// The five exact orientation remaps.
 #[derive(Clone, Copy)]
@@ -33,6 +33,16 @@ impl Kind {
     /// 90°/270° swap the two canvas axes.
     fn swaps_axes(self) -> bool {
         matches!(self, Kind::Rot90 | Kind::Rot270)
+    }
+
+    fn remap(self) -> native_store::Remap {
+        match self {
+            Kind::Rot90 => native_store::Remap::Rot90,
+            Kind::Rot180 => native_store::Remap::Rot180,
+            Kind::Rot270 => native_store::Remap::Rot270,
+            Kind::FlipH => native_store::Remap::FlipH,
+            Kind::FlipV => native_store::Remap::FlipV,
+        }
     }
 }
 
@@ -109,15 +119,20 @@ fn transform_document(doc: &mut Document, kind: Kind) {
     let op = kind.plane();
 
     for_each_layer(&mut doc.layers, &mut |layer| {
-        let lw = layer.rect.width().max(0) as u32;
-        let lh = layer.rect.height().max(0) as u32;
+        let old_rect = layer.rect;
+        let lw = old_rect.width().max(0) as u32;
+        let lh = old_rect.height().max(0) as u32;
         for channel in &mut layer.channels {
             channel.data = remap_plane(&channel.data, lw, lh, op);
         }
-        layer.rect = transform_rect(layer.rect, w, h, kind);
-        // ponytail: flips and 90° rotations drop unmodeled channels (no resampler)
+        if let Some(store) = layer.source_channels.take() {
+            let mask_rect = layer.mask.as_ref().map(|m| m.rect);
+            layer.source_channels = Some(remap_store(&store, old_rect, mask_rect, w, h, kind));
+        }
+        layer.rect = transform_rect(old_rect, w, h, kind);
+        // ponytail: the exact remap keeps the native store, but an unmodeled raw
+        // on-disk stream still has no resampler and drops.
         layer.raw_channels.clear();
-        layer.source_channels = None;
 
         if let Some(mask) = &mut layer.mask {
             let mw = mask.rect.width().max(0) as u32;
@@ -132,6 +147,15 @@ fn transform_document(doc: &mut Document, kind: Kind) {
     for channel in &mut doc.channels {
         channel.data = remap_plane(&channel.data, doc.width, doc.height, op);
     }
+    if let Some(store) = &mut doc.source_planes {
+        if store.depth != pictura_core::BitDepth::One {
+            store.samples =
+                native_store::remap_samples(&store.samples, w as usize, h as usize, kind.remap());
+            if kind.swaps_axes() {
+                std::mem::swap(&mut store.width, &mut store.height);
+            }
+        }
+    }
 
     if kind.swaps_axes() {
         std::mem::swap(&mut doc.width, &mut doc.height);
@@ -139,11 +163,42 @@ fn transform_document(doc: &mut Document, kind: Kind) {
     recompute(doc);
 }
 
+/// Remap a layer's retained native store with the same exact index map; the
+/// `-2` mask plane follows the mask rect (which may differ from the layer rect).
+fn remap_store(
+    store: &SourceChannels,
+    layer_rect: PsdRect,
+    mask_rect: Option<PsdRect>,
+    w: i32,
+    h: i32,
+    kind: Kind,
+) -> SourceChannels {
+    let planes = store
+        .planes
+        .iter()
+        .map(|(id, samples)| {
+            let rect = if *id == -2 {
+                mask_rect.unwrap_or(layer_rect)
+            } else {
+                layer_rect
+            };
+            let pw = rect.width().max(0) as usize;
+            let ph = rect.height().max(0) as usize;
+            (
+                *id,
+                native_store::remap_samples(samples, pw, ph, kind.remap()),
+            )
+        })
+        .collect();
+    SourceChannels::new(store.depth, transform_rect(layer_rect, w, h, kind), planes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pictura_core::{
-        BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Layer, LayerMask, LockFlags,
+        BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Layer, LayerMask, LockFlags, Samples,
+        SourceChannels, SourcePlanes,
     };
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
@@ -327,5 +382,44 @@ mod tests {
         assert_eq!(mask.rect, rect(0, 0, 1, 3));
         assert_eq!(mask.data.as_ref().unwrap().len(), 3);
         assert_consistent(&doc);
+    }
+
+    #[test]
+    fn depth16_orientation_remaps_the_native_store_and_saves() {
+        let mut doc = Document::new(3, 2, ColorMode::Rgb, BitDepth::Eight);
+        doc.source_depth = Some(BitDepth::Sixteen);
+        doc.source_planes = Some(SourcePlanes {
+            depth: BitDepth::Sixteen,
+            width: 3,
+            height: 2,
+            samples: Samples::U16((0..6 * 3).map(|i| i as u16 * 257 + 5).collect()),
+        });
+        let mut layer = pixel_layer("only", rect(0, 0, 2, 3), None);
+        layer.source_channels = Some(SourceChannels::new(
+            BitDepth::Sixteen,
+            layer.rect,
+            vec![(
+                0,
+                Samples::U16((0..6).map(|i| i as u16 * 257 + 5).collect()),
+            )],
+        ));
+        doc.layers = vec![layer];
+        doc.composite = crate::composite_rgba(&doc);
+
+        rotate_document(&mut doc, 1).unwrap();
+
+        assert_eq!((doc.width, doc.height), (2, 3));
+        let store = doc.layers[0].source_channels.as_ref().unwrap();
+        assert_eq!(store.rect, doc.layers[0].rect);
+        let (_, samples) = store.planes.iter().find(|(id, _)| *id == 0).unwrap();
+        let want: Vec<u16> = [3, 0, 4, 1, 5, 2]
+            .iter()
+            .map(|v| *v as u16 * 257 + 5)
+            .collect();
+        assert_eq!(samples, &Samples::U16(want), "exact 90° index remap");
+        let planes = doc.source_planes.as_ref().unwrap();
+        assert_eq!((planes.width, planes.height), (2, 3));
+        let bytes = pictura_codec::write_psd(&doc).expect("a rotated high-depth doc saves");
+        assert_eq!(u16::from_be_bytes(bytes[22..24].try_into().unwrap()), 16);
     }
 }

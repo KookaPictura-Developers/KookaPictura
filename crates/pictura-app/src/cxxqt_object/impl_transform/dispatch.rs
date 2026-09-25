@@ -282,4 +282,92 @@ impl qobject::PictureView {
         self.as_mut().record("Flip");
         true
     }
+
+    /// Convert a 32-bit document to `bits` (16 or 8) through the CS6 HDR
+    /// Conversion "Exposure & Gamma" method, clear the selection, recomposite,
+    /// and record one "HDR Conversion" history state. Returns false without a
+    /// document or when the engine refuses the conversion.
+    pub fn convert_depth(
+        mut self: Pin<&mut Self>,
+        bits: i32,
+        exposure_ev: f64,
+        gamma: f64,
+    ) -> bool {
+        let out = match bits {
+            16 => pictura_core::BitDepth::Sixteen,
+            8 => pictura_core::BitDepth::Eight,
+            _ => return false,
+        };
+        let converted = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            pictura_render::convert_depth_exposure_gamma(
+                doc,
+                out,
+                pictura_render::ExposureGamma { exposure_ev, gamma },
+            )
+            .is_ok()
+        };
+        if converted {
+            self.as_mut().rust_mut().selection = None;
+            self.as_mut().recomposite();
+            self.as_mut().record("HDR Conversion");
+        }
+        converted
+    }
+
+    /// Apply a named warp preset to the layer at `path`: build the style's
+    /// control net at `bend` percent, warp through the engine op with the X/Y
+    /// distortion, recomposite, and record one `"Warp"` history state. Returns
+    /// false without a document, for an unknown style or path, for `None`/
+    /// `Custom` (no preset mesh), or when the engine refuses.
+    pub fn apply_warp_preset(
+        mut self: Pin<&mut Self>,
+        path: &QString,
+        style: &QString,
+        bend: f64,
+        distort_x: f64,
+        distort_y: f64,
+        rotate_vertical: bool,
+    ) -> bool {
+        let Some(style) = pictura_render::WarpStyle::from_id(&style.to_string()) else {
+            return false;
+        };
+        let path = path.to_string();
+        let applied = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            let Some(layer) = pictura_render::resolve_path(doc, &path) else {
+                return false;
+            };
+            let rect = layer.rect;
+            let Some(mesh) = pictura_render::style_mesh(
+                style,
+                bend,
+                rotate_vertical,
+                rect.width(),
+                rect.height(),
+            ) else {
+                return false;
+            };
+            pictura_render::transform_layer_warp(
+                doc,
+                &path,
+                &mesh,
+                pictura_render::WarpParams {
+                    distort_h: distort_x,
+                    distort_v: distort_y,
+                },
+            )
+        };
+        if applied {
+            self.as_mut().recomposite();
+            self.as_mut().record("Warp");
+        }
+        applied
+    }
 }

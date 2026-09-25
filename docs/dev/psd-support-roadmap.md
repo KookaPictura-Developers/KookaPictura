@@ -65,8 +65,8 @@ composite, and reads high-depth RGB/Grayscale pixel layers natively
 (`native-depth-composite`/`native-depth-layer-content`), and `Auto`/`ColorLookup`
 apply natively (`native-depth-remaining-adjustments`), and high-depth layers gate
 on their native `-2` mask (`native-depth-masks`), and a dirty save re-emits the
-native composite (`native-depth-save`)), a 32-bit HDR
-tone map, sidecars, a manual Photoshop round-trip, and nested-shallow/clipping
+native composite (`native-depth-save`), and the Exposure & Gamma 32-bit HDR
+tone map (`hdr-conversion`)), sidecars, a manual Photoshop round-trip, and nested-shallow/clipping
 knockout targets (`knockout-composite` applies the documented punch-through at
 the document root, `knockout-groups` extends it into pass-through groups, and
 `knockout-isolated-groups` into isolated groups (stopping at the group's own
@@ -86,7 +86,14 @@ it record the order it was closed in.
 | G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Shipped for Bitmap/Indexed/CMYK/Lab/Multichannel/Duotone (1- or 3-channel Multichannel) with source-mode write-back where the mode maps (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`, `depth-color-mode-write-back`, `multichannel-duotone-read`); Multichannel channel counts other than 1 or 3 stay Unsupported |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only and is re-emitted on write-back (`multichannel-duotone-read`) |
-| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; the sample-typed store ships (`bit-depth-sample-model`), the tonal and color-preserving adjustment families apply natively (`native-depth-adjustments`, `native-depth-color-adjustments`), and the CPU compositor applies adjustments at native precision with a source-depth output (`native-depth-composite`) and reads high-depth RGB/Grayscale pixel layers natively (`native-depth-layer-content`), and `Auto`/`ColorLookup` apply natively (`native-depth-remaining-adjustments`), and high-depth layers gate on their native `-2` mask (`native-depth-masks`), and a dirty save re-emits the native composite (`native-depth-save`), while a moved/edited layer channel still widens |
+| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; the sample-typed store ships (`bit-depth-sample-model`), the tonal and color-preserving adjustment families apply natively (`native-depth-adjustments`, `native-depth-color-adjustments`), and the CPU compositor applies adjustments at native precision with a source-depth output (`native-depth-composite`) and reads high-depth RGB/Grayscale pixel layers natively (`native-depth-layer-content`), and `Auto`/`ColorLookup` apply natively (`native-depth-remaining-adjustments`),
+and high-depth layers gate on their native `-2` mask (`native-depth-masks`), and
+a dirty save re-emits the native composite (`native-depth-save`), and a moved,
+transformed, warped, resized, oriented, canvas-resized, or cropped layer now
+keeps a re-anchored or resampled native store so its channel is not re-widened
+(`native-depth-edit-preserve`; unmodeled spot/extra raw streams, merge/flatten,
+and a true working-depth model stay open). The CS6 Exposure & Gamma 32→16/8 HDR
+Conversion now ships (`hdr-conversion`: the retained `f32` composite is tone-mapped and quantized to a real 16/8 store); the other three HDR methods stay open (closed kernels) |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
 | G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); text is modeled (`TypeTool` view, `tysh-model-roundtrip`); knockout is typed and round-trips (`knko-blend-if-model`) and now punches through the CPU compositor at the document root, inside pass-through groups, and inside isolated groups (against the group's own backdrop), independently diffed against psd-tools' own compositor (`knockout-composite`, `knockout-groups`, `knockout-isolated-groups`, `knockout-oracle`, inferred mechanism); Blend If/blending-ranges gate the CPU compositor (`blend-if-render`, GPU declines a non-default layer); other unmodeled keys stay opaque (P2) |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque → partly modeled): captured and re-emitted verbatim on open→save (P2); blending-ranges now also parse into a typed `BlendIf` view (`knko-blend-if-model`) and gate the CPU compositor (`blend-if-render`); knockout punch-through is now applied at the document root (`knockout-composite`) and inside a pass-through group (`knockout-groups`), nested-shallow/clipping targets still open |
@@ -298,11 +305,17 @@ adjustment layers at native precision and can emit a source-depth composite
 reads its native samples (`native-depth-layer-content`) and `Auto`/`ColorLookup`
 apply natively (`native-depth-remaining-adjustments`) and high-depth layers gate on
 their native `-2` mask (`native-depth-masks`), and a dirty save re-emits the native
-composite (`native-depth-save`), but a moved/edited layer channel still widens, so
-that plus a 32-bit HDR tone
-map (the shipped path is display-referred, clipping at 1.0) remain open; 
+composite (`native-depth-save`), and a moved/transformed/warped/resized/oriented/
+canvas-edited layer keeps a re-anchored or resampled native store
+(`native-depth-edit-preserve`; unmodeled raw streams, merge/flatten, and a true
+working-depth model stay open).
+A real 32-bit HDR tone map now ships as the CS6 Exposure & Gamma 32→16/8
+conversion (`hdr-conversion`): `Image > Mode > 16/8 Bits/Channel` tone-maps the
+retained `f32` composite into a 16- or 8-bit store, so the other three HDR
+methods (Local Adaptation, Equalize Histogram, Highlight Compression — closed
+kernels) and per-layer tone mapping remain open, along with
 Multichannel/Duotone (no
-natural RGB mapping / needs the spot-ink spec), and text (`TySh`) remain open.
+natural RGB mapping / needs the spot-ink spec), and text (`TySh`).
 Color-mode
 write-back is complete for the modes with an exact representation (8-bit
 Lab/CMYK/Indexed, flat Bitmap, and 16/32-bit Lab/CMYK).
@@ -464,8 +477,11 @@ a successful place (menu command or canvas drop) selects the new layer and enter
 an interactive move/scale/rotate session that commits one state on Enter and
 cancels bit-identically on Escape. Skew, distort, and perspective now ship as
 `2026-09-25-free-transform-quad` (the projective `transform_layer_quad` and the
-three `Edit > Transform` modes, gesture semantics inferred); Warp, Puppet Warp,
-and Content-Aware Scale remain deferred follow-ups.
+three `Edit > Transform` modes, gesture semantics inferred); Warp now ships as
+`transform-warp-presets` (the 15 CS6 preset meshes ported from
+SethRobinson/Patchy and a one-shot Warp dialog through the shipped mesh op, but
+not the interactive cage); Puppet Warp and Content-Aware Scale remain deferred
+follow-ups.
 
 ## Reference fixtures
 
