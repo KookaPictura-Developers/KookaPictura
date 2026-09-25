@@ -72,7 +72,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `native-depth-color-adjustments`, and
     `native-depth-composite`, and
     `native-depth-layer-content`, and
-    `native-depth-remaining-adjustments`
+    `native-depth-remaining-adjustments`, and
+    `native-depth-masks`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -960,9 +961,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   `ColorLookup` are in the native set too (`native-depth-remaining-adjustments`:
   native histogram/stretch for `Auto`, trilinear `ColorLookup` on unit values;
   u8 stays byte-identical), so the only native-unsupported adjustments are the
-  generative fill kinds. Ceilings: native masks (`mask_alpha` stays 8-bit),
-  there is no app/UI wiring yet, no HDR tone map, retained samples cost 2×/4×
-  while open and the write path clones each retained plane.
+  generative fill kinds. A high-depth layer also gates on its native `-2` mask
+  plane (`native-depth-masks`; unit-space raster×vector, falling back to the
+  exact 8-bit `mask_alpha` when there is no native plane). Ceilings: there is no
+  app/UI wiring yet, no HDR tone map, retained samples cost 2×/4× while open and
+  the write path clones each retained plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
