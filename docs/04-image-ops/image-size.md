@@ -118,9 +118,11 @@ kernel behavior is not published.
 - **Resample** computes the target raster by sampling the source with the chosen
   kernel. Standard reference kernels (inferred, standard image processing):
   Nearest = point sample; Bilinear = 2×2 tent filter; Bicubic = 4×4 cubic
-  convolution (e.g. Catmull-Rom / Keys cubic). Photoshop's exact cubic
-  coefficients and edge/clamping behavior are not published — **behavioral
-  parity only, kernel TBD**.
+  convolution with a Mitchell–Netravali `cubic(0, 0.75)` kernel (Keys `a = -0.75`),
+  the publicly documented Photoshop coefficient (Jason Summers,
+  entropymine.com/resamplescope) — **not** Catmull-Rom. Photoshop's exact
+  edge/clamping behavior remains unpublished — **behavioral parity only** for
+  edges.
 - **Bicubic Smoother / Sharper** are documented as Bicubic-based with a smoothing
   or sharpening character; the exact kernels are closed. Marked inferred.
 - **Bicubic Automatic** selects a method from the resize direction (community:

@@ -1254,8 +1254,9 @@ already exists) before any further oracle growth.
   `resize_canvas` (9 anchors, grow/shrink), orientation (`rotate90_cw/ccw`,
   `rotate180`, flips, `rotate_arbitrary`). ImageMagick oracle: Nearest and the
   exact right-angle rotations/flips and 3-channel canvas are exact (Δ0); Bicubic
-  matches `-filter catrom` (tol 1; `cubic` is a B-spline); Bilinear is exact on
-  upscale but no-equivalent downscale; `rotate_arbitrary` measured on the central
+  uses the publicly documented Photoshop `cubic(0, 0.75)` kernel and matches
+  `-filter cubic -define filter:b=0 -define filter:c=0.75` (tol 1); Bilinear is
+  exact on upscale but no-equivalent downscale; `rotate_arbitrary` measured on the central
   region (max 8 at 30°, 45° no-equivalent). OpenSpec change `m10-image-ops`,
   tasks checked; app/document integration deferred.
 - **M11** — Distort filters, part 2: `PolarCoordinates`, `Shear`, `ZigZag`,
