@@ -44,6 +44,26 @@ fn psd_tools_available() -> bool {
     })
 }
 
+/// `psd-tools` >= 1.19 is the first release whose compositor discriminates
+/// `Shallow` from `Deep` (`_knockout_backdrop`), so an older reference cannot
+/// verify this case and the Shallow oracle must self-skip rather than pass for
+/// the wrong reason.
+fn psd_tools_shallow_aware() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("python3")
+            .args([
+                "-c",
+                "import importlib.metadata as m, sys; \
+                 v = tuple(int(p) for p in m.version('psd-tools').split('.')[:2]); \
+                 sys.exit(0 if v >= (1, 19) else 1)",
+            ])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
+}
+
 /// Flatten a planar RGBA `PixelBuffer` to the interleaved layout the reference
 /// stores (matching `tests/oracle.rs`'s `interleaved`).
 fn interleaved(buf: &pictura_core::PixelBuffer) -> Vec<u8> {
@@ -232,6 +252,82 @@ fn knockout_in_isolated_group_matches_psd_tools() {
     // group's initial backdrop, so the green the pixel shows comes only from the
     // yellow layer below the group. A deep knockout that reached the document
     // background (red) would leave green at zero.
+    assert!(
+        actual[1] > 0,
+        "the yellow layer below the group contributes green, got pixel {:?}",
+        &actual[0..4]
+    );
+    assert!(
+        actual[0] > 0,
+        "the layer below the group contributes red, got {:?}",
+        &actual[0..4]
+    );
+    assert!(
+        actual[2] > 0,
+        "blue knockout layer is present, got {:?}",
+        &actual[0..4]
+    );
+}
+
+/// The differential check for `knockout_shallow_group.psd`: a red Background, an
+/// opaque yellow intervening layer, then a **pass-through** group of green and a
+/// half-fill `knko = Shallow` blue. Shallow knockout stops at the group's entry
+/// backdrop (red-plus-yellow), so the group's green is punched through but the
+/// yellow below the group still contributes; a `Deep` knockout would instead
+/// reveal red and leave the pixel's green at zero. The test asserts the decoded
+/// group is `PassThrough` and the child is `Shallow`, self-skipping when
+/// `psd-tools` is unavailable or older than 1.19 (which cannot discriminate
+/// Shallow), then diffs against the reference.
+#[test]
+fn knockout_shallow_in_pass_through_group_matches_psd_tools() {
+    if !psd_tools_shallow_aware() {
+        eprintln!("skipping psd-tools Shallow check: python3 + psd-tools>=1.19 not available");
+        return;
+    }
+
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../pictura-codec/tests/fixtures/knockout_shallow_group.psd");
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let doc = pictura_codec::read_psd(&bytes).expect("fixture parses");
+
+    let group = doc.layers.last().expect("top group");
+    assert!(
+        group.is_group && group.blend == BlendMode::PassThrough,
+        "top layer {:?} must decode as a pass-through group (blend {:?}, group {})",
+        group.name,
+        group.blend,
+        group.is_group
+    );
+    let child = group.children.last().expect("knockout child");
+    assert_eq!(
+        child.knockout,
+        Knockout::Shallow,
+        "child {:?} must decode as Shallow",
+        child.name
+    );
+
+    let actual = interleaved(&pictura_render::composite_rgba(&doc));
+    let reference = std::fs::read(reference_path("knockout_shallow_group")).unwrap_or_else(|e| {
+        panic!(
+            "cannot read reference ({e}); run `python3 scripts/psd_knockout_reference.py gen \
+             --out crates/pictura-render/tests/fixtures/knockout_shallow_group.rgba`"
+        )
+    });
+
+    let diff = compare(&actual, &reference, TOLERANCE).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        diff.is_empty(),
+        "shallow-group knockout differs from psd-tools by up to {} LSB over {} samples \
+         (mean {:.3}); tolerance {TOLERANCE}, not widened on purpose",
+        diff.max_delta,
+        diff.differing,
+        diff.mean_delta()
+    );
+
+    // Independent of tolerance: Shallow stops at the group backdrop, so the
+    // group's green is punched through but the yellow below contributes. A Deep
+    // knockout reaching the red background would leave this pixel's green at
+    // zero.
     assert!(
         actual[1] > 0,
         "the yellow layer below the group contributes green, got pixel {:?}",

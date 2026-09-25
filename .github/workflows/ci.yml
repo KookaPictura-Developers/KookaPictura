@@ -120,7 +120,7 @@ jobs:
           magick -version
 
       - name: Install psd-tools
-        run: python3 -m pip install --user --break-system-packages psd-tools
+        run: python3 -m pip install --user --break-system-packages "psd-tools>=1.19"
 
       - name: Install ag-psd
         run: npm i ag-psd

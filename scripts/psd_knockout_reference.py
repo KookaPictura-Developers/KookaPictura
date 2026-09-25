@@ -32,6 +32,7 @@ FIXTURES = {
     "knockout_deep": FIXTURE_DIR / "knockout.psd",
     "knockout_group": FIXTURE_DIR / "knockout_group.psd",
     "knockout_isolated_group": FIXTURE_DIR / "knockout_isolated_group.psd",
+    "knockout_shallow_group": FIXTURE_DIR / "knockout_shallow_group.psd",
 }
 DEFAULT_OUT = OUT_DIR / "knockout_deep.rgba"
 
