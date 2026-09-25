@@ -218,10 +218,10 @@ fn depth_documents_preserve_source_depth_on_save() {
         assert_eq!(native.depth, depth, "{name}: psd-tools header depth");
         assert_eq!(native.mode, 3, "{name}: psd-tools RGB mode");
         assert_eq!(native.planes.len(), 3, "{name}: three color planes");
-        let plane = source.data.len() / 3;
+        let plane = source.samples.to_bytes().len() / 3;
         for (c, theirs) in native.planes.iter().enumerate() {
             assert_eq!(
-                hex(&source.data[c * plane..(c + 1) * plane]),
+                hex(&source.samples.to_bytes()[c * plane..(c + 1) * plane]),
                 *theirs,
                 "{name}: psd-tools native samples, plane {c}"
             );
@@ -241,7 +241,7 @@ fn high_depth_composite_re_encodes_every_compression() {
         let mut doc = load(name);
         let source = doc.source_planes.clone().unwrap();
         assert_eq!(source.depth, bits);
-        let plane = source.data.len() / 3;
+        let plane = source.samples.to_bytes().len() / 3;
         for kind in [
             Compression::Raw,
             Compression::Rle,
@@ -271,7 +271,7 @@ fn high_depth_composite_re_encodes_every_compression() {
             assert_eq!(native.planes.len(), 3, "{name} {kind:?}: three planes");
             for (c, theirs) in native.planes.iter().enumerate() {
                 assert_eq!(
-                    hex(&source.data[c * plane..(c + 1) * plane]),
+                    hex(&source.samples.to_bytes()[c * plane..(c + 1) * plane]),
                     *theirs,
                     "{name} {kind:?}: psd-tools native plane {c}"
                 );
@@ -398,7 +398,10 @@ fn unmodeled_layer_channel_preserves_source_depth() {
             .planes
             .clone();
         assert_eq!(
-            retained,
+            retained
+                .iter()
+                .map(|(id, s)| (*id, s.to_bytes()))
+                .collect::<Vec<_>>(),
             vec![(3, plane.clone())],
             "depth {depth}: native spot samples kept"
         );
@@ -484,10 +487,10 @@ fn layered_depth_fixtures_preserve_depth_and_channels() {
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(native.depth, depth);
         assert_eq!(native.planes.len(), 4, "{name}: color + one extra channel");
-        let plane = source.data.len() / 4;
+        let plane = source.samples.to_bytes().len() / 4;
         for (c, theirs) in native.planes.iter().enumerate() {
             assert_eq!(
-                hex(&source.data[c * plane..(c + 1) * plane]),
+                hex(&source.samples.to_bytes()[c * plane..(c + 1) * plane]),
                 *theirs,
                 "{name}: psd-tools native plane {c}"
             );
@@ -502,7 +505,7 @@ fn layered_depth_fixtures_preserve_depth_and_channels() {
             assert_eq!(*compression, 0, "{name}: channel {id} raw");
             assert_eq!(
                 *native_hex,
-                hex(&expected.1),
+                hex(&expected.1.to_bytes()),
                 "{name}: psd-tools channel {id} samples"
             );
         }
@@ -612,7 +615,7 @@ fn layered_depth_layer_channels_re_encode_every_compression() {
                     .unwrap_or_else(|| panic!("{name} {kind:?}: channel {id}"));
                 assert_eq!(
                     *native_hex,
-                    hex(&expected.1),
+                    hex(&expected.1.to_bytes()),
                     "{name} {kind:?}: psd-tools channel {id} samples"
                 );
             }

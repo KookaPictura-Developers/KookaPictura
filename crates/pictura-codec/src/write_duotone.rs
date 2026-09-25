@@ -37,23 +37,23 @@ pub(crate) fn flat_source_mode(
         // Multichannel plate count is header-authoritative: derive it from the
         // retained store (color planes only; document extras already rejected).
         let store = doc.source_planes.as_ref()?;
-        if plane == 0 || store.data.len() % plane != 0 {
+        if plane == 0 || store.samples.len() % plane != 0 {
             return None;
         }
-        let n = store.data.len() / plane;
+        let n = store.samples.len() / plane;
         if n != 1 && n != 3 {
             return None;
         }
         n
     };
-    let retained: Vec<&[u8]> = (0..n)
-        .map(|i| composite_retained(doc, depth, i))
+    let retained: Vec<Vec<u8>> = (0..n)
+        .map(|i| composite_retained(doc, depth, i).map(|s| s.to_bytes()))
         .collect::<Option<_>>()?;
     // `get` rather than a slice: a short `composite.data` must fall back to
     // RGB, not panic before the length validation in `write_container`.
     let current = doc.composite.data.get(..3 * plane)?;
     let ok = match n {
-        1 => crate::color_mode::gray_to_rgb(retained[0]).as_slice() == current,
+        1 => crate::color_mode::gray_to_rgb(&retained[0]).as_slice() == current,
         _ => crate::color_mode::cmy_to_rgb(&retained.concat()).as_slice() == current,
     };
     if !ok {

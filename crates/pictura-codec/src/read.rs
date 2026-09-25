@@ -4,9 +4,7 @@ use pictura_core::*;
 use std::io::Read;
 
 use crate::common::*;
-use crate::depth::{
-    depth_bits, narrow_channel, narrow_planes, planar_len, row_bytes, undo_prediction,
-};
+use crate::depth::{depth_bits, planar_len, row_bytes, undo_prediction};
 use crate::error::PsdError;
 
 /// Fallback for an Indexed document's palette; unreachable because
@@ -186,32 +184,31 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             data
         }
     };
-    // Narrow 16/32-bit samples before `split_planes` so every later step sees
-    // 8-bit planes; the pre-narrow buffer is kept so an unchanged plane re-emits
-    // at the source depth. ponytail: costs 2x/4x the plane size while open.
-    let source_planes = if retain_planes {
-        Some(SourcePlanes {
-            // A depth-1 read keeps its store at `One` (the raw packed plane); a
-            // 16/32-bit read keeps its native sample width. `depth_bits(1)` stays
-            // unmapped so `source_depth` is `None` for a Bitmap read.
-            depth: if depth == 1 {
-                BitDepth::One
-            } else {
-                depth_bits(depth).unwrap_or(BitDepth::Eight)
-            },
-            width: width as u32,
-            height: height as u32,
-            data: data.clone(),
-        })
+    // Decode the retained native bytes into typed samples, then narrow them so
+    // every later step sees 8-bit planes. A depth-1 read keeps its store at
+    // `One` (the raw packed plane); a 16/32-bit read keeps its native sample
+    // width. ponytail: costs 2x/4x the plane size while open.
+    let store_depth = if depth == 1 {
+        BitDepth::One
     } else {
-        None
+        depth_bits(depth).unwrap_or(BitDepth::Eight)
     };
+    let native = retain_planes.then(|| Samples::from_bytes(&data, store_depth));
     let plane = if matches!(depth, 16 | 32) {
-        data = narrow_planes(&data, header_channels, stride, width, height, depth);
+        data = native
+            .as_ref()
+            .expect("16/32-bit reads retain their native samples")
+            .narrow_to_u8();
         width * height
     } else {
         stride * height
     };
+    let source_planes = native.map(|samples| SourcePlanes {
+        depth: store_depth,
+        width: width as u32,
+        height: height as u32,
+        samples,
+    });
     let (composite, channels) =
         split_planes(data, color_count, width, height, plane, header_channels)?;
 
@@ -590,7 +587,7 @@ fn read_layer_info(
         let mut channels = Vec::new();
         let mut raw_channels = Vec::new();
         let mut mask_data = None;
-        let mut retained: Vec<(i16, Vec<u8>)> = Vec::new();
+        let mut retained: Vec<(i16, Samples)> = Vec::new();
         for (&id, &len) in raw.channel_ids.iter().zip(raw.channel_lens.iter()) {
             // Channels outside the modeled set (a mode's extra color planes are
             // decoded; spot/selection channels, notably -3, and any positive id
@@ -950,8 +947,8 @@ fn read_rle_count(r: &mut Reader, is_psb: bool) -> Result<usize, PsdError> {
     })
 }
 
-/// A decoded layer channel: 8-bit plane, compression word, optional native plane.
-type ChannelRead = (Vec<u8>, u16, Option<Vec<u8>>);
+/// A decoded layer channel: 8-bit plane, compression word, optional native samples.
+type ChannelRead = (Vec<u8>, u16, Option<Samples>);
 
 /// Read one layer channel's image data. `declared_len` includes the 2-byte
 /// compression header. A depth-1 channel is bit-packed and expanded to an 8-bit
@@ -997,7 +994,7 @@ fn read_channel_data(
 
 /// Decode a 16/32-bit layer channel: it is decoded at the document depth (raw,
 /// RLE, or ZIP/ZIP-with-prediction) and returned both narrowed to an 8-bit
-/// `width * height` plane and as its native pre-narrow bytes, mirroring the
+/// `width * height` plane and as its native pre-narrow samples, mirroring the
 /// composite path so layer and composite agree.
 fn decode_depth_channel(
     compression: u16,
@@ -1006,7 +1003,7 @@ fn decode_depth_channel(
     height: usize,
     is_psb: bool,
     depth: u16,
-) -> Result<(Vec<u8>, Vec<u8>), PsdError> {
+) -> Result<(Vec<u8>, Samples), PsdError> {
     let stride = row_bytes(width, depth);
     let plane = stride
         .checked_mul(height)
@@ -1028,8 +1025,9 @@ fn decode_depth_channel(
         }
         c => return Err(PsdError::Unsupported(format!("channel compression {c}"))),
     };
-    let narrowed = narrow_channel(&raw, width, height, stride, depth);
-    Ok((narrowed, raw))
+    let samples = Samples::from_bytes(&raw, depth_bits(depth).expect("16/32-bit channel"));
+    let narrowed = samples.narrow_to_u8();
+    Ok((narrowed, samples))
 }
 
 /// Decode a depth-1 layer channel to an 8-bit `width * height` plane. Raw and RLE

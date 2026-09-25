@@ -216,7 +216,7 @@ fn bitmap_document_saves_as_bitmap() {
     assert_eq!(doc.depth, BitDepth::Eight, "{name}: normalized depth");
     let store = doc.source_planes.as_ref().expect("packed plane retained");
     assert_eq!(store.depth, BitDepth::One, "{name}: depth-1 store");
-    let packed = store.data.clone();
+    let packed = store.samples.to_bytes();
     assert_eq!(
         packed.len(),
         doc.height as usize,
@@ -248,7 +248,11 @@ fn bitmap_document_saves_as_bitmap() {
         "{name}: re-read source mode"
     );
     assert_eq!(
-        back.source_planes.as_ref().expect("re-read packed").data,
+        back.source_planes
+            .as_ref()
+            .expect("re-read packed")
+            .samples
+            .to_bytes(),
         packed,
         "{name}: the written packed plane is byte-identical"
     );
@@ -347,7 +351,8 @@ fn bitmap_rle_document_saves_as_bitmap() {
         doc.source_planes
             .as_ref()
             .expect("packed plane retained")
-            .data,
+            .samples
+            .to_bytes(),
         packed,
         "the RLE rows decode to the known bytes"
     );
@@ -367,7 +372,11 @@ fn bitmap_rle_document_saves_as_bitmap() {
 
     let back = read_psd(&out).unwrap();
     assert_eq!(
-        back.source_planes.as_ref().expect("re-read packed").data,
+        back.source_planes
+            .as_ref()
+            .expect("re-read packed")
+            .samples
+            .to_bytes(),
         packed,
         "the written packed plane is byte-identical"
     );
@@ -428,7 +437,7 @@ fn indexed_document_saves_as_indexed() {
         !doc.retains_source_depth(),
         "the index store is not a native-depth store"
     );
-    let source_index = retained.data[..plane].to_vec();
+    let source_index = retained.samples.to_bytes()[..plane].to_vec();
 
     let out = write_psd(&doc).unwrap();
     assert_eq!(
@@ -455,7 +464,7 @@ fn indexed_document_saves_as_indexed() {
         "re-read source mode"
     );
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data[..plane],
+        back.source_planes.as_ref().unwrap().samples.to_bytes()[..plane],
         source_index[..],
         "the written index plane is byte-identical"
     );
@@ -516,7 +525,7 @@ fn lab_document_saves_as_lab() {
         !doc.retains_source_depth(),
         "the Lab store is not a native-depth store"
     );
-    let source_lab = retained.data[..3 * plane].to_vec();
+    let source_lab = retained.samples.to_bytes()[..3 * plane].to_vec();
 
     let out = write_psd(&doc).unwrap();
     assert_eq!(
@@ -539,7 +548,7 @@ fn lab_document_saves_as_lab() {
     );
     let back_retained = back.source_planes.clone().expect("re-read Lab planes");
     assert_eq!(
-        back_retained.data[..3 * plane],
+        back_retained.samples.to_bytes()[..3 * plane],
         source_lab[..],
         "unedited Lab planes are re-emitted byte-identically"
     );
@@ -608,7 +617,7 @@ fn cmyk_document_saves_as_cmyk() {
         !doc.retains_source_depth(),
         "the CMYK store is not a native-depth store"
     );
-    let source_cmyk = retained.data[..4 * plane].to_vec();
+    let source_cmyk = retained.samples.to_bytes()[..4 * plane].to_vec();
 
     let out = write_psd(&doc).unwrap();
     assert_eq!(
@@ -631,7 +640,7 @@ fn cmyk_document_saves_as_cmyk() {
     );
     let back_retained = back.source_planes.clone().expect("re-read CMYK planes");
     assert_eq!(
-        back_retained.data[..4 * plane],
+        back_retained.samples.to_bytes()[..4 * plane],
         source_cmyk[..],
         "unedited CMYK planes are re-emitted byte-identically"
     );

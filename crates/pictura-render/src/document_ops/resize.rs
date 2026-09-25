@@ -98,7 +98,7 @@ mod tests {
     use super::*;
     use pictura_core::{
         BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
-        PsdRect, RawChannel, SourceChannels, SourcePlanes,
+        PsdRect, RawChannel, Samples, SourceChannels, SourcePlanes,
     };
 
     fn rect(top: i32, left: i32, bottom: i32, right: i32) -> PsdRect {
@@ -246,7 +246,7 @@ mod tests {
             depth: BitDepth::Sixteen,
             width: 4,
             height: 4,
-            data: vec![0; 3 * 8 * 4],
+            samples: Samples::U16(vec![0; 3 * 4 * 4]),
         });
         doc.layers[0].raw_channels = vec![RawChannel {
             id: 3,
@@ -255,7 +255,7 @@ mod tests {
         doc.layers[0].source_channels = Some(SourceChannels {
             depth: BitDepth::Sixteen,
             rect: rect(0, 0, 4, 4),
-            planes: vec![(3, vec![0; 8])],
+            planes: vec![(3, Samples::U16(vec![0; 4]))],
         });
 
         // A no-op resize (unchanged dimensions) keeps the channel.

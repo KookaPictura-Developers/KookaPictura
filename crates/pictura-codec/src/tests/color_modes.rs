@@ -473,7 +473,8 @@ fn lab_document_writes_back_as_lab() {
         doc.source_planes
             .as_ref()
             .expect("Lab planes retained")
-            .data,
+            .samples
+            .to_bytes(),
         source_lab
     );
 
@@ -501,7 +502,8 @@ fn lab_document_writes_back_as_lab() {
         back.source_planes
             .as_ref()
             .expect("re-read Lab planes")
-            .data,
+            .samples
+            .to_bytes(),
         source_lab,
         "the written Lab planes equal the source exactly"
     );
@@ -533,7 +535,8 @@ fn cmyk_document_writes_back_as_cmyk() {
         doc.source_planes
             .as_ref()
             .expect("CMYK planes retained")
-            .data,
+            .samples
+            .to_bytes(),
         source_cmyk
     );
 
@@ -561,7 +564,8 @@ fn cmyk_document_writes_back_as_cmyk() {
         back.source_planes
             .as_ref()
             .expect("re-read CMYK planes")
-            .data,
+            .samples
+            .to_bytes(),
         source_cmyk,
         "the written CMYK planes equal the source exactly"
     );
@@ -589,7 +593,12 @@ fn cmyk_document_extra_channel_round_trips_at_offset_four() {
     assert_eq!(doc.source_mode, Some(ColorMode::Cmyk));
     assert_eq!(doc.channels.len(), 1, "one document extra channel");
     assert_eq!(doc.channels[0].data, extra);
-    let source_planes = doc.source_planes.as_ref().expect("retained").data.clone();
+    let source_planes = doc
+        .source_planes
+        .as_ref()
+        .expect("retained")
+        .samples
+        .to_bytes();
 
     let out = write_psd(&doc).unwrap();
     assert_eq!(
@@ -610,7 +619,7 @@ fn cmyk_document_extra_channel_round_trips_at_offset_four() {
         "the extra channel round-trips unchanged"
     );
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         source_planes,
         "the four color planes are re-emitted, not confused with the extra"
     );
@@ -640,7 +649,12 @@ fn cmyk_layer_color_channels_write_back_as_cmyk() {
     assert_eq!(retained.depth, BitDepth::Eight);
     assert_eq!(
         retained.planes,
-        vec![(0, vec![128]), (1, vec![64]), (2, vec![32]), (3, vec![200])]
+        vec![
+            (0, Samples::U8(vec![128])),
+            (1, Samples::U8(vec![64])),
+            (2, Samples::U8(vec![32])),
+            (3, Samples::U8(vec![200])),
+        ]
     );
 
     let out = write_psd(&doc).unwrap();
@@ -682,7 +696,7 @@ fn edited_cmyk_plane_uses_the_exact_inverse() {
     let out = write_psd(&doc).unwrap();
     let back = read_psd(&out).unwrap();
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         crate::color_mode::rgb_to_cmyk(&edited),
         "an edited plane is re-encoded with rgb_to_cmyk"
     );
@@ -717,7 +731,11 @@ fn lab_layer_color_channels_write_back_as_lab() {
     assert_eq!(retained.depth, BitDepth::Eight);
     assert_eq!(
         retained.planes,
-        vec![(0, vec![225]), (1, vec![82]), (2, vec![114])]
+        vec![
+            (0, Samples::U8(vec![225])),
+            (1, Samples::U8(vec![82])),
+            (2, Samples::U8(vec![114])),
+        ]
     );
 
     let out = write_psd(&doc).unwrap();
@@ -757,7 +775,7 @@ fn edited_lab_plane_uses_the_approximate_inverse() {
     let out = write_psd(&doc).unwrap();
     let back = read_psd(&out).unwrap();
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         crate::color_mode::rgb_to_lab(&edited),
         "an edited plane is re-encoded with rgb_to_lab"
     );
@@ -1024,7 +1042,8 @@ fn indexed_document_writes_back_as_indexed() {
         doc.source_planes
             .as_ref()
             .expect("index plane retained")
-            .data,
+            .samples
+            .to_bytes(),
         indices.to_vec(),
         "the index plane is retained"
     );
@@ -1052,7 +1071,11 @@ fn indexed_document_writes_back_as_indexed() {
     assert_eq!(back.source_mode, Some(ColorMode::Indexed));
     assert_eq!(back.source_palette, Some(palette));
     assert_eq!(
-        back.source_planes.as_ref().expect("index retained").data,
+        back.source_planes
+            .as_ref()
+            .expect("index retained")
+            .samples
+            .to_bytes(),
         indices.to_vec(),
         "the written index plane equals the source exactly"
     );
@@ -1076,7 +1099,7 @@ fn indexed_layer_color_channel_writes_back_as_indexed() {
     );
     let retained = layer.source_channels.as_ref().expect("index retained");
     assert_eq!(retained.depth, BitDepth::Eight);
-    assert_eq!(retained.planes, vec![(0, vec![5])]);
+    assert_eq!(retained.planes, vec![(0, Samples::U8(vec![5]))]);
 
     let out = write_psd(&doc).unwrap();
     assert_eq!(
@@ -1122,7 +1145,7 @@ fn grouped_indexed_layer_round_trips() {
     );
     assert_eq!(
         child.source_channels.as_ref().unwrap().planes,
-        vec![(0, vec![5])],
+        vec![(0, Samples::U8(vec![5]))],
         "the nested index channel is retained"
     );
 
@@ -1217,7 +1240,7 @@ fn indexed_layer_with_raster_mask_round_trips_as_indexed() {
     );
     assert_eq!(
         back.layers[0].source_channels.as_ref().unwrap().planes,
-        vec![(0, vec![5])],
+        vec![(0, Samples::U8(vec![5]))],
         "the index channel is byte-identical"
     );
 }
@@ -1255,7 +1278,7 @@ fn indexed_document_without_a_merged_composite_writes_indexed() {
     assert_eq!(back.source_palette, Some(palette));
     assert_eq!(
         back.layers[0].source_channels.as_ref().unwrap().planes,
-        vec![(0, vec![5])],
+        vec![(0, Samples::U8(vec![5]))],
         "the layer index channel is byte-identical"
     );
 }
@@ -1290,7 +1313,7 @@ fn added_empty_layer_keeps_indexed_on_save() {
     assert_eq!(back.layers.len(), 2, "both layers survive the save");
     assert_eq!(
         back.layers[0].source_channels.as_ref().unwrap().planes,
-        vec![(0, vec![5])],
+        vec![(0, Samples::U8(vec![5]))],
         "the original index channel is byte-identical"
     );
 }
@@ -1309,7 +1332,7 @@ fn short_indexed_composite_data_is_a_typed_error_not_a_panic() {
         depth: BitDepth::Eight,
         width: 2,
         height: 2,
-        data: vec![0u8; 4],
+        samples: Samples::U8(vec![0u8; 4]),
     });
     assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
 }

@@ -2,9 +2,7 @@ use pictura_core::*;
 use std::borrow::Cow;
 
 use crate::common::*;
-use crate::depth::{
-    apply_prediction, depth_of, narrow_channel, output_depth, row_bytes, widen_channel,
-};
+use crate::depth::{apply_prediction, depth_bits, depth_of, output_depth, row_bytes};
 use crate::error::PsdError;
 use crate::write_indexed::{index_layer_plane, writes_indexed};
 
@@ -280,7 +278,7 @@ fn write_layer_info(
                 for (id, data) in cmyk_planes.iter().enumerate() {
                     let id = id as i16;
                     let plane = native_plane(
-                        layer_retained(layer, depth, id),
+                        layer_retained(layer, depth, id).as_ref(),
                         data,
                         layer_w,
                         layer_h,
@@ -309,7 +307,7 @@ fn write_layer_info(
             let indexed_active = indexed_plane.is_some();
             if let Some(data) = &indexed_plane {
                 let plane = native_plane(
-                    layer_retained(layer, depth, 0),
+                    layer_retained(layer, depth, 0).as_ref(),
                     data,
                     layer_w,
                     layer_h,
@@ -337,7 +335,7 @@ fn write_layer_info(
                     .and_then(|plane| plane.as_deref())
                     .unwrap_or(&channel.data);
                 let plane = native_plane(
-                    layer_retained(layer, depth, channel.id),
+                    layer_retained(layer, depth, channel.id).as_ref(),
                     data,
                     layer_w,
                     layer_h,
@@ -365,7 +363,7 @@ fn write_layer_info(
                 }
                 let plane8 = channel.data.get(2..).unwrap_or(&[]);
                 let plane = native_plane(
-                    layer_retained(layer, depth, channel.id),
+                    layer_retained(layer, depth, channel.id).as_ref(),
                     plane8,
                     layer_w,
                     layer_h,
@@ -401,7 +399,7 @@ fn write_layer_info(
                     None => vec![mask.default_color; pixels],
                 };
                 let plane = native_plane(
-                    layer_retained(layer, depth, -2),
+                    layer_retained(layer, depth, -2).as_ref(),
                     &data,
                     width,
                     height,
@@ -780,11 +778,10 @@ fn encode_packbits_row(row: &[u8], out: &mut Vec<u8>) {
 /// The native-depth plane to emit for one channel. When `depth` is 8 the
 /// current plane is borrowed unchanged. At 16/32, `retained` (the decoded source
 /// samples, when its length matches the plane) is used if narrowing it yields
-/// `current`; otherwise `current` is widened. A length that is not exactly
-/// `width * height` is rejected, so [`widen_channel`] can never index out of
-/// bounds on a malformed or stale plane.
+/// `current`; otherwise `current` is widened. A length other than exactly
+/// `width * height` is rejected, so widening cannot index out of bounds.
 fn native_plane<'a>(
-    retained: Option<&'a [u8]>,
+    retained: Option<&Samples>,
     current: &'a [u8],
     width: usize,
     height: usize,
@@ -799,20 +796,20 @@ fn native_plane<'a>(
     if depth == 8 {
         return Ok(Cow::Borrowed(current));
     }
+    let native = depth_bits(depth).ok_or_else(|| PsdError::Invalid("sample depth".into()))?;
     if let Some(ret) = retained {
-        let stride = row_bytes(width, depth);
-        if ret.len() == stride * height
-            && narrow_channel(ret, width, height, stride, depth).as_slice() == current
-        {
-            return Ok(Cow::Borrowed(ret));
+        if ret.len() == pixels && ret.narrow_to_u8() == current {
+            return Ok(Cow::Owned(ret.to_bytes()));
         }
     }
-    Ok(Cow::Owned(widen_channel(current, width, height, depth)))
+    Ok(Cow::Owned(
+        Samples::widen_from_u8(current, native).to_bytes(),
+    ))
 }
 
 /// The retained native plane at `index` (composite color channels then document
 /// extras) when the document's store matches the output `depth` and canvas.
-pub(crate) fn composite_retained(doc: &Document, depth: u16, index: usize) -> Option<&[u8]> {
+pub(crate) fn composite_retained(doc: &Document, depth: u16, index: usize) -> Option<Samples> {
     let store = doc.source_planes.as_ref()?;
     if depth_of(Some(store.depth)) != depth
         || store.width != doc.width
@@ -820,13 +817,16 @@ pub(crate) fn composite_retained(doc: &Document, depth: u16, index: usize) -> Op
     {
         return None;
     }
-    let plane = row_bytes(doc.width as usize, depth) * doc.height as usize;
-    store.data.get(index * plane..(index + 1) * plane)
+    if store.depth == BitDepth::One {
+        return (index == 0).then(|| store.samples.clone());
+    }
+    let plane = doc.width as usize * doc.height as usize;
+    store.samples.slice(index * plane..(index + 1) * plane)
 }
 
 /// The retained native plane for layer channel `id`, when the layer's store
 /// matches the output `depth` and the layer has not moved.
-pub(crate) fn layer_retained(layer: &Layer, depth: u16, id: i16) -> Option<&[u8]> {
+pub(crate) fn layer_retained(layer: &Layer, depth: u16, id: i16) -> Option<Samples> {
     let store = layer.source_channels.as_ref()?;
     if depth_of(Some(store.depth)) != depth || store.rect != layer.rect {
         return None;
@@ -835,7 +835,7 @@ pub(crate) fn layer_retained(layer: &Layer, depth: u16, id: i16) -> Option<&[u8]
         .planes
         .iter()
         .find(|(channel, _)| *channel == id)
-        .map(|(_, data)| data.as_slice())
+        .map(|(_, samples)| samples.clone())
 }
 
 /// Encode `planes` (each `row_bytes * height`, plane-major) into one RLE
@@ -1129,7 +1129,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
     let indexed_composite = indexed_mode.then(|| {
         composite_retained(doc, depth, 0)
             .expect("indexed_mode checked the composite plane")
-            .to_vec()
+            .to_bytes()
     });
     let flat_composite = flat_source.as_ref().map(|(_, _, planes)| planes);
     let mut planes: Vec<Cow<[u8]>> = Vec::with_capacity(channels);
@@ -1137,8 +1137,11 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         // The retained depth-1 store holds the raw packed plane (row stride
         // `ceil(width / 8)`), not a `width * height` plane, so `native_plane`
         // does not apply; borrow it directly at the output depth 1.
-        let retained =
-            composite_retained(doc, depth, 0).expect("writes_bitmap checked the packed plane");
+        let retained = doc
+            .source_planes
+            .as_ref()
+            .and_then(|store| store.samples.as_u8())
+            .expect("writes_bitmap checked the packed plane");
         planes.push(Cow::Borrowed(retained));
     } else {
         for c in 0..out_color_channels {
@@ -1154,7 +1157,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
                 &doc.composite.data[c * plane..(c + 1) * plane]
             };
             planes.push(native_plane(
-                composite_retained(doc, depth, c),
+                composite_retained(doc, depth, c).as_ref(),
                 current,
                 width,
                 height,
@@ -1166,7 +1169,7 @@ fn write_container(doc: &Document, psb: bool) -> Result<Vec<u8>, PsdError> {
         planes.push(native_plane(
             // A CMYK output stores four color planes before the extras, so the
             // retained extras offset is the output color count, not the working 3.
-            composite_retained(doc, depth, out_color_channels + i),
+            composite_retained(doc, depth, out_color_channels + i).as_ref(),
             &channel.data,
             width,
             height,

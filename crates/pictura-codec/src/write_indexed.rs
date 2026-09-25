@@ -45,10 +45,10 @@ fn indexed_layers_unchanged(layers: &[Layer], palette: &[u8; 768], depth: u16) -
         let Some(rgb) = layer_rgb_planes(layer) else {
             return true;
         };
-        let Some(index) = layer_retained(layer, depth, 0) else {
+        let Some(index) = layer_retained(layer, depth, 0).map(|s| s.to_bytes()) else {
             return false;
         };
-        crate::color_mode::indexed_to_rgb(index, palette) == rgb.concat()
+        crate::color_mode::indexed_to_rgb(&index, palette) == rgb.concat()
     })
 }
 
@@ -72,7 +72,7 @@ pub(crate) fn writes_indexed(doc: &Document, depth: u16, plane: usize) -> bool {
     // A file with "Maximize Compatibility" off carries no merged composite, so
     // there is no composite plane to check; the layers still must reconstruct.
     if doc.merged_composite_present {
-        let Some(index) = composite_retained(doc, depth, 0) else {
+        let Some(index) = composite_retained(doc, depth, 0).map(|s| s.to_bytes()) else {
             return false;
         };
         // `get` rather than a slice: `write_psd` is public and a short
@@ -81,7 +81,7 @@ pub(crate) fn writes_indexed(doc: &Document, depth: u16, plane: usize) -> bool {
         let Some(current) = doc.composite.data.get(..3 * plane) else {
             return false;
         };
-        if crate::color_mode::indexed_to_rgb(index, &palette).as_slice() != current {
+        if crate::color_mode::indexed_to_rgb(&index, &palette).as_slice() != current {
             return false;
         }
     }
@@ -94,5 +94,5 @@ pub(crate) fn writes_indexed(doc: &Document, depth: u16, plane: usize) -> bool {
 /// plane still expands to the layer's RGB.
 pub(crate) fn index_layer_plane(layer: &Layer, depth: u16) -> Option<Vec<u8>> {
     layer_rgb_planes(layer)?;
-    layer_retained(layer, depth, 0).map(<[u8]>::to_vec)
+    layer_retained(layer, depth, 0).map(|s| s.to_bytes())
 }

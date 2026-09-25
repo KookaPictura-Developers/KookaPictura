@@ -2,9 +2,7 @@
 //! 8-bit RGB. Bitmap and Indexed are exact; CMYK and Lab are approximations of
 //! Photoshop's color-managed transforms.
 
-use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, SourceChannels};
-
-use crate::depth::{narrow_channel, row_bytes};
+use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, Samples, SourceChannels};
 
 /// Expand a depth-1 Bitmap plane into planar RGB. Rows are `ceil(width / 8)`
 /// bytes, MSB-first; a set bit is black (0) and a clear bit is white (255).
@@ -54,25 +52,6 @@ pub(crate) fn cmy_to_rgb(cmy: &[u8]) -> Vec<u8> {
         out[2 * plane + i] = 255 - y[i];
     }
     out
-}
-
-/// Narrow a big-endian depth-16 sample to 8-bit by its high byte.
-///
-/// ponytail: this is psd-tools' `I;16B` scaling convention (`v >> 8`), not
-/// verified as Photoshop's own 16→8 mode conversion (which rounds), so a
-/// <=1-per-channel difference from Photoshop is accepted and no parity claimed.
-pub(crate) fn narrow_u16_to_8(v: u16) -> u8 {
-    (v >> 8) as u8
-}
-
-/// Narrow a big-endian depth-32 `f32` sample to 8-bit, display-referred.
-///
-/// ponytail: a raw narrowing, not Photoshop's 32-bit HDR display. Values at or
-/// above 1.0 clip to white, at or below 0.0 to black, and no sRGB transfer is
-/// applied; true HDR tone mapping needs the deferred 16/32-bit sample model.
-/// Matches psd-tools' `F;32BF` scaling (`clamp(trunc(f * 256))`).
-pub(crate) fn narrow_f32_to_8(f: f32) -> u8 {
-    (f * 256.0).trunc().clamp(0.0, 255.0) as u8
 }
 
 /// Expand a single index plane through a 768-byte palette laid out as 256 red,
@@ -252,11 +231,11 @@ pub(crate) fn retain_lab_layer_planes(layers: &mut [Layer], depth: u16) {
     }
     for layer in layers {
         if layer.source_channels.is_none() {
-            let planes: Vec<(i16, Vec<u8>)> = layer
+            let planes: Vec<(i16, Samples)> = layer
                 .channels
                 .iter()
                 .filter(|c| c.id >= 0 && c.id < 3)
-                .map(|c| (c.id, c.data.clone()))
+                .map(|c| (c.id, Samples::U8(c.data.clone())))
                 .collect();
             if planes.len() == 3 {
                 layer.source_channels =
@@ -277,11 +256,11 @@ pub(crate) fn retain_cmyk_layer_planes(layers: &mut [Layer], depth: u16) {
     }
     for layer in layers {
         if layer.source_channels.is_none() {
-            let planes: Vec<(i16, Vec<u8>)> = layer
+            let planes: Vec<(i16, Samples)> = layer
                 .channels
                 .iter()
                 .filter(|c| c.id >= 0 && c.id < 4)
-                .map(|c| (c.id, c.data.clone()))
+                .map(|c| (c.id, Samples::U8(c.data.clone())))
                 .collect();
             if planes.len() == 4 {
                 layer.source_channels =
@@ -302,11 +281,11 @@ pub(crate) fn retain_indexed_layer_planes(layers: &mut [Layer], depth: u16) {
     }
     for layer in layers {
         if layer.source_channels.is_none() {
-            let planes: Vec<(i16, Vec<u8>)> = layer
+            let planes: Vec<(i16, Samples)> = layer
                 .channels
                 .iter()
                 .filter(|c| c.id == 0)
-                .map(|c| (c.id, c.data.clone()))
+                .map(|c| (c.id, Samples::U8(c.data.clone())))
                 .collect();
             if planes.len() == 1 {
                 layer.source_channels =
@@ -327,16 +306,10 @@ pub(crate) fn retain_indexed_layer_planes(layers: &mut [Layer], depth: u16) {
 /// already 8-bit, so this is the identity.
 pub(crate) fn composite_retained_8(doc: &Document, depth: u16, index: usize) -> Option<Vec<u8>> {
     let retained = crate::write::composite_retained(doc, depth, index)?;
-    let width = doc.width as usize;
-    let height = doc.height as usize;
-    let stride = row_bytes(width, depth);
-    if retained.len() != stride * height {
+    if retained.len() != doc.width as usize * doc.height as usize {
         return None;
     }
-    if depth == 8 {
-        return Some(retained.to_vec());
-    }
-    Some(narrow_channel(retained, width, height, stride, depth))
+    Some(retained.narrow_to_u8())
 }
 
 /// The retained native layer channel `id`, narrowed to 8-bit (identity at
@@ -349,14 +322,10 @@ pub(crate) fn layer_retained_8(layer: &Layer, depth: u16, id: i16) -> Option<Vec
     let retained = crate::write::layer_retained(layer, depth, id)?;
     let width = layer.rect.width().max(0) as usize;
     let height = layer.rect.height().max(0) as usize;
-    let stride = row_bytes(width, depth);
-    if retained.len() != stride * height {
+    if retained.len() != width * height {
         return None;
     }
-    if depth == 8 {
-        return Some(retained.to_vec());
-    }
-    Some(narrow_channel(retained, width, height, stride, depth))
+    Some(retained.narrow_to_u8())
 }
 
 /// Replace a layer's color channels (`0..color_channels`) with converted RGB

@@ -25,6 +25,9 @@ pub(crate) fn writes_bitmap(doc: &Document) -> bool {
     let Some(retained) = composite_retained(doc, 1, 0) else {
         return false;
     };
+    let Some(retained) = retained.as_u8() else {
+        return false;
+    };
     // `get`-style length safety: a short `composite.data` on a public document
     // must fall back to RGB, not compare or slice out of bounds.
     crate::color_mode::bitmap_rows_to_rgb(retained, doc.width as usize, doc.height as usize)

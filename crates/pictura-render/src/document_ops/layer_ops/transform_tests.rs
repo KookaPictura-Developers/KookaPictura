@@ -2,7 +2,7 @@ use super::paths::resolve_path;
 use super::transform::{transform_layer, LayerTransform};
 use pictura_core::{
     BitDepth, Channel, ColorMode, Document, Layer, LayerMask, LockFlags, PsdRect, RawChannel,
-    SmartObject, SmartObjectKind, SourceChannels, SourcePlanes,
+    Samples, SmartObject, SmartObjectKind, SourceChannels, SourcePlanes,
 };
 
 fn rect(w: i32, h: i32) -> PsdRect {
@@ -98,7 +98,7 @@ fn high_depth_transform_move_keeps_and_scale_drops_unmodeled_channels() {
     layer.source_channels = Some(SourceChannels {
         depth: BitDepth::Sixteen,
         rect: rect(4, 4),
-        planes: vec![(3, vec![0; 32])],
+        planes: vec![(3, Samples::U16(vec![0; 16]))],
     });
     let mut doc = doc_with(layer);
     doc.source_depth = Some(BitDepth::Sixteen);
@@ -106,7 +106,7 @@ fn high_depth_transform_move_keeps_and_scale_drops_unmodeled_channels() {
         depth: BitDepth::Sixteen,
         width: 4,
         height: 4,
-        data: vec![0; 3 * 4 * 4 * 2],
+        samples: Samples::U16(vec![0; 3 * 4 * 4]),
     });
 
     // A pure integer translation keeps the channel and re-anchors the store.
