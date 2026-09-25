@@ -293,7 +293,9 @@ to 4, and a preserved document-level block is re-framed to the output container'
 width. `iOpa` is written as a 4-byte `B3x` value. Shipped as the archived change
 `2026-09-19-psb-write`; proven by the psd-tools oracle (authored-smart-object
 PSB, PSD→PSB reframe, odd/non-4-multiple block framing). Remaining ceilings: an
-`8B64` signature is normalized to `8BIM` on re-frame, and the app cannot yet open
+`8B64` signature (document- and layer-level) is normalized to `8BIM` on write
+(a per-layer `8B64` block now reads instead of erroring, `psd-tagged-block-8b64`),
+and the app cannot yet open
 a >30 000 PSB (import probe budget).
 
 **P6 — Metadata & ICC integration.** File Info + assign/convert on open/save

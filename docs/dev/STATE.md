@@ -65,7 +65,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `text-shaping-rustybuzz`, and
     `text-shaping-offsets`, and
     `text-subpixel-positioning`, and
-    `text-backend-drop-fontdue`
+    `text-backend-drop-fontdue`, and
+    `psd-tagged-block-8b64`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -311,7 +312,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   Ceilings: an `8B64` document-level signature is normalized to `8BIM` on
   re-frame; a small PSB is preserved as a PSB via `is_psb`; and opening a
   >30 000 PSB through the app is still capped by the import probe budget
-  (`probe.rs`, 30 000), a distinct follow-up.
+  (`probe.rs`, 30 000), a distinct follow-up. A per-layer `8B64` tagged block
+  now reads instead of erroring (change `psd-tagged-block-8b64`; psd-tools
+  accepts both signatures) and is likewise normalized to `8BIM` on write.
 - Color Balance adjustment decode (roadmap P3/G8, archived
   `2026-09-19-color-balance-adjustment-decode`): `blnc` is now a recognized
   adjustment key; `pictura-render` exposes `decode_color_balance` (nine `i16`
