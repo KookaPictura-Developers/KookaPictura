@@ -998,9 +998,12 @@ Snapshot for resuming after a context break. Update after each milestone.
   `pictura_render::refresh_native_composite` splices native color planes into the
   retained store and refreshes `doc.composite`; a clean, no-layer, or
   converted-mode save is untouched, so the codec depth oracles stay
-  byte-identical). Ceilings: a moved/edited layer channel still widens, no HDR
-  tone map, retained samples cost 2×/4× while open and the write path clones each
-  retained plane.
+  byte-identical). The **Exposure & Gamma** HDR tone-map operator now ships as a
+  pure linear-light function (`pictura_adjust::hdr_toning::exposure_gamma`,
+  change `hdr-exposure-gamma`); Ceilings: a moved/edited layer channel still
+  widens, the HDR Toning dialog and the other three methods (Local Adaptation,
+  Equalize Histogram, Highlight Compression — closed kernels) are open, retained
+  samples cost 2×/4× while open and the write path clones each retained plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
