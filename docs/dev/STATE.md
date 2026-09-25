@@ -295,8 +295,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   (`Ctrl+T`, `edit.freeTransform`) begins a session on the current layer; a
   successful `File > Place…` or canvas drop selects the new layer and enters the
   session (cancel keeps the `"Place"` state). C++ self-test code 292. Ceilings:
-  bilinear-only, no skew/distort/perspective/warp. This completes the place/drop
-  program (image import + OS file drop + free transform).
+  bilinear-only. This completes the place/drop program (image import + OS file
+  drop + free transform).
+- **Skew / Distort / Perspective** (archived `2026-09-25-free-transform-quad`):
+  the engine gained `transform_layer_quad(doc, path, quad)` — the projective
+  (homography) map sending the layer rect's four corners to a target quad, solved
+  by an 8×8 linear system and inverted for the same bilinear resample and refusal
+  contract as `transform_layer`, plus a non-finite/singular/zero-area refusal.
+  The session gained a mode (`Free | Skew | Distort | Perspective`); in a
+  projective mode it holds the live quad and `transform_quad` returns it, so the
+  overlay and hit-test follow and the C++ preview draws the layer through the
+  projective `QTransform`. Distort sets the dragged corner, Perspective moves the
+  opposite corner by the negated delta (centre fixed), Skew slides one edge with
+  the opposite edge fixed. `Edit > Transform > Skew|Distort|Perspective` are real
+  commands, enabled like Free Transform; commit routes to `transform_layer_quad`
+  and records one `"Free Transform"` state, Escape still cancels bit-identically
+  (code 292). Ceilings: the gesture semantics are inferred (no Photoshop oracle);
+  bilinear-only, no Warp / Puppet Warp / Content-Aware Scale.
 - PSB **write** (roadmap P5/G9, archived `2026-09-19-psb-write`): `write_psd`
   now emits a version-2 PSB when `Document.is_psb` is set or either dimension
   exceeds 30 000, and a new `write_psb` always forces a PSB; both share one
@@ -656,7 +671,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   `fontdue` is removed — glyph count, character lookup, and ascent now come from
   `ttf-parser` (reached through `rustybuzz`) — leaving `rustybuzz` (shape),
   `swash` (raster), and `ttf-parser` (metrics), with no C.
-  Remaining: transform/warp and a Qt live-composite path.
+  Remaining: text warp and a Qt live-composite path.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented

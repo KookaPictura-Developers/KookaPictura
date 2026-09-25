@@ -53,7 +53,7 @@ the app now rasterizes a type layer through `Layer > Rasterize > Layer`
 CPU compositor (`type-live-composite`) and `Rasterize All Layers` covers type
 (`rasterize-all-type`) and `Layer > Rasterize > Type` is a real command
 (`rasterize-type-command`) and the Qt `QFont` backend renders that command
-(`text-qt-backend`); transform/warp
+(`text-qt-backend`); text warp
 and a Qt live-composite path do
 not), Multichannel
 channel counts other than 1 or 3, a true `u16`/`f32` sample model (the
@@ -223,7 +223,7 @@ Ceiling: the scale and white point are unproven without a CS6 v3 fixture.
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,
 with the per-channel-then-composite order marked an assumption (not
-Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship, and EngineData font/size/colour decode ships — `type-engine-data`, proven by a real Photoshop-2021 text-layer fixture against psd-tools; the deterministic layout and POD glyph-rasterizer seam also ship — `text-render-seam`; a bundled pure-Rust Liberation Sans backend materializes a type layer into pixels — `text-rasterize-bundled`, `Layer > Rasterize > Layer` reaches it — `type-rasterize-command`, and a proxy-less type layer renders live in the CPU compositor — `type-live-composite`, `Rasterize All Layers` covers type — `rasterize-all-type`, and `Layer > Rasterize > Type` is a real command — `rasterize-type-command` — which the Qt `QFont` backend renders — `text-qt-backend`; the bundled backend now shapes with `rustybuzz` (pure-Rust HarfBuzz) so kerning/GPOS applies and carries the shaper's glyph offsets (`text-shaping-rustybuzz`, `text-shaping-offsets`) and rasterizes subpixel-accurately with `swash` (`text-subpixel-positioning`, `text-backend-drop-fontdue`); transform/warp and a Qt live-composite path do not);
+Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship, and EngineData font/size/colour decode ships — `type-engine-data`, proven by a real Photoshop-2021 text-layer fixture against psd-tools; the deterministic layout and POD glyph-rasterizer seam also ship — `text-render-seam`; a bundled pure-Rust Liberation Sans backend materializes a type layer into pixels — `text-rasterize-bundled`, `Layer > Rasterize > Layer` reaches it — `type-rasterize-command`, and a proxy-less type layer renders live in the CPU compositor — `type-live-composite`, `Rasterize All Layers` covers type — `rasterize-all-type`, and `Layer > Rasterize > Type` is a real command — `rasterize-type-command` — which the Qt `QFont` backend renders — `text-qt-backend`; the bundled backend now shapes with `rustybuzz` (pure-Rust HarfBuzz) so kerning/GPOS applies and carries the shaper's glyph offsets (`text-shaping-rustybuzz`, `text-shaping-offsets`) and rasterizes subpixel-accurately with `swash` (`text-subpixel-positioning`, `text-backend-drop-fontdue`); a layer's skew/distort/perspective now ships (`free-transform-quad`, the projective `transform_layer_quad` plus the three `Edit > Transform` modes), but text warp and a Qt live-composite path do not);
 RLE and ZIP write shipped (`psd-rle-write`, `psd-zip-write`).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
@@ -462,8 +462,10 @@ options bar opens each file as its own tab, reusing the same PSD-native vs
 Qt-decode routing. Free Transform shipped as `2026-09-19-free-transform-mode`:
 a successful place (menu command or canvas drop) selects the new layer and enters
 an interactive move/scale/rotate session that commits one state on Enter and
-cancels bit-identically on Escape. Skew, distort, perspective, and warp are
-deferred follow-ups.
+cancels bit-identically on Escape. Skew, distort, and perspective now ship as
+`2026-09-25-free-transform-quad` (the projective `transform_layer_quad` and the
+three `Edit > Transform` modes, gesture semantics inferred); Warp, Puppet Warp,
+and Content-Aware Scale remain deferred follow-ups.
 
 ## Reference fixtures
 
