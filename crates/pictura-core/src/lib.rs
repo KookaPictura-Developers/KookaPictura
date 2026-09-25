@@ -12,7 +12,7 @@ mod type_tool;
 mod vector;
 pub use advanced_blending::{BlendIf, Knockout};
 pub use crs::CrsSettings;
-pub use samples::Samples;
+pub use samples::{Sample, Samples};
 pub use text_render::{
     layout_lines, FontPolicy, GlyphMask, LayoutLine, LayoutParams, PlacedGlyph, RasterRequest,
     Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance,

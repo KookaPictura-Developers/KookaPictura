@@ -250,7 +250,7 @@ pub(crate) fn gradient_map(
 
 /// Sample the gradient at integer position `pos` (`0..=4096`), clamping outside
 /// the stop range and lerping between the bracketing stops.
-fn sample_gradient(stops: &[GradientStop], pos: f64) -> [u8; 3] {
+pub(crate) fn sample_gradient(stops: &[GradientStop], pos: f64) -> [u8; 3] {
     let first = stops[0];
     let last = stops[stops.len() - 1];
     if pos <= first.location as f64 {
