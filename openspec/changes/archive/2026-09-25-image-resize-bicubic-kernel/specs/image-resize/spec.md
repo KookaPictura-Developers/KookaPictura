@@ -1,31 +1,6 @@
 # image-resize Specification
 
-## Purpose
-TBD - created by archiving change m10-image-ops. Update Purpose after archive.
-## Requirements
-### Requirement: Image resize entry point and error contract
-
-The system SHALL provide `pictura_ops::resize(buf: &PixelBuffer, width: u32, height: u32, method: Resample) -> Result<PixelBuffer, OpsError>`. It SHALL return a newly allocated `PixelBuffer` whose `width` and `height` equal the requested values and whose `channels` equals the input's, and it MUST leave `buf` bit-identical. `width` or `height` below 1, or an input whose `data.len()` does not equal `width * height * channels`, SHALL be rejected with `OpsError::InvalidParams` before any sample is written. The function MUST NOT panic for any input, including 1×1 images and 1-pixel-wide or 1-pixel-tall images.
-
-#### Scenario: Resize returns a new buffer and leaves the input untouched
-
-- **WHEN** `resize` is called on a valid `PixelBuffer`
-- **THEN** it returns `Ok` with a buffer of the requested width and height, the same channel count, and the input buffer still equals its pre-call bytes
-
-#### Scenario: Invalid dimensions are rejected
-
-- **WHEN** `resize` is called with `width` 0 or `height` 0
-- **THEN** it returns `OpsError::InvalidParams` and the input buffer is unchanged
-
-#### Scenario: A malformed input buffer errors instead of panicking
-
-- **WHEN** `resize` is called on a buffer whose `data.len()` is not `width * height * channels`
-- **THEN** it returns `OpsError::InvalidParams` and does not panic
-
-#### Scenario: Tiny images do not panic
-
-- **WHEN** `resize` is called from a 1×1 buffer and from a 1×N or N×1 buffer to any valid target size
-- **THEN** no call panics and each returns `Ok` or `OpsError::InvalidParams`
+## MODIFIED Requirements
 
 ### Requirement: Resample kernels and per-channel sampling
 
@@ -84,4 +59,3 @@ on `PATH` and MUST NOT be marked `#[ignore]`.
 
 - **WHEN** `Resample::Bilinear` is compared with `-filter triangle` at a scale below 1
 - **THEN** the observed delta is recorded as no-equivalent rather than asserted equal, because ImageMagick anti-aliases by widening the kernel
-

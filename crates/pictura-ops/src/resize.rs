@@ -1,8 +1,10 @@
 //! `Image > Image Size` resampling (`IMG-001`).
 //!
-//! Photoshop's exact Bicubic coefficients and edge handling are unpublished, so
-//! parity is behavioral only. All three kernels sample each plane independently
-//! and clamp to the edge at borders.
+//! Photoshop's exact edge handling is unpublished, so parity is behavioral only,
+//! but its Bicubic coefficient is publicly documented as a Mitchell–Netravali
+//! `cubic(0, 0.75)` kernel (Jason Summers, entropymine.com/resamplescope), not
+//! Catmull-Rom. All three kernels sample each plane independently and clamp to
+//! the edge at borders.
 
 use pictura_core::PixelBuffer;
 
@@ -28,9 +30,10 @@ fn bilevel(s: f64, n: u32) -> ([usize; 2], [f64; 2]) {
     ([idx(x0, n), idx(x0 + 1, n)], [1.0 - f, f])
 }
 
-/// Catmull-Rom cubic kernel (`a = -0.5`).
+/// Keys cubic kernel `a = -0.75`, i.e. Mitchell–Netravali `cubic(0, 0.75)`, the
+/// publicly documented Photoshop Bicubic coefficient.
 fn cubic(t: f64) -> f64 {
-    let a = -0.5;
+    let a = -0.75;
     let x = t.abs();
     if x <= 1.0 {
         (a + 2.0) * x * x * x - (a + 3.0) * x * x + 1.0

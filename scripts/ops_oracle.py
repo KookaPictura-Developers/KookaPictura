@@ -101,7 +101,9 @@ def build_im_args(args: argparse.Namespace) -> list[str]:
     if op == "resize":
         if args.width is None or args.height is None:
             raise SystemExit("--op resize requires --width and --height")
-        return ["-filter", args.filter, "-resize", f"{args.width}x{args.height}!"]
+        return shlex.split(args.im_args) + [
+            "-filter", args.filter, "-resize", f"{args.width}x{args.height}!",
+        ]
     if op == "resize_canvas":
         if args.width is None or args.height is None:
             raise SystemExit("--op resize_canvas requires --width and --height")
