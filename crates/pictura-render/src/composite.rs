@@ -9,7 +9,7 @@ use pictura_core::{
 };
 
 pub(crate) use crate::blend::blend;
-use crate::composite_native::composite_adjustment;
+use crate::composite_native::{composite_adjustment, native_unit};
 
 /// Composite the document's layer stack.
 ///
@@ -326,25 +326,21 @@ fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
     for y in y0..y1 {
         for x in x0..x1 {
             let li = (y - layer.rect.top) as usize * lw + (x - layer.rect.left) as usize;
+            // A high-depth Grayscale/RGB layer reads its native samples; a
+            // channel missing from the store falls back to its 8-bit plane.
+            let unit = |id: i16, ch: Option<&[u8]>| {
+                native_unit(layer, doc, id, li)
+                    .unwrap_or_else(|| sample(ch, li).unwrap_or(0) as f32 / 255.0)
+            };
             let (r, g, b) = if gray {
-                let v = sample(ch0, li).unwrap_or(0);
+                let v = unit(0, ch0);
                 (v, v, v)
             } else {
-                (
-                    sample(ch0, li).unwrap_or(0),
-                    sample(ch1, li).unwrap_or(0),
-                    sample(ch2, li).unwrap_or(0),
-                )
+                (unit(0, ch0), unit(1, ch1), unit(2, ch2))
             };
-            let a = sample(alpha, li).unwrap_or(255);
-            blend_into(
-                canvas,
-                layer,
-                x as usize,
-                y as usize,
-                [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0],
-                a as f32 / 255.0,
-            );
+            let a = native_unit(layer, doc, -1, li)
+                .unwrap_or_else(|| sample(alpha, li).unwrap_or(255) as f32 / 255.0);
+            blend_into(canvas, layer, x as usize, y as usize, [r, g, b], a);
         }
     }
 }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::composite::{Canvas, Px};
 use pictura_adjust::{Adjustment, AutoKind};
-use pictura_core::Samples;
+use pictura_core::{Samples, SourceChannels};
 
 fn levels_layer(output_white: u16, opacity: u8) -> Layer {
     let mut data = 2u16.to_be_bytes().to_vec();
@@ -161,4 +161,87 @@ fn auto_adjustment_on_depth16_falls_back_to_the_8bit_apply() {
             .any(|(p, b)| (p.r - b).abs() > 1.0 / 255.0),
         "auto is outside the native set, so the 8-bit apply must still run"
     );
+}
+
+/// A 4x4 pixel layer whose retained native planes are the 8-bit values plus
+/// `low`, so they are deliberately *not* the `v * 257` widening.
+fn native_store_layer(rgb: (u8, u8, u8), low: u16) -> Layer {
+    let mut layer = solid("base", full(4, 4), rgb, 255, BlendMode::Normal, 255);
+    let n = 16;
+    let plane = |v: u8| Samples::U16(vec![v as u16 * 257 + low; n]);
+    layer.source_channels = Some(SourceChannels::new(
+        BitDepth::Sixteen,
+        layer.rect,
+        vec![
+            (0, plane(rgb.0)),
+            (1, plane(rgb.1)),
+            (2, plane(rgb.2)),
+            (-1, Samples::U16(vec![65535; n])),
+        ],
+    ));
+    layer
+}
+
+fn assert_native_is_widen(d: &Document) {
+    let native = native_u16(d);
+    let rgba = composite_rgba(d);
+    let plane = (d.width * d.height) as usize;
+    for c in 0..4 {
+        for i in 0..plane {
+            assert_eq!(
+                native[c * plane + i],
+                rgba.data[c * plane + i] as u16 * 257,
+                "channel {c} px {i} must match the 8-bit widening"
+            );
+        }
+    }
+}
+
+#[test]
+fn depth16_rgb_layer_keeps_native_content() {
+    let mut d = doc(4, 4, vec![native_store_layer((100, 140, 200), 7)]);
+    d.source_depth = Some(BitDepth::Sixteen);
+
+    let native = native_u16(&d);
+    let rgba = composite_rgba(&d);
+    let plane = (d.width * d.height) as usize;
+    let differs = (0..3).any(|c| {
+        (0..plane).any(|i| native[c * plane + i] != rgba.data[c * plane + i] as u16 * 257)
+    });
+    assert!(
+        differs,
+        "native layer content must not collapse to the 8-bit widening"
+    );
+}
+
+#[test]
+fn converted_mode_document_uses_the_8bit_path() {
+    let mut d = doc(4, 4, vec![native_store_layer((100, 140, 200), 7)]);
+    d.source_depth = Some(BitDepth::Sixteen);
+    d.source_mode = Some(ColorMode::Cmyk);
+    assert_native_is_widen(&d);
+}
+
+#[test]
+fn depth16_layer_without_matching_store_falls_back() {
+    let mut layer = native_store_layer((100, 140, 200), 7);
+    layer.source_channels.as_mut().unwrap().rect = rect(0, 0, 2, 2);
+    let mut d = doc(4, 4, vec![layer]);
+    d.source_depth = Some(BitDepth::Sixteen);
+    assert_native_is_widen(&d);
+
+    let mut none = doc(
+        4,
+        4,
+        vec![solid(
+            "base",
+            full(4, 4),
+            (10, 20, 30),
+            255,
+            BlendMode::Normal,
+            255,
+        )],
+    );
+    none.source_depth = Some(BitDepth::Sixteen);
+    assert_native_is_widen(&none);
 }

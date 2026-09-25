@@ -5,4 +5,4 @@
 # split along class/concern seams, remove their entry, and never raise a
 # recorded LOC — a file that grows is a violation.
 crates/pictura-app/cpp/selftest.cpp 6730
-crates/pictura-render/src/composite.rs 1221
+crates/pictura-render/src/composite.rs 1217
