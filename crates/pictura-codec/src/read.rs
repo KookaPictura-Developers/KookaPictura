@@ -789,7 +789,8 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
     while er.remaining() >= 12 {
         let mut tag_sig = [0u8; 4];
         tag_sig.copy_from_slice(er.take(4)?);
-        if &tag_sig != b"8BIM" {
+        // psd-tools accepts 8BIM/8B64 for a tagged block; normalized to 8BIM on write.
+        if &tag_sig != b"8BIM" && &tag_sig != b"8B64" {
             return Err(PsdError::Invalid("bad tagged block signature".into()));
         }
         let mut tag_key = [0u8; 4];
