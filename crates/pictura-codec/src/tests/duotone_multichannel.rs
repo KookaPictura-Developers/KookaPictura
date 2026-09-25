@@ -39,7 +39,7 @@ fn duotone_opens_as_rgb_and_preserves_color_mode_data() {
     assert_eq!(back.source_mode, Some(ColorMode::Duotone));
     assert_eq!(back.color_mode_data, data);
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         vec![10, 20],
         "the plane bytes match the retained source"
     );
@@ -71,7 +71,7 @@ fn multichannel_one_channel_opens_as_gray_rgb() {
     let back = read_psd(&out).unwrap();
     assert_eq!(back.source_mode, Some(ColorMode::Multichannel));
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         vec![40, 80],
         "the plate bytes match the retained source"
     );
@@ -104,7 +104,7 @@ fn multichannel_three_channels_maps_cmy_to_rgb() {
     );
     let back = read_psd(&out).unwrap();
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         vec![0, 255, 255, 0, 128, 128],
         "the three plate bytes match the retained source"
     );

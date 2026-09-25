@@ -2,6 +2,8 @@
 //! inversion. Kept out of `read.rs` only to respect the file-size cap; the
 //! encodings mirror `psd-tools`' `compression/__init__.py`.
 
+#[cfg(test)]
+use pictura_core::Samples;
 use pictura_core::{BitDepth, Document};
 
 use crate::error::PsdError;
@@ -64,76 +66,25 @@ pub(crate) fn row_bytes(width: usize, depth: u16) -> usize {
     (width * depth as usize).div_ceil(8)
 }
 
-/// Narrow a 16/32-bit planar buffer to the 8-bit layout: for each of `channels`
-/// planes, each big-endian `u16`/`f32` sample becomes one byte. `row_bytes` is
-/// the source row stride, so `data` is exactly `channels * row_bytes * height`.
-pub(crate) fn narrow_planes(
-    data: &[u8],
-    channels: usize,
-    row_bytes: usize,
-    width: usize,
-    height: usize,
-    depth: u16,
-) -> Vec<u8> {
-    let src_plane = row_bytes * height;
-    let mut out = Vec::with_capacity(channels * width * height);
-    for c in 0..channels {
-        out.extend_from_slice(&narrow_channel(
-            &data[c * src_plane..(c + 1) * src_plane],
-            width,
-            height,
-            row_bytes,
-            depth,
-        ));
-    }
-    out
-}
-
-/// Narrow one 16/32-bit plane to `width * height` 8-bit samples.
+/// Test-only byte adapter over [`Samples`]: narrow one contiguous 16/32-bit
+/// plane to `width * height` 8-bit samples.
+#[cfg(test)]
 pub(crate) fn narrow_channel(
     plane: &[u8],
-    width: usize,
-    height: usize,
-    row_bytes: usize,
+    _width: usize,
+    _height: usize,
+    _row_bytes: usize,
     depth: u16,
 ) -> Vec<u8> {
-    use crate::color_mode::{narrow_f32_to_8, narrow_u16_to_8};
-    let sample = (depth / 8) as usize;
-    let mut out = Vec::with_capacity(width * height);
-    for y in 0..height {
-        for x in 0..width {
-            let i = y * row_bytes + x * sample;
-            out.push(match depth {
-                16 => narrow_u16_to_8(u16::from_be_bytes([plane[i], plane[i + 1]])),
-                _ => narrow_f32_to_8(f32::from_be_bytes([
-                    plane[i],
-                    plane[i + 1],
-                    plane[i + 2],
-                    plane[i + 3],
-                ])),
-            });
-        }
-    }
-    out
+    Samples::from_bytes(plane, depth_bits(depth).expect("16/32-bit plane")).narrow_to_u8()
 }
 
 /// Widen one 8-bit plane (`width * height` samples) to the native-depth
 /// layout: depth 16 is `v * 257`, depth 32 scales the 8-bit value to `[0, 1]`.
-/// Both are the exact inverse of [`narrow_channel`] over the 8-bit domain.
-pub(crate) fn widen_channel(plane: &[u8], width: usize, height: usize, depth: u16) -> Vec<u8> {
-    let stride = row_bytes(width, depth);
-    let mut out = vec![0u8; stride * height];
-    for y in 0..height {
-        for x in 0..width {
-            let v = plane[y * width + x];
-            let i = y * stride + x * (depth as usize / 8);
-            match depth {
-                16 => out[i..i + 2].copy_from_slice(&(v as u16 * 257).to_be_bytes()),
-                _ => out[i..i + 4].copy_from_slice(&(v as f32 / 255.0).to_be_bytes()),
-            }
-        }
-    }
-    out
+/// Test-only byte adapter over [`Samples`].
+#[cfg(test)]
+pub(crate) fn widen_channel(plane: &[u8], _width: usize, _height: usize, depth: u16) -> Vec<u8> {
+    Samples::widen_from_u8(plane, depth_bits(depth).expect("16/32-bit plane")).to_bytes()
 }
 
 /// Widen a planar 8-bit buffer of `channels` planes to the native-depth layout.

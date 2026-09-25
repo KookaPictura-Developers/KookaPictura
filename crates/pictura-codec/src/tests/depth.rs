@@ -14,6 +14,37 @@ fn be32(values: &[f32]) -> Vec<u8> {
 }
 
 #[test]
+fn retained_store_is_typed_to_the_source_depth() {
+    let rgb16 = [be16(&[0x0100]), be16(&[0x0200]), be16(&[0x0300])];
+    let spot = be16(&[0xab00]);
+    let p = layered_psd_depth(16, 3, 3, &[&rgb16[0], &rgb16[1], &rgb16[2]], &[(3, &spot)]);
+    let doc = read_psd(&p).unwrap();
+    assert!(
+        matches!(
+            &doc.source_planes.as_ref().unwrap().samples,
+            Samples::U16(_)
+        ),
+        "a 16-bit composite retains u16 samples"
+    );
+    let layer = doc.layers[0].source_channels.as_ref().unwrap();
+    assert!(
+        matches!(&layer.planes[0].1, Samples::U16(_)),
+        "a 16-bit layer channel retains u16 samples"
+    );
+
+    let rgb32 = [be32(&[0.25]), be32(&[0.5]), be32(&[0.75])];
+    let p = flat_psd(32, 3, 3, 1, 1, &[&rgb32[0], &rgb32[1], &rgb32[2]]);
+    let doc = read_psd(&p).unwrap();
+    assert!(
+        matches!(
+            &doc.source_planes.as_ref().unwrap().samples,
+            Samples::F32(_)
+        ),
+        "a 32-bit composite retains f32 samples"
+    );
+}
+
+#[test]
 fn depth16_raw_composite_narrows_high_byte() {
     let values = [0u16, 1, 255, 256, 257, 32768, 65534, 65535];
     let plane = be16(&values);
@@ -144,7 +175,14 @@ fn depth16_unmodeled_layer_channel_round_trips_at_source_depth() {
         "spot channel is decoded at 16 bits and re-wrapped as an 8-bit raw stream"
     );
     assert_eq!(
-        doc.layers[0].source_channels.as_ref().unwrap().planes,
+        doc.layers[0]
+            .source_channels
+            .as_ref()
+            .unwrap()
+            .planes
+            .iter()
+            .map(|(id, s)| (*id, s.to_bytes()))
+            .collect::<Vec<_>>(),
         vec![(3, spot.clone())],
         "the native spot samples are retained"
     );
@@ -226,7 +264,7 @@ fn depth16_cmyk_preserves_source_mode_and_depth() {
     let back = read_psd(&out).unwrap();
     assert_eq!(back.source_depth, Some(BitDepth::Sixteen));
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         native,
         "the retained native CMYK planes are byte-identical"
     );
@@ -264,7 +302,7 @@ fn depth32_cmyk_preserves_source_mode_and_depth() {
     let back = read_psd(&out).unwrap();
     assert_eq!(back.source_depth, Some(BitDepth::ThirtyTwo));
     assert_eq!(
-        back.source_planes.as_ref().unwrap().data,
+        back.source_planes.as_ref().unwrap().samples.to_bytes(),
         native,
         "the retained native CMYK planes are byte-identical"
     );
@@ -298,7 +336,7 @@ fn high_depth_lab_preserves_source_mode_and_depth() {
         );
         let back = read_psd(&out).unwrap();
         assert_eq!(
-            back.source_planes.as_ref().unwrap().data,
+            back.source_planes.as_ref().unwrap().samples.to_bytes(),
             expected,
             "depth {depth}: native Lab planes are byte-identical"
         );
@@ -342,7 +380,14 @@ fn high_depth_cmyk_layer_preserves_source_samples() {
         );
         let back = read_psd(&out).unwrap();
         assert_eq!(
-            back.layers[0].source_channels.as_ref().unwrap().planes,
+            back.layers[0]
+                .source_channels
+                .as_ref()
+                .unwrap()
+                .planes
+                .iter()
+                .map(|(id, s)| (*id, s.to_bytes()))
+                .collect::<Vec<_>>(),
             cmyk,
             "depth {depth}: the native layer planes are byte-identical"
         );
@@ -385,7 +430,14 @@ fn high_depth_lab_layer_preserves_source_samples() {
         );
         let back = read_psd(&out).unwrap();
         assert_eq!(
-            back.layers[0].source_channels.as_ref().unwrap().planes,
+            back.layers[0]
+                .source_channels
+                .as_ref()
+                .unwrap()
+                .planes
+                .iter()
+                .map(|(id, s)| (*id, s.to_bytes()))
+                .collect::<Vec<_>>(),
             lab,
             "depth {depth}: the native layer planes are byte-identical"
         );
@@ -409,7 +461,12 @@ fn high_depth_edited_plane_widens_the_reencode() {
     assert_eq!(u16::from_be_bytes(out[24..26].try_into().unwrap()), 4);
     let reencoded = crate::color_mode::rgb_to_cmyk(&edited);
     assert_eq!(
-        read_psd(&out).unwrap().source_planes.unwrap().data,
+        read_psd(&out)
+            .unwrap()
+            .source_planes
+            .unwrap()
+            .samples
+            .to_bytes(),
         crate::depth::widen_planes(&reencoded, 4, 1, 1, 16),
         "the edited CMYK plane is the 8-bit re-encode widened"
     );
@@ -425,7 +482,12 @@ fn high_depth_edited_plane_widens_the_reencode() {
     assert_eq!(u16::from_be_bytes(out[24..26].try_into().unwrap()), 9);
     let reencoded = crate::color_mode::rgb_to_lab(&edited);
     assert_eq!(
-        read_psd(&out).unwrap().source_planes.unwrap().data,
+        read_psd(&out)
+            .unwrap()
+            .source_planes
+            .unwrap()
+            .samples
+            .to_bytes(),
         crate::depth::widen_planes(&reencoded, 3, 1, 1, 32),
         "the edited Lab plane is the 8-bit re-encode widened"
     );
@@ -454,7 +516,7 @@ fn short_high_depth_lab_cmyk_source_plane_is_a_typed_error() {
             depth: bits,
             width: 2,
             height: 2,
-            data: vec![0u8; 48],
+            samples: Samples::from_bytes(&[0u8; 48], bits),
         });
         doc.layers.push(Layer {
             rect,
@@ -462,7 +524,7 @@ fn short_high_depth_lab_cmyk_source_plane_is_a_typed_error() {
             source_channels: Some(SourceChannels::new(
                 bits,
                 rect,
-                vec![(0, vec![0u8; native_len])],
+                vec![(0, Samples::from_bytes(&vec![0u8; native_len], bits))],
             )),
             ..Default::default()
         });
@@ -559,7 +621,7 @@ fn short_high_depth_layer_plane_is_a_typed_error() {
         depth: BitDepth::Sixteen,
         width: 2,
         height: 2,
-        data: vec![0u8; 3 * 8],
+        samples: Samples::U16(vec![0; 12]),
     });
     doc.layers.push(Layer {
         rect: PsdRect {
@@ -599,7 +661,7 @@ fn depth1_store_without_bitmap_write_back_is_a_typed_error() {
         depth: BitDepth::One,
         width: 1,
         height: 1,
-        data: vec![0],
+        samples: Samples::U8(vec![0]),
     });
     assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
 
