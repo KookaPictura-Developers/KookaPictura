@@ -60,8 +60,9 @@ channel counts other than 1 or 3, a true `u16`/`f32` sample model (the
 sample-typed store ships, `bit-depth-sample-model`, and the tonal and
 color-preserving adjustment families apply natively,
 `native-depth-adjustments`/`native-depth-color-adjustments`, and the CPU
-compositor applies adjustment layers at native precision and emits a source-depth
-composite (`native-depth-composite`); layer-content native reads, `Auto`,
+compositor applies adjustment layers at native precision, emits a source-depth
+composite, and reads high-depth RGB/Grayscale pixel layers natively
+(`native-depth-composite`/`native-depth-layer-content`); native masks, `Auto`,
 `ColorLookup`, app wiring, and a 32-bit HDR tone map stay open), a 32-bit HDR
 tone map, sidecars, a manual Photoshop round-trip, and nested-shallow/clipping
 knockout targets (`knockout-composite` applies the documented punch-through at
@@ -83,7 +84,7 @@ it record the order it was closed in.
 | G1 | ~~ZIP / ZIP-with-prediction unsupported~~ ZIP (2) and ZIP-with-prediction (3) read (P1) and written (`psd-zip-write`) | `read.rs`, `write.rs` | Closed |
 | G2 | Color modes beyond Gray/RGB (Bitmap, Indexed, CMYK, Multichannel, Duotone, Lab) | `read.rs` mode match, `write.rs` mode match | Shipped for Bitmap/Indexed/CMYK/Lab/Multichannel/Duotone (1- or 3-channel Multichannel) with source-mode write-back where the mode maps (`color-mode-write-back`, `cmyk-write-back`, `indexed-write-back`, `bitmap-write-back`, `depth-color-mode-write-back`, `multichannel-duotone-read`); Multichannel channel counts other than 1 or 3 stay Unsupported |
 | G3 | Color-mode data (Indexed palette, Duotone spec) dropped | `read.rs` skip, `write.rs` zero | Partly shipped: the Indexed palette is interpreted on read and retained (`Document.source_palette`) so an unchanged Indexed document writes it back; the Duotone spec stays preserve-only and is re-emitted on write-back (`multichannel-duotone-read`) |
-| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; the sample-typed store ships (`bit-depth-sample-model`), the tonal and color-preserving adjustment families apply natively (`native-depth-adjustments`, `native-depth-color-adjustments`), and the CPU compositor applies adjustments at native precision with a source-depth output (`native-depth-composite`), while `Auto`/`ColorLookup`, layer-content native reads, and app wiring stay open |
+| G4 | Bit depth 1/16/32 unsupported (`PixelBuffer` is `Vec<u8>`) | `read.rs` depth check, `write.rs` | Partly shipped: 16/32 read and normalize to 8-bit for editing (`>>8` / `clamp(trunc(f*256))`), and an open→save now preserves the source depth for Grayscale/RGB **and** a CMYK/Lab source (archived `depth-preserve`, `depth-color-mode-write-back`): unchanged planes re-emit exact source-depth samples, edited ones are widened; the sample-typed store ships (`bit-depth-sample-model`), the tonal and color-preserving adjustment families apply natively (`native-depth-adjustments`, `native-depth-color-adjustments`), and the CPU compositor applies adjustments at native precision with a source-depth output (`native-depth-composite`) and reads high-depth RGB/Grayscale pixel layers natively (`native-depth-layer-content`), while native masks, `Auto`/`ColorLookup`, and app wiring stay open |
 | G5 | Image resources are parsed; an embedded non-sRGB ICC profile is honoured per an incoming-profile policy (Preserve default / Convert / Off); EXIF/IPTC decode, XMP parse + edit with IIM sync, XMP template export/apply with three merge modes, a File Info dialog, IPTC core-field editing, user Assign/Convert Profile commands, and Color Settings ship; sidecars remain open | `read.rs` `read_psd_with` keep, `write.rs` re-emit; `image_resources.rs` parses; `icc.rs` converts/assigns/policy; `metadata.rs`/`exif.rs`/`iptc.rs`/`xmp.rs` decode, edit, template | Wide-gamut files render correctly and are not force-converted; metadata readable/editable/templatable; profiles assignable/convertible/policy-driven |
 | G6 | Unknown additional-layer-info keys (effects `lfx2`/`lrFX`, smart objects, text, vector masks, gradient/pattern fills, blend-if, knockout) | `read.rs` `_ => {}`, `write.rs` subset | Shipped: effects, fills, vector masks, adjustment descriptors, and smart objects decode and render (P2.5/P3); text is modeled (`TypeTool` view, `tysh-model-roundtrip`); knockout is typed and round-trips (`knko-blend-if-model`) and now punches through the CPU compositor at the document root, inside pass-through groups, and inside isolated groups (against the group's own backdrop), independently diffed against psd-tools' own compositor (`knockout-composite`, `knockout-groups`, `knockout-isolated-groups`, `knockout-oracle`, inferred mechanism); Blend If/blending-ranges gate the CPU compositor (`blend-if-render`, GPU declines a non-default layer); other unmodeled keys stay opaque (P2) |
 | G7 | `-3` real-user-mask channel, mask params, blend ranges, global layer mask | `read.rs`, `write.rs` | Closed (opaque → partly modeled): captured and re-emitted verbatim on open→save (P2); blending-ranges now also parse into a typed `BlendIf` view (`knko-blend-if-model`) and gate the CPU compositor (`blend-if-render`); knockout punch-through is now applied at the document root (`knockout-composite`) and inside a pass-through group (`knockout-groups`), nested-shallow/clipping targets still open |
@@ -291,10 +292,10 @@ bits through a save/re-read), and the color-preserving family joins it
 PhotoFilter/ChannelMixer/SelectiveColor), and the CPU compositor applies
 adjustment layers at native precision and can emit a source-depth composite
 (`native-depth-composite`: no more 8-bit round-trip for a 16/32-bit document,
-`composite_native` returns `U16`/`F32`), but layer content is still read at
-8-bit, `Auto`/`ColorLookup` still run on 8-bit planes, and there is no app
-wiring, so those plus a 32-bit HDR tone map (the shipped path is
-display-referred, clipping at 1.0) remain open; 
+`composite_native` returns `U16`/`F32`) and a high-depth RGB/Grayscale pixel layer
+reads its native samples (`native-depth-layer-content`), but native masks,
+`Auto`/`ColorLookup`, and app wiring remain open, so those plus a 32-bit HDR tone
+map (the shipped path is display-referred, clipping at 1.0) remain open; 
 Multichannel/Duotone (no
 natural RGB mapping / needs the spot-ink spec), and text (`TySh`) remain open.
 Color-mode
