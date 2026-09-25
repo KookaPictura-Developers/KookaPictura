@@ -64,7 +64,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `knockout-isolated-groups`, and
     `text-shaping-rustybuzz`, and
     `text-shaping-offsets`, and
-    `text-subpixel-positioning`
+    `text-subpixel-positioning`, and
+    `text-backend-drop-fontdue`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -640,7 +641,10 @@ Snapshot for resuming after a context break. Update after each milestone.
   `RasterRequest.subpixel_x/y` is honored and `paint_layout` floors the pen and
   passes the fraction; `'A'`@48px places identically to the old fontdue mask, a
   `0.0` vs `0.5` offset changes the coverage/width, and a `12.5` pen differs from
-  `12.0`/`13.0`. `fontdue` is retained only for glyph metrics (a marked ceiling).
+  `12.0`/`13.0`. **The backend is one pure-Rust stack** (`text-backend-drop-fontdue`):
+  `fontdue` is removed — glyph count, character lookup, and ascent now come from
+  `ttf-parser` (reached through `rustybuzz`) — leaving `rustybuzz` (shape),
+  `swash` (raster), and `ttf-parser` (metrics), with no C.
   Remaining: transform/warp and a Qt live-composite path.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
