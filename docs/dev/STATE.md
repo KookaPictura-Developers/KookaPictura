@@ -68,7 +68,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `text-backend-drop-fontdue`, and
     `psd-tagged-block-8b64`, and
     `bit-depth-sample-model`, and
-    `native-depth-adjustments`
+    `native-depth-adjustments`, and
+    `native-depth-color-adjustments`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -939,10 +940,14 @@ Snapshot for resuming after a context break. Update after each milestone.
   `Posterize`/`Threshold`/`GradientMap` on a `Samples` store in a unit-domain
   `f64` kernel (the 8-bit `apply` is byte-identical; ImageMagick oracle unmoved),
   and a depth-16 edit saved and re-read keeps its low bits instead of the
-  widen-on-edit `high*257`. Ceilings: the color family
-  (`HueSaturation`…`ColorLookup`) and the fill kinds return `Unsupported` at
-  native depth, there is no app/UI wiring yet, no HDR tone map, retained samples
-  cost 2×/4× while open and the write path clones each retained plane.
+  widen-on-edit `high*257`. The color-preserving family now applies natively too
+  (`native-depth-color-adjustments`: `HueSaturation`, `Vibrance`, `ColorBalance`,
+  `BlackWhite`, `PhotoFilter`, `ChannelMixer`, `SelectiveColor`), still
+  byte-identical on u8 (Selective Color keeps its 8-bit integer pipeline, a
+  marked ceiling). Ceilings: `Auto`, `ColorLookup`, and the fill kinds return
+  `Unsupported` at native depth, there is no app/UI wiring yet, no HDR tone map,
+  retained samples cost 2×/4× while open and the write path clones each retained
+  plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
