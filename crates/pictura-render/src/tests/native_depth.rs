@@ -1,7 +1,8 @@
 use super::*;
 use crate::composite::{Canvas, Px};
+use crate::composite_native::mask_alpha_unit;
 use pictura_adjust::{Adjustment, AutoKind};
-use pictura_core::{Samples, SourceChannels};
+use pictura_core::{LayerMask, Samples, SourceChannels};
 
 fn levels_layer(output_white: u16, opacity: u8) -> Layer {
     let mut data = 2u16.to_be_bytes().to_vec();
@@ -244,4 +245,104 @@ fn depth16_layer_without_matching_store_falls_back() {
     );
     none.source_depth = Some(BitDepth::Sixteen);
     assert_native_is_widen(&none);
+}
+
+/// A 1x1 red layer carrying `mask_byte` as its 8-bit mask, and a native `-2`
+/// sample when `native` is `Some`.
+fn masked_red(mask_byte: u8, native: Option<u16>) -> Layer {
+    let mut layer = solid(
+        "masked",
+        full(1, 1),
+        (255, 0, 0),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    layer.mask = Some(LayerMask {
+        rect: full(1, 1),
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: Some(vec![mask_byte]),
+        ..Default::default()
+    });
+    if let Some(sample) = native {
+        layer.source_channels = Some(SourceChannels::new(
+            BitDepth::Sixteen,
+            layer.rect,
+            vec![(-2, Samples::U16(vec![sample]))],
+        ));
+    }
+    layer
+}
+
+#[test]
+fn depth16_native_mask_gates_differently_from_the_widened_8bit_mask() {
+    let mut native_doc = doc(1, 1, vec![masked_red(50, Some(65000))]);
+    native_doc.source_depth = Some(BitDepth::Sixteen);
+    let mut widened_doc = doc(1, 1, vec![masked_red(50, None)]);
+    widened_doc.source_depth = Some(BitDepth::Sixteen);
+
+    assert_ne!(
+        composite_rgba(&native_doc).data,
+        composite_rgba(&widened_doc).data,
+        "the native mask must gate differently from the widened 8-bit mask"
+    );
+}
+
+#[test]
+fn mask_alpha_unit_matches_the_eight_bit_fallbacks() {
+    let plain = solid("l", full(1, 1), (10, 20, 30), 255, BlendMode::Normal, 255);
+    let mut d = doc(1, 1, vec![plain.clone()]);
+    d.source_depth = Some(BitDepth::Sixteen);
+
+    assert_eq!(
+        mask_alpha_unit(&d, &plain, 0, 0),
+        1.0,
+        "no mask is full coverage"
+    );
+
+    let mut disabled = plain.clone();
+    disabled.mask = Some(LayerMask {
+        rect: full(1, 1),
+        default_color: 0,
+        disabled: true,
+        flags: 0,
+        data: Some(vec![0]),
+        ..Default::default()
+    });
+    assert_eq!(mask_alpha_unit(&d, &disabled, 0, 0), 1.0, "disabled mask");
+
+    let mut no_data = plain.clone();
+    no_data.mask = Some(LayerMask {
+        rect: full(1, 1),
+        default_color: 0,
+        disabled: false,
+        flags: 0,
+        data: None,
+        ..Default::default()
+    });
+    assert_eq!(mask_alpha_unit(&d, &no_data, 0, 0), 1.0, "data-less mask");
+
+    let mut out_of_rect = plain.clone();
+    out_of_rect.mask = Some(LayerMask {
+        rect: rect(5, 5, 6, 6),
+        default_color: 200,
+        disabled: false,
+        flags: 0,
+        data: Some(vec![7]),
+        ..Default::default()
+    });
+    assert_eq!(
+        mask_alpha_unit(&d, &out_of_rect, 0, 0),
+        200.0 / 255.0,
+        "outside the mask rect uses the default colour"
+    );
+
+    let eight = doc(1, 1, vec![plain.clone()]);
+    assert_eq!(
+        mask_alpha_unit(&eight, &plain, 0, 0),
+        crate::composite::mask_alpha(&plain, 0, 0) as f32 / 255.0,
+        "an 8-bit document keeps the rounded mask_alpha path"
+    );
 }

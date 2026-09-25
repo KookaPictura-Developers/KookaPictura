@@ -9,7 +9,7 @@ use pictura_core::{
 };
 
 pub(crate) use crate::blend::blend;
-use crate::composite_native::{composite_adjustment, native_unit};
+use crate::composite_native::{composite_adjustment, mask_alpha_unit, native_unit};
 
 /// Composite the document's layer stack.
 ///
@@ -272,12 +272,12 @@ fn composite_layer_inner(
         for child in &layer.children {
             composite_layer(&mut inner, child, doc, ko_base.as_ref());
         }
-        composite_canvas(canvas, layer, &inner);
+        composite_canvas(canvas, layer, doc, &inner);
     } else if let Some(adjustment) = crate::fill::decode_layer_fill(layer) {
         composite_adjustment(canvas, layer, doc, &adjustment);
     } else if layer.adjustment.is_none()
-        && !composite_smart_source(canvas, layer, layer.smart_object.as_ref())
-        && !crate::text_render::composite_type_source(canvas, layer)
+        && !composite_smart_source(canvas, layer, doc)
+        && !crate::text_render::composite_type_source(canvas, layer, doc)
     {
         // A layer with no decoded fill but an adjustment block is a no-op here
         // (the guard above). With no adjustment block a channel-less layer (for
@@ -340,7 +340,7 @@ fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
             };
             let a = native_unit(layer, doc, -1, li)
                 .unwrap_or_else(|| sample(alpha, li).unwrap_or(255) as f32 / 255.0);
-            blend_into(canvas, layer, x as usize, y as usize, [r, g, b], a);
+            blend_into(canvas, layer, doc, x as usize, y as usize, [r, g, b], a);
         }
     }
 }
@@ -443,12 +443,11 @@ pub(crate) fn render_smart_source(
 /// Render a layer from its embedded smart-object source when it has no raster
 /// proxy, scaling the decoded source into the layer rect. Returns `true` when
 /// it produced pixels, so the caller skips the (empty) channel path.
-///
 /// `External`/`Alias`/`Unresolved`, an empty payload, or a decode failure
 /// returns `false`; the caller then tries the normal path, which draws nothing
 /// for a channel-less layer.
-fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, so: Option<&SmartObject>) -> bool {
-    let Some(so) = so else {
+fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, doc: &Document) -> bool {
+    let Some(so) = layer.smart_object.as_ref() else {
         return false;
     };
     if channel(layer, 0).is_some() {
@@ -476,6 +475,7 @@ fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, so: Option<&SmartO
             blend_into(
                 canvas,
                 layer,
+                doc,
                 region.left as usize + bx,
                 region.top as usize + by,
                 [
@@ -490,12 +490,13 @@ fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, so: Option<&SmartO
     true
 }
 
-fn composite_canvas(canvas: &mut Canvas, layer: &Layer, inner: &Canvas) {
+fn composite_canvas(canvas: &mut Canvas, layer: &Layer, doc: &Document, inner: &Canvas) {
     for y in canvas.y0()..canvas.y1() {
         for x in canvas.x0()..canvas.x1() {
-            let p = inner.px[inner.idx(x as usize, y as usize)];
+            let (x, y) = (x as usize, y as usize);
+            let p = inner.px[inner.idx(x, y)];
             if p.a > 0.0 {
-                blend_into(canvas, layer, x as usize, y as usize, [p.r, p.g, p.b], p.a);
+                blend_into(canvas, layer, doc, x, y, [p.r, p.g, p.b], p.a);
             }
         }
     }
@@ -1074,11 +1075,11 @@ pub(crate) fn blend_if_factor(view: Option<&BlendIf>, cs: [f32; 3], backdrop: [f
     factor
 }
 
-/// Composite one source sample over the running backdrop, applying the layer's
-/// opacity, fill (ignored for groups) and mask to the source alpha.
+/// Composite one source sample over the backdrop with the layer's opacity, fill, mask, and gate.
 pub(crate) fn blend_into(
     canvas: &mut Canvas,
     layer: &Layer,
+    doc: &Document,
     x: usize,
     y: usize,
     cs: [f32; 3],
@@ -1090,7 +1091,7 @@ pub(crate) fn blend_into(
     } else {
         layer.fill as f32 / 255.0
     };
-    let mask = mask_alpha(layer, x as i32, y as i32) as f32 / 255.0;
+    let mask = mask_alpha_unit(doc, layer, x as i32, y as i32);
     let gate = match layer.blend_if.as_ref() {
         Some(view) if !view.is_default() => {
             let backdrop = canvas.px[canvas.idx(x, y)];
@@ -1108,8 +1109,7 @@ pub(crate) fn blend_into(
     );
 }
 
-/// Composite one already-opacity-weighted source sample over the running
-/// backdrop with the given blend mode. Shared by content and layer effects.
+/// Composite an opacity-weighted source sample over the backdrop with a blend mode.
 pub(crate) fn blend_parts(
     canvas: &mut Canvas,
     x: usize,
@@ -1180,7 +1180,7 @@ pub(crate) fn mask_alpha(layer: &Layer, x: i32, y: i32) -> u8 {
 }
 
 /// The raster layer-mask sample at a canvas pixel; `255` when absent/disabled.
-fn raster_mask_alpha(layer: &Layer, x: i32, y: i32) -> u8 {
+pub(crate) fn raster_mask_alpha(layer: &Layer, x: i32, y: i32) -> u8 {
     let Some(mask) = &layer.mask else {
         return 255;
     };

@@ -355,7 +355,11 @@ fn paint_layout(
 ///
 /// ponytail: axis-aligned placement at the layer rect, first-run style — the
 /// bundled renderer; add transform/rotation when the type model carries one.
-pub(crate) fn composite_type_source(canvas: &mut crate::composite::Canvas, layer: &Layer) -> bool {
+pub(crate) fn composite_type_source(
+    canvas: &mut crate::composite::Canvas,
+    layer: &Layer,
+    doc: &Document,
+) -> bool {
     let Some(type_tool) = layer.type_tool.as_ref() else {
         return false;
     };
@@ -386,6 +390,7 @@ pub(crate) fn composite_type_source(canvas: &mut crate::composite::Canvas, layer
             crate::composite::blend_into(
                 canvas,
                 layer,
+                doc,
                 region.left as usize + bx,
                 region.top as usize + by,
                 [
