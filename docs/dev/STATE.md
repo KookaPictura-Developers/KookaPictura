@@ -675,7 +675,13 @@ Snapshot for resuming after a context break. Update after each milestone.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
-  duotone spec), and an unchanged flat document saves back as mode 8.
+  duotone spec), and an unchanged flat document saves back as mode 8. The
+  **Duotone Options block is now decoded** (`pictura_codec::parse_duotone`,
+  change `duotone-spec-parse`): version, plate count, up to four ink color/name/
+  13-point-curve/override records, dot gain, and the 0/1/4/11 overprint colors,
+  grounded on the Adobe spec and `psdparse`. Rendering the duotone into the
+  composite stays open (Photoshop's edit model is single-channel gray and the
+  multi-ink compositing is unpublished).
   Multichannel opens only for header channel counts 1 or 3 at depth 8: 1 channel
   maps like grayscale; 3 channels map as profile-free CMY→RGB (`255-x`, marked
   ungrounded). Unchanged flat Multichannel saves back as mode 7 with retained
