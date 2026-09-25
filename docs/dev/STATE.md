@@ -73,7 +73,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `native-depth-composite`, and
     `native-depth-layer-content`, and
     `native-depth-remaining-adjustments`, and
-    `native-depth-masks`
+    `native-depth-masks`, and
+    `native-depth-save`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -963,9 +964,15 @@ Snapshot for resuming after a context break. Update after each milestone.
   u8 stays byte-identical), so the only native-unsupported adjustments are the
   generative fill kinds. A high-depth layer also gates on its native `-2` mask
   plane (`native-depth-masks`; unit-space raster×vector, falling back to the
-  exact 8-bit `mask_alpha` when there is no native plane). Ceilings: there is no
-  app/UI wiring yet, no HDR tone map, retained samples cost 2×/4× while open and
-  the write path clones each retained plane.
+  exact 8-bit `mask_alpha` when there is no native plane). A dirty save of a
+  16/32-bit RGB/Grayscale layered document now re-emits its composite color
+  planes from `composite_native` (`native-depth-save`:
+  `pictura_render::refresh_native_composite` splices native color planes into the
+  retained store and refreshes `doc.composite`; a clean, no-layer, or
+  converted-mode save is untouched, so the codec depth oracles stay
+  byte-identical). Ceilings: a moved/edited layer channel still widens, no HDR
+  tone map, retained samples cost 2×/4× while open and the write path clones each
+  retained plane.
 - **Lab write-back** (roadmap P4/G2, archived `2026-09-23-color-mode-write-back`):
   an 8-bit Lab PSD no longer converts to RGB on save. `read_psd` retains the
   pre-normalization Lab color planes (composite and every layer color channel,
