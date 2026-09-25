@@ -35,6 +35,9 @@ pub use composite::{
     encode_hue_saturation, encode_invert, encode_photo_filter, encode_posterize,
     encode_solid_color_fill, encode_threshold,
 };
+
+mod composite_native;
+pub use composite_native::composite_native;
 pub use pictura_adjust::{GradientFillParams, GradientKind, GradientStop, PatternFillParams};
 
 mod color_balance;

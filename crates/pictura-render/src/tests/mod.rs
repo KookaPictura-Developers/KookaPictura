@@ -11,6 +11,7 @@ mod blend;
 mod composite;
 mod gradient_fill;
 mod layer_effects;
+mod native_depth;
 mod pattern_fill;
 mod raster_import;
 mod rasterize;

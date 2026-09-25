@@ -9,6 +9,7 @@ use pictura_core::{
 };
 
 pub(crate) use crate::blend::blend;
+use crate::composite_native::composite_adjustment;
 
 /// Composite the document's layer stack.
 ///
@@ -22,7 +23,7 @@ pub fn composite_rgba(doc: &Document) -> PixelBuffer {
 
 /// Composite `doc.layers` (bottom-first) onto `canvas`, applying each non-bottom
 /// layer's knockout against the document background.
-fn composite_layers(canvas: &mut Canvas, doc: &Document) {
+pub(crate) fn composite_layers(canvas: &mut Canvas, doc: &Document) {
     let base = knockout_base(canvas, doc);
     for (i, layer) in doc.layers.iter().enumerate() {
         let base = if i == 0 { None } else { base.as_ref() };
@@ -122,11 +123,11 @@ fn slice_region(
 /// ponytail: one full-document f32 buffer; streaming/tiled compositing is the
 /// ceiling to raise when PSB-size docs no longer fit in memory.
 #[derive(Clone, Copy, Default)]
-struct Px {
-    r: f32,
-    g: f32,
-    b: f32,
-    a: f32,
+pub(crate) struct Px {
+    pub(crate) r: f32,
+    pub(crate) g: f32,
+    pub(crate) b: f32,
+    pub(crate) a: f32,
 }
 
 pub(crate) struct Canvas {
@@ -136,7 +137,7 @@ pub(crate) struct Canvas {
     pub(crate) ox: i32,
     /// Document y of canvas row 0.
     pub(crate) oy: i32,
-    px: Vec<Px>,
+    pub(crate) px: Vec<Px>,
     /// Per-pixel "the layer contributed here" flag, set only for the temporary
     /// canvas a knockout layer composites into. `None` on the output canvas so
     /// the normal path stays allocation-free.
@@ -188,7 +189,7 @@ impl Canvas {
     }
 
     /// The accumulator index of document pixel `(x, y)`.
-    fn idx(&self, x: usize, y: usize) -> usize {
+    pub(crate) fn idx(&self, x: usize, y: usize) -> usize {
         debug_assert!((x as i32) >= self.ox && (y as i32) >= self.oy);
         (y as i32 - self.oy) as usize * self.w + (x as i32 - self.ox) as usize
     }
@@ -206,7 +207,7 @@ impl Canvas {
     }
 }
 
-fn to_u8(v: f32) -> u8 {
+pub(crate) fn to_u8(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
@@ -1039,61 +1040,6 @@ fn encode_short(key: [u8; 4], value: u16) -> AdjustmentData {
     let mut data = value.to_be_bytes().to_vec();
     data.extend_from_slice(&[0, 0]);
     AdjustmentData { key, data }
-}
-
-/// Apply a decoded adjustment to the running backdrop, then gate the result by
-/// the layer's mask/opacity/blend (Photoshop applies the adjustment to the
-/// backdrop and blends the adjusted result back).
-fn composite_adjustment(
-    canvas: &mut Canvas,
-    layer: &Layer,
-    doc: &Document,
-    adjustment: &Adjustment,
-) {
-    // Fill content is generative: it adds color inside the layer's rect instead
-    // of transforming the backdrop, so it takes the normal-content path.
-    if let Adjustment::SolidFill(rgba) = adjustment {
-        crate::fill::composite_solid_fill(canvas, layer, *rgba);
-        return;
-    }
-    if let Adjustment::GradientFill(params) = adjustment {
-        crate::fill::composite_gradient_fill(canvas, layer, params);
-        return;
-    }
-    if let Adjustment::PatternFill(params) = adjustment {
-        crate::fill::composite_pattern_fill(canvas, layer, doc, params);
-        return;
-    }
-    let n = canvas.w * canvas.h;
-    if n == 0 {
-        return;
-    }
-    let mut buf = PixelBuffer::new(canvas.w as u32, canvas.h as u32, 3);
-    for (i, p) in canvas.px.iter().enumerate() {
-        buf.data[i] = to_u8(p.r);
-        buf.data[n + i] = to_u8(p.g);
-        buf.data[2 * n + i] = to_u8(p.b);
-    }
-    if pictura_adjust::apply(adjustment, &mut buf).is_err() {
-        return; // invalid/unsupported parameters: no-op, never an error
-    }
-    for y in canvas.y0()..canvas.y1() {
-        for x in canvas.x0()..canvas.x1() {
-            let i = canvas.idx(x as usize, y as usize);
-            // Source coverage is the backdrop's own alpha: an adjustment adds no
-            // content where the backdrop is transparent.
-            let backdrop_alpha = canvas.px[i].a;
-            if backdrop_alpha <= 0.0 {
-                continue;
-            }
-            let cs = [
-                buf.data[i] as f32 / 255.0,
-                buf.data[n + i] as f32 / 255.0,
-                buf.data[2 * n + i] as f32 / 255.0,
-            ];
-            blend_into(canvas, layer, x as usize, y as usize, cs, backdrop_alpha);
-        }
-    }
 }
 
 /// The Blend If weight for a source colour over a running backdrop: `1.0` when
