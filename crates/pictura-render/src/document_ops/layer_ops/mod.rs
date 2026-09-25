@@ -20,6 +20,7 @@ mod transform;
 #[cfg(test)]
 mod transform_tests;
 mod via;
+mod warp;
 
 pub use create::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
@@ -48,3 +49,4 @@ pub use smart_object::{
 };
 pub use transform::{transform_layer, transform_layer_quad, LayerTransform};
 pub use via::{layer_via_copy, layer_via_cut};
+pub use warp::{identity_mesh, transform_layer_warp, WarpMesh, WarpParams};

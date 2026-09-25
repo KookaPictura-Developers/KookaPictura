@@ -257,15 +257,17 @@ fn solve_homography(src: [(f64, f64); 4], dst: [(f64, f64); 4]) -> Option<QuadMa
 // here if transforms of near-PSB-limit layers ever matter.
 const MAX_RESULT_PIXELS: u64 = 1 << 30;
 
-/// Integer bounding box of the four transformed corners, or `None` when the
-/// result is empty, out of `i32` range, or implausibly large.
-fn bounding_box<M: PlaneMap>(map: &M, rect: PsdRect) -> Option<(i32, i32, i32, i32)> {
+/// Integer bounding box of four or more document-space points, or `None` when
+/// the result is empty, out of `i32` range, or implausibly large.
+pub(super) fn integer_bbox(points: &[(f64, f64)]) -> Option<(i32, i32, i32, i32)> {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
     let mut max_y = f64::NEG_INFINITY;
-    for (x, y) in source_corners(rect) {
-        let (px, py) = map.forward(x, y)?;
+    for &(px, py) in points {
+        if !px.is_finite() || !py.is_finite() {
+            return None;
+        }
         min_x = min_x.min(px);
         min_y = min_y.min(py);
         max_x = max_x.max(px);
@@ -294,11 +296,21 @@ fn bounding_box<M: PlaneMap>(map: &M, rect: PsdRect) -> Option<(i32, i32, i32, i
     Some((left, top, right, bottom))
 }
 
+/// Integer bounding box of the four transformed corners, or `None` when the
+/// result is empty, out of `i32` range, or implausibly large.
+fn bounding_box<M: PlaneMap>(map: &M, rect: PsdRect) -> Option<(i32, i32, i32, i32)> {
+    let mut points = [(0.0, 0.0); 4];
+    for (out, (x, y)) in points.iter_mut().zip(source_corners(rect)) {
+        *out = map.forward(x, y)?;
+    }
+    integer_bbox(&points)
+}
+
 /// Inverse-mapped bilinear sample of a `w×h` plane at source-local `(lx, ly)`.
 ///
 /// The caller has already checked `0 <= lx < w` and `0 <= ly < h`; taps are
 /// edge-clamped.
-fn bilinear(src: &[u8], w: usize, h: usize, lx: f64, ly: f64) -> u8 {
+pub(super) fn bilinear(src: &[u8], w: usize, h: usize, lx: f64, ly: f64) -> u8 {
     let u = lx - 0.5;
     let v = ly - 0.5;
     let x0f = u.floor();
@@ -421,48 +433,44 @@ fn transform_mask<M: PlaneMap>(mask: &LayerMask, layer_map: &M) -> Option<LayerM
     })
 }
 
-/// Shared refusal / materialization / resample / write path for both ops.
-///
-/// `build_map` validates the warp for the layer rect and returns its plane map
-/// (`None` refuses). `pure_translate` selects whether an unmodeled raw channel
-/// stream survives (a similarity integer move) or is dropped. Mutates `doc` only
-/// after every refusal has passed, so a refused call is bit-identical.
-fn apply_layer_map<M, F>(doc: &mut Document, path: &str, build_map: F, pure_translate: bool) -> bool
-where
-    M: PlaneMap,
-    F: Fn(PsdRect) -> Option<M>,
-{
-    let Some(layer) = resolve_path(doc, path) else {
-        return false;
-    };
+/// A validated transform target with its materialized source planes.
+pub(super) struct Prepared {
+    pub(super) rect: PsdRect,
+    pub(super) w: i32,
+    pub(super) h: i32,
+    pub(super) source_channels: Vec<Channel>,
+    pub(super) mask: Option<LayerMask>,
+    pub(super) materialize: bool,
+    pub(super) old_uuid: String,
+}
+
+/// Resolve `path` and apply the shared refusal rules, materializing a
+/// channel-less embedded smart object. `None` refuses without mutation.
+pub(super) fn prepare_layer(doc: &Document, path: &str) -> Option<Prepared> {
+    let layer = resolve_path(doc, path)?;
     if layer.is_group
         || layer.adjustment.is_some()
         || layer.background
         || layer.lock.contains(LockFlags::POSITION)
     {
-        return false;
+        return None;
     }
     let rect = layer.rect;
-    let w = rect.width();
-    let h = rect.height();
+    let (w, h) = (rect.width(), rect.height());
     if w <= 0 || h <= 0 {
-        return false;
+        return None;
     }
     let plane = (w as usize) * (h as usize);
-
     // A channel-bearing layer (e.g. a placed image) keeps its smart_object
     // payload and preserved blocks: the original source survives as the proxy's
     // cache and Replace re-renders from a new source. Only a channel-less target
     // is consumed below.
     let materialize = !layer.channels.iter().any(|c| c.id == 0);
-    let source_channels: Vec<Channel> = if materialize {
-        match materialized_channels(doc, layer) {
-            Some(channels) => channels,
-            None => return false,
-        }
+    let source_channels = if materialize {
+        materialized_channels(doc, layer)?
     } else {
         if layer.channels.iter().any(|c| c.data.len() != plane) {
-            return false;
+            return None;
         }
         layer.channels.clone()
     };
@@ -471,23 +479,29 @@ where
         .as_ref()
         .map(|so| so.uuid.clone())
         .unwrap_or_default();
+    Some(Prepared {
+        rect,
+        w,
+        h,
+        source_channels,
+        mask: layer.mask.clone(),
+        materialize,
+        old_uuid,
+    })
+}
 
-    let Some(map) = build_map(rect) else {
-        return false;
-    };
-    let Some(dest) = bounding_box(&map, rect) else {
-        return false;
-    };
-    let new_channels: Vec<Channel> = source_channels
-        .iter()
-        .map(|c| Channel {
-            id: c.id,
-            data: resample_plane(&c.data, w as usize, h as usize, &map, rect, dest),
-        })
-        .collect();
-    let new_mask = layer.mask.as_ref().and_then(|m| transform_mask(m, &map));
-
-    let layer = resolve_path_mut(doc, path).expect("resolved above");
+/// Write a resampled channel set and rect back to the layer at `path`, applying
+/// the raw-channel rule and consuming a materialized smart object.
+pub(super) fn write_layer(
+    doc: &mut Document,
+    path: &str,
+    prepared: &Prepared,
+    new_channels: Vec<Channel>,
+    dest: (i32, i32, i32, i32),
+    new_mask: Option<LayerMask>,
+    pure_translate: bool,
+) -> bool {
+    let layer = resolve_path_mut(doc, path).expect("resolved by prepare_layer");
     layer.channels = new_channels;
     layer.rect = PsdRect {
         top: dest.1,
@@ -503,27 +517,76 @@ where
         }
     } else {
         // ponytail: a raw plane cannot be resampled, so scale/rotate/fractional
-        // moves and any projective map drop unmodeled channels.
+        // moves, a projective map, and a mesh warp drop unmodeled channels.
         layer.raw_channels.clear();
         layer.source_channels = None;
     }
     if let Some(mask) = new_mask {
         layer.mask = Some(mask);
     }
-    if materialize {
+    if prepared.materialize {
         layer
             .extra_blocks
             .retain(|block| !matches!(&block.key, b"SoLd" | b"SoLE" | b"plLd" | b"PlLd"));
         layer.smart_object = None;
-        if !old_uuid.is_empty() {
-            if let Some(cleaned) =
-                pictura_codec::remove_linked_source(&doc.layer_section_extra, &old_uuid, doc.is_psb)
-            {
+        if !prepared.old_uuid.is_empty() {
+            if let Some(cleaned) = pictura_codec::remove_linked_source(
+                &doc.layer_section_extra,
+                &prepared.old_uuid,
+                doc.is_psb,
+            ) {
                 doc.layer_section_extra = cleaned;
             }
         }
     }
     true
+}
+
+/// Shared refusal / materialization / resample / write path for both ops.
+///
+/// `build_map` validates the warp for the layer rect and returns its plane map
+/// (`None` refuses). `pure_translate` selects whether an unmodeled raw channel
+/// stream survives (a similarity integer move) or is dropped. Mutates `doc` only
+/// after every refusal has passed, so a refused call is bit-identical.
+fn apply_layer_map<M, F>(doc: &mut Document, path: &str, build_map: F, pure_translate: bool) -> bool
+where
+    M: PlaneMap,
+    F: Fn(PsdRect) -> Option<M>,
+{
+    let Some(prepared) = prepare_layer(doc, path) else {
+        return false;
+    };
+    let Some(map) = build_map(prepared.rect) else {
+        return false;
+    };
+    let Some(dest) = bounding_box(&map, prepared.rect) else {
+        return false;
+    };
+    let new_channels: Vec<Channel> = prepared
+        .source_channels
+        .iter()
+        .map(|c| Channel {
+            id: c.id,
+            data: resample_plane(
+                &c.data,
+                prepared.w as usize,
+                prepared.h as usize,
+                &map,
+                prepared.rect,
+                dest,
+            ),
+        })
+        .collect();
+    let new_mask = prepared.mask.as_ref().and_then(|m| transform_mask(m, &map));
+    write_layer(
+        doc,
+        path,
+        &prepared,
+        new_channels,
+        dest,
+        new_mask,
+        pure_translate,
+    )
 }
 
 /// Apply a similarity transform to the layer at `path`.

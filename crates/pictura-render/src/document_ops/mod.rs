@@ -19,14 +19,15 @@ pub use layer_ops::{
     can_merge_scope, can_merge_target, can_move_path_to, can_rasterize_smart_object,
     can_replace_smart_object_contents, convert_to_smart_object, delete_hidden_layers, delete_paths,
     duplicate_layer, duplicate_paths, flatten, flatten_rows, group_layer, group_paths,
-    is_background, is_fill_content_layer, is_visible_in_panel, layer_from_background,
-    layer_via_copy, layer_via_cut, merge_scope, move_path, move_path_to, move_selection_content,
-    neutral_color, next_layer_name, open_as_smart_object, parent_path, place_smart_object,
-    rasterize_all_layers, rasterize_fill_content, rasterize_smart_object, rename_path,
-    replace_smart_object_contents, resolve_path, resolve_path_mut, select_similar, set_blend_paths,
-    set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths, set_visible_paths,
-    smart_object_source_bytes, transform_layer, transform_layer_quad, ungroup_layer, ungroup_paths,
-    LayerTransform, MergeError, MergeOutcome, MergeScope, NewLayerSpec,
+    identity_mesh, is_background, is_fill_content_layer, is_visible_in_panel,
+    layer_from_background, layer_via_copy, layer_via_cut, merge_scope, move_path, move_path_to,
+    move_selection_content, neutral_color, next_layer_name, open_as_smart_object, parent_path,
+    place_smart_object, rasterize_all_layers, rasterize_fill_content, rasterize_smart_object,
+    rename_path, replace_smart_object_contents, resolve_path, resolve_path_mut, select_similar,
+    set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths,
+    set_visible_paths, smart_object_source_bytes, transform_layer, transform_layer_quad,
+    transform_layer_warp, ungroup_layer, ungroup_paths, LayerTransform, MergeError, MergeOutcome,
+    MergeScope, NewLayerSpec, WarpMesh, WarpParams,
 };
 pub use orient::{flip_document, rotate_document};
 pub use resize::resize_document;
