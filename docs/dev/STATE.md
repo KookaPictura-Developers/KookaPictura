@@ -63,7 +63,8 @@ Snapshot for resuming after a context break. Update after each milestone.
     `knockout-groups`, and
     `knockout-isolated-groups`, and
     `text-shaping-rustybuzz`, and
-    `text-shaping-offsets`
+    `text-shaping-offsets`, and
+    `text-subpixel-positioning`
     changes;
     canonical specs are in `openspec/specs/` (93 specs, `validate --all --strict`
    green), change history under `openspec/changes/archive/`; no change is open.
@@ -585,7 +586,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   shapes/lays out a type layer's `TypeTool` text+style, paints the glyph
   coverage in the fill colour into fresh `0/1/2/-1` channels, removes `TySh`,
   and clears `type_tool`; a refusal (no style, zero area, nothing painted)
-  leaves the document unchanged. Ceilings (`ponytail:`): no warp/rotation, integer glyph placement ignores subpixel,
+  leaves the document unchanged. Ceilings (`ponytail:`): no warp/rotation,
   the file name is a substitution. Proven by six render unit tests. The app
   `Rasterize Type` command and the optional Qt backend are deferred follow-ups.
   Adds the `fontdue` dependency (pure Rust, no C deps, keeps the engine
@@ -629,12 +630,18 @@ Snapshot for resuming after a context break. Update after each milestone.
   `shape_line` shapes each line with `rustybuzz` (a pure-Rust HarfBuzz port,
   `rustybuzz = "0.20"`, no C), so the font's `kern`/GPOS applies — `AV` at 48 px
   advances 60.47 instead of 64.03 — and provenance records
-  `rustybuzz/fontdue`. `ShapedGlyph` now also carries the shaper's `x_offset`/
+  `rustybuzz/swash`. `ShapedGlyph` now also carries the shaper's `x_offset`/
   `y_offset` (`text-shaping-offsets`), applied by `layout_lines` (glyph at
   `pen + x_offset`, `baseline - y_offset`, pen advanced by the advance alone) and
   painted per glyph — so GPOS mark positioning carries through; plain Latin has
-  zero offsets, so existing output is byte-identical. Remaining: transform/warp,
-  subpixel placement, and a Qt live-composite path.
+  zero offsets, so existing output is byte-identical. **Subpixel positioning now
+  ships** (`text-subpixel-positioning`): the bundled glyphs rasterize with
+  `swash` (pure-Rust, honors a fractional offset via `Render::offset`), so
+  `RasterRequest.subpixel_x/y` is honored and `paint_layout` floors the pen and
+  passes the fraction; `'A'`@48px places identically to the old fontdue mask, a
+  `0.0` vs `0.5` offset changes the coverage/width, and a `12.5` pen differs from
+  `12.0`/`13.0`. `fontdue` is retained only for glyph metrics (a marked ceiling).
+  Remaining: transform/warp and a Qt live-composite path.
 - **Multichannel and Duotone read** (roadmap P4/G2/G3, change
   `multichannel-duotone-read`): header modes 7 and 8 now open. Duotone normalizes
   like grayscale, retains the plane and `color_mode_data` (the undocumented
