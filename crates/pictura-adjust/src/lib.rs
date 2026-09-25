@@ -13,6 +13,7 @@ mod apply;
 mod auto;
 mod color;
 mod common;
+mod hdr_toning;
 mod lut;
 mod native;
 mod tonal;
@@ -22,6 +23,7 @@ mod types;
 mod tests;
 
 pub use apply::apply;
+pub use hdr_toning::{exposure_gamma, ExposureGamma};
 pub use lut::parse_cube;
 pub use native::apply_native;
 pub use types::{
