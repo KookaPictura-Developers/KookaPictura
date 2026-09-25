@@ -837,12 +837,22 @@ fn background_flag_round_trips_and_is_derived_on_read() {
 /// Assemble a 1x1 RGB PSD with one channel-less layer whose record carries
 /// `flags` and the given hand-built tagged blocks.
 fn tagged_layer_psd(flags: u8, tags: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+    tagged_layer_psd_with_signature(b"8BIM", flags, tags)
+}
+
+/// As [`tagged_layer_psd`], but with an explicit tagged-block signature so a
+/// test can exercise `8B64` or a bogus one.
+fn tagged_layer_psd_with_signature(
+    signature: &[u8; 4],
+    flags: u8,
+    tags: &[(&[u8; 4], &[u8])],
+) -> Vec<u8> {
     let mut extra = Vec::new();
     extra.extend_from_slice(&0u32.to_be_bytes()); // mask data length
     extra.extend_from_slice(&0u32.to_be_bytes()); // blending ranges
     extra.extend_from_slice(&[1, b'L', 0, 0]); // pascal name "L"
     for (key, data) in tags {
-        extra.extend_from_slice(b"8BIM");
+        extra.extend_from_slice(signature);
         extra.extend_from_slice(*key);
         extra.extend_from_slice(&(data.len() as u32).to_be_bytes());
         extra.extend_from_slice(data);
@@ -909,6 +919,30 @@ fn reads_hand_built_attribute_tags_and_folds_legacy_flag() {
         "legacy bit folds in"
     );
     assert!(!layer.lock.contains(LockFlags::POSITION));
+}
+
+#[test]
+fn an_8b64_tagged_block_is_accepted_and_preserved() {
+    let payload = [1u8, 2, 3, 4];
+    let psd = tagged_layer_psd_with_signature(b"8B64", 0, &[(b"zzzz", &payload)]);
+    let doc = read_psd(&psd).expect("an 8B64 tagged block reads");
+    assert_eq!(
+        doc.layers[0].extra_block(b"zzzz").unwrap().data.as_slice(),
+        &payload
+    );
+
+    // The key and payload survive a round trip; the signature normalizes to 8BIM.
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    assert_eq!(
+        back.layers[0].extra_block(b"zzzz").unwrap().data.as_slice(),
+        &payload
+    );
+}
+
+#[test]
+fn a_bogus_tagged_block_signature_errors() {
+    let psd = tagged_layer_psd_with_signature(b"zzzz", 0, &[(b"zzzz", b"x")]);
+    assert!(read_psd(&psd).is_err());
 }
 
 #[test]
