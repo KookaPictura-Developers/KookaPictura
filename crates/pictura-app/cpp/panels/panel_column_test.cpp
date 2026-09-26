@@ -315,6 +315,16 @@ int PanelColumn::minimumWidthFloorForTest() const
     return gSharedFloor;
 }
 
+int PanelColumn::contentMinimumWidthForTest() const
+{
+    return (scroll_ && scroll_->widget()) ? scroll_->widget()->minimumSizeHint().width() : 0;
+}
+
+int PanelColumn::viewportWidthForTest() const
+{
+    return scroll_ ? scroll_->viewport()->width() : 0;
+}
+
 int PanelColumn::dropIndexForTest() const
 {
     return dropTarget_.onTabBar ? dropTarget_.tabIndex : dropTarget_.boundary;

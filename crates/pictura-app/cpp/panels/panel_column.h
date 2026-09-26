@@ -263,6 +263,8 @@ public:
     int horizontalScrollPolicyForTest() const;
     int horizontalScrollRangeForTest() const;
     int minimumWidthFloorForTest() const;
+    int contentMinimumWidthForTest() const;
+    int viewportWidthForTest() const;
     // M45 T3: the frame resolves a floating-Tools drop through this column's
     // grammar and shows the same `#2a7fff` new-column edge indicator.
     void showEdgeDropIndicator(PanelSide side);

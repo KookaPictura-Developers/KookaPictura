@@ -6491,7 +6491,13 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolbarFixCollapseDynamics();
             }
             ST_BEGIN("no_hscroll_off");
-            ST_PASS("no_hscroll off=%d range=%d", hScrollOff ? 1 : 0, hScrollZero ? 1 : 0);
+            ST_PASS("no_hscroll off=%d zero=%d range=%d min=%d floor=%d content=%d viewport=%d",
+                    hScrollOff ? 1 : 0, hScrollZero ? 1 : 0,
+                    panelColumnColumn ? panelColumnColumn->horizontalScrollRangeForTest() : -1,
+                    panelColumnColumn ? panelColumnColumn->minimumWidthForTest() : -1,
+                    panelColumnColumn ? panelColumnColumn->minimumWidthFloorForTest() : -1,
+                    panelColumnColumn ? panelColumnColumn->contentMinimumWidthForTest() : -1,
+                    panelColumnColumn ? panelColumnColumn->viewportWidthForTest() : -1);
             if (!(hScrollOff && hScrollZero)) {
                 ST_FAIL(191, "no hscroll");
             }
