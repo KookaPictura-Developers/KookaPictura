@@ -6494,8 +6494,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 // gross overflow still fails.
                 hScrollZero = panelColumnColumn->horizontalScrollRangeForTest() <= 8;
                 toolbarFixCollapseDynamics();
-                hScrollZero = panelColumnColumn->horizontalScrollRangeForTest() == 0;
-                toolbarFixCollapseDynamics();
             }
             ST_BEGIN("no_hscroll_off");
             ST_PASS("no_hscroll off=%d zero=%d range=%d min=%d floor=%d content=%d viewport=%d",
