@@ -1,6 +1,6 @@
 # Trademark and Attribution Notice
 
-Kooka Pictura is an independent, independent-creation project. It is not affiliated with,
+Kooka Pictura is an independent project. It is not affiliated with,
 endorsed, sponsored, or approved by Adobe Inc.
 
 **Adobe**, **Photoshop**, **Camera Raw**, **Adobe Camera Raw**, and
@@ -18,4 +18,13 @@ under the descriptive name **Pictura Raw**.
 The project ships no Adobe source code, binaries, fonts, ICC profiles, or
 creative assets. For the full trademark posture, independent-creation method, and asset
 policy, see
-[`docs/00-overview/licensing-and-independent-creation.md`](docs/00-overview/licensing-and-independent-creation.md).
+[`docs/00-overview/licensing-and-provenance.md`](docs/00-overview/licensing-and-provenance.md).
+
+## Licensing
+
+Kooka Pictura is free software, licensed under the **GNU General Public
+License v3.0 or later** (see [`LICENSE`](LICENSE)). It links the Qt 6
+framework under **LGPL-3.0-or-later** and a set of permissively licensed
+Rust crates. The resolved dependency licenses are listed in
+[`THIRD-PARTY-LICENSES`](THIRD-PARTY-LICENSES); the required texts are under
+[`LICENSES/`](LICENSES/).

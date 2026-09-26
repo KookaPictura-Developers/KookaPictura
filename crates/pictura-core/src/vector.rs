@@ -6,7 +6,7 @@
 /// How a subpath's interior is determined.
 ///
 /// Even-odd is the documented PSD default; non-zero is read only from the
-/// ag-psd fill-rule marker `2` and is not Adobe-documented.
+/// ag-psd fill-rule marker `2` and is not documented by the reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VectorFillRule {
     #[default]

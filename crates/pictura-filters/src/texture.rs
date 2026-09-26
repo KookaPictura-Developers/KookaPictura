@@ -1,7 +1,7 @@
 //! Texture filter family (`m25-*`).
 //!
 //! The CS6 Texture submenu: Craquelure, Grain, Mosaic Tiles, Patchwork, Stained
-//! Glass, Texturizer. Adobe's kernels are closed, so each is a behavioural model
+//! Glass, Texturizer. The reference's kernels are closed, so each is a behavioural model
 //! and carries a `ponytail:` note naming its ceiling. Seeded kernels take a
 //! `seed: u64` and are bit-repeatable; alpha is never modified.
 
@@ -238,7 +238,7 @@ pub fn craquelure(
 /// Grain: a seeded noise field shaped into ten distributions. Sprinkles and
 /// Stippled composite from `background`; `intensity` 0 is an exact no-op.
 ///
-/// ponytail: per-pixel white noise reshaped per type, not Adobe's correlated
+/// ponytail: per-pixel white noise reshaped per type, not the reference's correlated
 /// grain model; `Enlarged`/`Horizontal`/`Vertical` decimate the same field.
 pub fn grain(
     buf: &mut PixelBuffer,
@@ -292,7 +292,7 @@ pub fn grain(
 /// Mosaic Tiles: a jittered cell tessellation, each cell flat-filled with its
 /// averaged colour and separated by a grout band that `lighten_grout` lifts.
 ///
-/// ponytail: Voronoi chips with a distance-band grout, not Adobe's rectangular
+/// ponytail: Voronoi chips with a distance-band grout, not the reference's rectangular
 /// chip cutter; a rectangular variant would be a small swap in `tessellate`.
 pub fn mosaic_tiles(
     buf: &mut PixelBuffer,
@@ -333,7 +333,7 @@ pub fn mosaic_tiles(
 /// Patchwork: square blocks filled with the block mean and raised or lowered by
 /// `relief` with a diagonal bevel.
 ///
-/// ponytail: block mean stands in for Adobe's closed "predominant colour"
+/// ponytail: block mean stands in for the closed "predominant colour"
 /// statistic; a mode/median would drop in where `mean` is computed.
 pub fn patchwork(
     buf: &mut PixelBuffer,
@@ -396,7 +396,7 @@ pub fn patchwork(
 /// averaged colour and outlined in `foreground`; `light_intensity` lifts the
 /// cells.
 ///
-/// ponytail: Voronoi segmentation rather than Adobe's closed watershed; the
+/// ponytail: Voronoi segmentation rather than the closed watershed; the
 /// `cell_size`-scaled 3x3-site lookup keeps it tile-local and bounded.
 pub fn stained_glass(
     buf: &mut PixelBuffer,

@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-The Layers panel (`Window > Layers`, `F7`) is the dock that "lists all layers, layer groups, and layer effects in an image." It is the primary navigation surface for the layer stack: it shows/hides layers, creates layers and groups, and exposes the panel menu for the remaining commands. CS6 Help anatomy: **A** panel menu, **B** layer group, **C** layer, **D** expand/collapse layer effects, **E** layer effect, **F** layer thumbnail.
+The Layers panel (`Window > Layers`, `F7`) is the dock that enumerates every layer, layer group, and layer effect in the document. It is the primary navigation surface for the layer stack: it shows/hides layers, creates layers and groups, and exposes the panel menu for the remaining commands. CS6 Help anatomy: **A** panel menu, **B** layer group, **C** layer, **D** expand/collapse layer effects, **E** layer effect, **F** layer thumbnail.
 
 **Default placement (CS6 Essentials workspace).** The panel sits at the **bottom of the right-hand main panel column**, grouped as a tab set with **Channels** and **Paths**; Layers is the default-active tab. It is not open by default in any other group. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
 
@@ -26,7 +26,7 @@ The panel header carries, left to right: the **blend-mode popup**, the **Opacity
 
 Each row is drawn by a custom delegate. Left to right:
 
-- **Eye column** — visibility toggle. `Alt`/`Option`-click shows only that layer/group and remembers prior visibility; a second `Alt`-click restores it. Dragging through the eye column toggles successive rows. Right-click (Windows) / Control-click (Mac) the eye offers "show/hide this layer/layer group only or all layers/layer groups." Only visible layers print.
+- **Eye column** — visibility toggle. `Alt`/`Option`-click shows only that layer/group and remembers prior visibility; a second `Alt`-click restores it. Dragging through the eye column toggles successive rows. Right-click (Windows) / Control-click (Mac) the eye opens a menu to show or hide either that single layer/group or every layer/group. Only visible layers print.
 - **Thumbnail** — panel-wide size and content are set in `Panel Options` (`None` / small / medium / large; `Entire Document` or `Layer Bounds`). Clicking the thumbnail, as opposed to the row, selects the layer's non-transparent pixels as a document selection (`LAY-002`).
 - **Name** — inline rename on double-click; `Tab`/`Shift+Tab` in CS6 move to the next/previous layer while renaming. Shape-layer names reflect the tool used (e.g. "Rectangle 1"). Tooltips include the layer name.
 - **Color label** — CS6 sets it from the row's right-click context menu (CS5 used layer properties).

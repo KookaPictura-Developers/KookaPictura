@@ -77,7 +77,7 @@ pub(crate) fn vibrance(
         let (h, s, l) = rgb_to_hsl(*rv as f64 / 255.0, *gv as f64 / 255.0, *bv as f64 / 255.0);
         // Approximation: boost falls off as (1 - S) (the spec's `S*(1-S)` text
         // contradicts its own acceptance criteria) and is damped in the skin
-        // hue band. Adobe's exact falloff/skin model is closed.
+        // hue band. The exact falloff/skin model is closed.
         let keep = 1.0 - 0.5 * skin_bump(h);
         let s = (s + kv * (1.0 - s) * keep).clamp(0.0, 1.0);
         let s = (s * (1.0 + ks)).clamp(0.0, 1.0);
@@ -119,7 +119,7 @@ pub(crate) fn color_balance(
         let (ir, ig, ib) = (*rv as f64, *gv as f64, *bv as f64);
         let y = luma(ir, ig, ib) / 255.0;
         // Overlapping parabola windows: shadow=1 at Y=0, highlight=1 at Y=1,
-        // midtone peaks at Y=0.5. Adobe's exact falloffs are closed.
+        // midtone peaks at Y=0.5. The exact falloffs are closed.
         let sh = (1.0 - y) * (1.0 - y);
         let hi = y * y;
         let mid = (1.0 - sh - hi).max(0.0);
@@ -330,7 +330,7 @@ pub(crate) fn selective_color(
     }
     // ponytail: libpsd always runs the lossy profile-free RGB -> CMYK -> RGB
     // round-trip even with zero corrections (only 256 of 2^24 triples survive).
-    // Photoshop's zero-slider adjustment is a no-op, so return early; drop this
+    // The reference's zero-slider adjustment is a no-op, so return early; drop this
     // if byte parity with libpsd's round-trip is ever wanted.
     if p.ranges.iter().all(|r| *r == SelectiveRange::default()) {
         return Ok(());

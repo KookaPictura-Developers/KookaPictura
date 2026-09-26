@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-The **Brush panel** (`Window > Brush`, shortcut `F5`)  It is opened by that menu or  The **Brush Presets panel** (`Window > Brush Presets`) is the preset browser (`BRU-006`); the two are usually docked together.
+The **Brush panel** (`Window > Brush`, shortcut `F5`) holds the tip options that control how the brush applies paint to an image. It opens from that menu, or by selecting a painting, erasing, toning, or focus tool and clicking the panel button on the left side of the options bar. The **Brush Presets panel** (`Window > Brush Presets`) is the preset browser (`BRU-006`); the two are usually docked together.
 
 ### Anatomy
 
@@ -29,7 +29,7 @@ From the CS6 Help figure labels (A–H):
 
 ### Option sets and dynamic checkboxes
 
-The left side of the panel is a list of option **sets**. Selecting a set shows its parameters on the right.  The sets are the dynamics groups owned by `BRU-002`:
+The left side of the panel is a list of option **sets**. Selecting a set shows its parameters on the right. A checkbox to the left of each option set turns its options on or off without opening the set. The sets are the dynamics groups owned by `BRU-002`:
 
 | Option set | Enables |
 |---|---|

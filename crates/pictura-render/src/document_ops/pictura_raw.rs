@@ -1,9 +1,9 @@
-//! Pictura Raw document op: bake the Camera Raw Filter's Basic controls into a
+//! Pictura Raw document op: bake the filter's Basic controls into a
 //! smart-object layer's raster proxy.
 //!
 //! The layer's embedded source is rendered into its `rect`, filtered, and
 //! written back into the layer color channels (the proxy), matching how
-//! Photoshop stores a smart-filtered object. The filter settings are attached
+//! the reference stores a smart-filtered object. The filter settings are attached
 //! so they round-trip on save. ponytail: group/nested smart objects are not
 //! recursed into.
 

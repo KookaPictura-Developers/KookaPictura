@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-The **Channels panel** (`Window > Channels`)  A thumbnail of the channel contents sits left of the name and updates automatically as the channel is edited. Channel kinds:
+The **Channels panel** (`Window > Channels`) lists every channel in the image, with the composite channel first for RGB, CMYK, and Lab images. A thumbnail of the channel contents sits left of the name and updates automatically as the channel is edited. Channel kinds:
 
 - **Color channels** — created automatically from the document color mode (e.g. RGB = R, G, B plus the composite channel used for editing).
 - **Alpha channels** — store selections as grayscale images; used as masks.

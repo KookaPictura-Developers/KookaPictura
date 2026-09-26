@@ -3,7 +3,7 @@
 //!
 //! Ported from SethRobinson/Patchy's `generate_style_warp_mesh`
 //! (`src/core/warp_mesh.cpp`, commit `7d14d1f6ede2dc8fb52c11eefcc7cc8783473711`,
-//! MIT), which publicly documented Photoshop's own bakes to ~2.4e-6 px against
+//! MIT), which reproduces the reference's own bakes to ~2.4e-6 px against
 //! COM captures. The constructions are math, not Patchy code.
 //!
 //! `style_mesh` returns `None` for [`WarpStyle::None`] and
@@ -11,7 +11,7 @@
 //! built by the interactive tool, which is not shipped). A preset at `bend == 0`
 //! is the identity mesh of that style's natural grid.
 //!
-//! ponytail: Patchy's captures are Photoshop 2026; CS6 preset equivalence is
+//! ponytail: Patchy's captures are a 2026 release; CS6 preset equivalence is
 //! assumed (all 15 names match). The golden table in `warp_styles_tests.rs` is
 //! the oracle, not a claimed CS6 pixel match.
 
@@ -254,7 +254,7 @@ fn horizontal_style_mesh(style: WarpStyle, value: f64, width: f64, height: f64) 
         }
         WarpStyle::Twist => {
             // 4x4 tangential circulation of the interior ring, direction by bend
-            // sign. Orientation-invariant in Photoshop.
+            // sign. Orientation-invariant in the reference.
             let mut mesh = identity_mesh(4, 4, width as i32, height as i32);
             let move_x = width * bend.abs() / 100.0;
             let move_y = height * bend.abs() / 100.0;
@@ -395,8 +395,8 @@ fn horizontal_style_mesh(style: WarpStyle, value: f64, width: f64, height: f64) 
 
 /// The control net for a named preset at `bend` percent.
 ///
-/// `rotate_vertical` selects Photoshop's `Vrtc` construction; `Twist` ignores it
-/// (Photoshop bakes identical meshes for both orientations). Returns `None` for
+/// `rotate_vertical` selects the reference's `Vrtc` construction; `Twist` ignores it
+/// (the reference bakes identical meshes for both orientations). Returns `None` for
 /// [`WarpStyle::None`]/[`WarpStyle::Custom`], a non-finite `bend`, or a
 /// non-positive size.
 pub fn style_mesh(

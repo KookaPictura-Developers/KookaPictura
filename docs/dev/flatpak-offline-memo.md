@@ -2,7 +2,7 @@
 
 Status: investigation note, no work scheduled. Written 2026-09-19.
 
-The question: can Kooka Pictura be built as a Flatpak with no network at build
+The question: ca Kooka Pictura be built as a Flatpak with no network at build
 time, handed to someone with no network, and then run under Flatpak on their
 machine?
 

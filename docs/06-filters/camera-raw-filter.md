@@ -10,14 +10,14 @@
 
 ## CS6 behavior
 
-Adobe Camera Raw (ACR) is a separate plug-in bundled with Photoshop, Bridge, and After Effects. In CS6 the shipped version is **ACR 7.0** (CS6 is compatible with later ACR updates up to **9.1.1**, per Adobe community reports). It interprets a camera raw file ("unprocessed, uncompressed grayscale picture data from a digital camera's image sensor" plus capture metadata) and builds a color image. ACR can also edit **JPEG and TIFF** files (already-processed pixels).
+Adobe Camera Raw (ACR) is a separate plug-in bundled with Photoshop, Bridge, and After Effects. In CS6 the shipped version is **ACR 7.0** (CS6 is compatible with later ACR updates up to **9.1.1**, per Adobe community reports). It interprets a camera raw file (the raw, unprocessed grayscale sensor data read from a digital camera, together with capture metadata) and builds a color image. ACR can also edit **JPEG and TIFF** files (already-processed pixels).
 
 **How the user reaches it in CS6 (no Filter-menu entry):**
 - From Bridge: select raw/JPEG/TIFF files, `File > Open In Camera Raw` (`Ctrl+R` / `Cmd+R`).
 - From Photoshop: `File > Open` a raw file (ACR opens), or open a raw file as a **Smart Object** (`Shift` while clicking `Open Image`) so ACR settings stay editable by double-clicking the layer.
 - ACR cannot save a camera raw file; raw data is preserved, and adjustments are stored as metadata (Camera Raw database, sidecar `.XMP`, or inside a DNG).
 
-> 
+> **Correction, sourced:** Adobe community experts and Adobe's own CC tutorials state that the ACR filter was not part of CS6 but was introduced in Photoshop CC, and that ACR is not a filter in CS6. The CS6 Help PDF likewise contains no `Filter > Camera Raw Filter` item. Any menu-based ACR filter in this project is therefore an intentional **post-CS6 extension**, not parity.
 
 **Dialog overview (CS6):** Filmstrip (multi-image), camera name / file format label, full-screen toggle, **image adjustment tabs**, histogram (with shadow/highlight clipping toggles), Camera Raw Settings menu, zoom controls/tool, Workflow Options link, navigation arrows, adjustment sliders, and the `Save Image` / `Open Image` / `Done` / `Cancel` actions.
 
@@ -222,8 +222,8 @@ Rationale: panel/tab controls are Widgets (dense, model-driven, keyboard-navigab
 Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — the CS6 Help corpus (downloaded and converted with `pdftotext -layout`). Established: `Camera Raw 7 plug-in`; raw-file definition and preservation of raw data; JPEG/TIFF support; no Filter-menu ACR entry; dialog elements; the image-adjustment tab set and each tab's purpose; PV2012/2010/2003; the full Basic control list including PV2012-only Highlights/Shadows/Whites/Blacks and legacy Recovery/Fill Light/Brightness; `Temperature` 2,000–50,000 K for raw and the approximate −100…+100 scale for JPEG/TIFF; Tone Curve parametric/point behavior; Detail sharpening and noise-reduction controls; HSL/Grayscale and Split Toning; local-adjustment tools and effects; rotate/straighten/crop/red-eye/spot; Lens Corrections Profile/Manual/Color; Camera Calibration profiles (Adobe Standard / Camera Matching, not ICC); Effects grain and post-crop vignette styles/sliders; Presets and Snapshots; settings storage (database / sidecar XMP / DNG); workflow options; output formats; 65,000 px / 512 MP limit; CMYK→RGB; HDR support in 7.1+ with ±10 exposure.
-- `https://community.adobe.com/t5/photoshop-ecosystem-discussions/unable-to-install-camera-raw-9-1-1-in-cs6-was-no-camera-raw-filter-in-cs6/m-p/8541203` — established: ; "ACR is not a filter in CS6"; CS6 ACR updates were for new-camera support only.
-- `https://digital-photography-school.com/adobe-camera-raw-acr-photoshop-filter` — secondary confirmation: the Camera Raw filter ; describes ACR-as-filter + Smart Object behavior.
+- `https://community.adobe.com/t5/photoshop-ecosystem-discussions/unable-to-install-camera-raw-9-1-1-in-cs6-was-no-camera-raw-filter-in-cs6/m-p/8541203` — established that the camera raw filter is not part of CS6 (it was introduced in Photoshop CC) and that ACR is not a filter in CS6; CS6 ACR updates were for new-camera support only.
+- `https://digital-photography-school.com/adobe-camera-raw-acr-photoshop-filter` — secondary confirmation that the Camera Raw filter is new to the Creative Cloud version and was not available in earlier Photoshop versions; describes ACR-as-filter + Smart Object behavior.
 - `https://www.thegraphicmac.com/photoshop-cs4s-shortcut-changes-and-missing-features` — established the CS4 removal of Extract and Pattern Maker from the default install (used in `FILT-104`).
 - `https://planetphotoshop.com/wheres-my-patternmaker.html` — secondary confirmation of the CS4 Pattern Maker/Extract removal (used in `FILT-104`).
 

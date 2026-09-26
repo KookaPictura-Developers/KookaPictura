@@ -99,7 +99,7 @@ A band centred on the original contour. Proposed: `band = dilate(mask, w/2) XOR 
 
 ### Feather
 
-Feathering is a blur of the selection coverage mask. The Help describes a transition boundary but does not name the kernel. Photoshop's feather is widely treated as Gaussian; the exact radius-to-sigma relationship is closed. Proposed: separable Gaussian blur on the float coverage mask, with the marching-ants contour drawn at the 50 % level. The Help's note that a feathered selection can become "so faint that its edges are invisible" and trigger *"No pixels are more than 50% selected"* is consistent with a coverage mask whose maximum falls below 0.5. Mark inferred.
+Feathering is a blur of the selection coverage mask. The Help describes a transition boundary but does not name the kernel. Photoshop's feather is widely treated as Gaussian; the exact radius-to-sigma relationship is closed. Proposed: separable Gaussian blur on the float coverage mask, with the marching-ants contour drawn at the 50 % level. The Help's note that a feathered selection can become so faint that its edges are invisible, and trigger *"No pixels are more than 50% selected"*, is consistent with a coverage mask whose maximum falls below 0.5. Mark inferred.
 
 ### Smooth
 
@@ -178,7 +178,7 @@ Fetched for this document:
 
 Consulted as search-result snippets only (not individually fetched; community-reported):
 
-- `http://www.sketchpad.net/channels2.htm` — .
+- `http://www.sketchpad.net/channels2.htm` — states that Photoshop gives a new channel the default name `Alpha 1`.
 - `https://brighthub.com/multimedia/photography/articles/25654.aspx` and `https://jkost.com/blog/2021/07/25-shortcuts-and-tips-for-creating-better-selections-in-photoshop.html` — Magic Wand default `Tolerance` 32.
 
 Not used in this pass:

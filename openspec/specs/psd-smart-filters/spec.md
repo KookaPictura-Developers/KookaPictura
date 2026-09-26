@@ -18,10 +18,10 @@ round-trip reproduces them exactly.
 - **THEN** read→write→read preserves those blocks
 
 #### Scenario: A filter we do not model is preserved
-- **WHEN** a smart filter's `filterID` is not the Camera Raw Filter
+- **WHEN** a smart filter's `filterID` is not the Pictura Raw filter
 - **THEN** its options descriptor bytes are preserved unchanged
 
-### Requirement: Camera Raw Filter settings are read and written
+### Requirement: Pictura Raw Filter settings are read and written
 The system SHALL expose, for a smart filter whose `filterID` is 2683, its options
 descriptor named `Fltr`, and SHALL re-emit it on write. The settings model SHALL
 target the earliest CC Camera Raw Filter (Photoshop CC v14, ACR 8, process
@@ -31,15 +31,15 @@ later-CC `Dhze`, `Upri`, `GuUr`, `Rtch`, `REye`, and `LCs ` keys, SHALL be
 preserved unchanged.
 
 #### Scenario: Settings exposed
-- **WHEN** a layer carries a Camera Raw Filter with a `Fltr` descriptor
+- **WHEN** a layer carries a Pictura Raw filter with a `Fltr` descriptor
 - **THEN** read exposes the filter options keyed by their short names
 
 #### Scenario: Settings edit round-trips
-- **WHEN** a Camera Raw Filter option is changed through the API
+- **WHEN** a Pictura Raw filter option is changed through the API
 - **THEN** the written `Fltr` reflects the change and unmodeled keys are retained
 
 #### Scenario: Filter identity is preserved
-- **WHEN** a Camera Raw Filter is written
+- **WHEN** a Pictura Raw filter is written
 - **THEN** its `filterID` is 2683 and its display name is present in the entry
 
 ### Requirement: Smart-filter interop is fixture-validated

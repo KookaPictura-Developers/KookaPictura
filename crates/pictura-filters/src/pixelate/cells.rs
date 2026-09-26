@@ -1,5 +1,5 @@
 //! Pixelate cell filters: Crystallize, Pointillize, Color Halftone.
-//! Implemented by the M8-A2 task. Adobe's kernels are closed; `ponytail:`
+//! Implemented by the M8-A2 task. The reference's kernels are closed; `ponytail:`
 //! marks the artistic approximations. Seeds make the randomized ones
 //! bit-reproducible; alpha is never touched.
 

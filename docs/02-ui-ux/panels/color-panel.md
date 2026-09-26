@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Window > Color` (shortcut `F6`) opens the **Color panel**. It "displays the color values for the current foreground and background colors," and lets the user "edit the foreground and background colors using different color models" or pick from 
+`Window > Color` (shortcut `F6`) opens the **Color panel**. It displays the color values for the current foreground and background colors, lets the user edit those colors using different color models, and offers a spectrum of colors in the color ramp at the bottom of the panel.
 
 **Default placement (CS6 Essentials workspace).** The Color panel is at the **top of the right-hand main panel column**, grouped with the **Swatches** tab; Color is the default-active tab. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
 
@@ -52,11 +52,11 @@ Per the Help, the gamut triangle is **not available while `Web Color Sliders` ar
 | **Current Colors** | Spectrum between the current foreground and background colors |
 | **Make Ramp Web Safe** | Restricts the ramp to web-safe colors only |
 
- Right-click the color bar (**Control-click** macOS) for the color-bar menu; **Shift-click** the color bar cycles color choices; **Alt-click** the color bar selects the background color (per "Keys for the Color panel").
+To change the spectrum of the color ramp quickly, **Shift-click** in the color ramp until the desired spectrum appears. Right-click the color bar (**Control-click** macOS) for the color-bar menu; **Shift-click** the color bar cycles color choices; **Alt-click** the color bar selects the background color (per "Keys for the Color panel").
 
 ### Selecting a color
 
-1. Click the **foreground or background color box** to make it active (outlined in black). 
+1. Click the **foreground or background color box** to make it active (outlined in black). With the background color box active in the Color panel, the **Eyedropper** tool changes the background color rather than the foreground by default.
 2. Do one of:
    - **Drag the color sliders** — "By default, the slider colors change as you drag." This is the **Dynamic Color Sliders** option in `Preferences > General`; deselecting it "improve[s] performance."
    - **Enter values** next to the sliders.

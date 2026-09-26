@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Filter > Stylize` produces . Help notes that after Find Edges and Trace Contour you can run Invert to get colored/white outlines. The submenu in CS6:
+`Filter > Stylize` gives a selection a painted or impressionistic look by displacing pixels and by finding and intensifying contrast. Help notes that after Find Edges and Trace Contour you can run Invert to get colored/white outlines. The submenu in CS6:
 
 | Filter | Menu path | What it does (CS6 Help) |
 |---|---|---|
@@ -25,7 +25,7 @@
 | Wind | `Filter > Stylize > Wind` | Places tiny horizontal lines for a windblown effect: Wind, Blast (stronger), Stagger (offset lines). |
 | Oil Paint | `Filter > Oil Paint` | (CS6-new) Gives an image a classic-painting look; brush and lighting options. Requires a supported GPU. Separate spec: `06-filters/oil-paint.md`. |
 
-**Halftone Pattern is not Stylize.**  is listed under **Sketch** in CS6 Help and belongs in `06-filters/sketch-filters.md`. It is recorded here only to prevent mis-categorization.
+**Halftone Pattern is not Stylize.** Halftone Pattern, which simulates a halftone screen while keeping a continuous tonal range, is listed under **Sketch** in CS6 Help and belongs in `06-filters/sketch-filters.md`. It is recorded here only to prevent mis-categorization.
 
 **Color inside Emboss.** Help recommends `Edit > Fade` after Emboss to retain color and detail, because Emboss replaces the fill with gray and you often want the original color back. This is the standard Fade mechanism (`LAY-021`, `05-layers/blend-modes.md`).
 

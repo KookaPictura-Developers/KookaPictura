@@ -12,7 +12,7 @@
 
 ### The Mask panel is the Properties panel in mask mode
 
-CS6 has **no separate Masks panel**. Its controls were amalgamated into the **Properties panel** (`PAN-006`), which is a contextual router: the page it shows follows the current selection. The CS6 Help describes the controls with duality wording — ** — and its figure caption still reads *"Masks panel (CS5) and Properties panel (CS6)"*.
+CS6 has **no separate Masks panel**. Its controls were amalgamated into the **Properties panel** (`PAN-006`), which is a contextual router: the page it shows follows the current selection. The CS6 Help describes the controls with duality wording — the Properties panel (CS6) or the Masks panel (CS5) provides further controls for adjusting a mask — and its figure caption still reads *"Masks panel (CS5) and Properties panel (CS6)"*.
 
 **Activating mask mode.** Click the **mask thumbnail** in the Layers panel; a border appears around the active thumbnail and the Properties panel swaps to the mask controls. Clicking the layer thumbnail returns the panel to layer content. *(The Help's figure also shows a mask/vector-mask/filter-mask selector and buttons A–G: select filter mask, add pixel mask, add vector mask, panel menu, Apply Mask, layer mask, vector mask.)*
 
@@ -44,8 +44,8 @@ A Smart Object is a container layer (badge on its thumbnail) that renders an emb
 
 Smart Filters appear under the Smart Object layer. The CS6 Help (in CS5-era wording that names the Masks panel) documents the filter-mask surface:
 
-- **Filter mask** — **
-- **Density / Feather / Invert** — ** (In CS6 these are the Properties-panel mask controls.)
+- **Filter mask** — like a layer mask, a filter mask can be painted. Black paint hides the filter's effect, white paint reveals it, and gray paint yields partial transparency.
+- **Density / Feather / Invert** — the Masks panel controls set the filter mask's density, add feathering along its edges, or invert it. (In CS6 these are the Properties-panel mask controls.)
 - **Mask Edge is not available for filter masks.**
 - **Enable/disable** — Shift-click the filter-mask thumbnail, or the Disable/Enable Mask button; a red X appears when disabled.
 - **Move/copy** — drag a filter mask to another Smart Filter Effect; `Alt`/`Option`-drag copies it.

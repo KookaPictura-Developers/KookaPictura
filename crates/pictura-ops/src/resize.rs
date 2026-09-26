@@ -1,6 +1,6 @@
 //! `Image > Image Size` resampling (`IMG-001`).
 //!
-//! Photoshop's exact edge handling is unpublished, so parity is behavioral only,
+//! The exact edge handling is unpublished, so parity is behavioral only,
 //! but its Bicubic coefficient is publicly documented as a Mitchell–Netravali
 //! `cubic(0, 0.75)` kernel (Jason Summers, entropymine.com/resamplescope), not
 //! Catmull-Rom. All three kernels sample each plane independently and clamp to
@@ -31,7 +31,7 @@ fn bilevel(s: f64, n: u32) -> ([usize; 2], [f64; 2]) {
 }
 
 /// Keys cubic kernel `a = -0.75`, i.e. Mitchell–Netravali `cubic(0, 0.75)`, the
-/// publicly documented Photoshop Bicubic coefficient.
+/// documents the reference Bicubic coefficient.
 fn cubic(t: f64) -> f64 {
     let a = -0.75;
     let x = t.abs();

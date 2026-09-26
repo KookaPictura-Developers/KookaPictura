@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Filter > Render` "create[s] 3D shapes, cloud patterns, refraction patterns, and simulated light reflections". The CS6 `Render` submenu contains **Clouds, Difference Clouds, Fibers, Lens Flare, Lighting Effects** (and, in CS6, no Flame/Tree/Picture Frame — see below).
+`Filter > Render` creates 3D shapes, cloud and refraction patterns, and simulated light reflections. The CS6 `Render` submenu contains **Clouds, Difference Clouds, Fibers, Lens Flare, Lighting Effects** (and, in CS6, no Flame/Tree/Picture Frame — see below).
 
 | Filter | Menu path | What it does (CS6 Help) |
 |---|---|---|
@@ -26,14 +26,14 @@
 
 ### Post-CS6 render entries (documented for scope, not parity)
 
-**Flame, Picture Frame, and Tree are not in shipped Photoshop CS6.** They were added in the **Photoshop CC 2014.2 update**, which states:  Adobe's community answer is explicit:  The CS6 Help PDF contains no `Flame`, `Tree`, or `Picture Frame` render entries. They are recorded here only so downstream specs do not accidentally assume CS6 parity; the task note that "Picture Frame [came] from Adobe Exchange" could not be verified (see Open questions).
+**Flame, Picture Frame, and Tree are not in shipped Photoshop CS6.** They were added in the **Photoshop CC 2014.2 update**, whose release notes list three new entries in the `Filter > Render` menu: Flame, Picture Frame, and Tree. Adobe's community answer is explicit that CS6 lacks `Filter > Render > Flame` and that it arrived only after Photoshop became Photoshop CC. The CS6 Help PDF contains no `Flame`, `Tree`, or `Picture Frame` render entries. They are recorded here only so downstream specs do not accidentally assume CS6 parity; the task note that Picture Frame came from Adobe Exchange could not be verified (see Open questions).
 
 - **Flame** (CC 2014.2): flames generated along one or more user paths (paths must be 50–50,000 px; not Smart-Object compatible). Controls include Flame Type, Length, Width, Angle, Interval, Flame Lines, Turbulent/Jag, Opacity, Bottom Alignment, style (Normal/Violent/Flat), shape (Parallel/To The Center/Spread/Oval/Pointing), custom color, quality, Randomize Shapes. *(sourced from the CC 2014.2 update guide, not CS6.)*
 - **Trace/Tree, Picture Frame** (CC 2014.2): procedural tree rendering and decorative border frames. *(sourced as existing; detailed behavior out of CS6 scope.)*
 
 ### Halftone Pattern is not Render
 
-Help lists "Halftone Pattern Simulates the effect of a halftone screen…" under **Sketch**, not Render. It belongs in `06-filters/sketch-filters.md`; noted here only to prevent mis-categorization.
+Help lists Halftone Pattern (which simulates a halftone screen) under **Sketch**, not Render. It belongs in `06-filters/sketch-filters.md`; noted here only to prevent mis-categorization.
 
 ## UI surface
 
@@ -171,7 +171,7 @@ Fetched for this document:
 - `https://applescriptlibrary.files.wordpress.com/2013/11/photoshop-cs6-applescript-reference.pdf` — Photoshop CS6 AppleScript Scripting Reference. Established Lens Flare ranges (brightness 10–300%, flare center unit value, lens types zoom/Prime 35/Prime 105/Movie Prime) and the four-char event IDs `'DrfC'`, `'Fbrs'`, `'LnsF'`, `'LghE'`; established that Fibers/Clouds/Lighting Effects are not exposed as scriptable filter-options classes (so no sourced Fibers ranges).
 - `https://planetphotoshop.com/scripted-patterns.html` — KelbyOne/Planet Photoshop CS6 walkthrough. Established the five CS6 Scripted Pattern presets by name: Brick Fill, Cross Weave, Random Fill, Spiral, Symmetry Fill, and the `Edit > Fill > Use: Pattern > Scripted Patterns` workflow.
 - `http://www.photoshopforphotographers.com/CC_2013/Help_guide/downloads/PhotoshopCCupdate-2014-2.pdf` — Adobe Photoshop CC 2014.2 update guide. Established that Flame, Picture Frame, and Tree were added in the **CC 2014.2** Render menu (not CS6) and summarized the Flame controls.
-- `https://community.adobe.com/questions-712/cannot-find-filter-render-flame-in-photoshop-cc-2014-branched-1079848` — Adobe community. Established: 
+- `https://community.adobe.com/questions-712/cannot-find-filter-render-flame-in-photoshop-cc-2014-branched-1079848` — Adobe community. Established: CS6 has no `Filter > Render > Flame`; that entry was added later, after Photoshop became Photoshop CC.
 - `https://web.archive.org/web/2014id_/https://helpx.adobe.com/photoshop/using/filter-effects-reference.html` — archived Adobe reference; corroborated the Render prose.
 
 Not used in this pass:

@@ -106,7 +106,7 @@ pub fn radial(
     };
     let cx = (w as f64 - 1.0) / 2.0;
     let cy = (h as f64 - 1.0) / 2.0;
-    // ponytail: polar resample + midpoint 1-D smear, not Adobe's kernel.
+    // ponytail: polar resample + midpoint 1-D smear, not the reference's kernel.
     // Upgrade to supersampled/jittered sampling if Draft banding is visible.
     for c in 0..planes {
         let base = c * n;

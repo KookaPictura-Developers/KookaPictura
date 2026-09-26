@@ -296,7 +296,7 @@ Proposed (names provisional), following `ARCH-002`:
 - **RGB→Grayscale luminance weights** used by Photoshop (Rec.601 vs Rec.709 vs
   working-space Y). *Resolves with:* CS6 output comparison on colored patches.
 - **Exact perceptual/selective/adaptive palette algorithms** (median cut vs
-  octree vs proprietary). *Resolves with:* publicly documenting CS6 indexed
+  octree vs proprietary). *Resolves with:* analyzing CS6 indexed
   output, or the Adobe SDK.
 - **Default selected option in each conversion dialog** (Bitmap method, Indexed
   palette/dither amounts, Duotone type). *Resolves with:* clean CS6 screenshots.

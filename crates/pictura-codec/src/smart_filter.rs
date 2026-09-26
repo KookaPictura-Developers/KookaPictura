@@ -10,7 +10,7 @@ use crate::common::Reader;
 use crate::descriptor::{self, get_object_item_mut, set_object_item, DescValue};
 use crate::error::PsdError;
 
-/// Replace (or insert) one key in the `Fltr` options of the camera raw filter at
+/// Replace (or insert) one key in the `Fltr` options of the Pictura Raw filter at
 /// `filter_index` on `layer`, rewriting the preserved `SoLd`/`SoLE` block in place.
 pub fn set_camera_raw_option(
     layer: &mut Layer,
@@ -76,7 +76,7 @@ pub fn set_camera_raw_option(
     let mut new_data = data[..8].to_vec();
     new_data.extend_from_slice(&descriptor::write_descriptor(&desc));
     // psd-tools reads layer tagged blocks without consuming a trailing pad, so the
-    // declared length must be even. Photoshop 4-aligns the SoLd block data after
+    // declared length must be even. The reference 4-aligns the SoLd block data after
     // the descriptor; match that so a same-size edit keeps the original length.
     // ponytail: zero pad to 4; revisit if a reader rejects the trailing bytes.
     while !new_data.len().is_multiple_of(4) {
@@ -94,7 +94,7 @@ pub fn set_camera_raw_option(
 }
 
 fn malformed(what: &str) -> PsdError {
-    PsdError::Invalid(format!("camera raw filter descriptor: {what}"))
+    PsdError::Invalid(format!("Pictura Raw filter descriptor: {what}"))
 }
 
 #[cfg(test)]

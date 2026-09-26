@@ -273,16 +273,16 @@ descriptor DOM. `crates/pictura-codec/src/lib.rs` SHALL expose a public
 `read_descriptor(bytes: &[u8]) -> Result<DescValue, PsdError>` built on the
 existing descriptor reader, and `pictura-render` SHALL use it rather than a
 second descriptor parser. The existing `camera_raw_options` entry point SHALL
-continue to decode Camera Raw `Fltr` options unchanged.
+continue to decode Pictura Raw `Fltr` options unchanged.
 
 #### Scenario: Descriptor keys are read through the shared DOM
 
 - **WHEN** a `vibA` or `blwh` payload is decoded
 - **THEN** its version-16 descriptor is parsed by `pictura-codec::read_descriptor`
 
-#### Scenario: Camera Raw options still decode
+#### Scenario: Pictura Raw options still decode
 
-- **WHEN** `pictura_codec::camera_raw_options` is called on a Camera Raw `Fltr` buffer
+- **WHEN** `pictura_codec::camera_raw_options` is called on a Pictura Raw `Fltr` buffer
 - **THEN** it returns the same `DescValue` it returned before this change
 
 #### Scenario: Truncated descriptor is an error, not a panic

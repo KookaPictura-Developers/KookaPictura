@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Window > Navigator` opens the **Navigator panel**. 
+`Window > Navigator` opens the **Navigator panel**. The panel shows a thumbnail of the artwork so the view can be changed quickly; the colored box in the Navigator, called the **proxy view area**, corresponds to the currently viewable area in the window.
 
 **Default placement.** The Navigator panel is not in the default Essentials workspace; it is supplied by the **Painting** workspace, where it replaces the Color panel in the top group of the main right-hand column (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
 
@@ -31,14 +31,14 @@ From the CS6 Help figure labels (A–G):
 ### Interactions
 
 - **Display** — `Window > Navigator`.
-- **Zoom** — 
-- **Pan** — 
+- **Zoom** — type a value in the text box, use the Zoom Out or Zoom In button, or drag the zoom slider.
+- **Pan** — drag the proxy view area in the image thumbnail, or click the thumbnail to designate the viewable area.
 - **Simultaneous size + position** — "**Control-drag** (Windows) or **Command-drag** (macOS) in the image thumbnail" sets the proxy area's size and position together.
-- **Proxy color** — 
+- **Proxy color** — choose **Panel Options** from the panel menu, then select a preset from the **Color** pop-up menu or click the color box for a custom color.
 
 ### Zoom range and relationship to other zoom UI
 
-The Zoom tool  The zoom level can also be  so the Navigator's zoom box, the status-bar zoom box, and `View > Zoom In` / `View > Zoom Out` must stay synchronized. Panel zoom is **view state**, not an image edit, and is therefore not undoable.
+The Zoom tool magnifies or reduces the image to the next preset percentage and centers the view on the clicked point. When the image reaches its **maximum magnification level of 3200%** or **minimum size of 1 pixel**, the magnifying glass appears empty. The zoom level can also be set from the lower-left corner of the document window or in the Navigator panel, so the Navigator's zoom box, the status-bar zoom box, and `View > Zoom In` / `View > Zoom Out` must stay synchronized. Panel zoom is **view state**, not an image edit, and is therefore not undoable.
 
 ## UI surface
 

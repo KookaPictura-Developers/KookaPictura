@@ -19,7 +19,7 @@ EngineData grammar (from psd-tools `engine_data.py`):
   treated as strings.
 - whitespace (space/newline/tab) separates tokens.
 
-A real text layer's structure (grounded on a reference build
+A real text layer's structure (grounded on a reference text layer
 `the synthetic source`, extracted to the fixture):
 
 ```
@@ -96,5 +96,5 @@ is byte-identical.
   default fallback; the oracle checks the resolved font is `MyriadPro-Regular`.
 - [Grammar edge cases] → unknown parenthesised tags decode as strings; a blob
   the parser rejects leaves the style unset rather than failing the document.
-- [CC-only fixture] → the only real EngineData available is a reference build;
+- [CC-only fixture] → the only real EngineData available was a reference file;
   EngineData is stable across CS6→CC, recorded in the fixture provenance.

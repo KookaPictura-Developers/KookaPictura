@@ -1,9 +1,9 @@
 //! Render family: Clouds, Difference Clouds, Fibers, Lens Flare (`FILT-060`).
 //!
-//! All four are classified **no-equivalent**: Adobe's noise and flare models
+//! All four are classified **no-equivalent**: the reference's noise and flare models
 //! are closed, so these are deterministic approximations verified by property
 //! tests (range, determinism, monotonicity), not delta fitting against
-//! Photoshop output. Clouds/Fibers replace the color planes from a seeded
+//! reference output. Clouds/Fibers replace the color planes from a seeded
 //! value-noise field; Lens Flare adds on top of the existing pixels. Alpha is
 //! never modified.
 
@@ -34,7 +34,7 @@ fn smoothstep(t: f64) -> f64 {
 /// fractional parts, and 5-octave fBm (lacunarity 2, gain 0.5) normalized to
 /// [0, 1]. Deterministic for a given seed and independent of buffer size.
 ///
-/// ponytail: Adobe's noise is closed and lattice value noise shows grid
+/// ponytail: the reference's noise is closed and lattice value noise shows grid
 /// artifacts; switch to gradient/Perlin noise if the look ever matters.
 struct ValueNoise {
     perm: [u8; 512],
@@ -312,7 +312,7 @@ fn lens_model(lens: LensType) -> (usize, f64, &'static [Ghost]) {
 /// white. `brightness` is a percentage (10..=300); `center` is in unit
 /// coordinates and is clamped, not rejected. Deterministic — no seed.
 ///
-/// ponytail: Adobe's flare model is closed; these amplitudes are an artistic
+/// ponytail: the reference's flare model is closed; these amplitudes are an artistic
 /// guess. Per-pixel exp/atan2 over every contributor — add per-contributor
 /// bounding boxes if large documents get slow.
 pub fn lens_flare(

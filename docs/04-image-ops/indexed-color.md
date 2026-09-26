@@ -245,7 +245,7 @@ Proposed:
   (RGB Euclidean? Lab?). *Resolves with:* CS6 pixel tests on a controlled chart.
 - **Matte option list** in CS6. *Resolves with:* CS6 dialog capture.
 - **Diffusion kernel** (Floyd–Steinberg vs a variant) and `Pattern` matrix.
-  *Resolves with:* dither pattern publicly documenting.
+  *Resolves with:* dither pattern analysis.
 - **Behavior with >256 forced colors.** *Resolves with:* CS6 stress test.
 - **Palette file format** for Color Table `Save`/`Load` and Swatches interaction.
   *Resolves with:* inspecting CS6 `.act`/table files.

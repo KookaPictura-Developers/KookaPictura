@@ -24,7 +24,7 @@ Both 512x512, RGB, 8-bit, PSD version 1, three composite channels.
   embedded PSB (252x233, 4 channels). No filter, no Camera Raw settings.
 - `assets/test_with_smart_object02.psd`: the same embedded PSB shared by two
   smart-object layers; `Layer 1 copy` carries a Camera Raw Filter smart filter.
-  Produced with Photoshop a reference build. Despite the name, there is no `crs:` XMP
+  Synthetic (no Adobe assets). Despite the name, there is no `crs:` XMP
   anywhere; the settings are in the filterFX descriptor below.
 
 ## Smart object container

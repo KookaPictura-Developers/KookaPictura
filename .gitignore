@@ -33,3 +33,6 @@ __pycache__/
 # OS / editor
 .DS_Store
 *.swp
+
+# Local reference fixtures (real Photoshop-authored; not redistributed)
+/reference-fixtures/

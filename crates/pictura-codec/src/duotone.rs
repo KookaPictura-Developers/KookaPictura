@@ -1,10 +1,10 @@
 //! Duotone Options (the color-mode-data section of a Duotone PSD).
 //!
-//! `psd-tools` calls this block undocumented and preserves it; the Adobe
-//! "Photoshop File Formats" spec documents it as **Duotone Options**, and
+//! `psd-tools` calls this block undocumented and preserves it; the
+//! published PSD format definition documents it as **Duotone Options**, and
 //! `psdparse` (`duotone.c`) and `EmilDohne/PhotoshopAPI` decode the identical
 //! 524-byte layout. This module only decodes it — the composite still opens as
-//! grayscale-normalized RGB because Photoshop's Duotone *edit* model is
+//! grayscale-normalized RGB because the reference's Duotone *edit* model is
 //! single-channel grayscale and the multi-ink compositing algorithm is
 //! unpublished.
 
@@ -41,7 +41,7 @@ pub struct DuotoneSpec {
     pub overprints: Vec<InkColor>,
 }
 
-/// Size of the Duotone Options block (after the section length), per the Adobe
+/// Size of the Duotone Options block (after the section length), per the
 /// spec and `psdparse`: `4*(10+64+28) + 2 + 11*10`.
 pub const DUOTONE_DATA_SIZE: usize = 4 * (10 + 64 + 28) + 2 + 11 * 10;
 

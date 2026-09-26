@@ -10,28 +10,28 @@
 
 ## CS6 behavior
 
-Refine Edge  CS6 invokes it in two contexts:
+Refine Edge improves the quality of selection edges so objects can be extracted more easily. CS6 invokes it in two contexts:
 
-1. **From a pixel selection:** "Create a selection with any selection tool," then  The result is a refined selection or a mask.
-2. **From a layer mask:** Refine Edge can "refine a layer mask" via the mask section of the Properties panel (CS6 moved mask editing there from the CS5 Masks panel, `LAY-004`).
+1. **From a pixel selection:** create a selection with any selection tool, then click **Refine Edge** in the options bar or choose `Select > Refine Edge`. The result is a refined selection or a mask.
+2. **From a layer mask:** Refine Edge can refine a layer mask via the mask section of the Properties panel (CS6 moved mask editing there from the CS5 Masks panel, `LAY-004`).
 
 The dialog's documented controls:
 
-- **View Mode** — a pop-up that "change[s] how the selection is displayed." The CS6 Help names **Show Original** ("displays the original selection for comparison") and **Show Radius** ("displays the selection border where edge refinement occurs") and says to hover over each mode for its tooltip. The concrete mode list is not enumerated in the fetched text; the CS6-era/community list is **Marching Ants** (`M`), **Overlay** (`V`), **On Black** (`A`), **On White** (`T`), **Black & White** (`K`), **On Layers** (`Y`), and **Reveal Layer** (`R`). (Note: "Mask" as a view mode belongs to the later CC **Select and Mask** workspace, not CS6 Refine Edge.)
-- **Refine Radius** and **Erase Refinements** tools — "precisely adjust the border area in which edge refinement occurs." `Shift+E` toggles between them; bracket keys change brush size. 
-- **Smart Radius** —  Deselect it 
-- **Radius** — 
-- **Smooth** — 
-- **Feather** — "Blurs the transition between the selection and surrounding pixels."
-- **Contrast** — 
-- **Shift Edge** — 
-- **Decontaminate Colors** —  CS6 explicitly requires output to a new layer or document because it changes pixel color:  A **Reveal Layer** view mode shows the result.
-- **Amount** — "Changes the level of decontamination and fringe replacement" (appears with Decontaminate Colors).
-- **Output To** —  The CS6-era/community list is **Selection**, **Layer Mask**, **New Layer**, **New Layer with Layer Mask**, **New Document**, and **New Document with Layer Mask**.
+- **View Mode** — a pop-up that changes how the selection is displayed. The CS6 Help names **Show Original** (shows the original selection for comparison) and **Show Radius** (shows the selection border where edge refinement occurs) and says to hover over each mode for its tooltip. The concrete mode list is not enumerated in the fetched text; the CS6-era/community list is **Marching Ants** (`M`), **Overlay** (`V`), **On Black** (`A`), **On White** (`T`), **Black & White** (`K`), **On Layers** (`Y`), and **Reveal Layer** (`R`). (Note: "Mask" as a view mode belongs to the later CC **Select and Mask** workspace, not CS6 Refine Edge.)
+- **Refine Radius** and **Erase Refinements** tools — adjust precisely the border area in which edge refinement occurs. `Shift+E` toggles between them; bracket keys change brush size. Brushing over soft areas such as hair or fur adds fine details to the selection.
+- **Smart Radius** — automatically adjusts the radius for hard and soft edges found in the border region. Deselect it when the border is uniformly hard- or soft-edged, or when you want to control the Radius setting and refinement brushes directly.
+- **Radius** — the width of the border band in which edge refinement occurs; use a small radius for sharp edges and a large one for softer edges.
+- **Smooth** — reduces irregular areas (hills and valleys) in the selection border to create a smoother outline.
+- **Feather** — blurs the transition between the selection and its surrounding pixels.
+- **Contrast** — increasing it makes soft-edged transitions along the selection border more abrupt. Usually Smart Radius and the refinement tools give better results.
+- **Shift Edge** — moves soft-edged borders inward with negative values and outward with positive ones; shifting inward helps remove unwanted background colors from selection edges.
+- **Decontaminate Colors** — replaces color fringes with the color of nearby fully selected pixels; the strength of replacement is proportional to edge softness. Because the option changes pixel color, CS6 requires output to a new layer or document and keeps the original layer so you can revert to it. A **Reveal Layer** view mode shows the result.
+- **Amount** — sets the level of decontamination and fringe replacement (appears with Decontaminate Colors).
+- **Output To** — determines whether the refined selection becomes a selection or mask on the current layer, or is written to a new layer or document. The CS6-era/community list is **Selection**, **Layer Mask**, **New Layer**, **New Layer with Layer Mask**, **New Document**, and **New Document with Layer Mask**.
 
 Keyboard behavior documented in the CS6 key tables: `Ctrl+Alt+R` / `Cmd+Opt+R` opens the dialog; `F` cycles view modes forward, `Shift+F` backward; `X` toggles original image vs selection preview; `P` toggles original selection vs refined version; `J` toggles the radius preview; `Shift+E` toggles the Refine Radius / Erase Refinements tools.
 
-Refine Edge is the CS6-recommended replacement for the old Extract plug-in: 
+Refine Edge is the CS6-recommended replacement for the old Extract plug-in: it gives better results and nondestructive processing, because unlike Extract — which permanently erases pixel data — Refine Edge creates selection masks that can be readjusted and fine-tuned later.
 
 ## UI surface
 
@@ -112,7 +112,7 @@ The exact Adobe orderings and kernels are closed — **behavioral parity only, a
 
 ### Color decontamination
 
-Documented behavior:  A standard model is **alpha matting foreground estimation**: recover `F` from `I = αF + (1−α)B` using nearby fully-opaque foreground colors as `F`, then replace edge pixel color with `F` weighted by `Amount` and `(1−α)`. This is the conventional approach; Adobe's exact estimator and the `Amount` mapping are unspecified — **behavioral parity only**.
+Documented behavior: color fringes are replaced with the color of nearby fully selected pixels, with replacement strength proportional to edge softness. A standard model is **alpha matting foreground estimation**: recover `F` from `I = αF + (1−α)B` using nearby fully-opaque foreground colors as `F`, then replace edge pixel color with `F` weighted by `Amount` and `(1−α)`. This is the conventional approach; Adobe's exact estimator and the `Amount` mapping are unspecified — **behavioral parity only**.
 
 Because decontamination writes color, CS6 forbids in-place output and requires a new layer/document.
 
@@ -166,7 +166,7 @@ Widgets over QML: the dialog is dense, slider-heavy, keyboard-driven, and shared
 
 - **Empty selection:** Refine Edge has nothing to refine; the button should be disabled or a no-op, not open an error.
 - **Hard-edged selection:** Smart Radius off with a small Radius is the documented choice; refinement should not invent soft detail absent in the pixels.
-- **Feather applied before refine:** the initial band may already be soft; refinement re-estimates from the image, not from the feathered mask, per the documented "improves the quality of selection edges."
+- **Feather applied before refine:** the initial band may already be soft; refinement re-estimates from the image, not from the feathered mask, per the documented goal of improving selection-edge quality.
 - **Decontaminate + Selection/Layer-Mask output:** must be disallowed (CS6 requires a new layer/document); disable those Output To choices when Decontaminate Colors is on.
 - **Decontaminate on a flat background:** foreground estimation has no useful nearby fully-selected color; fall back to leaving the fringe or a neutral color, and never crash.
 - **8-bit vs 16/32-bit:** edge estimation and decontamination should run at the document's native depth; coverage stays 0..1. Official CS6 support at 32 bpc is unstated.
@@ -197,7 +197,7 @@ Widgets over QML: the dialog is dense, slider-heavy, keyboard-driven, and shared
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus. Established: Refine Edge invocation from the options bar and `Select > Refine Edge`; the description of View Mode with **Show Original** and **Show Radius**; the Refine Radius / Erase Refinements tools and `Shift+E` / bracket sizing; Smart Radius; Radius; Smooth; Feather; Contrast; Shift Edge; Decontaminate Colors, the "requires output to a new layer or document" rule, and **Amount**; Output To (); the Refine Edge key table (`Ctrl+Alt+R`, `F`/`Shift+F`, `X`, `P`, `J`, `Shift+E`); Refine Edge as the replacement for Extract; refining a layer mask from the mask section of the CS6 Properties panel.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus. Established: Refine Edge invocation from the options bar and `Select > Refine Edge`; the description of View Mode with **Show Original** and **Show Radius**; the Refine Radius / Erase Refinements tools and `Shift+E` / bracket sizing; Smart Radius; Radius; Smooth; Feather; Contrast; Shift Edge; Decontaminate Colors and the rule that it requires output to a new layer or document, plus **Amount**; Output To (selection or mask on the current layer versus a new layer or document); the Refine Edge key table (`Ctrl+Alt+R`, `F`/`Shift+F`, `X`, `P`, `J`, `Shift+E`); Refine Edge as the replacement for Extract; refining a layer mask from the mask section of the CS6 Properties panel.
 - `https://shootdotedit.com/blogs/news/refine-edge-in-photoshop` — community guide. Established (community-reported, not CS6 Help): the full view-mode list with letter shortcuts — Marching Ants (M), Overlay (V), On Black (A), On White (T), Black and White (K), On Layers (Y), Reveal Layer (R) — and the full Output To list — Selection, Layer Mask, New Layer, New Layer With Mask, New Document, New Document With Layer Mask.
 - `https://search.brave.com/search?q=...` / SearXNG result snippets for "Refine Edge CS6 view modes" — corroborated the view-mode names and shortcuts via multiple CS5/CS6-era tutorials (lifewire, photoshopessentials "Selecting Hair with Refine Edge", a 2012 tutorial listing "Reveal Layer … shortcut is R"). These were consulted as snippets, not all fetched.
 

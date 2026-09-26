@@ -25,7 +25,7 @@ use pictura_testkit::compare;
 const SIZE: u32 = 8;
 const SCENES: [&str; 2] = ["solid", "ramp"];
 
-/// Modes ImageMagick implements with the same formula as the W3C/Photoshop
+/// Modes ImageMagick implements with the same formula as the W3C/reference
 /// definition: `(PSD mode, reference suffix, tolerance)`. Mirrors the
 /// `MAPPING` table in `scripts/im_compose.py`; the eight modes with no usable
 /// ImageMagick equivalent are absent by design.

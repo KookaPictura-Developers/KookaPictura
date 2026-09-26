@@ -320,7 +320,7 @@ Not parsed in this pass: `https://help.adobe.com/archive/en/photoshop/cs6/photos
   (20 vs 50) and describe later versions. Resolve from the CS6 Help PDF
   (History panel / Performance preferences) or a CS6 screenshot.
 - **Tile-diffusion storage model.** The tile/version/diffusion description is
-  *(inferred)* from community public analysis and Adobe patents, not a
+  *(inferred)* from community analysis and Adobe patents, not a
   fetched authoritative source. Confirm against a technical write-up before
   committing to the design; otherwise treat as an implementation choice.
 - **Retention policy at the limit.** Does Photoshop always keep the base "Open"

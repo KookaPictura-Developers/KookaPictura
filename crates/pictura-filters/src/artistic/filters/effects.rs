@@ -12,7 +12,7 @@ use super::common::box_sum;
 /// `edge_fidelity`.
 ///
 /// ponytail: the box mean followed by a second posterize is a contour smoother,
-/// not Adobe's edge-guided region merge (closed). Good enough for flat bands.
+/// not the reference's edge-guided region merge (closed). Good enough for flat bands.
 pub fn cutout(
     buf: &mut PixelBuffer,
     levels: u8,
@@ -65,7 +65,7 @@ pub fn cutout(
 /// Film Grain: seeded per-pixel perturbation, stronger in shadows/midtones and
 /// rolled off in highlights. `grain` 0 is an exact no-op.
 ///
-/// ponytail: monochromatic white-noise grain; Adobe's multi-scale grain
+/// ponytail: monochromatic white-noise grain; the reference's multi-scale grain
 /// clumping is closed. An interpolated field is the upgrade path.
 pub fn film_grain(
     buf: &mut PixelBuffer,
@@ -122,7 +122,7 @@ pub fn film_grain(
 /// glows the highlights, `glow_size < 0` confines the glow to shadows.
 ///
 /// ponytail: highlight selection is a hard threshold and the glow is a box sum
-/// (bloom-like accumulation), not Adobe's soft rolloff / Gaussian halo.
+/// (bloom-like accumulation), not the reference's soft rolloff / Gaussian halo.
 pub fn neon_glow(
     buf: &mut PixelBuffer,
     glow_size: i32,

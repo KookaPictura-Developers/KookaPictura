@@ -174,7 +174,7 @@ pub fn decode_stroke(layer: &Layer) -> Option<Stroke> {
 /// with the tile alpha.
 ///
 /// ponytail: the band is composited after the interior effects, so it sits on
-/// top of them; Photoshop's exact inter-effect order and the isolated `Blend
+/// top of them; the exact inter-effect order and the isolated `Blend
 /// Interior Effects As Group` composite are not modelled. The max/min filters
 /// are separable, so a canvas-filling layer at the maximum size costs
 /// `O(canvas · size)` — the existing compositor ceiling, plus one

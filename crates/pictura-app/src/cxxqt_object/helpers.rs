@@ -7,7 +7,7 @@ use pictura_select::CombineMode;
 /// Build an adjustment layer for `kind`, or `None` for an unknown kind.
 ///
 /// Most defaults are chosen so a freshly added layer visibly changes the
-/// composite; a few kinds (e.g. Color Balance) use Photoshop's neutral default.
+/// composite; a few kinds (e.g. Color Balance) use the reference's neutral default.
 /// Editing parameters is out of scope for M4-C. `mask` confines the effect to a
 /// selection when one is active.
 pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<Layer> {

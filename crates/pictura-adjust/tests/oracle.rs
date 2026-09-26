@@ -1,8 +1,8 @@
 //! ImageMagick differential oracle for `pictura_adjust::apply` (task M4-C).
 //!
 //! ImageMagick implements a handful of the same adjustments. This is a *sanity*
-//! oracle, not a parity oracle: Adobe's exact integer math is closed and the
-//! ImageMagick operators only approximate some Photoshop paths. Each supported
+//! oracle, not a parity oracle: the exact integer math is closed and the
+//! ImageMagick operators only approximate some reference paths. Each supported
 //! adjustment is diffed against the ImageMagick result with
 //! `pictura_testkit::compare`; the tolerance and the reason for it are in the
 //! table below and in `tests/README.md`.

@@ -54,7 +54,7 @@ left of the thumbnail when `ClippingRole` is set, keeping the M39 indentation
 and base underline. Asset-missing is safe (glyph omitted).
 
 ### D6 — Icons
-Five independent-creation lock SVGs (`layers.lockAlpha`, `layers.lockPaint`,
+Five original lock SVGs (`layers.lockAlpha`, `layers.lockPaint`,
 `layers.lockPosition`, `layers.lockNesting`, `layers.lockAll`) plus
 `layers.clipMask`, 24×24 stroke `#c8c8c8` to match the existing set; regenerate
 `assets/pictura.qrc`.

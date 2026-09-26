@@ -37,7 +37,7 @@ pub enum TextAlign {
 }
 
 impl TextAlign {
-    /// Photoshop paragraph justification: 0 left, 1 right, 2 center.
+    /// PSD paragraph justification: 0 left, 1 right, 2 center.
     pub fn from_justification(byte: u8) -> TextAlign {
         match byte {
             1 => TextAlign::Right,

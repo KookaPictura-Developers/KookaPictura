@@ -1,7 +1,7 @@
 # Licensing & packaging compliance notes
 
 Working notes, **not** the contract. The canonical legal posture is
-`docs/00-overview/licensing-and-independent-creation.md` (`OVR-004`); this file records the
+`docs/00-overview/licensing-and-provenance.md` (`OVR-004`); this file records the
 concrete dependency audit and the practical mechanics behind its Qt row, so we
 can pick the thread up again later without re-deriving it.
 
@@ -206,7 +206,7 @@ find build -name 'libQt6*.so*'
 
 ## Sources
 
-- `docs/00-overview/licensing-and-independent-creation.md` (`OVR-004`) — canonical legal posture.
+- `docs/00-overview/licensing-and-provenance.md` (`OVR-004`) — canonical legal posture.
 - `docs/01-architecture/build-and-packaging.md` — Qt linkage/deployment, AppImage dropped for LGPL reasons.
 - `https://www.gnu.org/licenses/lgpl-3.0.html` and `https://www.gnu.org/licenses/gpl-3.0.html` — §4 combined-work conditions, §6 source/installation information, §7 no added restrictions.
 - `https://www.qt.io/licensing/open-source-lgpl-obligations` — Qt dual licensing, static vs dynamic obligations.

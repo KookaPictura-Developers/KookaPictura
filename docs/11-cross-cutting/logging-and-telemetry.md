@@ -3,7 +3,7 @@
 - **Spec ID:** `XC-003`
 - **Status:** `Draft`
 - **Parity tier:** `Core` (user-facing History Log and crash reporting); privacy-preserving telemetry is a **Core** behavior modeled on CS6's opt-in Adobe Product Improvement Program; GPU/performance diagnostics are `Core`.
-- **New in CS6:** `Changed` — CS6 keeps the History Log (General preferences) from CS5 and the opt-in Adobe Product Improvement Program; CS6 adds no documented application-wide diagnostic log file, but adds the crash-recovery/auto-save flow and the expanded GPU settings that a diagnostics system must describe. Telemetry as a *first-class, inspectable* feature is an Kooka Pictura addition.
+- **New in CS6:** `Changed` — CS6 keeps the History Log (General preferences) from CS5 and the opt-in Adobe Product Improvement Program; CS6 adds no documented application-wide diagnostic log file, but adds the crash-recovery/auto-save flow and the expanded GPU settings that a diagnostics system must describe. Telemetry as a *first-class, inspectable* feature is a Kooka Pictura addition.
 - **Depends on:** `02-ui-ux/preferences.md` (`UI-010`), `01-architecture/system-architecture.md` (`ARCH-001`), `01-architecture/performance-targets.md`, `01-architecture/gpu-rendering-pipeline.md`, `11-cross-cutting/error-handling.md` (`XC-004`), `11-cross-cutting/crash-recovery-and-autosave.md`, `11-cross-cutting/preference-storage.md` (`XC-002`), `11-cross-cutting/security-and-sandboxing.md` (`XC-005`).
 
 > Rust crate names and log/telemetry schemas below are **design proposals**. CS6's diagnostic logging internals are not publicly documented; where the exact CS6 behavior is unknown it is marked *(unverified)*.
@@ -27,9 +27,9 @@ CS6-era Creative Suite ships the **Adobe Product Improvement Program**. Per Adob
 
 - After the software has been used a certain number of times, a dialog asks whether the user wants to participate.
 - Participation is **optional** and **opt-in**.
-- If the user participates,  *(Adobe Help, robohelp 2015 edition)*
+- If the user participates, usage data about the Adobe software is sent to Adobe; no personal information is recorded or sent. The Adobe Product Improvement Program collects only which features and tools the user works with and how often. *(Adobe Help, robohelp 2015 edition)*
 - The user can opt in/out at any time via `File > Help > Adobe Product Improvement Program` → "Yes, Participate" / "No, Thank You".
-- Adobe describes the program as designed to  (Adobe privacy page) — i.e. it is batched, not a live stream.
+- Adobe describes the program as designed to scale to millions of users without disrupting their product use, with the data sent automatically only after a period (Adobe privacy page) — i.e. it is batched, not a live stream.
 
 Whether the exact same program shipped in every CS6 application, and its precise event schema for Photoshop CS6, is **not established here**. Kooka Pictura should treat APIP as the *behavioral* precedent: **opt-in, anonymous, usage-frequency only, revocable, no content**.
 
@@ -214,7 +214,7 @@ Fetched for this document:
 - `https://docs.rs/log/latest/log/` — `log` facade; five levels (error/warn/info/debug/trace); target/level filtering; `set_logger`/`set_max_level`; compile-time `max_level_*`/`release_max_level_*`; a list of sink implementations including `env_logger`, `systemd-journal-logger`, `syslog`, and `tracing` compatibility.
 - `https://docs.rs/tracing-appender/latest/tracing_appender/` — rolling file appender (`Rotation::MINUTELY/HOURLY/DAILY/NEVER`), non-blocking writer, `WorkerGuard` flushes buffered logs on abrupt termination.
 - `https://doc.qt.io/qt-6/qloggingcategory.html` — `QLoggingCategory` / `Q_DECLARE_LOGGING_CATEGORY` / `qCDebug`…`qCFatal`; rule syntax; `QT_LOGGING_RULES` / `QT_LOGGING_CONF` / `qtlogging.ini`; `installFilter`; `QtFatalMsg` always enabled; fatal default handler aborts to create a core dump.
-- `https://help.adobe.com/en_US/robohelp/2015/robohtml/book/rob_gettingstarted_gs/Adobe_Product_Improvement_Program-.htm` — Adobe's own APIP description: prompt after a number of uses, optional/opt-in, "No personal information is recorded or sent", , with `File > Help > Adobe Product Improvement Program` opt-in/out. (Adobe Help, 2015 edition **but describes the APIP of that era, including CS6-era Creative Suite**; not Photoshop-CS6-specific.)
+- `https://help.adobe.com/en_US/robohelp/2015/robohtml/book/rob_gettingstarted_gs/Adobe_Product_Improvement_Program-.htm` — Adobe's own APIP description: a prompt appears after a number of uses, participation is optional/opt-in, no personal information is recorded or sent, and only the features/tools used and their usage frequency are collected, with opt-in/out at `File > Help > Adobe Product Improvement Program`. (Adobe Help, 2015 edition **but describes the APIP of that era, including CS6-era Creative Suite**; not Photoshop-CS6-specific.)
 - `https://rustsec.org/` — RustSec Advisory Database and `cargo-audit`/`cargo-deny` tooling; used to argue for supply-chain auditing of the logging/telemetry dependency tree.
 - `https://specifications.freedesktop.org/basedir-spec/latest/` — `$XDG_STATE_HOME` is explicitly for "state data that should persist between (application) restarts" such as "actions history (logs, history, recently used files)".
 
@@ -231,7 +231,7 @@ Internal cross-references (not sources): `docs/02-ui-ux/preferences.md` (`UI-010
 - **Does CS6 write any diagnostic log file at all** (e.g. a verbose/troubleshooting mode)? *(unverified)*. *Resolve:* inspect a CS6 install/registry for a logging flag.
 - **CS6 History Log metadata format.** The exact XMP/metadata keys the History Log writes are not established. *Resolve:* enable it in a CS6 install and inspect a saved PSD's XMP.
 - **Crash reporter consent and transport in CS6** — unknown. *Resolve:* CS6 release notes / crash-handler docs.
-- **Telemetry endpoint ownership and consent UX.** Whether Kooka Pictura ships any endpoint at 1.0, and if so who operates it, is a product/legal decision. *Resolve:* project decision + `00-overview/licensing-and-independent-creation.md`.
+- **Telemetry endpoint ownership and consent UX.** Whether Kooka Pictura ships any endpoint at 1.0, and if so who operates it, is a product/legal decision. *Resolve:* project decision + `00-overview/licensing-and-provenance.md`.
 - **`tracing` vs `log` as the public instrumentation API** for third-party plug-ins; whether plug-ins get a tracing handle or a narrow host `log` callback only. *Resolve:* align with `ARCH-011`.
 - **Log retention/rotation defaults and support-bundle contents.** *Resolve:* support/usability review.
 - **Performance budget for always-on spans.** Whether INFO-level instrumentation measurably affects frame budget; verify against `ARCH-003`/`performance-targets.md`.

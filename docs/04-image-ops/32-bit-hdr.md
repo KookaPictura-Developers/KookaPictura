@@ -293,7 +293,7 @@ Proposed:
   implementation matches Debevec or Robertson. *Resolves with:* comparing CS6
   output to reference implementations.
 - **Local Adaptation math**: the exact edge-aware local operator and the Toning
-  Curve's default limit/equalise behaviour. *Resolves with:* publicly documenting
+  Curve's default limit/equalise behaviour. *Resolves with:* analysis of
   or an Adobe paper.
 - **Preview storage mechanism**: how PSD/PSB/TIFF store the 32-bit preview white
   point (resource 1070 or otherwise). *Resolves with:* inspecting a CS6 32-bit

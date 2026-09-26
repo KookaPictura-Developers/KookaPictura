@@ -8,6 +8,10 @@
 #   3. a milestone name (m<NN>/M<NN>) in a crates/ identifier or string literal
 #      (milestones belong in comments, docs, and specs only).
 #   4. docs/ modified without a TASK-ALLOWS-DOCS marker.
+#   5. an encumbered Adobe preset/binary asset (.abr/.pat/.grd/.asl/...).
+#   6. an Adobe-tool creator string inside a tracked binary asset.
+#   7. a tracked reference-fixtures/ file, or tracked code depending on it.
+#   8. a missing required legal artifact (LICENSE, notices, deny.toml, CONTRIBUTING).
 #
 # Runnable locally with no setup:   bash scripts/guard.sh
 #
@@ -40,6 +44,49 @@ if [ -n "$artboards" ]; then
     echo "$artboards"
     fail=1
 fi
+
+# --- 2b. encumbered Adobe preset/binary assets --------------------------------
+echo "check: no encumbered Adobe preset/binary assets"
+encumbered=$(git ls-files | grep -Ei '\.(abr|pat|grd|asl|acv|atn|csh|8bf|aco|acb)$' || true)
+if [ -n "$encumbered" ]; then
+    echo "FAIL: encumbered Adobe preset/binary asset tracked (do not bundle Adobe assets):"
+    echo "$encumbered"
+    fail=1
+fi
+
+# --- 2c. Adobe-tool creator strings inside tracked binary assets --------------
+echo "check: no Adobe-tool strings in tracked binary assets"
+adtool=$(git grep -a -l -e 'Adobe Photoshop' -e 'Adobe Illustrator' -e 'xmp:CreatorTool' \
+    -- '*.psd' '*.psb' '*.bin' '*.icc' '*.icm' '*.ttf' '*.otf' '*.jpg' '*.jpeg' '*.png' '*.tif' '*.tiff' || true)
+if [ -n "$adtool" ]; then
+    echo "FAIL: asset carries an Adobe-tool creator string (generate a synthetic asset instead):"
+    echo "$adtool"
+    fail=1
+fi
+
+# --- 2d. reference-fixtures stay untracked and unreferenced -------------------
+echo "check: reference-fixtures/ stay untracked"
+tracked_ref=$(git ls-files | grep '^reference-fixtures/' || true)
+if [ -n "$tracked_ref" ]; then
+    echo "FAIL: reference-fixtures/ is tracked (must stay gitignored, never distributed):"
+    echo "$tracked_ref"
+    fail=1
+fi
+ref_use=$(git grep -n -e 'reference-fixtures/' -- 'crates/*' 'scripts/*' ':!scripts/guard.sh' || true)
+if [ -n "$ref_use" ]; then
+    echo "FAIL: tracked code depends on reference-fixtures/ (absent in clones/CI):"
+    echo "$ref_use"
+    fail=1
+fi
+
+# --- 2e. required legal artifacts present -------------------------------------
+echo "check: required legal artifacts present"
+for f in LICENSE THIRD-PARTY-LICENSES LICENSES/GPL-3.0-or-later.txt deny.toml CONTRIBUTING.md; do
+    if [ ! -f "$f" ]; then
+        echo "FAIL: required legal artifact missing: $f"
+        fail=1
+    fi
+done
 
 # --- 3. milestone names in crates/ identifiers or strings ---------------------
 echo "check: no milestone names in crates/ code"

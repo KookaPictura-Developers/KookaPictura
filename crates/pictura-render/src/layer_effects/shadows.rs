@@ -22,7 +22,7 @@ pub struct DropShadow {
     pub angle_deg: f32,
     /// Pixels, `0..=30000`.
     pub distance: f32,
-    /// Percent, `0..=100` (`Ckmt`, Photoshop's stored key for Spread).
+    /// Percent, `0..=100` (`Ckmt`, the reference's stored key for Spread).
     pub spread: f32,
     /// Pixels, Gaussian radius, `0..=250`.
     pub size: f32,
@@ -43,7 +43,7 @@ pub struct InnerShadow {
     pub angle_deg: f32,
     /// Pixels, `0..=30000`.
     pub distance: f32,
-    /// Percent, `0..=100` (`Ckmt`, Photoshop's stored key for Choke, an erode).
+    /// Percent, `0..=100` (`Ckmt`, the reference's stored key for Choke, an erode).
     pub choke: f32,
     /// Pixels, Gaussian radius, `0..=250`.
     pub size: f32,

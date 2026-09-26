@@ -2,7 +2,7 @@ use super::*;
 
 use pictura_codec::EngineValue;
 
-/// The committed `engine_data.bin` is the raw EngineData blob of a Photoshop
+/// The committed `engine_data.bin` is the raw EngineData blob of a reference
 /// 2021 text layer. Parsing and deriving the style here proves the Rust parser
 /// agrees with the psd-tools 1.19 EngineData reader on the same bytes.
 #[test]

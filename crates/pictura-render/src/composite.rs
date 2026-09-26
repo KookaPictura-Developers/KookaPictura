@@ -463,7 +463,7 @@ fn composite_canvas(canvas: &mut Canvas, layer: &Layer, doc: &Document, inner: &
 /// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `mixr`
 /// (Channel Mixer), `curv` (Curves), `selc` (Selective Color), `SoCo`
 /// (solid-color fill content, either the 4-byte in-house RGBA tuple or the
-/// standard Photoshop descriptor), `GdFl` (gradient fill content), `PtFl`
+/// standard PSD descriptor), `GdFl` (gradient fill content), `PtFl`
 /// (pattern fill content), both fill descriptors, and `clrL` (Color Lookup,
 /// whose embedded `.CUBE` is parsed when the kind is a 3-D LUT).
 pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
@@ -498,7 +498,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
     }
 }
 
-/// `SoCo`: the standard Photoshop solid-color fill descriptor. A version-16
+/// `SoCo`: the standard PSD solid-color fill descriptor. A version-16
 /// `DescriptorBlock` whose `Clr ` object carries `Rd  `/`Grn `/`Bl  ` `doub`
 /// values on the `0..=255` scale; each is rounded and clamped, and alpha is
 /// forced to 255 (the descriptor has none). Missing key, wrong type,
@@ -544,7 +544,7 @@ fn be_u32(d: &[u8], at: usize) -> Option<u32> {
 
 /// `brit`: brightness (i16), contrast (i16), mean (i16), lab_only (u8), pad.
 ///
-/// Photoshop's `brit` block carries no explicit "Use Legacy" flag; CS6 defaults
+/// The reference's `brit` block carries no explicit "Use Legacy" flag; CS6 defaults
 /// new adjustment layers to the modern curve, so decode with `use_legacy:false`.
 /// ponytail: legacy-vs-modern detection is not encoded here; revisit if a CS6
 /// baseline for legacy `brit` files appears.
@@ -696,7 +696,7 @@ fn decode_vibrance(d: &[u8]) -> Option<Adjustment> {
 
 /// `blwh`: descriptor block with the six channel-percentage longs, a `useTint`
 /// bool, and a nested `Clr ` `tintColor` object whose `Rd  `/`Grn `/`Bl  `
-/// doubles are 0..1. Missing numeric keys default to Photoshop's Black & White
+/// doubles are 0..1. Missing numeric keys default to the reference's Black & White
 /// defaults; absent `tintColor` is black.
 fn decode_black_white(d: &[u8]) -> Option<Adjustment> {
     let obj = pictura_codec::read_descriptor(d).ok()?;
@@ -826,7 +826,7 @@ fn decode_gradient_map(d: &[u8]) -> Option<Adjustment> {
 // These build the raw `AdjustmentData` the decoder above reads, so the app can
 // create adjustment layers in memory. Byte layouts mirror psd-tools' adjustment
 // structs (the independent oracle the codec fixtures come from); each is the
-// minimal block for the key, not a full re-implementation of Photoshop's writer.
+// minimal block for the key, not a full re-implementation of the reference's writer.
 
 /// `nvrt`: Invert carries no payload.
 pub fn encode_invert() -> AdjustmentData {
@@ -868,7 +868,7 @@ pub fn encode_brightness_contrast(brightness: i16, contrast: i16) -> AdjustmentD
 
 /// `hue2`: version (2), enable (1), pad, colorization (3×i16), then the master
 /// Hue/Saturation/Lightness triplet (3×i16), followed by the six per-band range
-/// records (6 × 7 i16) that Photoshop stores. The decoder only reads the version
+/// records (6 × 7 i16) that the reference stores. The decoder only reads the version
 /// and the master triplet; the trailing records are zeroed so the block matches
 /// the real 100-byte layout.
 pub fn encode_hue_saturation(hue: i16, saturation: i16, lightness: i16) -> AdjustmentData {
@@ -915,7 +915,7 @@ pub fn encode_photo_filter(
     }
 }
 
-/// `SoCo`: the standard Photoshop solid-color fill descriptor. `Clr ` is an
+/// `SoCo`: the standard PSD solid-color fill descriptor. `Clr ` is an
 /// `RGBC` object carrying the three components as `doub` values on the
 /// `0..=255` scale. The descriptor has no alpha, so authored fills are opaque.
 pub fn encode_solid_color_fill(color: [u8; 3]) -> AdjustmentData {
@@ -993,7 +993,7 @@ fn encode_short(key: [u8; 4], value: u16) -> AdjustmentData {
 /// the layer carries no non-default ranges, else the product of the active
 /// composite and per-channel gates (each `0` or `1`).
 ///
-/// ponytail: Rec.601 composite gray and a hard 0/1 gate; Photoshop's weighting
+/// ponytail: Rec.601 composite gray and a hard 0/1 gate; the reference's weighting
 /// and split-slider feather are unpublished and the model stores no feather.
 /// ponytail: channel groups are assumed R,G,B in order; the model does not label
 /// them, and groups beyond RGB are ignored.
@@ -1077,7 +1077,7 @@ pub(crate) fn blend_parts(
 
     // Dissolve is stochastic: the effective alpha is a threshold on a fixed
     // per-pixel noise field, and passing pixels go fully opaque.
-    // ponytail: deterministic splitmix hash, not Adobe's unpublished noise tile;
+    // ponytail: deterministic splitmix hash, not the unpublished noise tile;
     // swap when a CS6 dither baseline exists.
     if matches!(mode, BlendMode::Dissolve) {
         if dissolve_noise(x, y) >= as_ {

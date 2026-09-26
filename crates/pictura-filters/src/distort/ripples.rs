@@ -1,7 +1,7 @@
 //! Ripple warps (`FILT-040`): ZigZag, Ocean Ripple.
 //!
 //! Inverse-mapping warps with bilinear color sampling; alpha is never touched.
-//! ZigZag is deterministic; Ocean Ripple takes a seed. Adobe's generators are
+//! ZigZag is deterministic; Ocean Ripple takes a seed. The reference's generators are
 //! closed (`docs/dev/m11-distort2.md`), so the models below are approximations.
 
 use pictura_core::PixelBuffer;
@@ -37,7 +37,7 @@ pub fn zigzag(
         return Ok(());
     }
 
-    // ponytail: Adobe's ridge falloff is closed. This uses a cosine radial
+    // ponytail: the reference's ridge falloff is closed. This uses a cosine radial
     // profile pinned to zero at the edge, so reversals == ridges. Ceiling: no
     // CS6 pixel parity. Upgrade by fitting reference renders (oracle hook M11-B).
     let (w, h) = (buf.width as usize, buf.height as usize);
@@ -105,7 +105,7 @@ pub fn ocean_ripple(
         return Ok(());
     }
 
-    // ponytail: Adobe's ripple placement is closed. This sums a few random
+    // ponytail: the reference's ripple placement is closed. This sums a few random
     // direction sinusoids, an approximation of "randomly spaced ripples".
     // Ceiling: no CS6 pixel parity. Upgrade by fitting reference renders (M11-B).
     let (w, h) = (buf.width as usize, buf.height as usize);

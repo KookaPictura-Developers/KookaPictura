@@ -88,7 +88,7 @@ pub use type_tool::encode_type_tool;
 pub use write::{write_psb, write_psd};
 pub use xmp::{parse_xmp, patch_xmp, patch_xmp_values, to_xmp_packet, XmpField, XmpProperties};
 
-/// Read a Camera Raw Filter's `Fltr` options from a
+/// Read a Pictura Raw filter's `Fltr` options from a
 /// [`pictura_core::SmartFilter::options`] byte buffer.
 pub fn camera_raw_options(options: &[u8]) -> Result<DescValue, PsdError> {
     let mut reader = common::Reader::new(options);

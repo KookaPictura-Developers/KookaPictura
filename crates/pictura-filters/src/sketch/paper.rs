@@ -1,7 +1,7 @@
 //! Sketch paper filters (`m25-filter-families`): Note Paper, Photocopy, Plaster,
 //! Reticulation, Stamp, Torn Edges and Water Paper.
 //!
-//! Behavioural models only: Adobe's kernels are closed. Each deliberate
+//! Behavioural models only: the reference's kernels are closed. Each deliberate
 //! shortcut carries a `ponytail:` note.
 
 use pictura_core::PixelBuffer;
@@ -16,7 +16,7 @@ use crate::{validate, FilterError, LightDirection};
 /// Note Paper: Emboss + Grain. The luminance is a height field lit from the top
 /// and perturbed by the seeded surface grain; the result is achromatic paper.
 ///
-/// ponytail: a fixed top light plus `image_balance` tonal bias, not Adobe's
+/// ponytail: a fixed top light plus `image_balance` tonal bias, not the reference's
 /// foreground/background hole model (this signature carries no fg/bg). Swap in
 /// the fg/bg ink mapping if the note-paper holes need to reveal a paper colour.
 pub fn note_paper(
@@ -80,7 +80,7 @@ pub fn note_paper(
 /// black or white. `darkness` raises the cut and shrinks the dark area; `detail`
 /// lowers the edge requirement.
 ///
-/// ponytail: Sobel-gated threshold, not Adobe's halftone/toner simulation. Add
+/// ponytail: Sobel-gated threshold, not the reference's halftone/toner simulation. Add
 /// a dither screen if the flat areas read too clean.
 pub fn photocopy(buf: &mut PixelBuffer, detail: u8, darkness: u8) -> Result<(), FilterError> {
     let n = validate(buf)?;
@@ -181,7 +181,7 @@ pub fn plaster(
 /// `black_level`/`white_level` place the shadow/highlight cuts and `density`
 /// scales the clumping.
 ///
-/// ponytail: box-mean-clumped white noise, not Adobe's emulsion shrink model.
+/// ponytail: box-mean-clumped white noise, not the reference's emulsion shrink model.
 /// Multi-octave clumping is the upgrade path if the grain reads too uniform.
 pub fn reticulation(
     buf: &mut PixelBuffer,
@@ -242,7 +242,7 @@ pub fn reticulation(
 /// `light_dark_balance` sets the cut (0 = dark/heavy, 50 = light/sparse) and
 /// `smoothness` is the pre-threshold blur radius.
 ///
-/// ponytail: a single hard threshold, not Adobe's rubber-stamp edge roughening.
+/// ponytail: a single hard threshold, not the reference's rubber-stamp edge roughening.
 /// Add a nib-shaped jitter if the outline needs texture.
 pub fn stamp(
     buf: &mut PixelBuffer,
@@ -285,7 +285,7 @@ pub fn stamp(
 /// cut, `contrast` the tonal gain, `smoothness` the pre-threshold blur; the
 /// seeded lattice roughens the tear. Foreground ink on background paper.
 ///
-/// ponytail: one lattice-perturbed sigmoid, not Adobe's fibre-cell tear. Layer a
+/// ponytail: one lattice-perturbed sigmoid, not the reference's fibre-cell tear. Layer a
 /// directional fibre octave if the edges need real torn strands.
 pub fn torn_edges(
     buf: &mut PixelBuffer,
@@ -341,7 +341,7 @@ pub fn torn_edges(
 /// `brightness`/`contrast` grade the result, and a seeded lattice + grain make
 /// colours pool and blend.
 ///
-/// ponytail: an anisotropic lattice over per-pixel grain, not Adobe's fluid
+/// ponytail: an anisotropic lattice over per-pixel grain, not the reference's fluid
 /// daub simulation. A direction field is the upgrade path if the flow reads flat.
 pub fn water_paper(
     buf: &mut PixelBuffer,

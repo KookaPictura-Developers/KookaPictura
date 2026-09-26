@@ -10,24 +10,24 @@
 
 ## CS6 behavior
 
-Quick Mask mode is the bridge between the active selection and an editable mask. CS6: 
+Quick Mask mode is the bridge between the active selection and an editable mask. CS6 defines it as a way to convert a selection into a temporary mask for easier editing: the Quick Mask appears as a colored overlay with adjustable opacity, can be edited with any painting tool or modified with a filter, and is converted back into a selection on the image when the mode is exited.
 
 Semantics that matter to the selection model:
 
-- **It is a temporary alpha channel.**  Entering the mode creates the channel; leaving it converts the mask back to a selection and removes the temporary channel.
-- **Selected vs masked is polarity, not two different masks.** The overlay shows the *protected* (unselected) area by default; the selected area is unprotected. 
-- **Painting changes coverage.** With the default **Masked Areas** display: 
-- **Partial coverage survives the round trip.**  — partial values are retained in the resulting selection.
-- **The boundary is the 50% line.** 
+- **It is a temporary alpha channel.** A temporary Quick Mask channel appears in the Channels panel for as long as Quick Mask mode is active; all mask editing still happens in the image window. Entering the mode creates the channel; leaving it converts the mask back to a selection and removes the temporary channel.
+- **Selected vs masked is polarity, not two different masks.** The overlay shows the *protected* (unselected) area by default; the selected area is unprotected. A rubylith-like color overlay covers and protects everything outside the selection, leaving the selected area unprotected; by default the protected area is tinted red at 50% opacity.
+- **Painting changes coverage.** With the default **Masked Areas** display, painting with white selects more of the image (the overlay is removed where white is painted); painting with black deselects (the overlay covers where black is painted); painting with gray or another color creates a semitransparent area useful for feathering or anti-aliased effects.
+- **Partial coverage survives the round trip.** Semitransparent areas may not look selected after exiting Quick Mask mode, but they are — partial values are retained in the resulting selection.
+- **The boundary is the 50% line.** When a feathered mask is converted to a selection, the boundary line runs halfway between the black and white pixels of the mask gradient; it marks the transition between pixels that are less than 50% selected and those that are more than 50% selected.
 - **Two display conventions flip the paint semantics.** The Quick Mask Options dialog offers:
 
-  - **Masked Areas** (default): 
-  - **Selected Areas**: 
+  - **Masked Areas** (default): masked areas are black (opaque) and selected areas white (transparent); painting with black enlarges the masked area, painting with white enlarges the selected area.
+  - **Selected Areas**: masked areas are white (transparent) and selected areas black (opaque); painting with white enlarges the masked area, painting with black enlarges the selected area.
 
   The toolbox button glyph reflects the choice (white-on-gray for Masked Areas, gray-on-white for Selected Areas), and `Alt`/`Option`-click toggles the two.
-- **Color and opacity are display-only.**  Opacity accepts 0–100%; default red at 50%.
+- **Color and opacity are display-only.** The color and opacity settings affect only how the mask looks and never change how underlying areas are protected. Opacity accepts 0–100%; default red at 50%.
 - **Persistence.** Leaving Quick Mask produces a selection; it can then be saved permanently with `Select > Save Selection` or the Channels panel, which is how a temporary mask becomes a real alpha channel. A Quick Mask is *not* itself saved.
-- **Filters apply to the mask.** CS6 explicitly allows modifying the Quick Mask "with a filter," so a mask can be blurred (feather), sharpened, etc., before conversion back to a selection — this is a selection-mask operation, not a pixel edit.
+- **Filters apply to the mask.** CS6 explicitly allows modifying the Quick Mask with a filter, so a mask can be blurred (feather), sharpened, etc., before conversion back to a selection — this is a selection-mask operation, not a pixel edit.
 
 The painter tool details (toolbox button, `Q`, brush/opacity/flow, swatch auto-swap to black/white) are specified in `TOOL-044`.
 
@@ -83,7 +83,7 @@ shown(p) = lerp(image(p), mask_color, opacity * (1 - coverage_norm(p)))   # Mask
 shown(p) = lerp(image(p), mask_color, opacity * coverage_norm(p))         # Selected Areas
 ```
 
-Where `coverage_norm = coverage/255`. Color/opacity never enter the mask. This matches the CS6 statement that changing them  but does not change protection.
+Where `coverage_norm = coverage/255`. Color/opacity never enter the mask. This matches the CS6 statement that changing them may make the mask more easily visible against the image colors but does not change protection.
 
 ### Round trip to a persistent mask
 
@@ -161,7 +161,7 @@ Widgets over QML for the same reasons as `TOOL-044`: the mode is a dense, keyboa
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus. Established: the Quick Mask definition (); the temporary Channels-panel channel; the rubylith overlay protecting the unselected area; default red 50% overlay; painting white selects / black deselects and gray creates semitransparency; "Semitransparent areas may not appear to be selected… but they are"; the 50% boundary rule; Masked Areas vs Selected Areas definitions and the `Alt`/`Option`-click toggle; mask color and opacity being display-only; the channel Masked/Selected Areas options; `Select > Save Selection` as the path to a permanent alpha channel; Quick Mask as a Color Range selection-preview mode; the `~` toggle between composite and grayscale mask in the Channels key table.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus. Established: the Quick Mask definition (converting a selection to a temporary mask for editing, shown as a colored overlay with adjustable opacity, editable with any painting tool or a filter, and converted back to a selection on exit); the temporary Channels-panel channel; the rubylith overlay protecting the unselected area; default red 50% overlay; painting white selects / black deselects and gray creates semitransparency; the note that semitransparent areas may not look selected on exit but are; the 50% boundary rule; Masked Areas vs Selected Areas definitions and the `Alt`/`Option`-click toggle; mask color and opacity being display-only; the channel Masked/Selected Areas options; `Select > Save Selection` as the path to a permanent alpha channel; Quick Mask as a Color Range selection-preview mode; the `~` toggle between composite and grayscale mask in the Channels key table.
 
 Cross-referenced (not duplicated here):
 
@@ -171,7 +171,7 @@ Cross-referenced (not duplicated here):
 
 - **Entering Quick Mask with no selection.** Undocumented. Resolve with a CS6 capture (does it produce an all-masked or all-selected temporary channel?).
 - **History granularity for mask painting.** Whether each brush stroke is a history state or the whole Quick Mask session is one state is unstated. Resolve in `ARCH-009` with a CS6 test.
-- **Which filters are allowed on a mask.** CS6 says "modify it with a filter" without listing them (filters requiring color data or producing color are presumably disabled). Resolve with a CS6 test.
+- **Which filters are allowed on a mask.** CS6 says the mask can be modified with a filter without listing which filters (filters requiring color data or producing color are presumably disabled). Resolve with a CS6 test.
 - **Temporary channel bit depth.** Whether the temporary channel follows document bit depth (8/16/32) is unknown. Resolve by inspecting conversion on a 16/32-bit document.
 - **Interaction with layer masks.** Whether entering Quick Mask while a layer mask is selected edits the selection or the layer mask in CS6 is not documented in the fetched text. Resolve with a CS6 capture.
 - **`~` toggle scope.** Whether the composite/grayscale toggle is Quick-Mask-specific or a general Channels-panel behavior needs confirmation from a CS6 capture.

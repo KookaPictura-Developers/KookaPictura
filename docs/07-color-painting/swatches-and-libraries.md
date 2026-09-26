@@ -12,7 +12,7 @@
 
 ## CS6 behavior
 
-The **Swatches panel** (`Window > Swatches`) 
+The **Swatches panel** (`Window > Swatches`) stores colors used frequently; you can add or remove entries, or switch between libraries for different projects.
 
 ### Applying and displaying
 
@@ -23,10 +23,10 @@ The **Swatches panel** (`Window > Swatches`)
 ### Adding
 
 1. Make the desired color the foreground color.
-2. Either **click the New Swatch button** / choose **New Swatch** from the panel menu, or 
+2. Either **click the New Swatch button** / choose **New Swatch** from the panel menu, or move the pointer over an empty slot in the bottom row of the panel (it becomes the Paint Bucket tool) and click to add the color, then name it and click OK.
 3. Colors can also be added from the picker/dialog via **Add To Swatches**.
 
-> 
+> New colors persist in the Photoshop preferences between editing sessions; saving a color to a library is what makes it permanent.
 
 ### Deleting
 
@@ -37,15 +37,15 @@ Drag a swatch to the **Delete** icon, or **`Alt`-click** / **`Option`-click** a 
 | Command | Behavior |
 |---|---|
 | **Load Swatches** | **Adds** a library to the current set; pick a file and click Load. |
-| **Replace Swatches** | **Replaces** the current list with a different library;  |
-| **Name of a color library** (lower part of the menu) | Loads a specific color system (e.g. PANTONE/TOYO/etc.);  |
-| **Save Swatches** | Saves the current set as a library file; if placed in `Presets/Swatches`,  |
+| **Replace Swatches** | **Replaces** the current list with a different library; Photoshop offers to save the current swatches first. |
+| **Name of a color library** (lower part of the menu) | Loads a specific color system (e.g. PANTONE/TOYO/etc.); the loaded library can replace or append to the current colors. |
+| **Save Swatches** | Saves the current set as a library file; a library placed in `Presets/Swatches` appears by name at the bottom of the Swatches panel menu once the application restarts. |
 | **Reset Swatches** | Restores the default swatch library; replace or append. |
 | **Save Swatches For Exchange** | Saves a library for sharing across Photoshop, Illustrator, and InDesign. |
 
 ### Sharing between applications
 
-Swatch libraries saved for exchange load into Photoshop, Illustrator, and InDesign, and  Swatches **excluded** from exchange (Help):
+Swatch libraries saved for exchange load into Photoshop, Illustrator, and InDesign, and colors match across those applications provided the color settings are synchronized. Swatches **excluded** from exchange (Help):
 
 - From Illustrator/InDesign: **patterns, gradients, and the Registration swatch**.
 - From Photoshop: **book color references, HSB, XYZ, duotone, monitorRGB, opacity, total ink, and webRGB** swatches.
@@ -56,15 +56,15 @@ Swatch libraries saved for exchange load into Photoshop, Illustrator, and InDesi
 
 - Display modes: **Text Only, Small/Large Thumbnail, Small/Large List**.
 - **Load / Append / Replace**, rename, delete, **Save Set**, and **Reset**.
-- Each library type "has its own file extension and default folder"; shipped presets live in the application's `Presets` folder, user libraries in the per-user Adobe presets location.
+- Each library type has its own file extension and default folder; shipped presets live in the application's `Presets` folder, user libraries in the per-user Adobe presets location.
 
 ### Color libraries / spot books
 
-The **named color-system entries at the bottom of the Swatches panel menu** are the same spot-color systems the picker exposes (`CLR-002`): PANTONE, TOYO Color Finder 1050, TRUMATCH, FOCOLTONE, HKS, DIC, ANPA-COLOR. 
+The **named color-system entries at the bottom of the Swatches panel menu** are the same spot-color systems the picker exposes (`CLR-002`): PANTONE, TOYO Color Finder 1050, TRUMATCH, FOCOLTONE, HKS, DIC, ANPA-COLOR. Adobe ships several standard color libraries that can be loaded from the Swatches panel menu.
 
 ### Adobe Color Themes / Kuler (CS6 vs CC)
 
-CS6 shipped **no built-in "Adobe Color Themes" panel**. A secondary source states plainly:  The CS6 Help likewise lists **Kuler** only as a *tablet (Adobe Touch) app* and never as an in-application panel. For CS6 parity the built-in mechanism is the Swatches panel + Preset Manager; any Color-Themes/Kuler integration is out of scope and belongs in `00-overview/feasibility-and-non-goals.md`.
+CS6 shipped **no built-in "Adobe Color Themes" panel**. A secondary source states that CC exposes the panel through `Window > Extensions > Adobe Color Themes`, while CS6 and earlier users can instead use the Color Themes web app at color.adobe.com. The CS6 Help likewise lists **Kuler** only as a *tablet (Adobe Touch) app* and never as an in-application panel. For CS6 parity the built-in mechanism is the Swatches panel + Preset Manager; any Color-Themes/Kuler integration is out of scope and belongs in `00-overview/feasibility-and-non-goals.md`.
 
 ### File formats
 
@@ -195,11 +195,11 @@ Widgets, not QML: dense docked grid with keyboard/menu-driven management, consis
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference. Established: the Swatches panel purpose and `Window > Swatches`; click = foreground / `Ctrl`/`Cmd`-click = background; add via New Swatch / panel-menu New Swatch / empty-bottom-row paint-bucket add with name prompt; preference persistence of new colors vs library durability; delete via trash drag or `Alt`/`Option`-click scissors; Load (add) vs Replace (replace, with save-first option) vs named-book entries (replace or append); Save Swatches and the `Presets/Swatches` menu-after-restart rule; Reset Swatches (replace/append); Save Swatches For Exchange and the full exclusion list; the cross-application sharing promise; the lower-part-of-menu color systems; ; Preset Manager paths (CS5 vs CS6) and swatch operations; 
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference. Established: the Swatches panel purpose and `Window > Swatches`; click = foreground / `Ctrl`/`Cmd`-click = background; add via New Swatch / panel-menu New Swatch / empty-bottom-row paint-bucket add with name prompt; preference persistence of new colors vs library durability; delete via trash drag or `Alt`/`Option`-click scissors; Load (add) vs Replace (replace, with save-first option) vs named-book entries (replace or append); Save Swatches and the `Presets/Swatches` menu-after-restart rule; Reset Swatches (replace/append); Save Swatches For Exchange and the full exclusion list; the cross-application sharing promise; the lower-part-of-menu color systems; the standard color libraries shipped by Adobe and their loading from the Swatches panel menu; Preset Manager paths (CS5 vs CS6) and swatch operations; the rule that each library type has its own file extension and default folder.
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — same file, "What's New in CS6": "Read swatches from HTML, CSS, and SVG files" is listed under Creative Cloud-only features; the CS6 JDI list contains no Swatches-panel change.
 - `https://colorslurp.com/blog/a-complete-guide-to-ase-files` — secondary/community: `.ase` = "Adobe Swatch Exchange" storing multiple named palettes and sharing across Illustrator/Photoshop/InDesign; `.aco` is Photoshop's single-palette format; Photoshop imports via the Swatches panel menu and exports via **Save Swatches for Exchange**.
 - `https://docs.fileformat.com/settings/aco/` — secondary/community: ACO described as a binary Photoshop/Adobe color-swatch file (page content largely navigational; used only to confirm the extension's purpose).
-- `https://photoshoptrainingchannel.com/tips/adobe-color-themes` — secondary/community:  Establishes that the in-app Color Themes panel is a CC feature, not CS6.
+- `https://photoshoptrainingchannel.com/tips/adobe-color-themes` — secondary/community: states that CC reaches the in-app panel through `Window > Extensions > Adobe Color Themes`, while CS6 and earlier rely on the Color Themes web app. Establishes that the in-app Color Themes panel is a CC feature, not CS6.
 
 Not fetched (HTTP 403 from this environment): `helpx.adobe.com` "Share swatches between applications" and "Add swatches from HTML CSS and SVG" pages linked from the CS6 PDF.
 
@@ -209,6 +209,6 @@ Not fetched (HTTP 403 from this environment): `helpx.adobe.com` "Share swatches 
 - **Exact default display mode** of the Swatches panel (Small Thumbnail assumed). *Resolves with:* a CS6 first-run capture.
 - **De-duplication behavior** of the CS6 panel (only the CC HTML/CSS/SVG path documents de-dup). *Resolves with:* a CS6 add-twice test.
 - **Whether panel add/delete is undoable** in CS6. *Resolves with:* a CS6 experiment.
-- **Book library provisioning and licensing** (bundling PANTONE/TOYO/DIC data). *Resolves with:* `00-overview/licensing-and-independent-creation.md`.
+- **Book library provisioning and licensing** (bundling PANTONE/TOYO/DIC data). *Resolves with:* `00-overview/licensing-and-provenance.md`.
 - **Kuler in CS6** — whether a stock CS6 install exposed Kuler via `Window > Extensions`, and whether Kooka Pictura should stub it. *Resolves with:* a CS6 installation capture / Adobe Exchange archive.
 - **Internal library serialization** format (ACO/ASE vs a project format) and its 16/32-bit fidelity. *Resolves with:* `10-workflow-io/presets-manager.md` and `01-architecture/file-formats.md`.

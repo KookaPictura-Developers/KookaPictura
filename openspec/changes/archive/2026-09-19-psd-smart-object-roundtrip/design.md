@@ -40,7 +40,7 @@ the container and the CC filter model.
 - Applying or editing the CS6 raw-as-Smart-Object `crs:` path. It is exposed and
   re-emitted byte-exact but is preserved-only, not modeled or edited.
 - Validated parity at the CS6 end or the earliest-CC end. The only fixture is a
-  Photoshop a reference build file, so tolerant parse plus byte-preserving write is the
+  reference smart-object file, so tolerant parse plus byte-preserving write is the
   guarantee; behavior unproven for a version is stated as such.
 - 16-bit depth (roadmap G4). A 16-bit fixture is produced later.
 - External (linked) source loading. Embedded content is the target; external
@@ -105,7 +105,7 @@ others keep their raw descriptor bytes.
   round-tripping our own output is not evidence Photoshop accepts it. The two
   supplied fixtures are the evidence base; a 16-bit fixture is pending.
 - **Version coverage is not fixture-validated.** The only reference fixture is a
-  Photoshop a reference build file, so CS6 and earliest-CC behavior cannot be checked
+  reference smart-object file, so CS6 and earliest-CC behavior cannot be checked
   against a file. The guarantee is tolerant parse plus byte-preserving write;
   where a behavior is unproven for a version, the artifacts say so explicitly.
 - **Authoring without a decoder cannot produce a raw's merged raster.** The

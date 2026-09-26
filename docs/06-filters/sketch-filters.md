@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-**Sketch filters.** From the CS6 Help: 
+**Sketch filters.** The CS6 Help describes the Sketch submenu as adding texture to an image, frequently for a 3D effect, and notes their use for fine-arts and hand-drawn looks. Many of these filters redraw the image using the **foreground and background color**, and all Sketch filters can be applied through the Filter Gallery.
 
 The family has **14** filters. All are **8-bit only** and run in the Filter Gallery. Several depend on the document's **foreground/background colors** as ink/paper/graphite (see the per-filter table).
 

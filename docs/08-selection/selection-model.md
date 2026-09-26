@@ -10,18 +10,18 @@
 
 ## CS6 behavior
 
-A Photoshop **selection** isolates one or more parts of an image so that edits, filters, and fills affect only those pixels. The CS6 Help defines it behaviorally: 
+A Photoshop **selection** isolates one or more parts of an image so that edits, filters, and fills affect only those pixels. The CS6 Help defines it behaviorally: selecting particular areas lets you edit and apply effects and filters to those parts while leaving the unselected areas untouched.
 
-Internally a selection is a **document-sized coverage mask**: one value per pixel expressing how much of that pixel belongs to the selection. This is why the CS6 Help calls saved selections *masks*:  The Help explicitly frames the mask as the inverse-facing object —  — and notes the round trip: 
+Internally a selection is a **document-sized coverage mask**: one value per pixel expressing how much of that pixel belongs to the selection. This is why the CS6 Help calls saved selections *masks*: selections can be copied, moved, and pasted, or saved into an alpha channel, which stores them as grayscale images called masks. The Help frames the mask as the inverse-facing object — it covers the unselected part of the image and protects it from editing — and notes the round trip: a stored mask can be converted back into a selection by loading the alpha channel into an image.
 
 User-visible model:
 
 - **Hard selections** come from geometric tools (rectangular/elliptical marquee, single row/column, lasso, polygonal, magnetic) and from hard-edged auto tools (Magic Wand with anti-aliasing off). Coverage is 0 or "fully selected".
 - **Soft selections** come from anti-aliasing, feathering, Color Range, Quick Selection, Focus/Refine operations, and channel loads. Coverage is a continuous transition; a pixel can be partially selected.
-- **The 50% line is the selection.** When a feathered/anti-aliased mask is converted to a selection, CS6 states:  The same 50% coverage contour is what the marching ants trace (SEL-002).
+- **The 50% line is the selection.** When a feathered/anti-aliased mask is converted to a selection, CS6 states that the boundary line runs halfway between the black and white pixels of the mask gradient, marking the transition between pixels that are less than 50% selected and those that are more than 50% selected. The same 50% coverage contour is what the marching ants trace (SEL-002).
 - **Selected ↔ masked.** Mask convention: white = fully selected/editable, black = unselected/protected, gray = partially selected. The **Quick Mask** (SEL-004) and the **layer mask** (LAY-004) use this convention; Quick Mask and layer masks display in rubylith/grayscale.
-- **Selection vs mask vs layer mask.** The *selection* is a single document-level active region (there is at most one active selection per document at a time). A *mask* is a stored grayscale image — an alpha channel, a Quick Mask temporary channel, or a per-layer mask. A *layer mask* is a mask attached to a layer that hides (black) or reveals (white) that layer; a selection is loaded into it or painted into it. The CS6 Help separates these:  and 
-- **Selection has no compositing effect by itself.** It only constrains the *next* operation; CS6 warns that a stale hidden selection can make a tool "not work as expected" — 
+- **Selection vs mask vs layer mask.** The *selection* is a single document-level active region (there is at most one active selection per document at a time). A *mask* is a stored grayscale image — an alpha channel, a Quick Mask temporary channel, or a per-layer mask. A *layer mask* is a mask attached to a layer that hides (black) or reveals (white) that layer; a selection is loaded into it or painted into it. The CS6 Help separates these: a selection becomes a layer mask by loading it to make it active and then adding a new layer mask, and paths can be converted to selections just as selections can be converted to paths.
+- **Selection has no compositing effect by itself.** It only constrains the *next* operation; CS6 warns that a stale hidden selection can make a tool misbehave, so if a tool is not working as expected a hidden selection may be the cause — run Deselect and try the tool again.
 - **Size limit.** A selection spans the document; there is no fixed element count either way, so an empty selection (no pixels) and an all-pixels selection are both valid, as is a selection extending partly beyond the canvas (marquee borders can be dragged beyond the canvas and reappear intact).
 
 ### Selection operations
@@ -39,8 +39,8 @@ Later committed primitives combine with whatever set the current mask; a fresh s
 
 CS6 distinguishes two edge softeners:
 
-- **Anti-aliasing**  Available on the Lasso, Polygonal Lasso, Magnetic Lasso, Elliptical Marquee, and Magic Wand tools only. **Set before the selection is made:** 
-- **Feathering**  Feather is set on the tool (0–250 px) or applied after the fact via `Select > Modify > Feather`. **Feathering effects become apparent only after you move, cut, copy, or fill the selection** — the ants do not move just because feather was applied.
+- **Anti-aliasing** smooths the jagged edges of a selection by softening the color transition between edge pixels and background pixels; because only the edge pixels change, no detail is lost. Available on the Lasso, Polygonal Lasso, Magnetic Lasso, Elliptical Marquee, and Magic Wand tools only. **Set before the selection is made:** the option must be specified before using these tools, because anti-aliasing cannot be added after a selection is made.
+- **Feathering** blurs edges by building a transition boundary between the selection and its surrounding pixels; that blurring can cause some loss of detail at the selection edge. Feather is set on the tool (0–250 px) or applied after the fact via `Select > Modify > Feather`. **Feathering effects become apparent only after you move, cut, copy, or fill the selection** — the ants do not move just because feather was applied.
 
 Both are edge/coverage operations on the *new* primitive before it is combined into the mask.
 
@@ -68,7 +68,7 @@ Up to 56 channels total exist per document including alpha, so the number of sav
 ### Bit-depth and color-mode behavior
 
 - **8/16-bit:** the selection/mask model is identical; a selection is bit-depth-independent.
-- **32-bit (32 bpc):** selections still work, but several *selection-producing* commands are unavailable — `Select > Grow`/`Similar` (documented: ), `Select > Color Range` (SEL-005), and the Magnetic Lasso (`TOOL-003`). Refine Edge behavior at 32 bpc is not addressed in the fetched Help.
+- **32-bit (32 bpc):** selections still work, but several *selection-producing* commands are unavailable — `Select > Grow`/`Similar` (documented as unavailable on Bitmap-mode and 32-bits-per-channel images), `Select > Color Range` (SEL-005), and the Magnetic Lasso (`TOOL-003`). Refine Edge behavior at 32 bpc is not addressed in the fetched Help.
 - **Color modes:** selection is color-space independent; CMYK/Lab/Grayscale/Bitmap documents all hold a coverage mask without color conversion. Color-based tools sample in the working space and are unavailable on Bitmap mode for some commands.
 
 ## UI surface
@@ -99,7 +99,7 @@ The selection model itself has no single UI surface; it is exposed through every
 
 ### Representation
 
-Document-sized, tiled, single-channel coverage buffer. The classic Photoshop representation is **8-bit grayscale** ("Selections ... saved ... as grayscale images called masks"); the coverage range is 0–255, treated as 0..1. A selection is therefore independent of the document's pixel bit depth and channel count. Whether CS6 stores an alpha channel at the document bit depth (8/16/32) rather than 8-bit is not stated in the fetched Help — mark as an open question; the *coverage semantics* are identical either way.
+Document-sized, tiled, single-channel coverage buffer. The classic Photoshop representation is **8-bit grayscale** (selections saved as grayscale images called masks); the coverage range is 0–255, treated as 0..1. A selection is therefore independent of the document's pixel bit depth and channel count. Whether CS6 stores an alpha channel at the document bit depth (8/16/32) rather than 8-bit is not stated in the fetched Help — mark as an open question; the *coverage semantics* are identical either way.
 
 ### Combination (selection operations)
 
@@ -204,7 +204,7 @@ The model is GUI-thread-only; mask arithmetic and contour extraction run in the 
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (Feb 2013 revision; contains some "Creative Cloud only" notes). Established: definition and mask framing of a selection ("A selection isolates one or more parts…", "Alpha channels store selections as grayscale images called masks", "A mask is like the inverse of a selection"); selection vs layer mask and selection↔path conversion; hidden-selection warning; the four selection modes and their modifier shortcuts; anti-aliasing tool list and the "must be set before" rule; feather 0–250, `Select > Modify > Feather`, `Shift+F6`, and the "No pixels are more than 50% selected" behavior; the 50% boundary rule when a feathered mask becomes a selection; `View > Extras`, `View > Show > Selection Edges`, `Ctrl+H`; `Select > All`/`Deselect`/`Reselect`/`Inverse`; `Select > Grow`/`Similar` unavailability on Bitmap and 32-bpc; Save/Load Selection dialogs, channel combination operations, and `Invert`; Move/Border/Expand/Contract/Smooth semantics and their 1–100 / 1–200 / radius ranges; the `Shift`/`Alt`/`Space` movement modifiers (45° constraint, 1-px/10-px nudge).
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (Feb 2013 revision; contains some "Creative Cloud only" notes). Established: definition and mask framing of a selection (isolating parts of an image, alpha channels storing selections as grayscale masks, and a mask as the inverse of a selection); selection vs layer mask and selection↔path conversion; hidden-selection warning; the four selection modes and their modifier shortcuts; anti-aliasing tool list and the rule that it must be set before the selection; feather 0–250, `Select > Modify > Feather`, `Shift+F6`, and the "No pixels are more than 50% selected" behavior; the 50% boundary rule when a feathered mask becomes a selection; `View > Extras`, `View > Show > Selection Edges`, `Ctrl+H`; `Select > All`/`Deselect`/`Reselect`/`Inverse`; `Select > Grow`/`Similar` unavailability on Bitmap and 32-bpc; Save/Load Selection dialogs, channel combination operations, and `Invert`; Move/Border/Expand/Contract/Smooth semantics and their 1–100 / 1–200 / radius ranges; the `Shift`/`Alt`/`Space` movement modifiers (45° constraint, 1-px/10-px nudge).
 
 Canonical example of the combine formulas and shared selection operations is `03-tools/marquee-selection.md` (`TOOL-002`), which cites the same CS6 PDF and the same `max`/`min`/product rules; `03-tools/lasso-selection.md` (`TOOL-003`) and `03-tools/quick-selection-and-magic-wand.md` (`TOOL-004`) share the representation.
 

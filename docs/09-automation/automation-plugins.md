@@ -214,7 +214,7 @@ Kooka Pictura does **not** bundle Adobe's automation binaries; each built-in is 
 ## Data-model impact
 
 - **New runtime nodes:** `AutomationCommand` (registry), `BatchRequest`/`DropletPreset` (transient or saved to preferences, not PSD).
-- **Preferences:** saved batch/droplet presets (an Kooka Pictura extension; CS6 stored droplets as files/objects, not preferences).
+- **Preferences:** saved batch/droplet presets (a Kooka Pictura extension; CS6 stored droplets as files/objects, not preferences).
 - **Undo:** each processed document mutates through the normal command history; the batch as a whole is **not** one undo. Individual automation commands (e.g. Crop And Straighten) are one transaction on the active document.
 - **Serialization:** no PSD impact; droplet presets serialise to the project's preset format. Generated `.desktop` files carry no document metadata.
 - **Events:** automation commands emit the same command events other systems see, so notifiers/Script Events Manager can observe them; no new event type is required beyond per-command ids.

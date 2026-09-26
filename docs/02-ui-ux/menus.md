@@ -101,7 +101,7 @@ Legend: **✓** confirmed in the CS6 Help or a CS6-derived reference;
 - Find And Replace Text… ✓
 - Fill… — `Shift+F5` ✓
 - Stroke… ✓
-- Content-Aware Scale — `Alt+Shift+Ctrl+C` (default) ✓
+- Seam-Aware Scale (Photoshop: "Content-Aware Scale") — `Alt+Shift+Ctrl+C` (default) ✓
 - Puppet Warp ✓
 - Free Transform — `Ctrl+T` ✓
 - Transform ▸ ✓ (Again — `Shift+Ctrl+T` ✓; Scale, Rotate, Skew, Distort,

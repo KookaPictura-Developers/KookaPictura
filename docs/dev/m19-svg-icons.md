@@ -1,6 +1,6 @@
 # M19 — SVG icon set and cursors
 
-Goal: give the shell original imagery. An original (independent-creation) SVG icon set for
+Goal: give the shell original imagery. An original SVG icon set for
 the app, the tools, and every implemented command; an SVG cursor per tool; a Qt
 resource bundle and a small loader; and icons used by the window, Tools panel,
 and menu actions, with the active tool's cursor. OpenSpec change `m19-svg-icons`

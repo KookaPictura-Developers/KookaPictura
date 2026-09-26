@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Window > Info` (shortcut `F8`, which toggles show/hide) opens the **Info panel**. It  and 
+`Window > Info` (shortcut `F8`, which toggles show/hide) opens the **Info panel**. It shows the color values beneath the pointer and, depending on the active tool, other useful information. It also displays a hint for the selected tool, gives document status information, and can show values at 8-bit, 16-bit, or 32-bit precision.
 
 **Default placement.** The Info panel is not part of the default Essentials workspace; it is supplied by the **Photography** workspace (with Histogram and Actions) in the right-hand column (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
 
@@ -35,7 +35,7 @@ The panel's upper rows show the **First** and **Second** color readouts; the mid
 ### Icons and menus
 
 - Click the **eyedropper icon** to change color readout modes (and to select 8/16/32-bit; the 32-bit option lives on this pop-up).
-- Click the **crosshair icon** (cursor coordinates icon in the Help text) to change the **unit of measurement**; 
+- Click the **crosshair icon** (cursor coordinates icon in the Help text) to change the **unit of measurement**; changing the units on the Info panel also changes the units on the rulers.
 - The **panel menu** (upper-right triangle) provides **Panel Options** and the **Color Samplers** toggle.
 
 ### Panel Options dialog
@@ -182,7 +182,7 @@ Widgets, not QML: an always-visible, high-refresh instrument panel, consistent w
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded and text-extracted). Established: `Window > Info` and `F8`; the panel purpose and 8/16/32-bit readouts; the CMYK exclamation; the contextual readout list (marquee, crop/zoom + rotation angle, line/pen/gradient/moving selection with x,y/DX/DY/A/D, 2-D transform W/H/A/H/V skew, adjustment before/after, tool hints, status information); the three ways to set options (Panel Options, eyedropper icon, crosshair/cursor-coordinates icon); the Info Panel Options dialog (First/Second Color Readout with Actual Color, Proof Color, a color mode, Total Ink, Opacity; Ruler Units; the full status-information list; Show Tool Hints); "Keys for the Info panel" (eyedropper and crosshair icons); the up-to-four color samplers, their save-in-image behavior, sample sizes, move/delete/hide operations, per-sampler color space, and the panel's Color Samplers toggle; 
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded and text-extracted). Established: `Window > Info` and `F8`; the panel purpose and 8/16/32-bit readouts; the CMYK exclamation; the contextual readout list (marquee, crop/zoom + rotation angle, line/pen/gradient/moving selection with x,y/DX/DY/A/D, 2-D transform W/H/A/H/V skew, adjustment before/after, tool hints, status information); the three ways to set options (Panel Options, eyedropper icon, crosshair/cursor-coordinates icon); the Info Panel Options dialog (First/Second Color Readout with Actual Color, Proof Color, a color mode, Total Ink, Opacity; Ruler Units; the full status-information list; Show Tool Hints); "Keys for the Info panel" (eyedropper and crosshair icons); the up-to-four color samplers, their save-in-image behavior, sample sizes, move/delete/hide operations, per-sampler color space, and the panel's Color Samplers toggle; the rule that changing the Info panel's units also changes the rulers.
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — same file, "Productivity enhancements (JDI's) in CS6 → Eyedropper": the added Sample options (ignore adjustment layers; current layer and below) and sample-size context menus that feed the Info readouts.
 
 Not used in this pass:
@@ -191,7 +191,7 @@ Not used in this pass:
 
 Fetched for this revision:
 
-- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Info_palette.html` — Martin Evening CS6/CS5 support page: ; the out-of-gamut exclamation beside the CMYK value; status checkboxes appear in the middle of the panel and `Show Tool Hints` below; sample readouts follow the Eyedropper's sample-area size; the 16-bit readout values range 0–32,768 (15 bits used).
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Info_palette.html` — Martin Evening CS6/CS5 support page: by default the color display shows pixel values for the selected color mode plus the CMYK equivalents; the out-of-gamut exclamation beside the CMYK value; status checkboxes appear in the middle of the panel and `Show Tool Hints` below; sample readouts follow the Eyedropper's sample-area size; the 16-bit readout values range 0–32,768 (15 bits used).
 - `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Photography workspace supplies the Info panel (with Histogram and Actions), not the default Essentials workspace.
 
 Consulted as search-result snippets only (not individually fetched): `http://www.colormanagementinfo.com/Articles/Advanced_Photoshop_Color_Settings` ("The info palette's secondary readout is set to CMYK by default") and the Adobe community answers thread confirming the First readout defaults to Actual Color.

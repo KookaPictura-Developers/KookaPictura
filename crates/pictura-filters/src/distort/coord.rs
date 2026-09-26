@@ -1,6 +1,6 @@
 //! Coordinate transforms (`FILT-040`): Polar Coordinates, Shear.
 //!
-//! Inverse-mapping bilinear warps; alpha untouched. Adobe's exact resampling
+//! Inverse-mapping bilinear warps; alpha untouched. The exact resampling
 //! and polar anchor are closed (`docs/dev/m11-distort2.md`).
 
 use pictura_core::PixelBuffer;
@@ -16,7 +16,7 @@ pub fn polar_coordinates(buf: &mut PixelBuffer, kind: PolarKind) -> Result<(), F
     let (w, h) = (buf.width as usize, buf.height as usize);
     let planes = (buf.channels as usize).min(3);
     let (cx, cy) = ((w as f64 - 1.0) / 2.0, (h as f64 - 1.0) / 2.0);
-    // ponytail: Adobe's polar center/scale anchor is closed; center = image
+    // ponytail: the reference's polar center/scale anchor is closed; center = image
     // midpoint, radius = corner distance. Ceiling: no CS6 pixel parity. Upgrade
     // by fitting renders (oracle hook M9-B/M11-B).
     let max_r = ((cx * cx + cy * cy).sqrt()).max(f64::MIN_POSITIVE);
@@ -67,7 +67,7 @@ pub fn shear(
         ShearFill::WrapAround => Edge::Wrap,
         ShearFill::RepeatEdgePixels => Edge::Clamp,
     };
-    // ponytail: Adobe's shear curve interpolation/falloff is closed; this is
+    // ponytail: the reference's shear curve interpolation/falloff is closed; this is
     // piecewise-linear between control points, clamped at the ends. Ceiling: no
     // CS6 pixel parity. Upgrade by fitting renders (oracle hook M11-B).
     let mut shifts = vec![0.0f64; w];

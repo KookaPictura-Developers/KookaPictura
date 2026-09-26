@@ -305,7 +305,7 @@ owned, atomically-swappable handle. The Qt side holds a generation-stamped
 ## Open questions
 
 - **Internal threading model of CS6** is undocumented. *Resolves with:* Adobe engineering disclosures or measured concurrency behavior; otherwise parity is behavioral only.
-- **Exact tile pixel dimensions.** Only the 128 KB byte size is documented. *Resolves with:* publicly documenting the cache or community documentation; until then Kooka Pictura chooses its own tile size and validates against `ARCH-003` budgets.
+- **Exact tile pixel dimensions.** Only the 128 KB byte size is documented. *Resolves with:* analysis of the cache or community documentation; until then Kooka Pictura chooses its own tile size and validates against `ARCH-003` budgets.
 - **Whether the Rust core should run in-process or as a subprocess** is a deferred decision. *Resolves with:* a prototype measuring pan/zoom and brush latency across an IPC boundary vs. a crash-isolation requirement.
 - **QML vs Widgets for the canvas** is unresolved here. *Resolves with:* `qt6-ui-design.md` and a texture-sharing spike against QRhi.
 - **Plugin ABI shape** (C ABI vs. C++/Qt plugin) is deferred. *Resolves with:* `plugin-and-scripting-abi.md`.

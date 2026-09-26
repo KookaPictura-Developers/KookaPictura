@@ -3,7 +3,7 @@
 //!
 //! ImageMagick implements grayscale morphology and Gaussian blur, which is the
 //! mathematical core of `Selection::{expand,contract,feather}`. This is a
-//! *sanity* oracle, not a parity oracle: Adobe does not publish the structuring
+//! *sanity* oracle, not a parity oracle: the reference does not publish the structuring
 //! element (square vs. Euclidean disk), the operation ordering, or the feather
 //! radius→sigma mapping, and `pictura_select` is implemented concurrently by
 //! task M5-A. The differential rows are therefore `#[ignore]`d until M5-A

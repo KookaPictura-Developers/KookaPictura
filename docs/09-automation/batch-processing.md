@@ -208,8 +208,8 @@ Widgets, not QML: all are document-modal dialogs and progress utilities over `QM
 
 - **Photomerge algorithm.** CS6 documents layout names and options but not the matcher/bundle-adjuster/blender. "Behavioral parity only, algorithm TBD"; resolve by comparing against CS6 output and published panoramic-stitching literature.
 - **HDR merge math.** The radiance-merge weighting and tone-mapping operators are undocumented. Resolve against CS6 results (tolerance harness) and the `04-image-ops/32-bit-hdr` spec.
-- **Error-file format/path.** Not documented; define an Kooka Pictura log format or recover it from a CS6 run.
-- **`Web Photo Gallery` full option set and HTML templates.** Only partial options captured; the style templates are Adobe assets and cannot be copied (`00-overview/licensing-and-independent-creation`). Decide whether to ship independent-creation styles.
+- **Error-file format/path.** Not documented; define a Kooka Pictura log format or recover it from a CS6 run.
+- **`Web Photo Gallery` full option set and HTML templates.** Only partial options captured; the style templates are Adobe assets and cannot be copied (`00-overview/licensing-and-provenance`). Decide whether to ship independently authored styles.
 - **`Picture Package` custom layout file format.** Described as text presets in the `Presets/Layouts` folder; the exact format was not retrieved.
 - **`Image Processor` Camera Raw setting application.** The temporary-settings semantics ("the image's current camera raw settings are used unless changed") need a precise model in `06-filters/camera-raw-filter`.
 - **Parallelism policy.** Whether batch may process files concurrently, and at what memory cost, is deferred to `01-architecture/threading-and-concurrency`.

@@ -26,7 +26,7 @@ pub(crate) fn resolve_type_tools(layers: &mut [Layer]) {
 
 /// Parse the `TySh` payload: version-1 framing, transform, text and warp
 /// descriptors, then four bounds. `ponytail:` bounds are `i32` per psd-tools;
-/// Adobe's table says "4 * 8" — switch if a real CS6 file disagrees.
+/// The reference's table says "4 * 8" — switch if a real CS6 file disagrees.
 pub(crate) fn decode_type_tool(data: &[u8]) -> Option<TypeTool> {
     let mut r = Reader::new(data);
     if r.u16().ok()? != 1 {

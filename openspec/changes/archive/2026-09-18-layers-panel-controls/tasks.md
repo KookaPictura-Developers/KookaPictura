@@ -16,7 +16,7 @@
 ## 3. UI — five-lock strip and clip indicator
 
 - [x] 3.1 Replace the four text lock toggles with five icon toggles (alpha, paint, position, nesting, all); wire `nesting` to `set_layers_lock`; update `syncControls` to the five flags and the `0x0F` full-lock mask (`layers_panel.{h,cpp}`).
-- [x] 3.2 Add independent-creation SVGs `layers.lock{Alpha,Paint,Position,Nesting,All}.svg` and `layers.clipMask.svg`; regenerate `assets/pictura.qrc`.
+- [x] 3.2 Add original SVGs `layers.lock{Alpha,Paint,Position,Nesting,All}.svg` and `layers.clipMask.svg`; regenerate `assets/pictura.qrc`.
 - [x] 3.3 Draw the clipping-mask glyph left of the thumbnail when `ClippingRole` is set (`layers_panel_internal.h`).
 
 ## 4. Self-tests

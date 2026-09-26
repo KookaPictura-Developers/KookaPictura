@@ -18,9 +18,9 @@
 //! A glow has no offset: `GlwT` `PrBL` (Precise) is decoded but rendered as
 //! `SfBL` (Softer), `Range` (`Inpr`), contour, noise, jitter (`ShdN`),
 //! anti-alias and gradient mode (`Grad`) are ignored, the spread is a max-filter
-//! dilate of radius `round(spread / 100 * size)` (not Photoshop's spread-then-
+//! dilate of radius `round(spread / 100 * size)` (not the reference's spread-then-
 //! blur split), and the exterior is the multiplicative `1 - matte` rather than
-//! Photoshop's exact knock-out equation.
+//! the exact knock-out equation.
 //!
 //! An inner shadow composites **above** the layer content (interior-only): it is
 //! the offset, choke-eroded and blurred inverted matte multiplied by the content
@@ -51,7 +51,7 @@
 //! layer rect (design D4), an approximation; gradient noise/`Dither`/`Ofst` and
 //! stop midpoints, and pattern `Angl` rotation, are not applied; contour
 //! (`TrnS`), anti-alias (`AntA`) and `overprint` are ignored; the solid colour
-//! defaults to black; and Photoshop's exact inter-effect order among the
+//! defaults to black; and the exact inter-effect order among the
 //! above-content effects is not modelled.
 //!
 //! The overlays (`SoFi` Color, `GrFl` Gradient, `patternFill` Pattern) also
@@ -80,7 +80,7 @@
 //! anti-alias (`AntA`/`antialiasGloss`), texture, `useShape` and `showInDialog`
 //! are decoded/ignored; the effective angle/altitude is the stored `lagl`/`Lald`,
 //! not the global-light resource; the height profile is a Gaussian blur of `M`
-//! rather than Adobe's distance transform; `scale = size · depth/100` and the
+//! rather than the reference's distance transform; `scale = size · depth/100` and the
 //! `dot(N,L) - sin(alt)` flat-offset are ungrounded model choices; the build
 //! region pads by the blur supports only; the exact inter-effect and
 //! highlight/shadow order are not modelled.
@@ -134,7 +134,7 @@ const MAX_ALTITUDE: f32 = 90.0;
 pub enum GlowTechnique {
     /// `SfBL`: the ordinary Gaussian blur.
     Softer,
-    /// `PrBL`: Photoshop's distance-measure technique, rendered as `Softer`
+    /// `PrBL`: the reference's distance-measure technique, rendered as `Softer`
     /// (a stated ceiling).
     Precise,
 }

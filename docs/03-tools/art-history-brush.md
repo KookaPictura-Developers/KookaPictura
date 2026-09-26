@@ -253,7 +253,7 @@ Not parsed in this pass: `https://helpx.adobe.com/photoshop/using/painting-styli
 - **Exact defaults (Area, Tolerance, Mode, Opacity) in CS6.** Taken from a
   Photoshop 6/7-era source; confirm for CS6.
 - **Style geometry model.** Length/curl/angle-jitter parameters and their numeric
-  values are a design proposal, not Adobe data. Resolve by publicly documenting
+  values are a design proposal, not Adobe data. Resolve by measuring
   reference strokes or accept behavioral parity.
 - **Tolerance metric.** Whether the gate uses a Euclidean RGB distance, a
   luminance difference, or a Lab delta is undocumented. Resolve by experiment.

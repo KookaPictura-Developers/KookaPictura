@@ -3,8 +3,8 @@
 //!
 //! ImageMagick implements a handful of the same Blur / Sharpen / Noise / Other
 //! / Stylize / Pixelate filters. This is a *sanity* oracle, not a parity
-//! oracle: Adobe's exact integer math and convolution kernels are closed, and
-//! the ImageMagick operators only approximate several Photoshop paths. Each
+//! oracle: the exact integer math and convolution kernels are closed, and
+//! the ImageMagick operators only approximate several reference paths. Each
 //! filter with a faithful operator is diffed against the ImageMagick result
 //! with `pictura_testkit::compare`; the tolerance and the reason for it are in
 //! the table below and in `tests/README.md`.

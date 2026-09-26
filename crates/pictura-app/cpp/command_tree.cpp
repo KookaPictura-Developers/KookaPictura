@@ -119,7 +119,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Edit", "Fill…"}, QStringLiteral("Fill…"), QStringLiteral("Shift+F5"));
     leaf(registry, {"Edit", "Stroke…"}, QStringLiteral("Stroke…"));
     registry.addSeparator({"Edit"});
-    leaf(registry, {"Edit", "Content-Aware Scale"}, QStringLiteral("Content-Aware Scale"),
+    // Photoshop's "Content-Aware Scale"; the UI uses a descriptive label so it
+    // does not ship Adobe's coined feature name as our own.
+    leaf(registry, {"Edit", "Seam-Aware Scale"}, QStringLiteral("Seam-Aware Scale"),
          QStringLiteral("Alt+Shift+Ctrl+C"));
     leaf(registry, {"Edit", "Puppet Warp"}, QStringLiteral("Puppet Warp"));
     registry.add(command_ids::EditFreeTransform, {"Edit", "Free Transform"},

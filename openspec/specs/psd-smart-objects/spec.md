@@ -65,7 +65,7 @@ PSD reader as a smart object carrying the same payload.
 - **WHEN** the payload is a fixed-seed random byte string
 - **THEN** its hash after write and read is unchanged
 
-### Requirement: Camera Raw crs settings are preserved
+### Requirement: Pictura Raw crs settings are preserved
 
 The system SHALL expose the `crs:` XMP settings associated with an embedded
 source on read as a typed view of the fixed property set (`Exposure2012`,

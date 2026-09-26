@@ -212,7 +212,7 @@ a transient override that renders hidden rows for the current pop-up only.
 | Layout blob | Qt `saveState()` bytes, base64 in the workspace file *(inferred)* |
 
 TOML/JSON is a deliberate deviation from Adobe's `.psp`/`.psw` binaries; CS6
-import is opt-in and independent-creation only (`00-overview/licensing-and-independent-creation.md`).
+import is opt-in and independent-creation only (`00-overview/licensing-and-provenance.md`).
 
 ## Rust module mapping
 

@@ -13,14 +13,14 @@
 
 ## CS6 behavior
 
-A **preset brush** is "a saved brush tip with defined characteristics, such as
-size, shape, and hardness." Presets are browsed in the **Brush Presets panel**
+A **preset brush** is a saved brush tip with defined characteristics such as
+size, shape, and hardness. Presets are browsed in the **Brush Presets panel**
 and the options-bar **Brush preset picker**.
 
 - **Selecting a preset.** Pick from the options-bar pop-up or from `Window >
   Brush Presets`. The picker temporarily exposes **Diameter**, **Use Sample
   Size**, and **Hardness** (round/square only); these edits are temporary —
-  
+  re-choosing the preset later restores the brush's original settings.
   To keep changes, create a new preset.
 - **Display options** (Brush Presets panel menu): `Text Only`, `Small`/`Large
   Thumbnail`, `Small`/`Large List`, and `Stroke Thumbnail` (a sample stroke plus
@@ -46,9 +46,9 @@ and the options-bar **Brush preset picker**.
   the brush preset. `Clear Brush Controls` resets all non-shape controls at once.
   Per-section padlocks (and `Protect Texture`) retain settings when switching
   presets.
-- **Brush preset vs tool preset.** Help distinguishes them: save a **tool preset**
-  "when you want to store customized brush tip characteristics along with settings
-  from the options bar such as opacity, flow, and color." Tool presets live in the
+- **Brush preset vs tool preset.** Help distinguishes them: a **tool preset** is
+  for storing customized brush tip characteristics together with options-bar
+  settings such as opacity, flow, and color. Tool presets live in the
   Tool Preset picker, the Tool Presets panel, and the Preset Manager, with `Show
   All Tool Presets` vs `Show Current Tool Presets` (Current Tool Only) filtering.
   Community usage (Glen Smith) similarly frames the choice: create a tool preset
@@ -70,7 +70,7 @@ and the options-bar **Brush preset picker**.
 
 ## Parameters & ranges
 
-### ABR file format (community public analysis)
+### ABR file format (community analysis)
 
 Header (all versions): `version` (big-endian int16), then `count`/`subversion`
 (int16). Version history relevant to CS6:
@@ -245,13 +245,13 @@ Fetched for this document:
   menu entry; `New Brush Preset`/Create New Brush; the Preferences-file storage
   caveat; Rename/Delete; the `Presets/Brushes` default location; `Clear Brush
   Controls`; instruction to save a durable set as a library; the distinction
-  between brush presets and tool presets ("store customized brush tip
-  characteristics along with … opacity, flow, and color"); Tool Preset picker /
+  between brush presets and tool presets (a tool preset combines brush-tip
+  characteristics with options-bar settings); Tool Preset picker /
   Tool Presets panel / Show All vs Current Tool Only; Preset Manager location
   (`Edit > Presets > Preset Manager` in CS6); `Copy Texture to Other Tools`.
   Primary source.
 - `https://raw.githubusercontent.com/darkly-art/darkly/dev/docs/brush/abr-format.md`
-  — "ABR Format: Public analysis Analysis". Established: ABR header/version
+  — "ABR Format: Public Analysis". Established: ABR header/version
   history (v1, v2, v6 sub1/2, v10 sub1 = CS6, v10 sub2 = CC); the 8BIM section
   architecture (`samp`, `patt`, `desc`, `phry`); computed (14-byte) and sampled
   tip records; PackBits RLE; the ActionDescriptor tree and its known brush keys;

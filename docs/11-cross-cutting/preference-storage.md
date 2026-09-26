@@ -44,7 +44,7 @@ On Windows, Photoshop historically also touches the registry for **licensing/act
 
 ### Versioning and migration
 
-The Settings folder name is **version-specific** (`Adobe Photoshop CS6 Settings`). Adobe does not document any automatic import of a previous version's `.psp`; the common community guidance across upgrades is that preferences do not carry over reliably and users re-set or copy/rename them. There is no documented schema version, migration, or partial-merge behavior for `.psp`. Kooka Pictura therefore treats the CS6 `.psp` as a **migration source only if it is publicly documented later**, and otherwise starts from its own schema (independent-creation; see `00-overview/licensing-and-independent-creation.md`).
+The Settings folder name is **version-specific** (`Adobe Photoshop CS6 Settings`). Adobe does not document any automatic import of a previous version's `.psp`; the common community guidance across upgrades is that preferences do not carry over reliably and users re-set or copy/rename them. There is no documented schema version, migration, or partial-merge behavior for `.psp`. Kooka Pictura therefore treats the CS6 `.psp` as a **migration source only if it is analyzed later**, and otherwise starts from its own schema (independent-creation; see `00-overview/licensing-and-provenance.md`).
 
 ### Global vs. per-workspace vs. per-document
 
@@ -133,7 +133,7 @@ quit:
 - **Schema versioning:** `schema_version` is the first key. Each migration is a pure `fn(Table) -> Result<Table>`; migrations run in order; a value higher than the build understands loads read-only with a warning rather than downgrading silently.
 - **Concurrency:** two running instances must not clobber each other. Proposal: an advisory lock file in the config dir plus a read-modify-write merge on save; if locking is unavailable, last-writer-wins with a debounce and a logged warning. `QSettings` on INI uses advisory locking and smart merging; if `QSettings` is the writer we inherit that, but the core writes its own file.
 - **Scopes:** global prefs in `prefs.toml`; workspace layout and recent-file state in `state.json`/`workspaces/` so resetting preferences does not destroy the user's workspace, and vice versa. Per-document overrides never enter this store.
-- **CS6 `.psp` import:** off by default and legal-gated. If a independent-creation reader is ever written, it is an explicit `File → Import → CS6 Preferences` action, and its failure must never affect the native store (sandbox the parse; `XC-005`).
+- **CS6 `.psp` import:** off by default and legal-gated. If an independent-creation reader is ever written, it is an explicit `File → Import → CS6 Preferences` action, and its failure must never affect the native store (sandbox the parse; `XC-005`).
 
 ### Restart-class vs. live settings
 
@@ -218,13 +218,13 @@ Found via search, **not fetched** (leads):
 - `https://community.adobe.com/t5/photoshop-ecosystem-discussions/can-t-open-new-or-existing-files/td-p/10153134` — Adobe Community: CS6 `.psp` file names (`Adobe Photoshop CS6 Prefs.psp`, `Adobe Photoshop x64 CS6 Prefs.psp`), used to corroborate the second file name.
 - `https://community.adobe.com/questions-712/how-to-reset-preferences-if-i-have-the-legacy-version-1140349` and `https://community.adobe.com/t5/photoshop-ecosystem-discussions/how-do-i-save-preference-changes-in-ps6/m-p/8864474` — Windows/macOS CS6 paths (search-result evidence only; already recorded in `UI-010`).
 
-Internal cross-references (not sources): `docs/02-ui-ux/preferences.md` (`UI-010`), `docs/00-overview/licensing-and-independent-creation.md`.
+Internal cross-references (not sources): `docs/02-ui-ux/preferences.md` (`UI-010`), `docs/00-overview/licensing-and-provenance.md`.
 
 ## Open questions
 
 - **Exact CS6 preference-file name(s) and whether 32-/64-bit builds use different files.** Community reports disagree on `… CS6 Prefs.psp` vs `… x64 CS6 Prefs.psp`. *Resolve:* the Adobe "Preference file names, locations" page (403) or a CS6 install.
 - **Does CS6 store any *preference* value in the Windows registry, or only activation/policy?** *Resolve:* registry diff on a clean CS6 profile.
-- **`.psp` format.** Proprietary/unknown. *Resolve:* independent-creation legal review; default is no import.
+- **`.psp` format.** Proprietary/unknown. *Resolve:* legal review; default is no import.
 - **Whether CS6 migrates any settings between versions.** Not documented. *Resolve:* test CS5→CS6 on the same machine.
 - **Whether workspaces/shortcuts/color settings share the `.psp` or live in separate files.** CS6 Help says the reset gesture resets all four but does not say where each lives. *Resolve:* inspect the CS6 Settings folder layout.
 - **TOML vs JSON for the native store.** This spec proposes TOML for config and JSON for state; a single format (TOML everywhere) is a reasonable alternative. *Resolve:* prototype and settle the `UI-010` open question.

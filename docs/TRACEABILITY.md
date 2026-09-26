@@ -16,7 +16,7 @@ and the shared module.
 | Product scope / parity goal | `00-overview/product-overview.md` | — | — | — | draft |
 | Standard vs Extended editions | `00-overview/cs6-editions-and-constraints.md` | — | `pictura_core::edition` | feature gating | draft |
 | Feasibility / non-goals | `00-overview/feasibility-and-non-goals.md` | — | — | — | draft |
-| Licensing / independent-creation | `00-overview/licensing-and-independent-creation.md` | — | — | — | draft |
+| Licensing / independent-creation | `00-overview/licensing-and-provenance.md` | — | — | — | draft |
 
 ## 01-architecture
 

@@ -78,7 +78,7 @@ pub fn find_edges(buf: &mut PixelBuffer) -> Result<(), FilterError> {
 
     // ponytail: PS renders edges dark on a light field; the sign/inversion
     // convention is approximate — un-normalized Sobel magnitude, then
-    // 255 - clamp(magnitude). Fitting Adobe's exact detector is out of scope.
+    // 255 - clamp(magnitude). Fitting the exact detector is out of scope.
     for c in 0..planes {
         let base = c * n;
         let at = |x: usize, y: usize| src[base + y * w + x] as f64;

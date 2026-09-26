@@ -1,0 +1,35 @@
+# cargo-deny configuration. The presence of this file activates the CI
+# `cargo deny check` step (previously dormant). The project itself is
+# GPL-3.0-or-later; dependencies may be permissive or GPL/LGPL-compatible,
+# but strong network-copyleft and non-free licenses are rejected.
+
+[graph]
+all-features = true
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unicode-3.0",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-or-later",
+    "GPL-3.0-only",
+    "LGPL-3.0-or-later",
+    "LGPL-3.0-only",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

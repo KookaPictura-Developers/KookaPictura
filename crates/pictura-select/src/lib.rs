@@ -4,7 +4,7 @@
 //! masked edits depend on. Spec: `docs/08-selection/*.md`.
 //!
 //! Coverage is `u8` per pixel (0 = outside, 255 = fully inside). Soft masks keep
-//! intermediate coverage. Algorithms Adobe leaves undocumented (feather kernel,
+//! intermediate coverage. Algorithms the reference leaves undocumented (feather kernel,
 //! feather radius->sigma, colour distance, structuring element) are inferred and
 //! marked below.
 

@@ -27,13 +27,13 @@ fill", "Gradient Editor overview".
   `Shift` constrains the line angle to multiples of 45°.
 - **Gradient types (options bar):**
 
-  | Type | Behavior (Help wording) |
+  | Type | Behavior |
   |---|---|
-  | Linear |  |
-  | Radial |  |
-  | Angle | "Shades in a counterclockwise sweep around the starting point." |
-  | Reflected |  |
-  | Diamond |  |
+  | Linear | Blends in a straight line from the start point to the end point. |
+  | Radial | Blends outward from the start point in a circular pattern. |
+  | Angle | Blends in a counterclockwise sweep around the start point. |
+  | Reflected | Mirrors a linear blend on both sides of the start point. |
+  | Diamond | Blends from the center out to the corners in a diamond pattern. |
 
 - **Options bar:** blending mode, opacity, **Reverse**, **Dither**, and
   **Transparency** (use the gradient's opacity stops as a transparency mask).
@@ -162,8 +162,7 @@ Adobe's exact code is closed. The following is a behavioural-parity model
    from start; Angle = `atan2` sweep (counterclockwise); Reflected = `|t|`
    mirrored about the start; Diamond = `(|x|+|y|)`-style Manhattan distance to
    the corners.
-6. **Dither** adds random noise to the result to mask banding (Help: "adds
-   random noise to smooth the appearance … and reduces banding effects"). The
+6. **Dither** adds random noise to the result to mask banding (the Help describes it as adding noise that smooths the appearance and reduces banding). The
    exact noise distribution and whether it is ordered vs error-diffusion is
    *(inferred)*; behavior TBD.
 

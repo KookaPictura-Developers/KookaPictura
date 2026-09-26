@@ -10,9 +10,9 @@
 
 ## CS6 behavior
 
-**Brush Stroke filters.** From the CS6 Help: 
+**Brush Stroke filters.** As with the Artistic filters, the Brush Stroke filters produce a painterly or fine-arts look through varied brush and ink stroke effects; some add grain, paint, noise, edge detail, or texture. All of them can be applied through the Filter Gallery.
 
-The family has **8** filters. All are **8-bit only** and run in the Filter Gallery. Two of them (`Spatter`, `Sumi-e`) are called out by the Help as memory-intensive: .
+The family has **8** filters. All are **8-bit only** and run in the Filter Gallery. Two of them (`Spatter`, `Sumi-e`) are called out by the Help as memory-intensive, with the advice to adjust settings to speed up filters such as Spatter and Sprayed Strokes.
 
 | Filter | CS6 Help behavior (sourced) |
 |---|---|
@@ -27,7 +27,7 @@ The family has **8** filters. All are **8-bit only** and run in the Filter Galle
 
 **Filter Gallery mechanics (shared).** `Filter > Filter Gallery` presents one dialog with a preview, category thumbnails, the selected effect's options, and an applied-effect list. Effects are **cumulative and applied in list order**, can be **reordered by dragging**, **hidden with the eye icon**, and **deleted**. The gallery is **8-bit-per-channel only**. Applied to a Smart Object, the whole stack becomes one grouped "Filter Gallery" Smart Filter entry (`LAY-021`). Shared keys, Fade, and the pipeline are in `FILT-001`.
 
-**Fade note (sourced):** the Help's `Edit > Fade` description explicitly says Fade 
+**Fade note (sourced):** the Help's `Edit > Fade` description states that Fade also modifies the effects of the Liquify command and the Brush Strokes filters.
 
 ## UI surface
 

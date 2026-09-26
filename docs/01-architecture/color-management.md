@@ -364,7 +364,7 @@ Not fetched / not used as a source: `helpx.adobe.com` pages (documented as HTTP
   from the CS6 Help PDF or a controlled CS6 experiment.
 - **Built-in profile provisioning.** Whether Kooka Pictura bundles sRGB, Adobe
   RGB, ProPhoto, and Gray profiles (licensing) or synthesizes them at runtime.
-  Resolve with `00-overview/licensing-and-independent-creation.md`.
+  Resolve with `00-overview/licensing-and-provenance.md`.
 - **Adobe ACE parity target.** ACE's perceptual/saturation gamut mapping and BPC
   numerics are closed. Decide the numeric tolerance for "behavioral parity" and
   whether perceptual parity is a non-goal. Resolve in

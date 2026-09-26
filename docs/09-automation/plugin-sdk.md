@@ -4,7 +4,7 @@
 - **Status:** `Draft`
 - **Parity tier:** `Core` for the in-process plug-in model and its user-visible surface; loading Adobe binary plug-ins is `Non-goal (Linux)`.
 - **New in CS6:** `No` — the native C/C++ plug-in ABI is unchanged from CS5. CS6 adds optional plug-ins distributed separately (e.g. Pattern Maker, Picture Package, Extract) and keeps the Camera Raw 7 plug-in; none of that changes the ABI. UXP did not exist in CS6.
-- **Depends on:** `ARCH-011` (plugin-and-scripting-abi, which is the normative ABI design), `01-architecture/rust-core-design`, `01-architecture/document-model`, `01-architecture/undo-history`, `11-cross-cutting/security-and-sandboxing`, `00-overview/licensing-and-independent-creation`.
+- **Depends on:** `ARCH-011` (plugin-and-scripting-abi, which is the normative ABI design), `01-architecture/rust-core-design`, `01-architecture/document-model`, `01-architecture/undo-history`, `11-cross-cutting/security-and-sandboxing`, `00-overview/licensing-and-provenance`.
 
 ## CS6 behavior
 
@@ -208,7 +208,7 @@ The 47-byte name limit and category grouping are preserved for menu parity; ever
 
 ### Why a new ABI instead of an emulator
 
-An emulation layer would have to fake PE/Mach-O loading, Carbon resource sections, MSVC mangling, PiPL parsing, the full `SPBasicSuite`/suite catalogue, and host-thread semantics, then keep the fidelity high enough for arbitrary third-party plug-ins. That is strictly more work than the new, documented ABI and is legally fraught (`licensing-and-independent-creation`). Non-goal.
+An emulation layer would have to fake PE/Mach-O loading, Carbon resource sections, MSVC mangling, PiPL parsing, the full `SPBasicSuite`/suite catalogue, and host-thread semantics, then keep the fidelity high enough for arbitrary third-party plug-ins. That is strictly more work than the new, documented ABI and is legally fraught (`licensing-and-provenance`). Non-goal.
 
 ## Rust module mapping
 

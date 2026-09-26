@@ -3,7 +3,7 @@
 - **Spec ID:** `ADJ-001`
 - **Status:** `Draft`
 - **Parity tier:** `Core`
-- **New in CS6:** `Changed` — the Levels engine is unchanged from CS5, but in CS6 the controls live in the **Properties panel** and the presets in its **Preset menu**, the `Auto` button uses "improved Auto options", and eyedropper sample-size options appear in a context menu.
+- **New in CS6:** `Changed` — the Levels engine is unchanged from CS5, but in CS6 the controls live in the **Properties panel** and the presets in its **Preset menu**, the `Auto` button uses improved Auto options, and eyedropper sample-size options appear in a context menu.
 - **Depends on:** `ADJ-000` adjustments-overview, `01-architecture/color-management.md` (`ARCH-007`), `01-architecture/document-model.md` (`ARCH-008`), `01-architecture/undo-history.md` (`ARCH-009`), `04-image-ops/image-modes.md` (`IMG-004`), `04-image-ops/bit-depth-and-conversion.md` (`IMG-005`), `05-layers/adjustment-layers.md`, `03-tools/eyedropper-color-sampler-ruler.md`.
 
 > Module and widget names are **design proposals**. Facts from the fetched CS6
@@ -11,42 +11,42 @@
 
 ## CS6 behavior
 
-`Levels` "correct[s] the tonal range and color balance of an image by adjusting
-intensity levels of image shadows, midtones, and highlights." The levels
-histogram is the visual guide. It is reachable as an adjustment layer
-(Adjustments panel Levels icon, or `Layer > New Adjustment Layer > Levels`) or as
-a destructive command (`Image > Adjustments > Levels`, which "makes direct
-adjustments to the image layer and discards image information").
+`Levels` corrects an image's tonal range and color balance by adjusting the
+intensity levels of its shadows, midtones, and highlights. The levels histogram
+is the visual guide. It is reachable as an adjustment layer (Adjustments panel
+Levels icon, or `Layer > New Adjustment Layer > Levels`) or as a destructive
+command (`Image > Adjustments > Levels`, which the Help says adjusts the image
+layer directly and discards image information).
 
 The dialog/panel controls (CS6 Help, "Adjust tonal range using Levels"):
 
 - **Input Levels** — three parts:
-  - **Shadow / black input slider** (`A`): "maps the pixel value to level 0".
-    Dragging right, e.g. to level 5, maps "all the pixels at level 5 and lower to
-    level 0".
-  - **Gamma / midtone input slider** (`B`): "adjusts the gamma in the image. It
-    moves the midtone (level 128) and changes the intensity values of the middle
-    range of gray tones without dramatically altering the highlights and
-    shadows." Moving the middle slider **left lightens**; right darkens.
+  - **Shadow / black input slider** (`A`): maps its pixel value to level 0.
+    Dragging right, e.g. to level 5, maps all pixels at level 5 and below to
+    level 0.
+  - **Gamma / midtone input slider** (`B`): adjusts the image gamma; it moves the
+    midtone (level 128) and changes the intensity of the middle gray tones
+    without disturbing the highlights and shadows much. Moving the middle slider
+    **left lightens**; right darkens.
   - **Highlight / white input slider** (`C`): maps the chosen value to level 255.
-    Dragging left, e.g. to 243, maps "all pixels at level 243 and higher to level
-    255".
+    Dragging left, e.g. to 243, maps all pixels at level 243 and above to level
+    255.
   - Text boxes accept the shadow, gamma, and highlight values directly.
-- **Output Levels** — two sliders (`D`) and two boxes. "By default, the Output
-  sliders are at level 0, where the pixels are black, and level 255, where the
-  pixels are white." They set the output black/white points; the input range is
-  remapped into `[output_black, output_white]`.
-- Mapping note: "The mapping affects the darkest and lightest pixels in each
-  channel. The corresponding pixels in the other channels are adjusted
-  proportionately to avoid altering the color balance."
+- **Output Levels** — two sliders (`D`) and two boxes. By default the Output
+  sliders sit at level 0 (black pixels) and level 255 (white pixels). They set
+  the output black/white points; the input range is remapped into
+  `[output_black, output_white]`.
+- Mapping note: the mapping affects each channel's darkest and lightest pixels,
+  and the corresponding pixels in the other channels move proportionally so the
+  color balance is preserved.
 - **Channel menu** — edit the composite ("RGB"/"CMYK") or an individual channel.
   With a multi-channel selection made in the Channels panel before invoking the
-  **command**, the Channel menu shows combined targets (e.g. `CM`); "This method
-  does not work in a Levels adjustment layer." Spot and alpha channels are edited
-  individually.
+  **command**, the Channel menu shows combined targets (e.g. `CM`); the Help
+  notes this method does not work in a Levels adjustment layer. Spot and alpha
+  channels are edited individually.
 - **Clipping preview** — hold Alt/Option while dragging the black/white sliders,
   or `Show Clipping For Black/White Points` from the panel menu.
-- **Auto** — "Click Auto to apply the default automatic levels adjustment."
+- **Auto** — clicking Auto applies the default automatic levels adjustment.
   Alt/Option-click Auto opens the **Auto Color Correction Options** dialog.
 - **Eyedroppers** — Set Black Point, Set Gray Point, Set White Point (see below).
 - **Presets** — Levels settings can be saved/applied as presets (CS6: Properties
@@ -68,7 +68,7 @@ Preset menu in CS6 (CS5 listed them in the Adjustments panel).
 | Panel menu | Menu | — | `Auto Options`, `Save Preset`, `Load Preset`, `Show Clipping For Black/White Points`, `Add Mask by Default`, `Auto-Select …` |
 | Channels panel | Dock | — | Shift-select channels before the destructive command to target a combination |
 | Eyedropper context menu | Context menu | — | CS6: sample-size options (JDI) |
-| Histogram panel | Dock | — | "You can view the adjusted histogram in the Histogram panel." |
+| Histogram panel | Dock | — | The adjusted histogram can be viewed in the Histogram panel. |
 
 ## Parameters & ranges
 
@@ -89,7 +89,7 @@ stated defaults. Marked accordingly.
 | Auto → Target shadow color | Color | black (0,0,0) | color picker | darkest target |
 | Auto → Target midtone color | Color | 128 gray | color picker | neutral target |
 | Auto → Target highlight color | Color | white (255,255,255) | color picker | lightest target |
-| Auto → Snap Neutral Midtones | Bool | off (on for Auto Color) | on / off |  |
+| Auto → Snap Neutral Midtones | Bool | off (on for Auto Color) | on / off | Finds a near-neutral average color and adjusts the gamma (midtones) to neutralize it |
 | Auto → Save as Defaults | Bool | off | on / off | persists clip + target values as the Auto default |
 | Set Black Point target | Color | 0,0,0 | R=G=B typed in Color Picker | the sampled pixel maps to this |
 | Set Gray Point target | Color | 128,128,128 | equal R,G,B values | midtone neutralizer; unavailable in Grayscale |
@@ -132,9 +132,9 @@ out = Ob + t' * (Ow - Ob)                    # output black/white point remap
 ### Per-channel and composite behavior
 
 - A **composite** edit applies the same `(B, W, γ, Ob, Ow)` to every color
-  channel. The Help's "corresponding pixels in the other channels are adjusted
-  proportionately" describes the per-channel black/white-point mapping, not an
-  extra coupling.
+  channel. The Help's note that the other channels' corresponding pixels are
+  adjusted proportionately describes the per-channel black/white-point mapping,
+  not an extra coupling.
 - A **per-channel** edit applies an independent tuple to one channel, which
   shifts color balance.
 - The Auto algorithms and the gray-point eyedropper are the two color-cast
@@ -142,46 +142,46 @@ out = Ob + t' * (Ow - Ob)                    # output black/white point remap
 
 ### Eyedroppers
 
-The Help: "using the eyedroppers undoes any previous adjustment you made in
-Levels or Curves. If you plan to use the eyedroppers, it's best to use them first
-and then fine-tune your adjustments with the Levels sliders or Curves points."
+The Help notes that using the eyedroppers undoes any previous adjustment made in
+Levels or Curves, so it is best to use them first and then fine-tune with the
+Levels sliders or Curves points.
 
 - **Set Black Point** — double-click to choose the target (default pure black,
-  R=G=B=0); then click an image pixel. "The sampled pixel is mapped to the target
-  black value" — equivalently, an input-level black point is set to the sampled
+  R=G=B=0); then click an image pixel. The sampled pixel is mapped to the target
+  black value — equivalently, an input-level black point is set to the sampled
   luminance and the low end is stretched.
 - **Set White Point** — same with pure white (255,255,255).
-- **Set Gray Point** — "works best on images that don't require large adjustments
-  and have easily identified neutrals"; it "should reset midtones and remove the
-  color cast." It needs a neutral target (equal R=G=B); "unavailable when you work
-  with grayscale images." Mechanically it scales each channel's midtone (gamma)
-  so the clicked color becomes neutral *(inferred)*.
+- **Set Gray Point** — best on images that need only small adjustments and have
+  easily identified neutrals; it resets the midtones and removes the color cast.
+  It needs a neutral target (equal R=G=B) and is unavailable for grayscale
+  images. Mechanically it scales each channel's midtone (gamma) so the clicked
+  color becomes neutral *(inferred)*.
 
 ### Auto Color Correction algorithms
 
 From the CS6 Help, "Auto Color Correction Options dialog box":
 
-- **Enhance Monochromatic Contrast** — "Clips all channels identically. This
-  preserves the overall color relationship while making highlights appear lighter
-  and shadows appear darker." Used by **Auto Contrast**. It "does not adjust
-  channels individually, [so] it does not introduce or remove color casts."
-- **Enhance Per Channel Contrast** — "Maximizes the tonal range in each channel
-  to produce a more dramatic correction. Because each channel is adjusted
-  individually, [it] may remove or introduce color casts." Used by **Auto Tone**
+- **Enhance Monochromatic Contrast** — clips every channel by the same amount,
+  which preserves the overall color relationship while lightening highlights and
+  darkening shadows. Used by **Auto Contrast**; because it does not adjust
+  channels individually, it neither introduces nor removes color casts.
+- **Enhance Per Channel Contrast** — maximizes the tonal range of each channel
+  separately for a more dramatic correction. Because the channels are adjusted
+  individually, it may remove or introduce color casts. Used by **Auto Tone**
   (and the Levels/Curves `Auto` button default).
-- **Find Dark & Light Colors** — "Finds the average lightest and darkest pixels in
-  an image and uses them to maximize contrast while minimizing clipping." Used by
+- **Find Dark & Light Colors** — takes the average lightest and darkest pixels in
+  the image and uses them to maximize contrast while limiting clipping. Used by
   **Auto Color**, together with **Snap Neutral Midtones**.
-- **Clip percentages** — "how much to clip black and white pixels"; default
+- **Clip percentages** — how much of the black and white pixels to clip; default
   `0.1%` for the Auto option and Auto Tone, `0.5%` for Auto Contrast and Auto
-  Color; "A value between 0.0% and 1% is recommended."
-- **Target colors** — shadow/midtone/highlight swatches; Auto Color "neutralizes
-  the midtones using a target color of RGB 128 gray."
-- **Save as Defaults** — stores clip + target values for future Auto Tone/Contrast/
-  Color and the Auto button. "When you save the Auto Color Correction options as
-  defaults … it does not matter what algorithm you select … The three
-  auto-correction commands use only those values that you set for the target
-  colors and clipping," except that Auto Color also uses Snap Neutral Midtones.
+  Color; the Help recommends a value between 0.0% and 1%.
+- **Target colors** — shadow/midtone/highlight swatches; Auto Color neutralizes
+  midtones using an RGB 128 gray target.
+- **Save as Defaults** — stores clip and target values for future Auto
+  Tone/Contrast/Color and the Auto button. Once the Auto Color Correction options
+  are saved as defaults, the chosen algorithm no longer matters: the three
+  auto-correction commands use only the saved target-color and clipping values,
+  except that Auto Color also uses Snap Neutral Midtones.
 
 Proposed per-channel algorithm for Enhance Per Channel Contrast (Auto Tone):
 
@@ -316,19 +316,19 @@ Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` —
   official CS6 Help reference, extracted with `pdftotext -layout`. Established:
-  "Levels overview"; the shadow/gamma/highlight input sliders with the level-5 /
-  level-243 examples and "maps the pixel value to level 0/255"; the gamma
-  "moves the midtone (level 128)" description and left/right direction; the
-  Output Levels default 0/255; "The mapping affects the darkest and lightest
-  pixels in each channel … adjusted proportionately to avoid altering the color
-  balance"; the Channel menu and the Shift-select-Channels command-only rule;
-  Alt-drag clipping preview; spot/alpha individual editing; the eyedropper
-  sections ("Set black and white points using the Eyedropper tools", "Color
-  correct using the eyedroppers") including the "eyedroppers undo any previous
-  adjustment" note and the Grayscale unavailability of the gray point; and the
-  full "Auto Color Correction Options dialog box" (three algorithms, clip
-  percentages and defaults, target colors, Snap Neutral Midtones, Save as
-  Defaults, and the Auto Color/Auto Tone/Auto Contrast mapping).
+  the Levels overview; the shadow/gamma/highlight input sliders with the level-5 /
+  level-243 examples and the mapping of a chosen value to levels 0/255; the gamma
+  control moving the midtone (level 128) with its left/right direction; the
+  Output Levels default 0/255; the note that the mapping affects each channel's
+  darkest and lightest pixels while adjusting the other channels proportionally
+  to preserve color balance; the Channel menu and the Shift-select-Channels
+  command-only rule; Alt-drag clipping preview; spot/alpha individual editing;
+  the eyedropper sections (setting black and white points, and color-correcting
+  with the eyedroppers) including the note that eyedroppers undo prior
+  adjustments and the Grayscale unavailability of the gray point; and the full
+  Auto Color Correction Options dialog (three algorithms, clip percentages and
+  defaults, target colors, Snap Neutral Midtones, Save as Defaults, and the Auto
+  Color/Auto Tone/Auto Contrast mapping).
 - `https://theiviaxx.github.io/photoshop-docs/Photoshop/ArtLayer/adjustLevels.html`
   — Photoshop scripting reference: `adjustLevels(inputRangeStart, inputRangeEnd,
   inputRangeGamma, outputRangeStart, outputRangeEnd)` with ranges `0…253`,

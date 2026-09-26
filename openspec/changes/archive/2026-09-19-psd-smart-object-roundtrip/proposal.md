@@ -8,7 +8,7 @@ write cannot be relied on to reopen in Photoshop with the object intact.
 
 Scope decision (2026-09-19): smart objects are **Photoshop CS6 → current CC**,
 covered as tolerant read plus byte-preserving round-trip. The only available
-reference fixture is a Photoshop **a reference build** file, so we make **no
+reference fixture is a reference file, so we make **no
 validated-parity claim** at the CS6 end or the earliest-CC end; behavior that is
 unproven for a version is stated as such. Two Camera Raw storage models exist. A
 raw opened as a Smart Object stores `crs:` XMP in the embedded payload (CS6 path,

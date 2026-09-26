@@ -379,7 +379,7 @@ fn split_planes(
     ))
 }
 
-/// Inflate a ZIP channel payload. Photoshop writes a zlib-framed stream; some
+/// Inflate a ZIP channel payload. The reference writes a zlib-framed stream; some
 /// third-party writers emit raw deflate, so fall back to that if zlib framing
 /// is absent. The decode is bounded to `expected` bytes so a crafted stream
 /// cannot expand without limit; output shorter or longer than `expected` is
@@ -824,7 +824,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             b"infx" => blend_interior = data.first().is_none_or(|&b| b != 0),
             b"lsct" if data.len() >= 4 => {
                 section = Some(u32::from_be_bytes(data[0..4].try_into().unwrap()));
-                // Photoshop/psd-tools store a group's blend key inside 'lsct'
+                // The reference/psd-tools store a group's blend key inside 'lsct'
                 // (after the '8BIM' signature); the folder record's own key is
                 // usually 'norm'. Prefer the 'lsct' key so pass-through groups
                 // load as PassThrough.
@@ -857,7 +857,7 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
         }
     }
 
-    // Photoshop ≤5-era transparency-protected bit shares the transparency lock.
+    // The reference's ≤5-era transparency-protected bit shares the transparency lock.
     if flags & 0x01 != 0 {
         lock = lock.with(LockFlags::TRANSPARENCY, true);
     }

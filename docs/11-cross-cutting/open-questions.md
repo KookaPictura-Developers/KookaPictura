@@ -117,7 +117,7 @@ or from community CS6-era sources (marked inferred). Highest-impact gaps:
 
 ## F. Legal / independent-creation
 
-- Redistributing a CS6-authored reference corpus for parity testing — `XC-010`, `00-overview/licensing-and-independent-creation.md`.
+- Redistributing a CS6-authored reference corpus for parity testing — `XC-010`, `00-overview/licensing-and-provenance.md`.
 - Whether behavioral replication of patented filters (e.g. healing) requires a patent review — flagged for counsel.
 - Fonts and `.abr`/`.csh`/`.pat` presets bundled by Adobe must not be copied.
 - **Resolver:** legal counsel review.

@@ -44,7 +44,7 @@ pub(crate) fn is_psb_big_key(key: &[u8; 4]) -> bool {
 
 /// Additional-layer-info keys that carry an adjustment.
 ///
-/// The brief's list plus the spellings Photoshop actually writes: Invert is
+/// The brief's list plus the spellings the reference actually writes: Invert is
 /// `nvrt` (not `invr`) and the legacy Hue/Saturation key is `hue ` alongside
 /// `hue2`. Both spellings are accepted on read. `SoCo` is solid-color fill
 /// content, `GdFl` is gradient fill content, and `PtFl` is pattern fill content:

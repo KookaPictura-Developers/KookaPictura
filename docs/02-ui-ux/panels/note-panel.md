@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-**Note tool.** The CS6 Help tool gallery states: ** It is grouped in the toolbox with the Count tool under the Eyedropper slot and cycles with `I`.
+**Note tool.** The CS6 Help tool gallery describes the Note tool as attaching notes to an image. It is grouped in the toolbox with the Count tool under the Eyedropper slot and cycles with `I`.
 
 **Notes panel.** The Notes panel (`Window > Notes`) is the text-editing surface for the selected note. Selecting the Note tool and clicking the canvas creates a note icon and makes the panel active; the note text is typed into the panel. The panel navigates notes in the active image with **back/forward arrows** and supports adding and deleting notes. Double-clicking a note icon with the Note tool reopens it for editing in the panel. *(These panel behaviors are from CS6-era secondary sources, consistent with `03-tools/note-and-count.md`; the fetched CS6 PDF did not include a dedicated Notes-panel section.)*
 
@@ -123,7 +123,7 @@ Widgets over QML for the dock and text editor (dense, keyboard-centric; `ARCH-00
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (downloaded, text-extracted). Established: the Note tool gallery description (); the `I`-group shortcut table entry for the Note tool; `View > Extras` shows/hides "annotations" among selection edges, grids, guides, target paths, slices, layer borders, and count. The fetched PDF contained **no dedicated Notes-panel or Note-tool procedure section**, which limits what is sourceable here.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (downloaded, text-extracted). Established: the Note tool gallery description (the tool attaches notes to an image); the `I`-group shortcut table entry for the Note tool; `View > Extras` shows/hides "annotations" among selection edges, grids, guides, target paths, slices, layer borders, and count. The fetched PDF contained **no dedicated Notes-panel or Note-tool procedure section**, which limits what is sourceable here.
 - `https://www.bapugraphics.com/blog/adobe-photoshop-note-tool` — **(secondary, CS6-era)** Note tool procedure: options-bar Author and Color, click to place a note, Notes panel text entry, non-printing behavior, `View > Show > Notes` / `View > Extras`, double-click to edit, `Window > Notes` to cycle notes, notes saved in PSD/PDF/TIFF. Already cited by `03-tools/note-and-count.md`; re-used here for the panel UI.
 - `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Notes_palette.html` — **(secondary, CS6-era)** Notes panel existence and the PSD/PDF/TIFF save claim (as cited in `03-tools/note-and-count.md`; snippet-level here).
 - `https://searxng` query "Photoshop CS6 Notes panel Note tool author color Window Notes" — discovery only.

@@ -34,7 +34,7 @@ expansion on click (mirroring the eye hit-test). Opening still routes through
 unaffected.
 
 ### D4 — Filter lightswitch, on by default
-`layers_filter_bar.cpp` gains `#include "icons.h"`; two independent-creation SVGs
+`layers_filter_bar.cpp` gains `#include "icons.h"`; two original SVGs
 `layers.filterOff.svg` and `layers.filterOn.svg`; `toggle_` shows
 `layers.filterOn` and is checked by default, swapping to `layers.filterOff` when
 unchecked. `filter_.enabled` follows the toggle. With no criteria active the

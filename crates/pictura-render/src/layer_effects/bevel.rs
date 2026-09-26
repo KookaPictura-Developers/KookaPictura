@@ -13,7 +13,7 @@
 //! `antialiasGloss`), texture (`useTexture`, `InvT`, `Algn`, `Scl `, `Ptrn`),
 //! `useShape` and `showInDialog` are decoded/ignored; the effective
 //! angle/altitude is the stored `lagl`/`Lald`, not the global-light resource
-//! (1037); the height profile is a Gaussian blur of `M` rather than Adobe's
+//! (1037); the height profile is a Gaussian blur of `M` rather than the reference's
 //! distance transform; `scale = size · depth/100` and the `dot(N,L) - sin(alt)`
 //! flat-offset are ungrounded model choices; the build region pads by the blur
 //! supports only; `Scale Effects`, the exact inter-effect order and the

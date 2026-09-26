@@ -12,7 +12,7 @@
 
 `Select > Transform Selection` puts a transform bounding box around the **selection border itself**, not around the pixels the selection encloses. Dragging handles reshapes the marching-ants outline; the underlying image is untouched. This is the command to use when the user wants to move or reshape a selection without moving its content.
 
-The CS6 Help lists the transformable items as: a selection, an entire layer, multiple layers, a layer mask, a path, a vector shape, a vector mask, a selection border, or an alpha channel. Transforming a **selection border** is a distinct branch: 
+The CS6 Help lists the transformable items as: a selection, an entire layer, multiple layers, a layer mask, a path, a vector shape, a vector mask, a selection border, or an alpha channel. Transforming a **selection border** is a distinct branch: make or load a selection, then choose `Select > Transform Selection`.
 
 Because Transform Selection reuses the transform engine, it supports the same operations and modifiers as Free Transform:
 
@@ -20,7 +20,7 @@ Because Transform Selection reuses the transform engine, it supports the same op
 - A **reference point** (the fixed point around which the transform is performed), centred by default, movable via the options-bar reference-point locator or by dragging it in the canvas; it may lie outside the selection.
 - Numeric `X`/`Y` position (with a relative-positioning toggle), `W`/`H` scale percentages (with an aspect-ratio link), a rotation angle, and `H`/`V` skew angles.
 - Commit with `Enter`/`Return`, the options-bar commit button, or double-clicking inside the transform marquee; cancel with `Esc` or the cancel button.
-- `Edit > Free Transform` may also start a transform of the selection border when the target has been selected with the Move tool and **Show Transform Controls** is enabled: 
+- `Edit > Free Transform` may also start a transform of the selection border when the target has been selected with the Move tool and **Show Transform Controls** is enabled: choose the Move tool, then select **Show Transform Controls** in the options bar.
 
 **Interaction with Free Transform.** `Edit > Free Transform` (`Ctrl+T`) on a document with an active selection transforms the **selected pixels** — Photoshop lifts the selected content into the transform and moves/resamples it, leaving a hole (or not, depending on the layer) behind — whereas `Select > Transform Selection` transforms only the **border**. The two commands must not be conflated: the Option bar is visually identical, but the target differs. The Help groups both under the transform keys table, "Keys for transforming selections, selection borders, and paths".
 
@@ -142,7 +142,7 @@ Widgets over QML: consistent with `ARCH-003`; the overlay is a vector-layer `QGr
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (curl → `/tmp`, `pdftotext`). Established: ; transformable-items list including selection border and alpha channel; reference-point behaviour (default centre, movable, may lie outside); the full `Edit > Transform` submenu semantics; Free Transform gesture/modifier matrix; Move tool `Show Transform Controls` for selection/selection-border transforms; commit/cancel and duplicate/again shortcuts; "Keys for transforming selections, selection borders, and paths"; Free Transform interpolation preference behaviour; CS6 What's New > Transform notes (Smart Object icon, vector-curve dragging, 90° even-×-odd pixel behaviour, Ignore Rotation Metadata preference).
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (curl → `/tmp`, `pdftotext`). Established: transforming a selection border by making or loading a selection and choosing `Select > Transform Selection`; transformable-items list including selection border and alpha channel; reference-point behaviour (default centre, movable, may lie outside); the full `Edit > Transform` submenu semantics; Free Transform gesture/modifier matrix; Move tool `Show Transform Controls` for selection/selection-border transforms; commit/cancel and duplicate/again shortcuts; "Keys for transforming selections, selection borders, and paths"; Free Transform interpolation preference behaviour; CS6 What's New > Transform notes (Smart Object icon, vector-curve dragging, 90° even-×-odd pixel behaviour, Ignore Rotation Metadata preference).
 - `https://search.brave.com/search?q=Photoshop+CS6+%22Transform+Selection%22+Select+menu` — search results page; confirms `Select > Transform Selection` as the border transform and the distinction from `Edit > Transform`.
 
 Consulted as search-result snippets only (not individually fetched; community-reported):

@@ -266,7 +266,7 @@ fn decode_stops(value: &DescValue) -> Option<Vec<GradientStop>> {
     Some(stops)
 }
 
-/// Build a standard Photoshop `GdFl` descriptor. `reverse` and `scale` are not
+/// Build a standard PSD `GdFl` descriptor. `reverse` and `scale` are not
 /// written, so a decoded copy is forward at scale 100 (the psd-tools defaults);
 /// only custom-stop gradients are emitted, matching the decoder.
 pub fn encode_gradient_fill(

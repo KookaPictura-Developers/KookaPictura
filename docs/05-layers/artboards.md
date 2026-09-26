@@ -19,7 +19,7 @@ What CS6 has instead of artboards:
 - **Crop / canvas size** (`04-image-ops/canvas-size.md`) to define one working area.
 - **Slices** and export scripts for cutting one canvas into regions (`10-workflow-io/web-export-and-slices.md`).
 
-Evidence: the CS6 Help PDF's only occurrences of "artboard" are in an **Illustrator** topic ("Clip To Artboard (Illustrator only)"), not a Photoshop feature. Adobe's community answer states "Artboards were added to Photoshop CC and are not available in CS6"; the Photoshop version history places them in 16.0 (CC 2015).
+Evidence: the CS6 Help PDF's only occurrences of "artboard" are in an **Illustrator** topic ("Clip To Artboard (Illustrator only)"), not a Photoshop feature. Adobe's community answer states that artboards were added to Photoshop CC and are not available in CS6; the Photoshop version history places them in 16.0 (CC 2015).
 
 ### Post-CS6 behavior (what the feature does, for reference)
 
@@ -128,13 +128,13 @@ Because artboards are out of CS6 parity, the testable statements are about **cor
 
 Fetched for this document:
 
-- `https://web.archive.org/web/2023id_/https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/` — Adobe PSD/PSB File Formats Specification. Established the authoritative version fact: ****, version `16`, variable Action-format descriptor.
+- `https://web.archive.org/web/2023id_/https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/` — Adobe PSD/PSB File Formats Specification. Established the authoritative version fact: the spec labels the block **Artboard Data (Photoshop CC 2015)**, keyed `artb`, `artd`, or `abdd`, version `16`, a variable Action-format descriptor.
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — the CS6 Help corpus. Established the **absence** of artboards from Photoshop CS6: the only "artboard" occurrence is `Clip To Artboard (Illustrator only)` in an Illustrator topic. (`ARCH-008`'s "New in CS6 — CS6 adds artboards" claim is therefore unsupported by this source.)
 
 Consulted as search-result snippets only (not individually fetched; community/support):
 
-- `https://community.adobe.com/questions-712/how-to-put-artboards-in-photoshop-cs6-1086264` — 
-- `https://www.reddit.com/r/photoshop/comments/6tcw9b/artboards_in_cs6/` — "Artboards weren't added until Version 16.0 (CC 2015)."
+- `https://community.adobe.com/questions-712/how-to-put-artboards-in-photoshop-cs6-1086264` — states that artboards were added to Photoshop CC and are not available in CS6.
+- `https://www.reddit.com/r/photoshop/comments/6tcw9b/artboards_in_cs6/` — places artboards at version 16.0 (CC 2015).
 - `https://helpx.adobe.com/photoshop/desktop/create-manage-layers/layout-design-tools/create-artboard-documents.html` (HTTP 403 to fetch; seen as a search result) — current artboard creation workflow.
 - `https://helpx.adobe.com/photoshop/desktop/save-and-export/export-files-to-different-formats/export-artboards-as-pdf.html` (HTTP 403 to fetch; seen as a search result) — `File > Export > Artboards To PDF`, and `Artboards to Files`.
 

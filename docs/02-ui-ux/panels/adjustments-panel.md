@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-The **Adjustments panel** (`Window > Adjustments`) gathers the color and tonal adjustments.  The adjustments made through the panel are therefore **non-destructive** — they live on an adjustment layer and can be re-edited or discarded without changing underlying pixels (`LAY-012`).
+The **Adjustments panel** (`Window > Adjustments`) gathers the color and tonal adjustments. Clicking a tool icon selects an adjustment and creates an adjustment layer in one step. The adjustments made through the panel are therefore **non-destructive** — they live on an adjustment layer and can be re-edited or discarded without changing underlying pixels (`LAY-012`).
 
 **Default placement (CS6 Essentials workspace).** The panel is in the **middle of the right-hand main panel column**, grouped with the **Styles** tab; Adjustments is the default-active tab. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
 
@@ -151,7 +151,7 @@ Fetched for this document:
 - `https://jkost.com/blog/2012/06/the-properties-panel-in-photoshop-cs6.html` — CS6 Properties panel shows the selected layer's properties and a mask icon; adjustment layers expose their controls there.
 - `https://www.photoshopessentials.com/basics/using-the-enhanced-properties-panel-in-photoshop` — confirms the Properties panel is the contextual editor and that adjustment layers are edited there (article is CC-2020-era; used only for the CS6-era contextual-panel concept, not for CS6 control lists).
 - `https://www.carrieacosta.com/class/shared/adjustment_layers_CS6.pdf` (**"Using Adjustment Layers", CS6 class handout**) — enumerates the CS6 Adjustment Layer buttons: Brightness/Contrast, Levels, Curves, Exposure, Vibrance, Hue/Saturation, Color Balance, Black & White, Photo Filters, Channel Mixer, Color Lookup, Invert, Posterize, Threshold, Selective Color and Gradient Map (16, including Color Lookup), and notes the panel-menu list.
-- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Adjustments_palette.html` (fetched) — CS6-era book companion: 
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Adjustments_palette.html` (fetched) — CS6-era book companion: in CS6 the Adjustments panel only offers buttons for selecting and adding adjustment layers, with the adjustment controls moved to the new Properties panel.
 - `https://www.apogeephoto.com/photoshop-cs6-cc-the-adjustments-panel-and-properties-panel` (fetched) — CS6/CC tutorial: pressing an Adjustments icon adds the adjustment layer and opens its controls in the Properties panel; tooltips name the icons.
 - `https://www.photoshopessentials.com/basics/layers/essential-layers-panel-preferences` (fetched) — the Layers-panel "New Fill or Adjustment Layer" list leads with the three Fill layers (Solid Color, Gradient, Pattern); the Adjustments panel menu carries `Add Mask by Default`.
 - `https://www.photoshopessentials.com/basics/managing-panels-in-photoshop-cs6` (fetched) — CS6 Essentials default workspace: Adjustments is the middle group of the main column, tabbed with Styles.

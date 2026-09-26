@@ -14,7 +14,7 @@ use super::common::{
 /// the source colour at its centre. `sharpness` hardens the daub edge and the
 /// six [`BrushType`]s vary shape, hardness and tonal skew.
 ///
-/// ponytail: one daub per grid cell with a hard elliptical falloff; Adobe's
+/// ponytail: one daub per grid cell with a hard elliptical falloff; the reference's
 /// per-type bristle footprints are closed. An oriented multi-lobe stamp is the
 /// upgrade path if the single ellipse reads too uniform.
 pub fn paint_daubs(
@@ -98,7 +98,7 @@ pub fn paint_daubs(
 /// along a seeded stroke direction, repeated `stroke_detail` times and mixed by
 /// `softness`.
 ///
-/// ponytail: a directional neighbour pull, not Adobe's iterative paint-load
+/// ponytail: a directional neighbour pull, not the reference's iterative paint-load
 /// smear. The coarse angle block keeps strokes coherent; a carried running
 /// colour is the upgrade path.
 pub fn palette_knife(
@@ -169,7 +169,7 @@ pub fn palette_knife(
 /// the smoothed edge magnitude (localized by `detail`) plus a weak specular
 /// sheen, scaled by `highlight_strength`.
 ///
-/// ponytail: a Sobel gate and a quadratic sheen, not Adobe's plastic-surface
+/// ponytail: a Sobel gate and a quadratic sheen, not the reference's plastic-surface
 /// simulation. Add specular lobes if the flat sheen reads too even.
 pub fn plastic_wrap(
     buf: &mut PixelBuffer,
@@ -240,7 +240,7 @@ pub fn plastic_wrap(
 /// Sponge: seeded soft daubs that push samples brighter or darker by
 /// `definition`, then a `smoothness` box blend.
 ///
-/// ponytail: signed soft discs over per-pixel sponge noise; Adobe's porous
+/// ponytail: signed soft discs over per-pixel sponge noise; the reference's porous
 /// texture is closed. A noise-modulated coverage is the upgrade path.
 pub fn sponge(
     buf: &mut PixelBuffer,
@@ -331,7 +331,7 @@ pub fn sponge(
 /// lightened by `paper_brightness`. The Sobel edge weight keeps the reduced
 /// source colour at strong edges, so the tonal step survives.
 ///
-/// ponytail: geometric crosshatch with noise jitter, not Adobe's pressure-
+/// ponytail: geometric crosshatch with noise jitter, not the reference's pressure-
 /// modelled pencil; the hatch period is fixed relative to `pencil_width`.
 pub fn colored_pencil(
     buf: &mut PixelBuffer,
@@ -403,7 +403,7 @@ pub fn colored_pencil(
 /// Dry Brush: posterize to a reduced palette, smear along seeded directional
 /// strokes, then modulate by a procedural surface (`texture` 1..=3).
 ///
-/// ponytail: one directional sample per pixel plus an embossed surface; Adobe's
+/// ponytail: one directional sample per pixel plus an embossed surface; the reference's
 /// bristle-resolved dry stroke is closed.
 pub fn dry_brush(
     buf: &mut PixelBuffer,
@@ -456,7 +456,7 @@ pub fn dry_brush(
 /// then embossed by a procedural surface.
 ///
 /// ponytail: reuses the Paint Daubs single-ellipse stamp with a short aspect;
-/// Adobe's plaster daub is closed.
+/// The reference's plaster daub is closed.
 pub fn fresco(
     buf: &mut PixelBuffer,
     brush_size: u8,
@@ -525,7 +525,7 @@ pub fn fresco(
 /// the chalk, and `background` the paper that light areas settle toward.
 ///
 /// ponytail: single-ellipse chalk stamps plus a per-pixel surface emboss;
-/// Adobe's scratchboard pastel is closed. A bristle-tipped stamp is the upgrade
+/// The reference's scratchboard pastel is closed. A bristle-tipped stamp is the upgrade
 /// path if the strokes read too soft.
 pub fn rough_pastels(
     buf: &mut PixelBuffer,
@@ -616,7 +616,7 @@ pub fn rough_pastels(
 /// sample along the stroke; light areas brighten toward white as `highlight_area`
 /// grows, all scaled by `intensity`.
 ///
-/// ponytail: a single-neighbour directional pull, not Adobe's iterative smudge
+/// ponytail: a single-neighbour directional pull, not the reference's iterative smudge
 /// brush. Carrying a running colour along the stroke is the upgrade path.
 pub fn smudge_stick(
     buf: &mut PixelBuffer,
@@ -688,7 +688,7 @@ pub fn smudge_stick(
 /// over it as `brush_size`-scaled daubs.
 ///
 /// ponytail: the image is daubed first and the ground mixed back by coverage,
-/// rather than Adobe's separate underpainting pass; closed. A per-stroke
+/// rather than the reference's separate underpainting pass; closed. A per-stroke
 /// occlusion mask is the upgrade path.
 pub fn underpainting(
     buf: &mut PixelBuffer,
@@ -788,7 +788,7 @@ pub fn underpainting(
 /// `texture` surface plus seeded paper mottle. `brush_detail` retains more
 /// bands and less smoothing.
 ///
-/// ponytail: a posterize + Sobel-saturate model, not Adobe's pigment diffusion.
+/// ponytail: a posterize + Sobel-saturate model, not the reference's pigment diffusion.
 /// A wet-edge bleed pass is the upgrade path.
 pub fn watercolor(
     buf: &mut PixelBuffer,

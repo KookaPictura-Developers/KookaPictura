@@ -14,7 +14,7 @@
 
 ## 3. Fixture and oracle
 
-- [x] 3.1 The fixture `tests/fixtures/engine_data.bin` (extracted from the a reference build `the synthetic source` text layer, re-serialized by psd-tools) already exists; record provenance in `tests/fixtures/README.md`.
+- [x] 3.1 The fixture `tests/fixtures/engine_data.bin` (extracted from a reference text layer, re-serialized by psd-tools) already exists; record provenance in `tests/fixtures/README.md`.
 - [x] 3.2 Oracle test (`tests/oracle/type_engine_data.rs`): parse the fixture with `parse_engine_data` and assert `fonts` = `[AdobeInvisFont, MyriadPro-Regular]`, style font `MyriadPro-Regular`, size `150.0`, fill colour `[1,1,1,1]`, justification `0`; a python `psd-tools` cross-check of the same fixture asserts the same values.
 
 ## 4. Tests and gates

@@ -3,7 +3,7 @@
 //!
 //! `composite_gpu` mirrors the CPU oracle [`crate::composite_rgba`] pass for
 //! pass: the same per-layer loop, mask/opacity handling, pass-through/isolated
-//! group semantics, and the W3C + Photoshop blend formulas, executed by a
+//! group semantics, and the W3C + reference blend formulas, executed by a
 //! wgpu compute shader. It is proven, not assumed — the parity test in
 //! `tests/gpu_parity.rs` diffs it against the CPU compositor within ±1 LSB.
 //!

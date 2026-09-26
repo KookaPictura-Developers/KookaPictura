@@ -32,12 +32,12 @@
 
 ## 5. Adobe interop fixtures
 
-> Fixture limitation: only the Photoshop a reference build fixtures 01/02 exist. CS6 and
+> Fixture limitation: only the synthetic smart-object fixtures 01/02 exist. CS6 and
 > earliest-CC behavior cannot be fixture-validated because there is no such
 > reference file; that validation is deferred. Tolerant parse plus byte-preserving
 > write is the guarantee, and unproven behavior is stated as such.
 
-- [ ] 5.1 Move `assets/test_with_smart_object0{1,2}.psd` under `crates/pictura-codec/tests/fixtures/`; record provenance (self-produced, Photoshop a reference build, no Adobe assets).
+- [ ] 5.1 Move `assets/test_with_smart_object0{1,2}.psd` under `crates/pictura-codec/tests/fixtures/`; record provenance (self-produced, no Adobe assets).
 - [x] 5.2 Fixture round-trip oracle with `psd-tools` over both files.
 - [ ] 5.3 Manual Photoshop CC reopen: deferred follow-up, no Photoshop available in this environment; acceptance is the automated `psd-tools` oracle (5.2).
 - [ ] 5.4 Produce a 16-bit variant later; add it to the oracle once roadmap G4 depth support lands.

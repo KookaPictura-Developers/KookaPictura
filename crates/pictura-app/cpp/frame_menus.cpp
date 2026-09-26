@@ -1041,7 +1041,10 @@ void PicturaMainWindow::registerHandlers()
         QMessageBox::about(
             this, tr("About Kooka Pictura"),
             tr("Kooka Pictura — an open-source layered image editor for Linux, written in Rust "
-               "and Qt. Adobe, Photoshop, and Camera Raw are trademarks of Adobe Inc.; "
+               "and Qt.\n\n"
+               "Licensed under the GNU GPL v3.0 or later. Built with Qt 6 (LGPLv3) and "
+               "open-source Rust crates; see THIRD-PARTY-LICENSES.\n\n"
+               "Adobe, Photoshop, and Camera Raw are trademarks of Adobe Inc.; "
                "Kooka Pictura is not affiliated with or endorsed by Adobe."));
     });
 }

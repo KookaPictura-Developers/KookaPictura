@@ -154,8 +154,8 @@ The `Type` column is one of:
 | Character panel | cs6 | Dock for character formatting such as font, size, tracking, kerning, leading, and baseline shift. | docs/02-ui-ux/panels/character-and-paragraph.md:15 |
 | Character Styles panel | cs6 | New in CS6; stores character-level attribute styles applied to text. | docs/02-ui-ux/panels/character-and-paragraph.md:65 |
 | CIE L*a*b* (Lab) | cs6 | Device-independent color model used as the color-management reference. L is 0-100, a is green to red, and b is blue to yellow. | docs/07-color-painting/color-models.md:35 |
-| independent-creation | process | The legal method used here: a behavioral specification produced without Adobe source code, binaries, or assets. | docs/README.md:58 |
-| independent-creation method | project | Separates the group that establishes behavior from the group that implements it, a defense against copyright infringement but not patents. | docs/00-overview/licensing-and-independent-creation.md:45 |
+| Provenance | process | The documentation-first method used here: a behavioral specification produced without Adobe source code, binaries, or assets. | docs/README.md:58 |
+| Independent-creation method | project | A behavioral specification produced from public, lawful observation, kept separate from implementation; a defense against copyright infringement, not patents. | docs/00-overview/licensing-and-provenance.md:45 |
 | Clipping mask | cs6 | A relationship where a base layer's non-transparent content reveals (clips) the successive layers above it. Clipped layers take the base's opacity and mode. | docs/01-architecture/document-model.md:114 ; docs/05-layers/vector-masks-and-clipping-masks.md:55 |
 | Clipping path | cs6 | A saved path designated so part of an image becomes transparent when placed in a page-layout or vector application. EPS supports it but not alpha channels. | docs/02-ui-ux/panels/paths-panel.md:17 ; docs/08-selection/paths-and-vector-selection.md:37 |
 | Clone Source panel | cs6 | Dock that stores up to five sampling sources for the Clone Stamp and Healing Brush, with offset, scale, rotation, flip, and overlay. | docs/02-ui-ux/panels/clone-source-panel.md:13 |
@@ -554,7 +554,7 @@ The `Type` column is one of:
 | oil-paint-filter | capability | Oil Paint filter with its error contract, alpha preservation, parameter validation, and determinism. | openspec/specs/oil-paint-filter/spec.md:6 |
 | Opacity | cs6 | Paint control capping the transparency of color applied in one stroke. No back-and-forth within a held stroke exceeds the set value. | docs/03-tools/brush-and-pencil.md:32 |
 | Opacity (brush) | cs6 | Per-stroke transparency cap; repeated passes within one stroke do not exceed the set level until the mouse button is released. | docs/07-color-painting/airbrush-and-flow.md:18 |
-| Kooka Pictura | project | Name of this independent-creation Rust and Qt6 reimplementation of Photoshop CS6. | docs/00-overview/product-overview.md:9 |
+| Kooka Pictura | project | Name of this independent Rust and Qt6 reimplementation of Photoshop CS6. | docs/00-overview/product-overview.md:9 |
 | OpenSpec | process | Spec-first workflow used by the repo: work becomes a reviewable change proposal before code, and the specs remain the contract. | openspec/changes/m39-panel-anatomy/proposal.md:1 |
 | OpenSpec change | process | Proposal directory under openspec/changes/<kebab-name>/ holding proposal.md, design.md, tasks.md, and spec deltas, archived once complete. | AGENTS.md:39 |
 | OpenSpec validation | process | The `openspec validate --all --strict` gate checking change proposals and canonical specs before commit. | docs/dev/STATE.md:33 |
@@ -571,7 +571,7 @@ The `Type` column is one of:
 | OVR-001 | project | Spec ID for Product Overview, which frames the whole effort. | docs/00-overview/product-overview.md:3 |
 | OVR-002 | project | Spec ID for CS6 Editions and Constraints, the edition and version baseline. | docs/00-overview/cs6-editions-and-constraints.md:3 |
 | OVR-003 | project | Spec ID for Feasibility and Non-Goals. | docs/00-overview/feasibility-and-non-goals.md:3 |
-| OVR-004 | project | Spec ID for Licensing and independent-creation. | docs/00-overview/licensing-and-independent-creation.md:3 |
+| OVR-004 | project | Spec ID for Licensing and Provenance. | docs/00-overview/licensing-and-provenance.md:3 |
 | Paint Bucket | cs6 | Tool filling adjacent pixels similar in color to the clicked pixel, with the foreground color or a pattern (`BucketEngine`). Tolerance is documented from 0 to 255. | docs/03-tools/gradient-and-paint-bucket.md:52 |
 | paint stroke | code | Live painting session in the Rust object: `begin_paint` starts it, `paint_dab` samples the pointer, `end_paint` commits one history state, and `cancel_paint` drops it. | crates/pictura-app/src/cxxqt_object.rs:560 |
 | paint-engine | capability | Standard brush tip coverage, stroke spacing, flow and opacity accumulation, the pencil aliased edge and auto erase, paint modes, and per-stroke commit and undo. | openspec/specs/paint-engine/spec.md:6 |
@@ -898,7 +898,7 @@ The `Type` column is one of:
 | ToolSlotButton | code | A toolbox slot button that shows its group's current tool and distinguishes click (activate) from press-and-hold (open the flyout). | crates/pictura-app/cpp/toolbox.cpp:33 |
 | Traceability matrix | process | The table mapping each CS6 feature to its spec file, spec ID, proposed Rust module, proposed Qt component, and status. | docs/TRACEABILITY.md:1 |
 | tracing | code | Structured logging API for first-party Rust using spans and events, with the app binary installing a subscriber and one sink for Qt and Rust. | docs/11-cross-cutting/logging-and-telemetry.md:79 |
-| Trademark posture | project | Adobe marks are used only nominatively to identify the compatibility target, with no implied affiliation. | docs/00-overview/licensing-and-independent-creation.md:27 |
+| Trademark posture | project | Adobe marks are used only nominatively to identify the compatibility target, with no implied affiliation. | docs/00-overview/licensing-and-provenance.md:27 |
 | Transfer (brush) | cs6 | Brush dynamics section with Opacity and Flow jitter plus the Mixer Brush Wet, Load, and Mix jitter controls. | docs/07-color-painting/brush-dynamics.md:114 |
 | Transform | cs6 | The command family that rotates, scales, skews, distorts, or warps a layer, selection, mask, path, or alpha channel. Transform Selection affects the border itself. | docs/03-tools/move-and-transform.md:23 |
 | Transform Selection | cs6 | Command placing a transform box around the selection border itself, resampling the coverage mask without touching pixels. | docs/08-selection/transform-selection.md:13 |

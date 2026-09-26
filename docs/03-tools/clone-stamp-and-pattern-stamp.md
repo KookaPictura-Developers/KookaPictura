@@ -278,7 +278,7 @@ Not parsed in this pass: `https://helpx.adobe.com/photoshop/using/tool-technique
   all visible layers" note says the default is active-layer-only, while Evening
   recommends Aligned on. Resolve from a fresh CS6 install or a CS6 screenshot.
 - **Exact impressionist jitter model.** Adobe documents only that jitter is
-  added. Resolve by publicly documenting a CS6 Pattern Stamp stroke or accept
+  added. Resolve by analyzing a CS6 Pattern Stamp stroke or accept
   behavioral parity.
 - **Overlay blend math.** The four overlay modes presumably reuse the standard
   blend formulas, but this is not confirmed for the overlay. Resolve against the

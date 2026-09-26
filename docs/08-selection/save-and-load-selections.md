@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-A selection can be persisted as a grayscale **alpha channel** and reloaded later, including into another image. The CS6 Help frames this as the durable counterpart to Quick Mask: 
+A selection can be persisted as a grayscale **alpha channel** and reloaded later, including into another image. The CS6 Help frames this as the durable counterpart to Quick Mask: any selection can be saved as a mask in a new or existing alpha channel and later reloaded from that mask.
 
 ### Saving
 
@@ -175,12 +175,12 @@ Widgets over QML: the Channels panel is a dense list with live thumbnails and mo
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (curl → `/tmp`, `pdftotext`). Established: "Save and load selections" procedure and dialogs (Document/Channel/Name + Replace/Add/Subtract/Intersect; Document/Channel/Invert + Operation); Channels-panel save/load buttons and all modifier-click combinations; cross-image size rules; ; up to 56 channels; alpha channels preserved only in Photoshop/PDF/TIFF/raw; EPS does not support alpha channels; loading a selection into a layer mask; Quick Mask → `Save Selection` persistence; duplicate/split/merge channel procedures; channel-options definitions.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — primary CS6 Help corpus (curl → `/tmp`, `pdftotext`). Established: "Save and load selections" procedure and dialogs (Document/Channel/Name + Replace/Add/Subtract/Intersect; Document/Channel/Invert + Operation); Channels-panel save/load buttons and all modifier-click combinations; cross-image size rules; masks stored in alpha channels, where areas painted black are protected and white editable; up to 56 channels; alpha channels preserved only in Photoshop/PDF/TIFF/raw; EPS does not support alpha channels; loading a selection into a layer mask; Quick Mask → `Save Selection` persistence; duplicate/split/merge channel procedures; channel-options definitions.
 - `https://html.duckduckgo.com/html/?q=Photoshop+CS6+%22Save+Selection%22+default+channel+name+Alpha+1` — search results page; surfaced the community claim of the `Alpha 1` default channel name.
 
 Consulted as search-result snippets only (not individually fetched; community-reported):
 
-- `http://www.sketchpad.net/channels2.htm` — 
+- `http://www.sketchpad.net/channels2.htm` — states that Photoshop gives a new channel the default name `Alpha 1`.
 - `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Channels_palette.html` — Channels panel ordering and Save Selection behaviour.
 
 Not used in this pass:

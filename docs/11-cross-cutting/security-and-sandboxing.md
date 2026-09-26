@@ -4,7 +4,7 @@
 - **Status:** `Draft`
 - **Parity tier:** `Core` (memory safety, untrusted-input hardening, path handling); **`Non-goal (CS6)`** for in-process parity with Adobe plug-in trust — Kooka Pictura proposes an out-of-process sandbox for untrusted plug-ins and a script permission model that CS6 does not have.
 - **New in CS6:** `No` — CS6 has no application sandbox, no plug-in signing/verification, and no script permission model. Native 8BF plug-ins and ExtendScript run in-process with full user privileges (`ARCH-011`). Kooka Pictura's sandboxing is a Linux-native addition, not CS6 parity.
-- **Depends on:** `01-architecture/system-architecture.md` (`ARCH-001`), `01-architecture/plugin-and-scripting-abi.md` (`ARCH-011`), `01-architecture/file-formats.md` (`ARCH-011` provisional), `01-architecture/build-and-packaging.md`, `11-cross-cutting/error-handling.md` (`XC-004`), `11-cross-cutting/localization.md` (`XC-001`), `11-cross-cutting/logging-and-telemetry.md` (`XC-003`), `00-overview/licensing-and-independent-creation.md`.
+- **Depends on:** `01-architecture/system-architecture.md` (`ARCH-001`), `01-architecture/plugin-and-scripting-abi.md` (`ARCH-011`), `01-architecture/file-formats.md` (`ARCH-011` provisional), `01-architecture/build-and-packaging.md`, `11-cross-cutting/error-handling.md` (`XC-004`), `11-cross-cutting/localization.md` (`XC-001`), `11-cross-cutting/logging-and-telemetry.md` (`XC-003`), `00-overview/licensing-and-provenance.md`.
 
 > Sandbox design below is a **design proposal**. Rust crate names are provisional. Rust codec safety posture reflects the published crates at the versions cited; it is not a guarantee and must be re-verified per release via `cargo-audit`.
 

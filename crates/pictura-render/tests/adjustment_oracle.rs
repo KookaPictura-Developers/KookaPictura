@@ -412,7 +412,7 @@ print(cl.data_version, cl[b'lookupType'].enum.decode(), cl[b'LUTFormat'].enum.de
 ";
 
 /// psd-tools independently reads the framing and the lookup fields, proving the
-/// block our decoder accepts is a real Photoshop-shaped `clrL`.
+/// block our decoder accepts is a real PSD-shaped `clrL`.
 #[test]
 fn psd_tools_reads_fixture_color_lookup_prefix() {
     if !psd_tools_available() {

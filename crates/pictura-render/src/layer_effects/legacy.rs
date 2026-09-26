@@ -1,5 +1,5 @@
 //! The legacy `lrFX` (`EFFECTS_LAYER`) effects block: the fixed binary struct
-//! Photoshop 5.0–6.0 wrote and CS still writes for compatibility.
+//! The reference's 5.0–6.0 releases wrote and CS still writes for compatibility.
 //!
 //! The block is an `EffectsLayer`: a `u16` version and a `u16` count, then
 //! `count` records each beginning `8BIM` + a 4-byte `ostype` + a `u32` body

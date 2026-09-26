@@ -3,7 +3,7 @@
 use super::{for_each_layer, recompute, valid_size};
 
 // ponytail: the added canvas is transparent (fill 0) — the layer-stack model has
-// no background layer, so Photoshop's background/extension-color options are out
+// no background layer, so the reference's background/extension-color options are out
 // of scope for M12.
 pub fn resize_canvas_document(
     doc: &mut pictura_core::Document,

@@ -1,12 +1,12 @@
-//! Pictura Raw: typed read/write of the Photoshop Camera Raw smart filter.
+//! Pictura Raw: typed read/write of the on-disk camera-raw smart filter.
 //!
-//! The on-disk form is Photoshop's standard camera-raw smart filter
+//! The on-disk form is the reference's standard camera-raw smart filter
 //! (`filterID 2683`, name `"Camera Raw Filter"`) inside `SoLd.filterFX`, so
-//! Photoshop can render it; "Pictura Raw" is only our user-facing name.
+//! the reference can render it; "Pictura Raw" is only our user-facing name.
 //! `PicturaRawSettings` is a thin alias of [`pictura_core::CrsSettings`].
 //!
 //! ponytail: behavioural parity only. The 11 Basic `Fltr` short keys and their
-//! value types are grounded on the a reference build fixture
+//! value types are grounded on the synthetic fixture
 //! `assets/test_with_smart_object02.psd`; document-level `FXid`/`FEid`/`FMsk`
 //! render caches are not authored (the baked proxy carries the pixels).
 
@@ -17,10 +17,10 @@ use crate::descriptor::{self, get_object_item_mut, set_object_item, DescValue};
 use crate::error::PsdError;
 
 // The two constants below, the `Fltr` class ID `Adobe Camera Raw Filter`, the
-// `Nm  ` value, and `filterID 2683` are Adobe's on-disk identifiers for the
-// Camera Raw smart filter. They are kept byte-for-byte for Photoshop
+// `Nm  ` value, and `filterID 2683` are the reference's on-disk identifiers for the
+// camera-raw smart filter. They are kept byte-for-byte for the reference
 // compatibility and used nominatively; see NOTICE.md.
-/// The Photoshop smart-filter id of the Camera Raw Filter.
+/// The PSD smart-filter id of the camera-raw filter.
 pub const CAMERA_RAW_FILTER_ID: i32 = 2683;
 /// The filter's display name as stored in `filterFXList[].Nm  `.
 pub const CAMERA_RAW_FILTER_NAME: &str = "Camera Raw Filter";
@@ -62,7 +62,7 @@ fn number(items: &[(Vec<u8>, DescValue)], key: &[u8]) -> Option<f64> {
 /// The value type matches the fixture: `Ex12` is a `Double`, the other ten are
 /// `Long`. ponytail: a non-integral value on an integer-typed control is
 /// rounded, so `decode(encode(s)) == s` holds exactly for integral slider
-/// values (Adobe's slider keys are integers anyway).
+/// values (the reference's slider keys are integers anyway).
 pub fn encode_pictura_raw_fltr(settings: &PicturaRawSettings) -> DescValue {
     fn push_long(items: &mut Vec<(Vec<u8>, DescValue)>, key: &[u8], value: Option<f64>) {
         if let Some(v) = value.filter(|v| v.is_finite()) {
@@ -294,7 +294,7 @@ fn insert_into_config(
     let mut new_data = data[..8].to_vec();
     new_data.extend_from_slice(&descriptor::write_descriptor(&desc));
     // psd-tools reads layer tagged blocks without consuming a trailing pad, so
-    // the declared length must be even; Photoshop 4-aligns the SoLd descriptor.
+    // the declared length must be even; the reference 4-aligns the SoLd descriptor.
     while !new_data.len().is_multiple_of(4) {
         new_data.push(0);
     }

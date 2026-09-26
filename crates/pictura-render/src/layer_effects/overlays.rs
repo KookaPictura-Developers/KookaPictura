@@ -10,7 +10,7 @@
 //! the `SoCo`/`PtFl` fill-layer ids (two independent implementations agree).
 //! Gradient `Ofst`, noise and CS6 `Dither` are not modelled; pattern `Angl`
 //! rotation is decoded but not applied; the unaligned gradient buffer is
-//! canvas-sized; Photoshop's exact inter-effect order among the overlays and
+//! canvas-sized; the exact inter-effect order among the overlays and
 //! Stroke is not modelled.
 
 use pictura_adjust::{GradientFillParams, GradientKind, GradientStop, PatternFillParams};
@@ -137,9 +137,9 @@ pub fn decode_color_overlay(layer: &Layer) -> Option<ColorOverlay> {
 
 /// Decode a layer's `lfx2` Gradient Overlay (`GrFl`). The gradient fields are
 /// decoded by the reused `fill::gradient_params_from_desc`; an absent `Angl`
-/// defaults to 0 and an absent `Type` to `Linear` (Photoshop's defaults, which
+/// defaults to 0 and an absent `Type` to `Linear` (the reference's defaults, which
 /// the strict `GdFl` helper does not supply). Missing `Rvrs`, `Scl `, `Algn`,
-/// `Md  ` and `Opct` likewise take the Photoshop defaults. Malformed input is
+/// `Md  ` and `Opct` likewise take the reference defaults. Malformed input is
 /// `None`. Never panics.
 pub fn decode_gradient_overlay(layer: &Layer) -> Option<GradientOverlay> {
     let top = read_effect(layer)?;
@@ -164,7 +164,7 @@ pub fn decode_gradient_overlay(layer: &Layer) -> Option<GradientOverlay> {
 /// are decoded by the reused `fill::pattern_params_from_desc`; `Angl` is
 /// decoded for symmetry but not applied, and the optional `phase` origin is
 /// carried for the render path. Missing `Scl `, `Algn`, `Md  ` and `Opct` take
-/// the Photoshop defaults. Malformed input is `None`. Never panics.
+/// the reference defaults. Malformed input is `None`. Never panics.
 pub fn decode_pattern_overlay(layer: &Layer) -> Option<PatternOverlay> {
     let top = read_effect(layer)?;
     let obj = effect_object(&top, b"patternFill", b"patternFill")?;

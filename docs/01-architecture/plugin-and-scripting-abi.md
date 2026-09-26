@@ -36,7 +36,7 @@ The ABI is **C++**, platform-binary-specific, and Carbon-era:
 - The PiPL is compiled differently per platform: Apple `Rez` (byte order is always Mac big-endian) or Windows `pipltool.exe`/`cnvtpipl.exe` feeding a `.rc` resource.
 - Data structures carry legacy Mac types (`Str255`, `Rect`, `Fixed`, `OSType`) and 16-bit `int16` selectors even in 64-bit SDKs.
 - The API is documented as **not thread-safe**; plug-ins are expected to run on the host thread.
-- The SDK is license-gated; redistribution and public analysis are restricted (`00-overview/licensing-and-independent-creation`).
+- The SDK is license-gated; redistribution and public analysis are restricted (`00-overview/licensing-and-provenance`).
 
 **Why the Adobe ABI cannot be reused on Linux:** the binary format is PE/Mach-O with platform resource sections (no Linux `.8bf` consumer), the calling convention and C++ name mangling are toolchain-specific, the resource compiler (`pipltool`, `Rez`, `.rc`) is macOS/Windows-only, PiPL/`Str255`/Carbon types are not ABI-compatible with ELF/GCC/Clang, and the `SPBasicSuite` host interface plus a `PIProperty`-style metadata channel are Adobe-proprietary with no published open specification. There is no faithful way to load a stock CS6 plug-in on Linux without reimplementing the entire closed host ABI; Kooka Pictura therefore specifies a **new** ABI and treats Adobe binary compatibility as a non-goal.
 
@@ -72,7 +72,7 @@ Official references: the *Adobe Photoshop CS6 JavaScript Scripting Reference* (o
 ### What Kooka Pictura implements
 
 1. A new, stable, versioned C ABI for native plug-ins (in-process, trusted) plus a Rust trait path for in-tree plug-ins.
-2. A JavaScript scripting host (QuickJS) with an Kooka Pictura DOM, a restricted ExtendScript compatibility shim, and an action-descriptor command layer.
+2. A JavaScript scripting host (QuickJS) with a Kooka Pictura DOM, a restricted ExtendScript compatibility shim, and an action-descriptor command layer.
 3. Explicit statement that Adobe `.8bf`/`.8li`/etc. binaries are **not** loadable.
 
 ## UI surface
@@ -246,7 +246,7 @@ OP_EXPORT const OpPluginApi* kookapictura_plugin_entry_v1(void);
 ```text
 1. dlopen path via libloading::Library::new(path)
 2. sym = lib.get::<extern "C" fn() -> *const OpPluginApi>(b"kookapictura_plugin_entry_v1\0")
-   - symbol absent -> "not an Kooka Pictura plug-in", skip
+   - symbol absent -> "not a Kooka Pictura plug-in", skip
 3. api = sym(); if api.is_null() -> skip
 4. if api->abi_major != OP_ABI_MAJOR -> refuse, log versions
 5. verify api->struct_size >= offsetof(OpPluginApi, negotiate)+sizeof(fn)

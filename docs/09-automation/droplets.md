@@ -123,7 +123,7 @@ Widgets, not QML: the dialog is a modal utility over `QMainWindow` and shares it
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — *Processing a batch of files*: *Create a droplet from an action*, *Tips for cross-platform droplets* (Windows→macOS re-init, `.exe` extension, filename references), *Process a file with a droplet*, *Batch and droplet processing options*. Fetched via `curl` + `pdftotext`.
 - `https://github.com/johnshopkins/adobe-scripts/raw/master/Photoshop/Photoshop-CS6-JavaScript-Ref.pdf` — `Application.batch(inputFiles, action, from [, options])` and `BatchOptions` property set used by the droplet dialog. Community mirror; fetched via `curl` + `pdftotext`.
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — camera-raw droplet guidance (). Same PDF, scripting/Camera Raw chapter.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — camera-raw droplet guidance, directing the user to `Suppress File Open Options Dialogs` in the Create Droplet dialog's Play area. Same PDF, scripting/Camera Raw chapter.
 - Cross-reference `docs/09-automation/batch-processing.md` (`AUTO-003`) for the shared option set and execution engine, `docs/09-automation/actions.md` (`AUTO-001`) for the embedded action format, and `docs/01-architecture/plugin-and-scripting-abi.md` (`ARCH-011`) for sandbox/CLI boundaries.
 - Freedesktop `.desktop` entry semantics are assumed from the Desktop Entry Specification; **not fetched during this research** and therefore provisional (see Open questions).
 
@@ -133,6 +133,6 @@ Widgets, not QML: the dialog is a modal utility over `QMainWindow` and shares it
 - **Desktop Entry support on target DEs.** GNOME/KDE/XFCE drag-and-drop of `.desktop` `%F`/`%U` was not verified against the Desktop Entry Specification during this research. Resolve by testing on the target distributions or by standardising on the CLI wrapper.
 - **`%F` vs `%U`.** Which placeholder reliably yields filesystem paths across file managers needs empirical validation.
 - **Indexing/launch behaviour.** CS6 starts Photoshop if it is not running; whether the Linux droplet should launch the GUI, run in-process, or run headless by default is a product decision (proposal: headless).
-- **Error-file location and format.** CS6 writes an error log file; its path/format is not documented. Resolve from a real run or define an Kooka Pictura log format.
+- **Error-file location and format.** CS6 writes an error log file; its path/format is not documented. Resolve from a real run or define a Kooka Pictura log format.
 - **Permissions.** Dropped arbitrary paths vs the script sandbox roots (`AUTO-010`) must be reconciled; a droplet implicitly requests filesystem access to its inputs.
 - **Cross-platform moving.** Whether to reproduce the CS6 "drag onto the app to re-initialise" step is moot on Linux; document the equivalent (regenerate) instead.

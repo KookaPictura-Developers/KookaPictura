@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Window > Histogram`, or clicking the **Histogram** tab, opens the panel.  A histogram ; shadows are on the left, midtones in the middle, highlights on the right.
+`Window > Histogram`, or clicking the **Histogram** tab, opens the panel. The panel opens in **Compact View** by default, showing the histogram with no controls or statistics; the view can be changed. A histogram graphs the number of pixels at each color intensity level, showing how the image's pixels are distributed; shadows are on the left, midtones in the middle, highlights on the right.
 
 **Default placement.** The Histogram panel is not in the default Essentials workspace; it is supplied by the **Photography** workspace (with Info and Actions) in the right-hand column (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
 
@@ -20,9 +20,9 @@
 |---|---|
 | **Compact View** | Histogram only, no controls or statistics; represents the entire image |
 | **Expanded View** | Histogram with statistics, the channel menu, view options, **Uncached Refresh**, and the **Source** (layer) selector |
-| **All Channels View** | Individual histograms of the channels **plus** all Expanded-View options;  |
+| **All Channels View** | Individual histograms of the channels **plus** all Expanded-View options; individual histograms omit alpha channels, spot channels, and masks |
 
-The panel 
+The panel keeps the current channel setting when switching from Expanded View or All Channels View back to Compact View.
 
 ### Anatomy
 
@@ -47,15 +47,15 @@ Available in Expanded and All Channels views:
 - **Luminosity** (RGB/CMYK) — "the luminance or intensity values of the composite channel."
 - **Colors** (RGB/CMYK) — "a composite histogram of the individual color channels in color"; the default for RGB/CMYK on first entering Expanded or All Channels view.
 
-In All Channels View, 
+In All Channels View, choosing from the Channels menu affects only the **topmost** histogram in the panel.
 
 ### Show Channels In Color
 
-From the panel menu: in **All Channels View**, it colorizes all channel histograms; in **Expanded** or **All Channels** view, selecting an individual channel and enabling it colors that channel — and  Selecting **Colors** likewise keeps its color in Compact View.
+From the panel menu: in **All Channels View**, it colorizes all channel histograms; in **Expanded** or **All Channels** view, selecting an individual channel and enabling it colors that channel — and the color is retained when switching to Compact View. Selecting **Colors** likewise keeps its color in Compact View.
 
 ### Statistics (Expanded / All Channels)
 
- Toggle with **Show Statistics**. Hover a bin for one value or drag to select a range; the block shows:
+By default, statistics appear in the Expanded View and All Channels View. Toggle with **Show Statistics**. Hover a bin for one value or drag to select a range; the block shows:
 
 | Statistic | Meaning |
 |---|---|
@@ -84,7 +84,7 @@ With **Preview** selected in any color/tonal adjustment dialog, "the Histogram p
 
 ### Refresh and the cache warning
 
-When a histogram is read from the cache, the **Cached Data Warning** icon appears; cache-based histograms  The original image is **cache level 1**; each higher level averages four adjacent pixels into one (1/4 the pixels). The maximum cache level (**2–8**) is set in `Edit > Preferences > Performance`. To refresh uncached:
+When a histogram is read from the cache, the **Cached Data Warning** icon appears; cache-based histograms render faster because they are built from a representative sample of the image's pixels. The original image is **cache level 1**; each higher level averages four adjacent pixels into one (1/4 the pixels). The maximum cache level (**2–8**) is set in `Edit > Preferences > Performance`. To refresh uncached:
 
 - double-click anywhere in the histogram,
 - click the **Cached Data Warning** icon,

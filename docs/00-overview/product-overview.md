@@ -66,7 +66,7 @@ explicitly out of the first parity target (see `OVR-003`).
 
 | Area | Contents |
 |---|---|
-| `00-overview/` | Product scope, CS6 editions and feature set, feasibility and non-goals, legal/independent-creation posture. |
+| `00-overview/` | Product scope, CS6 editions and feature set, feasibility and non-goals, legal/provenance posture. |
 | `01-architecture/` | Layering, Rust core, Qt6 shell, FFI, GPU, color, document model, undo, plugins, formats. Read first. |
 | `02-ui-ux/` | Application frame, menus, panels, preferences, shortcuts, accessibility. |
 | `03-tools/` … `10-workflow-io/` | Feature domains: tools, image ops, layers, filters, color/painting, selection, automation, I/O. |
@@ -81,7 +81,7 @@ adapt their content: `## CS6 behavior` carries scope, `## UI surface` is
 ### Honesty statement
 
 Photoshop CS6 is end-of-life and unsupported by Adobe; Adobe, Photoshop, and
-related marks are Adobe trademarks. This corpus is a independent-creation behavioral
+related marks are Adobe trademarks. This corpus is a documentation-first behavioral
 specification produced from public documentation and observation, with no Adobe
 source code, binaries, decompilation, or bundled Adobe assets (`OVR-004`).
 Several CS6 behaviors are documented only at the user-interface level, and the

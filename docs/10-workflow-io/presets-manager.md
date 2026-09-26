@@ -13,12 +13,12 @@
 
 ## CS6 behavior
 
-The **Preset Manager** "lets you manage the libraries of preset brushes,
+The **Preset Manager** manages the shipped libraries of preset brushes,
 swatches, gradients, styles, patterns, contours, custom shapes, and preset
-tools that come with Photoshop." It edits the *current set* of preset items per
+tools. It edits the *current set* of preset items per
 type and can save, load, append, replace, reset, rename, delete, and reorder
-them. After a library is loaded in the Preset Manager, its items appear "in
-locations such as the options bar, panels, dialog boxes, and so on."
+them. After a library is loaded in the Preset Manager, its items become
+available across the options bar, panels, dialog boxes, and so on.
 
 ### Opening and preset types
 
@@ -52,9 +52,9 @@ up or down in the list.
 | `Replace [Preset Type]` | Replaces the current list with a chosen library. |
 | `Save Set` | Writes all selected items (all, or a Shift-selected subset) to a library file in the type's format. |
 | `Reset` | Restores the default items; user chooses replace or append. |
-| Drop-in discovery | A library placed in the default `Presets/<type>` folder  |
+| Drop-in discovery | A library placed in the default `Presets/<type>` folder appears at the bottom of the panel menu after Photoshop is restarted. |
 
-Each type "has its own file extension and default folder." Newly created presets
+Each type has its own file extension and default folder. Newly created presets
 live in the **Preferences file** until saved as a library; a preferences reset
 (or deleting the prefs file) loses them. This matches `BRU-006` and `CLR-003`.
 
@@ -122,8 +122,8 @@ this:
   `Actions palette.psp`.
 
 *(secondary)* The shipped list is version-templated in the modern article; the
-CS6 Help itself says only "inside the Presets folder in the Adobe Photoshop
-application folder."
+CS6 Help itself says only that it is inside the Presets folder of the Photoshop
+application folder.
 
 ### Proposed Linux mapping
 
@@ -209,7 +209,7 @@ apply(type, item):
 
 ### Migration
 
-`Migrate Presets` is an opt-in independent-creation importer that copies recognizable
+`Migrate Presets` is an opt-in independent importer that copies recognizable
 files from a user-supplied CS3+ presets tree into the user preset dir,
 converting what the codecs understand and flagging what they do not. The CS6
 `Export/Import Presets` bundle is a separate proposal: a versioned archive (e.g.
@@ -264,8 +264,8 @@ I/O runs off the GUI thread; long scans report progress and are cancellable.
   lists live in the preference/preset stores; a PSD does not embed them
   *(inferred)*.
 - **No undo:** preset edits are application-state mutations, not document
-  History states (matches CS6: "Program-wide changes … are not reflected in the
-  History panel").
+  History states (matching CS6, where program-wide changes are not reflected in
+  the History panel).
 - **Preference records:** `{ preset_type, display_mode }`,
   `{ preset_type, session_items: Vec<PresetId> }`, and per-type library order.
 - **Preset-file serialization:** Adobe formats (read + best-effort write) and
@@ -329,10 +329,10 @@ I/O runs off the GUI thread; long scans report progress and are cancellable.
   Preset Manager` (CS6); the eight preset types; display modes and Stroke
   Thumbnail; drag-reorder; rename/delete; Load (add) vs Replace vs library-at-
   bottom-of-menu (OK/Append); Save Set subset; Reset (replace/append); the
-  Preferences-file caveat; the default-folder auto-listing after restart; "Each
-  type of library has its own file extension and default folder"; the default
-  preset locations (Mac/XP/Vista) and shipped `Presets` folder; `Migrate
-  Presets` and `Export/Import Presets`.
+  Preferences-file caveat; the default-folder auto-listing after restart; the
+  statement that each library type has its own file extension and default folder;
+  the default preset locations (Mac/XP/Vista) and shipped `Presets` folder;
+  `Migrate Presets` and `Export/Import Presets`.
 - `https://web.archive.org/web/20240419165453/https://helpx.adobe.com/photoshop/kb/preference-file-names-locations-photoshop.html`
   — Adobe "Preference file functions, names, locations". Establishes the
   version-templated shipped/user preset paths and the per-type `*.psp` panel
@@ -372,7 +372,7 @@ I/O runs off the GUI thread; long scans report progress and are cancellable.
   a CS6 migration experiment.
 - **Native-format decision.** Whether Kooka Pictura should write Adobe formats at
   all (round-trip fidelity vs. independent-creation effort) is a product decision. See
-  `00-overview/licensing-and-independent-creation.md` and `BRU-006`.
+  `00-overview/licensing-and-provenance.md` and `BRU-006`.
 - **De-duplication on load/append.** Whether CS6 de-duplicates identical presets
   is unverified. *Resolves with:* a CS6 add-twice/load-twice test.
 - **Display-mode default per type.** Assumed Small Thumbnail. *Resolves with:* a

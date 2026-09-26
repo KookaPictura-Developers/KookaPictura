@@ -81,12 +81,16 @@ fn enum_value(kind: &[u8], value: &[u8]) -> DescValue {
     }
 }
 
-fn obj(items: Vec<(&[u8], DescValue)>) -> DescValue {
+fn obj_class(class_id: &[u8], items: Vec<(&[u8], DescValue)>) -> DescValue {
     DescValue::Object {
         name: String::new(),
-        class_id: b"null".to_vec(),
+        class_id: class_id.to_vec(),
         items: items.into_iter().map(|(k, v)| (k.to_vec(), v)).collect(),
     }
+}
+
+fn obj(items: Vec<(&[u8], DescValue)>) -> DescValue {
+    obj_class(b"null", items)
 }
 
 fn unit_quad() -> DescValue {
@@ -99,7 +103,7 @@ fn unit_quad() -> DescValue {
 }
 
 /// The `SoLd` block data: `b"soLD"` + outer version 4 + a version-16 descriptor
-/// mirroring the fields Photoshop and psd-tools expect for a placed object.
+/// mirroring the fields the reference and psd-tools expect for a placed object.
 pub(crate) fn author_sold_block(
     so: &SmartObject,
     layer: &Layer,
@@ -140,28 +144,37 @@ pub(crate) fn author_sold_block(
         (b"nonAffineTransform", unit_quad()),
         (
             b"warp",
-            obj(vec![
-                (b"warpStyle", enum_value(b"warpStyle", b"warpNone")),
-                (b"warpValue", double(0.0)),
-                (b"warpPerspective", double(0.0)),
-                (b"warpPerspectiveOther", double(0.0)),
-                (b"warpRotate", enum_value(b"warpRotate", b"Hrzn")),
-                (
-                    b"bounds",
-                    obj(vec![
-                        (b"Top ", double(0.0)),
-                        (b"Left", double(0.0)),
-                        (b"Btom", double(height)),
-                        (b"Rght", double(width)),
-                    ]),
-                ),
-                (b"uOrder", long(4)),
-                (b"vOrder", long(4)),
-            ]),
+            obj_class(
+                b"warp",
+                vec![
+                    (b"warpStyle", enum_value(b"warpStyle", b"warpNone")),
+                    (b"warpValue", double(0.0)),
+                    (b"warpPerspective", double(0.0)),
+                    (b"warpPerspectiveOther", double(0.0)),
+                    (b"warpRotate", enum_value(b"warpRotate", b"Hrzn")),
+                    (
+                        b"bounds",
+                        obj_class(
+                            b"classFloatRect",
+                            vec![
+                                (b"Top ", double(0.0)),
+                                (b"Left", double(0.0)),
+                                (b"Btom", double(height)),
+                                (b"Rght", double(width)),
+                            ],
+                        ),
+                    ),
+                    (b"uOrder", long(4)),
+                    (b"vOrder", long(4)),
+                ],
+            ),
         ),
         (
             b"Sz  ",
-            obj(vec![(b"Wdth", double(width)), (b"Hght", double(height))]),
+            obj_class(
+                b"Pnt ",
+                vec![(b"Wdth", double(width)), (b"Hght", double(height))],
+            ),
         ),
         (
             b"Rslt",
@@ -187,6 +200,11 @@ pub(crate) fn author_sold_block(
     let mut data = b"soLD".to_vec();
     data.extend_from_slice(&4u32.to_be_bytes());
     data.extend_from_slice(&crate::descriptor::write_descriptor(&descriptor));
+    // The reference 4-aligns the SoLd data; matching it keeps a same-size filter
+    // edit from changing the block length (see `smart_filter`).
+    while !data.len().is_multiple_of(4) {
+        data.push(0);
+    }
     data
 }
 

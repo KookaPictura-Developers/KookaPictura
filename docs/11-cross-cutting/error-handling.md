@@ -119,7 +119,7 @@ Transactional invariant: **a failed command leaves the document byte-identical t
 - Map severity → surface: Info → status/log only; Warning → non-modal or modal warning (respect "Don't show again"); Recoverable → dialog naming the operation and offering retry/choices; Fatal → dialog + clean stop.
 - Show a **human summary** (localized key) and keep the **code + technical detail** behind a disclosure (copyable). Never show a raw Rust `Debug` string as the primary message.
 - Offer "Copy details" (code, key, context, versions, log excerpt) and, when enabled, "Report" (opt-in; `XC-003`).
-- Text before the word "becauseprogram error" is a last resort.
+- A message may contain a because-clause, but it must name the operation and the next action; a generic program-error fallback is a last resort.
 
 ## Rust module mapping
 

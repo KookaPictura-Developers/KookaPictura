@@ -4,7 +4,7 @@
 //! math as pure functions over a planar 8-bit [`PixelBuffer`] (channels 1..=4).
 //! Specs live in `docs/04-image-ops/` (`IMG-001`, `IMG-002`, `IMG-003`).
 //!
-//! Adobe's closed resample kernels are approximated where the specs say so; each
+//! The closed resample kernels are approximated where the specs say so; each
 //! approximation is marked inline. Bad input returns [`OpsError`] instead of
 //! panicking. Every operation returns a new buffer; the input is untouched.
 

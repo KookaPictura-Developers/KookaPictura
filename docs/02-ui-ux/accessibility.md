@@ -27,10 +27,8 @@ The CS6 Help reference (Feb 2013) has no section on screen readers, MSAA, UI Aut
 VoiceOver, high contrast, or color blindness. Its entire "accessibility" usage is about producing
 accessible *output*:
 
-- **Rich Content PDF** export "Creates accessible PDF files that include tags, hyperlinks,
-  bookmarks, interactive elements, and layers."
-- **Always Add Alt Attribute** "Adds the ALT attribute to IMG elements to comply with government
-  web accessibility standards."
+- **Rich Content PDF** export creates accessible PDF files that contain tags, hyperlinks, bookmarks, interactive elements, and layers.
+- **Always Add Alt Attribute** adds the ALT attribute to IMG elements so exported pages meet government web accessibility standards.
 - **Save for Web / Optimize** produces HTML with alt attributes / accessibility attributes.
 
 This means: for an edition that Adobe marketed to enterprises and government, the app's own
@@ -234,10 +232,11 @@ requirements.
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (Adobe Photoshop CS6
   Help and tutorials, Feb 2013) — primary. Establishes: CS6 has **no** assistive-technology
-  chapter; the only "accessibility" content is accessible *output* ("Rich Content PDF Creates
-  accessible PDF files that include tags, hyperlinks, bookmarks, interactive elements, and
-  layers"; );
-  keyboard-shortcut-driven operation; Interface Color Theme / UI Font Size; precise cursors.
+  chapter; the only "accessibility" content is accessible *output* (Rich Content PDF creates
+  accessible PDF files containing tags, hyperlinks, bookmarks, interactive elements, and layers;
+  Always Add Alt Attribute adds ALT attributes to IMG elements so that pages meet government web
+  accessibility standards); keyboard-shortcut-driven operation; Interface Color Theme / UI Font
+  Size; precise cursors.
 - `https://www.psdvault.com/basics/photoshop-accessibility-features` — secondary, **modern
   Photoshop (2024), not CS6**; used only as a claim list to check against CS6. Its mentions of
   "Accessibility Description panel", "Voice Control", touchscreen support and "Accessibility"

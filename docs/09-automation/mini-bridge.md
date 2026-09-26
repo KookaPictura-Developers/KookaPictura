@@ -170,12 +170,12 @@ The panel's own logic (browse, preview, open) is small; the bulk of Mini Bridge 
 
 ## Sources
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — What's New: ; `File > Browse in Mini Bridge` and Mini Bridge links in the file-opening/workspace sections. Fetched via `curl` + `pdftotext`.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — What's New: the Mini Bridge gallery is presented as offering easier access to images and documents via `Window > Extensions > Mini Bridge`; `File > Browse in Mini Bridge` and Mini Bridge links in the file-opening/workspace sections. Fetched via `curl` + `pdftotext`.
 - `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Mini_Bridge.html` — Mini Bridge is a Photoshop extension panel over Bridge; `Window > Extensions > Mini Bridge`; simplified browsing (no keyword sorting, metadata editing, or web/print output). (Community/secondary.)
 - `https://community.adobe.com/t5/photoshop-ecosystem-discussions/mini-bridge-panel-in-cs6/m-p/10118251` — CS6 Mini Bridge panel present but launch-Bridge button/icons missing because the Application bar was removed in CS6. (Community.)
 - `https://community.adobe.com/questions-712/minibridge-error-waiting-for-bridge-cs6-1079673` — Adobe employee: Mini Bridge depends on **Bridge** and **SwitchBoard** (a network protocol connecting panel and Bridge); "Waiting for Bridge CS6" errors; Mini Bridge is Flash-based and was removed from Photoshop CC 2014 when Flash was removed; CEP/Flash extension model. (Community, with Adobe-employee responses.)
 - `https://raw.githubusercontent.com/Adobe-CEP/CEP-Resources/master/README_ArchivedVersions.md` — CS6/CC 2013 support **CEP 4**, the Flash/ActionScript interface model; Flash/ActionScript support removed from CC2014+; extensions later use HTML5/JS CEP. (Adobe CEP documentation.)
-- `https://github.com/Adobe-CEP/CEP-Resources` —  (corroboration).
+- `https://github.com/Adobe-CEP/CEP-Resources` — corroborates that the Flash/ActionScript extension interface model is deprecated in Creative Cloud releases and that its support was removed from CC2014 onward.
 - `https://en.wikipedia.org/wiki/Adobe_Bridge` — Mini Bridge as a small in-application file browser built on Bridge (community; seen in search results).
 - Non-goal rationale cross-referenced with `docs/01-architecture/plugin-and-scripting-abi.md` (`ARCH-011`) and `docs/00-overview/feasibility-and-non-goals.md`.
 

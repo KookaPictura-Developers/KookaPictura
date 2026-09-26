@@ -3,7 +3,7 @@
 - **Spec ID:** `XC-012`
 - **Status:** `Draft`
 - **Parity tier:** `Core` (Auto-Recovery and Background Save); the durable
-  journaling design is an Kooka Pictura extension and is `Extended-only` parity.
+  journaling design is a Kooka Pictura extension and is `Extended-only` parity.
 - **New in CS6:** `Yes` — CS6 introduced **Background Save** (`File > Save`
   runs without blocking the UI) and **Auto Save / Auto-Recovery**
   (`Automatically Save Recovery Information Every`). CS6 also added the Auto Save
