@@ -8,8 +8,8 @@
 - **Contract:** `docs/05-layers/layer-management-ui.md` (`LAY-002`) is the
   long-form behavior spec; `docs/02-ui-ux/panels/layers-panel.md` (`PAN-001`) is
   the widget spec; the canonical requirements are
-  `openspec/specs/layers-panel/spec.md`, `openspec/specs/psd-layer-io/spec.md`,
-  and `openspec/specs/layer-compositing/spec.md`.
+  `openspec/specs/ui/layers-panel/spec.md`, `openspec/specs/codec/psd-layer-io/spec.md`,
+  and `openspec/specs/compositing/layer-compositing/spec.md`.
 - **Goal:** make the Layers panel behave like Photoshop CS6's.
 - **Non-goals:** changing `docs/` (this file is additive), the canvas-compositing
   perf series (`docs/dev/canvas-compositing-plan.md`), or any behavior owned by

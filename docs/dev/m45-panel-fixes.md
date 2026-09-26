@@ -5,8 +5,8 @@
   `PanelColumn`/`PanelGroup`/`PanelFlyout`/`PanelFloat` chrome. It is the
   **seventh panel interruption** of the Layers-panel program; the program shifts
   behind it (see §7). STATE is handled at close-out.
-- **Contract:** `openspec/specs/panel-column/`, `application-shell/`, and
-  `tool-framework/` are the canonical requirements this change reconciles.
+- **Contract:** `openspec/specs/ui/panel-column/`, `ui/application-shell/`, and
+  `tools/tool-framework/` are the canonical requirements this change reconciles.
   `docs/02-ui-ux/workspace-and-docks.md` (`UI-003`) governs docks. The drop and
   indicator lineage is M41–M44; the Tools fixed-size lineage is M43/M44.
 - **Consumers:** `crates/pictura-app/cpp/panels/panel_column.{h,cpp}`,

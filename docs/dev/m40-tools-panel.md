@@ -10,8 +10,8 @@
   contract; `docs/02-ui-ux/preferences.md` (`UI-010`, General pane) fixes
   `Use Shift Key For Tool Switch` default **on**. This file freezes the
   interfaces those specs leave open. Canonical requirements:
-  `openspec/specs/tool-framework/spec.md`,
-  `openspec/specs/application-shell/spec.md`.
+  `openspec/specs/tools/tool-framework/spec.md`,
+  `openspec/specs/ui/application-shell/spec.md`.
 - **Consumers:** `crates/pictura-app/cpp/toolbox.{h,cpp}`,
   `crates/pictura-app/cpp/tools.{h,cpp}`,
   `crates/pictura-app/cpp/frame.{h,cpp}`,
