@@ -3,7 +3,7 @@
 //! Color planes only; alpha is never modified. Maximum/Minimum are separable
 //! square-footprint morphology, Custom is a 5×5 convolution with f64
 //! accumulation, and High Pass splits a Gaussian band around mid-gray.
-//! Borders clamp to the edge; Adobe's exact kernels are closed, so the choices
+//! Borders clamp to the edge; the exact kernels are closed, so the choices
 //! marked `ponytail:` are documented approximations, not verified parity.
 
 use pictura_core::PixelBuffer;

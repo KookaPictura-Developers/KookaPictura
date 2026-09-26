@@ -209,4 +209,4 @@ Drag-and-drop uses `QAbstractItemModel`'s native MIME support; function-key assi
 - **Conditional condition list.** The Help lists the feature and one example ("is square") but not the full condition set. Resolve from the CS6 UI or an exhaustive community enumeration.
 - **`.atn` interoperability scope.** Whether Kooka Pictura guarantees Adobe-compatible `.atn` read/write or only read, and whether its native action format is `.atn` or JSON (see `ARCH-011` Open questions).
 - **Function-key policy on Linux.** CS6 restricts `F1`, `Ctrl+F4`, `Ctrl+F6` on Windows; whether to reproduce those restrictions cross-platform is undecided.
-- **Action-set preset provenance.** Shipping predefined actions requires a independent-creation action corpus; confirm this is acceptable under `00-overview/licensing-and-independent-creation`.
+- **Action-set preset provenance.** Shipping predefined actions requires an independently authored action corpus; confirm this is acceptable under `00-overview/licensing-and-provenance`.

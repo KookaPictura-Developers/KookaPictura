@@ -2,7 +2,7 @@
 //!
 //! Fill content is a layer whose opaque adjustment block decodes through
 //! [`crate::decode_adjustment`] to [`Adjustment::SolidFill`] (a `SoCo` block, in
-//! either the 4-byte in-house form or the standard Photoshop descriptor),
+//! either the 4-byte in-house form or the standard PSD descriptor),
 //! [`Adjustment::GradientFill`] (a `GdFl` descriptor), or
 //! [`Adjustment::PatternFill`] (a `PtFl` descriptor). Type/Shape/Vector
 //! Mask/Smart Object/Video/3D layers do not exist in the model, so those

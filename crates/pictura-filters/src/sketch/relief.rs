@@ -1,7 +1,7 @@
 //! Sketch relief filters (`m25-filter-families`): Bas Relief, Chalk &
 //! Charcoal, Charcoal, Chrome, Conté Crayon, Graphic Pen and Halftone Pattern.
 //!
-//! Behavioural models only: Adobe's kernels are closed. Each deliberate
+//! Behavioural models only: the reference's kernels are closed. Each deliberate
 //! shortcut carries a `ponytail:` note.
 
 use pictura_core::PixelBuffer;
@@ -18,7 +18,7 @@ use crate::{validate, FilterError, HalftoneType, LightDirection, StrokeDirection
 /// response toward `background`.
 ///
 /// ponytail: the signed emboss is added to the tonal term and the result is a
-/// per-channel fg→bg lerp, not Adobe's true low-relief lighting. Swap in
+/// per-channel fg→bg lerp, not the reference's true low-relief lighting. Swap in
 /// normal-based directional shading if the relief needs real specular falloff.
 pub fn bas_relief(
     buf: &mut PixelBuffer,
@@ -75,7 +75,7 @@ pub fn bas_relief(
 /// charcoal shadows. `charcoal_area` drives shadow coverage, `chalk_area` the
 /// light/midtone coverage, and `stroke_pressure` darkens the charcoal lines.
 ///
-/// ponytail: a seeded noise jitter over a rotated band mask, not Adobe's chalk
+/// ponytail: a seeded noise jitter over a rotated band mask, not the reference's chalk
 /// rub. A second, finer grain octave is the upgrade path if it reads too even.
 pub fn chalk_charcoal(
     buf: &mut PixelBuffer,
@@ -138,7 +138,7 @@ pub fn chalk_charcoal(
 /// the edges, `detail` the posterization, `light_dark_balance` 0 = dark to
 /// 100 = light.
 ///
-/// ponytail: posterize + Sobel coverage over a noise jitter, not Adobe's smudge
+/// ponytail: posterize + Sobel coverage over a noise jitter, not the reference's smudge
 /// brush; `thickness` scales edge weight instead of dilating a stroke field.
 pub fn charcoal(
     buf: &mut PixelBuffer,
@@ -197,7 +197,7 @@ pub fn charcoal(
 /// Chrome: polished-surface highlights/shadows. The smoothed luma gradient
 /// drives a low-contrast specular ramp and `detail` adds a high-pass sharpen.
 ///
-/// ponytail: a low-contrast ramp plus a detail high-pass, not Adobe's polished
+/// ponytail: a low-contrast ramp plus a detail high-pass, not the reference's polished
 /// metal mapping. Add a Levels-style contrast pass if it reads too flat.
 pub fn chrome(buf: &mut PixelBuffer, detail: u8, smoothness: u8) -> Result<(), FilterError> {
     let n = validate(buf)?;
@@ -243,7 +243,7 @@ pub fn chrome(buf: &mut PixelBuffer, detail: u8, smoothness: u8) -> Result<(), F
 /// surface (`TextureOptions`), with a seeded crayon grain.
 ///
 /// ponytail: per-pixel lerp between the two ink colours plus the shared emboss
-/// surface, not Adobe's dense crayon stroke. A bristle stamp is the upgrade path
+/// surface, not the reference's dense crayon stroke. A bristle stamp is the upgrade path
 /// if the texture reads too fine.
 pub fn conte_crayon(
     buf: &mut PixelBuffer,
@@ -310,7 +310,7 @@ pub fn conte_crayon(
 /// `direction`, thresholded by `light_dark_balance` (0 = dark, 100 = light) and
 /// gated onto parallel lines whose density grows with `stroke_length`.
 ///
-/// ponytail: a luma smear on one-pixel lines, not Adobe's nib model. Widen with
+/// ponytail: a luma smear on one-pixel lines, not the reference's nib model. Widen with
 /// a brush footprint if the strokes read too thin.
 pub fn graphic_pen(
     buf: &mut PixelBuffer,

@@ -10,9 +10,9 @@
 
 ### Note tool (`TOOL-018`)
 
-The Note tool makes non-printing text notes attached to an image. Source: CS6
-reference tools gallery ("The Note tool makes notes that can be attached to an
-image") plus the Note tool procedure and Notes panel.
+The Note tool makes non-printing text notes attached to an image. Source: the
+CS6 reference tools gallery (which describes notes attached to an image) plus
+the Note tool procedure and Notes panel.
 
 - Select the Note tool (grouped with Cursor/Count under Eyedropper;
   toolbox shortcut `I` cycle). Set **Author** and **Color** in the options bar.
@@ -213,8 +213,9 @@ Proposed:
   double-click to edit, `Window > Notes` to cycle notes; notes save in PSD, PDF,
   or TIFF (derived from older Adobe documentation; use as secondary).
 - `https://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Notes_palette.html`
-  —  and
-  the Notes panel (search snippet only; page not directly fetched).
+  — states that documents can be saved in the Photoshop (PSD), PDF, or TIFF
+  formats, and describes the Notes panel (search snippet only; page not directly
+  fetched).
 
 ## Open questions
 

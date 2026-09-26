@@ -116,7 +116,7 @@ pub struct SelectiveRange {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectiveColorParams {
     pub method: SelectiveColorMethod,
-    /// Nine ranges in Photoshop's order: reds, yellows, greens, cyans, blues,
+    /// Nine ranges in the reference's order: reds, yellows, greens, cyans, blues,
     /// magentas, whites, neutrals, blacks.
     pub ranges: [SelectiveRange; 9],
 }
@@ -133,7 +133,7 @@ impl Default for SelectiveColorParams {
 /// One colour stop of a [`GradientMapParams`] gradient.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GradientStop {
-    /// Photoshop gradient position, `0..=4096`.
+    /// PSD gradient position, `0..=4096`.
     pub location: u16,
     pub color: [u8; 3],
 }

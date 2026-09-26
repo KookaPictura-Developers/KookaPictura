@@ -11,7 +11,7 @@
 
 ## 3. Filter lightswitch
 
-- [x] 3.1 independent-creation `layers.filterOff.svg` / `layers.filterOn.svg`; qrc entries; the bar's toggle shows `layers.filterOn` checked by default and swaps the icon on toggle (`layers_filter_bar.{h,cpp}`, `assets/`, `assets/pictura.qrc`).
+- [x] 3.1 Original `layers.filterOff.svg` / `layers.filterOn.svg`; qrc entries; the bar's toggle shows `layers.filterOn` checked by default and swaps the icon on toggle (`layers_filter_bar.{h,cpp}`, `assets/`, `assets/pictura.qrc`).
 
 ## 4. Self-tests
 

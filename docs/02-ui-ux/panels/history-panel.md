@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-The **History panel** (`Window > History`, or its tab)  jumping the image to any recent state. Selecting a state reverts the image to how it looked when that change was first applied; the user can then work from that state. It also deletes states, creates a document from a state or snapshot, and selects the source for the History Brush.
+The **History panel** (`Window > History`, or its tab) records every change made to the image in the current working session, so the image can be jumped to any recent state. Selecting a state reverts the image to how it looked when that change was first applied; the user can then work from that state. It also deletes states, creates a document from a state or snapshot, and selects the source for the History Brush.
 
 **Panel anatomy (CS6 Help figure).** A. Sets the source for the history brush; B. thumbnail of a snapshot; C. history state; D. history state slider. Snapshots are listed above the states; the bottom button strip holds **Create New Snapshot**, **Create a New Document From Current State**, and the **Delete** icon. **Default placement:** in the default Essentials workspace the History panel sits in the narrower secondary column, collapsed to its icon, above **Properties**; it is also part of the Painting workspace (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
 
@@ -175,8 +175,8 @@ Consulted as search-result snippets only (not individually fetched): none specif
 
 Fetched for this revision:
 
-- `https://web.archive.org/web/20180801214950/https://helpx.adobe.com/photoshop/using/performance-preferences.html` — archived Adobe Performance-preferences page (CC-era, used only for the long-standing preference semantics): ; cache levels default 4.
-- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/History_palette.html` — Martin Evening CS6 support page: ; default-panel dimming and `Allow Non-linear History`; the current-history-brush icon and `Edit > Purge > Histories`.
+- `https://web.archive.org/web/20180801214950/https://helpx.adobe.com/photoshop/using/performance-preferences.html` — archived Adobe Performance-preferences page (CC-era, used only for the long-standing preference semantics): history is capped at 1,000 states with a default of 20, configured under History & Cache > History States; cache levels default 4.
+- `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/History_palette.html` — Martin Evening CS6 support page: the number of recorded history states is configured in the Photoshop Performance preferences; default-panel dimming and `Allow Non-linear History`; the current-history-brush icon and `Edit > Purge > Histories`.
 - `https://www.photoshopessentials.com/basics/photoshop-cs6-workspaces/` — CS6 Essentials workspace: secondary icon column contains **History** (top) and **Properties**; History is also carried into the Painting workspace.
 
 ## Open questions

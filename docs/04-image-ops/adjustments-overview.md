@@ -20,17 +20,16 @@ math but different lifetimes:
    (CS6 Help, repeated in every adjustment section). No mask, no re-edit.
 2. **Adjustment layers** created from the **Adjustments panel** or
    `Layer > New Adjustment Layer > …`. They store the adjustment parameters, not
-   pixels, and "apply to all the layers below [them]"; they carry a layer mask
-   by default and "have the same opacity and blending mode options as image
-   layers." They can be clipped to the layer directly below, grouped, hidden,
+   pixels, and affect all the layers below them; they carry a layer mask
+   by default and expose the same opacity and blending-mode options as image
+   layers. They can be clipped to the layer directly below, grouped, hidden,
    reordered, duplicated, and copied between documents. This is the recommended,
    non-destructive path.
 
-The CS6 Help states the general model: "All Photoshop color adjustment tools work
-essentially the same way; they map an existing range of pixel values to a new
-range of values. The difference between the tools is the amount of control they
-provide." Accessing a color/tone command in the Adjustments panel "automatically
-creates an adjustment layer."
+The CS6 Help states the general model: all Photoshop color adjustment tools work
+essentially the same way, mapping an existing range of pixel values to a new
+range, and differ only in how much control they provide. Accessing a color/tone
+command in the Adjustments panel automatically creates an adjustment layer.
 
 ### The adjustment taxonomy (CS6)
 
@@ -63,30 +62,30 @@ Availability split (CS6):
 | Invert | Yes | Yes | PSD key `nvrt` |
 | Posterize | Yes | Yes | PSD key `post` |
 | Threshold | Yes | Yes | PSD key `thrs` |
-| Shadow/Highlight | **No** | Yes | never an adjustment layer (community + Help line "applies adjustments directly … will discard image information") |
+| Shadow/Highlight | **No** | Yes | never an adjustment layer (community sources plus the Help's note that it applies adjustments directly and discards image information) |
 | HDR Toning | **No** | Yes | requires flattened layers |
 | Desaturate | **No** | Yes | command only |
 | Auto Tone / Auto Contrast / Auto Color | (via Levels/Curves Auto) | Yes | also drive the Auto button |
 | Equalize | **No** | Yes | command only |
 | Match Color | **No** | Yes | command only |
 | Replace Color | **No** | Yes | command only |
-| Fill layers (Solid Color / Gradient / Pattern) | Yes (fill layer) | — | "unlike adjustment layers, fill layers do not affect the layers underneath" |
+| Fill layers (Solid Color / Gradient / Pattern) | Yes (fill layer) | — | unlike adjustment layers, fill layers do not affect the layers underneath |
 
 The PSD adjustment keys above are the canonical serialization of adjustment-layer
-parameters (`ARCH-008`); each stores "the same data as that adjustment's load
-file."
+parameters (`ARCH-008`); each stores the same data as that adjustment's load
+file.
 
 ### Adjustment layer mechanics
 
 - **Mask** — every adjustment/fill layer gets a layer mask by default unless
   `Add Mask by Default` is deselected in the panel menu. A pixel selection at
   creation masks the unselected area black; a closed path at creation produces a
-  **vector mask** instead. Painting gray on the mask varies the effect. The Help:
-  "Using the Brush tool, you can paint black areas on the mask where you don't
-  want the adjustment to affect the image."
-- **Clipping** — the `Clip to Layer` button ("Clip to Layer button … Click the
-  icon again to make the adjustment apply to all layers below it") confines the
-  adjustment to the layer immediately below. In the Layers panel this is the
+  **vector mask** instead. Painting gray on the mask varies the effect. The Help
+  notes that painting black areas on the mask with the Brush tool blocks the
+  adjustment from affecting the image there.
+- **Clipping** — the `Clip to Layer` button confines the adjustment to the layer
+  immediately below; clicking it again makes the adjustment apply to all layers
+  below. In the Layers panel this is the
   clipping-mask relationship (base/non-base byte in the PSD layer record).
 - **Blend mode / opacity / fill opacity** — adjustment layers carry the full
   layer property set; the result is composited with the document's 27 blend
@@ -96,29 +95,28 @@ file."
   layers in a group and change the group's mode from `Pass Through` to any other
   mode, then place the adjustment on top of the group.
 - **Merge / rasterize** — merging an adjustment layer into the layer below
-  "rasterize[s the adjustments] and become[s] permanently applied within the
-  merged layer." Adjustment layers with all-white masks add negligible file size.
+  rasterizes the adjustment and applies it permanently within the merged layer.
+  Adjustment layers with all-white masks add negligible file size.
 - **Properties** — `Layer > Layer Content Options`, or double-clicking the layer
-  thumbnail, reopens the settings; the Help notes "Inverted adjustment layers do
-  not have editable settings" (i.e. an inverted/mask-only layer).
+  thumbnail, reopens the settings; the Help notes that inverted adjustment layers
+  have no editable settings (i.e. an inverted/mask-only layer).
 
 ### CS6 changes (the "adjustment presets" change)
 
-CS5 vs CS6 panel behavior, verbatim:
+CS5 vs CS6 panel behavior:
 
-- "In CS5, the Adjustments panel has a list of adjustment presets that apply
-  common image corrections. In CS6, the Properties panel has a Presets menu with
-  the adjustment presets."
-- 
+- In CS5 the Adjustments panel held a list of adjustment presets for common
+  corrections; in CS6 those presets move to a Presets menu in the Properties
+  panel.
+- In CS6 the Adjustments panel shows its adjustment icons at all times.
 - Presets can be **saved** for **Levels, Curves, Exposure, Hue/Saturation, Black &
   White, Channel Mixer, and Selective Color**; a saved preset is appended to the
   list. `Load Preset` also appears in the adjustment dialogs.
-- The What's New section lists "improved Auto options for the Levels, Curves, and
-  Brightness/Contrast adjustments"; Alt/Option-clicking the Auto button opens the
+- The What's New section lists improved Auto options for the Levels, Curves, and
+  Brightness/Contrast adjustments; Alt/Option-clicking the Auto button opens the
   Auto Color Correction Options dialog.
-- The CS6 JDI (productivity) list adds: "Sample size options now appear in context
-  menu for various Eyedropper tools (black point and white point in Levels, and so
-  forth)."
+- The CS6 JDI (productivity) list adds sample-size options to the context menu of
+  various Eyedropper tools (black point and white point in Levels, and so forth).
 - CS6 adds the **Color Lookup** adjustment layer (community sources) and the
   **HDR Toning** command.
 
@@ -204,8 +202,8 @@ layer's pixels directly.
   than light values and the graph is oriented so 0% ink is at the lower-left.
 - **Lab** — L/a/b; Curves shows **light values**.
 - **Grayscale** — single channel; composite only (per-channel menus collapse).
-- **Alpha / spot channels** — in Levels the Help says "Edit spot channels and
-  alpha channels individually"; composite multi-channel selection is available in
+- **Alpha / spot channels** — in Levels the Help says spot and alpha channels are
+  edited individually; composite multi-channel selection is available in
   the destructive command (Shift-select channels in the Channels panel) but not
   in a Levels adjustment layer.
 - **Bitmap / Indexed** — per-pixel color adjustments are not meaningful; the
@@ -217,10 +215,10 @@ The `Auto` button and the Auto Tone/Contrast/Color commands share the **Auto
 Color Correction Options** model (see `ADJ-001` for the full control list). The
 three documented algorithms:
 
-- **Enhance Monochromatic Contrast** — "Clips all channels identically …
-  preserves the overall color relationship"; used by `Auto Contrast`.
-- **Enhance Per Channel Contrast** — "Maximizes the tonal range in each channel";
-  may add/remove color casts; used by `Auto Tone`.
+- **Enhance Monochromatic Contrast** — clips all channels identically and so
+  preserves the overall color relationship; used by `Auto Contrast`.
+- **Enhance Per Channel Contrast** — maximizes the tonal range in each channel;
+  may add or remove color casts; used by `Auto Tone`.
 - **Find Dark & Light Colors** — finds average lightest/darkest pixels to
   maximize contrast with minimal clipping; used by `Auto Color`; combined with
   **Snap Neutral Midtones** to neutralize a cast.
@@ -318,8 +316,8 @@ not the default, to preserve CS6 muscle memory.
 - **Undo mid-drag** — interactive edits are coalesced; released edits are atomic.
 - **Adjustment above a group** — respects the group's `Pass Through` vs isolated
   mode (`ARCH-008`).
-- **Inverted / empty mask** — "inverted adjustment layers do not have editable
-  settings" in CS6; represent as mask-only.
+- **Inverted / empty mask** — in CS6 inverted adjustment layers have no editable
+  settings; represent as mask-only.
 - **Mode conversion later** — converting RGB→CMYK reinterprets adjustment
   parameters (Curves becomes ink percentages); parameter migration is a
   documented open question.
@@ -358,20 +356,19 @@ Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` —
   official CS6 Help reference, downloaded and text-extracted. Established:
-  Adjustments-panel overview and the CS5/CS6 preset-location change; "All
-  Photoshop color adjustment tools work essentially the same way … map an
-  existing range of pixel values to a new range of values"; the color-adjustment
-  command list; adjustment layers apply to "all the layers below", carry opacity
-  and blending-mode options, are created automatically when using the panel, and
-  discard image information when applied destructively; `Clip to Layer` behavior;
-  default mask creation and the selection/path mask variants; `Add Mask by
-  Default`; merge/rasterize behavior; "Inverted adjustment layers do not have
-  editable settings"; the save-preset list (Levels, Curves, Exposure,
-  Hue/Saturation, Black & White, Channel Mixer, Selective Color); fill layers do
-  not affect layers underneath; the Auto algorithm names and clip defaults; the
-  32-bpc adjustment list and the "Photoshop Extended only" note for 32-bit
-  adjustment layers; the JDI eyedropper sample-size change and the "improved Auto
-  options" statement.
+  Adjustments-panel overview and the CS5/CS6 preset-location change; the general
+  model that all color adjustment tools map an existing pixel-value range to a
+  new one; the color-adjustment command list; adjustment layers affect all
+  layers below them, carry opacity and blending-mode options, are created
+  automatically when using the panel, and discard image information when applied
+  destructively; `Clip to Layer` behavior; default mask creation and the
+  selection/path mask variants; `Add Mask by Default`; merge/rasterize behavior;
+  that inverted adjustment layers have no editable settings; the save-preset list
+  (Levels, Curves, Exposure, Hue/Saturation, Black & White, Channel Mixer,
+  Selective Color); that fill layers do not affect layers underneath; the Auto
+  algorithm names and clip defaults; the 32-bpc adjustment list and the
+  "Photoshop Extended only" note for 32-bit adjustment layers; the JDI
+  eyedropper sample-size change and the improved-Auto statement.
 - `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/propertiespanel.html`
   — CS6 Properties panel: new in CS6, replaces the Adjustments controls mode and
   the Masks panel; Preset popup for pre-supplied adjustment settings; Save Preset;

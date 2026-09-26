@@ -14,7 +14,7 @@
 
 Facts below are marked **CS6** (stated in the archived CS6 Help PDF or a
 first-party Adobe page), **CS6-sec** (secondary/community but consistent), or
-**[ext]** (an Kooka Pictura extension that CS6 does *not* do by default).
+**[ext]** (a Kooka Pictura extension that CS6 does *not* do by default).
 
 ---
 
@@ -82,7 +82,7 @@ first-party Adobe page), **CS6-sec** (secondary/community but consistent), or
   tool**; the cursor should reflect a pan (open/closed hand). Middle-drag with
   the left button also held may switch to the rotate/zoom-box form as CS6 does,
   but that is optional here.
-- **[ext] Middle-mouse pan is an Kooka Pictura extension.** CS6 does **not** pan
+- **[ext] Middle-mouse pan is a Kooka Pictura extension.** CS6 does **not** pan
   on middle-drag by default; community threads and third-party AutoHotkey
   scripts exist specifically to add it. Implement it deliberately as an
   extension, documented as such.

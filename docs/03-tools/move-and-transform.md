@@ -103,7 +103,7 @@ on gesture: state := gesture_matrix * state
 on commit:  resample once with state, using selected interpolation
 ```
 
-Photoshop explicitly recommends performing several manipulations before applying, because .
+Photoshop explicitly recommends performing several manipulations before applying, because each committed transformation resamples the raster and makes the image slightly less sharp.
 
 ### Interpolation / resampling
 
@@ -223,7 +223,7 @@ Not used in this pass:
 - **Puppet Warp option defaults and ranges.** `Mode` default, `Density` labels, and `Expansion` numeric range are not in the fetched text. Resolve against a CS6 UI capture or the archived Help page.
 - **Exact Puppet Warp solver and `Mode` elasticity weights.** Adobe's implementation is closed; the ARAP proposal is inferred. Resolve with a behavioral study and a reference implementation.
 - **Exact Bicubic kernel.** Photoshop's Bicubic is not identical to the textbook cubic convolution (Catmull-Rom) and may differ in ringing/overshoot. Resolve with a resample comparison against a CS6 reference image.
-- **Content-Aware Scale algorithm.** Seam carving is the community explanation; masking, `Amount` blending, and skin-tone detection are not sourced. Resolve with a publicly documenting study or a stated parity tolerance.
+- **Content-Aware Scale algorithm.** Seam carving is the community explanation; masking, `Amount` blending, and skin-tone detection are not sourced. Resolve with a public-analysis study or a stated parity tolerance.
 - **Anti-aliasing of transformed selection edges.** How Photoshop computes partial coverage for transformed marching ants is unspecified. Resolve by comparing transformed selections against CS6.
 - **Move tool `Auto Select` default.** The fetched text describes the option but not its shipped default. Resolve with a CS6 preference capture.
 - **Whether to retain Puppet Warp pins / warp meshes for re-editing.** Photoshop discards them on commit; retaining them would be a non-parity enhancement. Decide in `08-selection/transform-selection.md`.

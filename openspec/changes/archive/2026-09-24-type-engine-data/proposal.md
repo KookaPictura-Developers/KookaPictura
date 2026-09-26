@@ -34,6 +34,6 @@ cannot expose the font, size, or fill colour a renderer needs.
 - `crates/pictura-core`: `TextStyle`, `TypeTool.fonts` / `TypeTool.style`.
 - `crates/pictura-codec`: `engine_data.rs` parser + extraction; `type_tool.rs`
   fills the new fields.
-- New fixture `tests/fixtures/engine_data.bin` extracted from a a reference build
+- New fixture `tests/fixtures/engine_data.bin` extracted from a reference file
   text layer, with a `psd-tools` differential oracle.
 - No new dependency; no app change.

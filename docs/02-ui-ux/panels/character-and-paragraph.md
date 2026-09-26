@@ -12,7 +12,7 @@
 
 ### Character panel
 
-** Open it with `Window > Character`, the Character panel tab, or (with a type tool active) the options-bar **Panel** button.
+The Character panel formats characters, and some of the same formatting options are also available from the options bar. Open it with `Window > Character`, the Character panel tab, or (with a type tool active) the options-bar **Panel** button.
 
 The CS6 figure labels eleven controls:
 
@@ -48,7 +48,7 @@ Behavioural notes sourced from the CS6 text:
 
 ### Paragraph panel
 
-** Open with `Window > Paragraph`, the Paragraph tab, or the type-tool options-bar Panel button. The CS6 figure labels: **A** Alignment and justification, **B** Left indent, **C** First-line left indent, **D** Space before paragraph, **E** Hyphenation, **F** Right indent, **G** Space after paragraph.
+The Paragraph panel changes the formatting of columns and paragraphs. Open with `Window > Paragraph`, the Paragraph tab, or the type-tool options-bar Panel button. The CS6 figure labels: **A** Alignment and justification, **B** Left indent, **C** First-line left indent, **D** Space before paragraph, **E** Hyphenation, **F** Right indent, **G** Space after paragraph.
 
 - **Alignment** (paragraph type only): horizontal **Left / Center / Right**; vertical **Top / Center / Bottom**.
 - **Justification**: horizontal **Justify Last Left / Justify Last Centered / Justify Last Right / Justify All**; vertical **Justify Last Top / Justify Last Centered / Justify Last Bottom / Justify All**. Justification affects Roman characters only (not double-byte CJK).
@@ -64,7 +64,7 @@ Behavioural notes sourced from the CS6 text:
 
 - **Character Styles** (`Window > Character Styles`) stores character-level attributes and applies them to characters, a paragraph, or a range of paragraphs.
 - **Paragraph Styles** (`Window > Paragraph Styles`) stores character *and* paragraph attributes. Each new document contains a **Basic Paragraph** style that is applied to new text; it can be edited but **not renamed or deleted**; user-created styles can be renamed and deleted, and a different default style can be chosen.
-- **Hierarchy (sourced):** **
+- **Hierarchy (sourced):** manual overrides take precedence over applied character styles, which in turn override applied paragraph styles.
 - Create a style from selected text via **New Character Style** / **New Paragraph Style**; create without selecting text via the panel's **Create New Style** icon (select an image layer such as Background to edit a style without applying it). Double-click a style to edit it; editing updates all text using that style.
 - Styles can be saved/loaded as **default type styles**, but the fetched CS6 PDF labels **`Type > Save Default Type Styles` / `Load Default Type Styles` as Creative Cloud only**, not base CS6 (see `03-tools/type-tools.md` Open questions).
 

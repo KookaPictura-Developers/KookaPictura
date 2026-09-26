@@ -1,4 +1,4 @@
-//! W3C Compositing and Blending Level 1 blend functions, plus the Photoshop-only
+//! W3C Compositing and Blending Level 1 blend functions, plus the reference-only
 //! separable modes. Non-separable modes use the PDF/CSS triplet math.
 
 use pictura_core::BlendMode;

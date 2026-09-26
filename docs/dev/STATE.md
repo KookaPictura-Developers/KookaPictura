@@ -97,7 +97,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   `smart_filter.rs` (`set_camera_raw_option` preserving object class identity),
   and `smart_writer.rs` (author `SoLd` v4 + embedded `lnk2`). It covers smart
   objects CS6→current CC by *tolerant read + byte-preserving write*, proven only
-  on the a reference build fixtures `assets/test_with_smart_object0{1,2}.psd`; the Camera
+  on the synthetic fixtures `assets/test_with_smart_object0{1,2}.psd`; the Camera
   Raw settings model targets the earliest CC (ACR 8 / PV2012) `Fltr` key set,
   later-CC keys preserved, and `crs:` XMP is lifted to a typed `CrsSettings`
   view and editable in place (`crs-xmp-edit`). A CS6/earliest-CC
@@ -348,7 +348,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   `pictura_render::{WarpStyle, style_mesh(style, bend, rotate_vertical, w, h)}`
   port the 15 CS6 named preset control-net constructions from
   SethRobinson/Patchy's `generate_style_warp_mesh` (MIT, commit
-  `7d14d1f6…`), which publicly documented Photoshop's own bakes to ~2.4e-6 px.
+  `7d14d1f6…`), which reproduces Photoshop's own bakes to ~2.4e-6 px.
   A golden control-point table (all 15 styles × five bends × both orientations,
   produced by compiling the pinned Patchy source) pins them at 1e-9; `None`/
   `Custom` produce no mesh, and `bend == 0` is the style's identity grid.
@@ -629,7 +629,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   panic). `TypeTool.fonts` holds the font-set names and `TypeTool.style`
   (`pictura_core::TextStyle`: resolved font, size, fill colour, tracking,
   justification) the first run's effective values with the style/paragraph
-  defaults applied. Proven by a real Photoshop-2021 text-layer EngineData
+  defaults applied. Proven by a synthetic text-layer EngineData
   fixture (`tests/fixtures/engine_data.bin`) and a psd-tools differential
   oracle, plus unit tests. Ceilings (`ponytail:`): first run only, no per-run
   layout or font-file resolution, EngineData2 (`TEXT_ENGINE_DATA`) not decoded,
@@ -1475,7 +1475,7 @@ already exists) before any further oracle growth.
   `guard.sh` OK. OpenSpec change `m18-toolbox-tools` (capabilities
   `tool-framework`, `shape-selection-tools`, `canvas-tools`), archived.
 - **M19** — SVG icon set and cursors. New `assets/icons/` (40 original
-  independent-creation SVGs: `app`, eight `tool.*`, and 31 implemented-command icons named
+  original SVGs: `app`, eight `tool.*`, and 31 implemented-command icons named
   by command id, e.g. `file.saveAs.svg`, `view.screenMode.full.svg`) and
   `assets/cursors/` (eight `tool.*` SVG cursors; eye-dropper hotspot (2,22),
   others (12,12)); `assets/pictura.qrc` bundles all 48. `icons.{h,cpp}` provides
@@ -2774,7 +2774,7 @@ already exists) before any further oracle growth.
   indentation and the delegate anchors the eye at the panel's left edge for every
   row, indenting the thumbnail/name by depth and drawing an expand/collapse
   chevron for a group (the panel's event filter toggles expansion on a chevron
-  click, like the eye). **Filter lightswitch:** two independent-creation SVGs
+  click, like the eye). **Filter lightswitch:** two original SVGs
   (`layers.filterOn/Off`) back an icon toggle that starts **on**; with no
   criterion the filter is inert, and the auto-expand-on-filter only runs when a
   criterion is actually active (`hasActiveCriteria`), so an enabled empty filter

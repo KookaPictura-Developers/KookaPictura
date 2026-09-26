@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-A **tool preset** stores a tool plus its options-bar settings so the combination can be recalled without reconfiguring the tool. The CS6 Help definition: **
+A **tool preset** stores a tool plus its options-bar settings so the combination can be recalled without reconfiguring the tool. In CS6 Help terms, tool presets save and reuse tool settings; presets can be loaded, edited, and organized into libraries from the options-bar Tool Preset picker, the Tool Presets panel, and the Preset Manager.
 
 **Default placement.** The Tool Presets panel is not in the default Essentials workspace; it is part of the **Painting** workspace, in the narrower secondary (icon) column alongside Brush, Clone Source, and History (`02-ui-ux/workspace-and-docks.md`, `UI-003`).
 
@@ -20,7 +20,7 @@ Three surfaces expose the same preset list:
 2. **Tool Presets panel** — `Window > Tool Presets`.
 3. **Preset Manager** — `Edit > Presets > Preset Manager`, Preset Type = Tools (`10-workflow-io/presets-manager.md`).
 
-**Choosing a preset.** ** Selecting a preset changes the active tool's options to the preset and ** Selecting a preset for a tool other than the active one also switches the active tool (documented picker behavior; the panel's all-presets list is used this way). *(The exact wording for tool switching is from the panel documentation and evident behavior; mark inferred.)*
+**Choosing a preset.** Click the Tool Preset picker in the options bar and pick a preset from the pop-up panel, or choose `Window > Tool Presets` and select a preset in the Tool Presets panel. Selecting a preset replaces the active tool's options with the preset, and the preset stays applied each time you select the tool until you choose Reset Tool from the panel menu. Selecting a preset for a tool other than the active one also switches the active tool (documented picker behavior; the panel's all-presets list is used this way). *(The exact wording for tool switching is from the panel documentation and evident behavior; mark inferred.)*
 
 **Creating.** Choose a tool and set its options bar, then either click the **Tool Preset button** at the left of the options bar, use `Window > Tool Presets` → **Create New Tool Preset** button, or **New Tool Preset** from the panel menu; enter a name and click **OK**.
 
@@ -28,7 +28,7 @@ Three surfaces expose the same preset list:
 
 **Managing.** **Rename Tool Preset** and **Delete Tool Preset** are pop-up-panel menu commands; the Preset Manager can rename/delete/reorder items. Library commands are **Load Tool Presets** (append), **Replace Tool Presets**, **Reset Tool Presets** (replace or append the defaults), and **Save Tool Presets** (write the current list to a file). Placing a saved `.tpl` library in the default `Presets/Tools` folder makes it appear at the bottom of the panel menu after restart (CS6 installs ship `Presets/Tools`).
 
-**Tool preset vs. brush preset.** Help distinguishes the two: save a **tool preset** ** Brush presets and their `.abr` libraries are a separate namespace (`BRU-006`); this panel owns the tool-plus-options bundle only. A tool preset can capture **type tool settings** (font, size, attributes, color) as well.
+**Tool preset vs. brush preset.** Help distinguishes the two: a **tool preset** is for storing customized brush tip characteristics together with options-bar settings such as opacity, flow, and color. Brush presets and their `.abr` libraries are a separate namespace (`BRU-006`); this panel owns the tool-plus-options bundle only. A tool preset can capture **type tool settings** (font, size, attributes, color) as well.
 
 **CS6 scripting note.** The CS6 SDK adds the ability to access the tool name associated with a tool preset name via scripting — relevant to `09-automation/` and to how the model identifies the owning tool, not to visible panel UI.
 
@@ -62,7 +62,7 @@ Three surfaces expose the same preset list:
 The panel is a **model/view over a preset library**; it owns no image algorithms.
 
 1. **Capture** — read the active tool id plus the current options-bar state and serialize it into a `ToolPreset { tool, name, options }`. *(inferred)* Options are an enum-tagged parameter block keyed by tool kind, so a type-tool preset and a crop-tool preset share no fields.
-2. **Apply** — on selection, resolve the owning tool, switch the active tool if necessary, and push the stored option block into the tool's state. The preset **, i.e. applying a preset is sticky until reset/another preset.
+2. **Apply** — on selection, resolve the owning tool, switch the active tool if necessary, and push the stored option block into the tool's state. The preset stays applied every time the tool is selected until Reset Tool is chosen, i.e. applying a preset is sticky until reset or another preset is chosen.
 3. **Filter/sort** — `current_tool_only` filters by owning tool; `sort_by_tool` groups by tool id.
 4. **Persist** — session-created presets live in the preferences store; durable libraries are written by **Save Tool Presets** and read by **Load/Replace/Reset**. *(inferred: the CS6 text describes the commands but not the container format.)*
 

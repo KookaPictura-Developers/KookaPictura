@@ -10,9 +10,9 @@
 
 ## CS6 behavior
 
-`Filter > Oil Paint` "easily create[s] the look of a classic painting." The dialog offers **Brush** and **Lighting** controls ("Experiment with the Brush and Lighting options," per the CS6 Help, which documents no further detail in the fetched PDF). The CS6 Help's only operational caveat is explicit:
+`Filter > Oil Paint` produces the look of a classic painting. The dialog offers **Brush** and **Lighting** controls (the CS6 Help suggests experimenting with the Brush and Lighting options and documents no further detail in the fetched PDF). The CS6 Help's only operational caveat is explicit:
 
-> 
+> If the Oil Paint filter is not working, your graphics card may be unsupported or its driver may be out of date.
 
 Adobe's GPU FAQ lists Oil Paint under **"GPU enhancements added in Photoshop CS6"** as **"requires a compatible graphics card"** — i.e. unlike Liquify (merely accelerated) and Blur Gallery (OpenCL-accelerated), Oil Paint **does not fall back to a CPU renderer**; without a supported card/driver the filter is **disabled or errors out**. A later Adobe Help page states the requirement precisely: **OpenCL v1.1 or higher**; on macOS 10.11+ with AMD GPUs, Apple's **Metal** framework can be used instead via `Preferences > Performance > Use Graphics Processor > Advanced > Use Native Operating System GPU Acceleration`.
 
@@ -38,12 +38,12 @@ The CS6 Help PDF names only "Brush and Lighting options." The control **names, m
 
 | Group | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|---|
-| Brush | Stylization | float | *(unverified)* | 0–10 |  *(Adobe Help)* |
-| Brush | Cleanliness | float | *(unverified)* | 0–10 |  *(Adobe Help)* |
-| Brush | Scale | float | *(unverified)* | 0–10 |  *(Adobe Help)* |
-| Brush | Bristle Detail | float | *(unverified)* | 0–10 |  *(Adobe Help)* |
-| Lighting | Angular Direction | float ° | *(unverified)* | 0–360 (angle) | "Incidence angle of the light (not the brushstroke)." *(Adobe Help)* |
-| Lighting | Shine | float | *(unverified)* | 0–10 |  *(Adobe Help)* |
+| Brush | Stylization | float | *(unverified)* | 0–10 | Stroke style: daubed at 0, smooth at 10. *(Adobe Help)* |
+| Brush | Cleanliness | float | *(unverified)* | 0–10 | Stroke length: shortest and choppiest at 0, longest and most fluid at 10. *(Adobe Help)* |
+| Brush | Scale | float | *(unverified)* | 0–10 | Paint relief / apparent thickness: a thin coat at 0, thick Van Gogh-style globs at 10. *(Adobe Help)* |
+| Brush | Bristle Detail | float | *(unverified)* | 0–10 | Visibility of paintbrush-hair indentation: soft at 0, strong grooves at 10. *(Adobe Help)* |
+| Lighting | Angular Direction | float ° | *(unverified)* | 0–360 (angle) | Light incidence angle (independent of the brushstroke). *(Adobe Help)* |
+| Lighting | Shine | float | *(unverified)* | 0–10 | Light-source brightness and how much light bounces off the paint surface. *(Adobe Help)* |
 | GPU | Graphics processor | bool | on where supported | on / off | Filter **requires** a supported card; OpenCL 1.1+ (CC doc) |
 
 Community CS6 examples use mid-range values (e.g. Stylization 3.5, Cleanliness 4.5, Scale 0.75, Bristle Detail 3, Angular Direction 85, Shine 0.55) and Adobe's own tutorial recommendation uses Stylization 8.96, Cleanliness 3.5, Scale 8.96, Bristle Detail 2.2, Angular Direction 244.8, Shine 0 — both are *examples*, not defaults.
@@ -132,7 +132,7 @@ Widgets, not QML: a modal slider dialog with a live preview matches the existing
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: the CS6 What's-New "Oil Paint filter" entry (); the Oil Paint page ("Experiment with the Brush and Lighting options"; the "supported graphics card / out-of-date driver" caveat); the exhaustive 16-bpc and 32-bpc filter lists that **exclude** Oil Paint.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: the CS6 What's-New "Oil Paint filter" entry (recommending `Filter > Oil Paint` for a classic-painting look); the Oil Paint page (the suggestion to experiment with Brush and Lighting; the "supported graphics card / out-of-date driver" caveat); the exhaustive 16-bpc and 32-bpc filter lists that **exclude** Oil Paint.
 - `https://web.archive.org/web/20170913004356id_/https://helpx.adobe.com/photoshop/using/oil-paint-filter.html` — Adobe Help snapshot (wayback; live page 403). Established the six parameter names and their documented 0–10 semantics (Stylization, Cleanliness, Scale, Bristle Detail, Angle/Angular Direction, Shine), the modern `Filter > Stylize > Oil Paint` path, the **OpenCL v1.1+** requirement, and the macOS Metal option.
 - `https://topic.alibabacloud.com/a/photoshop-cs6-gpu-faq_8_8_10184243.html` — mirror of the **Photoshop CS6 GPU FAQ**. Established that the Mercury Graphics Engine uses OpenGL + OpenCL (not CUDA), and that **Oil Paint requires a compatible graphics card** (alongside Adaptive Wide Angle), whereas Liquify/Warp/Blur Gallery are accelerated.
 - `https://the-digital-photography-school.com/new-oil-paint-filter-in-photoshop-cs6` and `https://www.digigalaxy.net/tutorials/oilpainting.html` (surfaced via search) — community CS6-era descriptions and example values; secondary, used only for illustrative values, not asserted as defaults.

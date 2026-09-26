@@ -2,7 +2,7 @@
 
 ## 1. Kernel
 
-- [x] 1.1 In `crates/pictura-ops/src/resize.rs`, set the Keys cubic coefficient to `a = -0.75` (Mitchell–Netravali `cubic(0, 0.75)`) and update the `cubic`/module doc comments to name the Photoshop Bicubic publicly documenting, not Catmull-Rom.
+- [x] 1.1 In `crates/pictura-ops/src/resize.rs`, set the Keys cubic coefficient to `a = -0.75` (Mitchell–Netravali `cubic(0, 0.75)`) and update the `cubic`/module doc comments to document the Photoshop Bicubic coefficient, not Catmull-Rom.
 
 ## 2. Oracle
 

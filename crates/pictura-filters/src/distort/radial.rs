@@ -25,7 +25,7 @@ pub fn twirl(buf: &mut PixelBuffer, angle: f64) -> Result<(), FilterError> {
         return Ok(());
     }
     let radians = angle.to_radians();
-    // ponytail: linear angular falloff, not Adobe's closed falloff/resampling
+    // ponytail: linear angular falloff, not the closed falloff/resampling
     // (behavioral parity only). Upgrade to a fitted falloff once CS6 renders exist.
     warp(buf, |px, py, rx, ry| {
         let rmax = rx.max(ry);
@@ -45,7 +45,7 @@ pub fn pinch(buf: &mut PixelBuffer, amount: f64) -> Result<(), FilterError> {
         return Ok(());
     }
     let k = amount / 100.0;
-    // ponytail: monotone linear radial remap, not Adobe's closed falloff and
+    // ponytail: monotone linear radial remap, not the closed falloff and
     // resampling (behavioral parity only). Upgrade once CS6 renders exist.
     warp(buf, |px, py, rx, ry| {
         let rmax = rx.max(ry);
@@ -65,7 +65,7 @@ pub fn spherize(buf: &mut PixelBuffer, amount: f64, mode: SpherizeMode) -> Resul
         return Ok(());
     }
     let p = amount / 100.0;
-    // ponytail: arc-length sphere warp on the axis extents, not Adobe's closed
+    // ponytail: arc-length sphere warp on the axis extents, not the reference's closed
     // falloff/resampling (behavioral parity only). Upgrade once CS6 renders exist.
     warp(buf, move |px, py, rx, ry| match mode {
         SpherizeMode::Normal => {

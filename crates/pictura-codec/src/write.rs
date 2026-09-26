@@ -604,7 +604,7 @@ fn write_extra(
         write_tag(out, &adjustment.key, &adjustment.data, psb);
     }
     if section != 0 {
-        // Section-divider setting: kind + '8BIM' + blend key. Photoshop and
+        // Section-divider setting: kind + '8BIM' + blend key. The reference and
         // psd-tools read a group's blend mode from here, so `pass` must ride
         // along with the section marker.
         let mut lsct = Vec::with_capacity(12);
@@ -639,7 +639,7 @@ fn write_pascal(out: &mut Vec<u8>, name: &str) {
 }
 
 pub(crate) fn write_tag(out: &mut Vec<u8>, key: &[u8; 4], data: &[u8], psb: bool) {
-    // A per-layer block: Photoshop declares an even length with the pad byte
+    // A per-layer block: the reference declares an even length with the pad byte
     // inside it; psd-tools reads exactly the declared length (padding=1 means no
     // external pad), so an odd declared length would mis-frame the next block.
     let declared = data.len() + (data.len() & 1);

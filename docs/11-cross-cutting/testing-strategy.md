@@ -11,7 +11,7 @@
 - **Depends on:** `ARCH-003` performance-targets, `ARCH-008` document-model,
   `ARCH-011` file-formats, `ARCH-012` undo-history, `ARCH-004`
   build-and-packaging, `11-cross-cutting/crash-recovery-and-autosave.md`,
-  `00-overview/licensing-and-independent-creation.md`.
+  `00-overview/licensing-and-provenance.md`.
 
 > No code exists in this repository. Every crate, harness, and tool name below is
 > a **design proposal**. Comparison thresholds marked *(proposed)* are
@@ -39,7 +39,7 @@ CS6 contracts** the harness must lock down rather than a UI surface:
 - **CS6 is the reference renderer, not a dependency.** Reference images are
   produced once from CS6 13.0.1 on documented hardware and stored as test assets;
   CI never runs Photoshop. Provenance and licensing are governed by
-  `00-overview/licensing-and-independent-creation.md`.
+  `00-overview/licensing-and-provenance.md`.
 - **Background Save and Auto-Recovery are testable events.** Save progress is
   shown in the document tab and the status bar while the UI stays responsive;
   Auto-Recovery writes a separate backup at the configured interval and reopens
@@ -374,7 +374,7 @@ rather than through a custom tool.
 
 No Adobe source code, binaries, or assets were used; reference renderings are
 captured outputs and are governed by
-`00-overview/licensing-and-independent-creation.md`.
+`00-overview/licensing-and-provenance.md`.
 
 ## Open questions
 
@@ -390,7 +390,7 @@ captured outputs and are governed by
   capturing on CPU (Mercury off) as the canonical reference.
 - **Legal status of captured reference renderings.** Are CS6-produced images
   redistributable as test fixtures? Resolve with
-  `00-overview/licensing-and-independent-creation.md` before committing any.
+  `00-overview/licensing-and-provenance.md` before committing any.
 - **Where the reference corpus lives.** In-repo (size), Git LFS, or a separate
   artifact store. Resolve with a size/access decision.
 - **GPU in CI.** `lavapipe`/`llvmpipe` coverage vs a real-GPU runner, and how to

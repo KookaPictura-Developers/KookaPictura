@@ -242,7 +242,7 @@ Proposed:
   per-channel behaviour); "Color adjustment commands" and Properties-panel menu
   placement.
 - `https://geraldbakker.nl/psnumbers/auto-options.html` — detailed community
-  publicly documenting of the three (and a later fourth) Auto algorithms, the
+  public analysis of the three (and a later fourth) Auto algorithms, the
   endpoint-move model, and the Auto Tone/Contrast/Color → algorithm mapping.
   Secondary/community source.
 - `https://web.archive.org/web/2023id_/https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/`

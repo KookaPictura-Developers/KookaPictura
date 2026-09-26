@@ -198,7 +198,7 @@ must match `02-ui-ux/application-frame.md` and the existing widget-based shell
   `Adjustment` block; the exact tags are *(inferred)* and belong in
   `01-architecture/file-formats.md`. The CS6 Help does not document PSD keys.
 - **Preset serialization.** Named presets are `.AHU`/`.ahu`-family files in
-  Photoshop *(inferred)*; the independent-creation format is a project decision, not a
+  Photoshop *(inferred)*; the independent format is a project decision, not a
   parity requirement.
 - **Undo.** Destructive edit: one history state holding tile deltas. Adjustment
   layer: settings edits are individual history states; the layer node itself is

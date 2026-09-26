@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Filter > Liquify`  Tools, options, and a preview live in the **Liquify dialog box**. In CS6, **select Advanced Mode to access more options**; the dialog otherwise opens in **Basic** mode. The filter "can be applied to 8-bits-per-channel or 16-bits per-channel images" — it is **not** on the Help's 32-bpc filter list. A type or shape layer must be **rasterized** first (or use the Type tool's Warp options instead).
+`Filter > Liquify` provides push, pull, rotate, reflect, pucker, and bloat distortions for any area of an image. Tools, options, and a preview live in the **Liquify dialog box**. In CS6, **select Advanced Mode to access more options**; the dialog otherwise opens in **Basic** mode. The filter "can be applied to 8-bits-per-channel or 16-bits per-channel images" — it is **not** on the Help's 32-bpc filter list. A type or shape layer must be **rasterized** first (or use the Type tool's Warp options instead).
 
 ### Distortion tools (sourced)
 
@@ -23,7 +23,7 @@ Several tools distort the brush area when the mouse button is held or the pointe
 - **Bloat** — moves pixels away from the brush center.
 - **Push Left** — pixels move left when you drag straight up (right when you drag down); dragging clockwise around an object enlarges it, counterclockwise shrinks it. `Alt`/`Option` reverses the mapping.
 - **Mirror (CS5+)** — copies pixels into the brush area, mirroring perpendicular to the stroke (to the left of the stroke); `Alt`/`Option`-drag mirrors in the opposite direction. Best used with frozen areas; overlapping strokes create a water-reflection effect.
-- **Turbulence (CS5+)** — "smoothly scrambles pixels"; useful for fire, clouds, and waves.
+- **Turbulence (CS5+)** — smoothly scrambles pixels; useful for fire, clouds, and waves.
 
 ### Freeze / thaw mask
 
@@ -139,7 +139,7 @@ Tool displacement fields *(inferred)*:
 
 The Help's "amount" in the CS6 Revert Reconstruction dialog is a blend factor between the current and reconstructed fields.
 
-**GPU and bit depth.** CS6 "added GPU video card acceleration" for Liquify, and Adobe's GPU FAQ lists Liquify as accelerated (not required). Bit depth is 8 or 16 bpc; resample in the working space and keep intermediate displacement/premultiplied values at higher precision to avoid 8-bit banding.
+**GPU and bit depth.** CS6 added GPU video-card acceleration for Liquify, and Adobe's GPU FAQ lists Liquify as accelerated (not required). Bit depth is 8 or 16 bpc; resample in the working space and keep intermediate displacement/premultiplied values at higher precision to avoid 8-bit banding.
 
 ## Rust module mapping
 
@@ -173,7 +173,7 @@ Widgets over QML: this is a modal, canvas-centric desktop dialog with precise po
 
 - **Destructive edit** with an **optional mesh**: `OK` produces one history state; the pre-filter tile/image snapshot is retained for undo (`ARCH-009`). Live previews inside the dialog are **not** history states.
 - **Mesh persistence:** the CS6 Help documents saving meshes as separate files (`Save Mesh`/`Load Mesh`/`Load Last Mesh`), not as a PSD asset. Store the mesh in the filter record's `params_blob` so a smart-filter re-edit can restore it (`LAY-021`); keep `Load Last Mesh` as session state (`11-cross-cutting/preference-storage.md`).
-- **Smart filter (CC only):** shipped CS6 does not let Liquify be a smart filter; a CC/extension build that does must add the mesh to the Smart Object's embedded data, which "even compressed … increase[s] the file size."
+- **Smart filter (CC only):** shipped CS6 does not let Liquify be a smart filter; a CC/extension build that does must add the mesh to the Smart Object's embedded data, which even compressed increases the file size.
 - **Fade:** `Edit > Fade Liquify` stores opacity + mode for the last filter commit.
 - **No new document nodes**; the freeze mask is transient dialog state unless the user supplies a channel/selection.
 
@@ -209,7 +209,7 @@ Widgets over QML: this is a modal, canvas-centric desktop dialog with precise po
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: the tool/dialog overview ("push, pull, rotate, reflect, pucker, and bloat"); Advanced Mode; 8-/16-bpc only; Forward Warp / Reconstruct / Twirl / Pucker / Bloat / Push Left / Mirror (CS5) / Turbulence (CS5) behaviour and `Alt` reversals; `Shift`-click straight lines; Distortion Tool Options (Brush Size, Density, Pressure, Rate, Turbulent Jitter, Reconstruct Mode CS5, Stylus Pressure); Freeze/Thaw mask and Mask Options (Replace/Add/Subtract/Intersect/Invert, Mask All, None, Invert All, Show Mask, Mask Color); the selection bounding-box processing rule; meshes (Show Mesh/Image, Save/Load Mesh scaled to fit, **`Load Last Mesh` CS6**); backdrop (Use, Mode, Opacity, "only the active layer is distorted"); reconstruction (CS6 Reconstruct button + Revert Reconstruction amount, Restore All, CS5 modes Revert/Rigid/Stiff/Smooth/Loose + intensity, CS5 Displace/Amplitwist/Affine); CS6 What's-New Liquify list (GPU acceleration, Basic/Advanced, Load Last Mesh, **max brush 15,000**, bracket resize, Mac cursor, `Ctrl`/`Cmd` magnifier, `Alt`+right-drag brush size); the "Keys for Liquify" table; the 16-bpc filter list includes Liquify and the 32-bpc list excludes it.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: the tool/dialog overview (push, pull, rotate, reflect, pucker, and bloat distortions); Advanced Mode; 8-/16-bpc only; Forward Warp / Reconstruct / Twirl / Pucker / Bloat / Push Left / Mirror (CS5) / Turbulence (CS5) behaviour and `Alt` reversals; `Shift`-click straight lines; Distortion Tool Options (Brush Size, Density, Pressure, Rate, Turbulent Jitter, Reconstruct Mode CS5, Stylus Pressure); Freeze/Thaw mask and Mask Options (Replace/Add/Subtract/Intersect/Invert, Mask All, None, Invert All, Show Mask, Mask Color); the selection bounding-box processing rule; meshes (Show Mesh/Image, Save/Load Mesh scaled to fit, **`Load Last Mesh` CS6**); backdrop (Use, Mode, Opacity, with only the active layer distorted); reconstruction (CS6 Reconstruct button + Revert Reconstruction amount, Restore All, CS5 modes Revert/Rigid/Stiff/Smooth/Loose + intensity, CS5 Displace/Amplitwist/Affine); CS6 What's-New Liquify list (GPU acceleration, Basic/Advanced, Load Last Mesh, **max brush 15,000**, bracket resize, Mac cursor, `Ctrl`/`Cmd` magnifier, `Alt`+right-drag brush size); the "Keys for Liquify" table; the 16-bpc filter list includes Liquify and the 32-bpc list excludes it.
 - `https://web.archive.org/web/20121116114821id_/http://helpx.adobe.com/photoshop/using/blur-gallery.html` — CS6-era Adobe Help snapshot (wayback) of the sibling Blur Gallery page; confirmed the CS6 Help era and wording style. Not used for Liquify facts.
 - `https://topic.alibabacloud.com/a/photoshop-cs6-gpu-faq_8_8_10184243.html` — mirror of the **Photoshop CS6 GPU FAQ**. Established: Mercury Graphics Engine uses OpenGL + OpenCL (not CUDA); Liquify is **accelerated** by a compatible card (not gated); Adaptive Wide Angle and Oil Paint **require** a compatible card.
 - `https://help.adobe.com/...` 403 and `https://helpx.adobe.com/photoshop/using/liquify-filter.html` 403 from this environment.

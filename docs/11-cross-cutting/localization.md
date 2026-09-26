@@ -12,11 +12,11 @@
 
 ### Shipped languages
 
-CS6 launched (May 2012) in **English, French, German, Spanish, Danish, Dutch, Italian, Finnish, Norwegian, Swedish, Portuguese, and Japanese**, with  *(secondary: ProDesignTools launch report)*. Each language is a separate regional installer/build; the user's UI language is fixed by which build was installed. There is no documented `Edit > Preferences` language selector in CS6.
+CS6 launched (May 2012) in **English, French, German, Spanish, Danish, Dutch, Italian, Finnish, Norwegian, Swedish, Portuguese, and Japanese**, with up to 24 languages planned in total, including Chinese, Korean, and Russian *(secondary: ProDesignTools launch report)*. Each language is a separate regional installer/build; the user's UI language is fixed by which build was installed. There is no documented `Edit > Preferences` language selector in CS6.
 
 ### How CS6 changes language
 
-CS6 stores the installed UI language under its program directory as locale bundles. Community documentation for changing a CS6 interface language without reinstalling describes editing files under `…/Adobe Photoshop CS6 (64 Bit)/Locales/<locale>/Support Files/`, in particular renaming `tw10428.dat` (the localized string table) to force the application back to English *(secondary: DownloadSource.net)*. This establishes two facts about the CS6 architecture without giving its internal format: (a) the UI language lives in per-locale resource data, not in preferences, and (b) the runtime loads one language at a time. Kooka Pictura does not need bit-compatibility with that data (see `00-overview/licensing-and-independent-creation.md`).
+CS6 stores the installed UI language under its program directory as locale bundles. Community documentation for changing a CS6 interface language without reinstalling describes editing files under `…/Adobe Photoshop CS6 (64 Bit)/Locales/<locale>/Support Files/`, in particular renaming `tw10428.dat` (the localized string table) to force the application back to English *(secondary: DownloadSource.net)*. This establishes two facts about the CS6 architecture without giving its internal format: (a) the UI language lives in per-locale resource data, not in preferences, and (b) the runtime loads one language at a time. Kooka Pictura does not need bit-compatibility with that data (see `00-overview/licensing-and-provenance.md`).
 
 ### Locale-sensitive behavior that *is* documented
 
@@ -212,7 +212,7 @@ Internal cross-references (not sources): `docs/02-ui-ux/preferences.md` (`UI-010
 - **Exact CS6 shipped language list and per-version availability.** The 12-launch/24-total figure is secondary. *Resolve:* Adobe CS6 release notes or the archived CS6 language page.
 - **Did CS6 mirror the entire UI in RTL, or only text direction in the Type tool?** No Adobe document found. *Resolve:* run the CS6 Middle Eastern build and inspect menu/panel mirroring.
 - **CS6 locale number/date formatting.** Whether CS6 uses OS locale formatting for rulers/Info or fixed formatting is unstated. *Resolve:* compare a CS6 run under `de_DE` vs `en_US`.
-- **`tw10428.dat` format.** Unknown and possibly legally encumbered; Kooka Pictura should not read it. *Resolve:* legal review (`00-overview/licensing-and-independent-creation.md`) and a independent-creation decision; default is to ignore it.
+- **`tw10428.dat` format.** Unknown and possibly legally encumbered; Kooka Pictura should not read it. *Resolve:* legal review (`00-overview/licensing-and-provenance.md`) and a provenance decision; default is to ignore it.
 - **Fluent authoring direction.** Whether `.ftl` or `.ts` is the authoring source and how the generated Qt/Rust catalogs are kept in sync is unresolved. *Resolve:* a prototype of the extraction pipeline.
 - **Runtime language switch vs. install-time only.** CS6 requires a reinstall/edit; Kooka Pictura proposes a restart-required switch. *Resolve:* product decision.
 - **Fluent number/date builtins.** Whether Fluent's builtin functions cover all `QLocale` formatting needs, or whether Qt must own all numeric formatting, is unconfirmed. *Resolve:* inspect `fluent_bundle::builtins`.

@@ -83,7 +83,7 @@ pub(crate) fn curves(p: &CurvesParams, buf: &mut PixelBuffer, n: usize) -> Resul
         }
     }
     // ponytail: per-channel curves then the composite curve is an assumption;
-    // Photoshop's composition order is unpublished. Revisit with a CS6/CC
+    // The reference's composition order is unpublished. Revisit with a CS6/CC
     // Curves baseline carrying both a composite and a per-channel curve.
     map_lut(buf, n, &composite);
     Ok(())
@@ -108,7 +108,7 @@ pub(crate) fn brightness_contrast(
     for (i, slot) in lut.iter_mut().enumerate() {
         let out = if p.use_legacy {
             // Approximation: additive shift in levels, then linear contrast
-            // about mid-grey (Adobe's legacy normalization is closed).
+            // about mid-grey (the reference's legacy normalization is closed).
             let v = i as f64 + p.brightness as f64;
             ((v - 127.5) * (1.0 + c) + 127.5) / 255.0
         } else {
@@ -228,7 +228,7 @@ pub(crate) fn gradient_map(
             "gradient stop locations must be strictly increasing".into(),
         ));
     }
-    // ponytail: plain linear interpolation between adjacent stops; Photoshop's
+    // ponytail: plain linear interpolation between adjacent stops; the reference's
     // midpoint bias, dither, opacity stops, and interpolation modes are not
     // modelled (gradient-map.md marks them closed/inferred).
     let mut lut = [[0u8; 3]; 256];

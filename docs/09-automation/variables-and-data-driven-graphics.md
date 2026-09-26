@@ -3,7 +3,7 @@
 - **Spec ID:** `AUTO-011`
 - **Status:** `Draft`
 - **Parity tier:** `Core` — the Variables dialog, data sets, CSV/tab import, and data-set export are in both CS6 Standard and Extended.
-- **New in CS6:** `No` — data-driven graphics (variables/data sets) date from CS2 and are unchanged in CS6. The CS6 Help notes GoLive recognises text and visibility variables but not pixel replacement; GoLive is not an Kooka Pictura concern.
+- **New in CS6:** `No` — data-driven graphics (variables/data sets) date from CS2 and are unchanged in CS6. The CS6 Help notes GoLive recognises text and visibility variables but not pixel replacement; GoLive is not a Kooka Pictura concern.
 - **Depends on:** `AUTO-010` (scripting engine), `05-layers/layers-overview`, `10-workflow-io/document-lifecycle`, `01-architecture/file-formats`, `01-architecture/undo-history`, `11-cross-cutting/localization`.
 
 ## CS6 behavior

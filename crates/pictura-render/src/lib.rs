@@ -21,8 +21,8 @@
 //! blended as one layer with the group's mode, opacity, and mask.
 //!
 //! Approximation: a pass-through group with non-255 opacity or a mask falls
-//! back to isolated compositing with `PassThrough` treated as `Normal`. Real
-//! Photoshop applies the group opacity/mask to the pass-through result while
+//! back to isolated compositing with `PassThrough` treated as `Normal`. The
+//! reference applies the group opacity/mask to the pass-through result while
 //! still letting children blend against the parent backdrop; that mixed model
 //! is not implemented. Exact pass-through parity is limited to the 255/no-mask
 //! case (see the test below).

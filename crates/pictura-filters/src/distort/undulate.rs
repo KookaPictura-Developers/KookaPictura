@@ -1,7 +1,7 @@
 //! Undulating warps (`FILT-040`): Ripple, Wave.
 //!
 //! Inverse-mapping warps with bilinear color sampling; alpha is never touched.
-//! Adobe's exact generator models are closed (`docs/dev/m9-distort.md`).
+//! The exact generator models are closed (`docs/dev/m9-distort.md`).
 
 use pictura_core::PixelBuffer;
 use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
@@ -21,7 +21,7 @@ pub fn ripple(buf: &mut PixelBuffer, amount: f64, size: RippleSize) -> Result<()
     if amount == 0.0 {
         return Ok(());
     }
-    // ponytail: Adobe's ripple generator is closed; this is a fixed
+    // ponytail: the reference's ripple generator is closed; this is a fixed
     // axis-aligned sinusoid. Ceiling: no CS6 pixel parity. Upgrade by fitting
     // reference renders (oracle hook M9-B).
     let period = match size {
@@ -67,7 +67,7 @@ pub fn wave(
 ) -> Result<(), FilterError> {
     let n = validate(buf)?;
     validate_wave(generators, wavelength, amplitude, scale)?;
-    // ponytail: Adobe's multi-generator model is closed; this sums axis-aligned
+    // ponytail: the reference's multi-generator model is closed; this sums axis-aligned
     // sinusoids with uniform draws. Ceiling: no CS6 pixel parity. Upgrade by
     // fitting reference renders (oracle hook M9-B).
     let mut rng = ChaCha8Rng::seed_from_u64(seed);

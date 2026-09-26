@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-**Artistic filters.** From the CS6 Help: they 
+**Artistic filters.** Per the CS6 Help, they give painterly and artistic results for fine-arts or commercial work by imitating natural or traditional media. All of them can be applied through the Filter Gallery.
 
 The family has **15** filters. Each redraws the image to imitate a physical medium; several use the **foreground and background colors** as their "paint" and "paper" and depend on the document's color mode (RGB/Grayscale/Multichannel — see Edge cases).
 
@@ -32,7 +32,7 @@ The family has **15** filters. Each redraws the image to imitate a physical medi
 | **Underpainting** | Paints the image on a textured background, then paints the final image over it. |
 | **Watercolor** | Watercolor-style painting with a medium, water-loaded brush; simplifies detail and saturates color where significant tonal changes occur at edges. |
 
-**Filter Gallery mechanics (shared).** `Filter > Filter Gallery` opens one dialog with a preview, category thumbnails, the selected effect's options, and an applied-effect list. Effects are **cumulative and applied in list order**, can be **reordered by dragging**, **hidden with the eye icon**, and **deleted**. Clicking a category name shows its filter thumbnails; the thumbnail pane can be hidden. The gallery is **8-bit-per-channel only** (). Applied to a Smart Object, the whole stack becomes one grouped Smart Filter entry named "Filter Gallery" (`LAY-021`). Shared dialog keys, Fade, and the application pipeline are in `FILT-001`.
+**Filter Gallery mechanics (shared).** `Filter > Filter Gallery` opens one dialog with a preview, category thumbnails, the selected effect's options, and an applied-effect list. Effects are **cumulative and applied in list order**, can be **reordered by dragging**, **hidden with the eye icon**, and **deleted**. Clicking a category name shows its filter thumbnails; the thumbnail pane can be hidden. The gallery is **8-bit-per-channel only**; for such images most filters can be stacked cumulatively through the Filter Gallery. Applied to a Smart Object, the whole stack becomes one grouped Smart Filter entry named "Filter Gallery" (`LAY-021`). Shared dialog keys, Fade, and the application pipeline are in `FILT-001`.
 
 > Note: the source (PCWorld) states there are "15 Artistic filter options"; CS6's Artistic set matches. PS Elements Help additionally exposes several non-CS6 filters (Comic, Graphic Novel, Pen and Ink) — those are **not** CS6 Artistic filters and are excluded here.
 

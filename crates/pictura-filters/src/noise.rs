@@ -3,7 +3,7 @@
 //! Add Noise is the only randomized filter in the crate; the seed is part of
 //! the parameters so a re-apply is bit-identical. Median and Despeckle are
 //! deterministic. Every filter touches the color planes only; alpha is never
-//! modified. Adobe's kernels are closed, so the choices marked `ponytail:`
+//! modified. The reference's kernels are closed, so the choices marked `ponytail:`
 //! below are documented approximations, not verified parity.
 
 use pictura_core::PixelBuffer;

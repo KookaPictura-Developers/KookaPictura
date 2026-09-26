@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Filter > Other`  The CS6 Other submenu:
+`Filter > Other` groups filters that let you build your own filters, modify masks, offset a selection within an image, and make quick color adjustments. The CS6 Other submenu:
 
 | Filter | Menu path | What it does (CS6 Help) |
 |---|---|---|
@@ -21,11 +21,11 @@
 | Offset | `Filter > Other > Offset` | Moves a selection horizontally/vertically, leaving empty space, which is filled with the background color, another part of the image, or wraps. |
 | HSB/HSL | `Filter > Other > HSB/HSL` | Converts between RGB and HSB/HSL *as raw channel data*, letting H/S/B or H/S/L be manipulated as if they were R/G/B channels. Part of Adobe's **optional** multi-plugin, so it is absent unless installed. |
 
-**Custom is convolution.** Help:  Custom is saved/loaded as presets. (Sourced.)
+**Custom is convolution.** Help describes it as reassigning each pixel from the values of its surrounding pixels, similar to the Add and Subtract channel calculations. Custom is saved/loaded as presets. (Sourced.)
 
 **Maximum/Minimum modify masks.** Help frames both explicitly as mask tools. In CS6 they expose **Radius** only. *(The later CC "Preserve: Squareness/Roundness" menu is not part of CS6; confirmed by the archived Adobe reference which dates the Preserve menu to "In Photoshop CC".)*
 
-**HSB/HSL is optional.** Adobe ships it in the **Optional Multiplugin**, which , to . It appears under `Filter > Other` only after installation. This means a independent-creation CS6 parity build should treat it as an optional plugin and gate its menu entry, not as a built-in filter. (Sourced — Adobe optional-plugins KB, echoed by tutorial sources.)
+**HSB/HSL is optional.** Adobe ships it in the **Optional Multiplugin**, which converts RGB to HSL and to HSB inside Photoshop so that hue, saturation, and luminosity can be edited as independent channels. It appears under `Filter > Other` only after installation. This means an independent-creation CS6 parity build should treat it as an optional plugin and gate its menu entry, not as a built-in filter. (Sourced — Adobe optional-plugins KB, echoed by tutorial sources.)
 
 ## UI surface
 
@@ -208,7 +208,7 @@ Not used in this pass:
 - **High Pass formula.** The `src − Gaussian + 128` form is inferred; Adobe's exact blur kernel, sigma-to-radius mapping, and sign/offset are closed. Resolve by fitting.
 - **Maximum/Minimum kernel shape.** CS6 has no Preserve control, but the default footprint (square vs circular) and per-channel behavior in CMYK are unconfirmed. Resolve by fitting.
 - **Offset wrap reference frame.** Whether Wrap Around is relative to the selection or the document is unconfirmed. Resolve with a CS6 test.
-- **HSB/HSL exact encoding.** The precise H/S/B (and H/S/L) scaling to 8-bit channels and the rounding are closed; the plug-in is optional, so the independent-creation choice may be to recreate it as an optional plugin with behavioral parity only. Resolve with the Optional Multiplugin binary's documented behavior.
+- **HSB/HSL exact encoding.** The precise H/S/B (and H/S/L) scaling to 8-bit channels and the rounding are closed; the plug-in is optional, so the independent choice may be to recreate it as an optional plugin with behavioral parity only. Resolve with the Optional Multiplugin binary's documented behavior.
 - **HSB/HSL presets/serialization.** Whether the input mode/row order are stored per Smart Filter instance is unconfirmed.
 - **Custom in Smart Filters.** The 32-bit gating suggests Custom is 8/16-bit; whether it can be a Smart Filter at all is unconfirmed.
 - **"Set To Background" vs scriptable "set to layer fill".** Help says background color; the AppleScript reference says "set to layer fill". Reconcile against a CS6 test.

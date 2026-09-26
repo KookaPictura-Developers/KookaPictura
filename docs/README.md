@@ -55,5 +55,5 @@ See [`INDEX.md`](INDEX.md) for the full file-by-file listing and current status.
 ## Legal
 
 Adobe, Photoshop, and related marks are trademarks of Adobe Inc. This is a
-independent-creation behavioral specification produced without Adobe source code, binaries,
-or assets. See [`00-overview/licensing-and-independent-creation.md`](00-overview/licensing-and-independent-creation.md).
+documentation-first behavioral specification produced without Adobe source code, binaries,
+or assets. See [`00-overview/licensing-and-provenance.md`](00-overview/licensing-and-provenance.md).

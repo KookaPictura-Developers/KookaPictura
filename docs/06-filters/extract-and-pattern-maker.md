@@ -14,8 +14,8 @@
 - Photoshop **CS3 and earlier** bundled Extract and Pattern Maker as standard filters.
 - In **CS4**, Adobe removed **Extract** and **Pattern Maker** (along with Web Photo Gallery, Contact Sheet, Picture Package, and PDF Presentation) from the **default installation**. The latter four were replaced by the **Bridge CS4 Output module**; Extract and Pattern Maker were offered as **optional downloads** for the plug-ins folder.
 - In **CS6**, neither is installed or present in the Filter menu by default. The CS6 Help documents them as optional plug-ins:
-  - **Extract** —  It is **not available for Mac OS** because it is incompatible with recent macOS versions, and the PDF states **Refine Edge produces better extractions**.
-  - **Pattern Maker** —  On 64-bit Mac it requires running Photoshop in **32-bit mode**.
+  - **Extract** — not installed with Photoshop; the optional Windows plug-in is a separate download. It is **not available for Mac OS** because it is incompatible with recent macOS versions, and the PDF states **Refine Edge produces better extractions**.
+  - **Pattern Maker** — an optional plug-in available as a download for Windows or Mac OS. On 64-bit Mac it requires running Photoshop in **32-bit mode**.
 
 **Extract (when installed).** Erases an object's background to transparency; edge pixels lose background-derived color so they blend without halos. Workflow: duplicate/snapshot the layer; choose `Filter > Extract`; set tool options; highlight the object edge; define the foreground; preview; touch up; `OK`. Optionally `Edit > Fade Extract` afterward.
 - Tools: `Edge Highlighter`, `Fill`, `Eraser`, `Cleanup`, `Edge Touchup`, `Eyedropper` (with `Force Foreground`), `Zoom`, `Hand`.

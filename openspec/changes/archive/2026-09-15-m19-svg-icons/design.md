@@ -9,7 +9,7 @@ and Qt6::Svg is not linked, so nothing can render SVG.
 
 **Goals:**
 
-- An original, independent-creation SVG icon set for the app, the tools, and every
+- An original SVG icon set for the app, the tools, and every
   implemented command.
 - An SVG cursor per tool with a defined hotspot.
 - A resource bundle and a tiny loader, used by the window, Tools panel, options
@@ -35,7 +35,7 @@ included); tool icons/cursors use `tool.<tool>`. This lets the loader take an id
 directly with no mapping table.
 
 - *Why:* no mapping to drift; a command's icon is `icon(commandId)`.
-- *independent-creation:* all paths are authored for this project; no Adobe assets.
+- *Original:* all paths are authored for this project; no Adobe assets.
 
 ### Frozen asset id set
 

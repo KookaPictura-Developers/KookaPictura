@@ -2,7 +2,7 @@
 //! Angled Strokes, Crosshatch, Dark Strokes, Ink Outlines, Spatter, Sprayed
 //! Strokes and Sumi-e.
 //!
-//! Behavioural models only: Adobe's kernels are closed. Each filter is a
+//! Behavioural models only: the reference's kernels are closed. Each filter is a
 //! variation on edge/gradient detection + directional stroke rendering + tonal
 //! gating, and every deliberate shortcut carries a `ponytail:` note.
 
@@ -123,7 +123,7 @@ fn shift_sample(data: &mut [u8], n: usize, planes: usize, i: usize, delta: f64) 
 /// (brightness > 25) accent lines, widened by `edge_width` and softened by
 /// `smoothness`. Brightness 25 is a no-op (edges not outlined).
 ///
-/// ponytail: a dilated, smoothed Sobel band, not Adobe's edge-following chalk /
+/// ponytail: a dilated, smoothed Sobel band, not the reference's edge-following chalk /
 /// ink brush. Brightness maps linearly around 25.
 pub fn accented_edges(
     buf: &mut PixelBuffer,
@@ -171,7 +171,7 @@ pub fn accented_edges(
 /// Angled Strokes: two opposing diagonal smears blended by `direction_balance`;
 /// `sharpness` unsharpens the blend around the source.
 ///
-/// ponytail: 45-degree directional box smears, not Adobe's per-direction paint
+/// ponytail: 45-degree directional box smears, not the reference's per-direction paint
 /// strokes over a gradient field.
 pub fn angled_strokes(
     buf: &mut PixelBuffer,
@@ -221,7 +221,7 @@ pub fn angled_strokes(
 /// Crosshatch: detail-preserving base with one pencil-hatch overlay per pass;
 /// `strength` (1..=3) is the pass count, each pass at a different angle.
 ///
-/// ponytail: geometric line gratings, not Adobe's pressure-modelled pencil
+/// ponytail: geometric line gratings, not the reference's pressure-modelled pencil
 /// hatching; period and width derive from `stroke_length` / `sharpness`.
 pub fn crosshatch(
     buf: &mut PixelBuffer,
@@ -328,7 +328,7 @@ pub fn dark_strokes(
 /// the two components act on separate pixels; `stroke_length` widens the edge
 /// response.
 ///
-/// ponytail: a Sobel edge response split by local luma, not Adobe's line
+/// ponytail: a Sobel edge response split by local luma, not the reference's line
 /// tracing; the split keeps the dark/light components independent.
 pub fn ink_outlines(
     buf: &mut PixelBuffer,
@@ -379,7 +379,7 @@ pub fn ink_outlines(
 /// of random radius up to `spray_radius`, its color sampled from a scattered
 /// source pixel; `smoothness` box-merges the spots.
 ///
-/// ponytail: flat discs over a per-pixel jitter field, not Adobe's ink
+/// ponytail: flat discs over a per-pixel jitter field, not the reference's ink
 /// atomization; disc radius grows with `spray_radius` so coverage widens.
 pub fn spatter(
     buf: &mut PixelBuffer,
@@ -446,7 +446,7 @@ pub fn spatter(
 /// scattered spray dots; `spray_radius` sets both the scatter distance and the
 /// dot count, so a larger radius spreads the effect wider.
 ///
-/// ponytail: flat line segments plus uniform dots, not Adobe's dominant-color
+/// ponytail: flat line segments plus uniform dots, not the reference's dominant-color
 /// sprayed bristles; the direction picks one of four integer vectors.
 pub fn sprayed_strokes(
     buf: &mut PixelBuffer,
@@ -523,7 +523,7 @@ pub fn sprayed_strokes(
 /// Sumi-e: a box-softened luma drives wide ink coverage on a lightened ground,
 /// with `stroke_pressure` deepening the ink and `contrast` steepening the tone.
 ///
-/// ponytail: monochrome ink coverage from a smoothed luma, not Adobe's brush
+/// ponytail: monochrome ink coverage from a smoothed luma, not the reference's brush
 /// dynamics; `stroke_width` is the smoothing radius.
 pub fn sumi_e(
     buf: &mut PixelBuffer,

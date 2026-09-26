@@ -10,11 +10,19 @@ writer.
 
 ```bash
 python3 scripts/generate-fixtures.py
+cargo run -p pictura-codec --example make_smart_fixtures
 ```
 
 The generator is deterministic: fixed dimensions, pixel values, offsets, and
 layer names, and `psd-tools`/PIL produce byte-identical output across runs. Do
 not hand-edit these files.
+
+`scripts/generate-fixtures.py` authors everything in this directory (including
+`engine_data.bin`) with `psd-tools`. The two embedded-smart-object fixtures live
+outside it, under `assets/test_with_smart_object0{1,2}.psd`, because psd-tools
+cannot author a `SoLd` config block plus its document-level `lnk2` record: they
+are authored by `pictura-codec`'s own writer via the
+`make_smart_fixtures` example (no reference bytes are copied).
 
 ## Contents
 
@@ -53,15 +61,16 @@ not hand-edit these files.
 | `bevel.psd` | RGB | 8x8 | `Base` pixel layer + `Beveled` layer carrying an `lfx2` `ebbl` bevel & emboss |
 | `legacy_effects.psd` | RGB | 8x8 | `Base` pixel layer + `Legacy` layer carrying a legacy `lrFX` `EffectsLayer` (`cmnS` + `dsdw` + `oglw`) |
 | `vector_fill.psd` | RGB | 8x8 | `Base` pixel layer + `Shape` shape layer with a `vscg` `SoCo` solid fill clipped by a closed `(1,1)-(5,5)` `vmsk` |
-| `engine_data.bin` | — | 7960 B | raw EngineData blob from a a reference build text layer (not a PSD) |
+| `engine_data.bin` | — | 692 B | synthetic EngineData blob (not a PSD), authored by `scripts/generate-fixtures.py` through psd-tools' `EngineData` writer |
 
-`engine_data.bin` is the `EngineData` value of the `Txt ` descriptor of a real
-a reference build (`the synthetic source`) text layer, extracted and re-serialized
-by `psd-tools`' `EngineData` writer. It is the differential fixture for
-`engine_data.rs`: psd-tools parses the same bytes and the oracle checks the font
-set (`AdobeInvisFont`, `MyriadPro-Regular`), the first run's resolved font
-(`MyriadPro-Regular`), size `150.0`, fill `[1,1,1,1]`, and justification `0`.
-The blob is a `tdta` descriptor value (EngineData is stable across CS6→CC).
+`engine_data.bin` is a minimal, synthetic `EngineData` value: a font set
+(`AdobeInvisFont`, `MyriadPro-Regular`), one `StyleRun` whose first run resolves
+to `MyriadPro-Regular` at size `150.0` with fill `[1,1,1,1]`, a paragraph run
+with justification `0`, and the text `hello world\r`. It is the differential
+fixture for `engine_data.rs`: the Python helper builds the EngineData text and
+canonicalises it with psd-tools' `EngineData` writer, then the oracle parses the
+same bytes with both `pictura-codec` and psd-tools and checks they agree. The
+blob is a `tdta` descriptor value (EngineData is stable across CS6→CC).
 
 `knockout.psd` is authored by the `knockout()` builder: a red Background, a
 green layer, and a blue layer at opacity 128 carrying `knko = Deep` (2). The

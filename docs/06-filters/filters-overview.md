@@ -43,7 +43,7 @@ The Filter menu groups Adobe filters in submenus; third-party filters are append
 
 - `Filter > Filter Gallery` opens a dialog with a preview, filter **categories** with thumbnails, the **options** for the selected effect, and an **applied-filter list** (dialog parts A–J per the primary source).
 - Multiple filters are applied **cumulatively and in the order listed**. Applied filters can be **rearranged** by dragging, **hidden** via the eye icon, and **deleted**. Clicking a category name shows thumbnails of its effects; the filter-thumbnail pane can be shown/hidden.
-- The gallery is an **8-bit-per-channel** facility: the Help states  It is not offered for 16- or 32-bit documents.
+- The gallery is an **8-bit-per-channel** facility: per the Help, most filters can be applied cumulatively through the Filter Gallery on 8-bit-per-channel images. It is not offered for 16- or 32-bit documents.
 - Effects applied through the gallery become a **single grouped "Filter Gallery" entry** in the Smart Filters list when applied to a Smart Object (`LAY-021`).
 
 | Filter Gallery key | Windows | macOS |
@@ -87,7 +87,7 @@ The Filter menu groups Adobe filters in submenus; third-party filters are append
 
 ### CPU / GPU split (Mercury Graphics Engine, CS6)
 
-- CS6 introduced the **Mercury Graphics Engine**. Adobe statements (quoted by third parties) describe it as using **OpenGL and OpenCL** and delivering near-instant results for **Liquify, Warp/Puppet Warp, Lighting Effects, Oil Paint**, and related interactive operations. With an unsupported GPU 
+- CS6 introduced the **Mercury Graphics Engine**. Adobe statements (quoted by third parties) describe it as using **OpenGL and OpenCL** and delivering near-instant results for **Liquify, Warp/Puppet Warp, Lighting Effects, Oil Paint**, and related interactive operations. With an unsupported GPU, the acceleration is normally lost and the feature falls back to the standard CPU path.
 - Independent testing found the **Blur Gallery** filters (Field Blur, Iris Blur, Tilt-Shift) require **OpenCL 1.1**, while **Reduce Noise is primarily CPU**. Adaptive Wide Angle and 3D are also listed as GPU-accelerated.
 - Conventional convolution filters (Gaussian, Box, Median, Unsharp Mask, etc.) are **CPU** work in CS6; their dialogs benefit from GPU display/compositing but the pixel math is not the OpenCL path.
 - Kooka Pictura interpretation (`ARCH-006`): GPU **display/compositing** via Qt QRhi/wgpu, GPU **compute** for filter kernels where beneficial, and a **CPU fallback** that is always correct. No filter may require a GPU.

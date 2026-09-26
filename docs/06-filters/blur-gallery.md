@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Filter > Blur` then **Field Blur**, **Iris Blur**, or **Tilt-Shift**. The Help (both the PDF and the CS6-era Help page) is explicit that the gallery offers **"three distinct photographic blur effects"** and lists only those three. The workspace gives a **full-size, live preview** with **on-image overlay controls** (pins, handles, lines) instead of a modal slider-only dialog. Each blur can be applied alone or combined with the others.
+`Filter > Blur` then **Field Blur**, **Iris Blur**, or **Tilt-Shift**. The Help (both the PDF and the CS6-era Help page) is explicit that the gallery offers three distinct photographic blur effects and lists only those three. The workspace gives a **full-size, live preview** with **on-image overlay controls** (pins, handles, lines) instead of a modal slider-only dialog. Each blur can be applied alone or combined with the others.
 
 Common CS6 workspace behaviour:
 
@@ -25,7 +25,7 @@ Builds a **gradient of blurs** by placing **multiple pins, each with its own blu
 
 ### Iris Blur (CS6)
 
-Simulates a **shallow depth-of-field** independent of camera/lens. The default pin carries an ellipse with **A. sharp area, B. fade area, C. blur area**; drag the handles to redefine the areas and the blur handle to change amount. Multiple focus points (multiple pins) are supported — an effect the Help calls "almost impossible" with traditional camera technique.
+Simulates a **shallow depth-of-field** independent of camera/lens. The default pin carries an ellipse with **A. sharp area, B. fade area, C. blur area**; drag the handles to redefine the areas and the blur handle to change amount. Multiple focus points (multiple pins) are supported — an effect the Help calls almost impossible with traditional camera technique.
 
 ### Tilt-Shift (CS6)
 
@@ -33,7 +33,7 @@ Simulates a **tilt-shift lens**: a band of sharpness then a fade to blur at the 
 
 ### Blur Effects panel (CS6 — only these three)
 
-"In the Blur Effects panel, specify a value for the following":
+The Blur Effects panel takes a value for each of:
 
 | CS6 Blur Effects control | Meaning (CS6 Help) |
 |---|---|
@@ -122,7 +122,7 @@ for each pixel p:
 
 **Mask view (`M`)** renders the normalized field `w` as a grayscale overlay (dark = sharp, light = blurred) to explain exactly what the live blur is doing.
 
-**GPU/OpenCL.** The GPU FAQ lists "Scene blur, aperture blur, and tilt/offset" (i.e. Field/Iris/Tilt-Shift) as **"supported by OpenCL graphics acceleration"**; the CS6 beta notes say they are "accelerated by OpenCL compatible video card," and independent testing found the gallery needs **OpenCL 1.1**. Unlike Oil Paint, the gallery is listed as accelerated rather than "requires a compatible card"; a CPU fallback is the safe Linux default (see `## Open questions`).
+**GPU/OpenCL.** The GPU FAQ lists the gallery effects (under the labels scene blur, aperture blur, and tilt/offset) as **OpenCL-accelerated**; the CS6 beta notes call them accelerated by an OpenCL-compatible video card, and independent testing found the gallery needs **OpenCL 1.1**. Unlike Oil Paint, the gallery is listed as accelerated rather than "requires a compatible card"; a CPU fallback is the safe Linux default (see `## Open questions`).
 
 ## Rust module mapping
 
@@ -188,11 +188,11 @@ Rationale: on-image editing with many hit-testable handles and a live GPU previe
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: "Photographic blur gallery | CS6" ("three distinct photographic blur effects": Field Blur, Iris Blur, Tilt-Shift); Field/Iris/Tilt-Shift behaviour, pins, handles, A/B/C areas, `M` mask; the **Blur Effects** panel with exactly **Light Bokeh, Bokeh Color, Light Range**; smart-filter support marked **Creative Cloud only**; the CS6 new-feature shortcut list (`H` hide UI, `M` blur mask); the "Using the new three-part Blur Gallery" launch video title; the 16-/32-bpc lists exclude the gallery.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: the page title "Photographic blur gallery | CS6" and its roster of three distinct photographic blur effects (Field Blur, Iris Blur, Tilt-Shift); Field/Iris/Tilt-Shift behaviour, pins, handles, A/B/C areas, `M` mask; the **Blur Effects** panel with exactly **Light Bokeh, Bokeh Color, Light Range**; smart-filter support marked **Creative Cloud only**; the CS6 new-feature shortcut list (`H` hide UI, `M` blur mask); the "Using the new three-part Blur Gallery" launch video title; the 16-/32-bpc lists exclude the gallery.
 - `https://web.archive.org/web/20121116114821id_/http://helpx.adobe.com/photoshop/using/blur-gallery.html` — **CS6-era Adobe Help snapshot** (wayback; live `helpx` 403). Confirmed the page title "Photographic blur gallery | CS6", the three-effect roster, the per-effect instructions, and that the CS6 Blur Effects panel has only Light Bokeh / Bokeh Color / Light Range.
 - `https://web.archive.org/web/20140701061120id_/https://helpx.adobe.com/photoshop/using/blur-gallery.html` — later (2014) Adobe Help snapshot. Used to source the **post-CS6** `Path Blur` and `Spin Blur` behaviour (Speed, Taper, Basic/Rear Sync Flash, End Point Speed; Blur Angle 0–360°, Strobe Strength/Flashes/Flash Duration).
 - `https://topic.alibabacloud.com/a/photoshop-cs6-gpu-faq_8_8_10184243.html` — mirror of the **Photoshop CS6 GPU FAQ**. Established "Scene blur, aperture blur, and tilt/offset" are **OpenCL-accelerated**; Oil Paint/Adaptive Wide Angle require a compatible card.
-- `https://photographyuncapped.com/adobe-photoshop-cs6-uses-opencl-opengl-features-of-gpu-to-accelerate-graphics-improved-performance/adobe-cs6` — CS6 beta notes: ; secondary.
+- `https://photographyuncapped.com/adobe-photoshop-cs6-uses-opencl-opengl-features-of-gpu-to-accelerate-graphics-improved-performance/adobe-cs6` — CS6 beta notes listing Field Blur, Iris Blur, and Tilt/Shift as accelerated by an OpenCL-compatible video card; secondary.
 - `https://www.pcworld.com/article/393280/how-to-use-photoshop-blur-gallery-for-bokeh-effects-and-more.html` — modern (2020) overview of the **five-effect** gallery and its Bokeh / Motion / Noise effects tabs; used only for the labelled **post-CS6** controls, secondary.
 - `https://creativepro.com/photoshop-blur-gallery-path-blur` and `https://creativepro.com/photoshop-blur-gallery-spin-blur` — community articles on the post-CS6 Path/Spin blurs; secondary.
 - SearXNG meta-search (queries: "Photoshop CS6 Blur Gallery Path Blur Spin Blur blur effects noise edge glow", "Photoshop CS6 GPU FAQ") — used to locate the above; no facts asserted from snippets alone.

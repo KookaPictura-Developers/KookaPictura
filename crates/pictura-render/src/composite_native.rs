@@ -81,7 +81,7 @@ fn native_mask_unit(doc: &Document, layer: &Layer, x: i32, y: i32) -> Option<f32
 }
 
 /// Apply a decoded adjustment to the running backdrop, then gate the result by
-/// the layer's mask/opacity/blend (Photoshop applies the adjustment to the
+/// the layer's mask/opacity/blend (the reference applies the adjustment to the
 /// backdrop and blends the adjusted result back).
 pub(crate) fn composite_adjustment(
     canvas: &mut Canvas,

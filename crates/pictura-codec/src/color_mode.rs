@@ -1,6 +1,6 @@
 //! Profile-free conversions from a PSD color mode's stored planes to planar
 //! 8-bit RGB. Bitmap and Indexed are exact; CMYK and Lab are approximations of
-//! Photoshop's color-managed transforms.
+//! the reference's color-managed transforms.
 
 use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, Samples, SourceChannels};
 
@@ -68,7 +68,7 @@ pub(crate) fn indexed_to_rgb(indices: &[u8], palette: &[u8; 768]) -> Vec<u8> {
     out
 }
 
-/// ponytail: profile-free approximation of Photoshop's ICC CMYK transform;
+/// ponytail: profile-free approximation of the reference's ICC CMYK transform;
 /// saturated colors differ. Stored 0 is full ink, 255 is no ink, so each RGB
 /// channel is `floor(color * black / 255)`.
 pub(crate) fn cmyk_to_rgb(cmyk: &[u8]) -> Vec<u8> {

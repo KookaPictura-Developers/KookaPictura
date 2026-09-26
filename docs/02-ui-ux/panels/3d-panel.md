@@ -19,7 +19,7 @@ The **3D panel** appears when a **3D layer** is selected and exists only in **Ph
 - **Materials** — shows materials only; each material expands to its texture-map list.
 - **Lights** — shows lights only.
 
-There is no separate "object" or "camerascene / object / camera views" as the conceptual grouping; the panel's literal filters are the four buttons above.
+There is no separate object or camera filter button in CS6. The camera is reached through the **Scene** entry → `Current View`; object and camera *transform* values live in the **Properties panel**, which has a **Coordinates** mode toggled with `V` (and grouped settings otherwise). This document uses *scene / object / camera views* as the conceptual grouping; the panel's literal filters are the four buttons above.
 
 **CS6 interaction loop (sourced).**
 

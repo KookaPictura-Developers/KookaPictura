@@ -6,7 +6,7 @@ default icon, and the tools set stock Qt cursors. A professional editing app is
 read at a glance, and CS6's tools/cursors are immediately recognizable. M19 adds
 an original SVG icon set and SVG cursors, and wires them through the shell.
 
-All artwork is **independent-creation original** — geometric stroke art in the project's
+All artwork is **original** — geometric stroke art in the project's
 own style, not derived from Adobe's assets.
 
 ## What Changes

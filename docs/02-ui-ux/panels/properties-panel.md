@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-In CS6  It is a dock (`Window > Properties`) that swaps its content to match the selected layer/element. It combines settings that lived in separate CS5 panels and dialogs into one place.
+In CS6 the properties of some layer types appear in the Properties panel. It is a dock (`Window > Properties`) that swaps its content to match the selected layer/element. It combines settings that lived in separate CS5 panels and dialogs into one place.
 
 **Default placement (CS6 Essentials workspace).** The panel sits in the **secondary (narrower) panel column to the left of the main one**, below the **History** panel, and opens in **icon view**. Double-clicking a layer opens the panel if it is hidden (Properties is not the default-active tab of any group). (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*; PFP book companion, *Properties panel*.)
 
@@ -51,7 +51,7 @@ The shape/type page contents remain a design proposal pending a CS6 capture, but
 
 ### Relationship to the old Masking / Adjustments panels
 
-- **Masks panel (CS4/CS5):** retired in CS6; its controls live in the Properties panel (and, for mask creation, in the Layers panel and `Layer > Layer Mask`). The Adobe-era book source states plainly: 
+- **Masks panel (CS4/CS5):** retired in CS6; its controls live in the Properties panel (and, for mask creation, in the Layers panel and `Layer > Layer Mask`). The Adobe-era book source states plainly that in Photoshop CS6 the Masks panel controls have been amalgamated into the Properties panel.
 - **Adjustments panel (CS5):** retained in CS6 as the **icon launcher** only; the parameter controls and presets moved to the Properties panel (`PAN-005`). CS6's Adjustments panel keeps its icons always visible.
 - **3D panel (Extended):** retained as the element selector; settings moved to the Properties panel (`TOOL-061`).
 
@@ -172,7 +172,7 @@ Widgets, consistent with `ARCH-003` and with `PAN-005` for the adjustment editor
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (downloaded, `pdftotext -layout`) — official CS6 Help. Sections used: "Properties panel provides contextual settings" (3D element settings after selection in the 3D panel; Coordinates icon and `V`; Render icon; Environment/Scene/Camera/Mesh/Material/Light summary) and the CS6 3D workflow (Properties panel replaces the CS5 panel split); "Masks panel (CS5) and Properties panel (CS6)" (the panel "provide[s] additional controls to adjust a mask" — opacity/Density, Feather, Invert, Mask Edge, Color Range; Disable/Enable; Apply/Delete; the Smart Object apply restriction; vector-mask controls); "Adjusting mask opacity and edges" (Density/Feather/Invert/Mask Edge, Color Range); "Add layer masks" / "Apply a deletion of a layer mask" (mask lifecycle); "Adjustments panel overview" (CS6 puts the preset menu in the Properties panel; Clip to Layer; Reset/Toggle/Delete); "Save and apply adjustment presets" (CS6 Preset menu); "Automatically select text fields or the targeted adjustment tool" (Properties panel menu); "Using adjustment layers" (CS6 properties in the Properties panel); "What's new in CS6 > Layers enhancements" ().
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` (downloaded, `pdftotext -layout`) — official CS6 Help. Sections used: "Properties panel provides contextual settings" (3D element settings after selection in the 3D panel; Coordinates icon and `V`; Render icon; Environment/Scene/Camera/Mesh/Material/Light summary) and the CS6 3D workflow (Properties panel replaces the CS5 panel split); "Masks panel (CS5) and Properties panel (CS6)" (the panel "provide[s] additional controls to adjust a mask" — opacity/Density, Feather, Invert, Mask Edge, Color Range; Disable/Enable; Apply/Delete; the Smart Object apply restriction; vector-mask controls); "Adjusting mask opacity and edges" (Density/Feather/Invert/Mask Edge, Color Range); "Add layer masks" / "Apply a deletion of a layer mask" (mask lifecycle); "Adjustments panel overview" (CS6 puts the preset menu in the Properties panel; Clip to Layer; Reset/Toggle/Delete); "Save and apply adjustment presets" (CS6 Preset menu); "Automatically select text fields or the targeted adjustment tool" (Properties panel menu); "Using adjustment layers" (CS6 properties in the Properties panel); "What's new in CS6 > Layers enhancements" (the Properties panel quickly modifies the layer components selected in the Layers panel).
 - `https://jkost.com/blog/2012/06/the-properties-panel-in-photoshop-cs6.html` — Adobe's Julieanne Kost: CS6 Properties panel shows the selected layer's properties and a mask icon at the top; can be resized both ways.
 - `http://www.photoshopforphotographers.com/3101-1901/Help_guide/tp/Paths_palette.html` — used only for the CS6-era statement that a path can be a vector mask and be saved as a clipping path; vector-mask controls live in the Properties panel in CS6.
 - `https://www.photoshopessentials.com/basics/using-the-enhanced-properties-panel-in-photoshop` — the Properties panel is the contextual editor for the selected layer; type's full Character/Paragraph integration is explicitly a **CC 2020** enhancement (used to separate CS6 behavior from later versions).

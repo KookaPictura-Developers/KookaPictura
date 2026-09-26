@@ -14,7 +14,7 @@
 
 ### Histogram panel
 
-`Window > Histogram` (or the Histogram tab) opens the panel.  A histogram 
+`Window > Histogram` (or the Histogram tab) opens the panel. By default it opens in Compact View, which shows only the histogram with no controls or statistics. A histogram graphs the pixel count at each intensity level to show how pixels are distributed across the image.
 
 **Reading it.** Shadows are on the left, midtones in the middle, highlights on the right. It also conveys the image **key type**: a **low-key** image concentrates detail in shadows, a **high-key** image in highlights, an **average-key** image in midtones, and a **full tonal range** image has pixels in all areas.
 
@@ -24,7 +24,7 @@
 |---|---|
 | **Compact View** | Histogram only, no controls or statistics; represents the entire image. |
 | **Expanded View** | Histogram with statistics, the channel menu, view options, Uncached Refresh, and the Source (layer) selector. |
-| **All Channels View** | Individual histograms of the channels plus all Expanded View options;  |
+| **All Channels View** | Individual histograms of the channels plus all Expanded View options; the per-channel histograms exclude alpha, spot, and mask channels. |
 
 **Channel menu** (Expanded / All Channels):
 
@@ -32,7 +32,7 @@
 - **RGB**, **CMYK**, or **Composite** — composite histogram of all channels, by document mode.
 - **Luminosity** (RGB/CMYK) — luminance/intensity of the composite.
 - **Colors** (RGB/CMYK) — composite of the individual color channels drawn in color; the default for RGB/CMYK when entering Expanded or All Channels view.
-- Photoshop  In All Channels View, the Channels menu affects only the **topmost** histogram.
+- Photoshop keeps the channel selection when you switch from Expanded View or All Channels View back to Compact View. In All Channels View, the Channels menu affects only the **topmost** histogram.
 
 **Show Channels In Color** is available from the panel menu in All Channels View or for an individually selected channel; the color persists in Compact View.
 
@@ -59,7 +59,7 @@
 
 **Preview adjustments.** With **Preview** enabled in any color/tonal adjustment dialog, the Histogram panel shows how the adjustment affects the histogram (original vs adjusted). Changes made via the Adjustments (CS5) / Properties (CS6) panel "are automatically reflected in the Histogram panel."
 
-**Refresh / cache.** When a histogram is read from the cache rather than the current document, the **Cached Data Warning** icon appears. Cache-based histograms are faster and are  The **original image is cache level 1**; each higher level averages four adjacent pixels into one (each level has 1/4 the pixels of the level below). The maximum cache level (2–8) is set in the **Performance** preference; higher levels speed redraw on large multi-layer files but use more RAM. Refresh uncached by:
+**Refresh / cache.** When a histogram is read from the cache rather than the current document, the **Cached Data Warning** icon appears. Cache-based histograms are faster and are computed from a representative pixel sample whose density depends on the current magnification. The **original image is cache level 1**; each higher level averages four adjacent pixels into one (each level has 1/4 the pixels of the level below). The maximum cache level (2–8) is set in the **Performance** preference; higher levels speed redraw on large multi-layer files but use more RAM. Refresh uncached by:
 
 - double-clicking anywhere in the histogram,
 - clicking the **Cached Data Warning** icon,
@@ -68,12 +68,12 @@
 
 ### Info panel
 
-`Window > Info` (shortcut `F8`, which toggles show/hide). The panel  including tool hints, document status, and 8-/16-/32-bit values.
+`Window > Info` (shortcut `F8`, which toggles show/hide). The panel reports the color values under the pointer and, for the active tool, other contextual information such as tool hints, document status, and 8-/16-/32-bit values.
 
 **Contextual readouts:**
 
 - Numeric color values beneath the pointer; depending on the option, **8-bit, 16-bit, or 32-bit**.
-- When displaying **CMYK** values, 
+- When displaying **CMYK** values, an exclamation point marks a value when the color under the pointer or a color sampler falls outside the printable CMYK gamut.
 - **Marquee tools**: x/y pointer position and width (W) / height (H) of the marquee while dragging.
 - **Crop / Zoom**: W/H of the marquee and the crop marquee's angle of rotation.
 - **Line / Pen / Gradient / moving a selection**: start x,y, change in X (DX), change in Y (DY), angle (A), and length (D).
@@ -89,7 +89,7 @@
 - Status-information checkboxes.
 - **Show Tool Hints**.
 
-**Color samplers.** Up to **four** samplers can be placed; they  Place with the Color Sampler tool (or `Shift`-click with the Eyedropper), choose a **sample size** in the options bar (Point Sample or an N×N average), and view readings in the lower half of the Info panel. Samplers can be moved, deleted (drag out, or `Alt`/`Option`-click with scissors, or **Clear** in the options bar), hidden/shown via `View > Extras` and the panel's **Color Samplers** toggle, and each sampler's color space can be changed from its icon in the panel.
+**Color samplers.** Up to **four** samplers can be placed; they are stored in the image, so they remain available as you work and survive closing and reopening the document. Place with the Color Sampler tool (or `Shift`-click with the Eyedropper), choose a **sample size** in the options bar (Point Sample or an N×N average), and view readings in the lower half of the Info panel. Samplers can be moved, deleted (drag out, or `Alt`/`Option`-click with scissors, or **Clear** in the options bar), hidden/shown via `View > Extras` and the panel's **Color Samplers** toggle, and each sampler's color space can be changed from its icon in the panel.
 
 **Keys for the Info panel:** click the **eyedropper icon** to change color readout modes; click the **crosshair icon** to change measurement units. The 32-bit readout is selected from the eyedropper icon's pop-up menu.
 

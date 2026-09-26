@@ -589,7 +589,7 @@ fn blend_if_per_channel_gate_gates_that_channel() {
 
 #[test]
 fn blend_if_channel_group_beyond_rgb_is_ignored() {
-    // A 4th group (alpha in Photoshop's layout) must not gate the pixel.
+    // A 4th group (alpha in the reference's layout) must not gate the pixel.
     let view = BlendIf {
         composite_source: (0, 65535),
         composite_dest: (0, 65535),

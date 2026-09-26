@@ -11,12 +11,12 @@
 
 ## CS6 behavior
 
-A **layer mask** "is a resolution-dependent bitmap image... edited with the
-painting or selection tools." Masks hide portions of a layer and reveal layers
+A **layer mask** is a resolution-dependent bitmap image, edited with the
+painting or selection tools. Masks hide portions of a layer and reveal layers
 below; they are **non-destructive** (re-editable without losing hidden pixels)
-and are "stored as alpha channels." In the Layers panel a layer mask appears as
-an additional thumbnail to the right of the layer thumbnail; this thumbnail
-
+and are stored as alpha channels. In the Layers panel a layer mask appears as
+an additional thumbnail to the right of the layer thumbnail, representing the
+grayscale channel created when the mask is added.
 A layer can carry both a layer mask and a vector mask (see `LAY-005`).
 
 **Background caveat:** to create a layer or vector mask on the Background layer,
@@ -32,7 +32,7 @@ A layer mask is a grayscale image. The editing contract:
   lighter gray more opaque.
 
 From the "Editing layer masks" procedure (CS6): with the mask active, the
-foreground/background colors "assume default grayscale values"; painting with
+foreground/background colors default to grayscale; painting with
 **white subtracts from the mask and reveals the layer**, painting with **black
 adds to the mask and hides the layer or group**, and gray gives partial
 transparency.

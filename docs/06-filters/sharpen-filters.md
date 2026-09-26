@@ -10,11 +10,11 @@
 
 ## CS6 behavior
 
-The Sharpen filters "focus blurred images by increasing the contrast of adjacent pixels." The Help's guidance: reduce noise before sharpening; sharpen in small passes; judge on the output medium; use Unsharp Mask or Smart Sharpen for control, because the other three are **automatic with no options**.
+The Sharpen filters focus blurred images by raising the contrast of adjacent pixels. The Help's guidance: reduce noise before sharpening; sharpen in small passes; judge on the output medium; use Unsharp Mask or Smart Sharpen for control, because the other three are **automatic with no options**.
 
 - **Sharpen / Sharpen More** — focus a selection by increasing edge contrast; **Sharpen More** is the stronger of the two. Both are immediate commands with **no dialog**.
 - **Sharpen Edges** — finds where significant color changes occur and sharpens **only the edges**, preserving overall smoothness; no options.
-- **Unsharp Mask (USM)** — locates pixels that differ in value from their surroundings by more than a **Threshold**, then increases their contrast by an **Amount**, over a **Radius**. It is *not* an edge detector: the Help stresses  Oversharpening creates **halos**. On-screen effect is more pronounced than in high-resolution print. Advice: radius 1–2 for high-res; amount 150–200% for high-res print; threshold 2–20 to avoid noise/posterization; default threshold 0 sharpens every pixel.
+- **Unsharp Mask (USM)** — locates pixels that differ in value from their surroundings by more than a **Threshold**, then increases their contrast by an **Amount**, over a **Radius**. It is *not* an edge detector: per the Help, Unsharp Mask instead locates pixels whose values differ from those around them by more than the threshold. Oversharpening creates **halos**. On-screen effect is more pronounced than in high-resolution print. Advice: radius 1–2 for high-res; amount 150–200% for high-res print; threshold 2–20 to avoid noise/posterization; default threshold 0 sharpens every pixel.
 - **Smart Sharpen** — the recommended general sharpener; adds controls USM lacks. It has **Basic** and **Advanced** modes:
   - **Basic:** Amount, Radius, Remove (Gaussian Blur / Lens Blur / Motion Blur), Angle (for Motion Blur), More Accurate.
   - **Advanced:** the Basic controls plus **Shadow** and **Highlight** tabs to damp halos in dark/light areas: **Fade Amount**, **Tonal Width**, **Radius**. The Help states these tabs are **available only for 8- and 16-bit-per-channel images** (not 32-bit).

@@ -208,7 +208,7 @@ Proposed:
   Perspective Crop tool? *Resolves with:* CS6 observation.
 - **Exact arbitrary-quad-to-rectangle solve and target size** Adobe uses (and
   whether output size is user-set or derived from the quad). *Resolves with:*
-  publicly documenting behavior in tests; not documented.
+  measuring behavior in tests; not documented.
 - **Is Perspective Crop strictly destructive in CS6**, and is Delete Cropped
   Pixels ever exposed? *Resolves with:* CS6 options-bar capture.
 - **Grid construction** (1-point/2-point grid, line spacing) used by Show Grid.

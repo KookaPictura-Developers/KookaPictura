@@ -75,7 +75,7 @@ is excluded, why, and when it could return.
 | **Printing fidelity** | Adobe's print path and color engine are proprietary; output depends on the OS/driver. | Basic CUPS + ICC printing as a separate feature; exact proofing parity not promised. |
 | **Adobe cloud services** (Creative Cloud, Cloud Documents/PSDC, Behance, Stock, Adobe Fonts/Typekit) | Proprietary, account-bound, privately specified (`PSDC` is explicitly private in the format spec). | Not planned; separate integrations would be independently specified. |
 | **Adobe Camera Raw parity** | Proprietary pipeline and camera support; patents. | Best-effort raw import via open libraries. |
-| **Adobe plug-in (`.8bf`) binary compatibility** | The Photoshop SDK and host ABI are proprietary, licensed, and not independent-creation-safe (`OVR-004`). | An independently specified plug-in ABI and script host instead. |
+| **Adobe plug-in (`.8bf`) binary compatibility** | The Photoshop SDK and host ABI are proprietary, licensed, and not safe for independent creation (`OVR-004`). | An independently specified plug-in ABI and script host instead. |
 | **ExtendScript / JSX compatibility** | Adobe-specific object model and Action Manager API. | A documented substitute automation API (`09-automation/`). |
 | **OS integration** (AppleScript, Windows COM, macOS resource forks, QuickTime, Windows-only 30-bit display, Adobe PDF print engine) | No Linux equivalent or platform-specific by design. | Provide Linux-native equivalents (D-Bus, CLI, CUPS) where useful. |
 | **Bundled Adobe assets** (brushes, patterns, gradients, swatches, profiles, fonts, plug-ins) | Copyright/licensing; see `OVR-004`. | Independently authored replacements only. |
@@ -95,7 +95,7 @@ classifications are proposals for spec authors to apply consistently:
   Refine Edge, ACR, type layout, MGE-accelerated paths.
 - **Patented or licensing-sensitive:** content-aware inpainting family, some
   selection/edge algorithms, Adobe-supplied ICC profiles, and the raw pipeline.
-  Treat as "design around or approximate"; do not assume a independent-creation
+  Treat as "design around or approximate"; do not assume an independent-creation
   reimplementation avoids patent exposure.
 
 The pipeline itself is not the risk; `01-architecture/` already proposes a

@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-The **Actions panel** (`Window > Actions`, shortcut `F9` / `Option+F9`) records, plays, edits, and deletes actions. An **action** is ** Actions are grouped into **sets**; actions are *"the basis for droplets"* and drive **Batch** processing (`09-automation/`).
+The **Actions panel** (`Window > Actions`, shortcut `F9` / `Option+F9`) records, plays, edits, and deletes actions. An **action** is a sequence of tasks — menu commands, panel options, tool actions, and the like — played back on a single file or a batch of files. Actions are grouped into **sets**; actions are *"the basis for droplets"* and drive **Batch** processing (`09-automation/`).
 
 **Panel anatomy.** The tree has four levels, named in the CS6 figure:
 
@@ -34,7 +34,7 @@ Guidelines: most but not all commands can be recorded. Recordable tool operation
 
 To record: open a file → click **Create New Action** (or **New Action** from the panel menu) → enter a name, choose an action set, and optionally set **Function Key** (F-key plus `Ctrl`/`Cmd`/`Shift`; not `F1`, and not `F4`/`F6` with `Ctrl` on Windows) and **Color** → **Begin Recording** (the button turns red) → perform operations → **Stop Playing/Recording** (or **Stop Recording**; `Esc` also stops). Recording can be resumed with **Start Recording**.
 
-**Allow Tool Recording (CS6).** CS6 adds **Allow Tool Recording** to the Actions panel menu: ** When on, brush strokes (otherwise often unique per project) are recorded directly; the Help recommends disabling it after recording such actions. This is the CS6 panel's one documented functional addition.
+**Allow Tool Recording (CS6).** CS6 adds **Allow Tool Recording** to the Actions panel menu, letting Photoshop record tools such as the brush tool into an action. When on, brush strokes (otherwise often unique per project) are recorded directly; the Help recommends disabling it after recording such actions. This is the CS6 panel's one documented functional addition.
 
 ### Inserting stops and non-recordable commands
 

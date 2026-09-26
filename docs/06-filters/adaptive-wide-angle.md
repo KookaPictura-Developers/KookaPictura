@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Filter > Adaptive Wide Angle` "correct[s] lens distortions due to using wide angle lenses" and  (e.g. buildings that lean inward). The filter:
+`Filter > Adaptive Wide Angle` corrects the lens distortion introduced by wide-angle lenses and straightens lines that look curved in panoramas or in fish-eye/wide-angle shots (e.g. buildings that lean inward). The filter:
 
 1. **Detects the camera and lens model** from the image's **EXIF lens metadata** and uses the **lens characteristics** (a lens profile) to straighten the image. If profile data matches, the **Correction** section shows **Auto** and some options are hidden/auto-populated.
 2. Uses **constraints** — user-drawn lines that indicate where a straight line should be — to drive the correction. Multiple constraints can be added in different parts of the picture; the filter combines them to remove distortion. Constraints are drawn with the **Constraint** tool (a single dragged line that follows the contour) or the **Polygon Constraint** tool (a polygon drawn along an object).
@@ -29,7 +29,7 @@ To keep the settings editable later, the layer is converted to a **Smart Object*
 
 ### Constraint interaction (sourced, CS6 + CS6-era book)
 
-- **Constraint tool (`C`)** — drag across a key object; the filter "detects the curvature and draws a line that follows the contour."
+- **Constraint tool (`C`)** — drag across a key object; the filter detects the curvature and traces a line along the contour.
 - **Polygon Constraint tool (`Y`)** — click a succession of points; a polygon delineates an area to correct. Clicking the four corners of the preview is similar to applying a lens correction to the whole image; useful where there are no straight reference lines (building facades, tiled floors).
 - **Shift while dragging** aligns the constraint **vertically or horizontally**. **Right-click** a constraint to choose an orientation from a pop-up menu.
 - A selected constraint shows **two handles**; dragging a handle rotates the constraint (an overlay circle and green line appear; the edited constraint then renders green).
@@ -138,7 +138,7 @@ Widgets + a `QGraphicsView` overlay (rather than QML) keeps this consistent with
 ## Data-model impact
 
 - **Destructive by default.** One history state per OK; `Cancel` is a no-op.
-- **Smart filter:** the CS6 Help explicitly recommends converting the layer to a Smart Object so the filter "settings [can be] edited later." Store `AwaParams` (including the constraint list) in the filter record's `params_blob` (`LAY-021`).
+- **Smart filter:** the CS6 Help explicitly recommends converting the layer to a Smart Object so the filter settings can be edited later. Store `AwaParams` (including the constraint list) in the filter record's `params_blob` (`LAY-021`).
 - **Lens profiles** are application/session data read from a shared profile database; they are **not** per-document state (except an optional embedded profile reference in EXIF).
 - **No new document nodes.**
 - **Serialization:** mapping constraints to a PSD/XMP filter descriptor is not documented (see `## Open questions`).
@@ -175,7 +175,7 @@ Widgets + a `QGraphicsView` overlay (rather than QML) keeps this consistent with
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: the Adaptive Wide Angle overview (camera/lens detection, lens characteristics, multiple constraints, use without lens data, Smart Object conversion); Correction modes (Fisheye, Perspective, Panorama "only … panoramas created in CS6", Full Spherical "360 degree panoramas created in CS6 … 2:1 aspect ratio", Auto); Scale, Focal Length, Crop Factor, As Shot; the Constraint and Polygon Constraint tools; ; `Shift` to align vertically/horizontally and the right-click orientation pop-up; the blank-area/Content-Aware Fill note; the CS6 new-feature shortcut lists (Constraint `C`, Polygon `Y`, Move `M`, Hand `H`, Zoom `Z`; Control `P/W/E/T/S/F/R/A`; hidden `L/X/E`); the 16-/32-bpc lists exclude it.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — official CS6 Help reference (downloaded to `/tmp`, `pdftotext`-extracted). Established: the Adaptive Wide Angle overview (camera/lens detection, lens characteristics, multiple constraints, use without lens data, Smart Object conversion); Correction modes (Fisheye, Perspective, Panorama restricted to panoramas created in CS6, Full Spherical for 360-degree panoramas created in CS6 at a 2:1 aspect ratio, Auto); Scale, Focal Length, Crop Factor, As Shot; the Constraint and Polygon Constraint tools; the constraint tool tracing a line along the detected contour; `Shift` to align vertically/horizontally and the right-click orientation pop-up; the blank-area/Content-Aware Fill note; the CS6 new-feature shortcut lists (Constraint `C`, Polygon `Y`, Move `M`, Hand `H`, Zoom `Z`; Control `P/W/E/T/S/F/R/A`; hidden `L/X/E`); the 16-/32-bpc lists exclude it.
 - `http://www.photoshopforphotographers.com/pscs6/downloads/Adaptivewideangle.pdf` — Martin Evening, *Adobe Photoshop CS6 for Photographers* free chapter extract (CS6-era book). Established: the lens-profile-database/EXIF search and the Auto display; the **shape-conformal** vs perspective-accurate projection model; constraints override the shape-conformal projection to add perspective; Scale compensates; constraint rotation with handles and the green fixed state; the recommended two-vertical + one-horizontal workflow and `S`-drag (straighten + snap) / `x` (100% zoom); the constraint **color** legend (cyan unfixed, yellow horizontal, magenta vertical, green fixed, red invalid); the Polygon tool's four-corner ≈ whole-image correction; tilt-shift guidance; the missing-profile → Lens Correction Search Online → Save Online Profile Locally workflow. Secondary (book).
 - `https://topic.alibabacloud.com/a/photoshop-cs6-gpu-faq_8_8_10184243.html` — mirror of the **Photoshop CS6 GPU FAQ**. Established: Adaptive Wide Angle **requires a compatible video card**; Mercury Graphics Engine uses OpenGL + OpenCL (not CUDA).
 - `https://helpx.adobe.com/photoshop/using/adaptive-wide-angle-filter.html` — modern Adobe Help page (live fetch 403; surfaced via search). Corroborates the CS6 parameter set and the lens-profile detection; not used for CS6-specific claims.

@@ -13,10 +13,10 @@
 
 This spec covers two closely-related, resolution-independent constraints:
 
-- **Vector mask** — "a resolution independent path that clips out the contents of
-  the layer." Created with the pen or shape tools. The Help's vector-mask
-  thumbnail "represents a path that clips out the contents of the layer."
-- **Clipping mask** — 
+- **Vector mask** — a resolution-independent path that clips the layer's
+  contents. Created with the pen or shape tools. The Help describes the
+  vector-mask thumbnail as representing a path that clips out the layer content.
+- **Clipping mask** — uses one layer's content to mask the layers above it.
   The **base layer**'s non-transparent content clips (reveals) the layers above
   it; all other content in the clipped layers is masked out.
 
@@ -45,7 +45,7 @@ This spec covers two closely-related, resolution-independent constraints:
 - **Delete:** with the vector mask active, click **Delete Mask** in the
   Properties panel (CS6) / Masks panel (CS5).
 - **Convert to a layer mask:** `Layer > Rasterize > Vector Mask`. After
-  rasterizing, the mask "can't be changed back into a vector object."
+  rasterizing, the mask cannot be converted back into a vector object.
 - Vector masks are **nondestructive** and can be re-edited without losing the
   pixels they hide.
 - A vector mask is distinct from the document's named **Paths**; layer
@@ -57,8 +57,8 @@ This spec covers two closely-related, resolution-independent constraints:
 - **Mechanism:** arrange the base layer below the layers to mask; the base's
   non-transparent content reveals the layers above, and all other content in the
   clipped layers is masked out.
-- **Multiple clipped layers:** "You can use multiple layers in a clipping mask,
-  but they must be **successive** layers." The base layer's name is **underlined**
+- **Multiple clipped layers:** a clipping mask can hold several layers, but they
+  must be **successive**. The base layer's name is **underlined**
   and overlying thumbnails are **indented**; each overlying layer displays a
   clipping-mask icon.
 - **Create:** Alt/Option-click the dividing line between the base layer and the
@@ -68,15 +68,15 @@ This spec covers two closely-related, resolution-independent constraints:
 - **Implicit membership:** if you create a new layer between layers in a clipping
   mask, or drag an unclipped layer between them, that layer **becomes part of the
   clipping mask**.
-- **Assigned attributes:** "Layers in the clipping mask are assigned the opacity
-  and mode attributes of the base layer."
+- **Assigned attributes:** clipped layers take on the base layer's opacity and
+  blend-mode attributes.
 - **Remove / release:** Alt/Option-click the line separating two grouped layers,
   or select a layer in the mask and `Layer > Release Clipping Mask` (removes the
   selected layer and any layers above it). To release all, select the clipped
   layer just above the base and release.
-- **Blend scope:** "By default, layers in a clipping mask are blended with the
-  underlying layers using the blending mode of the bottommost layer in the
-  group." **Blend Clipped Layers As Group** (advanced blending on the base)
+- **Blend scope:** by default the clipped layers blend with the layers underneath
+  using the blending mode of the bottommost layer in the group.
+  **Blend Clipped Layers As Group** (advanced blending on the base)
   applies the base's mode to all clipped layers; deselect it to preserve each
   layer's own mode.
 - **Merge:** `Merge Clipping Mask` from the Layer menu / panel menu merges a

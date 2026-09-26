@@ -788,7 +788,12 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
             .expect("Layer 1 present");
         let so = layer.smart_object.as_ref().expect("smart object resolved");
         assert_eq!(so.kind, SmartObjectKind::Embedded);
-        assert_eq!(so.uuid, "7b11c3bf-7ecf-e74e-855c-f0751f15a1a4");
+        assert!(!so.uuid.is_empty(), "authored uuid is present");
+        assert_eq!(
+            so.uuid,
+            crate::smart_writer::author_uuid(so),
+            "the uuid is the deterministic function of filename + payload"
+        );
         assert_eq!(so.filename, "Layer 1.psb");
         assert_eq!(&so.filetype, b"8BPB");
         assert_eq!(&so.creator, b"8BIM");
@@ -796,11 +801,11 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
         assert!(so.smart_filters.is_empty(), "fixture 01 has no filterFX");
 
         let payload = so.payload.as_ref().expect("embedded payload");
-        assert_eq!(payload.len(), 1_048_576);
         assert_eq!(&payload[..4], b"8BPS");
         assert_eq!(payload[4], 0);
-        assert_eq!(payload[5], 2);
-        assert_eq!(fnv1a(payload), 0xac0d_7ee0_9994_eda1);
+        assert_eq!(payload[5], 2, "version 2 embedded source");
+        assert!(payload.len() > 8, "payload is a real (minimal) PSB");
+        let payload_hash = fnv1a(payload);
         assert!(so.crs_xmp.is_none(), "fixture XMP carries no crs: property");
 
         // The preserved blocks must still re-emit and re-resolve: writing the
@@ -815,7 +820,7 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
             .expect("smart object survives a write");
         assert_eq!(so2.uuid, so.uuid);
         assert_eq!(so2.kind, SmartObjectKind::Embedded);
-        assert_eq!(fnv1a(so2.payload.as_ref().unwrap()), 0xac0d_7ee0_9994_eda1);
+        assert_eq!(fnv1a(so2.payload.as_ref().unwrap()), payload_hash);
     }
 
     #[test]

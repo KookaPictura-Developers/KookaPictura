@@ -3,35 +3,35 @@
 - **Spec ID:** `SEL-005`
 - **Status:** `Draft`
 - **Parity tier:** `Core`
-- **New in CS6:** `Changed` — CS6 adds **Skin Tones** selection and **Detect Faces** to the Color Range dialog (). Saving Skin Tones settings as a preset is marked **Creative Cloud only** in the fetched corpus. Adjustable Shadows/Midtones/Highlights ranges arrive in CC, not CS6. The command itself, Sampled Colors, Fuzziness, Localized Color Clusters, and the selection previews are CS4/CS5-era.
+- **New in CS6:** `Changed` — CS6 adds **Skin Tones** selection and **Detect Faces** to the Color Range dialog; Detect Faces is the CS6-only option that makes skin-tone selection more accurate. Saving Skin Tones settings as a preset is marked **Creative Cloud only** in the fetched corpus. Adjustable Shadows/Midtones/Highlights ranges arrive in CC, not CS6. The command itself, Sampled Colors, Fuzziness, Localized Color Clusters, and the selection previews are CS4/CS5-era.
 - **Depends on:** `SEL-001` selection-model, `SEL-002` selection-tools-overview, `SEL-003` refine-edge, `TOOL-004` quick-selection/magic-wand, `TOOL-044` quick-mask-tool, `04-image-ops/color-profiles-and-assignment.md` (`ARCH-007` color-management), `05-layers/layer-masks.md` (`LAY-004`), `01-architecture/document-model.md` (`ARCH-008`), `01-architecture/undo-history.md` (`ARCH-009`), `10-workflow-io/color-settings.md`.
 
 > All module, widget, and type names below are **design proposals**. No code exists in this repository. Behavior is taken from the fetched CS6 Help corpus; the full Select-menu range list and slider ranges are community-reported and marked.
 
 ## CS6 behavior
 
-`Select > Color Range`  CS6 rules:
+`Select > Color Range` selects a specified color or color range, either within the existing selection or across the whole image. CS6 rules:
 
-- **Replace vs refine:**  To refine,  (e.g. select Cyans in a cyan selection, then Greens).
-- **32-bpc:** "The Color Range command is not available for 32-bits-per-channel images."
-- **It also refines layer masks:** "You can also use Color Range to refine a layer mask," reached from the Masks section of the CS6 Properties panel (choose **Sampled Colors** there; `LAY-004`).
+- **Replace vs refine:** to replace a selection, deselect everything before running the command. To refine, run the command again on the current selection to narrow it to a subset of colors (e.g. select Cyans in a cyan selection, then Greens).
+- **32-bpc:** the command is unavailable for 32-bits-per-channel images.
+- **It also refines layer masks:** Color Range can refine a layer mask; invoke it from the Masks section of the CS6 Properties panel (choose **Sampled Colors** there; `LAY-004`).
 
 Dialog workflow (CS6 Help):
 
 1. **Select menu** (what to match):
-   - **(CS6) Skin Tones** — "select colors that resemble common skin tones." **Detect Faces** gives more accurate skin-tone selection.
-   - **Sampled Colors** — 
-   - **A color or tonal range** — choosing a preset means 
+   - **(CS6) Skin Tones** — selects colors that resemble common skin tones. **Detect Faces** makes that selection more accurate.
+   - **Sampled Colors** — enable the Eyedropper tool and click sample colors in the image; when sampling several color ranges, turn on **Localized Color Clusters** for a more accurate result.
+   - **A color or tonal range** — choosing a preset means the selection cannot be adjusted afterwards.
    - The CS6 Help doesn't enumerate the preset list in the fetched text; the CS6-era/community list is **Reds**, **Yellows**, **Greens**, **Cyans**, **Blues**, **Magentas**, **Highlights**, **Midtones**, **Shadows**, and **Out Of Gamut**.
-2. **Display option** — **Selection** () or **Image** ("Previews the entire image"). `Ctrl`/`Cmd` toggles between them.
+2. **Display option** — **Selection** previews the mask as white for selected pixels, black for unselected, gray for partially selected; **Image** previews the whole image. `Ctrl`/`Cmd` toggles between them.
 3. **Sampling** — position the Eyedropper over the image/preview and click. The **plus** eyedropper adds colors, the **minus** eyedropper removes them; `Shift` temporarily activates plus, `Alt`/`Option` minus.
-4. **Fuzziness** — 
-5. **Localized Color Clusters** — when selected, the **Range** slider  This separates spatially distant areas of similar color (e.g. foreground flowers vs background flowers).
-6. **Selection Preview** (in the image window) — **None** (original image), **Grayscale** (), **Black Matte** (), **White Matte** (), **Quick Mask** ("shows unselected areas as a rubylith overlay" in the Quick Mask color; `SEL-004`).
+4. **Fuzziness** — sets how wide a color range the selection covers and how many partially selected pixels it produces (the gray areas in the selection preview). A low value narrows the color range, a high value widens it.
+5. **Localized Color Clusters** — when on, the **Range** slider sets how near a pixel's color must be to the sampled points to be included. This separates similar colors that are spatially far apart (e.g. foreground flowers vs background flowers).
+6. **Selection Preview** (in the image window) — **None** (original image), **Grayscale** (white = fully selected, gray = partially selected, black = unselected), **Black Matte** (selected pixels keep the original image, unselected pixels are black; suits bright images), **White Matte** (selected pixels keep the original image, unselected pixels are white; suits dark images), **Quick Mask** (unselected areas shown as a rubylith overlay in the Quick Mask color; `SEL-004`).
 7. **Reset** — `Alt`/`Option`-click Reset to revert to the original selection.
 8. **Save / Load** the Color Range settings; **(Creative Cloud only)** Skin Tones settings can be saved as a preset, and **Detect Faces** can be saved when Skin Tones or Sampled Colors is selected.
 
-Warning behavior: 
+Warning behavior: when the message "No pixels are more than 50% selected" appears, the selection border is invisible — for example a Select-menu preset such as Reds was chosen on an image with no sufficiently saturated red hues.
 
 CS6 limitation: selecting Shadows/Midtones/Highlights in CS6 yields fixed, non-adjustable tonal ranges; CC later adds an adjustable range plus Fuzziness. (Community source; the fetched corpus does not describe the CS6 tonal behavior.)
 
@@ -90,7 +90,7 @@ for each pixel p:
 
 ### Localized Color Clusters (spatial term)
 
- A standard model adds a spatial weight:
+The Range slider sets how near a pixel's color must be to the sample points to be included. A standard model adds a spatial weight:
 
 ```text
 for each pixel p:

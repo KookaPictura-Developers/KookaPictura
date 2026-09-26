@@ -226,4 +226,4 @@ No dedicated widgets; this surface is consumed through `AUTO-004`'s components:
 - **Extended-edition gating.** How Standard vs Extended surfaces report Extended-only members needs a policy (raise vs omit).
 - **Object Model Viewer replacement.** The generated reference's format and update mechanism are undecided.
 - **`UnitValue` precision and units.** Round-trip fidelity across all `Units.*` values is unverified.
-- **Reference form constants.** `ReferenceFormType`/`DescValueType` and the four-char id table need independent-creation provenance (`ARCH-011`).
+- **Reference form constants.** `ReferenceFormType`/`DescValueType` and the four-char id table need provenance (`ARCH-011`).

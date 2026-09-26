@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-**Pixelate filters.** From the CS6 Help: 
+**Pixelate filters.** The CS6 Help describes the Pixelate submenu as sharply defining a selection by clumping together, into cells, pixels whose color values are similar.
 
 **Scope note (important).** Unlike `FILT-080`–`FILT-083`, the Pixelate filters are **not part of the Filter Gallery** in Photoshop CS6. The Filter Gallery's six categories are **Artistic, Brush Strokes, Distort, Sketch, Stylize, and Texture**; Pixelate is a separate `Filter > Pixelate` submenu, and each filter opens its **own modal dialog**. This spec is grouped with the gallery families by catalogue convention, but the shared Filter-Gallery stack/reorder/eye behavior in `FILT-001` and `LAY-021` does **not** apply to Pixelate as a gallery stack. Pixelate filters can still be applied as **Smart Filters** on a Smart Object (they are not in CS6's non-smart exclusion list).
 
@@ -171,7 +171,7 @@ Widgets, matching the CS6 modal dialogs; pixel work in Rust. Each Pixelate filte
 
 Fetched for this document:
 
-- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — Adobe Photoshop CS6 Help reference (downloaded to `/tmp` and text-extracted with `pdftotext`). Established: the Pixelate family introduction ("clumping pixels of similar color values in cells"); the one-line behavior of all 7 filters, including **Fragment as four offset, averaged copies** and **Mezzotint's Type menu**; the Mosaic vs Mosaic Tiles distinction; and that Pixelate is **not** among the Filter Gallery's categories (the gallery is Artistic/Brush Stroke/Distort/Sketch/Stylize/Texture). Primary source.
+- `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — Adobe Photoshop CS6 Help reference (downloaded to `/tmp` and text-extracted with `pdftotext`). Established: the Pixelate family introduction (clumping similar-valued pixels into cells); the one-line behavior of all 7 filters, including **Fragment as four offset, averaged copies** and **Mezzotint's Type menu**; the Mosaic vs Mosaic Tiles distinction; and that Pixelate is **not** among the Filter Gallery's categories (the gallery is Artistic/Brush Stroke/Distort/Sketch/Stylize/Texture). Primary source.
 - `https://web.archive.org/web/20220813051258id_/https://helpx.adobe.com/photoshop-elements/using/pixelate-filters.html` — Photoshop Elements Help, "Pixelate filters" (Adobe content, archived). Established: Color Halftone **max-radius range 4–127 px**, **screen angles −360…360** entered per channel (grayscale = channel 1; color = channels 1–4 mapped to CMYK), and a **Defaults** button; Crystallize (cell size), Facet (no controls), Fragment (offset/blurred, no controls), Mezzotint (dot/line/stroke pattern), Mosaic (cell size), Pointillize (cell size).
 - `https://alivecolors.com/en/tutorial/effects/pixelate.php` — AliveColors "Pixelate" reference (independent Photoshop-compatible editor). Corroborated **Color Halftone Radius 4–127** and per-channel angle **−360…360**, and **Crystallize size 5–300** (Photoshop's dialog is commonly cited as 3–300 — see Open questions). Third-party.
 - `https://web.archive.org/web/20220628182932id_/https://www.pcworld.com/article/393412/how-photoshop-artistic-filters-work-with-examples.html` — PCWorld established that the Filter Gallery categories are exactly **Artistic, Brush Strokes, Distort, Sketch, Stylize, and Texture** (i.e. Pixelate is not a gallery category). Community source.

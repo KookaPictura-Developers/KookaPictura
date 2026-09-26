@@ -18,15 +18,15 @@ Photoshop distinguishes three related ideas that the CS6 Help separates explicit
 - **Color space** — "a variant of a color model" with a specific gamut (e.g. within RGB: sRGB, Adobe RGB, ProPhoto RGB).
 - **Color mode** — the per-document setting that determines "which color model is used to display and print the image" and therefore the number of channels, number of colors, tools, and file formats available.
 
-The Help classifies models as **device-dependent** (RGB, HSL, HSB, CMYK — "can have many different color spaces") versus **device-independent** (CIE L\*a\*b\*, ). Color management uses Lab as the reference for translating between spaces (`ARCH-007`).
+The Help classifies models as **device-dependent** (RGB, HSL, HSB, CMYK — each can map to many different color spaces) versus **device-independent** (CIE L\*a\*b\*, a fixed color space tied directly to human color perception). Color management uses Lab as the reference for translating between spaces (`ARCH-007`).
 
 ### Foreground and background colors
 
-Photoshop uses the **foreground color** to paint, fill, and stroke selections and the **background color** to make gradient fills and fill erased areas. Defaults are **foreground black, background white**;  The colors are chosen via the Eyedropper tool, the Color panel, the Swatches panel, or the Adobe Color Picker.
+Photoshop uses the **foreground color** to paint, fill, and stroke selections and the **background color** to make gradient fills and fill erased areas. Defaults are **foreground black, background white**; in an alpha channel the defaults reverse, with foreground white and background black. The colors are chosen via the Eyedropper tool, the Color panel, the Swatches panel, or the Adobe Color Picker.
 
 ### The four picker models
 
-The Adobe Color Picker  Selecting a color displays the numeric values for **HSB, RGB, Lab, CMYK, and hexadecimal simultaneously**, "useful for viewing how the different color models describe a color."
+The Adobe Color Picker offers four color models — HSB, RGB, Lab, and CMYK. Selecting a color displays the numeric values for **HSB, RGB, Lab, CMYK, and hexadecimal simultaneously**, which shows how the different models describe the same color.
 
 | Model | Definition (CS6 Help) | Components and ranges |
 |---|---|---|
@@ -42,7 +42,7 @@ The Help's color-model primer also defines **additive** (RGB) and **subtractive*
 | Mode | Channels | Values | Notes |
 |---|---|---|---|
 | **RGB Color** | 3 | 0–255 per channel at 8 bpc | Default for new documents; 3×8 = 24-bit/pixel → up to **16.7 million** colors; 48-bit (16 bpc) and 96-bit (32 bpc) hold more. Varies by working space. |
-| **CMYK Color** | 4 | percentage of each process ink | ; bright red ≈ 2% C, 93% M, 90% Y, 0% K; pre-press oriented; varies by working space. |
+| **CMYK Color** | 4 | percentage of each process ink | Every pixel gets a percentage for each process ink; bright red ≈ 2% C, 93% M, 90% Y, 0% K; pre-press oriented; varies by working space. |
 | **Lab Color** | 3 | L 0–100; a, b −128 … +127 (in picker/Color panel) | Device-independent; used by the CMS as a reference. |
 | **Grayscale** | 1 | 8-bit: 0 (black) – 255 (white) | Also expressible as black-ink percentage (0% = white, 100% = black); 16/32-bit have far more shades; range defined by the Gray working space. |
 | **Bitmap** | 1 | black or white only | 1-bit per pixel. |
@@ -56,11 +56,11 @@ Grayscale, RGB, CMYK, Lab, and Multichannel support 16-bpc; the Help's 16-bit su
 
 - **8 bpc** — integer, 256 levels per channel (`2^8`). Grayscale 8-bpc = 256 grays; RGB 8-bpc = 24-bit/pixel.
 - **16 bpc** — integer, higher precision; supported in Grayscale, RGB, CMYK, Lab, and Multichannel; all toolbox tools except Art History Brush, and all color/tonal adjustment commands except Variations.
-- **32 bpc** — **floating-point**, HDR; ; 32-bpc is the only depth that stores the entire HDR range. HDR has its **own Color Picker** (see `CLR-002`) with 32-bit float RGB fields.
+- **32 bpc** — **floating-point**, HDR; HDR luminance is stored as 32-bit floating-point values; 32-bpc is the only depth that stores the entire HDR range. HDR has its **own Color Picker** (see `CLR-002`) with 32-bit float RGB fields.
 
 ### Gamut and web-safe warnings
 
-- **Out-of-gamut / non-printable** — colors in RGB/HSB/Lab with no CMYK equivalent trigger "a warning alert triangle" and "a swatch below the triangle displays the closest CMYK equivalent"; clicking the triangle substitutes the closest printable color. 
+- **Out-of-gamut / non-printable** — colors in RGB/HSB/Lab with no CMYK equivalent trigger a warning alert triangle, with a swatch below it showing the closest CMYK equivalent; clicking the triangle substitutes the closest printable color. Which colors are printable is defined by the current CMYK working space set in the Color Settings dialog box.
 - **Not web-safe** — the web-safe palette is **216 colors** (a subset of the Mac OS 8-bit palettes); selecting a non-web color shows "an alert cube"; clicking it "select[ing] the closest web color."
 - **Info panel** — in CMYK readout, "an exclamation point appears next to the CMYK values" when the sampled color is out of the printable gamut (see `CLR-004`).
 
@@ -107,7 +107,7 @@ Adobe's exact numeric transforms are closed; behavioral parity only. The followi
 
 - **HSB ↔ RGB** — standard cylindrical transform (H∈[0,360), S,B∈[0,1]; B is value, so this is HSV/HSB, not HSL). Adobe's help text defines hue/saturation/brightness; the round-trip must be deterministic and monotonic. *(inferred)*.
 - **RGB ↔ Lab** — through the D50 CIELAB connection space per ICC/CIE; the picker's Lab fields are the device-independent meaning of the current RGB value. Uses the same connection space as the CMS (`ARCH-007`). Adobe's exact white-point and rounding are not documented; parity is tolerance-based.
-- **RGB/CMYK ↔ working space** — a color's numeric values  CMYK values are therefore produced by a profile transform from the RGB working space (and back), not by a fixed formula. Exposed as the out-of-gamut alert, whose threshold is "the current CMYK working space."
+- **RGB/CMYK ↔ working space** — a color's numeric values have no absolute meaning; they are defined only inside the color space of the device that produces them. CMYK values are therefore produced by a profile transform from the RGB working space (and back), not by a fixed formula. Exposed as the out-of-gamut alert, whose threshold is the current CMYK working space.
 - **Hex ↔ RGB** — hex `#rrggbb` is exactly the 8-bit RGB triple.
 
 ### Picker display model
@@ -197,7 +197,7 @@ Not fetched (HTTP 403 from this environment; used only as pointers): `helpx.adob
 
 - **Exact Color panel slider model list** (RGB / CMYK / Grayscale / HSB / Lab / Web Color Sliders) is *(inferred)* from the panel menu; the CS6 Help names only the ramp options. *Resolves with:* a CS6 Color panel capture or the archived help page.
 - **Web-safe cube encoding** — the Help states 216 colors and "a subset of the Mac OS 8-bit color palettes" but not the channel set. The `{0,51,…}` cube is the standard web-safe mapping but is *(inferred)* here. *Resolves with:* the CS6 Color panel web-safe tick capture.
-- **Whether CMYK fields are directly editable and drive the field/slider**, versus being a read-only projection. The Help says CMYK  which suggests editable. *Resolves with:* a CS6 picker capture.
+- **Whether CMYK fields are directly editable and drive the field/slider**, versus being a read-only projection. The Help states that CMYK values can be entered as percentages or set with the color slider and color field, which suggests editable. *Resolves with:* a CS6 picker capture.
 - **Exact RGB↔Lab and gamut-predicate numerics** (white point, ΔE threshold, clamping) are closed. *Resolves with:* pixel-level CS6 tests and the ICC spec.
 - **16-bpc picker limits** — whether the picker exposes 16-bit or only 8-bit fields. *Resolves with:* a CS6 16-bpc capture.
 - **Grayscale picker behavior** — whether the ordinary picker is shown or restricted. *Resolves with:* a CS6 Grayscale-mode capture.

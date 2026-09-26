@@ -5,7 +5,7 @@
 //! Specs live in `docs/04-image-ops/adjustments/`. Adjustment *layers* (model,
 //! PSD serialization, compositor integration) are a later task.
 //!
-//! Adobe's closed kernels are approximated where the specs say so; each
+//! The closed kernels are approximated where the specs say so; each
 //! approximation is marked inline. Everything is deterministic and returns
 //! [`AdjustError`] instead of panicking on bad input.
 

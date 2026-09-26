@@ -1,4 +1,4 @@
-//! Tolerant Photoshop descriptor reader/writer.
+//! Tolerant PSD descriptor reader/writer.
 //!
 //! A descriptor is a sequence of `key -> (ostype, value)` pairs. The preserved
 //! descriptor bytes remain the source of truth for re-emission; this module

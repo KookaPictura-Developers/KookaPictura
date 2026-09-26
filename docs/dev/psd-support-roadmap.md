@@ -239,7 +239,7 @@ Ceiling: the scale and white point are unproven without a CS6 v3 fixture.
 single-composite model versus Photoshop's per-channel curves, and an ungrounded
 channel-bitmap order — is addressed by the per-channel `CurvesParams` model,
 with the per-channel-then-composite order marked an assumption (not
-Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship, and EngineData font/size/colour decode ships — `type-engine-data`, proven by a real Photoshop-2021 text-layer fixture against psd-tools; the deterministic layout and POD glyph-rasterizer seam also ship — `text-render-seam`; a bundled pure-Rust Liberation Sans backend materializes a type layer into pixels — `text-rasterize-bundled`, `Layer > Rasterize > Layer` reaches it — `type-rasterize-command`, and a proxy-less type layer renders live in the CPU compositor — `type-live-composite`, `Rasterize All Layers` covers type — `rasterize-all-type`, and `Layer > Rasterize > Type` is a real command — `rasterize-type-command` — which the Qt `QFont` backend renders — `text-qt-backend`; the bundled backend now shapes with `rustybuzz` (pure-Rust HarfBuzz) so kerning/GPOS applies and carries the shaper's glyph offsets (`text-shaping-rustybuzz`, `text-shaping-offsets`) and rasterizes subpixel-accurately with `swash` (`text-subpixel-positioning`, `text-backend-drop-fontdue`); a layer's skew/distort/perspective now ships (`free-transform-quad`, the projective `transform_layer_quad` plus the three `Edit > Transform` modes), but text warp and a Qt live-composite path do not);
+Photoshop-verified). Remaining P3: live text render from EngineData (kind + `TypeTool` model ship, and EngineData font/size/colour decode ships — `type-engine-data`, proven by a real synthetic text-layer fixture against psd-tools; the deterministic layout and POD glyph-rasterizer seam also ship — `text-render-seam`; a bundled pure-Rust Liberation Sans backend materializes a type layer into pixels — `text-rasterize-bundled`, `Layer > Rasterize > Layer` reaches it — `type-rasterize-command`, and a proxy-less type layer renders live in the CPU compositor — `type-live-composite`, `Rasterize All Layers` covers type — `rasterize-all-type`, and `Layer > Rasterize > Type` is a real command — `rasterize-type-command` — which the Qt `QFont` backend renders — `text-qt-backend`; the bundled backend now shapes with `rustybuzz` (pure-Rust HarfBuzz) so kerning/GPOS applies and carries the shaper's glyph offsets (`text-shaping-rustybuzz`, `text-shaping-offsets`) and rasterizes subpixel-accurately with `swash` (`text-subpixel-positioning`, `text-backend-drop-fontdue`); a layer's skew/distort/perspective now ships (`free-transform-quad`, the projective `transform_layer_quad` plus the three `Edit > Transform` modes), but text warp and a Qt live-composite path do not);
 RLE and ZIP write shipped (`psd-rle-write`, `psd-zip-write`).
 **RLE write is shipped** (archived
 `2026-09-19-psd-rle-write`): the merged composite (color + document extra
@@ -432,7 +432,7 @@ NUL, `mod_time` 0.0, `lock_state` 0.
   ACR fixture exists to prove it.
 - A Camera Raw Filter applied as a smart filter stores its settings inside the
   layer's `SoLd` descriptor at `filterFX.filterFXList[].Fltr`, with `filterID`
-  2683. This is the a reference build path and `assets/test_with_smart_object02.psd`
+  2683. This is the synthetic path and `assets/test_with_smart_object02.psd`
   confirms it. `Fltr` uses short keys that map to the `FILT-100` tabs: `Temp`,
   `Tint`, `WBal`, `Sett`, and PV2012 Basic `Ex12`/`Cr12`/`Hi12`/`Sh12`/`Wh12`/
   `Bk12`/`Cl12`/`Vibr`; HSL `RHue`/`RSat`/`GHue`/`GSat`/`BHue`/`BSat` and
@@ -443,7 +443,7 @@ NUL, `mod_time` 0.0, `lock_state` 0.
   `PrVe`. `Dhze` (Dehaze) and `Upri`/`GuUr` (Upright XMP) are CC-only.
 
 **Scope.** Smart objects are CS6→current CC: tolerant read plus byte-preserving
-write, proven only on the a reference build fixture. The Camera Raw settings model targets
+write, proven only on the synthetic fixture. The Camera Raw settings model targets
 the earliest CC Camera Raw Filter (ACR 8 / PV2012); `crs:` XMP is typed and
 editable (`crs-xmp-edit`), preserve-only for keys outside the fixed set.
 The app exposes `Layer > Smart Objects > Convert to Smart Object` (archived
@@ -501,7 +501,7 @@ Supplied, currently in `assets/`, to move under
   object with no filter. Confirms the `SoLd`/`lnk2` container schema.
 - `test_with_smart_object02.psd`: the same, plus a Camera Raw Filter smart
   filter (`filterFX`, `filterID` 2683) and the document `FEid`/`FMsk` blocks.
-  Produced with Photoshop a reference build. Confirms the `Fltr` settings model.
+  Synthetic (no Adobe assets). Confirms the `Fltr` settings model.
 
 Both are self-produced; record provenance when they move.
 

@@ -354,10 +354,10 @@ Fetched for this document:
   the framing that CS6 added Live Pen Tilt Preview, Brush Projection, Erodible
   and Airbrush tips (article body is largely a video). Secondary.
 - `https://raw.githubusercontent.com/darkly-art/darkly/dev/docs/brush/abr-format.md`
-  — "ABR Format: Public analysis Analysis". Established: the brush parameter
+  — "ABR Format: Public Analysis". Established: the brush parameter
   vocabulary and descriptor keys used for preset serialization (tip, dynamics,
   scatter, texture, dual brush, color/paint dynamics, wet edges/noise/protect
-  texture). Community public analysis, not Adobe.
+  texture). Community analysis, not Adobe.
 - `https://christianlim.wordpress.com/bristle-brush-tip-settings` — bristle tip
   setting walkthrough. Established: how Bristles/Length/Thickness/Stiffness/
   Angle/Spacing alter a bristle stroke, and that bristle behavior is coupled to

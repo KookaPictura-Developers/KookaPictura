@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-**Texture filters.** From the CS6 Help:  They appear as the **Texture** category in the Filter Gallery (one of the six gallery categories: Artistic, Brush Strokes, Distort, Sketch, Stylize, Texture).
+**Texture filters.** The CS6 Help describes the Texture filters as simulating the appearance of depth or substance, or adding an organic look. They appear as the **Texture** category in the Filter Gallery (one of the six gallery categories: Artistic, Brush Strokes, Distort, Sketch, Stylize, Texture).
 
 The family has **6** filters. All are **8-bit only** and run in the Filter Gallery.
 

@@ -78,7 +78,7 @@ public:
     void setCanvasColor(const QColor& color);
     QColor canvasColor() const { return canvasColor_; }
 
-    // Transparency checkerboard behind the document (Photoshop "Light" grid):
+    // Transparency checkerboard behind the document (the "Light" grid):
     // two tones in 8-screen-pixel cells, anchored to the document origin.
     static int transparencyCellSize();
     static QColor transparencyColorA();

@@ -4,7 +4,7 @@
 //! functions over a planar 8-bit [`PixelBuffer`] (channels 3 or 4; alpha is
 //! never modified). Specs live in `docs/06-filters/`.
 //!
-//! Adobe's closed kernels are approximated where the specs say so; each
+//! The closed kernels are approximated where the specs say so; each
 //! approximation is marked inline. Everything is deterministic except Add
 //! Noise, which takes a seed. Bad input returns [`FilterError`] instead of
 //! panicking.

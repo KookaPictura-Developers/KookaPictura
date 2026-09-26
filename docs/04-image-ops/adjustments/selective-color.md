@@ -3,7 +3,7 @@
 - **Spec ID:** `ADJ-023`
 - **Status:** `Draft`
 - **Parity tier:** `Core`
-- **New in CS6:** `No` — the command is long-standing. CS6 changes: settings live in the Properties panel, the Colors menu and a Preset menu are there, and  (CS5 used the Adjustments panel). Selective Color is in the CS6 preset-save whitelist.
+- **New in CS6:** `No` — the command is long-standing. CS6 changes: settings live in the Properties panel, which also carries the Colors menu and a Preset menu; in CS6 the color to adjust is chosen from the Colors menu there (CS5 used the Adjustments panel). Selective Color is in the CS6 preset-save whitelist.
 - **Depends on:** `ARCH-004` rust-qt-interop, `ARCH-008` document-model, `ARCH-009` undo-history, `01-architecture/color-management.md`, `04-image-ops/image-modes.md`, `07-color-painting/color-models.md`, `05-layers/adjustment-layers.md`
 
 > All module and widget names below are **design proposals**. No code exists in
@@ -13,16 +13,14 @@
 ## CS6 behavior
 
 **Selective Color** changes the amount of process (CMYK) ink in individually
-selected color components. The CS6 Help: "Selective color correction is a
-technique used by high-end scanners and separation programs to change the amount
-of process colors in each of the primary color components in an image. You can
-modify the amount of a process color in any primary color selectively—without
-affecting the other primary colors. For example, you can use selective color
-correction to dramatically decrease the cyan in the green component of an image
-while leaving the cyan in the blue component unaltered."
+selected color components. The CS6 Help describes it as a correction technique
+borrowed from high-end scanners and separation software: it changes the amount
+of each process color within one primary color component without disturbing the
+others. For example, the cyan in an image's green component can be cut sharply
+while the cyan in its blue component stays the same.
 
-- **Color families (the Colors menu).** The Help says "choose the color you want
-  to adjust from the Colors menu"; the UI exposes **nine** entries: six hue
+- **Color families (the Colors menu).** The Help directs you to choose the color
+  to adjust from the Colors menu; the UI exposes **nine** entries: six hue
   families — **Reds, Yellows, Greens, Cyans, Blues, Magentas** — plus three tonal
   entries — **Whites** (highlights), **Neutrals** (midtones), **Blacks**
   (shadows). (Note: the request brief's "nine color families + neutral/black/
@@ -32,32 +30,31 @@ while leaving the cyan in the blue component unaltered."
   Magenta, Yellow, Black**. All four are editable for all nine entries.
 - **Method.** Choose **Relative** or **Absolute**:
   - **Relative** (default per conventional Photoshop behavior; the Help documents
-    the semantics but not the default): "Changes the existing amount of cyan,
-    magenta, yellow, or black by its percentage of the total. For example, if you
-    start with a pixel that is 50% magenta and add 10%, 5% is added to the magenta
-    (10% of 50% = 5%) for a total of 55% magenta. (This option cannot adjust pure
-    specular white, which contains no color components.)"
-  - **Absolute**: "Adjusts the color in absolute values. For example, if you start
-    with a pixel that is 50% magenta and add 10%, the magenta ink is set to a
-    total of 60%."
-- **Interpolation between families.** "The adjustment is based on how close a color
-  is to one of the options in the Colors menu. For example, 50% magenta is midway
-  between white and pure magenta and receives a proportionate mix of corrections
-  defined for the two colors." So a pixel does not belong wholly to one family; it
-  receives a weighted blend of the corrections of the nearest families.
-- **RGB support.** "Even though Selective Color uses CMYK colors to correct an
-  image, you can use it on RGB images."
-- **Channel requirement.** "Make sure that the composite channel is selected in the
-  Channels panel. The Selective Color adjustment is available only when you're
-  viewing the composite channel."
+    the semantics but not the default): scales the existing amount of an ink by
+    its percentage of that total. The Help's example: a pixel that is 50% magenta
+    plus 10% gains 5% magenta (10% of 50% = 5%), reaching 55%. Pure specular white
+    contains no color components, so Relative cannot move it.
+  - **Absolute**: adjusts the ink in absolute values. The Help's example: a pixel
+    that is 50% magenta plus 10% sets the magenta ink to 60%.
+- **Interpolation between families.** The correction is weighted by how close a
+  color is to each Colors-menu option. The Help's example: 50% magenta sits midway
+  between white and pure magenta, so it gets a proportionate mix of the
+  corrections defined for those two colors. A pixel therefore never belongs
+  wholly to one family; it receives a weighted blend of the corrections of its
+  nearest families.
+- **RGB support.** Although Selective Color corrects an image using CMYK inks, the
+  Help confirms it can operate on RGB images too.
+- **Channel requirement.** The composite channel must be selected in the Channels
+  panel; the Help states the adjustment is available only while viewing the
+  composite channel.
 - **Paths.** Adjustments panel icon (CS5) / Properties panel (CS6) → non-destructive
   **Selective Color adjustment layer**; `Layer > New Adjustment Layer > Selective
   Color`; `Image > Adjustments > Selective Color` (destructive). CS6 also exposes
   saved Selective Color presets in the Properties panel Preset menu.
-- **Settings persistence.** Selective Color is in the preset-save whitelist:
-  "choose the Save Preset option from the panel menu. This option is only
-  available for Levels, Curves, Exposure, Hue/Saturation, Black & White, Channel
-  Mixer, and Selective Color."
+- **Settings persistence.** Selective Color is in the preset-save whitelist: its
+  settings can be saved via the panel menu's Save Preset option, which the Help
+  restricts to Levels, Curves, Exposure, Hue/Saturation, Black & White, Channel
+  Mixer, and Selective Color.
 
 ### Behavior in RGB vs CMYK
 
@@ -89,7 +86,7 @@ Because the Relative method can only scale existing ink, a pure specular white
 | Control | Type | Default | Range / options | Notes |
 |---|---|---|---|---|
 | Colors | enum | Reds *(inferred)* | Reds / Yellows / Greens / Cyans / Blues / Magentas / Whites / Neutrals / Blacks | One correction set per entry |
-| Method | enum | Relative *(inferred)* | Relative / Absolute | Semantics quoted from the Help |
+| Method | enum | Relative *(inferred)* | Relative / Absolute | Semantics per the Help |
 | Cyan amount | percent | 0 | −100 … +100 | Per current Colors entry |
 | Magenta amount | percent | 0 | −100 … +100 | Per current Colors entry |
 | Yellow amount | percent | 0 | −100 … +100 | Per current Colors entry |
@@ -138,8 +135,9 @@ cmyk_out = Σ_f w_f · cmyk_f(x, a_f)
 ```
 
 where `cmyk_f` is the per-family Relative/Absolute correction. The Help's
-"50% magenta is midway between white and pure magenta and receives a proportionate
-mix of corrections defined for the two colors" is the two-family special case.
+midway-color example (50% magenta lying between white and pure magenta and
+receiving a proportionate mix of the two corrections) is the two-family special
+case.
 **The exact membership functions (hue angles, tone windows, overlap) are not
 documented**; implement as tunable calibration curves and mark behavioral parity
 only. *(inferred)*
@@ -245,8 +243,8 @@ CMYK-driven adjustments.
 - Given the same setup with Absolute +10 → 60 % magenta.
 - Given Colors = Reds, moving only the Cyan slider changes cyan in red-family
   pixels while leaving blue-family cyan approximately unchanged.
-- Given a 50 % magenta pixel, because it is "midway between white and pure
-  magenta", the result lies between the corrections defined for Whites and
+- Given a 50 % magenta pixel, because it is midway between white and pure
+  magenta, the result lies between the corrections defined for Whites and
   Magentas in proportion (per the Help's interpolation statement).
 - Given Relative and a pure specular white pixel, the pixel is unchanged.
 - Given an RGB document, the command operates (no error) and produces a
@@ -267,11 +265,12 @@ Fetched for this document:
   selective-color definition and the green-vs-blue cyan example; the Colors menu
   and the CS6 Properties-panel location; the Relative and Absolute definitions with
   the 50 %+10 %→55 % / 50 %+10 %→60 % examples; the pure-specular-white Relative
-  limitation; the  and
-  "50% magenta … proportionate mix" interpolation statement; "Even though Selective
-  Color uses CMYK colors to correct an image, you can use it on RGB images"; the
-  composite-channel requirement; the three application paths; the preset-save
-  whitelist including Selective Color.
+  limitation; the interpolation statement (a correction is weighted by how close
+  the pixel is to a Colors-menu option, so 50% magenta receives a proportionate
+  mix of the two neighbouring corrections); the note that Selective Color can be
+  used on RGB images even though it uses CMYK inks; the composite-channel
+  requirement; the three application paths; the preset-save whitelist including
+  Selective Color.
 - `https://shotkit.com/selective-color-photoshop` — CC-era secondary source:
   confirms the nine Colors entries as "Reds, Yellows, Greens, Cyans, Blues,
   Magentas, Whites, Neutrals and Blacks" and the four sliders Cyan/Magenta/Yellow/

@@ -14,7 +14,7 @@ use crate::composite::be_i16;
 /// `blnc`: a truncated payload or a shift outside `-100..=100` is `None`; every
 /// byte after the luminosity flag is ignored.
 ///
-/// ponytail: Photoshop's per-band preserve-luminosity tri-state is not
+/// ponytail: the reference's per-band preserve-luminosity tri-state is not
 /// representable in the fixed struct; it collapses to the single boolean the
 /// engine models (`ColorBalanceParams`). The band weighting lives in
 /// `pictura-adjust`.

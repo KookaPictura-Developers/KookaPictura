@@ -319,7 +319,7 @@ to a worker and results are committed on the GUI thread.
   inferred; only anti-aliasing behavior is documented. *Resolves with:*
   pixel-diff calibration against CS6 strokes.
 - **Erodible wear model and bristle deformation** are behavioral-parity only.
-  *Resolves with:* publicly documenting constraints or an accepted tolerance.
+  *Resolves with:* measuring constraints or an accepted tolerance.
 - **Dab-level color dynamics** exact jitter distribution is unspecified.
   *Resolves with:* statistical comparison of CS6 stroke pixels.
 - **Whether the Brush tool has a "Sample All Layers"** — the CS6 Help lists that

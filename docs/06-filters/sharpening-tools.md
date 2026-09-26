@@ -26,14 +26,14 @@ The CS6 Help states that the Shadow/Highlight controls are **available only for 
 
 **Shake Reduction is post-CS6.** It shipped in **Photoshop CC (version 14.0, June 2013)**; it does not exist in a CS6 install, and the fetched CS6 Help PDF contains no Shake Reduction section. It is documented here because the brief requested it, but it **must not** appear in a CS6 parity baseline. It lives at `Filter > Sharpen > Shake Reduction`.
 
-Documented CC behaviour (from the fetched Adobe Help page): Shake Reduction  It:
+Documented CC behaviour (from the fetched Adobe Help page): Shake Reduction reduces blur from several kinds of camera motion — linear, arc-shaped, rotational, and zigzag. It:
 
 - Automatically analyzes the region best suited to shake reduction, estimates the blur, and extrapolates corrections to the whole image.
 - Shows a **Detail loupe** for close inspection.
-- Supports **multiple blur traces** — a *blur trace*  Traces are created by the **Add Suggested Blur Trace** icon, the **Blur Estimation Tool** (draw a rectangle), or the **Blur Direction Tool**, and can be adjusted via **Blur Trace Length** and **Blur Trace Direction** and the Detail loupe.
+- Supports **multiple blur traces** — a *blur trace* describes the shape and extent of the blur affecting a selected region. Traces are created by the **Add Suggested Blur Trace** icon, the **Blur Estimation Tool** (draw a rectangle), or the **Blur Direction Tool**, and can be adjusted via **Blur Trace Length** and **Blur Trace Direction** and the Detail loupe.
 - Supports side-by-side preview of two traces (`Ctrl`/`Cmd`-select), duplicate traces, and **Save/Load Blur Trace** in **KNL** and **PNG** formats.
 - **Advanced blur trace settings:** **Blur Trace Bounds**; **Source Noise** (`Auto`/`Low`/`Medium`/`High`, auto-estimated); **Smoothing** (reduces high-frequency sharpening noise; default **30%**, low recommended); **Artifact Suppression** (checkbox + slider; 100% yields the original image, 0% suppresses nothing; best for medium-frequency noise).
-- Works best on "decently lit still camera images having low noise" and can help sharpen motion-blurred text.
+- Works best on decently lit, low-noise still camera images and can help sharpen motion-blurred text.
 
 ## UI surface
 

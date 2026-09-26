@@ -477,7 +477,7 @@ fn blwh_decodes_descriptor() {
     ));
     assert_eq!(decode_adjustment(&adjdata(*b"blwh", out_of_range)), None);
 
-    // A descriptor with no channel keys falls back to Photoshop's defaults.
+    // A descriptor with no channel keys falls back to the reference's defaults.
     let empty = write_descriptor(&desc_object("", b"null", vec![]));
     assert_eq!(
         decode_adjustment(&adjdata(*b"blwh", empty)),

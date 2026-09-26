@@ -217,7 +217,7 @@ Proposed:
 ## Open questions
 
 - **Duotone blob format.** The PSD Color Mode Data layout is undocumented by
-  Adobe. *Resolves with:* publicly documenting a CS6 duotone PSD, or acceptance
+  Adobe. *Resolves with:* analyzing a CS6 duotone PSD, or acceptance
   of opaque round-trip only.
 - **Exact curve interpolation** (linear between points vs spline). *Resolves
   with:* CS6 curve tests at intermediate gray values.

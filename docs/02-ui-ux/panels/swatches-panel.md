@@ -10,7 +10,7 @@
 
 ## CS6 behavior
 
-`Window > Swatches` opens the **Swatches panel**, which 
+`Window > Swatches` opens the **Swatches panel**, which stores colors you use often. Colors can be added to or deleted from the panel, and different color libraries can be displayed for different projects.
 
 **Default placement (CS6 Essentials workspace).** The panel is tabbed behind the **Color** panel at the **top of the right-hand main column**; Color is the default-active tab. (Source: Photoshop Essentials, *Managing Panels In Photoshop CS6*.)
 
@@ -24,10 +24,10 @@ Swatches are laid out as a **grid of colored cells**, expanding to the panel wid
 ### Adding
 
 1. Make the desired color the foreground color.
-2. Either click the **New Swatch** button / choose **New Swatch** from the panel menu, or 
+2. Either click the **New Swatch** button / choose **New Swatch** from the panel menu, or position the pointer over an empty space in the bottom row of the Swatches panel — the pointer becomes the **Paint Bucket** tool — and click to add the color, then enter a name and click OK.
 3. Colors can also be added from the picker or HDR picker via **Add To Swatches** (`CLR-002`).
 
-> 
+> New colors are stored in the Photoshop preferences file and persist between editing sessions. To save a color permanently, save it in a library.
 
 ### Deleting and editing
 
@@ -184,5 +184,5 @@ Not used in this pass:
 - **Panel add/delete undo** — CS6 documents none; whether to add a local undo is a product decision (non-parity). *Resolves with:* the panel UX decision.
 - **De-duplication on add** — CS6 does not document it (only the CC HTML/CSS/SVG path de-dups). *Resolves with:* a CS6 add-twice test.
 - **Grid cell metrics and wrapping threshold** per display mode. *Resolves with:* a CS6 capture at each mode.
-- **Spot-book provisioning and licensing** — whether PANTONE/TOYO/DIC data can be bundled (`OVR-004` licensing-and-independent-creation). *Resolves with:* the legal review.
+- **Spot-book provisioning and licensing** — whether PANTONE/TOYO/DIC data can be bundled (`OVR-004` licensing-and-provenance). *Resolves with:* the legal review.
 - **Preset Manager parity scope** — the dialog is shared across preset types; its full spec lives in `10-workflow-io/presets-manager.md` (planned). *Resolves with:* that spec.

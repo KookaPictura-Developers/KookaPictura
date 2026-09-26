@@ -1,6 +1,6 @@
 //! ImageMagick differential oracle for `pictura_ops` (task M10-B).
 //!
-//! This is a *sanity* oracle, not a parity oracle. Photoshop's exact resample
+//! This is a *sanity* oracle, not a parity oracle. The exact resample
 //! kernels and rotation sampler are closed; ImageMagick implements the same
 //! family of operations and is used as an independent reference. Each op with a
 //! faithful operator is diffed against the ImageMagick result with
@@ -54,7 +54,7 @@ const MAPPING: &[Mapping] = &[
         im: "-define filter:b=0 -define filter:c=0.75 -filter cubic -resize WxH!",
         tolerance: 1,
         note: "Mitchell-Netravali cubic(0, 0.75) (Keys a = -0.75), the publicly documented \
-               Photoshop Bicubic; matches within tolerance 1 (16->32). Catmull-Rom (`catrom`) \
+               the reference Bicubic; matches within tolerance 1 (16->32). Catmull-Rom (`catrom`) \
                is the wrong operator here",
     },
     Mapping {

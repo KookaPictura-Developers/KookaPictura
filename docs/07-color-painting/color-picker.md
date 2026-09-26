@@ -12,7 +12,7 @@
 
 ## CS6 behavior
 
-The **Adobe Color Picker** is the default modal color dialog. It sets the foreground color, background color, text color, and target colors for tools, commands, and options. It offers **four models — HSB, RGB, Lab, and CMYK** — and 
+The **Adobe Color Picker** is the default modal color dialog. It sets the foreground color, background color, text color, and target colors for tools, commands, and options. It offers **four models — HSB, RGB, Lab, and CMYK** — and shows the numeric values for HSB, RGB, Lab, CMYK, and hexadecimal all at once.
 
 ### Anatomy
 
@@ -34,7 +34,7 @@ The rectangle beside the slider shows the **adjusted color in the top section an
 
 ### Interaction
 
-- To choose a color  which sets the other two components.
+- To choose a color, set one component by clicking the color slider or dragging its triangle, then set the other two by moving the circular marker or clicking in the color field.
 - **HSB**: hue is a **0°–360°** angle; saturation and brightness are percentages; in the field, saturation increases left→right and brightness bottom→top. Selecting **S** or **B** makes the field display that component for further adjustment (so the slider/field axis pairing follows the radio selection).
 - **RGB**: choose R, G, or B; that channel becomes the slider (0 at bottom, 255 at top) and the field shows the other two components.
 - **Lab**: L 0–100, a/b −128…+127; slider/field optional.
@@ -58,7 +58,7 @@ The picker's **Color Libraries** button opens the **Custom Colors** dialog, init
 
 CS6-supported systems (from the Help): **ANPA-COLOR**, **DIC Color Guide**, **FOCOLTONE** (763 CMYK colors), **HKS** (E, K, N, Z scales), **PANTONE MATCHING SYSTEM** (1,114 colors), **TOYO Color Finder 1050** (>1,000 colors), and **TRUMATCH** (>2,000 computer-generated CMYK colors).
 
-> 
+> **Spot-color caveat:** except in Duotone mode, Photoshop prints spot colors onto CMYK process plates; true spot-color plates require spot color channels.
 
 ### Changing the picker
 
@@ -66,7 +66,7 @@ CS6-supported systems (from the Help): **ANPA-COLOR**, **DIC Color Guide**, **FO
 
 ### HUD color picker
 
-The heads-up-display picker 
+The heads-up-display picker lets you pick colors quickly while painting in the document window, where the surrounding image colors provide useful context.
 
 - **Requires OpenGL.**
 - Type is set in `Edit > Preferences > General` → **HUD Color Picker**: **Hue Strip** (vertical) or **Hue Wheel** (circular).
@@ -85,7 +85,7 @@ With a 32-bpc document open, clicking the foreground/background box (or other co
 
 ### Recently used swatches
 
-The CS6 Help documents **no "recently used" swatch row inside the Adobe Color Picker or Color panel**. Persistence of ad-hoc added colors is via the Swatches panel, which saves new colors  A recent-colors/Color-Themes UI is a later Creative Cloud feature and is treated as **non-goal** here (see Open questions).
+The CS6 Help documents **no "recently used" swatch row inside the Adobe Color Picker or Color panel**. Persistence of ad-hoc added colors is via the Swatches panel, which writes new colors to the Photoshop preferences file so they persist between editing sessions. A recent-colors/Color-Themes UI is a later Creative Cloud feature and is treated as **non-goal** here (see Open questions).
 
 ## UI surface
 

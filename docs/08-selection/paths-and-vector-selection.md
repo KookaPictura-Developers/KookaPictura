@@ -36,7 +36,7 @@ CS6 detail: the Make Selection dialog **recalls the last Feather radius** (CS6 W
 
 ### Clipping paths
 
-A saved path can be designated as a **clipping path** so that part of the image becomes transparent when the file is placed in a page-layout or vector-editing application. The Help's Paths overview lists this as one of the uses of paths ().
+A saved path can be designated as a **clipping path** so that part of the image becomes transparent when the file is placed in a page-layout or vector-editing application. The Help's Paths overview lists this as one of the uses of paths: a clipping path makes part of an image transparent when the image is exported to a page-layout or vector-editing application.
 
 Format interaction (fetched Help):
 
@@ -46,7 +46,7 @@ Format interaction (fetched Help):
 
 ### Path vs raster mask
 
-- A **vector mask** is . It is created with the pen/shape tools, edited as a path, and stored as a path in the document. It can be disabled/enabled, its density/feathering adjusted, and removed; rasterising it (`Layer > Rasterize > Vector Mask`) converts it to a layer mask **one-way**.
+- A **vector mask** is a resolution-independent path that clips out the contents of the layer. It is created with the pen/shape tools, edited as a path, and stored as a path in the document. It can be disabled/enabled, its density/feathering adjusted, and removed; rasterising it (`Layer > Rasterize > Vector Mask`) converts it to a layer mask **one-way**.
 - A **layer mask** is a raster alpha channel. Loading its boundary as a selection uses the same modifier-click model as channels (`SEL-012`).
 - Selection↔path conversion is the bridge between the raster selection world and the vector mask world: a selection → work path → vector mask gives a resolution-independent clip; a vector mask/path → selection gives editable raster coverage. Cross-ref `05-layers/vector-masks-and-clipping-masks.md`, `05-layers/layer-masks.md`.
 

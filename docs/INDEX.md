@@ -29,7 +29,7 @@ Full file listing with status. Statuses: `planned` (not written), `stub`,
 | `product-overview.md` | What Kooka Pictura is, target parity, audiences | draft |
 | `cs6-editions-and-constraints.md` | Standard vs Extended, version-13 feature set | draft |
 | `feasibility-and-non-goals.md` | What is realistic, what is explicitly dropped | draft |
-| `licensing-and-independent-creation.md` | Trademark, independent-creation method, asset policy | draft |
+| `licensing-and-provenance.md` | Trademark, independent-creation method, asset policy | draft |
 
 ## 01-architecture
 

@@ -10,17 +10,17 @@
 
 ## CS6 behavior
 
-Blur filters "soften a selection or an entire image" by  The Blur submenu:
+Blur filters soften a selection or a whole image by averaging the pixels adjacent to hard edges in lines and shaded areas. The Blur submenu:
 
 - **Average** — finds the average color of the image or selection and fills it with that color, producing a smooth homogeneous patch.
 - **Blur / Blur More** — eliminate noise at significant color transitions; Blur More's effect is **three or four times stronger** than Blur. Neither has a dialog.
 - **Box Blur** — blurs using the average color of neighboring pixels; the **radius** sets the size of the area averaged; a larger radius blurs more.
-- **Gaussian Blur** — "quickly blurs a selection by an adjustable amount"; applies a bell-curve weighted average, adding low-frequency detail and producing a hazy effect.
+- **Gaussian Blur** — blurs a selection quickly by an adjustable amount; applies a bell-curve weighted average, adding low-frequency detail and producing a hazy effect.
 - **Lens Blur** — adds depth-of-field blur controlled by a **depth map** (a selection, an alpha channel, or a layer mask); some objects stay in focus while others blur; the iris shape (number of blades, curvature, rotation) controls the bokeh character; specular highlights and re-injected noise are controllable.
 - **Motion Blur** — blurs along a direction from **–360° to +360°** at an intensity from **1 to 999**, analogous to a fixed-exposure shot of a moving subject.
 - **Radial Blur** — simulates zoom or rotation blur. **Spin** blurs along concentric circular lines (a degree of rotation); **Zoom** blurs along radial lines (a value **1 to 100**). **Quality** is **Draft / Good / Best** (Draft fast but grainy; Good and Best smooth, indistinguishable except on a large selection). **Blur Center** sets the origin.
 - **Shape Blur** — uses a chosen custom-shape **kernel** preset; the **radius** sets kernel size, hence blur amount.
-- **Smart Blur** — "blurs an image with precision." **Radius** = size of the area searched for dissimilar pixels; **Threshold** = how dissimilar pixels must be before they are affected. **Mode**: **Normal** (whole selection), **Edge Only** (black-and-white edges), **Overlay Edge** (white edge overlay). A **Quality** control exists.
+- **Smart Blur** — blurs an image with precision. **Radius** = size of the area searched for dissimilar pixels; **Threshold** = how dissimilar pixels must be before they are affected. **Mode**: **Normal** (whole selection), **Edge Only** (black-and-white edges), **Overlay Edge** (white edge overlay). A **Quality** control exists.
 - **Surface Blur** — blurs while preserving edges; **Radius** = area sampled; **Threshold** = how much neighboring pixels' tonal values must diverge from the center before being excluded from the blur. Useful for noise/grain removal.
 
 **Selection-edge caveat (sourced):** Gaussian Blur, Box Blur, Motion Blur, and Shape Blur use image data from **outside the selected area**, so a background selection next to sharp foreground can pick up foreground color and produce a fuzzy, muddy outline. The Help recommends **Smart Blur or Lens Blur** in that situation.

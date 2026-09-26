@@ -5,7 +5,7 @@
 `pictura_ops::resize` implements `Resample::Bicubic` as a Catmull-Rom cubic
 (`a = -0.5`), and the ImageMagick oracle validates it against `-filter catrom`,
 with a note asserting Catmull-Rom is "the faithful operator". That assertion is
-wrong: the published publicly documenting of Photoshop's resampling (Jason
+wrong: the published public analysis of Photoshop's resampling (Jason
 Summers, entropymine.com/resamplescope) puts Photoshop's **Bicubic** at a
 Mitchell–Netravali `cubic(B=0, C=0.75)` kernel (`a = -0.75`), **not**
 Catmull-Rom. Every bicubic resize therefore uses the wrong kernel.

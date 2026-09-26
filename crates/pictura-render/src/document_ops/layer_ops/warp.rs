@@ -1,10 +1,10 @@
 //! Custom mesh warp: a layer resampled through a tensor-product cubic Bézier
 //! surface defined by a control net, plus the options-bar distortion.
 //!
-//! `TOOL-001` (`docs/03-tools/move-and-transform.md`) marks the exact Adobe
+//! `TOOL-001` (`docs/03-tools/move-and-transform.md`) marks the exact
 //! patch degree and the named preset parameters closed; this ships the exact,
 //! self-verifiable core (a *custom* net, identity-exact) and leaves the presets
-//! to a change that can pin them against a reference. No Photoshop pixel oracle
+//! to a change that can pin them against a reference. No reference pixel oracle
 //! exists for the warp surface, so parity is behavioral.
 //!
 //! The op reuses [`prepare_layer`] / [`write_layer`] from `transform.rs`, so its
@@ -92,7 +92,7 @@ fn surface(mesh: &WarpMesh, u: f64, v: f64) -> (f64, f64) {
 
 /// Apply the options-bar distortion: scale each net row about its edge-point
 /// midpoint, then each column likewise. Inferred from `SethRobinson/Patchy`'s
-/// read of Photoshop's distortion operator.
+/// read of the reference's distortion operator.
 fn distorted(mesh: &WarpMesh, params: WarpParams) -> WarpMesh {
     let mut m = mesh.clone();
     let (rows, cols) = (mesh.rows, mesh.cols);

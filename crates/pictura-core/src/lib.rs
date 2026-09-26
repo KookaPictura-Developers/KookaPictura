@@ -318,7 +318,7 @@ impl Default for Document {
     }
 }
 
-/// A layer blend mode. The 27 modes Photoshop CS6 exposes for a layer, plus the
+/// A layer blend mode. The 27 modes CS6 exposes for a layer, plus the
 /// group-only `'pass'` (Pass Through) option. Pass Through is not a layer mode:
 /// it is not part of [`BlendMode::LAYER_MODES`] and must only be used on groups.
 /// See `MODEL.md` for the key table.

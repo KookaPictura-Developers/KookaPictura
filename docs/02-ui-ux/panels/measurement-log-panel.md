@@ -12,7 +12,7 @@
 
 The **Measurement Log panel** (`Window > Measurement Log`) is the record surface for the Extended-only measurement and counting workflow. Measurements are made with the **Ruler tool**, the **Count tool**, or **selection tools**, and recorded into the log by `Analysis > Record Measurements` (also a **Record Measurements** button in the panel). Each row is a **measurement set**; each column is a **data point**.
 
-**
+With the Photoshop Extended measurement feature, any area defined by the Ruler tool or a selection tool can be measured, including irregular areas from the Lasso, Quick Select, or Magic Wand tools. Height, width, area, and perimeter can be computed, and measurements can be tracked for one image or several.
 
 ### Measurement scale
 
@@ -30,7 +30,7 @@ The **Measurement Log panel** (`Window > Measurement Log`) is the record surface
 ### Data points and recording
 
 - `Analysis > Select Data Points` chooses which data points are recorded; `Custom` opens the **Select Data Points** dialog (grouped by measuring tool; **Common** points available to all tools; all selected by default). A subset can be saved as a **data point preset**, edited, or deleted.
-- If a measurement is made with a tool whose data points are not selected, the user is prompted to select them ().
+- If a measurement is made with a tool whose data points are not selected, the user is prompted to select data points for that tool.
 - Recording is via `Analysis > Record Measurements` or the panel's **Record Measurements** button. A **Count** measurement requires the Count data point to be enabled (`03-tools/note-and-count.md`, `TOOL-019`).
 - **Multiple selections:** one summary/cumulative row for all selected areas, followed by one row per selection area; each area is a **Feature** in the **Label** column with a unique number. The **Document** column identifies the source document, so a single log can span documents.
 - Measurements use the scale units in effect *at the moment of recording*.

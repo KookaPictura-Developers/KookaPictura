@@ -1,9 +1,9 @@
-//! Pictura Raw: our reimplementation of the Camera Raw Filter's 11 PV2012 Basic
-//! tone controls, applied to an 8-bit RGB/RGBA buffer in `f32`.
+//! Pictura Raw: our reimplementation of the 11 PV2012 Basic tone controls,
+//! applied to an 8-bit RGB/RGBA buffer in `f32`.
 //!
 //! Pipeline order: WB (temperature/tint) -> exposure -> contrast ->
 //! highlights/shadows/whites/blacks -> clarity -> vibrance -> saturation.
-//! Adobe's exact PV2012 curves are closed, so every stage is an approximation
+//! The exact PV2012 curves are closed, so every stage is an approximation
 //! and marked `ponytail:` inline. The pass is deterministic and a default
 //! (all-`None`) [`PicturaRawSettings`] is a byte-identical no-op.
 
@@ -65,7 +65,7 @@ pub fn render_pictura_raw(
     }
 
     if wb_temp != 0.0 || wb_tint != 0.0 {
-        // ponytail: approximate JPEG/processed-file slider scale; Adobe's
+        // ponytail: approximate JPEG/processed-file slider scale; the reference's
         // camera-matrix white balance is closed.
         let t = (wb_temp / 100.0) as f32;
         let ti = (wb_tint / 100.0) as f32;
@@ -88,7 +88,7 @@ pub fn render_pictura_raw(
     }
 
     if contrast != 0.0 {
-        // Monotone S-curve about mid-grey; Adobe's contrast curve is closed.
+        // Monotone S-curve about mid-grey; the reference's contrast curve is closed.
         let c = contrast / 100.0;
         let (xs, ys, ms) = ([0.0, 0.5, 1.0], [0.0, 0.5, 1.0], [1.0, 1.0 + c, 1.0]);
         for plane in [&mut r, &mut g, &mut b] {
@@ -116,7 +116,7 @@ pub fn render_pictura_raw(
 
     if clarity != 0.0 {
         // ponytail: local luminance detail against a fixed-radius box blur; the
-        // radius is image-size relative and Adobe's clarity kernel is closed.
+        // radius is image-size relative and the reference's clarity kernel is closed.
         let radius = (w.min(h) / 8).clamp(1, 16);
         let yplane: Vec<f32> = (0..n)
             .map(|i| 0.299 * r[i] + 0.587 * g[i] + 0.114 * b[i])

@@ -35,7 +35,7 @@ top-level fill block. The 4-byte key is one of `SoCo` / `GdFl` / `PtFl`, and
 `parseVectorContent` dispatches on the descriptor's **content** — `'Grad' in d` →
 gradient, `'Ptrn' in d` → pattern, `'Clr ' in d` → color — not on the key.
 
-**Empirically confirmed against a real Adobe file.** A a reference build shape layer
+**Empirically confirmed against a real Adobe file.** A reference shape layer
 (`Ellipse 1`, kind `shape`) in `assets/test_with_smart_object01.psd` and
 `...02.psd` carries a `vscg` whose psd-tools type is
 `VectorStrokeContentSetting` with `key == b"SoCo"`, `version == 16`,

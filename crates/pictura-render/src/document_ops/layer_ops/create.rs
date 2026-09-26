@@ -15,7 +15,7 @@ fn insertion_index(len: usize, above: i32) -> usize {
 
 /// A document-sized raster layer with fully transparent pixels.
 ///
-/// ponytail: Photoshop stores no pixel data until the layer is painted; a
+/// ponytail: the reference stores no pixel data until the layer is painted; a
 /// document-sized layer is the lazy stand-in and costs `w*h*4` bytes. Switch to
 /// an empty-rect layer once the paint path can grow a layer on first dab.
 pub(super) fn transparent_layer(width: u32, height: u32, name: &str) -> Layer {
@@ -304,7 +304,7 @@ pub fn add_layer_full(doc: &mut Document, selection_path: &str, spec: &NewLayerS
 /// Insert a solid-color fill-content layer at the [`insert_node`] rule.
 ///
 /// The node is document-sized with no pixel channels; its content lives in an
-/// opaque `SoCo` block holding the standard Photoshop version-16 descriptor.
+/// opaque `SoCo` block holding the standard PSD version-16 descriptor.
 /// Named `"Color Fill N"`. Returns the new path, or empty for a zero-dimension
 /// document. Fill layers carry an adjustment, so the merge check refuses them.
 pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -> String {

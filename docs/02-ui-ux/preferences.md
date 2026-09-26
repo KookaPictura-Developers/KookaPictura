@@ -319,8 +319,8 @@ Preferences are an application-level key/value store, not a document transform. 
 - `crate::prefs::paths::prefs_path()` — XDG-correct location on Linux:
   `$XDG_CONFIG_HOME/kooka-pictura/prefs.json` (or `~/.config/...`), encoding the CS6 layout as
   a *migration source*, not the on-disk format.
-- `crate::prefs::import::cs6` — optional, independent-creation best-effort importer that can read a user's
-  CS6 `.psp` only if publicly documented later; off by default (see `00-overview/licensing-and-independent-creation.md`).
+- `crate::prefs::import::cs6` — optional, independent best-effort importer that can read a user's
+  CS6 `.psp` only if publicly documented later; off by default (see `00-overview/licensing-and-provenance.md`).
 - Scratch disks/GPU: `crate::render::{GpuSettings, ScratchDiskConfig}` consumed by
   `01-architecture/gpu-rendering-pipeline.md`.
 
@@ -474,6 +474,6 @@ Types crossing the Rust↔Qt boundary: `GeneralPrefs`, `InterfacePrefs`, …, `P
   `Automatically Save Recovery Information` have additional sub-options. *Resolve:* the CS6 Help
   File Handling page or a capture.
 - **Persistence format and interop:** should Kooka Pictura offer any CS6 `.psp` import? Legal and
-  independent-creation review needed (`00-overview/licensing-and-independent-creation.md`).
+  legal review needed (`00-overview/licensing-and-provenance.md`).
 - **Linux preference location:** confirm XDG (`$XDG_CONFIG_HOME`) vs. Qt `QSettings` native
   format; decide JSON vs. TOML for the spec's reference store.

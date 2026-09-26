@@ -4,7 +4,7 @@
 //! `generate_style_warp_mesh` at commit
 //! `7d14d1f6ede2dc8fb52c11eefcc7cc8783473711` (MIT) and dumping every control
 //! point for all 15 presets at both orientations, `w = 60`, `h = 20`. Patchy
-//! validated its constructions against Photoshop captures to ~2.4e-6 px, so this
+//! validated its constructions against reference captures to ~2.4e-6 px, so this
 //! is the accepted oracle tier for the preset geometry (`testing-conventions.md`
 //! §4); the comparison tolerance is 1e-9, well inside that.
 

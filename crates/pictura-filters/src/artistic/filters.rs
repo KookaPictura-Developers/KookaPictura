@@ -1,5 +1,5 @@
 //! Artistic filters (`m22-artistic-filters`): Cutout, Film Grain, Neon Glow and
-//! Poster Edges. Behavioural models; Adobe's closed algorithms are approximated
+//! Poster Edges. Behavioural models; the closed algorithms are approximated
 //! and each shortcut is marked with a `ponytail:` note.
 
 mod brush;

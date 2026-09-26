@@ -369,4 +369,4 @@ cited as a source.
   sourced. Resolve in `10-workflow-io/camera-raw-workflow.md`.
 - **Crate gaps.** There is no mature Rust PSD *writer* and no mature pure-Rust
   PostScript interpreter; both are build-vs-bind decisions. Resolve in
-  `00-overview/feasibility-and-non-goals.md` and `licensing-and-independent-creation.md`.
+  `00-overview/feasibility-and-non-goals.md` and `licensing-and-provenance.md`.

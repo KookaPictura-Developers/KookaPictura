@@ -53,6 +53,7 @@ from psd_tools.psd.descriptor import (
     String,
     UnitFloat,
 )
+from psd_tools.psd.engine_data import EngineData
 from psd_tools.psd.effects_layer import (
     CommonStateInfo,
     EffectsLayer,
@@ -2015,6 +2016,44 @@ def legacy_effects() -> PSDImage:
     return psd
 
 
+def _engine_string(value: str) -> bytes:
+    """A psd-tools EngineData string: a parenthesised UTF-16BE run."""
+    return b"(\xfe\xff" + value.encode("utf-16-be") + b")"
+
+
+def engine_data() -> bytes:
+    """A minimal synthetic EngineData blob, canonicalised by psd-tools.
+
+    The oracle (`tests/oracle/type_engine_data.rs`) parses the same bytes with
+    both `pictura-codec` and psd-tools and expects the font set
+    (`AdobeInvisFont`, `MyriadPro-Regular`), the first run's resolved font
+    (`MyriadPro-Regular`), size 150.0, fill [1,1,1,1], tracking 0.0,
+    justification 0, and the text "hello world\\r".
+    """
+    text = b"".join(
+        [
+            b"<< /EngineDict << ",
+            b"/Editor << /Text ",
+            _engine_string("hello world\r"),
+            b" >> ",
+            b"/StyleRun << /RunArray [ << /StyleSheet << /StyleSheetData << ",
+            b"/FontSize 150.0 /FillColor << /Values [ 1.0 1.0 1.0 1.0 ] >> ",
+            b">> >> >> ] >> ",
+            b"/ParagraphRun << /RunArray [ << /ParagraphSheet << /Properties << ",
+            b"/Justification 0 >> >> >> ] >> ",
+            b">> /ResourceDict << ",
+            b"/FontSet [ << /Name ",
+            _engine_string("AdobeInvisFont"),
+            b" >> << /Name ",
+            _engine_string("MyriadPro-Regular"),
+            b" >> ] ",
+            b"/StyleSheetSet [ << /StyleSheetData << /Font 1 /FontSize 12.0 >> >> ] ",
+            b">> >>",
+        ]
+    )
+    return EngineData.frombytes(text).tobytes()
+
+
 FIXTURES = {
     "two_layers.psd": two_layers,
     "knockout.psd": knockout,
@@ -2062,6 +2101,7 @@ FIXTURES = {
     "satin.psd": satin,
     "bevel.psd": bevel,
     "legacy_effects.psd": legacy_effects,
+    "engine_data.bin": engine_data,
 }
 
 
@@ -2087,6 +2127,9 @@ def main() -> None:
         path = FIXTURE_DIR / name
         path.write_bytes(data)
 
+        if not name.endswith(".psd"):
+            print(f"wrote {path.relative_to(ROOT)} ({len(data)} bytes)")
+            continue
         reopened = PSDImage.open(io.BytesIO(data))
         print(f"wrote {path.relative_to(ROOT)} ({len(data)} bytes, "
               f"{reopened.width}x{reopened.height} mode={reopened.color_mode})")

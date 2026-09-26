@@ -39,9 +39,9 @@ non-finite, or unmodeled value.
 ### Requirement: Attaching the filter to a layer
 
 The system SHALL provide `pictura_codec::attach_pictura_raw_filter(&mut Layer,
-&PicturaRawSettings)`. When the layer already carries a camera-raw smart filter it SHALL
+&PicturaRawSettings)`. When the layer already carries a pictura-raw smart filter it SHALL
 update that filter's `Fltr` in place. When a preserved `SoLd`/`SoLE` has no
-camera-raw entry it SHALL insert one while preserving every other descriptor key.
+pictura-raw entry it SHALL insert one while preserving every other descriptor key.
 When the layer has an authored embedded smart object with no preserved block it
 SHALL record the filter so the writer authors it into the `SoLd`. It MUST return
 an error without mutating a layer that has no smart object.
@@ -49,7 +49,7 @@ an error without mutating a layer that has no smart object.
 #### Scenario: Settings survive save and read
 
 - **WHEN** the filter is attached and the document is written and read back
-- **THEN** the layer's camera-raw smart filter carries the same settings
+- **THEN** the layer's pictura-raw smart filter carries the same settings
 
 ### Requirement: Pictura Raw render
 
@@ -126,18 +126,18 @@ engine refuses the conversion or the apply.
 ### Requirement: Pictura Raw settings readback
 
 The system SHALL provide a bridge read command `layer_pictura_raw_settings(path)` that
-returns the 11 stored controls of the layer's camera-raw smart filter in the
+returns the 11 stored controls of the layer's pictura-raw smart filter in the
 documented order as a space-separated string, or an empty string when the layer
-has no camera-raw filter. It MUST be a pure read that mutates no state.
+has no pictura-raw filter. It MUST be a pure read that mutates no state.
 
 #### Scenario: Stored settings are returned for prefill
 
-- **WHEN** a camera-raw filter is applied and its settings are read back
+- **WHEN** a pictura-raw filter is applied and its settings are read back
 - **THEN** the returned string carries the applied values in dialog order
 
 #### Scenario: A layer without a filter returns empty
 
-- **WHEN** `layer_pictura_raw_settings` is called on a layer with no camera-raw filter
+- **WHEN** `layer_pictura_raw_settings` is called on a layer with no pictura-raw filter
 - **THEN** it returns an empty string
 
 ### Requirement: Pictura Raw dialog

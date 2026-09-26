@@ -1,8 +1,8 @@
 # Kooka Pictura
 
-A independent-creation, documentation-first reimplementation of **Adobe Photoshop CS6
-(v13, 2012)** for Linux. The engine is Rust; the UI is Qt 6; the goal is
-behavioral parity with CS6.
+Kooka Pictura is an independent, from-scratch layered image editor for Linux,
+targeting compatibility with **Adobe Photoshop CS6 (v13, 2012)** workflows.
+The engine is Rust; the UI is Qt 6.
 
 This is a working application, not just a spec. It opens and saves PSD/PSB,
 composites layers on the CPU with an optional GPU path, and ships a large slice
@@ -82,7 +82,7 @@ uses the exit code as the failure identity.
 
 ## Legal
 
-Kooka Pictura is an independent, independent-creation project. It is not affiliated with,
+Kooka Pictura is an independent project. It is not affiliated with,
 endorsed, sponsored, or approved by Adobe Inc. **Adobe**, **Photoshop**,
 **Camera Raw**, **Adobe Camera Raw**, and **Lightroom** are trademarks or
 registered trademarks of Adobe Inc. Adobe marks are used here only nominatively
@@ -90,4 +90,11 @@ to identify the Photoshop CS6 behavior being reimplemented and the documented
 on-disk PSD/PSB identifiers required for compatibility. The project ships no
 Adobe source, binaries, fonts, profiles, or creative assets. See
 [`NOTICE.md`](NOTICE.md) and
-[`docs/00-overview/licensing-and-independent-creation.md`](docs/00-overview/licensing-and-independent-creation.md).
+[`docs/00-overview/licensing-and-provenance.md`](docs/00-overview/licensing-and-provenance.md).
+
+## License
+
+Kooka Pictura is free software under the **GNU GPL v3.0 or later** (see
+[`LICENSE`](LICENSE)). Third-party component licenses are listed in
+[`THIRD-PARTY-LICENSES`](THIRD-PARTY-LICENSES) with texts under
+[`LICENSES/`](LICENSES/).

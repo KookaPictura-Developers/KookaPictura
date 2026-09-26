@@ -20,7 +20,7 @@ Observable CS6 behavior this spec must preserve:
 - `Document.suspendHistory` wraps a whole script into a single history state (one undo for the script), which is the CS6 idiom the Kooka Pictura equivalent must reproduce.
 - `File > Scripts > Script Events Manager` maps application events to a script or an action (`Notifier`s).
 
-Kooka Pictura does not ship ExtendScript and does not promise binary/behavioural equivalence for arbitrary `.jsx`. It ships a new embedded engine, an Kooka Pictura DOM that follows CS6 naming, and a compatibility shim that covers the common script surface.
+Kooka Pictura does not ship ExtendScript and does not promise binary/behavioural equivalence for arbitrary `.jsx`. It ships a new embedded engine, a Kooka Pictura DOM that follows CS6 naming, and a compatibility shim that covers the common script surface.
 
 ## UI surface
 
@@ -224,7 +224,7 @@ Widgets (not QML) are proposed for console/dialogs: they are document-modal util
 - **E4X strategy.** Shim, transpile, or reject-with-diagnostic is undecided; the shim policy in this spec is "reject with a named diagnostic" until evidence demands otherwise.
 - **ScriptUI scope.** Full Qt-backed ScriptUI vs a minimal dialog API vs none. Resolve with user research and the `11-cross-cutting` accessibility policy.
 - **Action-descriptor serialization and `.atn`.** Whether Kooka Pictura actions interoperate with Adobe `.atn`/droplets or only its own JSON format.
-- **Four-char id table provenance.** The mapping table must be built without copying Adobe assets; confirm a independent-creation derivation path and document it under the licensing policy.
+- **Four-char id table provenance.** The mapping table must be built without copying Adobe assets; confirm an independent derivation path and document it under the licensing policy.
 - **Sandbox model.** In-process capability checks versus out-of-process/WASM for untrusted scripts; resolve in `11-cross-cutting/security-and-sandboxing`.
 - **Timeout default.** 30 s matches the proposal in `ARCH-011` but is unvalidated against real batch scripts; measure against representative scripts and revisit.
 - **Engine fallback packaging.** Shipping QuickJS *and* Rhai doubles the surface; whether the alternative engine ships at all is deferred to Phase 5.

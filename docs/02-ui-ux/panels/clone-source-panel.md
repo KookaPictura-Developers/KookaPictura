@@ -14,11 +14,11 @@ The **Clone Source panel** (`Window > Clone Source`) *"has options for the Clone
 
 ### Five sample sources
 
-** Five **source buttons** select the active slot. `Alt`/`Option`-click in any open document window sets the sampling point for the selected slot; clicking a different button and sampling again defines that slot. ** Sources can come from the current document or any other open document (subject to the tool's color-mode rules in `TOOL-030`).
+You can define up to five different sample sources and switch quickly between them without resampling each time you change source. Five **source buttons** select the active slot. `Alt`/`Option`-click in any open document window sets the sampling point for the selected slot; clicking a different button and sampling again defines that slot. The panel keeps the sampled sources until the document is closed. Sources can come from the current document or any other open document (subject to the tool's color-mode rules in `TOOL-030`).
 
 ### Offset
 
-Each source has an **Offset** x/y pixel value: ** Select the source, then enter the x and y values.
+Each source has an **Offset** x/y pixel value that places the sampled source at a specified position relative to the sampling point. Select the source, then enter the x and y values.
 
 ### Scale and rotation
 
@@ -50,7 +50,7 @@ The CS6 key tables list: **Show Clone Source (overlays image)** `Alt+Shift`/`Opt
 
 ### Extended-only frame relationship
 
-*(Photoshop Extended)* For timeline-based animations the panel ** Out of core parity (`OVR-003`, `docs/02-ui-ux/panels/timeline-panel.md`).
+*(Photoshop Extended)* For timeline-based animations the panel also provides options that specify the frame relationship between the sampled source video/animation frame and the target video/animation frame. Out of core parity (`OVR-003`, `docs/02-ui-ux/panels/timeline-panel.md`).
 
 ## UI surface
 

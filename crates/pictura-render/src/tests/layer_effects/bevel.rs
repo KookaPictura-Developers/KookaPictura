@@ -298,7 +298,7 @@ fn bevel_enums_decode_every_value() {
             want
         );
     }
-    // An unknown enum value falls back to the Photoshop default.
+    // An unknown enum value falls back to the reference default.
     let spec = BevelSpec {
         style: b"XXXX".to_vec(),
         technique: b"XXXX".to_vec(),

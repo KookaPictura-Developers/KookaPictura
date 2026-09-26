@@ -1,4 +1,4 @@
-//! Bounded parser for Photoshop EngineData, the opaque style blob inside a
+//! Bounded parser for PSD EngineData, the opaque style blob inside a
 //! text layer's `Txt ` descriptor.
 //!
 //! Grammar follows psd-tools 1.19 `psd_tools/psd/engine_data.py`: `<<`/`>>`
