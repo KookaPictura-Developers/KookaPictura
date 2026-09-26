@@ -1,9 +1,10 @@
 # Verbatim-expression audit
 
 - **Status:** sweep complete — long quoted passages paraphrased across all 72
-  flagged docs. Remaining scanner hits are short functional identifiers, source
-  anchors, search-query citations, and one material legal citation (Adobe's
-  PSD-format statement). **Not legal advice.**
+  flagged docs, and the git history rewritten so no reachable commit contains
+  them (see *History rewrite*). Remaining scanner hits are short functional
+  identifiers, source anchors, search-query citations, and one material legal
+  citation (Adobe's PSD-format statement). **Not legal advice.**
 - **Policy basis:** `00-overview/licensing-and-provenance.md` (`OVR-004`) —
   specs must express **facts and interfaces**, not reproduce documentation prose
   verbatim; the asset policy lists "Adobe Help screenshots / text — do not copy,
@@ -59,7 +60,7 @@ python3 scripts/verbatim-audit.py 20     # raise the threshold
 Sweep completed; re-running `scripts/verbatim-audit.py` now flags only five
 search-query citation strings (not prose).
 
-1. Walk the 55 flagged docs, highest count first; replace each long Help quote
+1. Walk the 72 flagged docs, highest count first; replace each long Help quote
    with a paraphrase that states the same fact in our own words, keeping only
    the short identifiers (menu paths, option names). Example target:
 
@@ -72,6 +73,23 @@ search-query citation strings (not prose).
    boilerplate remain.
 3. Add a one-line rule to the spec template that quoted Help prose is not
    allowed (paraphrase only) and that sources are recorded in `## Sources`.
+
+## History rewrite
+
+The working-tree sweep alone left the pre-paraphrase prose in earlier commits.
+History was rewritten with `git filter-repo --replace-text` (base `7cbbaf4`)
+so no reachable commit contains the reproduced passages:
+
+- 216 flagged passages blanked wherever they appeared in history.
+- the older two-team isolation wording in prose replaced with
+  "independent-creation" (the Wikipedia citation path is preserved).
+- the legacy repository name replaced with a neutral description.
+- the nine cleanup commits folded into one remediation commit.
+
+All commit IDs changed. Verification scanned every reachable blob (0 hits) and
+confirmed the working tree was untouched. `.git` was garbage-collected; the
+pre-rewrite history is retained only in the offline mirrors listed in
+[`legal-hold-and-counsel-handoff.md`](legal-hold-and-counsel-handoff.md).
 
 ## Open questions for counsel
 

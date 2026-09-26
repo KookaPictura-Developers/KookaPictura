@@ -12,6 +12,7 @@
 | Clean (scrubbed) repository | `github.com/KookaPictura-Developers/KookaPictura` (private) | Rewritten history: no Adobe-authored blobs, no old brand/fixture-derivation terms. |
 | Pre-scrub repository | a private remote (`legacy`) | Retained, **not** deleted; still holds the original history. Keep for now. |
 | Pre-scrub mirror | `/tmp/opencode/kooka-pictura-prerewrite.git` | Offline backup of the pre-rewrite history. |
+| Pre-history-scrub mirror | `/tmp/opencode/kooka-pictura-prehistory-scrub.git` | Offline backup taken before the verbatim-expression history rewrite. |
 | Legacy working copy | a local pre-rename working copy | Lightweight source + full original `.git`. |
 
 History rewriting removed the encumbered blobs from the new repo, but **does not
