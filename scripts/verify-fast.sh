@@ -8,9 +8,50 @@
 # The test step routes through scripts/test-report.sh (nextest + doctests +
 # the app self-tests when ./build/pictura exists), which prints the unified
 # report. One nextest run per gate.
+#
+# Docs-only fast path: when the working diff (against the merge base with the
+# default branch, plus untracked files) touches only docs/, openspec/, *.md, or
+# .serena/, run just the guard and spec validation. An empty diff falls through
+# to the full gate.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+base=""
+for ref in main kooka/main origin/main; do
+  if git rev-parse --verify -q "$ref" >/dev/null 2>&1; then
+    base=$(git merge-base HEAD "$ref" 2>/dev/null || true)
+    [ -n "$base" ] && break
+  fi
+done
+
+changed=$(
+  {
+    [ -n "$base" ] && git diff --name-only "$base" -- || true
+    git status --porcelain --untracked-files=all | sed 's/^...//'
+  } | sort -u
+)
+
+docs_only=0
+if [ -n "$changed" ]; then
+  docs_only=1
+  while IFS= read -r path; do
+    case "$path" in
+      docs/* | openspec/* | *.md | .serena/*) ;;
+      *) docs_only=0; break ;;
+    esac
+  done <<< "$changed"
+fi
+
+if [ "$docs_only" -eq 1 ]; then
+  echo "verify-fast: docs-only diff; skipping fmt, clippy, and tests"
+  echo "== guard =="
+  bash scripts/guard.sh
+  echo "== openspec =="
+  openspec validate --all --strict 2>&1 | tail -1
+  echo "verify-fast: OK (docs-only)"
+  exit 0
+fi
 
 echo "== fmt =="
 cargo fmt --all --check
