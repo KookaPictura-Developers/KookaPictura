@@ -6,8 +6,8 @@
   chrome, plus one engine bug in the new-document render path. It is the **sixth
   panel interruption** of the Layers-panel program; the program shifts behind it
   (see §7). STATE is handled at close-out.
-- **Contract:** `openspec/specs/panel-column/`, `application-shell/`,
-  `tool-framework/`, and `document-canvas/` are the canonical requirements this
+- **Contract:** `openspec/specs/ui/panel-column/`, `ui/application-shell/`,
+  `tools/tool-framework/`, and `ui/document-canvas/` are the canonical requirements this
   change reconciles. `docs/02-ui-ux/workspace-and-docks.md` (`UI-003`) governs
   docks. The tab-colour contract is the M43 `panelTabBar` lineage; the
   new-document render is the M17 `application-shell` "initial canvas" lineage.

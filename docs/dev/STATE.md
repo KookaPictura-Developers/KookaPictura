@@ -23,7 +23,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   The C++ self-test reports **451 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
   probes) reports **2154 passed, 11 skipped, 0 failed**.
-- OpenSpec **1.3.1** (`/usr/bin/openspec`). M0–M47 archived plus the
+- OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
   `layers-panel-control-polish`, `layers-panel-management`,
@@ -83,10 +83,9 @@ Snapshot for resuming after a context break. Update after each milestone.
     `native-depth-save`, and
     `hdr-exposure-gamma`
     changes;
-    canonical specs are in `openspec/specs/` (107 specs, `validate --all --strict`
-   green), change history under `openspec/changes/archive/`; the
-   `hdr-conversion` and `native-depth-edit-preserve` changes are open (not yet
-   archived).
+    canonical specs are in `openspec/specs/` as a `{domain}/{capability}` tree
+   (110 specs, `validate --all --strict` green), change history under
+   `openspec/changes/archive/`.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
    `layer-effects-inner-shadow`, `layer-effects-inner-glow`,

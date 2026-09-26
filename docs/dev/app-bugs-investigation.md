@@ -81,8 +81,8 @@ are a generalization problem rather than new invention.
 4. Seed `normalWidthBeforeIconic_` from `railWidth` (`cpp/panel_column.*`).
 5. Re-apply the width after first layout with a zero-delay timer.
 
-**Specs/tests.** `openspec/specs/workspace-persistence/spec.md` and
-`openspec/specs/panel-column/spec.md` only assert the stored `railWidth`
+**Specs/tests.** `openspec/specs/document/workspace-persistence/spec.md` and
+`openspec/specs/ui/panel-column/spec.md` only assert the stored `railWidth`
 round-trips (self-test checks 128, 151); add a real apply-and-measure restart
 requirement. `docs/10-workflow-io/workspace-management.md:153-156` already
 models `panel_widths` but it is unimplemented.
@@ -147,8 +147,8 @@ valid under `--self-test`.
 3. Keep `Untitled-N` when there is no file name; decide whether the dirty `*`
    goes before or after the suffix.
 
-**Specs/tests.** `openspec/specs/document-tabs/spec.md:32-47` and
-`openspec/specs/image-import/spec.md:156-181`. No existing test asserts tab
+**Specs/tests.** `openspec/specs/document/document-tabs/spec.md:32-47` and
+`openspec/specs/interop/image-import/spec.md:156-181`. No existing test asserts tab
 text; `lpr_image_import` (self-test check 290) only checks
 `file_path().isEmpty()`.
 
@@ -197,8 +197,8 @@ affordance (currently only the menu entry works).
 a regular layer with alpha. Confirm the rule is "opaque image becomes
 Background".
 
-**Specs/tests.** `openspec/specs/image-import/spec.md:49-80,156-181`
-contradict the requested behavior. `openspec/specs/layer-management/spec.md:183-220`
+**Specs/tests.** `openspec/specs/interop/image-import/spec.md:49-80,156-181`
+contradict the requested behavior. `openspec/specs/compositing/layer-management/spec.md:183-220`
 defines the Background semantics. Extend `lpr_image_import` (check 290).
 
 ---
@@ -227,7 +227,7 @@ Options is disabled in the context menu, and the menu-bar entries are inert.
 3. Gate `LayersModel::setData`/`flags` behind a rename flag. Rejected: fragile
    shared state.
 
-**Specs/tests.** `openspec/specs/layers-panel/spec.md` "layer property editing"
+**Specs/tests.** `openspec/specs/ui/layers-panel/spec.md` "layer property editing"
 and the m39 rename check.
 
 ---
@@ -292,8 +292,8 @@ timer exists for moves.
    `docs/02-ui-ux/keyboard-shortcuts.md:389-392` assigns plain arrows to
    selection and `Ctrl+arrow` to layer movement in CS6.
 
-**Specs/tests.** `openspec/specs/canvas-tools/spec.md:6-17`,
-`openspec/specs/edit-history/spec.md`, and the stale
+**Specs/tests.** `openspec/specs/tools/canvas-tools/spec.md:6-17`,
+`openspec/specs/document/edit-history/spec.md`, and the stale
 `docs/dev/canvas-view-spec.md:138-169`.
 
 ---
@@ -376,7 +376,7 @@ a faster inner loop alone.
 
 The minimal set for the reported symptom is 1 + 2, optionally 3.
 
-**Specs/tests.** `openspec/specs/paint-engine/spec.md` has no latency/region
+**Specs/tests.** `openspec/specs/tools/paint-engine/spec.md` has no latency/region
 requirement; add one citing the canvas-view budget. Extend the ignored
 profiling home (`src/cxxqt_object/tests_impl.rs`) with a brush-dab profile and
 add a `Stroke` unit test for incremental versus cumulative dirty.
@@ -403,7 +403,7 @@ refusal dialog on the canvas path; `Qt::ForbiddenCursor` is a builtin fallback.
 3. Refusal dialog on a `false` return from `begin_paint`/`apply_filter`,
    following the `QMessageBox::warning` pattern in `cpp/frame_menus.cpp:708`.
 
-**Specs/tests.** `openspec/specs/layers-panel/spec.md:41-60` only reports or
+**Specs/tests.** `openspec/specs/ui/layers-panel/spec.md:41-60` only reports or
 edits lock state; enforcement belongs in `layer-locks`/`brush-tools`/
 `filter-application`. Rust tests in `stroke.rs`, `move_content.rs`,
 `impl_filters`; a new self-test check plus a cursor check.
@@ -427,7 +427,7 @@ and `move_layer_to` with refusal guards, and drop-on-strip buttons are handled
 in `LayersPanel::eventFilter` (`cpp/layers_panel.cpp:571-599`). The self-test
 only checks `dragEnabled()`/`acceptDrops()` and calls the bridge directly, so
 the dead pipeline was never exercised. The spec already requires the opposite
-of the observed behavior (`openspec/specs/layers-panel/spec.md:648-663`).
+of the observed behavior (`openspec/specs/ui/layers-panel/spec.md:648-663`).
 
 **Candidate.** Add `Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled` to
 `LayersModel::flags()`. One line; activates the existing, spec-tested pipeline.
@@ -452,7 +452,7 @@ cannot obtain the color for a fill.
 2. Alpha-blend the fill so the eye and selection highlight stay legible.
 3. Cache a per-label pixmap. YAGNI.
 
-**Specs/tests.** `openspec/specs/layers-panel/spec.md` "layer row badges and
+**Specs/tests.** `openspec/specs/ui/layers-panel/spec.md` "layer row badges and
 delegate". Add a paint-and-sample check using the existing geometry test hooks.
 
 ---
@@ -474,7 +474,7 @@ one layer. The selection-aware path already exists and is correct:
 required refusals (`layer_ops/properties.rs:255-271`), and the bridge
 `group_layers` recomposites and records one undo step (`impl_layers.rs:626-642`).
 The spec already requires the menu to act on the selected layers
-(`openspec/specs/layers-panel/spec.md:184-223`).
+(`openspec/specs/ui/layers-panel/spec.md:184-223`).
 
 **Candidate.** Rewrite the `LayerGroupLayers`/`LayerUngroupLayers` handlers to
 mirror `groupSelection`/`ungroupSelection` using `selectedPaths()` and the

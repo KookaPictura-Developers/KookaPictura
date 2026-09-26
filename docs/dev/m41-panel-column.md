@@ -9,8 +9,8 @@
   Tool Switch` default on, General pane), `docs/02-ui-ux/workspace-and-docks.md`
   (`UI-003`, dock rules), `docs/02-ui-ux/panels/layers-panel.md` (`PAN-001`), and
   `docs/05-layers/layer-management-ui.md` (`LAY-002`). Canonical requirements:
-  `openspec/specs/panel-column/` (new), `panel-rail`, `application-shell`,
-  `tool-framework`, `workspace-persistence`.
+  `openspec/specs/ui/panel-column/` (new), `ui/panel-rail`, `ui/application-shell`,
+  `tools/tool-framework`, `document/workspace-persistence`.
 - **Consumers:** `crates/pictura-app/cpp/panels/panel_column.{h,cpp}` (new),
   `panels/panel_registry.{h,cpp}` (new or folded),
   `panels/*_panel.{h,cpp}` (the fifteen converted panels),

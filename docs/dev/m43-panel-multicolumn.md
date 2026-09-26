@@ -6,8 +6,8 @@
   extended to a structural **multi-column** workspace. It is the **fifth panel
   interruption** of the Layers-panel program; the program is renumbered behind it
   (see §7). STATE is handled separately.
-- **Contract:** `openspec/specs/panel-column/`, `application-shell/`,
-  `tool-framework/`, and `workspace-persistence/` are the canonical requirements
+- **Contract:** `openspec/specs/ui/panel-column/`, `ui/application-shell/`,
+  `tools/tool-framework/`, and `document/workspace-persistence/` are the canonical requirements
   this change reconciles. `docs/02-ui-ux/workspace-and-docks.md` (`UI-003`)
   governs docks. The tab-colour and active-tab contract is the same lineage as
   the M23 `application-shell` "CS6-style chrome styling" requirement.

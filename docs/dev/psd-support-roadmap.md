@@ -2,7 +2,7 @@
 
 Working note (`docs/dev/`). The behavioral contract lives in
 `docs/01-architecture/file-formats.md` and the capability specs
-`openspec/specs/psd-codec/`, `openspec/specs/psd-layer-io/`. This note tracks the
+`openspec/specs/codec/psd-codec/`, `openspec/specs/codec/psd-layer-io/`. This note tracks the
 distance between the shipped codec and "fully supports PSD" and the order we
 close it in.
 

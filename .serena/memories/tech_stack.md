@@ -40,5 +40,5 @@ Workspace layout/commands: `mem:core`, `mem:suggested_commands`.
   doctests**, so `cargo test --workspace --doc` is a separate step.
 - `scripts/test-report.sh` + `scripts/report_tests.py` fold JUnit + doctests + the C++ self-test
   token streams into one report.
-- **OpenSpec 1.3.1** for change proposals/specs. Oracles: ImageMagick 7 (`magick`), `psd-tools`.
+- **OpenSpec 1.13.2** for change proposals/specs (minimum 1.7.0 for nested spec paths). Oracles: ImageMagick 7 (`magick`), `psd-tools`.
 - No test framework anywhere (std `#[test]`, hand-rolled C++ self-test, argparse Python CLIs).

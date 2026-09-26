@@ -18,6 +18,11 @@ are not optional.
 - Optional, for the `--interop-probe` diagnostic: Vulkan development headers
   (`libvulkan-dev`). The app and its wgpu GPU path build and run without them;
   the probe compiles to a stub when `vulkan.h` is missing.
+- OpenSpec CLI, pinned to 1.13.2 (`npm i -g @fission-ai/openspec@1.13.2`; the
+  floor is 1.7.0, the first release with nested spec discovery). See
+  [AI-assisted development](#ai-assisted-development).
+- Optional, for LLM-assisted work and symbol navigation: the Serena MCP server
+  on `PATH`. See [AI-assisted development](#ai-assisted-development).
 
 ## Build and run
 
@@ -97,6 +102,53 @@ fresh configure, so delete `build/` to pick it up.
 `scripts/verify-fast.sh` skips fmt, clippy, and tests when every changed path is
 `docs/`, `openspec/`, a `*.md`, or under `.serena/`, running only the guard and
 spec validation.
+
+## AI-assisted development
+
+The repository is set up for LLM coding agents; a human contributor can use the
+same tooling.
+
+### OpenSpec
+
+Per-change requirements live in `openspec/changes/<name>/`, and the canonical
+capability specs in the two-level `openspec/specs/{domain}/{capability}/` tree.
+Install the pinned CLI:
+
+```bash
+npm i -g @fission-ai/openspec@1.13.2   # >=1.7.0 required for nested specs
+```
+
+After a CLI upgrade, run `openspec update` to regenerate
+`.opencode/skills/openspec-*` and `.opencode/commands/opsx-*`, then commit the
+diff. The workflow commands are `/opsx-explore`, `/opsx-propose`, `/opsx-apply`,
+`/opsx-archive`, and `/opsx-sync`. The taxonomy and the mirrored delta-path rule
+are declared in `openspec/config.yaml`.
+
+### Serena
+
+Serena is a symbol-level MCP server. Its project config and memories are
+committed (`.serena/project.yml`, `.serena/memories/`); `cache/`,
+`project.local.yml`, and `compile_commands.json` are ignored. The MCP server is
+declared in `opencode.json`, so it needs the `serena` executable on `PATH`.
+After a fresh clone, index the project once:
+
+```bash
+serena project index
+```
+
+Serena updates the index itself as files change. C++ cross-file navigation reads
+`compile_commands.json` from the repo root, which the CMake configure links from
+`build/`; reconfigure if it is missing.
+
+### How the pieces divide
+
+- `AGENTS.md` — the agent rules (verification, git, non-goals).
+- `.opencode/` — the OpenSpec skills and slash commands.
+- `.serena/memories/` — durable project knowledge; update it when architecture
+  or conventions change.
+- `docs/` — the long-form contract, read-only unless the task allows it. A
+  `docs/` change needs `TASK-ALLOWS-DOCS` in the commit message (or
+  `TASK_ALLOWS_DOCS=1`), including when an agent makes it.
 
 ## Layout
 
