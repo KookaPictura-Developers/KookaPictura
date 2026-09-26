@@ -5,6 +5,7 @@
 #include <QtCore/QByteArrayList>
 #include <QtCore/QSize>
 #include <QtGui/QVulkanInstance>
+#include <QtGui/qtguiglobal.h>
 
 #include <cstdio>
 
@@ -16,6 +17,19 @@ std::int32_t pictura_try_qrhi_import(std::uint64_t vkInstance,
                                      std::uint32_t width,
                                      std::uint32_t height)
 {
+#if !QT_CONFIG(vulkan)
+    static_cast<void>(vkInstance);
+    static_cast<void>(physicalDevice);
+    static_cast<void>(device);
+    static_cast<void>(queueFamily);
+    static_cast<void>(image);
+    static_cast<void>(width);
+    static_cast<void>(height);
+    std::fprintf(stderr,
+                 "pictura interop: this Qt build has no Vulkan feature; "
+                 "--interop-probe is unavailable\n");
+    return -1;
+#else
     if (vkInstance == 0 || physicalDevice == 0 || device == 0) {
         std::fprintf(stderr, "pictura interop: missing Vulkan handles\n");
         return -1;
@@ -75,4 +89,5 @@ std::int32_t pictura_try_qrhi_import(std::uint64_t vkInstance,
 
     delete rhi;
     return sameDevice ? 1 : 2;
+#endif
 }
