@@ -1374,7 +1374,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool onOk = avail ? onBackend == QStringLiteral("GPU")
                                       : onBackend == QStringLiteral("CPU (no GPU)");
         gpuView->set_gpu_compute(false);
-        const bool offCpu = gpuView->active_backend() == QStringLiteral("CPU");
+        const QString offBackend = gpuView->active_backend();
+        // With no GPU the label is "CPU (no GPU)" whether or not compute is on;
+        // with a GPU, disabling it drops the label to "CPU".
+        const bool offCpu = avail ? offBackend == QStringLiteral("CPU")
+                                  : offBackend == QStringLiteral("CPU (no GPU)");
         gpuView->set_gpu_compute(true);
         const bool gpuRestored = gpuView->active_backend() == onBackend;
         ST_BEGIN("gpu_available");
