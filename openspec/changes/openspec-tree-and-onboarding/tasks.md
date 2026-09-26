@@ -23,7 +23,7 @@
 - [x] 4.2 Update the OpenSpec section of root `AGENTS.md` to the `{domain}/{capability}` layout, the mirrored delta path, and the pinned version.
 - [x] 4.3 Update `docs/dev/STATE.md` — OpenSpec version `1.13.2`, the nested tree, 110 specs.
 - [x] 4.4 Update `.serena/memories/` (`core.md`, `task_completion.md`, `suggested_commands.md`) flat paths to the tree. Verify: `grep -rn "openspec/specs/<flat>" .serena/memories/` finds none.
-- [ ] 4.5 Commit the `docs/` changes with `TASK-ALLOWS-DOCS` (guard rule 4). Verify: `bash scripts/guard.sh` passes.
+- [x] 4.5 Commit the `docs/` changes with `TASK-ALLOWS-DOCS` (guard rule 4). Verify: `bash scripts/guard.sh` passes.
 
 ## 5. Document onboarding in DEVELOPING.md
 
@@ -33,10 +33,10 @@
 
 ## 6. Commit the regenerated tooling
 
-- [ ] 6.1 Review and commit the `.opencode/skills/openspec-*` and `.opencode/commands/opsx-*` diff, including the new `openspec-sync-specs` / `opsx-sync`. Verify: `grep generatedBy .opencode/skills/*/SKILL.md` shows `1.13.2` and `git status .opencode` is clean.
+- [x] 6.1 Review and commit the `.opencode/skills/openspec-*` and `.opencode/commands/opsx-*` diff, including the new `openspec-sync-specs` / `opsx-sync`. Verify: `grep generatedBy .opencode/skills/*/SKILL.md` shows `1.13.2` and `git status .opencode` is clean.
 
 ## 7. Integration
 
-- [ ] 7.1 Run `bash scripts/verify-fast.sh` end to end and confirm it passes (its `--strict` steps now green). Note: on the uncommitted tree this needs `TASK_ALLOWS_DOCS=1` until the `docs/` commit (4.5) lands; it passes on the committed branch.
+- [x] 7.1 Run `bash scripts/verify-fast.sh` end to end and confirm it passes (its `--strict` steps now green).
 - [x] 7.2 Smoke the corpus: `openspec list --specs` shows 110 nested ids, `openspec show codec/psd-codec` resolves, `openspec validate --all --strict` exits `0`.
-- [ ] 7.3 Confirm the branch's commits use the conventional format with the issue number and `TASK-ALLOWS-DOCS` on docs commits.
+- [x] 7.3 Confirm the branch's commits use the conventional format with the issue number and `TASK-ALLOWS-DOCS` on docs commits.
