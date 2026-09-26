@@ -2,7 +2,22 @@ name: CI
 
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'openspec/**'
+      - '**/*.md'
+      - '.serena/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'openspec/**'
+      - '**/*.md'
+      - '.serena/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,31 +26,12 @@ env:
   SCCACHE_GHA_ENABLED: "true"
 
 jobs:
-  dco:
-    if: github.event_name == 'pull_request'
+  lint:
     runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Developer Certificate of Origin sign-off
-        run: |
-          base='${{ github.event.pull_request.base.sha }}'
-          head='${{ github.event.pull_request.head.sha }}'
-          missing=''
-          for sha in $(git rev-list --no-merges "$base..$head"); do
-            git log -1 --format='%B' "$sha" | grep -qi '^Signed-off-by: ' || missing="$missing $sha"
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::Commits missing a DCO 'Signed-off-by:' line:$missing"
-            exit 1
-          fi
-
-  rust:
-    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - &checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Reads rust-toolchain.toml (channel 1.98) and installs it on the runner.
       - &toolchain
@@ -54,7 +50,7 @@ jobs:
           cache: true
 
       - &sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - &rustcache
         uses: Swatinem/rust-cache@v2
@@ -67,6 +63,25 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Install cargo-deny
+        if: ${{ hashFiles('deny.toml') != '' }}
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Deny
+        if: ${{ hashFiles('deny.toml') != '' }}
+        run: cargo deny check
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - *toolchain
+      - *apt
+      - *qt
+      - *sccache
+      - *rustcache
+
       - uses: taiki-e/install-action@nextest
 
       - name: Test
@@ -77,21 +92,14 @@ jobs:
 
       - name: Upload nextest JUnit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextest-junit
           path: target/nextest/default/junit.xml
 
-      - name: Install cargo-deny
-        if: ${{ hashFiles('deny.toml') != '' }}
-        run: cargo install cargo-deny --locked
-
-      - name: Deny
-        if: ${{ hashFiles('deny.toml') != '' }}
-        run: cargo deny check
-
   qt-headless:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - *checkout
       - *toolchain
@@ -117,11 +125,14 @@ jobs:
 
   oracles:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - *checkout
       - *toolchain
-      - *apt
-      - *qt
+
+      - name: Install lld and lcms2
+        run: sudo apt-get update && sudo apt-get install -y lld liblcms2-dev
+
       - *sccache
       - *rustcache
 
@@ -146,4 +157,4 @@ jobs:
         run: npm i ag-psd
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude pictura_app
