@@ -4,6 +4,8 @@ Thanks for helping. This project is an independent reimplementation of the
 Adobe Photoshop CS6 feature set; because of that, the **provenance rules below
 are not optional** — they are what keep the project defensible.
 
+For build, test, and architecture setup, see [`DEVELOPING.md`](DEVELOPING.md).
+
 ## License and sign-off (DCO)
 
 Kooka Pictura is distributed under the **GPL-3.0-or-later** (see
