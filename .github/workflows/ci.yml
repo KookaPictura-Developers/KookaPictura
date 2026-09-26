@@ -43,8 +43,8 @@ jobs:
         run: rustup show active-toolchain
 
       - &apt
-        name: Install lld, ninja, and lcms2
-        run: sudo apt-get update && sudo apt-get install -y lld ninja-build liblcms2-dev
+        name: Install lld, ninja, lcms2, and Vulkan headers
+        run: sudo apt-get update && sudo apt-get install -y lld ninja-build liblcms2-dev libvulkan-dev
 
       - &qt
         name: Install Qt
