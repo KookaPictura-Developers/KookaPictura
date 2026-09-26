@@ -30,8 +30,9 @@ Kooka Pictura is licensed **GPL-3.0-or-later**.
   license and points to the notices.
 - **Enforcement.** `deny.toml` makes CI run `cargo deny check`, allowing
   permissive and GPL/LGPL-compatible licenses and rejecting AGPL/SSPL/EUPL.
-- **Contributors.** Contributions are accepted under the project license with a
-  Developer Certificate of Origin sign-off (see `CONTRIBUTING.md`).
+- **Contributors.** Contributions are accepted under the project license, with
+  the provenance attestation in `CONTRIBUTING.md`; no CLA or sign-off is
+  required.
 - **Not a shield.** The license governs distribution of *this* code; it does not
   affect copyright, patent, or trademark questions about the Photoshop
   compatibility target (`OVR-004`).
