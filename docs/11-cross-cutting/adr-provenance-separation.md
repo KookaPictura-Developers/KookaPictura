@@ -23,7 +23,7 @@ and overclaiming it would be worse than not claiming it.
    independent-creation process.
 2. It commits to the substantive rules: no Adobe source, no decompilation, no
    NDA/beta knowledge, no protected expression in specs.
-3. Contributors attest to these rules via DCO sign-off
+3. Contributors attest to these rules when contributing
    (`CONTRIBUTING.md`).
 4. Where practical, behaviour is specified (`docs/`) before it is implemented,
    and each doc cites only public sources in its `## Sources`.

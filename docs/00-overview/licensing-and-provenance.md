@@ -223,7 +223,7 @@ These are process gates, not pixel tests:
   All current dependencies are compatible (permissive Rust crates; Qt 6 under
   LGPLv3, which GPLv3 satisfies and which permits the current dynamic linking).
 - **What contributor attestation is required** (no Adobe source, no NDA
-  knowledge, DCO/CLA)? *Resolves with:* a `CONTRIBUTING` process reviewed by
+  knowledge; CLA or none)? *Resolves with:* a `CONTRIBUTING` process reviewed by
   counsel.
 - **Does shipping independently authored defaults that mimic Adobe defaults**
   (e.g. the default brush set) create any risk? *Resolves with:* counsel review
