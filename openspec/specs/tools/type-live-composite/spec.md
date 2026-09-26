@@ -1,0 +1,35 @@
+# type-live-composite Specification
+
+## Purpose
+Renders a proxy-less type layer live in the compositor, which the GPU declines.
+## Requirements
+### Requirement: A proxy-less type layer renders live in the compositor
+
+The CPU compositor SHALL render a non-group layer that carries a `TypeTool` and
+has no colour channel by shaping and rasterizing its text with the bundled
+backend and compositing the result over the layer's canvas-clipped region with
+the layer's opacity, mask, and blend mode, instead of painting the channel-less
+rect. A type layer that carries a colour channel SHALL still composite from that
+raster.
+
+#### Scenario: Proxy-less type renders coverage
+
+- **WHEN** a document has a type layer with a style and no colour channel
+- **THEN** its region composites non-empty text coverage rather than an opaque black rect
+
+#### Scenario: A stored proxy is unchanged
+
+- **WHEN** a type layer carries a colour channel
+- **THEN** the compositor uses the channel and the live renderer is not invoked for it
+
+### Requirement: The GPU declines a proxy-less type layer
+
+The GPU compositor SHALL report a text-unsupported error for a stack containing
+a type layer with no colour channel, so the CPU oracle composites it. A stack
+with no such layer SHALL keep using the GPU path.
+
+#### Scenario: A proxy-less type layer forces the CPU oracle
+
+- **WHEN** a document contains a type layer with no colour channel
+- **THEN** the GPU compositor declines and the CPU composite is the result
+

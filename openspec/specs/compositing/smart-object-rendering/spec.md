@@ -1,0 +1,95 @@
+# smart-object-rendering Specification
+
+## Purpose
+Renders embedded smart-object sources without a proxy, with proxy precedence, nearest-neighbour placement, and no-op fallback.
+## Requirements
+### Requirement: Embedded smart-object source renders without a proxy
+
+The renderer SHALL decode, for a visible non-group non-adjustment layer whose
+smart object is `Embedded` with a non-empty payload and no color channel (`id`
+0), the payload as a document and composite the decoded pixels into the layer's
+rect. The composite SHALL apply the layer's opacity, fill, mask, and blend mode
+with the same semantics as a raster layer.
+
+#### Scenario: Source renders in the layer rect
+- **WHEN** a layer has an embedded payload and no color channel
+- **THEN** the decoded source pixels composite inside the layer's rect instead of a black rectangle
+
+#### Scenario: Layer properties apply
+- **WHEN** such a layer has opacity, a mask, or a non-Normal blend mode
+- **THEN** those properties modify the decoded source exactly as they would a raster layer
+
+#### Scenario: Invisible layer is skipped
+- **WHEN** such a layer is not visible
+- **THEN** the payload is not decoded and the backdrop is unchanged
+
+### Requirement: A raster proxy takes precedence over the embedded payload
+
+A layer that has a color channel (`id` 0) SHALL render from its stored channel
+data, and the renderer SHALL NOT decode the smart-object payload for that layer.
+Existing files that carry a Photoshop raster proxy SHALL render unchanged.
+
+#### Scenario: Proxy is used
+- **WHEN** a smart-object layer also has a color channel
+- **THEN** the channel data is composited and the payload is not decoded
+
+#### Scenario: No behaviour change for proxied files
+- **WHEN** a document whose smart-object layers all carry color channels is composited
+- **THEN** the result equals the result before this change
+
+### Requirement: An unusable source is a no-op
+
+The renderer SHALL leave the backdrop unchanged, and SHALL NOT return an error or
+panic, when a smart-object layer's source is `External`, `Alias`, or
+`Unresolved`, when its payload is empty, or when the payload fails to decode.
+
+#### Scenario: Non-embedded kind is a no-op
+- **WHEN** a layer's smart object is external, alias, or unresolved
+- **THEN** the composite leaves the backdrop unchanged and raises no error
+
+#### Scenario: Empty payload is a no-op
+- **WHEN** an embedded smart object has an empty payload
+- **THEN** the composite leaves the backdrop unchanged and raises no error
+
+#### Scenario: Undecodable payload is a no-op
+- **WHEN** an embedded payload is not a decodable document
+- **THEN** the composite leaves the backdrop unchanged and raises no error
+
+### Requirement: Decoded source is placed by the layer rect with nearest-neighbour scaling
+
+The renderer SHALL scale the decoded source into the layer's rect using
+nearest-neighbour sampling, clamped to the canvas, and SHALL NOT apply the
+`Trnf`/warp transform or bilinear resampling. The decoded document's stored
+merged composite SHALL be preferred when it is usable; otherwise the renderer
+SHALL composite the decoded document's layers to obtain the source.
+
+#### Scenario: Scale into the rect
+- **WHEN** the source size differs from the layer rect
+- **THEN** each destination pixel samples the nearest source pixel
+
+#### Scenario: Stored composite preferred
+- **WHEN** the decoded document carries a usable stored merged composite
+- **THEN** those pixels are used as the source
+
+#### Scenario: Layers composited as fallback
+- **WHEN** the decoded document has no usable stored merged composite
+- **THEN** the decoded document's layers are composited to produce the source
+
+#### Scenario: Transform is not applied
+- **WHEN** an object carries a `Trnf`/warp transform
+- **THEN** the source renders axis-aligned in the layer rect, without bilinear resampling
+
+### Requirement: An authored embedded source composites its colour
+
+The renderer SHALL composite a document authored in memory with a smart-object
+layer whose embedded payload is a document of a known solid colour and whose
+layer carries no color channel, yielding that colour across the layer's rect.
+
+#### Scenario: Author and render
+- **WHEN** a layer is authored with an embedded solid-colour source and no proxy
+- **THEN** `composite_rgba` yields that colour inside the layer rect
+
+#### Scenario: Authored source respects the rect
+- **WHEN** the authored layer rect covers only part of the canvas
+- **THEN** the colour appears only inside that rect and the rest of the canvas is unchanged
+
