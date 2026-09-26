@@ -6485,6 +6485,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolbarFixPump(4);
                 hScrollOff = panelColumnColumn->horizontalScrollPolicyForTest()
                                 == static_cast<int>(Qt::ScrollBarAlwaysOff);
+                // The floor was last computed when the content changed, before
+                // the style/font polish settled the panels' minimum widths; on a
+                // font that widens them late the stale floor leaves a few pixels
+                // of overflow. Recompute it now that the content is settled.
+                pictura::PanelColumn::refreshSharedFloor(&frame);
+                toolbarFixPump(4);
                 panelColumnColumn->setPreferredWidth(panelColumnColumn->minimumWidthForTest());
                 toolbarFixPump(8);
                 hScrollZero = panelColumnColumn->horizontalScrollRangeForTest() == 0;
