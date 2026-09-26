@@ -212,19 +212,6 @@ change is still gated. A mixed change SHALL run the build jobs, because
 - **WHEN** `scripts/guard.sh`, `openspec validate --all --strict`, or `scripts/check-file-size.sh` exits non-zero
 - **THEN** the guards workflow fails
 
-### Requirement: DCO sign-off checked on push and pull request
-The system SHALL verify a `Signed-off-by:` line on every non-merge commit in the
-run's range, on both pushes (using the pushed commit range) and pull requests
-(using the base and head SHAs).
-
-#### Scenario: Unsigned commit on push
-- **WHEN** a push to `main` contains a non-merge commit without a `Signed-off-by:` line
-- **THEN** the check fails and names the commit
-
-#### Scenario: Signed commits on a pull request
-- **WHEN** every non-merge commit between the pull request base and head carries a `Signed-off-by:` line
-- **THEN** the check passes
-
 ### Requirement: Local verification fast path and compiler caching
 `scripts/verify-fast.sh` SHALL detect the changed paths of the working tree
 (committed diff against the merge base with `main`, plus untracked files). When
