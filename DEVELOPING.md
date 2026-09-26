@@ -78,6 +78,26 @@ GPU tests are `#[ignore]`d with a reason string and run with
 [`docs/dev/testing-conventions.md`](docs/dev/testing-conventions.md) for how
 each layer is built and reports.
 
+## Speeding up local builds
+
+`sccache` is optional. To route Rust compilation through it, export the wrapper
+before building or testing:
+
+```bash
+export RUSTC_WRAPPER=sccache
+```
+
+`scripts/verify-full.sh` adds `-DCMAKE_CXX_COMPILER_LAUNCHER=sccache` to the
+CMake configure automatically when `sccache` is on `PATH`. It applies only on a
+fresh configure, so delete `build/` to pick it up.
+
+`target/` grows to tens of GB. Reclaim space with `cargo sweep` (install
+`cargo-sweep` if you want it) or a plain `cargo clean`.
+
+`scripts/verify-fast.sh` skips fmt, clippy, and tests when every changed path is
+`docs/`, `openspec/`, a `*.md`, or under `.serena/`, running only the guard and
+spec validation.
+
 ## Layout
 
 ```
