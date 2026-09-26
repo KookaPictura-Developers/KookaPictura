@@ -15,6 +15,9 @@ are not optional.
   dependencies.
 - Optional, for the oracle tests: ImageMagick 7 (`magick`) and Python
   `psd-tools>=1.19`. Suites self-skip when these are absent.
+- Optional, for the `--interop-probe` diagnostic: Vulkan development headers
+  (`libvulkan-dev`). The app and its wgpu GPU path build and run without them;
+  the probe compiles to a stub when `vulkan.h` is missing.
 
 ## Build and run
 
