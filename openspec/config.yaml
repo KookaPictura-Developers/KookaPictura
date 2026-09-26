@@ -1,0 +1,21 @@
+schema: spec-driven
+
+context: |
+  The `openspec/specs/` corpus is a two-level tree:
+  `specs/{domain}/{capability}/spec.md`. The domains are `document`, `codec`,
+  `color`, `compositing`, `imaging`, `tools`, `ui`, `interop`,
+  `verification`, and `meta` (repository and development-process contracts);
+  every capability belongs to exactly one domain. A
+  capability's id is its directory path relative to `specs/`, for example
+  `compositing/layer-compositing`. Changes stay flat under
+  `openspec/changes/<name>/`, but each capability delta mirrors the main
+  spec's path.
+
+rules:
+  proposal:
+    - "File each new or modified capability under an existing domain: `specs/{domain}/{capability}/spec.md`."
+    - "Use the capability's path relative to `specs/` as its id, for example `compositing/layer-compositing`."
+    - "Do not introduce a new domain or a deeper path without a layout change."
+  specs:
+    - "Write each capability delta at the mirrored path `changes/<name>/specs/{domain}/{capability}/spec.md`."
+    - "Keep the delta path identical to the main spec path it targets."

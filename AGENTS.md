@@ -41,7 +41,7 @@ cargo test -p pictura-core -- <name> --ignored --nocapture # ignored profiling/G
 bash scripts/test-report.sh                      # nextest + doctests + app self-test -> unified report
 bash scripts/verify-fast.sh                      # fmt, clippy, test-report, file-size, guard, openspec
 bash scripts/verify-full.sh                      # CMake build first, then verify-fast
-openspec validate --all --strict                 # openspec 1.3.1
+openspec validate --all --strict                 # openspec 1.13.2
 cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld && cmake --build build --parallel
 ./build/pictura --headless --self-test [file.psd]
 ```
@@ -105,12 +105,20 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
 
 - A change lives in `openspec/changes/<kebab-name>/`:
   `proposal.md` (why / what / capabilities), `design.md` (how),
-  `specs/<capability>/spec.md` (ADDED / MODIFIED / REMOVED requirement deltas),
-  `tasks.md` (implementation checklist).
-- Capabilities are kebab-case names; each becomes `openspec/specs/<capability>/spec.md`
-  once the change is archived. Prefer new capability names over `MODIFIED` unless the
-  requirement itself changes.
-- Commands: `/opsx-explore`, `/opsx-propose`, `/opsx-apply`, `/opsx-archive`
+  `specs/<domain>/<capability>/spec.md` (ADDED / MODIFIED / REMOVED requirement
+  deltas), `tasks.md` (implementation checklist). Changes stay flat; only the
+  delta path inside a change nests.
+- Capabilities live in a two-level tree, `openspec/specs/<domain>/<capability>/spec.md`.
+  A capability's id is its path relative to `specs/` (e.g. `compositing/layer-compositing`).
+  The domains are `document`, `codec`, `color`, `compositing`, `imaging`, `tools`,
+  `ui`, `interop`, `verification`, and `meta` (repository/process contracts); the taxonomy and the mirrored delta-path
+  rule are declared in `openspec/config.yaml`. Prefer new capability names over
+  `MODIFIED` unless the requirement itself changes.
+- The CLI is pinned to OpenSpec 1.13.2 (minimum 1.7.0 for nested specs); CI installs
+  the same pin. Run `openspec update` to regenerate `.opencode/skills/openspec-*`
+  and `.opencode/commands/opsx-*` after an upgrade, and commit the diff.
+- Commands: `/opsx-explore`, `/opsx-propose`, `/opsx-apply`, `/opsx-archive`,
+  `/opsx-sync`
   (skills in `.opencode/skills/openspec-*`). Artifacts are generated from
   `openspec instructions <artifact> --change <name> --json`; validate before
   committing with `openspec validate --all --strict`.
