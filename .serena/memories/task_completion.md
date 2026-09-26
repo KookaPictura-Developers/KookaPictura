@@ -32,14 +32,18 @@ Non-trivial logic (a branch, loop, parser, or money/security path) needs one run
 ## OpenSpec workflow
 
 - A change lives in `openspec/changes/<kebab-name>/`: `proposal.md` (why/what/capabilities),
-  `design.md` (how), `specs/<capability>/spec.md` (ADDED/MODIFIED/REMOVED requirement deltas),
-  `tasks.md` (checklist).
+  `design.md` (how), `specs/<domain>/<capability>/spec.md` (ADDED/MODIFIED/REMOVED requirement deltas),
+  `tasks.md` (checklist). Capabilities live in the two-level `openspec/specs/<domain>/<capability>/`
+  tree (domains and the mirrored delta-path rule are in `openspec/config.yaml`); the CLI is pinned
+  to 1.13.2, minimum 1.7.0 for nested specs.
 - Spec format is strict: `### Requirement:` then `#### Scenario:` (exactly four `#`), normative
   SHALL/MUST wording, and at least one scenario per requirement. Validate with
   `openspec validate <change> --strict` before committing.
 - Prefer a new capability name over `MODIFIED` unless the requirement itself changes.
 - Archive a completed change with `openspec archive <name>` (merges its deltas into
-  `openspec/specs/`), then `openspec validate --all --strict`.
+  `openspec/specs/<domain>/<capability>/`), then `openspec validate --all --strict`.
+- Run `openspec update` after a CLI upgrade to regenerate `.opencode/skills/openspec-*` and
+  `.opencode/commands/opsx-*`, and commit the diff.
 
 ## Docs
 

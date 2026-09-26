@@ -5,8 +5,8 @@
 - **Type:** a user-requested refinement pass on the M41 `PanelColumn` chrome.
   It is the **third panel interruption** of the Layers-panel program; the program
   is renumbered behind it (see §7). STATE is handled separately.
-- **Contract:** `openspec/specs/panel-column/`, `tool-framework/`, and
-  `application-shell/` are the canonical requirements this change reconciles.
+- **Contract:** `openspec/specs/ui/panel-column/`, `tools/tool-framework/`, and
+  `ui/application-shell/` are the canonical requirements this change reconciles.
   `docs/02-ui-ux/workspace-and-docks.md` (`UI-003`) governs docks;
   `docs/02-ui-ux/panels/layers-panel.md` (`PAN-001`) and
   `docs/05-layers/layer-management-ui.md` (`LAY-002`) stay the Layers-panel
