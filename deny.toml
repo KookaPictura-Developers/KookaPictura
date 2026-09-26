@@ -27,11 +27,15 @@ allow = [
 confidence-threshold = 0.8
 
 [advisories]
-# The pure-Rust text stack (rustybuzz, ttf-parser) carries RUSTSEC
-# "unmaintained" advisories (no CVE). They are intentional dependencies, so
-# only workspace members are checked for unmaintained status; vulnerability
-# and yanked-crate checks stay on for the whole graph.
+# rustybuzz is the project's chosen pure-Rust text shaper and carries a RUSTSEC
+# "unmaintained" advisory with no CVE. A direct dependency is still checked
+# under `unmaintained = "workspace"`, so ignore that one advisory by id; the
+# transitive ttf-parser advisory is already skipped by the workspace scope.
+# Vulnerability and yanked-crate checks stay on for the whole graph.
 unmaintained = "workspace"
+ignore = [
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz is the chosen pure-Rust shaper; unmaintained, no CVE" },
+]
 
 [bans]
 multiple-versions = "warn"
