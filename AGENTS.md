@@ -121,6 +121,28 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
 - The M0–M5 work predates this workflow; it is documented retroactively as the
   `openspec/changes/m0-*` … `m5-*` proposals.
 
+## Git conventions
+
+- **Commits** — [Conventional Commits](https://www.conventionalcommits.org/):
+  `type(scope): description (#issue)`. Valid types: `feat`, `fix`, `docs`,
+  `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+  (no `bug` — use `fix`). Scope is optional but preferred (the crate, module,
+  or system affected).
+- **Every commit ends with its GH issue number in parentheses**, e.g.
+  `fix(codec): RLE row padding (#12)`. Open or reuse an issue first. A `docs/`
+  change also carries `TASK-ALLOWS-DOCS` (guard rule 4), after the description:
+  `docs: record free-transform-quad (#21) TASK-ALLOWS-DOCS`.
+- **Sign-off** — every commit carries `Signed-off-by:` (`git commit -s`); CI's
+  `dco` job rejects a PR without it. See `CONTRIBUTING.md`.
+- **Branch names** — `type/issue-number-kebab-description`, e.g.
+  `feat/14-port-release-please`; include the issue number after the slash.
+- **GH issue titles** — the conventional prefix, no number, e.g.
+  `feat: port the healing family from photorust`.
+- **PR titles** — conventional prefix + issue number in parentheses, e.g.
+  `feat: port the healing family (#10)`.
+- **Enforcement** — review-enforced for now; commitlint + git hooks are
+  tracked in issue #69.
+
 ## Rules
 
 1. **Specs are the contract.** Do not change `docs/` unless the task says so.
