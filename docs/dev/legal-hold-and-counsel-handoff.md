@@ -32,7 +32,7 @@ possible, do not delete these; they are the record.
    Help-prose reproduction and remediation plan.
 6. [`../11-cross-cutting/adr-project-license.md`](../11-cross-cutting/adr-project-license.md)
    and [`adr-provenance-separation.md`](../11-cross-cutting/adr-provenance-separation.md).
-7. [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — DCO + provenance attestation.
+7. [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — provenance attestation.
 8. `LICENSE`, `LICENSES/`, `THIRD-PARTY-LICENSES`, `deny.toml` — distribution
    license and dependency notices.
 
@@ -48,8 +48,8 @@ possible, do not delete these; they are the record.
 3. **Copyright** — fair-use position on short attributed Help excerpts; whether
    all Help-derived text must be paraphrased (recommended); the status of the
    rolling/CC-contaminated CS6 Help PDF as a source.
-4. **Process** — is the DCO + provenance attestation adequate, or is a formal
-   CLA / contributor separation evidence required?
+4. **Process** — is the provenance attestation adequate, or is a formal CLA /
+   contributor separation evidence required?
 
 ## Housekeeping
 
