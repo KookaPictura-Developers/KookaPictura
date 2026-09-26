@@ -88,7 +88,7 @@ Open an issue at
 ## For developers
 
 - [`DEVELOPING.md`](DEVELOPING.md) — build, test, and architecture.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — DCO sign-off, provenance, and asset rules.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — provenance, asset, and dependency rules.
 - [`ROADMAP.md`](ROADMAP.md) — shipped, planned, and not planned.
 - [`docs/README.md`](docs/README.md) — how to read the specification corpus.
 - [`docs/dev/STATE.md`](docs/dev/STATE.md) — the project resume anchor.

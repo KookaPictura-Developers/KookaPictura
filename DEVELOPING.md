@@ -147,7 +147,7 @@ scripts/       verification gates + Python oracle tools
 
 ## Where to go next
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — DCO sign-off, provenance, asset rules.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — provenance, asset, and dependency rules.
 - [`docs/README.md`](docs/README.md) — how to read the spec corpus.
 - [`ROADMAP.md`](ROADMAP.md) — what ships, what is planned, what is not.
 - [`docs/dev/STATE.md`](docs/dev/STATE.md) — resume anchor: where things are.
