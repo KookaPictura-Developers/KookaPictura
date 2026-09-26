@@ -6,26 +6,16 @@ are not optional** — they are what keep the project defensible.
 
 For build, test, and architecture setup, see [`DEVELOPING.md`](DEVELOPING.md).
 
-## License and sign-off (DCO)
+## License
 
 Kooka Pictura is distributed under the **GPL-3.0-or-later** (see
 [`LICENSE`](LICENSE)). By contributing you agree to license your contribution
-under the same terms.
-
-Every commit must carry a Developer Certificate of Origin sign-off:
-
-```
-Signed-off-by: Your Name <you@example.com>
-```
-
-Use `git commit -s`. CI rejects pull requests whose commits lack a sign-off.
-The sign-off certifies the [DCO 1.1](https://developercertificate.org/): you
-wrote the change or have the right to submit it.
+under the same terms. No CLA and no sign-off are required.
 
 ## Provenance attestation (required)
 
-By signing off, you also attest that your contribution was **not** derived from
-any of the following, and that you did not use them to inform it:
+By contributing, you attest that your contribution was **not** derived from any
+of the following, and that you did not use them to inform it:
 
 - Adobe source code, in any form — leaked, shared, or obtained under an SDK,
   beta, or partner agreement;
