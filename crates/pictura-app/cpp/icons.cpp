@@ -13,11 +13,14 @@ namespace pictura {
 
 QIcon icon(const QString& id)
 {
-    const QString path = QStringLiteral(":/icons/") + id + QStringLiteral(".svg");
-    if (!QFile::exists(path)) {
-        return QIcon();
+    const QString base = QStringLiteral(":/icons/") + id;
+    for (const QString& ext : {QStringLiteral(".svg"), QStringLiteral(".png")}) {
+        const QString path = base + ext;
+        if (QFile::exists(path)) {
+            return QIcon(path);
+        }
     }
-    return QIcon(path);
+    return QIcon();
 }
 
 QCursor cursor(const QString& id)

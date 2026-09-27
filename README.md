@@ -7,6 +7,8 @@ write Photoshop (PSD/PSB) files faithfully.
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Platform: Linux](https://img.shields.io/badge/platform-linux-lightgrey)
 
+<img src="assets/icons/app.png" alt="Kooka Pictura icon" width="128">
+
 ![Kooka Pictura](docs/images/screenshot-main.png)
 
 ## What it is
