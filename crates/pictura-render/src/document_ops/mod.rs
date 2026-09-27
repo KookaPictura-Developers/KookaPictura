@@ -13,8 +13,8 @@ mod slices;
 
 pub use canvas::resize_canvas_document;
 pub use crop::{
-    crop_document, translate_layer, translate_layer_active, translate_layer_index,
-    translate_layer_rect,
+    crop_document, delete_cropped_pixels, translate_layer, translate_layer_active,
+    translate_layer_index, translate_layer_rect,
 };
 pub use depth::convert_depth_exposure_gamma;
 pub use layer_ops::{
