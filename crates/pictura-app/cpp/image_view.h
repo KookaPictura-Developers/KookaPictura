@@ -115,6 +115,10 @@ public:
     // Lasso rubber band must not show a phantom closing edge).
     void setSelectionPreview(const QList<QPolygonF>& loops, bool closed = true, bool solid = false);
     void clearSelectionPreview();
+    // A click-driven lasso's origin: a small hollow square, fixed on screen,
+    // marking the point the outline closes to. Cleared with the preview.
+    void setSelectionPreviewOrigin(const QPointF& imagePos);
+    bool hasSelectionPreviewOriginForTest() const { return previewOriginActive_; }
     bool hasSelectionPreviewForTest() const { return !previewContours_.isEmpty(); }
     bool selectionPreviewOpenForTest() const
     {
@@ -227,6 +231,8 @@ private:
     QList<QPolygonF> previewContours_;
     bool selectionPreviewClosed_ = true;
     bool selectionPreviewSolid_ = false;
+    bool previewOriginActive_ = false;
+    QPointF previewOrigin_;
     bool selectionEdgesVisible_ = true;
     int antsPhase_ = 0;
     QTimer* antsTimer_ = nullptr;

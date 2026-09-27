@@ -94,6 +94,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_shell_round4.cpp
     crates/pictura-app/cpp/selftest_shell_round4_float.cpp
     crates/pictura-app/cpp/selftest_warp_preset.cpp
+    crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
     crates/pictura-app/cpp/selftest_clipboard.cpp
     crates/pictura-app/cpp/selftest_workspace_input.cpp
     crates/pictura-app/cpp/selftest_control.cpp
@@ -159,6 +160,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_move.cpp
     crates/pictura-app/cpp/tool_crop.cpp
     crates/pictura-app/cpp/tool_selection.cpp
+    crates/pictura-app/cpp/tool_magneticlasso.cpp
     crates/pictura-app/cpp/tool_catalog.cpp
     crates/pictura-app/cpp/tool_transform.cpp
     crates/pictura-app/cpp/selection_geometry.cpp

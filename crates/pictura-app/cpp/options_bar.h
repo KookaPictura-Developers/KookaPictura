@@ -32,6 +32,7 @@ private:
     QWidget* buildWandPage(ToolId id);
     QWidget* buildPaintPage(ToolId id);
     void addModeButtons(QHBoxLayout* layout, QWidget* page, bool withIntersect);
+    void addMagneticFields(QHBoxLayout* layout, QWidget* page);
     QToolButton* toolButton(ToolId id, QWidget* parent);
 
     ToolController* controller_ = nullptr;

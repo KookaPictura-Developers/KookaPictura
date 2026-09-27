@@ -41,6 +41,7 @@ fn main() {
     unsafe {
         CxxQtBuilder::new()
             .qt_module("Gui")
+            .files(["src/cxxqt_object.rs", "src/cxxqt_object/magnetic.rs"])
             .files(["src/cxxqt_object.rs", "src/cxxqt_object/clipboard.rs"])
             .cc_builder(|cc| {
                 cc.include("cpp");

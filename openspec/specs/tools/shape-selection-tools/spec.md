@@ -2,7 +2,9 @@
 
 ## Purpose
 Rectangular and elliptical marquee, lasso and polygonal lasso, quick selection, combine modes, and a bounds overlay.
+
 ## Requirements
+
 ### Requirement: Rectangular and elliptical marquee
 The system SHALL create a selection from a dragged rectangle (Rectangular
 Marquee) or ellipse (Elliptical Marquee) whose bounds are the drag rectangle. At
@@ -208,17 +210,6 @@ Intersect mode.
 - **WHEN** the Quick Selection options bar is shown
 - **THEN** only New, Add, and Subtract are present
 
-### Requirement: Deferred selection tools stay visible and disabled
-The Magnetic Lasso SHALL remain visible in the Lasso tool group but disabled,
-with a documented reason that the engine has no edge-map or fastening-point
-tracker. Enabling the Elliptical Marquee, Polygonal Lasso, and Magic Wand MUST
-NOT change the disabled state of the Magnetic Lasso or any other unimplemented
-tool.
-
-#### Scenario: Magnetic Lasso cannot be activated
-- **WHEN** the user attempts to activate the Magnetic Lasso
-- **THEN** the tool is not activated and the active tool is unchanged
-
 ### Requirement: Marquee modifier constraints and size readout
 
 While a Rectangular or Elliptical Marquee drag is active, holding Shift SHALL
@@ -345,4 +336,3 @@ progress SHALL still show the move-selection cursor.
 - **WHEN** no drag is in progress and the selection tool hovers an existing
   selection with no Shift/Alt held
 - **THEN** the move-selection cursor is shown
-

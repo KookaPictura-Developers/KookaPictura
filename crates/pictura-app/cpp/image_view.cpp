@@ -349,9 +349,17 @@ void ImageView::setSelectionPreview(const QList<QPolygonF>& loops, bool closed, 
     update();
 }
 
+void ImageView::setSelectionPreviewOrigin(const QPointF& imagePos)
+{
+    previewOrigin_ = imagePos;
+    previewOriginActive_ = true;
+    update();
+}
+
 void ImageView::clearSelectionPreview()
 {
     previewContours_.clear();
+    previewOriginActive_ = false;
     selectionPreviewClosed_ = true;
     selectionPreviewSolid_ = false;
     updateAntsTimer();
@@ -696,6 +704,15 @@ void ImageView::paintEvent(QPaintEvent*)
             } else {
                 painter.drawPolyline(loop);
             }
+        }
+        if (previewOriginActive_) {
+            // 5 screen px whatever the zoom; the painter is in image space.
+            const double half = 2.5 / std::max(zoom_, 1e-6);
+            painter.setPen(QPen(Qt::black, 0));
+            painter.setBrush(Qt::white);
+            painter.drawRect(QRectF(previewOrigin_.x() - half, previewOrigin_.y() - half,
+                                    2 * half, 2 * half));
+            painter.setBrush(Qt::NoBrush);
         }
     }
 

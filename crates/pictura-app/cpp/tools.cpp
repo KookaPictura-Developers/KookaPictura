@@ -33,6 +33,7 @@ std::unique_ptr<ToolHandler> makeMarqueeToolHandler();
 std::unique_ptr<ToolHandler> makeEllipticalMarqueeToolHandler();
 std::unique_ptr<ToolHandler> makeLassoToolHandler();
 std::unique_ptr<ToolHandler> makePolygonalLassoToolHandler();
+std::unique_ptr<ToolHandler> makeMagneticLassoToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -50,6 +51,7 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::EllipticalMarquee, makeEllipticalMarqueeToolHandler());
     registry_.registerTool(ToolId::Lasso, makeLassoToolHandler());
     registry_.registerTool(ToolId::PolygonalLasso, makePolygonalLassoToolHandler());
+    registry_.registerTool(ToolId::MagneticLasso, makeMagneticLassoToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -133,6 +135,25 @@ void ToolController::setTolerance(int tolerance)
     tolerance_ = std::clamp(tolerance, 0, 255);
 }
 
+void ToolController::setMagneticWidth(int width)
+{
+    const int clamped = std::clamp(width, 1, 256);
+    if (clamped != magneticWidth_) {
+        magneticWidth_ = clamped;
+        emit magneticWidthChanged(clamped);
+    }
+}
+
+void ToolController::setMagneticContrast(int contrast)
+{
+    magneticContrast_ = std::clamp(contrast, 1, 100);
+}
+
+void ToolController::setMagneticFrequency(int frequency)
+{
+    magneticFrequency_ = std::clamp(frequency, 0, 100);
+}
+
 void ToolController::setContiguous(bool on) { contiguous_ = on; }
 
 int ToolController::brushSize() const { return brushSize_; }
@@ -184,6 +205,15 @@ bool ToolController::applyBrushShortcut(int key, quint32 nativeScanCode, bool sh
     PictureView* v = view();
     if (!v) {
         return false;
+    }
+    if (active_ == ToolId::MagneticLasso) {
+        // `[` / `]` step the detection width by 1 px (Shift has no meaning here).
+        const int step = v->brush_shortcut_delta(key, nativeScanCode, false, true);
+        if (step == 0) {
+            return false;
+        }
+        setMagneticWidth(magneticWidth_ + (step > 0 ? 1 : -1));
+        return true;
     }
     const bool paint = active_ == ToolId::Brush || active_ == ToolId::Pencil;
     const int delta = v->brush_shortcut_delta(key, nativeScanCode, shift, paint);
@@ -326,7 +356,8 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         }
         return;
     }
-    if (isSelectionTool(active_)) {
+    ToolHandler* handler = registry_.forTool(active_);
+    if (isSelectionTool(active_) && !(handler && handler->lassoInProgress())) {
         // A press inside a live selection moves the mask or its content instead
         // of starting a new shape; the selection handler never sees the event.
         const bool ctrl = mods.testFlag(Qt::ControlModifier);
@@ -343,8 +374,8 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         }
     }
 
-    if (ToolHandler* h = registry_.forTool(active_)) {
-        h->onPress(*this, imagePos, mods);
+    if (handler) {
+        handler->onPress(*this, imagePos, mods);
     }
 }
 
@@ -408,6 +439,14 @@ bool ToolController::cancelPolygonLasso()
 {
     if (ToolHandler* h = registry_.forTool(active_)) {
         return h->cancelPolygonLasso();
+    }
+    return false;
+}
+
+bool ToolController::removeLassoPoint()
+{
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        return h->removeLassoPoint();
     }
     return false;
 }

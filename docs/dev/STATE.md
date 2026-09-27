@@ -82,6 +82,7 @@ Snapshot for resuming after a context break. Update after each milestone.
     `native-depth-masks`, and
     `native-depth-save`, and
     `hdr-exposure-gamma`, and
+    `magnetic-lasso`
     `edit-clipboard`, and
     `edit-clipboard-interop`
     changes;
@@ -366,6 +367,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   interactive mesh cage / curved overlay, `View > Extras`, the custom-net drag,
   Warp Text, Puppet Warp, and Content-Aware Scale are not shipped; Patchy's
   captures are Photoshop 2026, so CS6 preset equivalence is assumed.
+- **Magnetic Lasso** (change `magnetic-lasso`, issue #2, ported from
+  photorust): `pictura_select::EdgeMap` is a Sobel edge-cost field (Contrast)
+  with a corridor-bounded Dijkstra live wire (Width); `tool_magneticlasso.cpp`
+  fastens on click and automatically by Frequency, closes on the first point /
+  double-click / Enter, peels points back with Delete, and cancels with Escape,
+  committing through the shared lasso path. A second cxx-qt bridge
+  (`cxxqt_object/magnetic.rs`) caches the field per gesture, so the size-capped
+  `cxxqt_object.rs` does not grow; the options bar now sizes to the active page
+  only (self-test code 530). Ceilings: Sobel magnitude only (no Adobe
+  cost-function parity), no Alt temporary-tool switching, Caps Lock width ring,
+  Stylus Pressure, or fastening-point markers.
 - **Edit clipboard** (changes `edit-clipboard` and `edit-clipboard-interop`,
   issue #88, ported from photorust): Cut, Copy, Copy Merged, Paste, Paste
   Special ▸ Paste in Place / Paste Into / Paste Outside, Clear, and Purge ▸

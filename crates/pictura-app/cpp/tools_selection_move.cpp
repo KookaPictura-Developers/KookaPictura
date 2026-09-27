@@ -13,7 +13,7 @@ namespace pictura {
 bool ToolController::isSelectionTool(ToolId id)
 {
     return id == ToolId::Marquee || id == ToolId::EllipticalMarquee || id == ToolId::Lasso
-        || id == ToolId::PolygonalLasso;
+        || id == ToolId::PolygonalLasso || id == ToolId::MagneticLasso;
 }
 
 bool ToolController::maybeBeginSelectionMove(PictureView* v, const QPointF& imagePos)
