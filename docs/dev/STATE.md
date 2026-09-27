@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1665 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1678 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **451 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **452 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2154 passed, 11 skipped, 0 failed**.
+  probes) reports **2168 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -81,10 +81,11 @@ Snapshot for resuming after a context break. Update after each milestone.
     `native-depth-remaining-adjustments`, and
     `native-depth-masks`, and
     `native-depth-save`, and
-    `hdr-exposure-gamma`
+    `hdr-exposure-gamma`, and
+    `edit-clipboard`
     changes;
     canonical specs are in `openspec/specs/` as a `{domain}/{capability}` tree
-   (110 specs, `validate --all --strict` green), change history under
+   (113 specs, `validate --all --strict` green), change history under
    `openspec/changes/archive/`.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
@@ -364,6 +365,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   interactive mesh cage / curved overlay, `View > Extras`, the custom-net drag,
   Warp Text, Puppet Warp, and Content-Aware Scale are not shipped; Patchy's
   captures are Photoshop 2026, so CS6 preset equivalence is assumed.
+- **Edit clipboard** (change `edit-clipboard`, issue #88, ported from
+  photorust): Cut, Copy, Copy Merged, Paste, Paste Special ▸ Paste Into / Paste
+  Outside, Clear, and Purge ▸ Clipboard are real commands. `pictura_render::Clip`
+  keeps only the selection bounding box (RGBA + coverage);
+  `copy_layer`/`copy_merged`/`clear_layer`/`paste_clip` do the work, and a
+  second cxx-qt bridge (`cxxqt_object/clipboard.rs`) exposes them as free
+  functions over `PictureView` with one process-wide clipboard, so the
+  size-capped `cxxqt_object.rs` does not grow. Cut/Clear/each paste is one
+  history state, Copy/Purge none; locks refuse Clear/Cut (self-test code 529).
+  Ceilings: no OS-clipboard interop or Paste in Place, Paste Into makes a raster
+  (not vector) mask, and a Background clears to white (no background swatch).
 - PSB **write** (roadmap P5/G9, archived `2026-09-19-psb-write`): `write_psd`
   now emits a version-2 PSB when `Document.is_psb` is set or either dimension
   exceeds 30 000, and a new `write_psb` always forces a PSB; both share one
