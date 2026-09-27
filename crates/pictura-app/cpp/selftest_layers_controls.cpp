@@ -10,6 +10,7 @@
 #include "selftest_layers_smart_object.h"
 #include "selftest_warp_preset.h"
 #include "selftest_click_deselect.h"
+#include "selftest_clipboard.h"
 #include "selftest_numeric.h"
 #include "selftest_paint_perf.h"
 #include "selftest_paint_live.h"
@@ -1068,6 +1069,7 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int wp = pictura::runWarpPresetChecks(frame); wp != 0) { return wp; }
 
         if (const int cd = pictura::runClickDeselectChecks(frame); cd != 0) { return cd; }
+        if (const int ec = pictura::runClipboardChecks(frame); ec != 0) { return ec; }
 
         if (const int sts = pictura::runToolsSelectionChecks(frame); sts != 0) { return sts; }
 
