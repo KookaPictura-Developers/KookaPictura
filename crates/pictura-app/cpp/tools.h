@@ -225,6 +225,11 @@ public:
     void setBrushMode(const QString& mode);
     bool autoErase() const override;
     void setAutoErase(bool on);
+    // Spot Healing Brush Type (0/1/2) and Healing Brush Aligned.
+    int spotHealingType() const override { return spotHealingType_; }
+    void setSpotHealingType(int type);
+    bool healingAligned() const override { return healingAligned_; }
+    void setHealingAligned(bool on) { healingAligned_ = on; }
     QColor foreground() const override;
     void setForeground(const QColor& color);
     QColor background() const override;
@@ -381,6 +386,8 @@ private:
     int brushFlow_ = 100;
     QString brushMode_ = QStringLiteral("normal");
     bool autoErase_ = false;
+    int spotHealingType_ = 0;
+    bool healingAligned_ = true;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

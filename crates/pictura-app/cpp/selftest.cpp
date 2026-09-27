@@ -2371,7 +2371,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::Count);
+        probe.setActiveTool(pictura::ToolId::Patch);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
@@ -3024,7 +3024,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         sendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
         const bool toolsPanelWrap = frame.activeTool() == pictura::ToolId::Brush;
         sendKey(Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
-        const bool noImpl = frame.activeTool() == pictura::ToolId::Brush;
+        const bool jPlain = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
+        sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
+        const bool jShift = frame.activeTool() == pictura::ToolId::HealingBrush;
+        sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
+        const bool jWrap = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
+        // The Y group (History Brush) is entirely unimplemented: a plain letter
+        // is a no-op, so the active tool is unchanged.
+        sendKey(Qt::Key_Y, Qt::NoModifier, QStringLiteral("y"));
+        const bool noImpl = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
         if (toolsPanelToolbox) {
             toolsPanelToolbox->setShiftKeyForToolSwitch(false);
         }
@@ -3033,10 +3041,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         if (toolsPanelToolbox) {
             toolsPanelToolbox->setShiftKeyForToolSwitch(true);
         }
-        const bool shiftOk = toolsPanelPlain && toolsPanelShift && toolsPanelWrap && noImpl && toolsPanelOff;
+        const bool shiftOk = toolsPanelPlain && toolsPanelShift && toolsPanelWrap && jPlain
+            && jShift && jWrap && noImpl && toolsPanelOff;
         ST_BEGIN("shift_plain");
-        ST_PASS("shift plain=%d shift=%d noimpl=%d off=%d", toolsPanelPlain ? 1 : 0,
+        ST_PASS("shift plain=%d shift=%d j=%d/%d/%d noimpl=%d off=%d", toolsPanelPlain ? 1 : 0,
                      (toolsPanelShift && toolsPanelWrap) ? 1 : 0,
+                     jPlain ? 1 : 0,
+                     jShift ? 1 : 0,
+                     jWrap ? 1 : 0,
                      noImpl ? 1 : 0,
                      toolsPanelOff ? 1 : 0);
         if (!shiftOk) {

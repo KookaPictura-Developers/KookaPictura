@@ -10,13 +10,15 @@
 namespace pictura {
 
 void ImageView::setAnnotationOverlay(const QList<QPointF>& samplers, const QList<QPointF>& notes,
-                                     int currentNote)
+                                     const QList<QPointF>& counts, int currentNote)
 {
-    if (samplers == samplerOverlay_ && notes == noteOverlay_ && currentNote == currentNote_) {
+    if (samplers == samplerOverlay_ && notes == noteOverlay_ && counts == countOverlay_
+        && currentNote == currentNote_) {
         return;
     }
     samplerOverlay_ = samplers;
     noteOverlay_ = notes;
+    countOverlay_ = counts;
     currentNote_ = currentNote;
     update();
 }
@@ -39,7 +41,8 @@ void ImageView::clearRulerLine()
 // any zoom.
 void ImageView::paintAnnotations(QPainter& painter)
 {
-    if (samplerOverlay_.isEmpty() && noteOverlay_.isEmpty() && !rulerShown_) {
+    if (samplerOverlay_.isEmpty() && noteOverlay_.isEmpty() && countOverlay_.isEmpty()
+        && !rulerShown_) {
         return;
     }
     const auto toWidget = [this](const QPointF& p) { return p * zoom_ + offset_; };
@@ -96,6 +99,20 @@ void ImageView::paintAnnotations(QPainter& painter)
         painter.drawRect(badge);
         painter.setPen(Qt::white);
         painter.drawText(badge, Qt::AlignCenter, label);
+    }
+
+    // Count marks: a numbered disc per mark (Photoshop Extended).
+    const QColor countColor(0xd0, 0x50, 0x30);
+    for (int i = 0; i < countOverlay_.size(); ++i) {
+        const QPointF p = toWidget(countOverlay_.at(i));
+        const QString label = QString::number(i + 1);
+        const double radius = 8.0;
+        const QRectF disc(p.x() - radius, p.y() - radius, radius * 2, radius * 2);
+        painter.setPen(QPen(Qt::white, 2));
+        painter.setBrush(countColor);
+        painter.drawEllipse(disc);
+        painter.setPen(Qt::white);
+        painter.drawText(disc, Qt::AlignCenter, label);
     }
     painter.restore();
 }

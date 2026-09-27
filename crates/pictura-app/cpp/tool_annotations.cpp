@@ -15,6 +15,7 @@ namespace {
 
 constexpr int kSampler = 0;
 constexpr int kNote = 1;
+constexpr int kCount = 2;
 
 // Color Sampler and Note: click to place a marker, drag one to move it (one
 // state on release), Alt-click or drag it off the canvas to delete it. A note
@@ -129,6 +130,14 @@ std::unique_ptr<ToolHandler> makeColorSamplerToolHandler()
 std::unique_ptr<ToolHandler> makeNoteToolHandler()
 {
     return std::make_unique<MarkerToolHandler>(kNote);
+}
+
+// Count (Photoshop Extended): click to add a numbered mark, drag to move it,
+// Alt-click to remove it. Reuses the marker infrastructure with kind 2; the
+// numbering is the mark's index in placement order.
+std::unique_ptr<ToolHandler> makeCountToolHandler()
+{
+    return std::make_unique<MarkerToolHandler>(kCount);
 }
 
 } // namespace pictura

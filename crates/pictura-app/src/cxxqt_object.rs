@@ -1,9 +1,9 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
-
 mod annotations;
 mod clipboard;
 mod crop_group;
+mod healing;
 mod helpers;
 mod helpers_composite;
 mod impl_core;

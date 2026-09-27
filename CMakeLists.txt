@@ -99,6 +99,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_recent_files.cpp
     crates/pictura-app/cpp/selftest_crop_group.cpp
     crates/pictura-app/cpp/selftest_annotations.cpp
+    crates/pictura-app/cpp/selftest_healing.cpp
     crates/pictura-app/cpp/selftest_click_deselect.cpp
     crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
     crates/pictura-app/cpp/selftest_clipboard.cpp
@@ -173,6 +174,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_slice.cpp
     crates/pictura-app/cpp/tool_annotations.cpp
     crates/pictura-app/cpp/tool_ruler.cpp
+    crates/pictura-app/cpp/tool_healing.cpp
     crates/pictura-app/cpp/tool_selection.cpp
     crates/pictura-app/cpp/tool_magneticlasso.cpp
     crates/pictura-app/cpp/tool_catalog.cpp

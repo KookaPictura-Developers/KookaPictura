@@ -90,6 +90,9 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::Brush:
     case ToolId::Pencil:
         return buildPaintPage(id);
+    case ToolId::SpotHealingBrush:
+    case ToolId::HealingBrush:
+        return buildHealingPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
@@ -543,8 +546,68 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
     return page;
 }
 
-QToolButton* OptionsBar::toolButton(ToolId id, QWidget* parent)
+// The healing tools' bars. Spot Healing picks its Type; Healing Brush toggles
+// Aligned. The brush Size/Hardness are shared with the paint tools through the
+// same controller fields.
+// ponytail: no Mode, Source (Pattern), or Sample (All Layers) controls yet.
+QWidget* OptionsBar::buildHealingPage(ToolId id)
 {
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+
+    auto addField = [&](const QString& label, const QString& name, const QString& suffix, int lo,
+                        int hi, int value, void (ToolController::*setter)(int)) {
+        auto* field =
+            new NumericField(label, numericConfig(lo, hi, 1, 0, suffix, true, name), page);
+        field->setValue(value);
+        layout->addWidget(field);
+        if (controller_) {
+            connect(field, &NumericField::valueChanged, this,
+                    [this, setter](double v) { (controller_->*setter)(qRound(v)); });
+            if (setter == &ToolController::setBrushSize) {
+                connect(controller_, &ToolController::brushSizeChanged, field,
+                        [field](int size) { field->setValue(size); });
+            }
+        }
+    };
+
+    addField(QStringLiteral("Size"), QStringLiteral("optionsBrushSize"), QString(), 1, 5000,
+             controller_ ? controller_->brushSize() : 12, &ToolController::setBrushSize);
+    addField(QStringLiteral("Hardness"), QStringLiteral("optionsBrushHardness"),
+             QStringLiteral("%"), 0, 100, controller_ ? controller_->brushHardness() : 100,
+             &ToolController::setBrushHardness);
+
+    if (id == ToolId::SpotHealingBrush) {
+        layout->addWidget(new QLabel(QStringLiteral("Type"), page));
+        auto* combo = new QComboBox(page);
+        combo->setObjectName(QStringLiteral("optionsSpotHealingType"));
+        combo->addItem(QStringLiteral("Proximity Match"));
+        combo->addItem(QStringLiteral("Create Texture"));
+        combo->addItem(QStringLiteral("Content-Aware"));
+        if (controller_) {
+            combo->setCurrentIndex(controller_->spotHealingType());
+            connect(combo, &QComboBox::currentIndexChanged, this,
+                    [this](int index) { controller_->setSpotHealingType(index); });
+        }
+        layout->addWidget(combo);
+    } else {
+        auto* check = new QCheckBox(QStringLiteral("Aligned"), page);
+        check->setObjectName(QStringLiteral("optionsHealingAligned"));
+        if (controller_) {
+            check->setChecked(controller_->healingAligned());
+            connect(check, &QCheckBox::toggled, this,
+                    [this](bool on) { controller_->setHealingAligned(on); });
+        }
+        layout->addWidget(check);
+    }
+
+    layout->addStretch(1);
+    return page;
+}
+
+QToolButton* OptionsBar::toolButton(ToolId id, QWidget* parent){
     auto* button = new QToolButton(parent);
     button->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));
     button->setIconSize(QSize(18, 18));

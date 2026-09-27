@@ -197,15 +197,17 @@ public:
                            [](const SliceOverlay& s) { return s.selected; });
     }
 
-    // Annotation overlay (image space): numbered color-sampler crosshairs and
-    // note glyphs (the `currentNote` index outlined), shown with any tool, plus
-    // the Ruler's measuring line while that tool is active.
+    // Annotation overlay (image space): numbered color-sampler crosshairs,
+    // note glyphs (the `currentNote` index outlined), and numbered Count marks,
+    // shown with any tool, plus the Ruler's measuring line while that tool is
+    // active.
     void setAnnotationOverlay(const QList<QPointF>& samplers, const QList<QPointF>& notes,
-                              int currentNote);
+                              const QList<QPointF>& counts, int currentNote);
     void setRulerLine(const QLineF& line);
     void clearRulerLine();
     int samplerOverlayCountForTest() const { return int(samplerOverlay_.size()); }
     int noteOverlayCountForTest() const { return int(noteOverlay_.size()); }
+    int countOverlayCountForTest() const { return int(countOverlay_.size()); }
     bool hasRulerLineForTest() const { return rulerShown_; }
 
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
@@ -253,6 +255,7 @@ private:
     void paintAnnotations(QPainter& painter);
     QList<QPointF> samplerOverlay_;
     QList<QPointF> noteOverlay_;
+    QList<QPointF> countOverlay_;
     int currentNote_ = -1;
     QLineF rulerLine_;
     bool rulerShown_ = false;

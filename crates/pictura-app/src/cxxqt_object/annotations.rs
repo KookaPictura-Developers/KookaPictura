@@ -96,10 +96,16 @@ fn commit(mut view: Pin<&mut PictureView>, label: &str) {
     view.as_mut().changed();
 }
 
-fn label(kind: MarkerKind, sampler: &'static str, note: &'static str) -> &'static str {
+fn label(
+    kind: MarkerKind,
+    sampler: &'static str,
+    note: &'static str,
+    count: &'static str,
+) -> &'static str {
     match kind {
         MarkerKind::ColorSampler => sampler,
         MarkerKind::Note => note,
+        MarkerKind::Count => count,
     }
 }
 
@@ -133,7 +139,7 @@ fn add_marker(mut view: Pin<&mut PictureView>, kind: i32, x: i32, y: i32) -> i32
     let Some(index) = edit(view.as_mut(), |a| a.add(kind, x, y)).flatten() else {
         return -1;
     };
-    commit(view, label(kind, "Color Sampler", "New Note"));
+    commit(view, label(kind, "Color Sampler", "New Note", "New Count"));
     index as i32
 }
 
@@ -150,7 +156,10 @@ fn move_marker(
     };
     let moved = edit(view.as_mut(), |a| a.move_marker(kind, index, x, y)) == Some(true);
     if moved && commit_move {
-        commit(view, label(kind, "Move Color Sampler", "Move Note"));
+        commit(
+            view,
+            label(kind, "Move Color Sampler", "Move Note", "Move Count"),
+        );
     }
     moved
 }
@@ -161,7 +170,10 @@ fn remove_marker(mut view: Pin<&mut PictureView>, kind: i32, index: i32) -> bool
     };
     let removed = edit(view.as_mut(), |a| a.remove(kind, index)) == Some(true);
     if removed {
-        commit(view, label(kind, "Delete Color Sampler", "Delete Note"));
+        commit(
+            view,
+            label(kind, "Delete Color Sampler", "Delete Note", "Delete Count"),
+        );
     }
     removed
 }
@@ -174,7 +186,12 @@ fn clear_markers(mut view: Pin<&mut PictureView>, kind: i32) -> bool {
     if cleared {
         commit(
             view,
-            label(kind, "Clear Color Samplers", "Delete All Notes"),
+            label(
+                kind,
+                "Clear Color Samplers",
+                "Delete All Notes",
+                "Clear Counts",
+            ),
         );
     }
     cleared

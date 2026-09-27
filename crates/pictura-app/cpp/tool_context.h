@@ -31,6 +31,12 @@ struct ToolContext {
     virtual int tolerance() const = 0;
     virtual bool contiguous() const = 0;
 
+    // Spot Healing Brush Type: 0 Proximity Match, 1 Create Texture,
+    // 2 Content-Aware. Healing Brush Aligned: keep the sample offset across
+    // strokes instead of re-anchoring it to each stroke's start.
+    virtual int spotHealingType() const = 0;
+    virtual bool healingAligned() const = 0;
+
     virtual MarqueeStyle marqueeStyle() const = 0;
     virtual double fixedRatioWidth() const = 0;
     virtual double fixedRatioHeight() const = 0;

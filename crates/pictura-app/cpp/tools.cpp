@@ -41,6 +41,9 @@ std::unique_ptr<ToolHandler> makeMagneticLassoToolHandler();
 std::unique_ptr<ToolHandler> makeColorSamplerToolHandler();
 std::unique_ptr<ToolHandler> makeRulerToolHandler();
 std::unique_ptr<ToolHandler> makeNoteToolHandler();
+std::unique_ptr<ToolHandler> makeCountToolHandler();
+std::unique_ptr<ToolHandler> makeSpotHealingToolHandler();
+std::unique_ptr<ToolHandler> makeHealingToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -65,6 +68,9 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::ColorSampler, makeColorSamplerToolHandler());
     registry_.registerTool(ToolId::Ruler, makeRulerToolHandler());
     registry_.registerTool(ToolId::Note, makeNoteToolHandler());
+    registry_.registerTool(ToolId::Count, makeCountToolHandler());
+    registry_.registerTool(ToolId::SpotHealingBrush, makeSpotHealingToolHandler());
+    registry_.registerTool(ToolId::HealingBrush, makeHealingToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -216,6 +222,8 @@ bool ToolController::autoErase() const { return autoErase_; }
 
 void ToolController::setAutoErase(bool on) { autoErase_ = on; }
 
+void ToolController::setSpotHealingType(int type) { spotHealingType_ = std::clamp(type, 0, 2); }
+
 QColor ToolController::foreground() const { return foreground_; }
 
 void ToolController::setForeground(const QColor& color) { foreground_ = color; }
@@ -318,15 +326,16 @@ void ToolController::bindCanvas(ImageView* canvas)
     refreshAnnotations();
 }
 
-// Color samplers and notes are shown with every tool, as CS6's Extras are.
+// Color samplers, notes, and Count marks are shown with every tool, as CS6's
+// Extras are.
 void ToolController::refreshAnnotations()
 {
     if (!canvas_) {
         return;
     }
     PictureView* v = view();
-    QList<QPointF> lists[2];
-    for (int kind = 0; kind < 2; ++kind) {
+    QList<QPointF> lists[3];
+    for (int kind = 0; kind < 3; ++kind) {
         const int count = v && v->has_document() ? marker_count(*v, kind) : 0;
         for (int i = 0; i < count; ++i) {
             const ::rust::Vec<std::int32_t> p = marker_at(*v, kind, i);
@@ -339,7 +348,7 @@ void ToolController::refreshAnnotations()
     if (currentNote_ >= lists[1].size()) {
         setCurrentNote(-1);
     }
-    canvas_->setAnnotationOverlay(lists[0], lists[1], currentNote_);
+    canvas_->setAnnotationOverlay(lists[0], lists[1], lists[2], currentNote_);
 }
 
 void ToolController::setCurrentNote(int index)
