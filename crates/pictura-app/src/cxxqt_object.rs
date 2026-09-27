@@ -1,6 +1,7 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
 
+mod clipboard;
 mod helpers;
 mod helpers_composite;
 mod impl_core;
@@ -1216,7 +1217,6 @@ pub mod qobject {
         /// Active backend label: `"GPU"`, `"CPU"`, or `"CPU (no GPU)"`.
         #[qinvokable]
         fn active_backend(&self) -> QString;
-
         /// Set the incoming-profile policy from its persistence code; unknown codes are ignored.
         #[qinvokable]
         fn set_color_policy(self: Pin<&mut Self>, code: i32);

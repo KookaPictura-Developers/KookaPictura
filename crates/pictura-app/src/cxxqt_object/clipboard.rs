@@ -1,0 +1,207 @@
+//! The Edit clipboard bridge: Cut / Copy / Copy Merged / Paste / Paste Into /
+//! Paste Outside / Clear and `Purge > Clipboard`. Free functions over a
+//! [`PictureView`] (its own bridge, so the `PictureView` declaration list does
+//! not grow). One clipboard serves every open document, so a copy in one tab
+//! pastes into another. Copy and Purge record no history; Cut, Clear, and each
+//! paste record exactly one state, and every refusal records nothing.
+//!
+//! [`PictureView`]: super::qobject::PictureView
+
+use super::helpers_composite::{current_buffer, rgba_frame};
+use super::qobject::PictureView;
+use core::pin::Pin;
+use cxx_qt::CxxQtType;
+use cxx_qt_lib::QString;
+use pictura_render::{Clip, PasteMode};
+use std::sync::Mutex;
+
+#[cxx_qt::bridge]
+pub mod ffi {
+    /// Which Edit paste command runs.
+    #[namespace = "pictura"]
+    enum PasteKind {
+        Plain,
+        Into,
+        Outside,
+    }
+
+    unsafe extern "C++" {
+        include!("cxx-qt-lib/qstring.h");
+        type QString = cxx_qt_lib::QString;
+
+        include!("pictura_app/src/cxxqt_object.cxxqt.h");
+        #[namespace = "pictura"]
+        type PictureView = super::PictureView;
+    }
+
+    #[namespace = "pictura"]
+    extern "Rust" {
+        /// `Copy` (`merged == false`) / `Copy Merged`: replace the clipboard with the selected pixels of the layer at `path` or of the visible composite; the whole layer/canvas without a selection. No history; false (clipboard kept) when nothing is copied.
+        fn clipboard_copy(view: Pin<&mut PictureView>, path: &QString, merged: bool) -> bool;
+
+        /// `Cut`: `Copy` then `Clear` as one "Cut" state; false without mutating on either refusal.
+        fn clipboard_cut(view: Pin<&mut PictureView>, path: &QString) -> bool;
+
+        /// `Clear`: erase the selection (the whole layer without one) from the layer at `path`; one "Clear" state; false on a lock or when nothing changes.
+        fn clipboard_clear(view: Pin<&mut PictureView>, path: &QString) -> bool;
+
+        /// Paste the clipboard as a new layer above `path`, centred on document point `(centre_x, centre_y)` (Paste Into: on the selection); Into/Outside mask it by the selection and deselect. One state; returns the new path or empty.
+        fn clipboard_paste(
+            view: Pin<&mut PictureView>,
+            path: &QString,
+            kind: PasteKind,
+            centre_x: f64,
+            centre_y: f64,
+        ) -> QString;
+
+        /// Whether the clipboard holds a copy.
+        fn clipboard_has_contents() -> bool;
+
+        /// `Purge > Clipboard`: drop the copy. Not undoable.
+        fn clipboard_purge();
+    }
+}
+
+use ffi::PasteKind;
+
+static CLIPBOARD: Mutex<Option<Clip>> = Mutex::new(None);
+
+fn store(clip: Clip) {
+    *CLIPBOARD.lock().unwrap_or_else(|e| e.into_inner()) = Some(clip);
+}
+
+fn stored() -> Option<Clip> {
+    CLIPBOARD.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+fn clipboard_has_contents() -> bool {
+    CLIPBOARD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_some()
+}
+
+fn clipboard_purge() {
+    *CLIPBOARD.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// The active selection's coverage plane, when it matches the document.
+fn coverage(view: &PictureView) -> Option<Vec<u8>> {
+    let rust = view.rust();
+    let doc = rust.doc.as_ref()?;
+    rust.selection
+        .as_ref()
+        .filter(|s| s.width == doc.width && s.height == doc.height)
+        .map(|s| s.data.clone())
+}
+
+/// The clip `Copy`/`Copy Merged` would take, without storing it.
+fn copy_of(view: &PictureView, path: &str, merged: bool) -> Option<Clip> {
+    let selection = coverage(view);
+    let rust = view.rust();
+    let doc = rust.doc.as_ref()?;
+    if merged {
+        let composite = rgba_frame(&current_buffer(doc, rust.gpu_compute));
+        pictura_render::copy_merged(doc, &composite, selection.as_deref())
+    } else {
+        pictura_render::copy_layer(doc, path, selection.as_deref())
+    }
+}
+
+fn clipboard_copy(view: Pin<&mut PictureView>, path: &QString, merged: bool) -> bool {
+    match copy_of(&view, &path.to_string(), merged) {
+        Some(clip) => {
+            store(clip);
+            true
+        }
+        None => false,
+    }
+}
+
+fn clipboard_cut(view: Pin<&mut PictureView>, path: &QString) -> bool {
+    let path = path.to_string();
+    let Some(clip) = copy_of(&view, &path, false) else {
+        return false;
+    };
+    if !clear(view, &path, "Cut") {
+        return false;
+    }
+    store(clip);
+    true
+}
+
+fn clipboard_clear(view: Pin<&mut PictureView>, path: &QString) -> bool {
+    clear(view, &path.to_string(), "Clear")
+}
+
+fn clear(mut view: Pin<&mut PictureView>, path: &str, label: &str) -> bool {
+    let selection = coverage(&view);
+    let cleared = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => pictura_render::clear_layer(doc, path, selection.as_deref()),
+        None => false,
+    };
+    if cleared {
+        view.as_mut().recomposite();
+        view.as_mut().record(label);
+    }
+    cleared
+}
+
+fn clipboard_paste(
+    mut view: Pin<&mut PictureView>,
+    path: &QString,
+    kind: PasteKind,
+    centre_x: f64,
+    centre_y: f64,
+) -> QString {
+    let (mode, label) = match kind {
+        PasteKind::Into => (PasteMode::Into, "Paste Into"),
+        PasteKind::Outside => (PasteMode::Outside, "Paste Outside"),
+        _ => (PasteMode::Plain, "Paste"),
+    };
+    let Some(clip) = stored() else {
+        return QString::default();
+    };
+    let selection = coverage(&view);
+    let Some((width, height)) = view.rust().doc.as_ref().map(|d| (d.width, d.height)) else {
+        return QString::default();
+    };
+    let into_bounds = selection
+        .as_deref()
+        .filter(|_| mode == PasteMode::Into)
+        .and_then(|s| pictura_render::coverage_bounds(s, width, height));
+    let (cx, cy) = match into_bounds {
+        Some(b) => (
+            (b.left + b.right) as f64 / 2.0,
+            (b.top + b.bottom) as f64 / 2.0,
+        ),
+        None => (centre_x, centre_y),
+    };
+    let origin = (
+        (cx - clip.width() as f64 / 2.0).round() as i32,
+        (cy - clip.height() as f64 / 2.0).round() as i32,
+    );
+    let created = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => pictura_render::paste_clip(
+            doc,
+            &path.to_string(),
+            &clip,
+            origin,
+            mode,
+            selection.as_deref(),
+        ),
+        None => String::new(),
+    };
+    if created.is_empty() {
+        return QString::default();
+    }
+    if mode != PasteMode::Plain {
+        // The selection now lives on as the layer mask, as CS6 does.
+        let mut rust = view.as_mut().rust_mut();
+        rust.deselected_selection = rust.selection.take();
+    }
+    view.as_mut().clear_link_sets();
+    view.as_mut().recomposite();
+    view.as_mut().record(label);
+    QString::from(created.as_str())
+}
