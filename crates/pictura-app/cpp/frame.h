@@ -240,6 +240,7 @@ private:
     void buildStatusBar();
     void registerHandlers();
     void registerSelectHandlers();
+    void registerEditHandlers();
     void applyPanelSession(const SessionState& state);
     void wirePanelColumn(PanelColumn* column);
     void clearDynamicColumns();
