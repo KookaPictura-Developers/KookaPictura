@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QLineF>
 #include <QtCore/QList>
 #include <QtCore/QPointF>
 #include <QtCore/QRectF>
@@ -196,6 +197,17 @@ public:
                            [](const SliceOverlay& s) { return s.selected; });
     }
 
+    // Annotation overlay (image space): numbered color-sampler crosshairs and
+    // note glyphs (the `currentNote` index outlined), shown with any tool, plus
+    // the Ruler's measuring line while that tool is active.
+    void setAnnotationOverlay(const QList<QPointF>& samplers, const QList<QPointF>& notes,
+                              int currentNote);
+    void setRulerLine(const QLineF& line);
+    void clearRulerLine();
+    int samplerOverlayCountForTest() const { return int(samplerOverlay_.size()); }
+    int noteOverlayCountForTest() const { return int(noteOverlay_.size()); }
+    bool hasRulerLineForTest() const { return rulerShown_; }
+
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
     // mapped cursor. Empty text or clearDragSizeHint() hides it.
     void setDragSizeHint(const QString& text, const QPointF& imagePos);
@@ -238,6 +250,12 @@ protected:
 
 private:
     void paintCropGroupOverlays(QPainter& painter);
+    void paintAnnotations(QPainter& painter);
+    QList<QPointF> samplerOverlay_;
+    QList<QPointF> noteOverlay_;
+    int currentNote_ = -1;
+    QLineF rulerLine_;
+    bool rulerShown_ = false;
     QPolygonF perspectiveQuad_;
     QRectF cropBox_;
     QList<SliceOverlay> sliceOverlay_;

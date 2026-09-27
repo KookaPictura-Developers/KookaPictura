@@ -5,12 +5,14 @@
 //! and is **not** implemented here yet.
 
 mod advanced_blending;
+mod annotations;
 mod crs;
 mod samples;
 mod text_render;
 mod type_tool;
 mod vector;
 pub use advanced_blending::{BlendIf, Knockout};
+pub use annotations::{Annotations, Marker, MarkerKind, Measurement, Ruler, MAX_COLOR_SAMPLERS};
 pub use crs::{CrsSettings, PicturaRawSettings};
 pub use samples::{Sample, Samples};
 pub use text_render::{
@@ -200,6 +202,8 @@ pub struct Document {
     /// are derived from them. ponytail: not yet written to or read from the
     /// slices image resource (1050), which stays preserved verbatim.
     pub slices: Vec<PsdRect>,
+    /// Color samplers and notes; they ride the history snapshot like slices.
+    pub annotations: Annotations,
 }
 
 impl Document {
@@ -228,6 +232,7 @@ impl Document {
             global_layer_mask: Vec::new(),
             layer_section_extra: Vec::new(),
             slices: Vec::new(),
+            annotations: Annotations::default(),
         }
     }
 

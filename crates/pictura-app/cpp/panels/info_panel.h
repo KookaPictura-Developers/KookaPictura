@@ -19,6 +19,9 @@ public:
     void setCursorPosition(const QPointF& imagePos);
     void refresh();
 
+    // The color-sampler readouts, one "#n" line per sampler (self-test hook).
+    QString samplerTextForTest() const;
+
 private:
     PictureView* view_ = nullptr;
     QPointF cursor_;
@@ -26,6 +29,7 @@ private:
     QLabel* colorLabel_ = nullptr;
     QLabel* selectionLabel_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
+    QLabel* samplersLabel_ = nullptr;
 };
 
 } // namespace pictura

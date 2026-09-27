@@ -3,6 +3,9 @@
 #include "icons.h"
 #include "panels/numeric_field.h"
 
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/annotations.cxxqt.h"
+
 #include <QtGui/QAction>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
@@ -78,6 +81,10 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildWandPage(id);
     case ToolId::Crop:
         return buildCropPage(id);
+    case ToolId::ColorSampler:
+    case ToolId::Ruler:
+    case ToolId::Note:
+        return buildAnnotationPage(id);
     case ToolId::QuickSelection:
         return buildCombinePage(id, true);
     case ToolId::Brush:
@@ -420,6 +427,55 @@ QWidget* OptionsBar::buildCropPage(ToolId id)
                 [this](bool on) { controller_->setCropDeletePixels(on); });
         connect(cancel, &QToolButton::clicked, this, [this]() { controller_->cancelCrop(); });
         connect(commit, &QToolButton::clicked, this, [this]() { controller_->commitCrop(); });
+    }
+    layout->addStretch(1);
+    return page;
+}
+
+// The annotation tools' bars, as photorust ports them: the Ruler's X, Y, W, H,
+// A, D1 readout (pixels and degrees), then Clear for every tool.
+// ponytail: no Sample Size for samplers, Straighten for the Ruler, or Author
+// and Color for notes yet.
+QWidget* OptionsBar::buildAnnotationPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+
+    if (id == ToolId::Ruler) {
+        auto* readout = new QLabel(page);
+        readout->setObjectName(QStringLiteral("optionsRulerReadout"));
+        readout->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(readout);
+        const auto update = [this, readout]() {
+            PictureView* v = controller_ ? controller_->view() : nullptr;
+            const ::rust::Vec<double> m = v ? ruler_measurement(*v) : ::rust::Vec<double>();
+            QStringList fields;
+            const char* names[] = {"X", "Y", "W", "H", "A", "D1"};
+            for (int i = 0; i < 6; ++i) {
+                const QString value = m.size() == 6
+                    ? QString::number(m[i], 'f', 1) + (i == 4 ? QStringLiteral("°") : QString())
+                    : QString();
+                fields << QStringLiteral("%1: %2").arg(QLatin1String(names[i]), value);
+            }
+            readout->setText(fields.join(QStringLiteral("   ")));
+        };
+        update();
+        if (controller_) {
+            connect(controller_, &ToolController::rulerChanged, readout, update);
+        }
+    }
+
+    auto* clear = new QToolButton(page);
+    clear->setObjectName(QStringLiteral("optionsAnnotationClear"));
+    clear->setText(id == ToolId::Note ? QStringLiteral("Clear All") : QStringLiteral("Clear"));
+    clear->setToolTip(id == ToolId::ColorSampler ? QStringLiteral("Delete every color sampler")
+                      : id == ToolId::Note       ? QStringLiteral("Delete every note")
+                                                 : QStringLiteral("Remove the measuring line"));
+    layout->addWidget(clear);
+    if (controller_) {
+        connect(clear, &QToolButton::clicked, this, [this]() { controller_->clearAnnotations(); });
     }
     layout->addStretch(1);
     return page;
