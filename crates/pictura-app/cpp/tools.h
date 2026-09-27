@@ -192,6 +192,15 @@ public:
     int tolerance() const override { return tolerance_; }
     void setTolerance(int tolerance);
 
+    // Magnetic Lasso options (docs/03-tools/lasso-selection.md): Width 1-256 px,
+    // Contrast 1-100 %, Frequency 0-100; CS6 defaults 10 / 10 / 57.
+    int magneticWidth() const override { return magneticWidth_; }
+    void setMagneticWidth(int width);
+    int magneticContrast() const override { return magneticContrast_; }
+    void setMagneticContrast(int contrast);
+    int magneticFrequency() const override { return magneticFrequency_; }
+    void setMagneticFrequency(int frequency);
+
     bool contiguous() const override { return contiguous_; }
     void setContiguous(bool on);
     bool antiAlias() const { return antiAlias_; }
@@ -279,6 +288,8 @@ public:
     // returns whether anything was discarded.
     bool commitPolygonLasso();
     bool cancelPolygonLasso();
+    // Delete while a click-driven lasso is open: drop its last point.
+    bool removeLassoPoint();
 
     // Free Transform session. `beginFreeTransform` starts a session on `path`
     // and shows its overlay; commit/cancel end it. While a session is active
@@ -294,6 +305,7 @@ public:
 signals:
     void activeToolChanged(ToolId id);
     void brushSizeChanged(int size);
+    void magneticWidthChanged(int width);
     void foregroundSampled(const QColor& color);
     void selectionCommitted();
     // A pixel edit was refused because the target layer's pixels are locked.
@@ -334,6 +346,9 @@ private:
     int fixedSizeW_ = 100;
     int fixedSizeH_ = 100;
     int tolerance_ = 32;
+    int magneticWidth_ = 10;
+    int magneticContrast_ = 10;
+    int magneticFrequency_ = 57;
     bool contiguous_ = true;
     bool antiAlias_ = true;
     bool sampleAllLayers_ = true;

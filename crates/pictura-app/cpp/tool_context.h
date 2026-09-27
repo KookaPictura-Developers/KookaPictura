@@ -37,6 +37,9 @@ struct ToolContext {
     virtual int fixedSizeWidth() const = 0;
     virtual int fixedSizeHeight() const = 0;
     virtual double feather() const = 0;
+    virtual int magneticWidth() const = 0;
+    virtual int magneticContrast() const = 0;
+    virtual int magneticFrequency() const = 0;
 
     // The controller's selection-move service: start a mask/content translate
     // from `imagePos`. The Move handler and the selection pre-block share it.

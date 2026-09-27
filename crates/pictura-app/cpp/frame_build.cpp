@@ -229,16 +229,24 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
         return tools_ && (tools_->activeTool() == ToolId::Brush
                           || tools_->activeTool() == ToolId::Pencil);
     };
+    // With the Magnetic Lasso, `[` / `]` step the detection width instead.
+    auto magneticActive = [this]() {
+        return tools_ && tools_->activeTool() == ToolId::MagneticLasso;
+    };
     connect(new QShortcut(QKeySequence(Qt::Key_BracketLeft), this), &QShortcut::activated, this,
-            [this, brushActive]() {
+            [this, brushActive, magneticActive]() {
                 if (brushActive()) {
                     tools_->adjustBrushSize(-1);
+                } else if (magneticActive()) {
+                    tools_->setMagneticWidth(tools_->magneticWidth() - 1);
                 }
             });
     connect(new QShortcut(QKeySequence(Qt::Key_BracketRight), this), &QShortcut::activated, this,
-            [this, brushActive]() {
+            [this, brushActive, magneticActive]() {
                 if (brushActive()) {
                     tools_->adjustBrushSize(+1);
+                } else if (magneticActive()) {
+                    tools_->setMagneticWidth(tools_->magneticWidth() + 1);
                 }
             });
     connect(new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_BracketLeft), this),
