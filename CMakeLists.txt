@@ -98,6 +98,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_crop_tool.cpp
     crates/pictura-app/cpp/selftest_recent_files.cpp
     crates/pictura-app/cpp/selftest_crop_group.cpp
+    crates/pictura-app/cpp/selftest_annotations.cpp
     crates/pictura-app/cpp/selftest_click_deselect.cpp
     crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
     crates/pictura-app/cpp/selftest_clipboard.cpp
@@ -120,6 +121,7 @@ add_executable(pictura
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
+    crates/pictura-app/cpp/image_view_annotations.cpp
     crates/pictura-app/cpp/canvas_scrollbars.cpp
     crates/pictura-app/cpp/icons.cpp
     crates/pictura-app/cpp/file_drop_router.cpp
@@ -145,6 +147,7 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/color_panel.cpp
     crates/pictura-app/cpp/panels/swatches_panel.cpp
     crates/pictura-app/cpp/panels/info_panel.cpp
+    crates/pictura-app/cpp/panels/notes_panel.cpp
     crates/pictura-app/cpp/panels/histogram_panel.cpp
     crates/pictura-app/cpp/panels/placeholder_panel.cpp
     crates/pictura-app/cpp/panels/panel_group.cpp
@@ -168,6 +171,8 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_crop.cpp
     crates/pictura-app/cpp/tool_perspectivecrop.cpp
     crates/pictura-app/cpp/tool_slice.cpp
+    crates/pictura-app/cpp/tool_annotations.cpp
+    crates/pictura-app/cpp/tool_ruler.cpp
     crates/pictura-app/cpp/tool_selection.cpp
     crates/pictura-app/cpp/tool_magneticlasso.cpp
     crates/pictura-app/cpp/tool_catalog.cpp
@@ -235,6 +240,7 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/color_panel.h
     crates/pictura-app/cpp/panels/swatches_panel.h
     crates/pictura-app/cpp/panels/info_panel.h
+    crates/pictura-app/cpp/panels/notes_panel.h
     crates/pictura-app/cpp/panels/histogram_panel.h
     crates/pictura-app/cpp/panels/placeholder_panel.h
     crates/pictura-app/cpp/panels/panel_group.h

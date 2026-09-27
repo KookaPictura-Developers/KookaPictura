@@ -4,6 +4,7 @@
 #include "image_view.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/annotations.cxxqt.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QElapsedTimer>
@@ -37,6 +38,9 @@ std::unique_ptr<ToolHandler> makeEllipticalMarqueeToolHandler();
 std::unique_ptr<ToolHandler> makeLassoToolHandler();
 std::unique_ptr<ToolHandler> makePolygonalLassoToolHandler();
 std::unique_ptr<ToolHandler> makeMagneticLassoToolHandler();
+std::unique_ptr<ToolHandler> makeColorSamplerToolHandler();
+std::unique_ptr<ToolHandler> makeRulerToolHandler();
+std::unique_ptr<ToolHandler> makeNoteToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -58,6 +62,9 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::Lasso, makeLassoToolHandler());
     registry_.registerTool(ToolId::PolygonalLasso, makePolygonalLassoToolHandler());
     registry_.registerTool(ToolId::MagneticLasso, makeMagneticLassoToolHandler());
+    registry_.registerTool(ToolId::ColorSampler, makeColorSamplerToolHandler());
+    registry_.registerTool(ToolId::Ruler, makeRulerToolHandler());
+    registry_.registerTool(ToolId::Note, makeNoteToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -287,10 +294,13 @@ void ToolController::bindCanvas(ImageView* canvas)
         if (ToolHandler* h = registry_.forTool(active_)) {
             h->onDocumentRefreshed(*this);
         }
+        refreshAnnotations();
         return;
     }
     unbindCanvas();
     canvas_ = canvas;
+    // The current note belongs to the previous document.
+    setCurrentNote(-1);
     if (!canvas_) {
         return;
     }
@@ -305,6 +315,47 @@ void ToolController::bindCanvas(ImageView* canvas)
     if (ToolHandler* h = registry_.forTool(active_)) {
         h->onDocumentRefreshed(*this);
     }
+    refreshAnnotations();
+}
+
+// Color samplers and notes are shown with every tool, as CS6's Extras are.
+void ToolController::refreshAnnotations()
+{
+    if (!canvas_) {
+        return;
+    }
+    PictureView* v = view();
+    QList<QPointF> lists[2];
+    for (int kind = 0; kind < 2; ++kind) {
+        const int count = v && v->has_document() ? marker_count(*v, kind) : 0;
+        for (int i = 0; i < count; ++i) {
+            const ::rust::Vec<std::int32_t> p = marker_at(*v, kind, i);
+            if (p.size() == 2) {
+                lists[kind].append(QPointF(p[0], p[1]));
+            }
+        }
+    }
+    // Undo can remove the current note.
+    if (currentNote_ >= lists[1].size()) {
+        setCurrentNote(-1);
+    }
+    canvas_->setAnnotationOverlay(lists[0], lists[1], currentNote_);
+}
+
+void ToolController::setCurrentNote(int index)
+{
+    if (currentNote_ == index) {
+        return;
+    }
+    currentNote_ = index;
+    refreshAnnotations();
+    emit noteActivated(index);
+}
+
+bool ToolController::clearAnnotations()
+{
+    ToolHandler* h = registry_.forTool(active_);
+    return h && h->clearAnnotations();
 }
 
 void ToolController::unbindCanvas()

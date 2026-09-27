@@ -42,11 +42,13 @@ const ToolInfo kToolTable[] = {
     {ToolId::Eyedropper, "eyedropper", "Eyedropper", QLatin1Char('I'), Qt::CrossCursor,
      "Eyedropper: click to sample a colour", 6, true, 2, 22},
     {ToolId::ColorSampler, "colorsampler", "Color Sampler", QLatin1Char('I'), Qt::CrossCursor,
-     "Color Sampler: not implemented yet", 6, false, 2, 22},
+     "Color Sampler: click to place a sampler (up to four), drag to move, Alt-click to delete", 6,
+     true, 2, 22},
     {ToolId::Ruler, "ruler", "Ruler", QLatin1Char('I'), Qt::CrossCursor,
-     "Ruler: not implemented yet", 6, false, 2, 22},
+     "Ruler: drag to measure, Shift snaps to 45°, drag an end to adjust", 6, true, 2, 22},
     {ToolId::Note, "note", "Note", QLatin1Char('I'), Qt::CrossCursor,
-     "Note: not implemented yet", 6, false, 2, 22},
+     "Note: click to add a note, click a note to open it, Alt-click to delete", 6, true, 2,
+     22},
     {ToolId::Count, "count", "Count (Extended)", QLatin1Char('I'), Qt::CrossCursor,
      "Count (Extended): not implemented yet", 6, false, 12, 12},
     {ToolId::SpotHealingBrush, "spothealingbrush", "Spot Healing Brush", QLatin1Char('J'),
@@ -284,7 +286,8 @@ const QList<ToolId>& implementedToolIds()
         ToolId::Move,   ToolId::Marquee, ToolId::EllipticalMarquee, ToolId::Lasso,
         ToolId::PolygonalLasso, ToolId::MagneticLasso, ToolId::MagicWand, ToolId::QuickSelection, ToolId::Crop,
         ToolId::PerspectiveCrop, ToolId::Slice, ToolId::SliceSelect,
-        ToolId::Eyedropper, ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
+        ToolId::Eyedropper, ToolId::ColorSampler, ToolId::Ruler, ToolId::Note,
+        ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
     };
     return ids;
 }

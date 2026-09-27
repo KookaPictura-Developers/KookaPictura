@@ -33,7 +33,7 @@ void PicturaMainWindow::buildPanels()
     patternsPanel_ = new PlaceholderPanel(QStringLiteral("Patterns"), QString(), this);
     patternsPanel_->setObjectName(QStringLiteral("patternsPanel"));
 
-    notesPanel_ = new PlaceholderPanel(QStringLiteral("Notes"), QString(), this);
+    notesPanel_ = new NotesPanel(this);
     notesPanel_->setObjectName(QStringLiteral("notesPanel"));
 
     propertiesPanel_ =
@@ -292,6 +292,20 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
         }
         updateToolHint();
     });
+    // The Note tool opens a note in the Notes panel; the panel's
+    // previous/next/delete hand the current note back to the controller.
+    connect(tools_, &ToolController::noteActivated, this, [this](int index) {
+        if (!notesPanel_) {
+            return;
+        }
+        notesPanel_->showNote(index);
+        if (index >= 0 && panelColumn_) {
+            panelColumn_->showPanel(QStringLiteral("notesPanel"), true);
+        }
+    });
+    if (notesPanel_) {
+        connect(notesPanel_, &NotesPanel::noteRequested, tools_, &ToolController::setCurrentNote);
+    }
     connect(tools_, &ToolController::foregroundSampled, this, [this](const QColor& color) {
         foreground_ = color;
         if (colorState_) {

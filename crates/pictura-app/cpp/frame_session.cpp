@@ -31,6 +31,9 @@ void PicturaMainWindow::retargetDock()
         infoPanel_->setView(view);
         infoPanel_->refresh();
     }
+    if (notesPanel_) {
+        notesPanel_->setView(view);
+    }
     if (histogramPanel_) {
         histogramPanel_->setView(view);
         histogramPanel_->refresh();
