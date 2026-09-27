@@ -4,7 +4,7 @@
 //! clamped rect's top-left, so every rect shifts by `(-x, -y)` and every
 //! document channel is re-blitted into the smaller canvas.
 
-use pictura_core::{layer_move_locked, Document, Layer};
+use pictura_core::{layer_move_locked, Document, Layer, PsdRect};
 
 use super::canvas::{extend_channel, offset_rect, rebase_source_planes};
 use super::{for_each_layer, recompute};
@@ -44,6 +44,91 @@ pub fn crop_document(doc: &mut Document, x: i32, y: i32, width: u32, height: u32
     doc.height = new_h;
     recompute(doc);
     true
+}
+
+/// The Crop tool's "Delete Cropped Pixels": after [`crop_document`], discard
+/// each pixel layer's pixels (and its mask plane) outside the canvas, so they
+/// cannot be revealed by enlarging the canvas again. A layer entirely off the
+/// canvas keeps its place in the stack but loses its pixels. Returns how many
+/// layers were trimmed.
+///
+/// ponytail: layers with live type, a smart object, a vector mask, or retained
+/// 16/32-bit samples keep their off-canvas pixels (as with the checkbox off);
+/// trimming them needs the native/vector stores trimmed in step.
+pub fn delete_cropped_pixels(doc: &mut Document) -> usize {
+    let canvas = PsdRect {
+        top: 0,
+        left: 0,
+        bottom: doc.height as i32,
+        right: doc.width as i32,
+    };
+    let mut trimmed = 0;
+    for_each_layer(&mut doc.layers, &mut |layer| {
+        let rect = layer.rect;
+        let live = layer.is_type()
+            || layer.smart_object.is_some()
+            || layer.vector_mask.is_some()
+            || layer.source_channels.is_some();
+        if layer.is_group || layer.channels.is_empty() || live || rect.width() <= 0 {
+            return;
+        }
+        let keep = intersect(rect, canvas);
+        if keep == rect {
+            return;
+        }
+        let empty = keep.width() <= 0 || keep.height() <= 0;
+        let keep = if empty {
+            PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+            }
+        } else {
+            keep
+        };
+        for channel in &mut layer.channels {
+            channel.data = trim_plane(&channel.data, rect, keep);
+        }
+        if let Some(mask) = &mut layer.mask {
+            if let Some(data) = &mask.data {
+                let mask_keep = intersect(mask.rect, canvas);
+                if mask_keep.width() > 0 && mask_keep.height() > 0 {
+                    mask.data = Some(trim_plane(data, mask.rect, mask_keep));
+                    mask.rect = mask_keep;
+                }
+            }
+        }
+        layer.rect = keep;
+        layer.raw_channels.clear();
+        trimmed += 1;
+    });
+    if trimmed > 0 {
+        recompute(doc);
+    }
+    trimmed
+}
+
+fn intersect(a: PsdRect, b: PsdRect) -> PsdRect {
+    PsdRect {
+        top: a.top.max(b.top),
+        left: a.left.max(b.left),
+        bottom: a.bottom.min(b.bottom),
+        right: a.right.min(b.right),
+    }
+}
+
+/// The `keep` window of a plane laid out over `rect` (`keep` inside `rect`).
+fn trim_plane(data: &[u8], rect: PsdRect, keep: PsdRect) -> Vec<u8> {
+    extend_channel(
+        data,
+        rect.width().max(0) as u32,
+        rect.height().max(0) as u32,
+        keep.width().max(0) as u32,
+        keep.height().max(0) as u32,
+        rect.left - keep.left,
+        rect.top - keep.top,
+    )
 }
 
 /// Shift a layer's retained-store rect with its bounds; the plane data is
@@ -442,5 +527,58 @@ mod tests {
         eprintln!(
             "region timing 4000^2 backend={backend:?} full={full_ms:.1}ms region64={region_ms:.3}ms"
         );
+    }
+
+    #[test]
+    fn delete_cropped_pixels_trims_layers_and_masks_to_the_canvas() {
+        let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        let mask = LayerMask {
+            rect: full(8, 8),
+            default_color: 0,
+            data: Some((0..64).map(|i| i as u8).collect()),
+            ..Default::default()
+        };
+        doc.layers = vec![
+            pixel_layer("kept", full(8, 8), Some(mask)),
+            pixel_layer("off", rect(0, 0, 2, 2), None),
+        ];
+        assert!(crop_document(&mut doc, 2, 3, 4, 4));
+        // Before trimming the layer still hangs off the new canvas.
+        assert_eq!(doc.layers[0].rect, rect(-3, -2, 5, 6));
+
+        assert_eq!(delete_cropped_pixels(&mut doc), 2);
+        let kept = &doc.layers[0];
+        assert_eq!(kept.rect, full(4, 4));
+        // Old pixel (x=2, y=3) is the new top-left: ramp index 3*8+2.
+        assert_eq!(kept.channels[0].data.len(), 16);
+        assert_eq!(kept.channels[0].data[0], 26);
+        let mask = kept.mask.as_ref().unwrap();
+        assert_eq!(
+            (mask.rect, mask.data.as_ref().unwrap()[0]),
+            (full(4, 4), 26)
+        );
+        let off = &doc.layers[1];
+        assert_eq!(
+            off.rect,
+            rect(0, 0, 0, 0),
+            "an off-canvas layer loses its pixels"
+        );
+        assert!(off.channels.iter().all(|c| c.data.is_empty()));
+        assert_eq!(delete_cropped_pixels(&mut doc), 0, "nothing left to trim");
+    }
+
+    #[test]
+    fn delete_cropped_pixels_leaves_native_depth_layers_alone() {
+        let mut doc = Document::new(8, 8, ColorMode::Rgb, BitDepth::Eight);
+        let mut layer = pixel_layer("native", full(8, 8), None);
+        layer.source_channels = Some(SourceChannels {
+            depth: BitDepth::Sixteen,
+            rect: full(8, 8),
+            planes: Vec::new(),
+        });
+        doc.layers = vec![layer];
+        assert!(crop_document(&mut doc, 2, 2, 4, 4));
+        assert_eq!(delete_cropped_pixels(&mut doc), 0);
+        assert_eq!(doc.layers[0].rect, rect(-2, -2, 6, 6));
     }
 }

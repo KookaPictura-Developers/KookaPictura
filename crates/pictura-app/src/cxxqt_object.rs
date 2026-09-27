@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
 
 mod clipboard;
+mod crop_group;
 mod helpers;
 mod helpers_composite;
 mod impl_core;
@@ -21,7 +22,6 @@ mod magnetic;
 mod state;
 
 pub use state::PictureViewRust;
-
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

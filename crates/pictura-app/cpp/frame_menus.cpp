@@ -5,6 +5,9 @@ namespace pictura {
 void PicturaMainWindow::buildMenus()
 {
     registry_->buildMenuBar(menuBar());
+    if (QMenu* recent = recentMenu()) {
+        connect(recent, &QMenu::aboutToShow, this, [this, recent]() { refreshRecentMenu(recent); });
+    }
 
     // Icon for every implemented command; ids without an asset are skipped.
     static const char* const kIconCommands[] = {

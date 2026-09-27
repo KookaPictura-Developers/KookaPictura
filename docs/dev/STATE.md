@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1680 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1709 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **452 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **457 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2170 passed, 11 skipped, 0 failed**.
+  probes) reports **2204 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -84,10 +84,14 @@ Snapshot for resuming after a context break. Update after each milestone.
     `hdr-exposure-gamma`, and
     `magnetic-lasso`
     `edit-clipboard`, and
-    `edit-clipboard-interop`
+    `edit-clipboard-interop`, and
+    `perspective-crop-and-slice`, and
+    `slice-select-tool`, and
+    `open-recent-menu`, and
+    `crop-tool-box`
     changes;
     canonical specs are in `openspec/specs/` as a `{domain}/{capability}` tree
-   (113 specs, `validate --all --strict` green), change history under
+   (116 specs, `validate --all --strict` green), change history under
    `openspec/changes/archive/`.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
@@ -367,6 +371,30 @@ Snapshot for resuming after a context break. Update after each milestone.
   interactive mesh cage / curved overlay, `View > Extras`, the custom-net drag,
   Warp Text, Puppet Warp, and Content-Aware Scale are not shipped; Patchy's
   captures are Photoshop 2026, so CS6 preset equivalence is assumed.
+- **Crop tool box** (change `crop-tool-box`, review on PR #98, ported from
+  photorust): the Crop tool places a canvas-sized box with shield, thirds, and
+  eight handles; move / ratio-locked resize; Enter, double-click, or Apply
+  commits; Escape or Cancel resets; options bar ratio presets and Delete
+  Cropped Pixels (`pictura_render::delete_cropped_pixels`, default on; live /
+  native-depth layers keep their pixels). Self-test code 534. The remaining CS6
+  crop options are #100–#105.
+- **Open Recent** (change `open-recent-menu`, issue #62, ported from photorust):
+  File > Open Recent is rebuilt each time it opens (a file opened this session
+  appears at once), lists files by name with the path as tooltip plus Clear
+  Recent File List, and reopens PSD/PSB or images through the File > Open
+  routing (self-test code 533).
+- **Perspective Crop and Slice** (change `perspective-crop-and-slice`, issues
+  #3 and #4, ported from photorust): `pictura_render::perspective_crop` warps
+  every pixel layer, mask, and extra channel so a user quad becomes the canvas,
+  reusing Free Transform's `solve_homography`/`bilinear`, and refuses live type,
+  smart objects, vector masks, and retained 16/32-bit samples.
+  `Document::slices` holds user slices (undoable through the history snapshot);
+  `resolve_slices` derives the auto slices. The tools, their canvas overlays
+  (`image_view_overlays.cpp`), and a `cxxqt_object/crop_group.rs` bridge land
+  in the app (self-test code 532); Slice Select (issue #5, change
+  `slice-select-tool`) selects, moves, resizes, and deletes user slices.
+  Ceilings: no slice export or PSD slices-resource round trip; no Perspective Crop options; a Background
+  fills white outside the source.
 - **Magnetic Lasso** (change `magnetic-lasso`, issue #2, ported from
   photorust): `pictura_select::EdgeMap` is a Sobel edge-cost field (Contrast)
   with a corridor-bounded Dijkstra live wire (Width); `tool_magneticlasso.cpp`
