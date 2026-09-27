@@ -1022,8 +1022,15 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
     }
     if (!event->isAutoRepeat()
         && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
-        && tools_ && tools_->activeTool() == ToolId::PolygonalLasso) {
+        && tools_
+        && (tools_->activeTool() == ToolId::PolygonalLasso
+            || tools_->activeTool() == ToolId::MagneticLasso)) {
         tools_->commitPolygonLasso();
+        return;
+    }
+    if (!event->isAutoRepeat()
+        && (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && tools_
+        && tools_->removeLassoPoint()) {
         return;
     }
     if (!event->isAutoRepeat() && event->key() == Qt::Key_Escape && tools_

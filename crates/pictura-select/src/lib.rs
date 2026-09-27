@@ -15,6 +15,9 @@ use pictura_core::{Channel, Layer, PixelBuffer};
 mod contour;
 pub use contour::contour;
 
+mod magnetic;
+pub use magnetic::EdgeMap;
+
 mod translate;
 
 #[derive(Debug, thiserror::Error)]

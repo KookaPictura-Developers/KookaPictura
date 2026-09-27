@@ -2,7 +2,9 @@
 
 ## Purpose
 The Select menu command surface: Reselect, Inverse, Modify, Grow, Similar, Save/Load Selection, and layer selection.
+
 ## Requirements
+
 ### Requirement: Select menu command surface
 
 The system SHALL implement the CS6 Select menu rows Reselect, Inverse, the
@@ -10,8 +12,7 @@ Modify submenu (Border, Smooth, Expand, Contract, Feather), Grow, Similar, Save
 Selection, Load Selection, All Layers, Deselect Layers, and Similar Layers
 through stable command ids and bridge operations. Each row SHALL keep its
 documented menu path and shortcut. The rows Color Range, Refine Edge, and
-Transform Selection SHALL remain present but disabled with a documented reason,
-and the Magnetic Lasso SHALL remain disabled in the toolbox.
+Transform Selection SHALL remain present but disabled with a documented reason.
 
 #### Scenario: Implemented rows are enabled with a document
 
@@ -175,4 +176,3 @@ disabled row MUST NOT alter the disabled state of any deferred row.
 
 - **WHEN** a Select command is refused by the bridge or cancelled in its dialog
 - **THEN** the history count and the selection are unchanged
-
