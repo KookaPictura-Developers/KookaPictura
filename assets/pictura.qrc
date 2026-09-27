@@ -1,6 +1,6 @@
 <RCC>
   <qresource prefix="/">
-    <file>icons/app.svg</file>
+    <file>icons/app.png</file>
     <file>icons/edit.redo.svg</file>
     <file>icons/edit.stepBackward.svg</file>
     <file>icons/edit.stepForward.svg</file>
