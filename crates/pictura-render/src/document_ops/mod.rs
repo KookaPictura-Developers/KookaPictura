@@ -39,7 +39,7 @@ pub use layer_ops::{
 pub use orient::{flip_document, rotate_document};
 pub use pictura_raw::apply_pictura_raw;
 pub use resize::resize_document;
-pub use slices::{add_slice, resolve_slices, Slice};
+pub use slices::{add_slice, remove_slice, resolve_slices, set_slice, Slice};
 
 /// Reject a zero width or height with `InvalidParams`.
 pub(crate) fn valid_size(width: u32, height: u32) -> Result<(), pictura_ops::OpsError> {

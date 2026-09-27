@@ -102,14 +102,15 @@ pub use document_ops::{
     layer_via_copy, layer_via_cut, merge_scope, move_path, move_path_to, move_selection_content,
     neutral_color, next_layer_name, open_as_smart_object, parent_path, paste_clip,
     perspective_crop, perspective_crop_refusal, perspective_crop_size, place_smart_object,
-    rasterize_all_layers, rasterize_fill_content, rasterize_smart_object, rename_path,
-    replace_smart_object_contents, resize_canvas_document, resize_document, resolve_path,
-    resolve_path_mut, resolve_slices, rotate_document, select_similar, set_blend_paths,
-    set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths, set_visible_paths,
-    smart_object_source_bytes, style_mesh, transform_layer, transform_layer_quad,
-    transform_layer_warp, translate_layer, translate_layer_active, translate_layer_index,
-    translate_layer_rect, ungroup_layer, ungroup_paths, Clip, LayerTransform, MergeError,
-    MergeOutcome, MergeScope, NewLayerSpec, PasteMode, Slice, WarpMesh, WarpParams, WarpStyle,
+    rasterize_all_layers, rasterize_fill_content, rasterize_smart_object, remove_slice,
+    rename_path, replace_smart_object_contents, resize_canvas_document, resize_document,
+    resolve_path, resolve_path_mut, resolve_slices, rotate_document, select_similar,
+    set_blend_paths, set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths, set_slice,
+    set_visible_paths, smart_object_source_bytes, style_mesh, transform_layer,
+    transform_layer_quad, transform_layer_warp, translate_layer, translate_layer_active,
+    translate_layer_index, translate_layer_rect, ungroup_layer, ungroup_paths, Clip,
+    LayerTransform, MergeError, MergeOutcome, MergeScope, NewLayerSpec, PasteMode, Slice, WarpMesh,
+    WarpParams, WarpStyle,
 };
 
 mod text_render;

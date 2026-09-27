@@ -28,6 +28,25 @@ pub fn add_slice(doc: &mut Document, rect: PsdRect) -> Option<usize> {
     Some(doc.slices.len() - 1)
 }
 
+/// Move or resize user slice `index`; false (no change) for an empty rect or an
+/// out-of-range index.
+pub fn set_slice(doc: &mut Document, index: usize, rect: PsdRect) -> bool {
+    if rect.width() <= 0 || rect.height() <= 0 || index >= doc.slices.len() {
+        return false;
+    }
+    doc.slices[index] = rect;
+    true
+}
+
+/// Delete user slice `index`; false for an out-of-range index.
+pub fn remove_slice(doc: &mut Document, index: usize) -> bool {
+    if index >= doc.slices.len() {
+        return false;
+    }
+    doc.slices.remove(index);
+    true
+}
+
 /// Every slice over the canvas: the user slices clipped to it, plus auto slices
 /// tiling the rest, numbered left to right then top to bottom. An unsliced
 /// document is one auto slice. A user slice entirely off-canvas is skipped but
@@ -273,6 +292,26 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn set_and_remove_address_the_right_slice() {
+        let mut d = doc();
+        add_slice(&mut d, rect(0, 0, 10, 10));
+        add_slice(&mut d, rect(20, 20, 10, 10));
+
+        assert!(set_slice(&mut d, 1, rect(50, 50, 10, 10)));
+        assert_eq!(d.slices[1], rect(50, 50, 10, 10));
+        assert!(
+            !set_slice(&mut d, 9, rect(0, 0, 5, 5)),
+            "out-of-range index"
+        );
+        assert!(!set_slice(&mut d, 0, rect(0, 0, 5, 0)), "empty rect");
+        assert_eq!(d.slices[0], rect(0, 0, 10, 10));
+
+        assert!(remove_slice(&mut d, 0));
+        assert_eq!(d.slices, vec![rect(50, 50, 10, 10)]);
+        assert!(!remove_slice(&mut d, 9));
     }
 
     #[test]
