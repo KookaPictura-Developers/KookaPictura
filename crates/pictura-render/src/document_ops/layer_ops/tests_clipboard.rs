@@ -253,3 +253,24 @@ fn coverage_bounds_spans_every_selected_pixel() {
     assert_eq!(coverage_bounds(&[0u8; 16], 4, 4), None);
     assert_eq!(coverage_bounds(&[255u8; 3], 4, 4), None, "short plane");
 }
+
+#[test]
+fn a_foreign_image_becomes_a_fully_covered_clip_at_the_origin() {
+    let clip = Clip::from_rgba(2, 1, vec![1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+
+    assert_eq!(clip.rect, prect(0, 0, 2, 1));
+    assert_eq!(clip.mask, vec![255, 255]);
+    assert_eq!(clip.masked_rgba(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert!(Clip::from_rgba(2, 1, vec![0; 4]).is_none(), "short buffer");
+    assert!(Clip::from_rgba(0, 1, Vec::new()).is_none(), "zero width");
+}
+
+#[test]
+fn masked_rgba_folds_the_selection_into_alpha() {
+    let clip = Clip {
+        rect: prect(0, 0, 2, 1),
+        rgba: vec![9, 9, 9, 255, 9, 9, 9, 200],
+        mask: vec![128, 0],
+    };
+    assert_eq!(clip.masked_rgba(), vec![9, 9, 9, 128, 9, 9, 9, 0]);
+}
