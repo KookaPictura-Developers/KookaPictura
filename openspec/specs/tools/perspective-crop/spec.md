@@ -52,3 +52,14 @@ quad and draw its edges, a perspective-following 3×3 grid, and corner handles.
 
 - **WHEN** a corner is dragged onto its neighbour and Enter is pressed
 - **THEN** no state is added, the size is unchanged, and the quad is still shown
+
+### Requirement: Perspective Crop pointer
+
+With the Perspective Crop tool active, the canvas pointer SHALL be a precise
+crosshair (hot spot at its centre), and SHALL change to the move cursor while
+hovering within 8 screen pixels of a staged quad's corner handle.
+
+#### Scenario: Crosshair and corner cursor
+
+- **WHEN** a quad is staged and the pointer hovers inside it and then over a corner
+- **THEN** the pointer is the crosshair inside and the move cursor over the corner
