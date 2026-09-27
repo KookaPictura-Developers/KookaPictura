@@ -68,15 +68,19 @@ int pictura::runMagneticLassoChecks(pictura::PicturaMainWindow& frame)
     view->deselect();
     const int peelBase = view->history_count();
     click(12, 12);
+    canvas->mouseMoved(QPointF(12, 20));
+    // The live outline is closed back to the origin, which carries a marker.
+    const bool connector = canvas->hasSelectionPreviewForTest()
+        && !canvas->selectionPreviewOpenForTest() && canvas->hasSelectionPreviewOriginForTest();
     click(12, 27);
     click(27, 27);
     key(Qt::Key_Delete);
     key(Qt::Key_Backspace);
     const bool stillOpen = canvas->hasSelectionPreviewForTest();
     key(Qt::Key_Delete);
-    const bool peeled = stillOpen && !tools->commitPolygonLasso()
+    const bool peeled = connector && stillOpen && !tools->commitPolygonLasso()
         && view->history_count() == peelBase && !view->has_selection()
-        && !canvas->hasSelectionPreviewForTest();
+        && !canvas->hasSelectionPreviewForTest() && !canvas->hasSelectionPreviewOriginForTest();
 
     // Escape leaves the selection and history exactly as they were.
     view->select_rect(1, 1, 4, 4, QStringLiteral("new"), 0.0);

@@ -61,7 +61,7 @@ public:
             return true;
         }
         fasten(p);
-        lastPress_ = p;
+        cursor_ = lastPress_ = p;
         clock_.restart();
         showPreview(ctx);
         return true;
@@ -235,7 +235,15 @@ private:
         for (const QPoint& p : preview_) {
             outline << QPointF(p);
         }
-        canvas->setSelectionPreview({outline}, false, /*solid=*/true);
+        if (outline.isEmpty() || outline.last() != QPointF(cursor_)) {
+            outline << QPointF(cursor_);
+        }
+        // Closed: the straight connector back to the origin previews the edge
+        // closing will add, as CS6 shows it.
+        canvas->setSelectionPreview({outline});
+        if (!path_.isEmpty()) {
+            canvas->setSelectionPreviewOrigin(QPointF(path_.first()));
+        }
     }
 
     // The close hit zone is fixed on screen, so it stays reachable at any zoom.
