@@ -6,11 +6,18 @@ here.
 
 ## Vector artwork (`assets/icons`, `assets/cursors`)
 
-- 238 SVG icons and cursors.
+- 237 SVG icons and cursors.
 - Generated with an AI model (DeepSeek v4.1 Flash) and released by the project
   under **CC0-1.0 / MIT** (reuse under either).
 - Carry no Adobe/Illustrator/XMP metadata; none are traced from Photoshop or a
   third-party icon pack.
+
+## Raster artwork (`assets/icons`)
+
+- `assets/icons/app.png` — the application icon, 512×512 RGBA. Original project
+  artwork (the kookaburra mascot), released under **CC0-1.0 / MIT**. Metadata
+  stripped, so it carries no Adobe-tool creator strings. Raster only for now;
+  a scalable SVG replacement is planned.
 
 ## Fonts
 
