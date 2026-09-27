@@ -757,6 +757,8 @@ void ImageView::paintEvent(QPaintEvent*)
     }
     painter.restore();
 
+    paintCropGroupOverlays(painter);
+
     if (dragSizeActive_ && !dragSizeText_.isEmpty()) {
         painter.save();
         painter.resetTransform();

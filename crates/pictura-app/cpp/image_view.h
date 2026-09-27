@@ -3,12 +3,15 @@
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QList>
 #include <QtCore/QPointF>
+#include <QtCore/QRectF>
 #include <QtCore/QString>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
 #include <QtGui/QPolygonF>
 #include <QtGui/QTransform>
 #include <QtWidgets/QWidget>
+
+class QPainter;
 
 class QMouseEvent;
 class QKeyEvent;
@@ -161,6 +164,23 @@ public:
     // without rendering.
     QTransform transformPreviewMatrix() const;
 
+    // Perspective Crop quad (TL, TR, BR, BL, image space): shades outside it and
+    // draws its edges, a perspective-following 3x3 grid, and corner handles.
+    void setPerspectiveCropQuad(const QPolygonF& quad);
+    void clearPerspectiveCropQuad();
+    bool hasPerspectiveCropQuadForTest() const { return perspectiveQuad_.size() == 4; }
+
+    // Slice overlay (image space): user slices solid blue with a numbered
+    // badge, auto slices dotted grey, plus the slice being dragged out.
+    struct SliceOverlay {
+        QRectF rect;
+        int number = 0;
+        bool user = false;
+    };
+    void setSliceOverlay(const QList<SliceOverlay>& slices, const QRectF& dragging = QRectF());
+    void clearSliceOverlay();
+    int sliceOverlayCountForTest() const { return int(sliceOverlay_.size()); }
+
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
     // mapped cursor. Empty text or clearDragSizeHint() hides it.
     void setDragSizeHint(const QString& text, const QPointF& imagePos);
@@ -202,6 +222,10 @@ protected:
     void leaveEvent(QEvent* event) override;
 
 private:
+    void paintCropGroupOverlays(QPainter& painter);
+    QPolygonF perspectiveQuad_;
+    QList<SliceOverlay> sliceOverlay_;
+    QRectF sliceDrag_;
     void centreImage();
     void applyInitialView();
     void clampOffset();

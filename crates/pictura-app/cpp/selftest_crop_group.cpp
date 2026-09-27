@@ -1,0 +1,103 @@
+#include "selftest_crop_group.h"
+#include "selftest_report.h"
+
+#include "frame.h"
+#include "image_view.h"
+#include "tools.h"
+
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/crop_group.cxxqt.h"
+
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtGui/QImage>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QPainter>
+#include <QtWidgets/QApplication>
+
+int pictura::runCropGroupChecks(pictura::PicturaMainWindow& frame)
+{
+    QImage seed(40, 40, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    QPainter(&seed).fillRect(10, 10, 20, 20, Qt::black);
+    const QString seedPath = QDir::temp().filePath(QStringLiteral("pictura_crop_group_seed.png"));
+    const bool created = frame.newDocument(QStringLiteral("CropGroupCtl"), 40, 40,
+                                           QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    pictura::PictureView* view = frame.activeView();
+    pictura::ImageView* canvas = frame.imageView();
+    auto* tools = frame.findChild<pictura::ToolController*>();
+    if (!created || !view || !canvas || !tools || !seed.save(seedPath, "PNG")
+        || !view->open_image(seedPath)) {
+        return pictura::selfTest().fail(532, "crop group fixture");
+    }
+    const int doc = frame.activeDocumentIndex();
+    const auto drag = [canvas](QPointF from, QPointF to) {
+        canvas->mousePressed(from, Qt::LeftButton, int(Qt::NoModifier));
+        canvas->mouseMoved(to);
+        canvas->mouseReleased(to);
+    };
+    const auto key = [&frame](Qt::Key k) {
+        QKeyEvent press(QEvent::KeyPress, k, Qt::NoModifier);
+        QApplication::sendEvent(&frame, &press);
+    };
+
+    // Perspective Crop.
+    frame.setActiveTool(pictura::ToolId::PerspectiveCrop);
+    drag(QPointF(5, 5), QPointF(12, 12));
+    const bool staged = canvas->hasPerspectiveCropQuadForTest();
+    key(Qt::Key_Escape);
+    const bool discarded = !canvas->hasPerspectiveCropQuadForTest();
+
+    // Drag the top-left corner onto the top-right one: a degenerate quad.
+    drag(QPointF(5, 5), QPointF(15, 15));
+    drag(QPointF(5, 5), QPointF(15, 5));
+    const int badBase = view->history_count();
+    key(Qt::Key_Return);
+    const bool degenerateKept = view->history_count() == badBase
+        && view->document_width() == 40 && canvas->hasPerspectiveCropQuadForTest();
+    key(Qt::Key_Escape);
+
+    drag(QPointF(10, 10), QPointF(30, 30));
+    const int cropBase = view->history_count();
+    key(Qt::Key_Return);
+    const bool cropped = view->history_count() == cropBase + 1
+        && view->history_label(cropBase) == QStringLiteral("Perspective Crop")
+        && view->document_width() == 20 && view->document_height() == 20
+        && view->sample_argb(10, 10) == 0xff000000u && !canvas->hasPerspectiveCropQuadForTest();
+
+    // Slice.
+    frame.setActiveTool(pictura::ToolId::Slice);
+    const bool unsliced = pictura::slice_count(*view) == 1 && canvas->sliceOverlayCountForTest() == 1;
+    const int sliceBase = view->history_count();
+    drag(QPointF(2, 2), QPointF(10, 8));
+    bool userSlice = false;
+    for (int i = 0; i < pictura::slice_count(*view); ++i) {
+        const ::rust::Vec<std::int32_t> f = pictura::slice_at(*view, i);
+        userSlice |= f.size() == 6 && f[0] == 2 && f[1] == 2 && f[2] == 8 && f[3] == 6 && f[5] == 0;
+    }
+    const int sliced = pictura::slice_count(*view);
+    const bool added = userSlice && sliced > 1 && canvas->sliceOverlayCountForTest() == sliced
+        && view->history_count() == sliceBase + 1
+        && view->history_label(sliceBase) == QStringLiteral("Slice");
+    drag(QPointF(15, 15), QPointF(15, 15));
+    const bool clickNoSlice = pictura::slice_count(*view) == sliced
+        && view->history_count() == sliceBase + 1;
+    view->undo();
+    const bool undone = pictura::slice_count(*view) == 1 && canvas->sliceOverlayCountForTest() == 1;
+    frame.setActiveTool(pictura::ToolId::Move);
+    const bool hidden = canvas->sliceOverlayCountForTest() == 0;
+
+    ST_BEGIN("crop_group");
+    ST_PASS("crop_group staged=%d discarded=%d degenerate=%d cropped=%d unsliced=%d added=%d "
+            "click=%d undone=%d hidden=%d",
+            staged ? 1 : 0, discarded ? 1 : 0, degenerateKept ? 1 : 0, cropped ? 1 : 0,
+            unsliced ? 1 : 0, added ? 1 : 0, clickNoSlice ? 1 : 0, undone ? 1 : 0,
+            hidden ? 1 : 0);
+    frame.closeDocument(doc, false);
+    QFile::remove(seedPath);
+    if (!staged || !discarded || !degenerateKept || !cropped || !unsliced || !added
+        || !clickNoSlice || !undone || !hidden) {
+        return pictura::selfTest().fail(532, "crop group");
+    }
+    return 0;
+}

@@ -30,9 +30,11 @@ const ToolInfo kToolTable[] = {
     {ToolId::Crop, "crop", "Crop", QLatin1Char('C'), Qt::CrossCursor,
      "Crop: drag a region, press Enter to commit", 5, true, 12, 12},
     {ToolId::PerspectiveCrop, "perspectivecrop", "Perspective Crop", QLatin1Char('C'),
-     Qt::CrossCursor, "Perspective Crop: not implemented yet", 5, false, 12, 12},
+     Qt::CrossCursor,
+     "Perspective Crop: drag a box, pull its corners onto the subject, press Enter to commit",
+     5, true, 12, 12},
     {ToolId::Slice, "slice", "Slice", QLatin1Char('C'), Qt::CrossCursor,
-     "Slice: not implemented yet", 5, false, 12, 12},
+     "Slice: drag to cut a user slice", 5, true, 12, 12},
     {ToolId::SliceSelect, "sliceselect", "Slice Select", QLatin1Char('C'), Qt::CrossCursor,
      "Slice Select: not implemented yet", 5, false, 12, 12},
     {ToolId::Eyedropper, "eyedropper", "Eyedropper", QLatin1Char('I'), Qt::CrossCursor,
@@ -279,6 +281,7 @@ const QList<ToolId>& implementedToolIds()
     static const QList<ToolId> ids = {
         ToolId::Move,   ToolId::Marquee, ToolId::EllipticalMarquee, ToolId::Lasso,
         ToolId::PolygonalLasso, ToolId::MagneticLasso, ToolId::MagicWand, ToolId::QuickSelection, ToolId::Crop,
+        ToolId::PerspectiveCrop, ToolId::Slice,
         ToolId::Eyedropper, ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
     };
     return ids;

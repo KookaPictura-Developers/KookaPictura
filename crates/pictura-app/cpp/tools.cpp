@@ -29,6 +29,8 @@ std::unique_ptr<ToolHandler> makeMagicWandToolHandler();
 std::unique_ptr<ToolHandler> makeQuickSelectionToolHandler();
 std::unique_ptr<ToolHandler> makeMoveToolHandler();
 std::unique_ptr<ToolHandler> makeCropToolHandler();
+std::unique_ptr<ToolHandler> makePerspectiveCropToolHandler();
+std::unique_ptr<ToolHandler> makeSliceToolHandler();
 std::unique_ptr<ToolHandler> makeMarqueeToolHandler();
 std::unique_ptr<ToolHandler> makeEllipticalMarqueeToolHandler();
 std::unique_ptr<ToolHandler> makeLassoToolHandler();
@@ -47,6 +49,8 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::QuickSelection, makeQuickSelectionToolHandler());
     registry_.registerTool(ToolId::Move, makeMoveToolHandler());
     registry_.registerTool(ToolId::Crop, makeCropToolHandler());
+    registry_.registerTool(ToolId::PerspectiveCrop, makePerspectiveCropToolHandler());
+    registry_.registerTool(ToolId::Slice, makeSliceToolHandler());
     registry_.registerTool(ToolId::Marquee, makeMarqueeToolHandler());
     registry_.registerTool(ToolId::EllipticalMarquee, makeEllipticalMarqueeToolHandler());
     registry_.registerTool(ToolId::Lasso, makeLassoToolHandler());
@@ -263,6 +267,9 @@ void ToolController::bindCanvas(ImageView* canvas)
         if (!transformSessionActive()) {
             refreshCursor();
         }
+        if (ToolHandler* h = registry_.forTool(active_)) {
+            h->onDocumentRefreshed(*this);
+        }
         return;
     }
     unbindCanvas();
@@ -278,6 +285,9 @@ void ToolController::bindCanvas(ImageView* canvas)
     connect(canvas_, &ImageView::transformCancelRequested, this,
             &ToolController::cancelFreeTransform);
     applyToolPolicy();
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onDocumentRefreshed(*this);
+    }
 }
 
 void ToolController::unbindCanvas()
@@ -454,8 +464,10 @@ bool ToolController::removeLassoPoint()
 bool ToolController::commitCrop()
 {
     // The staged crop survives a tool switch, so reach the Crop handler
-    // directly rather than through whatever is active now.
-    if (ToolHandler* h = registry_.forTool(ToolId::Crop)) {
+    // directly rather than through whatever is active now; a Perspective Crop
+    // quad lives only while its tool is active.
+    const ToolId target = active_ == ToolId::PerspectiveCrop ? ToolId::PerspectiveCrop : ToolId::Crop;
+    if (ToolHandler* h = registry_.forTool(target)) {
         return h->commitCrop();
     }
     return false;

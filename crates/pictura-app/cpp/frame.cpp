@@ -1016,7 +1016,9 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
     }
     if (!event->isAutoRepeat()
         && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
-        && tools_ && tools_->activeTool() == ToolId::Crop) {
+        && tools_
+        && (tools_->activeTool() == ToolId::Crop
+            || tools_->activeTool() == ToolId::PerspectiveCrop)) {
         commitCrop();
         return;
     }

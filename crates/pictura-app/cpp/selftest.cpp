@@ -2371,7 +2371,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::PerspectiveCrop);
+        probe.setActiveTool(pictura::ToolId::SliceSelect);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
