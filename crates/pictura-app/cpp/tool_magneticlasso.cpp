@@ -193,8 +193,15 @@ private:
                 v->cancel_lasso();
             }
         }
+        // An outline under three points encloses nothing: a click, which
+        // clears the selection in New mode, as in CS6 and photorust.
+        const bool click = !committed && v && path_.size() < 3
+            && ctx.dragMode() == SelectionMode::New && v->has_selection();
         reset(ctx);
-        if (committed) {
+        if (click) {
+            v->deselect();
+        }
+        if (committed || click) {
             ctx.emitSelectionCommitted();
         }
     }

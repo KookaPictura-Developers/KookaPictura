@@ -91,7 +91,14 @@ int pictura::runMagneticLassoChecks(pictura::PicturaMainWindow& frame)
     key(Qt::Key_Escape);
     const bool escaped = view->history_count() == escBase && view->selection_count() == escCount
         && view->selection_coverage(2, 2) > 0 && !tools->commitPolygonLasso();
-    view->deselect();
+    // A double-click on one spot outside a selection encloses nothing: in New
+    // mode it deselects as one "Deselect" state.
+    view->select_rect(1, 1, 4, 4, QStringLiteral("new"), 0.0);
+    const int clickBase = view->history_count();
+    click(35, 35);
+    click(35, 35);
+    const bool clickDeselects = !view->has_selection() && view->history_count() == clickBase + 1
+        && view->history_label(clickBase) == QStringLiteral("Deselect");
 
     // Frequency: at 100 a 15 px wire fastens itself (two deletes still leave the
     // trace open), at 0 it never does (the second delete finds nothing).
@@ -121,15 +128,15 @@ int pictura::runMagneticLassoChecks(pictura::PicturaMainWindow& frame)
     const bool width = up && down && fieldFollows;
 
     ST_BEGIN("magnetic_lasso");
-    ST_PASS("magnetic_lasso active=%d snapped=%d peeled=%d escaped=%d dense=%d sparse=%d "
-            "width=%d",
-            active ? 1 : 0, snapped ? 1 : 0, peeled ? 1 : 0, escaped ? 1 : 0, denseDeletes,
-            sparseDeletes, width ? 1 : 0);
+    ST_PASS("magnetic_lasso active=%d snapped=%d peeled=%d escaped=%d click=%d dense=%d "
+            "sparse=%d width=%d",
+            active ? 1 : 0, snapped ? 1 : 0, peeled ? 1 : 0, escaped ? 1 : 0,
+            clickDeselects ? 1 : 0, denseDeletes, sparseDeletes, width ? 1 : 0);
     tools->setMagneticFrequency(57);
     frame.setActiveTool(pictura::ToolId::Move);
     frame.closeDocument(doc, false);
     QFile::remove(seedPath);
-    if (!active || !snapped || !peeled || !escaped || !frequency || !width) {
+    if (!active || !snapped || !peeled || !escaped || !clickDeselects || !frequency || !width) {
         return pictura::selfTest().fail(530, "magnetic lasso");
     }
     return 0;
