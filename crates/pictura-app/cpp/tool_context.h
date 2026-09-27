@@ -58,6 +58,14 @@ struct ToolContext {
     virtual SelectionMode resolveSelectionMode(Qt::KeyboardModifiers mods,
                                                bool hasExistingSelection) const = 0;
 
+    // Annotations: re-read the document's color samplers and notes onto the
+    // canvas; the note shown in the Notes panel (-1 none); the Ruler's line
+    // changed, so its readouts must update.
+    virtual void refreshAnnotations() = 0;
+    virtual int currentNote() const = 0;
+    virtual void setCurrentNote(int index) = 0;
+    virtual void notifyRulerChanged() = 0;
+
     virtual void refused(const QString& message) = 0;
     virtual void emitSelectionCommitted() = 0;
 };

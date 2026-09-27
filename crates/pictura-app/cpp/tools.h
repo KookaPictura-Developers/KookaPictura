@@ -253,6 +253,12 @@ public:
                                        bool hasExistingSelection) const override;
     void refused(const QString& message) override;
     void emitSelectionCommitted() override;
+    void refreshAnnotations() override;
+    int currentNote() const override { return currentNote_; }
+    void setCurrentNote(int index) override;
+    void notifyRulerChanged() override { emit rulerChanged(); }
+    // The options bar's Clear for the active Color Sampler, Note, or Ruler tool.
+    bool clearAnnotations();
     void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate) override;
 
     void setViewProvider(std::function<PictureView*()> provider);
@@ -320,6 +326,12 @@ signals:
     // The selection mask moved during a move-from-inside drag; the view changed
     // without a `changed` emission, so the overlay must be refreshed directly.
     void selectionPreviewChanged();
+    // The Ruler's measuring line changed (drawn, edited, cleared, or another
+    // document's line is now shown); the options bar re-reads its readout.
+    void rulerChanged();
+    // The Note tool placed or picked note `index` (-1: none); the Notes panel
+    // shows it.
+    void noteActivated(int index);
 
 private:
     void applyToolPolicy();
@@ -388,6 +400,7 @@ private:
 
     bool transformDragging_ = false;
     int transformHandle_ = -1;
+    int currentNote_ = -1;
 };
 
 } // namespace pictura

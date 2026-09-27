@@ -107,6 +107,8 @@ pub struct PictureViewRust {
     /// Magnetic Lasso edge field, live for one gesture (`magnetic_begin` to
     /// `magnetic_end`): one `f32` per pixel, too costly to rebuild per move.
     pub(super) edge_map: Option<pictura_select::EdgeMap>,
+    /// The Ruler tool's measuring line: view state, never saved or undone.
+    pub(super) ruler: Option<pictura_core::Ruler>,
 }
 
 impl Default for PictureViewRust {
@@ -143,6 +145,7 @@ impl Default for PictureViewRust {
             display_dirty: false,
             link_sets: HashMap::new(),
             edge_map: None,
+            ruler: None,
         }
     }
 }

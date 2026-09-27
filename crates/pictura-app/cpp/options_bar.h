@@ -31,6 +31,7 @@ private:
     QWidget* buildSelectionPage(ToolId id);
     QWidget* buildWandPage(ToolId id);
     QWidget* buildCropPage(ToolId id);
+    QWidget* buildAnnotationPage(ToolId id);
     QWidget* buildPaintPage(ToolId id);
     void addModeButtons(QHBoxLayout* layout, QWidget* page, bool withIntersect);
     void addMagneticFields(QHBoxLayout* layout, QWidget* page);

@@ -34,6 +34,7 @@ class ImageView;
 class InfoPanel;
 class LayersPanel;
 class NavigatorPanel;
+class NotesPanel;
 class OptionsBar;
 class PanelColumn;
 class PictureView;
@@ -284,7 +285,7 @@ private:
     HistogramPanel* histogramPanel_ = nullptr;
     PlaceholderPanel* gradientsPanel_ = nullptr;
     PlaceholderPanel* patternsPanel_ = nullptr;
-    PlaceholderPanel* notesPanel_ = nullptr;
+    NotesPanel* notesPanel_ = nullptr;
     PlaceholderPanel* propertiesPanel_ = nullptr;
     PlaceholderPanel* adjustmentsPanel_ = nullptr;
     PlaceholderPanel* channelsPanel_ = nullptr;

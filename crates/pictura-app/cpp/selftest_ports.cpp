@@ -1,5 +1,6 @@
 #include "selftest_ports.h"
 
+#include "selftest_annotations.h"
 #include "selftest_click_deselect.h"
 #include "selftest_clipboard.h"
 #include "selftest_crop_group.h"
@@ -12,7 +13,8 @@
 int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
 {
     for (const auto run : {runCropToolChecks, runRecentFilesChecks, runCropGroupChecks,
-                           runClickDeselectChecks, runMagneticLassoChecks, runClipboardChecks}) {
+                           runClickDeselectChecks, runMagneticLassoChecks, runClipboardChecks,
+                           runAnnotationChecks}) {
         if (const int code = run(frame); code != 0) {
             return code;
         }

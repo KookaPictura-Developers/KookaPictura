@@ -44,6 +44,8 @@ public:
     // selection extend it instead of starting a selection move.
     virtual bool lassoInProgress() const { return false; }
     virtual bool commitCrop() { return false; }
+    // The options bar's Clear: drop the tool's color samplers, notes, or ruler.
+    virtual bool clearAnnotations() { return false; }
 
     // The modifiers captured at press for a selection drag; only the marquee
     // handlers keep them (the self-test reads them through the controller).
