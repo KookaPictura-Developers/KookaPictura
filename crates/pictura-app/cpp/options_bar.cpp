@@ -403,9 +403,19 @@ QToolButton* OptionsBar::toolButton(ToolId id, QWidget* parent)
 
 void OptionsBar::showTool(ToolId id)
 {
-    if (stack_) {
-        stack_->setCurrentIndex(static_cast<int>(id));
+    if (!stack_) {
+        return;
     }
+    stack_->setCurrentIndex(static_cast<int>(id));
+    // A stacked widget reserves the widest page's minimum; ignore the hidden
+    // pages so only the active tool's options set the bar's (and window's)
+    // minimum width.
+    for (int i = 0; i < stack_->count(); ++i) {
+        stack_->widget(i)->setSizePolicy(i == stack_->currentIndex() ? QSizePolicy::Preferred
+                                                                     : QSizePolicy::Ignored,
+                                         QSizePolicy::Preferred);
+    }
+    stack_->updateGeometry();
 }
 
 } // namespace pictura
