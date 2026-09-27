@@ -9,6 +9,7 @@
 #include "selftest_layers_round3.h"
 #include "selftest_layers_smart_object.h"
 #include "selftest_warp_preset.h"
+#include "selftest_recent_files.h"
 #include "selftest_crop_group.h"
 #include "selftest_click_deselect.h"
 #include "selftest_magnetic_lasso.h"
@@ -1069,6 +1070,8 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         if (const int ft = pictura::runFreeTransformChecks(frame); ft != 0) { return ft; }
 
         if (const int wp = pictura::runWarpPresetChecks(frame); wp != 0) { return wp; }
+
+        if (const int rf = pictura::runRecentFilesChecks(frame); rf != 0) { return rf; }
 
         if (const int cg = pictura::runCropGroupChecks(frame); cg != 0) { return cg; }
 

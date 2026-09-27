@@ -18,7 +18,6 @@ constexpr int kWorkspaceMinWidth = 160;
 const QColor kCanvasColors[kCanvasColorCount] = {
     QColor(37, 37, 37), QColor(82, 82, 82), QColor(0, 0, 0), QColor(255, 255, 255)};
 
-constexpr int kRecentLimit = 20;
 
 // The tab title's mode label: `document_mode()` reports the working mode key.
 QString modeLabel(const QString& mode)
@@ -116,8 +115,6 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
         PictureView probe;
         gpuAvailable_ = probe.gpu_available();
     }
-    rebuildRecentMenu();
-
     registerHandlers();
     buildMenus();
     buildPanels();
@@ -485,6 +482,8 @@ bool PicturaMainWindow::openImagePath(const QString& path)
         docs_[index].displayName = QFileInfo(path).fileName();
         updateTabTitle(index);
     }
+    // The source image is still what Open Recent should reopen.
+    rememberRecent(path);
     return true;
 }
 
@@ -750,48 +749,6 @@ void PicturaMainWindow::showOpenDialog()
         openPath(path);
     } else {
         openImagePath(path);
-    }
-}
-
-void PicturaMainWindow::rememberRecent(const QString& path)
-{
-    if (path.isEmpty()) {
-        return;
-    }
-    recent_.removeAll(path);
-    recent_.prepend(path);
-    while (recent_.size() > kRecentLimit) {
-        recent_.removeLast();
-    }
-    saveSession();
-}
-
-void PicturaMainWindow::rebuildRecentMenu()
-{
-    QStringList valid;
-    for (const QString& path : recent_) {
-        if (QFileInfo::exists(path)) {
-            valid.append(path);
-        }
-    }
-
-    if (valid.isEmpty()) {
-        registry_->add(QStringLiteral("file.openRecent.none"),
-                       {QStringLiteral("File"), QStringLiteral("Open Recent")},
-                       QStringLiteral("No Recent Files"), QKeySequence(), false);
-        return;
-    }
-
-    for (int i = 0; i < valid.size(); ++i) {
-        const QString path = valid.at(i);
-        const QString label = QFileInfo(path).fileName();
-        const QString id = QStringLiteral("file.openRecent.%1").arg(i);
-        registry_->add(id,
-                       {QStringLiteral("File"), QStringLiteral("Open Recent"), label},
-                       label,
-                       QKeySequence(),
-                       true);
-        registry_->setHandler(id, [this, path]() { openPath(path); });
     }
 }
 
