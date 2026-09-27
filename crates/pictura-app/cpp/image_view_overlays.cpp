@@ -76,6 +76,19 @@ void ImageView::paintCropGroupOverlays(QPainter& painter)
                 painter.setPen(Qt::white);
                 painter.drawText(badge, Qt::AlignCenter, label);
             }
+            if (slice.selected) {
+                // CS6 marks the selected slice with orange handles.
+                const QColor handle(0xf5, 0x9e, 0x0b);
+                painter.setPen(QPen(handle, 1));
+                painter.setBrush(handle);
+                const QPointF c = box.center();
+                for (const QPointF& h :
+                     {box.topLeft(), QPointF(c.x(), box.top()), box.topRight(),
+                      QPointF(box.right(), c.y()), box.bottomRight(), QPointF(c.x(), box.bottom()),
+                      box.bottomLeft(), QPointF(box.left(), c.y())}) {
+                    painter.drawRect(QRectF(h.x() - 2.5, h.y() - 2.5, 5, 5));
+                }
+            }
         }
         if (!sliceDrag_.isNull()) {
             painter.setPen(QPen(userColor, 1));

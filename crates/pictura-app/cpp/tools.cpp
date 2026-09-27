@@ -31,6 +31,7 @@ std::unique_ptr<ToolHandler> makeMoveToolHandler();
 std::unique_ptr<ToolHandler> makeCropToolHandler();
 std::unique_ptr<ToolHandler> makePerspectiveCropToolHandler();
 std::unique_ptr<ToolHandler> makeSliceToolHandler();
+std::unique_ptr<ToolHandler> makeSliceSelectToolHandler();
 std::unique_ptr<ToolHandler> makeMarqueeToolHandler();
 std::unique_ptr<ToolHandler> makeEllipticalMarqueeToolHandler();
 std::unique_ptr<ToolHandler> makeLassoToolHandler();
@@ -51,6 +52,7 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::Crop, makeCropToolHandler());
     registry_.registerTool(ToolId::PerspectiveCrop, makePerspectiveCropToolHandler());
     registry_.registerTool(ToolId::Slice, makeSliceToolHandler());
+    registry_.registerTool(ToolId::SliceSelect, makeSliceSelectToolHandler());
     registry_.registerTool(ToolId::Marquee, makeMarqueeToolHandler());
     registry_.registerTool(ToolId::EllipticalMarquee, makeEllipticalMarqueeToolHandler());
     registry_.registerTool(ToolId::Lasso, makeLassoToolHandler());

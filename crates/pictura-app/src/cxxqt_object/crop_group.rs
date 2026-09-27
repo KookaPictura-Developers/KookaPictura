@@ -1,7 +1,9 @@
 //! The Crop tool group's Perspective Crop and Slice commands. Free functions
 //! over a [`PictureView`] (their own bridge, so the `PictureView` declaration
-//! list does not grow). A Perspective Crop records one "Perspective Crop" state
-//! and a new slice one "Slice" state; every refusal records nothing.
+//! list does not grow). A Perspective Crop records one "Perspective Crop" state,
+//! a new slice one "Slice" state, a committed slice move/resize one "Edit
+//! Slice" state, and a deletion one "Delete Slice" state; every refusal records
+//! nothing.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
@@ -44,6 +46,20 @@ pub mod ffi {
             width: i32,
             height: i32,
         ) -> i32;
+
+        /// Move or resize user slice `index`. With `commit` false this is a live drag step (no history, no `changed`); with `commit` true it records one "Edit Slice" state. False for an empty rect, a bad index, or no document.
+        fn set_user_slice(
+            view: Pin<&mut PictureView>,
+            index: i32,
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+            commit: bool,
+        ) -> bool;
+
+        /// Delete user slice `index` and record one "Delete Slice" state; false for a bad index or no document.
+        fn remove_user_slice(view: Pin<&mut PictureView>, index: i32) -> bool;
     }
 }
 
@@ -108,14 +124,8 @@ fn slice_at(view: &PictureView, index: i32) -> Vec<i32> {
 }
 
 fn add_user_slice(mut view: Pin<&mut PictureView>, x: i32, y: i32, width: i32, height: i32) -> i32 {
-    let rect = PsdRect {
-        top: y,
-        left: x,
-        bottom: y.saturating_add(height.max(0)),
-        right: x.saturating_add(width.max(0)),
-    };
     let added = match view.as_mut().rust_mut().doc.as_mut() {
-        Some(doc) => pictura_render::add_slice(doc, rect),
+        Some(doc) => pictura_render::add_slice(doc, rect_of(x, y, width, height)),
         None => None,
     };
     let Some(index) = added else {
@@ -124,4 +134,51 @@ fn add_user_slice(mut view: Pin<&mut PictureView>, x: i32, y: i32, width: i32, h
     view.as_mut().record("Slice");
     view.as_mut().changed();
     index as i32
+}
+
+fn rect_of(x: i32, y: i32, width: i32, height: i32) -> PsdRect {
+    PsdRect {
+        top: y,
+        left: x,
+        bottom: y.saturating_add(height.max(0)),
+        right: x.saturating_add(width.max(0)),
+    }
+}
+
+fn set_user_slice(
+    mut view: Pin<&mut PictureView>,
+    index: i32,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    commit: bool,
+) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let set = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => pictura_render::set_slice(doc, index, rect_of(x, y, width, height)),
+        None => false,
+    };
+    if set && commit {
+        view.as_mut().record("Edit Slice");
+        view.as_mut().changed();
+    }
+    set
+}
+
+fn remove_user_slice(mut view: Pin<&mut PictureView>, index: i32) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let removed = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => pictura_render::remove_slice(doc, index),
+        None => false,
+    };
+    if removed {
+        view.as_mut().record("Delete Slice");
+        view.as_mut().changed();
+    }
+    removed
 }

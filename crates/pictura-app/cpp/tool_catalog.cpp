@@ -36,7 +36,8 @@ const ToolInfo kToolTable[] = {
     {ToolId::Slice, "slice", "Slice", QLatin1Char('C'), Qt::CrossCursor,
      "Slice: drag to cut a user slice", 5, true, 12, 12},
     {ToolId::SliceSelect, "sliceselect", "Slice Select", QLatin1Char('C'), Qt::CrossCursor,
-     "Slice Select: not implemented yet", 5, false, 12, 12},
+     "Slice Select: click a slice to select it, drag to move or resize, Delete removes it", 5,
+     true, 12, 12},
     {ToolId::Eyedropper, "eyedropper", "Eyedropper", QLatin1Char('I'), Qt::CrossCursor,
      "Eyedropper: click to sample a colour", 6, true, 2, 22},
     {ToolId::ColorSampler, "colorsampler", "Color Sampler", QLatin1Char('I'), Qt::CrossCursor,
@@ -281,7 +282,7 @@ const QList<ToolId>& implementedToolIds()
     static const QList<ToolId> ids = {
         ToolId::Move,   ToolId::Marquee, ToolId::EllipticalMarquee, ToolId::Lasso,
         ToolId::PolygonalLasso, ToolId::MagneticLasso, ToolId::MagicWand, ToolId::QuickSelection, ToolId::Crop,
-        ToolId::PerspectiveCrop, ToolId::Slice,
+        ToolId::PerspectiveCrop, ToolId::Slice, ToolId::SliceSelect,
         ToolId::Eyedropper, ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
     };
     return ids;

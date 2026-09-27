@@ -11,6 +11,8 @@
 #include <QtGui/QTransform>
 #include <QtWidgets/QWidget>
 
+#include <algorithm>
+
 class QPainter;
 
 class QMouseEvent;
@@ -171,15 +173,22 @@ public:
     bool hasPerspectiveCropQuadForTest() const { return perspectiveQuad_.size() == 4; }
 
     // Slice overlay (image space): user slices solid blue with a numbered
-    // badge, auto slices dotted grey, plus the slice being dragged out.
+    // badge, auto slices dotted grey, the selected slice with orange handles,
+    // plus the slice being dragged out.
     struct SliceOverlay {
         QRectF rect;
         int number = 0;
         bool user = false;
+        bool selected = false;
     };
     void setSliceOverlay(const QList<SliceOverlay>& slices, const QRectF& dragging = QRectF());
     void clearSliceOverlay();
     int sliceOverlayCountForTest() const { return int(sliceOverlay_.size()); }
+    bool sliceOverlayHasSelectionForTest() const
+    {
+        return std::any_of(sliceOverlay_.cbegin(), sliceOverlay_.cend(),
+                           [](const SliceOverlay& s) { return s.selected; });
+    }
 
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
     // mapped cursor. Empty text or clearDragSizeHint() hides it.

@@ -10,6 +10,7 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QRect>
 #include <QtGui/QImage>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QPainter>
@@ -93,16 +94,52 @@ int pictura::runCropGroupChecks(pictura::PicturaMainWindow& frame)
     frame.setActiveTool(pictura::ToolId::Move);
     const bool hidden = canvas->sliceOverlayCountForTest() == 0;
 
+    // Slice Select: select, move, resize from an edge, deselect, delete.
+    const auto userSlice0 = [view]() {
+        for (int i = 0; i < pictura::slice_count(*view); ++i) {
+            const ::rust::Vec<std::int32_t> f = pictura::slice_at(*view, i);
+            if (f.size() == 6 && f[5] == 0) {
+                return QRect(f[0], f[1], f[2], f[3]);
+            }
+        }
+        return QRect();
+    };
+    const auto lastLabel = [view](int base, const char* label) {
+        return view->history_count() == base + 1
+            && view->history_label(base) == QString::fromLatin1(label);
+    };
+    frame.setActiveTool(pictura::ToolId::Slice);
+    drag(QPointF(2, 2), QPointF(18, 18));
+    frame.setActiveTool(pictura::ToolId::SliceSelect);
+    drag(QPointF(10, 10), QPointF(10, 10));
+    const bool selected = canvas->sliceOverlayHasSelectionForTest();
+    int base = view->history_count();
+    drag(QPointF(10, 10), QPointF(11, 11));
+    const bool moved = lastLabel(base, "Edit Slice") && userSlice0() == QRect(3, 3, 16, 16);
+    base = view->history_count();
+    drag(QPointF(19, 10), QPointF(15, 10));
+    const bool resized = lastLabel(base, "Edit Slice") && userSlice0() == QRect(3, 3, 12, 16);
+    key(Qt::Key_Escape);
+    const bool deselected = !canvas->sliceOverlayHasSelectionForTest();
+    drag(QPointF(8, 8), QPointF(8, 8));
+    base = view->history_count();
+    key(Qt::Key_Delete);
+    const bool deleted = lastLabel(base, "Delete Slice") && pictura::slice_count(*view) == 1
+        && !canvas->sliceOverlayHasSelectionForTest();
+    const bool sliceSelect = selected && moved && resized && deselected && deleted;
+    frame.setActiveTool(pictura::ToolId::Move);
+
     ST_BEGIN("crop_group");
     ST_PASS("crop_group staged=%d cursor=%d discarded=%d degenerate=%d cropped=%d unsliced=%d added=%d "
-            "click=%d undone=%d hidden=%d",
+            "click=%d undone=%d hidden=%d select=%d/%d/%d/%d/%d",
             staged ? 1 : 0, crosshair && cornerCursor ? 1 : 0, discarded ? 1 : 0, degenerateKept ? 1 : 0, cropped ? 1 : 0,
             unsliced ? 1 : 0, added ? 1 : 0, clickNoSlice ? 1 : 0, undone ? 1 : 0,
-            hidden ? 1 : 0);
+            hidden ? 1 : 0, selected ? 1 : 0, moved ? 1 : 0, resized ? 1 : 0,
+            deselected ? 1 : 0, deleted ? 1 : 0);
     frame.closeDocument(doc, false);
     QFile::remove(seedPath);
     if (!staged || !crosshair || !cornerCursor || !discarded || !degenerateKept || !cropped || !unsliced || !added
-        || !clickNoSlice || !undone || !hidden) {
+        || !clickNoSlice || !undone || !hidden || !sliceSelect) {
         return pictura::selfTest().fail(532, "crop group");
     }
     return 0;
