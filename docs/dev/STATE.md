@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1709 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1716 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **457 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **458 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2204 passed, 11 skipped, 0 failed**.
+  probes) reports **2212 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -88,10 +88,11 @@ Snapshot for resuming after a context break. Update after each milestone.
     `perspective-crop-and-slice`, and
     `slice-select-tool`, and
     `open-recent-menu`, and
-    `crop-tool-box`
+    `crop-tool-box`, and
+    `annotation-tools`
     changes;
     canonical specs are in `openspec/specs/` as a `{domain}/{capability}` tree
-   (116 specs, `validate --all --strict` green), change history under
+   (119 specs, `validate --all --strict` green), change history under
    `openspec/changes/archive/`.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
@@ -371,6 +372,18 @@ Snapshot for resuming after a context break. Update after each milestone.
   interactive mesh cage / curved overlay, `View > Extras`, the custom-net drag,
   Warp Text, Puppet Warp, and Content-Aware Scale are not shipped; Patchy's
   captures are Photoshop 2026, so CS6 preset equivalence is assumed.
+- **Color Sampler, Ruler, and Note** (change `annotation-tools`, issues #6,
+  #7, and #8, ported from photorust): `pictura_core::annotations` puts color
+  samplers (CS6's cap of four) and notes on `Document::annotations`, undoable
+  through the history snapshot; the Ruler's line is view state
+  (`PictureViewRust::ruler`) with an X/Y/W/H/A/D1 readout (A negative for a
+  down-right line, as CS6) and a 45° Shift snap. The tools
+  (`tool_annotations.cpp`, `tool_ruler.cpp`), the always-on sampler/note
+  overlay (`image_view_annotations.cpp`), the Info panel's sampler readouts, a
+  real Notes panel, and the `cxxqt_object/annotations.rs` bridge land in the
+  app (self-test code 535; guard 98 now probes Count). Ceilings: no PSD round
+  trip for samplers or notes; no sampler Sample Size, Ruler protractor or
+  Straighten, or note Author/Color.
 - **Crop tool box** (change `crop-tool-box`, review on PR #98, ported from
   photorust): the Crop tool places a canvas-sized box with shield, thirds, and
   eight handles; move / ratio-locked resize; Enter, double-click, or Apply
