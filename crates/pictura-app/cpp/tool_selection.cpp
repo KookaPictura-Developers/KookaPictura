@@ -29,6 +29,20 @@ QRect marqueeGeometry(ToolContext& ctx, const QPointF& a, const QPointF& b,
                            ctx.fixedSizeHeight());
 }
 
+// A click that encloses no area (no drag, or a lasso outline under three
+// points) clears the selection in New mode, as in CS6; a stray click while
+// adding, subtracting, or intersecting leaves it alone. Ported from photorust's
+// CanvasView release / commitLasso.
+bool clickDeselect(ToolContext& ctx, PictureView* v)
+{
+    if (!v || ctx.dragMode() != SelectionMode::New || !v->has_selection()) {
+        return false;
+    }
+    v->deselect();
+    ctx.emitSelectionCommitted();
+    return true;
+}
+
 // Rectangular and Elliptical Marquee share the drag lifecycle; `elliptical_`
 // selects the ellipse preview and the ellipse raster at release.
 class MarqueeToolHandler : public ToolHandler {
@@ -82,6 +96,8 @@ public:
         }
         if (committed) {
             ctx.emitSelectionCommitted();
+        } else if (!shaped) {
+            clickDeselect(ctx, v);
         }
     }
 
@@ -164,7 +180,12 @@ public:
         }
         ctx.setDragging(false);
         PictureView* v = ctx.view();
-        const bool committed = v && v->end_lasso(ctx.feather());
+        const bool click = lassoPolygon_.size() < 3;
+        const bool committed = !click && v && v->end_lasso(ctx.feather());
+        if (click && v) {
+            v->cancel_lasso();
+            clickDeselect(ctx, v);
+        }
         lassoPolygon_.clear();
         if (ImageView* canvas = ctx.canvas()) {
             canvas->clearSelectionPreview();
@@ -286,6 +307,8 @@ private:
         }
         if (committed) {
             ctx.emitSelectionCommitted();
+        } else if (!enough) {
+            clickDeselect(ctx, v);
         }
     }
 

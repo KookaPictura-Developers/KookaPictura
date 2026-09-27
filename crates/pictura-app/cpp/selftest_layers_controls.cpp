@@ -9,6 +9,7 @@
 #include "selftest_layers_round3.h"
 #include "selftest_layers_smart_object.h"
 #include "selftest_warp_preset.h"
+#include "selftest_click_deselect.h"
 #include "selftest_magnetic_lasso.h"
 #include "selftest_clipboard.h"
 #include "selftest_numeric.h"
@@ -1068,6 +1069,7 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
 
         if (const int wp = pictura::runWarpPresetChecks(frame); wp != 0) { return wp; }
 
+        if (const int cd = pictura::runClickDeselectChecks(frame); cd != 0) { return cd; }
         if (const int ml = pictura::runMagneticLassoChecks(frame); ml != 0) { return ml; }
         if (const int ec = pictura::runClipboardChecks(frame); ec != 0) { return ec; }
 
