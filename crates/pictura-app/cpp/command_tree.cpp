@@ -103,15 +103,24 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"Edit"});
     leaf(registry, {"Edit", "Fade…"}, QStringLiteral("Fade…"), QStringLiteral("Shift+Ctrl+F"));
     registry.addSeparator({"Edit"});
-    leaf(registry, {"Edit", "Cut"}, QStringLiteral("Cut"), QStringLiteral("Ctrl+X"));
-    leaf(registry, {"Edit", "Copy"}, QStringLiteral("Copy"), QStringLiteral("Ctrl+C"));
-    leaf(registry, {"Edit", "Copy Merged"}, QStringLiteral("Copy Merged"),
-         QStringLiteral("Shift+Ctrl+C"));
-    leaf(registry, {"Edit", "Paste"}, QStringLiteral("Paste"), QStringLiteral("Ctrl+V"));
-    leaf(registry, {"Edit", "Paste Special", "Paste Into"}, QStringLiteral("Paste Into"),
-         QStringLiteral("Shift+Ctrl+V"));
-    leaf(registry, {"Edit", "Paste Special", "Paste Outside"}, QStringLiteral("Paste Outside"));
-    leaf(registry, {"Edit", "Clear"}, QStringLiteral("Clear"));
+    registry.add(command_ids::EditCut, {"Edit", "Cut"}, QStringLiteral("Cut"),
+                 QKeySequence(QStringLiteral("Ctrl+X")), true);
+    registry.add(command_ids::EditCopy, {"Edit", "Copy"}, QStringLiteral("Copy"),
+                 QKeySequence(QStringLiteral("Ctrl+C")), true);
+    registry.add(command_ids::EditCopyMerged, {"Edit", "Copy Merged"},
+                 QStringLiteral("Copy Merged"), QKeySequence(QStringLiteral("Shift+Ctrl+C")), true);
+    registry.add(command_ids::EditPaste, {"Edit", "Paste"}, QStringLiteral("Paste"),
+                 QKeySequence(QStringLiteral("Ctrl+V")), true);
+    // CS6 binds Shift+Ctrl+V to Paste in Place, but menus.md gives it to Paste
+    // Into, so Paste in Place ships without a default shortcut.
+    registry.add(command_ids::EditPasteInPlace, {"Edit", "Paste Special", "Paste in Place"},
+                 QStringLiteral("Paste in Place"), QKeySequence(), true);
+    registry.add(command_ids::EditPasteInto, {"Edit", "Paste Special", "Paste Into"},
+                 QStringLiteral("Paste Into"), QKeySequence(QStringLiteral("Shift+Ctrl+V")), true);
+    registry.add(command_ids::EditPasteOutside, {"Edit", "Paste Special", "Paste Outside"},
+                 QStringLiteral("Paste Outside"), QKeySequence(), true);
+    registry.add(command_ids::EditClear, {"Edit", "Clear"}, QStringLiteral("Clear"),
+                 QKeySequence(), true);
     registry.addSeparator({"Edit"});
     leaf(registry, {"Edit", "Check Spelling…"}, QStringLiteral("Check Spelling…"));
     leaf(registry, {"Edit", "Find And Replace Text…"}, QStringLiteral("Find And Replace Text…"));
@@ -158,7 +167,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"Edit"});
     leaf(registry, {"Edit", "Purge", "Undo"}, QStringLiteral("Undo"));
     leaf(registry, {"Edit", "Purge", "Histories"}, QStringLiteral("Histories"));
-    leaf(registry, {"Edit", "Purge", "Clipboard"}, QStringLiteral("Clipboard"));
+    registry.add(command_ids::EditPurgeClipboard, {"Edit", "Purge", "Clipboard"},
+                 QStringLiteral("Clipboard"), QKeySequence(), true);
     leaf(registry, {"Edit", "Purge", "Video Cache"}, QStringLiteral("Video Cache"));
     leaf(registry, {"Edit", "Purge", "All"}, QStringLiteral("All"));
     registry.addSeparator({"Edit"});
