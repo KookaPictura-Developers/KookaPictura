@@ -24,6 +24,8 @@ pub const MAX_COLOR_SAMPLERS: usize = 4;
 pub enum MarkerKind {
     ColorSampler = 0,
     Note = 1,
+    /// Count tool marks (Photoshop Extended); numbered in placement order.
+    Count = 2,
 }
 
 impl MarkerKind {
@@ -31,6 +33,7 @@ impl MarkerKind {
         match v {
             0 => Some(MarkerKind::ColorSampler),
             1 => Some(MarkerKind::Note),
+            2 => Some(MarkerKind::Count),
             _ => None,
         }
     }
@@ -45,11 +48,13 @@ pub struct Marker {
     pub text: String,
 }
 
-/// The document's color samplers and notes, each list in placement order.
+/// The document's color samplers, notes, and count marks, each list in
+/// placement order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Annotations {
     samplers: Vec<Marker>,
     notes: Vec<Marker>,
+    counts: Vec<Marker>,
 }
 
 impl Annotations {
@@ -57,6 +62,7 @@ impl Annotations {
         match kind {
             MarkerKind::ColorSampler => &self.samplers,
             MarkerKind::Note => &self.notes,
+            MarkerKind::Count => &self.counts,
         }
     }
 
@@ -64,6 +70,7 @@ impl Annotations {
         match kind {
             MarkerKind::ColorSampler => &mut self.samplers,
             MarkerKind::Note => &mut self.notes,
+            MarkerKind::Count => &mut self.counts,
         }
     }
 
@@ -313,9 +320,26 @@ mod tests {
 
     #[test]
     fn marker_kind_round_trips_through_its_integer() {
-        for kind in [MarkerKind::ColorSampler, MarkerKind::Note] {
+        for kind in [
+            MarkerKind::ColorSampler,
+            MarkerKind::Note,
+            MarkerKind::Count,
+        ] {
             assert_eq!(MarkerKind::from_i32(kind as i32), Some(kind));
         }
-        assert_eq!(MarkerKind::from_i32(2), None);
+        assert_eq!(MarkerKind::from_i32(3), None);
+    }
+
+    #[test]
+    fn count_marks_are_an_independent_numbered_list() {
+        let mut a = Annotations::default();
+        assert_eq!(a.add(MarkerKind::Count, 3, 3), Some(0));
+        assert_eq!(a.add(MarkerKind::Count, 8, 4), Some(1));
+        assert_eq!(a.add(MarkerKind::Note, 1, 1), Some(0));
+        assert_eq!(a.markers(MarkerKind::Count).len(), 2);
+        assert_eq!(a.markers(MarkerKind::Note).len(), 1);
+        // Removing a mark shifts later numbers down.
+        assert!(a.remove(MarkerKind::Count, 0));
+        assert_eq!(a.marker(MarkerKind::Count, 0).unwrap().x, 8);
     }
 }
