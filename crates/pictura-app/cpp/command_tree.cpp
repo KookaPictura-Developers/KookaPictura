@@ -111,6 +111,10 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QStringLiteral("Copy Merged"), QKeySequence(QStringLiteral("Shift+Ctrl+C")), true);
     registry.add(command_ids::EditPaste, {"Edit", "Paste"}, QStringLiteral("Paste"),
                  QKeySequence(QStringLiteral("Ctrl+V")), true);
+    // CS6 binds Shift+Ctrl+V to Paste in Place, but menus.md gives it to Paste
+    // Into, so Paste in Place ships without a default shortcut.
+    registry.add(command_ids::EditPasteInPlace, {"Edit", "Paste Special", "Paste in Place"},
+                 QStringLiteral("Paste in Place"), QKeySequence(), true);
     registry.add(command_ids::EditPasteInto, {"Edit", "Paste Special", "Paste Into"},
                  QStringLiteral("Paste Into"), QKeySequence(QStringLiteral("Shift+Ctrl+V")), true);
     registry.add(command_ids::EditPasteOutside, {"Edit", "Paste Special", "Paste Outside"},

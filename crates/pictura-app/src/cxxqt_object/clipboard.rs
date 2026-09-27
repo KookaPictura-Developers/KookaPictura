@@ -1,9 +1,11 @@
-//! The Edit clipboard bridge: Cut / Copy / Copy Merged / Paste / Paste Into /
-//! Paste Outside / Clear and `Purge > Clipboard`. Free functions over a
-//! [`PictureView`] (its own bridge, so the `PictureView` declaration list does
-//! not grow). One clipboard serves every open document, so a copy in one tab
-//! pastes into another. Copy and Purge record no history; Cut, Clear, and each
-//! paste record exactly one state, and every refusal records nothing.
+//! The Edit clipboard bridge: Cut / Copy / Copy Merged / Paste / Paste in
+//! Place / Paste Into / Paste Outside / Clear and `Purge > Clipboard`. Free
+//! functions over a [`PictureView`] (its own bridge, so the `PictureView`
+//! declaration list does not grow). One clipboard serves every open document,
+//! so a copy in one tab pastes into another; the shell mirrors it to the system
+//! clipboard through `clipboard_export` / `clipboard_import`. Copy and Purge
+//! record no history; Cut, Clear, and each paste record exactly one state, and
+//! every refusal records nothing.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
@@ -21,6 +23,7 @@ pub mod ffi {
     #[namespace = "pictura"]
     enum PasteKind {
         Plain,
+        InPlace,
         Into,
         Outside,
     }
@@ -45,7 +48,7 @@ pub mod ffi {
         /// `Clear`: erase the selection (the whole layer without one) from the layer at `path`; one "Clear" state; false on a lock or when nothing changes.
         fn clipboard_clear(view: Pin<&mut PictureView>, path: &QString) -> bool;
 
-        /// Paste the clipboard as a new layer above `path`, centred on document point `(centre_x, centre_y)` (Paste Into: on the selection); Into/Outside mask it by the selection and deselect. One state; returns the new path or empty.
+        /// Paste the clipboard as a new layer above `path`, centred on document point `(centre_x, centre_y)` (Paste in Place: at the copy's own position; Paste Into: on the selection); Into/Outside mask it by the selection and deselect. One state; returns the new path or empty.
         fn clipboard_paste(
             view: Pin<&mut PictureView>,
             path: &QString,
@@ -56,6 +59,12 @@ pub mod ffi {
 
         /// Whether the clipboard holds a copy.
         fn clipboard_has_contents() -> bool;
+
+        /// The copy as packed straight RGBA (selection folded into alpha) for the system clipboard; empty with zero dimensions when there is none.
+        fn clipboard_export(width: &mut i32, height: &mut i32) -> Vec<u8>;
+
+        /// Replace the copy with another application's packed straight RGBA image, placed at the canvas origin; false (copy kept) for a zero dimension or a short buffer.
+        fn clipboard_import(width: i32, height: i32, rgba: &[u8]) -> bool;
 
         /// `Purge > Clipboard`: drop the copy. Not undoable.
         fn clipboard_purge();
@@ -79,6 +88,28 @@ fn clipboard_has_contents() -> bool {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .is_some()
+}
+
+fn clipboard_export(width: &mut i32, height: &mut i32) -> Vec<u8> {
+    let Some(clip) = stored() else {
+        (*width, *height) = (0, 0);
+        return Vec::new();
+    };
+    (*width, *height) = (clip.width() as i32, clip.height() as i32);
+    clip.masked_rgba()
+}
+
+fn clipboard_import(width: i32, height: i32, rgba: &[u8]) -> bool {
+    if width <= 0 || height <= 0 {
+        return false;
+    }
+    match Clip::from_rgba(width as u32, height as u32, rgba.to_vec()) {
+        Some(clip) => {
+            store(clip);
+            true
+        }
+        None => false,
+    }
 }
 
 fn clipboard_purge() {
@@ -177,10 +208,14 @@ fn clipboard_paste(
         ),
         None => (centre_x, centre_y),
     };
-    let origin = (
-        (cx - clip.width() as f64 / 2.0).round() as i32,
-        (cy - clip.height() as f64 / 2.0).round() as i32,
-    );
+    let origin = if kind == PasteKind::InPlace {
+        (clip.rect.left, clip.rect.top)
+    } else {
+        (
+            (cx - clip.width() as f64 / 2.0).round() as i32,
+            (cy - clip.height() as f64 / 2.0).round() as i32,
+        )
+    };
     let created = match view.as_mut().rust_mut().doc.as_mut() {
         Some(doc) => pictura_render::paste_clip(
             doc,

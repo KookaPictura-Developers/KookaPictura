@@ -37,6 +37,7 @@ inline constexpr char EditCut[] = "edit.cut";
 inline constexpr char EditCopy[] = "edit.copy";
 inline constexpr char EditCopyMerged[] = "edit.copyMerged";
 inline constexpr char EditPaste[] = "edit.paste";
+inline constexpr char EditPasteInPlace[] = "edit.pasteSpecial.pasteInPlace";
 inline constexpr char EditPasteInto[] = "edit.pasteSpecial.pasteInto";
 inline constexpr char EditPasteOutside[] = "edit.pasteSpecial.pasteOutside";
 inline constexpr char EditClear[] = "edit.clear";

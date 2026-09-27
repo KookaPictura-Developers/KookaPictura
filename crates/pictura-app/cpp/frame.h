@@ -241,6 +241,8 @@ private:
     void registerHandlers();
     void registerSelectHandlers();
     void registerEditHandlers();
+    void exportClipboard();
+    void importSystemClipboard();
     void applyPanelSession(const SessionState& state);
     void wirePanelColumn(PanelColumn* column);
     void clearDynamicColumns();
@@ -307,6 +309,13 @@ private:
     int canvasColorIndex_ = 0;
     bool panelsHidden_ = false;
     bool restoringPanelSession_ = false;
+    // System-clipboard mirror of the bridge clipboard (frame_menus_edit.cpp):
+    // `clipboardMirrored_` while both hold the same pixels, `clipboardExported_`
+    // while the system clipboard holds our own export, `clipboardSetting_` only
+    // during our own write so its dataChanged is not taken for another app's.
+    bool clipboardMirrored_ = false;
+    bool clipboardExported_ = false;
+    bool clipboardSetting_ = false;
 };
 
 } // namespace pictura
