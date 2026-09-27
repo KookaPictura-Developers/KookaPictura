@@ -150,6 +150,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             global_layer_mask,
             layer_section_extra,
             slices: Vec::new(),
+            annotations: Default::default(),
         };
         return Ok(crate::icc::apply_icc_policy(
             normalize(doc, mode, depth, palette.as_ref()),
@@ -236,6 +237,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         global_layer_mask,
         layer_section_extra,
         slices: Vec::new(),
+        annotations: Default::default(),
     };
     Ok(crate::icc::apply_icc_policy(
         normalize(doc, mode, depth, palette.as_ref()),
