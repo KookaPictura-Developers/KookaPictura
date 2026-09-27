@@ -16,6 +16,7 @@ mod impl_paint;
 mod impl_pictura_raw;
 mod impl_selection;
 mod impl_transform;
+mod magnetic;
 mod state;
 
 pub use state::PictureViewRust;
@@ -1139,7 +1140,6 @@ pub mod qobject {
         fn can_redo(&self) -> bool;
         #[qinvokable]
         fn history_depth(&self) -> i32;
-
         /// Number of labeled history states, including the current one.
         #[qinvokable]
         fn history_count(&self) -> i32;

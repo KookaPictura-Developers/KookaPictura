@@ -20,8 +20,8 @@ const ToolInfo kToolTable[] = {
      3, true, 2, 2},
     {ToolId::MagneticLasso, "magneticlasso", "Magnetic Lasso", QLatin1Char('L'),
      Qt::CrossCursor,
-     "Magnetic Lasso: not implemented yet (no edge map or fastening-point tracker)", 3, false,
-     2, 2},
+     "Magnetic Lasso: click to start, trace an edge, close on the first point or double-click",
+     3, true, 2, 2},
     {ToolId::MagicWand, "magicwand", "Magic Wand", QLatin1Char('W'), Qt::CrossCursor,
      "Magic Wand: click to select by colour, combining with the current selection", 4, true, 12,
      12},
@@ -225,6 +225,7 @@ QList<ToolHint> toolHintEntries(ToolId id)
     case ToolId::EllipticalMarquee:
     case ToolId::Lasso:
     case ToolId::PolygonalLasso:
+    case ToolId::MagneticLasso:
     case ToolId::QuickSelection:
     case ToolId::MagicWand:
         return {{QStringLiteral("Shift"), QStringLiteral("Add to selection")},
@@ -277,7 +278,7 @@ const QList<ToolId>& implementedToolIds()
 {
     static const QList<ToolId> ids = {
         ToolId::Move,   ToolId::Marquee, ToolId::EllipticalMarquee, ToolId::Lasso,
-        ToolId::PolygonalLasso, ToolId::MagicWand, ToolId::QuickSelection, ToolId::Crop,
+        ToolId::PolygonalLasso, ToolId::MagneticLasso, ToolId::MagicWand, ToolId::QuickSelection, ToolId::Crop,
         ToolId::Eyedropper, ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
     };
     return ids;
