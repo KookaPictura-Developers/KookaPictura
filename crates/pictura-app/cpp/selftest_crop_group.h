@@ -10,7 +10,7 @@ class PicturaMainWindow;
 // a quad. The Slice tool shows the unsliced document as one auto slice, a drag
 // adds one "Slice" state and a numbered user slice, a click adds none, Undo
 // removes it from the overlay, and leaving the tool hides the overlay. Slice
-// Select selects a user slice, moves it and resizes it from an edge (one "Edit
+// Select shows a crosshair pointer, selects a user slice, moves it and resizes it from an edge (one "Edit
 // Slice" state each), Escape deselects, and Delete removes it ("Delete Slice").
 int runCropGroupChecks(PicturaMainWindow& frame);
 } // namespace pictura

@@ -2,6 +2,7 @@
 #include "selftest_report.h"
 
 #include "frame.h"
+#include "icons.h"
 #include "image_view.h"
 #include "tools.h"
 
@@ -49,7 +50,8 @@ int pictura::runCropGroupChecks(pictura::PicturaMainWindow& frame)
     // A crosshair over the canvas, the move cursor over a corner handle.
     canvas->mouseMoved(QPointF(20, 20));
     const bool crosshair = canvas->cursor().shape() == Qt::BitmapCursor
-        && !canvas->cursor().pixmap().isNull();
+        && canvas->cursor().pixmap().toImage()
+            == pictura::cursor(QStringLiteral("tool.marquee"), 12, 12).pixmap().toImage();
     canvas->mouseMoved(QPointF(12, 12));
     const bool cornerCursor = canvas->cursor().shape() == Qt::SizeAllCursor;
     key(Qt::Key_Escape);
@@ -111,8 +113,13 @@ int pictura::runCropGroupChecks(pictura::PicturaMainWindow& frame)
     frame.setActiveTool(pictura::ToolId::Slice);
     drag(QPointF(2, 2), QPointF(18, 18));
     frame.setActiveTool(pictura::ToolId::SliceSelect);
+    // Away from any handle the pointer is the precise crosshair.
+    canvas->mouseMoved(QPointF(1, 1));
+    const bool selectCrosshair = canvas->cursor().shape() == Qt::BitmapCursor
+        && canvas->cursor().pixmap().toImage()
+            == pictura::cursor(QStringLiteral("tool.marquee"), 12, 12).pixmap().toImage();
     drag(QPointF(10, 10), QPointF(10, 10));
-    const bool selected = canvas->sliceOverlayHasSelectionForTest();
+    const bool selected = selectCrosshair && canvas->sliceOverlayHasSelectionForTest();
     int base = view->history_count();
     drag(QPointF(10, 10), QPointF(11, 11));
     const bool moved = lastLabel(base, "Edit Slice") && userSlice0() == QRect(3, 3, 16, 16);
