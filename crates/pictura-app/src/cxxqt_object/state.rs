@@ -104,6 +104,9 @@ pub struct PictureViewRust {
     pub(super) color_policy: pictura_codec::Policy,
     pub(super) display_dirty: bool,
     pub(super) link_sets: HashMap<String, u32>,
+    /// Magnetic Lasso edge field, live for one gesture (`magnetic_begin` to
+    /// `magnetic_end`): one `f32` per pixel, too costly to rebuild per move.
+    pub(super) edge_map: Option<pictura_select::EdgeMap>,
 }
 
 impl Default for PictureViewRust {
@@ -139,6 +142,7 @@ impl Default for PictureViewRust {
             color_policy: pictura_codec::Policy::Preserve,
             display_dirty: false,
             link_sets: HashMap::new(),
+            edge_map: None,
         }
     }
 }

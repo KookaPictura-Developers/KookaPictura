@@ -70,6 +70,7 @@ QWidget* OptionsBar::buildPage(ToolId id)
     switch (id) {
     case ToolId::Lasso:
     case ToolId::PolygonalLasso:
+    case ToolId::MagneticLasso:
     case ToolId::Marquee:
     case ToolId::EllipticalMarquee:
         return buildSelectionPage(id);
@@ -308,6 +309,10 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
         }
     }
 
+    if (id == ToolId::MagneticLasso) {
+        addMagneticFields(layout, page);
+    }
+
     if (id != ToolId::Marquee) {
         // ponytail: the engine rasterises at the pixel centre (binary coverage);
         // a fractional-coverage rasteriser is new engine work, so the control is
@@ -322,6 +327,45 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
 
     layout->addStretch(1);
     return page;
+}
+
+void OptionsBar::addMagneticFields(QHBoxLayout* layout, QWidget* page)
+{
+    auto* width = new NumericField(QStringLiteral("Width"),
+                                   numericConfig(1, 256, 1, 0, QStringLiteral("px"), true,
+                                                 QStringLiteral("optionsMagneticWidth")),
+                                   page);
+    auto* contrast = new NumericField(QStringLiteral("Contrast"),
+                                      numericConfig(1, 100, 1, 0, QStringLiteral("%"), true,
+                                                    QStringLiteral("optionsMagneticContrast")),
+                                      page);
+    auto* frequency = new NumericField(QStringLiteral("Frequency"),
+                                       numericConfig(0, 100, 1, 0, QString(), true,
+                                                     QStringLiteral("optionsMagneticFrequency")),
+                                       page);
+    layout->addWidget(width);
+    layout->addWidget(contrast);
+    layout->addWidget(frequency);
+    if (controller_) {
+        width->setValue(controller_->magneticWidth());
+        contrast->setValue(controller_->magneticContrast());
+        frequency->setValue(controller_->magneticFrequency());
+        connect(width, &NumericField::valueChanged, this,
+                [this](double v) { controller_->setMagneticWidth(qRound(v)); });
+        connect(contrast, &NumericField::valueChanged, this,
+                [this](double v) { controller_->setMagneticContrast(qRound(v)); });
+        connect(frequency, &NumericField::valueChanged, this,
+                [this](double v) { controller_->setMagneticFrequency(qRound(v)); });
+        // `[` / `]` change the width from the keyboard.
+        connect(controller_, &ToolController::magneticWidthChanged, width,
+                [width](int v) { width->setValue(v); });
+    }
+    // ponytail: pen pressure is not read, so Stylus Pressure is shown off and
+    // disabled rather than as a silent no-op.
+    auto* pressure = new QCheckBox(QStringLiteral("Stylus Pressure"), page);
+    pressure->setEnabled(false);
+    pressure->setToolTip(QStringLiteral("Not modelled: tablet pressure is not read."));
+    layout->addWidget(pressure);
 }
 
 QWidget* OptionsBar::buildPaintPage(ToolId id)

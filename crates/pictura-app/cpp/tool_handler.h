@@ -33,6 +33,11 @@ public:
     // Tool-specific commands the controller forwards by active tool.
     virtual bool commitPolygonLasso() { return false; }
     virtual bool cancelPolygonLasso() { return false; }
+    // Delete: drop the last point of a click-driven lasso outline.
+    virtual bool removeLassoPoint() { return false; }
+    // True while a click-driven outline is open, so presses inside a live
+    // selection extend it instead of starting a selection move.
+    virtual bool lassoInProgress() const { return false; }
     virtual bool commitCrop() { return false; }
 
     // The modifiers captured at press for a selection drag; only the marquee
