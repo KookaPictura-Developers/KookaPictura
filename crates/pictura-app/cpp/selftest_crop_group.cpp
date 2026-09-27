@@ -45,6 +45,12 @@ int pictura::runCropGroupChecks(pictura::PicturaMainWindow& frame)
     frame.setActiveTool(pictura::ToolId::PerspectiveCrop);
     drag(QPointF(5, 5), QPointF(12, 12));
     const bool staged = canvas->hasPerspectiveCropQuadForTest();
+    // A crosshair over the canvas, the move cursor over a corner handle.
+    canvas->mouseMoved(QPointF(20, 20));
+    const bool crosshair = canvas->cursor().shape() == Qt::BitmapCursor
+        && !canvas->cursor().pixmap().isNull();
+    canvas->mouseMoved(QPointF(12, 12));
+    const bool cornerCursor = canvas->cursor().shape() == Qt::SizeAllCursor;
     key(Qt::Key_Escape);
     const bool discarded = !canvas->hasPerspectiveCropQuadForTest();
 
@@ -88,14 +94,14 @@ int pictura::runCropGroupChecks(pictura::PicturaMainWindow& frame)
     const bool hidden = canvas->sliceOverlayCountForTest() == 0;
 
     ST_BEGIN("crop_group");
-    ST_PASS("crop_group staged=%d discarded=%d degenerate=%d cropped=%d unsliced=%d added=%d "
+    ST_PASS("crop_group staged=%d cursor=%d discarded=%d degenerate=%d cropped=%d unsliced=%d added=%d "
             "click=%d undone=%d hidden=%d",
-            staged ? 1 : 0, discarded ? 1 : 0, degenerateKept ? 1 : 0, cropped ? 1 : 0,
+            staged ? 1 : 0, crosshair && cornerCursor ? 1 : 0, discarded ? 1 : 0, degenerateKept ? 1 : 0, cropped ? 1 : 0,
             unsliced ? 1 : 0, added ? 1 : 0, clickNoSlice ? 1 : 0, undone ? 1 : 0,
             hidden ? 1 : 0);
     frame.closeDocument(doc, false);
     QFile::remove(seedPath);
-    if (!staged || !discarded || !degenerateKept || !cropped || !unsliced || !added
+    if (!staged || !crosshair || !cornerCursor || !discarded || !degenerateKept || !cropped || !unsliced || !added
         || !clickNoSlice || !undone || !hidden) {
         return pictura::selfTest().fail(532, "crop group");
     }

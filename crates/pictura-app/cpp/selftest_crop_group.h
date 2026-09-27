@@ -3,7 +3,8 @@
 namespace pictura {
 class PicturaMainWindow;
 
-// crop_group (532): Perspective Crop stages a dragged quad, Enter warps the
+// crop_group (532): Perspective Crop shows a crosshair (the move cursor over a
+// corner handle), stages a dragged quad, Enter warps the
 // document to it (new size, one "Perspective Crop" state, the quad's content
 // fills the canvas), a degenerate quad is refused and kept, and Escape discards
 // a quad. The Slice tool shows the unsliced document as one auto slice, a drag

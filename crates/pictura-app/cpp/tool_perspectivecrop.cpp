@@ -1,5 +1,6 @@
 #include "tool_handler.h"
 
+#include "icons.h"
 #include "image_view.h"
 #include "tools.h"
 
@@ -86,6 +87,7 @@ public:
         const QPointF delta = imagePos - start_;
         switch (gesture_) {
         case Gesture::None:
+            updateCursor(ctx, imagePos);
             return;
         case Gesture::New: {
             const QRectF box = QRectF(start_, imagePos).normalized();
@@ -182,6 +184,24 @@ private:
         const double zoom = ctx.canvas() ? std::max(ctx.canvas()->zoom(), 1e-6) : 1.0;
         const QPointF d = (a - b) * zoom;
         return std::hypot(d.x(), d.y());
+    }
+
+    // A precise crosshair over the canvas, the move cursor over a corner
+    // handle, as CS6 and photorust show.
+    void updateCursor(ToolContext& ctx, const QPointF& imagePos)
+    {
+        ImageView* canvas = ctx.canvas();
+        if (!canvas) {
+            return;
+        }
+        if (cornerAt(ctx, imagePos) >= 0) {
+            canvas->setCursor(Qt::SizeAllCursor);
+            return;
+        }
+        const ToolInfo& info = toolInfo(ToolId::PerspectiveCrop);
+        const QCursor cross = cursor(toolCursorId(ToolId::PerspectiveCrop, Qt::NoModifier),
+                                     info.hotspotX, info.hotspotY);
+        canvas->setCursor(cross.pixmap().isNull() ? QCursor(Qt::CrossCursor) : cross);
     }
 
     void showQuad(ToolContext& ctx)
