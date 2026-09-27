@@ -3,6 +3,7 @@
 //! Pure functions over `&mut Document`, following the bottom-first convention of
 //! `Document::layers` (index 0 is the bottom of the stack).
 
+mod clipboard;
 mod create;
 mod merge;
 #[cfg(test)]
@@ -15,6 +16,8 @@ mod smart_object;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_clipboard;
+#[cfg(test)]
 mod tests_via;
 mod transform;
 mod transform_native;
@@ -26,6 +29,9 @@ mod warp_styles;
 #[cfg(test)]
 mod warp_styles_tests;
 
+pub use clipboard::{
+    clear_layer, copy_layer, copy_merged, coverage_bounds, paste_clip, Clip, PasteMode,
+};
 pub use create::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
     add_layer_in, add_raster_layer_from_rgba, add_solid_fill, background_from_layer,
