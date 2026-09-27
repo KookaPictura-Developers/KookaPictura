@@ -68,3 +68,15 @@ or matching resize cursor over the selected slice's body or handles.
 
 - **WHEN** the `crop_group` self-test selects a 16×16 user slice, drags it by (1, 1), drags its right edge 4 px inward, presses Escape, reselects it, and presses Delete
 - **THEN** the move and the resize each record one "Edit Slice" state with the expected rects, Escape clears the selection, and Delete records one "Delete Slice" state leaving only the auto slice
+
+### Requirement: Slice Select pointer
+
+With the Slice Select tool active, the canvas pointer SHALL be the precise
+crosshair (the marquee's cursor, hot spot at its centre) except over the
+selected slice's body or handles, where the move or matching resize cursor
+applies.
+
+#### Scenario: Crosshair away from the selected slice
+
+- **WHEN** the pointer hovers the canvas away from any selected slice
+- **THEN** the pointer is the precise crosshair
