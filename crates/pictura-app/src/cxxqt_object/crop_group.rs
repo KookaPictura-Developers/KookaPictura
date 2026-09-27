@@ -1,4 +1,4 @@
-//! The Crop tool group's Perspective Crop and Slice commands. Free functions
+//! The Crop tool group's Crop, Perspective Crop, and Slice commands. Free functions
 //! over a [`PictureView`] (their own bridge, so the `PictureView` declaration
 //! list does not grow). A Perspective Crop records one "Perspective Crop" state,
 //! a new slice one "Slice" state, a committed slice move/resize one "Edit
@@ -28,6 +28,16 @@ pub mod ffi {
     extern "Rust" {
         /// Perspective-crop to `quad` (8 values: TL, TR, BR, BL x/y in document pixels): warp every layer so the quad becomes the canvas, drop the selection, recomposite, and record one "Perspective Crop" state. False, changing nothing, without a document, on a refusal, or for a degenerate quad.
         fn perspective_crop_commit(view: Pin<&mut PictureView>, quad: &[f64]) -> bool;
+
+        /// The Crop tool's commit: crop to the `width`×`height` rect at `(x, y)` (clamped to the canvas), discarding the pixels outside it when `delete_cropped`; drop the selection and record one "Crop" state. False, changing nothing, without a document or for a rect that misses the canvas.
+        fn crop_to(
+            view: Pin<&mut PictureView>,
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+            delete_cropped: bool,
+        ) -> bool;
 
         /// Why the document cannot be perspective-cropped (live type, smart objects, vector masks, 16/32-bit), or empty when it can.
         fn perspective_crop_refusal_reason(view: &PictureView) -> QString;
@@ -85,6 +95,36 @@ fn perspective_crop_commit(mut view: Pin<&mut PictureView>, quad: &[f64]) -> boo
         view.as_mut().record("Perspective Crop");
     }
     cropped
+}
+
+fn crop_to(
+    mut view: Pin<&mut PictureView>,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    delete_cropped: bool,
+) -> bool {
+    if width < 1 || height < 1 {
+        return false;
+    }
+    {
+        let mut rust = view.as_mut().rust_mut();
+        let Some(doc) = rust.doc.as_mut() else {
+            return false;
+        };
+        if !pictura_render::crop_document(doc, x, y, width as u32, height as u32) {
+            return false;
+        }
+        if delete_cropped {
+            pictura_render::delete_cropped_pixels(doc);
+        }
+        // Canvas dimensions changed, so the old selection no longer maps.
+        rust.selection = None;
+    }
+    view.as_mut().recomposite();
+    view.as_mut().record("Crop");
+    true
 }
 
 fn perspective_crop_refusal_reason(view: &PictureView) -> QString {

@@ -76,6 +76,8 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildSelectionPage(id);
     case ToolId::MagicWand:
         return buildWandPage(id);
+    case ToolId::Crop:
+        return buildCropPage(id);
     case ToolId::QuickSelection:
         return buildCombinePage(id, true);
     case ToolId::Brush:
@@ -366,6 +368,61 @@ void OptionsBar::addMagneticFields(QHBoxLayout* layout, QWidget* page)
     pressure->setEnabled(false);
     pressure->setToolTip(QStringLiteral("Not modelled: tablet pressure is not read."));
     layout->addWidget(pressure);
+}
+
+// CS6's Crop bar, as photorust ports it: an aspect-ratio preset, Delete
+// Cropped Pixels, and a cancel/commit pair (Esc / Enter do the same).
+QWidget* OptionsBar::buildCropPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+
+    struct Preset {
+        const char* label;
+        double ratio;
+    };
+    const Preset presets[] = {
+        {"Unconstrained", 0.0},    {"1 : 1 (Square)", 1.0}, {"4 : 5 (8:10)", 4.0 / 5.0},
+        {"5 : 7", 5.0 / 7.0},      {"2 : 3 (4:6)", 2.0 / 3.0}, {"16 : 9", 16.0 / 9.0},
+    };
+    auto* ratio = new QComboBox(page);
+    ratio->setObjectName(QStringLiteral("optionsCropRatio"));
+    ratio->setToolTip(QStringLiteral("Lock the crop box to an aspect ratio"));
+    for (const Preset& preset : presets) {
+        ratio->addItem(QString::fromLatin1(preset.label), preset.ratio);
+    }
+    layout->addWidget(ratio);
+
+    auto* deletePixels = new QCheckBox(QStringLiteral("Delete Cropped Pixels"), page);
+    deletePixels->setObjectName(QStringLiteral("optionsCropDelete"));
+    deletePixels->setChecked(controller_ ? controller_->cropDeletePixels() : true);
+    deletePixels->setToolTip(QStringLiteral(
+        "Discard the pixels outside the crop rather than keeping them beyond the canvas edge"));
+    layout->addWidget(deletePixels);
+
+    auto* cancel = new QToolButton(page);
+    cancel->setObjectName(QStringLiteral("optionsCropCancel"));
+    cancel->setText(QStringLiteral("\u2718"));
+    cancel->setToolTip(QStringLiteral("Cancel the crop (Esc)"));
+    layout->addWidget(cancel);
+    auto* commit = new QToolButton(page);
+    commit->setObjectName(QStringLiteral("optionsCropCommit"));
+    commit->setText(QStringLiteral("\u2713"));
+    commit->setToolTip(QStringLiteral("Apply the crop (Enter)"));
+    layout->addWidget(commit);
+
+    if (controller_) {
+        connect(ratio, &QComboBox::currentIndexChanged, this,
+                [this, ratio](int index) { controller_->setCropRatio(ratio->itemData(index).toDouble()); });
+        connect(deletePixels, &QCheckBox::toggled, this,
+                [this](bool on) { controller_->setCropDeletePixels(on); });
+        connect(cancel, &QToolButton::clicked, this, [this]() { controller_->cancelCrop(); });
+        connect(commit, &QToolButton::clicked, this, [this]() { controller_->commitCrop(); });
+    }
+    layout->addStretch(1);
+    return page;
 }
 
 QWidget* OptionsBar::buildPaintPage(ToolId id)

@@ -1,5 +1,6 @@
 #include "tool_handler.h"
 
+#include "crop_grip.h"
 #include "icons.h"
 #include "image_view.h"
 #include "tools.h"
@@ -121,7 +122,7 @@ public:
 
     void onDeactivate(ToolContext& ctx) override
     {
-        grip_ = Grip::None;
+        grip_ = BoxGrip::None;
         selected_ = -1;
         if (ImageView* canvas = ctx.canvas()) {
             canvas->clearSliceOverlay();
@@ -146,18 +147,18 @@ public:
             return true;
         }
         ctx_ = &ctx;
-        grip_ = Grip::None;
+        grip_ = BoxGrip::None;
         if (selected_ >= 0) {
             if (const auto rect = userRect(ctx, selected_)) {
                 grip_ = gripAt(ctx, *rect, imagePos);
                 startRect_ = *rect;
             }
         }
-        if (grip_ == Grip::None) {
+        if (grip_ == BoxGrip::None) {
             // User slices win over the auto slices beneath them.
             selected_ = userSliceAt(ctx, imagePos);
             if (selected_ >= 0) {
-                grip_ = Grip::Move;
+                grip_ = BoxGrip::Move;
                 startRect_ = *userRect(ctx, selected_);
             }
         }
@@ -170,7 +171,7 @@ public:
     void onMove(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers) override
     {
         PictureView* v = ctx.view();
-        if (grip_ == Grip::None || selected_ < 0 || !v) {
+        if (grip_ == BoxGrip::None || selected_ < 0 || !v) {
             updateCursor(ctx, imagePos);
             return;
         }
@@ -184,7 +185,7 @@ public:
 
     void onRelease(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers mods) override
     {
-        if (grip_ == Grip::None) {
+        if (grip_ == BoxGrip::None) {
             return;
         }
         onMove(ctx, imagePos, mods);
@@ -194,7 +195,7 @@ public:
             set_user_slice(*v, selected_, roundInt(r.x()), roundInt(r.y()), roundInt(r.width()),
                            roundInt(r.height()), true);
         }
-        grip_ = Grip::None;
+        grip_ = BoxGrip::None;
         showSlices(ctx, selected_);
     }
 
@@ -224,8 +225,6 @@ public:
     }
 
 private:
-    enum class Grip { None, Move, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left };
-
     static std::optional<QRectF> userRect(ToolContext& ctx, int userIndex)
     {
         PictureView* v = ctx.view();
@@ -252,47 +251,14 @@ private:
         return -1;
     }
 
-    // Handles grab within a fixed 6 screen px, corners before edges.
-    static Grip gripAt(ToolContext& ctx, const QRectF& r, const QPointF& p)
+    static BoxGrip gripAt(ToolContext& ctx, const QRectF& r, const QPointF& p)
     {
-        const double zoom = ctx.canvas() ? std::max(ctx.canvas()->zoom(), 1e-6) : 1.0;
-        const double grab = 6.0 / zoom;
-        const bool left = std::abs(p.x() - r.left()) <= grab;
-        const bool right = std::abs(p.x() - r.right()) <= grab;
-        const bool top = std::abs(p.y() - r.top()) <= grab;
-        const bool bottom = std::abs(p.y() - r.bottom()) <= grab;
-        if (p.x() < r.left() - grab || p.x() > r.right() + grab || p.y() < r.top() - grab
-            || p.y() > r.bottom() + grab) {
-            return Grip::None;
-        }
-        if (left && top) return Grip::TopLeft;
-        if (right && top) return Grip::TopRight;
-        if (left && bottom) return Grip::BottomLeft;
-        if (right && bottom) return Grip::BottomRight;
-        if (left) return Grip::Left;
-        if (right) return Grip::Right;
-        if (top) return Grip::Top;
-        if (bottom) return Grip::Bottom;
-        return r.contains(p) ? Grip::Move : Grip::None;
+        return boxGripAt(r, p, ctx.canvas() ? ctx.canvas()->zoom() : 1.0);
     }
 
     QRectF dragged(const QPointF& imagePos) const
     {
-        const QPointF d = imagePos - start_;
-        QRectF r = startRect_;
-        switch (grip_) {
-        case Grip::None: break;
-        case Grip::Move: r.translate(d); break;
-        case Grip::TopLeft: r.setTopLeft(r.topLeft() + d); break;
-        case Grip::Top: r.setTop(r.top() + d.y()); break;
-        case Grip::TopRight: r.setTopRight(r.topRight() + d); break;
-        case Grip::Right: r.setRight(r.right() + d.x()); break;
-        case Grip::BottomRight: r.setBottomRight(r.bottomRight() + d); break;
-        case Grip::Bottom: r.setBottom(r.bottom() + d.y()); break;
-        case Grip::BottomLeft: r.setBottomLeft(r.bottomLeft() + d); break;
-        case Grip::Left: r.setLeft(r.left() + d.x()); break;
-        }
-        return r.normalized();
+        return dragBox(startRect_, grip_, imagePos - start_);
     }
 
     void updateCursor(ToolContext& ctx, const QPointF& imagePos)
@@ -302,28 +268,19 @@ private:
             return;
         }
         const auto rect = selected_ >= 0 ? userRect(ctx, selected_) : std::nullopt;
-        switch (rect ? gripAt(ctx, *rect, imagePos) : Grip::None) {
-        case Grip::Move: canvas->setCursor(Qt::SizeAllCursor); break;
-        case Grip::TopLeft:
-        case Grip::BottomRight: canvas->setCursor(Qt::SizeFDiagCursor); break;
-        case Grip::TopRight:
-        case Grip::BottomLeft: canvas->setCursor(Qt::SizeBDiagCursor); break;
-        case Grip::Left:
-        case Grip::Right: canvas->setCursor(Qt::SizeHorCursor); break;
-        case Grip::Top:
-        case Grip::Bottom: canvas->setCursor(Qt::SizeVerCursor); break;
-        case Grip::None: {
-            const ToolInfo& info = toolInfo(ToolId::SliceSelect);
-            const QCursor c = cursor(toolCursorId(ToolId::SliceSelect, Qt::NoModifier),
-                                     info.hotspotX, info.hotspotY);
-            canvas->setCursor(c.pixmap().isNull() ? QCursor(info.cursor) : c);
-            break;
+        const BoxGrip grip = rect ? gripAt(ctx, *rect, imagePos) : BoxGrip::None;
+        if (grip != BoxGrip::None) {
+            canvas->setCursor(boxGripCursor(grip, Qt::CrossCursor));
+            return;
         }
-        }
+        const ToolInfo& info = toolInfo(ToolId::SliceSelect);
+        const QCursor c = cursor(toolCursorId(ToolId::SliceSelect, Qt::NoModifier), info.hotspotX,
+                                 info.hotspotY);
+        canvas->setCursor(c.pixmap().isNull() ? QCursor(info.cursor) : c);
     }
 
     int selected_ = -1;
-    Grip grip_ = Grip::None;
+    BoxGrip grip_ = BoxGrip::None;
     QPointF start_;
     QRectF startRect_;
     bool moved_ = false;

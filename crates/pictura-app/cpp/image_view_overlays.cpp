@@ -1,5 +1,5 @@
-// ImageView overlays for the Crop tool group: the Perspective Crop quad and the
-// slice map. Split from image_view.cpp to keep each translation unit small.
+// ImageView overlays for the Crop tool group: the crop box, the Perspective
+// Crop quad, and the slice map. Split from image_view.cpp to keep each translation unit small.
 // Ported from photorust's CanvasView::paintCropQuad / paintSlices.
 
 #include "image_view.h"
@@ -9,6 +9,18 @@
 #include <QtGui/QPainterPath>
 
 namespace pictura {
+
+void ImageView::setCropBox(const QRectF& box)
+{
+    cropBox_ = box.normalized();
+    update();
+}
+
+void ImageView::clearCropBox()
+{
+    cropBox_ = QRectF();
+    update();
+}
 
 void ImageView::setPerspectiveCropQuad(const QPolygonF& quad)
 {
@@ -40,7 +52,8 @@ void ImageView::clearSliceOverlay()
 // any zoom.
 void ImageView::paintCropGroupOverlays(QPainter& painter)
 {
-    if (perspectiveQuad_.size() != 4 && sliceOverlay_.isEmpty() && sliceDrag_.isNull()) {
+    if (perspectiveQuad_.size() != 4 && sliceOverlay_.isEmpty() && sliceDrag_.isNull()
+        && cropBox_.isNull()) {
         return;
     }
     const auto toWidget = [this](const QPointF& p) { return p * zoom_ + offset_; };
@@ -95,6 +108,38 @@ void ImageView::paintCropGroupOverlays(QPainter& painter)
             painter.setBrush(Qt::NoBrush);
             painter.drawRect(QRectF(toWidget(sliceDrag_.topLeft()),
                                     toWidget(sliceDrag_.bottomRight())));
+        }
+    }
+
+    if (!cropBox_.isNull()) {
+        const QRectF box(toWidget(cropBox_.topLeft()), toWidget(cropBox_.bottomRight()));
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        // The crop shield: what is about to be thrown away, dimmed.
+        QPainterPath shield;
+        shield.addRect(rect());
+        shield.addRect(box);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 150));
+        painter.drawPath(shield);
+        // Rule-of-thirds guides, CS6's default overlay.
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(QColor(255, 255, 255, 90), 1));
+        for (int i = 1; i <= 2; ++i) {
+            const double fx = box.left() + box.width() * i / 3.0;
+            const double fy = box.top() + box.height() * i / 3.0;
+            painter.drawLine(QPointF(fx, box.top()), QPointF(fx, box.bottom()));
+            painter.drawLine(QPointF(box.left(), fy), QPointF(box.right(), fy));
+        }
+        painter.setPen(QPen(QColor(255, 255, 255, 220), 1));
+        painter.drawRect(box);
+        painter.setPen(QPen(QColor(40, 40, 40), 1));
+        painter.setBrush(Qt::white);
+        const QPointF c = box.center();
+        for (const QPointF& h :
+             {box.topLeft(), QPointF(c.x(), box.top()), box.topRight(), QPointF(box.right(), c.y()),
+              box.bottomRight(), QPointF(c.x(), box.bottom()), box.bottomLeft(),
+              QPointF(box.left(), c.y())}) {
+            painter.drawRect(QRectF(h.x() - 3, h.y() - 3, 6, 6));
         }
     }
 

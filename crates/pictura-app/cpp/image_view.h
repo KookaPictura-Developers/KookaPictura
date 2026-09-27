@@ -166,6 +166,12 @@ public:
     // without rendering.
     QTransform transformPreviewMatrix() const;
 
+    // Crop box (image space): shades outside it and draws rule-of-thirds
+    // guides, its frame, and eight handles.
+    void setCropBox(const QRectF& box);
+    void clearCropBox();
+    bool hasCropBoxForTest() const { return !cropBox_.isNull(); }
+
     // Perspective Crop quad (TL, TR, BR, BL, image space): shades outside it and
     // draws its edges, a perspective-following 3x3 grid, and corner handles.
     void setPerspectiveCropQuad(const QPolygonF& quad);
@@ -233,6 +239,7 @@ protected:
 private:
     void paintCropGroupOverlays(QPainter& painter);
     QPolygonF perspectiveQuad_;
+    QRectF cropBox_;
     QList<SliceOverlay> sliceOverlay_;
     QRectF sliceDrag_;
     void centreImage();

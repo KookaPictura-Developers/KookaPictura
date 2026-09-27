@@ -37,6 +37,10 @@ struct ToolContext {
     virtual int fixedSizeWidth() const = 0;
     virtual int fixedSizeHeight() const = 0;
     virtual double feather() const = 0;
+    // Crop options: aspect ratio (width / height; 0 = unconstrained) and
+    // whether a crop discards the pixels outside the canvas.
+    virtual double cropRatio() const = 0;
+    virtual bool cropDeletePixels() const = 0;
     virtual int magneticWidth() const = 0;
     virtual int magneticContrast() const = 0;
     virtual int magneticFrequency() const = 0;

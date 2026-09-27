@@ -136,6 +136,21 @@ void ToolController::setFixedSize(int width, int height)
     fixedSizeH_ = std::max(height, 1);
 }
 
+void ToolController::setCropRatio(double ratio)
+{
+    cropRatio_ = ratio > 0.0 ? ratio : 0.0;
+    if (ToolHandler* h = registry_.forTool(ToolId::Crop)) {
+        h->onOptionsChanged(*this);
+    }
+}
+
+void ToolController::cancelCrop()
+{
+    if (ToolHandler* h = registry_.forTool(ToolId::Crop)) {
+        h->cancelPolygonLasso();
+    }
+}
+
 void ToolController::setTolerance(int tolerance)
 {
     tolerance_ = std::clamp(tolerance, 0, 255);

@@ -189,6 +189,13 @@ public:
     int fixedSizeHeight() const override { return fixedSizeH_; }
     void setFixedSize(int width, int height);
 
+    double cropRatio() const override { return cropRatio_; }
+    void setCropRatio(double ratio);
+    bool cropDeletePixels() const override { return cropDeletePixels_; }
+    void setCropDeletePixels(bool on) { cropDeletePixels_ = on; }
+    // Esc / the options bar's Cancel: put the crop box back to the canvas.
+    void cancelCrop();
+
     int tolerance() const override { return tolerance_; }
     void setTolerance(int tolerance);
 
@@ -346,6 +353,9 @@ private:
     int fixedSizeW_ = 100;
     int fixedSizeH_ = 100;
     int tolerance_ = 32;
+    double cropRatio_ = 0.0;
+    // docs/03-tools/crop-tool.md: Delete Cropped Pixels is on by default.
+    bool cropDeletePixels_ = true;
     int magneticWidth_ = 10;
     int magneticContrast_ = 10;
     int magneticFrequency_ = 57;

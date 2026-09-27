@@ -32,6 +32,8 @@ public:
     // The frame refreshed (a document edit, undo, or tab switch) with this tool
     // active; re-read any document state the tool mirrors on the canvas.
     virtual void onDocumentRefreshed(ToolContext& ctx) {}
+    // A tool option changed (e.g. the crop aspect ratio); re-apply it.
+    virtual void onOptionsChanged(ToolContext& ctx) {}
 
     // Tool-specific commands the controller forwards by active tool.
     virtual bool commitPolygonLasso() { return false; }

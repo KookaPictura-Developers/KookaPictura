@@ -94,6 +94,8 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_shell_round4.cpp
     crates/pictura-app/cpp/selftest_shell_round4_float.cpp
     crates/pictura-app/cpp/selftest_warp_preset.cpp
+    crates/pictura-app/cpp/selftest_ports.cpp
+    crates/pictura-app/cpp/selftest_crop_tool.cpp
     crates/pictura-app/cpp/selftest_recent_files.cpp
     crates/pictura-app/cpp/selftest_crop_group.cpp
     crates/pictura-app/cpp/selftest_click_deselect.cpp
