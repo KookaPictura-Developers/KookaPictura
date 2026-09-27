@@ -10,6 +10,7 @@ mod merge;
 mod merge_tests;
 mod move_content;
 mod paths;
+mod perspective_crop;
 mod properties;
 mod rasterize;
 mod smart_object;
@@ -17,6 +18,8 @@ mod smart_object;
 mod tests;
 #[cfg(test)]
 mod tests_clipboard;
+#[cfg(test)]
+mod tests_perspective_crop;
 #[cfg(test)]
 mod tests_via;
 mod transform;
@@ -44,6 +47,7 @@ pub use merge::{
 };
 pub use move_content::move_selection_content;
 pub use paths::{flatten_rows, is_background, parent_path, resolve_path, resolve_path_mut};
+pub use perspective_crop::{perspective_crop, perspective_crop_refusal, perspective_crop_size};
 pub use properties::{
     apply_visibility, can_move_path_to, delete_hidden_layers, delete_paths, duplicate_paths,
     group_paths, move_path, move_path_to, rename_path, select_similar, set_blend_paths,

@@ -113,7 +113,7 @@ impl PlaneMap for Map {
 /// destination, used for the bounding box) and its inverse (destination →
 /// source, used to resample), both row-major.
 #[derive(Clone, Copy)]
-struct QuadMap {
+pub(super) struct QuadMap {
     h: [f64; 9],
     inv: [f64; 9],
 }
@@ -229,7 +229,7 @@ fn gaussian_solve(mut a: [[f64; 8]; 8], mut b: [f64; 8]) -> Option<[f64; 8]> {
 
 /// The homography sending `src[0..4]` to `dst[0..4]`, or `None` for a
 /// non-finite corner or a singular/near-singular map.
-fn solve_homography(src: [(f64, f64); 4], dst: [(f64, f64); 4]) -> Option<QuadMap> {
+pub(super) fn solve_homography(src: [(f64, f64); 4], dst: [(f64, f64); 4]) -> Option<QuadMap> {
     for (x, y) in src.iter().chain(dst.iter()) {
         if !x.is_finite() || !y.is_finite() {
             return None;

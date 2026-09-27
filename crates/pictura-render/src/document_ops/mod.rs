@@ -9,11 +9,12 @@ mod native_store;
 mod orient;
 mod pictura_raw;
 mod resize;
+mod slices;
 
 pub use canvas::resize_canvas_document;
 pub use crop::{
-    crop_document, translate_layer, translate_layer_active, translate_layer_index,
-    translate_layer_rect,
+    crop_document, delete_cropped_pixels, translate_layer, translate_layer_active,
+    translate_layer_index, translate_layer_rect,
 };
 pub use depth::convert_depth_exposure_gamma;
 pub use layer_ops::{
@@ -26,10 +27,11 @@ pub use layer_ops::{
     duplicate_paths, flatten, flatten_rows, group_layer, group_paths, identity_mesh, is_background,
     is_fill_content_layer, is_visible_in_panel, layer_from_background, layer_via_copy,
     layer_via_cut, merge_scope, move_path, move_path_to, move_selection_content, neutral_color,
-    next_layer_name, open_as_smart_object, parent_path, paste_clip, place_smart_object,
-    rasterize_all_layers, rasterize_fill_content, rasterize_smart_object, rename_path,
-    replace_smart_object_contents, resolve_path, resolve_path_mut, select_similar, set_blend_paths,
-    set_color_paths, set_fill_paths, set_lock_paths, set_opacity_paths, set_visible_paths,
+    next_layer_name, open_as_smart_object, parent_path, paste_clip, perspective_crop,
+    perspective_crop_refusal, perspective_crop_size, place_smart_object, rasterize_all_layers,
+    rasterize_fill_content, rasterize_smart_object, rename_path, replace_smart_object_contents,
+    resolve_path, resolve_path_mut, select_similar, set_blend_paths, set_color_paths,
+    set_fill_paths, set_lock_paths, set_opacity_paths, set_visible_paths,
     smart_object_source_bytes, style_mesh, transform_layer, transform_layer_quad,
     transform_layer_warp, ungroup_layer, ungroup_paths, Clip, LayerTransform, MergeError,
     MergeOutcome, MergeScope, NewLayerSpec, PasteMode, WarpMesh, WarpParams, WarpStyle,
@@ -37,6 +39,7 @@ pub use layer_ops::{
 pub use orient::{flip_document, rotate_document};
 pub use pictura_raw::apply_pictura_raw;
 pub use resize::resize_document;
+pub use slices::{add_slice, remove_slice, resolve_slices, set_slice, Slice};
 
 /// Reject a zero width or height with `InvalidParams`.
 pub(crate) fn valid_size(width: u32, height: u32) -> Result<(), pictura_ops::OpsError> {

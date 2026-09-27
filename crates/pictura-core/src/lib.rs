@@ -196,6 +196,10 @@ pub struct Document {
     /// Bytes after the global layer mask up to the layer-section end, preserved
     /// verbatim for lossless re-save.
     pub layer_section_extra: Vec<u8>,
+    /// User slices drawn with the Slice tool, in document pixels; auto slices
+    /// are derived from them. ponytail: not yet written to or read from the
+    /// slices image resource (1050), which stays preserved verbatim.
+    pub slices: Vec<PsdRect>,
 }
 
 impl Document {
@@ -223,6 +227,7 @@ impl Document {
             image_resources: Vec::new(),
             global_layer_mask: Vec::new(),
             layer_section_extra: Vec::new(),
+            slices: Vec::new(),
         }
     }
 

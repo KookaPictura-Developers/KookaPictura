@@ -195,6 +195,11 @@ public:
     bool saveActiveAs(const QString& path);
     bool revertActive();
     bool closeDocument(int index, bool interactive);
+    // The recent-files list, most recent first; setting it persists it.
+    const QStringList& recentFiles() const { return recent_; }
+    void setRecentFiles(const QStringList& files);
+    // File > Open Recent, or null before the menu bar is built.
+    QMenu* recentMenu() const;
     bool closeActiveDocument(bool interactive);
     void showNewDocumentDialog();
     void showOpenDialog();
@@ -256,7 +261,9 @@ private:
     void updateWindowTitle();
     void removeDocument(int index);
     void rememberRecent(const QString& path);
-    void rebuildRecentMenu();
+    // Repopulate File > Open Recent from `recent_` each time it opens.
+    void refreshRecentMenu(QMenu* menu);
+    void openRecent(const QString& path);
     void applyBrightness(int level);
 
     QList<DocEntry> docs_;
@@ -299,6 +306,9 @@ private:
     QColor foreground_;
     QSet<QString> panelNames_;
     QStringList recent_;
+    // Actions refreshRecentMenu added (file rows, separator, Clear); the
+    // registry's "No Recent Files" placeholder is not among them.
+    QList<QAction*> recentActions_;
     int untitledCounter_ = 0;
     int brightnessLevel_ = 1;
     bool gpuCompute_ = true;
