@@ -31,6 +31,36 @@ impl Clip {
     pub fn height(&self) -> u32 {
         self.rect.height().max(0) as u32
     }
+
+    /// A clip from another application's image: packed straight RGBA placed
+    /// at the canvas origin with full coverage, since its source position is
+    /// unknown. `None` for a zero dimension or a buffer of the wrong length.
+    pub fn from_rgba(width: u32, height: u32, rgba: Vec<u8>) -> Option<Clip> {
+        let count = width as usize * height as usize;
+        if count == 0 || rgba.len() != count * 4 {
+            return None;
+        }
+        Some(Clip {
+            rect: PsdRect {
+                top: 0,
+                left: 0,
+                bottom: height as i32,
+                right: width as i32,
+            },
+            rgba,
+            mask: vec![255; count],
+        })
+    }
+
+    /// Packed straight RGBA with the selection coverage folded into alpha:
+    /// the pixels a paste shows, and what the system clipboard carries.
+    pub fn masked_rgba(&self) -> Vec<u8> {
+        let mut out = self.rgba.clone();
+        for (px, &coverage) in out.as_chunks_mut::<4>().0.iter_mut().zip(&self.mask) {
+            px[3] = scale(px[3], coverage);
+        }
+        out
+    }
 }
 
 /// How a paste uses the selection in place when it happens.
@@ -197,6 +227,7 @@ pub fn paste_clip(
         bottom: top + h as i32,
         right: left + w as i32,
     };
+    let pixels = clip.masked_rgba();
     for channel in layer.channels.iter_mut() {
         let offset = match channel.id {
             0 => 0,
@@ -206,12 +237,7 @@ pub fn paste_clip(
             _ => continue,
         };
         for (i, value) in channel.data.iter_mut().enumerate() {
-            let px = clip.rgba[i * 4 + offset];
-            *value = if offset == 3 {
-                scale(px, clip.mask[i])
-            } else {
-                px
-            };
+            *value = pixels[i * 4 + offset];
         }
     }
     layer.mask = mask;
