@@ -2,6 +2,7 @@ use cxx_qt_lib::{QImage, QImageFormat};
 use pictura_codec::buffer_to_srgb;
 use pictura_core::{BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer, PsdRect};
 use pictura_paint::Stroke;
+use pictura_render::{Planes, PyramidLevel};
 use pictura_select::Selection;
 /// The rendered buffer as a 4-plane RGBA frame.
 ///
@@ -147,16 +148,22 @@ pub(super) fn document_to_image(doc: &Document, gpu_compute: bool) -> QImage {
 /// While a stroke is active the source is the stroke's working document, so a
 /// live (uncommitted) stroke is not lost; otherwise it is the authoritative
 /// planar `doc.composite`, which M34 keeps byte-identical to a full composite.
+/// The pixels are premultiplied for Qt; the straight-alpha export/thumbnail
+/// helpers are unchanged.
 pub(super) fn rebuild_display(
     doc: &Option<Document>,
     stroke: Option<&Stroke>,
     gpu_compute: bool,
 ) -> Option<QImage> {
     if let Some(stroke) = stroke {
-        return Some(document_to_image(stroke.document(), gpu_compute));
+        let rendered = current_buffer(stroke.document(), gpu_compute);
+        return Some(premultiplied_display_image(&buffer_to_srgb(
+            stroke.document(),
+            &rendered,
+        )));
     }
     doc.as_ref()
-        .map(|doc| buffer_to_image(&buffer_to_srgb(doc, &doc.composite)))
+        .map(|doc| premultiplied_display_image(&buffer_to_srgb(doc, &doc.composite)))
 }
 /// The 4-byte PSD blend key as a `String` (e.g. `"mul "`).
 pub(super) fn blend_key(mode: BlendMode) -> String {
@@ -478,6 +485,102 @@ pub(super) fn buffer_to_image(buffer: &PixelBuffer) -> QImage {
 pub(super) fn rgba_image(rgba: Vec<u8>, width: i32, height: i32) -> QImage {
     // SAFETY: `rgba` is exactly width*height RGBA8888 bytes.
     unsafe { QImage::from_raw_bytes(rgba, width, height, QImageFormat::Format_RGBA8888) }
+}
+/// Premultiply one straight-alpha sample: `round(c * a / 255)`.
+fn premul(c: u8, a: u8) -> u8 {
+    ((c as u32 * a as u32 + 127) / 255) as u8
+}
+/// Convert a planar 8-bit buffer to interleaved premultiplied RGBA8888 for
+/// display. Qt then paints it without a per-frame conversion and averages
+/// transparent edges correctly. [`buffer_to_rgba_bytes`] stays straight alpha
+/// for the export encoder.
+pub(super) fn display_rgba_bytes(buffer: &PixelBuffer) -> Vec<u8> {
+    let plane = buffer.pixel_count();
+    let channels = buffer.channels as usize;
+    let mut rgba = vec![0u8; plane * 4];
+    for i in 0..plane {
+        let (r, g, b, a) = if channels <= 1 {
+            let v = buffer.data[i];
+            (v, v, v, 255)
+        } else if channels == 2 {
+            let v = buffer.data[i];
+            (v, v, v, buffer.data[plane + i])
+        } else {
+            let a = if channels >= 4 {
+                buffer.data[3 * plane + i]
+            } else {
+                255
+            };
+            (
+                buffer.data[i],
+                buffer.data[plane + i],
+                buffer.data[2 * plane + i],
+                a,
+            )
+        };
+        let o = i * 4;
+        rgba[o..o + 4].copy_from_slice(&[premul(r, a), premul(g, a), premul(b, a), a]);
+    }
+    rgba
+}
+/// Convert a planar 8-bit buffer to a premultiplied `RGBA8888` `QImage`.
+pub(super) fn premultiplied_display_image(buffer: &PixelBuffer) -> QImage {
+    let width = buffer.width as i32;
+    let height = buffer.height as i32;
+    let rgba = display_rgba_bytes(buffer);
+    // SAFETY: `rgba` is exactly width*height premultiplied RGBA8888 bytes.
+    unsafe {
+        QImage::from_raw_bytes(
+            rgba,
+            width,
+            height,
+            QImageFormat::Format_RGBA8888_Premultiplied,
+        )
+    }
+}
+/// Wrap an already-premultiplied interleaved RGBA pyramid level as a `QImage`.
+pub(super) fn level_display_image(level: &PyramidLevel) -> QImage {
+    // SAFETY: level data is exactly width*height premultiplied RGBA8888 bytes.
+    unsafe {
+        QImage::from_raw_bytes(
+            level.data().to_vec(),
+            level.width() as i32,
+            level.height() as i32,
+            QImageFormat::Format_RGBA8888_Premultiplied,
+        )
+    }
+}
+/// A borrowed 4-plane view of `buffer`, or `None` unless it is exactly RGBA.
+pub(super) fn planes_of(buffer: &PixelBuffer) -> Option<Planes<'_>> {
+    if buffer.channels != 4 {
+        return None;
+    }
+    let plane = buffer.pixel_count();
+    if buffer.data.len() < plane * 4 {
+        return None;
+    }
+    Some(Planes {
+        width: buffer.width,
+        height: buffer.height,
+        r: &buffer.data[..plane],
+        g: &buffer.data[plane..2 * plane],
+        b: &buffer.data[2 * plane..3 * plane],
+        a: &buffer.data[3 * plane..4 * plane],
+    })
+}
+/// Expand an owned rendered buffer to a 4-plane RGBA frame, taking it over
+/// without a copy when it is already RGBA.
+pub(super) fn into_rgba_frame(rendered: PixelBuffer) -> PixelBuffer {
+    if rendered.channels == 4 {
+        rendered
+    } else {
+        rgba_frame(&rendered)
+    }
+}
+/// The 4-plane straight **sRGB** level-0 frame for `source`: the color-managed
+/// composite the display image, pyramid, and canvas crops all share.
+pub(super) fn level0_buffer(source: &Document) -> PixelBuffer {
+    into_rgba_frame(buffer_to_srgb(source, &source.composite))
 }
 /// Deterministic gradient so the window always has something to show.
 pub(super) fn test_image() -> QImage {

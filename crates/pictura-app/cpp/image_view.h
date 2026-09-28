@@ -4,7 +4,9 @@
 #include <QtCore/QLineF>
 #include <QtCore/QList>
 #include <QtCore/QPointF>
+#include <QtCore/QRect>
 #include <QtCore/QRectF>
+#include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
@@ -13,6 +15,7 @@
 #include <QtWidgets/QWidget>
 
 #include <algorithm>
+#include <functional>
 
 class QPainter;
 
@@ -47,6 +50,26 @@ public:
     // present cache so the next paint rebuilds it. A null/empty region and a
     // null canvas are no-ops.
     void blitRegion(const QImage& region, int x, int y);
+
+    // Supplies document crops from the view pyramid so the present path never
+    // scales the full-resolution `image()`. `crop` returns a premultiplied crop
+    // of `level` at the level-space rect `(x, y, w, h)`; `levelCount`/`levelSize`
+    // describe the pyramid; `canvasRevision` is a non-consuming revision of the
+    // displayed pixels, so the present cache keys on it without draining the
+    // damage account `image()` owns. Any member may be empty.
+    struct LevelProvider {
+        std::function<QImage(int level, int x, int y, int w, int h)> crop;
+        std::function<int()> levelCount;
+        std::function<QSize(int level)> levelSize;
+        std::function<quint64()> canvasRevision;
+        std::function<bool()> isPainting;
+    };
+    void setLevelProvider(LevelProvider provider);
+
+    // Smooth sampling below 200 % zoom, nearest at and above it.
+    static bool smoothSamplingForZoom(double zoom);
+    // The coarsest level whose scale is still at least as fine as the screen.
+    static int presentLevelForZoom(double zoom, int levelCount);
 
     const QImage& image() const { return image_; }
 
@@ -227,12 +250,13 @@ public:
     void clearDragSizeHint();
     bool hasDragSizeHintForTest() const { return dragSizeActive_ && !dragSizeText_.isEmpty(); }
 
-    // Test hooks for the internal present cache.
+    // Test hooks for the internal level-crop present cache.
     bool presentCacheRebuiltOnLastPaint() const { return presentCacheRebuiltLastPaint_; }
     int presentCacheRebuildCount() const { return presentCache_.rebuilds; }
-    QSize presentCacheImageSize() const { return presentCache_.scaled.size(); }
+    QSize presentCacheImageSize() const { return presentCache_.crop.size(); }
     qint64 presentCacheImageKey() const { return presentCache_.key; }
     void setPresentCacheEnabledForTest(bool enabled);
+    void setPresentLevelCropForTest(bool enabled);
 
     // Map a widget-space point to document/image coordinates.
     QPointF widgetToImage(const QPointF& widgetPos) const;
@@ -280,13 +304,16 @@ private:
     void updateAntsTimer();
 
     struct PresentCache {
-        qint64 key = 0;
-        double zoom = 0.0;
+        qint64 key = -1;
+        quint64 revision = 0;
+        int level = -1;
+        QRect docRect;
         bool valid = false;
         int rebuilds = 0;
-        QImage scaled;
+        QImage crop;
     };
-    const QImage* cachedScaled(PresentCache& cache, const QImage& source);
+    const QImage* presentCrop(QRect& docRect);
+    QRectF visibleDocumentRect() const;
 
     QImage image_;
     QColor canvasColor_{Qt::darkGray};
@@ -310,8 +337,10 @@ private:
     QTimer* antsTimer_ = nullptr;
 
     PresentCache presentCache_;
+    LevelProvider levelProvider_;
     bool presentCacheRebuiltLastPaint_ = false;
     bool presentCacheEnabledForTest_ = true;
+    bool presentLevelCropForTest_ = true;
 
     bool movePreviewActive_ = false;
     QImage moveBase_;

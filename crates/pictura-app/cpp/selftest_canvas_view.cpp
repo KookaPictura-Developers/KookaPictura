@@ -5,9 +5,11 @@
 #include "canvas_scrollbars.h"
 #include "frame.h"
 #include "image_view.h"
+#include "panels/navigator_panel.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QObject>
 #include <QtCore/QPointF>
 #include <QtCore/QRectF>
 #include <QtCore/QSize>
@@ -34,6 +36,22 @@ QSizeF visibleCanvas(const pictura::ImageView* canvas)
     const double vx = std::min(double(vp.width()), o.x() + w) - std::max(0.0, o.x());
     const double vy = std::min(double(vp.height()), o.y() + h) - std::max(0.0, o.y());
     return QSizeF(std::max(0.0, vx), std::max(0.0, vy));
+}
+
+// Byte-for-byte widget-image equality over the same render format.
+bool samePixels(const QImage& a, const QImage& b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (int y = 0; y < a.height(); ++y) {
+        for (int x = 0; x < a.width(); ++x) {
+            if (a.pixel(x, y) != b.pixel(x, y)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 // Width of the black brush ring along the horizontal line through its centre.
@@ -225,5 +243,121 @@ int pictura::runCanvasViewChecks(pictura::PicturaMainWindow& frame)
         return pictura::selfTest().fail(312, "brush outline zoom");
     }
     frame.closeDocument(ringDoc, false);
+
+    // 539: the canvas samples smooth below 200 % and nearest at and above it,
+    // and the present level formula picks the coarsest level still at least as
+    // fine as the screen.
+    const bool smoothBelow = pictura::ImageView::smoothSamplingForZoom(1.99)
+                             && pictura::ImageView::smoothSamplingForZoom(1.0)
+                             && pictura::ImageView::smoothSamplingForZoom(0.5);
+    const bool nearestAt = !pictura::ImageView::smoothSamplingForZoom(2.0)
+                           && !pictura::ImageView::smoothSamplingForZoom(4.0);
+    const bool levelsOk = pictura::ImageView::presentLevelForZoom(1.0, 3) == 0
+                          && pictura::ImageView::presentLevelForZoom(0.51, 3) == 0
+                          && pictura::ImageView::presentLevelForZoom(0.5, 3) == 1
+                          && pictura::ImageView::presentLevelForZoom(0.4, 3) == 1
+                          && pictura::ImageView::presentLevelForZoom(0.25, 3) == 2
+                          && pictura::ImageView::presentLevelForZoom(0.1, 3) == 2
+                          && pictura::ImageView::presentLevelForZoom(0.1, 1) == 0;
+    ST_BEGIN("present_filter_boundary");
+    ST_PASS("present_filter_boundary smooth_below=%d nearest_at=%d levels=%d",
+            smoothBelow ? 1 : 0, nearestAt ? 1 : 0, levelsOk ? 1 : 0);
+    if (!smoothBelow || !nearestAt || !levelsOk) {
+        return pictura::selfTest().fail(539, "sampling filter or level formula wrong");
+    }
+
+    // 540: the navigator draws from a coarse pyramid level, not a scaled second
+    // full-resolution copy, and refreshes on a content change.
+    const bool navCreated = frame.newDocument(QStringLiteral("Navigator"), 4000, 3000,
+                                              QStringLiteral("rgb"), 8,
+                                              QStringLiteral("white"));
+    auto* nav = frame.findChild<pictura::NavigatorPanel*>();
+    if (!navCreated || !nav) {
+        return pictura::selfTest().fail(540, "navigator fixture");
+    }
+    const int navDoc = frame.activeDocumentIndex();
+    nav->refresh();
+    const QSize navSource = nav->thumbnailSourceSizeForTest();
+    const QImage navBefore = nav->thumbnailSourceImageForTest();
+    pictura::PictureView* navView = frame.activeView();
+    const bool filled = navView && !navView->add_solid_fill(0xff0000ffu).isEmpty();
+    nav->refresh();
+    const QImage navAfter = nav->thumbnailSourceImageForTest();
+    const bool navNoFull = navSource.width() > 0 && navSource.width() < 4000
+                           && navSource.height() < 3000 && navSource.width() <= 512;
+    const bool navUpdated = filled && !navBefore.isNull() && !navAfter.isNull()
+                            && navBefore != navAfter;
+    ST_BEGIN("navigator_pyramid_level");
+    ST_PASS("navigator_pyramid_level level=%dx%d doc=4000x3000 no_full=%d updated=%d",
+            navSource.width(), navSource.height(), navNoFull ? 1 : 0, navUpdated ? 1 : 0);
+    if (!navNoFull || !navUpdated) {
+        frame.closeDocument(navDoc, false);
+        return pictura::selfTest().fail(540, "navigator not drawn from a pyramid level");
+    }
+    frame.closeDocument(navDoc, false);
+
+    // 541: the crop-from-level present contract in one place. A pan over a
+    // fully-visible document reuses the level crop without resampling the
+    // full-resolution document; at level 0 the crop present is identical to a
+    // full-resolution transform draw; and a region refresh still emits
+    // regionBlitted with no changed.
+    const bool levelCreated = frame.newDocument(QStringLiteral("LevelCrop"), 512, 384,
+                                                QStringLiteral("rgb"), 8,
+                                                QStringLiteral("white"));
+    pictura::ImageView* levelCanvas = frame.imageView();
+    pictura::PictureView* levelView = frame.activeView();
+    if (!levelCreated || !levelCanvas || !levelView) {
+        return pictura::selfTest().fail(541, "level crop fixture");
+    }
+    const int levelDoc = frame.activeDocumentIndex();
+    frame.resize(800, 600);
+    QApplication::processEvents();
+    const QPointF levelCentre(levelCanvas->width() / 2.0, levelCanvas->height() / 2.0);
+    levelCanvas->setZoom(0.5, levelCentre);
+    QApplication::processEvents();
+    QImage levelWarm(levelCanvas->size(), QImage::Format_ARGB32);
+    levelCanvas->render(&levelWarm);
+    levelCanvas->render(&levelWarm);
+    const bool levelCropReused = !levelCanvas->presentCacheRebuiltOnLastPaint();
+    levelCanvas->panBy(QPointF(10.0, 10.0));
+    QImage levelPan(levelCanvas->size(), QImage::Format_ARGB32);
+    levelCanvas->render(&levelPan);
+    const bool levelPanReused = !levelCanvas->presentCacheRebuiltOnLastPaint();
+    const QSize levelCropSize = levelCanvas->presentCacheImageSize();
+    const bool levelCropBounded = levelCropSize.width() > 0 && levelCropSize.width() <= 256
+                                  && levelCropSize.height() <= 192;
+
+    levelCanvas->setZoom(1.0, levelCentre);
+    QImage levelCropShot(levelCanvas->size(), QImage::Format_ARGB32);
+    levelCanvas->render(&levelCropShot);
+    levelCanvas->setPresentLevelCropForTest(false);
+    QImage levelDirectShot(levelCanvas->size(), QImage::Format_ARGB32);
+    levelCanvas->render(&levelDirectShot);
+    levelCanvas->setPresentLevelCropForTest(true);
+    const bool levelIdentical = samePixels(levelCropShot, levelDirectShot);
+
+    int levelRegionBlits = 0;
+    int levelChanged = 0;
+    auto levelRegionConn = QObject::connect(
+        levelView, &pictura::PictureView::regionBlitted,
+        [&levelRegionBlits](const QImage&, int, int) { ++levelRegionBlits; });
+    auto levelChangedConn = QObject::connect(
+        levelView, &pictura::PictureView::changed, [&levelChanged]() { ++levelChanged; });
+    const bool levelPreviewed = levelView->begin_move_preview();
+    const bool levelMoved = levelView->commit_move(4, 4);
+    QObject::disconnect(levelRegionConn);
+    QObject::disconnect(levelChangedConn);
+    const bool levelRegionPath = levelRegionBlits >= 1 && levelChanged == 0;
+    ST_BEGIN("canvas_present_contract");
+    ST_PASS("canvas_present_contract reused=%d pan_reuse=%d crop=%dx%d identical=%d "
+            "region=%d changed=%d",
+            levelCropReused ? 1 : 0, levelPanReused ? 1 : 0, levelCropSize.width(),
+            levelCropSize.height(), levelIdentical ? 1 : 0, levelRegionBlits, levelChanged);
+    if (!levelCropReused || !levelPanReused || !levelCropBounded || !levelIdentical
+        || !levelPreviewed || !levelMoved || !levelRegionPath) {
+        frame.closeDocument(levelDoc, false);
+        return pictura::selfTest().fail(541, "present contract wrong");
+    }
+    frame.closeDocument(levelDoc, false);
     return 0;
 }
