@@ -1,0 +1,301 @@
+//! Row-parallel helpers for the CPU compositor.
+//!
+//! A per-pixel content loop touches only its own pixel, Dissolve is a pure
+//! `(x, y)` hash, and `blend_if` reads the same pixel, so rows are independent
+//! and may run on rayon. Effect kernels and the knockout `cover` canvas stay
+//! sequential, so the output is byte-identical to the serial oracle. See D10 in
+//! `openspec/changes/canvas-view-performance/design.md`.
+
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use pictura_core::{BlendMode, ColorMode, Document, Layer};
+use rayon::prelude::*;
+
+use crate::composite::{blend, blend_if_factor, channel, sample, Canvas, Px};
+use crate::composite_native::{mask_alpha_unit, native_unit};
+
+/// Test-only switch that routes [`for_each_row`] through its serial branch, so a
+/// test can compare the parallel and sequential outputs on the same stack.
+#[cfg(test)]
+pub(crate) static FORCE_SERIAL: AtomicBool = AtomicBool::new(false);
+
+/// splitmix64 noise for Dissolve; pure in `(x, y)`.
+fn dissolve_noise(x: usize, y: usize) -> f32 {
+    let mut z = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (y as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        ^ 0xD1B5_4A32_D192_ED03;
+    z ^= z >> 30;
+    z = z.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z ^= z >> 27;
+    z = z.wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+    ((z >> 56) as f32) / 256.0
+}
+
+/// Run `f` for each canvas row in `[y0, y1)`, handing it the row's pixels, the
+/// row's `cover` flags when present, and the row's document `y`. Rows run in
+/// parallel unless the canvas carries a `cover` mask (a knockout composite) or
+/// the test-only serial switch is set.
+pub(crate) fn for_each_row<F>(canvas: &mut Canvas, y0: i32, y1: i32, f: F)
+where
+    F: Fn(i32, &mut [Px], Option<&mut [bool]>) + Sync + Send,
+{
+    if y1 <= y0 {
+        return;
+    }
+    let w = canvas.w;
+    let start = (y0 - canvas.oy) as usize * w;
+    let end = (y1 - canvas.oy) as usize * w;
+    let Canvas { px, cover, .. } = canvas;
+    let rows = &mut px[start..end];
+
+    #[cfg(test)]
+    let serial = cover.is_some() || FORCE_SERIAL.load(Ordering::Relaxed);
+    #[cfg(not(test))]
+    let serial = cover.is_some();
+
+    match cover.as_mut() {
+        Some(cov) => {
+            let cov = &mut cov[start..end];
+            for (r, (row, cov)) in rows.chunks_mut(w).zip(cov.chunks_mut(w)).enumerate() {
+                f(y0 + r as i32, row, Some(cov));
+            }
+        }
+        None if serial => {
+            for (r, row) in rows.chunks_mut(w).enumerate() {
+                f(y0 + r as i32, row, None);
+            }
+        }
+        None => {
+            rows.par_chunks_mut(w).enumerate().for_each(|(r, row)| {
+                f(y0 + r as i32, row, None);
+            });
+        }
+    }
+}
+
+/// Composite one source sample over `row`'s backdrop with the layer's opacity,
+/// fill, mask, and gate. `row[0]` is document x `ox`; `x`/`y` are document
+/// coordinates.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn blend_into_row(
+    row: &mut [Px],
+    cover: Option<&mut [bool]>,
+    ox: i32,
+    layer: &Layer,
+    doc: &Document,
+    x: i32,
+    y: i32,
+    cs: [f32; 3],
+    src_a: f32,
+) {
+    let opacity = layer.opacity as f32 / 255.0;
+    let fill = if layer.is_group {
+        1.0
+    } else {
+        layer.fill as f32 / 255.0
+    };
+    let mask = mask_alpha_unit(doc, layer, x, y);
+    let gate = match layer.blend_if.as_ref() {
+        Some(view) if !view.is_default() => {
+            let backdrop = row[(x - ox) as usize];
+            blend_if_factor(Some(view), cs, [backdrop.r, backdrop.g, backdrop.b])
+        }
+        _ => 1.0,
+    };
+    blend_parts_row(
+        row,
+        cover,
+        ox,
+        x,
+        y,
+        cs,
+        src_a * opacity * fill * mask * gate,
+        layer.blend,
+    );
+}
+
+/// Composite an opacity-weighted source sample over the backdrop at
+/// `row[x - ox]` with a blend mode.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn blend_parts_row(
+    row: &mut [Px],
+    cover: Option<&mut [bool]>,
+    ox: i32,
+    x: i32,
+    y: i32,
+    cs: [f32; 3],
+    alpha: f32,
+    mode: BlendMode,
+) {
+    let mut as_ = alpha;
+    if as_ <= 0.0 {
+        return;
+    }
+    let i = (x - ox) as usize;
+    let cb = row[i];
+
+    // Dissolve is stochastic: the effective alpha is a threshold on a fixed
+    // per-pixel noise field, and passing pixels go fully opaque.
+    // ponytail: deterministic splitmix hash, not the unpublished noise tile;
+    // swap when a CS6 dither baseline exists.
+    if matches!(mode, BlendMode::Dissolve) {
+        if dissolve_noise(x as usize, y as usize) >= as_ {
+            return;
+        }
+        as_ = 1.0;
+    }
+    if let Some(cover) = cover {
+        cover[i] = true;
+    }
+
+    let ab = cb.a;
+    let b = blend(mode, [cb.r, cb.g, cb.b], cs);
+    let ao = as_ + ab * (1.0 - as_);
+    if ao <= 0.0 {
+        row[i] = Px::default();
+        return;
+    }
+    let co = |idx: usize, c: f32| {
+        ((1.0 - ab) * as_ * cs[idx] + as_ * ab * b[idx] + (1.0 - as_) * ab * c) / ao
+    };
+    row[i] = Px {
+        r: co(0, cb.r),
+        g: co(1, cb.g),
+        b: co(2, cb.b),
+        a: ao,
+    };
+}
+
+/// Paint a pixel layer's own channels over the canvas, row-parallel.
+pub(crate) fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
+    // A smart-object layer with no raster proxy has no channel to draw from. The
+    // embedded-source branch in `composite_layer_inner` handles it; if that
+    // source is unusable, leave the backdrop unchanged instead of painting the
+    // channel-less rect black.
+    if layer.smart_object.is_some() && channel(layer, 0).is_none() {
+        return;
+    }
+    let lw = layer.rect.width();
+    let lh = layer.rect.height();
+    if lw <= 0 || lh <= 0 {
+        return;
+    }
+    let lw = lw as usize;
+    let x0 = layer.rect.left.max(canvas.x0());
+    let y0 = layer.rect.top.max(canvas.y0());
+    let x1 = layer.rect.right.min(canvas.x1());
+    let y1 = layer.rect.bottom.min(canvas.y1());
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+
+    let gray = matches!(
+        doc.mode,
+        ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone
+    );
+    let ch0 = channel(layer, 0);
+    let ch1 = channel(layer, 1).or(ch0);
+    let ch2 = channel(layer, 2).or(ch0);
+    let alpha = channel(layer, -1);
+    let ox = canvas.ox;
+    let rect = layer.rect;
+
+    for_each_row(canvas, y0, y1, |y, row, mut cover| {
+        for x in x0..x1 {
+            let li = (y - rect.top) as usize * lw + (x - rect.left) as usize;
+            // A high-depth Grayscale/RGB layer reads its native samples; a
+            // channel missing from the store falls back to its 8-bit plane.
+            let unit = |id: i16, ch: Option<&[u8]>| {
+                native_unit(layer, doc, id, li)
+                    .unwrap_or_else(|| sample(ch, li).unwrap_or(0) as f32 / 255.0)
+            };
+            let (r, g, b) = if gray {
+                let v = unit(0, ch0);
+                (v, v, v)
+            } else {
+                (unit(0, ch0), unit(1, ch1), unit(2, ch2))
+            };
+            let a = native_unit(layer, doc, -1, li)
+                .unwrap_or_else(|| sample(alpha, li).unwrap_or(255) as f32 / 255.0);
+            blend_into_row(
+                row,
+                cover.as_deref_mut(),
+                ox,
+                layer,
+                doc,
+                x,
+                y,
+                [r, g, b],
+                a,
+            );
+        }
+    });
+}
+
+/// Blend an isolated group's rendered canvas onto the running canvas,
+/// row-parallel.
+pub(crate) fn composite_canvas(canvas: &mut Canvas, layer: &Layer, doc: &Document, inner: &Canvas) {
+    let ox = canvas.ox;
+    let x0 = canvas.x0();
+    let x1 = canvas.x1();
+    let y0 = canvas.y0();
+    let y1 = canvas.y1();
+    for_each_row(canvas, y0, y1, |y, row, mut cover| {
+        for x in x0..x1 {
+            let p = inner.px[inner.idx(x as usize, y as usize)];
+            if p.a > 0.0 {
+                blend_into_row(
+                    row,
+                    cover.as_deref_mut(),
+                    ox,
+                    layer,
+                    doc,
+                    x,
+                    y,
+                    [p.r, p.g, p.b],
+                    p.a,
+                );
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parallel_row_equals_sequential_row() {
+        let mut parallel = Canvas::new(8, 5);
+        let mut sequential = Canvas::new(8, 5);
+        for (i, p) in parallel.px.iter_mut().enumerate() {
+            *p = Px {
+                r: i as f32,
+                g: 1.0,
+                b: 0.5,
+                a: 1.0,
+            };
+        }
+        sequential.px = parallel.px.clone();
+
+        for_each_row(&mut parallel, 0, 5, |_, row, _| {
+            for p in row.iter_mut() {
+                p.r += 0.25;
+            }
+        });
+        FORCE_SERIAL.store(true, Ordering::Relaxed);
+        for_each_row(&mut sequential, 0, 5, |_, row, _| {
+            for p in row.iter_mut() {
+                p.r += 0.25;
+            }
+        });
+        FORCE_SERIAL.store(false, Ordering::Relaxed);
+
+        for (a, b) in parallel.px.iter().zip(sequential.px.iter()) {
+            assert_eq!(a.r.to_bits(), b.r.to_bits());
+            assert_eq!(a.a.to_bits(), b.a.to_bits());
+        }
+    }
+}

@@ -1,4 +1,4 @@
-use pictura_core::LayerBlock;
+use pictura_core::{Knockout, LayerBlock};
 
 use super::*;
 
@@ -889,6 +889,70 @@ fn drop_shadow_fixture_decodes_and_composites() {
         l.extra_blocks.clear();
     }
     assert_ne!(with_effect, composite_rgba(&plain), "the shadow renders");
+}
+
+/// The CPU composite is byte-identical whether its rows run serially or on
+/// rayon. Representative stacks: a blurred drop shadow (a neighborhood kernel)
+/// and a knockout stack (the `cover` canvas).
+#[test]
+fn parallel_composite_equals_sequential() {
+    use crate::composite_rows::FORCE_SERIAL;
+    use std::sync::atomic::Ordering;
+
+    let effect = ShadowSpec {
+        distance: 1.0,
+        size: 2.0,
+        ..Default::default()
+    };
+    let effect_backdrop = solid(
+        "backdrop",
+        full(9, 9),
+        (255, 255, 255),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let effect_doc = doc(9, 9, vec![effect_backdrop, spec_shadow(&effect)]);
+    let backdrop = solid(
+        "backdrop",
+        full(16, 12),
+        (10, 20, 30),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut mid = solid(
+        "mid",
+        full(16, 12),
+        (0, 255, 0),
+        220,
+        BlendMode::Multiply,
+        200,
+    );
+    mid.fill = 200;
+    let mut top = solid(
+        "top",
+        full(16, 12),
+        (0, 0, 255),
+        200,
+        BlendMode::Normal,
+        255,
+    );
+    top.fill = 128;
+    top.knockout = Knockout::Deep;
+    let knockout_doc = doc(16, 12, vec![backdrop, mid, top]);
+
+    let stacks = [effect_doc, knockout_doc];
+    for d in stacks {
+        FORCE_SERIAL.store(true, Ordering::Relaxed);
+        let sequential = composite_rgba(&d);
+        FORCE_SERIAL.store(false, Ordering::Relaxed);
+        let parallel = composite_rgba(&d);
+        assert_eq!(
+            sequential.data, parallel.data,
+            "parallel rows must equal the sequential composite"
+        );
+    }
 }
 
 mod outer_glow;
