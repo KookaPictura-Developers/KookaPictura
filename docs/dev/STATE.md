@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1737 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1738 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
   The C++ self-test reports **459 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2234 passed, 11 skipped, 0 failed**.
+  probes) reports **2235 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -398,14 +398,19 @@ Snapshot for resuming after a context break. Update after each milestone.
   approximations (Adobe's biharmonic solver is closed), Sampled source only
   (no Pattern), no Sample All Layers, and no GPU path.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
-  `pictura_core::annotations` gains `MarkerKind::Count`, a third marker list
-  numbered in placement order and independent of color samplers and notes. The
-  `tool_annotations.cpp` marker handler serves it (click to add, drag to move,
-  Alt-click or drag-off to delete, Clear), and the canvas overlay
-  (`image_view_annotations.cpp`) draws each mark as a numbered disc. Covered by
-  the `healing_tools` self-test (536); guard 98 now probes `Patch`. Ceilings
-  (`ponytail:`): no count groups, per-group size/colour, Measurement Log,
-  automatic counting, or PSD persistence.
+  `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
+  marker size 1–10, label size 8–72, its own numbered marks) on
+  `Document::annotations`, with an active group and add/remove/select; at least
+  one group always exists and the last is not deletable. The `tool_count.cpp`
+  handler adds/moves/deletes marks in the active group, and the Count options
+  bar (`options_bar.cpp`) has the running total, the group dropdown, the eye /
+  new-group (name dialog) / delete-group buttons, Clear, the colour swatch, and
+  the marker and label size fields. The canvas overlay
+  (`image_view_annotations.cpp`) draws every visible group's marks as numbered
+  discs in the group's colour and sizes. Covered by the `healing_tools`
+  self-test (536); guard 98 now probes `Patch`. Ceilings (`ponytail:`): no
+  Measurement Log, automatic counting, or PSD persistence; marks and groups are
+  session document state undone through history.
 - **Crop tool box** (change `crop-tool-box`, review on PR #98, ported from
   photorust): the Crop tool places a canvas-sized box with shield, thirds, and
   eight handles; move / ratio-locked resize; Enter, double-click, or Apply
