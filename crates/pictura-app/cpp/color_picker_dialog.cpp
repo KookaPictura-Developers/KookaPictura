@@ -266,7 +266,10 @@ ColorPlane::ColorPlane(QWidget* parent)
     : QWidget(parent)
 {
     setCursor(Qt::CrossCursor);
-    setFixedSize(kPlaneSize, kPlaneSize);
+    // Flexible so the inline picker in the Color panel can shrink to the dock;
+    // the dialog gives it its 256px sizeHint.
+    setMinimumSize(120, 120);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
 QSize ColorPlane::sizeHint() const
@@ -391,7 +394,8 @@ ColorRamp::ColorRamp(QWidget* parent)
     : QWidget(parent)
 {
     setCursor(Qt::SizeVerCursor);
-    setFixedSize(kRampWidth + kRampGutter * 2, kPlaneSize);
+    setMinimumWidth(kRampWidth + kRampGutter * 2);
+    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
 }
 
 QSize ColorRamp::sizeHint() const
@@ -586,28 +590,21 @@ void ColorCompare::mousePressEvent(QMouseEvent* event)
 }
 
 // ===========================================================================
-// ColorPickerDialog
+// ColorPicker
 // ===========================================================================
 
-ColorPickerDialog::ColorPickerDialog(const QColor& initial, QWidget* parent, const QString& title)
-    : QDialog(parent)
-    , m_original(initial.isValid() ? initial : QColor(Qt::black))
+ColorPicker::ColorPicker(QWidget* parent)
+    : QWidget(parent)
 {
-    buildUi(title);
-
-    setColor(m_original);
-    m_compare->setOriginalColor(m_original);
-    syncControls();
+    buildUi();
+    setColor(QColor(Qt::black));
+    m_compare->setOriginalColor(m_color);
 }
 
-void ColorPickerDialog::buildUi(const QString& title)
+void ColorPicker::buildUi()
 {
-    setWindowTitle(title.isEmpty() ? tr("Color Picker")
-                                   : tr("Color Picker (%1)").arg(title));
-    setModal(true);
-
     auto* root = new QHBoxLayout(this);
-    root->setContentsMargins(12, 12, 12, 12);
+    root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(10);
 
     auto* fieldColumn = new QVBoxLayout();
@@ -707,55 +704,29 @@ void ColorPickerDialog::buildUi(const QString& title)
     centre->addStretch(1);
     root->addLayout(centre);
 
-    auto* buttons = new QVBoxLayout();
-    buttons->setSpacing(5);
-
-    auto* ok = new QPushButton(tr("OK"), this);
-    ok->setDefault(true);
-    auto* cancel = new QPushButton(tr("Cancel"), this);
-    auto* addSwatch = new QPushButton(tr("Add to Swatches"), this);
-    auto* libraries = new QPushButton(tr("Color Libraries"), this);
-
-    // Present for layout fidelity; nothing behind them yet.
-    addSwatch->setEnabled(false);
-    addSwatch->setToolTip(tr("The Swatches panel is not implemented yet"));
-    libraries->setEnabled(false);
-    libraries->setToolTip(tr("Spot color libraries are not implemented yet"));
-
-    for (QPushButton* b : {ok, cancel, addSwatch, libraries}) {
-        b->setMinimumWidth(124);
-        buttons->addWidget(b);
-    }
-    buttons->addStretch(1);
-    root->addLayout(buttons);
-
-    connect(ok, &QPushButton::clicked, this, &QDialog::accept);
-    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
-
-    connect(m_plane, &ColorPlane::picked, this, &ColorPickerDialog::onPlanePicked);
-    connect(m_ramp, &ColorRamp::picked, this, &ColorPickerDialog::onPlanePicked);
-    connect(m_compare, &ColorCompare::originalClicked, this,
-            &ColorPickerDialog::revertToOriginal);
+    connect(m_plane, &ColorPlane::picked, this, &ColorPicker::onPlanePicked);
+    connect(m_ramp, &ColorRamp::picked, this, &ColorPicker::onPlanePicked);
+    connect(m_compare, &ColorCompare::originalClicked, this, &ColorPicker::revertToOriginal);
 
     for (QRadioButton* r : {m_radioH, m_radioS, m_radioB, m_radioR, m_radioG, m_radioBlue}) {
-        connect(r, &QRadioButton::toggled, this, &ColorPickerDialog::onAxisChanged);
+        connect(r, &QRadioButton::toggled, this, &ColorPicker::onAxisChanged);
     }
     for (QSpinBox* s : {m_spinH, m_spinS, m_spinB}) {
-        connect(s, &QSpinBox::valueChanged, this, &ColorPickerDialog::onHsbFieldsEdited);
+        connect(s, &QSpinBox::valueChanged, this, &ColorPicker::onHsbFieldsEdited);
     }
     for (QSpinBox* s : {m_spinR, m_spinG, m_spinBlue}) {
-        connect(s, &QSpinBox::valueChanged, this, &ColorPickerDialog::onRgbFieldsEdited);
+        connect(s, &QSpinBox::valueChanged, this, &ColorPicker::onRgbFieldsEdited);
     }
     for (QSpinBox* s : {m_spinL, m_spinLabA, m_spinLabB}) {
-        connect(s, &QSpinBox::valueChanged, this, &ColorPickerDialog::onLabFieldsEdited);
+        connect(s, &QSpinBox::valueChanged, this, &ColorPicker::onLabFieldsEdited);
     }
-    connect(m_hex, &QLineEdit::textEdited, this, &ColorPickerDialog::onHexEdited);
-    connect(m_webOnly, &QCheckBox::toggled, this, &ColorPickerDialog::onWebColorsToggled);
+    connect(m_hex, &QLineEdit::textEdited, this, &ColorPicker::onHexEdited);
+    connect(m_webOnly, &QCheckBox::toggled, this, &ColorPicker::onWebColorsToggled);
 
     m_radioH->setChecked(true);
 }
 
-ColorAxis ColorPickerDialog::currentAxis() const
+ColorAxis ColorPicker::currentAxis() const
 {
     if (m_radioS->isChecked()) {
         return ColorAxis::Saturation;
@@ -775,12 +746,7 @@ ColorAxis ColorPickerDialog::currentAxis() const
     return ColorAxis::Hue;
 }
 
-QColor ColorPickerDialog::selectedColor() const
-{
-    return m_color;
-}
-
-void ColorPickerDialog::setHsv(int hue, int sat, int val)
+void ColorPicker::setHsv(int hue, int sat, int val)
 {
     m_hue = qBound(0, hue, 359);
     m_sat = qBound(0, sat, 255);
@@ -788,17 +754,31 @@ void ColorPickerDialog::setHsv(int hue, int sat, int val)
     m_color = QColor::fromHsv(m_hue, m_sat, m_val);
 }
 
-void ColorPickerDialog::setColor(const QColor& color)
+void ColorPicker::setColor(const QColor& color)
 {
     m_color = color.toRgb();
     toHsvPreservingHue(m_color, m_hue, m_sat, m_val);
+    syncControls();
 }
 
-void ColorPickerDialog::syncControls(QWidget* except)
+void ColorPicker::setOriginalColor(const QColor& color)
+{
+    m_original = color;
+    if (m_compare) {
+        m_compare->setOriginalColor(color);
+    }
+}
+
+void ColorPicker::notify()
+{
+    emit colorChanged(m_color);
+}
+
+void ColorPicker::syncControls(QWidget* except)
 {
     m_updating = true;
 
-    const QColor color = selectedColor();
+    const QColor color = m_color;
 
     m_plane->setAxis(currentAxis());
     m_ramp->setAxis(currentAxis());
@@ -841,7 +821,7 @@ void ColorPickerDialog::syncControls(QWidget* except)
     m_updating = false;
 }
 
-void ColorPickerDialog::onAxisChanged()
+void ColorPicker::onAxisChanged()
 {
     if (m_updating) {
         return;
@@ -849,16 +829,17 @@ void ColorPickerDialog::onAxisChanged()
     syncControls();
 }
 
-void ColorPickerDialog::onPlanePicked(int hue, int sat, int val)
+void ColorPicker::onPlanePicked(int hue, int sat, int val)
 {
     if (m_updating) {
         return;
     }
     setHsv(hue, sat, val);
     syncControls();
+    notify();
 }
 
-void ColorPickerDialog::onHsbFieldsEdited()
+void ColorPicker::onHsbFieldsEdited()
 {
     if (m_updating) {
         return;
@@ -867,9 +848,10 @@ void ColorPickerDialog::onHsbFieldsEdited()
     setHsv(hue, int(std::lround(m_spinS->value() * 255.0 / 100.0)),
            int(std::lround(m_spinB->value() * 255.0 / 100.0)));
     syncControls(qobject_cast<QWidget*>(sender()));
+    notify();
 }
 
-void ColorPickerDialog::onRgbFieldsEdited()
+void ColorPicker::onRgbFieldsEdited()
 {
     if (m_updating) {
         return;
@@ -878,11 +860,13 @@ void ColorPickerDialog::onRgbFieldsEdited()
     if (m_webOnly->isChecked()) {
         c = snapToWebColor(c);
     }
-    setColor(c);
+    m_color = c.toRgb();
+    toHsvPreservingHue(m_color, m_hue, m_sat, m_val);
     syncControls(qobject_cast<QWidget*>(sender()));
+    notify();
 }
 
-void ColorPickerDialog::onLabFieldsEdited()
+void ColorPicker::onLabFieldsEdited()
 {
     if (m_updating) {
         return;
@@ -891,11 +875,13 @@ void ColorPickerDialog::onLabFieldsEdited()
     if (m_webOnly->isChecked()) {
         c = snapToWebColor(c);
     }
-    setColor(c);
+    m_color = c.toRgb();
+    toHsvPreservingHue(m_color, m_hue, m_sat, m_val);
     syncControls(qobject_cast<QWidget*>(sender()));
+    notify();
 }
 
-void ColorPickerDialog::onHexEdited()
+void ColorPicker::onHexEdited()
 {
     if (m_updating) {
         return;
@@ -911,24 +897,81 @@ void ColorPickerDialog::onHexEdited()
     if (m_webOnly->isChecked()) {
         c = snapToWebColor(c);
     }
-    setColor(c);
+    m_color = c.toRgb();
+    toHsvPreservingHue(m_color, m_hue, m_sat, m_val);
     syncControls(m_hex);
+    notify();
 }
 
-void ColorPickerDialog::onWebColorsToggled(bool on)
+void ColorPicker::onWebColorsToggled(bool on)
 {
     m_plane->setWebColorsOnly(on);
     m_ramp->setWebColorsOnly(on);
     if (on) {
-        setColor(snapToWebColor(selectedColor()));
+        m_color = snapToWebColor(m_color).toRgb();
+        toHsvPreservingHue(m_color, m_hue, m_sat, m_val);
     }
     syncControls();
+    notify();
 }
 
-void ColorPickerDialog::revertToOriginal()
+void ColorPicker::revertToOriginal()
 {
     setColor(m_original);
-    syncControls();
+    notify();
+}
+
+// ===========================================================================
+// ColorPickerDialog
+// ===========================================================================
+
+ColorPickerDialog::ColorPickerDialog(const QColor& initial, QWidget* parent, const QString& title)
+    : QDialog(parent)
+{
+    setWindowTitle(title.isEmpty() ? tr("Color Picker")
+                                   : tr("Color Picker (%1)").arg(title));
+    setModal(true);
+
+    auto* root = new QHBoxLayout(this);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(10);
+
+    m_picker = new ColorPicker(this);
+    root->addWidget(m_picker);
+
+    auto* buttons = new QVBoxLayout();
+    buttons->setSpacing(5);
+
+    auto* ok = new QPushButton(tr("OK"), this);
+    ok->setDefault(true);
+    auto* cancel = new QPushButton(tr("Cancel"), this);
+    auto* addSwatch = new QPushButton(tr("Add to Swatches"), this);
+    auto* libraries = new QPushButton(tr("Color Libraries"), this);
+
+    // Present for layout fidelity; nothing behind them yet.
+    addSwatch->setEnabled(false);
+    addSwatch->setToolTip(tr("The Swatches panel is not implemented yet"));
+    libraries->setEnabled(false);
+    libraries->setToolTip(tr("Spot color libraries are not implemented yet"));
+
+    for (QPushButton* b : {ok, cancel, addSwatch, libraries}) {
+        b->setMinimumWidth(124);
+        buttons->addWidget(b);
+    }
+    buttons->addStretch(1);
+    root->addLayout(buttons);
+
+    connect(ok, &QPushButton::clicked, this, &QDialog::accept);
+    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+
+    const QColor start = initial.isValid() ? initial : QColor(Qt::black);
+    m_picker->setColor(start);
+    m_picker->setOriginalColor(start);
+}
+
+QColor ColorPickerDialog::selectedColor() const
+{
+    return m_picker ? m_picker->color() : QColor();
 }
 
 QColor ColorPickerDialog::getColor(const QColor& initial, QWidget* parent, const QString& title)

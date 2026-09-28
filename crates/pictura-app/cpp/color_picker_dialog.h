@@ -20,8 +20,6 @@ enum class ColorAxis { Hue, Saturation, Brightness, Red, Green, Blue };
 
 /// The square colour field: the plane of the two components the current
 /// [`ColorAxis`] does not control, with a ring marker at the current colour.
-/// The plane image is cached and only re-rendered when the axis or the ramp
-/// value changes, since it is 256x256 pixels of per-pixel work.
 class ColorPlane : public QWidget
 {
     Q_OBJECT
@@ -105,7 +103,7 @@ private:
 };
 
 /// The new/current colour comparison swatch. Clicking the lower half reverts to
-/// the colour the dialog opened with, as Photoshop does.
+/// the colour the picker opened with, as Photoshop does.
 class ColorCompare : public QWidget
 {
     Q_OBJECT
@@ -130,32 +128,30 @@ private:
     QColor m_original{Qt::black};
 };
 
-/// Photoshop's Color Picker. Replaces `QColorDialog`, which shares none of its
-/// layout or behaviour. Use the static helper:
-///
-/// \code
-///   const QColor picked =
-///       ColorPickerDialog::getColor(startColor, this, tr("Count Group Color"));
-///   if (picked.isValid()) { ... }
-/// \endcode
-///
-/// Ported from photorust's `shell/src/dialogs/ColorPickerDialog.{h,cpp}`
-/// (<https://github.com/perfecto25/photorust>). ponytail: the screen-sampling
-/// eyedropper, Add to Swatches, and Color Libraries are not wired.
-class ColorPickerDialog : public QDialog
+/// Photoshop's inline Color Picker: the field + ramp, the new/current compare,
+/// and the HSB/RGB/Lab/CMYK/hex fields with Only Web Colors. Used both inside
+/// [`ColorPickerDialog`] and embedded in the Color panel.
+class ColorPicker : public QWidget
 {
     Q_OBJECT
 
 public:
-    /// \param title Appears in the caption as "Color Picker (<title>)".
-    explicit ColorPickerDialog(const QColor& initial, QWidget* parent = nullptr,
-                               const QString& title = {});
+    explicit ColorPicker(QWidget* parent = nullptr);
 
-    QColor selectedColor() const;
+    /// The colour currently shown.
+    QColor color() const { return m_color; }
 
-    /// Modal convenience wrapper. Returns an invalid QColor if cancelled.
-    static QColor getColor(const QColor& initial, QWidget* parent = nullptr,
-                           const QString& title = {});
+    /// Adopt `color` and refresh every control. Does NOT emit `colorChanged`
+    /// (for reflecting external state without feeding a loop back).
+    void setColor(const QColor& color);
+
+    /// The colour the compare's lower swatch restores.
+    void setOriginalColor(const QColor& color);
+
+signals:
+    /// Emitted when the user changes the colour (field, ramp, fields, hex, or
+    /// the web-colors toggle) — not for `setColor`.
+    void colorChanged(QColor color);
 
 private slots:
     void onAxisChanged();
@@ -168,12 +164,10 @@ private slots:
     void revertToOriginal();
 
 private:
-    void buildUi(const QString& title);
-    /// Push the current colour into every control except `except`, the one the
-    /// user is typing into.
+    void buildUi();
     void syncControls(QWidget* except = nullptr);
-    void setColor(const QColor& color);
     void setHsv(int hue, int sat, int val);
+    void notify();
     ColorAxis currentAxis() const;
 
     // Both representations are kept, and which one is authoritative depends on
@@ -214,6 +208,35 @@ private:
 
     QLineEdit* m_hex = nullptr;
     QCheckBox* m_webOnly = nullptr;
+};
+
+/// Photoshop's Color Picker dialog: a [`ColorPicker`] with OK / Cancel.
+///
+/// \code
+///   const QColor picked =
+///       ColorPickerDialog::getColor(startColor, this, tr("Count Group Color"));
+///   if (picked.isValid()) { ... }
+/// \endcode
+///
+/// Ported from photorust's `shell/src/dialogs/ColorPickerDialog.{h,cpp}`
+/// (<https://github.com/perfecto25/photorust>). ponytail: the screen-sampling
+/// eyedropper, Add to Swatches, and Color Libraries are not wired.
+class ColorPickerDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit ColorPickerDialog(const QColor& initial, QWidget* parent = nullptr,
+                               const QString& title = {});
+
+    QColor selectedColor() const;
+
+    /// Modal convenience wrapper. Returns an invalid QColor if cancelled.
+    static QColor getColor(const QColor& initial, QWidget* parent = nullptr,
+                           const QString& title = {});
+
+private:
+    ColorPicker* m_picker = nullptr;
 };
 
 /// sRGB -> CIE L*a*b* (D50), the space Photoshop's Lab readout uses.

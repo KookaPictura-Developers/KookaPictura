@@ -1,21 +1,11 @@
 #include "color_panel.h"
 
-#include "jump_slider.h"
+#include "color_picker_dialog.h"
 
 #include <QtCore/QSignalBlocker>
-#include <QtGui/QLinearGradient>
-#include <QtGui/QMouseEvent>
-#include <QtGui/QPainter>
-#include <QtWidgets/QGridLayout>
 #include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QPushButton>
-#include <QtWidgets/QSlider>
 #include <QtWidgets/QVBoxLayout>
-
-#include <algorithm>
-#include <cmath>
 
 namespace pictura {
 
@@ -51,128 +41,45 @@ void ColorState::setForegroundActive(bool foreground)
     emit activeChanged(foregroundActive_);
 }
 
-HueSpectrum::HueSpectrum(QWidget* parent)
-    : QWidget(parent)
-{
-    setMinimumHeight(24);
-}
-
-void HueSpectrum::setHuePicked(std::function<void(int)> callback)
-{
-    picked_ = std::move(callback);
-}
-
-void HueSpectrum::paintEvent(QPaintEvent*)
-{
-    QPainter painter(this);
-    QLinearGradient gradient(0, 0, width(), 0);
-    for (int i = 0; i <= 6; ++i) {
-        gradient.setColorAt(double(i) / 6.0, QColor::fromHsv((i * 60) % 360, 255, 255));
-    }
-    painter.fillRect(rect(), gradient);
-    painter.setPen(QColor(20, 20, 20));
-    painter.drawRect(rect().adjusted(0, 0, -1, -1));
-}
-
-void HueSpectrum::mousePressEvent(QMouseEvent* event)
-{
-    if (event->button() == Qt::LeftButton) {
-        pickAt(event->position());
-        event->accept();
-        return;
-    }
-    QWidget::mousePressEvent(event);
-}
-
-void HueSpectrum::mouseMoveEvent(QMouseEvent* event)
-{
-    if (event->buttons() & Qt::LeftButton) {
-        pickAt(event->position());
-        event->accept();
-        return;
-    }
-    QWidget::mouseMoveEvent(event);
-}
-
-void HueSpectrum::pickAt(const QPointF& pos)
-{
-    if (width() <= 0 || !picked_) {
-        return;
-    }
-    const int hue = std::clamp(int(std::lround(pos.x() / width() * 359.0)), 0, 359);
-    picked_(hue);
-}
-
 ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
     : QWidget(parent)
     , state_(state)
 {
-    QWidget* body = this;
-    auto* layout = new QVBoxLayout(body);
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(4, 4, 4, 4);
+    layout->setSpacing(6);
 
+    // Foreground/background swatches: clicking one makes it the active colour
+    // the field edits.
     auto* swatchRow = new QHBoxLayout();
-    fgSwatch_ = new QPushButton(body);
-    bgSwatch_ = new QPushButton(body);
-    fgSwatch_->setFixedSize(48, 28);
-    bgSwatch_->setFixedSize(48, 28);
+    fgSwatch_ = new QPushButton(this);
+    bgSwatch_ = new QPushButton(this);
+    fgSwatch_->setFixedSize(44, 26);
+    bgSwatch_->setFixedSize(44, 26);
     fgSwatch_->setFlat(true);
     bgSwatch_->setFlat(true);
+    fgSwatch_->setToolTip(tr("Foreground color"));
+    bgSwatch_->setToolTip(tr("Background color"));
     swatchRow->addWidget(fgSwatch_);
     swatchRow->addWidget(bgSwatch_);
     swatchRow->addStretch(1);
     layout->addLayout(swatchRow);
 
-    auto* grid = new QGridLayout();
-    const char* rgbLabels[3] = {"R", "G", "B"};
-    for (int i = 0; i < 3; ++i) {
-        rgb_[i] = new JumpSlider(Qt::Horizontal, body);
-        rgb_[i]->setRange(0, 255);
-        rgbValue_[i] = new QLabel(body);
-        grid->addWidget(new QLabel(QString::fromLatin1(rgbLabels[i]), body), i, 0);
-        grid->addWidget(rgb_[i], i, 1);
-        grid->addWidget(rgbValue_[i], i, 2);
-    }
-    const char* hsbLabels[3] = {"H", "S", "B"};
-    for (int i = 0; i < 3; ++i) {
-        hsb_[i] = new JumpSlider(Qt::Horizontal, body);
-        hsb_[i]->setRange(0, i == 0 ? 359 : 255);
-        hsbValue_[i] = new QLabel(body);
-        grid->addWidget(new QLabel(QString::fromLatin1(hsbLabels[i]), body), 3 + i, 0);
-        grid->addWidget(hsb_[i], 3 + i, 1);
-        grid->addWidget(hsbValue_[i], 3 + i, 2);
-    }
-    layout->addLayout(grid);
+    // Photoshop's Color panel: the colour field with the hue ramp beside it.
+    auto* pickerRow = new QHBoxLayout();
+    pickerRow->setSpacing(6);
+    plane_ = new ColorPlane(this);
+    ramp_ = new ColorRamp(this);
+    pickerRow->addWidget(plane_, 1);
+    pickerRow->addWidget(ramp_);
+    layout->addLayout(pickerRow, 1);
 
-    hex_ = new QLineEdit(body);
-    layout->addWidget(hex_);
+    const auto pick = [this](int h, int s, int v) {
+        selectColor(QColor::fromHsv(h, s, v));
+    };
+    connect(plane_, &ColorPlane::picked, this, pick);
+    connect(ramp_, &ColorRamp::picked, this, pick);
 
-    spectrum_ = new HueSpectrum(body);
-    layout->addWidget(spectrum_);
-    layout->addStretch(1);
-
-    for (int i = 0; i < 3; ++i) {
-        connect(rgb_[i], &QSlider::valueChanged, this, [this](int) { applyRgb(); });
-        connect(hsb_[i], &QSlider::valueChanged, this, [this](int) { applyHsb(); });
-    }
-    connect(hex_, &QLineEdit::editingFinished, this, [this] {
-        const QColor color(hex_->text().trimmed());
-        if (color.isValid()) {
-            selectColor(color);
-        }
-    });
-    spectrum_->setHuePicked([this](int hue) {
-        int h = 0;
-        int s = 0;
-        int v = 0;
-        activeColor().getHsv(&h, &s, &v);
-        if (s == 0) {
-            s = 255;
-        }
-        if (v == 0) {
-            v = 255;
-        }
-        selectColor(QColor::fromHsv(hue, s, v));
-    });
     connect(fgSwatch_, &QPushButton::clicked, this, [this] {
         if (state_) {
             state_->setForegroundActive(true);
@@ -186,26 +93,14 @@ ColorPanel::ColorPanel(ColorState* state, QWidget* parent)
         syncControls();
     });
     if (state_) {
-        connect(state_, &ColorState::foregroundChanged, this, [this](const QColor&) {
-            syncControls();
-        });
-        connect(state_, &ColorState::backgroundChanged, this, [this](const QColor&) {
-            syncControls();
-        });
+        connect(state_, &ColorState::foregroundChanged, this,
+                [this](const QColor&) { syncControls(); });
+        connect(state_, &ColorState::backgroundChanged, this,
+                [this](const QColor&) { syncControls(); });
         connect(state_, &ColorState::activeChanged, this, [this](bool) { syncControls(); });
     }
 
     syncControls();
-}
-
-void ColorPanel::applyRgb()
-{
-    selectColor(QColor(rgb_[0]->value(), rgb_[1]->value(), rgb_[2]->value()));
-}
-
-void ColorPanel::applyHsb()
-{
-    selectColor(QColor::fromHsv(hsb_[0]->value(), hsb_[1]->value(), hsb_[2]->value()));
 }
 
 void ColorPanel::selectColor(const QColor& color)
@@ -234,36 +129,12 @@ void ColorPanel::syncControls()
         return;
     }
     const QColor color = activeColor();
-    {
-        const QSignalBlocker blockR(rgb_[0]);
-        const QSignalBlocker blockG(rgb_[1]);
-        const QSignalBlocker blockB(rgb_[2]);
-        rgb_[0]->setValue(color.red());
-        rgb_[1]->setValue(color.green());
-        rgb_[2]->setValue(color.blue());
-        rgbValue_[0]->setText(QString::number(color.red()));
-        rgbValue_[1]->setText(QString::number(color.green()));
-        rgbValue_[2]->setText(QString::number(color.blue()));
-    }
     int h = 0;
     int s = 0;
     int v = 0;
     color.getHsv(&h, &s, &v);
-    {
-        const QSignalBlocker blockH(hsb_[0]);
-        const QSignalBlocker blockS(hsb_[1]);
-        const QSignalBlocker blockV(hsb_[2]);
-        hsb_[0]->setValue(h);
-        hsb_[1]->setValue(s);
-        hsb_[2]->setValue(v);
-        hsbValue_[0]->setText(QString::number(h));
-        hsbValue_[1]->setText(QString::number(s));
-        hsbValue_[2]->setText(QString::number(v));
-    }
-    {
-        const QSignalBlocker block(hex_);
-        hex_->setText(color.name().toUpper());
-    }
+    plane_->setHsv(h, s, v);
+    ramp_->setHsv(h, s, v);
     paintSwatch(fgSwatch_, state_->foreground(), state_->foregroundActive());
     paintSwatch(bgSwatch_, state_->background(), !state_->foregroundActive());
 }

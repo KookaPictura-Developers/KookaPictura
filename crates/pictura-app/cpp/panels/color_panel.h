@@ -4,14 +4,12 @@
 #include <QtGui/QColor>
 #include <QtWidgets/QWidget>
 
-#include <functional>
-
-class QLabel;
-class QLineEdit;
 class QPushButton;
-class QSlider;
 
 namespace pictura {
+
+class ColorPlane;
+class ColorRamp;
 
 // Application foreground/background colour shared by the toolbox, Color,
 // Swatches, and Eyedropper.
@@ -40,24 +38,8 @@ private:
     bool foregroundActive_ = true;
 };
 
-// Horizontal hue spectrum; emits the hue under the pointer.
-class HueSpectrum : public QWidget {
-public:
-    explicit HueSpectrum(QWidget* parent = nullptr);
-
-    void setHuePicked(std::function<void(int)> callback);
-
-protected:
-    void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseMoveEvent(QMouseEvent* event) override;
-
-private:
-    void pickAt(const QPointF& pos);
-
-    std::function<void(int)> picked_;
-};
-
+// The Color panel: the foreground/background swatches over Photoshop's colour
+// field and hue ramp. Clicking the field or ramp sets the active swatch.
 class ColorPanel : public QWidget {
     Q_OBJECT
 
@@ -66,21 +48,15 @@ public:
 
 private:
     void syncControls();
-    void applyRgb();
-    void applyHsb();
     void selectColor(const QColor& color);
     QColor activeColor() const;
     void paintSwatch(QPushButton* button, const QColor& color, bool active);
 
     ColorState* state_ = nullptr;
-    QSlider* rgb_[3] = {nullptr, nullptr, nullptr};
-    QSlider* hsb_[3] = {nullptr, nullptr, nullptr};
-    QLabel* rgbValue_[3] = {nullptr, nullptr, nullptr};
-    QLabel* hsbValue_[3] = {nullptr, nullptr, nullptr};
-    QLineEdit* hex_ = nullptr;
     QPushButton* fgSwatch_ = nullptr;
     QPushButton* bgSwatch_ = nullptr;
-    HueSpectrum* spectrum_ = nullptr;
+    ColorPlane* plane_ = nullptr;
+    ColorRamp* ramp_ = nullptr;
 };
 
 } // namespace pictura
