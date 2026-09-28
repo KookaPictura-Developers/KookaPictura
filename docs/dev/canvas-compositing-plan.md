@@ -311,10 +311,25 @@ display-time LoD so a zoomed-out view composites a proxy level instead of the
 full-resolution document. Deliberately last: the most code and the least certain
 payoff for this project's document sizes.
 
+> **The CPU display pyramid is a separate, landed track**
+> (`openspec/changes/canvas-view-performance`). `pictura-render::ViewPyramid`
+> caches the *full composite's* halved, premultiplied levels (it stores no level
+> 0; each call borrows a planar straight-alpha level-0 view) and the canvas crops
+> the level chosen for the zoom. The app caches one full-resolution sRGB `level0`
+> frame as the pyramid and display source, so the common RGBA path adds one
+> full-resolution buffer over `doc.composite` (the navigator adds none). It is
+> display-only and does **not** composite layer proxies, so it is distinct from
+> M38's GPU 256²-tile + mipmap + proxy-compositing track. At 16000² it peaks at
+> ≈ **2.0 GB** (one full-resolution level-0 frame + halved levels); storing a
+> premultiplied level-0 copy as well would cost ≈ **3.0 GB** (measured,
+> `crates/pictura-render/examples/mem_probe_16k.rs`).
+
 ### Non-goals for these milestones
 
-- A mipmap pyramid by default (GIMP opted out; Krita's GPU path opted in). LoD is
-  an M38 concern.
+- A mipmap pyramid by default (GIMP opted out; Krita's GPU path opted in).
+  GPU-resident LoD and proxy-level *compositing* are an M38 concern; the CPU
+  display pyramid that crops a cached composite level is the landed
+  `canvas-view-performance` track.
 - Swap-to-disk tile backends.
 - A fully GPU-resident document (Photoshop does not do this either).
 
