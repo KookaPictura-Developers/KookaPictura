@@ -5,7 +5,8 @@
 use pictura_adjust::{AdjustError, Adjustment};
 use pictura_core::{BitDepth, ColorMode, Document, Layer, PixelBuffer, Samples};
 
-use crate::composite::{blend_into, composite_layers, to_u8, Canvas};
+use crate::composite::{composite_layers, to_u8, Canvas};
+use crate::composite_rows::{blend_into_row, for_each_row};
 
 /// The layer's native sample for channel `id` at layer-pixel index `li`, in the
 /// unit `f32` domain, when the document is a high-depth Grayscale/RGB read
@@ -129,12 +130,22 @@ pub(crate) fn composite_adjustment(
     if pictura_adjust::apply(adjustment, &mut buf).is_err() {
         return; // invalid/unsupported parameters: no-op, never an error
     }
-    for y in canvas.y0()..canvas.y1() {
-        for x in canvas.x0()..canvas.x1() {
-            let i = canvas.idx(x as usize, y as usize);
+    let w = canvas.w;
+    let ox = canvas.ox;
+    let oy = canvas.oy;
+    let x0 = canvas.x0();
+    let x1 = canvas.x1();
+    let y0 = canvas.y0();
+    let y1 = canvas.y1();
+    let buf = &buf;
+    for_each_row(canvas, y0, y1, |y, row, mut cover| {
+        let base = (y - oy) as usize * w;
+        for x in x0..x1 {
             // Source coverage is the backdrop's own alpha: an adjustment adds no
             // content where the backdrop is transparent.
-            let backdrop_alpha = canvas.px[i].a;
+            let local = (x - ox) as usize;
+            let i = base + local;
+            let backdrop_alpha = row[local].a;
             if backdrop_alpha <= 0.0 {
                 continue;
             }
@@ -143,17 +154,19 @@ pub(crate) fn composite_adjustment(
                 buf.data[n + i] as f32 / 255.0,
                 buf.data[2 * n + i] as f32 / 255.0,
             ];
-            blend_into(
-                canvas,
+            blend_into_row(
+                row,
+                cover.as_deref_mut(),
+                ox,
                 layer,
                 doc,
-                x as usize,
-                y as usize,
+                x,
+                y,
                 cs,
                 backdrop_alpha,
             );
         }
-    }
+    });
 }
 
 /// Apply `adjustment` to the canvas RGB at native precision through
@@ -188,24 +201,35 @@ fn apply_native_rgb(
 /// Gate the adjusted color through the layer's mask/opacity/blend, blending it
 /// over the original backdrop still held in `canvas.px`.
 fn gate_adjusted(canvas: &mut Canvas, layer: &Layer, doc: &Document, adjusted: &[[f32; 3]]) {
-    for y in canvas.y0()..canvas.y1() {
-        for x in canvas.x0()..canvas.x1() {
-            let i = canvas.idx(x as usize, y as usize);
-            let backdrop_alpha = canvas.px[i].a;
+    let w = canvas.w;
+    let ox = canvas.ox;
+    let oy = canvas.oy;
+    let x0 = canvas.x0();
+    let x1 = canvas.x1();
+    let y0 = canvas.y0();
+    let y1 = canvas.y1();
+    for_each_row(canvas, y0, y1, |y, row, mut cover| {
+        let base = (y - oy) as usize * w;
+        for x in x0..x1 {
+            let local = (x - ox) as usize;
+            let i = base + local;
+            let backdrop_alpha = row[local].a;
             if backdrop_alpha <= 0.0 {
                 continue;
             }
-            blend_into(
-                canvas,
+            blend_into_row(
+                row,
+                cover.as_deref_mut(),
+                ox,
                 layer,
                 doc,
-                x as usize,
-                y as usize,
+                x,
+                y,
                 adjusted[i],
                 backdrop_alpha,
             );
         }
-    }
+    });
 }
 
 /// The document's composite at its recorded source depth: `Samples::U16` at 16
