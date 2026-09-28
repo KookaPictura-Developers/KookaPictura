@@ -104,6 +104,8 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildHealingPage(id);
     case ToolId::Patch:
         return buildPatchPage(id);
+    case ToolId::ContentAwareMove:
+        return buildContentAwareMovePage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
@@ -863,6 +865,55 @@ QWidget* OptionsBar::buildPatchPage(ToolId id)
         source->setChecked(true);
     }
     syncEnabled(mode->currentIndex() == 1);
+
+    layout->addStretch(1);
+    return page;
+}
+
+// CS6's Content-Aware Move bar: the selection combine buttons, Mode (Move /
+// Extend), Adaptation (Very Strict … Very Loose, default Medium), and Sample
+// All Layers.
+// ponytail: Sample All Layers is shown disabled; the active layer is sampled.
+QWidget* OptionsBar::buildContentAwareMovePage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+    addModeButtons(layout, page, true);
+
+    layout->addWidget(new QLabel(QStringLiteral("Mode:"), page));
+    auto* mode = new QComboBox(page);
+    mode->setObjectName(QStringLiteral("optionsContentAwareMoveMode"));
+    mode->addItem(QStringLiteral("Move"));
+    mode->addItem(QStringLiteral("Extend"));
+    layout->addWidget(mode);
+
+    layout->addWidget(new QLabel(QStringLiteral("Adaptation:"), page));
+    auto* adaptation = new QComboBox(page);
+    adaptation->setObjectName(QStringLiteral("optionsContentAwareAdaptation"));
+    for (const char* level : {"Very Strict", "Strict", "Medium", "Loose", "Very Loose"}) {
+        adaptation->addItem(QString::fromLatin1(level));
+    }
+    adaptation->setToolTip(QStringLiteral("How closely the fill reflects the existing image "
+                                          "patterns"));
+    layout->addWidget(adaptation);
+
+    auto* sampleAll = new QCheckBox(QStringLiteral("Sample All Layers"), page);
+    sampleAll->setToolTip(QStringLiteral("Sample All Layers: not implemented yet"));
+    sampleAll->setEnabled(false);
+    layout->addWidget(sampleAll);
+
+    if (controller_) {
+        mode->setCurrentIndex(controller_->contentAwareMoveExtend() ? 1 : 0);
+        adaptation->setCurrentIndex(controller_->contentAwareAdaptation());
+        connect(mode, &QComboBox::currentIndexChanged, this,
+                [this](int index) { controller_->setContentAwareMoveExtend(index == 1); });
+        connect(adaptation, &QComboBox::currentIndexChanged, this,
+                [this](int index) { controller_->setContentAwareAdaptation(index); });
+    } else {
+        adaptation->setCurrentIndex(2);
+    }
 
     layout->addStretch(1);
     return page;

@@ -62,7 +62,9 @@ const ToolInfo kToolTable[] = {
     {ToolId::Patch, "patch", "Patch", QLatin1Char('J'), Qt::CrossCursor,
      "Patch: drag to outline a region, then drag the outline to patch", 7, true, 2, 2},
     {ToolId::ContentAwareMove, "contentawaremove", "Content-Aware Move", QLatin1Char('J'),
-     Qt::CrossCursor, "Content-Aware Move: not implemented yet", 7, false, 12, 12},
+     Qt::CrossCursor,
+     "Content-Aware Move: drag to outline a region, then drag the outline to move it", 7, true,
+     2, 2},
     {ToolId::RedEye, "redeye", "Red Eye", QLatin1Char('J'), Qt::CrossCursor,
      "Red Eye: not implemented yet", 7, false, 12, 12},
     {ToolId::Brush, "brush", "Brush", QLatin1Char('B'), Qt::CrossCursor,
@@ -292,6 +294,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::PerspectiveCrop, ToolId::Slice, ToolId::SliceSelect,
         ToolId::Eyedropper, ToolId::ColorSampler, ToolId::Ruler, ToolId::Note,
         ToolId::Count, ToolId::SpotHealingBrush, ToolId::HealingBrush, ToolId::Patch,
+        ToolId::ContentAwareMove,
         ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
     };
     return ids;

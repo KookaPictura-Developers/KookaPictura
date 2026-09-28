@@ -15,7 +15,8 @@ int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
 {
     for (const auto run : {runCropToolChecks, runRecentFilesChecks, runCropGroupChecks,
                            runClickDeselectChecks, runMagneticLassoChecks, runClipboardChecks,
-                           runAnnotationChecks, runHealingChecks, runPatchChecks}) {
+                           runAnnotationChecks, runHealingChecks, runPatchChecks,
+                           runContentAwareMoveChecks}) {
         if (const int code = run(frame); code != 0) {
             return code;
         }

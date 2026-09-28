@@ -1,17 +1,21 @@
-//! The healing bridges: Spot Healing Brush, Healing Brush, and Patch. Free functions
+//! The healing bridges: Spot Healing Brush, Healing Brush, Patch, and
+//! Content-Aware Move. Free functions
 //! over a [`PictureView`] (their own bridge, so the `PictureView` declaration
 //! list does not grow). A gesture accumulates a coverage mask
 //! ([`HealStroke`]); `healing_commit` runs the solve on the layer, recomposites,
 //! and records one `"Spot Healing Brush"` / `"Healing Brush"` history state.
 //! `patch_selection` heals through the selection instead of a stroke mask and
-//! records one `"Patch Tool"` state.
+//! records one `"Patch Tool"` state; `content_aware_move` likewise records one
+//! `"Content-Aware Move"` state.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
 use super::qobject::PictureView;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use pictura_paint::healing::{patch_layer, HealMode, HealStroke, PatchOptions, Transfer};
+use pictura_paint::healing::{
+    move_layer, patch_layer, Adaptation, HealMode, HealStroke, MoveOptions, PatchOptions, Transfer,
+};
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -64,6 +68,20 @@ pub mod ffi {
             content_aware: bool,
             destination: bool,
             transparent: bool,
+        ) -> bool;
+
+        /// Move the selection's pixels on the active pixel layer by `(dx, dy)`
+        /// and rebuild the hole from its surroundings, or with `extend` copy
+        /// them and keep the original. `adaptation` is 0 Very Strict … 4 Very
+        /// Loose. The selection follows the pixels. Records one "Content-Aware
+        /// Move" state; false (no state) without a selection, on a zero drag,
+        /// or on a locked / non-raster layer.
+        fn content_aware_move(
+            view: Pin<&mut PictureView>,
+            dx: i32,
+            dy: i32,
+            extend: bool,
+            adaptation: i32,
         ) -> bool;
     }
 }
@@ -191,6 +209,43 @@ fn patch_selection(
     };
     view.as_mut().refresh_region(dirty);
     view.as_mut().record("Patch Tool");
+    view.as_mut().changed();
+    true
+}
+
+fn content_aware_move(
+    mut view: Pin<&mut PictureView>,
+    dx: i32,
+    dy: i32,
+    extend: bool,
+    adaptation: i32,
+) -> bool {
+    let options = MoveOptions {
+        dx,
+        dy,
+        extend,
+        adaptation: Adaptation::from_i32(adaptation).unwrap_or_default(),
+    };
+    let dirty = {
+        let mut rust = view.as_mut().rust_mut();
+        let rust = &mut *rust;
+        let (Some(doc), Some(selection), Some(path)) = (
+            rust.doc.as_mut(),
+            rust.selection.as_mut(),
+            rust.active_layer.as_deref(),
+        ) else {
+            return false;
+        };
+        match move_layer(doc, path, &selection.data, options) {
+            Ok(Some(dirty)) => {
+                *selection = selection.translate(dx, dy);
+                dirty
+            }
+            _ => return false,
+        }
+    };
+    view.as_mut().refresh_region(dirty);
+    view.as_mut().record("Content-Aware Move");
     view.as_mut().changed();
     true
 }

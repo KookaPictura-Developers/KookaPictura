@@ -207,3 +207,76 @@ int pictura::runPatchChecks(pictura::PicturaMainWindow& frame)
     }
     return 0;
 }
+
+int pictura::runContentAwareMoveChecks(pictura::PicturaMainWindow& frame)
+{
+    // Seed: a white field with a black 8×8 subject at (6, 6).
+    QImage seed(60, 20, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    QPainter(&seed).fillRect(6, 6, 8, 8, Qt::black);
+    const QString seedPath = QDir::temp().filePath(QStringLiteral("pictura_cam_seed.png"));
+
+    const bool created = frame.newDocument(QStringLiteral("MoveCtl"), 60, 20,
+                                           QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    pictura::PictureView* view = frame.activeView();
+    pictura::ImageView* canvas = frame.imageView();
+    auto* tools = frame.findChild<pictura::ToolController*>();
+    if (!created || !view || !canvas || !tools || !seed.save(seedPath, "PNG")
+        || !view->open_image(seedPath)) {
+        return pictura::selfTest().fail(538, "content-aware move fixture");
+    }
+    const int doc = frame.activeDocumentIndex();
+    const auto drag = [canvas](const QList<QPointF>& path) {
+        canvas->mousePressed(path.first(), Qt::LeftButton, 0);
+        for (const QPointF& p : path.mid(1)) {
+            canvas->mouseMoved(p);
+        }
+        canvas->mouseReleased(path.last());
+    };
+    const auto white = [view](int x, int y) {
+        const quint32 argb = view->sample_argb(x, y);
+        return qRed(argb) > 200 && qGreen(argb) > 200 && qBlue(argb) > 200;
+    };
+
+    frame.setActiveTool(pictura::ToolId::ContentAwareMove);
+    const bool active = tools->activeTool() == pictura::ToolId::ContentAwareMove;
+    const pictura::ToolInfo& info = pictura::toolInfo(pictura::ToolId::ContentAwareMove);
+    const bool arrow = info.hotspotX == 2 && info.hotspotY == 2;
+    // The bar's Mode and Adaptation drive the controller; Medium is the default.
+    auto* mode = frame.findChild<QComboBox*>(QStringLiteral("optionsContentAwareMoveMode"));
+    auto* adaptation =
+        frame.findChild<QComboBox*>(QStringLiteral("optionsContentAwareAdaptation"));
+    bool bar = mode && adaptation && adaptation->count() == 5
+        && adaptation->currentIndex() == 2 && tools->contentAwareAdaptation() == 2;
+    if (bar) {
+        mode->setCurrentIndex(1);
+        bar = tools->contentAwareMoveExtend();
+        mode->setCurrentIndex(0);
+        bar = bar && !tools->contentAwareMoveExtend();
+    }
+
+    // Outline the subject, then drag it 30 px right: the subject lands there,
+    // its old place is rebuilt from the white field, the selection follows, and
+    // one "Content-Aware Move" state is recorded.
+    drag({QPointF(4, 4), QPointF(16, 4), QPointF(16, 16), QPointF(4, 16), QPointF(4, 5)});
+    const bool outlined = view->has_selection() && view->selection_coverage(10, 10) > 0;
+    const int base = view->history_index();
+    drag({QPointF(10, 10), QPointF(25, 10), QPointF(40, 10)});
+    const bool committed = view->history_index() == base + 1
+        && view->history_label(base + 1) == QStringLiteral("Content-Aware Move");
+    const bool moved = white(10, 10) && qRed(view->sample_argb(40, 10)) < 60;
+    const bool followed =
+        view->selection_coverage(40, 10) > 0 && view->selection_coverage(10, 10) == 0;
+    frame.setActiveTool(pictura::ToolId::Move);
+
+    ST_BEGIN("content_aware_move");
+    ST_PASS("cam active=%d arrow=%d bar=%d outline=%d commit=%d moved=%d follow=%d",
+            active ? 1 : 0, arrow ? 1 : 0, bar ? 1 : 0, outlined ? 1 : 0, committed ? 1 : 0,
+            moved ? 1 : 0, followed ? 1 : 0);
+    frame.closeDocument(doc, false);
+    QFile::remove(seedPath);
+    if (!active || !arrow || !bar || !outlined || !committed || !moved || !followed) {
+        return pictura::selfTest().fail(538, "content-aware move");
+    }
+    return 0;
+}

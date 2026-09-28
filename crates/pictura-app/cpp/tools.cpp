@@ -45,6 +45,7 @@ std::unique_ptr<ToolHandler> makeCountToolHandler();
 std::unique_ptr<ToolHandler> makeSpotHealingToolHandler();
 std::unique_ptr<ToolHandler> makeHealingToolHandler();
 std::unique_ptr<ToolHandler> makePatchToolHandler();
+std::unique_ptr<ToolHandler> makeContentAwareMoveToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -73,6 +74,7 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::SpotHealingBrush, makeSpotHealingToolHandler());
     registry_.registerTool(ToolId::HealingBrush, makeHealingToolHandler());
     registry_.registerTool(ToolId::Patch, makePatchToolHandler());
+    registry_.registerTool(ToolId::ContentAwareMove, makeContentAwareMoveToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -225,6 +227,11 @@ bool ToolController::autoErase() const { return autoErase_; }
 void ToolController::setAutoErase(bool on) { autoErase_ = on; }
 
 void ToolController::setSpotHealingType(int type) { spotHealingType_ = std::clamp(type, 0, 2); }
+
+void ToolController::setContentAwareAdaptation(int level)
+{
+    contentAwareAdaptation_ = std::clamp(level, 0, 4);
+}
 
 QColor ToolController::foreground() const { return foreground_; }
 

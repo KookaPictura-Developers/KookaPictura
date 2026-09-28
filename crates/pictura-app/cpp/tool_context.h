@@ -42,6 +42,10 @@ struct ToolContext {
     virtual bool patchContentAware() const = 0;
     virtual bool patchDestination() const = 0;
     virtual bool patchTransparent() const = 0;
+    // Content-Aware Move: Extend copies instead of moving; Adaptation is
+    // 0 Very Strict … 4 Very Loose (2 Medium, the default).
+    virtual bool contentAwareMoveExtend() const = 0;
+    virtual int contentAwareAdaptation() const = 0;
 
     virtual MarqueeStyle marqueeStyle() const = 0;
     virtual double fixedRatioWidth() const = 0;

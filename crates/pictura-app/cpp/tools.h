@@ -237,6 +237,11 @@ public:
     void setPatchDestination(bool on) { patchDestination_ = on; }
     bool patchTransparent() const override { return patchTransparent_; }
     void setPatchTransparent(bool on) { patchTransparent_ = on; }
+    // Content-Aware Move Mode (Move / Extend) and Adaptation (0..4).
+    bool contentAwareMoveExtend() const override { return contentAwareMoveExtend_; }
+    void setContentAwareMoveExtend(bool on) { contentAwareMoveExtend_ = on; }
+    int contentAwareAdaptation() const override { return contentAwareAdaptation_; }
+    void setContentAwareAdaptation(int level);
     QColor foreground() const override;
     void setForeground(const QColor& color);
     QColor background() const override;
@@ -401,6 +406,8 @@ private:
     bool patchContentAware_ = false;
     bool patchDestination_ = false;
     bool patchTransparent_ = false;
+    bool contentAwareMoveExtend_ = false;
+    int contentAwareAdaptation_ = 2;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

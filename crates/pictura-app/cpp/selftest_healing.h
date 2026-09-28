@@ -16,4 +16,10 @@ int runHealingChecks(PicturaMainWindow& frame);
 // outline onto clean pixels repairs the region in one "Patch Tool" state and
 // leaves the sampled area alone; a click without a drag records nothing.
 int runPatchChecks(PicturaMainWindow& frame);
+
+// content_aware_move (538): the tool's arrow cursor hotspot and its Mode /
+// Adaptation bar (Medium by default); dragging an outlined subject moves it,
+// rebuilds its old place from the surroundings, carries the selection along,
+// and records one "Content-Aware Move" state.
+int runContentAwareMoveChecks(PicturaMainWindow& frame);
 } // namespace pictura

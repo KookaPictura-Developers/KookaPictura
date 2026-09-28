@@ -177,7 +177,9 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_count.cpp
     crates/pictura-app/cpp/tool_ruler.cpp
     crates/pictura-app/cpp/tool_healing.cpp
+    crates/pictura-app/cpp/tool_region_drag.cpp
     crates/pictura-app/cpp/tool_patch.cpp
+    crates/pictura-app/cpp/tool_contentawaremove.cpp
     crates/pictura-app/cpp/tool_selection.cpp
     crates/pictura-app/cpp/tool_magneticlasso.cpp
     crates/pictura-app/cpp/tool_catalog.cpp
