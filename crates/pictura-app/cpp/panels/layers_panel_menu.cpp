@@ -1,5 +1,6 @@
 #include "layers_panel.h"
 
+#include "export_as_dialog.h"
 #include "layers_panel_internal.h"
 
 #include <QtCore/QItemSelectionModel>
@@ -62,11 +63,11 @@ void LayersPanel::showContextMenu(const QPoint& pos)
     }
 
     QMenu menu(tree_);
-    populateRowMenu(menu, path, index.data(ColorRole).toInt());
+    populateRowMenu(menu, path, index.data(ColorRole).toInt(), index.data(KindRole).toString());
     menu.exec(tree_->viewport()->mapToGlobal(pos));
 }
 
-void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color)
+void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color, const QString& kind)
 {
     QAction* rename = menu.addAction(tr("Rename"));
     connect(rename, &QAction::triggered, this, [this, path] {
@@ -89,6 +90,14 @@ void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color)
     addAction(tr("Ungroup Layers"), [this] { ungroupSelection(); });
     addAction(tr("Move Layer Up"), [this] { moveCurrent(1); });
     addAction(tr("Move Layer Down"), [this] { moveCurrent(-1); });
+    // Export writes the flattened document composite; offered on pixel and
+    // background rows (smart objects report the pixel kind), never on groups or
+    // adjustment layers.
+    if (kind == QLatin1String("pixel") || kind == QLatin1String("background")) {
+        menu.addSeparator();
+        addAction(tr("Export As…"), [this] { exportAsFromView(this, view_); });
+        addAction(tr("Quick Export as PNG"), [this] { quickExportPngFromView(this, view_); });
+    }
     menu.addSeparator();
     addColorLabelActions(menu.addMenu(tr("Color Label")), color);
 }

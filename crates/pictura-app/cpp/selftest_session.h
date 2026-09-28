@@ -13,6 +13,10 @@ class PicturaMainWindow;
 //   ldt_untitled (321)       a nameless document still reads `Untitled-N`
 //   lim_opaque_background (322) an opaque import is a locked Background
 //   lim_transparent_layer (323) a non-opaque import stays a regular alpha layer
+//   lpr_raster_export (532)  Save writes the path's format; Export As/Quick
+//                            Export flatten without mutating the document
+//   lpr_dialog_last_dir (534) an empty-directory dialog reuses Qt's persisted
+//                            last-visited folder (stored as a file:// URL)
 // Returns 0 when all pass, otherwise the self-test failure code.
 int runSessionChecks(PicturaMainWindow& frame);
 } // namespace pictura

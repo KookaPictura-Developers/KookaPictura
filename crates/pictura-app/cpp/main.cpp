@@ -79,6 +79,14 @@ int main(int argc, char* argv[])
         qputenv("QT_QPA_PLATFORM", "xcb");
     }
 
+    // Flatpak/Snap sandboxes reach host files only through the desktop portal.
+    // The portal platform theme is authoritative there (it wraps the base theme,
+    // and the app forces Fusion), so force it even if the sandbox preset a
+    // non-portal theme; a native install keeps the built-in enriched dialog.
+    if (pictura::usesPortalFileDialog()) {
+        qputenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
+    }
+
     QApplication app(argc, argv);
     QApplication::setWindowIcon(pictura::icon(QStringLiteral("app")));
 
