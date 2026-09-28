@@ -45,11 +45,124 @@ pub struct Marker {
     pub text: String,
 }
 
-/// The document's color samplers and notes, each list in placement order.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// CS6's default Count mark colour (a light blue).
+pub const DEFAULT_COUNT_COLOR: [u8; 3] = [0x2f, 0x9f, 0xd0];
+/// CS6 Marker Size range (the options-bar scrubby slider).
+pub const COUNT_MARKER_SIZE_MIN: u8 = 1;
+pub const COUNT_MARKER_SIZE_MAX: u8 = 10;
+/// CS6 Label Size range.
+pub const COUNT_LABEL_SIZE_MIN: u8 = 8;
+pub const COUNT_LABEL_SIZE_MAX: u8 = 72;
+
+/// One Count tool group: a named, independently numbered set of marks with its
+/// own visibility, colour, marker size, and label size (Photoshop Extended).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CountGroup {
+    pub name: String,
+    pub visible: bool,
+    pub color: [u8; 3],
+    pub marker_size: u8,
+    pub label_size: u8,
+    marks: Vec<Marker>,
+}
+
+impl Default for CountGroup {
+    fn default() -> Self {
+        Self {
+            name: "Count Group 1".to_string(),
+            visible: true,
+            color: DEFAULT_COUNT_COLOR,
+            marker_size: 2,
+            label_size: 12,
+            marks: Vec::new(),
+        }
+    }
+}
+
+impl CountGroup {
+    /// A new empty group named `name`, with the CS6 defaults.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ..Self::default()
+        }
+    }
+
+    pub fn marks(&self) -> &[Marker] {
+        &self.marks
+    }
+
+    pub fn count(&self) -> usize {
+        self.marks.len()
+    }
+
+    pub fn marker(&self, index: usize) -> Option<&Marker> {
+        self.marks.get(index)
+    }
+
+    /// Append a mark, returning its index (its 1-based number minus one).
+    pub fn add_mark(&mut self, x: i32, y: i32) -> usize {
+        self.marks.push(Marker {
+            x,
+            y,
+            text: String::new(),
+        });
+        self.marks.len() - 1
+    }
+
+    /// Move mark `index`; false for an out-of-range index.
+    pub fn move_mark(&mut self, index: usize, x: i32, y: i32) -> bool {
+        match self.marks.get_mut(index) {
+            Some(mark) => {
+                mark.x = x;
+                mark.y = y;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Delete mark `index`, shifting later numbers down; false when out of range.
+    pub fn remove_mark(&mut self, index: usize) -> bool {
+        if index >= self.marks.len() {
+            return false;
+        }
+        self.marks.remove(index);
+        true
+    }
+
+    /// Delete every mark; false when there were none.
+    pub fn clear(&mut self) -> bool {
+        let had = !self.marks.is_empty();
+        self.marks.clear();
+        had
+    }
+
+    /// The mark within `radius` of `(x, y)`, nearest first.
+    pub fn mark_at(&self, x: f64, y: f64, radius: f64) -> Option<usize> {
+        nearest(&self.marks, x, y, radius)
+    }
+}
+
+/// The document's color samplers, notes, and Count groups.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Annotations {
     samplers: Vec<Marker>,
     notes: Vec<Marker>,
+    count_groups: Vec<CountGroup>,
+    active_count_group: usize,
+}
+
+impl Default for Annotations {
+    fn default() -> Self {
+        Self {
+            samplers: Vec::new(),
+            notes: Vec::new(),
+            // CS6 shows a "Count Group 1" before any mark is placed.
+            count_groups: vec![CountGroup::default()],
+            active_count_group: 0,
+        }
+    }
 }
 
 impl Annotations {
@@ -134,15 +247,78 @@ impl Annotations {
     /// The marker of `kind` within `radius` of `(x, y)`, nearest first. The
     /// shell scales `radius` by zoom so the grab area keeps its screen size.
     pub fn marker_at(&self, kind: MarkerKind, x: f64, y: f64, radius: f64) -> Option<usize> {
-        let mut best: Option<(usize, f64)> = None;
-        for (i, marker) in self.list(kind).iter().enumerate() {
-            let d = (f64::from(marker.x) - x).hypot(f64::from(marker.y) - y);
-            if d <= radius && best.is_none_or(|(_, bd)| d < bd) {
-                best = Some((i, d));
-            }
-        }
-        best.map(|(i, _)| i)
+        nearest(self.list(kind), x, y, radius)
     }
+
+    // --- Count groups (Photoshop Extended) ---------------------------------
+
+    pub fn count_groups(&self) -> &[CountGroup] {
+        &self.count_groups
+    }
+
+    pub fn count_group(&self, index: usize) -> Option<&CountGroup> {
+        self.count_groups.get(index)
+    }
+
+    pub fn count_group_mut(&mut self, index: usize) -> Option<&mut CountGroup> {
+        self.count_groups.get_mut(index)
+    }
+
+    pub fn active_count_group(&self) -> usize {
+        self.active_count_group
+    }
+
+    /// The active group; always present (there is at least one).
+    pub fn active_group_mut(&mut self) -> &mut CountGroup {
+        let index = self.active_count_group.min(self.count_groups.len() - 1);
+        &mut self.count_groups[index]
+    }
+
+    /// Select group `index`; false when out of range.
+    pub fn set_active_count_group(&mut self, index: usize) -> bool {
+        if index >= self.count_groups.len() {
+            return false;
+        }
+        self.active_count_group = index;
+        true
+    }
+
+    /// Add a group named `name`, make it active, and return its index.
+    pub fn add_count_group(&mut self, name: impl Into<String>) -> usize {
+        self.count_groups.push(CountGroup::new(name));
+        self.active_count_group = self.count_groups.len() - 1;
+        self.active_count_group
+    }
+
+    /// Delete group `index`; false when it is the only group or out of range
+    /// (CS6 always keeps one group). The active index follows the removal.
+    pub fn remove_count_group(&mut self, index: usize) -> bool {
+        if index >= self.count_groups.len() || self.count_groups.len() <= 1 {
+            return false;
+        }
+        self.count_groups.remove(index);
+        if self.active_count_group >= self.count_groups.len() {
+            self.active_count_group = self.count_groups.len() - 1;
+        }
+        true
+    }
+
+    /// The number of marks in the active group (the options bar's Count field).
+    pub fn active_count_total(&self) -> usize {
+        self.count_groups[self.active_count_group.min(self.count_groups.len() - 1)].count()
+    }
+}
+
+/// The index of the item within `radius` of `(x, y)`, nearest first.
+fn nearest(markers: &[Marker], x: f64, y: f64, radius: f64) -> Option<usize> {
+    let mut best: Option<(usize, f64)> = None;
+    for (i, marker) in markers.iter().enumerate() {
+        let d = (f64::from(marker.x) - x).hypot(f64::from(marker.y) - y);
+        if d <= radius && best.is_none_or(|(_, bd)| d < bd) {
+            best = Some((i, d));
+        }
+    }
+    best.map(|(i, _)| i)
 }
 
 /// A Ruler measuring line from `a` to `b`, in document pixels.
@@ -317,5 +493,40 @@ mod tests {
             assert_eq!(MarkerKind::from_i32(kind as i32), Some(kind));
         }
         assert_eq!(MarkerKind::from_i32(2), None);
+    }
+
+    #[test]
+    fn count_groups_are_independent_numbered_counters() {
+        let mut a = Annotations::default();
+        // A default group exists before any mark is placed.
+        assert_eq!(a.count_groups().len(), 1);
+        assert_eq!(a.active_count_group(), 0);
+        let g0 = a.active_group_mut();
+        g0.add_mark(3, 3);
+        g0.add_mark(8, 4);
+        assert_eq!(a.active_count_total(), 2);
+        // A second group is independent.
+        let second = a.add_count_group("Count Group 2");
+        assert_eq!(second, 1);
+        assert_eq!(a.active_count_total(), 0);
+        a.active_group_mut().add_mark(1, 1);
+        assert_eq!(a.count_group(0).unwrap().count(), 2);
+        assert_eq!(a.count_group(1).unwrap().count(), 1);
+        // Removing a mark shifts later numbers down.
+        assert!(a.count_group_mut(0).unwrap().remove_mark(0));
+        assert_eq!(a.count_group(0).unwrap().marker(0).unwrap().x, 8);
+        // The only group cannot be deleted.
+        assert!(a.remove_count_group(0));
+        assert_eq!(a.count_groups().len(), 1);
+        assert!(!a.remove_count_group(0));
+    }
+
+    #[test]
+    fn count_group_defaults_match_cs6() {
+        let g = CountGroup::default();
+        assert_eq!(g.name, "Count Group 1");
+        assert!(g.visible);
+        assert_eq!(g.marker_size, 2);
+        assert_eq!(g.label_size, 12);
     }
 }

@@ -11,7 +11,10 @@ use super::qobject::PictureView;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
-use pictura_core::{Annotations, MarkerKind, Ruler};
+use pictura_core::{
+    Annotations, MarkerKind, Ruler, COUNT_LABEL_SIZE_MAX, COUNT_LABEL_SIZE_MIN,
+    COUNT_MARKER_SIZE_MAX, COUNT_MARKER_SIZE_MIN,
+};
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -78,6 +81,78 @@ pub mod ffi {
 
         /// The Ruler readout `[X, Y, W, H, A (degrees), D1]`; empty when there is no line.
         fn ruler_measurement(view: &PictureView) -> Vec<f64>;
+
+        /// The number of Count groups (always at least one).
+        fn count_group_count(view: &PictureView) -> i32;
+
+        /// The active Count group's index.
+        fn count_active_group(view: &PictureView) -> i32;
+
+        /// Select Count group `index`; false when out of range. No history.
+        fn count_set_active_group(view: Pin<&mut PictureView>, index: i32) -> bool;
+
+        /// Group `index`'s name; empty when out of range.
+        fn count_group_name(view: &PictureView, index: i32) -> QString;
+
+        /// Group `index`'s eye visibility.
+        fn count_group_visible(view: &PictureView, index: i32) -> bool;
+
+        /// Group `index`'s colour as 0xRRGGBB.
+        fn count_group_color(view: &PictureView, index: i32) -> u32;
+
+        /// Group `index`'s marker size (1–10).
+        fn count_group_marker_size(view: &PictureView, index: i32) -> i32;
+
+        /// Group `index`'s label size (8–72).
+        fn count_group_label_size(view: &PictureView, index: i32) -> i32;
+
+        /// Group `index`'s mark count.
+        fn count_group_total(view: &PictureView, index: i32) -> i32;
+
+        /// The active group's mark count (the options bar's Count field).
+        fn count_active_total(view: &PictureView) -> i32;
+
+        /// Group `index` mark `mark` as `[x, y]`; empty when out of range.
+        fn count_group_mark_at(view: &PictureView, index: i32, mark: i32) -> Vec<i32>;
+
+        /// Add a group named `name` and make it active; records one "Add Count Group" state. Returns its index.
+        fn count_add_group(view: Pin<&mut PictureView>, name: &QString) -> i32;
+
+        /// Delete group `index`; false (no state) for the only group or out of range. Records "Delete Count Group".
+        fn count_remove_group(view: Pin<&mut PictureView>, index: i32) -> bool;
+
+        /// Set group `index`'s eye visibility; false when out of range. No history.
+        fn count_set_visible(view: Pin<&mut PictureView>, index: i32, on: bool) -> bool;
+
+        /// Set group `index`'s colour (0xRRGGBB); false when out of range. No history.
+        fn count_set_color(view: Pin<&mut PictureView>, index: i32, rgb: u32) -> bool;
+
+        /// Set group `index`'s marker size (clamped 1–10); false when out of range. No history.
+        fn count_set_marker_size(view: Pin<&mut PictureView>, index: i32, size: i32) -> bool;
+
+        /// Set group `index`'s label size (clamped 8–72); false when out of range. No history.
+        fn count_set_label_size(view: Pin<&mut PictureView>, index: i32, size: i32) -> bool;
+
+        /// Add a mark to the active group at `(x, y)`; records one "New Count" state. Returns its index.
+        fn count_add_mark(view: Pin<&mut PictureView>, x: i32, y: i32) -> i32;
+
+        /// The active group's mark nearest `(x, y)` within `radius`, or -1.
+        fn count_mark_near(view: &PictureView, x: f64, y: f64, radius: f64) -> i32;
+
+        /// Move active-group mark `index`. With `commit` false this is a live drag step; with `commit` true it records one "Move Count" state. False for a bad index.
+        fn count_move_mark(
+            view: Pin<&mut PictureView>,
+            index: i32,
+            x: i32,
+            y: i32,
+            commit: bool,
+        ) -> bool;
+
+        /// Delete active-group mark `index`; records one "Delete Count" state. False for a bad index.
+        fn count_remove_mark(view: Pin<&mut PictureView>, index: i32) -> bool;
+
+        /// Clear the active group's marks; records one "Clear Counts" state. False (no state) when there were none.
+        fn count_clear(view: Pin<&mut PictureView>) -> bool;
     }
 }
 
@@ -231,4 +306,235 @@ fn ruler_measurement(view: &PictureView) -> Vec<f64> {
         let m = r.measure();
         vec![m.x, m.y, m.width, m.height, m.angle, m.distance]
     })
+}
+
+// --- Count groups (Photoshop Extended) --------------------------------------
+
+fn count_group_count(view: &PictureView) -> i32 {
+    annotations(view).map_or(0, |a| a.count_groups().len() as i32)
+}
+
+fn count_active_group(view: &PictureView) -> i32 {
+    annotations(view).map_or(0, |a| a.active_count_group() as i32)
+}
+
+fn count_set_active_group(mut view: Pin<&mut PictureView>, index: i32) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    // The overlay shows every group, so switching the active group changes no
+    // pixels; the options bar refreshes itself.
+    edit(view.as_mut(), |a| a.set_active_count_group(index)) == Some(true)
+}
+
+fn count_group_name(view: &PictureView, index: i32) -> QString {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| annotations(view)?.count_group(i))
+        .map_or_else(QString::default, |g| QString::from(g.name.as_str()))
+}
+
+fn count_group_visible(view: &PictureView, index: i32) -> bool {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| annotations(view)?.count_group(i))
+        .is_some_and(|g| g.visible)
+}
+
+fn count_group_color(view: &PictureView, index: i32) -> u32 {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| annotations(view)?.count_group(i))
+        .map_or(0, |g| {
+            (u32::from(g.color[0]) << 16) | (u32::from(g.color[1]) << 8) | u32::from(g.color[2])
+        })
+}
+
+fn count_group_marker_size(view: &PictureView, index: i32) -> i32 {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| annotations(view)?.count_group(i))
+        .map_or(2, |g| i32::from(g.marker_size))
+}
+
+fn count_group_label_size(view: &PictureView, index: i32) -> i32 {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| annotations(view)?.count_group(i))
+        .map_or(12, |g| i32::from(g.label_size))
+}
+
+fn count_group_total(view: &PictureView, index: i32) -> i32 {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| annotations(view)?.count_group(i))
+        .map_or(0, |g| g.count() as i32)
+}
+
+fn count_active_total(view: &PictureView) -> i32 {
+    annotations(view).map_or(0, |a| a.active_count_total() as i32)
+}
+
+fn count_group_mark_at(view: &PictureView, index: i32, mark: i32) -> Vec<i32> {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| annotations(view)?.count_group(i))
+        .and_then(|g| usize::try_from(mark).ok().and_then(|m| g.marker(m)))
+        .map_or_else(Vec::new, |m| vec![m.x, m.y])
+}
+
+fn count_add_group(mut view: Pin<&mut PictureView>, name: &QString) -> i32 {
+    let name = name.to_string();
+    let Some(index) = edit(view.as_mut(), |a| a.add_count_group(name)) else {
+        return -1;
+    };
+    commit(view, "Add Count Group");
+    index as i32
+}
+
+fn count_remove_group(mut view: Pin<&mut PictureView>, index: i32) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let removed = edit(view.as_mut(), |a| a.remove_count_group(index)) == Some(true);
+    if removed {
+        commit(view, "Delete Count Group");
+    }
+    removed
+}
+
+fn count_set_visible(mut view: Pin<&mut PictureView>, index: i32, on: bool) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let changed = edit(view.as_mut(), |a| {
+        a.count_group_mut(index).is_some_and(|g| {
+            let diff = g.visible != on;
+            g.visible = on;
+            diff
+        })
+    }) == Some(true);
+    if changed {
+        view.as_mut().changed();
+    }
+    changed
+}
+
+fn count_set_color(mut view: Pin<&mut PictureView>, index: i32, rgb: u32) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let color = [
+        ((rgb >> 16) & 0xff) as u8,
+        ((rgb >> 8) & 0xff) as u8,
+        (rgb & 0xff) as u8,
+    ];
+    let changed = edit(view.as_mut(), |a| {
+        a.count_group_mut(index).is_some_and(|g| {
+            let diff = g.color != color;
+            g.color = color;
+            diff
+        })
+    }) == Some(true);
+    if changed {
+        view.as_mut().changed();
+    }
+    changed
+}
+
+fn count_set_marker_size(mut view: Pin<&mut PictureView>, index: i32, size: i32) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let size = size.clamp(
+        i32::from(COUNT_MARKER_SIZE_MIN),
+        i32::from(COUNT_MARKER_SIZE_MAX),
+    ) as u8;
+    let changed = edit(view.as_mut(), |a| {
+        a.count_group_mut(index).is_some_and(|g| {
+            let diff = g.marker_size != size;
+            g.marker_size = size;
+            diff
+        })
+    }) == Some(true);
+    if changed {
+        view.as_mut().changed();
+    }
+    changed
+}
+
+fn count_set_label_size(mut view: Pin<&mut PictureView>, index: i32, size: i32) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let size = size.clamp(
+        i32::from(COUNT_LABEL_SIZE_MIN),
+        i32::from(COUNT_LABEL_SIZE_MAX),
+    ) as u8;
+    let changed = edit(view.as_mut(), |a| {
+        a.count_group_mut(index).is_some_and(|g| {
+            let diff = g.label_size != size;
+            g.label_size = size;
+            diff
+        })
+    }) == Some(true);
+    if changed {
+        view.as_mut().changed();
+    }
+    changed
+}
+
+fn count_add_mark(mut view: Pin<&mut PictureView>, x: i32, y: i32) -> i32 {
+    let Some(index) = edit(view.as_mut(), |a| a.active_group_mut().add_mark(x, y)) else {
+        return -1;
+    };
+    commit(view, "New Count");
+    index as i32
+}
+
+fn count_mark_near(view: &PictureView, x: f64, y: f64, radius: f64) -> i32 {
+    annotations(view)
+        .and_then(|a| a.count_group(a.active_count_group()))
+        .and_then(|g| g.mark_at(x, y, radius.max(0.0)))
+        .map_or(-1, |i| i as i32)
+}
+
+fn count_move_mark(
+    mut view: Pin<&mut PictureView>,
+    index: i32,
+    x: i32,
+    y: i32,
+    commit_move: bool,
+) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let moved = edit(view.as_mut(), |a| {
+        a.active_group_mut().move_mark(index, x, y)
+    }) == Some(true);
+    if moved && commit_move {
+        commit(view, "Move Count");
+    } else if moved {
+        view.as_mut().changed();
+    }
+    moved
+}
+
+fn count_remove_mark(mut view: Pin<&mut PictureView>, index: i32) -> bool {
+    let Ok(index) = usize::try_from(index) else {
+        return false;
+    };
+    let removed = edit(view.as_mut(), |a| a.active_group_mut().remove_mark(index)) == Some(true);
+    if removed {
+        commit(view, "Delete Count");
+    }
+    removed
+}
+
+fn count_clear(mut view: Pin<&mut PictureView>) -> bool {
+    let cleared = edit(view.as_mut(), |a| a.active_group_mut().clear()) == Some(true);
+    if cleared {
+        commit(view, "Clear Counts");
+    }
+    cleared
 }

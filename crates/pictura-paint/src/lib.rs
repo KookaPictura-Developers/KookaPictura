@@ -1,5 +1,6 @@
 //! Brush engine primitives: stroke configuration, dab spacing, and tip coverage.
 
+pub mod healing;
 pub mod spacing;
 pub mod stroke;
 pub mod tip;
@@ -91,6 +92,7 @@ impl Default for StrokeConfig {
     }
 }
 
+pub use healing::HealStroke;
 pub use stroke::{paint_stroke, PaintError, Stroke, StrokeOutcome};
 pub use tip::tip_coverage;
 

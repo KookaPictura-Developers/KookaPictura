@@ -365,7 +365,7 @@ fn channel_data_mut(layer: &mut Layer, id: i16) -> Option<&mut [u8]> {
         .map(|c| c.data.as_mut_slice())
 }
 
-fn layer_at<'a>(doc: &'a Document, path: &[usize]) -> Option<&'a Layer> {
+pub(crate) fn layer_at<'a>(doc: &'a Document, path: &[usize]) -> Option<&'a Layer> {
     let mut node = doc.layers.get(*path.first()?)?;
     for &idx in &path[1..] {
         node = node.children.get(idx)?;
@@ -373,7 +373,7 @@ fn layer_at<'a>(doc: &'a Document, path: &[usize]) -> Option<&'a Layer> {
     Some(node)
 }
 
-fn layer_at_mut<'a>(doc: &'a mut Document, path: &[usize]) -> Option<&'a mut Layer> {
+pub(crate) fn layer_at_mut<'a>(doc: &'a mut Document, path: &[usize]) -> Option<&'a mut Layer> {
     let mut node = doc.layers.get_mut(*path.first()?)?;
     for &idx in &path[1..] {
         node = node.children.get_mut(idx)?;
@@ -382,7 +382,7 @@ fn layer_at_mut<'a>(doc: &'a mut Document, path: &[usize]) -> Option<&'a mut Lay
 }
 
 /// Resolve a panel path (`"0"`, `"0/1"`) to layer indices; `None` when malformed.
-fn parse_layer_path(path: &str) -> Option<Vec<usize>> {
+pub(crate) fn parse_layer_path(path: &str) -> Option<Vec<usize>> {
     path.split('/')
         .map(|part| part.parse::<usize>().ok())
         .collect()

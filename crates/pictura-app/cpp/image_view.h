@@ -112,6 +112,7 @@ public:
     bool selectionEdgesVisible() const { return selectionEdgesVisible_; }
     bool hasSelectionContourForTest() const { return !selectionContours_.isEmpty(); }
     int selectionContourLoopCountForTest() const { return selectionContours_.size(); }
+    const QList<QPolygonF>& selectionContours() const { return selectionContours_; }
 
     // Live selection preview while a tool drags (the rubber band). Drawn with the
     // same animated marching-ants pen as a committed selection, and replaced by
@@ -197,15 +198,27 @@ public:
                            [](const SliceOverlay& s) { return s.selected; });
     }
 
-    // Annotation overlay (image space): numbered color-sampler crosshairs and
-    // note glyphs (the `currentNote` index outlined), shown with any tool, plus
-    // the Ruler's measuring line while that tool is active.
+    // Annotation overlay (image space): numbered color-sampler crosshairs,
+    // note glyphs (the `currentNote` index outlined), and numbered Count marks,
+    // shown with any tool, plus the Ruler's measuring line while that tool is
+    // active.
     void setAnnotationOverlay(const QList<QPointF>& samplers, const QList<QPointF>& notes,
                               int currentNote);
+    // One Count group's visible mark: its position, 1-based number, and the
+    // group's colour/marker/label sizes.
+    struct CountOverlayMark {
+        QPointF pos;
+        int number = 1;
+        QColor color;
+        int markerSize = 2;
+        int labelSize = 12;
+    };
+    void setCountOverlay(const QList<CountOverlayMark>& marks);
     void setRulerLine(const QLineF& line);
     void clearRulerLine();
     int samplerOverlayCountForTest() const { return int(samplerOverlay_.size()); }
     int noteOverlayCountForTest() const { return int(noteOverlay_.size()); }
+    int countOverlayCountForTest() const { return int(countOverlay_.size()); }
     bool hasRulerLineForTest() const { return rulerShown_; }
 
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
@@ -253,6 +266,7 @@ private:
     void paintAnnotations(QPainter& painter);
     QList<QPointF> samplerOverlay_;
     QList<QPointF> noteOverlay_;
+    QList<CountOverlayMark> countOverlay_;
     int currentNote_ = -1;
     QLineF rulerLine_;
     bool rulerShown_ = false;

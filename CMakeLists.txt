@@ -99,6 +99,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_recent_files.cpp
     crates/pictura-app/cpp/selftest_crop_group.cpp
     crates/pictura-app/cpp/selftest_annotations.cpp
+    crates/pictura-app/cpp/selftest_healing.cpp
     crates/pictura-app/cpp/selftest_click_deselect.cpp
     crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
     crates/pictura-app/cpp/selftest_clipboard.cpp
@@ -119,6 +120,7 @@ add_executable(pictura
     crates/pictura-app/cpp/pictura_raw_dialog.cpp
     crates/pictura-app/cpp/warp_preset_dialog.cpp
     crates/pictura-app/cpp/color_settings_dialog.cpp
+    crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
     crates/pictura-app/cpp/image_view_annotations.cpp
@@ -172,7 +174,12 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_perspectivecrop.cpp
     crates/pictura-app/cpp/tool_slice.cpp
     crates/pictura-app/cpp/tool_annotations.cpp
+    crates/pictura-app/cpp/tool_count.cpp
     crates/pictura-app/cpp/tool_ruler.cpp
+    crates/pictura-app/cpp/tool_healing.cpp
+    crates/pictura-app/cpp/tool_region_drag.cpp
+    crates/pictura-app/cpp/tool_patch.cpp
+    crates/pictura-app/cpp/tool_contentawaremove.cpp
     crates/pictura-app/cpp/tool_selection.cpp
     crates/pictura-app/cpp/tool_magneticlasso.cpp
     crates/pictura-app/cpp/tool_catalog.cpp
@@ -197,6 +204,7 @@ add_executable(pictura
     crates/pictura-app/cpp/pictura_raw_dialog.h
     crates/pictura-app/cpp/warp_preset_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.h
+    crates/pictura-app/cpp/color_picker_dialog.h
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/canvas_range.h
     crates/pictura-app/cpp/canvas_scrollbars.h

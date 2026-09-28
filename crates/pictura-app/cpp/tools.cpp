@@ -41,6 +41,11 @@ std::unique_ptr<ToolHandler> makeMagneticLassoToolHandler();
 std::unique_ptr<ToolHandler> makeColorSamplerToolHandler();
 std::unique_ptr<ToolHandler> makeRulerToolHandler();
 std::unique_ptr<ToolHandler> makeNoteToolHandler();
+std::unique_ptr<ToolHandler> makeCountToolHandler();
+std::unique_ptr<ToolHandler> makeSpotHealingToolHandler();
+std::unique_ptr<ToolHandler> makeHealingToolHandler();
+std::unique_ptr<ToolHandler> makePatchToolHandler();
+std::unique_ptr<ToolHandler> makeContentAwareMoveToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -65,6 +70,11 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::ColorSampler, makeColorSamplerToolHandler());
     registry_.registerTool(ToolId::Ruler, makeRulerToolHandler());
     registry_.registerTool(ToolId::Note, makeNoteToolHandler());
+    registry_.registerTool(ToolId::Count, makeCountToolHandler());
+    registry_.registerTool(ToolId::SpotHealingBrush, makeSpotHealingToolHandler());
+    registry_.registerTool(ToolId::HealingBrush, makeHealingToolHandler());
+    registry_.registerTool(ToolId::Patch, makePatchToolHandler());
+    registry_.registerTool(ToolId::ContentAwareMove, makeContentAwareMoveToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -216,6 +226,13 @@ bool ToolController::autoErase() const { return autoErase_; }
 
 void ToolController::setAutoErase(bool on) { autoErase_ = on; }
 
+void ToolController::setSpotHealingType(int type) { spotHealingType_ = std::clamp(type, 0, 2); }
+
+void ToolController::setContentAwareAdaptation(int level)
+{
+    contentAwareAdaptation_ = std::clamp(level, 0, 4);
+}
+
 QColor ToolController::foreground() const { return foreground_; }
 
 void ToolController::setForeground(const QColor& color) { foreground_ = color; }
@@ -318,7 +335,8 @@ void ToolController::bindCanvas(ImageView* canvas)
     refreshAnnotations();
 }
 
-// Color samplers and notes are shown with every tool, as CS6's Extras are.
+// Color samplers, notes, and Count marks are shown with every tool, as CS6's
+// Extras are.
 void ToolController::refreshAnnotations()
 {
     if (!canvas_) {
@@ -340,6 +358,28 @@ void ToolController::refreshAnnotations()
         setCurrentNote(-1);
     }
     canvas_->setAnnotationOverlay(lists[0], lists[1], currentNote_);
+
+    // Count marks, flattened from the visible groups.
+    QList<ImageView::CountOverlayMark> counts;
+    if (v && v->has_document()) {
+        const int groups = count_group_count(*v);
+        for (int g = 0; g < groups; ++g) {
+            if (!count_group_visible(*v, g)) {
+                continue;
+            }
+            const QColor color(QRgb(count_group_color(*v, g)));
+            const int markerSize = count_group_marker_size(*v, g);
+            const int labelSize = count_group_label_size(*v, g);
+            const int total = count_group_total(*v, g);
+            for (int i = 0; i < total; ++i) {
+                const ::rust::Vec<std::int32_t> p = count_group_mark_at(*v, g, i);
+                if (p.size() == 2) {
+                    counts.append({QPointF(p[0], p[1]), i + 1, color, markerSize, labelSize});
+                }
+            }
+        }
+    }
+    canvas_->setCountOverlay(counts);
 }
 
 void ToolController::setCurrentNote(int index)

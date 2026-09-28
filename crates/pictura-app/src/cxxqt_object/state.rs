@@ -1,7 +1,7 @@
 use crate::history::History;
 use cxx_qt_lib::QImage;
 use pictura_core::{Document, PsdRect};
-use pictura_paint::Stroke;
+use pictura_paint::{HealStroke, Stroke};
 use pictura_select::Selection;
 use std::collections::HashMap;
 
@@ -88,6 +88,9 @@ pub struct PictureViewRust {
     pub(super) pending_lasso_mode: String,
     pub(super) stroke: Option<Stroke>,
     pub(super) stroke_label: String,
+    /// The live healing gesture (Spot Healing Brush / Healing Brush): a
+    /// coverage mask accumulated over a layer, healed on release.
+    pub(super) heal_stroke: Option<HealStroke>,
     pub(super) move_base: Option<QImage>,
     pub(super) move_layer: Option<QImage>,
     pub(super) move_x: i32,
@@ -128,6 +131,7 @@ impl Default for PictureViewRust {
             pending_lasso_mode: String::new(),
             stroke: None,
             stroke_label: String::new(),
+            heal_stroke: None,
             move_base: None,
             move_layer: None,
             move_x: 0,

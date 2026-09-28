@@ -5,6 +5,7 @@
 #include "selftest_clipboard.h"
 #include "selftest_crop_group.h"
 #include "selftest_crop_tool.h"
+#include "selftest_healing.h"
 #include "selftest_magnetic_lasso.h"
 #include "selftest_recent_files.h"
 
@@ -14,7 +15,8 @@ int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
 {
     for (const auto run : {runCropToolChecks, runRecentFilesChecks, runCropGroupChecks,
                            runClickDeselectChecks, runMagneticLassoChecks, runClipboardChecks,
-                           runAnnotationChecks}) {
+                           runAnnotationChecks, runHealingChecks, runPatchChecks,
+                           runContentAwareMoveChecks}) {
         if (const int code = run(frame); code != 0) {
             return code;
         }
