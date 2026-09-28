@@ -408,7 +408,9 @@ Snapshot for resuming after a context break. Update after each milestone.
   the marker and label size fields. The colour swatch opens a full
   Photoshop-style `ColorPickerDialog` (`color_picker_dialog.{h,cpp}`, ported
   from photorust): colour field + axis ramp, new/current compare, HSB/RGB/Lab/
-  CMYK/hex fields, and Only Web Colors. The canvas overlay
+  CMYK/hex fields, and Only Web Colors. The same picker's `ColorPicker` widget
+  is embedded inline in the Color panel (field + ramp), and the toolbox
+  foreground/background swatches open the dialog too. The canvas overlay
   (`image_view_annotations.cpp`) draws every visible group's marks as numbered
   discs in the group's colour and sizes, the disc growing with the label so a
   larger Label Size never clips the number. Covered by the `healing_tools`
