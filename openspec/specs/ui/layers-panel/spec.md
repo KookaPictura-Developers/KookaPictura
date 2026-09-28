@@ -546,10 +546,13 @@ SHALL offer `Panel Options…`, New Layer, New Group, Duplicate Layer(s), Delete
 Layer(s), Group Layers, Ungroup Layers, Move Layer Up, and Move Layer Down. The
 row context menu SHALL offer those row commands plus Rename and a color-label
 submenu containing `None`, `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Violet`,
-and `Gray`. Right-clicking the visibility toggle SHALL offer show/hide this
-layer only and show/hide all. The bottom action strip SHALL remain exactly the
-CS6 seven buttons, so Move Up/Down SHALL NOT appear in the strip. Commands that
-M39 does not implement SHALL NOT be shown in these menus.
+and `Gray`. For pixel and smart-object rows the row context menu SHALL also
+offer `Export As…` and `Quick Export as PNG`; those two entries SHALL be absent
+or disabled on group, adjustment, and type rows. Right-clicking the visibility
+toggle SHALL offer show/hide this layer only and show/hide all. The bottom action
+strip SHALL remain exactly the CS6 seven buttons, so Move Up/Down SHALL NOT
+appear in the strip. Commands that M39 does not implement SHALL NOT be shown in
+these menus.
 
 #### Scenario: The panel menu contains the wired commands [m39_menus]
 
@@ -573,6 +576,20 @@ M39 does not implement SHALL NOT be shown in these menus.
 - **THEN** its bottom strip contains exactly the seven CS6 buttons and no Move Up
   or Move Down button
 
+#### Scenario: Pixel and smart-object rows offer export
+
+- **WHEN** the user opens the row menu for a pixel layer or a smart-object layer
+- **THEN** it contains Export As… and Quick Export as PNG
+
+#### Scenario: Group and adjustment rows hide export
+
+- **WHEN** the user opens the row menu for a group or an adjustment layer
+- **THEN** it does not offer Export As… or Quick Export as PNG
+
+#### Scenario: Type rows hide export
+
+- **WHEN** the user opens the row menu for a type layer
+- **THEN** it does not offer Export As… or Quick Export as PNG
 ### Requirement: Layer row tooltips
 
 The system SHALL provide a tooltip for each row that includes the layer's name
