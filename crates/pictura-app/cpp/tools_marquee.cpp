@@ -61,7 +61,7 @@ void ToolController::refreshCursor(Qt::KeyboardModifiers mods)
             return canvas_->setCursor(c);
         }
     }
-    if (active_ == ToolId::Brush || active_ == ToolId::Pencil) {
+    if (isBrushTool(active_)) {
         // The transient Alt eyedropper wins over the blank paint cursor and the
         // invisible/locked refusal (tool-framework cursor precedence).
         if (mods.testFlag(Qt::AltModifier)) {
@@ -156,7 +156,7 @@ void ToolController::updateBrushOutline(const QPointF& imagePos)
     if (!canvas_) {
         return;
     }
-    if (active_ == ToolId::Brush || active_ == ToolId::Pencil) {
+    if (isBrushTool(active_)) {
         canvas_->setBrushOutline(brushSize_, imagePos);
     } else {
         canvas_->clearBrushOutline();

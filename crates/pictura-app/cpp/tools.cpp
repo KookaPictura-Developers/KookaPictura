@@ -46,6 +46,9 @@ std::unique_ptr<ToolHandler> makeSpotHealingToolHandler();
 std::unique_ptr<ToolHandler> makeHealingToolHandler();
 std::unique_ptr<ToolHandler> makePatchToolHandler();
 std::unique_ptr<ToolHandler> makeContentAwareMoveToolHandler();
+std::unique_ptr<ToolHandler> makeRedEyeToolHandler();
+std::unique_ptr<ToolHandler> makeColorReplacementToolHandler();
+std::unique_ptr<ToolHandler> makeMixerBrushToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -75,10 +78,13 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::HealingBrush, makeHealingToolHandler());
     registry_.registerTool(ToolId::Patch, makePatchToolHandler());
     registry_.registerTool(ToolId::ContentAwareMove, makeContentAwareMoveToolHandler());
+    registry_.registerTool(ToolId::RedEye, makeRedEyeToolHandler());
+    registry_.registerTool(ToolId::ColorReplacement, makeColorReplacementToolHandler());
+    registry_.registerTool(ToolId::MixerBrush, makeMixerBrushToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
-        if (!canvas_ || (active_ != ToolId::Brush && active_ != ToolId::Pencil)) {
+        if (!canvas_ || !isBrushTool(active_)) {
             return;
         }
         const QPoint local = canvas_->mapFromGlobal(QCursor::pos());
@@ -233,9 +239,23 @@ void ToolController::setContentAwareAdaptation(int level)
     contentAwareAdaptation_ = std::clamp(level, 0, 4);
 }
 
+void ToolController::setMixerReservoir(const QColor& color)
+{
+    if (color.rgba() == mixerReservoir_.rgba()) {
+        return;
+    }
+    mixerReservoir_ = color;
+    emit mixerReservoirChanged(color);
+}
+
 QColor ToolController::foreground() const { return foreground_; }
 
-void ToolController::setForeground(const QColor& color) { foreground_ = color; }
+void ToolController::setForeground(const QColor& color)
+{
+    foreground_ = color;
+    // Choosing a foreground colour loads the Mixer Brush (docs/03-tools/mixer-brush.md).
+    setMixerReservoir(color);
+}
 
 QColor ToolController::background() const { return background_; }
 
@@ -260,7 +280,7 @@ bool ToolController::applyBrushShortcut(int key, quint32 nativeScanCode, bool sh
         setMagneticWidth(magneticWidth_ + (step > 0 ? 1 : -1));
         return true;
     }
-    const bool paint = active_ == ToolId::Brush || active_ == ToolId::Pencil;
+    const bool paint = isBrushTool(active_);
     const int delta = v->brush_shortcut_delta(key, nativeScanCode, shift, paint);
     if (delta == 0) {
         return false;
@@ -442,7 +462,7 @@ void ToolController::applyToolPolicy()
     }
     const bool session = transformSessionActive();
     canvas_->setPanEnabled(!session && active_ == ToolId::Hand);
-    if (active_ != ToolId::Brush && active_ != ToolId::Pencil) {
+    if (!isBrushTool(active_)) {
         canvas_->clearBrushOutline();
     }
     if (session) {

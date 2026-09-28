@@ -102,6 +102,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_crop_group.cpp
     crates/pictura-app/cpp/selftest_annotations.cpp
     crates/pictura-app/cpp/selftest_healing.cpp
+    crates/pictura-app/cpp/selftest_paint_tools.cpp
     crates/pictura-app/cpp/selftest_click_deselect.cpp
     crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
     crates/pictura-app/cpp/selftest_clipboard.cpp
@@ -171,6 +172,8 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_hand_zoom.cpp
     crates/pictura-app/cpp/tool_eyedropper.cpp
     crates/pictura-app/cpp/tool_brush.cpp
+    crates/pictura-app/cpp/tool_colorreplacement.cpp
+    crates/pictura-app/cpp/tool_mixerbrush.cpp
     crates/pictura-app/cpp/tool_wand.cpp
     crates/pictura-app/cpp/tool_move.cpp
     crates/pictura-app/cpp/tool_crop.cpp
@@ -182,6 +185,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_healing.cpp
     crates/pictura-app/cpp/tool_region_drag.cpp
     crates/pictura-app/cpp/tool_patch.cpp
+    crates/pictura-app/cpp/tool_redeye.cpp
     crates/pictura-app/cpp/tool_contentawaremove.cpp
     crates/pictura-app/cpp/tool_selection.cpp
     crates/pictura-app/cpp/tool_magneticlasso.cpp
@@ -192,6 +196,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tools_selection_move.cpp
     crates/pictura-app/cpp/toolbox.cpp
     crates/pictura-app/cpp/options_bar.cpp
+    crates/pictura-app/cpp/options_bar_paint.cpp
     crates/pictura-app/cpp/tool_hint_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp
     crates/pictura-app/cpp/layer_new_dialog.cpp
