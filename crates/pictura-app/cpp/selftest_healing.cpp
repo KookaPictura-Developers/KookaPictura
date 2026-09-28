@@ -16,6 +16,7 @@
 #include <QtGui/QPainter>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QToolButton>
 
 #include <cmath>
 
@@ -125,6 +126,75 @@ int pictura::runHealingChecks(pictura::PicturaMainWindow& frame)
     if (!spotActive || !committed || !healed || !refused || !transplanted || !countActive || !bar
         || !counted || !grouped || !hidden || !styled || !deletedGroup || !cleared || !pickerOk) {
         return pictura::selfTest().fail(536, "healing tools");
+    }
+    return 0;
+}
+
+int pictura::runPatchChecks(pictura::PicturaMainWindow& frame)
+{
+    // Seed: a white field with a black 8×8 blemish at (6, 6).
+    QImage seed(60, 20, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    QPainter(&seed).fillRect(6, 6, 8, 8, Qt::black);
+    const QString seedPath = QDir::temp().filePath(QStringLiteral("pictura_patch_seed.png"));
+
+    const bool created = frame.newDocument(QStringLiteral("PatchCtl"), 60, 20,
+                                           QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    pictura::PictureView* view = frame.activeView();
+    pictura::ImageView* canvas = frame.imageView();
+    auto* tools = frame.findChild<pictura::ToolController*>();
+    if (!created || !view || !canvas || !tools || !seed.save(seedPath, "PNG")
+        || !view->open_image(seedPath)) {
+        return pictura::selfTest().fail(537, "patch fixture");
+    }
+    const int doc = frame.activeDocumentIndex();
+    const auto drag = [canvas](const QList<QPointF>& path) {
+        canvas->mousePressed(path.first(), Qt::LeftButton, 0);
+        for (const QPointF& p : path.mid(1)) {
+            canvas->mouseMoved(p);
+        }
+        canvas->mouseReleased(path.last());
+    };
+
+    frame.setActiveTool(pictura::ToolId::Patch);
+    const bool active = tools->activeTool() == pictura::ToolId::Patch;
+    // Content-Aware disables the sampling controls; Normal re-enables them.
+    auto* mode = frame.findChild<QComboBox*>(QStringLiteral("optionsPatchMode"));
+    auto* source = frame.findChild<QToolButton*>(QStringLiteral("optionsPatchSource"));
+    bool bar = mode && source && source->isChecked() && source->isEnabled();
+    if (bar) {
+        mode->setCurrentIndex(1);
+        bar = !source->isEnabled() && tools->patchContentAware();
+        mode->setCurrentIndex(0);
+        bar = bar && source->isEnabled() && !tools->patchContentAware();
+    }
+
+    // Step one: a drag outside any selection outlines the blemish.
+    drag({QPointF(4, 4), QPointF(16, 4), QPointF(16, 16), QPointF(4, 16), QPointF(4, 5)});
+    const bool outlined = view->has_selection() && view->selection_coverage(10, 10) > 0
+        && view->selection_coverage(30, 10) == 0;
+    // Step two: dragging the outline onto clean pixels repairs the selection
+    // from there, in one "Patch Tool" state, and leaves the source alone.
+    const int base = view->history_index();
+    drag({QPointF(10, 10), QPointF(25, 10), QPointF(40, 10)});
+    const bool committed = view->history_index() == base + 1
+        && view->history_label(base + 1) == QStringLiteral("Patch Tool");
+    const quint32 patchedArgb = view->sample_argb(10, 10);
+    const bool patched = qRed(patchedArgb) > 200 && qGreen(patchedArgb) > 200
+        && qBlue(patchedArgb) > 200 && view->sample_argb(40, 10) == 0xffffffffu;
+    // A click inside the selection (no drag) records nothing.
+    drag({QPointF(10, 10)});
+    const bool clickNoop = view->history_index() == base + 1;
+    frame.setActiveTool(pictura::ToolId::Move);
+
+    ST_BEGIN("patch_tool");
+    ST_PASS("patch active=%d bar=%d outline=%d commit=%d patched=%d click=%d", active ? 1 : 0,
+            bar ? 1 : 0, outlined ? 1 : 0, committed ? 1 : 0, patched ? 1 : 0,
+            clickNoop ? 1 : 0);
+    frame.closeDocument(doc, false);
+    QFile::remove(seedPath);
+    if (!active || !bar || !outlined || !committed || !patched || !clickNoop) {
+        return pictura::selfTest().fail(537, "patch tool");
     }
     return 0;
 }

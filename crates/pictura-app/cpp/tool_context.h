@@ -36,6 +36,12 @@ struct ToolContext {
     // strokes instead of re-anchoring it to each stroke's start.
     virtual int spotHealingType() const = 0;
     virtual bool healingAligned() const = 0;
+    // Patch: Content-Aware rebuilds the selection in place and ignores the
+    // drag; Destination applies the selection where it is dragged; Transparent
+    // transfers texture only.
+    virtual bool patchContentAware() const = 0;
+    virtual bool patchDestination() const = 0;
+    virtual bool patchTransparent() const = 0;
 
     virtual MarqueeStyle marqueeStyle() const = 0;
     virtual double fixedRatioWidth() const = 0;

@@ -230,6 +230,13 @@ public:
     void setSpotHealingType(int type);
     bool healingAligned() const override { return healingAligned_; }
     void setHealingAligned(bool on) { healingAligned_ = on; }
+    // Patch mode (Normal / Content-Aware), Source / Destination, Transparent.
+    bool patchContentAware() const override { return patchContentAware_; }
+    void setPatchContentAware(bool on) { patchContentAware_ = on; }
+    bool patchDestination() const override { return patchDestination_; }
+    void setPatchDestination(bool on) { patchDestination_ = on; }
+    bool patchTransparent() const override { return patchTransparent_; }
+    void setPatchTransparent(bool on) { patchTransparent_ = on; }
     QColor foreground() const override;
     void setForeground(const QColor& color);
     QColor background() const override;
@@ -391,6 +398,9 @@ private:
     bool autoErase_ = false;
     int spotHealingType_ = 0;
     bool healingAligned_ = true;
+    bool patchContentAware_ = false;
+    bool patchDestination_ = false;
+    bool patchTransparent_ = false;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

@@ -44,6 +44,7 @@ std::unique_ptr<ToolHandler> makeNoteToolHandler();
 std::unique_ptr<ToolHandler> makeCountToolHandler();
 std::unique_ptr<ToolHandler> makeSpotHealingToolHandler();
 std::unique_ptr<ToolHandler> makeHealingToolHandler();
+std::unique_ptr<ToolHandler> makePatchToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -71,6 +72,7 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::Count, makeCountToolHandler());
     registry_.registerTool(ToolId::SpotHealingBrush, makeSpotHealingToolHandler());
     registry_.registerTool(ToolId::HealingBrush, makeHealingToolHandler());
+    registry_.registerTool(ToolId::Patch, makePatchToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {

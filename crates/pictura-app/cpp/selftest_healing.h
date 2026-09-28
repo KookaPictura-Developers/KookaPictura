@@ -9,4 +9,10 @@ class PicturaMainWindow;
 // numbered marks (one "New Count" state each) shown on the canvas overlay and
 // Clear removes them ("Clear Counts").
 int runHealingChecks(PicturaMainWindow& frame);
+
+// patch_tool (537): the Patch options bar disables Source/Destination under
+// Content-Aware; a drag outside the selection outlines a region; dragging the
+// outline onto clean pixels repairs the region in one "Patch Tool" state and
+// leaves the sampled area alone; a click without a drag records nothing.
+int runPatchChecks(PicturaMainWindow& frame);
 } // namespace pictura

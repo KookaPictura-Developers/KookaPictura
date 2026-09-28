@@ -2371,7 +2371,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::Patch);
+        probe.setActiveTool(pictura::ToolId::ContentAwareMove);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
@@ -3026,7 +3026,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         sendKey(Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
         const bool jPlain = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
         sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
-        const bool jShift = frame.activeTool() == pictura::ToolId::HealingBrush;
+        const bool jHealing = frame.activeTool() == pictura::ToolId::HealingBrush;
+        sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
+        const bool jShift = jHealing && frame.activeTool() == pictura::ToolId::Patch;
         sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
         const bool jWrap = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
         // The Y group (History Brush) is entirely unimplemented: a plain letter

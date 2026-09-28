@@ -112,6 +112,7 @@ public:
     bool selectionEdgesVisible() const { return selectionEdgesVisible_; }
     bool hasSelectionContourForTest() const { return !selectionContours_.isEmpty(); }
     int selectionContourLoopCountForTest() const { return selectionContours_.size(); }
+    const QList<QPolygonF>& selectionContours() const { return selectionContours_; }
 
     // Live selection preview while a tool drags (the rubber band). Drawn with the
     // same animated marching-ants pen as a committed selection, and replaced by

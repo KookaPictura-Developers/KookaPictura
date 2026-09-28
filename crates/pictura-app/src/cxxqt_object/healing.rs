@@ -1,15 +1,17 @@
-//! The healing bridges: Spot Healing Brush and Healing Brush. Free functions
+//! The healing bridges: Spot Healing Brush, Healing Brush, and Patch. Free functions
 //! over a [`PictureView`] (their own bridge, so the `PictureView` declaration
 //! list does not grow). A gesture accumulates a coverage mask
 //! ([`HealStroke`]); `healing_commit` runs the solve on the layer, recomposites,
 //! and records one `"Spot Healing Brush"` / `"Healing Brush"` history state.
+//! `patch_selection` heals through the selection instead of a stroke mask and
+//! records one `"Patch Tool"` state.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
 use super::qobject::PictureView;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use pictura_paint::healing::{HealMode, HealStroke, Transfer};
+use pictura_paint::healing::{patch_layer, HealMode, HealStroke, PatchOptions, Transfer};
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -48,6 +50,21 @@ pub mod ffi {
 
         /// Whether a gesture is active.
         fn healing_active(view: &PictureView) -> bool;
+
+        /// Patch the active pixel layer through the selection after a drag of
+        /// `(dx, dy)`: Source repairs the selection from the dragged-to area,
+        /// Destination applies the selection there, Content-Aware ignores the
+        /// drag and rebuilds the selection from its surroundings. Records one
+        /// "Patch Tool" state; false (no state) without a selection, on a zero
+        /// drag outside Content-Aware, or on a locked / non-raster layer.
+        fn patch_selection(
+            view: Pin<&mut PictureView>,
+            dx: i32,
+            dy: i32,
+            content_aware: bool,
+            destination: bool,
+            transparent: bool,
+        ) -> bool;
     }
 }
 
@@ -140,4 +157,40 @@ fn healing_cancel(mut view: Pin<&mut PictureView>) {
 
 fn healing_active(view: &PictureView) -> bool {
     view.rust().heal_stroke.is_some()
+}
+
+fn patch_selection(
+    mut view: Pin<&mut PictureView>,
+    dx: i32,
+    dy: i32,
+    content_aware: bool,
+    destination: bool,
+    transparent: bool,
+) -> bool {
+    let options = PatchOptions {
+        dx,
+        dy,
+        content_aware,
+        destination,
+        transparent,
+    };
+    let dirty = {
+        let mut rust = view.as_mut().rust_mut();
+        let rust = &mut *rust;
+        let (Some(doc), Some(selection), Some(path)) = (
+            rust.doc.as_mut(),
+            rust.selection.as_ref(),
+            rust.active_layer.as_deref(),
+        ) else {
+            return false;
+        };
+        match patch_layer(doc, path, &selection.data, options) {
+            Ok(Some(dirty)) => dirty,
+            _ => return false,
+        }
+    };
+    view.as_mut().refresh_region(dirty);
+    view.as_mut().record("Patch Tool");
+    view.as_mut().changed();
+    true
 }

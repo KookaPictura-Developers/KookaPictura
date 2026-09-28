@@ -102,6 +102,8 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::SpotHealingBrush:
     case ToolId::HealingBrush:
         return buildHealingPage(id);
+    case ToolId::Patch:
+        return buildPatchPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
@@ -784,6 +786,83 @@ QWidget* OptionsBar::buildCountPage(ToolId id)
         connect(controller_, &ToolController::countChanged, this, [refresh]() { refresh(); });
         refresh();
     }
+
+    layout->addStretch(1);
+    return page;
+}
+
+// CS6's Patch bar, left to right: the selection combine buttons, the Patch
+// mode, the Source/Destination pair, Transparent, and Use Pattern. Source,
+// Destination, and Transparent describe sampling from the drag, which
+// Content-Aware does not do, so they disable together with it.
+// ponytail: no Adaptation or Sample All Layers; Use Pattern is shown disabled.
+QWidget* OptionsBar::buildPatchPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+    addModeButtons(layout, page, true);
+
+    layout->addWidget(new QLabel(QStringLiteral("Patch:"), page));
+    auto* mode = new QComboBox(page);
+    mode->setObjectName(QStringLiteral("optionsPatchMode"));
+    mode->addItem(QStringLiteral("Normal"));
+    mode->addItem(QStringLiteral("Content-Aware"));
+    layout->addWidget(mode);
+
+    auto* direction = new QButtonGroup(page);
+    direction->setExclusive(true);
+    auto* source = new QToolButton(page);
+    source->setObjectName(QStringLiteral("optionsPatchSource"));
+    source->setText(QStringLiteral("Source"));
+    source->setToolTip(QStringLiteral("The selection is the flaw; drag it onto the pixels to "
+                                      "repair it with"));
+    auto* destination = new QToolButton(page);
+    destination->setObjectName(QStringLiteral("optionsPatchDestination"));
+    destination->setText(QStringLiteral("Destination"));
+    destination->setToolTip(QStringLiteral("The selection is good material; drag it onto the "
+                                           "area to repair"));
+    for (QToolButton* button : {source, destination}) {
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        direction->addButton(button);
+        layout->addWidget(button);
+    }
+
+    auto* transparent = new QCheckBox(QStringLiteral("Transparent"), page);
+    transparent->setObjectName(QStringLiteral("optionsPatchTransparent"));
+    transparent->setToolTip(QStringLiteral("Transfer only the source's texture, keeping the "
+                                           "patched area's own colour"));
+    layout->addWidget(transparent);
+
+    auto* usePattern = new QToolButton(page);
+    usePattern->setText(QStringLiteral("Use Pattern"));
+    usePattern->setToolTip(QStringLiteral("Use Pattern: not implemented yet"));
+    usePattern->setEnabled(false);
+    layout->addWidget(usePattern);
+
+    const auto syncEnabled = [source, destination, transparent](bool contentAware) {
+        source->setEnabled(!contentAware);
+        destination->setEnabled(!contentAware);
+        transparent->setEnabled(!contentAware);
+    };
+    if (controller_) {
+        mode->setCurrentIndex(controller_->patchContentAware() ? 1 : 0);
+        (controller_->patchDestination() ? destination : source)->setChecked(true);
+        transparent->setChecked(controller_->patchTransparent());
+        connect(mode, &QComboBox::currentIndexChanged, this, [this, syncEnabled](int index) {
+            controller_->setPatchContentAware(index == 1);
+            syncEnabled(index == 1);
+        });
+        connect(destination, &QToolButton::toggled, this,
+                [this](bool on) { controller_->setPatchDestination(on); });
+        connect(transparent, &QCheckBox::toggled, this,
+                [this](bool on) { controller_->setPatchTransparent(on); });
+    } else {
+        source->setChecked(true);
+    }
+    syncEnabled(mode->currentIndex() == 1);
 
     layout->addStretch(1);
     return page;

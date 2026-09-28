@@ -60,7 +60,7 @@ const ToolInfo kToolTable[] = {
      "Healing Brush: Alt-click a source, then paint to transplant its texture", 7, true, 2,
      22},
     {ToolId::Patch, "patch", "Patch", QLatin1Char('J'), Qt::CrossCursor,
-     "Patch: not implemented yet", 7, false, 12, 12},
+     "Patch: drag to outline a region, then drag the outline to patch", 7, true, 12, 12},
     {ToolId::ContentAwareMove, "contentawaremove", "Content-Aware Move", QLatin1Char('J'),
      Qt::CrossCursor, "Content-Aware Move: not implemented yet", 7, false, 12, 12},
     {ToolId::RedEye, "redeye", "Red Eye", QLatin1Char('J'), Qt::CrossCursor,
@@ -291,7 +291,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::PolygonalLasso, ToolId::MagneticLasso, ToolId::MagicWand, ToolId::QuickSelection, ToolId::Crop,
         ToolId::PerspectiveCrop, ToolId::Slice, ToolId::SliceSelect,
         ToolId::Eyedropper, ToolId::ColorSampler, ToolId::Ruler, ToolId::Note,
-        ToolId::Count, ToolId::SpotHealingBrush, ToolId::HealingBrush,
+        ToolId::Count, ToolId::SpotHealingBrush, ToolId::HealingBrush, ToolId::Patch,
         ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
     };
     return ids;
