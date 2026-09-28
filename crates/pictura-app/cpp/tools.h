@@ -15,6 +15,7 @@
 #include "tool_context.h"
 #include "tool_registry.h"
 
+#include <algorithm>
 #include <functional>
 #include <utility>
 
@@ -118,6 +119,9 @@ const ToolInfo& toolInfo(ToolId id);
 const QList<ToolId>& allToolIds();
 const QList<ToolId>& implementedToolIds();
 bool toolImplemented(ToolId id);
+// The B-group brushes (Brush, Pencil, Color Replacement, Mixer Brush): they
+// share the size ring, the `[` / `]` keys, and the paint cursor policy.
+bool isBrushTool(ToolId id);
 QString selectionModeString(SelectionMode mode);
 
 // Asset base name for a tool ("move", "quickselection"), used for the
@@ -242,6 +246,16 @@ public:
     void setContentAwareMoveExtend(bool on) { contentAwareMoveExtend_ = on; }
     int contentAwareAdaptation() const override { return contentAwareAdaptation_; }
     void setContentAwareAdaptation(int level);
+    int redEyePupil() const override { return redEyePupil_; }
+    void setRedEyePupil(int pupil) { redEyePupil_ = std::clamp(pupil, 0, 100); }
+    int redEyeDarken() const override { return redEyeDarken_; }
+    void setRedEyeDarken(int darken) { redEyeDarken_ = std::clamp(darken, 0, 100); }
+    ColorReplaceOptions colorReplaceOptions() const override { return colorReplace_; }
+    void setColorReplaceOptions(const ColorReplaceOptions& options) { colorReplace_ = options; }
+    MixerOptions mixerOptions() const override { return mixer_; }
+    void setMixerOptions(const MixerOptions& options) { mixer_ = options; }
+    QColor mixerReservoir() const override { return mixerReservoir_; }
+    void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);
     QColor background() const override;
@@ -352,6 +366,8 @@ signals:
     void noteActivated(int index);
     // A Count group or mark changed; the Count options bar re-reads its state.
     void countChanged();
+    // The Mixer Brush's paint changed (a stroke, Load, Clean, or Alt-click).
+    void mixerReservoirChanged(const QColor& color);
 
 private:
     void applyToolPolicy();
@@ -408,6 +424,11 @@ private:
     bool patchTransparent_ = false;
     bool contentAwareMoveExtend_ = false;
     int contentAwareAdaptation_ = 2;
+    int redEyePupil_ = 50;
+    int redEyeDarken_ = 50;
+    ColorReplaceOptions colorReplace_;
+    MixerOptions mixer_;
+    QColor mixerReservoir_{Qt::black};
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

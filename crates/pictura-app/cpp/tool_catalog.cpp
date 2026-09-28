@@ -66,15 +66,18 @@ const ToolInfo kToolTable[] = {
      "Content-Aware Move: drag to outline a region, then drag the outline to move it", 7, true,
      2, 2},
     {ToolId::RedEye, "redeye", "Red Eye", QLatin1Char('J'), Qt::CrossCursor,
-     "Red Eye: not implemented yet", 7, false, 12, 12},
+     "Red Eye: click a red pupil or drag a box over the eye", 7, true, 12, 12},
     {ToolId::Brush, "brush", "Brush", QLatin1Char('B'), Qt::CrossCursor,
      "Brush: drag to paint the foreground colour", 8, true, 2, 22},
     {ToolId::Pencil, "pencil", "Pencil", QLatin1Char('B'), Qt::CrossCursor,
      "Pencil: drag to paint a hard aliased line", 8, true, 2, 22},
     {ToolId::ColorReplacement, "colorreplacement", "Color Replacement", QLatin1Char('B'),
-     Qt::CrossCursor, "Color Replacement: not implemented yet", 8, false, 2, 22},
+     Qt::CrossCursor,
+     "Color Replacement: drag to repaint the sampled colour with the foreground colour", 8,
+     true, 2, 22},
     {ToolId::MixerBrush, "mixerbrush", "Mixer Brush", QLatin1Char('B'), Qt::CrossCursor,
-     "Mixer Brush: not implemented yet", 8, false, 2, 22},
+     "Mixer Brush: drag to paint wet paint, Alt-click to load the brush from the image", 8,
+     true, 2, 22},
     {ToolId::CloneStamp, "clonestamp", "Clone Stamp", QLatin1Char('S'), Qt::CrossCursor,
      "Clone Stamp: not implemented yet", 9, false, 2, 22},
     {ToolId::PatternStamp, "patternstamp", "Pattern Stamp", QLatin1Char('S'), Qt::CrossCursor,
@@ -181,6 +184,12 @@ const ToolInfo& toolInfo(ToolId id)
 
 bool toolImplemented(ToolId id) { return toolInfo(id).implemented; }
 
+bool isBrushTool(ToolId id)
+{
+    return id == ToolId::Brush || id == ToolId::Pencil || id == ToolId::ColorReplacement
+        || id == ToolId::MixerBrush;
+}
+
 QString toolIdName(ToolId id)
 {
     const int index = toolIndex(id);
@@ -244,6 +253,8 @@ QList<ToolHint> toolHintEntries(ToolId id)
                 {QStringLiteral("Alt"), QStringLiteral("Subtract from selection")}};
     case ToolId::Brush:
     case ToolId::Pencil:
+    case ToolId::ColorReplacement:
+    case ToolId::MixerBrush:
         return {{QStringLiteral("["), QStringLiteral("Decrease brush size")},
                 {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
     case ToolId::Move:
@@ -294,8 +305,9 @@ const QList<ToolId>& implementedToolIds()
         ToolId::PerspectiveCrop, ToolId::Slice, ToolId::SliceSelect,
         ToolId::Eyedropper, ToolId::ColorSampler, ToolId::Ruler, ToolId::Note,
         ToolId::Count, ToolId::SpotHealingBrush, ToolId::HealingBrush, ToolId::Patch,
-        ToolId::ContentAwareMove,
-        ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil,
+        ToolId::ContentAwareMove, ToolId::RedEye,
+        ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil, ToolId::ColorReplacement,
+        ToolId::MixerBrush,
     };
     return ids;
 }

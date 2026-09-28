@@ -12,6 +12,28 @@ class PictureView;
 enum class SelectionMode;
 enum class MarqueeStyle;
 
+// The Color Replacement options bar: Mode 0 Hue … 3 Luminosity (2 Color),
+// Sampling 0 Continuous / 1 Once / 2 Background Swatch, Limits
+// 0 Discontiguous / 1 Contiguous / 2 Find Edges, Tolerance 0-100 %.
+struct ColorReplaceOptions {
+    int mode = 2;
+    int sampling = 0;
+    int limits = 1;
+    int tolerance = 30;
+    bool antialias = true;
+};
+
+// The Mixer Brush options bar (all 0-100 %) and its after-stroke toggles.
+// Defaults are photorust's "Dry" preset; the spec leaves CS6's open.
+struct MixerOptions {
+    int wet = 0;
+    int load = 50;
+    int mix = 0;
+    int flow = 100;
+    bool loadAfterStroke = false;
+    bool cleanAfterStroke = false;
+};
+
 // The shared services a tool handler may use, implemented by `ToolController`.
 // Kept minimal on purpose: add accessors only as a migrating tool needs them.
 struct ToolContext {
@@ -46,6 +68,14 @@ struct ToolContext {
     // 0 Very Strict … 4 Very Loose (2 Medium, the default).
     virtual bool contentAwareMoveExtend() const = 0;
     virtual int contentAwareAdaptation() const = 0;
+    // Red Eye: Pupil Size and Darken Amount, 0-100 % (CS6 defaults 50 / 50).
+    virtual int redEyePupil() const = 0;
+    virtual int redEyeDarken() const = 0;
+    virtual ColorReplaceOptions colorReplaceOptions() const = 0;
+    virtual MixerOptions mixerOptions() const = 0;
+    // The paint on the Mixer Brush (alpha 0: clean); it outlives each stroke.
+    virtual QColor mixerReservoir() const = 0;
+    virtual void setMixerReservoir(const QColor& color) = 0;
 
     virtual MarqueeStyle marqueeStyle() const = 0;
     virtual double fixedRatioWidth() const = 0;

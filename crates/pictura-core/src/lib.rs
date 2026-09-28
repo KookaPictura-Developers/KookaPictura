@@ -7,6 +7,7 @@
 mod advanced_blending;
 mod annotations;
 mod crs;
+pub mod nonseparable;
 mod samples;
 mod text_render;
 mod type_tool;

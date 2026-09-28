@@ -21,6 +21,7 @@ mod impl_pictura_raw;
 mod impl_selection;
 mod impl_transform;
 mod magnetic;
+mod paint_tools;
 mod state;
 pub use state::PictureViewRust;
 #[cfg(test)]
@@ -1003,10 +1004,9 @@ pub mod qobject {
         #[qinvokable]
         fn paint_dab(self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool;
 
-        /// Commit the active stroke as one history state ("Brush" or "Pencil"),
-        /// mark dirty, and recomposite. Returns true when the stroke painted
-        /// anything and added history; a stroke that painted nothing leaves the
-        /// document unchanged and returns false.
+        /// Commit the active stroke as one history state labelled by its begin
+        /// call ("Brush", "Pencil", "Color Replacement Tool", …), mark dirty, and
+        /// recomposite. False, leaving the document unchanged, if nothing painted.
         #[qinvokable]
         fn end_paint(self: Pin<&mut Self>) -> bool;
 

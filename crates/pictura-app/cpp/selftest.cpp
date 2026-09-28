@@ -2371,7 +2371,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::RedEye);
+        probe.setActiveTool(pictura::ToolId::CloneStamp);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
@@ -2989,17 +2989,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         bool keysShown = toolsPanelToolbox != nullptr;
         bool keysDisabled = false;
         if (toolsPanelToolbox) {
-            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(8);
+            // The S group (Clone Stamp, Pattern Stamp) still has disabled members.
+            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(9);
             for (QAction* action : actions) {
                 const bool keyShown =
-                    action->shortcut() == QKeySequence(QStringLiteral("B"))
+                    action->shortcut() == QKeySequence(QStringLiteral("S"))
                     && action->isShortcutVisibleInContextMenu();
                 if (!keyShown) {
                     keysShown = false;
                 }
                 if (!action->isEnabled()) {
                     const bool disabledOk =
-                        action->shortcut() == QKeySequence(QStringLiteral("B"))
+                        action->shortcut() == QKeySequence(QStringLiteral("S"))
                         && action->toolTip().contains(QStringLiteral("not implemented yet"));
                     keysDisabled = keysDisabled || disabledOk;
                     if (!disabledOk) {
@@ -3034,7 +3035,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         sendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
         const bool toolsPanelShift = frame.activeTool() == pictura::ToolId::Pencil;
         sendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
-        const bool toolsPanelWrap = frame.activeTool() == pictura::ToolId::Brush;
+        const bool bReplace = frame.activeTool() == pictura::ToolId::ColorReplacement;
+        sendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
+        const bool bMixer = bReplace && frame.activeTool() == pictura::ToolId::MixerBrush;
+        sendKey(Qt::Key_B, Qt::ShiftModifier, QStringLiteral("B"));
+        const bool toolsPanelWrap = bMixer && frame.activeTool() == pictura::ToolId::Brush;
         sendKey(Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
         const bool jPlain = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
         sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
@@ -3042,7 +3047,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
         const bool jPatch = jHealing && frame.activeTool() == pictura::ToolId::Patch;
         sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
-        const bool jShift = jPatch && frame.activeTool() == pictura::ToolId::ContentAwareMove;
+        const bool jMove = jPatch && frame.activeTool() == pictura::ToolId::ContentAwareMove;
+        sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
+        const bool jShift = jMove && frame.activeTool() == pictura::ToolId::RedEye;
         sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
         const bool jWrap = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
         // The Y group (History Brush) is entirely unimplemented: a plain letter

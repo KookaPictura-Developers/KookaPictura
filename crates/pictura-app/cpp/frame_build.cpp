@@ -230,8 +230,7 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     }
 
     auto brushActive = [this]() {
-        return tools_ && (tools_->activeTool() == ToolId::Brush
-                          || tools_->activeTool() == ToolId::Pencil);
+        return tools_ && isBrushTool(tools_->activeTool());
     };
     // With the Magnetic Lasso, `[` / `]` step the detection width instead.
     auto magneticActive = [this]() {

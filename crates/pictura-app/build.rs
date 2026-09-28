@@ -49,6 +49,7 @@ fn main() {
                 "src/cxxqt_object/export.rs",
                 "src/cxxqt_object/healing.rs",
                 "src/cxxqt_object/magnetic.rs",
+                "src/cxxqt_object/paint_tools.rs",
             ])
             .cc_builder(|cc| {
                 cc.include("cpp");

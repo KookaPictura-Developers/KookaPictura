@@ -40,8 +40,11 @@ const ModeButton kModes[] = {
     {SelectionMode::Intersect, "Intersect with selection", "select.mode.intersect"},
 };
 
-NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals,
-                                 const QString& suffix, bool popup, const QString& name)
+} // namespace
+
+NumericFieldConfig OptionsBar::numericConfig(double lo, double hi, double step, int decimals,
+                                             const QString& suffix, bool popup,
+                                             const QString& name)
 {
     NumericFieldConfig config;
     config.minimum = lo;
@@ -53,8 +56,6 @@ NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals
     config.objectName = name;
     return config;
 }
-
-} // namespace
 
 OptionsBar::OptionsBar(ToolController* controller, QWidget* parent)
     : QToolBar(QStringLiteral("Options"), parent)
@@ -106,6 +107,12 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildPatchPage(id);
     case ToolId::ContentAwareMove:
         return buildContentAwareMovePage(id);
+    case ToolId::RedEye:
+        return buildRedEyePage(id);
+    case ToolId::ColorReplacement:
+        return buildColorReplacementPage(id);
+    case ToolId::MixerBrush:
+        return buildMixerBrushPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
