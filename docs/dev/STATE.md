@@ -405,12 +405,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   handler adds/moves/deletes marks in the active group, and the Count options
   bar (`options_bar.cpp`) has the running total, the group dropdown, the eye /
   new-group (name dialog) / delete-group buttons, Clear, the colour swatch, and
-  the marker and label size fields. The canvas overlay
+  the marker and label size fields. The colour swatch opens a full
+  Photoshop-style `ColorPickerDialog` (`color_picker_dialog.{h,cpp}`, ported
+  from photorust): colour field + axis ramp, new/current compare, HSB/RGB/Lab/
+  CMYK/hex fields, and Only Web Colors. The canvas overlay
   (`image_view_annotations.cpp`) draws every visible group's marks as numbered
-  discs in the group's colour and sizes. Covered by the `healing_tools`
+  discs in the group's colour and sizes, the disc growing with the label so a
+  larger Label Size never clips the number. Covered by the `healing_tools`
   self-test (536); guard 98 now probes `Patch`. Ceilings (`ponytail:`): no
-  Measurement Log, automatic counting, or PSD persistence; marks and groups are
-  session document state undone through history.
+  Measurement Log, automatic counting, or PSD persistence; the picker's
+  screen-sampling eyedropper, Add to Swatches, and Color Libraries are not
+  wired; marks and groups are session document state undone through history.
 - **Crop tool box** (change `crop-tool-box`, review on PR #98, ported from
   photorust): the Crop tool places a canvas-sized box with shield, thirds, and
   eight handles; move / ratio-locked resize; Enter, double-click, or Apply
