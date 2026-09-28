@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1747 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1771 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **461 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **467 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2246 passed, 11 skipped, 0 failed**.
+  probes) reports **2276 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -478,6 +478,37 @@ Snapshot for resuming after a context break. Update after each milestone.
   arrow cursor with the tip as hotspot. The J cycle ends with Content-Aware
   Move (self-test code 538; guard 98 now probes Red Eye). Ceilings
   (`ponytail:`): no Sample All Layers; the solve runs on the GUI thread.
+- **Red Eye** (change `red-eye-tool`, issue #14, ported from photorust):
+  `pictura_paint::healing::red_eye_layer` takes the red out of pixels inside a
+  document box where red dominates green and blue (Pupil Size widens the
+  ratio), setting red to the green/blue level and darkening by Darken Amount;
+  skin is left alone. `red_eye` (`cxxqt_object/healing.rs`) records one "Red
+  Eye Tool" state; `tool_redeye.cpp` takes a dragged box (a click gets a 24 px
+  box); the bar has Pupil Size and Darken Amount (50 / 50). The J cycle ends
+  Content-Aware Move → Red Eye (self-test code 539; guard 98 now probes Clone
+  Stamp). Behavioural parity only: CS6's detector is closed.
+- **Color Replacement and Mixer Brush** (changes `color-replacement-tool` and
+  `mixer-brush-tool`, issues #15 and #16, ported from photorust): the B group is
+  complete. `pictura_paint::Stroke` gains `StrokeKind` / `begin_kind`: a
+  `Replace` or `Mixer` stroke edits the layer at every dab (each reads what the
+  last left) on the Brush's live-stroke path, so preview, commit, and cancel
+  are shared. `pictura_paint::replace` matches per channel within Tolerance
+  (anti-aliased taper), samples Continuous / Once / Background Swatch, limits
+  Discontiguous / Contiguous / Find Edges (a per-dab flood; Find Edges stops at
+  a luminance step), and blends by Hue / Saturation / Color / Luminosity, whose
+  W3C helpers moved from `pictura-render` to `pictura_core::nonseparable`.
+  `pictura_paint::mixer` mixes a reservoir with the tip-weighted pickup by
+  Wet / Load / Mix / Flow, the load drying out and the reservoir absorbing what
+  a wet brush crosses. `cxxqt_object/paint_tools.rs` begins each stroke ("Color
+  Replacement Tool", "Mixer Brush Tool"); the Mixer's paint lives on the
+  controller (Alt-click or a foreground choice loads it; Load / Clean after
+  stroke). Bars (`options_bar_paint.cpp`): Color Replacement Mode, Sampling,
+  Limits, Tolerance 30 %, Anti-alias; Mixer load swatch (Load / Clean Brush),
+  the after-stroke toggles, presets, Wet / Load / Mix / Flow. The size ring and
+  `[` / `]` cover all four B brushes; `shift_plain` (117) asserts the B cycle,
+  `keys_shown` (116) now probes the S group (self-test codes 540, 541).
+  Ceilings (`ponytail:`): no Sample All Layers or Load Solid Colors Only; the
+  mixing rates and preset values are photorust's (CS6's are unstated).
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on

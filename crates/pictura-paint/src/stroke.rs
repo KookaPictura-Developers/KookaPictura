@@ -1,5 +1,8 @@
 //! Stroke engine: dab coverage accumulation and per-pixel compositing.
 
+use crate::healing::RgbaImage;
+use crate::mixer::{MixerBrush, MixerOptions};
+use crate::replace::{ColorReplacer, ReplaceOptions};
 use crate::spacing::DabPlacer;
 use crate::{tip_coverage, PaintMode, Rgba, StrokeConfig, StrokeSample};
 use pictura_core::{layer_pixel_locked, layer_transparency_locked, Document, Layer, PsdRect};
@@ -13,6 +16,33 @@ pub enum PaintError {
     NoRasterLayer,
     /// The target layer's pixel or transparency lock refuses the stroke.
     Locked,
+}
+
+/// What a stroke's dabs do. `Paint` accumulates coverage and composites the
+/// paint colour (Brush, Pencil); the others read the layer at every dab and
+/// write into it directly.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StrokeKind {
+    Paint,
+    /// Color Replacement: `cfg.color` replaces what matches the sample;
+    /// `cfg.background` is the Background Swatch reference.
+    Replace(ReplaceOptions),
+    /// Mixer Brush, starting with `reservoir` on the brush.
+    Mixer {
+        options: MixerOptions,
+        reservoir: Rgba,
+    },
+}
+
+enum DabEngine {
+    Replace(ColorReplacer),
+    Mixer(MixerBrush),
+}
+
+/// A per-dab engine and the layer pixels it edits in place.
+struct PerDab {
+    engine: DabEngine,
+    pixels: RgbaImage,
 }
 
 pub struct StrokeOutcome {
@@ -36,10 +66,21 @@ pub struct Stroke {
     rng: u64,
     started: bool,
     painted: bool,
+    per_dab: Option<PerDab>,
 }
 
 impl Stroke {
     pub fn begin_at(doc: &Document, path: &str, cfg: StrokeConfig) -> Result<Stroke, PaintError> {
+        Stroke::begin_kind(doc, path, cfg, StrokeKind::Paint)
+    }
+
+    /// Start a stroke whose dabs behave as `kind`.
+    pub fn begin_kind(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        kind: StrokeKind,
+    ) -> Result<Stroke, PaintError> {
         if doc.layers.is_empty() {
             return Err(PaintError::EmptyDocument);
         }
@@ -61,6 +102,22 @@ impl Stroke {
         // ponytail: layer-sized coverage buffer; move to tiled/sparse coverage only if huge layers matter.
         let scratch = vec![0u8; w * h];
         let applied = vec![0u8; w * h];
+        let per_dab =
+            match kind {
+                StrokeKind::Paint => None,
+                StrokeKind::Replace(options) => Some(DabEngine::Replace(ColorReplacer::new(
+                    w * h,
+                    options,
+                    cfg.background,
+                ))),
+                StrokeKind::Mixer { options, reservoir } => Some(DabEngine::Mixer(
+                    MixerBrush::new(options, reservoir, layer_transparency_locked(target)),
+                )),
+            }
+            .map(|engine| PerDab {
+                engine,
+                pixels: layer_rgba(target),
+            });
         Ok(Stroke {
             base: doc.clone(),
             working: doc.clone(),
@@ -76,6 +133,7 @@ impl Stroke {
             rng: STROKE_SEED,
             started: false,
             painted: false,
+            per_dab,
         })
     }
 
@@ -100,6 +158,9 @@ impl Stroke {
 
         let mut dabs = Vec::new();
         self.placer.feed(sx, sy, &mut dabs);
+        if self.per_dab.is_some() {
+            return self.apply_per_dab(&dabs);
+        }
 
         let radius = cfg.diameter as f32 * 0.5;
         let flow = cfg.flow as f32 / 100.0;
@@ -138,6 +199,54 @@ impl Stroke {
 
     pub fn document(&self) -> &Document {
         &self.working
+    }
+
+    /// The paint on a Mixer Brush after the dabs so far; `None` for other kinds.
+    pub fn mixer_reservoir(&self) -> Option<Rgba> {
+        match &self.per_dab {
+            Some(PerDab {
+                engine: DabEngine::Mixer(mixer),
+                ..
+            }) => Some(mixer.reservoir()),
+            _ => None,
+        }
+    }
+
+    fn apply_per_dab(&mut self, dabs: &[(f32, f32)]) -> bool {
+        let Some(per) = self.per_dab.as_mut() else {
+            return false;
+        };
+        let cfg = self.cfg;
+        let mut changed = None;
+        for &(x, y) in dabs {
+            let dirty = match &mut per.engine {
+                DabEngine::Replace(replacer) => {
+                    replacer.dab(&mut per.pixels, &cfg, x, y, cfg.color)
+                }
+                DabEngine::Mixer(mixer) => mixer.dab(&mut per.pixels, &cfg, x, y),
+            };
+            if let Some(d) = dirty {
+                changed = Some(changed.map_or(d, |c: PsdRect| union_rect(c, d)));
+            }
+        }
+        let Some(rect) = changed else {
+            return false;
+        };
+        let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) else {
+            return false;
+        };
+        let w = per.pixels.width;
+        for y in rect.top..rect.bottom {
+            for x in rect.left..rect.right {
+                let i = (y * w + x) as usize;
+                let [r, g, b, a] = per.pixels.data[i];
+                write_pixel(layer, i, PaintMode::Normal, (r, g, b, a));
+            }
+        }
+        self.expand_dirty(rect.left, rect.top);
+        self.expand_dirty(rect.right - 1, rect.bottom - 1);
+        self.painted = true;
+        true
     }
 
     /// The document-space rectangle the dabs placed since the last call changed,
@@ -315,6 +424,31 @@ fn behind_pixel(dr: u8, dg: u8, db: u8, da: u8, s: &Rgba, a: f32) -> (u8, u8, u8
         mix(s.b, db),
         to_u8(out_a * 255.0),
     )
+}
+
+fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
+    PsdRect {
+        top: a.top.min(b.top),
+        left: a.left.min(b.left),
+        bottom: a.bottom.max(b.bottom),
+        right: a.right.max(b.right),
+    }
+}
+
+/// The layer's pixels as straight RGBA; a layer without alpha is opaque.
+fn layer_rgba(layer: &Layer) -> RgbaImage {
+    let (w, h) = (layer.rect.width().max(0), layer.rect.height().max(0));
+    let has_alpha = channel_data(layer, -1).is_some();
+    RgbaImage {
+        width: w,
+        height: h,
+        data: (0..(w * h) as usize)
+            .map(|i| {
+                let (r, g, b, a) = read_pixel(layer, i);
+                [r, g, b, if has_alpha { a } else { 255 }]
+            })
+            .collect(),
+    }
 }
 
 fn to_u8(v: f32) -> u8 {
@@ -873,5 +1007,81 @@ mod tests {
             ),
             (255, 0, 0, 255)
         );
+    }
+
+    fn run(doc: &Document, cfg: StrokeConfig, kind: StrokeKind, xs: &[f32]) -> Stroke {
+        let mut stroke = Stroke::begin_kind(doc, "0", cfg, kind).expect("begin");
+        for &x in xs {
+            stroke.sample(sample(x, 16.0));
+        }
+        stroke
+    }
+
+    #[test]
+    fn a_replace_stroke_recolours_the_layer_live_and_commits_once() {
+        let doc = layer_doc(32, 32, (120, 120, 120, 255));
+        let cfg = StrokeConfig {
+            color: Rgba {
+                r: 220,
+                g: 30,
+                b: 30,
+                a: 255,
+            },
+            diameter: 10,
+            ..StrokeConfig::default()
+        };
+        let kind = StrokeKind::Replace(ReplaceOptions::default());
+        let mut stroke = run(&doc, cfg, kind, &[8.0, 24.0]);
+        let i = 16 * 32 + 16;
+        let live = (chan(stroke.document(), 0, i), chan(stroke.document(), 1, i));
+        assert!(
+            live.0 > live.1 + 20,
+            "the grey was not recoloured: {live:?}"
+        );
+        assert!(stroke.take_dirty().is_some());
+        assert_eq!(stroke.mixer_reservoir(), None);
+        let outcome = stroke.finish().expect("painted");
+        assert_eq!(chan(&outcome.document, 0, i), live.0);
+        assert_eq!(chan(&outcome.document, -1, i), 255);
+        assert_eq!(chan(&doc, 0, i), 120, "the base document changed");
+    }
+
+    #[test]
+    fn a_mixer_stroke_smears_and_reports_its_reservoir() {
+        let mut doc = layer_doc(64, 32, (255, 255, 255, 255));
+        for y in 0..32 {
+            for x in 0..20 {
+                let i = y * 64 + x;
+                for id in 0..3 {
+                    channel_data_mut(&mut doc.layers[0], id).unwrap()[i] = 0;
+                }
+            }
+        }
+        let cfg = StrokeConfig {
+            diameter: 10,
+            spacing: SpacingMode::Fixed(25),
+            ..StrokeConfig::default()
+        };
+        let kind = StrokeKind::Mixer {
+            options: MixerOptions {
+                wet: 1.0,
+                load: 1.0,
+                mix: 1.0,
+                flow: 1.0,
+            },
+            reservoir: Rgba {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255,
+            },
+        };
+        let stroke = run(&doc, cfg, kind, &[10.0, 40.0]);
+        assert!(
+            chan(stroke.document(), 0, 16 * 64 + 26) < 250,
+            "nothing was dragged"
+        );
+        let carried = stroke.mixer_reservoir().expect("a mixer reservoir");
+        assert!(carried.r < 255, "the reservoir picked nothing up");
     }
 }

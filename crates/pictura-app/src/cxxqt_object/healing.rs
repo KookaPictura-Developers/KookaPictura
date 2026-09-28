@@ -1,20 +1,22 @@
-//! The healing bridges: Spot Healing Brush, Healing Brush, Patch, and
-//! Content-Aware Move. Free functions
+//! The healing bridges: Spot Healing Brush, Healing Brush, Patch,
+//! Content-Aware Move, and Red Eye. Free functions
 //! over a [`PictureView`] (their own bridge, so the `PictureView` declaration
 //! list does not grow). A gesture accumulates a coverage mask
 //! ([`HealStroke`]); `healing_commit` runs the solve on the layer, recomposites,
 //! and records one `"Spot Healing Brush"` / `"Healing Brush"` history state.
 //! `patch_selection` heals through the selection instead of a stroke mask and
 //! records one `"Patch Tool"` state; `content_aware_move` likewise records one
-//! `"Content-Aware Move"` state.
+//! `"Content-Aware Move"` state, and `red_eye` one `"Red Eye Tool"` state.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
 use super::qobject::PictureView;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
+use pictura_core::PsdRect;
 use pictura_paint::healing::{
-    move_layer, patch_layer, Adaptation, HealMode, HealStroke, MoveOptions, PatchOptions, Transfer,
+    move_layer, patch_layer, red_eye_layer, Adaptation, HealMode, HealStroke, MoveOptions,
+    PatchOptions, Transfer,
 };
 
 #[cxx_qt::bridge]
@@ -82,6 +84,21 @@ pub mod ffi {
             dy: i32,
             extend: bool,
             adaptation: i32,
+        ) -> bool;
+
+        /// Neutralise red-eye on the active pixel layer inside the document
+        /// box `(x, y, width, height)`. `pupil` is Pupil Size and `darken`
+        /// Darken Amount, both 0–100. Records one "Red Eye Tool" state; false
+        /// (no state) when the box holds no red or the layer is locked or not
+        /// a pixel layer.
+        fn red_eye(
+            view: Pin<&mut PictureView>,
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+            pupil: i32,
+            darken: i32,
         ) -> bool;
     }
 }
@@ -246,6 +263,39 @@ fn content_aware_move(
     };
     view.as_mut().refresh_region(dirty);
     view.as_mut().record("Content-Aware Move");
+    view.as_mut().changed();
+    true
+}
+
+fn red_eye(
+    mut view: Pin<&mut PictureView>,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    pupil: i32,
+    darken: i32,
+) -> bool {
+    let rect = PsdRect {
+        top: y,
+        left: x,
+        bottom: y + height.max(0),
+        right: x + width.max(0),
+    };
+    let dirty = {
+        let mut rust = view.as_mut().rust_mut();
+        let rust = &mut *rust;
+        let (Some(doc), Some(path)) = (rust.doc.as_mut(), rust.active_layer.as_deref()) else {
+            return false;
+        };
+        let (pupil, darken) = (pupil.clamp(0, 100) as u32, darken.clamp(0, 100) as u32);
+        match red_eye_layer(doc, path, rect, pupil, darken) {
+            Ok(Some(dirty)) => dirty,
+            _ => return false,
+        }
+    };
+    view.as_mut().refresh_region(dirty);
+    view.as_mut().record("Red Eye Tool");
     view.as_mut().changed();
     true
 }
