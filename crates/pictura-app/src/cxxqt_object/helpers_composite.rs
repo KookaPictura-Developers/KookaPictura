@@ -435,9 +435,7 @@ pub(super) fn sample_planar_argb(buffer: &PixelBuffer, x: i32, y: i32) -> u32 {
 }
 /// Convert a planar 8-bit buffer (1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA)
 /// to interleaved RGBA8888. Gray replicates across RGB; RGB gets opaque alpha.
-pub(super) fn buffer_to_image(buffer: &PixelBuffer) -> QImage {
-    let width = buffer.width as i32;
-    let height = buffer.height as i32;
+pub(super) fn buffer_to_rgba_bytes(buffer: &PixelBuffer) -> Vec<u8> {
     let plane = buffer.width as usize * buffer.height as usize;
     let channels = buffer.channels as usize;
 
@@ -465,6 +463,13 @@ pub(super) fn buffer_to_image(buffer: &PixelBuffer) -> QImage {
         let o = i * 4;
         rgba[o..o + 4].copy_from_slice(&[r, g, b, a]);
     }
+    rgba
+}
+/// Convert a planar 8-bit buffer to an `RGBA8888` `QImage`.
+pub(super) fn buffer_to_image(buffer: &PixelBuffer) -> QImage {
+    let width = buffer.width as i32;
+    let height = buffer.height as i32;
+    let rgba = buffer_to_rgba_bytes(buffer);
 
     // SAFETY: `rgba` is exactly width*height RGBA8888 bytes, tightly packed.
     unsafe { QImage::from_raw_bytes(rgba, width, height, QImageFormat::Format_RGBA8888) }

@@ -102,11 +102,16 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     setCentralWidget(centerSplitter_);
     setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
 
+    // Double-clicking the empty workspace (no documents open) opens the Open
+    // dialog. The blank pane is the tab widget's internal stacked widget.
+    installWorkspaceOpenGesture();
+
     registry_ = new CommandRegistry(this);
     addDefaultCommands(*registry_);
 
     const SessionState state = pictura::loadSession();
     recent_ = state.recent;
+    setFileDialogRecentPaths(recent_);
     gpuCompute_ = state.gpuCompute;
     colorPolicy_ = state.colorPolicy;
     useShiftKeyForToolSwitch_ = state.useShiftKeyForToolSwitch;
@@ -493,11 +498,18 @@ bool PicturaMainWindow::isNativeDocumentPath(const QString& path)
     return suffix == QStringLiteral("psd") || suffix == QStringLiteral("psb");
 }
 
+bool PicturaMainWindow::openDocumentAtPath(const QString& path)
+{
+    return isNativeDocumentPath(path) ? openPath(path) : openImagePath(path);
+}
+
 bool PicturaMainWindow::openAsSmartObjectPath(const QString& path)
 {
     auto* view = new PictureView(this);
     if (!view->open_as_smart_object(path)) {
         delete view;
+        statusBar()->showMessage(tr("Open As Smart Object: %1 is not a supported image")
+                                     .arg(QFileInfo(path).fileName()));
         return false;
     }
     const int index = addDocument(view, QString());
@@ -559,15 +571,9 @@ bool PicturaMainWindow::saveActive()
         return true;
     }
     QString path = docs_.at(index).path;
-    if (path.isEmpty()) {
-        path = QFileDialog::getSaveFileName(this, tr("Save As"), QString(),
-                                            QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
-        if (path.isEmpty()) {
-            return false;
-        }
-        if (QFileInfo(path).suffix().isEmpty()) {
-            path += QStringLiteral(".psd");
-        }
+    if (path.isEmpty()
+        || savePathNeedsFormatDialog(path, view, isNativeDocumentPath(path))) {
+        return saveAsWithDialog();
     }
     return saveActiveAs(path);
 }
@@ -591,7 +597,14 @@ bool PicturaMainWindow::revertActive()
     const int index = activeDocumentIndex();
     PictureView* view = viewAt(index);
     const QString path = documentPath(index);
-    if (!view || path.isEmpty() || !view->open(path)) {
+    if (!view || path.isEmpty()) {
+        return false;
+    }
+    // Reload in place: a raster path re-imports through the Qt edge, a PSD/PSB
+    // path through the native reader.
+    const bool reloaded =
+        isNativeDocumentPath(path) ? view->open(path) : view->open_image(path);
+    if (!reloaded) {
         return false;
     }
     updateTabTitle(index);
@@ -673,8 +686,9 @@ void PicturaMainWindow::showFileInfo()
                           view->iptc_rows(), view->xmp_packet(), this);
     dialog.onExportTemplate = [this, &dialog, view] {
         const QString filter = QStringLiteral("XMP files (*.xmp)");
-        QString dest = QFileDialog::getSaveFileName(this, tr("Export Metadata Template"),
-                                                    QString(), filter);
+        QString dest = getSaveFileName(this, tr("Export Metadata Template"),
+                                       documentDirectory(activeFilePath()),
+                                       {filter}, nullptr);
         if (dest.isEmpty()) {
             return;
         }
@@ -690,7 +704,8 @@ void PicturaMainWindow::showFileInfo()
     dialog.onApplyTemplate = [this, &dialog, view](int mode) {
         const QString filter = QStringLiteral("XMP files (*.xmp)");
         const QString path =
-            QFileDialog::getOpenFileName(&dialog, tr("Apply Metadata Template"), QString(), filter);
+            getOpenFileName(&dialog, tr("Apply Metadata Template"),
+                            documentDirectory(activeFilePath()), {filter});
         if (path.isEmpty()) {
             return;
         }
@@ -738,18 +753,12 @@ void PicturaMainWindow::showColorSettings()
 
 void PicturaMainWindow::showOpenDialog()
 {
-    const QString filter = QStringLiteral(
-        "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff *.webp);;"
-        "PSD/PSB documents (*.psd *.psb);;All files (*)");
-    const QString path = QFileDialog::getOpenFileName(this, tr("Open"), QString(), filter);
+    const QString path =
+        getOpenFileName(this, tr("Open"), documentDirectory(activeFilePath()), openFileFilters());
     if (path.isEmpty()) {
         return;
     }
-    if (isNativeDocumentPath(path)) {
-        openPath(path);
-    } else {
-        openImagePath(path);
-    }
+    openDocumentAtPath(path);
 }
 
 void PicturaMainWindow::setBrightnessLevel(int level)

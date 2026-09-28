@@ -171,6 +171,9 @@ public:
     QString activeFilePath() const;
     QString activeDocumentName() const;
     bool isActiveDirty() const;
+    // True when no document is open, so a double-click on the empty workspace
+    // opens the Open dialog.
+    bool workspaceOpenArmed() const { return docs_.isEmpty(); }
 
     // Takes ownership of `view` and adds it as a document tab.
     int addDocument(PictureView* view, const QString& path);
@@ -178,6 +181,8 @@ public:
                      int depth, const QString& background);
     bool openPath(const QString& path);
     bool openImagePath(const QString& path);
+    // Route `path` to the PSD/PSB reader or the Qt raster import by suffix.
+    bool openDocumentAtPath(const QString& path);
     // True when `path`'s suffix routes to the native PSD/PSB reader rather than
     // the Qt image decode edge.
     static bool isNativeDocumentPath(const QString& path);
@@ -194,6 +199,10 @@ public:
     void selectLayerPath(const QString& path);
     bool saveActive();
     bool saveActiveAs(const QString& path);
+    // Prompt for a Save As path with the format-aware filters (preselecting the
+    // active document's source format) and write through `saveActiveAs`. Warns
+    // before flattening a layered document into a raster format.
+    bool saveAsWithDialog();
     bool revertActive();
     bool closeDocument(int index, bool interactive);
     // The recent-files list, most recent first; setting it persists it.
@@ -216,6 +225,7 @@ protected:
     void closeEvent(QCloseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     struct DocEntry {
@@ -244,6 +254,9 @@ private:
     void buildPanels();
     void buildTools(int toolsColumns, bool useShiftKeyForToolSwitch);
     void buildStatusBar();
+    // Filter the tab pane so a double-click on the empty workspace (no document
+    // open) opens the Open dialog.
+    void installWorkspaceOpenGesture();
     void registerHandlers();
     void registerSelectHandlers();
     void registerEditHandlers();

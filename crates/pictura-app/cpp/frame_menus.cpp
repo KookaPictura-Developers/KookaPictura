@@ -51,14 +51,48 @@ void PicturaMainWindow::buildMenus()
     }
 }
 
+bool PicturaMainWindow::saveAsWithDialog()
+{
+    PictureView* view = activeView();
+    if (!view || !view->has_document()) {
+        return false;
+    }
+    const QStringList& filters = saveFileFilters();
+    const int sourceIndex = defaultSaveFilterIndex(view);
+    QString selected = filters.at(sourceIndex);
+    QString path = getSaveFileName(this, tr("Save As"), activeFilePath(), filters, &selected);
+    if (path.isEmpty()) {
+        return false;
+    }
+    const int chosen = filters.indexOf(selected);
+    // The trailing "All Formats" entry names no single format, so it falls back
+    // to the document's smart default for the appended extension.
+    int filterIndex = chosen >= 0 && chosen < filters.size() - 1 ? chosen : sourceIndex;
+    path = lowercasedImageSuffix(path);
+    if (QFileInfo(path).suffix().isEmpty()) {
+        path += defaultSuffixForFilter(filterIndex);
+    }
+    if (saveAsNeedsFeatureWarning(path, view)) {
+        const auto choice = QMessageBox::warning(
+            this, tr("Save As"),
+            tr("The chosen format cannot hold all of the document's features. "
+               "The flattened composite will be written."),
+            QMessageBox::Save | QMessageBox::Cancel);
+        if (choice != QMessageBox::Save) {
+            return false;
+        }
+    }
+    return saveActiveAs(path);
+}
+
 void PicturaMainWindow::registerHandlers()
 {
     registry_->setHandler(command_ids::FileNew, [this]() { showNewDocumentDialog(); });
     registry_->setHandler(command_ids::FileOpen, [this]() { showOpenDialog(); });
     registry_->setHandler(command_ids::FileOpenAsSmartObject, [this]() {
-        const QString path = QFileDialog::getOpenFileName(
-            this, tr("Open As Smart Object"), QString(),
-            QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
+        const QString path = getOpenFileName(this, tr("Open As Smart Object"),
+                                             documentDirectory(activeFilePath()),
+                                             openFileFilters());
         if (!path.isEmpty()) {
             openAsSmartObjectPath(path);
         }
@@ -68,10 +102,8 @@ void PicturaMainWindow::registerHandlers()
         if (!view) {
             return;
         }
-        const QString filter = QStringLiteral(
-            "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff *.webp);;"
-            "PSD/PSB documents (*.psd *.psb);;All files (*)");
-        const QString path = QFileDialog::getOpenFileName(this, tr("Place"), QString(), filter);
+        const QString path = getOpenFileName(this, tr("Place"),
+                                             documentDirectory(activeFilePath()), openFileFilters());
         if (path.isEmpty()) {
             return;
         }
@@ -88,17 +120,11 @@ void PicturaMainWindow::registerHandlers()
     registry_->setHandler(command_ids::FileInfo, [this]() { showFileInfo(); });
 
     registry_->setHandler(command_ids::FileSave, [this]() { saveActive(); });
-    registry_->setHandler(command_ids::FileSaveAs, [this]() {
-        QString path = QFileDialog::getSaveFileName(this, tr("Save As"), activeFilePath(),
-                                                    QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
-        if (path.isEmpty()) {
-            return;
-        }
-        if (QFileInfo(path).suffix().isEmpty()) {
-            path += QStringLiteral(".psd");
-        }
-        saveActiveAs(path);
-    });
+    registry_->setHandler(command_ids::FileSaveAs, [this]() { saveAsWithDialog(); });
+    registry_->setHandler(command_ids::FileExportAs,
+                          [this]() { exportAsFromView(this, activeView()); });
+    registry_->setHandler(command_ids::FileQuickExportPng,
+                          [this]() { quickExportPngFromView(this, activeView()); });
     registry_->setHandler(command_ids::FileRevert, [this]() {
         const int index = activeDocumentIndex();
         if (index < 0 || documentPath(index).isEmpty()) {
@@ -140,7 +166,8 @@ void PicturaMainWindow::registerHandlers()
     });
 
     auto hasDocument = [this]() { return documentCount() > 0; };
-    for (const char* id : {command_ids::FileSave, command_ids::FileSaveAs, command_ids::FileClose,
+    for (const char* id : {command_ids::FileSave, command_ids::FileSaveAs, command_ids::FileExportAs,
+                           command_ids::FileQuickExportPng, command_ids::FileClose,
                            command_ids::FileCloseAll, command_ids::FilePlace,
                            command_ids::FileInfo}) {
         registry_->setEnabledProvider(id, hasDocument);
@@ -801,9 +828,10 @@ void PicturaMainWindow::registerHandlers()
                               if (!view || path.isEmpty()) {
                                   return;
                               }
-                              const QString file = QFileDialog::getOpenFileName(
-                                  this, tr("Replace Contents"), QString(),
-                                  QStringLiteral("PSD/PSB documents (*.psd *.psb)"));
+                              const QString file = getOpenFileName(
+                                  this, tr("Replace Contents"),
+                                  documentDirectory(activeFilePath()),
+                                  {QStringLiteral("Photoshop (*.PSD *.PSB)")});
                               if (!file.isEmpty()
                                   && view->replace_smart_object_contents(path, file)) {
                                   refresh();
@@ -831,9 +859,9 @@ void PicturaMainWindow::registerHandlers()
                               if (!view || path.isEmpty()) {
                                   return;
                               }
-                              QString dest = QFileDialog::getSaveFileName(
+                              QString dest = getSaveFileName(
                                   this, tr("Export Contents"), activeFilePath(),
-                                  QStringLiteral("PSD documents (*.psd)"));
+                                  {QStringLiteral("Photoshop (*.PSD)")}, nullptr);
                               if (dest.isEmpty()) {
                                   return;
                               }

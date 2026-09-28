@@ -1,10 +1,16 @@
 #pragma once
 
 #include <QtCore/QString>
+#include <QtCore/QStringList>
+#include <QtCore/QUrl>
+#include <QtCore/QList>
 
+class QComboBox;
 class QWidget;
 
 namespace pictura {
+
+class PictureView;
 
 enum class UnsavedChoice { Save, Discard, Cancel };
 
@@ -16,5 +22,72 @@ UnsavedChoice askUnsaved(QWidget* parent, const QString& documentName);
 // returns the configured choice. Defaults: interactive true, Discard.
 void setUnsavedPromptInteractive(bool interactive);
 void setNonInteractiveUnsavedChoice(UnsavedChoice choice);
+
+// Name filters shared by the Open/Save/Place/Open As Smart Object dialogs. One
+// filter per format; patterns are space-separated (Qt splits on spaces, so a
+// comma would become part of the pattern), uppercase for display.
+const QStringList& saveFileFilters();
+const QStringList& openFileFilters();
+
+// Places shown in the file dialogs' sidebar: root, mounted volumes, the XDG
+// folders, KDE/GTK bookmark directories, and the application's recent
+// locations. Only directories Qt can browse; KIO places (trash:/, remote:/,
+// recentlyused:/) are not representable.
+QList<QUrl> fileDialogPlaces();
+// Recent files whose parent directory is offered as a recent location.
+void setFileDialogRecentPaths(const QStringList& paths);
+// True when the app runs inside a sandbox (Flatpak/Snap) or the override is
+// set, so the file dialogs hand off to the platform/portal chooser instead of
+// the built-in dialog.
+bool usesPortalFileDialog();
+
+// Index into saveFileFilters(): PSD unless the document is a single
+// pixel/background layer, in which case its remembered source format.
+int defaultSaveFilterIndex(PictureView* view);
+// True when the document holds content a flat raster format cannot represent
+// (more than one layer, a group, an adjustment, or a type layer).
+bool documentRequiresLayers(PictureView* view);
+// True when a plain Save to `path` cannot represent the document and must fall
+// back to the format-aware Save As dialog: a raster path on a document that
+// needs layers. `pathIsNative` is true for a PSD/PSB path.
+bool savePathNeedsFormatDialog(const QString& path, PictureView* view, bool pathIsNative);
+// True when saving to `path` flattens features a flat raster format cannot
+// hold -- a raster extension on a document that needs layers.
+bool saveAsNeedsFeatureWarning(const QString& path, PictureView* view);
+// True for a flat raster extension (png/jpg/jpeg/jpe/tif/tiff/webp/bmp).
+bool isRasterImageSuffix(const QString& suffix);
+// Lowercase suffix appended when the chosen path has none.
+QString defaultSuffixForFilter(int filterIndex);
+// Lowercase a known image extension (Qt rewrites it to the filter's uppercase
+// pattern when the type changes); leave anything else untouched.
+QString lowercasedImageSuffix(const QString& path);
+
+// Qt (non-native) save/open dialogs whose "File type" combo is non-editable and
+// supports rolling prefix type-ahead. Return the chosen path (empty = cancel)
+// and set `selectedFilter` to the chosen filter.
+QString getSaveFileName(QWidget* parent, const QString& caption, const QString& dir,
+                        const QStringList& filters, QString* selectedFilter);
+QString getOpenFileName(QWidget* parent, const QString& caption, const QString& dir,
+                        const QStringList& filters, QString* selectedFilter = nullptr);
+
+// Start folder for a dialog opened without an explicit directory. Qt persists
+// its own "last visited" folder but reconstructs it as a path from a file://
+// URL, so an empty-dir dialog would reset to the working directory on restart;
+// this reads the same key with the correct conversion.
+QString rememberedFileDialogDirectory();
+// The folder an empty-dir dialog should start in: the remembered folder, or the
+// user's home directory on first run / when the remembered one is gone.
+QString defaultFileDialogDirectory();
+// Pure conversion behind the above, exposed for tests: accept a stored
+// FileDialog/lastVisited value (a file URL or a plain path) and return the
+// folder only when it exists.
+QString dialogDirectoryFromStored(const QString& stored);
+// Folder holding a document's file, for the "start in the current document's
+// folder" tier. Empty document path yields empty so the caller can fall back.
+QString documentDirectory(const QString& documentPath);
+
+// Install rolling type-ahead on a non-editable combo (also used for the Export
+// As "Format" combo, and by tests).
+void installRollingTypeAhead(QComboBox* combo);
 
 } // namespace pictura

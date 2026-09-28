@@ -50,6 +50,7 @@ int pictura::runWorkspaceInputChecks(pictura::PicturaMainWindow& frame)
         return pictura::selfTest().fail(372, "workspace input fixture");
     }
     const int doc = frame.activeDocumentIndex();
+    const bool armedWithDoc = frame.workspaceOpenArmed();
     frame.resize(800, 600);
     QApplication::processEvents();
     canvas->actualPixels();
@@ -217,5 +218,15 @@ int pictura::runWorkspaceInputChecks(pictura::PicturaMainWindow& frame)
 
     frame.setActiveTool(pictura::ToolId::Move);
     frame.closeDocument(doc, false);
+    // ws_empty_open (533): the empty-workspace Open gesture is disarmed while
+    // any document is open, so a canvas double-click is never hijacked into the
+    // Open dialog. (The positive path opens a modal file dialog and is not
+    // exercised headlessly.)
+    const bool disarmedWithDoc = !armedWithDoc && frame.documentCount() > 0;
+    ST_BEGIN("ws_empty_open");
+    ST_PASS("ws_empty_open with_doc=%d docs=%d", armedWithDoc ? 1 : 0, frame.documentCount());
+    if (!disarmedWithDoc) {
+        return pictura::selfTest().fail(533, "an open document must disarm the workspace open gesture");
+    }
     return 0;
 }

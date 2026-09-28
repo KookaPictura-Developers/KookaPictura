@@ -1,23 +1,34 @@
 #include "selftest_session.h"
 #include "selftest_report.h"
 
+#include "export_as_dialog.h"
+#include "commands.h"
+#include "dialogs.h"
 #include "frame.h"
 #include "panels/panel_column.h"
 #include "session.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/export.cxxqt.h"
 
+#include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonValue>
 #include <QtCore/QMetaObject>
+#include <QtCore/QSettings>
+#include <QtCore/QUrl>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
+#include <QtGui/QKeyEvent>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QSlider>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
@@ -437,6 +448,347 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             if (!cpsSavedConvert || !cpsRoundConvert || !cpsSavedOff || !cpsRoundOff
                 || !cpsNormalized || !cpsDefault) {
                 return pictura::selfTest().fail(462, "session color policy");
+            }
+        }
+
+        // lpr_raster_export (532): Save writes the format named by the path (a
+        // layered document saved to .png clears modified and re-saves as PNG);
+        // Export As and Quick Export write the flattened composite without
+        // touching the document's path, dirty flag, or history.
+        {
+            const QString stem = QDir::tempPath() + QStringLiteral("/kooka-pictura-export");
+            const QString psdPath = stem + QStringLiteral(".psd");
+            const QString pngPath = stem + QStringLiteral(".png");
+            const QString jpgPath = stem + QStringLiteral(".jpg");
+            const QString bmpPath = stem + QStringLiteral(".bmp");
+            const QString halfPath = stem + QStringLiteral("-half.png");
+            QFile::remove(psdPath);
+            QFile::remove(pngPath);
+            QFile::remove(jpgPath);
+            QFile::remove(bmpPath);
+            QFile::remove(halfPath);
+
+            const bool created = frame.newDocument(QStringLiteral("export"), 4, 4,
+                                                   QStringLiteral("rgb"), 8,
+                                                   QStringLiteral("white"));
+            pictura::PictureView* view = frame.activeView();
+            const int exportIndex = frame.activeDocumentIndex();
+            const bool defaultFormat =
+                created && view && output_format(*view) == QStringLiteral("psd");
+            const bool commandsRegistered = frame.registry()
+                && frame.registry()->action(QString::fromLatin1(command_ids::FileExportAs))
+                    != nullptr
+                && frame.registry()->action(QString::fromLatin1(command_ids::FileQuickExportPng))
+                    != nullptr;
+
+            // A flat document plain-Saves to its raster path; a layered one must
+            // fall back to the format-aware Save As dialog.
+            const bool flatNeedsDialog =
+                view && !savePathNeedsFormatDialog(pngPath, view, false);
+
+            // Save As names the format by suffix; a layered document flattens.
+            view->add_adjustment(QStringLiteral("invert"));
+            const bool layeredNeedsDialog = view
+                && savePathNeedsFormatDialog(pngPath, view, false)
+                && !savePathNeedsFormatDialog(psdPath, view, true);
+            const bool savedPng = defaultFormat && frame.saveActiveAs(pngPath);
+            const bool pngClean = savedPng && view && !view->is_dirty();
+            QImage pngImage(pngPath);
+            const QColor pngPixel = pngImage.pixelColor(0, 0);
+            const bool pngWritten = pngClean && !pngImage.isNull() && pngImage.width() == 4
+                && pngImage.height() == 4;
+            // The white document was inverted before saving, so the written
+            // pixels must be black -- a real pixel check, not just dimensions.
+            const bool pngPixels = pngWritten && pngPixel.red() < 4 && pngPixel.green() < 4
+                && pngPixel.blue() < 4;
+
+            // Reopen the written PNG: it must decode through the import edge and
+            // report PNG as its remembered output format.
+            const int docsBefore = frame.documentCount();
+            const bool reopened = pngWritten && frame.openDocumentAtPath(pngPath);
+            pictura::PictureView* imported = frame.activeView();
+            const bool importedPng = reopened && frame.documentCount() == docsBefore + 1
+                && imported && output_format(*imported) == QStringLiteral("png")
+                && imported->document_width() == 4 && imported->document_height() == 4;
+            // A bare import (one background layer) keeps its source format as
+            // the Save As default, and needs no flatten warning.
+            const bool bareDefault = reopened && imported
+                && defaultSaveFilterIndex(imported) == 2;
+            const bool importedFlatWarn = imported
+                && !saveAsNeedsFeatureWarning(pngPath, imported);
+            if (reopened) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+                frame.setActiveDocumentIndex(exportIndex);
+                view = frame.activeView();
+            }
+
+            // Export As: PNG/JPEG/BMP plus a 50% scaled PNG, all read-only.
+            const int historyBefore = view ? view->history_count() : -1;
+            const QString pathBefore = view ? view->file_path() : QString();
+            const bool wasDirty = view && view->is_dirty();
+            const bool exportPng =
+                view && export_image(*view, pngPath, QStringLiteral("PNG"), -1, 100);
+            const bool exportJpg =
+                view && export_image(*view, jpgPath, QStringLiteral("JPG"), 90, 100);
+            const bool exportBmp =
+                view && export_image(*view, bmpPath, QStringLiteral("BMP"), -1, 100);
+            const bool exportHalf =
+                view && export_image(*view, halfPath, QStringLiteral("PNG"), -1, 50);
+            const bool exportFiles = exportPng && exportJpg && exportBmp
+                && !QImage(pngPath).isNull() && !QImage(jpgPath).isNull()
+                && !QImage(bmpPath).isNull();
+            const bool scaled = exportHalf && QImage(halfPath).width() == 2
+                && QImage(halfPath).height() == 2;
+            const bool unmutated = view && view->history_count() == historyBefore
+                && view->file_path() == pathBefore && view->is_dirty() == wasDirty;
+
+            // A layered document defaults Save As to PSD, not the import format.
+            const bool layeredDefault = view && defaultSaveFilterIndex(view) == 0;
+
+            // The flatten warning fires for a raster extension on a layered
+            // document, not for PSD/PSB or a flat import.
+            const bool warnPredicate = view && saveAsNeedsFeatureWarning(pngPath, view)
+                && !saveAsNeedsFeatureWarning(psdPath, view) && importedFlatWarn;
+
+            // Revert must reload a raster-recorded document in place (keeping the
+            // recorded path in sync) instead of failing silently through the
+            // PSD-only reader.
+            if (view) {
+                view->add_adjustment(QStringLiteral("invert"));
+            }
+            const bool reverted = frame.revertActive() && view && !view->is_dirty()
+                && output_format(*view) == QStringLiteral("png")
+                && view->file_path() == pngPath;
+
+            // A .psb path forces a version-2 PSB container ("8BPS" + version 2).
+            const QString psbPath = stem + QStringLiteral(".psb");
+            QFile::remove(psbPath);
+            const bool savedPsb = frame.saveActiveAs(psbPath);
+            QByteArray psbHead;
+            {
+                QFile psb(psbPath);
+                if (psb.open(QIODevice::ReadOnly)) {
+                    psbHead = psb.read(6);
+                }
+            }
+            const bool psbWritten = savedPsb && psbHead.size() == 6
+                && psbHead.left(4) == QByteArrayLiteral("8BPS")
+                && static_cast<unsigned char>(psbHead.at(5)) == 2;
+
+            // The file-type combo is non-editable and rolls with a repeated key.
+            QComboBox combo;
+            combo.addItems(pictura::saveFileFilters());
+            combo.setCurrentIndex(2); // PNG
+            pictura::installRollingTypeAhead(&combo);
+            auto pressP = [&combo] {
+                QKeyEvent key(QEvent::KeyPress, Qt::Key_P, Qt::NoModifier, QStringLiteral("p"));
+                QCoreApplication::sendEvent(&combo, &key);
+            };
+            pressP();
+            const int roll1 = combo.currentIndex(); // Photoshop
+            pressP();
+            const int roll2 = combo.currentIndex(); // Photoshop Large Format
+            pressP();
+            const int roll3 = combo.currentIndex(); // PNG
+            const bool rolls = !combo.isEditable() && roll1 == 0 && roll2 == 1 && roll3 == 2;
+
+            // Quick Export writes <source stem>.png beside the document's file.
+            const bool savedPsd = frame.saveActiveAs(psdPath);
+            QFile::remove(pngPath);
+            const bool quickExported = savedPsd && quickExportPngFromView(nullptr, view);
+            const bool quickWritten = quickExported && QFile::exists(pngPath)
+                && QImage(pngPath).width() == 4;
+
+            // Alpha: PNG keeps it, JPEG and BMP flatten onto opaque white.
+            const bool alphaCreated = frame.newDocument(QStringLiteral("alpha"), 2, 1,
+                                                        QStringLiteral("rgb"), 8,
+                                                        QStringLiteral("transparent"));
+            pictura::PictureView* alphaView = frame.activeView();
+            const int alphaIndex = frame.activeDocumentIndex();
+            const QString alphaPng = stem + QStringLiteral("-alpha.png");
+            const QString alphaJpg = stem + QStringLiteral("-alpha.jpg");
+            const QString alphaBmp = stem + QStringLiteral("-alpha.bmp");
+            const QString badPath = QStringLiteral("/nonexistent-kooka-pictura/x.png");
+            QFile::remove(alphaPng);
+            QFile::remove(alphaJpg);
+            QFile::remove(alphaBmp);
+            const bool alphaPngOk = alphaCreated && alphaView
+                && export_image(*alphaView, alphaPng, QStringLiteral("PNG"), -1, 100)
+                && QImage(alphaPng).pixelColor(0, 0).alpha() == 0;
+            const bool alphaJpgOk = alphaCreated && alphaView
+                && export_image(*alphaView, alphaJpg, QStringLiteral("JPG"), 90, 100)
+                && QImage(alphaJpg).pixelColor(0, 0).alpha() == 255;
+            const bool alphaBmpOk = alphaCreated && alphaView
+                && export_image(*alphaView, alphaBmp, QStringLiteral("BMP"), -1, 100)
+                && QImage(alphaBmp).pixelColor(0, 0).alpha() == 255;
+            const bool unwritable = alphaCreated && alphaView
+                && !export_image(*alphaView, badPath, QStringLiteral("PNG"), -1, 100)
+                && !QFile::exists(badPath);
+            if (alphaCreated) {
+                frame.closeDocument(alphaIndex, false);
+            }
+
+            // Export As refuses without a document.
+            auto* emptyView = new pictura::PictureView(&frame);
+            const bool emptyExport = !exportAsFromView(nullptr, emptyView);
+            delete emptyView;
+
+            // The quality control is enabled only for the lossy formats.
+            ExportAsDialog pngDialog(QStringLiteral("PNG"), nullptr);
+            ExportAsDialog jpgDialog(QStringLiteral("JPG"), nullptr);
+            auto* pngSlider = pngDialog.findChild<QSlider*>();
+            auto* jpgSlider = jpgDialog.findChild<QSlider*>();
+            const bool qualityGating = pngSlider && jpgSlider && !pngSlider->isEnabled()
+                && jpgSlider->isEnabled();
+
+            // The Places sidebar exposes the filesystem root and the home folder.
+            QStringList placePaths;
+            for (const QUrl& url : pictura::fileDialogPlaces()) {
+                placePaths.append(url.toLocalFile());
+            }
+            const bool placesOk = placePaths.contains(QStringLiteral("/"))
+                && placePaths.contains(QDir::homePath());
+
+            // The hybrid dialog switch: default follows the sandbox, and the
+            // override forces the portal path.
+            const QByteArray savedFlatpak = qgetenv("FLATPAK_ID");
+            const QByteArray savedSnap = qgetenv("SNAP");
+            const QByteArray savedSnapName = qgetenv("SNAP_NAME");
+            qunsetenv("FLATPAK_ID");
+            qunsetenv("SNAP");
+            qunsetenv("SNAP_NAME");
+            qunsetenv("PICTURA_PORTAL_FILE_DIALOG");
+            const bool portalDefault = !pictura::usesPortalFileDialog();
+            qputenv("PICTURA_PORTAL_FILE_DIALOG", "1");
+            const bool portalOverride = pictura::usesPortalFileDialog();
+            qunsetenv("PICTURA_PORTAL_FILE_DIALOG");
+            if (!savedFlatpak.isEmpty()) {
+                qputenv("FLATPAK_ID", savedFlatpak);
+            }
+            if (!savedSnap.isEmpty()) {
+                qputenv("SNAP", savedSnap);
+            }
+            if (!savedSnapName.isEmpty()) {
+                qputenv("SNAP_NAME", savedSnapName);
+            }
+            const bool portalDecision = portalDefault && portalOverride;
+
+            // Places: a recent location's directory appears, a nonexistent place
+            // is dropped, and every entry is an existing directory.
+            const QString recentDir = QDir::tempPath() + QStringLiteral("/kooka-places");
+            QDir().mkpath(recentDir);
+            const QString recentFile = recentDir + QStringLiteral("/doc.psd");
+            {
+                QFile seeded(recentFile);
+                seeded.open(QIODevice::WriteOnly);
+                seeded.write("x");
+            }
+            pictura::setFileDialogRecentPaths(
+                {recentFile, QStringLiteral("/nonexistent-kooka-pictura/x.png")});
+            bool hasRecent = false;
+            bool hasMissing = false;
+            bool allDirs = true;
+            for (const QUrl& url : pictura::fileDialogPlaces()) {
+                const QString place = url.toLocalFile();
+                hasRecent = hasRecent || place == recentDir;
+                hasMissing = hasMissing
+                    || place.startsWith(QStringLiteral("/nonexistent-kooka-pictura"));
+                allDirs = allDirs && QFileInfo(place).isDir();
+            }
+            const bool placesDetails = hasRecent && !hasMissing && allDirs;
+            pictura::setFileDialogRecentPaths({});
+            QFile::remove(recentFile);
+            QDir().rmdir(recentDir);
+
+            // Open As Smart Object accepts a raster source (CS6 parity): a PNG
+            // becomes a single editable smart-object layer.
+            const bool soOpened = frame.openAsSmartObjectPath(pngPath);
+            pictura::PictureView* soView = frame.activeView();
+            const bool smartObjectOpen = soOpened && soView && soView->layer_count() == 1
+                && soView->layer_can_edit_smart_object_contents(QStringLiteral("0"));
+            if (soOpened) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+
+            const bool exportOk = defaultFormat && commandsRegistered && pngWritten
+                && pngPixels && importedPng && bareDefault && layeredDefault && psbWritten
+                && rolls && flatNeedsDialog && layeredNeedsDialog && exportFiles && scaled
+                && unmutated && quickWritten && warnPredicate && reverted && alphaPngOk
+                && alphaJpgOk && alphaBmpOk && unwritable && emptyExport && qualityGating
+                && placesOk && portalDecision && placesDetails && smartObjectOpen;
+            ST_BEGIN("raster_export");
+            ST_PASS("raster_export default=%d commands=%d png=%d pixels=%d reopened=%d bare=%d "
+                    "layered=%d psb=%d rolls=%d savedlg=%d/%d files=%d scaled=%d unmutated=%d "
+                    "quick=%d warn=%d revert=%d alpha=%d/%d/%d unwritable=%d empty=%d quality=%d "
+                    "places=%d portal=%d places2=%d smartobj=%d",
+                    defaultFormat ? 1 : 0, commandsRegistered ? 1 : 0, pngWritten ? 1 : 0,
+                    pngPixels ? 1 : 0, importedPng ? 1 : 0, bareDefault ? 1 : 0,
+                    layeredDefault ? 1 : 0, psbWritten ? 1 : 0, rolls ? 1 : 0,
+                    flatNeedsDialog ? 1 : 0, layeredNeedsDialog ? 1 : 0, exportFiles ? 1 : 0,
+                    scaled ? 1 : 0, unmutated ? 1 : 0, quickWritten ? 1 : 0,
+                    warnPredicate ? 1 : 0, reverted ? 1 : 0, alphaPngOk ? 1 : 0,
+                    alphaJpgOk ? 1 : 0, alphaBmpOk ? 1 : 0, unwritable ? 1 : 0,
+                    emptyExport ? 1 : 0, qualityGating ? 1 : 0, placesOk ? 1 : 0,
+                    portalDecision ? 1 : 0, placesDetails ? 1 : 0, smartObjectOpen ? 1 : 0);
+            for (const QString& path : {psdPath, psbPath, pngPath, jpgPath, bmpPath, halfPath,
+                                        alphaPng, alphaJpg, alphaBmp}) {
+                QFile::remove(path);
+            }
+            if (view) {
+                frame.closeDocument(frame.activeDocumentIndex(), false);
+            }
+            if (!exportOk) {
+                return pictura::selfTest().fail(532, "raster export");
+            }
+        }
+
+        {
+            // dialog_last_dir (534): an empty-directory dialog must start in the
+            // folder Qt last visited. Qt stores it as a file:// URL but reads it
+            // back as a plain filesystem path (resetting to the working
+            // directory), so we convert the same key ourselves.
+            const QString tmp = QDir::tempPath() + QStringLiteral("/kooka-dialog-dir");
+            QDir().mkpath(tmp);
+            const QString urlForm = QUrl::fromLocalFile(tmp).toString();
+            const bool urlOk = dialogDirectoryFromStored(urlForm) == tmp;
+            const bool pathOk = dialogDirectoryFromStored(tmp) == tmp;
+            const bool missingOk =
+                dialogDirectoryFromStored(tmp + QStringLiteral("-nope")).isEmpty();
+            const bool emptyOk = dialogDirectoryFromStored(QString()).isEmpty();
+            // The document tier: a document's folder, empty when there is none.
+            const bool documentOk = documentDirectory(QStringLiteral("/a/b/c.psd"))
+                    == QStringLiteral("/a/b")
+                && documentDirectory(QString()).isEmpty();
+
+            QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
+            settings.beginGroup(QStringLiteral("FileDialog"));
+            const QVariant saved = settings.value(QStringLiteral("lastVisited"));
+            settings.setValue(QStringLiteral("lastVisited"), urlForm);
+            settings.sync();
+            const bool rememberedOk = rememberedFileDialogDirectory() == tmp;
+            // A remembered folder that was moved or deleted falls back to home.
+            settings.setValue(QStringLiteral("lastVisited"),
+                              urlForm + QStringLiteral("-gone"));
+            settings.sync();
+            const bool homeOk = defaultFileDialogDirectory() == QDir::homePath();
+            if (saved.isValid()) {
+                settings.setValue(QStringLiteral("lastVisited"), saved);
+            } else {
+                settings.remove(QStringLiteral("lastVisited"));
+            }
+            settings.endGroup();
+            settings.sync();
+            QDir().rmdir(tmp);
+
+            const bool dirsOk = urlOk && pathOk && missingOk && emptyOk && documentOk
+                && rememberedOk && homeOk;
+            ST_BEGIN("dialog_last_dir");
+            ST_PASS("dialog_last_dir url=%d path=%d missing=%d empty=%d doc=%d stored=%d "
+                    "home=%d",
+                    urlOk ? 1 : 0, pathOk ? 1 : 0, missingOk ? 1 : 0, emptyOk ? 1 : 0,
+                    documentOk ? 1 : 0, rememberedOk ? 1 : 0, homeOk ? 1 : 0);
+            if (!dirsOk) {
+                return pictura::selfTest().fail(534, "dialog last dir");
             }
         }
 

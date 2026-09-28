@@ -29,6 +29,8 @@ void PicturaMainWindow::rememberRecent(const QString& path)
 void PicturaMainWindow::setRecentFiles(const QStringList& files)
 {
     recent_ = files.mid(0, kRecentLimit);
+    // Keep the file dialogs' Places sidebar in step with the recent list.
+    setFileDialogRecentPaths(recent_);
     saveSession();
 }
 

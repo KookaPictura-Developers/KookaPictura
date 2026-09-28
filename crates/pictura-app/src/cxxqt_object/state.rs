@@ -83,6 +83,9 @@ pub struct PictureViewRust {
     /// empty or multiple. The shared resolver turns this into the edit target.
     pub(super) active_layer: Option<String>,
     pub(super) dirty: bool,
+    /// Output format remembered from the import source, used to preselect the
+    /// Save As filter: a lowercased extension (`"png"`) or `"psd"` when native.
+    pub(super) source_format: String,
     pub(super) interop: Option<crate::gpu::InteropState>,
     pub(super) pending_lasso: Vec<(i32, i32)>,
     pub(super) pending_lasso_mode: String,
@@ -126,6 +129,7 @@ impl Default for PictureViewRust {
             path: None,
             active_layer: None,
             dirty: false,
+            source_format: "psd".to_string(),
             interop: None,
             pending_lasso: Vec::new(),
             pending_lasso_mode: String::new(),

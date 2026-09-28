@@ -68,7 +68,7 @@ public:
     int thumbContentsForTest() const;
     bool expandNewEffectsForTest() const;
     void setOptionsForTest(int size, int contents, bool expand);
-    QStringList rowMenuTextsForTest();
+    QStringList rowMenuTextsForTest(const QString& kind = QStringLiteral("pixel"));
     QStringList colorLabelTextsForTest();
     int lockButtonCountForTest() const;
     int opacityPercentForTest() const;
@@ -181,7 +181,7 @@ private:
     void selectLayer(int index);
     void selectPath(const QString& path);
     void showContextMenu(const QPoint& pos);
-    void populateRowMenu(QMenu& menu, const QString& path, int color);
+    void populateRowMenu(QMenu& menu, const QString& path, int color, const QString& kind);
     void showEyeMenu(const QPoint& pos, const QModelIndex& index);
     void addColorLabelActions(QMenu* menu, int currentLabel);
     void openPanelOptions();

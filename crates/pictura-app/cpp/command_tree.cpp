@@ -53,6 +53,10 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QKeySequence(QStringLiteral("Ctrl+S")), true);
     registry.add(command_ids::FileSaveAs, {"File", "Save As…"}, QStringLiteral("Save As…"),
                  QKeySequence(QStringLiteral("Shift+Ctrl+S")), true);
+    registry.add(command_ids::FileExportAs, {"File", "Export As…"}, QStringLiteral("Export As…"),
+                 QKeySequence(QStringLiteral("Ctrl+Alt+Shift+E")), true);
+    registry.add(command_ids::FileQuickExportPng, {"File", "Quick Export as PNG"},
+                 QStringLiteral("Quick Export as PNG"), QKeySequence(), true);
     leaf(registry, {"File", "Check In…"}, QStringLiteral("Check In…"));
     leaf(registry, {"File", "Save for Web & Devices…"}, QStringLiteral("Save for Web & Devices…"),
          QStringLiteral("Ctrl+Alt+Shift+S"));
