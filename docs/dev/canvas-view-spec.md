@@ -215,7 +215,14 @@ validated on the reference machine.
   history snapshot.
 
 **Must be incremental / O(viewport) or O(changed region):**
-- pan and zoom (transform only; must not touch document pixels);
+- pan and zoom (transform only; must not touch document pixels) — **met**: the
+  canvas crops a `pictura-render::ViewPyramid` level chosen for the zoom
+  (`ImageView::presentLevelForZoom` + `PictureView::display_image`), so a pan or
+  hover repaint never rescales the full-resolution document. Level 0 is a
+  cached sRGB frame that the pyramid borrows, levels below are stored
+  premultiplied; this is CPU
+  display-only and does not composite layer proxies (the deferred GPU-tile track
+  below);
 - Move-tool drag preview (translate a cached layer/composite; no recomposite per
   event);
 - brush dabs (only the dab's bbox, not the whole canvas);
