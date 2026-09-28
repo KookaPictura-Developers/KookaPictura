@@ -1,6 +1,7 @@
 #include "options_bar.h"
 
 #include "icons.h"
+#include "color_picker_dialog.h"
 #include "panels/numeric_field.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -13,7 +14,6 @@
 #include <QtGui/QPixmap>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
-#include <QtWidgets/QColorDialog>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QInputDialog>
@@ -761,7 +761,7 @@ QWidget* OptionsBar::buildCountPage(ToolId id)
                 return;
             }
             const int active = count_active_group(*v);
-            const QColor chosen = QColorDialog::getColor(
+            const QColor chosen = ColorPickerDialog::getColor(
                 QColor(QRgb(count_group_color(*v, active))), this,
                 QStringLiteral("Count Group Color"));
             if (chosen.isValid()) {

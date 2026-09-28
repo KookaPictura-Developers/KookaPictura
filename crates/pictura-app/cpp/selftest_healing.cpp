@@ -5,6 +5,8 @@
 #include "image_view.h"
 #include "tools.h"
 
+#include "color_picker_dialog.h"
+
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/annotations.cxxqt.h"
 
@@ -14,6 +16,8 @@
 #include <QtGui/QPainter>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QLabel>
+
+#include <cmath>
 
 int pictura::runHealingChecks(pictura::PicturaMainWindow& frame)
 {
@@ -97,15 +101,29 @@ int pictura::runHealingChecks(pictura::PicturaMainWindow& frame)
         && canvas->countOverlayCountForTest() == 0;
     frame.setActiveTool(pictura::ToolId::Move);
 
+    // The full color picker (ported from photorust) carries its initial colour
+    // and its web-safe / Lab helpers behave.
+    const QColor initial(10, 20, 30);
+    pictura::ColorPickerDialog picker(initial, nullptr, QStringLiteral("Count Group Color"));
+    double l = 0.0;
+    double a = 0.0;
+    double b = 0.0;
+    pictura::rgbToLab(QColor(0, 0, 0), &l, &a, &b);
+    const bool pickerOk = picker.selectedColor() == initial
+        && pictura::snapToWebColor(QColor(0x12, 0x12, 0x12)) == QColor(0, 0, 0)
+        && pictura::isWebColor(QColor(0x33, 0x66, 0x99))
+        && !pictura::isWebColor(QColor(0x12, 0x40, 0x80)) && std::abs(l) < 1e-6
+        && std::abs(a) < 1e-6 && std::abs(b) < 1e-6;
+
     ST_BEGIN("healing_tools");
-    ST_PASS("healing spot=%d/%d/%d heal=%d/%d count=%d/%d/%d/%d/%d/%d/%d", spotActive ? 1 : 0,
+    ST_PASS("healing spot=%d/%d/%d heal=%d/%d count=%d/%d/%d/%d/%d/%d/%d picker=%d", spotActive ? 1 : 0,
             committed ? 1 : 0, healed ? 1 : 0, refused ? 1 : 0, transplanted ? 1 : 0,
             countActive ? 1 : 0, bar ? 1 : 0, counted ? 1 : 0, grouped ? 1 : 0, hidden ? 1 : 0,
-            styled ? 1 : 0, deletedGroup ? 1 : 0, cleared ? 1 : 0);
+            styled ? 1 : 0, deletedGroup ? 1 : 0, cleared ? 1 : 0, pickerOk ? 1 : 0);
     frame.closeDocument(doc, false);
     QFile::remove(seedPath);
     if (!spotActive || !committed || !healed || !refused || !transplanted || !countActive || !bar
-        || !counted || !grouped || !hidden || !styled || !deletedGroup || !cleared) {
+        || !counted || !grouped || !hidden || !styled || !deletedGroup || !cleared || !pickerOk) {
         return pictura::selfTest().fail(536, "healing tools");
     }
     return 0;

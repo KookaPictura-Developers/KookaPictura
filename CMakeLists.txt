@@ -120,6 +120,7 @@ add_executable(pictura
     crates/pictura-app/cpp/pictura_raw_dialog.cpp
     crates/pictura-app/cpp/warp_preset_dialog.cpp
     crates/pictura-app/cpp/color_settings_dialog.cpp
+    crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
     crates/pictura-app/cpp/image_view_annotations.cpp
@@ -200,6 +201,7 @@ add_executable(pictura
     crates/pictura-app/cpp/pictura_raw_dialog.h
     crates/pictura-app/cpp/warp_preset_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.h
+    crates/pictura-app/cpp/color_picker_dialog.h
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/canvas_range.h
     crates/pictura-app/cpp/canvas_scrollbars.h

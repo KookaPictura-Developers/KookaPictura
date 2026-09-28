@@ -106,19 +106,23 @@ void ImageView::paintAnnotations(QPainter& painter)
     }
 
     // Count marks: a numbered disc per mark, per its group's colour, marker
-    // size, and label size (Photoshop Extended).
+    // size, and label size (Photoshop Extended). The disc grows to hold the
+    // label so a larger Label Size never clips the number.
     for (const CountOverlayMark& mark : countOverlay_) {
         const QPointF p = toWidget(mark.pos);
-        const double radius = 3.0 + mark.markerSize * 1.5;
-        const QRectF disc(p.x() - radius, p.y() - radius, radius * 2, radius * 2);
         QFont countFont = painter.font();
         countFont.setPixelSize(mark.labelSize);
+        const QFontMetrics fm(countFont);
+        const QString text = QString::number(mark.number);
+        const double labelRadius = qMax(fm.horizontalAdvance(text), fm.height()) * 0.75;
+        const double radius = qMax(3.0 + mark.markerSize * 1.5, labelRadius + 2.0);
+        const QRectF disc(p.x() - radius, p.y() - radius, radius * 2, radius * 2);
         painter.setFont(countFont);
         painter.setPen(QPen(Qt::white, 2));
         painter.setBrush(mark.color);
         painter.drawEllipse(disc);
         painter.setPen(Qt::white);
-        painter.drawText(disc, Qt::AlignCenter, QString::number(mark.number));
+        painter.drawText(disc, Qt::AlignCenter, text);
     }
     painter.restore();
 }
