@@ -794,3 +794,78 @@ fn a_move_refuses_a_zero_drag_an_off_layer_target_or_a_locked_layer() {
         Err(HealError::Locked)
     );
 }
+
+const SKIN: [u8; 4] = [215, 175, 150, 255];
+
+fn red_eye_doc(pupil: [u8; 3]) -> Document {
+    let mut doc = layer_doc(40, 40, SKIN);
+    paint(&mut doc, (18, 18, 5, 5), pupil);
+    doc
+}
+
+fn eye_box() -> PsdRect {
+    PsdRect {
+        top: 14,
+        left: 14,
+        bottom: 26,
+        right: 26,
+    }
+}
+
+#[test]
+fn red_eye_neutralises_the_pupil_and_leaves_skin_alone() {
+    let mut doc = red_eye_doc([220, 30, 30]);
+    let dirty = red_eye_layer(&mut doc, "0", eye_box(), 50, 50).unwrap();
+    assert_eq!(dirty, Some(eye_box()));
+    assert!(channel(&doc, 0, 0, 20, 20) < 80, "the pupil is still red");
+    assert_eq!(channel(&doc, 0, 0, 15, 15), SKIN[0], "the skin was drained");
+    assert_eq!(channel(&doc, 0, 1, 15, 15), SKIN[1], "the skin was drained");
+}
+
+#[test]
+fn darken_amount_controls_how_dark_the_pupil_ends_up() {
+    let mut light = red_eye_doc([220, 40, 40]);
+    let mut dark = red_eye_doc([220, 40, 40]);
+    red_eye_layer(&mut light, "0", eye_box(), 50, 0).unwrap();
+    red_eye_layer(&mut dark, "0", eye_box(), 50, 100).unwrap();
+    assert!(channel(&dark, 0, 0, 20, 20) < channel(&light, 0, 0, 20, 20));
+}
+
+#[test]
+fn pupil_size_widens_what_counts_as_red() {
+    // Red leads, but only by 1.3x: too weak at Pupil Size 0, caught at 100.
+    let mut tight = red_eye_doc([130, 100, 100]);
+    let mut wide = red_eye_doc([130, 100, 100]);
+    assert_eq!(
+        red_eye_layer(&mut tight, "0", eye_box(), 0, 50).unwrap(),
+        None
+    );
+    assert!(red_eye_layer(&mut wide, "0", eye_box(), 100, 50)
+        .unwrap()
+        .is_some());
+}
+
+#[test]
+fn red_eye_ignores_no_red_an_off_canvas_box_or_a_locked_layer() {
+    let mut doc = layer_doc(32, 32, [80, 140, 200, 255]);
+    let before = doc.clone();
+    assert_eq!(
+        red_eye_layer(&mut doc, "0", eye_box(), 50, 50).unwrap(),
+        None
+    );
+    let off = PsdRect {
+        top: 40,
+        left: 40,
+        bottom: 50,
+        right: 50,
+    };
+    assert_eq!(red_eye_layer(&mut doc, "0", off, 50, 50).unwrap(), None);
+    assert_eq!(doc.layers[0].channels, before.layers[0].channels);
+
+    let mut locked = red_eye_doc([220, 30, 30]);
+    locked.layers[0].lock = locked.layers[0].lock.with(LockFlags::PIXELS, true);
+    assert_eq!(
+        red_eye_layer(&mut locked, "0", eye_box(), 50, 50),
+        Err(HealError::Locked)
+    );
+}

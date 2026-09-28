@@ -26,6 +26,7 @@
 mod content_move;
 mod layer;
 mod patch;
+mod red_eye;
 mod stroke;
 mod synthesis;
 #[cfg(test)]
@@ -34,6 +35,7 @@ mod tests;
 pub use content_move::{move_layer, MoveOptions};
 pub use layer::{heal_layer, HealError};
 pub use patch::{patch_layer, PatchOptions};
+pub use red_eye::{red_eye_layer, RED_EYE_DEFAULT_DARKEN, RED_EYE_DEFAULT_PUPIL};
 pub use stroke::HealStroke;
 
 use pictura_core::PsdRect;
@@ -121,15 +123,15 @@ pub struct RgbaImage {
 }
 
 impl RgbaImage {
-    fn get(&self, x: i32, y: i32) -> [u8; 4] {
+    pub(crate) fn get(&self, x: i32, y: i32) -> [u8; 4] {
         self.data[(y * self.width + x) as usize]
     }
 
-    fn set(&mut self, x: i32, y: i32, px: [u8; 4]) {
+    pub(crate) fn set(&mut self, x: i32, y: i32, px: [u8; 4]) {
         self.data[(y * self.width + x) as usize] = px;
     }
 
-    fn rect(&self) -> PsdRect {
+    pub(crate) fn rect(&self) -> PsdRect {
         PsdRect {
             top: 0,
             left: 0,
