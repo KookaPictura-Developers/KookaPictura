@@ -10,7 +10,8 @@ class PicturaMainWindow;
 // Clear removes them ("Clear Counts").
 int runHealingChecks(PicturaMainWindow& frame);
 
-// patch_tool (537): the Patch options bar disables Source/Destination under
+// patch_tool (537): the Patch cursor is an arrow with its hotspot at the tip;
+// the Patch options bar disables Source/Destination under
 // Content-Aware; a drag outside the selection outlines a region; dragging the
 // outline onto clean pixels repairs the region in one "Patch Tool" state and
 // leaves the sampled area alone; a click without a drag records nothing.

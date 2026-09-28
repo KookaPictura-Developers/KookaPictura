@@ -2,6 +2,7 @@
 #include "selftest_report.h"
 
 #include "frame.h"
+#include "icons.h"
 #include "image_view.h"
 #include "tools.h"
 
@@ -12,6 +13,7 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtGui/QCursor>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtWidgets/QComboBox>
@@ -158,6 +160,13 @@ int pictura::runPatchChecks(pictura::PicturaMainWindow& frame)
 
     frame.setActiveTool(pictura::ToolId::Patch);
     const bool active = tools->activeTool() == pictura::ToolId::Patch;
+    // The cursor is an arrow whose tip (2, 2) is the point, like the Lasso's.
+    const pictura::ToolInfo& info = pictura::toolInfo(pictura::ToolId::Patch);
+    const QCursor patchCursor = pictura::cursor(
+        pictura::toolCursorId(pictura::ToolId::Patch, Qt::NoModifier), info.hotspotX,
+        info.hotspotY);
+    const bool arrow = info.hotspotX == 2 && info.hotspotY == 2
+        && !patchCursor.pixmap().isNull();
     // Content-Aware disables the sampling controls; Normal re-enables them.
     auto* mode = frame.findChild<QComboBox*>(QStringLiteral("optionsPatchMode"));
     auto* source = frame.findChild<QToolButton*>(QStringLiteral("optionsPatchSource"));
@@ -188,12 +197,12 @@ int pictura::runPatchChecks(pictura::PicturaMainWindow& frame)
     frame.setActiveTool(pictura::ToolId::Move);
 
     ST_BEGIN("patch_tool");
-    ST_PASS("patch active=%d bar=%d outline=%d commit=%d patched=%d click=%d", active ? 1 : 0,
-            bar ? 1 : 0, outlined ? 1 : 0, committed ? 1 : 0, patched ? 1 : 0,
+    ST_PASS("patch active=%d arrow=%d bar=%d outline=%d commit=%d patched=%d click=%d",
+            active ? 1 : 0, arrow ? 1 : 0, bar ? 1 : 0, outlined ? 1 : 0, committed ? 1 : 0, patched ? 1 : 0,
             clickNoop ? 1 : 0);
     frame.closeDocument(doc, false);
     QFile::remove(seedPath);
-    if (!active || !bar || !outlined || !committed || !patched || !clickNoop) {
+    if (!active || !arrow || !bar || !outlined || !committed || !patched || !clickNoop) {
         return pictura::selfTest().fail(537, "patch tool");
     }
     return 0;
