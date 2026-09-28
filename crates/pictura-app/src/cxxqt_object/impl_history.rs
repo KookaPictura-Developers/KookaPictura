@@ -1,4 +1,3 @@
-use super::helpers_composite::*;
 use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
@@ -14,14 +13,7 @@ impl qobject::PictureView {
             let mut rust = self.as_mut().rust_mut();
             rust.doc = Some(snapshot.doc);
             rust.selection = snapshot.selection;
-            let image = rust
-                .doc
-                .as_ref()
-                .map(|doc| buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &doc.composite)));
-            if let Some(image) = image {
-                rust.image = image;
-            }
-            rust.display_dirty = false;
+            rust.reset_pyramid();
             rust.content_revision = rust.content_revision.wrapping_add(1);
         }
         self.changed();
@@ -37,14 +29,7 @@ impl qobject::PictureView {
             let mut rust = self.as_mut().rust_mut();
             rust.doc = Some(snapshot.doc);
             rust.selection = snapshot.selection;
-            let image = rust
-                .doc
-                .as_ref()
-                .map(|doc| buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &doc.composite)));
-            if let Some(image) = image {
-                rust.image = image;
-            }
-            rust.display_dirty = false;
+            rust.reset_pyramid();
             rust.content_revision = rust.content_revision.wrapping_add(1);
         }
         self.changed();

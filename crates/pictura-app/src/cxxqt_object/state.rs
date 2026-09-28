@@ -1,7 +1,8 @@
 use crate::history::History;
 use cxx_qt_lib::QImage;
-use pictura_core::{Document, PsdRect};
+use pictura_core::{Document, PixelBuffer, PsdRect};
 use pictura_paint::{HealStroke, Stroke};
+use pictura_render::{CanvasDamage, ViewPyramid};
 use pictura_select::Selection;
 use std::collections::HashMap;
 
@@ -108,7 +109,24 @@ pub struct PictureViewRust {
     pub(super) content_revision: u64,
     pub(super) gpu_compute: bool,
     pub(super) color_policy: pictura_codec::Policy,
-    pub(super) display_dirty: bool,
+    /// Outstanding display damage; the canvas redraws the region `take` reports.
+    /// No longer consumed by present: it keys on [`Self::canvas_revision`].
+    pub(super) damage: CanvasDamage,
+    /// Non-consuming revision of the displayed canvas pixels, bumped whenever
+    /// `image` or the pyramid is rebuilt. Lets the shell cache without draining
+    /// the damage account before `image` reads it.
+    pub(super) canvas_revision: u64,
+    /// The halved-level view of the composite, fed by `recomposite` and
+    /// `refresh_region`.
+    pub(super) pyramid: ViewPyramid,
+    /// The 4-plane straight **sRGB** level-0 frame the display image, pyramid,
+    /// and canvas crops all share, so every path shows the working-space
+    /// conversion rather than the raw composite.
+    ///
+    /// ponytail: `rust.image` is a second full-resolution buffer, so an RGB
+    /// document holds two copies; fold the QImage onto this frame if the 16000²
+    /// target's memory ever matters.
+    pub(super) level0: Option<PixelBuffer>,
     pub(super) link_sets: HashMap<String, u32>,
     /// Magnetic Lasso edge field, live for one gesture (`magnetic_begin` to
     /// `magnetic_end`): one `f32` per pixel, too costly to rebuild per move.
@@ -150,7 +168,10 @@ impl Default for PictureViewRust {
             content_revision: 0,
             gpu_compute: true,
             color_policy: pictura_codec::Policy::Preserve,
-            display_dirty: false,
+            damage: CanvasDamage::default(),
+            canvas_revision: 0,
+            pyramid: ViewPyramid::default(),
+            level0: None,
             link_sets: HashMap::new(),
             edge_map: None,
             ruler: None,

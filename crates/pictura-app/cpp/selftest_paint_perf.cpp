@@ -90,9 +90,9 @@ int pictura::runPaintPerfChecks(pictura::PicturaMainWindow& frame)
         frame.closeDocument(doc, false);
     }
 
-    // pp_present_cache (345): after a region blit, painting from the patched
-    // scaled present cache is byte-identical to the direct draw (cache off), so
-    // the optimization cannot change the rendered result.
+    // pp_present_cache (345): after a region blit the level crop is refreshed
+    // once, reused on the next paint, and byte-identical to a fresh re-render
+    // (cache disabled), so the optimization cannot change the rendered result.
     {
         const bool created = frame.newDocument(QStringLiteral("PaintCache"), 96, 96,
                                                QStringLiteral("rgb"), 8,
@@ -108,7 +108,7 @@ int pictura::runPaintPerfChecks(pictura::PicturaMainWindow& frame)
         QApplication::processEvents();
         canvas->actualPixels();
         QApplication::processEvents();
-        // Warm the present cache (two paints at the same zoom reuse it).
+        // Warm the crop (two paints at the same zoom reuse it).
         QImage warm(canvas->size(), QImage::Format_ARGB32);
         canvas->render(&warm);
         canvas->render(&warm);
@@ -116,18 +116,35 @@ int pictura::runPaintPerfChecks(pictura::PicturaMainWindow& frame)
         const bool begun = view->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 8, 100, 100, 0, 100, 100,
                                              25, QStringLiteral("normal"), false, false);
         const bool dabbed = view->paint_dab(48.0, 48.0, 1.0);
-        const QImage patched = canvas->grab().toImage();
+        QImage patched(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&patched);
         canvas->setPresentCacheEnabledForTest(false);
-        const QImage direct = canvas->grab().toImage();
+        QImage direct(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&direct);
         canvas->setPresentCacheEnabledForTest(true);
         view->end_paint();
         const bool same = sameImage(patched, direct);
+        // After the commit the level-crop path resumes: the crop is reused across
+        // paints and equals a full-resolution transform draw at level 0.
+        QImage cropA(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&cropA);
+        const int rebuilds = canvas->presentCacheRebuildCount();
+        QImage cropB(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&cropB);
+        const bool cropReused = !canvas->presentCacheRebuiltOnLastPaint()
+                                && canvas->presentCacheRebuildCount() == rebuilds
+                                && sameImage(cropA, cropB);
+        canvas->setPresentLevelCropForTest(false);
+        QImage full(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&full);
+        canvas->setPresentLevelCropForTest(true);
+        const bool cropIdentical = sameImage(cropA, full);
         ST_BEGIN("pp_present_cache");
-        ST_PASS("pp_present_cache begun=%d dab=%d same=%d", begun ? 1 : 0, dabbed ? 1 : 0,
-                same ? 1 : 0);
-        if (!begun || !dabbed || !same) {
+        ST_PASS("pp_present_cache begun=%d dab=%d same=%d reused=%d identical=%d", begun ? 1 : 0,
+                dabbed ? 1 : 0, same ? 1 : 0, cropReused ? 1 : 0, cropIdentical ? 1 : 0);
+        if (!begun || !dabbed || !same || !cropReused || !cropIdentical) {
             frame.closeDocument(doc, false);
-            return pictura::selfTest().fail(345, "present cache patch changed the render");
+            return pictura::selfTest().fail(345, "present crop changed the render");
         }
         frame.closeDocument(doc, false);
     }

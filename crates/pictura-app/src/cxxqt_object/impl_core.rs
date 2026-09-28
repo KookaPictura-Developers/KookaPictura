@@ -6,7 +6,8 @@ use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QString, QStringList};
 use pictura_core::{
-    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LockFlags, PsdRect,
+    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LockFlags, PixelBuffer,
+    PsdRect,
 };
 
 /// Finish an imported raster document. When every decoded pixel is opaque the
@@ -76,15 +77,11 @@ impl qobject::PictureView {
         if let (Some(doc), Some(rendered)) = (loaded.as_mut(), rendered.as_ref()) {
             store_composite(doc, rendered);
         }
-        let image = match (loaded.as_ref(), rendered.as_ref()) {
-            (Some(doc), Some(rendered)) => {
-                buffer_to_image(&pictura_codec::buffer_to_srgb(doc, rendered))
-            }
-            _ => test_image(),
-        };
         let mut view = self.rust_mut();
-        view.image = image;
         view.doc = loaded;
+        if view.doc.is_none() {
+            view.image = test_image();
+        }
         view.reset_edit_state();
         view.active_layer = view
             .doc
@@ -124,9 +121,7 @@ impl qobject::PictureView {
         let gpu_compute = self.rust().gpu_compute;
         let rendered = current_buffer(&doc, gpu_compute);
         store_composite(&mut doc, &rendered);
-        let image = buffer_to_image(&rendered);
         let mut view = self.rust_mut();
-        view.image = image;
         view.doc = Some(doc);
         view.reset_edit_state();
         view.active_layer = Some("0".to_string());
@@ -176,9 +171,7 @@ impl qobject::PictureView {
         let gpu_compute = self.rust().gpu_compute;
         let rendered = current_buffer(&doc, gpu_compute);
         store_composite(&mut doc, &rendered);
-        let image = buffer_to_image(&rendered);
         let mut view = self.rust_mut();
-        view.image = image;
         view.doc = Some(doc);
         view.reset_edit_state();
         view.active_layer = Some("0".to_string());
@@ -257,9 +250,7 @@ impl qobject::PictureView {
         let gpu_compute = self.rust().gpu_compute;
         let rendered = current_buffer(&doc, gpu_compute);
         store_composite(&mut doc, &rendered);
-        let image = buffer_to_image(&rendered);
         let mut view = self.rust_mut();
-        view.image = image;
         view.doc = Some(doc);
         view.reset_edit_state();
         view.active_layer = Some("0".to_string());
@@ -663,19 +654,67 @@ impl qobject::PictureView {
 
     pub fn image(mut self: Pin<&mut Self>) -> QImage {
         let mut rust = self.as_mut().rust_mut();
-        if !rust.display_dirty {
+        if rust.damage == pictura_render::CanvasDamage::default() {
             return rust.image.clone();
         }
         let rebuilt = rebuild_display(&rust.doc, rust.stroke.as_ref(), rust.gpu_compute);
         if let Some(image) = rebuilt {
             rust.image = image;
-            rust.display_dirty = false;
+            rust.damage = pictura_render::CanvasDamage::default();
         }
         rust.image.clone()
     }
 
     pub fn has_document(&self) -> bool {
         self.rust().doc.is_some()
+    }
+
+    /// A premultiplied crop of view-pyramid `level` at document rect
+    /// `(x, y, w, h)`, or an empty image for an out-of-range level or rectangle.
+    pub fn display_image(&self, level: i32, x: i32, y: i32, w: i32, h: i32) -> QImage {
+        if w <= 0 || h <= 0 {
+            return QImage::default();
+        }
+        let rect = PsdRect {
+            top: y,
+            left: x,
+            bottom: y + h,
+            right: x + w,
+        };
+        self.rust().display_crop(level, rect)
+    }
+
+    /// The number of view-pyramid levels (0 without a document).
+    pub fn display_level_count(&self) -> i32 {
+        self.rust().display_level_count()
+    }
+
+    /// The size of `level` as `"w h"`, or empty when out of range.
+    pub fn display_level_size(&self, level: i32) -> QString {
+        self.rust()
+            .display_level_size(level)
+            .map_or_else(QString::default, |(w, h)| QString::from(format!("{w} {h}")))
+    }
+
+    /// The outstanding canvas damage as `"x y w h"`, or empty when clean.
+    pub fn take_canvas_damage(mut self: Pin<&mut Self>) -> QString {
+        self.as_mut()
+            .rust_mut()
+            .display_rect_damage()
+            .map_or_else(QString::default, |rect| {
+                QString::from(format!(
+                    "{} {} {} {}",
+                    rect.left,
+                    rect.top,
+                    rect.width(),
+                    rect.height()
+                ))
+            })
+    }
+
+    /// Non-consuming revision of the displayed canvas pixels.
+    pub fn canvas_revision(&self) -> u64 {
+        self.rust().canvas_revision
     }
 
     pub fn document_width(&self) -> i32 {
@@ -841,7 +880,8 @@ impl qobject::PictureView {
 impl super::PictureViewRust {
     /// Reset the per-edit transient state shared by `open` and `new_document`:
     /// drop the selection, history, in-progress stroke, and move-preview drag.
-    /// The caller assigns `image`/`doc` before calling.
+    /// The caller assigns `doc` (and a fallback `image` when there is none)
+    /// before calling; the fresh image and pyramid are built here.
     fn reset_edit_state(&mut self) {
         self.selection = None;
         self.history = History::default();
@@ -854,9 +894,132 @@ impl super::PictureViewRust {
         self.move_y = 0;
         self.move_opacity = 0;
         self.transform_session = None;
-        self.display_dirty = false;
         self.link_sets.clear();
         self.source_format = "psd".to_string();
+        self.reset_pyramid();
+    }
+
+    /// The document-space canvas rectangle for the active source (the stroke's
+    /// document mid-paint, else the document), or an empty rect without one.
+    pub(super) fn canvas_rect(&self) -> PsdRect {
+        let (width, height) = match self.stroke.as_ref() {
+            Some(stroke) => (stroke.document().width, stroke.document().height),
+            None => match self.doc.as_ref() {
+                Some(doc) => (doc.width, doc.height),
+                None => (0, 0),
+            },
+        };
+        PsdRect {
+            top: 0,
+            left: 0,
+            bottom: height as i32,
+            right: width as i32,
+        }
+    }
+
+    /// The current display source: the active stroke's working document
+    /// mid-paint, else the document.
+    fn current_source(&self) -> Option<&Document> {
+        match self.stroke.as_ref() {
+            Some(stroke) => Some(stroke.document()),
+            None => self.doc.as_ref(),
+        }
+    }
+
+    /// Rebuild the cached sRGB level-0 frame and the matching premultiplied
+    /// display image from the current source, rebuild the pyramid, clear the
+    /// damage account, and bump the canvas revision. Every full-display path
+    /// (`recomposite`, `undo`, `redo`, `history_jump`, `history_restore_snapshot`,
+    /// the move-preview commit, and a fresh open) routes through this.
+    pub(super) fn reset_pyramid(&mut self) {
+        self.damage = pictura_render::CanvasDamage::default();
+        self.level0 = self.current_source().map(level0_buffer);
+        if let Some(level0) = self.level0.as_ref() {
+            self.image = premultiplied_display_image(level0);
+        }
+        self.pyramid = match self.level0.as_ref().and_then(planes_of) {
+            Some(planes) => pictura_render::ViewPyramid::rebuild(planes),
+            None => pictura_render::ViewPyramid::default(),
+        };
+        self.canvas_revision = self.canvas_revision.wrapping_add(1);
+    }
+
+    /// Repair the pyramid for `rect` of the already-patched level-0 frame and
+    /// bump the canvas revision, leaving the damage account for `image`.
+    pub(super) fn update_pyramid(&mut self, rect: PsdRect) {
+        if let Some(planes) = self.level0.as_ref().and_then(planes_of) {
+            self.pyramid.update(planes, rect);
+        }
+        self.canvas_revision = self.canvas_revision.wrapping_add(1);
+    }
+
+    /// Fold a straight-sRGB `region` into the cached level-0 frame at `(x0, y0)`,
+    /// rebuilding the whole frame only when it is absent or a different size.
+    pub(super) fn refresh_level0_region(&mut self, region: PixelBuffer, x0: i32, y0: i32) {
+        let region = into_rgba_frame(region);
+        let dims = match self.stroke.as_ref() {
+            Some(stroke) => Some((stroke.document().width, stroke.document().height)),
+            None => self.doc.as_ref().map(|doc| (doc.width, doc.height)),
+        };
+        let matches = matches!(
+            (self.level0.as_ref(), dims),
+            (Some(level0), Some((w, h))) if level0.width == w && level0.height == h
+        );
+        if matches {
+            if let Some(level0) = self.level0.as_mut() {
+                patch_buffer_region(level0, &region, x0, y0);
+            }
+        } else {
+            self.level0 = self.current_source().map(level0_buffer);
+        }
+    }
+
+    /// Take the outstanding canvas damage, clipped to the canvas.
+    pub(super) fn take_damage(&mut self) -> PsdRect {
+        let canvas = self.canvas_rect();
+        self.damage.take(canvas)
+    }
+
+    /// The damage to redraw, or `None` when the account is clean.
+    pub(super) fn display_rect_damage(&mut self) -> Option<PsdRect> {
+        let rect = self.take_damage();
+        (rect.width() > 0 && rect.height() > 0).then_some(rect)
+    }
+
+    /// A premultiplied crop of pyramid `level` at `rect`, or an empty image for
+    /// an out-of-range level, a rectangle that does not intersect the level, or
+    /// an absent source. A partial overlap is transparent where it falls outside.
+    pub(super) fn display_crop(&self, level: i32, rect: PsdRect) -> QImage {
+        if level < 0 {
+            return QImage::default();
+        }
+        let level = level as usize;
+        if level >= self.pyramid.level_count() {
+            return QImage::default();
+        }
+        let (lw, lh) = self.pyramid.level_size(level);
+        if rect.right <= 0 || rect.bottom <= 0 || rect.left >= lw as i32 || rect.top >= lh as i32 {
+            return QImage::default();
+        }
+        let Some(planes) = self.level0.as_ref().and_then(planes_of) else {
+            return QImage::default();
+        };
+        let crop = self.pyramid.crop(planes, level, rect);
+        if crop.width() == 0 || crop.height() == 0 {
+            return QImage::default();
+        }
+        level_display_image(&crop)
+    }
+
+    pub(super) fn display_level_count(&self) -> i32 {
+        self.pyramid.level_count() as i32
+    }
+
+    pub(super) fn display_level_size(&self, level: i32) -> Option<(u32, u32)> {
+        if level < 0 || level as usize >= self.pyramid.level_count() {
+            return None;
+        }
+        Some(self.pyramid.level_size(level as usize))
     }
 }
 
@@ -895,8 +1058,9 @@ impl qobject::PictureView {
         })
     }
 
-    /// Composite only `rect`, patch the authoritative `doc.composite`, and emit
-    /// [`region_blitted`] with a rectangle-sized image.
+    /// Composite only `rect`, patch the authoritative `doc.composite` and the
+    /// cached sRGB level-0 frame, and emit [`region_blitted`] with a
+    /// rectangle-sized image.
     ///
     /// The source is the active stroke's working document while painting, else
     /// the app document. While painting `doc.composite` is the pre-stroke base
@@ -918,13 +1082,19 @@ impl qobject::PictureView {
                 painting,
             )
         };
-        let Some((x0, y0, ..)) = region else {
+        let Some((x0, y0, w, h)) = region else {
             return;
+        };
+        let clipped = PsdRect {
+            top: y0,
+            left: x0,
+            bottom: y0 + h as i32,
+            right: x0 + w as i32,
         };
         let region_image = {
             let mut rust = self.as_mut().rust_mut();
             let rust = &mut *rust;
-            let (buffer, image) = {
+            let (buffer, srgb, image) = {
                 let source: &Document = if painting {
                     rust.stroke.as_ref().unwrap().document()
                 } else if let Some(doc) = rust.doc.as_ref() {
@@ -933,9 +1103,10 @@ impl qobject::PictureView {
                     return;
                 };
                 let buffer = pictura_render::composite_region_active(source, rect, gpu_compute).0;
+                let srgb = pictura_codec::buffer_to_srgb(source, &buffer);
                 let image = (buffer.width != 0 && buffer.height != 0)
-                    .then(|| buffer_to_image(&pictura_codec::buffer_to_srgb(source, &buffer)));
-                (buffer, image)
+                    .then(|| premultiplied_display_image(&srgb));
+                (buffer, srgb, image)
             };
             let Some(image) = image else {
                 return;
@@ -945,7 +1116,9 @@ impl qobject::PictureView {
                     patch_composite_region(doc, &buffer, x0, y0);
                 }
             }
-            rust.display_dirty = true;
+            rust.refresh_level0_region(srgb, x0, y0);
+            rust.damage.mark(clipped);
+            rust.update_pyramid(clipped);
             image
         };
         self.region_blitted(region_image, x0, y0);
@@ -971,11 +1144,7 @@ impl qobject::PictureView {
             if let Some(doc) = rust.doc.as_mut() {
                 store_composite(doc, &rendered);
             }
-            rust.image = match rust.doc.as_ref() {
-                Some(doc) => buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &rendered)),
-                None => buffer_to_image(&rendered),
-            };
-            rust.display_dirty = false;
+            rust.reset_pyramid();
         }
         self.changed();
     }
