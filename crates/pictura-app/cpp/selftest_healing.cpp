@@ -12,6 +12,8 @@
 #include <QtCore/QFile>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QLabel>
 
 int pictura::runHealingChecks(pictura::PicturaMainWindow& frame)
 {
@@ -59,27 +61,51 @@ int pictura::runHealingChecks(pictura::PicturaMainWindow& frame)
     const bool transplanted = view->history_index() == refusedBase + 1
         && view->history_label(refusedBase + 1) == QStringLiteral("Healing Brush");
 
-    // Count (Extended): numbered marks, overlay, and Clear.
+    // Count (Extended): numbered marks in groups, the overlay, and the bar.
     frame.setActiveTool(pictura::ToolId::Count);
     const bool countActive = tools->activeTool() == pictura::ToolId::Count;
+    auto* groupCombo = frame.findChild<QComboBox*>(QStringLiteral("optionsCountGroup"));
+    auto* totalLabel = frame.findChild<QLabel*>(QStringLiteral("optionsCountTotal"));
+    const bool bar = groupCombo && totalLabel && groupCombo->count() == 1
+        && totalLabel->text().startsWith(QStringLiteral("Count:"));
     const int cbase = view->history_index();
     press(QPointF(5, 5));
     press(QPointF(35, 35));
-    const bool counted = pictura::marker_count(*view, 2) == 2
+    const bool counted = pictura::count_active_total(*view) == 2
         && canvas->countOverlayCountForTest() == 2 && view->history_index() == cbase + 2;
-    tools->clearAnnotations();
-    const bool cleared = pictura::marker_count(*view, 2) == 0
-        && canvas->countOverlayCountForTest() == 0 && view->history_index() == cbase + 3;
+    // A new group is independent; its marks overlay alongside group 1's.
+    const int g2 = pictura::count_add_group(*view, QStringLiteral("Count Group 2"));
+    press(QPointF(20, 20));
+    const bool grouped = g2 == 1 && pictura::count_group_total(*view, 0) == 2
+        && pictura::count_group_total(*view, 1) == 1 && pictura::count_active_total(*view) == 1
+        && canvas->countOverlayCountForTest() == 3;
+    // Hiding group 1 leaves only group 2's mark on the overlay.
+    pictura::count_set_visible(*view, 0, false);
+    const bool hidden = canvas->countOverlayCountForTest() == 1;
+    pictura::count_set_visible(*view, 0, true);
+    // Colour and sizes are stored on the group.
+    pictura::count_set_color(*view, 1, 0xff0000);
+    pictura::count_set_marker_size(*view, 1, 6);
+    pictura::count_set_label_size(*view, 1, 20);
+    const bool styled = pictura::count_group_color(*view, 1) == 0xff0000
+        && pictura::count_group_marker_size(*view, 1) == 6
+        && pictura::count_group_label_size(*view, 1) == 20;
+    // Delete the second group, then Clear the first.
+    const bool deletedGroup =
+        pictura::count_remove_group(*view, 1) && pictura::count_group_count(*view) == 1;
+    const bool cleared = pictura::count_clear(*view) && pictura::count_active_total(*view) == 0
+        && canvas->countOverlayCountForTest() == 0;
     frame.setActiveTool(pictura::ToolId::Move);
 
     ST_BEGIN("healing_tools");
-    ST_PASS("healing spot=%d/%d/%d heal=%d/%d count=%d/%d/%d",
-            spotActive ? 1 : 0, committed ? 1 : 0, healed ? 1 : 0, refused ? 1 : 0,
-            transplanted ? 1 : 0, countActive ? 1 : 0, counted ? 1 : 0, cleared ? 1 : 0);
+    ST_PASS("healing spot=%d/%d/%d heal=%d/%d count=%d/%d/%d/%d/%d/%d/%d", spotActive ? 1 : 0,
+            committed ? 1 : 0, healed ? 1 : 0, refused ? 1 : 0, transplanted ? 1 : 0,
+            countActive ? 1 : 0, bar ? 1 : 0, counted ? 1 : 0, grouped ? 1 : 0, hidden ? 1 : 0,
+            styled ? 1 : 0, deletedGroup ? 1 : 0, cleared ? 1 : 0);
     frame.closeDocument(doc, false);
     QFile::remove(seedPath);
-    if (!spotActive || !committed || !healed || !refused || !transplanted || !countActive
-        || !counted || !cleared) {
+    if (!spotActive || !committed || !healed || !refused || !transplanted || !countActive || !bar
+        || !counted || !grouped || !hidden || !styled || !deletedGroup || !cleared) {
         return pictura::selfTest().fail(536, "healing tools");
     }
     return 0;

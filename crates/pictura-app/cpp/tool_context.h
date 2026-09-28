@@ -71,6 +71,8 @@ struct ToolContext {
     virtual int currentNote() const = 0;
     virtual void setCurrentNote(int index) = 0;
     virtual void notifyRulerChanged() = 0;
+    // A Count group or mark changed; the options bar re-reads its state.
+    virtual void notifyCountChanged() = 0;
 
     virtual void refused(const QString& message) = 0;
     virtual void emitSelectionCommitted() = 0;

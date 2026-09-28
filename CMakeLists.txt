@@ -173,6 +173,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_perspectivecrop.cpp
     crates/pictura-app/cpp/tool_slice.cpp
     crates/pictura-app/cpp/tool_annotations.cpp
+    crates/pictura-app/cpp/tool_count.cpp
     crates/pictura-app/cpp/tool_ruler.cpp
     crates/pictura-app/cpp/tool_healing.cpp
     crates/pictura-app/cpp/tool_selection.cpp

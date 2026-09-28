@@ -202,7 +202,17 @@ public:
     // shown with any tool, plus the Ruler's measuring line while that tool is
     // active.
     void setAnnotationOverlay(const QList<QPointF>& samplers, const QList<QPointF>& notes,
-                              const QList<QPointF>& counts, int currentNote);
+                              int currentNote);
+    // One Count group's visible mark: its position, 1-based number, and the
+    // group's colour/marker/label sizes.
+    struct CountOverlayMark {
+        QPointF pos;
+        int number = 1;
+        QColor color;
+        int markerSize = 2;
+        int labelSize = 12;
+    };
+    void setCountOverlay(const QList<CountOverlayMark>& marks);
     void setRulerLine(const QLineF& line);
     void clearRulerLine();
     int samplerOverlayCountForTest() const { return int(samplerOverlay_.size()); }
@@ -255,7 +265,7 @@ private:
     void paintAnnotations(QPainter& painter);
     QList<QPointF> samplerOverlay_;
     QList<QPointF> noteOverlay_;
-    QList<QPointF> countOverlay_;
+    QList<CountOverlayMark> countOverlay_;
     int currentNote_ = -1;
     QLineF rulerLine_;
     bool rulerShown_ = false;

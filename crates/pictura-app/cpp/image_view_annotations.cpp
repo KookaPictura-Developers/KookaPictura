@@ -10,16 +10,20 @@
 namespace pictura {
 
 void ImageView::setAnnotationOverlay(const QList<QPointF>& samplers, const QList<QPointF>& notes,
-                                     const QList<QPointF>& counts, int currentNote)
+                                     int currentNote)
 {
-    if (samplers == samplerOverlay_ && notes == noteOverlay_ && counts == countOverlay_
-        && currentNote == currentNote_) {
+    if (samplers == samplerOverlay_ && notes == noteOverlay_ && currentNote == currentNote_) {
         return;
     }
     samplerOverlay_ = samplers;
     noteOverlay_ = notes;
-    countOverlay_ = counts;
     currentNote_ = currentNote;
+    update();
+}
+
+void ImageView::setCountOverlay(const QList<CountOverlayMark>& marks)
+{
+    countOverlay_ = marks;
     update();
 }
 
@@ -101,18 +105,20 @@ void ImageView::paintAnnotations(QPainter& painter)
         painter.drawText(badge, Qt::AlignCenter, label);
     }
 
-    // Count marks: a numbered disc per mark (Photoshop Extended).
-    const QColor countColor(0xd0, 0x50, 0x30);
-    for (int i = 0; i < countOverlay_.size(); ++i) {
-        const QPointF p = toWidget(countOverlay_.at(i));
-        const QString label = QString::number(i + 1);
-        const double radius = 8.0;
+    // Count marks: a numbered disc per mark, per its group's colour, marker
+    // size, and label size (Photoshop Extended).
+    for (const CountOverlayMark& mark : countOverlay_) {
+        const QPointF p = toWidget(mark.pos);
+        const double radius = 3.0 + mark.markerSize * 1.5;
         const QRectF disc(p.x() - radius, p.y() - radius, radius * 2, radius * 2);
+        QFont countFont = painter.font();
+        countFont.setPixelSize(mark.labelSize);
+        painter.setFont(countFont);
         painter.setPen(QPen(Qt::white, 2));
-        painter.setBrush(countColor);
+        painter.setBrush(mark.color);
         painter.drawEllipse(disc);
         painter.setPen(Qt::white);
-        painter.drawText(disc, Qt::AlignCenter, label);
+        painter.drawText(disc, Qt::AlignCenter, QString::number(mark.number));
     }
     painter.restore();
 }

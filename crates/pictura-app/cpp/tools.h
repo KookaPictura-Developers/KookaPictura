@@ -262,6 +262,7 @@ public:
     int currentNote() const override { return currentNote_; }
     void setCurrentNote(int index) override;
     void notifyRulerChanged() override { emit rulerChanged(); }
+    void notifyCountChanged() override { emit countChanged(); }
     // The options bar's Clear for the active Color Sampler, Note, or Ruler tool.
     bool clearAnnotations();
     void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate) override;
@@ -337,6 +338,8 @@ signals:
     // The Note tool placed or picked note `index` (-1: none); the Notes panel
     // shows it.
     void noteActivated(int index);
+    // A Count group or mark changed; the Count options bar re-reads its state.
+    void countChanged();
 
 private:
     void applyToolPolicy();
