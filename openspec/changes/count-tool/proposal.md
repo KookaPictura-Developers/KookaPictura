@@ -3,26 +3,36 @@
 ## Why
 
 The Count (Extended) tool (issue #9) was catalogued but disabled and tracked as
-out-of-scope. It counts objects in an image with numbered marks. photorust
-(perfecto25/photorust) ships it as an annotation (`MarkerKind::Count`) that
-reads a document without changing its pixels. This change ports the core of it
-onto Kooka's existing annotation infrastructure.
+out-of-scope. It counts objects in an image with numbered marks organised into
+named count groups, each with its own visibility, colour, marker size, and
+label size. photorust (perfecto25/photorust) ships it as an annotation
+(`MarkerKind::Count`) that reads a document without changing its pixels. This
+change ports it onto Kooka's annotation infrastructure with the full CS6
+options bar.
 
 ## What Changes
 
-- `pictura_core::annotations`: a third marker list, `MarkerKind::Count`
-  (numbered in placement order), independent of color samplers and notes.
-- `tool_annotations.cpp`: a `Count` handler reusing the marker handler (click to
-  add, drag to move, Alt-click to delete, Clear to reset); the canvas overlay
-  draws each mark as a numbered disc.
-- Catalog row enabled; options-bar Clear.
-- C++ self-test `healing_tools` (code 536) covers the Count marks.
+- `pictura_core::annotations`: a `CountGroup` model (name, visible, colour,
+  marker size 1–10, label size 8–72, its own numbered marks) on
+  `Document::annotations`, with the active group and add/remove/rename/select,
+  independent of color samplers and notes.
+- `cxxqt_object/annotations.rs`: count group and mark bridge functions (state
+  reads, group create/delete/rename/visibility/colour/size, mark
+  add/move/delete/clear), one history state per committed mark or group edit.
+- `tool_count.cpp`: a Count handler (click to add to the active group, drag to
+  move, Alt-click or drag-off to delete).
+- The Count options bar: the running total, the group dropdown, eye (visibility),
+  folder (new group, with a name dialog), trash (delete group), Clear, the group
+  colour swatch, and the Marker Size / Label Size fields.
+- The canvas overlay draws each visible group's marks as numbered discs in the
+  group's colour, marker size, and label size.
+- C++ self-test `healing_tools` (code 536) covers the Count groups.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `tools/count-tool`: the Count (Extended) tool and its numbered marks.
+- `tools/count-tool`: the Count (Extended) tool, its count groups, and marks.
 
 ## Impact
 
@@ -31,9 +41,10 @@ onto Kooka's existing annotation infrastructure.
 
 ## Ceilings
 
-`ponytail:` Count groups, per-group marker/label size and colour, the
-Measurement Log, automatic counting, and PSD persistence are not shipped; marks
-are session document state undone through history, like the other annotations.
+`ponytail:` the Measurement Log, automatic counting, and PSD persistence are
+not shipped; marks and groups are session document state undone through
+history, like the other annotations. A group is never deleted to zero: the last
+group is kept.
 
 ## Provenance
 
