@@ -115,6 +115,59 @@ Snapshot for resuming after a context break. Update after each milestone.
   later-CC keys preserved, and `crs:` XMP is lifted to a typed `CrsSettings`
   view and editable in place (`crs-xmp-edit`). A CS6/earliest-CC
   fixture and the manual Photoshop reopen are deferred follow-ups.
+- **Raster export** (change `raster-export`, new capability `interop/raster-export`;
+  issues #60/#107, archived): `File ▸ Save`/`Save As` are
+  format-aware — the output format is the save path's extension, `psd`/`psb`
+  through the codec (layers preserved) and `png`/`jpg`/`tif`/`webp`/`bmp` through
+  a Qt-boundary encoder (`cpp/encode_image.{h,cpp}`; `PictureView::save`
+  dispatches on the suffix, and `encode_image_rgba` writes through
+  `QSaveFile`+`QImageWriter` so rasters are temp+rename atomic like PSD).
+  `File ▸ Export As…` and `File ▸ Quick Export as
+  PNG` (and the Layers row context menu on pixel/background rows) write the
+  flattened composite through `PictureView::export_image` without touching the
+  document's path, dirty flag, or history; Export As is extension-authoritative
+  like Save, and Quick Export prompts rather than overwrite the document's own
+  `.png` source. The document remembers its import
+  source format (`PictureView::output_format`) so Save As preselects it, but a
+  document that needs layers (more than one layer, a group, an adjustment, or a
+  type layer) defaults Save As to PSD, and Save on such a document recorded at a
+  raster path reopens Save As instead of flattening silently; a `.psb` path
+  forces a version-2 PSB. Open Recent, Revert, Open, drag-drop, and the control
+  server all route a path through one `openDocumentAtPath` native/raster
+  dispatch (previously Recent/Revert sent rasters to the PSD-only reader and
+  failed silently). All file dialogs share one per-format filter set
+  (`dialogs.{h,cpp}`) with uppercase patterns, a non-editable, rolling
+  type-ahead "File type" combo, `All Formats` default for Open, and lowercase
+  extensions on disk. Open As Smart Object uses the same filters and accepts a
+  raster source by embedding its decoded layer as a smart object (the
+  `place_image` recipe), matching CS6; only an unsupported file is refused. The
+  dialogs are hybrid: on a native install the built-in Qt dialog's Places sidebar
+  is repopulated (`fileDialogPlaces`, deduplicated by canonical path) with the
+  root, mounted volumes, XDG folders, KDE `user-places.xbel` / GTK bookmark
+  directories (looked up via `QStandardPaths`), and the app's recent locations;
+  inside a Flatpak/Snap sandbox (`usesPortalFileDialog`) the dialogs hand off to
+  the platform/portal chooser and `main()` forces
+  `QT_QPA_PLATFORMTHEME=xdgdesktopportal`, so host files stay reachable (the host
+  chooser owns its combo there). KIO places (`trash:/`, `remote:/`,
+  `recentlyused:/`) are not representable in the built-in dialog. A file dialog
+  opened without an explicit folder starts in the active document's folder, else
+  the last-visited folder Qt persisted (`FileDialog/lastVisited`, read back as a
+  `file://` URL rather than a path), else `~`; Export As uses the document's
+  folder. The built-in
+  file dialogs run without Qt's modal hint and filter the main window's input
+  for their lifetime, so KWin's "Dialog Parent" effect does not dim the app
+  behind them. A double-click on the empty workspace (no document open) opens
+  the Open dialog (`eventFilter` on the tab pane; an app gesture, not a CS6
+  behavior). A raster Revert
+  reloads in place and keeps the recorded path (`open_image` no longer clears an
+  existing path; a fresh import stays untitled). C++
+  self-test `raster_export` (code 532) covers pixel-level reopen, alpha
+  (PNG keeps, JPEG/BMP flatten), an unwritable target, empty-view refusal, the
+  flatten-warning predicate, raster Revert (including the recorded path), Places
+  details, portal routing, quality gating, and a raster Open As Smart Object. Ceilings
+  (`// ponytail:`): raster output
+  is the 8-bit sRGB display composite, and JPEG and BMP flatten alpha onto white
+  (Qt's BMP writer drops alpha; the native PSD/PSB path is unchanged).
 - **Pictura Raw core** (change `pictura-raw-core`, new capability `pictura-raw`):
   the Camera Raw Filter's 11 PV2012 Basic controls now round-trip and render,
   staying Photoshop's standard smart filter (`filterID 2683`, `"Camera Raw
