@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1743 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1747 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **460 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **461 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2241 passed, 11 skipped, 0 failed**.
+  probes) reports **2246 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -408,9 +408,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   outline to patch, with the outline previewed at the offset); the options bar
   has the combine buttons, Patch (Normal / Content-Aware), Source /
   Destination, Transparent, and a disabled Use Pattern. The J cycle is now Spot
-  Healing → Healing → Patch (self-test code 537; guard 98 now probes
-  Content-Aware Move). Ceilings (`ponytail:`): no Adaptation, Sample All
-  Layers, or Use Pattern; the solve runs on the GUI thread.
+  Healing → Healing → Patch (self-test code 537). Ceilings (`ponytail:`): no
+  Adaptation, Sample All Layers, or Use Pattern; the solve runs on the GUI
+  thread.
+- **Content-Aware Move** (change `content-aware-move-tool`, issue #13, ported
+  from photorust): `pictura_paint::healing::move_layer` copies the selection's
+  pixels verbatim to the drag target and rebuilds the hole content-aware
+  (Move), or copies and keeps the original (Extend). CS6's five-level
+  `Adaptation` (default Medium) now sets the synthesis patch size and search
+  reach — an inferred mapping; Medium is the previous fixed synthesis, so Spot
+  Healing and Patch are unchanged. photorust's later-CC Structure/Color are
+  not ported. `content_aware_move` (`cxxqt_object/healing.rs`) moves the
+  selection with the pixels in one "Content-Aware Move" state; the
+  outline-then-drag gesture is shared with Patch in `tool_region_drag.{h,cpp}`.
+  Options bar: combine buttons, Mode, Adaptation, disabled Sample All Layers;
+  arrow cursor with the tip as hotspot. The J cycle ends with Content-Aware
+  Move (self-test code 538; guard 98 now probes Red Eye). Ceilings
+  (`ponytail:`): no Sample All Layers; the solve runs on the GUI thread.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
