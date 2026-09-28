@@ -19,3 +19,20 @@ expose a modal `getColor` helper returning an invalid colour on cancel.
 
 - **WHEN** Only Web Colors is on
 - **THEN** the chosen colour is snapped to the nearest multiple of 0x33 per channel
+
+### Requirement: Picker entry points
+
+The toolbox's foreground and background swatches SHALL open the color picker
+dialog for that colour, and the Color panel SHALL embed the picker's colour
+field and hue ramp inline so clicking them sets the active swatch.
+
+#### Scenario: Toolbox swatch
+
+- **WHEN** a toolbox foreground/background swatch is clicked and a colour chosen
+- **THEN** that swatch adopts the chosen colour
+
+#### Scenario: Color panel field
+
+- **WHEN** the Color panel's field or ramp is clicked
+- **THEN** the active foreground/background colour follows it
+
