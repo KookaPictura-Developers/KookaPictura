@@ -1,5 +1,6 @@
 #include "toolbox.h"
 
+#include "color_picker_dialog.h"
 #include "icons.h"
 #include "panels/color_panel.h"
 #include "tools.h"
@@ -309,8 +310,18 @@ void ForegroundBackgroundWidget::mousePressEvent(QMouseEvent* event)
     }
     if (foregroundRect().contains(pos)) {
         state_->setForegroundActive(true);
+        const QColor picked = ColorPickerDialog::getColor(state_->foreground(), this,
+                                                          tr("Foreground Color"));
+        if (picked.isValid()) {
+            state_->setForeground(picked);
+        }
     } else if (backgroundRect().contains(pos)) {
         state_->setForegroundActive(false);
+        const QColor picked = ColorPickerDialog::getColor(state_->background(), this,
+                                                          tr("Background Color"));
+        if (picked.isValid()) {
+            state_->setBackground(picked);
+        }
     } else {
         event->ignore();
         return;

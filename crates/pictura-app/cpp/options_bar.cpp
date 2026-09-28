@@ -1,17 +1,24 @@
 #include "options_bar.h"
 
 #include "icons.h"
+#include "color_picker_dialog.h"
 #include "panels/numeric_field.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/annotations.cxxqt.h"
 
+#include <QtCore/QSignalBlocker>
+#include <QtGui/QIcon>
 #include <QtGui/QAction>
+#include <QtGui/QColor>
+#include <QtGui/QPixmap>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QInputDialog>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QToolButton>
@@ -85,11 +92,20 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::Ruler:
     case ToolId::Note:
         return buildAnnotationPage(id);
+    case ToolId::Count:
+        return buildCountPage(id);
     case ToolId::QuickSelection:
         return buildCombinePage(id, true);
     case ToolId::Brush:
     case ToolId::Pencil:
         return buildPaintPage(id);
+    case ToolId::SpotHealingBrush:
+    case ToolId::HealingBrush:
+        return buildHealingPage(id);
+    case ToolId::Patch:
+        return buildPatchPage(id);
+    case ToolId::ContentAwareMove:
+        return buildContentAwareMovePage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
@@ -537,6 +553,366 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
                     [this](bool on) { controller_->setAutoErase(on); });
         }
         layout->addWidget(check);
+    }
+
+    layout->addStretch(1);
+    return page;
+}
+
+// The healing tools' bars. Spot Healing picks its Type; Healing Brush toggles
+// Aligned. The brush Size/Hardness are shared with the paint tools through the
+// same controller fields.
+// ponytail: no Mode, Source (Pattern), or Sample (All Layers) controls yet.
+QWidget* OptionsBar::buildHealingPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+
+    auto addField = [&](const QString& label, const QString& name, const QString& suffix, int lo,
+                        int hi, int value, void (ToolController::*setter)(int)) {
+        auto* field =
+            new NumericField(label, numericConfig(lo, hi, 1, 0, suffix, true, name), page);
+        field->setValue(value);
+        layout->addWidget(field);
+        if (controller_) {
+            connect(field, &NumericField::valueChanged, this,
+                    [this, setter](double v) { (controller_->*setter)(qRound(v)); });
+            if (setter == &ToolController::setBrushSize) {
+                connect(controller_, &ToolController::brushSizeChanged, field,
+                        [field](int size) { field->setValue(size); });
+            }
+        }
+    };
+
+    addField(QStringLiteral("Size"), QStringLiteral("optionsBrushSize"), QString(), 1, 5000,
+             controller_ ? controller_->brushSize() : 12, &ToolController::setBrushSize);
+    addField(QStringLiteral("Hardness"), QStringLiteral("optionsBrushHardness"),
+             QStringLiteral("%"), 0, 100, controller_ ? controller_->brushHardness() : 100,
+             &ToolController::setBrushHardness);
+
+    if (id == ToolId::SpotHealingBrush) {
+        layout->addWidget(new QLabel(QStringLiteral("Type"), page));
+        auto* combo = new QComboBox(page);
+        combo->setObjectName(QStringLiteral("optionsSpotHealingType"));
+        combo->addItem(QStringLiteral("Proximity Match"));
+        combo->addItem(QStringLiteral("Create Texture"));
+        combo->addItem(QStringLiteral("Content-Aware"));
+        if (controller_) {
+            combo->setCurrentIndex(controller_->spotHealingType());
+            connect(combo, &QComboBox::currentIndexChanged, this,
+                    [this](int index) { controller_->setSpotHealingType(index); });
+        }
+        layout->addWidget(combo);
+    } else {
+        auto* check = new QCheckBox(QStringLiteral("Aligned"), page);
+        check->setObjectName(QStringLiteral("optionsHealingAligned"));
+        if (controller_) {
+            check->setChecked(controller_->healingAligned());
+            connect(check, &QCheckBox::toggled, this,
+                    [this](bool on) { controller_->setHealingAligned(on); });
+        }
+        layout->addWidget(check);
+    }
+
+    layout->addStretch(1);
+    return page;
+}
+
+// The Count (Extended) options bar: the running total, the count-group dropdown
+// with its eye / new / delete controls, Clear, the group colour swatch, and the
+// marker and label sizes.
+QWidget* OptionsBar::buildCountPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+
+    auto* total = new QLabel(page);
+    total->setObjectName(QStringLiteral("optionsCountTotal"));
+    layout->addWidget(total);
+
+    auto* group = new QComboBox(page);
+    group->setObjectName(QStringLiteral("optionsCountGroup"));
+    group->setMinimumWidth(130);
+    layout->addWidget(group);
+
+    auto* eye = new QToolButton(page);
+    eye->setObjectName(QStringLiteral("optionsCountVisible"));
+    eye->setCheckable(true);
+    eye->setToolTip(QStringLiteral("Toggle count group visibility"));
+    layout->addWidget(eye);
+
+    auto* addGroup = new QToolButton(page);
+    addGroup->setObjectName(QStringLiteral("optionsCountAddGroup"));
+    addGroup->setIcon(icon(QStringLiteral("count.newGroup")));
+    addGroup->setToolTip(QStringLiteral("Create a count group"));
+    layout->addWidget(addGroup);
+
+    auto* delGroup = new QToolButton(page);
+    delGroup->setObjectName(QStringLiteral("optionsCountDeleteGroup"));
+    delGroup->setIcon(icon(QStringLiteral("layers.delete")));
+    delGroup->setToolTip(QStringLiteral("Delete the count group"));
+    layout->addWidget(delGroup);
+
+    auto* clear = new QToolButton(page);
+    clear->setObjectName(QStringLiteral("optionsCountClear"));
+    clear->setText(QStringLiteral("Clear"));
+    clear->setToolTip(QStringLiteral("Reset the active group's count to 0"));
+    layout->addWidget(clear);
+
+    auto* color = new QToolButton(page);
+    color->setObjectName(QStringLiteral("optionsCountColor"));
+    color->setToolTip(QStringLiteral("Count group colour"));
+    layout->addWidget(color);
+
+    auto* marker = new NumericField(
+        QStringLiteral("Marker Size"),
+        numericConfig(1, 10, 1, 0, QString(), true, QStringLiteral("optionsCountMarkerSize")),
+        page);
+    layout->addWidget(marker);
+    auto* label = new NumericField(
+        QStringLiteral("Label Size"),
+        numericConfig(8, 72, 1, 0, QString(), true, QStringLiteral("optionsCountLabelSize")),
+        page);
+    layout->addWidget(label);
+
+    if (controller_) {
+        const auto refresh = [this, total, group, eye, addGroup, delGroup, clear, color, marker,
+                              label]() {
+            PictureView* v = controller_->view();
+            const bool have = v && v->has_document();
+            const int groups = have ? count_group_count(*v) : 0;
+            const int active = have ? count_active_group(*v) : 0;
+            {
+                const QSignalBlocker block(group);
+                group->clear();
+                for (int g = 0; g < groups; ++g) {
+                    group->addItem(count_group_name(*v, g));
+                }
+                if (active >= 0 && active < group->count()) {
+                    group->setCurrentIndex(active);
+                }
+            }
+            const bool hasGroup = have && active >= 0 && active < groups;
+            total->setText(hasGroup
+                               ? QStringLiteral("Count: %1").arg(count_group_total(*v, active))
+                               : QStringLiteral("Count:"));
+            const bool visible = hasGroup && count_group_visible(*v, active);
+            eye->setChecked(visible);
+            eye->setIcon(icon(visible ? QStringLiteral("layers.eyeOn")
+                                      : QStringLiteral("layers.eyeOff")));
+            delGroup->setEnabled(groups > 1);
+            clear->setEnabled(hasGroup);
+            marker->setEnabled(hasGroup);
+            label->setEnabled(hasGroup);
+            color->setEnabled(hasGroup);
+            if (hasGroup) {
+                QPixmap swatch(18, 18);
+                swatch.fill(QColor(QRgb(count_group_color(*v, active))));
+                color->setIcon(QIcon(swatch));
+                const QSignalBlocker b1(marker);
+                const QSignalBlocker b2(label);
+                marker->setValue(count_group_marker_size(*v, active));
+                label->setValue(count_group_label_size(*v, active));
+            }
+        };
+
+        connect(group, &QComboBox::currentIndexChanged, this, [this, refresh](int index) {
+            if (PictureView* v = controller_->view(); v && index >= 0) {
+                count_set_active_group(*v, index);
+            }
+            refresh();
+        });
+        connect(eye, &QToolButton::toggled, this, [this, refresh](bool on) {
+            if (PictureView* v = controller_->view()) {
+                count_set_visible(*v, count_active_group(*v), on);
+            }
+            refresh();
+        });
+        connect(addGroup, &QToolButton::clicked, this, [this, refresh]() {
+            PictureView* v = controller_->view();
+            if (!v) {
+                return;
+            }
+            const int n = count_group_count(*v) + 1;
+            bool ok = false;
+            const QString name = QInputDialog::getText(
+                this, QStringLiteral("Count Group Name"), QStringLiteral("Count Group Name:"),
+                QLineEdit::Normal, QStringLiteral("Count Group %1").arg(n), &ok);
+            if (ok && !name.isEmpty()) {
+                count_add_group(*v, name);
+            }
+            refresh();
+        });
+        connect(delGroup, &QToolButton::clicked, this, [this, refresh]() {
+            if (PictureView* v = controller_->view()) {
+                count_remove_group(*v, count_active_group(*v));
+            }
+            refresh();
+        });
+        connect(clear, &QToolButton::clicked, this, [this, refresh]() {
+            if (PictureView* v = controller_->view()) {
+                count_clear(*v);
+            }
+            refresh();
+        });
+        connect(color, &QToolButton::clicked, this, [this, refresh]() {
+            PictureView* v = controller_->view();
+            if (!v) {
+                return;
+            }
+            const int active = count_active_group(*v);
+            const QColor chosen = ColorPickerDialog::getColor(
+                QColor(QRgb(count_group_color(*v, active))), this,
+                QStringLiteral("Count Group Color"));
+            if (chosen.isValid()) {
+                count_set_color(*v, active, chosen.rgb() & 0xffffff);
+            }
+            refresh();
+        });
+        connect(marker, &NumericField::valueChanged, this, [this, refresh](double value) {
+            if (PictureView* v = controller_->view()) {
+                count_set_marker_size(*v, count_active_group(*v), qRound(value));
+            }
+            refresh();
+        });
+        connect(label, &NumericField::valueChanged, this, [this, refresh](double value) {
+            if (PictureView* v = controller_->view()) {
+                count_set_label_size(*v, count_active_group(*v), qRound(value));
+            }
+            refresh();
+        });
+        connect(controller_, &ToolController::countChanged, this, [refresh]() { refresh(); });
+        refresh();
+    }
+
+    layout->addStretch(1);
+    return page;
+}
+
+// CS6's Patch bar, left to right: the selection combine buttons, the Patch
+// mode, the Source/Destination pair, Transparent, and Use Pattern. Source,
+// Destination, and Transparent describe sampling from the drag, which
+// Content-Aware does not do, so they disable together with it.
+// ponytail: no Adaptation or Sample All Layers; Use Pattern is shown disabled.
+QWidget* OptionsBar::buildPatchPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+    addModeButtons(layout, page, true);
+
+    layout->addWidget(new QLabel(QStringLiteral("Patch:"), page));
+    auto* mode = new QComboBox(page);
+    mode->setObjectName(QStringLiteral("optionsPatchMode"));
+    mode->addItem(QStringLiteral("Normal"));
+    mode->addItem(QStringLiteral("Content-Aware"));
+    layout->addWidget(mode);
+
+    auto* direction = new QButtonGroup(page);
+    direction->setExclusive(true);
+    auto* source = new QToolButton(page);
+    source->setObjectName(QStringLiteral("optionsPatchSource"));
+    source->setText(QStringLiteral("Source"));
+    source->setToolTip(QStringLiteral("The selection is the flaw; drag it onto the pixels to "
+                                      "repair it with"));
+    auto* destination = new QToolButton(page);
+    destination->setObjectName(QStringLiteral("optionsPatchDestination"));
+    destination->setText(QStringLiteral("Destination"));
+    destination->setToolTip(QStringLiteral("The selection is good material; drag it onto the "
+                                           "area to repair"));
+    for (QToolButton* button : {source, destination}) {
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        direction->addButton(button);
+        layout->addWidget(button);
+    }
+
+    auto* transparent = new QCheckBox(QStringLiteral("Transparent"), page);
+    transparent->setObjectName(QStringLiteral("optionsPatchTransparent"));
+    transparent->setToolTip(QStringLiteral("Transfer only the source's texture, keeping the "
+                                           "patched area's own colour"));
+    layout->addWidget(transparent);
+
+    auto* usePattern = new QToolButton(page);
+    usePattern->setText(QStringLiteral("Use Pattern"));
+    usePattern->setToolTip(QStringLiteral("Use Pattern: not implemented yet"));
+    usePattern->setEnabled(false);
+    layout->addWidget(usePattern);
+
+    const auto syncEnabled = [source, destination, transparent](bool contentAware) {
+        source->setEnabled(!contentAware);
+        destination->setEnabled(!contentAware);
+        transparent->setEnabled(!contentAware);
+    };
+    if (controller_) {
+        mode->setCurrentIndex(controller_->patchContentAware() ? 1 : 0);
+        (controller_->patchDestination() ? destination : source)->setChecked(true);
+        transparent->setChecked(controller_->patchTransparent());
+        connect(mode, &QComboBox::currentIndexChanged, this, [this, syncEnabled](int index) {
+            controller_->setPatchContentAware(index == 1);
+            syncEnabled(index == 1);
+        });
+        connect(destination, &QToolButton::toggled, this,
+                [this](bool on) { controller_->setPatchDestination(on); });
+        connect(transparent, &QCheckBox::toggled, this,
+                [this](bool on) { controller_->setPatchTransparent(on); });
+    } else {
+        source->setChecked(true);
+    }
+    syncEnabled(mode->currentIndex() == 1);
+
+    layout->addStretch(1);
+    return page;
+}
+
+// CS6's Content-Aware Move bar: the selection combine buttons, Mode (Move /
+// Extend), Adaptation (Very Strict … Very Loose, default Medium), and Sample
+// All Layers.
+// ponytail: Sample All Layers is shown disabled; the active layer is sampled.
+QWidget* OptionsBar::buildContentAwareMovePage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+    addModeButtons(layout, page, true);
+
+    layout->addWidget(new QLabel(QStringLiteral("Mode:"), page));
+    auto* mode = new QComboBox(page);
+    mode->setObjectName(QStringLiteral("optionsContentAwareMoveMode"));
+    mode->addItem(QStringLiteral("Move"));
+    mode->addItem(QStringLiteral("Extend"));
+    layout->addWidget(mode);
+
+    layout->addWidget(new QLabel(QStringLiteral("Adaptation:"), page));
+    auto* adaptation = new QComboBox(page);
+    adaptation->setObjectName(QStringLiteral("optionsContentAwareAdaptation"));
+    for (const char* level : {"Very Strict", "Strict", "Medium", "Loose", "Very Loose"}) {
+        adaptation->addItem(QString::fromLatin1(level));
+    }
+    adaptation->setToolTip(QStringLiteral("How closely the fill reflects the existing image "
+                                          "patterns"));
+    layout->addWidget(adaptation);
+
+    auto* sampleAll = new QCheckBox(QStringLiteral("Sample All Layers"), page);
+    sampleAll->setToolTip(QStringLiteral("Sample All Layers: not implemented yet"));
+    sampleAll->setEnabled(false);
+    layout->addWidget(sampleAll);
+
+    if (controller_) {
+        mode->setCurrentIndex(controller_->contentAwareMoveExtend() ? 1 : 0);
+        adaptation->setCurrentIndex(controller_->contentAwareAdaptation());
+        connect(mode, &QComboBox::currentIndexChanged, this,
+                [this](int index) { controller_->setContentAwareMoveExtend(index == 1); });
+        connect(adaptation, &QComboBox::currentIndexChanged, this,
+                [this](int index) { controller_->setContentAwareAdaptation(index); });
+    } else {
+        adaptation->setCurrentIndex(2);
     }
 
     layout->addStretch(1);

@@ -225,6 +225,23 @@ public:
     void setBrushMode(const QString& mode);
     bool autoErase() const override;
     void setAutoErase(bool on);
+    // Spot Healing Brush Type (0/1/2) and Healing Brush Aligned.
+    int spotHealingType() const override { return spotHealingType_; }
+    void setSpotHealingType(int type);
+    bool healingAligned() const override { return healingAligned_; }
+    void setHealingAligned(bool on) { healingAligned_ = on; }
+    // Patch mode (Normal / Content-Aware), Source / Destination, Transparent.
+    bool patchContentAware() const override { return patchContentAware_; }
+    void setPatchContentAware(bool on) { patchContentAware_ = on; }
+    bool patchDestination() const override { return patchDestination_; }
+    void setPatchDestination(bool on) { patchDestination_ = on; }
+    bool patchTransparent() const override { return patchTransparent_; }
+    void setPatchTransparent(bool on) { patchTransparent_ = on; }
+    // Content-Aware Move Mode (Move / Extend) and Adaptation (0..4).
+    bool contentAwareMoveExtend() const override { return contentAwareMoveExtend_; }
+    void setContentAwareMoveExtend(bool on) { contentAwareMoveExtend_ = on; }
+    int contentAwareAdaptation() const override { return contentAwareAdaptation_; }
+    void setContentAwareAdaptation(int level);
     QColor foreground() const override;
     void setForeground(const QColor& color);
     QColor background() const override;
@@ -257,6 +274,7 @@ public:
     int currentNote() const override { return currentNote_; }
     void setCurrentNote(int index) override;
     void notifyRulerChanged() override { emit rulerChanged(); }
+    void notifyCountChanged() override { emit countChanged(); }
     // The options bar's Clear for the active Color Sampler, Note, or Ruler tool.
     bool clearAnnotations();
     void beginContentMove(PictureView* v, const QPointF& imagePos, bool duplicate) override;
@@ -332,6 +350,8 @@ signals:
     // The Note tool placed or picked note `index` (-1: none); the Notes panel
     // shows it.
     void noteActivated(int index);
+    // A Count group or mark changed; the Count options bar re-reads its state.
+    void countChanged();
 
 private:
     void applyToolPolicy();
@@ -381,6 +401,13 @@ private:
     int brushFlow_ = 100;
     QString brushMode_ = QStringLiteral("normal");
     bool autoErase_ = false;
+    int spotHealingType_ = 0;
+    bool healingAligned_ = true;
+    bool patchContentAware_ = false;
+    bool patchDestination_ = false;
+    bool patchTransparent_ = false;
+    bool contentAwareMoveExtend_ = false;
+    int contentAwareAdaptation_ = 2;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

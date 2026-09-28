@@ -12,7 +12,11 @@ mod text_render;
 mod type_tool;
 mod vector;
 pub use advanced_blending::{BlendIf, Knockout};
-pub use annotations::{Annotations, Marker, MarkerKind, Measurement, Ruler, MAX_COLOR_SAMPLERS};
+pub use annotations::{
+    Annotations, CountGroup, Marker, MarkerKind, Measurement, Ruler, COUNT_LABEL_SIZE_MAX,
+    COUNT_LABEL_SIZE_MIN, COUNT_MARKER_SIZE_MAX, COUNT_MARKER_SIZE_MIN, DEFAULT_COUNT_COLOR,
+    MAX_COLOR_SAMPLERS,
+};
 pub use crs::{CrsSettings, PicturaRawSettings};
 pub use samples::{Sample, Samples};
 pub use text_render::{

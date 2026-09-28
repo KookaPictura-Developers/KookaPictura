@@ -31,6 +31,22 @@ struct ToolContext {
     virtual int tolerance() const = 0;
     virtual bool contiguous() const = 0;
 
+    // Spot Healing Brush Type: 0 Proximity Match, 1 Create Texture,
+    // 2 Content-Aware. Healing Brush Aligned: keep the sample offset across
+    // strokes instead of re-anchoring it to each stroke's start.
+    virtual int spotHealingType() const = 0;
+    virtual bool healingAligned() const = 0;
+    // Patch: Content-Aware rebuilds the selection in place and ignores the
+    // drag; Destination applies the selection where it is dragged; Transparent
+    // transfers texture only.
+    virtual bool patchContentAware() const = 0;
+    virtual bool patchDestination() const = 0;
+    virtual bool patchTransparent() const = 0;
+    // Content-Aware Move: Extend copies instead of moving; Adaptation is
+    // 0 Very Strict … 4 Very Loose (2 Medium, the default).
+    virtual bool contentAwareMoveExtend() const = 0;
+    virtual int contentAwareAdaptation() const = 0;
+
     virtual MarqueeStyle marqueeStyle() const = 0;
     virtual double fixedRatioWidth() const = 0;
     virtual double fixedRatioHeight() const = 0;
@@ -65,6 +81,8 @@ struct ToolContext {
     virtual int currentNote() const = 0;
     virtual void setCurrentNote(int index) = 0;
     virtual void notifyRulerChanged() = 0;
+    // A Count group or mark changed; the options bar re-reads its state.
+    virtual void notifyCountChanged() = 0;
 
     virtual void refused(const QString& message) = 0;
     virtual void emitSelectionCommitted() = 0;
