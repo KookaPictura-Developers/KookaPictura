@@ -4,13 +4,14 @@ use pictura_adjust::{
 };
 use pictura_codec::DescValue;
 use pictura_core::{
-    AdjustmentData, BlendIf, BlendMode, ColorMode, Document, Layer, PixelBuffer, PsdRect,
-    SmartObject, SmartObjectKind,
+    AdjustmentData, BlendIf, BlendMode, Document, Layer, PixelBuffer, PsdRect, SmartObject,
+    SmartObjectKind,
 };
 
 pub(crate) use crate::blend::blend;
 pub(crate) use crate::composite_knockout::{composite_layer, composite_layers, has_knockout};
-use crate::composite_native::{composite_adjustment, mask_alpha_unit, native_unit};
+use crate::composite_native::composite_adjustment;
+use crate::composite_rows::{composite_canvas, composite_pixels};
 
 /// Composite the document's layer stack.
 ///
@@ -243,58 +244,6 @@ pub(crate) fn composite_layer_inner(
     crate::layer_effects::composite_layer_effects_above(canvas, layer, doc);
 }
 
-fn composite_pixels(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
-    // A smart-object layer with no raster proxy has no channel to draw from. The
-    // embedded-source branch above handles it; if that source is unusable, leave
-    // the backdrop unchanged instead of painting the channel-less rect black.
-    if layer.smart_object.is_some() && channel(layer, 0).is_none() {
-        return;
-    }
-    let lw = layer.rect.width();
-    let lh = layer.rect.height();
-    if lw <= 0 || lh <= 0 {
-        return;
-    }
-    let lw = lw as usize;
-    let x0 = layer.rect.left.max(canvas.x0());
-    let y0 = layer.rect.top.max(canvas.y0());
-    let x1 = layer.rect.right.min(canvas.x1());
-    let y1 = layer.rect.bottom.min(canvas.y1());
-    if x1 <= x0 || y1 <= y0 {
-        return;
-    }
-
-    let gray = matches!(
-        doc.mode,
-        ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone
-    );
-    let ch0 = channel(layer, 0);
-    let ch1 = channel(layer, 1).or(ch0);
-    let ch2 = channel(layer, 2).or(ch0);
-    let alpha = channel(layer, -1);
-
-    for y in y0..y1 {
-        for x in x0..x1 {
-            let li = (y - layer.rect.top) as usize * lw + (x - layer.rect.left) as usize;
-            // A high-depth Grayscale/RGB layer reads its native samples; a
-            // channel missing from the store falls back to its 8-bit plane.
-            let unit = |id: i16, ch: Option<&[u8]>| {
-                native_unit(layer, doc, id, li)
-                    .unwrap_or_else(|| sample(ch, li).unwrap_or(0) as f32 / 255.0)
-            };
-            let (r, g, b) = if gray {
-                let v = unit(0, ch0);
-                (v, v, v)
-            } else {
-                (unit(0, ch0), unit(1, ch1), unit(2, ch2))
-            };
-            let a = native_unit(layer, doc, -1, li)
-                .unwrap_or_else(|| sample(alpha, li).unwrap_or(255) as f32 / 255.0);
-            blend_into(canvas, layer, doc, x as usize, y as usize, [r, g, b], a);
-        }
-    }
-}
-
 /// Render an embedded smart object's source over `region` (document
 /// coordinates, within `rect`), scaling with the renderer's integer ratio.
 ///
@@ -438,18 +387,6 @@ fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, doc: &Document) ->
         }
     }
     true
-}
-
-fn composite_canvas(canvas: &mut Canvas, layer: &Layer, doc: &Document, inner: &Canvas) {
-    for y in canvas.y0()..canvas.y1() {
-        for x in canvas.x0()..canvas.x1() {
-            let (x, y) = (x as usize, y as usize);
-            let p = inner.px[inner.idx(x, y)];
-            if p.a > 0.0 {
-                blend_into(canvas, layer, doc, x, y, [p.r, p.g, p.b], p.a);
-            }
-        }
-    }
 }
 
 /// Decode a raw PSD adjustment block into a destructive [`Adjustment`] for the
@@ -1035,28 +972,13 @@ pub(crate) fn blend_into(
     cs: [f32; 3],
     src_a: f32,
 ) {
-    let opacity = layer.opacity as f32 / 255.0;
-    let fill = if layer.is_group {
-        1.0
-    } else {
-        layer.fill as f32 / 255.0
-    };
-    let mask = mask_alpha_unit(doc, layer, x as i32, y as i32);
-    let gate = match layer.blend_if.as_ref() {
-        Some(view) if !view.is_default() => {
-            let backdrop = canvas.px[canvas.idx(x, y)];
-            blend_if_factor(Some(view), cs, [backdrop.r, backdrop.g, backdrop.b])
-        }
-        _ => 1.0,
-    };
-    blend_parts(
-        canvas,
-        x,
-        y,
-        cs,
-        src_a * opacity * fill * mask * gate,
-        layer.blend,
-    );
+    let ox = canvas.ox;
+    let w = canvas.w;
+    let start = (y - canvas.oy as usize) * w;
+    let Canvas { px, cover, .. } = canvas;
+    let row = &mut px[start..start + w];
+    let cov = cover.as_deref_mut().map(|c| &mut c[start..start + w]);
+    crate::composite_rows::blend_into_row(row, cov, ox, layer, doc, x as i32, y as i32, cs, src_a);
 }
 
 /// Composite an opacity-weighted source sample over the backdrop with a blend mode.
@@ -1068,43 +990,13 @@ pub(crate) fn blend_parts(
     alpha: f32,
     mode: BlendMode,
 ) {
-    let mut as_ = alpha;
-    if as_ <= 0.0 {
-        return;
-    }
-    let i = canvas.idx(x, y);
-    let cb = canvas.px[i];
-
-    // Dissolve is stochastic: the effective alpha is a threshold on a fixed
-    // per-pixel noise field, and passing pixels go fully opaque.
-    // ponytail: deterministic splitmix hash, not the unpublished noise tile;
-    // swap when a CS6 dither baseline exists.
-    if matches!(mode, BlendMode::Dissolve) {
-        if dissolve_noise(x, y) >= as_ {
-            return;
-        }
-        as_ = 1.0;
-    }
-    if let Some(cover) = canvas.cover.as_mut() {
-        cover[i] = true;
-    }
-
-    let ab = cb.a;
-    let b = blend(mode, [cb.r, cb.g, cb.b], cs);
-    let ao = as_ + ab * (1.0 - as_);
-    if ao <= 0.0 {
-        canvas.px[i] = Px::default();
-        return;
-    }
-    let co = |idx: usize, c: f32| {
-        ((1.0 - ab) * as_ * cs[idx] + as_ * ab * b[idx] + (1.0 - as_) * ab * c) / ao
-    };
-    canvas.px[i] = Px {
-        r: co(0, cb.r),
-        g: co(1, cb.g),
-        b: co(2, cb.b),
-        a: ao,
-    };
+    let ox = canvas.ox;
+    let w = canvas.w;
+    let start = (y - canvas.oy as usize) * w;
+    let Canvas { px, cover, .. } = canvas;
+    let row = &mut px[start..start + w];
+    let cov = cover.as_deref_mut().map(|c| &mut c[start..start + w]);
+    crate::composite_rows::blend_parts_row(row, cov, ox, x as i32, y as i32, cs, alpha, mode);
 }
 
 pub(crate) fn channel(layer: &Layer, id: i16) -> Option<&[u8]> {
@@ -1152,16 +1044,4 @@ pub(crate) fn raster_mask_alpha(layer: &Layer, x: i32, y: i32) -> u8 {
     }
     let idx = my as usize * mw as usize + mx as usize;
     data.get(idx).copied().unwrap_or(mask.default_color)
-}
-
-fn dissolve_noise(x: usize, y: usize) -> f32 {
-    let mut z = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        ^ (y as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
-        ^ 0xD1B5_4A32_D192_ED03;
-    z ^= z >> 30;
-    z = z.wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z ^= z >> 27;
-    z = z.wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^= z >> 31;
-    ((z >> 56) as f32) / 256.0
 }
