@@ -23,6 +23,7 @@
 //! Ported from photorust's `core/src/healing.rs`
 //! (<https://github.com/perfecto25/photorust>).
 
+mod content_move;
 mod layer;
 mod patch;
 mod stroke;
@@ -30,6 +31,7 @@ mod synthesis;
 #[cfg(test)]
 mod tests;
 
+pub use content_move::{move_layer, MoveOptions};
 pub use layer::{heal_layer, HealError};
 pub use patch::{patch_layer, PatchOptions};
 pub use stroke::HealStroke;
@@ -54,6 +56,48 @@ impl HealMode {
             1 => Some(HealMode::CreateTexture),
             2 => Some(HealMode::ContentAware),
             _ => None,
+        }
+    }
+}
+
+/// CS6's Content-Aware Adaptation menu: how literally the fill copies from the
+/// immediate surroundings. Stricter levels match larger patches over a smaller
+/// reach; looser ones match smaller patches from farther away, so the result
+/// is reshuffled more. The mapping onto patch size and reach is inferred
+/// (`docs/03-tools/content-aware-move-and-patch.md`: Adobe's is undocumented).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Adaptation {
+    VeryStrict,
+    Strict,
+    /// The spec's default.
+    #[default]
+    Medium,
+    Loose,
+    VeryLoose,
+}
+
+impl Adaptation {
+    /// 0 Very Strict … 4 Very Loose (the menu order); `None` otherwise.
+    pub fn from_i32(v: i32) -> Option<Adaptation> {
+        [
+            Adaptation::VeryStrict,
+            Adaptation::Strict,
+            Adaptation::Medium,
+            Adaptation::Loose,
+            Adaptation::VeryLoose,
+        ]
+        .get(usize::try_from(v).ok()?)
+        .copied()
+    }
+
+    /// The synthesis patch radius and search reach, in pixels.
+    fn patch_and_search(self) -> (i32, i32) {
+        match self {
+            Adaptation::VeryStrict => (3, 12),
+            Adaptation::Strict => (3, 18),
+            Adaptation::Medium => (2, 24),
+            Adaptation::Loose => (1, 32),
+            Adaptation::VeryLoose => (1, 48),
         }
     }
 }
@@ -192,6 +236,17 @@ pub fn heal_region(
     coverage: &[f32],
     mode: HealMode,
 ) -> Option<PsdRect> {
+    heal_region_adapted(img, region, coverage, mode, Adaptation::Medium)
+}
+
+/// As [`heal_region`], with the Content-Aware synthesis at `adaptation`.
+fn heal_region_adapted(
+    img: &mut RgbaImage,
+    region: PsdRect,
+    coverage: &[f32],
+    mode: HealMode,
+    adaptation: Adaptation,
+) -> Option<PsdRect> {
     let work = Work::new(img.rect(), region, coverage)?;
     let rgba = work.read(img, (0, 0));
     let filled = match mode {
@@ -201,7 +256,9 @@ pub fn heal_region(
             add_matched_noise(&mut smooth, &rgba, &work.hole, work.w, work.h);
             smooth
         }
-        HealMode::ContentAware => synthesis::content_aware_fill(&rgba, &work.hole, work.w, work.h),
+        HealMode::ContentAware => {
+            synthesis::content_aware_fill(&rgba, &work.hole, work.w, work.h, adaptation)
+        }
     };
     work.write_back(img, &rgba, &filled);
     Some(intersect(region, img.rect()))

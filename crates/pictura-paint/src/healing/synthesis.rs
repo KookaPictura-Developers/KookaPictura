@@ -1,14 +1,11 @@
 //! Content-Aware healing: patch synthesis. An onion peel fills the hole from
 //! its boundary inward with the centre of the best-matching nearby patch, then
 //! PatchMatch search-and-vote refines it globally so neighbouring pixels agree
-//! instead of forming a mosaic. Structure is fixed at CS6's default (4), which
-//! gives a 5×5 patch.
+//! instead of forming a mosaic. [`Adaptation`] sets the patch size and the
+//! search reach; Medium gives a 5×5 patch searched 24 pixels out.
 
-use super::laplace_fill;
+use super::{laplace_fill, Adaptation};
 
-const PATCH: i32 = 2;
-/// How far from a hole pixel the onion peel searches for a source patch.
-const SEARCH_RADIUS: i32 = 24;
 const REFINE_PASSES: usize = 8;
 /// Turns a patch's mean squared difference into a voting weight.
 const VOTE_FALLOFF: f32 = 250.0;
@@ -20,13 +17,22 @@ pub(super) fn content_aware_fill(
     hole: &[bool],
     w: usize,
     h: usize,
+    adaptation: Adaptation,
 ) -> Vec<[f32; 4]> {
-    let mut out = onion_peel_fill(rgba, hole, w, h);
-    patchmatch_refine(&mut out, hole, w, h);
+    let (patch, search) = adaptation.patch_and_search();
+    let mut out = onion_peel_fill(rgba, hole, w, h, patch, search);
+    patchmatch_refine(&mut out, hole, w, h, patch);
     out
 }
 
-fn onion_peel_fill(rgba: &[[f32; 4]], hole: &[bool], w: usize, h: usize) -> Vec<[f32; 4]> {
+fn onion_peel_fill(
+    rgba: &[[f32; 4]],
+    hole: &[bool],
+    w: usize,
+    h: usize,
+    patch: i32,
+    search: i32,
+) -> Vec<[f32; 4]> {
     let mut out = rgba.to_vec();
     let mut unknown = hole.to_vec();
     let mut remaining = unknown.iter().filter(|&&u| u).count();
@@ -49,7 +55,7 @@ fn onion_peel_fill(rgba: &[[f32; 4]], hole: &[bool], w: usize, h: usize) -> Vec<
         }
         let resolved: Vec<[f32; 4]> = layer
             .iter()
-            .map(|&(x, y)| best_match(&out, &unknown, w, h, (x, y), stride))
+            .map(|&(x, y)| best_match(&out, &unknown, w, h, (x, y), stride, (patch, search)))
             .collect();
         for (&(x, y), value) in layer.iter().zip(resolved) {
             let i = y as usize * w + x as usize;
@@ -79,20 +85,21 @@ fn best_match(
     h: usize,
     (hx, hy): (i32, i32),
     stride: i32,
+    (patch, search): (i32, i32),
 ) -> [f32; 4] {
     let mut best = f32::MAX;
     let mut best_value = out[hy as usize * w + hx as usize];
-    let x1 = (hx + SEARCH_RADIUS).min(w as i32 - 1 - PATCH);
-    let y1 = (hy + SEARCH_RADIUS).min(h as i32 - 1 - PATCH);
-    let mut sy = (hy - SEARCH_RADIUS).max(PATCH);
+    let x1 = (hx + search).min(w as i32 - 1 - patch);
+    let y1 = (hy + search).min(h as i32 - 1 - patch);
+    let mut sy = (hy - search).max(patch);
     while sy <= y1 {
-        let mut sx = (hx - SEARCH_RADIUS).max(PATCH);
+        let mut sx = (hx - search).max(patch);
         while sx <= x1 {
             if !unknown[sy as usize * w + sx as usize] {
                 let mut cost = 0.0f32;
                 let mut counted = 0;
-                for dy in -PATCH..=PATCH {
-                    for dx in -PATCH..=PATCH {
+                for dy in -patch..=patch {
+                    for dx in -patch..=patch {
                         let (px, py) = (hx + dx, hy + dy);
                         if px < 0 || py < 0 || px >= w as i32 || py >= h as i32 {
                             continue;
@@ -125,20 +132,20 @@ fn best_match(
 /// neighbours chose and from random guesses at shrinking radius (fixed seed, so
 /// the same stroke heals the same way), then recolour every hole pixel from all
 /// the patches covering it, weighted by how well each matched.
-fn patchmatch_refine(out: &mut [[f32; 4]], hole: &[bool], w: usize, h: usize) {
+fn patchmatch_refine(out: &mut [[f32; 4]], hole: &[bool], w: usize, h: usize, patch: i32) {
     let holes: Vec<(i32, i32)> = (0..h as i32)
         .flat_map(|y| (0..w as i32).map(move |x| (x, y)))
         .filter(|&(x, y)| hole[y as usize * w + x as usize])
         .collect();
     let usable = |x: i32, y: i32| -> bool {
-        x >= PATCH
-            && y >= PATCH
-            && x < w as i32 - PATCH
-            && y < h as i32 - PATCH
+        x >= patch
+            && y >= patch
+            && x < w as i32 - patch
+            && y < h as i32 - patch
             && !hole[y as usize * w + x as usize]
     };
-    let sources: Vec<(i32, i32)> = (PATCH..h as i32 - PATCH)
-        .flat_map(|y| (PATCH..w as i32 - PATCH).map(move |x| (x, y)))
+    let sources: Vec<(i32, i32)> = (patch..h as i32 - patch)
+        .flat_map(|y| (patch..w as i32 - patch).map(move |x| (x, y)))
         .filter(|&(x, y)| usable(x, y))
         .collect();
     if holes.is_empty() || sources.is_empty() {
@@ -167,7 +174,7 @@ fn patchmatch_refine(out: &mut [[f32; 4]], hole: &[bool], w: usize, h: usize) {
         for k in 0..holes.len() {
             let i = if forward { k } else { holes.len() - 1 - k };
             let (hx, hy) = holes[i];
-            let mut best = patch_cost(out, w, h, (hx, hy), nnf[i]);
+            let mut best = patch_cost(out, w, h, patch, (hx, hy), nnf[i]);
             for (nx, ny) in [(hx + step, hy), (hx, hy + step)] {
                 if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
                     continue;
@@ -178,7 +185,7 @@ fn patchmatch_refine(out: &mut [[f32; 4]], hole: &[bool], w: usize, h: usize) {
                 }
                 let candidate = (nnf[n].0 + (hx - nx), nnf[n].1 + (hy - ny));
                 if usable(candidate.0, candidate.1) {
-                    let cost = patch_cost(out, w, h, (hx, hy), candidate);
+                    let cost = patch_cost(out, w, h, patch, (hx, hy), candidate);
                     if cost < best {
                         best = cost;
                         nnf[i] = candidate;
@@ -193,7 +200,7 @@ fn patchmatch_refine(out: &mut [[f32; 4]], hole: &[bool], w: usize, h: usize) {
                     nnf[i].1 + roll(span) as i32 - radius,
                 );
                 if usable(candidate.0, candidate.1) {
-                    let cost = patch_cost(out, w, h, (hx, hy), candidate);
+                    let cost = patch_cost(out, w, h, patch, (hx, hy), candidate);
                     if cost < best {
                         best = cost;
                         nnf[i] = candidate;
@@ -209,8 +216,8 @@ fn patchmatch_refine(out: &mut [[f32; 4]], hole: &[bool], w: usize, h: usize) {
         for (i, &(hx, hy)) in holes.iter().enumerate() {
             let (sx, sy) = nnf[i];
             let weight = 1.0 / (1.0 + quality[i] / VOTE_FALLOFF);
-            for dy in -PATCH..=PATCH {
-                for dx in -PATCH..=PATCH {
+            for dy in -patch..=patch {
+                for dx in -patch..=patch {
                     let (tx, ty) = (hx + dx, hy + dy);
                     if tx < 0 || ty < 0 || tx >= w as i32 || ty >= h as i32 {
                         continue;
@@ -236,11 +243,18 @@ fn patchmatch_refine(out: &mut [[f32; 4]], hole: &[bool], w: usize, h: usize) {
 }
 
 /// Mean squared RGB difference between the patches around `a` and `b`.
-fn patch_cost(out: &[[f32; 4]], w: usize, h: usize, a: (i32, i32), b: (i32, i32)) -> f32 {
+fn patch_cost(
+    out: &[[f32; 4]],
+    w: usize,
+    h: usize,
+    patch: i32,
+    a: (i32, i32),
+    b: (i32, i32),
+) -> f32 {
     let mut cost = 0.0f32;
     let mut counted = 0;
-    for dy in -PATCH..=PATCH {
-        for dx in -PATCH..=PATCH {
+    for dy in -patch..=patch {
+        for dx in -patch..=patch {
             let (px, py) = (a.0 + dx, a.1 + dy);
             if px < 0 || py < 0 || px >= w as i32 || py >= h as i32 {
                 continue;

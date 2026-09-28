@@ -39,17 +39,9 @@ pub fn patch_layer(
     selection: &[u8],
     options: PatchOptions,
 ) -> Result<Option<PsdRect>, HealError> {
-    let (w, h) = (doc.width as i32, doc.height as i32);
-    if selection.len() != (w.max(0) * h.max(0)) as usize {
-        return Ok(None);
-    }
-    let Some(bounds) = bounds(selection, w, h) else {
+    let Some((bounds, coverage)) = selection_coverage(doc, selection) else {
         return Ok(None);
     };
-    let coverage: Vec<f32> = (bounds.top..bounds.bottom)
-        .flat_map(|y| (bounds.left..bounds.right).map(move |x| (y * w + x) as usize))
-        .map(|i| f32::from(selection[i]) / 255.0)
-        .collect();
     let transfer = if options.transparent {
         Transfer::TextureOnly
     } else {
@@ -78,6 +70,21 @@ pub fn patch_layer(
             clone_region(img, local, cov, (dx, dy), transfer)
         })
     }
+}
+
+/// A document-sized selection mask as its bounding box and the `0..=1`
+/// coverage inside it; `None` when the mask is the wrong size or empty.
+pub(super) fn selection_coverage(doc: &Document, selection: &[u8]) -> Option<(PsdRect, Vec<f32>)> {
+    let (w, h) = (doc.width as i32, doc.height as i32);
+    if selection.len() != (w.max(0) * h.max(0)) as usize {
+        return None;
+    }
+    let bounds = bounds(selection, w, h)?;
+    let coverage = (bounds.top..bounds.bottom)
+        .flat_map(|y| (bounds.left..bounds.right).map(move |x| (y * w + x) as usize))
+        .map(|i| f32::from(selection[i]) / 255.0)
+        .collect();
+    Some((bounds, coverage))
 }
 
 /// The bounding box of the non-zero coverage, or `None` when there is none.

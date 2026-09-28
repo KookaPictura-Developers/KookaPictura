@@ -696,3 +696,101 @@ fn patch_refuses_an_empty_selection_a_zero_drag_or_a_locked_layer() {
         Err(HealError::Locked)
     );
 }
+
+/// A light 96×48 field with a dark 12×12 blob at (18, 18), and a mask over the
+/// 16×16 box around it. Adapted from photorust's `move_region` tests.
+fn move_doc() -> (Document, Vec<u8>) {
+    let mut doc = layer_doc(96, 48, PATCH_FIELD);
+    paint(&mut doc, (18, 18, 12, 12), [50, 40, 40]);
+    let mut mask = vec![0u8; 96 * 48];
+    for y in 16..32 {
+        for x in 16..32 {
+            mask[y * 96 + x] = 255;
+        }
+    }
+    (doc, mask)
+}
+
+fn drag(dx: i32, extend: bool) -> MoveOptions {
+    MoveOptions {
+        dx,
+        extend,
+        ..MoveOptions::default()
+    }
+}
+
+#[test]
+fn a_move_relocates_the_pixels_and_fills_the_hole() {
+    let (mut doc, mask) = move_doc();
+    let done = move_layer(&mut doc, "0", &mask, drag(40, false)).unwrap();
+    // The hole and the destination, 40 px right.
+    assert_eq!(
+        done,
+        Some(PsdRect {
+            top: 16,
+            left: 16,
+            bottom: 32,
+            right: 72
+        })
+    );
+    // Copied verbatim, not re-solved.
+    assert_eq!(channel(&doc, 0, 0, 64, 24), 50);
+    let vacated = channel(&doc, 0, 0, 24, 24);
+    assert!(
+        vacated.abs_diff(PATCH_FIELD[0]) <= 20,
+        "hole left: {vacated}"
+    );
+}
+
+#[test]
+fn extend_mode_leaves_the_original_in_place() {
+    let (mut doc, mask) = move_doc();
+    move_layer(&mut doc, "0", &mask, drag(40, true)).unwrap();
+    assert_eq!(
+        channel(&doc, 0, 0, 24, 24),
+        50,
+        "extend erased the original"
+    );
+    assert_eq!(channel(&doc, 0, 0, 64, 24), 50, "extend did not copy");
+}
+
+#[test]
+fn every_adaptation_fills_the_hole_deterministically() {
+    for level in 0..5 {
+        let adaptation = Adaptation::from_i32(level).unwrap();
+        let run = || {
+            let (mut doc, mask) = move_doc();
+            let options = MoveOptions {
+                adaptation,
+                ..drag(40, false)
+            };
+            move_layer(&mut doc, "0", &mask, options).unwrap();
+            doc.layers[0].channels.clone()
+        };
+        let a = run();
+        assert_eq!(a, run(), "{adaptation:?} is not deterministic");
+        let vacated = a[0].data[24 * 96 + 24];
+        assert!(
+            vacated.abs_diff(PATCH_FIELD[0]) <= 20,
+            "{adaptation:?}: {vacated}"
+        );
+    }
+    assert_eq!(Adaptation::from_i32(5), None);
+    assert_eq!(Adaptation::default(), Adaptation::Medium);
+}
+
+#[test]
+fn a_move_refuses_a_zero_drag_an_off_layer_target_or_a_locked_layer() {
+    let (mut doc, mask) = move_doc();
+    assert_eq!(move_layer(&mut doc, "0", &mask, drag(0, false)), Ok(None));
+    assert_eq!(move_layer(&mut doc, "0", &mask, drag(500, false)), Ok(None));
+    assert_eq!(
+        move_layer(&mut doc, "0", &mask[1..], drag(40, false)),
+        Ok(None)
+    );
+    doc.layers[0].lock = doc.layers[0].lock.with(LockFlags::PIXELS, true);
+    assert_eq!(
+        move_layer(&mut doc, "0", &mask, drag(40, false)),
+        Err(HealError::Locked)
+    );
+}
