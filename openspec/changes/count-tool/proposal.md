@@ -24,8 +24,13 @@ options bar.
 - The Count options bar: the running total, the group dropdown, eye (visibility),
   folder (new group, with a name dialog), trash (delete group), Clear, the group
   colour swatch, and the Marker Size / Label Size fields.
+- A full Photoshop-style `ColorPickerDialog` (ported from photorust's
+  `shell/src/dialogs/ColorPickerDialog.{h,cpp}`): the colour field + hue ramp,
+  new/current compare, HSB/RGB/Lab/CMYK/hex fields, and Only Web Colors. The
+  Count colour swatch opens it.
 - The canvas overlay draws each visible group's marks as numbered discs in the
-  group's colour, marker size, and label size.
+  group's colour, marker size, and label size; the disc grows with the label so
+  a larger Label Size never clips the number.
 - C++ self-test `healing_tools` (code 536) covers the Count groups.
 
 ## Capabilities
@@ -33,6 +38,7 @@ options bar.
 ### New Capabilities
 
 - `tools/count-tool`: the Count (Extended) tool, its count groups, and marks.
+- `ui/color-picker`: the full Photoshop-style color picker dialog.
 
 ## Impact
 
