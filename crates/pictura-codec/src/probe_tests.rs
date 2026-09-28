@@ -132,15 +132,25 @@ fn refuses_dimension_over_budget_naming_the_limit() {
 
 #[test]
 fn refuses_allocation_over_budget_naming_the_limit() {
-    let err = probe_image(&png(20_000, 10_000, 8), ImageBudget::default()).unwrap_err();
+    let err = probe_image(&png(30_000, 30_000, 8), ImageBudget::default()).unwrap_err();
     assert_eq!(err.limit_exceeded(), Some(LimitKind::Allocation));
     match err {
         ImportError::AllocationLimit { bytes, limit, .. } => {
-            assert_eq!(bytes, 20_000u64 * 10_000 * 4);
-            assert_eq!(limit, 512 * 1024 * 1024);
+            assert_eq!(bytes, 30_000u64 * 30_000 * 4);
+            assert_eq!(limit, 2 * 1024 * 1024 * 1024);
         }
         other => panic!("expected AllocationLimit, got {other:?}"),
     }
+}
+
+#[test]
+fn admits_a_16000_class_raster_under_the_default_budget() {
+    // 16507×16196×4 ≈ 1020 MiB: the 16000²-class import the canvas targets,
+    // over the former 512 MiB bound. The header must probe Ok, not AllocationLimit.
+    let p = probe_image(&png(16_507, 16_196, 8), ImageBudget::default())
+        .expect("a 16000-class RGBA raster is within the default budget");
+    assert_eq!((p.width, p.height), (16_507, 16_196));
+    assert_eq!(p.format, ImageFormat::Png);
 }
 
 #[test]
@@ -189,5 +199,5 @@ fn refuses_unknown_and_truncated_without_panicking() {
 fn default_budget_values_are_documented() {
     let budget = ImageBudget::default();
     assert_eq!(budget.max_dimension, 30_000);
-    assert_eq!(budget.max_alloc_bytes, 512 * 1024 * 1024);
+    assert_eq!(budget.max_alloc_bytes, 2 * 1024 * 1024 * 1024);
 }
