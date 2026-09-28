@@ -25,9 +25,13 @@ mod paint_tools;
 mod state;
 pub use state::PictureViewRust;
 #[cfg(test)]
+mod canvas_view_test;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_impl;
+#[cfg(test)]
+mod tests_profiles;
 #[cxx_qt::bridge]
 pub mod qobject {
     #[rustfmt::skip]
@@ -159,6 +163,25 @@ pub mod qobject {
         #[qinvokable]
         fn image(self: Pin<&mut Self>) -> QImage;
 
+        /// A premultiplied crop of view-pyramid `level` at `(x, y, w, h)`, or an empty image for an out-of-range level or rectangle.
+        #[qinvokable]
+        fn display_image(&self, level: i32, x: i32, y: i32, w: i32, h: i32) -> QImage;
+
+        /// Number of view-pyramid levels (0 without a document).
+        #[qinvokable]
+        fn display_level_count(&self) -> i32;
+
+        /// Size of `level` as `"w h"`, or empty when out of range.
+        #[qinvokable]
+        fn display_level_size(&self, level: i32) -> QString;
+
+        /// The outstanding canvas damage as `"x y w h"`, or empty when clean.
+        #[qinvokable]
+        fn take_canvas_damage(self: Pin<&mut Self>) -> QString;
+
+        /// Non-consuming revision of the displayed canvas pixels; bumped when the image or pyramid changes.
+        #[qinvokable]
+        fn canvas_revision(&self) -> u64;
         /// Whether a document is loaded; drives shell command enablement.
         #[qinvokable]
         fn has_document(&self) -> bool;
@@ -263,93 +286,70 @@ pub mod qobject {
         #[qinvokable]
         fn layer_thumbnail(&self, i: i32, size: i32) -> QImage;
 
-        // ------------------------------------------------------------------
-        // M39 tree rows, path/batch mutation. See
-        // `docs/dev/m39-panel-anatomy.md` §3.2.
-        // ------------------------------------------------------------------
+        // M39 tree rows, path/batch mutation; see docs/dev/m39-panel-anatomy.md §3.2.
 
         /// Number of nodes in the whole layer tree (all depths; 0 without a document).
         #[qinvokable]
         fn layer_row_count(&self) -> i32;
-
         /// Frozen path of flat row `i` (depth-first, topmost-first), or empty.
         #[qinvokable]
         fn layer_row_path(&self, i: i32) -> QString;
-
         /// Nesting depth of row `i` (top-level rows are 0).
         #[qinvokable]
         fn layer_row_depth(&self, i: i32) -> i32;
-
         /// Name of row `i`, or empty when out of range.
         #[qinvokable]
         fn layer_row_name(&self, i: i32) -> QString;
-
         /// Kind of row `i`: `"pixel"`, `"group"`, `"adjustment"`, or `"background"` (the same strings as [`layer_kind`]), or empty.
         #[qinvokable]
         fn layer_row_kind(&self, i: i32) -> QString;
-
         /// Visibility flag of row `i`.
         #[qinvokable]
         fn layer_row_visible(&self, i: i32) -> bool;
-
         /// Blend mode of row `i` as its 4-byte PSD key, or empty.
         #[qinvokable]
         fn layer_row_blend(&self, i: i32) -> QString;
-
         /// Opacity of row `i` in `0..=255`.
         #[qinvokable]
         fn layer_row_opacity(&self, i: i32) -> i32;
-
         /// Fill opacity of row `i` in `0..=255`.
         #[qinvokable]
         fn layer_row_fill(&self, i: i32) -> i32;
-
         /// Lock flags of row `i` as a bitmask `0x01/0x02/0x04`.
         #[qinvokable]
         fn layer_row_lock(&self, i: i32) -> i32;
-
         /// Color label of row `i` as a byte (`0` none … `7` gray).
         #[qinvokable]
         fn layer_row_color(&self, i: i32) -> i32;
-
         /// Clipping flag of row `i`.
         #[qinvokable]
         fn layer_row_clipping(&self, i: i32) -> bool;
-
         /// Whether row `i` carries a layer mask.
         #[qinvokable]
         fn layer_row_has_mask(&self, i: i32) -> bool;
-
         /// Whether row `i` carries adjustment content.
         #[qinvokable]
         fn layer_row_has_adjustment(&self, i: i32) -> bool;
-
         /// Whether row `i` is a group with at least one child.
         #[qinvokable]
         fn layer_row_expandable(&self, i: i32) -> bool;
-
         /// Number of direct children of row `i`.
         #[qinvokable]
         fn layer_row_child_count(&self, i: i32) -> i32;
-
         /// Thumbnail of row `i` scaled to `size`. `entire_document` places it at
         /// its document position in a transparent square, else its own bounds fill
         /// it. Null for a group, an adjustment layer, or an invalid index/size.
         #[qinvokable]
         fn layer_row_thumbnail(&self, i: i32, size: i32, entire_document: bool) -> QImage;
-
         /// Mask thumbnail of row `i` scaled to `size`, or null without a mask.
         #[qinvokable]
         fn layer_row_mask_thumbnail(&self, i: i32, size: i32) -> QImage;
-
         /// Whether row `i`'s path is in the frame's link set.
         #[qinvokable]
         fn layer_row_linked(&self, i: i32) -> bool;
-
         /// Whether row `i` is a placed (external/alias) smart object.
         #[qinvokable]
         fn layer_row_placed(&self, i: i32) -> bool;
-
         /// `Prefix N` for the next free name in the whole tree.
         #[qinvokable]
         fn next_layer_name(&self, prefix: &QString) -> QString;

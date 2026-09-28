@@ -25,6 +25,7 @@ void PicturaMainWindow::retargetDock()
     }
     if (navigatorPanel_) {
         navigatorPanel_->setCanvas(canvas);
+        navigatorPanel_->setView(view);
         navigatorPanel_->refresh();
     }
     if (infoPanel_) {

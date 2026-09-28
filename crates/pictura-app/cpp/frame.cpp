@@ -1,6 +1,7 @@
 #include "frame_includes.h"
 
 #include "file_drop_router.h"
+#include "frame_canvas.h"
 
 #include <QtCore/QTemporaryDir>
 #include <QtWidgets/QTabBar>
@@ -382,6 +383,10 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
         entry.canvas->replaceImage(view->image());
     }
     entry.canvas->setCanvasColor(kCanvasColors[canvasColorIndex_]);
+
+    // Present from the view pyramid: the canvas crops a level instead of
+    // scaling the full-resolution image (see frame_canvas.cpp).
+    wireCanvasLevelProvider(view, entry.canvas);
 
     connect(view, &PictureView::changed, this, &PicturaMainWindow::refresh);
     connect(view, &PictureView::regionBlitted, this,

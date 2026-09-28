@@ -1,5 +1,4 @@
 use super::super::helpers::*;
-use super::super::helpers_composite::*;
 use super::super::qobject;
 use super::super::state::TransformMode;
 use super::geometry::{
@@ -183,18 +182,7 @@ impl qobject::PictureView {
             pictura_render::translate_layer_index(doc, index as usize, dx, dy)
         };
         if moved {
-            let gpu_compute = self.rust().gpu_compute;
-            let image = self
-                .rust()
-                .doc
-                .as_ref()
-                .map(|doc| document_to_image(doc, gpu_compute));
-            if let Some(image) = image {
-                let mut rust = self.as_mut().rust_mut();
-                rust.image = image;
-                rust.display_dirty = false;
-            }
-            self.changed();
+            self.as_mut().recomposite();
         }
         moved
     }
