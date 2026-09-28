@@ -1,6 +1,6 @@
 use super::helpers::*;
 use super::helpers_composite::*;
-use super::impl_core::finalize_import;
+use super::impl_core::{finalize_import, format_for_path, raster_writer_for_suffix};
 use super::impl_transform::{build_move_preview_base, duplicate_move_target};
 use crate::history::{History, Snapshot};
 use pictura_core::{
@@ -1161,4 +1161,63 @@ fn type_layer_kind_reports_type() {
         layer_kind_str(&doc, "0", &pixel_layer("plain", 2, 2, (1, 2, 3))).to_string(),
         "pixel"
     );
+}
+
+#[test]
+fn buffer_to_rgba_bytes_matches_image_pixels() {
+    let gray = PixelBuffer {
+        width: 1,
+        height: 1,
+        channels: 1,
+        data: vec![42],
+    };
+    assert_eq!(buffer_to_rgba_bytes(&gray), vec![42, 42, 42, 255]);
+
+    let gray_alpha = PixelBuffer {
+        width: 1,
+        height: 1,
+        channels: 2,
+        data: vec![10, 200],
+    };
+    assert_eq!(buffer_to_rgba_bytes(&gray_alpha), vec![10, 10, 10, 200]);
+
+    let rgb = PixelBuffer {
+        width: 1,
+        height: 1,
+        channels: 3,
+        data: vec![1, 2, 3],
+    };
+    assert_eq!(buffer_to_rgba_bytes(&rgb), vec![1, 2, 3, 255]);
+
+    let rgba = PixelBuffer {
+        width: 1,
+        height: 1,
+        channels: 4,
+        data: vec![4, 5, 6, 7],
+    };
+    assert_eq!(buffer_to_rgba_bytes(&rgba), vec![4, 5, 6, 7]);
+
+    let image = buffer_to_image(&rgba);
+    assert_eq!(image.pixel_color(0, 0).red(), 4);
+    assert_eq!(image.pixel_color(0, 0).green(), 5);
+    assert_eq!(image.pixel_color(0, 0).blue(), 6);
+    assert_eq!(image.pixel_color(0, 0).alpha(), 7);
+}
+
+#[test]
+fn output_format_classification_matches_suffix() {
+    assert_eq!(format_for_path("/tmp/photo.PNG"), "png");
+    assert_eq!(format_for_path("/tmp/doc.psd"), "psd");
+    assert_eq!(format_for_path("/tmp/noext"), "psd");
+
+    assert_eq!(raster_writer_for_suffix("png"), Some("PNG"));
+    assert_eq!(raster_writer_for_suffix("jpeg"), Some("JPG"));
+    assert_eq!(raster_writer_for_suffix("jpe"), Some("JPG"));
+    assert_eq!(raster_writer_for_suffix("tiff"), Some("TIF"));
+    assert_eq!(raster_writer_for_suffix("webp"), Some("WEBP"));
+    assert_eq!(raster_writer_for_suffix("bmp"), Some("BMP"));
+    assert_eq!(raster_writer_for_suffix("psd"), None);
+    assert_eq!(raster_writer_for_suffix("gif"), None);
+
+    assert_eq!(super::PictureViewRust::default().source_format, "psd");
 }

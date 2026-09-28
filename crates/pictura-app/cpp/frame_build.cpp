@@ -1,5 +1,9 @@
 #include "frame_includes.h"
 
+#include <QtCore/QEvent>
+#include <QtGui/QMouseEvent>
+#include <QtWidgets/QStackedWidget>
+
 namespace pictura {
 
 void PicturaMainWindow::buildPanels()
@@ -354,5 +358,29 @@ void PicturaMainWindow::buildStatusBar()
     updateToolHint();
 }
 
+void PicturaMainWindow::installWorkspaceOpenGesture()
+{
+    // The blank pane is the tab widget's internal stacked widget, so both are
+    // filtered.
+    tabs_->installEventFilter(this);
+    if (auto* workspace = tabs_->findChild<QStackedWidget*>()) {
+        workspace->installEventFilter(this);
+    }
+}
+
+bool PicturaMainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    // The empty workspace (no documents open) accepts a left double-click as
+    // "Open": the tab widget and its blank stacked page are the only widgets
+    // there.
+    if (event->type() == QEvent::MouseButtonDblClick && workspaceOpenArmed()) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (mouse->button() == Qt::LeftButton) {
+            showOpenDialog();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
 
 } // namespace pictura

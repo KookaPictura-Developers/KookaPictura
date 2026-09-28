@@ -28,6 +28,29 @@ pub(super) fn finalize_import(doc: &mut Document, rgba: &[u8]) {
     layer.channels.retain(|channel| channel.id != -1);
 }
 
+/// The output format remembered for `path`: its lowercased extension, or
+/// `"psd"` when it has none.
+pub(super) fn format_for_path(path: &str) -> String {
+    std::path::Path::new(path)
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
+        .filter(|ext| !ext.is_empty())
+        .unwrap_or_else(|| "psd".to_string())
+}
+
+/// The Qt image writer for a raster path suffix, or `None` for PSD/PSB and
+/// unrecognized suffixes (which go through the PSD codec).
+pub(super) fn raster_writer_for_suffix(suffix: &str) -> Option<&'static str> {
+    Some(match suffix {
+        "png" => "PNG",
+        "jpg" | "jpeg" | "jpe" => "JPG",
+        "tif" | "tiff" => "TIF",
+        "webp" => "WEBP",
+        "bmp" => "BMP",
+        _ => return None,
+    })
+}
+
 /// A built-in working profile by the command's index: 0 sRGB, 1 Adobe RGB,
 /// 2 Pro Photo RGB; `None` for any other index.
 fn builtin_profile(index: i32) -> Option<pictura_codec::Profile> {
@@ -80,9 +103,11 @@ impl qobject::PictureView {
     }
 
     /// `File > Open` for a raster image: read `path`, probe and decode it with
-    /// Qt, and replace the view with an untitled RGB/8-bit document holding the
-    /// decoded pixels. Records one "Open" state, leaves the view's path empty,
-    /// and marks it unmodified; `false` without mutating on any refusal.
+    /// Qt, and replace the view with an RGB/8-bit document holding the decoded
+    /// pixels. Records one "Open" state and marks it unmodified; `false` without
+    /// mutating on any refusal. A fresh view has no path (the import is
+    /// untitled, so Save cannot overwrite the source image); an existing path is
+    /// left intact so a Revert reload keeps the document's file association.
     pub fn open_image(self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
         let name = std::path::Path::new(&path)
@@ -112,28 +137,41 @@ impl qobject::PictureView {
         if let Some(snapshot) = initial {
             view.history.capture(snapshot, "Open");
         }
-        view.path = None;
+        view.source_format = format_for_path(&path);
         view.dirty = false;
         true
     }
 
-    /// `File > Open As Smart Object…`: read `path`, decode it as a PSD/PSB
-    /// source, and replace the view with a new untitled document whose sole
-    /// layer is that source as an embedded smart object. Records one
-    /// "Open As Smart Object" state on success; `false` without mutating when
-    /// the file is missing, unreadable, or not a PSD/PSB document.
+    /// `File > Open As Smart Object…`: read `path` and replace the view with a
+    /// new untitled document whose sole layer is the source as an embedded smart
+    /// object. A PSD/PSB source embeds as-is; a supported raster is decoded and
+    /// its layer embedded (the `File > Place` recipe), matching CS6. Records one
+    /// "Open As Smart Object" state on success; `false` without mutating when the
+    /// file is missing, unreadable, or an unsupported format.
     pub fn open_as_smart_object(self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
         let name = std::path::Path::new(&path)
             .file_stem()
             .map(|stem| stem.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut doc = match std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| pictura_render::open_as_smart_object(&name, &bytes))
+        let bytes = std::fs::read(&path).ok();
+        let mut doc = match bytes
+            .as_deref()
+            .and_then(|bytes| pictura_render::open_as_smart_object(&name, bytes))
         {
             Some(doc) => doc,
-            None => return false,
+            None => {
+                // Not a PSD/PSB: import a supported raster and embed its layer
+                // as a smart object, the same recipe `place_image` uses.
+                let Some((rgba, width, height)) = bytes.as_deref().and_then(decode_import) else {
+                    return false;
+                };
+                let mut doc = Document::from_rgba(&name, width, height, &rgba);
+                if !pictura_render::convert_to_smart_object(&mut doc, "0") {
+                    return false;
+                }
+                doc
+            }
         };
         let gpu_compute = self.rust().gpu_compute;
         let rendered = current_buffer(&doc, gpu_compute);
@@ -238,28 +276,64 @@ impl qobject::PictureView {
     }
 
     pub fn save(mut self: Pin<&mut Self>, path: &QString) -> bool {
-        let dirty = self.rust().dirty;
-        let bytes = {
-            let mut rust = self.as_mut().rust_mut();
-            let Some(doc) = rust.doc.as_mut() else {
-                return false;
-            };
-            if dirty {
-                pictura_render::refresh_native_composite(doc);
-            }
-            let Ok(bytes) = pictura_codec::write_psd(doc) else {
-                return false;
-            };
-            bytes
-        };
         let path = path.to_string();
-        let tmp = format!("{path}.tmp");
-        if std::fs::write(&tmp, &bytes).is_err() {
-            return false;
-        }
-        if std::fs::rename(&tmp, &path).is_err() {
-            let _ = std::fs::remove_file(&tmp);
-            return false;
+        let suffix = format_for_path(&path);
+        let dirty = self.rust().dirty;
+        match raster_writer_for_suffix(&suffix) {
+            None => {
+                let bytes = {
+                    let mut rust = self.as_mut().rust_mut();
+                    let Some(doc) = rust.doc.as_mut() else {
+                        return false;
+                    };
+                    if dirty {
+                        pictura_render::refresh_native_composite(doc);
+                    }
+                    // A `.psb` path forces a version-2 PSB container; every other
+                    // native suffix (including an unknown one) writes a PSD.
+                    let written = if suffix == "psb" {
+                        pictura_codec::write_psb(doc)
+                    } else {
+                        pictura_codec::write_psd(doc)
+                    };
+                    let Ok(bytes) = written else {
+                        return false;
+                    };
+                    bytes
+                };
+                let tmp = format!("{path}.tmp");
+                if std::fs::write(&tmp, &bytes).is_err() {
+                    return false;
+                }
+                if std::fs::rename(&tmp, &path).is_err() {
+                    let _ = std::fs::remove_file(&tmp);
+                    return false;
+                }
+            }
+            Some(format) => {
+                let gpu_compute = self.rust().gpu_compute;
+                let (rgba, width, height) = {
+                    let mut rust = self.as_mut().rust_mut();
+                    let Some(doc) = rust.doc.as_mut() else {
+                        return false;
+                    };
+                    if dirty {
+                        pictura_render::refresh_native_composite(doc);
+                    }
+                    let buffer = current_buffer(doc, gpu_compute);
+                    let srgb = pictura_codec::buffer_to_srgb(doc, &buffer);
+                    (
+                        buffer_to_rgba_bytes(&srgb),
+                        srgb.width as i32,
+                        srgb.height as i32,
+                    )
+                };
+                if !super::export::ffi::encode_image_rgba(
+                    &rgba, width, height, &path, format, 90, 100,
+                ) {
+                    return false;
+                }
+            }
         }
         let mut view = self.rust_mut();
         view.path = Some(path);
@@ -782,6 +856,7 @@ impl super::PictureViewRust {
         self.transform_session = None;
         self.display_dirty = false;
         self.link_sets.clear();
+        self.source_format = "psd".to_string();
     }
 }
 

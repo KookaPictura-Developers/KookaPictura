@@ -135,10 +135,10 @@ void LayersPanel::setOptionsForTest(int size, int contents, bool expand)
     persistOptions();
 }
 
-QStringList LayersPanel::rowMenuTextsForTest()
+QStringList LayersPanel::rowMenuTextsForTest(const QString& kind)
 {
     QMenu menu;
-    populateRowMenu(menu, QString(), 0);
+    populateRowMenu(menu, QString(), 0, kind);
     QStringList texts;
     for (QAction* action : menu.actions()) {
         if (!action->isSeparator()) {

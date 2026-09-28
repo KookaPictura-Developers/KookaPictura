@@ -52,6 +52,8 @@ bool isModalCommand(const QString& id)
         QString::fromLatin1(command_ids::FileInfo),
         QString::fromLatin1(command_ids::FileSave),
         QString::fromLatin1(command_ids::FileSaveAs),
+        QString::fromLatin1(command_ids::FileExportAs),
+        QString::fromLatin1(command_ids::FileQuickExportPng),
         QString::fromLatin1(command_ids::FileRevert),
         QString::fromLatin1(command_ids::FileClose),
         QString::fromLatin1(command_ids::FileCloseAll),
@@ -626,8 +628,7 @@ QJsonObject ControlServer::methodDocument(const QJsonObject& params)
         if (path.isEmpty()) {
             return error(QStringLiteral("invalid_param"), QStringLiteral("path is required"));
         }
-        applied = PicturaMainWindow::isNativeDocumentPath(path) ? frame_->openPath(path)
-                                                               : frame_->openImagePath(path);
+        applied = frame_->openDocumentAtPath(path);
         if (!applied) {
             return error(QStringLiteral("io_error"),
                          QStringLiteral("could not open %1").arg(path));

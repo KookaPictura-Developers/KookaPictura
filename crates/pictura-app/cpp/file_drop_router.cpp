@@ -74,9 +74,7 @@ bool FileDropRouter::eventFilter(QObject* watched, QEvent* event)
         }
     } else {
         for (const QString& path : paths) {
-            const bool opened = PicturaMainWindow::isNativeDocumentPath(path)
-                ? frame_->openPath(path)
-                : frame_->openImagePath(path);
+            const bool opened = frame_->openDocumentAtPath(path);
             changed = changed || opened;
         }
     }

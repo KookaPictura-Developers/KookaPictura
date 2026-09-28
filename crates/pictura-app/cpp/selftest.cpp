@@ -2784,12 +2784,24 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("Duplicate Layer(s)"), QStringLiteral("Delete Layer(s)"),
             QStringLiteral("Group Layers"), QStringLiteral("Ungroup Layers"),
             QStringLiteral("Move Layer Up"), QStringLiteral("Move Layer Down"),
+            QStringLiteral("Export As…"), QStringLiteral("Quick Export as PNG"),
             QStringLiteral("Color Label")};
         const QStringList expectedColor = {
             QStringLiteral("None"), QStringLiteral("Red"), QStringLiteral("Orange"),
             QStringLiteral("Yellow"), QStringLiteral("Green"), QStringLiteral("Blue"),
             QStringLiteral("Violet"), QStringLiteral("Gray")};
-        const bool rowMenuOk = anatomyPanel->rowMenuTextsForTest() == expectedRow;
+        const QStringList groupRow = anatomyPanel->rowMenuTextsForTest(QStringLiteral("group"));
+        const QStringList adjustmentRow =
+            anatomyPanel->rowMenuTextsForTest(QStringLiteral("adjustment"));
+        const QStringList typeRow = anatomyPanel->rowMenuTextsForTest(QStringLiteral("type"));
+        const bool groupHidden = !groupRow.contains(QStringLiteral("Export As…"))
+            && !groupRow.contains(QStringLiteral("Quick Export as PNG"));
+        const bool adjustmentHidden = !adjustmentRow.contains(QStringLiteral("Export As…"))
+            && !adjustmentRow.contains(QStringLiteral("Quick Export as PNG"));
+        const bool typeHidden = !typeRow.contains(QStringLiteral("Export As…"))
+            && !typeRow.contains(QStringLiteral("Quick Export as PNG"));
+        const bool rowMenuOk = anatomyPanel->rowMenuTextsForTest() == expectedRow && groupHidden
+            && adjustmentHidden && typeHidden;
         const bool colorMenuOk = anatomyPanel->colorLabelTextsForTest() == expectedColor;
         ST_BEGIN("menus_panel");
         ST_PASS("menus row=%d color=%d", rowMenuOk ? 1 : 0, colorMenuOk ? 1 : 0);
