@@ -558,3 +558,141 @@ fn a_clone_gesture_uses_its_source_offset() {
     let v = outcome.document.layers[0].channels[0].data[(24 * w + 12) as usize];
     assert!(v < 120, "clone ignored the destination's level: {v}");
 }
+
+/// A light 140×60 field with a dark 20×20 blot at (20, 20), and a selection
+/// mask covering `sel` (x, y, w, h). Adapted from photorust's Patch tests.
+fn patch_doc(field: [u8; 4], sel: (i32, i32, i32, i32)) -> (Document, Vec<u8>) {
+    let mut doc = layer_doc(140, 60, field);
+    paint(&mut doc, (20, 20, 20, 20), [40, 30, 30]);
+    let mut mask = vec![0u8; 140 * 60];
+    for y in sel.1..sel.1 + sel.3 {
+        for x in sel.0..sel.0 + sel.2 {
+            mask[(y * 140 + x) as usize] = 255;
+        }
+    }
+    (doc, mask)
+}
+
+fn paint(doc: &mut Document, (x0, y0, w, h): (i32, i32, i32, i32), rgb: [u8; 3]) {
+    let l = &mut doc.layers[0];
+    let lw = l.rect.width();
+    for y in y0..y0 + h {
+        for x in x0..x0 + w {
+            for (c, v) in l.channels[..3].iter_mut().zip(rgb) {
+                c.data[(y * lw + x) as usize] = v;
+            }
+        }
+    }
+}
+
+const PATCH_FIELD: [u8; 4] = [210, 200, 190, 255];
+
+#[test]
+fn patch_in_source_mode_repairs_the_selection() {
+    let (mut doc, mask) = patch_doc(PATCH_FIELD, (20, 20, 20, 20));
+    let options = PatchOptions {
+        dx: 60,
+        ..PatchOptions::default()
+    };
+    let done = patch_layer(&mut doc, "0", &mask, options).unwrap();
+    assert!(done.is_some());
+    assert!(
+        channel(&doc, 0, 0, 30, 30) > 140,
+        "the blot survived the patch"
+    );
+    assert_eq!(
+        channel(&doc, 0, 0, 90, 30),
+        PATCH_FIELD[0],
+        "the source was modified"
+    );
+}
+
+#[test]
+fn source_and_destination_modes_change_opposite_ends() {
+    let drag = PatchOptions {
+        dx: 60,
+        ..PatchOptions::default()
+    };
+    let (mut source, mask) = patch_doc(PATCH_FIELD, (20, 20, 20, 20));
+    patch_layer(&mut source, "0", &mask, drag).unwrap();
+    let (mut destination, mask) = patch_doc(PATCH_FIELD, (20, 20, 20, 20));
+    let dest = PatchOptions {
+        destination: true,
+        ..drag
+    };
+    let done = patch_layer(&mut destination, "0", &mask, dest).unwrap();
+    // Destination edits the drag target, 60 px right of the selection.
+    assert_eq!(
+        done,
+        Some(PsdRect {
+            top: 20,
+            left: 80,
+            bottom: 40,
+            right: 100
+        })
+    );
+    assert!(channel(&source, 0, 0, 30, 30) > 140);
+    assert!(
+        channel(&destination, 0, 0, 30, 30) < 120,
+        "the selection changed"
+    );
+    assert!(
+        channel(&destination, 0, 0, 90, 30) < 160,
+        "the target was not patched"
+    );
+}
+
+#[test]
+fn transparent_patch_keeps_the_destination_colour() {
+    // A blue field patched from a red area 70 px right: blue must survive.
+    let (_, mask) = patch_doc(PATCH_FIELD, (20, 20, 20, 20));
+    let mut doc = layer_doc(140, 60, [60, 90, 200, 255]);
+    paint(&mut doc, (80, 20, 40, 20), [200, 80, 40]);
+    let options = PatchOptions {
+        dx: 70,
+        transparent: true,
+        ..PatchOptions::default()
+    };
+    patch_layer(&mut doc, "0", &mask, options).unwrap();
+    assert!(channel(&doc, 0, 2, 30, 30) > channel(&doc, 0, 0, 30, 30));
+}
+
+#[test]
+fn content_aware_patch_ignores_the_drag() {
+    let run = |dx, dy| {
+        let (mut doc, mask) = patch_doc(PATCH_FIELD, (20, 20, 20, 20));
+        let options = PatchOptions {
+            dx,
+            dy,
+            content_aware: true,
+            ..PatchOptions::default()
+        };
+        assert!(patch_layer(&mut doc, "0", &mask, options)
+            .unwrap()
+            .is_some());
+        doc.layers[0].channels.clone()
+    };
+    let a = run(60, 0);
+    assert_eq!(a, run(-10, 25));
+}
+
+#[test]
+fn patch_refuses_an_empty_selection_a_zero_drag_or_a_locked_layer() {
+    let (mut doc, mask) = patch_doc(PATCH_FIELD, (20, 20, 20, 20));
+    let drag = PatchOptions {
+        dx: 60,
+        ..PatchOptions::default()
+    };
+    let empty = vec![0u8; mask.len()];
+    assert_eq!(patch_layer(&mut doc, "0", &empty, drag), Ok(None));
+    assert_eq!(patch_layer(&mut doc, "0", &mask[1..], drag), Ok(None));
+    assert_eq!(
+        patch_layer(&mut doc, "0", &mask, PatchOptions::default()),
+        Ok(None)
+    );
+    doc.layers[0].lock = doc.layers[0].lock.with(LockFlags::PIXELS, true);
+    assert_eq!(
+        patch_layer(&mut doc, "0", &mask, drag),
+        Err(HealError::Locked)
+    );
+}

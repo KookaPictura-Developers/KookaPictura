@@ -24,12 +24,14 @@
 //! (<https://github.com/perfecto25/photorust>).
 
 mod layer;
+mod patch;
 mod stroke;
 mod synthesis;
 #[cfg(test)]
 mod tests;
 
 pub use layer::{heal_layer, HealError};
+pub use patch::{patch_layer, PatchOptions};
 pub use stroke::HealStroke;
 
 use pictura_core::PsdRect;
