@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1738 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1743 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **459 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **460 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2235 passed, 11 skipped, 0 failed**.
+  probes) reports **2241 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -397,6 +397,20 @@ Snapshot for resuming after a context break. Update after each milestone.
   J cycle). Ceilings (`ponytail:`): single-threaded, Laplace/Poisson
   approximations (Adobe's biharmonic solver is closed), Sampled source only
   (no Pattern), no Sample All Layers, and no GPU path.
+- **Patch** (change `patch-tool`, issue #12, ported from photorust):
+  `pictura_paint::healing::patch_layer` heals the active pixel layer through a
+  document-sized selection mask — Source repairs the selection from the
+  dragged-to area, Destination applies the selection at the drag target,
+  Transparent keeps the patched area's colour, Content-Aware rebuilds the
+  selection in place and ignores the drag. `patch_selection` in
+  `cxxqt_object/healing.rs` records one "Patch Tool" state; `tool_patch.cpp`
+  is CS6's two-step gesture (drag outside the selection to outline, drag the
+  outline to patch, with the outline previewed at the offset); the options bar
+  has the combine buttons, Patch (Normal / Content-Aware), Source /
+  Destination, Transparent, and a disabled Use Pattern. The J cycle is now Spot
+  Healing → Healing → Patch (self-test code 537; guard 98 now probes
+  Content-Aware Move). Ceilings (`ponytail:`): no Adaptation, Sample All
+  Layers, or Use Pattern; the solve runs on the GUI thread.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
@@ -414,7 +428,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   (`image_view_annotations.cpp`) draws every visible group's marks as numbered
   discs in the group's colour and sizes, the disc growing with the label so a
   larger Label Size never clips the number. Covered by the `healing_tools`
-  self-test (536); guard 98 now probes `Patch`. Ceilings (`ponytail:`): no
+  self-test (536). Ceilings (`ponytail:`): no
   Measurement Log, automatic counting, or PSD persistence; the picker's
   screen-sampling eyedropper, Add to Swatches, and Color Libraries are not
   wired; marks and groups are session document state undone through history.
