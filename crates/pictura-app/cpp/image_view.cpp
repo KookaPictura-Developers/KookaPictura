@@ -23,9 +23,6 @@ namespace pictura {
 namespace {
 constexpr double kMinZoom = 0.01;
 constexpr double kMaxZoom = 32.0;
-// ponytail: cap the whole-document present cache at ~64 MP (256 MB); beyond it
-// painting falls back to the transform path rather than risking an OOM.
-constexpr qint64 kMaxCachePixels = 64ll * 1024 * 1024;
 
 // 2x2-cell tile reused for every transparency fill. Built lazily on the GUI
 // thread the first time a document is painted.
@@ -76,6 +73,7 @@ ImageView::ImageView(QWidget* parent)
 void ImageView::setImage(const QImage& image)
 {
     image_ = image;
+    presentCache_.valid = false;
     userAdjusted_ = false;
     if (image_.isNull()) {
         zoom_ = 1.0;
@@ -129,6 +127,7 @@ void ImageView::clampOffset()
 void ImageView::replaceImage(const QImage& image)
 {
     image_ = image;
+    presentCache_.valid = false;
     update();
 }
 
@@ -163,28 +162,9 @@ void ImageView::blitRegion(const QImage& region, int x, int y)
                         src.constScanLine(sy + row) + sx * bpp, rowBytes);
         }
     }
-    // Patch the same region of the scaled present cache under the identical
-    // pan/zoom transform, so a dab does not force a full-document rescale on the
-    // next paint (O(canvas) per dab). CompositionMode_Source matches the
-    // full-rebuild result: the cache is one scaled copy of `image_`.
-    if (presentCacheEnabledForTest_ && presentCache_.valid && presentCache_.zoom == zoom_
-        && !presentCache_.scaled.isNull()) {
-        QPainter patch(&presentCache_.scaled);
-        patch.setCompositionMode(QPainter::CompositionMode_Source);
-        // Qt composes `world = world * new`, so S(zoom) then T(x, y) maps a
-        // region point p to (p + (x, y)) * zoom and lands the region's top-left
-        // at scaled cache (x*zoom, y*zoom). The reversed order mapped it to
-        // (x, y), off the cache at any zoom below 1.
-        patch.scale(zoom_, zoom_);
-        patch.translate(x, y);
-        patch.drawImage(QPointF(0.0, 0.0), region);
-        // An in-place QPainter write need not bump image_.cacheKey(); keep the
-        // cache key in sync with the image it now mirrors (patched region plus
-        // the untouched pixels that already matched).
-        presentCache_.key = image_.cacheKey();
-    } else {
-        presentCache_.valid = false;
-    }
+    // The cached level crop no longer matches the patched image; the next paint
+    // re-crops the updated pyramid level.
+    presentCache_.valid = false;
     update();
 }
 
@@ -534,35 +514,108 @@ void ImageView::setPresentCacheEnabledForTest(bool enabled)
     presentCacheEnabledForTest_ = enabled;
 }
 
-const QImage* ImageView::cachedScaled(PresentCache& cache, const QImage& source)
+void ImageView::setPresentLevelCropForTest(bool enabled)
 {
-    if (!presentCacheEnabledForTest_ || source.isNull()) {
+    presentLevelCropForTest_ = enabled;
+    presentCache_.valid = false;
+}
+
+void ImageView::setLevelProvider(LevelProvider provider)
+{
+    levelProvider_ = std::move(provider);
+    presentCache_.valid = false;
+}
+
+bool ImageView::smoothSamplingForZoom(double zoom)
+{
+    return zoom < 2.0;
+}
+
+int ImageView::presentLevelForZoom(double zoom, int levelCount)
+{
+    if (levelCount <= 0) {
+        return 0;
+    }
+    int level = 0;
+    while (level + 1 < levelCount && 1.0 / double(1ll << (level + 1)) >= zoom) {
+        ++level;
+    }
+    return level;
+}
+
+QRectF ImageView::visibleDocumentRect() const
+{
+    if (image_.isNull() || zoom_ <= 0.0) {
+        return QRectF();
+    }
+    const QPointF tl = widgetToImage(QPointF(0.0, 0.0));
+    const QPointF br = widgetToImage(QPointF(width(), height()));
+    const QRectF visible(QPointF(std::min(tl.x(), br.x()), std::min(tl.y(), br.y())),
+                         QPointF(std::max(tl.x(), br.x()), std::max(tl.y(), br.y())));
+    return visible.intersected(QRectF(0.0, 0.0, image_.width(), image_.height()));
+}
+
+const QImage* ImageView::presentCrop(QRect& docRect)
+{
+    docRect = QRect();
+    // A live stroke paints into the stroke's layer buffer, not the composite the
+    // pyramid reads, so present the patched image directly until the stroke's
+    // commit recomposites and rebuilds the pyramid.
+    if (levelProvider_.isPainting && levelProvider_.isPainting()) {
         return nullptr;
     }
-    const qint64 targetW = qint64(source.width() * zoom_);
-    const qint64 targetH = qint64(source.height() * zoom_);
-    if (targetW <= 0 || targetH <= 0 || targetW * targetH > kMaxCachePixels) {
+    // No provider or no crop source: nothing to present, and no cache to touch.
+    if (!presentLevelCropForTest_ || !levelProvider_.crop || image_.isNull()) {
         return nullptr;
     }
-    if (cache.valid && cache.key == source.cacheKey() && cache.zoom == zoom_) {
-        return &cache.scaled;
+    const int levels = levelProvider_.levelCount ? levelProvider_.levelCount() : 0;
+    if (levels <= 0) {
+        return nullptr;
     }
-    // Build through the same painter transform the direct path uses so the
-    // presented pixels match it exactly; QImage::scaled would resample with a
-    // different filter.
-    cache.scaled = QImage(int(targetW), int(targetH), QImage::Format_ARGB32_Premultiplied);
-    cache.scaled.fill(Qt::transparent);
-    {
-        QPainter builder(&cache.scaled);
-        builder.scale(zoom_, zoom_);
-        builder.setClipRect(QRectF(0.0, 0.0, source.width(), source.height()));
-        builder.drawImage(QPointF(0.0, 0.0), source);
+    const int level = presentLevelForZoom(zoom_, levels);
+    const QSize levelSize =
+        levelProvider_.levelSize ? levelProvider_.levelSize(level) : QSize();
+    if (levelSize.isEmpty()) {
+        return nullptr;
     }
-    cache.key = source.cacheKey();
-    cache.zoom = zoom_;
-    cache.valid = true;
-    ++cache.rebuilds;
-    return &cache.scaled;
+    const QRectF visible = visibleDocumentRect();
+    if (visible.isEmpty()) {
+        return nullptr;
+    }
+    const int scale = 1 << level;
+    const double inv = 1.0 / double(scale);
+    // One level-pixel margin so interpolated edge samples have neighbours.
+    const int lx0 = std::max(0, int(std::floor(visible.left() * inv)) - 1);
+    const int ly0 = std::max(0, int(std::floor(visible.top() * inv)) - 1);
+    const int lx1 = std::min(levelSize.width(), int(std::ceil(visible.right() * inv)) + 1);
+    const int ly1 = std::min(levelSize.height(), int(std::ceil(visible.bottom() * inv)) + 1);
+    if (lx1 <= lx0 || ly1 <= ly0) {
+        return nullptr;
+    }
+    const QRect rect(lx0 * scale, ly0 * scale, (lx1 - lx0) * scale, (ly1 - ly0) * scale);
+    const qint64 key = image_.cacheKey();
+    const quint64 revision =
+        levelProvider_.canvasRevision ? levelProvider_.canvasRevision() : quint64(0);
+    if (presentCacheEnabledForTest_ && presentCache_.valid && presentCache_.key == key
+        && presentCache_.revision == revision && presentCache_.level == level
+        && presentCache_.docRect == rect && !presentCache_.crop.isNull()) {
+        docRect = presentCache_.docRect;
+        return &presentCache_.crop;
+    }
+    QImage crop = levelProvider_.crop(level, lx0, ly0, lx1 - lx0, ly1 - ly0);
+    ++presentCache_.rebuilds;
+    if (crop.isNull() || crop.width() <= 0 || crop.height() <= 0) {
+        presentCache_.valid = false;
+        return nullptr;
+    }
+    presentCache_.crop = crop;
+    presentCache_.key = key;
+    presentCache_.revision = revision;
+    presentCache_.level = level;
+    presentCache_.docRect = rect;
+    presentCache_.valid = true;
+    docRect = rect;
+    return &presentCache_.crop;
 }
 
 void ImageView::paintEvent(QPaintEvent*)
@@ -624,16 +677,30 @@ void ImageView::paintEvent(QPaintEvent*)
         presentCacheRebuiltLastPaint_ = false;
     } else {
         const int before = presentCache_.rebuilds;
-        const QImage* base = cachedScaled(presentCache_, image_);
-        if (base) {
-            painter.save();
-            painter.resetTransform();
-            painter.setClipRect(docDevice);
-            painter.drawImage(docDevice, *base);
-            painter.restore();
+        QRect cropDoc;
+        const QImage* crop = presentCrop(cropDoc);
+        painter.save();
+        painter.resetTransform();
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, smoothSamplingForZoom(zoom_));
+        painter.setClipRect(docDevice);
+        if (crop) {
+            const QRectF target(offset_.x() + cropDoc.x() * zoom_,
+                                offset_.y() + cropDoc.y() * zoom_, cropDoc.width() * zoom_,
+                                cropDoc.height() * zoom_);
+            painter.drawImage(target, *crop);
         } else {
-            painter.drawImage(QPointF(0.0, 0.0), image_);
+            // No level crop (a live stroke, or no provider): draw only the
+            // visible document, not the whole image resampled every paint. The
+            // source rect bounds per-paint sampling to the viewport.
+            const QRectF visible = visibleDocumentRect();
+            if (!visible.isEmpty()) {
+                const QRectF target(offset_.x() + visible.x() * zoom_,
+                                    offset_.y() + visible.y() * zoom_, visible.width() * zoom_,
+                                    visible.height() * zoom_);
+                painter.drawImage(target, image_, visible);
+            }
         }
+        painter.restore();
         presentCacheRebuiltLastPaint_ = presentCache_.rebuilds != before;
     }
     painter.restore();

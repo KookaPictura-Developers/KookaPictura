@@ -22,6 +22,8 @@ pollster = "1"
 rustybuzz = "0.20"
 # Pure-Rust glyph rasterizer honoring fractional subpixel offsets.
 swash = { version = "0.2.10", features = ["scale", "render"] }
+# Row-parallel CPU composite fallback (canvas-view-performance D10).
+rayon = "1"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }

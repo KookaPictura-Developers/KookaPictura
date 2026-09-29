@@ -140,6 +140,8 @@ add_executable(pictura
     crates/pictura-app/cpp/frame_recent.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
+    crates/pictura-app/cpp/frame_canvas.cpp
+    crates/pictura-app/cpp/frame_canvas.h
     crates/pictura-app/cpp/panels/layers_panel.cpp
     crates/pictura-app/cpp/panels/layers_filter_proxy.cpp
     crates/pictura-app/cpp/panels/layers_filter_bar.cpp

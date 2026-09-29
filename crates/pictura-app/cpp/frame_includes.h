@@ -43,6 +43,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonObject>
+#include <QtCore/QPointer>
 #include <QtCore/QRect>
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QTimer>

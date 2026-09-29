@@ -1917,17 +1917,23 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             ST_FAIL(67, "preview cache wrong");
         }
 
-        // 76: the present cache reuses the scaled document across repaints at a
-        // fixed zoom, rebuilds when the zoom changes, and its size is the
-        // scaled document size.
+        // 76: the present path crops a view-pyramid level instead of scaling the
+        // full-resolution document. At a fixed view the chosen crop is reused;
+        // crossing a level boundary re-crops; a pan re-crops then reuses; and at
+        // level 0 the crop present is pixel-identical to a full-resolution draw.
+        frame.resize(1000, 700);
+        QApplication::processEvents();
+        const bool pcCreated = frame.newDocument(QStringLiteral("PresentCache"), 520, 120,
+                                                 QStringLiteral("rgb"), 8,
+                                                 QStringLiteral("white"));
         canvas = frame.imageView();
-        if (!canvas || canvas->image().isNull()) {
+        if (!pcCreated || !canvas) {
             ST_FAIL(76, "present cache no canvas");
         }
-        const QImage pcSource = canvas->image();
-        const double pcZoom = canvas->zoom();
-        const QSize pcExpected(std::max(1, int(pcSource.width() * pcZoom)),
-                               std::max(1, int(pcSource.height() * pcZoom)));
+        const int pcDoc = frame.activeDocumentIndex();
+        const QPointF pcCentre(canvas->width() / 2.0, canvas->height() / 2.0);
+        canvas->setZoom(0.55, pcCentre);
+        QApplication::processEvents();
         QImage pcShot1(canvas->size(), QImage::Format_ARGB32);
         canvas->render(&pcShot1);
         const int pcRebuildsAfterFirst = canvas->presentCacheRebuildCount();
@@ -1935,39 +1941,42 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         canvas->render(&pcShot2);
         const bool pcReused = !canvas->presentCacheRebuiltOnLastPaint()
                               && canvas->presentCacheRebuildCount() == pcRebuildsAfterFirst;
-        const bool pcStable = pcShot1 == pcShot2;
-        const QSize pcCachedAtZoom = canvas->presentCacheImageSize();
-        canvas->setZoom(pcZoom * 2.0,
-                        QPointF(canvas->width() / 2.0, canvas->height() / 2.0));
+        const bool pcStable = samePixels(pcShot1, pcShot2);
+        const bool pcLevel0Size = canvas->presentCacheImageSize() == QSize(520, 120);
+        canvas->setPresentLevelCropForTest(false);
+        QImage pcDirect(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcDirect);
+        canvas->setPresentLevelCropForTest(true);
+        QImage pcCropped(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcCropped);
+        const bool pcIdentical = samePixels(pcCropped, pcDirect);
+        canvas->setZoom(0.4, pcCentre);
         QImage pcShot3(canvas->size(), QImage::Format_ARGB32);
         canvas->render(&pcShot3);
         const bool pcRebuiltOnZoom = canvas->presentCacheRebuiltOnLastPaint()
                                       && canvas->presentCacheRebuildCount() > pcRebuildsAfterFirst;
-        const QSize pcCachedAfterZoom = canvas->presentCacheImageSize();
-        const QSize pcExpectedAfterZoom(std::max(1, int(pcSource.width() * canvas->zoom())),
-                                        std::max(1, int(pcSource.height() * canvas->zoom())));
-        const bool pcSizeOk = pcCachedAtZoom == pcExpected
-                              && pcCachedAfterZoom == pcExpectedAfterZoom;
-        canvas->setPresentCacheEnabledForTest(false);
-        QImage pcShot4(canvas->size(), QImage::Format_ARGB32);
-        canvas->render(&pcShot4);
-        canvas->setPresentCacheEnabledForTest(true);
-        const bool pcIdentical = pcShot3 == pcShot4;
+        const QSize pcLevel1SizeActual = canvas->presentCacheImageSize();
+        const bool pcLevel1Size = pcLevel1SizeActual == QSize(260, 60);
+        // A pan over a fully-visible document keeps the same crop (no resample).
+        canvas->panBy(QPointF(12.0, 8.0));
+        QImage pcPan1(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcPan1);
+        const bool pcPanReused = !canvas->presentCacheRebuiltOnLastPaint();
+        QImage pcPan2(canvas->size(), QImage::Format_ARGB32);
+        canvas->render(&pcPan2);
+        const bool pcPanStable = !canvas->presentCacheRebuiltOnLastPaint()
+                                 && samePixels(pcPan1, pcPan2);
         ST_BEGIN("present_cache_reused");
-        ST_PASS("present_cache reused=%d zoom_rebuild=%d src=%dx%d "
-                     "z0=%g z1=%g size=%dx%d stable=%d identical=%d", pcReused ? 1 : 0,
-                     pcRebuiltOnZoom ? 1 : 0,
-                     pcSource.width(),
-                     pcSource.height(),
-                     pcZoom,
-                     canvas->zoom(),
-                     pcCachedAfterZoom.width(),
-                     pcCachedAfterZoom.height(),
-                     pcStable ? 1 : 0,
-                     pcIdentical ? 1 : 0);
-        if (!pcReused || !pcRebuiltOnZoom || !pcSizeOk || !pcStable || !pcIdentical) {
+        ST_PASS("present_cache reused=%d stable=%d level0=520x120 full_identical=%d "
+                     "zoom_rebuild=%d level1=%dx%d pan_reuse=%d pan_stable=%d",
+                     pcReused ? 1 : 0, pcStable ? 1 : 0, pcIdentical ? 1 : 0,
+                     pcRebuiltOnZoom ? 1 : 0, pcLevel1SizeActual.width(),
+                     pcLevel1SizeActual.height(), pcPanReused ? 1 : 0, pcPanStable ? 1 : 0);
+        if (!pcReused || !pcStable || !pcLevel0Size || !pcIdentical || !pcRebuiltOnZoom
+            || !pcLevel1Size || !pcPanReused || !pcPanStable) {
             ST_FAIL(76, "present cache wrong");
         }
+        frame.closeDocument(pcDoc, false);
 
         // M32: the interactive region paths. A 32x32 layer grown into a 64x64
         // canvas keeps a known sub-rectangle, so hiding it changes only that
@@ -2112,7 +2121,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         QImage blitShot(blitCanvas->size(), QImage::Format_ARGB32);
         blitCanvas->render(&blitShot);
-        const bool cachePatchedAfter = !blitCanvas->presentCacheRebuiltOnLastPaint();
+        const bool cropRefreshedAfter = blitCanvas->presentCacheRebuiltOnLastPaint();
+        QImage blitShot2(blitCanvas->size(), QImage::Format_ARGB32);
+        blitCanvas->render(&blitShot2);
+        const bool cropReusedAfter = !blitCanvas->presentCacheRebuiltOnLastPaint()
+                                     && samePixels(blitShot, blitShot2);
 
         // Force a full recomposite and compare both the blitted canvas and the
         // rebuilt image with it.
@@ -2121,7 +2134,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool regionPath = regionBlits >= 1 && blitChanged == 0;
         const bool canvasSame = samePixels(blitBlitted, blitFull);
         const bool rebuiltSame = samePixels(blitRebuilt, blitFull);
-        const bool cacheOk = reuseBefore && cachePatchedAfter;
+        const bool cacheOk = reuseBefore && cropRefreshedAfter && cropReusedAfter;
         ST_BEGIN("region_blit_region");
         ST_PASS("region_blit region=%d changed=%d canvas=%d "
                      "rebuilt=%d cache=%d", regionPath ? 1 : 0,

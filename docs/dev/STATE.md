@@ -15,14 +15,15 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1779 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
-  `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
-  the `composite_profile_*` pair, and `filter_profile_1024`; counted from
-  `cargo nextest run --workspace`, which excludes the pre-existing ignored
-  `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **472 passed, 0 failed, 0 skipped** standalone; the
+- Test suite: **1797 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
+  the `scroll_zoom_pan_profile_*` pair, `region_move_timing_4000`,
+  `region_refresh_profile_4000`, `undo_profile_4000`, the `composite_profile_*`
+  pair, and `filter_profile_1024`; counted from `cargo nextest run --workspace`,
+  which excludes the pre-existing ignored `pictura-render` doctest that
+  `cargo test --workspace` reports separately).
+  The C++ self-test reports **470 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2289 passed, 11 skipped, 0 failed**.
+  probes) reports **2305 passed, 13 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -3175,6 +3176,49 @@ exit codes are unchanged. Gates green:
 measure frame timing, so the interactive feel (pan/zoom/move latency on large
 documents) still needs a real GUI check.
 
+### Canvas view performance — CPU display pyramid (change `canvas-view-performance`)
+
+Implemented `openspec/changes/canvas-view-performance`. This adds a CPU **display
+pyramid** in `pictura-render::ViewPyramid`, distinct from the deferred M38
+GPU-tiles/proxy-compositing track. The pyramid stores no level 0 — it borrows a
+planar straight-alpha level-0 view per call; the app supplies that from a cached
+full-resolution **sRGB** `level0` frame (color-managed from `doc.composite`, and
+also the display image's source), so the common RGBA path adds one full-resolution
+buffer over `doc.composite`. Levels below 0 are stored premultiplied and halve to
+a 256 px long side. The
+canvas (`cpp/image_view.cpp`) picks the coarsest level still at least as fine as
+the screen and blits a premultiplied crop
+(`PictureView::display_image(level, x, y, w, h)`), so a pan or hover repaint never
+rescales the full-resolution document. The 64 MP present-cache cap and the
+full-resolution `drawImage(image_)` fallback are gone; sampling is smooth below
+200 % and nearest at and above it. `CanvasDamage` (`edited` / `mark` / `take`)
+replaces the `display_dirty` bool, preserving `regionBlitted` / `changed` and the
+no-`changed`-on-a-region-refresh contract. The CPU composite fallback is
+row-parallel (`crates/pictura-render/src/composite_rows.rs`, `rayon`). The display
+conversion emits `Format_RGBA8888_Premultiplied`; the shared straight-alpha
+export/thumbnail helpers are byte-identical. The navigator draws from a pyramid
+level and adds no second full-resolution copy.
+
+Memory at 16000² (measured, `crates/pictura-render/examples/mem_probe_16k.rs`):
+one full-resolution level-0 frame plus halved levels peak ≈ **2.0 GB**; storing a
+premultiplied level-0 copy as well would cost ≈ **3.0 GB**. The probe covers the
+document and pyramid buffers, not the display `QImage` (`rust.image` /
+`ImageView::image_`). This is display-only — it caches the full composite and
+does not composite layer proxies.
+
+Exit code **541** (`canvas_present_contract`) pins level-crop reuse across a pan,
+level-0 crop identity against a full-resolution transform draw, and no `changed`
+on a region refresh; **539**/**540** pin the filter/level formula and the
+navigator level source. Profile-only `scroll_zoom_pan_profile_4000` /
+`_16000` time the crop against a full-resolution rescale.
+
+The 16000² raster-import prerequisite landed here too: `pictura_codec`'s default
+`ImageBudget` allocation cap rose from 512 MiB to **2 GiB** and the Qt decode edge
+raises `QImageReader`'s 256 MB allocation limit to **4 GB**
+(`crates/pictura-app/cpp/decode_image.cpp`), so `World Map [16,000 x 16,000].png`
+(16507×16196×4 ≈ 1020 MiB) opens. Both caps were below the target, so the file was
+refused before the decoder ran. The 30 000 px dimension cap is unchanged.
+
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
@@ -3577,8 +3621,11 @@ M6 through M34 are archived; their deltas now live in `openspec/specs/`.
   blit and the 1 MP `REGION_REFRESH_BUDGET` fallback: the planar composite is the
   authoritative canvas, `refresh_region` signals the region, and C++
   `ImageView::blitRegion` (`QPainter`, `CompositionMode_Source`) paints it. A
-  Display-resolution proxy (LoD) is still absent, so a zoomed-out composite still
-  covers the whole document.
+  CPU display pyramid (change `canvas-view-performance`) now caches the full
+  composite's halved levels and crops one for the canvas, so a zoomed-out present
+  no longer scales the full-resolution document; proxy-level *compositing*
+  (composite a proxy of each layer) is still absent, so a composite still runs at
+  document resolution for the damaged region.
 - History capture clones the whole document for each state, so large documents
   pay both RAM (up to 20 states) and latency (~60 ms/state at 4000²); copy-on-write
   or tile diffs are the deferred fix.

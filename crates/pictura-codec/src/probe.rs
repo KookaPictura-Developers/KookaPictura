@@ -44,7 +44,12 @@ impl Default for ImageBudget {
     fn default() -> Self {
         Self {
             max_dimension: 30_000,
-            max_alloc_bytes: 512 * 1024 * 1024,
+            // 2 GiB admits a 16000²-class RGBA import (the canvas target):
+            // 16507×16196×4 ≈ 1020 MiB, over the former 512 MiB bound. The
+            // 30 000 px dimension cap remains the outer limit. The Qt decode edge
+            // raises QImageReader's separate 256 MB allocation limit to match
+            // (see crates/pictura-app/cpp/decode_image.cpp).
+            max_alloc_bytes: 2 * 1024 * 1024 * 1024,
         }
     }
 }

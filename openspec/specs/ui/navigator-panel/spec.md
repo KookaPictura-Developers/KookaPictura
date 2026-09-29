@@ -2,7 +2,9 @@
 
 ## Purpose
 The Navigator thumbnail and proxy, its zoom controls, and the Navigator dock and toggle.
+
 ## Requirements
+
 ### Requirement: Navigator thumbnail and proxy
 The system SHALL show a thumbnail of the active document and a rectangle marking
 the portion currently visible in the canvas. The proxy SHALL reflect the canvas
@@ -45,3 +47,27 @@ The system SHALL host the Navigator in a registered dock with a stable
 - **WHEN** the user toggles Navigator from the Window menu
 - **THEN** the panel is shown or hidden
 
+### Requirement: Navigator thumbnail from the view pyramid
+
+The Navigator thumbnail SHALL be drawn from the document's view pyramid — a
+level, or a crop of a level, sized to the widget — rather than from a fresh
+reduction of the full-resolution composite. It MUST NOT allocate a second
+full-resolution copy of the document. The thumbnail SHALL refresh when the
+document content changes.
+
+#### Scenario: The thumbnail comes from a pyramid level
+
+- **WHEN** the Navigator paints a thumbnail for a large document
+- **THEN** it samples a view-pyramid level sized to the widget and does not
+  rescale the full-resolution composite
+
+#### Scenario: No second full-resolution copy is held
+
+- **WHEN** the Navigator is shown for a document already holding a view pyramid
+- **THEN** no additional full-resolution document buffer is allocated for the
+  thumbnail
+
+#### Scenario: A content change refreshes the thumbnail
+
+- **WHEN** the document composite changes
+- **THEN** the Navigator thumbnail redraws from the updated pyramid levels

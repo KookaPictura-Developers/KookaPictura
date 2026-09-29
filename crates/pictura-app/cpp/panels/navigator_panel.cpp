@@ -3,7 +3,10 @@
 #include "image_view.h"
 #include "jump_slider.h"
 
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+
 #include <QtCore/QEvent>
+#include <QtCore/QStringList>
 #include <QtGui/QColor>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
@@ -49,6 +52,18 @@ void NavigatorThumbnail::setImage(const QImage& image)
     update();
 }
 
+void NavigatorThumbnail::setDocumentSize(const QSize& size)
+{
+    documentSize_ = size;
+    scaled_ = QImage();
+    update();
+}
+
+QSize NavigatorThumbnail::documentSize() const
+{
+    return documentSize_.isEmpty() ? source_.size() : documentSize_;
+}
+
 void NavigatorThumbnail::setView(double zoom, const QPointF& offset, const QSize& viewport)
 {
     zoom_ = zoom;
@@ -64,14 +79,15 @@ void NavigatorThumbnail::setPointPicked(std::function<void(const QPointF&)> call
 
 QRect NavigatorThumbnail::imageRect() const
 {
-    if (source_.isNull()) {
+    const QSize doc = documentSize();
+    if (source_.isNull() || doc.isEmpty()) {
         return rect();
     }
-    const double fit = std::min(double(width()) / source_.width(),
-                                double(height()) / source_.height());
+    const double fit = std::min(double(width()) / doc.width(),
+                                double(height()) / doc.height());
     const double scale = std::min(fit, 1.0);
-    const QSize size(std::max(1, int(source_.width() * scale)),
-                     std::max(1, int(source_.height() * scale)));
+    const QSize size(std::max(1, int(doc.width() * scale)),
+                     std::max(1, int(doc.height() * scale)));
     return QRect(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2),
                  size);
 }
@@ -92,15 +108,16 @@ void NavigatorThumbnail::paintEvent(QPaintEvent*)
     painter.drawImage(area.topLeft(), scaled_);
 
     const double zoom = zoom_ > 0.0 ? zoom_ : 1.0;
-    const double x0 = std::clamp(-offset_.x() / zoom, 0.0, double(source_.width()));
-    const double y0 = std::clamp(-offset_.y() / zoom, 0.0, double(source_.height()));
+    const QSize doc = documentSize();
+    const double x0 = std::clamp(-offset_.x() / zoom, 0.0, double(doc.width()));
+    const double y0 = std::clamp(-offset_.y() / zoom, 0.0, double(doc.height()));
     const double x1 = std::clamp((viewport_.width() - offset_.x()) / zoom, 0.0,
-                                 double(source_.width()));
+                                 double(doc.width()));
     const double y1 = std::clamp((viewport_.height() - offset_.y()) / zoom, 0.0,
-                                 double(source_.height()));
+                                 double(doc.height()));
     if (x1 > x0 && y1 > y0) {
-        const double sx = double(area.width()) / source_.width();
-        const double sy = double(area.height()) / source_.height();
+        const double sx = double(area.width()) / doc.width();
+        const double sy = double(area.height()) / doc.height();
         const QRectF proxy(area.x() + x0 * sx, area.y() + y0 * sy,
                            (x1 - x0) * sx, (y1 - y0) * sy);
         painter.setBrush(Qt::NoBrush);
@@ -142,13 +159,14 @@ void NavigatorThumbnail::mouseMoveEvent(QMouseEvent* event)
 QPointF NavigatorThumbnail::mapToImage(const QPointF& pos) const
 {
     const QRect area = imageRect();
-    if (source_.isNull() || area.isEmpty()) {
+    const QSize doc = documentSize();
+    if (source_.isNull() || doc.isEmpty() || area.isEmpty()) {
         return QPointF();
     }
     const double x = std::clamp((pos.x() - area.x()) / area.width(), 0.0, 1.0)
-                     * (source_.width() - 1);
+                     * (doc.width() - 1);
     const double y = std::clamp((pos.y() - area.y()) / area.height(), 0.0, 1.0)
-                     * (source_.height() - 1);
+                     * (doc.height() - 1);
     return QPointF(x, y);
 }
 
@@ -244,10 +262,17 @@ bool NavigatorPanel::eventFilter(QObject* watched, QEvent* event)
     return QWidget::eventFilter(watched, event);
 }
 
+void NavigatorPanel::setView(PictureView* view)
+{
+    view_ = view;
+    refresh();
+}
+
 void NavigatorPanel::refresh()
 {
     if (!canvas_) {
         thumbnail_->setImage(QImage());
+        thumbnail_->setDocumentSize(QSize());
         thumbnail_->setView(1.0, QPointF(), QSize());
         updating_ = true;
         slider_->setValue(0);
@@ -256,7 +281,23 @@ void NavigatorPanel::refresh()
         zoomLabel_->setText(QStringLiteral("—"));
         return;
     }
-    thumbnail_->setImage(canvas_->image());
+    QSize docSize = canvas_->image().size();
+    QImage thumb = canvas_->image();
+    if (view_ && view_->has_document()) {
+        docSize = QSize(view_->document_width(), view_->document_height());
+        const int levels = view_->display_level_count();
+        if (levels > 0) {
+            const int level = levels - 1;
+            const QStringList parts = view_->display_level_size(level).split(
+                QLatin1Char(' '), Qt::SkipEmptyParts);
+            if (parts.size() == 2) {
+                thumb = view_->display_image(level, 0, 0, parts.at(0).toInt(),
+                                             parts.at(1).toInt());
+            }
+        }
+    }
+    thumbnail_->setDocumentSize(docSize);
+    thumbnail_->setImage(thumb);
     syncFromCanvas();
 }
 
