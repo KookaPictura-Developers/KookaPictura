@@ -30,24 +30,126 @@ use pictura_core::{Document, Layer, PixelBuffer};
 pub struct StampSource {
     image: RgbaImage,
     offset: (i32, i32),
+    transform: Option<(SourceTransform, (f32, f32))>,
+}
+
+/// The Clone Source panel's transform of the source: W / H as scale factors
+/// (negative for Flip Horizontal / Vertical) and a rotation in degrees,
+/// counter-clockwise on screen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceTransform {
+    pub scale_x: f32,
+    pub scale_y: f32,
+    pub angle_deg: f32,
+}
+
+impl Default for SourceTransform {
+    fn default() -> Self {
+        SourceTransform {
+            scale_x: 1.0,
+            scale_y: 1.0,
+            angle_deg: 0.0,
+        }
+    }
+}
+
+impl SourceTransform {
+    pub fn is_identity(&self) -> bool {
+        *self == SourceTransform::default()
+    }
 }
 
 impl StampSource {
     pub fn new(image: RgbaImage, offset: (i32, i32)) -> StampSource {
-        StampSource { image, offset }
+        StampSource {
+            image,
+            offset,
+            transform: None,
+        }
+    }
+
+    /// A source painted through `transform` about the document point
+    /// `anchor`, where the offset was measured: the anchor paints its source
+    /// point, and the source around it is scaled, flipped, and rotated.
+    pub fn transformed(
+        image: RgbaImage,
+        offset: (i32, i32),
+        anchor: (f32, f32),
+        transform: SourceTransform,
+    ) -> StampSource {
+        let transform = (!transform.is_identity()).then_some((transform, anchor));
+        StampSource {
+            image,
+            offset,
+            transform,
+        }
     }
 
     /// The source for document pixel `(x, y)`, or `None` off the image: there
     /// is nothing to copy there, and painting transparency instead would punch
     /// holes in the layer.
     pub(crate) fn at(&self, x: i32, y: i32) -> Option<Rgba> {
-        let (sx, sy) = (x + self.offset.0, y + self.offset.1);
-        if sx < 0 || sy < 0 || sx >= self.image.width || sy >= self.image.height {
-            return None;
-        }
-        let [r, g, b, a] = self.image.get(sx, sy);
-        Some(Rgba { r, g, b, a })
+        let Some((t, anchor)) = self.transform else {
+            let (sx, sy) = (x + self.offset.0, y + self.offset.1);
+            if sx < 0 || sy < 0 || sx >= self.image.width || sy >= self.image.height {
+                return None;
+            }
+            let [r, g, b, a] = self.image.get(sx, sy);
+            return Some(Rgba { r, g, b, a });
+        };
+        // Invert the forward map (scale, then rotate) at the pixel centre.
+        let (dx, dy) = (x as f32 + 0.5 - anchor.0, y as f32 + 0.5 - anchor.1);
+        let (sin, cos) = t.angle_deg.to_radians().sin_cos();
+        let (ux, uy) = (dx * cos - dy * sin, dx * sin + dy * cos);
+        let sx = anchor.0 + self.offset.0 as f32 + ux / t.scale_x;
+        let sy = anchor.1 + self.offset.1 as f32 + uy / t.scale_y;
+        bilinear(&self.image, sx - 0.5, sy - 0.5)
     }
+}
+
+/// Premultiplied bilinear sample at continuous pixel coordinates; `None` off
+/// the image. Edge pixels clamp, so the image's border samples its own edge.
+fn bilinear(img: &RgbaImage, x: f32, y: f32) -> Option<Rgba> {
+    let (w, h) = (img.width as f32, img.height as f32);
+    if x < -0.5 || y < -0.5 || x >= w - 0.5 || y >= h - 0.5 {
+        return None;
+    }
+    let (x0, y0) = (x.floor(), y.floor());
+    let (fx, fy) = (x - x0, y - y0);
+    let px = |xi: f32, yi: f32| {
+        let xi = (xi as i32).clamp(0, img.width - 1);
+        let yi = (yi as i32).clamp(0, img.height - 1);
+        let [r, g, b, a] = img.get(xi, yi);
+        let af = a as f32 / 255.0;
+        [r as f32 * af, g as f32 * af, b as f32 * af, a as f32]
+    };
+    let mut acc = [0.0f32; 4];
+    for (weight, p) in [
+        ((1.0 - fx) * (1.0 - fy), px(x0, y0)),
+        (fx * (1.0 - fy), px(x0 + 1.0, y0)),
+        ((1.0 - fx) * fy, px(x0, y0 + 1.0)),
+        (fx * fy, px(x0 + 1.0, y0 + 1.0)),
+    ] {
+        for c in 0..4 {
+            acc[c] += weight * p[c];
+        }
+    }
+    let a = acc[3];
+    if a <= 0.0 {
+        return Some(Rgba {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
+        });
+    }
+    let un = |v: f32| (v * 255.0 / a).round().clamp(0.0, 255.0) as u8;
+    Some(Rgba {
+        r: un(acc[0]),
+        g: un(acc[1]),
+        b: un(acc[2]),
+        a: a.round().clamp(0.0, 255.0) as u8,
+    })
 }
 
 /// The Clone Stamp's Sample menu.
@@ -242,6 +344,67 @@ mod tests {
         // Sources off the left edge leave the destination as it was.
         let off = stamp(&half, StampSource::new(snapshot, (-40, 0)), &[20.0, 28.0]);
         assert_eq!(pixel(&off, 24, 16), BLUE);
+    }
+
+    #[test]
+    fn a_transformed_source_flips_scales_and_rotates_about_the_anchor() {
+        // A 4 px red mark 6 px right of the source point (4, 16).
+        let img = layer_surface(
+            &doc(vec![layer(32, 32, |x, y| {
+                if (9..=11).contains(&x) && (15..=17).contains(&y) {
+                    RED
+                } else {
+                    BLUE
+                }
+            })]),
+            "0",
+        )
+        .unwrap();
+        let rgb = |c: Option<Rgba>| c.map(|c| [c.r, c.g, c.b, c.a]);
+        let anchor = (20.5, 16.5); // destination pixel (20, 16) paints source (4, 16)
+        let at = |t: SourceTransform, x, y| {
+            rgb(StampSource::transformed(img.clone(), (-16, 0), anchor, t).at(x, y))
+        };
+        let identity = SourceTransform::default();
+        assert_eq!(at(identity, 26, 16), Some(RED), "identity moved the mark");
+        let flip = SourceTransform {
+            scale_x: -1.0,
+            ..identity
+        };
+        assert_eq!(
+            at(flip, 14, 16),
+            Some(RED),
+            "Flip Horizontal did not mirror"
+        );
+        assert_eq!(at(flip, 22, 16), Some(BLUE));
+        assert_eq!(
+            at(flip, 26, 16),
+            None,
+            "a mirrored source past the edge painted"
+        );
+        let double = SourceTransform {
+            scale_x: 2.0,
+            scale_y: 2.0,
+            ..identity
+        };
+        assert_eq!(
+            at(double, 32 - 1, 16),
+            Some(RED),
+            "200 % did not double the distance"
+        );
+        // Counter-clockwise on screen: right of the source paints above the anchor.
+        let quarter = SourceTransform {
+            angle_deg: 90.0,
+            ..identity
+        };
+        assert_eq!(
+            at(quarter, 20, 10),
+            Some(RED),
+            "90° did not rotate the mark up"
+        );
+        assert!(StampSource::transformed(img, (-16, 0), anchor, identity)
+            .transform
+            .is_none());
     }
 
     #[test]
