@@ -14,6 +14,8 @@
 #include "new_document_dialog.h"
 #include "options_bar.h"
 #include "pictura_raw_dialog.h"
+#include "panels/brush_panel.h"
+#include "panels/clone_source_panel.h"
 #include "panels/color_panel.h"
 #include "panels/histogram_panel.h"
 #include "panels/history_panel.h"

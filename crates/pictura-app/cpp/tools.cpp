@@ -220,7 +220,65 @@ void ToolController::setBrushSize(int size)
 
 int ToolController::brushHardness() const { return brushHardness_; }
 
-void ToolController::setBrushHardness(int h) { brushHardness_ = std::clamp(h, 0, 100); }
+void ToolController::setBrushHardness(int h)
+{
+    const int clamped = std::clamp(h, 0, 100);
+    if (clamped != brushHardness_) {
+        brushHardness_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushRoundness(int roundness)
+{
+    const int clamped = std::clamp(roundness, 0, 100);
+    if (clamped != brushRoundness_) {
+        brushRoundness_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushTipAngle(int angle)
+{
+    const int clamped = std::clamp(angle, -180, 180);
+    if (clamped != brushTipAngle_) {
+        brushTipAngle_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushSpacing(int spacing)
+{
+    const int clamped = std::clamp(spacing, 1, 1000);
+    if (clamped != brushSpacing_) {
+        brushSpacing_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushFlip(bool x, bool y)
+{
+    if (x != brushFlipX_ || y != brushFlipY_) {
+        brushFlipX_ = x;
+        brushFlipY_ = y;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setCloneSource(const CloneSource& source)
+{
+    cloneSources_[cloneSlot_] = source;
+    emit cloneSourceChanged();
+}
+
+void ToolController::setCloneSourceSlot(int slot)
+{
+    const int clamped = std::clamp(slot, 0, int(cloneSources_.size()) - 1);
+    if (clamped != cloneSlot_) {
+        cloneSlot_ = clamped;
+        emit cloneSourceChanged();
+    }
+}
 
 int ToolController::brushOpacity() const { return brushOpacity_; }
 

@@ -3,6 +3,8 @@
 
 #include "options_bar.h"
 
+#include "commands.h"
+#include "icons.h"
 #include "panels/numeric_field.h"
 
 #include "pictura_app/src/cxxqt_object/paint_tools.cxxqt.h"
@@ -96,6 +98,25 @@ QWidget* OptionsBar::buildStampPage(ToolId id)
         }
     };
     const bool clone = id == ToolId::CloneStamp;
+    if (clone) {
+        // CS6 puts the Brush and Clone Source panel toggles right after the tip.
+        auto addToggle = [&](const char* iconId, const QString& tip, const QString& name,
+                             const QString& panel) {
+            auto* button = new QToolButton(page);
+            button->setObjectName(name);
+            button->setIcon(pictura::icon(QString::fromLatin1(iconId)));
+            button->setToolTip(tip);
+            button->setAutoRaise(true);
+            layout->insertWidget(3, button);
+            connect(button, &QToolButton::clicked, this,
+                    [this, panel] { emit panelToggleRequested(panel); });
+        };
+        addToggle(command_ids::WindowPanelsCloneSource, QStringLiteral("Toggle the Clone Source panel"),
+                  QStringLiteral("optionsToggleCloneSourcePanel"),
+                  QStringLiteral("cloneSourcePanel"));
+        addToggle(command_ids::WindowPanelsBrush, QStringLiteral("Toggle the Brush panel"),
+                  QStringLiteral("optionsToggleBrushPanel"), QStringLiteral("brushPanel"));
+    }
 
     if (!clone) {
         auto* pattern = new QComboBox(page);

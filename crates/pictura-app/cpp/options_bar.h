@@ -23,6 +23,12 @@ public:
 
     void showTool(ToolId id);
 
+signals:
+    // A panel toggle (Toggle the Brush panel, Toggle the Clone Source panel)
+    // asks the frame to show or hide the panel with this object name.
+    void panelToggleRequested(const QString& panel);
+
+public:
     // Self-test hook: the controller the size field is wired to.
     ToolController* controllerForTest() const { return controller_; }
 

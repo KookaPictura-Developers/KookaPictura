@@ -38,7 +38,8 @@ public:
             return true;
         }
         if (!v->begin_paint(ctx.foreground().rgba(), ctx.background().rgba(), ctx.brushSize(),
-                            ctx.brushHardness(), 100, 0, ctx.brushOpacity(), ctx.brushFlow(), 25,
+                            ctx.brushHardness(), ctx.brushRoundness(), ctx.brushAngle(),
+                            ctx.brushOpacity(), ctx.brushFlow(), ctx.brushSpacing(),
                             ctx.brushMode(), aliased_, ctx.autoErase())) {
             if (activePixelLocked(v)) {
                 ctx.refused(QObject::tr("Could not paint: the layer's pixels are locked."));

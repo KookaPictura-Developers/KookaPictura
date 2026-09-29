@@ -6,6 +6,8 @@
 
 #include "tool_handler.h"
 
+#include "paint_tip.h"
+
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -90,47 +92,50 @@ protected:
     }
 };
 
-// Clone Stamp: Alt-click sets the source point; each stroke paints what lies at
-// the source offset. Aligned keeps the offset across strokes; unchecked, every
-// stroke copies from the source point again.
-// ponytail: no Clone Source panel (one source, no scale / rotate / overlay) and
-// no on-canvas source crosshair.
+// Clone Stamp: Alt-click sets the active Clone Source slot's source point;
+// each stroke paints what lies at the source offset, through the slot's
+// transform about the point the offset was measured at. Aligned keeps the
+// offset across strokes; unchecked, every stroke copies from the source point
+// again.
+// ponytail: no source overlay and no on-canvas source crosshair.
 class CloneStampToolHandler : public StampToolHandler {
 protected:
-    void onAltPress(ToolContext&, const QPointF& imagePos) override
+    void onAltPress(ToolContext& ctx, const QPointF& imagePos) override
     {
-        source_ = QPoint(qRound(imagePos.x()), qRound(imagePos.y()));
-        hasSource_ = true;
-        hasOffset_ = false;
+        CloneSource slot = ctx.cloneSource();
+        slot.source = QPoint(qRound(imagePos.x()), qRound(imagePos.y()));
+        slot.hasSource = true;
+        slot.hasOffset = false;
+        ctx.setCloneSource(slot);
     }
 
     bool begin(ToolContext& ctx, PictureView& v, const QPointF& imagePos) override
     {
-        if (!hasSource_) {
+        CloneSource slot = ctx.cloneSource();
+        if (!slot.hasSource) {
             return false;
         }
         const StampOptions o = ctx.stampOptions();
-        if (!o.cloneAligned || !hasOffset_) {
-            offset_ = source_ - QPoint(qRound(imagePos.x()), qRound(imagePos.y()));
-            hasOffset_ = true;
+        if (!o.cloneAligned || !slot.hasOffset) {
+            slot.anchor = QPoint(qRound(imagePos.x()), qRound(imagePos.y()));
+            slot.offset = slot.source - slot.anchor;
+            slot.hasOffset = true;
+            ctx.setCloneSource(slot);
         }
-        return begin_clone_stamp(v, ctx.brushSize(), ctx.brushHardness(), ctx.brushOpacity(),
-                                 ctx.brushFlow(), ctx.brushMode(), offset_.x(), offset_.y(),
-                                 o.cloneSample, o.ignoreAdjustments);
+        const double sx = slot.width / 100.0 * (slot.flipH ? -1.0 : 1.0);
+        const double sy = slot.height / 100.0 * (slot.flipV ? -1.0 : 1.0);
+        return begin_clone_stamp(v, paintTip(ctx), ctx.brushOpacity(), ctx.brushFlow(),
+                                 ctx.brushMode(), slot.offset.x(), slot.offset.y(),
+                                 slot.anchor.x() + 0.5, slot.anchor.y() + 0.5, sx, sy,
+                                 slot.angle, o.cloneSample, o.ignoreAdjustments);
     }
 
     void refuseSource(ToolContext& ctx) override
     {
-        ctx.refused(hasSource_
+        ctx.refused(ctx.cloneSource().hasSource
                         ? QObject::tr("Clone Stamp: paint away from the source point.")
                         : QObject::tr("Clone Stamp: Alt-click to set a source point first."));
     }
-
-private:
-    QPoint source_;
-    QPoint offset_;
-    bool hasSource_ = false;
-    bool hasOffset_ = false;
 };
 
 // Pattern Stamp: paints the chosen pattern, pinned to the document when
@@ -143,9 +148,8 @@ protected:
         const StampOptions o = ctx.stampOptions();
         const QPoint origin =
             o.patternAligned ? QPoint() : QPoint(qRound(imagePos.x()), qRound(imagePos.y()));
-        return begin_pattern_stamp(v, ctx.brushSize(), ctx.brushHardness(), ctx.brushOpacity(),
-                                   ctx.brushFlow(), ctx.brushMode(), o.pattern, origin.x(),
-                                   origin.y());
+        return begin_pattern_stamp(v, paintTip(ctx), ctx.brushOpacity(), ctx.brushFlow(),
+                                   ctx.brushMode(), o.pattern, origin.x(), origin.y());
     }
 };
 
@@ -155,8 +159,8 @@ class HistoryBrushToolHandler : public StampToolHandler {
 protected:
     bool begin(ToolContext& ctx, PictureView& v, const QPointF&) override
     {
-        return begin_history_brush(v, ctx.brushSize(), ctx.brushHardness(), ctx.brushOpacity(),
-                                   ctx.brushFlow(), ctx.brushMode());
+        return begin_history_brush(v, paintTip(ctx), ctx.brushOpacity(), ctx.brushFlow(),
+                                   ctx.brushMode());
     }
 
     void refuseSource(ToolContext& ctx) override

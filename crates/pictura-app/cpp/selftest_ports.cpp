@@ -19,7 +19,8 @@ int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
                            runAnnotationChecks, runHealingChecks, runPatchChecks,
                            runContentAwareMoveChecks, runRedEyeChecks,
                            runColorReplacementChecks, runMixerBrushChecks, runCloneStampChecks,
-                           runPatternStampChecks, runHistoryBrushChecks}) {
+                           runPatternStampChecks, runHistoryBrushChecks, runBrushPanelChecks,
+                           runCloneSourcePanelChecks}) {
         if (const int code = run(frame); code != 0) {
             return code;
         }

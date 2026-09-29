@@ -30,6 +30,8 @@ class CanvasScrollBars;
 class FileDropRouter;
 class HistogramPanel;
 class HistoryPanel;
+class BrushPanel;
+class CloneSourcePanel;
 class ImageView;
 class InfoPanel;
 class LayersPanel;
@@ -91,6 +93,8 @@ public:
     // Panels owner lookup, and session serialization.
     QList<PanelColumn*> allPanelColumns() const;
     PanelColumn* columnForPanel(const QString& objectName) const;
+    // Show a hidden panel or hide a shown one (the options bar's panel toggles).
+    void togglePanel(const QString& objectName);
     PanelColumn* columnAtGlobal(const QPoint& globalPos) const;
     // -1 = not a new-column candidate, 0 = left, 1 = right.
     int newColumnSideAt(const QPoint& globalPos) const;
@@ -299,6 +303,8 @@ private:
     PlaceholderPanel* gradientsPanel_ = nullptr;
     PlaceholderPanel* patternsPanel_ = nullptr;
     NotesPanel* notesPanel_ = nullptr;
+    BrushPanel* brushPanel_ = nullptr;
+    CloneSourcePanel* cloneSourcePanel_ = nullptr;
     PlaceholderPanel* propertiesPanel_ = nullptr;
     PlaceholderPanel* adjustmentsPanel_ = nullptr;
     PlaceholderPanel* channelsPanel_ = nullptr;

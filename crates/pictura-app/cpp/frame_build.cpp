@@ -60,6 +60,12 @@ void PicturaMainWindow::buildPanels()
     stylesPanel_ = new PlaceholderPanel(QStringLiteral("Styles"), QString(), this);
     stylesPanel_->setObjectName(QStringLiteral("stylesPanel"));
 
+    brushPanel_ = new BrushPanel(this);
+    brushPanel_->setObjectName(QStringLiteral("brushPanel"));
+
+    cloneSourcePanel_ = new CloneSourcePanel(this);
+    cloneSourcePanel_->setObjectName(QStringLiteral("cloneSourcePanel"));
+
     // Content widgets, not docks: the PanelColumn hosts them. Registering the
     // objectNames keeps the Window menu and the duplicate-name guard working.
     registerPanel(layersPanel_, Qt::RightDockWidgetArea);
@@ -78,6 +84,8 @@ void PicturaMainWindow::buildPanels()
     registerPanel(channelsPanel_, Qt::RightDockWidgetArea);
     registerPanel(pathsPanel_, Qt::RightDockWidgetArea);
     registerPanel(actionsPanel_, Qt::RightDockWidgetArea);
+    registerPanel(brushPanel_, Qt::RightDockWidgetArea);
+    registerPanel(cloneSourcePanel_, Qt::RightDockWidgetArea);
 
     // CS6 Essentials groups and order. The tab text is the panel title and the
     // tab icon reuses the panel's `window.panels.<name>` asset.
@@ -138,6 +146,11 @@ void PicturaMainWindow::buildPanels()
              QString::fromLatin1(command_ids::WindowPanelsPatterns));
     addPanel(overflowGroup, notesPanel_, tr("Notes"),
              QString::fromLatin1(command_ids::WindowPanelsNotes));
+    // The painting panels open from Window > Panels or an options-bar toggle.
+    addPanel(overflowGroup, brushPanel_, tr("Brush"),
+             QString::fromLatin1(command_ids::WindowPanelsBrush));
+    addPanel(overflowGroup, cloneSourcePanel_, tr("Clone Source"),
+             QString::fromLatin1(command_ids::WindowPanelsCloneSource));
     panelColumn_->addGroup(overflowGroup);
 
     // Default visibility matches the pre-M41 layout: Color/Swatches/Styles,
@@ -149,6 +162,19 @@ void PicturaMainWindow::buildPanels()
     panelColumn_->showPanel(QStringLiteral("gradientsPanel"), false);
     panelColumn_->showPanel(QStringLiteral("patternsPanel"), false);
     panelColumn_->showPanel(QStringLiteral("notesPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("brushPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("cloneSourcePanel"), false);
+}
+
+void PicturaMainWindow::togglePanel(const QString& objectName)
+{
+    PanelColumn* owner = columnForPanel(objectName);
+    if (!owner) {
+        owner = panelColumn_;
+    }
+    if (owner) {
+        owner->showPanel(objectName, !owner->isPanelVisible(objectName));
+    }
 }
 
 void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwitch)
@@ -288,6 +314,9 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     optionsBar_ = new OptionsBar(tools_, this);
     optionsBar_->setObjectName(QStringLiteral("optionsBar"));
     addToolBar(optionsBar_);
+    connect(optionsBar_, &OptionsBar::panelToggleRequested, this, &PicturaMainWindow::togglePanel);
+    brushPanel_->setController(tools_);
+    cloneSourcePanel_->setController(tools_);
 
     connect(tools_, &ToolController::activeToolChanged, this, [this](ToolId id) {
         if (optionsBar_) {

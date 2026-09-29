@@ -17,17 +17,32 @@ use crate::history::BrushSource;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
-use pictura_core::Document;
+use ffi::PaintTip;
+use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, PsdRect};
 use pictura_paint::mixer::MixerOptions;
 use pictura_paint::pattern::{self, PATTERN_NAMES};
 use pictura_paint::replace::{Limits, ReplaceMode, ReplaceOptions, Sampling};
+use pictura_paint::spacing::SpacingMode;
 use pictura_paint::stamp::{
-    layer_surface, sample_scope, surface_from_composite, tiled, CloneSampling, StampSource,
+    layer_surface, sample_scope, surface_from_composite, tiled, CloneSampling, SourceTransform,
+    StampSource,
 };
-use pictura_paint::{Stroke, StrokeConfig, StrokeKind};
+use pictura_paint::{paint_stroke, Rgba, Stroke, StrokeConfig, StrokeKind, StrokeSample};
 
 #[cxx_qt::bridge]
 pub mod ffi {
+    /// The brush tip every paint tool here shares: the Brush panel's Brush Tip
+    /// Shape. `diameter` 1–5000 px, `hardness` and `roundness` 0–100 %,
+    /// `angle` −180–180°, `spacing` a percentage of the diameter.
+    #[namespace = "pictura"]
+    struct PaintTip {
+        diameter: i32,
+        hardness: i32,
+        roundness: i32,
+        angle: i32,
+        spacing: i32,
+    }
+
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -49,8 +64,7 @@ pub mod ffi {
             view: Pin<&mut PictureView>,
             foreground: u32,
             background: u32,
-            diameter: i32,
-            hardness: i32,
+            tip: &PaintTip,
             mode: i32,
             sampling: i32,
             limits: i32,
@@ -64,8 +78,7 @@ pub mod ffi {
         fn begin_mixer_brush(
             view: Pin<&mut PictureView>,
             reservoir: u32,
-            diameter: i32,
-            hardness: i32,
+            tip: &PaintTip,
             wet: i32,
             load: i32,
             mix: i32,
@@ -78,20 +91,27 @@ pub mod ffi {
         fn mixer_reservoir(view: &PictureView) -> u32;
 
         /// Begin a Clone Stamp stroke painting what lies at `(offset_x,
-        /// offset_y)` from each pixel, snapshotted now. `sampling` 0 Current
-        /// Layer / 1 Current And Below / 2 All Layers; `ignore_adjustments`
-        /// applies to All Layers. `mode` is a Brush mode (`"normal"`, …). False
-        /// without a visible lone pixel layer, when its pixels are locked, for
-        /// a zero offset, or mid-stroke.
+        /// offset_y)` from each pixel, snapshotted now, through the Clone
+        /// Source transform about document point `(anchor_x, anchor_y)`: W / H
+        /// as `scale_x` / `scale_y` (negative flips) and `angle` degrees
+        /// counter-clockwise. `sampling` 0 Current Layer / 1 Current And Below /
+        /// 2 All Layers; `ignore_adjustments` applies to All Layers. `mode` is a
+        /// Brush mode (`"normal"`, …). False without a visible lone pixel layer,
+        /// when its pixels are locked, for an untransformed zero offset or a
+        /// zero scale, or mid-stroke.
         fn begin_clone_stamp(
             view: Pin<&mut PictureView>,
-            diameter: i32,
-            hardness: i32,
+            tip: &PaintTip,
             opacity: i32,
             flow: i32,
             mode: &QString,
             offset_x: i32,
             offset_y: i32,
+            anchor_x: f64,
+            anchor_y: f64,
+            scale_x: f64,
+            scale_y: f64,
+            angle: f64,
             sampling: i32,
             ignore_adjustments: bool,
         ) -> bool;
@@ -101,8 +121,7 @@ pub mod ffi {
         /// `begin_clone_stamp`, or for an unknown pattern.
         fn begin_pattern_stamp(
             view: Pin<&mut PictureView>,
-            diameter: i32,
-            hardness: i32,
+            tip: &PaintTip,
             opacity: i32,
             flow: i32,
             mode: &QString,
@@ -116,12 +135,15 @@ pub mod ffi {
         /// the source state has no pixel layer at the active path.
         fn begin_history_brush(
             view: Pin<&mut PictureView>,
-            diameter: i32,
-            hardness: i32,
+            tip: &PaintTip,
             opacity: i32,
             flow: i32,
             mode: &QString,
         ) -> bool;
+
+        /// A white stroke with `tip` along an S-curve on transparency, packed
+        /// RGBA8888 `width` × `height`: the Brush panel's stroke preview.
+        fn brush_tip_preview(tip: &PaintTip, width: i32, height: i32) -> Vec<u8>;
 
         /// The number of built-in patterns.
         fn stamp_pattern_count() -> i32;
@@ -158,8 +180,7 @@ fn begin_color_replacement(
     view: Pin<&mut PictureView>,
     foreground: u32,
     background: u32,
-    diameter: i32,
-    hardness: i32,
+    tip: &PaintTip,
     mode: i32,
     sampling: i32,
     limits: i32,
@@ -169,7 +190,7 @@ fn begin_color_replacement(
     let cfg = StrokeConfig {
         color: rgba_from_argb(foreground),
         background: rgba_from_argb(background),
-        ..brush(diameter, hardness)
+        ..tip_config(tip)
     };
     let options = ReplaceOptions {
         mode: ReplaceMode::from_i32(mode).unwrap_or_default(),
@@ -187,8 +208,7 @@ fn begin_color_replacement(
 fn begin_mixer_brush(
     view: Pin<&mut PictureView>,
     reservoir: u32,
-    diameter: i32,
-    hardness: i32,
+    tip: &PaintTip,
     wet: i32,
     load: i32,
     mix: i32,
@@ -204,7 +224,7 @@ fn begin_mixer_brush(
         },
         reservoir: rgba_from_argb(reservoir),
     };
-    let cfg = brush(diameter, hardness);
+    let cfg = tip_config(tip);
     begin(view, "Mixer Brush Tool", |doc, path, _| {
         Stroke::begin_kind(doc, path, cfg, kind).ok()
     })
@@ -220,51 +240,63 @@ fn mixer_reservoir(view: &PictureView) -> u32 {
         })
 }
 
-fn brush(diameter: i32, hardness: i32) -> StrokeConfig {
+fn tip_config(tip: &PaintTip) -> StrokeConfig {
     StrokeConfig {
-        diameter: diameter.max(0) as u32,
-        hardness: hardness.clamp(0, 100) as u8,
+        diameter: tip.diameter.max(0) as u32,
+        hardness: tip.hardness.clamp(0, 100) as u8,
+        roundness: tip.roundness.clamp(0, 100) as u8,
+        angle_deg: tip.angle,
+        spacing: SpacingMode::Fixed(tip.spacing.clamp(1, 1000) as u16),
         ..StrokeConfig::default()
     }
+    .sanitized()
 }
 
 fn begin_clone_stamp(
     view: Pin<&mut PictureView>,
-    diameter: i32,
-    hardness: i32,
+    tip: &PaintTip,
     opacity: i32,
     flow: i32,
     mode: &QString,
     offset_x: i32,
     offset_y: i32,
+    anchor_x: f64,
+    anchor_y: f64,
+    scale_x: f64,
+    scale_y: f64,
+    angle: f64,
     sampling: i32,
     ignore_adjustments: bool,
 ) -> bool {
-    // Sampling where it paints would copy each pixel onto itself.
-    if (offset_x, offset_y) == (0, 0) {
+    let transform = SourceTransform {
+        scale_x: scale_x as f32,
+        scale_y: scale_y as f32,
+        angle_deg: angle as f32,
+    };
+    // Sampling where it paints would copy each pixel onto itself; a zero scale
+    // has no inverse.
+    if ((offset_x, offset_y) == (0, 0) && transform.is_identity())
+        || transform.scale_x == 0.0
+        || transform.scale_y == 0.0
+    {
         return false;
     }
     let sampling = CloneSampling::from_i32(sampling).unwrap_or_default();
-    let cfg = stamp_brush(diameter, hardness, opacity, flow, mode);
+    let cfg = stamp_config(tip, opacity, flow, mode);
     begin(view, "Clone Stamp", |doc, path, _| {
         let image = match sample_scope(doc, path, sampling, ignore_adjustments) {
             Some(scope) => surface_from_composite(&pictura_render::composite_rgba(&scope)),
             None => layer_surface(doc, path)?,
         };
-        Stroke::begin_source(
-            doc,
-            path,
-            cfg,
-            StampSource::new(image, (offset_x, offset_y)),
-        )
-        .ok()
+        let anchor = (anchor_x as f32, anchor_y as f32);
+        let source = StampSource::transformed(image, (offset_x, offset_y), anchor, transform);
+        Stroke::begin_source(doc, path, cfg, source).ok()
     })
 }
 
 fn begin_pattern_stamp(
     view: Pin<&mut PictureView>,
-    diameter: i32,
-    hardness: i32,
+    tip: &PaintTip,
     opacity: i32,
     flow: i32,
     mode: &QString,
@@ -275,7 +307,7 @@ fn begin_pattern_stamp(
     let Some(tile) = usize::try_from(pattern).ok().and_then(pattern::tile) else {
         return false;
     };
-    let cfg = stamp_brush(diameter, hardness, opacity, flow, mode);
+    let cfg = stamp_config(tip, opacity, flow, mode);
     begin(view, "Pattern Stamp", |doc, path, _| {
         let image = tiled(&tile, doc.width, doc.height, (origin_x, origin_y))?;
         Stroke::begin_source(doc, path, cfg, StampSource::new(image, (0, 0))).ok()
@@ -284,13 +316,12 @@ fn begin_pattern_stamp(
 
 fn begin_history_brush(
     view: Pin<&mut PictureView>,
-    diameter: i32,
-    hardness: i32,
+    tip: &PaintTip,
     opacity: i32,
     flow: i32,
     mode: &QString,
 ) -> bool {
-    let cfg = stamp_brush(diameter, hardness, opacity, flow, mode);
+    let cfg = stamp_config(tip, opacity, flow, mode);
     begin(view, "History Brush", |doc, path, view| {
         // ponytail: the source layer is matched by panel path (layers carry no
         // stable id), so a reordered stack paints from whatever now sits there.
@@ -349,21 +380,65 @@ fn set_history_brush_source(mut view: Pin<&mut PictureView>, snapshot: bool, ind
     view.as_mut().rust_mut().history.set_brush_source(source)
 }
 
-fn stamp_brush(
-    diameter: i32,
-    hardness: i32,
-    opacity: i32,
-    flow: i32,
-    mode: &QString,
-) -> StrokeConfig {
+fn stamp_config(tip: &PaintTip, opacity: i32, flow: i32, mode: &QString) -> StrokeConfig {
     StrokeConfig {
-        diameter: diameter.max(0) as u32,
-        hardness: hardness.clamp(0, 100) as u8,
         opacity: opacity.clamp(0, 100) as u8,
         flow: flow.clamp(0, 100) as u8,
         mode: paint_mode_from(&mode.to_string()),
-        ..StrokeConfig::default()
+        ..tip_config(tip)
     }
+}
+
+fn brush_tip_preview(tip: &PaintTip, width: i32, height: i32) -> Vec<u8> {
+    let (w, h) = (width.clamp(1, 2048), height.clamp(1, 2048));
+    let mut doc = Document::new(w as u32, h as u32, ColorMode::Rgb, BitDepth::Eight);
+    let n = (w * h) as usize;
+    doc.layers.push(Layer {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: h,
+            right: w,
+        },
+        channels: [0, 1, 2, -1]
+            .map(|id| Channel {
+                id,
+                data: vec![0; n],
+            })
+            .into(),
+        ..Default::default()
+    });
+    let cfg = StrokeConfig {
+        color: Rgba {
+            r: 255,
+            g: 255,
+            b: 255,
+            a: 255,
+        },
+        ..tip_config(tip)
+    };
+    // One period of a sine across the middle, inset by the tip's radius.
+    let inset = (cfg.diameter as f32 / 2.0).min(w as f32 / 4.0);
+    let samples: Vec<StrokeSample> = (0..=64)
+        .map(|i| {
+            let t = i as f32 / 64.0;
+            StrokeSample {
+                x: inset + t * (w as f32 - 2.0 * inset),
+                y: h as f32 / 2.0 - (t * std::f32::consts::TAU).sin() * h as f32 / 5.0,
+                pressure: 1.0,
+            }
+        })
+        .collect();
+    paint_stroke(&mut doc, "0", &cfg, &samples);
+    let plane = |id: i16| {
+        doc.layers[0]
+            .channels
+            .iter()
+            .find(|c| c.id == id)
+            .map_or(&[][..], |c| c.data.as_slice())
+    };
+    let (r, g, b, a) = (plane(0), plane(1), plane(2), plane(-1));
+    (0..n).flat_map(|i| [r[i], g[i], b[i], a[i]]).collect()
 }
 
 /// Begin a stroke on the visible lone active pixel layer; `start` builds it

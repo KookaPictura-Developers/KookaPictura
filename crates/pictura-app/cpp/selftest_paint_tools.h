@@ -36,4 +36,14 @@ int runPatternStampChecks(PicturaMainWindow& frame);
 // panel's left column makes the Brush state the source, and painting brings
 // the stroke back.
 int runHistoryBrushChecks(PicturaMainWindow& frame);
+
+// brush_panel (545): the Clone Stamp bar's Toggle the Brush panel shows and
+// hides the Brush panel; its Roundness field reaches the controller and the
+// engine preview, and a Brush stroke with a flattened tip is wider than tall.
+int runBrushPanelChecks(PicturaMainWindow& frame);
+
+// clone_source_panel (546): Toggle the Clone Source panel shows the panel; each
+// slot keeps its own source; the Offset reads destination minus source after a
+// stroke; Flip Horizontal mirrors the cloned pixels about the stroke start.
+int runCloneSourcePanelChecks(PicturaMainWindow& frame);
 } // namespace pictura
