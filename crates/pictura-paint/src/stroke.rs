@@ -4,6 +4,7 @@ use crate::healing::RgbaImage;
 use crate::mixer::{MixerBrush, MixerOptions};
 use crate::replace::{ColorReplacer, ReplaceOptions};
 use crate::spacing::DabPlacer;
+use crate::stamp::StampSource;
 use crate::{tip_coverage, PaintMode, Rgba, StrokeConfig, StrokeSample};
 use pictura_core::{layer_pixel_locked, layer_transparency_locked, Document, Layer, PsdRect};
 
@@ -67,6 +68,7 @@ pub struct Stroke {
     started: bool,
     painted: bool,
     per_dab: Option<PerDab>,
+    source: Option<StampSource>,
 }
 
 impl Stroke {
@@ -134,7 +136,21 @@ impl Stroke {
             started: false,
             painted: false,
             per_dab,
+            source: None,
         })
+    }
+
+    /// Start a Paint stroke whose colour at each pixel comes from `source`
+    /// (Clone Stamp, Pattern Stamp, History Brush) instead of `cfg.color`.
+    pub fn begin_source(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        source: StampSource,
+    ) -> Result<Stroke, PaintError> {
+        let mut stroke = Stroke::begin_kind(doc, path, cfg, StrokeKind::Paint)?;
+        stroke.source = Some(source);
+        Ok(stroke)
     }
 
     /// Feed one sample. Returns `true` when any pixel's accumulated coverage changed.
@@ -321,7 +337,17 @@ impl Stroke {
         };
         let (dr, dg, db, da) = read_pixel(base_layer, i);
         let transparency_locked = layer_transparency_locked(base_layer);
-        let s = self.paint;
+        let s = match &self.source {
+            None => self.paint,
+            Some(source) => {
+                let w = self.rect.width() as usize;
+                let (x, y) = ((i % w) as i32, (i / w) as i32);
+                match source.at(self.rect.left + x, self.rect.top + y) {
+                    Some(color) => color,
+                    None => return,
+                }
+            }
+        };
         let mode = self.cfg.mode;
         let write = match mode {
             PaintMode::Normal => Some(normal_pixel(dr, dg, db, da, &s, a)),
@@ -436,7 +462,7 @@ fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
 }
 
 /// The layer's pixels as straight RGBA; a layer without alpha is opaque.
-fn layer_rgba(layer: &Layer) -> RgbaImage {
+pub(crate) fn layer_rgba(layer: &Layer) -> RgbaImage {
     let (w, h) = (layer.rect.width().max(0), layer.rect.height().max(0));
     RgbaImage {
         width: w,
