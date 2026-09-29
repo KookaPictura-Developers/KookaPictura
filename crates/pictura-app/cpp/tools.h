@@ -119,7 +119,7 @@ const ToolInfo& toolInfo(ToolId id);
 const QList<ToolId>& allToolIds();
 const QList<ToolId>& implementedToolIds();
 bool toolImplemented(ToolId id);
-// The B-group brushes (Brush, Pencil, Color Replacement, Mixer Brush): they
+// The painting brushes (the B group, the S stamps, and the History Brush): they
 // share the size ring, the `[` / `]` keys, and the paint cursor policy.
 bool isBrushTool(ToolId id);
 QString selectionModeString(SelectionMode mode);
@@ -255,6 +255,8 @@ public:
     MixerOptions mixerOptions() const override { return mixer_; }
     void setMixerOptions(const MixerOptions& options) { mixer_ = options; }
     QColor mixerReservoir() const override { return mixerReservoir_; }
+    StampOptions stampOptions() const override { return stamp_; }
+    void setStampOptions(const StampOptions& options) { stamp_ = options; }
     void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);
@@ -429,6 +431,7 @@ private:
     ColorReplaceOptions colorReplace_;
     MixerOptions mixer_;
     QColor mixerReservoir_{Qt::black};
+    StampOptions stamp_;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

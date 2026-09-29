@@ -19,4 +19,21 @@ int runColorReplacementChecks(PicturaMainWindow& frame);
 // Tool" state and carries the pickup on the brush; Clean After Stroke empties
 // it; Alt-click loads the brush from the image.
 int runMixerBrushChecks(PicturaMainWindow& frame);
+
+// clone_stamp_tool (542): Sample defaults to Current Layer and shows Ignore
+// Adjustment Layers only with All Layers; a stroke before Alt-click is refused
+// without history; after it, a stroke copies the source in one "Clone Stamp"
+// state, and an Aligned second stroke keeps the offset.
+int runCloneStampChecks(PicturaMainWindow& frame);
+
+// pattern_stamp_tool (543): the bar lists the built-in patterns with
+// Impressionist disabled; an Aligned stroke paints the checkerboard pinned to
+// the document in one "Pattern Stamp" state; unaligned pins it to the stroke.
+int runPatternStampChecks(PicturaMainWindow& frame);
+
+// history_brush_tool (544): after a Brush stroke, a History Brush stroke paints
+// the oldest state back in one "History Brush" state; a press in the History
+// panel's left column makes the Brush state the source, and painting brings
+// the stroke back.
+int runHistoryBrushChecks(PicturaMainWindow& frame);
 } // namespace pictura

@@ -12,6 +12,19 @@ struct Entry {
     label: String,
 }
 
+/// The History Brush's source: a state, a named snapshot, or a state the stack
+/// has since dropped. The default is the oldest state, CS6's opening snapshot.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BrushSource {
+    #[default]
+    Oldest,
+    State(usize),
+    Snapshot(usize),
+    /// Dropped by the depth limit or a new capture after undo; kept in
+    /// `History::pinned` so the brush never reads a discarded state.
+    Pinned,
+}
+
 // ponytail: full-document clones; COW or tile diffs if PSB-size docs hit RAM.
 /// Bounded undo/redo over labeled `(Document, Selection)` states plus up to
 /// [`MAX_SNAPSHOTS`] named restore points.
@@ -25,6 +38,8 @@ pub struct History {
     states: Vec<Entry>,
     cursor: usize,
     snapshots: Vec<Entry>,
+    brush_source: BrushSource,
+    pinned: Option<Snapshot>,
 }
 
 const MAX_DEPTH: usize = 20;
@@ -32,6 +47,9 @@ const MAX_SNAPSHOTS: usize = 10;
 
 impl History {
     pub fn capture(&mut self, snapshot: Snapshot, label: &str) {
+        if matches!(self.brush_source, BrushSource::State(i) if i > self.cursor) {
+            self.pin_source();
+        }
         self.states.truncate(self.cursor + 1);
         self.states.push(Entry {
             snapshot,
@@ -39,6 +57,11 @@ impl History {
         });
         self.cursor = self.states.len() - 1;
         while self.states.len() > MAX_DEPTH + 1 {
+            match self.brush_source {
+                BrushSource::Oldest | BrushSource::State(0) => self.pin_source(),
+                BrushSource::State(i) => self.brush_source = BrushSource::State(i - 1),
+                _ => {}
+            }
             self.states.remove(0);
             self.cursor -= 1;
         }
@@ -101,6 +124,11 @@ impl History {
             label: label.to_string(),
         });
         while self.snapshots.len() > MAX_SNAPSHOTS {
+            match self.brush_source {
+                BrushSource::Snapshot(0) => self.pin_source(),
+                BrushSource::Snapshot(i) => self.brush_source = BrushSource::Snapshot(i - 1),
+                _ => {}
+            }
             self.snapshots.remove(0);
         }
     }
@@ -117,6 +145,48 @@ impl History {
     /// The state stored in named snapshot `i`, or `None` when out of range.
     pub fn snapshot(&self, i: usize) -> Option<Snapshot> {
         self.snapshots.get(i).map(|e| e.snapshot.clone())
+    }
+
+    pub fn brush_source(&self) -> BrushSource {
+        self.brush_source
+    }
+
+    /// Point the History Brush at state or snapshot `source`; false (and no
+    /// change) when it does not exist.
+    pub fn set_brush_source(&mut self, source: BrushSource) -> bool {
+        let exists = match source {
+            BrushSource::Oldest => true,
+            BrushSource::State(i) => i < self.states.len(),
+            BrushSource::Snapshot(i) => i < self.snapshots.len(),
+            BrushSource::Pinned => false,
+        };
+        if exists {
+            self.brush_source = source;
+            self.pinned = None;
+        }
+        exists
+    }
+
+    /// The document the History Brush paints from.
+    pub fn brush_source_doc(&self) -> Option<&Document> {
+        let entry = match self.brush_source {
+            BrushSource::Oldest => self.states.first(),
+            BrushSource::State(i) => self.states.get(i),
+            BrushSource::Snapshot(i) => self.snapshots.get(i),
+            BrushSource::Pinned => return self.pinned.as_ref().map(|s| &s.doc),
+        };
+        entry.map(|e| &e.snapshot.doc)
+    }
+
+    fn pin_source(&mut self) {
+        let entry = match self.brush_source {
+            BrushSource::Oldest => self.states.first(),
+            BrushSource::State(i) => self.states.get(i),
+            BrushSource::Snapshot(i) => self.snapshots.get(i),
+            BrushSource::Pinned => return,
+        };
+        self.pinned = entry.map(|e| e.snapshot.clone());
+        self.brush_source = BrushSource::Pinned;
     }
 }
 
@@ -324,5 +394,61 @@ mod tests {
         let restored = history.snapshot(3).expect("snapshot 3");
         assert_eq!(restored.doc.composite.data, vec![5, 5, 5]);
         assert!(history.snapshot(99).is_none());
+    }
+
+    #[test]
+    fn the_brush_source_follows_its_state_and_is_pinned_before_it_is_dropped() {
+        let mut history = History::default();
+        history.capture(snap(0), "Open");
+        assert_eq!(history.brush_source(), BrushSource::Oldest);
+        assert_eq!(
+            history.brush_source_doc().unwrap().composite.data,
+            vec![0, 0, 0]
+        );
+        for i in 1..=3u8 {
+            history.capture(snap(i), "Brush");
+        }
+        assert!(history.set_brush_source(BrushSource::State(2)));
+        assert!(!history.set_brush_source(BrushSource::State(9)));
+        assert_eq!(history.brush_source(), BrushSource::State(2));
+        // Depth pruning shifts the index down with its state.
+        for i in 4..=22u8 {
+            history.capture(snap(i), "Brush");
+        }
+        assert_eq!(history.brush_source(), BrushSource::State(0));
+        assert_eq!(
+            history.brush_source_doc().unwrap().composite.data,
+            vec![2, 2, 2]
+        );
+        // Dropping it pins a copy instead of reading another state.
+        history.capture(snap(23), "Brush");
+        assert_eq!(history.brush_source(), BrushSource::Pinned);
+        assert_eq!(
+            history.brush_source_doc().unwrap().composite.data,
+            vec![2, 2, 2]
+        );
+
+        // A redo state discarded by a new capture is pinned the same way.
+        assert!(history.set_brush_source(BrushSource::State(20)));
+        history.undo();
+        history.undo();
+        history.capture(snap(99), "Brush");
+        assert_eq!(history.brush_source(), BrushSource::Pinned);
+        assert_eq!(
+            history.brush_source_doc().unwrap().composite.data,
+            vec![23, 23, 23]
+        );
+
+        for i in 0..11u8 {
+            history.add_snapshot("s", snap(100 + i));
+            if i == 0 {
+                assert!(history.set_brush_source(BrushSource::Snapshot(0)));
+            }
+        }
+        assert_eq!(history.brush_source(), BrushSource::Pinned);
+        assert_eq!(
+            history.brush_source_doc().unwrap().composite.data,
+            vec![100, 100, 100]
+        );
     }
 }

@@ -43,6 +43,10 @@ private:
     QWidget* buildColorReplacementPage(ToolId id);
     QWidget* buildMixerBrushPage(ToolId id);
     void addBrushTipFields(QHBoxLayout* layout, QWidget* page);
+    // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, and History Brush.
+    QWidget* buildStampPage(ToolId id);
+    QWidget* buildHistoryBrushPage(ToolId id);
+    void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
     static NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals,
                                             const QString& suffix, bool popup,
                                             const QString& name);

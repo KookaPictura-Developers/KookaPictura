@@ -174,6 +174,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_brush.cpp
     crates/pictura-app/cpp/tool_colorreplacement.cpp
     crates/pictura-app/cpp/tool_mixerbrush.cpp
+    crates/pictura-app/cpp/tool_stamps.cpp
     crates/pictura-app/cpp/tool_wand.cpp
     crates/pictura-app/cpp/tool_move.cpp
     crates/pictura-app/cpp/tool_crop.cpp
@@ -197,6 +198,7 @@ add_executable(pictura
     crates/pictura-app/cpp/toolbox.cpp
     crates/pictura-app/cpp/options_bar.cpp
     crates/pictura-app/cpp/options_bar_paint.cpp
+    crates/pictura-app/cpp/options_bar_stamp.cpp
     crates/pictura-app/cpp/tool_hint_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp
     crates/pictura-app/cpp/layer_new_dialog.cpp

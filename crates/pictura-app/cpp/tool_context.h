@@ -34,6 +34,17 @@ struct MixerOptions {
     bool cleanAfterStroke = false;
 };
 
+// The Clone Stamp and Pattern Stamp options bars. Sample 0 Current Layer /
+// 1 Current And Below / 2 All Layers; Ignore Adjustment Layers applies to All
+// Layers only. `pattern` indexes the built-in patterns (stamp_pattern_name).
+struct StampOptions {
+    bool cloneAligned = true;
+    int cloneSample = 0;
+    bool ignoreAdjustments = false;
+    int pattern = 0;
+    bool patternAligned = true;
+};
+
 // The shared services a tool handler may use, implemented by `ToolController`.
 // Kept minimal on purpose: add accessors only as a migrating tool needs them.
 struct ToolContext {
@@ -76,6 +87,7 @@ struct ToolContext {
     // The paint on the Mixer Brush (alpha 0: clean); it outlives each stroke.
     virtual QColor mixerReservoir() const = 0;
     virtual void setMixerReservoir(const QColor& color) = 0;
+    virtual StampOptions stampOptions() const = 0;
 
     virtual MarqueeStyle marqueeStyle() const = 0;
     virtual double fixedRatioWidth() const = 0;
