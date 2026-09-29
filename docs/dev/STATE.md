@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1771 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1778 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **467 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **470 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2276 passed, 11 skipped, 0 failed**.
+  probes) reports **2286 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -509,6 +509,37 @@ Snapshot for resuming after a context break. Update after each milestone.
   `keys_shown` (116) now probes the S group (self-test codes 540, 541).
   Ceilings (`ponytail:`): no Sample All Layers or Load Solid Colors Only; the
   mixing rates and preset values are photorust's (CS6's are unstated).
+- **Clone Stamp, Pattern Stamp, and History Brush** (changes `clone-stamp-tool`,
+  `pattern-stamp-tool`, and `history-brush-tool`, issues #17–#19; the stamps
+  ported from photorust, the History Brush original): the S group is complete.
+  `Stroke::begin_source` is a Brush stroke whose colour at each pixel is read
+  from a `pictura_paint::stamp::StampSource` (a document-space image at
+  `destination + offset`; an off-image source leaves the pixel alone). The
+  Clone Stamp snapshots `layer_surface` or, per Sample, the composite of
+  `sample_scope` (Current And Below drops the layers above; Ignore Adjustment
+  Layers strips adjustments under All Layers) when the stroke begins; Alt-click
+  sets the source, Aligned keeps the offset across strokes, and a sourceless or
+  zero-offset stroke is refused. The Pattern Stamp paints `pictura_paint::pattern`
+  (eight generated seamless greyscale 64 px tiles) through `stamp::tiled`,
+  Aligned pinning the tile to the document origin, unaligned to the stroke
+  start. The History Brush paints the active layer's panel path from the
+  `History` brush source: the oldest state by default, or a state / snapshot
+  chosen in the History panel's left column (a History Brush icon marks it);
+  the index follows its state as the depth limit prunes, and a source pruning
+  or a post-undo capture would discard is pinned as a copy. Bridges in
+  `cxxqt_object/paint_tools.rs` ("Clone Stamp", "Pattern Stamp", "History
+  Brush"), handlers in `tool_stamps.cpp`, bars in `options_bar_stamp.cpp` (Size,
+  Hardness, Mode, Opacity, Flow, plus Aligned / Sample / Ignore Adjustment
+  Layers or the pattern picker / Aligned / disabled Impressionist); the three
+  join the size ring and `[` / `]`. Fixed on the way: the Brush stroke read an
+  alpha-less layer (an opened image's transparency-locked Background) as
+  transparent, so it took no paint and soft edges did not blend; it now reads
+  as opaque. Self-test codes 542–544; `shift_plain` (117) asserts the S cycle
+  and the lone Y member, `keys_shown` (116) now probes the Y group, and guard
+  98 probes the Art History Brush. Ceilings (`ponytail:`): no Clone Source
+  panel, overlay, or source crosshair; built-in patterns only, no
+  Impressionist; the History Brush matches the layer by panel path and has no
+  merged snapshots, Erase to History, or Fill > History.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
