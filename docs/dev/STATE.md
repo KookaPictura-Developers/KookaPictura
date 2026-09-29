@@ -15,14 +15,14 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1778 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
+- Test suite: **1779 tests, 0 failed, 10 skipped** (the `move_profile_*` pair,
   `region_move_timing_4000`, `region_refresh_profile_4000`, `undo_profile_4000`,
   the `composite_profile_*` pair, and `filter_profile_1024`; counted from
   `cargo nextest run --workspace`, which excludes the pre-existing ignored
   `pictura-render` doctest that `cargo test --workspace` reports separately).
-  The C++ self-test reports **470 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **472 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2286 passed, 11 skipped, 0 failed**.
+  probes) reports **2289 passed, 11 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -540,6 +540,25 @@ Snapshot for resuming after a context break. Update after each milestone.
   panel, overlay, or source crosshair; built-in patterns only, no
   Impressionist; the History Brush matches the layer by panel path and has no
   merged snapshots, Erase to History, or Fill > History.
+- **Brush and Clone Source panels** (change `brush-and-clone-source-panels`,
+  issue #17 follow-up): the Clone Stamp bar's Toggle the Brush panel / Toggle
+  the Clone Source panel buttons show or hide the two new panels
+  (`PicturaMainWindow::togglePanel`); `Window > Panels > Brush` (F5) and `Clone
+  Source` are live. Both sit in the hidden overflow group. `BrushPanel` is the
+  Brush Tip Shape page (round tip presets, Size, Flip X / Y, Angle, Roundness
+  with an indicator, Hardness, Spacing, and a preview painted by
+  `brush_tip_preview`); the controller now holds Roundness / Angle / Spacing /
+  flips (`brushTipChanged`), and every paint-tool begin takes one `PaintTip`
+  (Brush and Pencil pass them through `begin_paint`; a single flip mirrors the
+  angle, exact for the elliptical tips). `CloneSourcePanel` edits five
+  controller slots (`CloneSource`: source, offset + anchor, W / H, angle,
+  flips); Offset shows destination minus source. `StampSource::transformed`
+  maps through the inverse scale-then-rotate about the anchor with
+  premultiplied bilinear sampling. The Brush panel menu lists the spec's
+  entries (disabled); Clone Source's carries only Close / Close Group. Self-test
+  codes 545, 546. Ceilings (`ponytail:`): no dynamics, Brush Presets, sampled /
+  bristle / erodible tips, or velocity spacing; no source overlay or frame
+  controls; clone slots are controller-wide, not per document.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
