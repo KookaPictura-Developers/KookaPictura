@@ -6,6 +6,7 @@
 //! records nothing. `layer_pictura_raw_settings` reads the stored values back so the
 //! dialog can prefill.
 
+use super::helpers::*;
 use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
@@ -97,7 +98,16 @@ impl qobject::PictureView {
         };
         if applied {
             self.as_mut().clear_link_sets();
-            self.as_mut().recomposite();
+            let region = self
+                .rust()
+                .doc
+                .as_ref()
+                .and_then(|doc| pictura_render::resolve_path(doc, &path))
+                .and_then(layer_visibility_region);
+            match region {
+                Some(rect) => self.as_mut().refresh_region(rect),
+                None => self.as_mut().recomposite(),
+            }
             self.as_mut().record("Pictura Raw");
         }
         applied

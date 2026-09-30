@@ -19,6 +19,7 @@ impl qobject::PictureView {
         let Some(layer) = adjustment_layer(&kind.to_string(), mask) else {
             return false;
         };
+        let region = layer_visibility_region(&layer);
         let pushed = match self.as_mut().rust_mut().doc.as_mut() {
             Some(doc) => {
                 doc.layers.push(layer);
@@ -27,7 +28,12 @@ impl qobject::PictureView {
             None => false,
         };
         if pushed {
-            self.as_mut().recomposite();
+            // A masked adjustment is confined to its mask; an unmasked one spans
+            // the canvas and falls back to a full recomposite.
+            match region {
+                Some(rect) => self.as_mut().refresh_region(rect),
+                None => self.as_mut().recomposite(),
+            }
             self.as_mut().record("Adjustment");
         }
         pushed
@@ -59,12 +65,19 @@ impl qobject::PictureView {
             let Some(layer) = active_pixel_layer_mut(doc, active.as_deref()) else {
                 return false;
             };
-            pictura_render::apply_filter(layer, &filter, mask.as_ref(), gpu_compute).is_ok()
+            // A filter only changes the active layer, so its clamped rect bounds
+            // the composited result; a layer with an effect block still gets a
+            // correct (if slower) region composite.
+            let rect = layer.rect;
+            pictura_render::apply_filter(layer, &filter, mask.as_ref(), gpu_compute)
+                .is_ok()
+                .then_some(rect)
         };
-        if applied {
-            self.as_mut().recomposite();
+        if let Some(rect) = applied {
+            self.as_mut().refresh_region(rect);
             self.as_mut().record("Filter");
+            return true;
         }
-        applied
+        false
     }
 }

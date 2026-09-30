@@ -204,7 +204,7 @@ impl qobject::PictureView {
     /// `"Free Transform"` history state on success. An identity transform records
     /// nothing; an engine refusal records nothing. The session always clears.
     pub fn commit_transform(mut self: Pin<&mut Self>) -> bool {
-        let Some((path, mode, quad, transform, source)) =
+        let Some((path, mode, quad, transform, source, orig_rect)) =
             self.rust().transform_session.as_ref().map(|session| {
                 (
                     session.path.clone(),
@@ -218,6 +218,7 @@ impl qobject::PictureView {
                         dy: session.dy,
                     },
                     source_corners(session.orig_rect),
+                    session.orig_rect,
                 )
             })
         else {
@@ -256,7 +257,18 @@ impl qobject::PictureView {
         self.as_mut().rust_mut().transform_session = None;
         if changed {
             self.as_mut().clear_link_sets();
-            self.as_mut().recomposite();
+            // The transform only moves the layer, so the union of its source rect
+            // and its transformed rect bounds the composite change.
+            let after = self
+                .rust()
+                .doc
+                .as_ref()
+                .and_then(|doc| pictura_render::resolve_path(doc, &path))
+                .map(|layer| layer.rect);
+            match after {
+                Some(after) => self.as_mut().refresh_region(union_rect(orig_rect, after)),
+                None => self.as_mut().recomposite(),
+            }
             self.as_mut().record("Free Transform");
         }
         changed

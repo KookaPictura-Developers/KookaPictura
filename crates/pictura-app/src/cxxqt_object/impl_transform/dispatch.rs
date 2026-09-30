@@ -153,6 +153,12 @@ impl qobject::PictureView {
         let Some(index) = self.as_ref().move_cache_target() else {
             return false;
         };
+        let before = self
+            .rust()
+            .doc
+            .as_ref()
+            .and_then(|doc| doc.layers.get(index as usize))
+            .map(|layer| layer.rect);
         let moved = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -161,7 +167,17 @@ impl qobject::PictureView {
             pictura_render::translate_layer_index(doc, index as usize, dx, dy)
         };
         if moved {
-            self.as_mut().recomposite();
+            match (
+                before,
+                self.rust()
+                    .doc
+                    .as_ref()
+                    .and_then(|doc| doc.layers.get(index as usize))
+                    .map(|l| l.rect),
+            ) {
+                (Some(b), Some(a)) => self.as_mut().refresh_region(union_rect(b, a)),
+                _ => self.as_mut().recomposite(),
+            }
             self.as_mut().record_move("Move Layer");
         }
         moved
@@ -174,6 +190,12 @@ impl qobject::PictureView {
         let Some(index) = self.as_ref().move_cache_target() else {
             return false;
         };
+        let before = self
+            .rust()
+            .doc
+            .as_ref()
+            .and_then(|doc| doc.layers.get(index as usize))
+            .map(|layer| layer.rect);
         let moved = {
             let mut rust = self.as_mut().rust_mut();
             let Some(doc) = rust.doc.as_mut() else {
@@ -182,7 +204,17 @@ impl qobject::PictureView {
             pictura_render::translate_layer_index(doc, index as usize, dx, dy)
         };
         if moved {
-            self.as_mut().recomposite();
+            match (
+                before,
+                self.rust()
+                    .doc
+                    .as_ref()
+                    .and_then(|doc| doc.layers.get(index as usize))
+                    .map(|l| l.rect),
+            ) {
+                (Some(b), Some(a)) => self.as_mut().refresh_region(union_rect(b, a)),
+                _ => self.as_mut().recomposite(),
+            }
         }
         moved
     }

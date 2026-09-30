@@ -1122,7 +1122,7 @@ fn open_first_frame_converts_the_document_profile() {
     let rendered = current_buffer(&doc, false);
     let converted = pictura_codec::buffer_to_srgb(&doc, &rendered);
     assert_ne!(
-        converted, rendered,
+        *converted, rendered,
         "an Adobe RGB document must be converted for display"
     );
     let first_frame = buffer_to_image(&converted);
