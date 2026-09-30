@@ -1,0 +1,8 @@
+# selftest-budget - repo-wide ceiling on ST_BEGIN sites.
+#
+# New GUI checks belong in the Qt Test suites under
+# crates/pictura-app/cpp/tests/ (AGENTS.md rule 11); runSelfTest() only shrinks.
+# This pins the total number of ST_BEGIN sites across crates/pictura-app/cpp/*.cpp
+# so a check cannot quietly be added back. Lower this number when a check moves
+# to Qt Test; never raise it.
+511

@@ -38,7 +38,7 @@ cargo nextest run --workspace                    # one crate/test: -p <crate> [n
 cargo test --workspace --doc                     # doctests; nextest skips them
 cargo test -p pictura-render --test document_oracle       # one integration suite
 cargo test -p pictura-core -- <name> --ignored --nocapture # ignored profiling/GPU
-bash scripts/test-report.sh                      # nextest + doctests + app self-test -> unified report
+bash scripts/test-report.sh                      # nextest + doctests + app self-test + Qt JUnit -> unified report
 bash scripts/verify-fast.sh                      # fmt, clippy, test-report, file-size, guard, openspec
 bash scripts/verify-full.sh                      # CMake build first, then verify-fast
 openspec validate --all --strict                 # openspec 1.13.2
@@ -82,7 +82,7 @@ requires a real platform Vulkan instance and is **not** offscreen-compatible.
 
 ## Verification (the non-obvious parts)
 
-- **The C++ self-test is a hand-rolled oracle**, not Qt Test/CTest:
+- **The C++ self-test is a hand-rolled oracle**, not Qt Test:
   `crates/pictura-app/cpp/selftest*.cpp` + `selftest_report.*`, one long
   sequential `runSelfTest()`.
 - It emits one token per check to stderr:
@@ -92,6 +92,20 @@ requires a real platform Vulkan instance and is **not** offscreen-compatible.
   Names carry no milestone.
 - Add a check with `ST_BEGIN` / `ST_PASS` / `ST_SKIP` / `ST_FAIL` / `ST_FINISH`,
   take the next free code, and keep each `selftest*.cpp` inside its
+  `scripts/file-size-allowlist.txt` ceiling.
+- **Qt Test is the GUI growth path.** The app C++ builds as a `pictura_shell`
+  static library (every app source except `main.cpp` + `selftest*`); the Qt Test
+  suites in `crates/pictura-app/cpp/tests/tst_*.cpp` link `pictura_shell` plus
+  `Qt6::Test`. `include(CTest)` and `Qt6::Test` are gated on `BUILD_TESTING`,
+  and suites run under `QT_QPA_PLATFORM=offscreen` via
+  `ctest --test-dir build -R '^tst_' --output-on-failure`. `add_test` passes
+  `-o <build>/qt-test-results/<name>.xml,junitxml`, so CTest emits per-executable
+  JUnit; `scripts/test-report.sh` runs CTest and folds
+  `build/qt-test-results/*.xml` into the unified report. New GUI checks go
+  here — the self-test only shrinks (retired exit codes are append-only and never
+  reused). The mechanical guard is `scripts/check-selftest-budget.sh` with the
+  lower-only budget in `scripts/selftest-budget.txt`, run by `verify-fast.sh` and
+  the guards CI workflow, in addition to `selftest.cpp`'s
   `scripts/file-size-allowlist.txt` ceiling.
 - Rust tests are std `#[test]` only (no framework). Oracle tests self-skip when
   `magick` / `psd-tools` are absent; CI's `oracles` job installs both. Profiling
@@ -182,6 +196,13 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
 10. **Milestones (`mNN`) live only in comments, docs, and specs** — never in
     identifiers, string literals, or test names. `scripts/check-milestone-names.py`
     (run by `guard.sh`) enforces this.
+11. **GUI test migration guard.** New GUI checks are Qt Test cases under
+    `crates/pictura-app/cpp/tests/`, never new `runSelfTest()` checks; the
+    self-test only shrinks. Retired self-test exit codes are append-only and
+    never reused. The mechanical guard is `scripts/check-selftest-budget.sh`
+    (lower-only budget in `scripts/selftest-budget.txt`), run by
+    `verify-fast.sh` and the guards CI workflow, in addition to `selftest.cpp`'s
+    `scripts/file-size-allowlist.txt` ceiling.
 
 ## Anti-patterns
 

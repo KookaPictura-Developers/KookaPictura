@@ -456,40 +456,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(24, "clouds/flare wrong");
             }
 
-            // M16: the frame exposes the ten documented menus in order.
-            const QStringList expectedMenus = {QStringLiteral("File"),
-                                               QStringLiteral("Edit"),
-                                               QStringLiteral("Image"),
-                                               QStringLiteral("Layer"),
-                                               QStringLiteral("Type"),
-                                               QStringLiteral("Select"),
-                                               QStringLiteral("Filter"),
-                                               QStringLiteral("View"),
-                                               QStringLiteral("Window"),
-                                               QStringLiteral("Help")};
-            const QStringList actualMenus = frame.topLevelMenuTitles();
-            ST_BEGIN("menus");
-            ST_PASS("menus=%d first=%s last=%s", actualMenus.size(),
-                         actualMenus.isEmpty() ? "-" : actualMenus.first().toLocal8Bit().constData(),
-                         actualMenus.isEmpty() ? "-" : actualMenus.last().toLocal8Bit().constData());
-            if (actualMenus != expectedMenus) {
-                ST_FAIL(25, "menu bar wrong");
-            }
-
-            // M16: dispatch a registered command and prove an unknown id is inert.
             pictura::CommandRegistry* registry = frame.registry();
-            const bool dispatched =
-                registry->dispatch(QString::fromLatin1(pictura::command_ids::SelectAll));
-            const bool selected = view->has_selection();
-            const bool unknownInert = !registry->dispatch(QStringLiteral("no.such.command"));
-            view->deselect();
-            ST_BEGIN("dispatch");
-            ST_PASS("dispatch=%d selected=%d unknown_inert=%d", dispatched ? 1 : 0,
-                         selected ? 1 : 0,
-                         unknownInert ? 1 : 0);
-            if (!dispatched || !selected || !unknownInert) {
-                ST_FAIL(26, "command dispatch wrong");
-            }
 
             // M16: document-required commands disable with no document, while
             // File > Open stays enabled.
@@ -2790,38 +2757,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             ST_FAIL(109, "row badges");
         }
 
-        // m39_menus (110): the row menu and color submenu carry exactly the
-        // wired commands (the panel-group widget menu owns the panel menu).
-        const QStringList expectedRow = {
-            QStringLiteral("Rename"), QStringLiteral("New Layer"), QStringLiteral("New Group"),
-            QStringLiteral("Duplicate Layer(s)"), QStringLiteral("Delete Layer(s)"),
-            QStringLiteral("Group Layers"), QStringLiteral("Ungroup Layers"),
-            QStringLiteral("Move Layer Up"), QStringLiteral("Move Layer Down"),
-            QStringLiteral("Export As…"), QStringLiteral("Quick Export as PNG"),
-            QStringLiteral("Color Label")};
-        const QStringList expectedColor = {
-            QStringLiteral("None"), QStringLiteral("Red"), QStringLiteral("Orange"),
-            QStringLiteral("Yellow"), QStringLiteral("Green"), QStringLiteral("Blue"),
-            QStringLiteral("Violet"), QStringLiteral("Gray")};
-        const QStringList groupRow = anatomyPanel->rowMenuTextsForTest(QStringLiteral("group"));
-        const QStringList adjustmentRow =
-            anatomyPanel->rowMenuTextsForTest(QStringLiteral("adjustment"));
-        const QStringList typeRow = anatomyPanel->rowMenuTextsForTest(QStringLiteral("type"));
-        const bool groupHidden = !groupRow.contains(QStringLiteral("Export As…"))
-            && !groupRow.contains(QStringLiteral("Quick Export as PNG"));
-        const bool adjustmentHidden = !adjustmentRow.contains(QStringLiteral("Export As…"))
-            && !adjustmentRow.contains(QStringLiteral("Quick Export as PNG"));
-        const bool typeHidden = !typeRow.contains(QStringLiteral("Export As…"))
-            && !typeRow.contains(QStringLiteral("Quick Export as PNG"));
-        const bool rowMenuOk = anatomyPanel->rowMenuTextsForTest() == expectedRow && groupHidden
-            && adjustmentHidden && typeHidden;
-        const bool colorMenuOk = anatomyPanel->colorLabelTextsForTest() == expectedColor;
-        ST_BEGIN("menus_panel");
-        ST_PASS("menus row=%d color=%d", rowMenuOk ? 1 : 0, colorMenuOk ? 1 : 0);
-        if (!rowMenuOk || !colorMenuOk) {
-            ST_FAIL(110, "panel/row menus");
-        }
-
         // m39_tooltip (111): every row's tooltip is "<name> (<kind>)".
         const QString groupTip = anatomyPanel->rowToolTipForTest(QStringLiteral("1"));
         const QString pixelTip = anatomyPanel->rowToolTipForTest(QStringLiteral("1/1"));
@@ -3269,50 +3204,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                      panelColumnRestore ? 1 : 0);
         if (!iconicOk) {
             ST_FAIL(122, "iconic strip");
-        }
-
-        // m41_menu (123): the seven tab-menu items in exact order, both
-        // checkables toggle, and `Interface Options…` fires the signal.
-        const QStringList expectedMenu = {
-            QStringLiteral("Close"),
-            QStringLiteral("Close Panel Group"),
-            QStringLiteral("Minimize"),
-            QStringLiteral("Collapse to Icons"),
-            QStringLiteral("Auto-Collapse Iconic Panels"),
-            QStringLiteral("Auto-Show Hidden Panels"),
-            QStringLiteral("Interface Options\u2026"),
-        };
-        const QStringList panelColumnMenu =
-            panelColumnColumn ? panelColumnColumn->tabMenuActionsForTest() : QStringList();
-        const bool menuOrder = panelColumnMenu == expectedMenu;
-        bool panelColumnCheck = panelColumnColumn != nullptr;
-        if (panelColumnColumn) {
-            const bool a0 = panelColumnColumn->autoCollapseIconicForTest();
-            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
-            const bool a1 = panelColumnColumn->autoCollapseIconicForTest();
-            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Collapse Iconic Panels"));
-            const bool a2 = panelColumnColumn->autoCollapseIconicForTest();
-            const bool b0 = panelColumnColumn->autoShowHiddenForTest();
-            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
-            const bool b1 = panelColumnColumn->autoShowHiddenForTest();
-            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Auto-Show Hidden Panels"));
-            const bool b2 = panelColumnColumn->autoShowHiddenForTest();
-            panelColumnCheck = a1 != a0 && a2 == a0 && b1 != b0 && b2 == b0;
-        }
-        bool optionsFired = false;
-        if (panelColumnColumn) {
-            QObject::connect(panelColumnColumn, &pictura::PanelColumn::interfaceOptionsRequested,
-                             panelColumnColumn, [&optionsFired]() { optionsFired = true; });
-            panelColumnColumn->triggerTabMenuForTest(QStringLiteral("Interface Options\u2026"));
-        }
-        const bool menuOk =
-            panelColumnMenu.size() == 7 && menuOrder && panelColumnCheck && optionsFired;
-        ST_BEGIN("menu_count");
-        ST_PASS("menu count=%d order=%d check=%d", panelColumnMenu.size(),
-                     menuOrder ? 1 : 0,
-                     panelColumnCheck ? 1 : 0);
-        if (!menuOk) {
-            ST_FAIL(123, "tab menu");
         }
 
         // m41_minimize (124): minimize hides the content but keeps the tab bar,
@@ -3826,98 +3717,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             ST_FAIL(137, "fg/bg swap");
         }
 
-        // m42_menubar (138): no visible child widget's global geometry overlaps
-        // the menu-bar rect, and a persisted layout from another chrome revision
-        // is discarded instead of restored.
-        bool menuClear = frame.menuBar() != nullptr;
-        QString menuOffender;
-        if (QMenuBar* bar = frame.menuBar()) {
-            QCoreApplication::processEvents();
-            const QRect barRect(bar->mapToGlobal(QPoint(0, 0)), bar->size());
-            for (QWidget* child : frame.findChildren<QWidget*>()) {
-                if (!child || child == bar || !child->isVisible()
-                    || bar->isAncestorOf(child) || child->window() != &frame) {
-                    continue;
-                }
-                const QRect childRect(child->mapToGlobal(QPoint(0, 0)), child->size());
-                if (childRect.intersects(barRect)) {
-                    menuClear = false;
-                    if (menuOffender.isEmpty()) {
-                        menuOffender = child->objectName().isEmpty()
-                                              ? QString::fromLatin1(
-                                                    child->metaObject()->className())
-                                              : child->objectName();
-                    }
-                }
-            }
-        }
-        const bool staleDiscarded =
-            !frame.restoreStoredLayout(QByteArrayLiteral("stale-layout"),
-                                       frame.layoutRevisionForTest() - 1);
-        frame.saveSession();
-        const bool revisionSaved =
-            pictura::loadSession().layoutRevision == frame.layoutRevisionForTest();
-        const bool menubarOk = menuClear && staleDiscarded && revisionSaved;
-        ST_BEGIN("menubar_clear");
-        ST_PASS("menubar clear=%d stale=%d rev=%d", menuClear ? 1 : 0,
-                     staleDiscarded ? 1 : 0,
-                     revisionSaved ? 1 : 0);
-        if (!menubarOk) {
-            ST_FAIL(138, "menu-bar overlay=%s", menuOffender.toLocal8Bit().constData());
-        }
-
-        // m42_tools (139): the slot/screen-mode icons are larger than M40 (30
-        // button / 20 pixmap), the one- and two-column minimum widths equal the
-        // content width exactly, and a floated dock's body hugs its content
-        // height (stretch 0, no leftover vertical space).
-        bool toolIcons = false;
-        bool toolTight = false;
-        int toolMin1 = 0;
-        int toolContent1 = 0;
-        int toolMin2 = 0;
-        int toolContent2 = 0;
-        if (panelMenusToolbox) {
-            panelMenusToolbox->setColumns(1);
-            QCoreApplication::processEvents();
-            const QList<QToolButton*> panelMenusSlots = panelMenusToolbox->slotButtons();
-            toolIcons = !panelMenusSlots.isEmpty();
-            for (QToolButton* button : panelMenusSlots) {
-                if (button->minimumWidth() < 32 || button->iconSize().width() < 22) {
-                    toolIcons = false;
-                }
-            }
-            auto* screenMode =
-                panelMenusToolbox->findChild<QToolButton*>(QStringLiteral("screenModeButton"));
-            if (screenMode && !screenMode->icon().isNull()
-                && (screenMode->minimumWidth() < 32
-                    || screenMode->iconSize().width() < 22)) {
-                toolIcons = false;
-            }
-
-            toolMin1 = panelMenusToolbox->minimumWidth();
-            toolContent1 = panelMenusToolbox->contentWidthForTest();
-            panelMenusToolbox->setColumns(2);
-            QCoreApplication::processEvents();
-            toolMin2 = panelMenusToolbox->minimumWidth();
-            toolContent2 = panelMenusToolbox->contentWidthForTest();
-            toolTight = toolMin1 > 0 && toolMin1 == toolContent1
-                           && toolMin2 == toolContent2 && toolMin2 > toolMin1;
-            panelMenusToolbox->setColumns(1);
-            QCoreApplication::processEvents();
-        }
-        const bool panelMenusToolsOk = toolIcons && toolTight;
-        ST_BEGIN("panelMenus_tools_icons");
-        ST_PASS("tools icons=%d tight=%d "
-                     "min1=%d content1=%d min2=%d content2=%d", toolIcons ? 1 : 0,
-                     toolTight ? 1 : 0,
-                     toolMin1,
-                     toolContent1,
-                     toolMin2,
-                     toolContent2);
-        if (!panelMenusToolsOk) {
-            ST_FAIL(139, "tools geometry");
-        }
-
         // m42_dragstrip (133): a strip icon reorders within the strip and the
         // order persists, and dropping a strip icon on the normal-mode group
         // stack moves the panel into that group. The strip drop indicator is
@@ -4046,86 +3845,6 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                      flyoutClose ? 1 : 0);
         if (!panelMenusFlyoutOk) {
             ST_FAIL(134, "compact flyout");
-        }
-
-        // m42_widgetmenu (135): each group's tab header carries a per-widget
-        // action button at its right; the menu follows the current tab and is
-        // per-panel, not per-group; unimplemented entries are disabled with the
-        // "<label> — not implemented yet" tooltip; `Close`/`Close Panel Group`
-        // stay off it; the Layers `Panel Options…` entry is enabled and wired.
-        bool wmButton = false;
-        bool wmPerPanel = false;
-        bool wmDisabled = false;
-        bool wmNoClose = false;
-        if (panelColumnColumn) {
-            panelColumnColumn->setRailMode(false);
-            panelColumnColumn->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
-            QCoreApplication::processEvents();
-            pictura::PanelGroup* wmLayerGroup =
-                panelColumnColumn->groupForPanel(QStringLiteral("layersPanel"));
-            if (wmLayerGroup) {
-                panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
-                QCoreApplication::processEvents();
-                QToolButton* wmBtnPtr = wmLayerGroup->headerMenuButtonForTest();
-                QToolButton* wmHooked = panelColumnColumn->widgetMenuButtonForTest(
-                    wmLayerGroup->objectName());
-                wmButton = wmBtnPtr && wmHooked == wmBtnPtr
-                              && wmBtnPtr->isVisible()
-                              && wmLayerGroup->headerMenuAtRightForTest();
-
-                const QStringList wmLayerTexts =
-                    wmLayerGroup->panelMenuTextsForTest();
-                panelColumnColumn->showPanel(QStringLiteral("channelsPanel"), true);
-                QCoreApplication::processEvents();
-                const QStringList wmChannelTexts =
-                    wmLayerGroup->panelMenuTextsForTest();
-                const bool wmFollows =
-                    wmLayerGroup->headerMenuButtonForTest()
-                    && wmLayerGroup->headerMenuButtonForTest()->objectName()
-                           == QStringLiteral("panelWidgetMenu_channelsPanel");
-                const QStringList wmColorTexts =
-                    panelColumnColumn->widgetMenuTextsForTest(QStringLiteral("colorPanel"));
-                const bool wmFirstsDiffer = !wmLayerTexts.isEmpty()
-                                               && !wmChannelTexts.isEmpty()
-                                               && !wmColorTexts.isEmpty()
-                                               && wmLayerTexts.first()
-                                                      != wmChannelTexts.first()
-                                               && wmLayerTexts.first()
-                                                      != wmColorTexts.first();
-                panelColumnColumn->showPanel(QStringLiteral("layersPanel"), true);
-                QCoreApplication::processEvents();
-                const bool wmOptions =
-                    wmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Panel Options…"));
-                wmPerPanel = wmFollows && wmFirstsDiffer && wmOptions;
-
-                const bool wmCopyDisabled =
-                    !wmLayerGroup->panelMenuEnabledForTest(QStringLiteral("Copy CSS"));
-                const bool wmBlendDisabled = !wmLayerGroup->panelMenuEnabledForTest(
-                    QStringLiteral("Blending Options…"));
-                const bool wmTriggerBlocked = !panelColumnColumn->triggerWidgetMenuForTest(
-                    QStringLiteral("layersPanel"), QStringLiteral("Copy CSS"));
-                wmDisabled =
-                    wmCopyDisabled && wmBlendDisabled && wmTriggerBlocked
-                    && wmLayerGroup->panelMenuToolTipForTest(QStringLiteral("Copy CSS"))
-                           == QStringLiteral("Copy CSS — not implemented yet");
-            }
-            wmNoClose = panelColumnColumn->widgetMenuHasCloseForTest(QStringLiteral("layersPanel"))
-                           && panelColumnColumn->widgetMenuHasCloseForTest(
-                               QStringLiteral("channelsPanel"))
-                           && panelColumnColumn->widgetMenuHasCloseForTest(
-                               QStringLiteral("colorPanel"))
-                           && panelColumnColumn->widgetMenuHasCloseForTest(
-                               QStringLiteral("historyPanel"));
-        }
-        const bool wmOk = wmButton && wmPerPanel && wmDisabled && wmNoClose;
-        ST_BEGIN("widgetmenu_button");
-        ST_PASS("widgetmenu button=%d perpanel=%d disabled=%d "
-                     "noclose=%d", wmButton ? 1 : 0,
-                     wmPerPanel ? 1 : 0,
-                     wmDisabled ? 1 : 0,
-                     wmNoClose ? 1 : 0);
-        if (!wmOk) {
-            ST_FAIL(135, "per-widget menu");
         }
 
         // m42_float_overlay (136): a torn-off group is a frameless tool window

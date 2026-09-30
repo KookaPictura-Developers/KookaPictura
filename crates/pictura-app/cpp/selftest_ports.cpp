@@ -2,7 +2,6 @@
 
 #include "selftest_annotations.h"
 #include "selftest_click_deselect.h"
-#include "selftest_clipboard.h"
 #include "selftest_crop_group.h"
 #include "selftest_crop_tool.h"
 #include "selftest_erasers.h"
@@ -18,7 +17,7 @@
 int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
 {
     for (const auto run : {runCropToolChecks, runRecentFilesChecks, runCropGroupChecks,
-                           runClickDeselectChecks, runMagneticLassoChecks, runClipboardChecks,
+                           runClickDeselectChecks, runMagneticLassoChecks,
                            runAnnotationChecks, runHealingChecks, runPatchChecks,
                            runContentAwareMoveChecks, runRedEyeChecks,
                            runColorReplacementChecks, runMixerBrushChecks, runCloneStampChecks,
