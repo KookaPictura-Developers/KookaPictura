@@ -1,5 +1,5 @@
 // The options bars of the tools ported from photorust's healing and paint
-// families: Red Eye, Color Replacement, and Mixer Brush. Part of OptionsBar;
+// families: Red Eye, Color Replacement, Mixer Brush, and Blur. Part of OptionsBar;
 // split from options_bar.cpp along the page seam.
 
 #include "options_bar.h"
@@ -356,6 +356,57 @@ QWidget* OptionsBar::buildMixerBrushPage(ToolId id)
         connect(cleanBrush, &QAction::triggered, this,
                 [this] { controller_->setMixerReservoir(QColor(Qt::transparent)); });
     }
+
+    layout->addStretch(1);
+    return page;
+}
+
+// CS6's Blur bar: the brush tip, Mode (the cut-down list a tool working on
+// its own pixels offers), Strength (50 %), and Sample All Layers.
+QWidget* OptionsBar::buildBlurPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+    addBrushTipFields(layout, page);
+
+    const BlurOptions initial = controller_ ? controller_->blurOptions() : BlurOptions{};
+    const auto update = [this](auto edit) {
+        if (controller_) {
+            BlurOptions o = controller_->blurOptions();
+            edit(o);
+            controller_->setBlurOptions(o);
+        }
+    };
+    layout->addWidget(new QLabel(QStringLiteral("Mode:"), page));
+    auto* mode = new QComboBox(page);
+    mode->setObjectName(QStringLiteral("optionsBlurMode"));
+    mode->addItems({QStringLiteral("Normal"), QStringLiteral("Darken"), QStringLiteral("Lighten"),
+                    QStringLiteral("Hue"), QStringLiteral("Saturation"), QStringLiteral("Color"),
+                    QStringLiteral("Luminosity")});
+    mode->setCurrentIndex(initial.mode);
+    layout->addWidget(mode);
+    connect(mode, &QComboBox::currentIndexChanged, this,
+            [update](int i) { update([i](BlurOptions& o) { o.mode = i; }); });
+
+    auto* strength = new NumericField(
+        QStringLiteral("Strength:"),
+        numericConfig(1, 100, 1, 0, QStringLiteral("%"), true,
+                      QStringLiteral("optionsBlurStrength")),
+        page);
+    strength->setValue(initial.strength);
+    layout->addWidget(strength);
+    connect(strength, &NumericField::valueChanged, this, [update](double v) {
+        update([v](BlurOptions& o) { o.strength = qRound(v); });
+    });
+
+    auto* sampleAll = new QCheckBox(QStringLiteral("Sample All Layers"), page);
+    sampleAll->setObjectName(QStringLiteral("optionsBlurSampleAll"));
+    sampleAll->setChecked(initial.sampleAllLayers);
+    layout->addWidget(sampleAll);
+    connect(sampleAll, &QCheckBox::toggled, this,
+            [update](bool on) { update([on](BlurOptions& o) { o.sampleAllLayers = on; }); });
 
     layout->addStretch(1);
     return page;

@@ -6,6 +6,7 @@
 
 class QStackedWidget;
 class QHBoxLayout;
+class QIcon;
 class QToolButton;
 
 namespace pictura {
@@ -48,11 +49,12 @@ private:
     QWidget* buildPatchPage(ToolId id);
     QWidget* buildContentAwareMovePage(ToolId id);
     QWidget* buildCountPage(ToolId id);
-    // options_bar_paint.cpp: Red Eye, Color Replacement, and Mixer Brush, and
+    // options_bar_paint.cpp: Red Eye, Color Replacement, Mixer Brush, and Blur, and
     // the brush tip button every brush bar shares.
     QWidget* buildRedEyePage(ToolId id);
     QWidget* buildColorReplacementPage(ToolId id);
     QWidget* buildMixerBrushPage(ToolId id);
+    QWidget* buildBlurPage(ToolId id);
     void addBrushTipFields(QHBoxLayout* layout, QWidget* page);
     // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, History Brush, Art
     // History Brush, and Eraser.
@@ -63,6 +65,9 @@ private:
     // options_bar_erase.cpp: Background Eraser and Magic Eraser.
     QWidget* buildBackgroundEraserPage(ToolId id);
     QWidget* buildMagicEraserPage(ToolId id);
+    // options_bar_fill.cpp: Gradient and Paint Bucket.
+    QWidget* buildGradientPage(ToolId id);
+    QWidget* buildPaintBucketPage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
     NumericField* addPercentField(QHBoxLayout* layout, QWidget* page, const QString& label,
                                   const QString& name, int value,
@@ -78,5 +83,8 @@ private:
     QStackedWidget* stack_ = nullptr;
     BrushPresetPicker* brushPicker_ = nullptr;
 };
+
+// Built-in pattern `index` as an icon, for the pattern pickers.
+QIcon patternIcon(int index);
 
 } // namespace pictura
