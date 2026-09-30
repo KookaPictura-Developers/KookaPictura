@@ -15,6 +15,12 @@ use pictura_core::PsdRect;
 /// Levels stop halving once the next would be smaller than this on its long side.
 pub const SMALLEST_SIDE: u32 = 256;
 
+/// The tile grid a damage update is rounded out to, in level-0 pixels. A dirty
+/// rectangle grows outward to a whole number of tiles before the level walk, so
+/// adjacent dabs of a frame share tiles and the pyramid is repaired on one
+/// stable grid. `level0` itself is never touched here: the caller owns it.
+pub const TILE: i32 = 64;
+
 /// A borrowed planar straight-alpha level-0 view, one slice per channel.
 #[derive(Clone, Copy)]
 pub struct Planes<'a> {
@@ -116,11 +122,15 @@ impl ViewPyramid {
 
     /// Repair `dirty` of level 0 (already changed in the caller's buffer) and
     /// every level below it, leaving each level byte-identical to a rebuild.
+    ///
+    /// The rectangle is rounded out to the [`TILE`] grid first, so a frame's
+    /// dabs land on one stable tile grid; the per-level walk then expands by the
+    /// 2× filter footprint (a level-`N` texel reads a 2×2 block at `N-1`).
     pub fn update(&mut self, level0: Planes<'_>, dirty: PsdRect) {
         if self.levels.is_empty() {
             return;
         }
-        let mut damaged = clip(dirty, rect_of(self.width, self.height));
+        let mut damaged = clip(tile_align(dirty), rect_of(self.width, self.height));
         let mut rects = Vec::with_capacity(self.levels.len());
         for level in 1..=self.levels.len() {
             let (lw, lh) = self.level_size(level);
@@ -172,6 +182,44 @@ impl ViewPyramid {
         }
         out
     }
+
+    /// Overwrite `rect` of a stored `level` with interleaved premultiplied
+    /// RGBA, leaving level 0, the levels above it and everything outside `rect`
+    /// untouched. `rgba` must cover `rect`; a short or empty one is ignored.
+    ///
+    /// The large-stroke preview writes one stored level directly: [`Self::update`]
+    /// would rebuild that level from level 0 and wipe the preview, and patching
+    /// level 0 instead would cost the full-resolution bounding box the preview
+    /// exists to avoid.
+    pub fn patch_level(&mut self, level: usize, rgba: &[u8], rect: PsdRect) {
+        if level == 0 {
+            return;
+        }
+        let Some(dst) = self.levels.get_mut(level - 1) else {
+            return;
+        };
+        let (sw, sh) = (rect.width().max(0) as u32, rect.height().max(0) as u32);
+        if sw == 0 || sh == 0 || rgba.len() < (sw * sh * 4) as usize {
+            return;
+        }
+        let clipped = clip(rect, rect_of(dst.width, dst.height));
+        let (cw, ch) = (
+            clipped.width().max(0) as u32,
+            clipped.height().max(0) as u32,
+        );
+        if cw == 0 || ch == 0 {
+            return;
+        }
+        let sx = (clipped.left - rect.left) as u32;
+        let sy = (clipped.top - rect.top) as u32;
+        let stride = dst.width as usize * 4;
+        for row in 0..ch as usize {
+            let src = ((sy as usize + row) * sw as usize + sx as usize) * 4;
+            let dst_off = ((clipped.top as usize + row) * stride) + clipped.left as usize * 4;
+            let len = cw as usize * 4;
+            dst.data[dst_off..dst_off + len].copy_from_slice(&rgba[src..src + len]);
+        }
+    }
 }
 
 fn half(n: u32) -> u32 {
@@ -189,6 +237,24 @@ fn rect_of(width: u32, height: u32) -> PsdRect {
         bottom: height as i32,
         right: width as i32,
     }
+}
+
+/// Round a damage rectangle out to whole [`TILE`] cells.
+fn tile_align(rect: PsdRect) -> PsdRect {
+    PsdRect {
+        top: align_down(rect.top),
+        left: align_down(rect.left),
+        bottom: align_up(rect.bottom),
+        right: align_up(rect.right),
+    }
+}
+
+fn align_down(v: i32) -> i32 {
+    v.div_euclid(TILE) * TILE
+}
+
+fn align_up(v: i32) -> i32 {
+    align_down(v) + if v.rem_euclid(TILE) == 0 { 0 } else { TILE }
 }
 
 fn empty() -> PsdRect {
@@ -482,6 +548,19 @@ mod tests {
     }
 
     #[test]
+    fn a_damage_rect_is_rounded_out_to_the_tile_grid() {
+        let aligned = tile_align(rect(70, 130, 10, 20));
+        assert_eq!(aligned.top, 64);
+        assert_eq!(aligned.left, 128);
+        assert_eq!(aligned.bottom, 128);
+        assert_eq!(aligned.right, 192);
+        let already = rect(64, 128, 64, 64);
+        assert_eq!(tile_align(already), already, "an aligned rect is fixed");
+        let empty = tile_align(rect(0, 0, 0, 0));
+        assert_eq!((empty.right, empty.bottom), (0, 0));
+    }
+
+    #[test]
     fn a_crop_returns_that_levels_pixels_premultiplied() {
         let p = Built::new(900, 600, 5);
         let pyramid = ViewPyramid::rebuild(p.planes());
@@ -571,5 +650,122 @@ mod tests {
             bottom: top + height,
             right: left + width,
         }
+    }
+}
+
+#[cfg(test)]
+mod patch_tests {
+    use super::*;
+
+    /// A straight-alpha composite with something different in every pixel.
+    fn built(width: u32, height: u32) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+        let n = width as usize * height as usize;
+        let mut r = vec![0u8; n];
+        let mut g = vec![0u8; n];
+        let mut b = vec![0u8; n];
+        let mut a = vec![0u8; n];
+        for y in 0..height {
+            for x in 0..width {
+                let i = y as usize * width as usize + x as usize;
+                let v = (x * 7 + y * 13) % 251;
+                r[i] = v as u8;
+                g[i] = (v / 2) as u8;
+                b[i] = (255 - v) as u8;
+                a[i] = (60 + (x * 3 + y) % 196) as u8;
+            }
+        }
+        (r, g, b, a)
+    }
+
+    #[test]
+    fn a_patch_writes_only_the_rect_of_one_level() {
+        let (r, g, b, a) = built(900, 600);
+        let planes = Planes {
+            width: 900,
+            height: 600,
+            r: &r,
+            g: &g,
+            b: &b,
+            a: &a,
+        };
+        let mut pyramid = ViewPyramid::rebuild(planes);
+        let level = 1;
+        let (lw, lh) = pyramid.level_size(level);
+        let before: Vec<u8> = pyramid.levels[level - 1].data.clone();
+
+        let rect = PsdRect {
+            top: 4,
+            left: 6,
+            bottom: 12,
+            right: 20,
+        };
+        let w = (rect.right - rect.left) as usize;
+        let h = (rect.bottom - rect.top) as usize;
+        let patch: Vec<u8> = (0..w * h * 4).map(|i| (i % 251) as u8).collect();
+
+        pyramid.patch_level(level, &patch, rect);
+
+        let after = &pyramid.levels[level - 1].data;
+        assert_eq!(after.len(), before.len(), "the level keeps its size");
+        assert!(lw >= 20 && lh >= 12, "the level must cover the patch");
+        for y in 0..lh as usize {
+            for x in 0..lw as usize {
+                let i = (y * lw as usize + x) * 4;
+                let inside = x >= rect.left as usize
+                    && x < rect.right as usize
+                    && y >= rect.top as usize
+                    && y < rect.bottom as usize;
+                if inside {
+                    let px = (y - rect.top as usize) * w + (x - rect.left as usize);
+                    assert_eq!(
+                        &after[i..i + 4],
+                        &patch[px * 4..px * 4 + 4],
+                        "patched at {x},{y}"
+                    );
+                } else {
+                    assert_eq!(&after[i..i + 4], &before[i..i + 4], "untouched at {x},{y}");
+                }
+            }
+        }
+        assert_eq!(
+            pyramid.crop(planes, level, rect).data(),
+            &patch[..],
+            "the crop reads back exactly what was patched"
+        );
+    }
+
+    #[test]
+    fn a_patch_of_level_zero_or_past_the_last_is_ignored() {
+        let (r, g, b, a) = built(900, 600);
+        let planes = Planes {
+            width: 900,
+            height: 600,
+            r: &r,
+            g: &g,
+            b: &b,
+            a: &a,
+        };
+        let mut pyramid = ViewPyramid::rebuild(planes);
+        let before: Vec<u8> = pyramid.levels[0].data.clone();
+        let rect = PsdRect {
+            top: 0,
+            left: 0,
+            bottom: 4,
+            right: 4,
+        };
+        let patch = vec![7u8; 4 * 4 * 4];
+
+        pyramid.patch_level(0, &patch, rect);
+        pyramid.patch_level(99, &patch, rect);
+        pyramid.patch_level(1, &[], rect);
+        let off = PsdRect {
+            top: 900,
+            left: 900,
+            bottom: 904,
+            right: 904,
+        };
+        pyramid.patch_level(1, &patch, off);
+
+        assert_eq!(pyramid.levels[0].data, before, "nothing was written");
     }
 }
