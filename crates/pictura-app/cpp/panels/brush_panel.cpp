@@ -11,12 +11,14 @@
 #include <QtGui/QPixmap>
 #include <QtGui/QRadialGradient>
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QFrame>
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QToolButton>
+#include <QtWidgets/QScrollArea>
 #include <QtWidgets/QVBoxLayout>
 
 #include <algorithm>
@@ -78,23 +80,23 @@ constexpr std::array<StandardTip, 18> kStandardTips = {{
 
 QIcon tipIcon(const StandardTip& tip)
 {
-    QPixmap pm(32, 32);
+    QPixmap pm(24, 24);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
-    const double r = 3.0 + 9.0 * std::min(tip.size, 60) / 60.0;
-    QRadialGradient g(QPointF(16, 12), r);
+    const double r = 2.0 + 6.0 * std::min(tip.size, 60) / 60.0;
+    QRadialGradient g(QPointF(12, 9), r);
     g.setColorAt(0.0, Qt::white);
     g.setColorAt(tip.hardness / 100.0 * 0.95, Qt::white);
     g.setColorAt(1.0, QColor(255, 255, 255, 0));
     p.setPen(Qt::NoPen);
     p.setBrush(g);
-    p.drawEllipse(QPointF(16, 12), r, r);
+    p.drawEllipse(QPointF(12, 9), r, r);
     p.setPen(Qt::white);
     QFont font = p.font();
-    font.setPixelSize(9);
+    font.setPixelSize(8);
     p.setFont(font);
-    p.drawText(QRect(0, 23, 32, 9), Qt::AlignCenter, QString::number(tip.size));
+    p.drawText(QRect(0, 17, 24, 7), Qt::AlignCenter, QString::number(tip.size));
     return QIcon(pm);
 }
 
@@ -121,7 +123,17 @@ constexpr const char* kDynamics[] = {
 BrushPanel::BrushPanel(QWidget* parent)
     : QWidget(parent)
 {
-    auto* layout = new QVBoxLayout(this);
+    // The content scrolls, so the panel's size never widens or lengthens the
+    // column and groups it shares.
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    auto* scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    auto* content = new QWidget(scroll);
+    scroll->setWidget(content);
+    outer->addWidget(scroll);
+    auto* layout = new QVBoxLayout(content);
     auto* presets = new QPushButton(tr("Brush Presets"), this);
     presets->setEnabled(false);
     presets->setToolTip(tr("Brush Presets: not implemented yet"));
@@ -129,7 +141,8 @@ BrushPanel::BrushPanel(QWidget* parent)
     auto* body = new QHBoxLayout();
     auto* sets = new QListWidget(this);
     sets->setObjectName(QStringLiteral("brushOptionSets"));
-    sets->setMaximumWidth(150);
+    // Narrow enough that the docked panel never widens the column it shares.
+    sets->setMaximumWidth(110);
     auto* tipShape = new QListWidgetItem(tr("Brush Tip Shape"), sets);
     sets->setCurrentItem(tipShape);
     for (const char* name : kDynamics) {
@@ -148,7 +161,7 @@ BrushPanel::BrushPanel(QWidget* parent)
         auto* button = new QToolButton(this);
         button->setObjectName(QStringLiteral("brushTip%1").arg(i));
         button->setIcon(tipIcon(tip));
-        button->setIconSize(QSize(32, 32));
+        button->setIconSize(QSize(24, 24));
         button->setAutoRaise(true);
         button->setToolTip(tip.hardness == 100 ? tr("Hard Round %1").arg(tip.size)
                                                : tr("Soft Round %1").arg(tip.size));
@@ -212,7 +225,8 @@ BrushPanel::BrushPanel(QWidget* parent)
     preview_ = new QLabel(this);
     preview_->setObjectName(QStringLiteral("brushPanelPreview"));
     preview_->setFixedHeight(72);
-    preview_->setMinimumWidth(240);
+    // The rendered pixmap must not set the label's minimum width.
+    preview_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     preview_->setAlignment(Qt::AlignCenter);
     preview_->setStyleSheet(QStringLiteral("background: #3a3a3a;"));
 
@@ -286,7 +300,7 @@ void BrushPanel::refresh()
     // still fits the strip.
     PaintTip tip = paintTip(*controller_);
     tip.diameter = std::min(tip.diameter, preview_->height() - 12);
-    const int w = std::max(preview_->width(), 240);
+    const int w = std::max(preview_->width(), 120);
     const int h = preview_->height();
     const ::rust::Vec<std::uint8_t> rgba = brush_tip_preview(tip, w, h);
     if (rgba.size() == static_cast<size_t>(w) * h * 4) {

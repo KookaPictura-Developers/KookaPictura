@@ -14,6 +14,7 @@
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QToolButton>
+#include <QtWidgets/QScrollArea>
 #include <QtWidgets/QVBoxLayout>
 
 
@@ -58,7 +59,17 @@ QToolButton* toggle(QWidget* parent, const QString& text, const QString& tip, co
 CloneSourcePanel::CloneSourcePanel(QWidget* parent)
     : QWidget(parent)
 {
-    auto* layout = new QVBoxLayout(this);
+    // The content scrolls, so the panel's size never widens or lengthens the
+    // column and groups it shares.
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    auto* scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    auto* content = new QWidget(scroll);
+    scroll->setWidget(content);
+    outer->addWidget(scroll);
+    auto* layout = new QVBoxLayout(content);
 
     auto* slotRow = new QHBoxLayout();
     auto* group = new QButtonGroup(this);
