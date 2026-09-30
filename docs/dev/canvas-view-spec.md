@@ -275,18 +275,57 @@ because it is a fixed cost the brush does not change:
 | 2000 | 0.9 ms | 201 ms | 24.6 ms |
 | 5000 | 1.1 ms | **933 ms** | **133 ms** |
 
-A dab's cost is O(its bounding box), and above roughly ⌀1000 that box is a
-large fraction of the document: one 5000 px dab is 56× the input-to-first-pixel
-Target and its region present alone is 133 ms because the region *is* the
-4000² document. The gate on the deferred reduced-resolution stroke preview is
-therefore met — nothing cheaper moves a factor of 56, since the tip profile is
-already hoisted and the plane fork is brush-independent — but the preview is
-still its own change: it needs the present to come from a view-pyramid level
-mid-stroke and the exact full-resolution stroke to be produced at commit,
-which is a contract change, not an optimization.
+A dab's cost is O(its bounding box), and above the 262 144 px budget (⌀≈512) the
+reduced-resolution stroke preview takes over: while the button is down the app
+rasterizes the accumulated dabs' coverage at view-pyramid level 3 (1/8) over a
+snapshot of that level, patches it in place, and forces the canvas to present it
+until the stroke ends. `end_paint` replays the logged samples through a real
+full-resolution `Stroke` before recording history, so the committed pixels are
+byte-identical to a stroke that never previewed; `cancel_paint` drops the preview
+and restores. The exact stroke is still O(area) at release, which is the recorded
+ceiling; self-test check 545 proves a ⌀512 stroke on a 2048² document presents
+level 3 live and the post-commit canvas matches a full recomposite byte-for-byte.
+
+When a Vulkan adapter is present and "Use Graphics Processor" is on, the
+**GPU stroke** replaces that preview for a Normal or Clear stroke whose dab is
+over the same raster budget (a smaller dab is a few hundred microseconds on the
+CPU, less than the ~65 ms it costs to seed the GPU with a full-frame upload at
+4000²): the target layer is uploaded once to a resident GPU buffer (plus an
+immutable base copy and a per-pixel coverage plane), each dab is one compute
+dispatch over its bounding box (the same tip curve the CPU evaluates) that
+recomposites every changed pixel from the base and writes the target layer, and
+only the dab's changed rectangle is read back and patched into the exact
+`Stroke`'s working document. The present composites that document through
+`refresh_region` and stays frame-bounded, and `end_paint` commits the
+GPU-authored document with no replay, so the committed pixels equal the GPU
+stroke and lie within ±1 LSB of a CPU-only stroke (self-test 546 `pp_gpu_commit`
+and `gpu_stroke_matches_the_cpu_oracle`). Otherwise the preview (over budget) or
+the exact CPU path runs unchanged.
 ---
 
 ## 4. Hot spots — findings and resolution
+
+### Paint-path timing (opt-in)
+
+Set `PICTURA_PAINT_TIMING=1` and paint; the engine logs a per-phase summary at
+each commit and the Qt frontend logs each phase to stderr as it happens:
+
+```
+PICTURA_PAINT_TIMING=1 ./build/pictura 2>/tmp/paint.log
+```
+
+Rust phases (grouped under `[paint-timing] ===== stroke (begin -> commit) ====`):
+`begin_total`, `stroke_begin_at (doc clone)`, `gpu_seed_interleave`,
+`gpu_new (alloc+upload)`, `preview_new (snapshot)`, `dab_total`,
+`gpu_dab_dispatch_readback`, `gpu_patch_working_layer`, `cpu_stroke_sample`,
+`cpu_present_region`, `commit_replay_cpu_stroke` (preview strokes only),
+`commit_finish`, `commit_refresh_region`,
+`commit_record_history`, `end_paint_total`, and the `refresh_region` internals
+(`rr_*`). Qt phases (`cxx_*`): `begin_paint (call)`, `paint_dab (call)`,
+`end_paint (call)`, `frame_refresh (total)`, `view_image()`, `replaceImage`,
+`blitRegion` / `blit_detach_image`, `regionBlitted_slot`, `paintEvent`,
+`retargetDock (all panels)` and each panel's refresh. The switch is a no-op when
+unset.
 
 Findings from reading the code. Items 1 and 4 (the Move-tool per-event
 composite) are **resolved** in the post-M24 pass; items 2, 3, 5, and 6 remain
