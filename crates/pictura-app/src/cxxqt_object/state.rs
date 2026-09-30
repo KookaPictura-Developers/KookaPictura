@@ -91,6 +91,11 @@ pub struct PictureViewRust {
     pub(super) pending_lasso_mode: String,
     pub(super) stroke: Option<Stroke>,
     pub(super) stroke_label: String,
+    /// Dabs received since the last in-stroke present, waiting for `flush_present`.
+    pub(super) pending_present: Option<PsdRect>,
+    /// True from the present that opens a frame until its flush runs, so the
+    /// frame's later dabs accumulate instead of presenting again.
+    pub(super) present_flush_due: bool,
     /// The live healing gesture (Spot Healing Brush / Healing Brush): a
     /// coverage mask accumulated over a layer, healed on release.
     pub(super) heal_stroke: Option<HealStroke>,
@@ -149,6 +154,8 @@ impl Default for PictureViewRust {
             pending_lasso_mode: String::new(),
             stroke: None,
             stroke_label: String::new(),
+            pending_present: None,
+            present_flush_due: false,
             heal_stroke: None,
             move_base: None,
             move_layer: None,

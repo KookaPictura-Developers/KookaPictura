@@ -534,3 +534,43 @@ fn display_accessors_report_levels_and_damage() {
     assert_eq!(rust.display_rect_damage(), Some(dirty));
     assert_eq!(rust.display_rect_damage(), None, "take starts afresh");
 }
+
+/// The frame-bounded present: the dab that opens a frame is presented at once,
+/// the frame's later dabs accumulate into one region, the flush's take clears
+/// it, and the next dab opens a new frame. Stroke start, commit and cancel all
+/// supersede whatever was pending.
+#[test]
+fn present_accumulates_until_flush_and_the_stroke_lifecycle_supersedes_it() {
+    let rect = |left: i32, right: i32| PsdRect {
+        top: 8,
+        left,
+        bottom: 16,
+        right,
+    };
+    let mut rust = PictureViewRust::default();
+
+    let first = rect(0, 8);
+    let second = rect(12, 20);
+    let third = rect(24, 32);
+    assert_eq!(rust.queue_present(first), Some(first), "opens the frame");
+    assert_eq!(rust.queue_present(second), None, "waits for the flush");
+    assert_eq!(rust.queue_present(third), None, "still waits");
+    assert_eq!(
+        rust.take_pending_present(),
+        Some(rect(12, 32)),
+        "one region covering the dabs since the last present"
+    );
+    assert_eq!(rust.take_pending_present(), None, "cleared by the take");
+    assert_eq!(
+        rust.queue_present(second),
+        Some(second),
+        "a new frame opens"
+    );
+
+    rust.clear_pending_present();
+    assert_eq!(
+        rust.take_pending_present(),
+        None,
+        "the stroke lifecycle superseded the pending region"
+    );
+}

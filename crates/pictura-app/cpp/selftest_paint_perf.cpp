@@ -73,6 +73,9 @@ int pictura::runPaintPerfChecks(pictura::PicturaMainWindow& frame)
             if (view->paint_dab(40.0 + i * 12.0, 128.0, 1.0)) {
                 ++dabs;
             }
+            // Presents are frame-bounded: without an explicit flush only the
+            // frame-opening dab would blit, so ask for each one by hand.
+            view->flush_present();
         }
         // Only the per-dab blits are asserted to be dab-sized; the commit
         // refreshes the whole stroke extent, so disconnect before releasing.
@@ -186,6 +189,70 @@ int pictura::runPaintPerfChecks(pictura::PicturaMainWindow& frame)
         if (!begun || !ended || dabs < 16 || !noPerDab || !onceOnCommit) {
             frame.closeDocument(doc, false);
             return pictura::selfTest().fail(394, "registry refreshed per dab");
+        }
+        frame.closeDocument(doc, false);
+    }
+
+    // pp_present_flush (544): only the dab that opens a present frame blits;
+    // the frame's later dabs accumulate and `flush_present` shows them as one
+    // region, after which the displayed image matches the same stroke once it
+    // commits. Frame-bounded present, so a fast stroke composites at the frame
+    // rate rather than the input rate.
+    {
+        const bool created = frame.newDocument(QStringLiteral("PaintFlush"), 256, 256,
+                                               QStringLiteral("rgb"), 8,
+                                               QStringLiteral("white"));
+        PictureView* view = frame.activeView();
+        if (!created || !view) {
+            return pictura::selfTest().fail(544, "present flush fixture");
+        }
+        const int doc = frame.activeDocumentIndex();
+        view->set_active_layer(QStringLiteral("0"));
+
+        int blits = 0;
+        int flushX = -1;
+        int flushW = 0;
+        auto conn = QObject::connect(
+            view, &PictureView::regionBlitted,
+            [&blits, &flushX, &flushW](const QImage& region, int x, int) {
+                ++blits;
+                if (blits > 1) {
+                    flushX = x;
+                    flushW = region.width();
+                }
+            });
+
+        const bool begun = view->begin_paint(0xFFFF0000u, 0xFFFFFFFFu, 8, 100, 100, 0, 100, 100,
+                                             150, QStringLiteral("normal"), false, false);
+        int dabs = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (view->paint_dab(40.0 + i * 12.0, 128.0, 1.0)) {
+                ++dabs;
+            }
+        }
+        const int beforeFlush = blits;
+        const bool painting = view->is_painting();
+        const bool flushed = view->flush_present();
+        const int afterFlush = blits;
+        const QImage midStroke = view->image();
+
+        QObject::disconnect(conn);
+        const bool ended = view->end_paint();
+        const QImage afterCommit = view->image();
+
+        // Dabs 2..4 sit at x = 52, 64, 76 under an 8 px brush, so the flushed
+        // region starts at 48 and spans all three; dab 1 at x = 40 is not in it.
+        const bool oneOnOpen = beforeFlush == 1;
+        const bool coalesced = flushed && afterFlush == 2 && flushX >= 48 && flushW >= 24;
+        const bool identical = sameImage(midStroke, afterCommit);
+        ST_BEGIN("pp_present_flush");
+        ST_PASS("pp_present_flush dabs=%d before=%d after=%d flushed=%d x=%d w=%d identical=%d",
+                dabs, beforeFlush, afterFlush, flushed ? 1 : 0, flushX, flushW,
+                identical ? 1 : 0);
+        if (!begun || !ended || dabs < 4 || !painting || !oneOnOpen || !coalesced
+            || !identical) {
+            frame.closeDocument(doc, false);
+            return pictura::selfTest().fail(544, "in-stroke present was not frame-bounded");
         }
         frame.closeDocument(doc, false);
     }
