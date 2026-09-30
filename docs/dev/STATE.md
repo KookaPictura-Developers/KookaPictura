@@ -668,31 +668,34 @@ Snapshot for resuming after a context break. Update after each milestone.
   joins the size ring and `[` / `]`. Checked by the Qt Test suite
   `tst_retouch_tools` (first self-test code 554, now retired). Ceiling
   (`ponytail:`): no pressure-driven Strength.
-- **Sharpen, Smudge, and Dodge** (changes `sharpen-tool`, `smudge-tool`,
-  `dodge-tool`, issues #27–#29, ported from photorust's `core/src/focus.rs`,
-  `smudge.rs`, and `tone.rs`): the Blur group is complete and Dodge opens the
-  O group. `pictura_paint::focus` now carries both focus tools
+- **Sharpen, Smudge, Dodge, Burn, and Sponge** (changes `sharpen-tool`,
+  `smudge-tool`, `dodge-tool`, `burn-tool`, `sponge-tool`, issues #27–#31,
+  ported from photorust's `core/src/focus.rs`, `smudge.rs`, and `tone.rs`): the
+  Blur and O groups are complete. `pictura_paint::focus` now carries both focus tools
   (`Focus::{Blur, Sharpen}`, `FocusOptions` with Protect Detail, `FocusBrush`,
   `Stroke::begin_focus`); Sharpen reflects a pixel through its 3×3 average,
   clamped to the neighbourhood's range with Protect Detail. The Mode enum is
   `RetouchMode`, shared with `pictura_paint::smudge::SmudgeBrush`, which lays
   down the patch picked up at the previous dab (a dab-sized patch, not a layer
   copy) and picks up the result; Finger Painting starts it loaded with the
-  foreground. `pictura_paint::tone::ToneBrush` (Dodge only) lifts by Range
-  (Gaussian on luminance), Exposure, and Protect Tones (luminance shift that
-  keeps the colour and cannot clip), toning each pixel once per stroke. The
+  foreground. `pictura_paint::tone::ToneBrush` (`Tone::{Dodge, Burn,
+  Sponge}`) tones each pixel once per stroke: Dodge and Burn by Range
+  (Gaussian on luminance), Exposure, and Protect Tones (a luminance shift that
+  keeps the colour and cannot clip); the Sponge scales the distance from grey
+  (Desaturate / Saturate) by Flow, eased by Vibrance. The
   per-dab constructors share `Stroke::begin_retouch` and refuse 16/32-bit.
   Bridges `begin_focus` ("Blur" / "Sharpen"), `begin_smudge` ("Smudge"),
-  `begin_dodge` ("Dodge"). The four tools share `tool_retouch.cpp` and
+  `begin_tone` ("Dodge" / "Burn" / "Sponge"). The six tools share
+  `tool_retouch.cpp` and
   `options_bar_retouch.cpp` (`tool_blur.cpp` and the Blur page in
   `options_bar_paint.cpp` folded in); each keeps its own options
-  (`ToolController::retouchOptions(ToolId)`, `toneOptions()`). Qt Test suite
-  `tst_retouch_tools` (blur, sharpen, smudge, dodge); guard 98 now probes
-  Burn and `shift_plain` (117) presses P as the unimplemented key. The stale
-  `selftest_clipboard.cpp` entry left in `CMakeLists.txt` by the Qt Test
-  harness merge is dropped. Ceilings (`ponytail:`): no Airbrush or pressure
-  controls; a Sample All Layers smudge reads the composite as it was at the
-  press.
+  (`ToolController::retouchOptions(ToolId)`, `toneOptions(ToolId)`). Qt Test
+  suite `tst_retouch_tools` (all six); the self-test budget is back to 511
+  now that the Gradient, Paint Bucket, and Blur checks live in Qt Test. Guard
+  98 now probes Pen, `keys_shown` (116) the out-of-scope 3D K group, and
+  `shift_plain` (117) presses P as the unimplemented key. Ceilings
+  (`ponytail:`): no Airbrush or pressure controls; a Sample All Layers smudge
+  reads the composite as it was at the press.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on

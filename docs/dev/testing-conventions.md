@@ -21,9 +21,10 @@ toolkit's own Qt Test for the C++ GUI suites.
 | Python oracle tooling | `argparse` CLIs, no test framework | `scripts/*.py` | stdout (machine-readable or raw bytes) + exit code |
 
 Current inventory: **1879 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
-see §3), **514** `ST_BEGIN` self-test sites (**478** executed in a bare
-`--headless --self-test` run), and four Qt Test suites (`tst_smoke`,
-`tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`) run under CTest.
+see §3), **511** `ST_BEGIN` self-test sites (**475** executed in a bare
+`--headless --self-test` run), and six Qt Test suites (`tst_smoke`,
+`tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`, `tst_fill_tools`,
+`tst_retouch_tools`) run under CTest.
 `pictura-testkit` is the only dev-dependency; there are no
 test-runner crates outside Qt Test.
 
@@ -180,14 +181,18 @@ self-test and links `pictura_shell`.
 - **Seed suites.** `tst_smoke` (the `ScopedStateHome` temp-`XDG_STATE_HOME`
   fixture, constructed before the window), `tst_command_tree` (menus/dispatch),
   `tst_layers_panel` (row controls/chrome, group nesting, and drag/drop),
-  `tst_edit_clipboard` (raster copy/cut/paste/purge).
+  `tst_edit_clipboard` (raster copy/cut/paste/purge). The tool ports add
+  `tst_fill_tools` (Gradient, Paint Bucket) and `tst_retouch_tools` (Blur,
+  Sharpen, Smudge, Dodge, Burn, Sponge).
 - **Migration rule.** New GUI checks are written as Qt Test cases; the self-test
   only shrinks. Three suites were migrated off `runSelfTest()` and their `ST_*`
   blocks deleted, retiring codes 25, 26, 110, 123, 135, 138, 139, 200, 210, 211,
-  212, 213, and 529. Retired exit codes are append-only and never reused. The
+  212, 213, and 529. The tool-port checks for Gradient, Paint Bucket, and Blur
+  followed into `tst_fill_tools` / `tst_retouch_tools`, retiring 552, 553, and
+  554. Retired exit codes are append-only and never reused. The
   mechanical guard is `scripts/check-selftest-budget.sh`: it counts `ST_BEGIN`
   sites across `crates/pictura-app/cpp/**/*.cpp` and fails when the count exceeds
-  the lower-only budget in `scripts/selftest-budget.txt` (currently 514). It runs
+  the lower-only budget in `scripts/selftest-budget.txt` (currently 511). It runs
   from `scripts/verify-fast.sh` and the guards CI workflow, in addition to the
   `selftest.cpp` ceiling in `scripts/file-size-allowlist.txt`.
 - **Reports as per-executable JUnit.** `add_test` passes
@@ -244,7 +249,7 @@ is a proposal. What actually shipped:
 | `proptest` property tests | none; plain `#[test]` |
 | `cargo-fuzz` targets | none; no `fuzz/` crate |
 | Criterion + `QBENCHMARK` perf gates | manual `#[ignore]`d profiling tests |
-| Qt Test + CTest (`add_test`) | **shipped**: `pictura_shell` static lib + CTest registering `tst_smoke`, `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`; `runSelfTest()` remains for the rest |
+| Qt Test + CTest (`add_test`) | **shipped**: `pictura_shell` static lib + CTest registering `tst_smoke`, `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`, `tst_fill_tools`, `tst_retouch_tools`; `runSelfTest()` remains for the rest |
 | Structured unified test reporting | **shipped**: nextest JUnit + the C++ token protocol + `scripts/report_tests.py` |
 | Captured-CS6 golden references | ImageMagick 7 + `psd-tools` differential oracles |
 | Golden manifests, PSNR/DSSIM/ΔE2000, `xtask` | `pictura-testkit::compare` (max-abs tolerance) + `pictura-diff` only |
