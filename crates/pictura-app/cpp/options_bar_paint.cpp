@@ -102,6 +102,8 @@ void OptionsBar::addBrushTipFields(QHBoxLayout* layout, QWidget* page)
             [size](int value) { size->setValue(value); });
     connect(hardness, &NumericField::valueChanged, this,
             [this](double v) { controller_->setBrushHardness(qRound(v)); });
+    connect(controller_, &ToolController::brushTipChanged, hardness,
+            [this, hardness] { hardness->setValue(controller_->brushHardness()); });
 }
 
 // CS6's Red Eye bar: Pupil Size and Darken Amount (both 1-100 %, default 50).

@@ -79,11 +79,11 @@ const ToolInfo kToolTable[] = {
      "Mixer Brush: drag to paint wet paint, Alt-click to load the brush from the image", 8,
      true, 2, 22},
     {ToolId::CloneStamp, "clonestamp", "Clone Stamp", QLatin1Char('S'), Qt::CrossCursor,
-     "Clone Stamp: not implemented yet", 9, false, 2, 22},
+     "Clone Stamp: Alt-click to set the source, then drag to paint it", 9, true, 2, 22},
     {ToolId::PatternStamp, "patternstamp", "Pattern Stamp", QLatin1Char('S'), Qt::CrossCursor,
-     "Pattern Stamp: not implemented yet", 9, false, 2, 22},
+     "Pattern Stamp: drag to paint the chosen pattern", 9, true, 2, 22},
     {ToolId::HistoryBrush, "historybrush", "History Brush", QLatin1Char('Y'), Qt::CrossCursor,
-     "History Brush: not implemented yet", 10, false, 2, 22},
+     "History Brush: drag to paint back the History panel's source state", 10, true, 2, 22},
     {ToolId::ArtHistoryBrush, "arthistorybrush", "Art History Brush", QLatin1Char('Y'),
      Qt::CrossCursor, "Art History Brush: not implemented yet", 10, false, 2, 22},
     {ToolId::Eraser, "eraser", "Eraser", QLatin1Char('E'), Qt::CrossCursor,
@@ -187,7 +187,8 @@ bool toolImplemented(ToolId id) { return toolInfo(id).implemented; }
 bool isBrushTool(ToolId id)
 {
     return id == ToolId::Brush || id == ToolId::Pencil || id == ToolId::ColorReplacement
-        || id == ToolId::MixerBrush;
+        || id == ToolId::MixerBrush || id == ToolId::CloneStamp || id == ToolId::PatternStamp
+        || id == ToolId::HistoryBrush;
 }
 
 QString toolIdName(ToolId id)
@@ -255,6 +256,9 @@ QList<ToolHint> toolHintEntries(ToolId id)
     case ToolId::Pencil:
     case ToolId::ColorReplacement:
     case ToolId::MixerBrush:
+    case ToolId::CloneStamp:
+    case ToolId::PatternStamp:
+    case ToolId::HistoryBrush:
         return {{QStringLiteral("["), QStringLiteral("Decrease brush size")},
                 {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
     case ToolId::Move:
@@ -307,7 +311,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::Count, ToolId::SpotHealingBrush, ToolId::HealingBrush, ToolId::Patch,
         ToolId::ContentAwareMove, ToolId::RedEye,
         ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil, ToolId::ColorReplacement,
-        ToolId::MixerBrush,
+        ToolId::MixerBrush, ToolId::CloneStamp, ToolId::PatternStamp, ToolId::HistoryBrush,
     };
     return ids;
 }

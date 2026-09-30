@@ -2,8 +2,10 @@
 
 pub mod healing;
 pub mod mixer;
+pub mod pattern;
 pub mod replace;
 pub mod spacing;
+pub mod stamp;
 pub mod stroke;
 pub mod tip;
 

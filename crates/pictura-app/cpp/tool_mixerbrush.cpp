@@ -7,6 +7,8 @@
 
 #include "tool_handler.h"
 
+#include "paint_tip.h"
+
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -38,8 +40,8 @@ public:
         }
         const MixerOptions o = ctx.mixerOptions();
         // ponytail: Sample All Layers is not wired; the active layer is sampled.
-        if (!begin_mixer_brush(*v, ctx.mixerReservoir().rgba(), ctx.brushSize(),
-                               ctx.brushHardness(), o.wet, o.load, o.mix, o.flow)) {
+        if (!begin_mixer_brush(*v, ctx.mixerReservoir().rgba(), paintTip(ctx), o.wet, o.load,
+                               o.mix, o.flow)) {
             if (activePixelLocked(v)) {
                 ctx.refused(QObject::tr("Could not paint: the layer's pixels are locked."));
             } else if (!v->active_layer_visible()) {

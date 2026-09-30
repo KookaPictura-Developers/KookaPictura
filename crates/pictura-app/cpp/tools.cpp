@@ -49,6 +49,9 @@ std::unique_ptr<ToolHandler> makeContentAwareMoveToolHandler();
 std::unique_ptr<ToolHandler> makeRedEyeToolHandler();
 std::unique_ptr<ToolHandler> makeColorReplacementToolHandler();
 std::unique_ptr<ToolHandler> makeMixerBrushToolHandler();
+std::unique_ptr<ToolHandler> makeCloneStampToolHandler();
+std::unique_ptr<ToolHandler> makePatternStampToolHandler();
+std::unique_ptr<ToolHandler> makeHistoryBrushToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -81,6 +84,9 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::RedEye, makeRedEyeToolHandler());
     registry_.registerTool(ToolId::ColorReplacement, makeColorReplacementToolHandler());
     registry_.registerTool(ToolId::MixerBrush, makeMixerBrushToolHandler());
+    registry_.registerTool(ToolId::CloneStamp, makeCloneStampToolHandler());
+    registry_.registerTool(ToolId::PatternStamp, makePatternStampToolHandler());
+    registry_.registerTool(ToolId::HistoryBrush, makeHistoryBrushToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -214,7 +220,65 @@ void ToolController::setBrushSize(int size)
 
 int ToolController::brushHardness() const { return brushHardness_; }
 
-void ToolController::setBrushHardness(int h) { brushHardness_ = std::clamp(h, 0, 100); }
+void ToolController::setBrushHardness(int h)
+{
+    const int clamped = std::clamp(h, 0, 100);
+    if (clamped != brushHardness_) {
+        brushHardness_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushRoundness(int roundness)
+{
+    const int clamped = std::clamp(roundness, 0, 100);
+    if (clamped != brushRoundness_) {
+        brushRoundness_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushTipAngle(int angle)
+{
+    const int clamped = std::clamp(angle, -180, 180);
+    if (clamped != brushTipAngle_) {
+        brushTipAngle_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushSpacing(int spacing)
+{
+    const int clamped = std::clamp(spacing, 1, 1000);
+    if (clamped != brushSpacing_) {
+        brushSpacing_ = clamped;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setBrushFlip(bool x, bool y)
+{
+    if (x != brushFlipX_ || y != brushFlipY_) {
+        brushFlipX_ = x;
+        brushFlipY_ = y;
+        emit brushTipChanged();
+    }
+}
+
+void ToolController::setCloneSource(const CloneSource& source)
+{
+    cloneSources_[cloneSlot_] = source;
+    emit cloneSourceChanged();
+}
+
+void ToolController::setCloneSourceSlot(int slot)
+{
+    const int clamped = std::clamp(slot, 0, int(cloneSources_.size()) - 1);
+    if (clamped != cloneSlot_) {
+        cloneSlot_ = clamped;
+        emit cloneSourceChanged();
+    }
+}
 
 int ToolController::brushOpacity() const { return brushOpacity_; }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QtCore/QPoint>
+
 #include <QtCore/QPointF>
 #include <QtCore/QString>
 #include <QtCore/Qt>
@@ -34,6 +36,34 @@ struct MixerOptions {
     bool cleanAfterStroke = false;
 };
 
+// The Clone Stamp and Pattern Stamp options bars. Sample 0 Current Layer /
+// 1 Current And Below / 2 All Layers; Ignore Adjustment Layers applies to All
+// Layers only. `pattern` indexes the built-in patterns (stamp_pattern_name).
+struct StampOptions {
+    bool cloneAligned = true;
+    int cloneSample = 0;
+    bool ignoreAdjustments = false;
+    int pattern = 0;
+    bool patternAligned = true;
+};
+
+// One Clone Source panel slot: the Alt-clicked source point; the offset the
+// first stroke measured (source minus destination) and the destination point
+// it was measured at; and the source transform (W / H %, rotation in degrees
+// counter-clockwise, flips).
+struct CloneSource {
+    bool hasSource = false;
+    QPoint source;
+    bool hasOffset = false;
+    QPoint offset;
+    QPoint anchor;
+    double width = 100.0;
+    double height = 100.0;
+    double angle = 0.0;
+    bool flipH = false;
+    bool flipV = false;
+};
+
 // The shared services a tool handler may use, implemented by `ToolController`.
 // Kept minimal on purpose: add accessors only as a migrating tool needs them.
 struct ToolContext {
@@ -49,6 +79,11 @@ struct ToolContext {
     virtual int brushOpacity() const = 0;
     virtual int brushFlow() const = 0;
     virtual QString brushMode() const = 0;
+    // The Brush panel's Brush Tip Shape: Roundness 0-100 %, the painted angle
+    // (Flip X / Flip Y folded in), and Spacing as a percentage of the size.
+    virtual int brushRoundness() const = 0;
+    virtual int brushAngle() const = 0;
+    virtual int brushSpacing() const = 0;
     virtual bool autoErase() const = 0;
     virtual int tolerance() const = 0;
     virtual bool contiguous() const = 0;
@@ -76,6 +111,10 @@ struct ToolContext {
     // The paint on the Mixer Brush (alpha 0: clean); it outlives each stroke.
     virtual QColor mixerReservoir() const = 0;
     virtual void setMixerReservoir(const QColor& color) = 0;
+    virtual StampOptions stampOptions() const = 0;
+    // The Clone Source panel's active slot, read and written by the Clone Stamp.
+    virtual CloneSource cloneSource() const = 0;
+    virtual void setCloneSource(const CloneSource& source) = 0;
 
     virtual MarqueeStyle marqueeStyle() const = 0;
     virtual double fixedRatioWidth() const = 0;

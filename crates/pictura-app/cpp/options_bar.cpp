@@ -113,6 +113,11 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildColorReplacementPage(id);
     case ToolId::MixerBrush:
         return buildMixerBrushPage(id);
+    case ToolId::CloneStamp:
+    case ToolId::PatternStamp:
+        return buildStampPage(id);
+    case ToolId::HistoryBrush:
+        return buildHistoryBrushPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);

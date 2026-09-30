@@ -136,6 +136,8 @@ inline constexpr char WindowPanelsAdjustments[] = "window.panels.adjustments";
 inline constexpr char WindowPanelsChannels[] = "window.panels.channels";
 inline constexpr char WindowPanelsPaths[] = "window.panels.paths";
 inline constexpr char WindowPanelsActions[] = "window.panels.actions";
+inline constexpr char WindowPanelsBrush[] = "window.panels.brushes";
+inline constexpr char WindowPanelsCloneSource[] = "window.panels.cloneSource";
 inline constexpr char HelpAbout[] = "help.about";
 } // namespace command_ids
 
