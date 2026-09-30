@@ -626,6 +626,49 @@ Snapshot for resuming after a context break. Update after each milestone.
   `selftest_paint_fixture.h`; codes 550, 551; guard 98 and `keys_shown` (116)
   now probe the G group. Ceilings (`ponytail:`): no edge colour extraction or
   pen-pressure controls; the selection does not limit the Magic Eraser.
+- **Gradient and Paint Bucket** (changes `gradient-tool` and
+  `paint-bucket-tool`, issues #24 and #25, ported from photorust's
+  `core/src/gradient.rs` and `core/src/bucket.rs`): the G group is complete.
+  `pictura_paint::fill` is the per-pixel pass both share (a Brush mode through
+  a document-sized selection mask; Lock Transparency keeps alpha; locked
+  pixels, Clear under a transparency lock, and non-8-bit-RGB documents are
+  refused); the stroke's per-pixel blend is now the shared `blend_pixel`.
+  `pictura_paint::gradient` interpolates stops in straight alpha, draws the
+  five styles along the drag with the ramp's ends extended past it, dithers
+  the quantisation (not the position, so hard steps stay hard), and ships
+  fifteen built-in gradients (the first two and Transparent Stripes follow the
+  foreground / background). `pictura_paint::bucket::flood` matches every
+  channel including alpha (so empty pixels are not black, unlike the Magic
+  Wand), 4-connected; `fill` lays the foreground or a built-in pattern tiled
+  from the document origin. Bridge `cxxqt_object/paint_tools/fills.rs` (a
+  child of `paint_tools`, since `cxxqt_object.rs` sits at its size ceiling):
+  `draw_gradient` ("Gradient") and `bucket_fill_at` ("Paint Bucket", layer or
+  All Layers composite, `antialias_mask`). Handlers `tool_fills.cpp` (the drag
+  axis reuses the canvas ruler line; Shift snaps to 45°); bars
+  `options_bar_fill.cpp` (Gradient: sample + preset menu redrawn on
+  `ToolController::colorsChanged`, five style buttons, Mode, Opacity, Reverse,
+  Dither, Transparency; Paint Bucket: Fill, pattern picker, Mode with Clear,
+  Opacity, Tolerance 32, Anti-alias, Contiguous, All Layers). Self-test codes
+  552, 553 in `selftest_fills.cpp`; guard 98 now probes Blur, `keys_shown`
+  (116) the O group, and `shift_plain` (117) O as the unimplemented key.
+  Ceilings (`ponytail:`): no Gradient Editor or noise gradients; Mode is the
+  Brush modes only; the fill stays within the layer's rectangle.
+- **Blur** (change `blur-tool`, issue #26, ported from photorust's
+  `core/src/focus.rs`): `pictura_paint::focus::BlurBrush` is a per-dab engine
+  (like the Mixer Brush) that moves each covered pixel toward its 3×3 Gaussian
+  average by Strength × tip coverage — premultiplied so a layer edge softens
+  without a dark rim, read from a snapshot so a dab does not smear, and
+  cumulative so dwelling deepens the blur. Mode is CS6's cut-down list
+  (Normal, Darken, Lighten, Hue, Saturation, Color, Luminosity; the
+  non-separable ones via `pictura_core::nonseparable`); Lock Transparency keeps
+  coverage. `Stroke::begin_blur` takes an optional document-space composite
+  (Sample All Layers) and refuses 16/32-bit documents. Bridge `begin_blur`
+  ("Blur") in `cxxqt_object/paint_tools.rs`; handler `tool_blur.cpp`; bar in
+  `options_bar_paint.cpp` (tip, Mode, Strength 50 %, Sample All Layers). Blur
+  joins the size ring and `[` / `]`. Self-test code 554 in
+  `selftest_retouch.cpp`; guard 98 now probes Sharpen. Sharpen (the same
+  engine with its sign flipped) is left to its own issue. Ceiling
+  (`ponytail:`): no pressure-driven Strength.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on

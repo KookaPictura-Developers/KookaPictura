@@ -96,6 +96,41 @@ struct ArtHistoryOptions {
     int tolerance = 0;
 };
 
+// The Blur options bar: Strength 1-100 %, Mode 0 Normal / 1 Darken /
+// 2 Lighten / 3 Hue / 4 Saturation / 5 Color / 6 Luminosity, Sample All Layers.
+struct BlurOptions {
+    int strength = 50;
+    int mode = 0;
+    bool sampleAllLayers = false;
+};
+
+// The Gradient options bar: `preset` indexes the built-in gradients
+// (gradient_preset_name), Style 0 Linear / 1 Radial / 2 Angle / 3 Reflected /
+// 4 Diamond, Mode a Brush mode, Opacity 0-100 %.
+struct GradientOptions {
+    int preset = 0;
+    int style = 0;
+    QString mode = QStringLiteral("normal");
+    int opacity = 100;
+    bool reverse = false;
+    bool dither = false;
+    bool transparency = true;
+};
+
+// The Paint Bucket options bar: Fill 0 Foreground / 1 Pattern (`pattern`
+// indexes the built-in patterns), Mode a Brush mode, Opacity 0-100 %,
+// Tolerance 0-255 per channel, Anti-alias, Contiguous, All Layers.
+struct BucketOptions {
+    int fill = 0;
+    int pattern = 0;
+    QString mode = QStringLiteral("normal");
+    int opacity = 100;
+    int tolerance = 32;
+    bool antialias = true;
+    bool contiguous = true;
+    bool allLayers = false;
+};
+
 // One Clone Source panel slot: the Alt-clicked source point; the offset the
 // first stroke measured (source minus destination) and the destination point
 // it was measured at; and the source transform (W / H %, rotation in degrees
@@ -166,6 +201,9 @@ struct ToolContext {
     virtual BackgroundEraseOptions backgroundEraseOptions() const = 0;
     virtual MagicEraseOptions magicEraseOptions() const = 0;
     virtual ArtHistoryOptions artHistoryOptions() const = 0;
+    virtual GradientOptions gradientOptions() const = 0;
+    virtual BlurOptions blurOptions() const = 0;
+    virtual BucketOptions bucketOptions() const = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;
     virtual void setCloneSource(const CloneSource& source) = 0;
