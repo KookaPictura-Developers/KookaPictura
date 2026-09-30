@@ -5,7 +5,7 @@ use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
 
 use crate::{channel, decode_adjustment, mask_alpha, sample};
 
-use super::shader::{PLANAR_SHADER, SHADER};
+use super::shader::{PLANAR_SHADER, SHADER, STROKE_SHADER};
 use super::{adjustment_params, mode_id, storage_entry, GpuError, NO_ADJ};
 
 /// Bind-group layout and compute pipeline, both size-independent (buffer sizes
@@ -61,9 +61,9 @@ impl ComputeResources {
 /// Bind-group layout and compute pipeline for the planar readback pass. Like
 /// [`ComputeResources`] it is size-independent (the canvas and planar sizes and
 /// the grid stride travel as bindings), so created once per device.
-struct PlanarResources {
-    pipeline: wgpu::ComputePipeline,
-    layout: wgpu::BindGroupLayout,
+pub(super) struct PlanarResources {
+    pub(super) pipeline: wgpu::ComputePipeline,
+    pub(super) layout: wgpu::BindGroupLayout,
 }
 
 impl PlanarResources {
@@ -106,14 +106,58 @@ impl PlanarResources {
     }
 }
 
+/// Bind-group layout and compute pipeline for one paint dab. Like the others,
+/// size-independent (sizes travel as bindings), so created once per device.
+pub(super) struct StrokeResources {
+    pub(super) pipeline: wgpu::ComputePipeline,
+    pub(super) layout: wgpu::BindGroupLayout,
+}
+
+impl StrokeResources {
+    fn new(device: &wgpu::Device) -> Self {
+        // 0 layer (read-write), 1 coverage (read-write), 2 base (read-only),
+        // 3 params. The dab recomposites each changed pixel from the immutable
+        // base, exactly as the CPU stroke does, so overlapping dabs cannot
+        // compound.
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("pictura-stroke-layout"),
+            entries: &[
+                storage_entry(0, false),
+                storage_entry(1, false),
+                storage_entry(2, true),
+                storage_entry(3, true),
+            ],
+        });
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("pictura-stroke"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(STROKE_SHADER)),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("pictura-stroke"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("pictura-stroke"),
+            layout: Some(&pipeline_layout),
+            module: &module,
+            entry_point: Some("cs_dab"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        Self { pipeline, layout }
+    }
+}
+
 /// Keeps the wgpu objects that own the raw device alive for the process.
 pub(super) struct Devices {
     _instance: wgpu::Instance,
     _adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    pub(super) device: wgpu::Device,
+    pub(super) queue: wgpu::Queue,
     resources: OnceLock<ComputeResources>,
     planar: OnceLock<PlanarResources>,
+    stroke: OnceLock<StrokeResources>,
 }
 
 impl Devices {
@@ -122,9 +166,14 @@ impl Devices {
             .get_or_init(|| ComputeResources::new(&self.device))
     }
 
-    fn planar_resources(&'static self) -> &'static PlanarResources {
+    pub(super) fn planar_resources(&'static self) -> &'static PlanarResources {
         self.planar
             .get_or_init(|| PlanarResources::new(&self.device))
+    }
+
+    pub(super) fn stroke_resources(&'static self) -> &'static StrokeResources {
+        self.stroke
+            .get_or_init(|| StrokeResources::new(&self.device))
     }
 }
 
@@ -163,6 +212,7 @@ async fn request_device() -> Option<Devices> {
         queue,
         resources: OnceLock::new(),
         planar: OnceLock::new(),
+        stroke: OnceLock::new(),
     })
 }
 
@@ -491,7 +541,7 @@ impl Gpu {
         });
         let params = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pictura-planar-params"),
-            size: 12,
+            size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -500,7 +550,18 @@ impl Gpu {
             self.device.limits().max_compute_workgroups_per_dimension,
         )
         .expect("Gpu::new rejected a canvas past the 2-D workgroup limit");
-        let params_data = [n.to_le_bytes(), pw.to_le_bytes(), (gx * 64).to_le_bytes()].concat();
+        // Whole-buffer addresses: bx = by = 0, bw = lw = canvas width.
+        let params_data = [
+            n.to_le_bytes(),
+            pw.to_le_bytes(),
+            (gx * 64).to_le_bytes(),
+            0u32.to_le_bytes(),
+            0u32.to_le_bytes(),
+            self.w.to_le_bytes(),
+            self.w.to_le_bytes(),
+            0u32.to_le_bytes(),
+        ]
+        .concat();
         self.queue.write_buffer(&params, 0, &params_data);
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

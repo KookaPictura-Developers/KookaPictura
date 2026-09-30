@@ -366,12 +366,15 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 "#;
 
 /// Fused planar readback: one invocation de-interleaves four consecutive packed
-/// RGBA8 canvas pixels into one word of each of the four channel planes, so the
+/// RGBA8 source pixels into one word of each of the four channel planes, so the
 /// host copies plane bytes instead of gathering a channel per pixel. Its own
 /// module because `SHADER`'s bindings are module-scoped and cannot be
-/// redeclared. Byte-identical to the host `to_pixel_buffer` gather.
+/// redeclared. Byte-identical to the host `to_pixel_buffer` gather. The region
+/// fields address a sub-rectangle of a wider source: `bx`/`by` are its origin,
+/// `bw` its row length and `lw` the source row stride; the whole-buffer case is
+/// `bx = by = 0, bw = lw = width`.
 pub(super) const PLANAR_SHADER: &str = r#"
-struct P { n: u32, pw: u32, stride: u32 };
+struct P { n: u32, pw: u32, stride: u32, bx: u32, by: u32, bw: u32, lw: u32, _pad: u32 };
 @group(0) @binding(0) var<storage, read> packed_canvas: array<u32>;
 @group(0) @binding(1) var<storage, read_write> planar: array<u32>;
 @group(0) @binding(2) var<uniform> p: P;
@@ -382,9 +385,13 @@ fn cs_planar(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (j >= p.pw) { return; }
     var w0 = 0u; var w1 = 0u; var w2 = 0u; var w3 = 0u;
     for (var k = 0u; k < 4u; k = k + 1u) {
-        let i = j * 4u + k;
+        let r = j * 4u + k;
         var w = 0u;
-        if (i < p.n) { w = packed_canvas[i]; }
+        if (r < p.n) {
+            let lx = p.bx + (r % p.bw);
+            let ly = p.by + (r / p.bw);
+            w = packed_canvas[ly * p.lw + lx];
+        }
         let sh = k * 8u;
         w0 = w0 | ((w & 0xFFu) << sh);
         w1 = w1 | (((w >> 8u) & 0xFFu) << sh);
@@ -395,5 +402,122 @@ fn cs_planar(@builtin(global_invocation_id) gid: vec3<u32>) {
     planar[p.pw + j] = w1;
     planar[2u * p.pw + j] = w2;
     planar[3u * p.pw + j] = w3;
+}
+"#;
+
+/// One paint dab: accumulate its tip coverage into `coverage`, and when the
+/// accumulated value changes, composite it into the resident layer in the same
+/// pass. Each changed pixel is recomputed from the immutable `base` (not the
+/// accumulated `layer`), exactly as `pictura_paint`'s `Stroke::sample` +
+/// `Stencil::composite` do, so overlapping dabs do not compound. Matches the
+/// CPU oracle for the Normal and Clear paint modes within ±1 LSB.
+pub(super) const STROKE_SHADER: &str = r#"
+@group(0) @binding(0) var<storage, read_write> layer: array<u32>;
+@group(0) @binding(1) var<storage, read_write> coverage: array<u32>;
+@group(0) @binding(2) var<storage, read> base: array<u32>;
+@group(0) @binding(3) var<storage, read> params: array<f32>;
+
+fn byte_at(buf: u32, shift: u32) -> u32 {
+    return (buf >> shift) & 0xFFu;
+}
+
+fn put_byte(word: u32, shift: u32, value: u32) -> u32 {
+    return (word & ~(0xFFu << shift)) | (value << shift);
+}
+
+fn u8_round(x: f32) -> u32 {
+    return u32(clamp(floor(x + 0.5), 0.0, 255.0));
+}
+
+@compute @workgroup_size(64)
+fn cs_dab(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let cx = params[0];
+    let cy = params[1];
+    let radius = params[2];
+    let round_radius = params[3];
+    let sin_t = params[4];
+    let cos_t = params[5];
+    let core = params[6];
+    let denom = params[7];
+    let flow = params[8];
+    let opacity = params[9];
+    let bx = u32(params[10]);
+    let by = u32(params[11]);
+    let bw = u32(params[12]);
+    let bh = u32(params[13]);
+    let lw = u32(params[14]);
+    let aliased = params[15] > 0.5;
+    let color = vec4<f32>(params[16], params[17], params[18], params[19]);
+    let mode = u32(params[20]);
+    let flip = u32(params[21]);
+
+    let idx = gid.x;
+    if (idx >= bw * bh) { return; }
+    let lx = bx + idx % bw;
+    let ly = by + idx / bw;
+    let dx = (f32(lx) + 0.5) - cx;
+    let dy = (f32(ly) + 0.5) - cy;
+    let rx = dx * cos_t - dy * sin_t;
+    let ry = dx * sin_t + dy * cos_t;
+    var fx = rx;
+    if ((flip & 1u) != 0u) { fx = -rx; }
+    var fy = ry;
+    if ((flip & 2u) != 0u) { fy = -ry; }
+    let u = abs(fx) / radius;
+    let v = abs(fy) / round_radius;
+    let rr = sqrt(u * u + v * v);
+    var tip = 0.0;
+    if (aliased) {
+        if (rr <= 1.0) { tip = 1.0; }
+    } else if (rr <= core) {
+        tip = 1.0;
+    } else if (rr < 1.0) {
+        let t = clamp((1.0 - rr) / denom, 0.0, 1.0);
+        tip = t * t * (3.0 - 2.0 * t);
+    }
+    if (tip <= 0.0) { return; }
+
+    let i = ly * lw + lx;
+    // `coverage`, `layer` and `base` are one word per pixel. Coverage is not
+    // packed into bytes: a read-modify-write word shared by four invocations
+    // would race and lose their updates.
+    let prev = coverage[i];
+    let cov = f32(prev) / 255.0;
+    let acc = 1.0 - (1.0 - cov) * (1.0 - flow * tip);
+    let vv = u8_round(clamp(acc, 0.0, 1.0) * 255.0);
+    if (vv == prev) { return; }
+    coverage[i] = vv;
+
+    let a = clamp(f32(vv) / 255.0 * opacity, 0.0, 1.0);
+    // Composite from the immutable base, not the accumulated layer, so a pixel
+    // covered by many dabs matches the CPU oracle exactly.
+    let w = base[i];
+    if (mode == 0u) {
+        let dr = f32(byte_at(w, 0u));
+        let dg = f32(byte_at(w, 8u));
+        let db = f32(byte_at(w, 16u));
+        let da = f32(byte_at(w, 24u));
+        let sa = color.a * a;
+        let da_f = da / 255.0;
+        let out_a = sa + da_f * (1.0 - sa);
+        var orr = 0.0;
+        var ogg = 0.0;
+        var obb = 0.0;
+        var oaa = 0.0;
+        if (out_a > 0.0) {
+            orr = (color.r * 255.0 * sa + dr * da_f * (1.0 - sa)) / out_a;
+            ogg = (color.g * 255.0 * sa + dg * da_f * (1.0 - sa)) / out_a;
+            obb = (color.b * 255.0 * sa + db * da_f * (1.0 - sa)) / out_a;
+            oaa = out_a * 255.0;
+        }
+        var nw = put_byte(w, 0u, u8_round(orr));
+        nw = put_byte(nw, 8u, u8_round(ogg));
+        nw = put_byte(nw, 16u, u8_round(obb));
+        nw = put_byte(nw, 24u, u8_round(oaa));
+        layer[i] = nw;
+    } else if (mode == 1u) {
+        let out_a = (f32(byte_at(w, 24u)) / 255.0) * (1.0 - a) * 255.0;
+        layer[i] = put_byte(w, 24u, u8_round(out_a));
+    }
 }
 "#;
