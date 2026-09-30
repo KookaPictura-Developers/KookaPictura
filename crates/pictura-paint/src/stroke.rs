@@ -283,11 +283,19 @@ impl Stroke {
                 None => (*tip, cfg.diameter as f32 * 0.5),
                 Some(tip_cfg) => (TipParams::new(&tip_cfg), tip_cfg.diameter as f32 * 0.5),
             };
-            let x0 = ((dab_x - radius).floor() as i32).max(0);
-            let x1 = ((dab_x + radius).ceil() as i32).min(w as i32 - 1);
             let y0 = ((dab_y - radius).floor() as i32).max(0);
             let y1 = ((dab_y + radius).ceil() as i32).min(h as i32 - 1);
             for ly in y0..=y1 {
+                let dy = (ly as f32 + 0.5) - dab_y;
+                // A round tip's support on this row is a chord, so the corners
+                // of its square bounding box cost nothing. A non-round shape
+                // returns the full width and its out-of-support pixels fall to
+                // the `cov <= 0.0` filter below.
+                let Some((xlo, xhi)) = params.x_span(dy) else {
+                    continue;
+                };
+                let x0 = ((dab_x + xlo).floor() as i32).max(0);
+                let x1 = ((dab_x + xhi).ceil() as i32).min(w as i32 - 1);
                 for lx in x0..=x1 {
                     let dx = (lx as f32 + 0.5) - dab_x;
                     let dy = (ly as f32 + 0.5) - dab_y;
@@ -345,6 +353,132 @@ impl Stroke {
 
     pub fn document(&self) -> &Document {
         &self.working
+    }
+
+    /// The stroke-constant tip state, so a host that rasters dabs on the GPU
+    /// derives the same profile the exact stroke does.
+    pub fn tip_params(&self) -> TipParams {
+        self.tip
+    }
+
+    /// The base layer's pixels as a document-sized interleaved straight-RGBA8
+    /// buffer at the layer's document rect; zero outside it. The planes are read
+    /// exactly as [`Stencil`] reads its base, so a GPU stroke seeded from this
+    /// starts from the same source pixels the exact CPU stroke does.
+    pub fn base_layer_rgba_doc(&self) -> Vec<u8> {
+        let (dw, dh) = (self.working.width as usize, self.working.height as usize);
+        let mut out = vec![0u8; dw * dh * 4];
+        let Some(layer) = layer_at(&self.base, &self.layer_path) else {
+            return out;
+        };
+        let (lw, lh) = (
+            self.rect.width().max(0) as usize,
+            self.rect.height().max(0) as usize,
+        );
+        let [pr, pg, pb, pa] = read_planes(layer, self.ch);
+        // A layer that spans the document exactly interleaves straight across,
+        // with no per-pixel bounds or plane lookups.
+        if self.rect.left == 0 && self.rect.top == 0 && lw == dw && lh == dh {
+            if let (Some((r, g)), Some((b, a))) = (pr.zip(pg), pb.zip(pa)) {
+                for (px, (((rv, gv), bv), av)) in out
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(r.iter().zip(g).zip(b).zip(a))
+                {
+                    *px = [*rv, *gv, *bv, *av];
+                }
+                return out;
+            }
+        }
+        let at = |p: Option<&[u8]>, i: usize| p.and_then(|s| s.get(i)).copied().unwrap_or(0);
+        for ly in 0..lh {
+            let dy = self.rect.top + ly as i32;
+            if dy < 0 || dy >= dh as i32 {
+                continue;
+            }
+            for lx in 0..lw {
+                let dx = self.rect.left + lx as i32;
+                if dx < 0 || dx >= dw as i32 {
+                    continue;
+                }
+                let i = ly * lw + lx;
+                let o = (dy as usize * dw + dx as usize) * 4;
+                out[o] = at(pr, i);
+                out[o + 1] = at(pg, i);
+                out[o + 2] = at(pb, i);
+                out[o + 3] = at(pa, i);
+            }
+        }
+        out
+    }
+
+    /// Whether the target layer's transparency lock would be violated by the
+    /// GPU's source-over alpha. Such a layer stays on the exact CPU path.
+    pub fn transparency_locked(&self) -> bool {
+        layer_at(&self.base, &self.layer_path).is_some_and(layer_transparency_locked)
+    }
+
+    /// Write a GPU dab's region into the working document, clipped to the
+    /// layer's own rect. `planes` holds four byte planes (R, G, B, A); plane `k`
+    /// starts at `k * plane_stride` and pixel `(row, col)` sits at
+    /// `row * doc_rect.width() + col`. Copies run a row at a time straight into
+    /// the layer's channel planes, so the GPU only has to de-interleave.
+    /// Returns whether any pixel was patched.
+    pub fn patch_working_layer(
+        &mut self,
+        doc_rect: PsdRect,
+        plane_stride: usize,
+        planes: &[u8],
+    ) -> bool {
+        let bw = doc_rect.width().max(0) as usize;
+        let bh = doc_rect.height().max(0) as usize;
+        if bw == 0 || bh == 0 || plane_stride < bw * bh {
+            return false;
+        }
+        let (rl, rt) = (self.rect.left, self.rect.top);
+        let (lw, lh) = (self.rect.width().max(0), self.rect.height().max(0));
+        let left = (doc_rect.left - rl).max(0);
+        let top = (doc_rect.top - rt).max(0);
+        let right = (doc_rect.right - rl).min(lw);
+        let bottom = (doc_rect.bottom - rt).min(lh);
+        if right <= left || bottom <= top {
+            return false;
+        }
+        // A plane's bytes are one contiguous run: its columns start `runner`
+        // pixels into each region row, at the region row `top - (doc_rect.top - rt)`.
+        let runner = (left - (doc_rect.left - rl)) as usize;
+        let first_row = (top - (doc_rect.top - rt)) as usize;
+        let run = (right - left) as usize;
+        let ch = self.ch;
+        let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) else {
+            return false;
+        };
+        let mut dst: [Option<&mut [u8]>; 4] = [None, None, None, None];
+        for (idx, c) in layer.channels.iter_mut().enumerate() {
+            if let Some(k) = ch.iter().position(|&x| x == Some(idx)) {
+                dst[k] = Some(c.data.as_mut_slice());
+            }
+        }
+        for (row, ly) in (top..bottom).enumerate() {
+            let src = (first_row + row) * bw + runner;
+            let d = ly as usize * lw as usize + left as usize;
+            for (k, plane) in dst.iter_mut().enumerate() {
+                let Some(plane) = plane.as_deref_mut() else {
+                    continue;
+                };
+                let Some(bytes) = planes.get(k * plane_stride + src..) else {
+                    continue;
+                };
+                if let (Some(slot), Some(chunk)) = (plane.get_mut(d..d + run), bytes.get(..run)) {
+                    slot.copy_from_slice(chunk);
+                }
+            }
+        }
+        Self::grow_dirty(&mut self.dirty, &mut self.dab_dirty, left, top);
+        Self::grow_dirty(&mut self.dirty, &mut self.dab_dirty, right - 1, bottom - 1);
+        self.painted = true;
+        true
     }
 
     /// The paint on a Mixer Brush after the dabs so far; `None` for other kinds.

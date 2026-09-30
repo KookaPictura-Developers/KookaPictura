@@ -12,16 +12,16 @@ fn smoothstep(t: f32) -> f32 {
 /// no trigonometry and no re-derivation of the profile.
 #[derive(Clone, Copy)]
 pub struct TipParams {
-    sin: f32,
-    cos: f32,
-    flip_x: bool,
-    flip_y: bool,
-    radius: f32,
-    round_radius: f32,
-    aliased: bool,
-    square: bool,
-    core: f32,
-    denom: f32,
+    pub sin: f32,
+    pub cos: f32,
+    pub flip_x: bool,
+    pub flip_y: bool,
+    pub radius: f32,
+    pub round_radius: f32,
+    pub aliased: bool,
+    pub square: bool,
+    pub core: f32,
+    pub denom: f32,
 }
 
 impl TipParams {
@@ -48,6 +48,23 @@ impl TipParams {
             core,
             denom: (1.0 - core).max(f32::EPSILON),
         }
+    }
+
+    /// The layer-local x half-extent of the tip's positive support on the row
+    /// `dy` from the dab centre, or `None` when the row is outside it. A round
+    /// tip narrows to the chord so the bounding box's corners do no work; any
+    /// other shape (a square or an ellipse under rotation) returns the full
+    /// radius, a superset the caller still filters.
+    pub fn x_span(&self, dy: f32) -> Option<(f32, f32)> {
+        if self.square || self.round_radius != self.radius {
+            return Some((-self.radius, self.radius));
+        }
+        let h2 = self.radius * self.radius - dy * dy;
+        if h2 < 0.0 {
+            return None;
+        }
+        let h = h2.max(0.0).sqrt();
+        Some((-h, h))
     }
 
     /// Tip alpha in 0..=1 at layer-local offset (dx, dy) from a dab center.
@@ -244,5 +261,47 @@ mod tests {
             horizontal > vertical,
             "horizontal={horizontal} vertical={vertical}"
         );
+    }
+
+    #[test]
+    fn a_round_tips_row_span_covers_every_supported_pixel() {
+        let cfg = StrokeConfig {
+            diameter: 40,
+            hardness: 60,
+            ..StrokeConfig::default()
+        };
+        let params = TipParams::new(&cfg);
+        let r = cfg.diameter as f32 * 0.5;
+        let mut saw_inside = false;
+        for ly in 0..=80 {
+            let dy = ly as f32 * 0.5 - r;
+            match params.x_span(dy) {
+                None => assert!(dy.abs() > r, "an empty row is only outside the radius"),
+                Some((lo, hi)) => {
+                    assert!(lo <= 0.0 && hi >= 0.0, "the span straddles the centre");
+                    assert!(hi - lo <= 2.0 * r + 1.0, "the span never exceeds the box");
+                    saw_inside = true;
+                    let mut dx = -r - 1.0;
+                    while dx <= r + 1.0 {
+                        if params.coverage(dx, dy) > 0.0 {
+                            assert!(
+                                dx >= lo && dx <= hi,
+                                "supported pixel ({dx}, {dy}) is inside the span"
+                            );
+                        }
+                        dx += 0.25;
+                    }
+                }
+            }
+        }
+        assert!(saw_inside, "some rows intersect the tip");
+
+        // A non-round tip keeps the full-width superset the caller filters.
+        let elliptical = StrokeConfig {
+            diameter: 40,
+            roundness: 50,
+            ..StrokeConfig::default()
+        };
+        assert_eq!(TipParams::new(&elliptical).x_span(0.0), Some((-20.0, 20.0)));
     }
 }
