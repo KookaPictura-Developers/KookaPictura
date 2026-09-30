@@ -15,15 +15,15 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1818 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
+- Test suite: **1821 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
   the `scroll_zoom_pan_profile_*` pair, `region_move_timing_4000`,
   `region_refresh_profile_4000`, `undo_profile_4000`, the `composite_profile_*`
   pair, and `filter_profile_1024`; counted from `cargo nextest run --workspace`,
   which excludes the pre-existing ignored `pictura-render` doctest that
   `cargo test --workspace` reports separately).
-  The C++ self-test reports **477 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **478 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2333 passed, 13 skipped, 0 failed**.
+  probes) reports **2337 passed, 13 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -588,6 +588,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   pointer moves, with Normal mode only; Tolerance defaults to 0 % (the spec's
   unverified 100 % would paint almost nowhere); both match the source layer by
   panel path.
+- **Brush Preset picker** (change `brush-preset-picker`, issue #77, ported from
+  photorust): every brush bar shows a tip button (the engine-drawn tip with its
+  size) instead of Size / Hardness fields; a click opens `BrushPresetPicker`
+  (`panels/brush_preset_picker.*`): preview, Size 1–5000 px and Hardness (box +
+  slider each; the Size slider's first half is 1–100 px, the second climbs
+  geometrically to 5000, `brush_size_scale`), the preset name, and photorust's
+  44-entry CS6 default set with `brush_dab_preview` thumbnails. A preset writes
+  size, hardness, roundness, angle, spacing, and `BrushDynamics` into the
+  controller. `StrokeConfig` gained dab dynamics (count, scatter, size / angle /
+  roundness jitter, seeded; none paints as before) for the Paint stroke;
+  `PaintTip` carries them and Brush / Pencil now begin through `begin_brush`.
+  `stroke.rs`'s tests moved to `stroke/tests.rs`. Self-test code 549;
+  `lpn_brush_resync` (307) and `lpn_paint_percent` (325) read the picker.
+  Ceilings (`ponytail:`): no cog menu, Use Sample Size, or libraries; sampled
+  tips are approximated with scatter and jitter; per-dab tools (Color
+  Replacement, Mixer, Art History) ignore the dynamics.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
