@@ -86,6 +86,8 @@ int pictura::runPaintLiveChecks(pictura::PicturaMainWindow& frame)
         const bool dabB = view->paint_dab(120.0, 120.0, 1.0);
         const bool dabC = view->paint_dab(130.0, 120.0, 1.0);
         const int dabs = (dabA ? 1 : 0) + (dabB ? 1 : 0) + (dabC ? 1 : 0);
+        // Presents are frame-bounded; show the accumulated dabs on demand.
+        view->flush_present();
         const QImage before = canvas->grab().toImage();
         const QPointF expected(120.0 * canvas->zoom() + canvas->offset().x(),
                                120.0 * canvas->zoom() + canvas->offset().y());

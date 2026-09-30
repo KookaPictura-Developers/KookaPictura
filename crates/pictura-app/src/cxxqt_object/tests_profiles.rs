@@ -1,3 +1,6 @@
+use super::helpers::rgba_from_argb;
+use super::helpers_composite::buffer_to_image;
+use super::tests::pixel_layer;
 use pictura_core::{BitDepth, ColorMode, Document, PixelBuffer, PsdRect};
 use pictura_render::{Planes, ViewPyramid};
 
@@ -108,4 +111,72 @@ fn scroll_zoom_pan_profile_4000() {
 #[ignore = "16000x16000 crop-vs-rescale profile; run explicitly with --ignored --nocapture"]
 fn scroll_zoom_pan_profile_16000() {
     scroll_zoom_pan_profile(16000);
+}
+
+/// Print-only split of the per-stroke cost into stroke start, rasterization and
+/// region present, so the brush-latency work is ordered by measurement. The
+/// existing `paint_dab_profile_4000` times only the region composite; this adds
+/// the two unmeasured components. No pass/fail budget (the reference machine is
+/// not pinned).
+#[test]
+#[ignore = "4000x4000 stroke split profile; run explicitly with --ignored --nocapture"]
+fn stroke_split_profile_4000() {
+    use pictura_paint::{spacing::SpacingMode, Stroke, StrokeConfig, StrokeSample};
+
+    for layers in [1usize, 8] {
+        let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
+        doc.layers = (0..layers)
+            .map(|i| pixel_layer(&format!("L{i}"), 4000, 4000, (30, 60, 90)))
+            .collect();
+        // Prime the adapter, allocator and pipelines once, untimed.
+        let _ = pictura_render::composite_active(&doc, true);
+        let gpu = pictura_render::gpu_available();
+
+        for diameter in [64u32, 500] {
+            let cfg = StrokeConfig {
+                color: rgba_from_argb(0xFFFF0000),
+                diameter,
+                hardness: 100,
+                spacing: SpacingMode::Fixed(25),
+                ..StrokeConfig::default()
+            };
+
+            // Stroke start: two deep document clones plus the coverage buffers.
+            let t = std::time::Instant::now();
+            let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("stroke begins");
+            let begin = t.elapsed();
+
+            // Rasterization: the first sample places exactly one dab, unrefreshed.
+            let t = std::time::Instant::now();
+            let changed = stroke.sample(StrokeSample {
+                x: 2000.0,
+                y: 2000.0,
+                pressure: 1.0,
+            });
+            let raster = t.elapsed();
+            let rect = stroke.take_dirty().expect("a dab dirties a region");
+
+            // Present: the region composite and display conversion `refresh_region` runs.
+            let t = std::time::Instant::now();
+            let (buffer, _) = pictura_render::composite_region_active(stroke.document(), rect, gpu);
+            let composite = t.elapsed();
+            let t = std::time::Instant::now();
+            let _ = buffer_to_image(&buffer);
+            let display = t.elapsed();
+
+            println!(
+                "stroke_split_profile layers={layers} diameter={diameter} begin={:.2}ms \
+                 raster={:.2}ms composite={:.2}ms display={:.2}ms present={:.2}ms \
+                 region={}x{} changed={changed}",
+                begin.as_secs_f64() * 1000.0,
+                raster.as_secs_f64() * 1000.0,
+                composite.as_secs_f64() * 1000.0,
+                display.as_secs_f64() * 1000.0,
+                (composite + display).as_secs_f64() * 1000.0,
+                rect.width(),
+                rect.height(),
+            );
+            drop(stroke);
+        }
+    }
 }

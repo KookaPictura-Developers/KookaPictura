@@ -7,7 +7,8 @@ use crate::mixer::{MixerBrush, MixerOptions};
 use crate::replace::{ColorReplacer, ReplaceOptions};
 use crate::spacing::DabPlacer;
 use crate::stamp::StampSource;
-use crate::{tip_coverage, PaintMode, Rgba, StrokeConfig, StrokeSample};
+use crate::tip::TipParams;
+use crate::{PaintMode, Rgba, StrokeConfig, StrokeSample};
 use pictura_core::{
     layer_pixel_locked, layer_transparency_locked, BitDepth, Document, Layer, PsdRect,
 };
@@ -68,6 +69,7 @@ pub struct Stroke {
     base: Document,
     working: Document,
     cfg: StrokeConfig,
+    tip: TipParams,
     placer: DabPlacer,
     scratch: Vec<u8>,
     applied: Vec<u8>,
@@ -75,6 +77,10 @@ pub struct Stroke {
     dab_dirty: Option<PsdRect>,
     layer_path: Vec<usize>,
     rect: PsdRect,
+    /// Positions of the R, G, B and alpha planes in the layer's channel list.
+    /// Fixed for the life of the stroke: re-scanning that list per changed
+    /// pixel is the bulk of a large dab's raster cost.
+    ch: PlaneIndex,
     paint: Rgba,
     rng: u64,
     started: bool,
@@ -139,6 +145,7 @@ impl Stroke {
             base: doc.clone(),
             working: doc.clone(),
             cfg,
+            tip: TipParams::new(&cfg),
             placer: DabPlacer::new(cfg.spacing, cfg.diameter as f32),
             scratch,
             applied,
@@ -146,6 +153,7 @@ impl Stroke {
             dab_dirty: None,
             layer_path: indices,
             rect,
+            ch: plane_index(target),
             paint: cfg.color,
             rng: STROKE_SEED,
             started: false,
@@ -222,82 +230,117 @@ impl Stroke {
 
         let flow = cfg.flow as f32 / 100.0;
         let mut changed = false;
+
+        // Place and jitter every dab of this step first, so the raster below can
+        // split `self` and read the base layer while writing the working one.
+        let mut placed: Vec<(f32, f32, Option<StrokeConfig>)> = Vec::new();
         for (dab_x, dab_y) in dabs {
             for _ in 0..cfg.count.max(1) {
-                let (x, y, tip) = self.jittered(dab_x, dab_y);
-                changed |= self.lay_dab(x, y, &tip, flow, w, h);
+                placed.push(self.jittered(dab_x, dab_y));
+            }
+        }
+
+        // Split the stroke into its disjoint parts so the base layer can be
+        // read while the working layer is written, with the layer path, the
+        // channel list and the base planes all resolved once per sample.
+        let Stroke {
+            base,
+            working,
+            layer_path,
+            scratch,
+            applied,
+            tip,
+            paint,
+            rng,
+            dirty,
+            dab_dirty,
+            ch,
+            painted,
+            rect,
+            source,
+            ..
+        } = self;
+        let path: &[usize] = layer_path;
+        let (Some(base_layer), Some(work_layer)) =
+            (layer_at(base, path), layer_at_mut(working, path))
+        else {
+            return false;
+        };
+        let stencil = Stencil {
+            base: read_planes(base_layer, *ch),
+            locked: layer_transparency_locked(base_layer),
+            ch: *ch,
+            cfg,
+            paint: *paint,
+            source: source.as_ref(),
+            rect: *rect,
+        };
+
+        for (dab_x, dab_y, jittered) in placed {
+            // The hoisted profile is exact when the dynamics left the tip
+            // alone; a jittered dab rebuilds it from its own tip.
+            let (params, radius) = match jittered {
+                None => (*tip, cfg.diameter as f32 * 0.5),
+                Some(tip_cfg) => (TipParams::new(&tip_cfg), tip_cfg.diameter as f32 * 0.5),
+            };
+            let x0 = ((dab_x - radius).floor() as i32).max(0);
+            let x1 = ((dab_x + radius).ceil() as i32).min(w as i32 - 1);
+            let y0 = ((dab_y - radius).floor() as i32).max(0);
+            let y1 = ((dab_y + radius).ceil() as i32).min(h as i32 - 1);
+            for ly in y0..=y1 {
+                for lx in x0..=x1 {
+                    let dx = (lx as f32 + 0.5) - dab_x;
+                    let dy = (ly as f32 + 0.5) - dab_y;
+                    let cov = params.coverage(dx, dy);
+                    if cov <= 0.0 {
+                        continue;
+                    }
+                    let i = ly as usize * w + lx as usize;
+                    let acc = 1.0 - (1.0 - scratch[i] as f32 / 255.0) * (1.0 - flow * cov);
+                    let v = (acc.clamp(0.0, 1.0) * 255.0).round() as u8;
+                    scratch[i] = v;
+                    if v == applied[i] {
+                        continue;
+                    }
+                    applied[i] = v;
+                    stencil.composite(work_layer, rng, i, v);
+                    Self::grow_dirty(dirty, dab_dirty, lx, ly);
+                    *painted = true;
+                    changed = true;
+                }
             }
         }
         changed
     }
 
-    /// One dab of a step, scattered and jittered per the dynamics; the step's
-    /// own position and tip when there are none.
-    fn jittered(&mut self, x: f32, y: f32) -> (f32, f32, StrokeConfig) {
+    /// One dab of a step, scattered and jittered per the dynamics; `None` when
+    /// the dynamics left the tip alone, `Some(tip)` when they altered it.
+    fn jittered(&mut self, x: f32, y: f32) -> (f32, f32, Option<StrokeConfig>) {
         let cfg = self.cfg;
-        let mut tip = cfg;
         let (mut x, mut y) = (x, y);
         if cfg.scatter > 0 {
             let reach = cfg.diameter as f32 * cfg.scatter as f32 / 100.0;
-            x += (self.next_f32() * 2.0 - 1.0) * reach;
-            y += (self.next_f32() * 2.0 - 1.0) * reach;
+            x += (Self::next_f32(&mut self.rng) * 2.0 - 1.0) * reach;
+            y += (Self::next_f32(&mut self.rng) * 2.0 - 1.0) * reach;
         }
+        let mut tip: Option<StrokeConfig> = None;
         if cfg.size_jitter > 0 {
             // Jitter only ever shrinks, as CS6's does.
-            let shrink = (1.0 - cfg.size_jitter as f32 / 100.0 * self.next_f32()).max(0.05);
-            tip.diameter = ((cfg.diameter as f32 * shrink).round() as u32).max(1);
+            let shrink =
+                (1.0 - cfg.size_jitter as f32 / 100.0 * Self::next_f32(&mut self.rng)).max(0.05);
+            tip.get_or_insert(cfg).diameter =
+                ((cfg.diameter as f32 * shrink).round() as u32).max(1);
         }
         if cfg.angle_jitter > 0 {
-            let turn = (self.next_f32() * 2.0 - 1.0) * cfg.angle_jitter as f32;
-            tip.angle_deg = (cfg.angle_deg as f32 + turn).round() as i32;
+            let turn = (Self::next_f32(&mut self.rng) * 2.0 - 1.0) * cfg.angle_jitter as f32;
+            tip.get_or_insert(cfg).angle_deg = (cfg.angle_deg as f32 + turn).round() as i32;
         }
         if cfg.roundness_jitter > 0 {
-            let flatten = cfg.roundness_jitter as f32 * self.next_f32();
-            tip.roundness = (cfg.roundness as f32 - flatten).clamp(5.0, 100.0) as u8;
+            let flatten = cfg.roundness_jitter as f32 * Self::next_f32(&mut self.rng);
+            tip.get_or_insert(cfg).roundness =
+                (cfg.roundness as f32 - flatten).clamp(5.0, 100.0) as u8;
         }
         (x, y, tip)
-    }
-
-    /// Accumulate one dab of `tip` at layer-local `(dab_x, dab_y)`; true when
-    /// any pixel's coverage changed.
-    fn lay_dab(
-        &mut self,
-        dab_x: f32,
-        dab_y: f32,
-        tip: &StrokeConfig,
-        flow: f32,
-        w: usize,
-        h: usize,
-    ) -> bool {
-        let radius = tip.diameter as f32 * 0.5;
-        let x0 = ((dab_x - radius).floor() as i32).max(0);
-        let x1 = ((dab_x + radius).ceil() as i32).min(w as i32 - 1);
-        let y0 = ((dab_y - radius).floor() as i32).max(0);
-        let y1 = ((dab_y + radius).ceil() as i32).min(h as i32 - 1);
-        let mut changed = false;
-        for ly in y0..=y1 {
-            for lx in x0..=x1 {
-                let dx = (lx as f32 + 0.5) - dab_x;
-                let dy = (ly as f32 + 0.5) - dab_y;
-                let cov = tip_coverage(tip, dx, dy);
-                if cov <= 0.0 {
-                    continue;
-                }
-                let i = ly as usize * w + lx as usize;
-                let acc = 1.0 - (1.0 - self.scratch[i] as f32 / 255.0) * (1.0 - flow * cov);
-                let v = (acc.clamp(0.0, 1.0) * 255.0).round() as u8;
-                self.scratch[i] = v;
-                if v == self.applied[i] {
-                    continue;
-                }
-                self.applied[i] = v;
-                self.composite_pixel(i);
-                self.expand_dirty(lx, ly);
-                self.painted = true;
-                changed = true;
-            }
-        }
-        changed
     }
 
     pub fn document(&self) -> &Document {
@@ -339,6 +382,7 @@ impl Stroke {
         let Some(rect) = changed else {
             return false;
         };
+        let ch = self.ch;
         let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) else {
             return false;
         };
@@ -347,11 +391,16 @@ impl Stroke {
             for x in rect.left..rect.right {
                 let i = (y * w + x) as usize;
                 let [r, g, b, a] = per.pixels.data[i];
-                write_pixel(layer, i, PaintMode::Normal, (r, g, b, a));
+                write_pixel(layer, ch, i, PaintMode::Normal, (r, g, b, a));
             }
         }
-        self.expand_dirty(rect.left, rect.top);
-        self.expand_dirty(rect.right - 1, rect.bottom - 1);
+        Self::grow_dirty(&mut self.dirty, &mut self.dab_dirty, rect.left, rect.top);
+        Self::grow_dirty(
+            &mut self.dirty,
+            &mut self.dab_dirty,
+            rect.right - 1,
+            rect.bottom - 1,
+        );
         self.painted = true;
         true
     }
@@ -384,7 +433,7 @@ impl Stroke {
         }
     }
 
-    fn expand_dirty(&mut self, lx: i32, ly: i32) {
+    fn grow_dirty(dirty: &mut Option<PsdRect>, dab_dirty: &mut Option<PsdRect>, lx: i32, ly: i32) {
         let grow = |d: Option<PsdRect>| {
             Some(match d {
                 None => PsdRect {
@@ -401,8 +450,8 @@ impl Stroke {
                 },
             })
         };
-        self.dirty = grow(self.dirty);
-        self.dab_dirty = grow(self.dab_dirty);
+        *dirty = grow(*dirty);
+        *dab_dirty = grow(*dab_dirty);
     }
 
     fn pixel_rgb_matches(&self, lx: f32, ly: f32, color: Rgba) -> bool {
@@ -420,15 +469,46 @@ impl Stroke {
         r == color.r && g == color.g && b == color.b
     }
 
-    fn composite_pixel(&mut self, i: usize) {
-        let cov = self.scratch[i] as f32 / 255.0;
+    fn next_f32(rng: &mut u64) -> f32 {
+        *rng = rng.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = *rng;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        (z >> 40) as f32 / 16_777_216.0
+    }
+}
+
+/// A stroke's per-pixel inputs, resolved once per sample so a dab's loop walks
+/// neither the layer path nor the channel list and re-derives no profile.
+struct Stencil<'a> {
+    base: [Option<&'a [u8]>; 4],
+    locked: bool,
+    ch: PlaneIndex,
+    cfg: StrokeConfig,
+    paint: Rgba,
+    /// Clone Stamp / Pattern Stamp / History Brush: the colour at each pixel
+    /// comes from the source instead of `paint`.
+    source: Option<&'a StampSource>,
+    rect: PsdRect,
+}
+
+impl Stencil<'_> {
+    fn composite(&self, work: &mut Layer, rng: &mut u64, i: usize, coverage: u8) {
+        let cov = coverage as f32 / 255.0;
         let a = (cov * self.cfg.opacity as f32 / 100.0).clamp(0.0, 1.0);
-        let Some(base_layer) = layer_at(&self.base, &self.layer_path) else {
-            return;
+        let plane = |k: usize, missing: u8| {
+            self.base[k]
+                .and_then(|d| d.get(i))
+                .copied()
+                .unwrap_or(missing)
         };
-        let (dr, dg, db, da) = read_pixel(base_layer, i);
-        let transparency_locked = layer_transparency_locked(base_layer);
-        let s = match &self.source {
+        let dr = plane(0, 0);
+        let dg = plane(1, 0);
+        let db = plane(2, 0);
+        // A layer without an alpha channel (a Background) is opaque.
+        let da = plane(3, 255);
+        let s = match self.source {
             None => self.paint,
             Some(source) => {
                 let w = self.rect.width() as usize;
@@ -443,7 +523,7 @@ impl Stroke {
         let write = match mode {
             PaintMode::Normal => Some(normal_pixel(dr, dg, db, da, &s, a)),
             PaintMode::Dissolve => {
-                if self.next_f32() < a {
+                if Stroke::next_f32(rng) < a {
                     Some((s.r, s.g, s.b, s.a))
                 } else {
                     None
@@ -467,25 +547,14 @@ impl Stroke {
         // A transparency lock preserves each pixel's alpha: fully transparent
         // pixels stay untouched, everything else keeps its pre-stroke alpha.
         // (Clear/auto-erase are refused for the whole stroke in `begin_at`.)
-        if transparency_locked {
+        if self.locked {
             if da == 0 {
                 return;
             }
-            if let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) {
-                write_pixel(layer, i, mode, (r, g, b, da));
-            }
-        } else if let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) {
-            write_pixel(layer, i, mode, (r, g, b, alpha));
+            write_pixel(work, self.ch, i, mode, (r, g, b, da));
+        } else {
+            write_pixel(work, self.ch, i, mode, (r, g, b, alpha));
         }
-    }
-
-    fn next_f32(&mut self) -> f32 {
-        self.rng = self.rng.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.rng;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        (z >> 40) as f32 / 16_777_216.0
     }
 }
 
@@ -571,31 +640,63 @@ fn to_u8(v: f32) -> u8 {
     v.round().clamp(0.0, 255.0) as u8
 }
 
-/// A layer without an alpha channel (a Background) is opaque.
-fn read_pixel(layer: &Layer, i: usize) -> (u8, u8, u8, u8) {
-    let g =
-        |id, missing| channel_data(layer, id).map_or(missing, |d| d.get(i).copied().unwrap_or(0));
-    (g(0, 0), g(1, 0), g(2, 0), g(-1, 255))
+/// Positions of the R, G, B and alpha planes in a layer's channel list, or
+/// `None` where the layer has no such plane.
+type PlaneIndex = [Option<usize>; 4];
+
+/// The plane positions for `layer`; a stroke resolves them once instead of
+/// re-scanning `channels` for every changed pixel.
+fn plane_index(layer: &Layer) -> PlaneIndex {
+    let at = |id| layer.channels.iter().position(|c| c.id == id);
+    [at(0), at(1), at(2), at(-1)]
 }
 
-fn write_pixel(layer: &mut Layer, i: usize, mode: PaintMode, rgba: (u8, u8, u8, u8)) {
+/// A layer without an alpha channel (a Background) is opaque.
+fn read_idx(layer: &Layer, ch: PlaneIndex, i: usize) -> (u8, u8, u8, u8) {
+    let g = |k: Option<usize>, missing: u8| {
+        k.and_then(|k| layer.channels.get(k))
+            .and_then(|c| c.data.get(i))
+            .copied()
+            .unwrap_or(missing)
+    };
+    (g(ch[0], 0), g(ch[1], 0), g(ch[2], 0), g(ch[3], 255))
+}
+
+fn read_pixel(layer: &Layer, i: usize) -> (u8, u8, u8, u8) {
+    read_idx(layer, plane_index(layer), i)
+}
+
+/// The four planes of `layer` at the stroke's resolved positions, borrowed for
+/// the life of a sample.
+fn read_planes(layer: &Layer, ch: PlaneIndex) -> [Option<&[u8]>; 4] {
+    let at = |k: Option<usize>| {
+        k.and_then(|k| layer.channels.get(k))
+            .map(|c| c.data.as_slice())
+    };
+    [at(ch[0]), at(ch[1]), at(ch[2]), at(ch[3])]
+}
+
+fn write_pixel(
+    layer: &mut Layer,
+    ch: PlaneIndex,
+    i: usize,
+    mode: PaintMode,
+    rgba: (u8, u8, u8, u8),
+) {
     let (r, g, b, a) = rgba;
     if !matches!(mode, PaintMode::Clear) {
-        if let Some(d) = channel_data_mut(layer, 0) {
-            d[i] = r;
-        }
-        if let Some(d) = channel_data_mut(layer, 1) {
-            d[i] = g;
-        }
-        if let Some(d) = channel_data_mut(layer, 2) {
-            d[i] = b;
+        for (k, v) in [(ch[0], r), (ch[1], g), (ch[2], b)] {
+            if let Some(k) = k {
+                layer.channels[k].data[i] = v;
+            }
         }
     }
-    if let Some(d) = channel_data_mut(layer, -1) {
-        d[i] = a;
+    if let Some(k) = ch[3] {
+        layer.channels[k].data[i] = a;
     }
 }
 
+#[cfg(test)]
 fn channel_data(layer: &Layer, id: i16) -> Option<&[u8]> {
     layer
         .channels
@@ -604,6 +705,7 @@ fn channel_data(layer: &Layer, id: i16) -> Option<&[u8]> {
         .map(|c| c.data.as_slice())
 }
 
+#[cfg(test)]
 fn channel_data_mut(layer: &mut Layer, id: i16) -> Option<&mut [u8]> {
     layer
         .channels
