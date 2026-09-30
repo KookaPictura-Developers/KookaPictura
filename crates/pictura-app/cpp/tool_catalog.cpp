@@ -97,11 +97,12 @@ const ToolInfo kToolTable[] = {
     {ToolId::MagicEraser, "magiceraser", "Magic Eraser", QLatin1Char('E'), Qt::CrossCursor,
      "Magic Eraser: click to erase similar colours to transparency", 11, true, 2, 22},
     {ToolId::Gradient, "gradient", "Gradient", QLatin1Char('G'), Qt::CrossCursor,
-     "Gradient: not implemented yet", 12, false, 2, 22},
+     "Gradient: drag to draw the gradient, Shift to constrain the angle to 45°", 12, true, 2, 22},
     {ToolId::PaintBucket, "paintbucket", "Paint Bucket", QLatin1Char('G'), Qt::CrossCursor,
-     "Paint Bucket: not implemented yet", 12, false, 2, 22},
-    {ToolId::Blur, "blur", "Blur", QChar(), Qt::CrossCursor, "Blur: not implemented yet", 13,
-     false, 2, 22},
+     "Paint Bucket: click to fill similar colours with the foreground colour or a pattern", 12,
+     true, 2, 22},
+    {ToolId::Blur, "blur", "Blur", QChar(), Qt::CrossCursor,
+     "Blur: drag to soften; going over a spot again softens it more", 13, true, 2, 22},
     {ToolId::Sharpen, "sharpen", "Sharpen", QChar(), Qt::CrossCursor,
      "Sharpen: not implemented yet", 13, false, 2, 22},
     {ToolId::Smudge, "smudge", "Smudge", QChar(), Qt::CrossCursor,
@@ -193,7 +194,7 @@ bool isBrushTool(ToolId id)
     return id == ToolId::Brush || id == ToolId::Pencil || id == ToolId::ColorReplacement
         || id == ToolId::MixerBrush || id == ToolId::CloneStamp || id == ToolId::PatternStamp
         || id == ToolId::HistoryBrush || id == ToolId::ArtHistoryBrush || id == ToolId::Eraser
-        || id == ToolId::BackgroundEraser;
+        || id == ToolId::BackgroundEraser || id == ToolId::Blur;
 }
 
 QString toolIdName(ToolId id)
@@ -267,8 +268,11 @@ QList<ToolHint> toolHintEntries(ToolId id)
     case ToolId::ArtHistoryBrush:
     case ToolId::Eraser:
     case ToolId::BackgroundEraser:
+    case ToolId::Blur:
         return {{QStringLiteral("["), QStringLiteral("Decrease brush size")},
                 {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
+    case ToolId::Gradient:
+        return {{QStringLiteral("Shift"), QStringLiteral("Constrain to 45°")}};
     case ToolId::Move:
         return {{QStringLiteral("Arrows"), QStringLiteral("Nudge 1 px")},
                 {QStringLiteral("Shift"), QStringLiteral("Nudge 10 px")},
@@ -321,6 +325,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil, ToolId::ColorReplacement,
         ToolId::MixerBrush, ToolId::CloneStamp, ToolId::PatternStamp, ToolId::HistoryBrush,
         ToolId::ArtHistoryBrush, ToolId::Eraser, ToolId::BackgroundEraser, ToolId::MagicEraser,
+        ToolId::Gradient, ToolId::PaintBucket, ToolId::Blur,
     };
     return ids;
 }

@@ -1,15 +1,18 @@
 //! The paint tool bridges beyond the Brush: Color Replacement, Mixer Brush,
 //! the stamps (Clone Stamp, Pattern Stamp, History Brush), the Art History
-//! Brush, and the erasers. Free functions over a [`PictureView`] (their own
+//! Brush, the erasers, and Blur. Free functions over a [`PictureView`] (their own
 //! bridge, so the `PictureView` declaration list does not grow). Each only *begins* a stroke — of its [`StrokeKind`], or
 //! one whose colour comes from a [`StampSource`]; the live stroke then runs
 //! through the Brush's `paint_dab` / `end_paint` / `cancel_paint`, so the
 //! preview and the one history state per stroke (`"Color Replacement Tool"`,
 //! `"Mixer Brush Tool"`, `"Clone Stamp"`, `"Pattern Stamp"`, `"History
-//! Brush"`, `"Art History Brush"`, `"Eraser"`, `"Background Eraser"`) are
-//! shared. The Magic Eraser is one click and records `"Magic Eraser"` itself.
+//! Brush"`, `"Art History Brush"`, `"Eraser"`, `"Background Eraser"`,
+//! `"Blur"`) are shared. The Magic Eraser is one click and records `"Magic Eraser"` itself,
+//! as do the fill tools in [`fills`].
 //!
 //! [`PictureView`]: super::qobject::PictureView
+
+mod fills;
 
 use super::helpers::{active_layer_visible, active_pixel_layer, paint_mode_from, rgba_from_argb};
 use super::qobject::PictureView;
@@ -24,6 +27,7 @@ use pictura_paint::art_history::{ArtHistoryOptions, ArtStyle, STYLE_NAMES};
 use pictura_paint::eraser::{
     antialias_mask, begin_erase, ensure_alpha, magic_erase, BackgroundEraseOptions, EraserMode,
 };
+use pictura_paint::focus::{BlurMode, BlurOptions};
 use pictura_paint::mixer::MixerOptions;
 use pictura_paint::pattern::{self, PATTERN_NAMES};
 use pictura_paint::replace::{Limits, ReplaceMode, ReplaceOptions, Sampling};
@@ -239,6 +243,19 @@ pub mod ffi {
             sample_all: bool,
             opacity: i32,
             background: u32,
+        ) -> bool;
+
+        /// Begin a Blur stroke softening the active pixel layer by `strength`
+        /// 0–100 % per dab. `mode` 0 Normal / 1 Darken / 2 Lighten / 3 Hue /
+        /// 4 Saturation / 5 Color / 6 Luminosity; with `sample_all` the
+        /// neighbourhood is read from the composite. False as for
+        /// `begin_clone_stamp`, or on a 16/32-bit document.
+        fn begin_blur(
+            view: Pin<&mut PictureView>,
+            tip: &PaintTip,
+            strength: i32,
+            mode: i32,
+            sample_all: bool,
         ) -> bool;
 
         /// A white stroke with `tip` along an S-curve on transparency, packed
@@ -557,6 +574,29 @@ fn begin_background_eraser(
             Some(layered) => Stroke::begin_kind(&layered, path, cfg, kind).ok(),
             None => Stroke::begin_kind(doc, path, cfg, kind).ok(),
         }
+    })
+}
+
+fn begin_blur(
+    view: Pin<&mut PictureView>,
+    tip: &PaintTip,
+    strength: i32,
+    mode: i32,
+    sample_all: bool,
+) -> bool {
+    let options = BlurOptions {
+        strength: strength.clamp(0, 100) as f32 / 100.0,
+        mode: BlurMode::from_i32(mode).unwrap_or_default(),
+    };
+    let cfg = tip_config(tip);
+    begin(view, "Blur", |doc, path, view| {
+        let sampled = sample_all.then(|| {
+            surface_from_composite(&super::helpers_composite::current_buffer(
+                doc,
+                view.gpu_compute,
+            ))
+        });
+        Stroke::begin_blur(doc, path, cfg, options, sampled).ok()
     })
 }
 

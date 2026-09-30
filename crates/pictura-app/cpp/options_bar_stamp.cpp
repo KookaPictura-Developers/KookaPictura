@@ -25,8 +25,6 @@
 
 namespace pictura {
 
-namespace {
-
 QIcon patternIcon(int index)
 {
     const int side = stamp_pattern_side();
@@ -37,8 +35,6 @@ QIcon patternIcon(int index)
     const QImage tile(rgba.data(), side, side, side * 4, QImage::Format_RGBA8888);
     return QIcon(QPixmap::fromImage(tile.copy()));
 }
-
-} // namespace
 
 // A 0-100 % field wired to a controller setter; returns it.
 NumericField* OptionsBar::addPercentField(QHBoxLayout* layout, QWidget* page,
