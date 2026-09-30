@@ -1,7 +1,11 @@
 //! Brush engine primitives: stroke configuration, dab spacing, and tip coverage.
 
 pub mod art_history;
+pub mod bucket;
 pub mod eraser;
+mod fill;
+pub mod focus;
+pub mod gradient;
 pub mod healing;
 pub mod mixer;
 pub mod pattern;

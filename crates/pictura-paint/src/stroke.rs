@@ -2,6 +2,7 @@
 
 use crate::art_history::{layer_local, ArtHistoryBrush, ArtHistoryOptions};
 use crate::eraser::{BackgroundEraseOptions, BackgroundEraser};
+use crate::focus::{BlurBrush, BlurOptions};
 use crate::healing::RgbaImage;
 use crate::mixer::{MixerBrush, MixerOptions};
 use crate::replace::{ColorReplacer, ReplaceOptions};
@@ -51,6 +52,7 @@ enum DabEngine {
     Mixer(MixerBrush),
     ArtHistory(ArtHistoryBrush),
     BackgroundErase(BackgroundEraser),
+    Blur(BlurBrush),
 }
 
 /// A per-dab engine and the layer pixels it edits in place.
@@ -198,6 +200,29 @@ impl Stroke {
         );
         stroke.per_dab = Some(PerDab {
             engine: DabEngine::ArtHistory(brush),
+            pixels: layer_rgba(target),
+        });
+        Ok(stroke)
+    }
+
+    /// Start a Blur stroke. `sampled` is the document-space composite Sample All
+    /// Layers reads; `None` reads the layer. 8-bit documents only.
+    pub fn begin_blur(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        options: BlurOptions,
+        sampled: Option<RgbaImage>,
+    ) -> Result<Stroke, PaintError> {
+        if doc.depth != BitDepth::Eight {
+            return Err(PaintError::UnsupportedDepth);
+        }
+        let mut stroke = Stroke::begin_kind(doc, path, cfg, StrokeKind::Paint)?;
+        let target = layer_at(doc, &stroke.layer_path).ok_or(PaintError::NoRasterLayer)?;
+        let sampled = sampled.map(|s| layer_local(&s, stroke.rect));
+        let brush = BlurBrush::new(options, sampled, layer_transparency_locked(target));
+        stroke.per_dab = Some(PerDab {
+            engine: DabEngine::Blur(brush),
             pixels: layer_rgba(target),
         });
         Ok(stroke)
@@ -508,6 +533,7 @@ impl Stroke {
                 DabEngine::BackgroundErase(eraser) => {
                     eraser.dab(&mut per.pixels, &cfg, x, y, cfg.color)
                 }
+                DabEngine::Blur(brush) => brush.dab(&mut per.pixels, &cfg, x, y),
             };
             if let Some(d) = dirty {
                 changed = Some(changed.map_or(d, |c: PsdRect| union_rect(c, d)));
@@ -654,28 +680,12 @@ impl Stencil<'_> {
             }
         };
         let mode = self.cfg.mode;
-        let write = match mode {
-            PaintMode::Normal => Some(normal_pixel(dr, dg, db, da, &s, a)),
-            PaintMode::Dissolve => {
-                if Stroke::next_f32(rng) < a {
-                    Some((s.r, s.g, s.b, s.a))
-                } else {
-                    None
-                }
-            }
-            PaintMode::Behind => {
-                if da == 255 {
-                    None
-                } else {
-                    Some(behind_pixel(dr, dg, db, da, &s, a))
-                }
-            }
-            PaintMode::Clear => {
-                let out_a = (da as f32 / 255.0) * (1.0 - a);
-                Some((dr, dg, db, to_u8(out_a * 255.0)))
-            }
+        let roll = if mode == PaintMode::Dissolve {
+            Stroke::next_f32(rng)
+        } else {
+            0.0
         };
-        let Some((r, g, b, alpha)) = write else {
+        let Some((r, g, b, alpha)) = blend_pixel(mode, (dr, dg, db, da), &s, a, roll) else {
             return;
         };
         // A transparency lock preserves each pixel's alpha: fully transparent
@@ -706,6 +716,28 @@ pub fn paint_stroke(
     let outcome = stroke.finish()?;
     *doc = outcome.document;
     Some(outcome.dirty)
+}
+
+/// `s` laid at strength `a` (0.0–1.0) over the straight pixel `dst` in `mode`,
+/// or `None` when the pixel is left alone. `roll` (0.0–1.0) decides whether a
+/// Dissolve pixel is painted.
+pub(crate) fn blend_pixel(
+    mode: PaintMode,
+    dst: (u8, u8, u8, u8),
+    s: &Rgba,
+    a: f32,
+    roll: f32,
+) -> Option<(u8, u8, u8, u8)> {
+    let (dr, dg, db, da) = dst;
+    match mode {
+        PaintMode::Normal => Some(normal_pixel(dr, dg, db, da, s, a)),
+        PaintMode::Dissolve => (roll < a).then_some((s.r, s.g, s.b, s.a)),
+        PaintMode::Behind => (da != 255).then(|| behind_pixel(dr, dg, db, da, s, a)),
+        PaintMode::Clear => {
+            let out_a = (da as f32 / 255.0) * (1.0 - a);
+            Some((dr, dg, db, to_u8(out_a * 255.0)))
+        }
+    }
 }
 
 fn normal_pixel(dr: u8, dg: u8, db: u8, da: u8, s: &Rgba, a: f32) -> (u8, u8, u8, u8) {
