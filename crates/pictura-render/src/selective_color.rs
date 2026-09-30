@@ -240,19 +240,19 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: vec![200, 10],
+                    data: vec![200, 10].into(),
                 },
                 Channel {
                     id: 1,
-                    data: vec![100, 20],
+                    data: vec![100, 20].into(),
                 },
                 Channel {
                     id: 2,
-                    data: vec![50, 30],
+                    data: vec![50, 30].into(),
                 },
                 Channel {
                     id: -1,
-                    data: vec![255, 255],
+                    data: vec![255, 255].into(),
                 },
             ],
             ..Default::default()

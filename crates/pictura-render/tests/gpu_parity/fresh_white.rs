@@ -34,19 +34,19 @@ fn fresh_white_document(w: u32, h: u32) -> Document {
         channels: vec![
             Channel {
                 id: 0,
-                data: plane(),
+                data: plane().into(),
             },
             Channel {
                 id: 1,
-                data: plane(),
+                data: plane().into(),
             },
             Channel {
                 id: 2,
-                data: plane(),
+                data: plane().into(),
             },
             Channel {
                 id: -1,
-                data: plane(),
+                data: plane().into(),
             },
         ],
         children: Vec::new(),

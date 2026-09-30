@@ -249,12 +249,12 @@ pub fn rasterize_smart_object(doc: &mut Document, path: &str) -> bool {
             let mut channels: Vec<Channel> = (0..doc.mode.color_channels() as usize)
                 .map(|c| Channel {
                     id: c as i16,
-                    data: src.data[c * plane..(c + 1) * plane].to_vec(),
+                    data: src.data[c * plane..(c + 1) * plane].to_vec().into(),
                 })
                 .collect();
             channels.push(Channel {
                 id: -1,
-                data: src.data[3 * plane..4 * plane].to_vec(),
+                data: src.data[3 * plane..4 * plane].to_vec().into(),
             });
             Some(channels)
         }

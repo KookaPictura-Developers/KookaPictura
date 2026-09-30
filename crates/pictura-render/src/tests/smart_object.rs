@@ -62,19 +62,19 @@ fn green_proxy() -> Vec<Channel> {
     vec![
         Channel {
             id: 0,
-            data: vec![0; 16],
+            data: vec![0; 16].into(),
         },
         Channel {
             id: 1,
-            data: vec![255; 16],
+            data: vec![255; 16].into(),
         },
         Channel {
             id: 2,
-            data: vec![0; 16],
+            data: vec![0; 16].into(),
         },
         Channel {
             id: -1,
-            data: vec![255; 16],
+            data: vec![255; 16].into(),
         },
     ]
 }
@@ -417,11 +417,11 @@ fn grayscale_layer_converts_to_grayscale_source() {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![128; 4],
+                data: vec![128; 4].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255; 4],
+                data: vec![255; 4].into(),
             },
         ],
         ..Default::default()
@@ -751,7 +751,7 @@ fn replace_swaps_source_and_drops_preserved_blocks() {
         default_color: 0,
         disabled: true,
         flags: 0,
-        data: Some(vec![0, 64, 128, 255]),
+        data: Some(vec![0, 64, 128, 255].into()),
         extra: Vec::new(),
     });
     d.layers[index].color = ColorLabel::Violet;

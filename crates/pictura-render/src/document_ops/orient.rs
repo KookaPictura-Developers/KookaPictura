@@ -75,7 +75,7 @@ fn remap_plane(data: &[u8], lw: u32, lh: u32, op: fn(&PixelBuffer) -> PixelBuffe
     let mut plane = PixelBuffer::new(lw, lh, 1);
     let n = plane.data.len().min(data.len());
     plane.data[..n].copy_from_slice(&data[..n]);
-    op(&plane).data
+    op(&plane).data.to_vec()
 }
 
 /// Transform a rect in a `w×h` canvas. `m = ` the corresponding plane remap.
@@ -123,7 +123,7 @@ fn transform_document(doc: &mut Document, kind: Kind) {
         let lw = old_rect.width().max(0) as u32;
         let lh = old_rect.height().max(0) as u32;
         for channel in &mut layer.channels {
-            channel.data = remap_plane(&channel.data, lw, lh, op);
+            channel.data = remap_plane(&channel.data, lw, lh, op).into();
         }
         if let Some(store) = layer.source_channels.take() {
             let mask_rect = layer.mask.as_ref().map(|m| m.rect);
@@ -138,14 +138,14 @@ fn transform_document(doc: &mut Document, kind: Kind) {
             let mw = mask.rect.width().max(0) as u32;
             let mh = mask.rect.height().max(0) as u32;
             if let Some(data) = &mut mask.data {
-                *data = remap_plane(data, mw, mh, op);
+                *data = remap_plane(data, mw, mh, op).into();
             }
             mask.rect = transform_rect(mask.rect, w, h, kind);
         }
     });
 
     for channel in &mut doc.channels {
-        channel.data = remap_plane(&channel.data, doc.width, doc.height, op);
+        channel.data = remap_plane(&channel.data, doc.width, doc.height, op).into();
     }
     if let Some(store) = &mut doc.source_planes {
         if store.depth != pictura_core::BitDepth::One {
@@ -231,19 +231,19 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: plane(0, n),
+                    data: plane(0, n).into(),
                 },
                 Channel {
                     id: 1,
-                    data: plane(60, n),
+                    data: plane(60, n).into(),
                 },
                 Channel {
                     id: 2,
-                    data: plane(120, n),
+                    data: plane(120, n).into(),
                 },
                 Channel {
                     id: -1,
-                    data: plane(200, n),
+                    data: plane(200, n).into(),
                 },
             ],
             children: Vec::new(),
@@ -263,7 +263,7 @@ mod tests {
             default_color: 255,
             disabled: false,
             flags: 0,
-            data: Some(vec![1, 2, 3]),
+            data: Some(vec![1, 2, 3].into()),
             ..Default::default()
         };
         doc.layers = vec![
@@ -272,7 +272,7 @@ mod tests {
         ];
         doc.channels = vec![Channel {
             id: -1,
-            data: plane(0, 15),
+            data: plane(0, 15).into(),
         }];
         doc.composite = crate::composite_rgba(&doc);
         doc

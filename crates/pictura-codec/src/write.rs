@@ -396,7 +396,7 @@ fn write_layer_info(
                         }
                         data.clone()
                     }
-                    None => vec![mask.default_color; pixels],
+                    None => vec![mask.default_color; pixels].into(),
                 };
                 let plane = native_plane(
                     layer_retained(layer, depth, -2).as_ref(),

@@ -239,7 +239,7 @@ mod tests {
             lookup: Some(lut),
         };
         let mut buf = PixelBuffer::new(1, 2, 4);
-        buf.data = vec![0, 255, 0, 0, 0, 0, 77, 88];
+        buf.data = vec![0, 255, 0, 0, 0, 0, 77, 88].into();
         super::apply_color_lookup(&params, &mut buf).unwrap();
         assert_eq!(&buf.data[..2], &[255, 0]);
         assert_eq!(&buf.data[6..], &[77, 88], "alpha is preserved");
@@ -252,7 +252,7 @@ mod tests {
             lookup: None,
         };
         let mut buf = PixelBuffer::new(1, 1, 4);
-        buf.data = vec![10, 20, 30, 40];
+        buf.data = vec![10, 20, 30, 40].into();
         super::apply_color_lookup(&params, &mut buf).unwrap();
         assert_eq!(buf.data, vec![10, 20, 30, 40]);
     }
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn invalid_lut_is_rejected() {
         let mut buf = PixelBuffer::new(1, 1, 3);
-        buf.data = vec![0, 0, 0];
+        buf.data = vec![0, 0, 0].into();
         for lookup in [
             Lut3d {
                 size: 3,

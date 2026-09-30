@@ -58,19 +58,19 @@ fn solid(
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![rgb.0; n],
+                data: vec![rgb.0; n].into(),
             },
             Channel {
                 id: 1,
-                data: vec![rgb.1; n],
+                data: vec![rgb.1; n].into(),
             },
             Channel {
                 id: 2,
-                data: vec![rgb.2; n],
+                data: vec![rgb.2; n].into(),
             },
             Channel {
                 id: -1,
-                data: vec![alpha; n],
+                data: vec![alpha; n].into(),
             },
         ],
         children: Vec::new(),

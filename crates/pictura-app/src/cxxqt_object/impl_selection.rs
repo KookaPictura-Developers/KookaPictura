@@ -692,7 +692,7 @@ mod tests {
     fn channel(id: i16, len: usize) -> Channel {
         Channel {
             id,
-            data: vec![7; len],
+            data: vec![7; len].into(),
         }
     }
 

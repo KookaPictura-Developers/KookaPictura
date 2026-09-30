@@ -59,20 +59,22 @@ fn write_proxy(layer: &mut Layer, src: &PixelBuffer, color_channels: usize) {
         .channels
         .iter()
         .find(|c| c.id == -1)
-        .map(|c| c.data.clone());
+        .map(|c| c.data.to_vec());
     let mut channels: Vec<Channel> = (0..color_channels)
         .map(|c| Channel {
             id: c as i16,
-            data: src.data[c * plane..(c + 1) * plane].to_vec(),
+            data: src.data[c * plane..(c + 1) * plane].to_vec().into(),
         })
         .collect();
-    let alpha = existing_alpha.unwrap_or_else(|| {
-        if src.channels >= 4 {
-            src.data[3 * plane..4 * plane].to_vec()
-        } else {
-            vec![255; plane]
-        }
-    });
+    let alpha = existing_alpha
+        .unwrap_or_else(|| {
+            if src.channels >= 4 {
+                src.data[3 * plane..4 * plane].to_vec()
+            } else {
+                vec![255; plane]
+            }
+        })
+        .into();
     channels.push(Channel {
         id: -1,
         data: alpha,

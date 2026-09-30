@@ -33,7 +33,7 @@ pub fn resize_canvas_document(
     });
 
     for channel in &mut doc.channels {
-        channel.data = extend_channel(&channel.data, old_w, old_h, width, height, dx, dy);
+        channel.data = extend_channel(&channel.data, old_w, old_h, width, height, dx, dy).into();
     }
     rebase_source_planes(doc, old_w, old_h, width, height, dx, dy);
 
@@ -178,19 +178,19 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: vec![10; n],
+                    data: vec![10; n].into(),
                 },
                 Channel {
                     id: 1,
-                    data: vec![20; n],
+                    data: vec![20; n].into(),
                 },
                 Channel {
                     id: 2,
-                    data: vec![30; n],
+                    data: vec![30; n].into(),
                 },
                 Channel {
                     id: -1,
-                    data: vec![255; n],
+                    data: vec![255; n].into(),
                 },
             ],
             children: Vec::new(),
@@ -279,7 +279,7 @@ mod tests {
             default_color: 255,
             disabled: false,
             flags: 0,
-            data: Some(vec![128; 16]),
+            data: Some(vec![128; 16].into()),
             ..Default::default()
         };
         let mut doc = sample_doc();
@@ -305,7 +305,7 @@ mod tests {
         doc.layers = vec![pixel_layer("one", full(1, 1), None)];
         doc.channels = vec![Channel {
             id: -1,
-            data: vec![9],
+            data: vec![9].into(),
         }];
         assert!(resize_canvas_document(&mut doc, 2, 2, Anchor::Center).is_ok());
         assert!(resize_canvas_document(&mut doc, 1, 1, Anchor::BottomRight).is_ok());

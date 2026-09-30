@@ -44,19 +44,19 @@ fn smart_layer(name: &str, payload: Vec<u8>, smart_filters: Vec<SmartFilter>) ->
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![255; 16],
+                data: vec![255; 16].into(),
             },
             Channel {
                 id: 1,
-                data: vec![0; 16],
+                data: vec![0; 16].into(),
             },
             Channel {
                 id: 2,
-                data: vec![0; 16],
+                data: vec![0; 16].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255; 16],
+                data: vec![255; 16].into(),
             },
         ],
         smart_object: Some(SmartObject {

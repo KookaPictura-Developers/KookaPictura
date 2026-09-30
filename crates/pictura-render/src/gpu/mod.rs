@@ -475,7 +475,7 @@ mod tests {
             ids.iter()
                 .map(|&id| Channel {
                     id,
-                    data: ramp(n, id as u8),
+                    data: ramp(n, id as u8).into(),
                 })
                 .collect()
         };
@@ -549,7 +549,7 @@ mod tests {
             default_color: 9,
             disabled: true,
             flags: 0,
-            data: Some(ramp(n, 5)),
+            data: Some(ramp(n, 5).into()),
             ..Default::default()
         });
         assert!(!mask_has_data(&l));
@@ -566,7 +566,7 @@ mod tests {
             default_color: 9,
             disabled: false,
             flags: 0,
-            data: Some(ramp(n, 5)),
+            data: Some(ramp(n, 5).into()),
             ..Default::default()
         });
         assert!(mask_has_data(&l));
@@ -654,10 +654,22 @@ mod tests {
             mask: None,
             adjustment: None,
             channels: vec![
-                Channel { id: 0, data: r },
-                Channel { id: 1, data: g },
-                Channel { id: 2, data: b },
-                Channel { id: -1, data: a },
+                Channel {
+                    id: 0,
+                    data: r.into(),
+                },
+                Channel {
+                    id: 1,
+                    data: g.into(),
+                },
+                Channel {
+                    id: 2,
+                    data: b.into(),
+                },
+                Channel {
+                    id: -1,
+                    data: a.into(),
+                },
             ],
             children: Vec::new(),
             is_group: false,

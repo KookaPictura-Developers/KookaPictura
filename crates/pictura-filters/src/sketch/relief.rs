@@ -459,7 +459,7 @@ mod tests {
             width: w,
             height: h,
             channels,
-            data,
+            data: data.into(),
         }
     }
 
@@ -469,7 +469,7 @@ mod tests {
             width: w,
             height: h,
             channels: 3,
-            data: vec![value; n * 3],
+            data: vec![value; n * 3].into(),
         }
     }
 
@@ -731,7 +731,7 @@ mod tests {
             width: w,
             height: h,
             channels: 3,
-            data,
+            data: data.into(),
         };
         let half = (w / 2) as usize;
         let mean = |buf: &PixelBuffer, plane: usize, from: usize, to: usize| -> f64 {
@@ -842,7 +842,7 @@ mod tests {
             width: 1,
             height: 1,
             channels: 4,
-            data: vec![10, 20, 30, 40],
+            data: vec![10, 20, 30, 40].into(),
         };
         let opts = TextureOptions::default();
         assert!(bas_relief(&mut tiny.clone(), 15, 15, LightDirection::Top, FG, BG).is_ok());

@@ -31,19 +31,19 @@ pub(super) fn pixel_layer(name: &str, w: u32, h: u32, rgb: (u8, u8, u8)) -> Laye
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![rgb.0; n],
+                data: vec![rgb.0; n].into(),
             },
             Channel {
                 id: 1,
-                data: vec![rgb.1; n],
+                data: vec![rgb.1; n].into(),
             },
             Channel {
                 id: 2,
-                data: vec![rgb.2; n],
+                data: vec![rgb.2; n].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255; n],
+                data: vec![255; n].into(),
             },
         ],
         children: Vec::new(),
@@ -56,7 +56,7 @@ pub(super) fn pixel_layer(name: &str, w: u32, h: u32, rgb: (u8, u8, u8)) -> Laye
 #[test]
 fn converts_planar_rgb_to_rgba() {
     let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
-    doc.composite.data = vec![10, 20, 30, 40, 50, 60];
+    doc.composite.data = vec![10, 20, 30, 40, 50, 60].into();
     let image = document_to_image(&doc, false);
     assert_eq!(image.width(), 2);
     assert_eq!(image.height(), 1);
@@ -105,19 +105,19 @@ fn layered_document_composites_with_source_alpha() {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![255],
+                data: vec![255].into(),
             },
             Channel {
                 id: 1,
-                data: vec![0],
+                data: vec![0].into(),
             },
             Channel {
                 id: 2,
-                data: vec![0],
+                data: vec![0].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255],
+                data: vec![255].into(),
             },
         ],
         children: Vec::new(),
@@ -156,19 +156,19 @@ fn invert_and_visibility_change_composite() {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![255],
+                data: vec![255].into(),
             },
             Channel {
                 id: 1,
-                data: vec![0],
+                data: vec![0].into(),
             },
             Channel {
                 id: 2,
-                data: vec![0],
+                data: vec![0].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255],
+                data: vec![255].into(),
             },
         ],
         children: Vec::new(),
@@ -232,7 +232,7 @@ fn row_thumbnails_respect_contents_and_masks() {
         default_color: 255,
         disabled: false,
         flags: 0,
-        data: Some(vec![0, 128, 255, 64]),
+        data: Some(vec![0, 128, 255, 64].into()),
         ..Default::default()
     };
     let mask_image = mask_thumbnail_image(&mask, 4).expect("mask thumbnail");
@@ -328,7 +328,7 @@ fn layer_visibility_region_bounds_raster_and_bounded_adjustments() {
         default_color,
         disabled,
         flags: 0,
-        data,
+        data: data.map(Into::into),
         ..Default::default()
     };
 
@@ -663,11 +663,11 @@ fn store_composite_stores_rgba_for_rgb_and_keeps_grayscale_plane() {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![120; 64],
+                data: vec![120; 64].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255; 64],
+                data: vec![255; 64].into(),
             },
         ],
         children: Vec::new(),
@@ -986,7 +986,7 @@ fn content_move_refused_on_locked_layer() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![255; 64]),
+        data: Some(vec![255; 64].into()),
         ..Default::default()
     };
     for flag in [LockFlags::POSITION, LockFlags::PIXELS] {
@@ -1169,7 +1169,7 @@ fn buffer_to_rgba_bytes_matches_image_pixels() {
         width: 1,
         height: 1,
         channels: 1,
-        data: vec![42],
+        data: vec![42].into(),
     };
     assert_eq!(buffer_to_rgba_bytes(&gray), vec![42, 42, 42, 255]);
 
@@ -1177,7 +1177,7 @@ fn buffer_to_rgba_bytes_matches_image_pixels() {
         width: 1,
         height: 1,
         channels: 2,
-        data: vec![10, 200],
+        data: vec![10, 200].into(),
     };
     assert_eq!(buffer_to_rgba_bytes(&gray_alpha), vec![10, 10, 10, 200]);
 
@@ -1185,7 +1185,7 @@ fn buffer_to_rgba_bytes_matches_image_pixels() {
         width: 1,
         height: 1,
         channels: 3,
-        data: vec![1, 2, 3],
+        data: vec![1, 2, 3].into(),
     };
     assert_eq!(buffer_to_rgba_bytes(&rgb), vec![1, 2, 3, 255]);
 
@@ -1193,7 +1193,7 @@ fn buffer_to_rgba_bytes_matches_image_pixels() {
         width: 1,
         height: 1,
         channels: 4,
-        data: vec![4, 5, 6, 7],
+        data: vec![4, 5, 6, 7].into(),
     };
     assert_eq!(buffer_to_rgba_bytes(&rgba), vec![4, 5, 6, 7]);
 

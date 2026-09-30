@@ -52,7 +52,7 @@ fn adjustment_layer_mask_and_opacity_gate() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![255, 0]),
+        data: Some(vec![255, 0].into()),
         ..Default::default()
     });
     let out = composite_rgba(&doc(2, 1, vec![base, masked]));
@@ -204,7 +204,7 @@ fn hidden_decoded_adjustment_is_noop() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![0, 0]),
+        data: Some(vec![0, 0].into()),
         ..Default::default()
     });
     let out = composite_rgba(&doc(2, 1, vec![base, hidden]));

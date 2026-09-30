@@ -12,7 +12,7 @@ fn selection_mask(data: Vec<u8>) -> LayerMask {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(data),
+        data: Some(data.into()),
         ..Default::default()
     }
 }

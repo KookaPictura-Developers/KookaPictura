@@ -786,10 +786,10 @@ fn auto_native(
                 width: width as u32,
                 height: height as u32,
                 channels,
-                data: std::mem::take(data),
+                data: std::mem::take(data).into(),
             };
             let result = crate::auto::auto(kind, &mut buf, n);
-            *data = buf.data;
+            *data = buf.data.to_vec();
             result
         }
         Samples::U16(data) => {

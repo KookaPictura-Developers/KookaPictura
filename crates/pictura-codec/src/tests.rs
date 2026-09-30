@@ -177,11 +177,11 @@ fn multiple_extra_channels_round_trip() {
     doc.channels = vec![
         Channel {
             id: 0,
-            data: vec![10, 20, 30, 40],
+            data: vec![10, 20, 30, 40].into(),
         },
         Channel {
             id: 1,
-            data: vec![50, 60, 70, 80],
+            data: vec![50, 60, 70, 80].into(),
         },
     ];
 
@@ -198,7 +198,7 @@ fn extra_channel_length_mismatch_is_rejected() {
     let mut doc = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
     doc.channels = vec![Channel {
         id: 0,
-        data: vec![0; 3],
+        data: vec![0; 3].into(),
     }];
     assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
 }
@@ -300,11 +300,11 @@ fn pixel(name: &str, r: PsdRect, color_channels: u8, blend: BlendMode, opacity: 
     let channels = (0..color_channels)
         .map(|c| Channel {
             id: c as i16,
-            data: vec![c * 40 + 17; width * height],
+            data: vec![c * 40 + 17; width * height].into(),
         })
         .chain(std::iter::once(Channel {
             id: -1,
-            data: vec![255; width * height],
+            data: vec![255; width * height].into(),
         }))
         .collect();
     Layer {
@@ -362,7 +362,7 @@ fn round_trip_layers_group_and_mask() {
         default_color: 0,
         disabled: true,
         flags: 0x02,
-        data: Some(vec![7u8; 16]),
+        data: Some(vec![7u8; 16].into()),
         ..Default::default()
     });
 
@@ -607,7 +607,7 @@ fn layer_with_too_many_channels_is_rejected() {
     layer.channels = (0..=crate::common::MAX_CHANNELS as i16)
         .map(|id| Channel {
             id,
-            data: vec![0; 1],
+            data: vec![0; 1].into(),
         })
         .collect();
     doc.layers = vec![layer];
@@ -632,7 +632,7 @@ fn default_document() -> Document {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![9u8; 4]),
+        data: Some(vec![9u8; 4].into()),
         ..Default::default()
     });
     let adj = Layer {
@@ -1359,7 +1359,7 @@ fn mask_extra_round_trips() {
     let mut layer = pixel("Masked", rect(0, 0, 2, 2), 3, BlendMode::Normal, 255);
     layer.mask = Some(LayerMask {
         rect: rect(0, 0, 2, 2),
-        data: Some(vec![9u8; 4]),
+        data: Some(vec![9u8; 4].into()),
         extra: vec![7, 8, 9],
         ..Default::default()
     });

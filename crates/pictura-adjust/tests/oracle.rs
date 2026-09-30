@@ -269,7 +269,7 @@ fn test_image_buffer() -> PixelBuffer {
         width: SIZE,
         height: SIZE,
         channels: CHANNELS,
-        data: test_image_planar(),
+        data: test_image_planar().into(),
     }
 }
 
@@ -286,7 +286,7 @@ fn buffer_of(px: &[[u8; 3]]) -> PixelBuffer {
         width: n as u32,
         height: 1,
         channels: CHANNELS,
-        data,
+        data: data.into(),
     }
 }
 
@@ -349,7 +349,7 @@ fn differential(adjustment: Adjustment, extra: &[&str], tolerance: u8, label: &s
         width: SIZE,
         height: SIZE,
         channels: CHANNELS,
-        data: original,
+        data: original.into(),
     };
     apply(&adjustment, &mut buf).expect("pictura_adjust::apply");
     let diff = compare(&buf.data, &reference, tolerance).unwrap_or_else(|e| panic!("{label}: {e}"));
@@ -666,7 +666,7 @@ fn threshold_binary_and_monotone() {
                 );
             }
         }
-        previous = Some(out.data);
+        previous = Some(out.data.to_vec());
     }
 }
 

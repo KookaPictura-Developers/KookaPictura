@@ -49,7 +49,7 @@ fn fixed_rgb() -> PixelBuffer {
         width: W,
         height: H,
         channels: 3,
-        data,
+        data: data.into(),
     }
 }
 
@@ -288,9 +288,9 @@ fn native_u8_equals_apply_for_every_covered_adjustment() {
     for adjustment in covered() {
         let mut expected = base.clone();
         apply(&adjustment, &mut expected).unwrap();
-        let mut store = Samples::U8(base.data.clone());
+        let mut store = Samples::U8(base.data.to_vec());
         apply_native(&adjustment, &mut store, W as usize, H as usize, 3).unwrap();
-        assert_eq!(store, Samples::U8(expected.data), "{adjustment:?}");
+        assert_eq!(store, Samples::U8(expected.data.to_vec()), "{adjustment:?}");
     }
 }
 
@@ -306,9 +306,9 @@ fn native_u8_leaves_alpha_untouched() {
         data: data.clone(),
     };
     apply(&Adjustment::Invert, &mut expected).unwrap();
-    let mut store = Samples::U8(data);
+    let mut store = Samples::U8(data.to_vec());
     apply_native(&Adjustment::Invert, &mut store, W as usize, H as usize, 4).unwrap();
-    assert_eq!(store, Samples::U8(expected.data));
+    assert_eq!(store, Samples::U8(expected.data.to_vec()));
 }
 
 #[test]

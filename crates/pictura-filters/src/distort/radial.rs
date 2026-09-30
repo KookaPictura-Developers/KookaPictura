@@ -163,7 +163,7 @@ mod tests {
             width: w,
             height: h,
             channels: C as u8,
-            data,
+            data: data.into(),
         }
     }
 

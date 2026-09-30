@@ -141,7 +141,7 @@ fn with_left_masked(mut layer: Layer, split_x: i32) -> Layer {
     }
     layer.mask = Some(LayerMask {
         rect: r,
-        data: Some(data),
+        data: Some(data.into()),
         ..Default::default()
     });
     layer

@@ -18,7 +18,7 @@ fn psd_tools_sees_written_extra_channel() {
     let alpha: Vec<u8> = (0..8).map(|i| 200 + i as u8).collect();
     doc.channels = vec![Channel {
         id: 0,
-        data: alpha.clone(),
+        data: alpha.clone().into(),
     }];
 
     let dir = scratch_dir("psd-alpha");
@@ -73,7 +73,7 @@ fn psd_tools_reads_rle_composite_and_layer() {
 
     let mut doc = Document::new(4, 2, ColorMode::Rgb, BitDepth::Eight);
     let composite: Vec<u8> = (0..24).map(|i| (i * 7 + 1) as u8).collect();
-    doc.composite.data = composite.clone();
+    doc.composite.data = composite.clone().into();
     let planes: Vec<Vec<u8>> = (0..4u8)
         .map(|c| (0..8).map(|i| c * 20 + i).collect())
         .collect();
@@ -97,19 +97,19 @@ fn psd_tools_reads_rle_composite_and_layer() {
         channels: vec![
             Channel {
                 id: 0,
-                data: planes[0].clone(),
+                data: planes[0].clone().into(),
             },
             Channel {
                 id: 1,
-                data: planes[1].clone(),
+                data: planes[1].clone().into(),
             },
             Channel {
                 id: 2,
-                data: planes[2].clone(),
+                data: planes[2].clone().into(),
             },
             Channel {
                 id: -1,
-                data: planes[3].clone(),
+                data: planes[3].clone().into(),
             },
         ],
         children: Vec::new(),
@@ -166,7 +166,7 @@ fn psd_tools_reads_written_psb_composite() {
 
     let mut doc = Document::new(4, 2, ColorMode::Rgb, BitDepth::Eight);
     let composite: Vec<u8> = (0..24).map(|i| (i * 7 + 1) as u8).collect();
-    doc.composite.data = composite.clone();
+    doc.composite.data = composite.clone().into();
 
     let dir = scratch_dir("psb-write-read");
     let path = dir.join("written.psb");
@@ -226,7 +226,7 @@ fn psd_tools_reads_written_compression_kinds() {
     ] {
         let mut doc = Document::new(4, 2, ColorMode::Rgb, BitDepth::Eight);
         let composite: Vec<u8> = (0..24).map(|i| (i * 7 + 1) as u8).collect();
-        doc.composite.data = composite.clone();
+        doc.composite.data = composite.clone().into();
         doc.composite_compression = compression;
         doc.layer_compression = compression;
         let planes: Vec<Vec<u8>> = (0..4u8)
@@ -258,26 +258,26 @@ fn psd_tools_reads_written_compression_kinds() {
                 default_color: 0,
                 disabled: false,
                 flags: 0,
-                data: Some(mask.clone()),
+                data: Some(mask.clone().into()),
                 ..Default::default()
             }),
             adjustment: None,
             channels: vec![
                 Channel {
                     id: 0,
-                    data: planes[0].clone(),
+                    data: planes[0].clone().into(),
                 },
                 Channel {
                     id: 1,
-                    data: planes[1].clone(),
+                    data: planes[1].clone().into(),
                 },
                 Channel {
                     id: 2,
-                    data: planes[2].clone(),
+                    data: planes[2].clone().into(),
                 },
                 Channel {
                     id: -1,
-                    data: planes[3].clone(),
+                    data: planes[3].clone().into(),
                 },
             ],
             children: Vec::new(),

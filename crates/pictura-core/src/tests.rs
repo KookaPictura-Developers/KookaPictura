@@ -82,7 +82,7 @@ fn group_vs_pixel_layer() {
         adjustment: None,
         channels: vec![Channel {
             id: 0,
-            data: vec![0; 16],
+            data: vec![0; 16].into(),
         }],
         children: Vec::new(),
         is_group: false,
@@ -148,7 +148,7 @@ fn mask_present_and_absent() {
             default_color: 255,
             disabled: false,
             flags: 0,
-            data: Some(vec![255; 4]),
+            data: Some(vec![255; 4].into()),
             ..Default::default()
         }),
         ..bare
@@ -376,4 +376,54 @@ fn retains_source_depth_tracks_the_retained_store() {
         ..Default::default()
     });
     assert!(layered.retains_source_depth());
+}
+
+/// Copy-on-write: a cloned document shares every pixel plane, and a write
+/// through the clone forks only the planes it touches, leaving the original
+/// byte-identical. That is what lets `Document::clone` run per stroke and per
+/// history state without copying the pixels.
+#[test]
+fn a_cloned_document_shares_its_planes_until_a_write_forks_them() {
+    use crate::plane::shares;
+
+    let rgba: Vec<u8> = (0..64).map(|i| (i * 7 % 251) as u8).collect();
+    let mut doc = Document::from_rgba("cow", 4, 4, &rgba);
+    let snapshot = doc.clone();
+
+    assert!(shares(&doc.composite.data, &snapshot.composite.data));
+    assert!(shares(
+        &doc.layers[0].channels[0].data,
+        &snapshot.layers[0].channels[0].data
+    ));
+    assert_eq!(doc.composite.data, snapshot.composite.data);
+
+    let composite_before = doc.composite.data[0];
+    let plane_before = doc.layers[0].channels[0].data[0];
+    let untouched_before = doc.layers[0].channels[1].data[0];
+
+    doc.composite.data[0] = !composite_before;
+    doc.layers[0].channels[0].data[0] = !plane_before;
+
+    assert!(!shares(&doc.composite.data, &snapshot.composite.data));
+    assert!(!shares(
+        &doc.layers[0].channels[0].data,
+        &snapshot.layers[0].channels[0].data
+    ));
+    assert_eq!(
+        snapshot.composite.data[0], composite_before,
+        "old bytes survive"
+    );
+    assert_eq!(
+        snapshot.layers[0].channels[0].data[0], plane_before,
+        "old bytes survive"
+    );
+    assert_eq!(doc.composite.data[0], !composite_before, "the write landed");
+    assert!(
+        shares(
+            &doc.layers[0].channels[1].data,
+            &snapshot.layers[0].channels[1].data
+        ),
+        "a plane nobody wrote is still shared"
+    );
+    assert_eq!(doc.layers[0].channels[1].data[0], untouched_before);
 }

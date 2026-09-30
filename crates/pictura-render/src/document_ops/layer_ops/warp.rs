@@ -264,7 +264,7 @@ fn warp_mask(mask: &LayerMask, mesh: &WarpMesh, layer_rect: PsdRect) -> Option<L
             bottom: dest.3,
             right: dest.2,
         },
-        data,
+        data: data.map(Into::into),
         ..mask.clone()
     })
 }
@@ -325,7 +325,8 @@ pub fn transform_layer_warp(
                 |u, v| (u * sw as f64, v * sh as f64),
                 dest,
                 bilinear,
-            ),
+            )
+            .into(),
         })
         .collect();
     let new_mask = prepared
@@ -378,19 +379,19 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: plane(w, h, 3),
+                    data: plane(w, h, 3).into(),
                 },
                 Channel {
                     id: 1,
-                    data: plane(w, h, 11),
+                    data: plane(w, h, 11).into(),
                 },
                 Channel {
                     id: 2,
-                    data: plane(w, h, 29),
+                    data: plane(w, h, 29).into(),
                 },
                 Channel {
                     id: -1,
-                    data: vec![255; n],
+                    data: vec![255; n].into(),
                 },
             ],
             ..Default::default()

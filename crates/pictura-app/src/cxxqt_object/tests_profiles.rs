@@ -55,7 +55,7 @@ fn scroll_zoom_pan_profile(n: u32) {
         width: n,
         height: n,
         channels: 4,
-        data,
+        data: data.into(),
     };
     let planes = Planes {
         width: n,
@@ -132,6 +132,13 @@ fn stroke_split_profile_4000() {
         let _ = pictura_render::composite_active(&doc, true);
         let gpu = pictura_render::gpu_available();
 
+        // `Document::clone` is a refcount bump since the planes became
+        // copy-on-write: this is what a stroke start and a history state pay.
+        let t = std::time::Instant::now();
+        let cloned = doc.clone();
+        let clone = t.elapsed();
+        drop(cloned);
+
         for diameter in [64u32, 500] {
             let cfg = StrokeConfig {
                 color: rgba_from_argb(0xFFFF0000),
@@ -141,7 +148,7 @@ fn stroke_split_profile_4000() {
                 ..StrokeConfig::default()
             };
 
-            // Stroke start: two deep document clones plus the coverage buffers.
+            // Stroke start: two document clones (refcount bumps) plus the coverage buffers.
             let t = std::time::Instant::now();
             let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("stroke begins");
             let begin = t.elapsed();
@@ -156,6 +163,18 @@ fn stroke_split_profile_4000() {
             let raster = t.elapsed();
             let rect = stroke.take_dirty().expect("a dab dirties a region");
 
+            // Steady state: the second dab is a non-overlapping one on a stroke
+            // whose painted planes have already forked off the document, so only
+            // rasterization remains (the first dab also pays that one-time fork).
+            let t = std::time::Instant::now();
+            let steady_changed = stroke.sample(StrokeSample {
+                x: 2600.0,
+                y: 2000.0,
+                pressure: 1.0,
+            });
+            let steady = t.elapsed();
+            let steady_rect = stroke.take_dirty();
+
             // Present: the region composite and display conversion `refresh_region` runs.
             let t = std::time::Instant::now();
             let (buffer, _) = pictura_render::composite_region_active(stroke.document(), rect, gpu);
@@ -165,11 +184,14 @@ fn stroke_split_profile_4000() {
             let display = t.elapsed();
 
             println!(
-                "stroke_split_profile layers={layers} diameter={diameter} begin={:.2}ms \
-                 raster={:.2}ms composite={:.2}ms display={:.2}ms present={:.2}ms \
-                 region={}x{} changed={changed}",
+                "stroke_split_profile layers={layers} diameter={diameter} clone={:.3}ms \
+                 begin={:.2}ms raster={:.2}ms steady={:.2}ms composite={:.2}ms \
+                 display={:.2}ms present={:.2}ms region={}x{} changed={changed} \
+                 steady_changed={steady_changed} steady_rect={steady_rect:?}",
+                clone.as_secs_f64() * 1000.0,
                 begin.as_secs_f64() * 1000.0,
                 raster.as_secs_f64() * 1000.0,
+                steady.as_secs_f64() * 1000.0,
                 composite.as_secs_f64() * 1000.0,
                 display.as_secs_f64() * 1000.0,
                 (composite + display).as_secs_f64() * 1000.0,

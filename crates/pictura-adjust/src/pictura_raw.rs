@@ -201,7 +201,7 @@ mod tests {
             width: w,
             height: h,
             channels: 3,
-            data: vec![value; (w * h) as usize * 3],
+            data: vec![value; (w * h) as usize * 3].into(),
         }
     }
 
@@ -221,7 +221,7 @@ mod tests {
             width: n,
             height: 1,
             channels: 3,
-            data,
+            data: data.into(),
         }
     }
 

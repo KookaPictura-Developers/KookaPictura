@@ -153,7 +153,7 @@ fn test_image_buffer(width: u32, height: u32) -> PixelBuffer {
         width,
         height,
         channels: 3,
-        data: test_image_planar(width, height),
+        data: test_image_planar(width, height).into(),
     }
 }
 

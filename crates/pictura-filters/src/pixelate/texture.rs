@@ -221,7 +221,7 @@ mod tests {
             width: w,
             height: h,
             channels: ch,
-            data,
+            data: data.into(),
         }
     }
 

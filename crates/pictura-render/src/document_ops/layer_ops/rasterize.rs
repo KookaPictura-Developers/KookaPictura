@@ -77,19 +77,19 @@ fn bake_solid(layer: &mut Layer, rgba: [u8; 4]) {
     layer.channels = vec![
         Channel {
             id: 0,
-            data: vec![rgba[0]; n],
+            data: vec![rgba[0]; n].into(),
         },
         Channel {
             id: 1,
-            data: vec![rgba[1]; n],
+            data: vec![rgba[1]; n].into(),
         },
         Channel {
             id: 2,
-            data: vec![rgba[2]; n],
+            data: vec![rgba[2]; n].into(),
         },
         Channel {
             id: -1,
-            data: vec![rgba[3]; n],
+            data: vec![rgba[3]; n].into(),
         },
     ];
 }
@@ -119,7 +119,7 @@ fn bake_gradient(layer: &mut Layer, params: &GradientFillParams) {
         },
         Channel {
             id: -1,
-            data: vec![255; px.len()],
+            data: vec![255; px.len()].into(),
         },
     ];
 }

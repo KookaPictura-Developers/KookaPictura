@@ -164,7 +164,7 @@ fn pattern_fill_masked_out_is_noop() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![0; 64]),
+        data: Some(vec![0; 64].into()),
         ..Default::default()
     });
     let out = composite_rgba(&masked);

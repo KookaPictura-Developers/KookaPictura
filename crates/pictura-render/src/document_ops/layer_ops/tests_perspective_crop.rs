@@ -116,7 +116,7 @@ fn masks_and_extra_channels_warp_with_the_pixels() {
             right: 8,
         },
         default_color: 255,
-        data: Some(vec![0; 32]),
+        data: Some(vec![0; 32].into()),
         ..Default::default()
     });
     d.channels = vec![Channel {

@@ -21,7 +21,10 @@ fn plane(w: u32, h: u32, seed: u8) -> Vec<u8> {
 }
 
 fn channel(id: i16, data: Vec<u8>) -> Channel {
-    Channel { id, data }
+    Channel {
+        id,
+        data: data.into(),
+    }
 }
 
 fn pixel_layer(w: u32, h: u32) -> Layer {
@@ -306,7 +309,7 @@ fn mask_follows_the_layer() {
     let mut layer = pixel_layer(4, 4);
     layer.mask = Some(LayerMask {
         rect: rect(4, 4),
-        data: Some(vec![128; 16]),
+        data: Some(vec![128; 16].into()),
         ..Default::default()
     });
     let mut doc = doc_with(layer);

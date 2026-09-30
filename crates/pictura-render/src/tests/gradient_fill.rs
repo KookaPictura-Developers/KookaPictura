@@ -464,7 +464,7 @@ fn gradient_fill_masked_out_is_noop() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![0, 0, 0, 0]),
+        data: Some(vec![0, 0, 0, 0].into()),
         ..Default::default()
     });
     let out = composite_rgba(&doc(2, 2, vec![backdrop, hidden]));

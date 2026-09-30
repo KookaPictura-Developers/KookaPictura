@@ -100,7 +100,7 @@ fn mask_alpha_multiplies_raster_and_vector() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![200; 4]),
+        data: Some(vec![200; 4].into()),
         ..Default::default()
     });
     layer.vector_mask = Some(VectorMask {

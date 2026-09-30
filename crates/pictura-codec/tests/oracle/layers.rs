@@ -35,15 +35,15 @@ fn psd_tools_sees_layer_attributes() {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![7; 4],
+                data: vec![7; 4].into(),
             },
             Channel {
                 id: 1,
-                data: vec![7; 4],
+                data: vec![7; 4].into(),
             },
             Channel {
                 id: 2,
-                data: vec![7; 4],
+                data: vec![7; 4].into(),
             },
         ],
         children: Vec::new(),
@@ -120,15 +120,15 @@ fn psd_tools_sees_background_name_for_flagged_layer() {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![7; 4],
+                data: vec![7; 4].into(),
             },
             Channel {
                 id: 1,
-                data: vec![7; 4],
+                data: vec![7; 4].into(),
             },
             Channel {
                 id: 2,
-                data: vec![7; 4],
+                data: vec![7; 4].into(),
             },
         ],
         children: Vec::new(),

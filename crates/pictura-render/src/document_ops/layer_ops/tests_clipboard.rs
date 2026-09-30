@@ -99,7 +99,7 @@ fn copy_merged_reads_the_composite_planes() {
         width: 4,
         height: 4,
         channels: 4,
-        data,
+        data: data.into(),
     };
     let clip = copy_merged(&doc, &composite, Some(&select(0, 0, 2, 1))).unwrap();
 

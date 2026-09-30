@@ -50,7 +50,7 @@ fn main() {
     for id in [0i16, 1, 2, -1] {
         let mut d = vec![0u8; n];
         touch(&mut d);
-        layer.push(Channel { id, data: d });
+        layer.push(Channel { id, data: d.into() });
     }
     report("after one full-canvas 4-channel pixel layer");
 

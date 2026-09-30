@@ -45,7 +45,7 @@ fn solid_fill_respects_opacity_and_mask() {
             default_color: 0,
             disabled: false,
             flags: 0,
-            data: Some(vec![255, 0]),
+            data: Some(vec![255, 0].into()),
             ..Default::default()
         });
     }

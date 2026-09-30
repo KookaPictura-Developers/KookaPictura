@@ -256,7 +256,7 @@ pub fn ensure_alpha(layer: &mut Layer) {
     let n = (layer.rect.width().max(0) * layer.rect.height().max(0)) as usize;
     layer.channels.push(Channel {
         id: -1,
-        data: vec![255; n],
+        data: vec![255; n].into(),
     });
 }
 
@@ -396,7 +396,7 @@ mod tests {
                 .iter()
                 .map(|&(id, c)| Channel {
                     id,
-                    data: vec![GREY[c]; (w * h) as usize],
+                    data: vec![GREY[c]; (w * h) as usize].into(),
                 })
                 .collect(),
             background,

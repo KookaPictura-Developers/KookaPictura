@@ -28,19 +28,19 @@ fn layer_doc(w: u32, h: u32, rgba: (u8, u8, u8, u8)) -> Document {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![r; n],
+                data: vec![r; n].into(),
             },
             Channel {
                 id: 1,
-                data: vec![g; n],
+                data: vec![g; n].into(),
             },
             Channel {
                 id: 2,
-                data: vec![b; n],
+                data: vec![b; n].into(),
             },
             Channel {
                 id: -1,
-                data: vec![a; n],
+                data: vec![a; n].into(),
             },
         ],
         children: Vec::new(),

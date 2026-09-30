@@ -40,19 +40,19 @@ pub(super) fn transparent_layer(width: u32, height: u32, name: &str) -> Layer {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![0; pixels],
+                data: vec![0; pixels].into(),
             },
             Channel {
                 id: 1,
-                data: vec![0; pixels],
+                data: vec![0; pixels].into(),
             },
             Channel {
                 id: 2,
-                data: vec![0; pixels],
+                data: vec![0; pixels].into(),
             },
             Channel {
                 id: -1,
-                data: vec![0; pixels],
+                data: vec![0; pixels].into(),
             },
         ],
         children: Vec::new(),
@@ -363,19 +363,19 @@ pub fn add_raster_layer_from_rgba(
     let mut channels = vec![
         Channel {
             id: 0,
-            data: vec![0; plane],
+            data: vec![0; plane].into(),
         },
         Channel {
             id: 1,
-            data: vec![0; plane],
+            data: vec![0; plane].into(),
         },
         Channel {
             id: 2,
-            data: vec![0; plane],
+            data: vec![0; plane].into(),
         },
         Channel {
             id: -1,
-            data: vec![0; plane],
+            data: vec![0; plane].into(),
         },
     ];
     for i in 0..plane {

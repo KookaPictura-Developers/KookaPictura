@@ -336,7 +336,7 @@ mod tests {
             channels: [(0, 0), (1, 1), (2, 2), (-1, 3)]
                 .map(|(id, c)| Channel {
                     id,
-                    data: vec![px[c]; (W * H) as usize],
+                    data: vec![px[c]; (W * H) as usize].into(),
                 })
                 .into(),
             ..Default::default()
