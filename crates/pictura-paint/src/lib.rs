@@ -1,5 +1,7 @@
 //! Brush engine primitives: stroke configuration, dab spacing, and tip coverage.
 
+pub mod art_history;
+pub mod eraser;
 pub mod healing;
 pub mod mixer;
 pub mod pattern;
@@ -45,6 +47,9 @@ pub struct StrokeConfig {
     pub flow: u8,
     pub mode: PaintMode,
     pub aliased: bool,
+    /// A hard square tip `diameter` wide (the Eraser's Block mode); roundness,
+    /// angle, hardness, and aliasing do not apply.
+    pub square: bool,
     pub flip_x: bool,
     pub flip_y: bool,
     pub auto_erase: bool,
@@ -89,6 +94,7 @@ impl Default for StrokeConfig {
             flow: 100,
             mode: PaintMode::Normal,
             aliased: false,
+            square: false,
             flip_x: false,
             flip_y: false,
             auto_erase: false,

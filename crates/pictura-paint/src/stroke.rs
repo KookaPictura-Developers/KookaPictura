@@ -1,12 +1,15 @@
 //! Stroke engine: dab coverage accumulation and per-pixel compositing.
 
+use crate::art_history::{layer_local, ArtHistoryBrush, ArtHistoryOptions};
 use crate::healing::RgbaImage;
 use crate::mixer::{MixerBrush, MixerOptions};
 use crate::replace::{ColorReplacer, ReplaceOptions};
 use crate::spacing::DabPlacer;
 use crate::stamp::StampSource;
 use crate::{tip_coverage, PaintMode, Rgba, StrokeConfig, StrokeSample};
-use pictura_core::{layer_pixel_locked, layer_transparency_locked, Document, Layer, PsdRect};
+use pictura_core::{
+    layer_pixel_locked, layer_transparency_locked, BitDepth, Document, Layer, PsdRect,
+};
 
 /// Deterministic stroke seed; Dissolve randomness must not vary between runs.
 const STROKE_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
@@ -17,6 +20,8 @@ pub enum PaintError {
     NoRasterLayer,
     /// The target layer's pixel or transparency lock refuses the stroke.
     Locked,
+    /// The tool works on 8-bit documents only.
+    UnsupportedDepth,
 }
 
 /// What a stroke's dabs do. `Paint` accumulates coverage and composites the
@@ -38,6 +43,7 @@ pub enum StrokeKind {
 enum DabEngine {
     Replace(ColorReplacer),
     Mixer(MixerBrush),
+    ArtHistory(ArtHistoryBrush),
 }
 
 /// A per-dab engine and the layer pixels it edits in place.
@@ -153,6 +159,33 @@ impl Stroke {
         Ok(stroke)
     }
 
+    /// Start an Art History Brush stroke painting stylized strokes coloured
+    /// from `source`, a document-space image of the source state's layer.
+    /// 8-bit documents only.
+    pub fn begin_art_history(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        source: RgbaImage,
+        options: ArtHistoryOptions,
+    ) -> Result<Stroke, PaintError> {
+        if doc.depth != BitDepth::Eight {
+            return Err(PaintError::UnsupportedDepth);
+        }
+        let mut stroke = Stroke::begin_kind(doc, path, cfg, StrokeKind::Paint)?;
+        let target = layer_at(doc, &stroke.layer_path).ok_or(PaintError::NoRasterLayer)?;
+        let brush = ArtHistoryBrush::new(
+            options,
+            layer_local(&source, stroke.rect),
+            layer_transparency_locked(target),
+        );
+        stroke.per_dab = Some(PerDab {
+            engine: DabEngine::ArtHistory(brush),
+            pixels: layer_rgba(target),
+        });
+        Ok(stroke)
+    }
+
     /// Feed one sample. Returns `true` when any pixel's accumulated coverage changed.
     pub fn sample(&mut self, s: StrokeSample) -> bool {
         let cfg = self.cfg;
@@ -240,6 +273,7 @@ impl Stroke {
                     replacer.dab(&mut per.pixels, &cfg, x, y, cfg.color)
                 }
                 DabEngine::Mixer(mixer) => mixer.dab(&mut per.pixels, &cfg, x, y),
+                DabEngine::ArtHistory(brush) => brush.dab(&mut per.pixels, &cfg, x, y),
             };
             if let Some(d) = dirty {
                 changed = Some(changed.map_or(d, |c: PsdRect| union_rect(c, d)));
@@ -452,7 +486,7 @@ fn behind_pixel(dr: u8, dg: u8, db: u8, da: u8, s: &Rgba, a: f32) -> (u8, u8, u8
     )
 }
 
-fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
+pub(crate) fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
     PsdRect {
         top: a.top.min(b.top),
         left: a.left.min(b.left),
