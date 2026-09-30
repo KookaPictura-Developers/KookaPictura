@@ -1,9 +1,43 @@
 use super::helpers::*;
 use super::qobject;
+use super::state::PictureViewRust;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
+use pictura_core::PsdRect;
 use pictura_paint::{spacing::SpacingMode, Stroke, StrokeConfig, StrokeSample};
+
+impl PictureViewRust {
+    /// Fold a dab's `rect` into the frame-bounded present. `Some(rect)` is the
+    /// region to present now — the dab that opens a frame — and `None` means it
+    /// accumulates until [`Self::take_pending_present`].
+    pub(super) fn queue_present(&mut self, rect: PsdRect) -> Option<PsdRect> {
+        if self.present_flush_due {
+            self.pending_present = Some(match self.pending_present.take() {
+                Some(pending) => union_rect(pending, rect),
+                None => rect,
+            });
+            None
+        } else {
+            self.present_flush_due = true;
+            Some(rect)
+        }
+    }
+
+    /// Clear the frame and hand back the region accumulated since the last
+    /// present, if any.
+    pub(super) fn take_pending_present(&mut self) -> Option<PsdRect> {
+        self.present_flush_due = false;
+        self.pending_present.take()
+    }
+
+    /// Drop a pending present: the stroke start, the commit refresh and the
+    /// cancel restore all supersede whatever it would have shown.
+    pub(super) fn clear_pending_present(&mut self) {
+        self.pending_present = None;
+        self.present_flush_due = false;
+    }
+}
 
 impl qobject::PictureView {
     pub fn begin_paint(
@@ -62,6 +96,8 @@ impl qobject::PictureView {
                 let mut rust = self.as_mut().rust_mut();
                 rust.stroke = Some(stroke);
                 rust.stroke_label = if aliased { "Pencil" } else { "Brush" }.to_string();
+                // A new stroke opens its own present frame.
+                rust.clear_pending_present();
                 true
             }
             Err(_) => false,
@@ -83,15 +119,48 @@ impl qobject::PictureView {
             }
             stroke.take_dirty()
         };
-        if let Some(rect) = dirty {
-            self.as_mut().refresh_region(rect);
+        let Some(rect) = dirty else {
+            return false;
+        };
+        // Frame-bounded present: the dab that opens a frame presents itself and
+        // arms the flush; every later dab of that frame accumulates into one
+        // pending region that `flush_present` shows on the next event-loop turn.
+        let opens_frame = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.queue_present(rect)
+        };
+        if let Some(present) = opens_frame {
+            self.as_mut().refresh_region(present);
         }
         true
     }
 
+    /// Present the region accumulated since the last in-stroke present, or do
+    /// nothing when none is pending. The shell calls it on the next event-loop
+    /// turn after a present; a consumer that needs a mid-stroke present sooner
+    /// calls it directly.
+    pub fn flush_present(mut self: Pin<&mut Self>) -> bool {
+        let pending = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.take_pending_present()
+        };
+        match pending {
+            Some(rect) => {
+                self.as_mut().refresh_region(rect);
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn end_paint(mut self: Pin<&mut Self>) -> bool {
-        let stroke = self.as_mut().rust_mut().stroke.take();
-        let label = self.rust().stroke_label.clone();
+        let (stroke, label) = {
+            let mut rust = self.as_mut().rust_mut();
+            // The commit refresh covers the stroke's whole extent, so it
+            // supersedes any region still pending; it runs before `record`.
+            rust.clear_pending_present();
+            (rust.stroke.take(), rust.stroke_label.clone())
+        };
         match stroke {
             None => false,
             Some(stroke) => match stroke.finish() {
@@ -116,14 +185,15 @@ impl qobject::PictureView {
     pub fn cancel_paint(mut self: Pin<&mut Self>) {
         // The document composite was never patched mid-stroke, so restoring the
         // stroke's extent from it is enough; only the level-0/pyramid and the
-        // displayed canvas carry the in-progress paint.
-        let dirty = self
-            .as_mut()
-            .rust_mut()
-            .stroke
-            .take()
-            .and_then(|stroke| stroke.finish())
-            .map(|outcome| outcome.dirty);
+        // displayed canvas carry the in-progress paint. A region still pending
+        // is dropped: the restore below repaints the whole extent anyway.
+        let dirty = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.clear_pending_present();
+            rust.stroke.take()
+        }
+        .and_then(|stroke| stroke.finish())
+        .map(|outcome| outcome.dirty);
         match dirty {
             Some(rect) => self.as_mut().refresh_region(rect),
             None => self.as_mut().recomposite(),

@@ -408,6 +408,12 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
                 // every dab (Krita's "unnecessary objects per event"). Releasing
                 // the stroke emits `changed`, whose refresh() runs them once.
                 if (view && view->is_painting()) {
+                    // A present arms its own flush: the next event-loop turn
+                    // folds every dab that arrived since into one region, so the
+                    // composite and the present track the frame rate, not the
+                    // input rate. `flush_present` is a no-op with nothing
+                    // pending, so the chain ends when the dabs stop.
+                    QTimer::singleShot(0, view, [view] { view->flush_present(); });
                     return;
                 }
                 updateTabTitle(activeDocumentIndex());

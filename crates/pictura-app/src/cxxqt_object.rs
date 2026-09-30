@@ -999,14 +999,14 @@ pub mod qobject {
             auto_erase: bool,
         ) -> bool;
 
-        /// Add a pointer sample to the active stroke and refresh the live image.
-        /// Returns false when no stroke is active.
+        /// Add a pointer sample to the active stroke; only the dab that opens a frame refreshes, the rest wait for `flush_present`.
         #[qinvokable]
         fn paint_dab(self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool;
+        /// Present the region accumulated since the last in-stroke present, or do nothing when none is pending.
+        #[qinvokable]
+        fn flush_present(self: Pin<&mut Self>) -> bool;
 
-        /// Commit the active stroke as one history state labelled by its begin
-        /// call ("Brush", "Pencil", "Color Replacement Tool", …), mark dirty, and
-        /// recomposite. False, leaving the document unchanged, if nothing painted.
+        /// Commit the active stroke as one history state, superseding any pending present, and mark dirty; false if nothing painted.
         #[qinvokable]
         fn end_paint(self: Pin<&mut Self>) -> bool;
 
