@@ -287,6 +287,39 @@ the topmost layer, and the history paths bump it explicitly. The fresh-compute
 path is byte-identical to the region composite it replaced; at 4000² the hit
 costs <1 ms against ~250 ms fresh (self-test `move_preview_cache`, exit 197).
 
+### Described-change coverage (this change)
+
+Every pixel-changing operation now either describes a bounded rectangle that the
+region path refreshes, or explicitly falls back to a full recomposite. The
+bounded set (each refreshes `refresh_region(rect)` and, when not painting, emits
+`regionBlitted` instead of `changed`, so no panel read forces a full image
+rebuild):
+
+- **Paint** — `paint_dab` uses the dab's rect; `end_paint`/`cancel_paint` use the
+  stroke's cumulative `StrokeOutcome::dirty`.
+- **Layer opacity / blend / fill** — `mutate_layer` uses the mutated layer's
+  bounded influence rect (`layer_visibility_region`). The generic
+  `batch_changed` multi-layer path still recomposites fully.
+- **Filter / adjustment** — `apply_filter` uses the target layer's rect;
+  `add_adjustment` uses the adjustment's mask rect when it is bounded;
+  `apply_pictura_raw` uses the target layer's bounded rect.
+- **Clipboard** — `clear` uses the cleared layer's rect; `paste_clip` uses the
+  newly pasted layer's rect.
+- **Move / transform** — `translate_layer`, `move_preview`, `commit_move`, and
+  `commit_transform` use `old_rect ∪ new_rect` (the source and destination
+  bounds).
+
+The unbounded set keeps the full recomposite: document size changes
+(resize/crop/rotate/flip/canvas-size), flatten/merge/reorder/group, color-profile
+convert, the GPU-backend toggle, an unmasked adjustment, a group, and any layer
+whose influence cannot be bounded (a disabled or non-zero-default mask). A layer
+carrying an object-based effect block still takes the region path but
+`composite_rgba_region` internally composites in full for it.
+
+Selection-only edits no longer run the compositor at all; they emit `changed`
+only to move the selection overlay. The histograms and navigator read a
+view-pyramid level rather than `PictureView::image()`.
+
 ### M36 — history copy-on-write / tile diffs (deferred)
 
 `History::capture` clones the whole document per undoable state (~60 ms at
