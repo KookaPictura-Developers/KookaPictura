@@ -316,6 +316,17 @@ whose influence cannot be bounded (a disabled or non-zero-default mask). A layer
 carrying an object-based effect block still takes the region path but
 `composite_rgba_region` internally composites in full for it.
 
+During a stroke the present itself is **frame-bounded** rather than
+input-event-bounded. `paint_dab` presents only the dab that opens a frame and
+folds the frame's later dabs into one pending region; `PictureView::flush_present`
+shows that region, and the shell calls it on the next event-loop turn after a
+present (a consumer that needs it sooner calls it directly). `end_paint` and
+`cancel_paint` supersede whatever is still pending with their own extent-wide
+refresh, so a released or cancelled stroke can never be stale, and outside a
+stroke nothing changed: a region refresh still presents immediately. Without
+this a fast stroke composites and presents once per pointer event instead of
+once per frame; self-test `pp_present_flush` (exit code 544) pins the contract.
+
 Selection-only edits no longer run the compositor at all; they emit `changed`
 only to move the selection overlay. The histograms and navigator read a
 view-pyramid level rather than `PictureView::image()`.
