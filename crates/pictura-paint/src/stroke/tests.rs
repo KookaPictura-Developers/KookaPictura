@@ -639,3 +639,98 @@ fn dynamics_replay_exactly() {
     };
     assert_eq!(inked(&cfg), inked(&cfg));
 }
+
+fn offset_layer_doc(w: u32, h: u32, rect: PsdRect, rgba: (u8, u8, u8, u8)) -> Document {
+    let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+    let n = (rect.width() * rect.height()) as usize;
+    let (r, g, b, a) = rgba;
+    doc.layers.push(Layer {
+        name: "px".into(),
+        rect,
+        blend: BlendMode::Normal,
+        channels: vec![
+            Channel {
+                id: 0,
+                data: vec![r; n].into(),
+            },
+            Channel {
+                id: 1,
+                data: vec![g; n].into(),
+            },
+            Channel {
+                id: 2,
+                data: vec![b; n].into(),
+            },
+            Channel {
+                id: -1,
+                data: vec![a; n].into(),
+            },
+        ],
+        ..Default::default()
+    });
+    doc
+}
+
+#[test]
+fn gpu_seed_and_patch_use_the_layer_document_rect() {
+    let rect = PsdRect {
+        top: 1,
+        left: 2,
+        bottom: 4,
+        right: 6,
+    };
+    let doc = offset_layer_doc(8, 8, rect, (10, 20, 30, 200));
+    let cfg = StrokeConfig {
+        color: red(),
+        ..StrokeConfig::default()
+    };
+    let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin");
+
+    let seed = stroke.base_layer_rgba_doc();
+    assert_eq!(seed.len(), 8 * 8 * 4);
+    assert_eq!(
+        &seed[..4],
+        &[0, 0, 0, 0],
+        "outside the layer is transparent"
+    );
+    let inside = (8 + 2) * 4;
+    assert_eq!(&seed[inside..inside + 4], &[10, 20, 30, 200]);
+
+    // A 2x2 document patch at (1,0): only its document pixel (2,1) lands on
+    // the layer (local 0,0), which reads patch index (3). Planes are
+    // [R,G,B,A], row-major, index 3 = region row 1, col 1.
+    let planes = vec![
+        9u8, 8, 7, 6, // R
+        19, 18, 17, 16, // G
+        29, 28, 27, 26, // B
+        39, 38, 37, 36, // A
+    ];
+    let changed = stroke.patch_working_layer(
+        PsdRect {
+            top: 0,
+            left: 1,
+            bottom: 2,
+            right: 3,
+        },
+        4,
+        &planes,
+    );
+    assert!(changed);
+    let layer = &stroke.document().layers[0];
+    let at = |id| channel_data(layer, id).unwrap()[0];
+    assert_eq!(
+        (at(0), at(1), at(2), at(-1)),
+        (6, 16, 26, 36),
+        "the patch's document (2,1) writes the layer's local (0,0)"
+    );
+    let outcome = stroke.finish().expect("patched");
+    assert_eq!(
+        outcome.dirty,
+        PsdRect {
+            top: 1,
+            left: 2,
+            bottom: 2,
+            right: 3,
+        },
+    );
+}
