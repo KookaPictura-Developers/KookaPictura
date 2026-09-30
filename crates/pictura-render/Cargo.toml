@@ -27,3 +27,5 @@ rayon = "1"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }
+# Oracle for the GPU stroke parity test: the CPU stroke engine is the reference.
+pictura-paint = { path = "../pictura-paint" }

@@ -52,6 +52,9 @@ use crate::decode_adjustment;
 
 mod backend;
 mod shader;
+mod stroke;
+
+pub use stroke::{GpuPaintMode, GpuStroke, GpuStrokeParams};
 
 use backend::{devices, Gpu};
 pub(crate) use backend::{grid_2d, shared_device};
