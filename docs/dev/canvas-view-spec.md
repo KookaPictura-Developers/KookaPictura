@@ -218,17 +218,21 @@ validated on the reference machine.
 - pan and zoom (transform only; must not touch document pixels) — **met**: the
   canvas crops a `pictura-render::ViewPyramid` level chosen for the zoom
   (`ImageView::presentLevelForZoom` + `PictureView::display_image`), so a pan or
-  hover repaint never rescales the full-resolution document. Level 0 is a
+  hover repaint never rescales the full-resolution document, and a live paint
+  stroke presents the same crop (the regional refresh folds every dab into the
+  pyramid, so `presentCrop` no longer bails while painting). Level 0 is the one
   cached sRGB frame that the pyramid borrows, levels below are stored
-  premultiplied; this is CPU
+  premultiplied, and the display `QImage` is built from level 0 on demand rather
+  than cached, so only one full-resolution frame is held; this is CPU
   display-only and does not composite layer proxies (the deferred GPU-tile track
   below);
 - Move-tool drag preview (translate a cached layer/composite; no recomposite per
   event);
 - brush dabs (only the dab's bbox, not the whole canvas);
 - layer thumbnails (only the layer that changed);
-- histogram and Navigator thumbnail (throttled, ideally decimated sampling
-  rather than every pixel on every change);
+- histogram and Navigator thumbnail (the histogram bins a view-pyramid level, so
+  its cost is independent of document size and it no longer builds the full
+  image);
 - undo/redo of a move (restore the snapshot, no re-composite storm).
 
 ---
