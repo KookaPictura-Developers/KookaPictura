@@ -736,26 +736,35 @@ impl qobject::PictureView {
     }
 
     /// Shared single-layer mutation wrapper: resolve layer `i`, apply `f` (with
-    /// whether it is the Background), then recomposite and record `label` iff
-    /// `f` reports a change. A missing document or out-of-range index records
-    /// nothing and returns false.
+    /// whether it is the Background), then refresh the layer's bounded influence
+    /// region and record `label` iff `f` reports a change. A layer whose effect
+    /// cannot be bounded (a group, or an unmasked adjustment) falls back to a full
+    /// recomposite. A missing document or out-of-range index records nothing and
+    /// returns false.
     fn mutate_layer(
         mut self: Pin<&mut Self>,
         i: i32,
         label: &str,
         f: impl FnOnce(&mut Layer, bool) -> bool,
     ) -> bool {
-        let changed = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+        let (changed, region) = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
             let background = is_background_layer(doc, i);
             match doc.layers.get_mut(i as usize) {
-                Some(layer) => f(layer, background),
-                None => false,
+                Some(layer) => {
+                    let changed = f(layer, background);
+                    let region = changed.then(|| layer_visibility_region(layer)).flatten();
+                    (changed, region)
+                }
+                None => (false, None),
             }
         } else {
-            false
+            (false, None)
         };
         if changed {
-            self.as_mut().recomposite();
+            match region {
+                Some(rect) => self.as_mut().refresh_region(rect),
+                None => self.as_mut().recomposite(),
+            }
             self.as_mut().record(label);
         }
         changed

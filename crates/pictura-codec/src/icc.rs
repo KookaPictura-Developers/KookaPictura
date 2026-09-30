@@ -10,8 +10,11 @@
 //! has no profile compare); a differently-named sRGB profile is converted within
 //! a rounding LSB. Rendering intent is fixed at relative-colorimetric.
 
-use pictura_color::{convert, Intent, Policy, Profile};
+use pictura_color::{convert, ByteTransform, Intent, Policy, Profile};
 use pictura_core::{ColorMode, Document, Layer, PixelBuffer};
+
+use std::borrow::Cow;
+use std::cell::RefCell;
 
 use crate::common::{MODE_CMYK, MODE_GRAYSCALE, MODE_LAB, MODE_RGB};
 use crate::image_resources::{
@@ -302,23 +305,81 @@ pub fn convert_document(doc: &mut Document, dst: &Profile) -> bool {
 
 /// Convert a document-space buffer to the sRGB working space for display.
 ///
-/// Returns the input unchanged when the document has no working profile (the
+/// Borrows the input unchanged when the document has no working profile (the
 /// sRGB default) or records one that cannot be parsed, so an unprofiled document
-/// displays exactly as before.
-pub fn buffer_to_srgb(doc: &Document, buf: &PixelBuffer) -> PixelBuffer {
+/// displays exactly as before without an extra full-resolution copy. A profiled
+/// document reuses the parsed profile and its transform across refreshes, keyed
+/// on `document_icc`, so changing the working profile rebuilds it.
+pub fn buffer_to_srgb<'a>(doc: &Document, buf: &'a PixelBuffer) -> Cow<'a, PixelBuffer> {
     let Some(icc) = doc.document_icc.as_deref() else {
-        return buf.clone();
+        return Cow::Borrowed(buf);
     };
-    let Ok(src) = Profile::from_icc(icc) else {
-        return buf.clone();
-    };
-    if src.is_srgb() {
-        return buf.clone();
+    if buf.channels != 3 && buf.channels != 4 {
+        return Cow::Borrowed(buf);
     }
-    // ponytail: re-parses the ICC and rebuilds the transform on every display
-    // refresh; cache the transform if a profiled document's refresh ever shows
-    // up in a profile.
-    convert_buffer(buf, &src, &Profile::srgb()).unwrap_or_else(|| buf.clone())
+    let n = buf.pixel_count();
+    if n == 0 {
+        return Cow::Borrowed(buf);
+    }
+    DISPLAY_TRANSFORM.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.as_ref().map(|c| c.icc.as_slice()) != Some(icc) {
+            *slot = Some(CachedDisplayTransform {
+                icc: icc.to_vec(),
+                transform: build_display_transform(icc),
+            });
+        }
+        match slot.as_ref().and_then(|c| c.transform.as_ref()) {
+            Some(transform) => Cow::Owned(convert_planes_with(transform, buf, n)),
+            None => Cow::Borrowed(buf),
+        }
+    })
+}
+
+/// A parsed working profile and its sRGB display transform, or `None` when the
+/// profile is sRGB/unparseable and no conversion is needed.
+struct CachedDisplayTransform {
+    icc: Vec<u8>,
+    transform: Option<ByteTransform>,
+}
+
+thread_local! {
+    static DISPLAY_TRANSFORM: RefCell<Option<CachedDisplayTransform>> = const { RefCell::new(None) };
+}
+
+fn build_display_transform(icc: &[u8]) -> Option<ByteTransform> {
+    let src = Profile::from_icc(icc).ok()?;
+    if src.is_srgb() {
+        return None;
+    }
+    ByteTransform::new(
+        &src,
+        &Profile::srgb(),
+        3,
+        Intent::RelativeColorimetric,
+        false,
+    )
+    .ok()
+}
+
+/// Convert a buffer's three color planes (leaving any alpha plane untouched)
+/// through an already-built transform.
+fn convert_planes_with(transform: &ByteTransform, buf: &PixelBuffer, n: usize) -> PixelBuffer {
+    let mut packed = vec![0u8; n * 3];
+    for (i, pixel) in packed.as_chunks_mut::<3>().0.iter_mut().enumerate() {
+        pixel[0] = buf.data[i];
+        pixel[1] = buf.data[n + i];
+        pixel[2] = buf.data[2 * n + i];
+    }
+    let mut out_packed = vec![0u8; n * 3];
+    transform.apply(&packed, &mut out_packed);
+    let mut out = buf.clone();
+    for (ch, plane) in out.data[..3 * n].chunks_exact_mut(n).enumerate() {
+        for (i, value) in plane.iter_mut().enumerate() {
+            *value = out_packed[i * 3 + ch];
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -601,7 +662,12 @@ mod tests {
     #[test]
     fn buffer_to_srgb_is_identity_without_a_document_profile() {
         let doc = rgb_document();
-        assert_eq!(buffer_to_srgb(&doc, &doc.composite), doc.composite);
+        let converted = buffer_to_srgb(&doc, &doc.composite);
+        assert!(
+            matches!(converted, Cow::Borrowed(_)),
+            "an unprofiled document borrows its composite without a copy"
+        );
+        assert_eq!(*converted, doc.composite);
     }
 
     #[test]
@@ -612,6 +678,29 @@ mod tests {
         let out = buffer_to_srgb(&doc, &doc.composite);
         assert_ne!(out.data, before);
         assert_eq!(out.channels, doc.composite.channels);
+    }
+
+    #[test]
+    fn buffer_to_srgb_reuses_the_transform_and_follows_profile_changes() {
+        let mut doc = rgb_document();
+        doc.composite.data = (0..doc.composite.data.len())
+            .map(|i| (i * 7 % 251) as u8)
+            .collect();
+        doc.document_icc = Some(Profile::adobe_rgb().to_icc());
+
+        let first = buffer_to_srgb(&doc, &doc.composite).into_owned();
+        let second = buffer_to_srgb(&doc, &doc.composite).into_owned();
+        assert_eq!(first.data, second.data, "repeated conversions agree");
+
+        // The cached path equals a conversion that re-parses the profile.
+        let src = Profile::from_icc(doc.document_icc.as_deref().unwrap()).unwrap();
+        let fresh = convert_buffer(&doc.composite, &src, &Profile::srgb()).unwrap();
+        assert_eq!(first.data, fresh.data, "cached path equals a fresh parse");
+
+        // Changing the working profile invalidates the cached transform.
+        doc.document_icc = Some(Profile::pro_photo().to_icc());
+        let changed = buffer_to_srgb(&doc, &doc.composite).into_owned();
+        assert_ne!(changed.data, first.data, "a new profile is used");
     }
 
     fn rgb_layer(name: &str) -> Layer {

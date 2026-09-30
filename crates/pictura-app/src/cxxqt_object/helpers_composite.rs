@@ -1,6 +1,7 @@
 use cxx_qt_lib::{QImage, QImageFormat};
 use pictura_codec::buffer_to_srgb;
 use pictura_core::{BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer, PsdRect};
+#[cfg(test)]
 use pictura_paint::Stroke;
 use pictura_render::{Planes, PyramidLevel};
 use pictura_select::Selection;
@@ -149,7 +150,9 @@ pub(super) fn document_to_image(doc: &Document, gpu_compute: bool) -> QImage {
 /// live (uncommitted) stroke is not lost; otherwise it is the authoritative
 /// planar `doc.composite`, which M34 keeps byte-identical to a full composite.
 /// The pixels are premultiplied for Qt; the straight-alpha export/thumbnail
-/// helpers are unchanged.
+/// helpers are unchanged. Test-only now that `PictureView::image` is built on
+/// demand from the level-0 frame.
+#[cfg(test)]
 pub(super) fn rebuild_display(
     doc: &Option<Document>,
     stroke: Option<&Stroke>,
@@ -580,7 +583,18 @@ pub(super) fn into_rgba_frame(rendered: PixelBuffer) -> PixelBuffer {
 /// The 4-plane straight **sRGB** level-0 frame for `source`: the color-managed
 /// composite the display image, pyramid, and canvas crops all share.
 pub(super) fn level0_buffer(source: &Document) -> PixelBuffer {
-    into_rgba_frame(buffer_to_srgb(source, &source.composite))
+    level0_from_buffer(source, &source.composite)
+}
+
+/// The level-0 frame for an already-rendered `buffer` of `source`.
+pub(super) fn level0_from_buffer(source: &Document, buffer: &PixelBuffer) -> PixelBuffer {
+    into_rgba_frame(buffer_to_srgb(source, buffer).into_owned())
+}
+
+/// The level-0 frame for `source`, compositing its layers first. Used when
+/// `source`'s cached `composite` is stale — a live stroke's working document.
+pub(super) fn level0_composited(source: &Document, gpu_compute: bool) -> PixelBuffer {
+    level0_from_buffer(source, &current_buffer(source, gpu_compute))
 }
 /// Deterministic gradient so the window always has something to show.
 pub(super) fn test_image() -> QImage {

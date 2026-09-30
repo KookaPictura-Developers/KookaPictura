@@ -74,8 +74,10 @@ int pictura::runPaintPerfChecks(pictura::PicturaMainWindow& frame)
                 ++dabs;
             }
         }
-        const bool ended = view->end_paint();
+        // Only the per-dab blits are asserted to be dab-sized; the commit
+        // refreshes the whole stroke extent, so disconnect before releasing.
         QObject::disconnect(conn);
+        const bool ended = view->end_paint();
 
         const int span = lastX - firstX;
         const bool regionPerDab = blits >= dabs && dabs >= 16;

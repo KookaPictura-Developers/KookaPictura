@@ -1,5 +1,7 @@
 #include "decode_image.h"
 
+#include "pictura_app/src/decode_bridge.cxxqt.h"
+
 #include <QtGui/QImage>
 #include <QtGui/QImageReader>
 
@@ -26,13 +28,8 @@
     width = rgba.width();
     height = rgba.height();
     const int stride = width * 4;
-    ::rust::Vec<uint8_t> out;
-    out.reserve(static_cast<size_t>(stride) * static_cast<size_t>(height));
-    for (int y = 0; y < height; ++y) {
-        const uchar* line = rgba.constScanLine(y);
-        for (int i = 0; i < stride; ++i) {
-            out.push_back(line[i]);
-        }
-    }
-    return out;
+    // A Format_RGBA8888 image is a single contiguous buffer, so hand the whole
+    // frame to Rust in one copy instead of pushing a billion bytes one at a time.
+    return ::copy_bytes(::rust::Slice<const uint8_t>(
+        rgba.constBits(), static_cast<size_t>(stride) * static_cast<size_t>(height)));
 }

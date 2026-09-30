@@ -69,7 +69,6 @@ pub struct TransformSession {
 
 /// Backing Rust state for [`super::qobject::PictureView`].
 pub struct PictureViewRust {
-    pub(super) image: QImage,
     pub(super) doc: Option<Document>,
     pub(super) selection: Option<Selection>,
     /// CS6 "last deselected" memory: the selection replaced by Deselect or a
@@ -121,11 +120,9 @@ pub struct PictureViewRust {
     pub(super) pyramid: ViewPyramid,
     /// The 4-plane straight **sRGB** level-0 frame the display image, pyramid,
     /// and canvas crops all share, so every path shows the working-space
-    /// conversion rather than the raw composite.
-    ///
-    /// ponytail: `rust.image` is a second full-resolution buffer, so an RGB
-    /// document holds two copies; fold the QImage onto this frame if the 16000²
-    /// target's memory ever matters.
+    /// conversion rather than the raw composite. The display `QImage` is built
+    /// from this frame on demand (`PictureView::image`) rather than cached, so
+    /// only one full-resolution frame is held.
     pub(super) level0: Option<PixelBuffer>,
     pub(super) link_sets: HashMap<String, u32>,
     /// Magnetic Lasso edge field, live for one gesture (`magnetic_begin` to
@@ -138,7 +135,6 @@ pub struct PictureViewRust {
 impl Default for PictureViewRust {
     fn default() -> Self {
         Self {
-            image: QImage::default(),
             doc: None,
             selection: None,
             deselected_selection: None,

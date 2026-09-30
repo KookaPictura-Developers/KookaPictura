@@ -91,6 +91,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_tool_canvas.cpp
     crates/pictura-app/cpp/selftest_paint_perf.cpp
     crates/pictura-app/cpp/selftest_paint_live.cpp
+    crates/pictura-app/cpp/selftest_large_doc.cpp
     crates/pictura-app/cpp/selftest_visibility.cpp
     crates/pictura-app/cpp/selftest_shell_round3.cpp
     crates/pictura-app/cpp/selftest_shell_round4.cpp
@@ -250,6 +251,7 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_tool_canvas.h
     crates/pictura-app/cpp/selftest_paint_perf.h
     crates/pictura-app/cpp/selftest_paint_live.h
+    crates/pictura-app/cpp/selftest_large_doc.h
     crates/pictura-app/cpp/selftest_visibility.h
     crates/pictura-app/cpp/selftest_shell_round3.h
     crates/pictura-app/cpp/selftest_shell_round4.h

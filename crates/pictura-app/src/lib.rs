@@ -5,5 +5,6 @@
 //! image from the Rust object, and shows it in a zoom/pan widget.
 
 pub mod cxxqt_object;
+mod decode_bridge;
 pub mod gpu;
 mod history;

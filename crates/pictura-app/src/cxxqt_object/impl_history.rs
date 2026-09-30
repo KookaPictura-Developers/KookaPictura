@@ -13,6 +13,8 @@ impl qobject::PictureView {
             let mut rust = self.as_mut().rust_mut();
             rust.doc = Some(snapshot.doc);
             rust.selection = snapshot.selection;
+            // Undo during a stroke cancels it rather than committing it.
+            rust.stroke = None;
             rust.reset_pyramid();
             rust.content_revision = rust.content_revision.wrapping_add(1);
         }
@@ -29,6 +31,7 @@ impl qobject::PictureView {
             let mut rust = self.as_mut().rust_mut();
             rust.doc = Some(snapshot.doc);
             rust.selection = snapshot.selection;
+            rust.stroke = None;
             rust.reset_pyramid();
             rust.content_revision = rust.content_revision.wrapping_add(1);
         }
@@ -75,6 +78,7 @@ impl qobject::PictureView {
         rust.doc = Some(snapshot.doc);
         rust.selection = snapshot.selection;
         rust.content_revision = rust.content_revision.wrapping_add(1);
+        rust.stroke = None;
         self.as_mut().recomposite();
         true
     }
@@ -113,6 +117,7 @@ impl qobject::PictureView {
         rust.doc = Some(snapshot.doc);
         rust.selection = snapshot.selection;
         rust.content_revision = rust.content_revision.wrapping_add(1);
+        rust.stroke = None;
         self.as_mut().recomposite();
         true
     }
