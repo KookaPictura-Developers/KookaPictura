@@ -16,7 +16,7 @@ The Dodge tool (issue #29) was catalogued but disabled. photorust's
   brush records the coverage applied per pixel, so a stroke tones a pixel once
   however many dabs cover it; a new stroke deepens it. Coverage never changes.
   `Stroke::begin_tone` runs it; 16/32-bit documents are refused.
-- `cxxqt_object/paint_tools.rs`: `begin_dodge`; one `"Dodge"` state.
+- `cxxqt_object/paint_tools.rs`: `begin_dodge` (since generalised to `begin_tone` by `burn-tool`); one `"Dodge"` state.
 - `tool_retouch.cpp`; the bar (`options_bar_retouch.cpp`) has the tip, Range
   (Midtones), Exposure 50 %, and Protect Tones (on). Catalog row enabled.
 - Qt Test `tst_retouch_tools::dodgeTool`. `shift_plain` (117) now presses P
