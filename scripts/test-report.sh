@@ -46,17 +46,37 @@ else
   echo "== app self-test == (skipped: ./build/pictura not built)"
 fi
 
+# Qt Test suites are independent of the pictura executable: they are their own
+# CTest-registered binaries. Run them via CTest so CMake's per-executable JUnit
+# (build/qt-test-results/*.xml) is what the reporter consumes.
+qt_args=()
+qt_rc=0
+if [ -n "$(find build/crates/pictura-app/cpp/tests -maxdepth 1 -type f -perm -u+x -name 'tst_*' 2>/dev/null || true)" ]; then
+  echo "== qt tests (ctest) =="
+  set +e
+  ctest --test-dir build -R '^tst_' --output-on-failure
+  qt_rc=$?
+  set -e
+  for xml in build/qt-test-results/*.xml; do
+    [ -f "$xml" ] || continue
+    qt_args+=(--qt-junit "$xml")
+  done
+else
+  echo "== qt tests == (skipped: no Qt test executables)"
+fi
+
 echo "== report =="
 set +e
 python3 scripts/report_tests.py \
   --junit "$junit" \
   --doctests "$tmp/doctests.log" \
   "${selftest_args[@]}" \
+  "${qt_args[@]}" \
   --color "$color"
 report_rc=$?
 set -e
 
-if [ "$nextest_rc" -ne 0 ] || [ "$doctest_rc" -ne 0 ]; then
+if [ "$nextest_rc" -ne 0 ] || [ "$doctest_rc" -ne 0 ] || [ "$qt_rc" -ne 0 ]; then
   exit 1
 fi
 exit "$report_rc"

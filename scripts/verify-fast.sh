@@ -68,6 +68,9 @@ bash scripts/test-report.sh never
 echo "== file-size =="
 bash scripts/check-file-size.sh
 
+echo "== selftest budget =="
+bash scripts/check-selftest-budget.sh
+
 echo "== guard =="
 bash scripts/guard.sh
 

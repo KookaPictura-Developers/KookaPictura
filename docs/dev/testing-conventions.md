@@ -7,7 +7,8 @@ larger scheme (proptest, fuzz, Criterion, Qt Test/CTest, golden manifests) that
 does **not** exist yet. See §9 for where the two diverge.
 
 There is no third-party test framework anywhere. Every layer uses
-language-native facilities.
+language-native or toolkit-native facilities: std `#[test]` for Rust, the Qt
+toolkit's own Qt Test for the C++ GUI suites.
 
 ## 1. Layers at a glance
 
@@ -16,17 +17,22 @@ language-native facilities.
 | Rust unit | std `#[test]` in inline `#[cfg(test)] mod tests` | `crates/*/src/` (4–23 files/crate) | cargo/nextest |
 | Rust integration / oracle | std `#[test]` in `tests/*.rs` binaries | `crates/*/tests/` | cargo/nextest |
 | C++ GUI self-test | hand-rolled `runSelfTest()` + `SelfTestReport` | `crates/pictura-app/cpp/selftest.cpp`, `selftest_report.cpp` | `pictura self-test:` tokens + `SUMMARY` + exit code |
+| C++ Qt shell tests | Qt Test + CTest (`add_test`) | `crates/pictura-app/cpp/tests/` | per-executable JUnit, folded into the unified report by `scripts/test-report.sh` |
 | Python oracle tooling | `argparse` CLIs, no test framework | `scripts/*.py` | stdout (machine-readable or raw bytes) + exit code |
 
-Current inventory: **600 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
-see §3), plus **172** `--headless --self-test` checks. `pictura-testkit` is the
-only dev-dependency; there are no test-runner crates.
+Current inventory: **1879 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
+see §3), **511** `ST_BEGIN` self-test sites (**475** executed in a bare
+`--headless --self-test` run), and four Qt Test suites (`tst_smoke`,
+`tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`) run under CTest.
+`pictura-testkit` is the only dev-dependency; there are no
+test-runner crates outside Qt Test.
 
 `.config/nextest.toml` makes nextest the local and CI runner: fail-fast off, every
 status streamed, JUnit written to `target/nextest/default/junit.xml`.
-`scripts/test-report.sh` folds that XML, the doctest summary, and the self-test
-token streams into one pytest/vitest-like report through `scripts/report_tests.py`
-(§6); CI uploads the JUnit file as an artifact.
+`scripts/test-report.sh` folds that XML, the doctest summary, the self-test token
+streams, and the per-executable Qt JUnit (`build/qt-test-results/*.xml`) into one
+pytest/vitest-like report through `scripts/report_tests.py` (§6); CI uploads the
+JUnit file as an artifact.
 
 ## 2. Rust tests
 
@@ -145,16 +151,49 @@ The first check asserts the platform is `offscreen`.
   self-test invocations' token streams and merges checks by `(suite, name)`, so a
   check present in both runs counts once (the later stream's status wins).
 - **The source stays within its allowlist.** Instrumentation replaced the old
-  two-line `fprintf`/`fflush` sites with single `ST_PASS` calls, shrinking
-  `selftest.cpp` from 7212 to **6730 lines** — its entry in
-  `scripts/file-size-allowlist.txt`.
-- **No Qt Test and no CTest.** `CMakeLists.txt` has no `enable_testing()` /
-  `add_test`, so the self-test runs only as an explicit step in
-  `scripts/verify-full.sh` and the CI `qt-headless` job.
+  two-line `fprintf`/`fflush` sites with single `ST_PASS` calls, and migrating
+  suites to Qt Test shrank it further; `selftest.cpp`'s entry in
+  `scripts/file-size-allowlist.txt` is now a **6449-line** ceiling that may only
+  shrink.
+- **No Qt Test inside `runSelfTest()`.** The self-test runs only as an explicit
+  step in `scripts/verify-full.sh` and the CI `qt-headless` job; the Qt Test
+  suites are a separate layer (see below).
 - **State isolation:** before running, `main.cpp` points `XDG_STATE_HOME` at a
   temporary dir, so the self-test never touches real preferences/recovery state.
 - The self-test is left with dirty documents on purpose and sets a non-interactive
   unsaved-choice so headless shutdown does not open a modal prompt.
+
+### Qt Test layer
+
+The app C++ is split so the UI can be tested without a second `main`: a STATIC
+library `pictura_shell` holds every app source except `main.cpp` and the
+`selftest*.{cpp,h}` files, and the `pictura` executable keeps `main.cpp` plus the
+self-test and links `pictura_shell`.
+
+- **Layout.** `crates/pictura-app/cpp/tests/` holds `CMakeLists.txt`,
+  `qt_test_support.h` (the shared `ScopedStateHome` fixture and
+  `makeMainWindow`), and one `tst_*.cpp` per suite. Each is built as its own
+  executable linking `pictura_shell` + `Qt6::Test`, registered with `add_test`
+  under `QT_QPA_PLATFORM=offscreen` and `TIMEOUT 120`.
+- **Gated on `BUILD_TESTING`.** `include(CTest)` and `find_package(Qt6
+  COMPONENTS Test)` live in an `if(BUILD_TESTING)` branch, so a build can opt out.
+- **Seed suites.** `tst_smoke` (the `ScopedStateHome` temp-`XDG_STATE_HOME`
+  fixture, constructed before the window), `tst_command_tree` (menus/dispatch),
+  `tst_layers_panel` (row controls/chrome, group nesting, and drag/drop),
+  `tst_edit_clipboard` (raster copy/cut/paste/purge).
+- **Migration rule.** New GUI checks are written as Qt Test cases; the self-test
+  only shrinks. Three suites were migrated off `runSelfTest()` and their `ST_*`
+  blocks deleted, retiring codes 25, 26, 110, 123, 135, 138, 139, 200, 210, 211,
+  212, 213, and 529. Retired exit codes are append-only and never reused. The
+  mechanical guard is `scripts/check-selftest-budget.sh`: it counts `ST_BEGIN`
+  sites across `crates/pictura-app/cpp/**/*.cpp` and fails when the count exceeds
+  the lower-only budget in `scripts/selftest-budget.txt` (currently 511). It runs
+  from `scripts/verify-fast.sh` and the guards CI workflow, in addition to the
+  `selftest.cpp` ceiling in `scripts/file-size-allowlist.txt`.
+- **Reports as per-executable JUnit.** `add_test` passes
+  `-o <CMAKE_BINARY_DIR>/qt-test-results/<name>.xml,junitxml`, so CTest itself
+  emits one JUnit file per executable; `scripts/test-report.sh` runs
+  `ctest --test-dir build -R '^tst_'` and folds `build/qt-test-results/*.xml`.
 
 ## 7. Python oracle CLI conventions
 
@@ -205,7 +244,7 @@ is a proposal. What actually shipped:
 | `proptest` property tests | none; plain `#[test]` |
 | `cargo-fuzz` targets | none; no `fuzz/` crate |
 | Criterion + `QBENCHMARK` perf gates | manual `#[ignore]`d profiling tests |
-| Qt Test + CTest (`add_test`) | custom `runSelfTest()`; no CTest |
+| Qt Test + CTest (`add_test`) | **shipped**: `pictura_shell` static lib + CTest registering `tst_smoke`, `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`; `runSelfTest()` remains for the rest |
 | Structured unified test reporting | **shipped**: nextest JUnit + the C++ token protocol + `scripts/report_tests.py` |
 | Captured-CS6 golden references | ImageMagick 7 + `psd-tools` differential oracles |
 | Golden manifests, PSNR/DSSIM/ΔE2000, `xtask` | `pictura-testkit::compare` (max-abs tolerance) + `pictura-diff` only |
@@ -232,7 +271,7 @@ bash scripts/verify-fast.sh
 # Full gate (CI-equivalent; builds the CMake app first so the self-test runs):
 bash scripts/verify-full.sh
 
-# Unified report on its own (nextest + doctests + both self-test invocations):
+# Unified report on its own (nextest + doctests + both self-test invocations + Qt Test):
 bash scripts/test-report.sh [auto|always|never]
 
 # Reporter only, against captured logs (writes nothing):
@@ -255,7 +294,13 @@ cargo test -p pictura-render --test document_oracle
 # The C++ self-test, offscreen:
 ./build/pictura --headless --self-test
 
+# The Qt Test suites via CTest (offscreen, after a CMake build; each writes
+# build/qt-test-results/<name>.xml, which test-report.sh folds):
+ctest --test-dir build -R '^tst_' --output-on-failure
+ctest --test-dir build -R tst_layers_panel --output-on-failure
+
 # Inventory:
 grep -rc '#\[test\]' crates --include=*.rs
 grep -rn  '#\[ignore' crates --include=*.rs
+grep -rho 'ST_BEGIN' crates/pictura-app/cpp --include='*.cpp' | wc -l
 ```
