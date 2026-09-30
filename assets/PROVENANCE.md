@@ -6,11 +6,27 @@ here.
 
 ## Vector artwork (`assets/icons`, `assets/cursors`)
 
-- 237 SVG icons and cursors.
+- 249 SVG icons and cursors.
 - Generated with an AI model (DeepSeek v4.1 Flash) and released by the project
   under **CC0-1.0 / MIT** (reuse under either).
 - Carry no Adobe/Illustrator/XMP metadata; none are traced from Photoshop or a
   third-party icon pack.
+
+## Ported vector glyphs (`assets/icons`)
+
+- Eleven panel/path glyphs (`layers.search`, `layers.kindShape`,
+  `layers.kindSmartObject`, `layers.reset`, and the seven `path.*` glyphs) are
+  extracted from the upstream photorust `LayerIcons.cpp` / `PathIcons.cpp`
+  (Source: https://github.com/perfecto25/photorust), relicensed under
+  **GPL-3.0-or-later** pending KookaPictura issue #1.
+
+## Ported code
+
+- The shared panel widgets (`AngleDial`, `RampSlider`, `SpectrumBar`,
+  `CurveWidget`), the Swatches grid, and the Info/Channels/Properties panel
+  slices are ported from the upstream photorust tree
+  (Source: https://github.com/perfecto25/photorust), relicensed under
+  **GPL-3.0-or-later** pending KookaPictura issue #1.
 
 ## Raster artwork (`assets/icons`)
 

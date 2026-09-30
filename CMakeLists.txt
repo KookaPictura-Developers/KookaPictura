@@ -117,6 +117,10 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/layers_panel_test.cpp
     crates/pictura-app/cpp/panels/percent_field.cpp
     crates/pictura-app/cpp/panels/numeric_field.cpp
+    crates/pictura-app/cpp/panels/angle_dial.cpp
+    crates/pictura-app/cpp/panels/ramp_slider.cpp
+    crates/pictura-app/cpp/panels/spectrum_bar.cpp
+    crates/pictura-app/cpp/panels/curve_widget.cpp
     crates/pictura-app/cpp/panels/history_panel.cpp
     crates/pictura-app/cpp/panels/brush_panel.cpp
     crates/pictura-app/cpp/panels/brush_preset_picker.cpp
@@ -128,6 +132,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/notes_panel.cpp
     crates/pictura-app/cpp/panels/histogram_panel.cpp
     crates/pictura-app/cpp/panels/placeholder_panel.cpp
+    crates/pictura-app/cpp/panels/properties_panel.cpp
+    crates/pictura-app/cpp/panels/channels_panel.cpp
     crates/pictura-app/cpp/panels/panel_group.cpp
     crates/pictura-app/cpp/panels/panel_group_menu.cpp
     crates/pictura-app/cpp/panels/panel_group_test.cpp
@@ -213,6 +219,10 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/percent_field.h
     crates/pictura-app/cpp/panels/numeric_field.h
     crates/pictura-app/cpp/panels/jump_slider.h
+    crates/pictura-app/cpp/panels/angle_dial.h
+    crates/pictura-app/cpp/panels/ramp_slider.h
+    crates/pictura-app/cpp/panels/spectrum_bar.h
+    crates/pictura-app/cpp/panels/curve_widget.h
     crates/pictura-app/cpp/panels/history_panel.h
     crates/pictura-app/cpp/panels/navigator_panel.h
     crates/pictura-app/cpp/panels/color_panel.h
@@ -221,6 +231,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/notes_panel.h
     crates/pictura-app/cpp/panels/histogram_panel.h
     crates/pictura-app/cpp/panels/placeholder_panel.h
+    crates/pictura-app/cpp/panels/properties_panel.h
+    crates/pictura-app/cpp/panels/channels_panel.h
     crates/pictura-app/cpp/panels/panel_group.h
     crates/pictura-app/cpp/panels/panel_column.h
     crates/pictura-app/cpp/tools.h

@@ -25,6 +25,7 @@ namespace pictura {
 
 class CommandRegistry;
 class ColorPanel;
+class ChannelsPanel;
 class ColorState;
 class CanvasScrollBars;
 class FileDropRouter;
@@ -43,6 +44,7 @@ class PanelColumn;
 class PictureView;
 class PlaceholderPanel;
 class PreferencesDialog;
+class PropertiesPanel;
 class SwatchesPanel;
 class Toolbox;
 class ToolHintBar;
@@ -306,9 +308,9 @@ private:
     NotesPanel* notesPanel_ = nullptr;
     BrushPanel* brushPanel_ = nullptr;
     CloneSourcePanel* cloneSourcePanel_ = nullptr;
-    PlaceholderPanel* propertiesPanel_ = nullptr;
+    PropertiesPanel* propertiesPanel_ = nullptr;
     PlaceholderPanel* adjustmentsPanel_ = nullptr;
-    PlaceholderPanel* channelsPanel_ = nullptr;
+    ChannelsPanel* channelsPanel_ = nullptr;
     PathsPanel* pathsPanel_ = nullptr;
     PlaceholderPanel* actionsPanel_ = nullptr;
     PlaceholderPanel* stylesPanel_ = nullptr;

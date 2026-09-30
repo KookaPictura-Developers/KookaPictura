@@ -53,6 +53,10 @@ public:
     /// row (falling back to the first when `current` is not among them).
     void selectPaths(const QStringList& paths, const QString& current);
 
+    /// Select the row whose path matches and sync the controls; false when no
+    /// such row exists. Test seam for the selection -> Properties wiring.
+    bool selectRowForTest(const QString& path);
+
     // Self-test hooks (M39). Read the projected model and menus, drive solo and
     // inline rename, and expose the Panel Options values without synthetic
     // mouse/key input.
@@ -175,6 +179,9 @@ public:
     /// keyboard path matches the panel and menu paths.
     void groupSelection();
     void ungroupSelection();
+
+signals:
+    void selectionChanged();
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
