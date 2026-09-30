@@ -1,6 +1,7 @@
 #include "image_view.h"
 
 #include "canvas_range.h"
+#include "pictura_debug_timing.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QRect>
@@ -133,6 +134,7 @@ void ImageView::replaceImage(const QImage& image)
 
 void ImageView::blitRegion(const QImage& region, int x, int y)
 {
+    pictura::ScopedTimer blitTimer("cxx_blitRegion");
     if (region.isNull() || region.width() <= 0 || region.height() <= 0 || image_.isNull()) {
         return;
     }
@@ -142,6 +144,7 @@ void ImageView::blitRegion(const QImage& region, int x, int y)
     // in-place row copy. CompositionMode_Source semantics (replace, clipped to
     // the image rect) are reproduced by the clamped memcpy below.
     if (!image_.isDetached()) {
+        pictura::ScopedTimer detachTimer("cxx_blit_detach_image");
         image_ = image_.copy();
     }
     QImage src = region;
@@ -570,7 +573,21 @@ const QImage* ImageView::presentCrop(QRect& docRect)
     if (levels <= 0) {
         return nullptr;
     }
-    const int level = presentLevelForZoom(zoom_, levels);
+    // While a large brush previews, the crop must come from the level the
+    // preview patched, whatever the zoom would otherwise select: only that level
+    // carries the in-progress pixels, and the commit's level-0 rebuild hands the
+    // zoom-selected level back.
+    int level = presentLevelForZoom(zoom_, levels);
+    if (levelProvider_.previewLevel) {
+        const int previewLevel = levelProvider_.previewLevel();
+        if (previewLevel > 0 && previewLevel < levels) {
+            level = previewLevel;
+        } else if (previewLevel < 0) {
+            // A GPU stroke presents level-0 regions, so crop level 0 while it
+            // is live.
+            level = 0;
+        }
+    }
     const QSize levelSize =
         levelProvider_.levelSize ? levelProvider_.levelSize(level) : QSize();
     if (levelSize.isEmpty()) {
@@ -618,6 +635,7 @@ const QImage* ImageView::presentCrop(QRect& docRect)
 
 void ImageView::paintEvent(QPaintEvent*)
 {
+    pictura::ScopedTimer paintTimer("cxx_paintEvent");
     QPainter painter(this);
     painter.fillRect(rect(), canvasColor_);
     if (image_.isNull()) {

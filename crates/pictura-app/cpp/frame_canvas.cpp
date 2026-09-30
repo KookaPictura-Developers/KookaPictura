@@ -34,7 +34,8 @@ void wireCanvasLevelProvider(PictureView* view, ImageView* canvas)
             return size;
         },
         [levelView]() { return levelView ? levelView->canvas_revision() : quint64(0); },
-        [levelView]() { return levelView && levelView->is_painting(); }});
+        [levelView]() { return levelView && levelView->is_painting(); },
+        [levelView]() { return levelView ? levelView->preview_present_level() : 0; }});
 }
 
 } // namespace pictura
