@@ -77,7 +77,7 @@ print(1 if effect.aligned else 0)
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let got: Vec<&str> = stdout.lines().map(str::trim).collect();
+    let got = oracle_tokens(&stdout);
     assert_eq!(
         got,
         [

@@ -71,7 +71,7 @@ print(1 if effect.layer_knocks_out else 0)
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let got: Vec<&str> = stdout.lines().map(str::trim).collect();
+    let got = oracle_tokens(&stdout);
     assert_eq!(
         got,
         ["DropShadow", "1", "1", "75.0", "Mltp", "5", "5", "0", "0",],
