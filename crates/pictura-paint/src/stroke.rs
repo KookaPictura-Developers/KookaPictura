@@ -246,7 +246,7 @@ impl Stroke {
         })
     }
 
-    /// Start a Dodge stroke. 8-bit documents only.
+    /// Start a Dodge, Burn, or Sponge stroke. 8-bit documents only.
     pub fn begin_tone(
         doc: &Document,
         path: &str,
