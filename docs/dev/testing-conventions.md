@@ -21,7 +21,7 @@ toolkit's own Qt Test for the C++ GUI suites.
 | Python oracle tooling | `argparse` CLIs, no test framework | `scripts/*.py` | stdout (machine-readable or raw bytes) + exit code |
 
 Current inventory: **1879 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
-see §3), **511** `ST_BEGIN` self-test sites (**475** executed in a bare
+see §3), **514** `ST_BEGIN` self-test sites (**478** executed in a bare
 `--headless --self-test` run), and four Qt Test suites (`tst_smoke`,
 `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`) run under CTest.
 `pictura-testkit` is the only dev-dependency; there are no
@@ -187,7 +187,7 @@ self-test and links `pictura_shell`.
   212, 213, and 529. Retired exit codes are append-only and never reused. The
   mechanical guard is `scripts/check-selftest-budget.sh`: it counts `ST_BEGIN`
   sites across `crates/pictura-app/cpp/**/*.cpp` and fails when the count exceeds
-  the lower-only budget in `scripts/selftest-budget.txt` (currently 511). It runs
+  the lower-only budget in `scripts/selftest-budget.txt` (currently 514). It runs
   from `scripts/verify-fast.sh` and the guards CI workflow, in addition to the
   `selftest.cpp` ceiling in `scripts/file-size-allowlist.txt`.
 - **Reports as per-executable JUnit.** `add_test` passes
