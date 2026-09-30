@@ -3076,8 +3076,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool yPlain = frame.activeTool() == pictura::ToolId::HistoryBrush;
         sendKey(Qt::Key_Y, Qt::ShiftModifier, QStringLiteral("Y"));
         const bool yShift = yPlain && frame.activeTool() == pictura::ToolId::HistoryBrush;
-        // The E group (Eraser) is entirely unimplemented: a plain letter is a
-        // no-op, so the active tool is unchanged.
+        // The E group (Eraser) is entirely unimplemented: a plain letter is a no-op.
         sendKey(Qt::Key_E, Qt::NoModifier, QStringLiteral("e"));
         const bool noImpl = frame.activeTool() == pictura::ToolId::HistoryBrush;
         if (toolsPanelToolbox) {
@@ -3092,15 +3091,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             && jShift && jWrap && sWrap && yShift && noImpl && toolsPanelOff;
         ST_BEGIN("shift_plain");
         ST_PASS("shift plain=%d shift=%d j=%d/%d/%d s=%d y=%d noimpl=%d off=%d",
-                     toolsPanelPlain ? 1 : 0,
-                     (toolsPanelShift && toolsPanelWrap) ? 1 : 0,
-                     jPlain ? 1 : 0,
-                     jShift ? 1 : 0,
-                     jWrap ? 1 : 0,
-                     sWrap ? 1 : 0,
-                     yShift ? 1 : 0,
-                     noImpl ? 1 : 0,
-                     toolsPanelOff ? 1 : 0);
+                toolsPanelPlain ? 1 : 0, (toolsPanelShift && toolsPanelWrap) ? 1 : 0,
+                jPlain ? 1 : 0, jShift ? 1 : 0, jWrap ? 1 : 0, sWrap ? 1 : 0, yShift ? 1 : 0,
+                noImpl ? 1 : 0, toolsPanelOff ? 1 : 0);
         if (!shiftOk) {
             ST_FAIL(117, "shift cycling");
         }
