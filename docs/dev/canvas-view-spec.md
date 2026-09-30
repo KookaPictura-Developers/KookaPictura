@@ -239,26 +239,33 @@ validated on the reference machine.
 
 `stroke_split_profile_4000` (`cargo test --release -p pictura_app
 stroke_split_profile -- --ignored --nocapture`) splits a stroke's per-event cost
-into stroke start, one dab's rasterization, and the region present that dab
-drives. 4000×4000 RGB/8, hardness 100, spacing 25 %, GPU region composite:
+into the document clone, stroke start, one dab's rasterization, four further
+dabs, and the region present. 4000×4000 RGB/8, hardness 100, spacing 25 %, GPU
+region composite:
 
-| Layers | Diameter | Rasterize one dab (before → after) | Region present | Stroke start (cold) |
-|---|---|---|---|---|
-| 1 | 64 | 0.67 → 0.37 ms | 0.33 ms | 81 ms |
-| 1 | 500 | 18.46 → **9.90 ms** | 1.58 ms | 81 ms |
-| 8 | 64 | 0.42 → 0.28 ms | 0.79 ms | 360 ms |
-| 8 | 500 | 18.71 → **9.88 ms** | 3.97 ms | 360 ms |
+| Layers | Diameter | `Document::clone` | Stroke start | First dab | Four more dabs | Region present |
+|---|---|---|---|---|---|---|
+| 1 | 64 | 0.004 ms | 5.3 ms | 21.8 ms | 3.3 ms | 0.40 ms |
+| 1 | 500 | 0.004 ms | 5.5 ms | 24.1 ms | 20.2 ms | 1.20 ms |
+| 8 | 64 | 0.008 ms | 0.4 ms | 21.5 ms | 3.3 ms | 0.55 ms |
+| 8 | 500 | 0.008 ms | 5.5 ms | 28.0 ms | 20.0 ms | 4.22 ms |
 
-The raster figure is the worst case: the stroke's first dab, where every pixel
-of the disc is newly composited. Overlapping later dabs composite only the ring
-they change. The "after" column is what hoisting the stroke-constant tip profile
-and the layer's plane positions out of the pixel loop bought — about half. At
-500 px, rasterize + present is now 11.5 ms (1 layer) and 13.9 ms (8 layers),
-inside the ≤ 16 ms input-to-first-pixel Target. Brush sizes run 1–5000 px
-(`options_bar_paint.cpp`), so 500 px is the midpoint of the range; the 5000 px
-end needs the deferred reduced-resolution stroke preview. Stroke start is
-O(document) and is tracked separately as `cow-pixel-storage`.
+Two changes moved these numbers, and the table carries both:
 
+- **Rasterization** dropped from 18.5 to about 10 ms per full-disc dab by
+  hoisting the stroke-constant tip profile and the layer's plane positions out
+  of the pixel loop; the first-dab column still reads higher (21–28 ms) because
+  the first write also pays the one-time copy-on-write fork of the painted
+  layer's four planes (64 MB at 4000²), which the old code paid up front as two
+  full-document clones instead.
+- **`Document::clone` is a refcount bump** (0.004–0.008 ms) rather than a copy,
+  so stroke start fell from 81 ms with one layer and 360 ms with eight to under
+  6 ms, and a history state now shares its pixels with the document until one of
+  them is written.
+
+Brush sizes run 1–5000 px (`options_bar_paint.cpp`), so the 500 px column is the
+midpoint of the range; the 5000 px end needs the deferred reduced-resolution
+stroke preview.
 ---
 
 ## 4. Hot spots — findings and resolution
