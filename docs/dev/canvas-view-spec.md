@@ -264,8 +264,26 @@ Two changes moved these numbers, and the table carries both:
   them is written.
 
 Brush sizes run 1–5000 px (`options_bar_paint.cpp`), so the 500 px column is the
-midpoint of the range; the 5000 px end needs the deferred reduced-resolution
-stroke preview.
+midpoint of the range. `large_brush_profile_4000` sweeps the upper half of that
+range on the same document, with the one-time plane fork reported separately
+because it is a fixed cost the brush does not change:
+
+| Diameter | Stroke start | First dab | Region present |
+|---|---|---|---|
+| 500 | 5.3 ms | 34.7 ms | 1.2 ms |
+| 1000 | 5.4 ms | 59.9 ms | 5.4 ms |
+| 2000 | 0.9 ms | 201 ms | 24.6 ms |
+| 5000 | 1.1 ms | **933 ms** | **133 ms** |
+
+A dab's cost is O(its bounding box), and above roughly ⌀1000 that box is a
+large fraction of the document: one 5000 px dab is 56× the input-to-first-pixel
+Target and its region present alone is 133 ms because the region *is* the
+4000² document. The gate on the deferred reduced-resolution stroke preview is
+therefore met — nothing cheaper moves a factor of 56, since the tip profile is
+already hoisted and the plane fork is brush-independent — but the preview is
+still its own change: it needs the present to come from a view-pyramid level
+mid-stroke and the exact full-resolution stroke to be produced at commit,
+which is a contract change, not an optimization.
 ---
 
 ## 4. Hot spots — findings and resolution
