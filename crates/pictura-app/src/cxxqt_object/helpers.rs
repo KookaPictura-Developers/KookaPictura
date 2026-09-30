@@ -638,6 +638,18 @@ pub(super) fn active_pixel_layer_mut<'a>(
 pub(super) fn active_layer_visible(doc: &Document, active: Option<&str>) -> bool {
     active_pixel_layer(doc, active).is_none_or(|layer| layer.visible)
 }
+/// Whether the layer (or a descendant) carries a layer-effects block.
+///
+/// An effect (drop shadow, glow, stroke, …) spills outside the layer's `rect`,
+/// so a bounded region refresh cannot repair it. Mirrors the region compositor's
+/// own conservative check (`pictura_render::composite`): a disabled effect still
+/// counts.
+pub(super) fn layer_has_effects(layer: &Layer) -> bool {
+    layer.extra_block(b"lfx2").is_some()
+        || layer.extra_block(b"lrFX").is_some()
+        || layer.children.iter().any(layer_has_effects)
+}
+
 /// A rectangle that provably bounds a visibility toggle's effect, or `None` when
 /// the toggle can change a pixel outside any such rectangle.
 ///
@@ -645,10 +657,11 @@ pub(super) fn active_layer_visible(doc: &Document, active: Option<&str>) -> bool
 /// only there. An adjustment layer transforms the whole backdrop, but a mask
 /// that is enabled, carries data, and has a zero `default_color` confines it to
 /// its mask `rect` (outside, `mask_alpha` returns the default 0). Everything
-/// else — groups, unmasked/disabled/data-less/non-zero-default adjustments — is
-/// unbounded and returns `None`. `refresh_region` clamps the returned rect.
+/// else — groups, effect-bearing layers (whose effects spill past the rect),
+/// unmasked/disabled/data-less/non-zero-default adjustments — is unbounded and
+/// returns `None`. `refresh_region` clamps the returned rect.
 pub(super) fn layer_visibility_region(layer: &Layer) -> Option<PsdRect> {
-    if layer.is_group {
+    if layer.is_group || layer_has_effects(layer) {
         return None;
     }
     if layer.adjustment.is_some() {

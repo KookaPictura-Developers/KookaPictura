@@ -66,15 +66,18 @@ impl qobject::PictureView {
                 return false;
             };
             // A filter only changes the active layer, so its clamped rect bounds
-            // the composited result; a layer with an effect block still gets a
-            // correct (if slower) region composite.
-            let rect = layer.rect;
+            // the composited result — unless a layer effect spills past that
+            // rect, which needs a full recomposite.
+            let region = (!layer_has_effects(layer)).then_some(layer.rect);
             pictura_render::apply_filter(layer, &filter, mask.as_ref(), gpu_compute)
                 .is_ok()
-                .then_some(rect)
+                .then_some(region)
         };
-        if let Some(rect) = applied {
-            self.as_mut().refresh_region(rect);
+        if let Some(region) = applied {
+            match region {
+                Some(rect) => self.as_mut().refresh_region(rect),
+                None => self.as_mut().recomposite(),
+            }
             self.as_mut().record("Filter");
             return true;
         }

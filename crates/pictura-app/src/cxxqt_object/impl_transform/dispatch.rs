@@ -173,9 +173,9 @@ impl qobject::PictureView {
                     .doc
                     .as_ref()
                     .and_then(|doc| doc.layers.get(index as usize))
-                    .map(|l| l.rect),
+                    .map(|l| (l.rect, layer_has_effects(l))),
             ) {
-                (Some(b), Some(a)) => self.as_mut().refresh_region(union_rect(b, a)),
+                (Some(b), Some((a, false))) => self.as_mut().refresh_region(union_rect(b, a)),
                 _ => self.as_mut().recomposite(),
             }
             self.as_mut().record_move("Move Layer");
@@ -210,9 +210,9 @@ impl qobject::PictureView {
                     .doc
                     .as_ref()
                     .and_then(|doc| doc.layers.get(index as usize))
-                    .map(|l| l.rect),
+                    .map(|l| (l.rect, layer_has_effects(l))),
             ) {
-                (Some(b), Some(a)) => self.as_mut().refresh_region(union_rect(b, a)),
+                (Some(b), Some((a, false))) => self.as_mut().refresh_region(union_rect(b, a)),
                 _ => self.as_mut().recomposite(),
             }
         }

@@ -815,5 +815,16 @@ fn begin(
     let mut rust = view.as_mut().rust_mut();
     rust.stroke = Some(stroke);
     rust.stroke_label = label.to_string();
+    // A new stroke opens its own present frame and tile set, exactly as
+    // `begin_paint` does, so the color-replacement and mixer commits decompose
+    // into dirty tiles rather than the whole bounding box.
+    rust.clear_pending_present();
+    let dims = rust.doc.as_ref().map(|doc| (doc.width, doc.height));
+    if let Some((width, height)) = dims {
+        rust.stroke_tiles.reset(width, height);
+    }
+    rust.preview = None;
+    rust.gpu_stroke = None;
+    rust.gpu_placer = None;
     true
 }

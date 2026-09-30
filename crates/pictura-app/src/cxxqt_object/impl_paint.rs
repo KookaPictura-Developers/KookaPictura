@@ -275,7 +275,10 @@ fn preview_blend(preview: &PreviewStroke, rect: PsdRect) -> Vec<u8> {
     for y in 0..rh as usize {
         for x in 0..rw as usize {
             let li = (rect.top as usize + y) * preview.width as usize + (rect.left as usize + x);
-            let k = opacity * tint * preview.coverage[li] as f32 / 255.0;
+            let alpha = opacity * preview.coverage[li] as f32 / 255.0;
+            // Normal carries the foreground alpha; Clear removes coverage and
+            // ignores it, exactly as `Stencil::composite` does.
+            let k = if clear { alpha } else { alpha * tint };
             let inv = 1.0 - k;
             let o = (y * rw as usize + x) * 4;
             let si = li * 4;
@@ -345,7 +348,10 @@ impl qobject::PictureView {
             aliased,
             auto_erase,
             ..StrokeConfig::default()
-        };
+        }
+        // The exact stroke sanitizes internally; the preview and the level policy
+        // must use the same clamped config so they rasterize the committed tip.
+        .sanitized();
         let begun = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
@@ -385,7 +391,7 @@ impl qobject::PictureView {
                 let level = rust
                     .doc
                     .as_ref()
-                    .and_then(|doc| preview_level(diameter.max(0), doc.width, doc.height));
+                    .and_then(|doc| preview_level(cfg.diameter as i32, doc.width, doc.height));
                 let gpu_mode = gpu_paint_mode(cfg.mode).filter(|_| !cfg.auto_erase);
                 if level.is_some() && rust.gpu_compute {
                     let seeded = match (gpu_mode, rust.stroke.as_ref()) {
@@ -908,6 +914,31 @@ mod tests {
             preview_blend(&clear, rect(1, 1)),
             vec![0, 0, 0, 0],
             "Clear removes the snapshot's coverage"
+        );
+
+        // Clear ignores the foreground alpha (the exact stroke does), so a
+        // semi-transparent colour clears exactly as an opaque one does.
+        let clear_translucent = preview(
+            1,
+            1,
+            3,
+            snapshot.clone(),
+            vec![255],
+            StrokeConfig {
+                color: Rgba {
+                    r: 0,
+                    g: 0,
+                    b: 255,
+                    a: 128,
+                },
+                mode: PaintMode::Clear,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            preview_blend(&clear_translucent, rect(1, 1)),
+            preview_blend(&clear, rect(1, 1)),
+            "Clear ignores the foreground alpha"
         );
     }
 
