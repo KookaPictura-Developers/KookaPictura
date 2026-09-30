@@ -252,6 +252,168 @@ fn image_after_region_refresh_matches_a_full_recomposite() {
 }
 
 #[test]
+fn histogram_source_level_is_bounded_and_size_independent() {
+    // The Histogram panel reads the coarsest pyramid level. Its long side is
+    // always at most 512, whatever the document size, so the binning cost does
+    // not grow with the document.
+    for (w, h) in [(513u32, 513u32), (4000, 3000), (8000, 100)] {
+        let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+        doc.composite = varied_rgba(w, h, 3);
+        let mut rust = PictureViewRust {
+            doc: Some(doc),
+            ..Default::default()
+        };
+        rust.reset_pyramid();
+
+        let levels = rust.display_level_count();
+        assert!(levels >= 1, "{w}x{h} has at least one level");
+        let (lw, lh) = rust
+            .display_level_size(levels - 1)
+            .expect("coarsest level size");
+        assert!(
+            lw <= 512 && lh <= 512,
+            "coarsest level {lw}x{lh} for a {w}x{h} document"
+        );
+
+        let crop = rust.display_crop(
+            levels - 1,
+            PsdRect {
+                top: 0,
+                left: 0,
+                bottom: lh as i32,
+                right: lw as i32,
+            },
+        );
+        assert!(!crop.is_null(), "the level crop is servable");
+        assert_eq!((crop.width(), crop.height()), (lw as i32, lh as i32));
+    }
+}
+
+#[test]
+fn mid_stroke_pyramid_matches_a_full_recomposite_of_the_working_document() {
+    use pictura_paint::{Stroke, StrokeConfig, StrokeSample};
+
+    let rgba = vec![40u8; 128 * 128 * 4];
+    let doc = Document::from_rgba("paint", 128, 128, &rgba);
+    let mut stroke = Stroke::begin_at(&doc, "0", StrokeConfig::default()).expect("begin stroke");
+    assert!(stroke.sample(StrokeSample {
+        x: 64.0,
+        y: 64.0,
+        pressure: 1.0,
+    }));
+    let rect = stroke.take_dirty().expect("a dab dirties a region");
+
+    let mut rust = PictureViewRust {
+        doc: Some(doc),
+        stroke: Some(stroke),
+        ..Default::default()
+    };
+    // A full rebuild while a stroke is live must use the working document's
+    // composited layers, not its stale cached `composite`.
+    rust.reset_pyramid();
+    {
+        let working = rust.stroke.as_ref().unwrap().document();
+        let reference_level0 = level0_composited(working, false);
+        let reference = ViewPyramid::rebuild(planes_of(&reference_level0).unwrap());
+        assert_pyramids_equal(&rust.pyramid, &reference, &reference_level0);
+    }
+
+    // A mid-stroke region refresh keeps the pyramid equal to a full rebuild, so
+    // the present path can crop it instead of resampling the full image.
+    let working = rust.stroke.as_ref().unwrap().document();
+    let region = pictura_render::composite_region_active(working, rect, false).0;
+    rust.refresh_level0_region(level0_from_buffer(working, &region), rect.left, rect.top);
+    rust.update_pyramid(rect);
+    let working = rust.stroke.as_ref().unwrap().document();
+    let reference_level0 = level0_composited(working, false);
+    let reference = ViewPyramid::rebuild(planes_of(&reference_level0).unwrap());
+    assert_pyramids_equal(&rust.pyramid, &reference, &reference_level0);
+}
+
+#[test]
+fn paint_commit_region_patch_equals_a_full_recomposite() {
+    use pictura_paint::{Stroke, StrokeConfig, StrokeSample};
+
+    let rgba = vec![30u8; 128 * 128 * 4];
+    let doc = Document::from_rgba("paint", 128, 128, &rgba);
+    let cfg = StrokeConfig {
+        diameter: 24,
+        ..StrokeConfig::default()
+    };
+    let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin stroke");
+    for i in 0..8 {
+        assert!(stroke.sample(StrokeSample {
+            x: 20.0 + i as f32 * 8.0,
+            y: 64.0,
+            pressure: 1.0,
+        }));
+        stroke.take_dirty();
+    }
+    let outcome = stroke.finish().expect("the stroke painted pixels");
+    let rect = outcome.dirty;
+
+    // Replay `end_paint`'s region commit against the committed bytes.
+    let mut committed = outcome.document.clone();
+    let buffer = pictura_render::composite_region_active(&committed, rect, false).0;
+    let x0 = rect.left.max(0);
+    let y0 = rect.top.max(0);
+    patch_composite_region(&mut committed, &buffer, x0, y0);
+
+    let full = current_buffer(&outcome.document, false);
+    assert_eq!(
+        committed.composite.data, full.data,
+        "the stroke's committed region equals a full recomposite"
+    );
+}
+
+#[test]
+fn layer_opacity_region_refresh_equals_a_full_recomposite() {
+    let base = vec![80u8; 64 * 64 * 4];
+    let mut doc = Document::from_rgba("base", 64, 64, &base);
+    let top: Vec<u8> = (0..32 * 32 * 4).map(|i| (i % 200) as u8).collect();
+    let path = pictura_render::add_raster_layer_from_rgba(&mut doc, "top", 32, 32, &top);
+    assert!(!path.is_empty(), "the top layer is appended");
+
+    // Change the top layer's opacity, then refresh only its bounded rect the
+    // way `mutate_layer` does.
+    doc.layers.last_mut().unwrap().opacity = 128;
+    let rect = doc.layers.last().unwrap().rect;
+    let buffer = pictura_render::composite_region_active(&doc, rect, false).0;
+    patch_composite_region(&mut doc, &buffer, rect.left, rect.top);
+
+    let full = current_buffer(&doc, false);
+    assert_eq!(
+        doc.composite.data, full.data,
+        "an opacity region refresh equals a full recomposite"
+    );
+}
+
+#[test]
+fn layer_move_region_refresh_equals_a_full_recomposite() {
+    let base = vec![90u8; 64 * 64 * 4];
+    let mut doc = Document::from_rgba("base", 64, 64, &base);
+    let top: Vec<u8> = (0..16 * 16 * 4).map(|i| (i % 180) as u8).collect();
+    let path = pictura_render::add_raster_layer_from_rgba(&mut doc, "top", 16, 16, &top);
+    assert!(!path.is_empty());
+    let index = doc.layers.len() - 1;
+
+    let before = doc.layers[index].rect;
+    assert!(pictura_render::translate_layer_index(
+        &mut doc, index, 10, 6
+    ));
+    let after = doc.layers[index].rect;
+    let dirty = super::helpers::union_rect(before, after);
+    let buffer = pictura_render::composite_region_active(&doc, dirty, false).0;
+    patch_composite_region(&mut doc, &buffer, dirty.left, dirty.top);
+
+    let full = current_buffer(&doc, false);
+    assert_eq!(
+        doc.composite.data, full.data,
+        "a move region refresh equals a full recomposite"
+    );
+}
+
+#[test]
 fn a_level0_crop_outside_the_level_is_null_and_a_partial_one_is_not() {
     let mut doc = Document::new(100, 100, ColorMode::Rgb, BitDepth::Eight);
     doc.composite = varied_rgba(100, 100, 2);

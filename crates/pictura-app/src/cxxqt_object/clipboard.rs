@@ -9,6 +9,7 @@
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
+use super::helpers::layer_visibility_region;
 use super::helpers_composite::{current_buffer, rgba_frame};
 use super::qobject::PictureView;
 use core::pin::Pin;
@@ -172,7 +173,16 @@ fn clear(mut view: Pin<&mut PictureView>, path: &str, label: &str) -> bool {
         None => false,
     };
     if cleared {
-        view.as_mut().recomposite();
+        let region = view
+            .rust()
+            .doc
+            .as_ref()
+            .and_then(|doc| pictura_render::resolve_path(doc, path))
+            .and_then(layer_visibility_region);
+        match region {
+            Some(rect) => view.as_mut().refresh_region(rect),
+            None => view.as_mut().recomposite(),
+        }
         view.as_mut().record(label);
     }
     cleared
@@ -236,7 +246,17 @@ fn clipboard_paste(
         rust.deselected_selection = rust.selection.take();
     }
     view.as_mut().clear_link_sets();
-    view.as_mut().recomposite();
+    // The paste only adds a layer, so its bounded rect bounds the composite change.
+    let region = view
+        .rust()
+        .doc
+        .as_ref()
+        .and_then(|doc| pictura_render::resolve_path(doc, &created))
+        .and_then(layer_visibility_region);
+    match region {
+        Some(rect) => view.as_mut().refresh_region(rect),
+        None => view.as_mut().recomposite(),
+    }
     view.as_mut().record(label);
     QString::from(created.as_str())
 }

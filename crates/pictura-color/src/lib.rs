@@ -265,6 +265,51 @@ pub fn assign(data: &[u8], profile: Profile) -> (Vec<u8>, Profile) {
     (data.to_vec(), profile)
 }
 
+/// A reusable 8-bit interleaved transform between two profiles.
+///
+/// Building a transform parses both profiles and their tone curves, so a caller
+/// that converts the same document on every display refresh holds one of these
+/// and reapplies it instead of rebuilding it. `apply` is per-pixel and writes
+/// `out` from `data` without touching either profile again.
+pub struct ByteTransform(Transform<u8, u8>);
+
+impl ByteTransform {
+    /// Build a transform for 1-, 3-, or 4-channel 8-bit samples. A 4-channel
+    /// transform copies alpha through unchanged.
+    pub fn new(
+        src: &Profile,
+        dst: &Profile,
+        channels: u8,
+        intent: Intent,
+        black_point_compensation: bool,
+    ) -> Result<Self, ColorError> {
+        let (in_format, out_format) = formats(channels, 8)?;
+        let mut flags = Flags::default();
+        if black_point_compensation {
+            flags = flags | Flags::BLACKPOINT_COMPENSATION;
+        }
+        if channels == 4 {
+            flags = flags | Flags::COPY_ALPHA;
+        }
+        Transform::new_flags(
+            &src.0,
+            in_format,
+            &dst.0,
+            out_format,
+            intent.to_lcms(),
+            flags,
+        )
+        .map(ByteTransform)
+        .map_err(|e| ColorError::Unsupported(e.to_string()))
+    }
+
+    /// Apply the transform to `data`, writing exactly `data.len()` bytes to
+    /// `out`.
+    pub fn apply(&self, data: &[u8], out: &mut [u8]) {
+        self.0.transform_pixels(data, out);
+    }
+}
+
 fn formats(channels: u8, bits: u8) -> Result<(PixelFormat, PixelFormat), ColorError> {
     let format = match (channels, bits) {
         (1, 8) => PixelFormat::GRAY_8,

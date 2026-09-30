@@ -50,8 +50,8 @@ impl qobject::PictureView {
             }
         };
         self.as_mut().rust_mut().selection = Some(restored);
-        self.as_mut().recomposite();
         self.as_mut().record("Reselect");
+        self.changed();
         true
     }
 
@@ -65,8 +65,8 @@ impl qobject::PictureView {
             return false;
         };
         self.as_mut().rust_mut().selection = Some(inverted);
-        self.as_mut().recomposite();
         self.as_mut().record("Inverse Selection");
+        self.changed();
         true
     }
 
@@ -248,8 +248,8 @@ impl qobject::PictureView {
             return false;
         };
         self.as_mut().rust_mut().selection = Some(modified);
-        self.as_mut().recomposite();
         self.as_mut().record(label);
+        self.changed();
         true
     }
 
@@ -266,8 +266,8 @@ impl qobject::PictureView {
             }
         };
         self.as_mut().rust_mut().selection = Some(grown);
-        self.as_mut().recomposite();
         self.as_mut().record("Grow Selection");
+        self.changed();
         true
     }
 
@@ -284,8 +284,8 @@ impl qobject::PictureView {
             }
         };
         self.as_mut().rust_mut().selection = Some(matched);
-        self.as_mut().recomposite();
         self.as_mut().record("Similar Selection");
+        self.changed();
         true
     }
 
@@ -324,8 +324,8 @@ impl qobject::PictureView {
             return false;
         };
         self.as_mut().rust_mut().selection = Some(selection);
-        self.as_mut().recomposite();
         self.as_mut().record("Load Selection");
+        self.changed();
         true
     }
 
@@ -452,8 +452,8 @@ impl qobject::PictureView {
                 rust.selection = Some(base);
             }
         }
-        self.as_mut().recomposite();
         self.as_mut().record("Selection");
+        self.changed();
         true
     }
 

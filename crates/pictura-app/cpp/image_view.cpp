@@ -558,12 +558,10 @@ QRectF ImageView::visibleDocumentRect() const
 const QImage* ImageView::presentCrop(QRect& docRect)
 {
     docRect = QRect();
-    // A live stroke paints into the stroke's layer buffer, not the composite the
-    // pyramid reads, so present the patched image directly until the stroke's
-    // commit recomposites and rebuilds the pyramid.
-    if (levelProvider_.isPainting && levelProvider_.isPainting()) {
-        return nullptr;
-    }
+    // A live stroke patches the same level-0/pyramid the idle present crops (the
+    // app's regional refresh folds every dab into the damage account), so a
+    // stroke in progress presents through the level crop too, not the
+    // full-resolution image.
     // No provider or no crop source: nothing to present, and no cache to touch.
     if (!presentLevelCropForTest_ || !levelProvider_.crop || image_.isNull()) {
         return nullptr;

@@ -79,9 +79,6 @@ impl qobject::PictureView {
         }
         let mut view = self.rust_mut();
         view.doc = loaded;
-        if view.doc.is_none() {
-            view.image = test_image();
-        }
         view.reset_edit_state();
         view.active_layer = view
             .doc
@@ -652,17 +649,14 @@ impl qobject::PictureView {
         }
     }
 
-    pub fn image(mut self: Pin<&mut Self>) -> QImage {
-        let mut rust = self.as_mut().rust_mut();
-        if rust.damage == pictura_render::CanvasDamage::default() {
-            return rust.image.clone();
+    pub fn image(self: Pin<&mut Self>) -> QImage {
+        // Built on demand from the cached level-0 frame, so no full-resolution
+        // `QImage` is held between calls; the frame is kept current by
+        // `reset_pyramid` and `refresh_level0_region`.
+        match self.rust().level0.as_ref() {
+            Some(level0) => premultiplied_display_image(level0),
+            None => test_image(),
         }
-        let rebuilt = rebuild_display(&rust.doc, rust.stroke.as_ref(), rust.gpu_compute);
-        if let Some(image) = rebuilt {
-            rust.image = image;
-            rust.damage = pictura_render::CanvasDamage::default();
-        }
-        rust.image.clone()
     }
 
     pub fn has_document(&self) -> bool {
@@ -933,10 +927,16 @@ impl super::PictureViewRust {
     /// the move-preview commit, and a fresh open) routes through this.
     pub(super) fn reset_pyramid(&mut self) {
         self.damage = pictura_render::CanvasDamage::default();
-        self.level0 = self.current_source().map(level0_buffer);
-        if let Some(level0) = self.level0.as_ref() {
-            self.image = premultiplied_display_image(level0);
-        }
+        // While a stroke is live its working document's `composite` is stale
+        // (paint writes the layer channels), so composite it rather than reading
+        // the cached frame; otherwise the level-0 frame is the document's own
+        // composite. Keeps a stray mid-stroke full rebuild correct.
+        let gpu_compute = self.gpu_compute;
+        let level0 = match self.stroke.as_ref() {
+            Some(stroke) => Some(level0_composited(stroke.document(), gpu_compute)),
+            None => self.doc.as_ref().map(level0_buffer),
+        };
+        self.level0 = level0;
         self.pyramid = match self.level0.as_ref().and_then(planes_of) {
             Some(planes) => pictura_render::ViewPyramid::rebuild(planes),
             None => pictura_render::ViewPyramid::default(),
@@ -1103,7 +1103,7 @@ impl qobject::PictureView {
                     return;
                 };
                 let buffer = pictura_render::composite_region_active(source, rect, gpu_compute).0;
-                let srgb = pictura_codec::buffer_to_srgb(source, &buffer);
+                let srgb = pictura_codec::buffer_to_srgb(source, &buffer).into_owned();
                 let image = (buffer.width != 0 && buffer.height != 0)
                     .then(|| premultiplied_display_image(&srgb));
                 (buffer, srgb, image)

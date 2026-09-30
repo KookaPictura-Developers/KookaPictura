@@ -100,8 +100,12 @@ impl qobject::PictureView {
                     false
                 }
                 Some(outcome) => {
+                    let rect = outcome.dirty;
                     self.as_mut().rust_mut().doc = Some(outcome.document);
-                    self.as_mut().recomposite();
+                    // The commit is a described change: refresh only the stroke's
+                    // extent, which patches the composite, the level-0 frame, the
+                    // pyramid, and the canvas region in one pass.
+                    self.as_mut().refresh_region(rect);
                     self.as_mut().record(&label);
                     true
                 }
@@ -110,8 +114,20 @@ impl qobject::PictureView {
     }
 
     pub fn cancel_paint(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().stroke = None;
-        self.as_mut().recomposite();
+        // The document composite was never patched mid-stroke, so restoring the
+        // stroke's extent from it is enough; only the level-0/pyramid and the
+        // displayed canvas carry the in-progress paint.
+        let dirty = self
+            .as_mut()
+            .rust_mut()
+            .stroke
+            .take()
+            .and_then(|stroke| stroke.finish())
+            .map(|outcome| outcome.dirty);
+        match dirty {
+            Some(rect) => self.as_mut().refresh_region(rect),
+            None => self.as_mut().recomposite(),
+        }
     }
 
     pub fn is_painting(&self) -> bool {

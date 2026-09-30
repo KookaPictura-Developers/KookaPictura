@@ -3,6 +3,7 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
 #include <QtCore/QRectF>
+#include <QtCore/QStringList>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtWidgets/QComboBox>
@@ -90,15 +91,27 @@ void HistogramPanel::refresh()
 void HistogramPanel::recompute()
 {
     bins_ = {};
-    if (!view_) {
+    if (!view_ || !view_->has_document()) {
         return;
     }
-    QImage image = view_->image();
+    // Read the coarsest view-pyramid level (always at most 512 px on its long
+    // side) instead of the full-resolution image, so the scan cost is
+    // independent of document size and no full-resolution image rebuild is
+    // triggered by a panel refresh.
+    QImage image;
+    const int levels = view_->display_level_count();
+    if (levels > 0) {
+        const int level = levels - 1;
+        const QStringList parts = view_->display_level_size(level).split(
+            QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() == 2) {
+            image = view_->display_image(level, 0, 0, parts.at(0).toInt(),
+                                         parts.at(1).toInt());
+        }
+    }
     if (image.isNull()) {
         return;
     }
-    // Bin a bounded downsample so the scan cost is independent of document
-    // size; the panel's 256 bins at ~120 px cannot resolve the full resolution.
     if (image.width() > 512 || image.height() > 512) {
         image = image.scaled(512, 512, Qt::KeepAspectRatio, Qt::FastTransformation);
     }
