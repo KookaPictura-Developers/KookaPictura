@@ -414,7 +414,7 @@ fn bitmap_with_a_document_channel_falls_back_to_rgb() {
     let mut doc = read_psd(&p).unwrap();
     doc.channels.push(Channel {
         id: -3,
-        data: vec![7u8; doc.width as usize * doc.height as usize],
+        data: vec![7u8; doc.width as usize * doc.height as usize].into(),
     });
 
     let out = write_psd(&doc).unwrap();
@@ -975,15 +975,15 @@ fn lab_document_without_a_merged_composite_writes_lab() {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![60],
+                data: vec![60].into(),
             },
             Channel {
                 id: 1,
-                data: vec![246],
+                data: vec![246].into(),
             },
             Channel {
                 id: 2,
-                data: vec![246],
+                data: vec![246].into(),
             },
         ],
         ..Default::default()
@@ -1327,7 +1327,7 @@ fn short_indexed_composite_data_is_a_typed_error_not_a_panic() {
     doc.source_mode = Some(ColorMode::Indexed);
     doc.source_palette = Some(indexed_palette());
     doc.composite.channels = 3;
-    doc.composite.data = vec![0u8; 4];
+    doc.composite.data = vec![0u8; 4].into();
     doc.source_planes = Some(SourcePlanes {
         depth: BitDepth::Eight,
         width: 2,

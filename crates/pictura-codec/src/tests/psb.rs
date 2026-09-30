@@ -255,7 +255,7 @@ fn iopa_block_is_four_bytes() {
 #[test]
 fn psb_composite_uses_u32_rle_counts_and_psd_uses_u16() {
     let mut doc = Document::new(1, 1, ColorMode::Rgb, BitDepth::Eight);
-    doc.composite.data = vec![10, 20, 30];
+    doc.composite.data = vec![10, 20, 30].into();
     let psd = write_psd(&doc).unwrap();
     let psb = write_psb(&doc).unwrap();
 

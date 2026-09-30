@@ -25,7 +25,7 @@ fn gradient(w: u32, h: u32, channels: u8) -> PixelBuffer {
         width: w,
         height: h,
         channels,
-        data,
+        data: data.into(),
     }
 }
 
@@ -43,7 +43,7 @@ fn ramp(w: u32) -> PixelBuffer {
         width: w,
         height: 1,
         channels: 3,
-        data,
+        data: data.into(),
     }
 }
 
@@ -388,7 +388,7 @@ fn flat(w: u32, h: u32, value: u8) -> PixelBuffer {
         width: w,
         height: h,
         channels: 3,
-        data: vec![value; n * 3],
+        data: vec![value; n * 3].into(),
     }
 }
 
@@ -425,7 +425,7 @@ fn colored_pencil_background_shows_and_edges_survive() {
         width: w,
         height: h,
         channels: 3,
-        data,
+        data: data.into(),
     };
     let mut edged = step.clone();
     colored_pencil(&mut edged, 4, 4, 0, [0, 0, 0], [255, 255, 255], 1).unwrap();
@@ -532,7 +532,7 @@ fn paint_daubs_types_seed_and_size() {
             width: rw,
             height: rh,
             channels: 3,
-            data,
+            data: data.into(),
         }
     };
     let (mut fine, mut coarse) = (ramp.clone(), ramp.clone());
@@ -577,7 +577,7 @@ fn plastic_wrap_strength_raises_max_luminance() {
         width: w,
         height: h,
         channels: 3,
-        data: vec![128u8; n * 3],
+        data: vec![128u8; n * 3].into(),
     };
     let (mut zero, mut full) = (mid.clone(), mid.clone());
     plastic_wrap(&mut zero, 0, 8, 4).unwrap();
@@ -692,7 +692,7 @@ fn tiny_and_three_channel_buffers_do_not_panic() {
         width: 1,
         height: 1,
         channels: 4,
-        data: vec![10, 20, 30, 40],
+        data: vec![10, 20, 30, 40].into(),
     };
     assert!(cutout(&mut tiny.clone(), 2, 0, 1).is_ok());
     assert!(film_grain(&mut tiny.clone(), 20, 20, 10, 3).is_ok());
@@ -954,7 +954,7 @@ fn final_four_equal_colours_and_tiny_buffer_are_safe() {
         width: 1,
         height: 1,
         channels: 4,
-        data: vec![10, 20, 30, 40],
+        data: vec![10, 20, 30, 40].into(),
     };
     assert!(rough_pastels(
         &mut tiny.clone(),

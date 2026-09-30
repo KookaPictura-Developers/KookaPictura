@@ -45,19 +45,19 @@ fn solid(name: &str, bounds: PsdRect, r: u8, g: u8, b: u8, a: u8) -> Layer {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![r; n],
+                data: vec![r; n].into(),
             },
             Channel {
                 id: 1,
-                data: vec![g; n],
+                data: vec![g; n].into(),
             },
             Channel {
                 id: 2,
-                data: vec![b; n],
+                data: vec![b; n].into(),
             },
             Channel {
                 id: -1,
-                data: vec![a; n],
+                data: vec![a; n].into(),
             },
         ],
         children: Vec::new(),
@@ -128,7 +128,7 @@ fn node_interleaved(layer: &Layer) -> Vec<u8> {
             .iter()
             .find(|c| c.id == id)
             .map(|c| c.data.clone())
-            .unwrap_or_else(|| vec![255; n])
+            .unwrap_or_else(|| vec![255; n].into())
     };
     let (r, g, b, a) = (plane(0), plane(1), plane(2), plane(-1));
     let mut out = Vec::with_capacity(n * 4);
@@ -371,7 +371,7 @@ fn flatten_removes_groups_and_masks() {
         default_color: 255,
         disabled: false,
         flags: 0,
-        data: Some(vec![128; 16]),
+        data: Some(vec![128; 16].into()),
         ..Default::default()
     });
     let doc_group = group("grp", vec![masked]);

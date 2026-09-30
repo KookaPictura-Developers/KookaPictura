@@ -335,13 +335,13 @@ fn convert_pixels(
         ColorMode::Duotone => gray_to_rgb(&buf.data),
         ColorMode::Multichannel if buf.channels == 1 => gray_to_rgb(&buf.data),
         ColorMode::Multichannel => cmy_to_rgb(&buf.data),
-        ColorMode::Grayscale | ColorMode::Rgb => buf.data,
+        ColorMode::Grayscale | ColorMode::Rgb => buf.data.to_vec(),
     };
     PixelBuffer {
         width: buf.width,
         height: buf.height,
         channels: 3,
-        data,
+        data: data.into(),
     }
 }
 
@@ -369,7 +369,7 @@ fn split_planes(
         .enumerate()
         .map(|(i, plane)| Channel {
             id: i as i16,
-            data: plane.to_vec(),
+            data: plane.to_vec().into(),
         })
         .collect();
     Ok((
@@ -377,7 +377,7 @@ fn split_planes(
             width: width as u32,
             height: height as u32,
             channels: color_channels as u8,
-            data,
+            data: data.into(),
         },
         channels,
     ))
@@ -639,7 +639,10 @@ fn read_layer_info(
             }
             match id {
                 -2 => mask_data = Some(data),
-                _ => channels.push(Channel { id, data }),
+                _ => channels.push(Channel {
+                    id,
+                    data: data.into(),
+                }),
             }
         }
         // `build_tree` drops folder/divider records; an `lsct=0` layer is kept.
@@ -657,14 +660,14 @@ fn read_layer_info(
         raw.layer.raw_channels = raw_channels;
         if let Some(data) = mask_data {
             match raw.layer.mask.as_mut() {
-                Some(mask) => mask.data = Some(data),
+                Some(mask) => mask.data = Some(data.into()),
                 None => {
                     raw.layer.mask = Some(LayerMask {
                         rect: raw.layer.rect,
                         default_color: 0,
                         disabled: false,
                         flags: 0,
-                        data: Some(data),
+                        data: Some(data.into()),
                         ..Default::default()
                     });
                 }

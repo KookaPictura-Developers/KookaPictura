@@ -39,7 +39,7 @@ fn pixels_are_planar_and_faithful() {
             .iter()
             .find(|c| c.id == id)
             .expect("channel present")
-            .data
+            .data[..]
     };
     assert_eq!(channel(0), &[255, 0]);
     assert_eq!(channel(1), &[0, 255]);

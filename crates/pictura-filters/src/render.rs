@@ -410,7 +410,7 @@ mod tests {
             width: w,
             height: h,
             channels: 4,
-            data,
+            data: data.into(),
         }
     }
 
@@ -432,7 +432,7 @@ mod tests {
             width: w,
             height: h,
             channels: 4,
-            data,
+            data: data.into(),
         }
     }
 

@@ -294,7 +294,10 @@ mod tests {
                 right: w,
             },
             channels: [(0, 0), (1, 1), (2, 2), (-1, 3)]
-                .map(|(id, c)| Channel { id, data: plane(c) })
+                .map(|(id, c)| Channel {
+                    id,
+                    data: plane(c).into(),
+                })
                 .into(),
             ..Default::default()
         }

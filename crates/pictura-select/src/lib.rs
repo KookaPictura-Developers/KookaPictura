@@ -169,7 +169,7 @@ impl Selection {
     pub fn to_channel(&self, id: i16) -> Channel {
         Channel {
             id,
-            data: self.data.clone(),
+            data: self.data.clone().into(),
         }
     }
 
@@ -187,7 +187,7 @@ impl Selection {
         Ok(Selection {
             width,
             height,
-            data: ch.data.clone(),
+            data: ch.data.to_vec(),
         })
     }
 
@@ -640,7 +640,10 @@ pub fn selection_from_layer_alpha(layer: &Layer, width: u32, height: u32) -> Sel
             data[py as usize * width as usize + px as usize] = coverage;
         }
     }
-    let channel = Channel { id: -1, data };
+    let channel = Channel {
+        id: -1,
+        data: data.into(),
+    };
     Selection::from_channel(&channel, width, height).expect("document-sized selection channel")
 }
 
@@ -844,7 +847,7 @@ mod tests {
     fn from_channel_wrong_length_errors() {
         let ch = Channel {
             id: 0,
-            data: vec![0; 5],
+            data: vec![0; 5].into(),
         };
         assert!(Selection::from_channel(&ch, 4, 4).is_err());
     }
@@ -872,7 +875,7 @@ mod tests {
         // Alpha channel -> layer-local coverage copied to the document offset.
         layer.channels = vec![Channel {
             id: -1,
-            data: vec![0, 64, 255, 128, 0, 255],
+            data: vec![0, 64, 255, 128, 0, 255].into(),
         }];
         let sel = selection_from_layer_alpha(&layer, 6, 4);
         assert_eq!(sel.data[at(2, 1)], 0);

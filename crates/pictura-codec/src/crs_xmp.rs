@@ -374,19 +374,19 @@ crs:Exposure2012=\"+0.50\" crs:Contrast2012=\"-10\"/></rdf:RDF></x:xmpmeta>"
             channels: vec![
                 Channel {
                     id: 0,
-                    data: vec![10; 16],
+                    data: vec![10; 16].into(),
                 },
                 Channel {
                     id: 1,
-                    data: vec![20; 16],
+                    data: vec![20; 16].into(),
                 },
                 Channel {
                     id: 2,
-                    data: vec![30; 16],
+                    data: vec![30; 16].into(),
                 },
                 Channel {
                     id: -1,
-                    data: vec![255; 16],
+                    data: vec![255; 16].into(),
                 },
             ],
             extra_blocks: vec![LayerBlock {

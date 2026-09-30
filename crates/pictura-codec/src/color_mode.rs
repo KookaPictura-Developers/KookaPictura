@@ -235,7 +235,7 @@ pub(crate) fn retain_lab_layer_planes(layers: &mut [Layer], depth: u16) {
                 .channels
                 .iter()
                 .filter(|c| c.id >= 0 && c.id < 3)
-                .map(|c| (c.id, Samples::U8(c.data.clone())))
+                .map(|c| (c.id, Samples::U8(c.data.to_vec())))
                 .collect();
             if planes.len() == 3 {
                 layer.source_channels =
@@ -260,7 +260,7 @@ pub(crate) fn retain_cmyk_layer_planes(layers: &mut [Layer], depth: u16) {
                 .channels
                 .iter()
                 .filter(|c| c.id >= 0 && c.id < 4)
-                .map(|c| (c.id, Samples::U8(c.data.clone())))
+                .map(|c| (c.id, Samples::U8(c.data.to_vec())))
                 .collect();
             if planes.len() == 4 {
                 layer.source_channels =
@@ -285,7 +285,7 @@ pub(crate) fn retain_indexed_layer_planes(layers: &mut [Layer], depth: u16) {
                 .channels
                 .iter()
                 .filter(|c| c.id == 0)
-                .map(|c| (c.id, Samples::U8(c.data.clone())))
+                .map(|c| (c.id, Samples::U8(c.data.to_vec())))
                 .collect();
             if planes.len() == 1 {
                 layer.source_channels =
@@ -390,7 +390,7 @@ fn convert_one_layer(layer: &mut Layer, mode: ColorMode, palette: &[u8; 768]) {
     let mut channels: Vec<Channel> = (0..3)
         .map(|c| Channel {
             id: c as i16,
-            data: rgb[c * plane..(c + 1) * plane].to_vec(),
+            data: rgb[c * plane..(c + 1) * plane].to_vec().into(),
         })
         .collect();
     channels.extend(others);

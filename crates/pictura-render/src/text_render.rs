@@ -208,10 +208,22 @@ pub fn materialize_text_rgba(doc: &mut Document, path: &str, rgba: &[u8]) -> boo
         a.push(px[3]);
     }
     layer.channels = vec![
-        Channel { id: 0, data: r },
-        Channel { id: 1, data: g },
-        Channel { id: 2, data: b },
-        Channel { id: -1, data: a },
+        Channel {
+            id: 0,
+            data: r.into(),
+        },
+        Channel {
+            id: 1,
+            data: g.into(),
+        },
+        Channel {
+            id: 2,
+            data: b.into(),
+        },
+        Channel {
+            id: -1,
+            data: a.into(),
+        },
     ];
     layer.extra_blocks.retain(|block| &block.key != b"TySh");
     layer.type_tool = None;

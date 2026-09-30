@@ -148,16 +148,19 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: plane.clone(),
+                    data: plane.clone().into(),
                 },
                 Channel {
                     id: 1,
-                    data: plane.clone(),
+                    data: plane.clone().into(),
                 },
-                Channel { id: 2, data: plane },
+                Channel {
+                    id: 2,
+                    data: plane.into(),
+                },
                 Channel {
                     id: -1,
-                    data: vec![alpha; n],
+                    data: vec![alpha; n].into(),
                 },
             ],
             children: Vec::new(),
@@ -248,7 +251,7 @@ mod tests {
             default_color: 0,
             disabled: true,
             flags: 0,
-            data: Some(vec![0u8; 16]),
+            data: Some(vec![0u8; 16].into()),
             ..Default::default()
         };
         assert_eq!(

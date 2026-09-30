@@ -26,7 +26,7 @@ pub fn resize_document(
     });
 
     for channel in &mut doc.channels {
-        channel.data = resample_plane(&channel.data, old_w, old_h, width, height, resample);
+        channel.data = resample_plane(&channel.data, old_w, old_h, width, height, resample).into();
     }
     if let Some(store) = &mut doc.source_planes {
         if store.depth != pictura_core::BitDepth::One {
@@ -86,7 +86,8 @@ fn resize_layer(
     if lw > 0 && lh > 0 {
         let (nw, nh) = scaled_dims(lw, lh, sx, sy);
         for channel in &mut layer.channels {
-            channel.data = resample_plane(&channel.data, lw as u32, lh as u32, nw, nh, resample);
+            channel.data =
+                resample_plane(&channel.data, lw as u32, lh as u32, nw, nh, resample).into();
         }
         layer.rect = scaled_rect(old_rect, nw, nh, sx, sy);
     }
@@ -96,7 +97,7 @@ fn resize_layer(
         if mw > 0 && mh > 0 {
             if let Some(data) = &mut mask.data {
                 let (nw, nh) = scaled_dims(mw, mh, sx, sy);
-                *data = resample_plane(data, mw as u32, mh as u32, nw, nh, resample);
+                *data = resample_plane(data, mw as u32, mh as u32, nw, nh, resample).into();
                 mask.rect = scaled_rect(mask.rect, nw, nh, sx, sy);
             }
         }
@@ -198,19 +199,19 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: vec![10; n],
+                    data: vec![10; n].into(),
                 },
                 Channel {
                     id: 1,
-                    data: vec![20; n],
+                    data: vec![20; n].into(),
                 },
                 Channel {
                     id: 2,
-                    data: vec![30; n],
+                    data: vec![30; n].into(),
                 },
                 Channel {
                     id: -1,
-                    data: vec![255; n],
+                    data: vec![255; n].into(),
                 },
             ],
             children: Vec::new(),
@@ -227,7 +228,7 @@ mod tests {
             default_color: 255,
             disabled: false,
             flags: 0,
-            data: Some(vec![128; 16]),
+            data: Some(vec![128; 16].into()),
             ..Default::default()
         };
         doc.layers = vec![
@@ -236,7 +237,7 @@ mod tests {
         ];
         doc.channels = vec![Channel {
             id: -1,
-            data: vec![7; 16],
+            data: vec![7; 16].into(),
         }];
         doc
     }

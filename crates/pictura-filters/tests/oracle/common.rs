@@ -77,7 +77,7 @@ pub(crate) fn test_image_buffer() -> PixelBuffer {
         width: SIZE,
         height: SIZE,
         channels: CHANNELS,
-        data: test_image_planar(),
+        data: test_image_planar().into(),
     }
 }
 
@@ -119,7 +119,7 @@ pub(crate) fn oracle_diff(filter: &Filter, extra: &[&str], tolerance: u8) -> Opt
         width: SIZE,
         height: SIZE,
         channels: CHANNELS,
-        data: original,
+        data: original.into(),
     };
     apply(filter, &mut buf).expect("pictura_filters::apply");
     Some(compare(&buf.data, &reference, tolerance).expect("buffer lengths agree"))
@@ -153,7 +153,7 @@ pub(crate) fn pixel_row(px: &[u8]) -> PixelBuffer {
         width: n as u32,
         height: 1,
         channels: 3,
-        data,
+        data: data.into(),
     }
 }
 

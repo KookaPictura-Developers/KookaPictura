@@ -42,19 +42,19 @@ fn smart_layer(name: &str, so: SmartObject) -> Layer {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![10; 16],
+                data: vec![10; 16].into(),
             },
             Channel {
                 id: 1,
-                data: vec![20; 16],
+                data: vec![20; 16].into(),
             },
             Channel {
                 id: 2,
-                data: vec![30; 16],
+                data: vec![30; 16].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255; 16],
+                data: vec![255; 16].into(),
             },
         ],
         smart_object: Some(so),

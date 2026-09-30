@@ -16,7 +16,7 @@ fn buf3(w: u32, h: u32, px: &[[u8; 3]]) -> PixelBuffer {
         width: w,
         height: h,
         channels: 3,
-        data,
+        data: data.into(),
     }
 }
 
@@ -33,7 +33,7 @@ fn buf4(px: &[[u8; 4]]) -> PixelBuffer {
         width: n as u32,
         height: 1,
         channels: 4,
-        data,
+        data: data.into(),
     }
 }
 
@@ -1295,7 +1295,7 @@ fn bad_buffers_error_not_panic() {
         width: 0,
         height: 0,
         channels: 3,
-        data: vec![],
+        data: vec![].into(),
     };
     assert!(apply(&Adjustment::Invert, &mut empty).is_err());
 
@@ -1303,7 +1303,7 @@ fn bad_buffers_error_not_panic() {
         width: 1,
         height: 1,
         channels: 2,
-        data: vec![0, 0],
+        data: vec![0, 0].into(),
     };
     assert!(apply(&Adjustment::Invert, &mut odd).is_err());
 
@@ -1311,7 +1311,7 @@ fn bad_buffers_error_not_panic() {
         width: 2,
         height: 2,
         channels: 3,
-        data: vec![0; 5],
+        data: vec![0; 5].into(),
     };
     assert!(apply(&Adjustment::Invert, &mut short).is_err());
 }

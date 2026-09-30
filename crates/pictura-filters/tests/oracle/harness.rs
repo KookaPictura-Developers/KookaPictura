@@ -86,7 +86,7 @@ fn differential_harness_detects_perturbation() {
         width: SIZE,
         height: SIZE,
         channels: CHANNELS,
-        data: original,
+        data: original.into(),
     };
     apply(&Filter::Solarize, &mut buf).expect("apply");
     assert!(

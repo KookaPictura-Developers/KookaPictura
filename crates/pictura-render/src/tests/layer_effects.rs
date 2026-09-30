@@ -138,7 +138,7 @@ fn with_mask(mut layer: Layer, value: u8) -> Layer {
     let n = r.width().max(0) as usize * r.height().max(0) as usize;
     layer.mask = Some(LayerMask {
         rect: r,
-        data: Some(vec![value; n]),
+        data: Some(vec![value; n].into()),
         ..Default::default()
     });
     layer
@@ -159,7 +159,7 @@ fn half_mask(mut layer: Layer) -> Layer {
     }
     layer.mask = Some(LayerMask {
         rect: r,
-        data: Some(data),
+        data: Some(data.into()),
         ..Default::default()
     });
     layer

@@ -652,19 +652,19 @@ fn document_ops_wire_parsed_values_and_reject_invalid_params() {
     doc.layers[0].channels = vec![
         Channel {
             id: 0,
-            data: vec![255, 0],
+            data: vec![255, 0].into(),
         },
         Channel {
             id: 1,
-            data: vec![0, 0],
+            data: vec![0, 0].into(),
         },
         Channel {
             id: 2,
-            data: vec![0, 255],
+            data: vec![0, 255].into(),
         },
         Channel {
             id: -1,
-            data: vec![255, 255],
+            data: vec![255, 255].into(),
         },
     ];
 
@@ -1017,7 +1017,7 @@ fn undo_profile_4000() {
 #[test]
 fn convert_profile_is_byte_reversible_through_history() {
     let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
-    doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+    doc.composite.data = vec![200, 10, 100, 20, 50, 30].into();
     doc.layers = vec![pixel_layer("base", 2, 1, (200, 100, 50))];
     let original = doc.clone();
     let mut history = History::default();
@@ -1065,7 +1065,7 @@ fn convert_profile_is_byte_reversible_through_history() {
 #[test]
 fn assign_profile_retags_and_is_reversible_through_history() {
     let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
-    doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+    doc.composite.data = vec![200, 10, 100, 20, 50, 30].into();
     doc.layers = vec![pixel_layer("base", 2, 1, (200, 100, 50))];
     let original = doc.clone();
     let mut history = History::default();
@@ -1115,7 +1115,7 @@ fn assign_profile_retags_and_is_reversible_through_history() {
 #[test]
 fn open_first_frame_converts_the_document_profile() {
     let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
-    doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+    doc.composite.data = vec![200, 10, 100, 20, 50, 30].into();
     doc.layers = vec![pixel_layer("base", 2, 1, (200, 100, 50))];
     doc.document_icc = Some(pictura_codec::Profile::adobe_rgb().to_icc());
 

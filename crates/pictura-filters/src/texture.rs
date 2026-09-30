@@ -497,7 +497,7 @@ mod tests {
             width: w,
             height: h,
             channels,
-            data,
+            data: data.into(),
         }
     }
 
@@ -709,7 +709,7 @@ mod tests {
         for kind in kinds {
             let mut b = base.clone();
             grain(&mut b, 70, 60, kind, [200, 150, 80], 21).unwrap();
-            seen.insert(b.data);
+            seen.insert(b.data.to_vec());
         }
         assert!(
             seen.len() >= 8,

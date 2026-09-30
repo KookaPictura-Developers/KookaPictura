@@ -40,7 +40,7 @@ pub(super) fn rgba_frame(rendered: &PixelBuffer) -> PixelBuffer {
         width: rendered.width,
         height: rendered.height,
         channels: 4,
-        data,
+        data: data.into(),
     }
 }
 /// Persist a full-frame rendered composite into `doc.composite`.
@@ -72,7 +72,7 @@ pub(super) fn store_composite(doc: &mut Document, rendered: &PixelBuffer) {
         width: doc.width,
         height: doc.height,
         channels: target as u8,
-        data,
+        data: data.into(),
     };
 }
 /// Copy a region of a 4-plane rendered buffer into `doc.composite` at `(x0, y0)`.
@@ -126,7 +126,7 @@ pub(super) fn selection_to_mask(selection: &Selection, doc: &Document) -> LayerM
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(selection.data.clone()),
+        data: Some(selection.data.clone().into()),
         ..Default::default()
     }
 }
@@ -201,7 +201,7 @@ pub(super) fn layer_image(layer: &Layer) -> Option<QImage> {
             width,
             height,
             channels: 2,
-            data,
+            data: data.into(),
         }
     } else {
         let (r, g, b) = (channel(0)?, channel(1)?, channel(2)?);
@@ -221,7 +221,7 @@ pub(super) fn layer_image(layer: &Layer) -> Option<QImage> {
             width,
             height,
             channels: 4,
-            data,
+            data: data.into(),
         }
     };
     Some(buffer_to_image(&buffer))

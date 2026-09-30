@@ -87,10 +87,22 @@ pub(crate) fn layer(
         mask: None,
         adjustment: None,
         channels: vec![
-            Channel { id: 0, data: r },
-            Channel { id: 1, data: g },
-            Channel { id: 2, data: b },
-            Channel { id: -1, data: a },
+            Channel {
+                id: 0,
+                data: r.into(),
+            },
+            Channel {
+                id: 1,
+                data: g.into(),
+            },
+            Channel {
+                id: 2,
+                data: b.into(),
+            },
+            Channel {
+                id: -1,
+                data: a.into(),
+            },
         ],
         children: Vec::new(),
         is_group: false,
@@ -220,10 +232,22 @@ pub(crate) fn large_layer(w: u32, h: u32, seed: u32, blend: BlendMode) -> Layer 
         mask: None,
         adjustment: None,
         channels: vec![
-            Channel { id: 0, data: r },
-            Channel { id: 1, data: g },
-            Channel { id: 2, data: b },
-            Channel { id: -1, data: a },
+            Channel {
+                id: 0,
+                data: r.into(),
+            },
+            Channel {
+                id: 1,
+                data: g.into(),
+            },
+            Channel {
+                id: 2,
+                data: b.into(),
+            },
+            Channel {
+                id: -1,
+                data: a.into(),
+            },
         ],
         children: Vec::new(),
         is_group: false,

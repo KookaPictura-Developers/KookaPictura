@@ -8,6 +8,7 @@ mod advanced_blending;
 mod annotations;
 mod crs;
 pub mod nonseparable;
+mod plane;
 mod samples;
 mod text_render;
 mod type_tool;
@@ -19,6 +20,7 @@ pub use annotations::{
     MAX_COLOR_SAMPLERS,
 };
 pub use crs::{CrsSettings, PicturaRawSettings};
+pub use plane::Plane;
 pub use samples::{Sample, Samples};
 pub use text_render::{
     layout_lines, FontPolicy, GlyphMask, LayoutLine, LayoutParams, PlacedGlyph, RasterRequest,
@@ -107,7 +109,7 @@ pub struct PixelBuffer<T = u8> {
     pub width: u32,
     pub height: u32,
     pub channels: u8,
-    pub data: Vec<T>,
+    pub data: Plane<T>,
 }
 
 impl<T: Clone + Default> PixelBuffer<T> {
@@ -116,7 +118,7 @@ impl<T: Clone + Default> PixelBuffer<T> {
             width,
             height,
             channels,
-            data: vec![T::default(); width as usize * height as usize * channels as usize],
+            data: vec![T::default(); width as usize * height as usize * channels as usize].into(),
         }
     }
 }
@@ -130,6 +132,9 @@ impl<T> PixelBuffer<T> {
 
 /// A minimal document: dimensions, mode, depth, one composite image, and a
 /// layer tree (bottom-first, matching PSD z-order on disk).
+///
+/// Cloning is a refcount bump over the pixel planes: the copy shares every
+/// plane until one of them is written, and only that plane forks ([`Plane`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
     pub width: u32,
@@ -255,19 +260,19 @@ impl Document {
         let mut channels = vec![
             Channel {
                 id: 0,
-                data: vec![0; plane],
+                data: vec![0; plane].into(),
             },
             Channel {
                 id: 1,
-                data: vec![0; plane],
+                data: vec![0; plane].into(),
             },
             Channel {
                 id: 2,
-                data: vec![0; plane],
+                data: vec![0; plane].into(),
             },
             Channel {
                 id: -1,
-                data: vec![0; plane],
+                data: vec![0; plane].into(),
             },
         ];
         for i in 0..plane {
@@ -289,7 +294,7 @@ impl Document {
             width,
             height,
             channels: 4,
-            data: composite,
+            data: composite.into(),
         };
         doc.layers.push(Layer {
             name: name.to_string(),
@@ -475,7 +480,7 @@ impl PsdRect {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Channel {
     pub id: i16,
-    pub data: Vec<u8>,
+    pub data: Plane<u8>,
 }
 
 /// The raw additional-layer-info block of an adjustment layer.
@@ -610,7 +615,7 @@ pub struct LayerMask {
     pub default_color: u8,
     pub disabled: bool,
     pub flags: u8,
-    pub data: Option<Vec<u8>>,
+    pub data: Option<Plane<u8>>,
     /// Mask block bytes after the fixed 18-byte header, preserved verbatim for
     /// lossless re-save.
     pub extra: Vec<u8>,

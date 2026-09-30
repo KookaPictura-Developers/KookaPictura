@@ -31,5 +31,5 @@ pub(crate) fn writes_bitmap(doc: &Document) -> bool {
     // `get`-style length safety: a short `composite.data` on a public document
     // must fall back to RGB, not compare or slice out of bounds.
     crate::color_mode::bitmap_rows_to_rgb(retained, doc.width as usize, doc.height as usize)
-        == doc.composite.data
+        == doc.composite.data.as_ref()
 }
