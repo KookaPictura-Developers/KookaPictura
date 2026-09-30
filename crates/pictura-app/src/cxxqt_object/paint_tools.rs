@@ -650,7 +650,7 @@ fn planar(surface: &pictura_paint::healing::RgbaImage) -> pictura_core::PixelBuf
         width: surface.width as u32,
         height: surface.height as u32,
         channels: 4,
-        data,
+        data: data.into(),
     }
 }
 
@@ -762,7 +762,7 @@ fn white_preview(cfg: StrokeConfig, w: i32, h: i32, samples: &[StrokeSample]) ->
         channels: [0, 1, 2, -1]
             .map(|id| Channel {
                 id,
-                data: vec![0; n],
+                data: vec![0; n].into(),
             })
             .into(),
         ..Default::default()

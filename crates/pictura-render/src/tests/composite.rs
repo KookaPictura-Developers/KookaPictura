@@ -119,7 +119,7 @@ fn fill_255_is_byte_identical_to_pre_change_composites() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![0, 255]),
+        data: Some(vec![0, 255].into()),
         ..Default::default()
     });
     let masked_out = composite_rgba(&doc(1, 2, vec![masked]));
@@ -181,7 +181,7 @@ fn fill_255_is_byte_identical_to_pre_change_composites() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![255, 0]),
+        data: Some(vec![255, 0].into()),
         ..Default::default()
     });
     let adj_out = composite_rgba(&doc(2, 1, vec![base, adj]));
@@ -245,7 +245,7 @@ fn masked_layer_zeroes_masked_alpha() {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![0, 255]),
+        data: Some(vec![0, 255].into()),
         ..Default::default()
     });
     let _ = lw;
@@ -270,7 +270,7 @@ fn disabled_mask_is_ignored() {
         default_color: 0,
         disabled: true,
         flags: 0x02,
-        data: Some(vec![0]),
+        data: Some(vec![0].into()),
         ..Default::default()
     });
     let d = doc(1, 1, vec![top]);
@@ -516,7 +516,7 @@ fn grayscale_layer_replicates_channel() {
         adjustment: None,
         channels: vec![Channel {
             id: 0,
-            data: vec![120],
+            data: vec![120].into(),
         }],
         children: Vec::new(),
         is_group: false,
@@ -711,19 +711,19 @@ fn type_layer_with_channel_composites_from_the_raster() {
     layer.channels = vec![
         Channel {
             id: 0,
-            data: vec![10; n],
+            data: vec![10; n].into(),
         },
         Channel {
             id: 1,
-            data: vec![20; n],
+            data: vec![20; n].into(),
         },
         Channel {
             id: 2,
-            data: vec![30; n],
+            data: vec![30; n].into(),
         },
         Channel {
             id: -1,
-            data: vec![255; n],
+            data: vec![255; n].into(),
         },
     ];
     let out = composite_rgba(&doc(200, 80, vec![layer]));

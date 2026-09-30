@@ -214,12 +214,12 @@ impl qobject::PictureView {
         let mut channels: Vec<Channel> = (0..mode.color_channels())
             .map(|id| Channel {
                 id: id as i16,
-                data: vec![fill; pixels],
+                data: vec![fill; pixels].into(),
             })
             .collect();
         channels.push(Channel {
             id: -1,
-            data: vec![fill; pixels],
+            data: vec![fill; pixels].into(),
         });
         doc.layers.push(Layer {
             name: "Layer 0".to_string(),

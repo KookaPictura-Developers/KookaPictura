@@ -570,7 +570,10 @@ fn bake(buffer: &PixelBuffer, rect: PsdRect) -> Vec<Channel> {
                 data[y * w + x] = buffer.data[plane_index * plane + source];
             }
         }
-        channels.push(Channel { id, data });
+        channels.push(Channel {
+            id,
+            data: data.into(),
+        });
     }
     channels
 }
@@ -626,19 +629,19 @@ fn opaque_white_layer(width: u32, height: u32) -> Layer {
         channels: vec![
             Channel {
                 id: 0,
-                data: white.clone(),
+                data: white.clone().into(),
             },
             Channel {
                 id: 1,
-                data: white.clone(),
+                data: white.clone().into(),
             },
             Channel {
                 id: 2,
-                data: white.clone(),
+                data: white.clone().into(),
             },
             Channel {
                 id: -1,
-                data: white,
+                data: white.into(),
             },
         ],
         children: Vec::new(),
@@ -667,7 +670,7 @@ fn fold_clipping(base: &Layer, sibling: &mut Layer) {
         None => {
             sibling.channels.push(Channel {
                 id: -1,
-                data: vec![255; (sw * sh) as usize],
+                data: vec![255; (sw * sh) as usize].into(),
             });
             sibling.channels.len() - 1
         }

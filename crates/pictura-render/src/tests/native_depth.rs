@@ -361,7 +361,7 @@ fn masked_red(mask_byte: u8, native: Option<u16>) -> Layer {
         default_color: 0,
         disabled: false,
         flags: 0,
-        data: Some(vec![mask_byte]),
+        data: Some(vec![mask_byte].into()),
         ..Default::default()
     });
     if let Some(sample) = native {
@@ -406,7 +406,7 @@ fn mask_alpha_unit_matches_the_eight_bit_fallbacks() {
         default_color: 0,
         disabled: true,
         flags: 0,
-        data: Some(vec![0]),
+        data: Some(vec![0].into()),
         ..Default::default()
     });
     assert_eq!(mask_alpha_unit(&d, &disabled, 0, 0), 1.0, "disabled mask");
@@ -428,7 +428,7 @@ fn mask_alpha_unit_matches_the_eight_bit_fallbacks() {
         default_color: 200,
         disabled: false,
         flags: 0,
-        data: Some(vec![7]),
+        data: Some(vec![7].into()),
         ..Default::default()
     });
     assert_eq!(

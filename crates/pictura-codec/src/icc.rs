@@ -139,11 +139,11 @@ fn convert_layer(layer: &mut Layer, src: &Profile, dst: &Profile) {
             return;
         };
         slots.push(slot);
-        planes.push(channel.data.clone());
+        planes.push(channel.data.to_vec());
     }
     if let Some(converted) = convert_planes(&planes, src, dst) {
         for (slot, plane) in slots.into_iter().zip(converted) {
-            layer.channels[slot].data = plane;
+            layer.channels[slot].data = plane.into();
         }
     }
 }
@@ -412,7 +412,7 @@ mod tests {
 
     fn rgb_document() -> Document {
         let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
-        doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+        doc.composite.data = vec![200, 10, 100, 20, 50, 30].into();
         doc
     }
 
@@ -474,7 +474,7 @@ mod tests {
             },
             channels: vec![Channel {
                 id: 0,
-                data: vec![1, 2],
+                data: vec![1, 2].into(),
             }],
             ..Default::default()
         });
@@ -487,7 +487,7 @@ mod tests {
     fn grayscale_document_is_left_untouched() {
         let profile = Profile::adobe_rgb().to_icc();
         let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
-        doc.composite.data = vec![10, 200];
+        doc.composite.data = vec![10, 200].into();
         let section = icc_resource(&profile);
         doc.image_resources = section.clone();
 
@@ -542,15 +542,15 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 1,
-                    data: vec![10],
+                    data: vec![10].into(),
                 },
                 Channel {
                     id: 2,
-                    data: vec![20],
+                    data: vec![20].into(),
                 },
                 Channel {
                     id: 0,
-                    data: vec![30],
+                    data: vec![30].into(),
                 },
             ],
             ..Default::default()
@@ -650,7 +650,7 @@ mod tests {
             },
             channels: vec![Channel {
                 id: 0,
-                data: vec![1, 2],
+                data: vec![1, 2].into(),
             }],
             ..Default::default()
         });
@@ -715,15 +715,15 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: vec![200, 10],
+                    data: vec![200, 10].into(),
                 },
                 Channel {
                     id: 1,
-                    data: vec![100, 20],
+                    data: vec![100, 20].into(),
                 },
                 Channel {
                     id: 2,
-                    data: vec![50, 30],
+                    data: vec![50, 30].into(),
                 },
             ],
             ..Default::default()
@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn convert_document_is_a_noop_for_a_grayscale_document() {
         let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
-        doc.composite.data = vec![10, 200];
+        doc.composite.data = vec![10, 200].into();
         let before = doc.clone();
         assert!(!convert_document(&mut doc, &Profile::adobe_rgb()));
         assert_eq!(doc, before);
@@ -917,7 +917,7 @@ mod tests {
         let profile = Profile::adobe_rgb().to_icc();
         for policy in [Policy::Preserve, Policy::Convert, Policy::Off] {
             let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
-            doc.composite.data = vec![10, 200];
+            doc.composite.data = vec![10, 200].into();
             let section = icc_resource(&profile);
             doc.image_resources = section.clone();
 
@@ -982,7 +982,7 @@ mod tests {
         let mut doc = Document::new(2, 1, ColorMode::Rgb, BitDepth::Eight);
         doc.source_mode = Some(ColorMode::Cmyk);
         doc.source_depth = source_depth;
-        doc.composite.data = vec![200, 10, 100, 20, 50, 30];
+        doc.composite.data = vec![200, 10, 100, 20, 50, 30].into();
         doc
     }
 
@@ -1178,7 +1178,7 @@ mod tests {
     #[test]
     fn grayscale_output_keeps_a_matching_gray_profile() {
         let mut doc = Document::new(2, 1, ColorMode::Grayscale, BitDepth::Eight);
-        doc.composite.data = vec![10, 200];
+        doc.composite.data = vec![10, 200].into();
         let section = icc_resource(&profiled(b"GRAY"));
         doc.image_resources = section.clone();
 

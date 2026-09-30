@@ -93,19 +93,19 @@ mod tests {
             channels: vec![
                 Channel {
                     id: 0,
-                    data: vec![value; n],
+                    data: vec![value; n].into(),
                 },
                 Channel {
                     id: 1,
-                    data: vec![value; n],
+                    data: vec![value; n].into(),
                 },
                 Channel {
                     id: 2,
-                    data: vec![value; n],
+                    data: vec![value; n].into(),
                 },
                 Channel {
                     id: -1,
-                    data: vec![255; n],
+                    data: vec![255; n].into(),
                 },
             ],
             children: Vec::new(),
@@ -127,7 +127,7 @@ mod tests {
             default_color: 0,
             disabled: false,
             flags: 0,
-            data: Some(data),
+            data: Some(data.into()),
             ..Default::default()
         }
     }

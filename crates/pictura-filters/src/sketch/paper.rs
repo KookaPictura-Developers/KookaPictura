@@ -416,7 +416,7 @@ mod tests {
             width: w,
             height: h,
             channels,
-            data,
+            data: data.into(),
         }
     }
 
@@ -426,7 +426,7 @@ mod tests {
             width: w,
             height: h,
             channels: 3,
-            data: vec![value; n * 3],
+            data: vec![value; n * 3].into(),
         }
     }
 
@@ -710,7 +710,7 @@ mod tests {
             width: 1,
             height: 1,
             channels: 4,
-            data: vec![10, 20, 30, 40],
+            data: vec![10, 20, 30, 40].into(),
         };
         assert!(note_paper(&mut tiny.clone(), 50, 20, 25, 1).is_ok());
         assert!(photocopy(&mut tiny.clone(), 24, 50).is_ok());

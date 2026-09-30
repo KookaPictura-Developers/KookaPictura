@@ -86,14 +86,15 @@ pub fn perspective_crop(doc: &mut Document, quad: [(f64, f64); 4]) -> bool {
         let opaque = !layer.channels.iter().any(|c| c.id == -1);
         for channel in &mut layer.channels {
             let outside = if opaque && channel.id >= 0 { 255 } else { 0 };
-            channel.data = warp_plane(&channel.data, rect, &map, w, h, outside);
+            channel.data = warp_plane(&channel.data, rect, &map, w, h, outside).into();
         }
         layer.rect = canvas;
         layer.raw_channels.clear();
         layer.source_channels = None;
         if let Some(mask) = &mut layer.mask {
             if let Some(data) = &mask.data {
-                mask.data = Some(warp_plane(data, mask.rect, &map, w, h, mask.default_color));
+                mask.data =
+                    Some(warp_plane(data, mask.rect, &map, w, h, mask.default_color).into());
             }
             mask.rect = canvas;
         }
@@ -106,7 +107,7 @@ pub fn perspective_crop(doc: &mut Document, quad: [(f64, f64); 4]) -> bool {
         right: doc.width as i32,
     };
     for channel in &mut doc.channels {
-        channel.data = warp_plane(&channel.data, old, &map, w, h, 0);
+        channel.data = warp_plane(&channel.data, old, &map, w, h, 0).into();
     }
     doc.source_planes = None;
     doc.width = w;

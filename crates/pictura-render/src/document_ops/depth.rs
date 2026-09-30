@@ -93,7 +93,7 @@ pub fn convert_depth_exposure_gamma(
         width: doc.width,
         height: doc.height,
         channels: color_channels as u8,
-        data: composite,
+        data: composite.into(),
     };
     drop_layer_source(&mut doc.layers);
     Ok(())

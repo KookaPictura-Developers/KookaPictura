@@ -283,7 +283,7 @@ mod tests {
             width,
             height,
             channels: 1,
-            data: vec![value; (width * height) as usize],
+            data: vec![value; (width * height) as usize].into(),
         }
     }
 
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(map.trace((0, 0), (1, 1), 4), vec![(0, 0), (1, 1)]);
 
         let short = PixelBuffer {
-            data: vec![0; 4],
+            data: vec![0; 4].into(),
             ..gray(8, 8, 0)
         };
         assert_eq!(

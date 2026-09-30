@@ -83,6 +83,6 @@ pub(crate) fn resample_plane(
     let n = plane.data.len().min(data.len());
     plane.data[..n].copy_from_slice(&data[..n]);
     pictura_ops::resize(&plane, dw, dh, resample)
-        .map(|b| b.data)
+        .map(|b| b.data.to_vec())
         .unwrap_or_else(|_| data.to_vec())
 }

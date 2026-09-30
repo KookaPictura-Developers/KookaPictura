@@ -22,7 +22,7 @@ fn varied_rgba(width: u32, height: u32, seed: u32) -> PixelBuffer {
         width,
         height,
         channels: 4,
-        data,
+        data: data.into(),
     }
 }
 
@@ -59,7 +59,7 @@ fn crop_buffer(src: &PixelBuffer, rect: PsdRect) -> PixelBuffer {
         width: w as u32,
         height: h as u32,
         channels: 4,
-        data,
+        data: data.into(),
     }
 }
 
@@ -92,7 +92,7 @@ fn display_conversion_premultiplies_and_straight_helpers_do_not() {
         width: 2,
         height: 1,
         channels: 4,
-        data: vec![200, 255, 100, 255, 50, 255, 128, 0],
+        data: vec![200, 255, 100, 255, 50, 255, 128, 0].into(),
     };
     assert_eq!(
         buffer_to_rgba_bytes(&buffer),

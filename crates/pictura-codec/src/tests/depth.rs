@@ -520,7 +520,12 @@ fn short_high_depth_lab_cmyk_source_plane_is_a_typed_error() {
         });
         doc.layers.push(Layer {
             rect,
-            channels: (0i16..3).map(|id| Channel { id, data: vec![1] }).collect(),
+            channels: (0i16..3)
+                .map(|id| Channel {
+                    id,
+                    data: vec![1].into(),
+                })
+                .collect(),
             source_channels: Some(SourceChannels::new(
                 bits,
                 rect,
@@ -636,7 +641,7 @@ fn short_high_depth_layer_plane_is_a_typed_error() {
     // A modeled color channel with a one-byte plane.
     doc.layers[0].channels = vec![Channel {
         id: 0,
-        data: vec![1],
+        data: vec![1].into(),
     }];
     assert!(matches!(write_psd(&doc), Err(PsdError::Invalid(_))));
 

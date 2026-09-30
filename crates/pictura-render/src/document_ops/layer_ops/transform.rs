@@ -391,12 +391,12 @@ fn materialized_channels(doc: &Document, layer: &Layer) -> Option<Vec<Channel>> 
     let mut channels: Vec<Channel> = (0..doc.mode.color_channels() as usize)
         .map(|c| Channel {
             id: c as i16,
-            data: buf.data[c * plane..(c + 1) * plane].to_vec(),
+            data: buf.data[c * plane..(c + 1) * plane].to_vec().into(),
         })
         .collect();
     channels.push(Channel {
         id: -1,
-        data: buf.data[3 * plane..4 * plane].to_vec(),
+        data: buf.data[3 * plane..4 * plane].to_vec().into(),
     });
     Some(channels)
 }
@@ -429,7 +429,7 @@ fn transform_mask<M: PlaneMap>(mask: &LayerMask, layer_map: &M) -> Option<LayerM
             bottom: dest.3,
             right: dest.2,
         },
-        data,
+        data: data.map(Into::into),
         ..mask.clone()
     })
 }
@@ -521,11 +521,11 @@ pub(super) fn write_layer(
                 if *id == -2 {
                     if let Some(mask) = out.mask.as_mut() {
                         if mask.data.is_some() {
-                            mask.data = Some(narrowed);
+                            mask.data = Some(narrowed.into());
                         }
                     }
                 } else if let Some(channel) = out.channels.iter_mut().find(|c| c.id == *id) {
-                    channel.data = narrowed;
+                    channel.data = narrowed.into();
                 }
             }
         }
@@ -603,7 +603,8 @@ where
                 &map,
                 prepared.rect,
                 dest,
-            ),
+            )
+            .into(),
         })
         .collect();
     let new_mask = prepared.mask.as_ref().and_then(|m| transform_mask(m, &map));

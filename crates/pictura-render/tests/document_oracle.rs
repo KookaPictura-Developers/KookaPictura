@@ -55,19 +55,19 @@ fn pixel_layer(name: &str, r: PsdRect, mask: Option<LayerMask>) -> Layer {
         channels: vec![
             Channel {
                 id: 0,
-                data: plane(0, n),
+                data: plane(0, n).into(),
             },
             Channel {
                 id: 1,
-                data: plane(60, n),
+                data: plane(60, n).into(),
             },
             Channel {
                 id: 2,
-                data: plane(120, n),
+                data: plane(120, n).into(),
             },
             Channel {
                 id: -1,
-                data: plane(200, n),
+                data: plane(200, n).into(),
             },
         ],
         children: Vec::new(),
@@ -108,7 +108,7 @@ fn sample_doc() -> Document {
         default_color: 255,
         disabled: false,
         flags: 0,
-        data: Some(plane(10, 8)),
+        data: Some(plane(10, 8).into()),
         ..Default::default()
     };
     doc.layers = vec![
@@ -118,7 +118,7 @@ fn sample_doc() -> Document {
     ];
     doc.channels = vec![Channel {
         id: -1,
-        data: plane(0, 24),
+        data: plane(0, 24).into(),
     }];
     doc.composite = composite_rgba(&doc);
     doc

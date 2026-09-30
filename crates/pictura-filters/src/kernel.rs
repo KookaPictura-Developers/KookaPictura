@@ -219,7 +219,7 @@ mod tests {
             width: 3,
             height: 1,
             channels: 4,
-            data: vec![50, 50, 50, 100, 100, 100, 150, 150, 150, 10, 20, 30],
+            data: vec![50, 50, 50, 100, 100, 100, 150, 150, 150, 10, 20, 30].into(),
         };
         gaussian_blur_planes(&mut buf, 1.0);
         assert_eq!(&buf.data[0..3], &[50, 50, 50]);

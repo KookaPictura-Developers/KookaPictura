@@ -39,7 +39,7 @@ fn native_depth_edit_survives_a_psd_round_trip() {
     let adjusted = source.samples.clone();
 
     let plane = width * height * channels as usize;
-    doc.composite.data = adjusted.narrow_to_u8()[..plane].to_vec();
+    doc.composite.data = adjusted.narrow_to_u8()[..plane].to_vec().into();
 
     let out = write_psd(&doc).expect("save edited document");
     let back = read_psd(&out).expect("re-read saved document");

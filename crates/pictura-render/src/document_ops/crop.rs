@@ -36,7 +36,7 @@ pub fn crop_document(doc: &mut Document, x: i32, y: i32, width: u32, height: u32
     });
 
     for channel in &mut doc.channels {
-        channel.data = extend_channel(&channel.data, old_w, old_h, new_w, new_h, dx, dy);
+        channel.data = extend_channel(&channel.data, old_w, old_h, new_w, new_h, dx, dy).into();
     }
     rebase_source_planes(doc, old_w, old_h, new_w, new_h, dx, dy);
 
@@ -88,13 +88,13 @@ pub fn delete_cropped_pixels(doc: &mut Document) -> usize {
             keep
         };
         for channel in &mut layer.channels {
-            channel.data = trim_plane(&channel.data, rect, keep);
+            channel.data = trim_plane(&channel.data, rect, keep).into();
         }
         if let Some(mask) = &mut layer.mask {
             if let Some(data) = &mask.data {
                 let mask_keep = intersect(mask.rect, canvas);
                 if mask_keep.width() > 0 && mask_keep.height() > 0 {
-                    mask.data = Some(trim_plane(data, mask.rect, mask_keep));
+                    mask.data = Some(trim_plane(data, mask.rect, mask_keep).into());
                     mask.rect = mask_keep;
                 }
             }
@@ -282,7 +282,7 @@ mod tests {
                 },
                 Channel {
                     id: -1,
-                    data: vec![255; n],
+                    data: vec![255; n].into(),
                 },
             ],
             children: Vec::new(),
@@ -347,7 +347,7 @@ mod tests {
             default_color: 255,
             disabled: false,
             flags: 0,
-            data: Some(vec![128; 16]),
+            data: Some(vec![128; 16].into()),
             ..Default::default()
         };
         let mut doc = sample_doc();
@@ -396,7 +396,7 @@ mod tests {
             default_color: 255,
             disabled: false,
             flags: 0,
-            data: Some(vec![128; 16]),
+            data: Some(vec![128; 16].into()),
             ..Default::default()
         };
         doc.layers[0] = pixel_layer("masked", full(4, 4), Some(mask));

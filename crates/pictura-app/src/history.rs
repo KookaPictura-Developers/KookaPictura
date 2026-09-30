@@ -25,7 +25,8 @@ pub enum BrushSource {
     Pinned,
 }
 
-// ponytail: full-document clones; COW or tile diffs if PSB-size docs hit RAM.
+// Clones are refcount bumps: the planes are copy-on-write, so a state costs
+// one shared set of pixels plus the planes it has since forked.
 /// Bounded undo/redo over labeled `(Document, Selection)` states plus up to
 /// [`MAX_SNAPSHOTS`] named restore points.
 ///
@@ -197,7 +198,7 @@ mod tests {
 
     fn doc(w: u32, h: u32, seed: u8) -> Document {
         let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
-        doc.composite.data = vec![seed; (w * h * 3) as usize];
+        doc.composite.data = vec![seed; (w * h * 3) as usize].into();
         doc
     }
 

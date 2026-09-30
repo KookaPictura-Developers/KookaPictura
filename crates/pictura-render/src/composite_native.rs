@@ -331,14 +331,14 @@ pub fn refresh_native_composite(doc: &mut Document) -> bool {
             width: doc.width,
             height: doc.height,
             channels: 4,
-            data: narrowed,
+            data: narrowed.into(),
         }
     } else {
         PixelBuffer {
             width: doc.width,
             height: doc.height,
             channels: color_channels as u8,
-            data: narrowed[..plane].to_vec(),
+            data: narrowed[..plane].to_vec().into(),
         }
     };
     true

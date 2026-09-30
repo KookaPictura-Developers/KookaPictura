@@ -91,12 +91,24 @@ fn planar(interleaved: &[u8]) -> [Vec<u8>; 4] {
 fn layer(name: &str, blend: BlendMode, interleaved: &[u8], with_alpha: bool) -> Layer {
     let [r, g, b, a] = planar(interleaved);
     let mut channels = vec![
-        Channel { id: 0, data: r },
-        Channel { id: 1, data: g },
-        Channel { id: 2, data: b },
+        Channel {
+            id: 0,
+            data: r.into(),
+        },
+        Channel {
+            id: 1,
+            data: g.into(),
+        },
+        Channel {
+            id: 2,
+            data: b.into(),
+        },
     ];
     if with_alpha {
-        channels.push(Channel { id: -1, data: a });
+        channels.push(Channel {
+            id: -1,
+            data: a.into(),
+        });
     }
     Layer {
         name: name.into(),

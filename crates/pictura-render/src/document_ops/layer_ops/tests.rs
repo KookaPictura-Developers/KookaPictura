@@ -31,19 +31,19 @@ pub(super) fn pixel_layer(name: &str, w: u32, h: u32, value: u8) -> Layer {
         channels: vec![
             Channel {
                 id: 0,
-                data: vec![value; n],
+                data: vec![value; n].into(),
             },
             Channel {
                 id: 1,
-                data: vec![value; n],
+                data: vec![value; n].into(),
             },
             Channel {
                 id: 2,
-                data: vec![value; n],
+                data: vec![value; n].into(),
             },
             Channel {
                 id: -1,
-                data: vec![255; n],
+                data: vec![255; n].into(),
             },
         ],
         children: Vec::new(),
@@ -117,7 +117,7 @@ fn duplicate_layer_deep_copies_above_the_source() {
         default_color: 255,
         disabled: false,
         flags: 0,
-        data: Some(vec![128; 16]),
+        data: Some(vec![128; 16].into()),
         ..Default::default()
     };
     let mut original = pixel_layer("base", 4, 4, 40);
