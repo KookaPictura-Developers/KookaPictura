@@ -1,5 +1,5 @@
-//! The Eraser (`docs/03-tools/eraser-tools.md`): a Brush stroke that takes
-//! pixels away instead of laying colour down.
+//! The erasers (`docs/03-tools/eraser-tools.md`). The **Eraser** is a Brush
+//! stroke that takes pixels away instead of laying colour down.
 //!
 //! * On an ordinary layer it erases **to transparency** — the stroke's
 //!   coverage multiplies the pixel's alpha down, so going over a half-erased
@@ -11,15 +11,31 @@
 //! Mode picks the tip: `Brush` is the Brush's soft tip, `Pencil` its hard
 //! aliased one, and `Block` a fixed hard square at full strength.
 //!
+//! The other two erase *by colour*, and always to transparency:
+//!
+//! * The **Background Eraser** is a brush that samples a colour under its
+//!   crosshair (continuously, once, or the background swatch) and erases what
+//!   matches within the dab, so dragged along a subject's edge with the
+//!   crosshair on the background it cuts the subject out. It overrides Lock
+//!   Transparency.
+//! * The **Magic Eraser** is one click: the Magic Wand's flood, erased through
+//!   [`magic_erase`] instead of selected.
+//!
+//! Erasing multiplies alpha down, never subtracts: a pixel half erased twice is
+//! three-quarters gone, so going over an edge again deepens it smoothly.
+//!
 //! The plain Eraser is ported from photorust's erase mode (the Brush painting
-//! the background colour; <https://github.com/perfecto25/photorust>), extended
-//! with erasing to transparency, Block, and Erase To History from the spec.
+//! the background colour), extended with erasing to transparency, Block, and
+//! Erase To History from the spec; the Background and Magic Erasers from
+//! photorust's `core/src/erase.rs` (<https://github.com/perfecto25/photorust>).
 //! Behavioural parity only.
 
+use crate::healing::RgbaImage;
+use crate::replace::{dab_bounds, grow, match_strength, reachable, Limits, Sampling};
 use crate::stamp::StampSource;
-use crate::stroke::{layer_at, parse_layer_path};
-use crate::{PaintError, PaintMode, Stroke, StrokeConfig};
-use pictura_core::{layer_transparency_locked, Document, Layer};
+use crate::stroke::{layer_at, layer_at_mut, parse_layer_path};
+use crate::{tip_coverage, PaintError, PaintMode, Rgba, Stroke, StrokeConfig};
+use pictura_core::{layer_transparency_locked, Channel, Document, Layer, PsdRect};
 
 /// The Block eraser's side, in document pixels.
 // ponytail: CS6's Block is a fixed 16 *screen* pixels; ours ignores the zoom.
@@ -96,6 +112,253 @@ pub fn begin_erase(
         cfg.mode = PaintMode::Clear;
     }
     Stroke::begin_at(doc, path, cfg)
+}
+
+/// The Background Eraser's options bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BackgroundEraseOptions {
+    pub sampling: Sampling,
+    pub limits: Limits,
+    /// 0–255: how far a pixel may differ per channel and still be erased.
+    pub tolerance: u8,
+    /// Never erase what matches the foreground colour.
+    pub protect_foreground: bool,
+}
+
+impl Default for BackgroundEraseOptions {
+    /// Continuous, Contiguous, Tolerance 50 %.
+    fn default() -> Self {
+        BackgroundEraseOptions {
+            sampling: Sampling::Continuous,
+            limits: Limits::Contiguous,
+            tolerance: 128,
+            protect_foreground: false,
+        }
+    }
+}
+
+/// One Background Eraser stroke's state.
+pub(crate) struct BackgroundEraser {
+    options: BackgroundEraseOptions,
+    /// The colour being erased, once fixed (Once, Background Swatch).
+    reference: Option<[u8; 4]>,
+}
+
+/// The Background Eraser always softens the edge of what it matches: CS6 has
+/// no Anti-alias control here, and a hard match would leave a jagged fringe
+/// exactly along the subject's edge.
+const MATCH_ANTIALIAS: bool = true;
+
+impl BackgroundEraser {
+    /// `background` is the Background Swatch reference.
+    pub(crate) fn new(options: BackgroundEraseOptions, background: Rgba) -> Self {
+        let reference = (options.sampling == Sampling::BackgroundSwatch).then_some([
+            background.r,
+            background.g,
+            background.b,
+            background.a,
+        ]);
+        BackgroundEraser { options, reference }
+    }
+
+    /// Erase one dab centred at layer-local `(cx, cy)`; `foreground` is the
+    /// colour Protect Foreground Color keeps. Returns the rectangle changed.
+    pub(crate) fn dab(
+        &mut self,
+        img: &mut RgbaImage,
+        cfg: &StrokeConfig,
+        cx: f32,
+        cy: f32,
+        foreground: Rgba,
+    ) -> Option<PsdRect> {
+        let region = dab_bounds(img, cfg, cx, cy)?;
+        let centre = (cx.floor() as i32, cy.floor() as i32);
+        let inside = centre.0 >= region.left
+            && centre.0 < region.right
+            && centre.1 >= region.top
+            && centre.1 < region.bottom;
+        let reference = match self.reference {
+            Some(fixed) => fixed,
+            None => {
+                if !inside {
+                    return None;
+                }
+                let under = img.get(centre.0, centre.1);
+                // Sampling ground this stroke already cleared would match
+                // transparent black and go on to erase everything dark.
+                if under[3] == 0 {
+                    return None;
+                }
+                if self.options.sampling == Sampling::Once {
+                    self.reference = Some(under);
+                }
+                under
+            }
+        };
+        let tolerance = self.options.tolerance;
+        let matches = |p: [u8; 4]| match_strength(p, reference, tolerance, MATCH_ANTIALIAS);
+        let reach = match self.options.limits {
+            Limits::Discontiguous => None,
+            _ if !inside => return None,
+            limits => Some(reachable(
+                img,
+                cfg,
+                region,
+                centre,
+                (cx, cy),
+                matches,
+                limits,
+            )),
+        };
+        let keep = [foreground.r, foreground.g, foreground.b, 255];
+        let strength = cfg.opacity as f32 / 100.0 * cfg.flow as f32 / 100.0;
+        let rw = region.width() as usize;
+        let mut dirty = None;
+        for y in region.top..region.bottom {
+            for x in region.left..region.right {
+                let pixel = img.get(x, y);
+                if pixel[3] == 0 {
+                    continue;
+                }
+                if let Some(mask) = &reach {
+                    if !mask[(y - region.top) as usize * rw + (x - region.left) as usize] {
+                        continue;
+                    }
+                }
+                // Protect Foreground Color wins over the match.
+                if self.options.protect_foreground
+                    && match_strength(pixel, keep, tolerance, MATCH_ANTIALIAS) > 0.0
+                {
+                    continue;
+                }
+                let tip = tip_coverage(cfg, x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+                let weight = (tip * matches(pixel) * strength).clamp(0.0, 1.0);
+                if weight <= 0.0 {
+                    continue;
+                }
+                let alpha = (pixel[3] as f32 * (1.0 - weight)).round() as u8;
+                if alpha != pixel[3] {
+                    img.set(x, y, [pixel[0], pixel[1], pixel[2], alpha]);
+                    dirty = Some(grow(dirty, x, y));
+                }
+            }
+        }
+        dirty
+    }
+}
+
+/// Give `layer` an opaque alpha channel when it has none (a Background just
+/// turned into a layer), so erasing can take it away.
+pub fn ensure_alpha(layer: &mut Layer) {
+    if layer.channels.iter().any(|c| c.id == -1) {
+        return;
+    }
+    let n = (layer.rect.width().max(0) * layer.rect.height().max(0)) as usize;
+    layer.channels.push(Channel {
+        id: -1,
+        data: vec![255; n],
+    });
+}
+
+/// Erase the layer at `path` through a document-sized coverage `mask`
+/// (0–255, row-major over `doc.width`) scaled by `opacity` (0.0–1.0): the
+/// Magic Eraser's commit. A layer without alpha or with Lock Transparency is
+/// blended toward `background` instead. Returns the document rectangle
+/// changed, or `None` when nothing changed.
+pub fn magic_erase(
+    doc: &mut Document,
+    path: &str,
+    mask: &[u8],
+    opacity: f32,
+    background: Rgba,
+) -> Option<PsdRect> {
+    let opacity = opacity.clamp(0.0, 1.0);
+    let canvas = (doc.width as i32, doc.height as i32);
+    if opacity <= 0.0 || mask.len() < (canvas.0 * canvas.1) as usize {
+        return None;
+    }
+    let layer = layer_at_mut(doc, &parse_layer_path(path)?)?;
+    if layer.is_group || layer.adjustment.is_some() {
+        return None;
+    }
+    let fill = erases_to_background(layer).then_some([background.r, background.g, background.b]);
+    let rect = layer.rect;
+    let (w, n) = (
+        rect.width().max(0),
+        (rect.width().max(0) * rect.height().max(0)) as usize,
+    );
+    let plane = |layer: &mut Layer, id: i16| {
+        layer
+            .channels
+            .iter()
+            .position(|c| c.id == id && c.data.len() >= n)
+    };
+    let planes = [0, 1, 2, -1].map(|id| plane(layer, id));
+    let mut dirty = None;
+    for y in rect.top.max(0)..rect.bottom.min(canvas.1) {
+        for x in rect.left.max(0)..rect.right.min(canvas.0) {
+            let cover = mask[(y * canvas.0 + x) as usize] as f32 / 255.0 * opacity;
+            if cover <= 0.0 {
+                continue;
+            }
+            let i = ((y - rect.top) * w + (x - rect.left)) as usize;
+            let changed = match fill {
+                Some(rgb) => {
+                    let mut changed = false;
+                    for (c, target) in rgb.iter().enumerate() {
+                        let Some(p) = planes[c] else { continue };
+                        let v = &mut layer.channels[p].data[i];
+                        let out = (*v as f32 + (*target as f32 - *v as f32) * cover).round() as u8;
+                        changed |= out != *v;
+                        *v = out;
+                    }
+                    changed
+                }
+                None => {
+                    let Some(p) = planes[3] else { continue };
+                    let a = &mut layer.channels[p].data[i];
+                    let out = (*a as f32 * (1.0 - cover)).round() as u8;
+                    let changed = out != *a;
+                    *a = out;
+                    changed
+                }
+            };
+            if changed {
+                dirty = Some(grow(dirty, x, y));
+            }
+        }
+    }
+    dirty
+}
+
+/// Soften a binary document-sized `mask` (`w` wide) with a 3×3 box, so an
+/// anti-aliased Magic Eraser leaves a smooth edge instead of a stepped one.
+pub fn antialias_mask(mask: &[u8], w: usize) -> Vec<u8> {
+    let h = mask.len() / w.max(1);
+    let at = |x: usize, y: usize| mask[y * w + x] as u32;
+    let mut out = mask.to_vec();
+    for y in 0..h {
+        for x in 0..w {
+            let (x0, x1, y0, y1) = (
+                x.saturating_sub(1),
+                (x + 1).min(w - 1),
+                y.saturating_sub(1),
+                (y + 1).min(h - 1),
+            );
+            let (mut sum, mut count) = (0, 0);
+            for yy in y0..=y1 {
+                for xx in x0..=x1 {
+                    sum += at(xx, yy);
+                    count += 1;
+                }
+            }
+            // Only the edge softens; a selected pixel never drops below half.
+            if mask[y * w + x] > 0 {
+                out[y * w + x] = (sum / count).max(128) as u8;
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -236,5 +499,123 @@ mod tests {
         let source = StampSource::new(layer_surface(&past, "0").unwrap(), (0, 0));
         let out = erase(&doc(false), EraserMode::Brush, Some(source));
         assert_eq!(pixel(&out, 16, 10), [250, 90, 90, 255]);
+    }
+
+    fn split() -> Document {
+        // Sky (blue) on the left, a subject (yellow) from x = 20.
+        let mut d = doc(false);
+        let w = 40;
+        for c in &mut d.layers[0].channels {
+            let (sky, subject) = match c.id {
+                0 => (30, 220),
+                1 => (120, 200),
+                2 => (220, 40),
+                _ => (255, 255),
+            };
+            for (i, v) in c.data.iter_mut().enumerate() {
+                *v = if i % w < 20 { sky } else { subject };
+            }
+        }
+        d
+    }
+
+    fn background_erase(doc: &Document, options: BackgroundEraseOptions, x: f32) -> Document {
+        let cfg = StrokeConfig {
+            diameter: 16,
+            ..StrokeConfig::default()
+        };
+        let mut stroke =
+            Stroke::begin_kind(doc, "0", cfg, crate::StrokeKind::BackgroundErase(options))
+                .expect("begin");
+        stroke.sample(StrokeSample {
+            x,
+            y: 10.0,
+            pressure: 1.0,
+        });
+        stroke.finish().map_or_else(|| doc.clone(), |o| o.document)
+    }
+
+    #[test]
+    fn the_background_eraser_cuts_out_what_it_sampled() {
+        let options = BackgroundEraseOptions {
+            tolerance: 40,
+            ..BackgroundEraseOptions::default()
+        };
+        // Crosshair on the sky, close enough that the dab overlaps the subject.
+        let out = background_erase(&split(), options, 16.0);
+        assert_eq!(pixel(&out, 14, 10)[3], 0, "the sampled sky survived");
+        assert_eq!(pixel(&out, 22, 10)[3], 255, "the subject was erased too");
+    }
+
+    #[test]
+    fn protect_foreground_keeps_its_colour() {
+        let options = BackgroundEraseOptions {
+            sampling: Sampling::BackgroundSwatch,
+            limits: Limits::Discontiguous,
+            tolerance: 40,
+            protect_foreground: true,
+        };
+        let sky = Rgba {
+            r: 30,
+            g: 120,
+            b: 220,
+            a: 255,
+        };
+        let cfg = StrokeConfig {
+            diameter: 16,
+            color: sky,
+            background: sky,
+            ..StrokeConfig::default()
+        };
+        let kind = crate::StrokeKind::BackgroundErase(options);
+        let mut stroke = Stroke::begin_kind(&split(), "0", cfg, kind).unwrap();
+        stroke.sample(StrokeSample {
+            x: 8.0,
+            y: 10.0,
+            pressure: 1.0,
+        });
+        assert!(stroke.finish().is_none(), "a protected colour was erased");
+    }
+
+    #[test]
+    fn the_magic_eraser_takes_the_masked_region_scaled_by_opacity() {
+        let mut d = doc(false);
+        let mut mask = vec![0u8; 40 * 20];
+        mask[10 * 40 + 5] = 255;
+        let dirty = magic_erase(&mut d, "0", &mask, 0.5, TEAL).expect("erased");
+        assert_eq!((dirty.left, dirty.top), (5, 10));
+        let half = pixel(&d, 5, 10);
+        assert!((half[3] as i32 - 128).abs() <= 1, "alpha {}", half[3]);
+        assert_eq!(&half[..3], &GREY[..3], "erasing changed the colour");
+        assert_eq!(pixel(&d, 6, 10)[3], 255);
+    }
+
+    #[test]
+    fn the_magic_eraser_fills_a_locked_layer_with_the_background_colour() {
+        let mut d = doc(true);
+        let mask = vec![255u8; 40 * 20];
+        magic_erase(&mut d, "0", &mask, 1.0, TEAL).expect("filled");
+        assert_eq!(pixel(&d, 3, 3), [0, 128, 128, 255]);
+        let mut layer = d.layers[0].clone();
+        layer.background = false;
+        ensure_alpha(&mut layer);
+        assert!(
+            !erases_to_background(&layer),
+            "an alpha channel was not added"
+        );
+    }
+
+    #[test]
+    fn an_antialiased_mask_softens_only_its_edge() {
+        let mut mask = vec![0u8; 9 * 9];
+        for y in 2..7 {
+            for x in 2..7 {
+                mask[y * 9 + x] = 255;
+            }
+        }
+        let soft = antialias_mask(&mask, 9);
+        assert_eq!(soft[4 * 9 + 4], 255);
+        assert!(soft[2 * 9 + 2] < 255 && soft[2 * 9 + 2] >= 128);
+        assert_eq!(soft[0], 0);
     }
 }

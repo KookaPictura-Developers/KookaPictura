@@ -1,6 +1,7 @@
 //! Stroke engine: dab coverage accumulation and per-pixel compositing.
 
 use crate::art_history::{layer_local, ArtHistoryBrush, ArtHistoryOptions};
+use crate::eraser::{BackgroundEraseOptions, BackgroundEraser};
 use crate::healing::RgbaImage;
 use crate::mixer::{MixerBrush, MixerOptions};
 use crate::replace::{ColorReplacer, ReplaceOptions};
@@ -38,12 +39,17 @@ pub enum StrokeKind {
         options: MixerOptions,
         reservoir: Rgba,
     },
+    /// Background Eraser: erases what matches the sample to transparency,
+    /// sparing `cfg.color` when protected; `cfg.background` is the Background
+    /// Swatch reference. Overrides Lock Transparency.
+    BackgroundErase(BackgroundEraseOptions),
 }
 
 enum DabEngine {
     Replace(ColorReplacer),
     Mixer(MixerBrush),
     ArtHistory(ArtHistoryBrush),
+    BackgroundErase(BackgroundEraser),
 }
 
 /// A per-dab engine and the layer pixels it edits in place.
@@ -120,6 +126,9 @@ impl Stroke {
                 ))),
                 StrokeKind::Mixer { options, reservoir } => Some(DabEngine::Mixer(
                     MixerBrush::new(options, reservoir, layer_transparency_locked(target)),
+                )),
+                StrokeKind::BackgroundErase(options) => Some(DabEngine::BackgroundErase(
+                    BackgroundEraser::new(options, cfg.background),
                 )),
             }
             .map(|engine| PerDab {
@@ -319,6 +328,9 @@ impl Stroke {
                 }
                 DabEngine::Mixer(mixer) => mixer.dab(&mut per.pixels, &cfg, x, y),
                 DabEngine::ArtHistory(brush) => brush.dab(&mut per.pixels, &cfg, x, y),
+                DabEngine::BackgroundErase(eraser) => {
+                    eraser.dab(&mut per.pixels, &cfg, x, y, cfg.color)
+                }
             };
             if let Some(d) = dirty {
                 changed = Some(changed.map_or(d, |c: PsdRect| union_rect(c, d)));
