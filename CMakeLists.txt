@@ -72,6 +72,48 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/encode_image.h
     crates/pictura-app/cpp/render_text.cpp
     crates/pictura-app/cpp/render_text.h
+    crates/pictura-app/cpp/selftest.cpp
+    crates/pictura-app/cpp/selftest_report.cpp
+    crates/pictura-app/cpp/selftest_layers_controls.cpp
+    crates/pictura-app/cpp/selftest_layers_smart_object.cpp
+    crates/pictura-app/cpp/selftest_pictura_raw.cpp
+    crates/pictura-app/cpp/selftest_layers_filter.cpp
+    crates/pictura-app/cpp/selftest_tools_selection.cpp
+    crates/pictura-app/cpp/selftest_layers_adjustments.cpp
+    crates/pictura-app/cpp/selftest_canvas.cpp
+    crates/pictura-app/cpp/selftest_canvas_view.cpp
+    crates/pictura-app/cpp/selftest_numeric.cpp
+    crates/pictura-app/cpp/selftest_layers_drag.cpp
+    crates/pictura-app/cpp/selftest_layers_interactions.cpp
+    crates/pictura-app/cpp/selftest_layers_round3.cpp
+    crates/pictura-app/cpp/selftest_layer_locks.cpp
+    crates/pictura-app/cpp/selftest_active_layer.cpp
+    crates/pictura-app/cpp/selftest_session.cpp
+    crates/pictura-app/cpp/selftest_ui_persistence.cpp
+    crates/pictura-app/cpp/selftest_tool_canvas.cpp
+    crates/pictura-app/cpp/selftest_paint_perf.cpp
+    crates/pictura-app/cpp/selftest_paint_live.cpp
+    crates/pictura-app/cpp/selftest_large_doc.cpp
+    crates/pictura-app/cpp/selftest_visibility.cpp
+    crates/pictura-app/cpp/selftest_shell_round3.cpp
+    crates/pictura-app/cpp/selftest_shell_round4.cpp
+    crates/pictura-app/cpp/selftest_shell_round4_float.cpp
+    crates/pictura-app/cpp/selftest_warp_preset.cpp
+    crates/pictura-app/cpp/selftest_ports.cpp
+    crates/pictura-app/cpp/selftest_crop_tool.cpp
+    crates/pictura-app/cpp/selftest_recent_files.cpp
+    crates/pictura-app/cpp/selftest_crop_group.cpp
+    crates/pictura-app/cpp/selftest_annotations.cpp
+    crates/pictura-app/cpp/selftest_healing.cpp
+    crates/pictura-app/cpp/selftest_paint_tools.cpp
+    crates/pictura-app/cpp/selftest_erasers.cpp
+    crates/pictura-app/cpp/selftest_fills.cpp
+    crates/pictura-app/cpp/selftest_retouch.cpp
+    crates/pictura-app/cpp/selftest_click_deselect.cpp
+    crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
+    crates/pictura-app/cpp/selftest_clipboard.cpp
+    crates/pictura-app/cpp/selftest_workspace_input.cpp
+    crates/pictura-app/cpp/selftest_control.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
     crates/pictura-app/cpp/control_server.cpp
@@ -145,6 +187,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/tool_mixerbrush.cpp
     crates/pictura-app/cpp/tool_stamps.cpp
     crates/pictura-app/cpp/tool_eraser.cpp
+    crates/pictura-app/cpp/tool_fills.cpp
+    crates/pictura-app/cpp/tool_blur.cpp
     crates/pictura-app/cpp/tool_wand.cpp
     crates/pictura-app/cpp/tool_move.cpp
     crates/pictura-app/cpp/tool_crop.cpp
@@ -170,6 +214,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/options_bar_paint.cpp
     crates/pictura-app/cpp/options_bar_stamp.cpp
     crates/pictura-app/cpp/options_bar_erase.cpp
+    crates/pictura-app/cpp/options_bar_fill.cpp
     crates/pictura-app/cpp/tool_hint_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp
     crates/pictura-app/cpp/layer_new_dialog.cpp

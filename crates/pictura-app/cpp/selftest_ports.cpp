@@ -5,10 +5,12 @@
 #include "selftest_crop_group.h"
 #include "selftest_crop_tool.h"
 #include "selftest_erasers.h"
+#include "selftest_fills.h"
 #include "selftest_healing.h"
 #include "selftest_magnetic_lasso.h"
 #include "selftest_paint_tools.h"
 #include "selftest_recent_files.h"
+#include "selftest_retouch.h"
 
 #include <initializer_list>
 
@@ -22,7 +24,8 @@ int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
                            runPatternStampChecks, runHistoryBrushChecks, runBrushPanelChecks,
                            runCloneSourcePanelChecks, runEraserChecks,
                            runArtHistoryBrushChecks, runBrushPresetPickerChecks,
-                           runBackgroundEraserChecks, runMagicEraserChecks}) {
+                           runBackgroundEraserChecks, runMagicEraserChecks,
+                           runGradientToolChecks, runPaintBucketChecks, runBlurToolChecks}) {
         if (const int code = run(frame); code != 0) {
             return code;
         }

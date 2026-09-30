@@ -56,6 +56,9 @@ std::unique_ptr<ToolHandler> makeArtHistoryBrushToolHandler();
 std::unique_ptr<ToolHandler> makeEraserToolHandler();
 std::unique_ptr<ToolHandler> makeBackgroundEraserToolHandler();
 std::unique_ptr<ToolHandler> makeMagicEraserToolHandler();
+std::unique_ptr<ToolHandler> makeGradientToolHandler();
+std::unique_ptr<ToolHandler> makePaintBucketToolHandler();
+std::unique_ptr<ToolHandler> makeBlurToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -95,6 +98,9 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::Eraser, makeEraserToolHandler());
     registry_.registerTool(ToolId::BackgroundEraser, makeBackgroundEraserToolHandler());
     registry_.registerTool(ToolId::MagicEraser, makeMagicEraserToolHandler());
+    registry_.registerTool(ToolId::Gradient, makeGradientToolHandler());
+    registry_.registerTool(ToolId::PaintBucket, makePaintBucketToolHandler());
+    registry_.registerTool(ToolId::Blur, makeBlurToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -341,11 +347,16 @@ void ToolController::setForeground(const QColor& color)
     foreground_ = color;
     // Choosing a foreground colour loads the Mixer Brush (docs/03-tools/mixer-brush.md).
     setMixerReservoir(color);
+    emit colorsChanged();
 }
 
 QColor ToolController::background() const { return background_; }
 
-void ToolController::setBackground(const QColor& color) { background_ = color; }
+void ToolController::setBackground(const QColor& color)
+{
+    background_ = color;
+    emit colorsChanged();
+}
 
 void ToolController::adjustBrushSize(int delta) { setBrushSize(brushSize_ + delta); }
 
