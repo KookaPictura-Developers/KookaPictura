@@ -30,6 +30,9 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network)
 
+# Enables BUILD_TESTING (default ON); the Qt Test suites live under cpp/tests.
+include(CTest)
+
 find_package(CxxQt QUIET)
 if(NOT CxxQt_FOUND)
     include(FetchContent)
@@ -62,54 +65,13 @@ cxx_qt_import_crate(
     QMAKE "${QMAKE_EXECUTABLE}"
 )
 
-add_executable(pictura
-    crates/pictura-app/cpp/main.cpp
+add_library(pictura_shell STATIC
     crates/pictura-app/cpp/decode_image.cpp
     crates/pictura-app/cpp/decode_image.h
     crates/pictura-app/cpp/encode_image.cpp
     crates/pictura-app/cpp/encode_image.h
     crates/pictura-app/cpp/render_text.cpp
     crates/pictura-app/cpp/render_text.h
-    crates/pictura-app/cpp/selftest.cpp
-    crates/pictura-app/cpp/selftest_report.cpp
-    crates/pictura-app/cpp/selftest_layers_controls.cpp
-    crates/pictura-app/cpp/selftest_layers_smart_object.cpp
-    crates/pictura-app/cpp/selftest_pictura_raw.cpp
-    crates/pictura-app/cpp/selftest_layers_filter.cpp
-    crates/pictura-app/cpp/selftest_tools_selection.cpp
-    crates/pictura-app/cpp/selftest_layers_adjustments.cpp
-    crates/pictura-app/cpp/selftest_canvas.cpp
-    crates/pictura-app/cpp/selftest_canvas_view.cpp
-    crates/pictura-app/cpp/selftest_numeric.cpp
-    crates/pictura-app/cpp/selftest_layers_drag.cpp
-    crates/pictura-app/cpp/selftest_layers_interactions.cpp
-    crates/pictura-app/cpp/selftest_layers_round3.cpp
-    crates/pictura-app/cpp/selftest_layer_locks.cpp
-    crates/pictura-app/cpp/selftest_active_layer.cpp
-    crates/pictura-app/cpp/selftest_session.cpp
-    crates/pictura-app/cpp/selftest_ui_persistence.cpp
-    crates/pictura-app/cpp/selftest_tool_canvas.cpp
-    crates/pictura-app/cpp/selftest_paint_perf.cpp
-    crates/pictura-app/cpp/selftest_paint_live.cpp
-    crates/pictura-app/cpp/selftest_large_doc.cpp
-    crates/pictura-app/cpp/selftest_visibility.cpp
-    crates/pictura-app/cpp/selftest_shell_round3.cpp
-    crates/pictura-app/cpp/selftest_shell_round4.cpp
-    crates/pictura-app/cpp/selftest_shell_round4_float.cpp
-    crates/pictura-app/cpp/selftest_warp_preset.cpp
-    crates/pictura-app/cpp/selftest_ports.cpp
-    crates/pictura-app/cpp/selftest_crop_tool.cpp
-    crates/pictura-app/cpp/selftest_recent_files.cpp
-    crates/pictura-app/cpp/selftest_crop_group.cpp
-    crates/pictura-app/cpp/selftest_annotations.cpp
-    crates/pictura-app/cpp/selftest_healing.cpp
-    crates/pictura-app/cpp/selftest_paint_tools.cpp
-    crates/pictura-app/cpp/selftest_erasers.cpp
-    crates/pictura-app/cpp/selftest_click_deselect.cpp
-    crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
-    crates/pictura-app/cpp/selftest_clipboard.cpp
-    crates/pictura-app/cpp/selftest_workspace_input.cpp
-    crates/pictura-app/cpp/selftest_control.cpp
     crates/pictura-app/cpp/interop.cpp
     crates/pictura-app/cpp/commands.cpp
     crates/pictura-app/cpp/control_server.cpp
@@ -232,33 +194,6 @@ add_executable(pictura
     crates/pictura-app/cpp/icons.h
     crates/pictura-app/cpp/file_drop_router.h
     crates/pictura-app/cpp/frame.h
-    crates/pictura-app/cpp/selftest_layers_controls.h
-    crates/pictura-app/cpp/selftest_layers_smart_object.h
-    crates/pictura-app/cpp/selftest_pictura_raw.h
-    crates/pictura-app/cpp/selftest_warp_preset.h
-    crates/pictura-app/cpp/selftest_layers_filter.h
-    crates/pictura-app/cpp/selftest_tools_selection.h
-    crates/pictura-app/cpp/selftest_layers_adjustments.h
-    crates/pictura-app/cpp/selftest_canvas.h
-    crates/pictura-app/cpp/selftest_canvas_view.h
-    crates/pictura-app/cpp/selftest_numeric.h
-    crates/pictura-app/cpp/selftest_layers_drag.h
-    crates/pictura-app/cpp/selftest_layers_interactions.h
-    crates/pictura-app/cpp/selftest_layers_round3.h
-    crates/pictura-app/cpp/selftest_layer_locks.h
-    crates/pictura-app/cpp/selftest_active_layer.h
-    crates/pictura-app/cpp/selftest_session.h
-    crates/pictura-app/cpp/selftest_ui_persistence.h
-    crates/pictura-app/cpp/selftest_tool_canvas.h
-    crates/pictura-app/cpp/selftest_paint_perf.h
-    crates/pictura-app/cpp/selftest_paint_live.h
-    crates/pictura-app/cpp/selftest_large_doc.h
-    crates/pictura-app/cpp/selftest_visibility.h
-    crates/pictura-app/cpp/selftest_shell_round3.h
-    crates/pictura-app/cpp/selftest_shell_round4.h
-    crates/pictura-app/cpp/selftest_shell_round4_float.h
-    crates/pictura-app/cpp/selftest_workspace_input.h
-    crates/pictura-app/cpp/selftest_control.h
     crates/pictura-app/cpp/panels/layers_panel.h
     crates/pictura-app/cpp/panels/layers_filter_proxy.h
     crates/pictura-app/cpp/panels/layers_filter_bar.h
@@ -286,13 +221,110 @@ add_executable(pictura
     crates/pictura-app/cpp/new_document_dialog.h
     crates/pictura-app/cpp/layer_new_dialog.h
     crates/pictura-app/cpp/dialogs.h
-    assets/pictura.qrc
 )
-target_include_directories(pictura PRIVATE
+target_include_directories(pictura_shell PUBLIC
     crates/pictura-app/cpp
     "${QT_HEADERS_DIR}/QtGui/${QT_VERSION_STR}/QtGui"
 )
 # The Rust static lib embeds `pictura-color` (Little CMS 2); a staticlib does not
 # propagate its native link dependencies, so the C++ link needs `-llcms2`.
 find_library(LCMS2_LIBRARY NAMES lcms2 REQUIRED)
-target_link_libraries(pictura PRIVATE pictura_app Qt6::Svg Qt6::Network "${LCMS2_LIBRARY}")
+target_link_libraries(pictura_shell PUBLIC pictura_app Qt6::Svg Qt6::Network "${LCMS2_LIBRARY}")
+
+# Compile the Qt resource once: the executable and every Qt Test binary link
+# this object library instead of each embedding its own copy of the .qrc.
+# POSITION_INDEPENDENT_CODE: object libraries default to non-PIC, but they are
+# linked into PIE executables; lld rejects the qrc's references without it.
+add_library(pictura_assets OBJECT assets/pictura.qrc)
+set_target_properties(pictura_assets PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# The shell is a static library so the Qt Test suites under cpp/tests can link the
+# UI without a second main. Only main.cpp and the self-test sources stay here.
+add_executable(pictura
+    crates/pictura-app/cpp/main.cpp
+    crates/pictura-app/cpp/selftest_active_layer.cpp
+    crates/pictura-app/cpp/selftest_annotations.cpp
+    crates/pictura-app/cpp/selftest_canvas.cpp
+    crates/pictura-app/cpp/selftest_canvas_view.cpp
+    crates/pictura-app/cpp/selftest_click_deselect.cpp
+    crates/pictura-app/cpp/selftest_control.cpp
+    crates/pictura-app/cpp/selftest.cpp
+    crates/pictura-app/cpp/selftest_crop_group.cpp
+    crates/pictura-app/cpp/selftest_crop_tool.cpp
+    crates/pictura-app/cpp/selftest_erasers.cpp
+    crates/pictura-app/cpp/selftest_healing.cpp
+    crates/pictura-app/cpp/selftest_large_doc.cpp
+    crates/pictura-app/cpp/selftest_layer_locks.cpp
+    crates/pictura-app/cpp/selftest_layers_adjustments.cpp
+    crates/pictura-app/cpp/selftest_layers_controls.cpp
+    crates/pictura-app/cpp/selftest_layers_drag.cpp
+    crates/pictura-app/cpp/selftest_layers_filter.cpp
+    crates/pictura-app/cpp/selftest_layers_interactions.cpp
+    crates/pictura-app/cpp/selftest_layers_round3.cpp
+    crates/pictura-app/cpp/selftest_layers_smart_object.cpp
+    crates/pictura-app/cpp/selftest_magnetic_lasso.cpp
+    crates/pictura-app/cpp/selftest_numeric.cpp
+    crates/pictura-app/cpp/selftest_paint_live.cpp
+    crates/pictura-app/cpp/selftest_paint_perf.cpp
+    crates/pictura-app/cpp/selftest_paint_tools.cpp
+    crates/pictura-app/cpp/selftest_pictura_raw.cpp
+    crates/pictura-app/cpp/selftest_ports.cpp
+    crates/pictura-app/cpp/selftest_recent_files.cpp
+    crates/pictura-app/cpp/selftest_report.cpp
+    crates/pictura-app/cpp/selftest_session.cpp
+    crates/pictura-app/cpp/selftest_shell_round3.cpp
+    crates/pictura-app/cpp/selftest_shell_round4.cpp
+    crates/pictura-app/cpp/selftest_shell_round4_float.cpp
+    crates/pictura-app/cpp/selftest_tool_canvas.cpp
+    crates/pictura-app/cpp/selftest_tools_selection.cpp
+    crates/pictura-app/cpp/selftest_ui_persistence.cpp
+    crates/pictura-app/cpp/selftest_visibility.cpp
+    crates/pictura-app/cpp/selftest_warp_preset.cpp
+    crates/pictura-app/cpp/selftest_workspace_input.cpp
+    crates/pictura-app/cpp/selftest_active_layer.h
+    crates/pictura-app/cpp/selftest_annotations.h
+    crates/pictura-app/cpp/selftest_canvas.h
+    crates/pictura-app/cpp/selftest_canvas_view.h
+    crates/pictura-app/cpp/selftest_click_deselect.h
+    crates/pictura-app/cpp/selftest_control.h
+    crates/pictura-app/cpp/selftest_crop_group.h
+    crates/pictura-app/cpp/selftest_crop_tool.h
+    crates/pictura-app/cpp/selftest_erasers.h
+    crates/pictura-app/cpp/selftest.h
+    crates/pictura-app/cpp/selftest_healing.h
+    crates/pictura-app/cpp/selftest_large_doc.h
+    crates/pictura-app/cpp/selftest_layer_locks.h
+    crates/pictura-app/cpp/selftest_layers_adjustments.h
+    crates/pictura-app/cpp/selftest_layers_controls.h
+    crates/pictura-app/cpp/selftest_layers_drag.h
+    crates/pictura-app/cpp/selftest_layers_filter.h
+    crates/pictura-app/cpp/selftest_layers_interactions.h
+    crates/pictura-app/cpp/selftest_layers_round3.h
+    crates/pictura-app/cpp/selftest_layers_smart_object.h
+    crates/pictura-app/cpp/selftest_magnetic_lasso.h
+    crates/pictura-app/cpp/selftest_numeric.h
+    crates/pictura-app/cpp/selftest_paint_fixture.h
+    crates/pictura-app/cpp/selftest_paint_live.h
+    crates/pictura-app/cpp/selftest_paint_perf.h
+    crates/pictura-app/cpp/selftest_paint_tools.h
+    crates/pictura-app/cpp/selftest_pictura_raw.h
+    crates/pictura-app/cpp/selftest_ports.h
+    crates/pictura-app/cpp/selftest_recent_files.h
+    crates/pictura-app/cpp/selftest_report.h
+    crates/pictura-app/cpp/selftest_session.h
+    crates/pictura-app/cpp/selftest_shell_round3.h
+    crates/pictura-app/cpp/selftest_shell_round4_float.h
+    crates/pictura-app/cpp/selftest_shell_round4.h
+    crates/pictura-app/cpp/selftest_tool_canvas.h
+    crates/pictura-app/cpp/selftest_tools_selection.h
+    crates/pictura-app/cpp/selftest_ui_persistence.h
+    crates/pictura-app/cpp/selftest_visibility.h
+    crates/pictura-app/cpp/selftest_warp_preset.h
+    crates/pictura-app/cpp/selftest_workspace_input.h
+)
+target_link_libraries(pictura PRIVATE pictura_shell pictura_assets)
+
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_subdirectory(crates/pictura-app/cpp/tests)
+endif()
