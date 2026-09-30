@@ -331,12 +331,15 @@ Selection-only edits no longer run the compositor at all; they emit `changed`
 only to move the selection overlay. The histograms and navigator read a
 view-pyramid level rather than `PictureView::image()`.
 
-### M36 — history copy-on-write / tile diffs (deferred)
+### M36 — history region deltas (deferred)
 
-`History::capture` clones the whole document per undoable state (~60 ms at
-4000² and up to 20 states of RAM). Copy-on-write layer-channel sharing or
-per-tile diffs removes both the latency and the memory. Needs its own design
-(content versioning / tile identity), so it is staged after M35.
+Copy-on-write pixel planes landed: `Channel`, `PixelBuffer` and `LayerMask` hold
+`pictura_core::Plane`, so `History::capture`, `Stroke::begin_at` and every
+undo/redo/jump clone by refcount and a write forks only the plane it touches
+(`Document::clone` measures 0.004 ms at 4000² against the 60 ms it cost). What
+is left deferred is **region** deltas: a state still keeps the planes it has
+forked, so 20 states of a heavily-edited 4000² layer still hold 20 copies of
+that layer. That needs content versioning / tile identity, so it stays staged.
 
 ### M37 — resident per-layer GPU source buffers (deferred)
 
