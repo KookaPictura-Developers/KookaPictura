@@ -202,3 +202,69 @@ fn stroke_split_profile_4000() {
         }
     }
 }
+
+/// Print-only: how one dab's rasterization and present grow with brush diameter
+/// on a 4000² document, so the reduced-resolution stroke preview is sized from
+/// a measurement rather than a guess. The one-time plane fork is reported
+/// separately because it is a fixed 64 MB cost, independent of the brush.
+#[test]
+#[ignore = "4000x4000 large-brush profile; run explicitly with --ignored --nocapture"]
+fn large_brush_profile_4000() {
+    use pictura_paint::{spacing::SpacingMode, Stroke, StrokeConfig, StrokeSample};
+
+    let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("base", 4000, 4000, (30, 60, 90))];
+    let _ = pictura_render::composite_active(&doc, true);
+    let gpu = pictura_render::gpu_available();
+
+    let t = std::time::Instant::now();
+    let mut forked = doc.clone();
+    // `as_mut_slice` goes through `DerefMut`, so it forks a shared plane the
+    // way the stroke's first write does; touching no byte keeps it a pure fork.
+    for c in &mut forked.layers[0].channels {
+        let _ = c.data.as_mut_slice();
+    }
+    let fork = t.elapsed();
+    drop(forked);
+
+    for diameter in [500u32, 1000, 2000, 5000] {
+        let cfg = StrokeConfig {
+            color: rgba_from_argb(0xFFFF0000),
+            diameter,
+            hardness: 100,
+            spacing: SpacingMode::Fixed(25),
+            ..StrokeConfig::default()
+        };
+        let t = std::time::Instant::now();
+        let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("stroke begins");
+        let begin = t.elapsed();
+
+        let t = std::time::Instant::now();
+        let changed = stroke.sample(StrokeSample {
+            x: 2000.0,
+            y: 2000.0,
+            pressure: 1.0,
+        });
+        let raster = t.elapsed();
+        let rect = stroke.take_dirty().expect("a dab dirties a region");
+
+        let t = std::time::Instant::now();
+        let (buffer, _) = pictura_render::composite_region_active(stroke.document(), rect, gpu);
+        let composite = t.elapsed();
+        let t = std::time::Instant::now();
+        let _ = buffer_to_image(&buffer);
+        let display = t.elapsed();
+
+        println!(
+            "large_brush_profile fork={:.2}ms diameter={diameter} begin={:.2}ms \
+             raster={:.2}ms present={:.2}ms region={}x{} changed={changed}",
+            fork.as_secs_f64() * 1000.0,
+            begin.as_secs_f64() * 1000.0,
+            raster.as_secs_f64() * 1000.0,
+            (composite + display).as_secs_f64() * 1000.0,
+            rect.width(),
+            rect.height(),
+        );
+        drop(stroke);
+    }
+}
