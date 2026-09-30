@@ -327,6 +327,18 @@ stroke nothing changed: a region refresh still presents immediately. Without
 this a fast stroke composites and presents once per pointer event instead of
 once per frame; self-test `pp_present_flush` (exit code 544) pins the contract.
 
+Above the raster budget the in-stroke present drops to a reduced view-pyramid
+level: while a large brush is down `preview_dab` rasterizes the accumulated dabs'
+coverage at level 3 (1/8) over a snapshot of that level taken at stroke start,
+`preview_present` patches the level and emits `regionBlitted` (so the canvas
+repaints and the frame-flush chain runs), and `ImageView::presentCrop` forces the
+crop to the preview level. `end_paint` replays the logged samples through a real
+full-resolution `Stroke` before `record`, so the committed pixels are exact;
+`cancel_paint` and any `reset_pyramid` drop the preview. Self-test
+`pp_large_preview` (exit code 545) pins a ⌀512 stroke on a 2048² document
+presenting level 3 live with the post-commit canvas equal to a full recomposite.
+The exact stroke still costs O(area) at release — the recorded ceiling (D6).
+
 Selection-only edits no longer run the compositor at all; they emit `changed`
 only to move the selection overlay. The histograms and navigator read a
 view-pyramid level rather than `PictureView::image()`.
@@ -341,7 +353,7 @@ is left deferred is **region** deltas: a state still keeps the planes it has
 forked, so 20 states of a heavily-edited 4000² layer still hold 20 copies of
 that layer. That needs content versioning / tile identity, so it stays staged.
 
-### M37 — resident per-layer GPU source buffers (deferred)
+### M37 — resident per-layer GPU source buffers (partly landed)
 
 Deferred from M33. The remaining full-composite cost is the per-composite
 source/mask **upload** (~128 MB + 16 MB at 4000²), not the dispatch (~0.2 ms) or
@@ -349,6 +361,16 @@ the ~27–32 ms readback; keeping a layer's source planes resident on the GPU
 across a composite session would remove it, but needs content versioning to
 detect a changed layer. (The shader-side planar output shipped as the M33 A2
 follow-up above.)
+
+**The live stroke now uses residency, without content versioning.** The
+`gpu-stroke-rendering` change uploads the *target layer* once at `begin_paint`
+(`pictura_render::gpu::GpuStroke`) and keeps it — plus an immutable base copy and
+a per-pixel coverage plane — for the stroke's lifetime; the stroke object is the
+epoch, so a new stroke re-uploads and the buffers are dropped on commit/cancel.
+This is not the general compositor's per-layer residency: the stroke path edits
+its own layer buffer and writes each dab back into the exact working document,
+so it needs no per-layer invalidation. The general composite-source residency
+still waits on content versioning.
 
 ### M38 — 256² GPU tiles + LRU + seam gutters + mipmaps (Graphite-style, deferred)
 
