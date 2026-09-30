@@ -2,13 +2,15 @@
 
 use crate::art_history::{layer_local, ArtHistoryBrush, ArtHistoryOptions};
 use crate::eraser::{BackgroundEraseOptions, BackgroundEraser};
-use crate::focus::{BlurBrush, BlurOptions};
+use crate::focus::{FocusBrush, FocusOptions};
 use crate::healing::RgbaImage;
 use crate::mixer::{MixerBrush, MixerOptions};
 use crate::replace::{ColorReplacer, ReplaceOptions};
+use crate::smudge::{SmudgeBrush, SmudgeOptions};
 use crate::spacing::DabPlacer;
 use crate::stamp::StampSource;
 use crate::tip::TipParams;
+use crate::tone::{ToneBrush, ToneOptions};
 use crate::{PaintMode, Rgba, StrokeConfig, StrokeSample};
 use pictura_core::{
     layer_pixel_locked, layer_transparency_locked, BitDepth, Document, Layer, PsdRect,
@@ -52,7 +54,9 @@ enum DabEngine {
     Mixer(MixerBrush),
     ArtHistory(ArtHistoryBrush),
     BackgroundErase(BackgroundEraser),
-    Blur(BlurBrush),
+    Focus(FocusBrush),
+    Smudge(SmudgeBrush),
+    Tone(ToneBrush),
 }
 
 /// A per-dab engine and the layer pixels it edits in place.
@@ -205,24 +209,69 @@ impl Stroke {
         Ok(stroke)
     }
 
-    /// Start a Blur stroke. `sampled` is the document-space composite Sample All
-    /// Layers reads; `None` reads the layer. 8-bit documents only.
-    pub fn begin_blur(
+    /// Start a Blur or Sharpen stroke. `sampled` is the document-space
+    /// composite Sample All Layers reads; `None` reads the layer. 8-bit
+    /// documents only.
+    pub fn begin_focus(
         doc: &Document,
         path: &str,
         cfg: StrokeConfig,
-        options: BlurOptions,
+        options: FocusOptions,
         sampled: Option<RgbaImage>,
+    ) -> Result<Stroke, PaintError> {
+        Stroke::begin_retouch(doc, path, cfg, |stroke, target| {
+            let sampled = sampled.map(|s| layer_local(&s, stroke.rect));
+            DabEngine::Focus(FocusBrush::new(
+                options,
+                sampled,
+                layer_transparency_locked(target),
+            ))
+        })
+    }
+
+    /// Start a Smudge stroke; `cfg.color` is the Finger Painting colour.
+    /// `sampled` as for [`Stroke::begin_focus`]. 8-bit documents only.
+    pub fn begin_smudge(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        options: SmudgeOptions,
+        sampled: Option<RgbaImage>,
+    ) -> Result<Stroke, PaintError> {
+        Stroke::begin_retouch(doc, path, cfg, |stroke, target| {
+            let sampled = sampled.map(|s| layer_local(&s, stroke.rect));
+            let paint = [cfg.color.r, cfg.color.g, cfg.color.b, cfg.color.a];
+            let locked = layer_transparency_locked(target);
+            DabEngine::Smudge(SmudgeBrush::new(options, sampled, locked, paint))
+        })
+    }
+
+    /// Start a Dodge stroke. 8-bit documents only.
+    pub fn begin_tone(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        options: ToneOptions,
+    ) -> Result<Stroke, PaintError> {
+        Stroke::begin_retouch(doc, path, cfg, |_, _| {
+            DabEngine::Tone(ToneBrush::new(options))
+        })
+    }
+
+    /// A stroke whose dabs run the per-dab `engine` built for the target layer.
+    fn begin_retouch(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        engine: impl FnOnce(&Stroke, &Layer) -> DabEngine,
     ) -> Result<Stroke, PaintError> {
         if doc.depth != BitDepth::Eight {
             return Err(PaintError::UnsupportedDepth);
         }
         let mut stroke = Stroke::begin_kind(doc, path, cfg, StrokeKind::Paint)?;
         let target = layer_at(doc, &stroke.layer_path).ok_or(PaintError::NoRasterLayer)?;
-        let sampled = sampled.map(|s| layer_local(&s, stroke.rect));
-        let brush = BlurBrush::new(options, sampled, layer_transparency_locked(target));
         stroke.per_dab = Some(PerDab {
-            engine: DabEngine::Blur(brush),
+            engine: engine(&stroke, target),
             pixels: layer_rgba(target),
         });
         Ok(stroke)
@@ -533,7 +582,9 @@ impl Stroke {
                 DabEngine::BackgroundErase(eraser) => {
                     eraser.dab(&mut per.pixels, &cfg, x, y, cfg.color)
                 }
-                DabEngine::Blur(brush) => brush.dab(&mut per.pixels, &cfg, x, y),
+                DabEngine::Focus(brush) => brush.dab(&mut per.pixels, &cfg, x, y),
+                DabEngine::Smudge(brush) => brush.dab(&mut per.pixels, &cfg, x, y),
+                DabEngine::Tone(brush) => brush.dab(&mut per.pixels, &cfg, x, y),
             };
             if let Some(d) = dirty {
                 changed = Some(changed.map_or(d, |c: PsdRect| union_rect(c, d)));
