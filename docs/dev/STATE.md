@@ -15,15 +15,15 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1797 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
+- Test suite: **1818 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
   the `scroll_zoom_pan_profile_*` pair, `region_move_timing_4000`,
   `region_refresh_profile_4000`, `undo_profile_4000`, the `composite_profile_*`
   pair, and `filter_profile_1024`; counted from `cargo nextest run --workspace`,
   which excludes the pre-existing ignored `pictura-render` doctest that
   `cargo test --workspace` reports separately).
-  The C++ self-test reports **470 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **477 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2305 passed, 13 skipped, 0 failed**.
+  probes) reports **2333 passed, 13 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -560,6 +560,34 @@ Snapshot for resuming after a context break. Update after each milestone.
   codes 545, 546. Ceilings (`ponytail:`): no dynamics, Brush Presets, sampled /
   bristle / erodible tips, or velocity spacing; no source overlay or frame
   controls; clone slots are controller-wide, not per document.
+- **Eraser and Art History Brush** (changes `eraser-tool` and
+  `art-history-brush-tool`, issues #21 and #20; the Eraser's background-colour
+  erase ported from photorust's erase mode, the Art History Brush original):
+  the Y group is complete. `pictura_paint::eraser::begin_erase` starts a Brush
+  stroke that erases an ordinary layer to transparency (Clear: coverage ×
+  Opacity multiplies alpha down) and paints the background colour on the
+  Background, an alpha-less layer, or a transparency-locked layer; Mode is
+  Brush / Pencil / Block (a hard 16 px square at full strength,
+  `StrokeConfig::square`); Erase to History, or Alt at the press, paints the
+  History Brush source back. `pictura_paint::art_history` scatters strokes over
+  the Area per dab, coloured from the source at their start, running along the
+  source's edges for the Style's length / wander / curl (CS6's ten style
+  names; the table is a design choice), gated by Tolerance (skip pixels within
+  it of the source), seeded by the history index; `Stroke::begin_art_history`
+  refuses 16/32-bit documents. Bridges `begin_eraser` ("Eraser") and
+  `begin_art_history_brush` ("Art History Brush") in
+  `cxxqt_object/paint_tools.rs`; handlers `tool_eraser.cpp` and
+  `tool_stamps.cpp`; bars in `options_bar_stamp.cpp` (Eraser: tip, Mode,
+  Opacity / Flow greyed for Block, Erase to History; Art History: tip, greyed
+  Normal Mode, Opacity, Style, Area 50 px, Tolerance 0 %). Both join the size
+  ring and `[` / `]`; Alt on the Eraser keeps the paint cursor. Self-test codes
+  547, 548; `shift_plain` (117) asserts Shift+Y and E and probes the G group,
+  `keys_shown` (116) now probes the E group, and guard 98 probes the Background
+  Eraser. Ceilings (`ponytail:`): Block is 16 document (not screen) pixels and
+  its ring shows the brush size; the Art History Brush paints only as the
+  pointer moves, with Normal mode only; Tolerance defaults to 0 % (the spec's
+  unverified 100 % would paint almost nowhere); both match the source layer by
+  panel path.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
