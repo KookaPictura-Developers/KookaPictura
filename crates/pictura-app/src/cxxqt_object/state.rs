@@ -1,10 +1,14 @@
 use crate::history::History;
 use cxx_qt_lib::QImage;
 use pictura_core::{Document, PixelBuffer, PsdRect};
-use pictura_paint::{HealStroke, Stroke};
+use pictura_paint::spacing::DabPlacer;
+use pictura_paint::{HealStroke, Stroke, StrokeSample};
+use pictura_render::gpu::GpuStroke;
 use pictura_render::{CanvasDamage, ViewPyramid};
 use pictura_select::Selection;
 use std::collections::HashMap;
+
+use super::helpers::TileSet;
 
 /// The live Free Transform gesture mode. `Free` is the existing similarity
 /// transform; the other three edit a document-space target quad.
@@ -93,6 +97,9 @@ pub struct PictureViewRust {
     pub(super) stroke_label: String,
     /// Dabs received since the last in-stroke present, waiting for `flush_present`.
     pub(super) pending_present: Option<PsdRect>,
+    /// The stroke's dirty area as document-space tiles, rebuilt per dab and
+    /// decomposed into disjoint rectangles at commit.
+    pub(super) stroke_tiles: TileSet,
     /// True from the present that opens a frame until its flush runs, so the
     /// frame's later dabs accumulate instead of presenting again.
     pub(super) present_flush_due: bool,
@@ -135,6 +142,40 @@ pub struct PictureViewRust {
     pub(super) edge_map: Option<pictura_select::EdgeMap>,
     /// The Ruler tool's measuring line: view state, never saved or undone.
     pub(super) ruler: Option<pictura_core::Ruler>,
+    /// The reduced-resolution stroke presented while a large brush is down;
+    /// `None` whenever the dab fits the raster budget.
+    pub(super) preview: Option<PreviewStroke>,
+    /// The full-resolution GPU stroke presented while the button is down;
+    /// `None` when the GPU is off or the paint mode is not modelled. Each dab
+    /// patches the exact working document, so the commit needs no replay and the
+    /// committed pixels equal the GPU stroke (within ±1 LSB of the CPU oracle).
+    pub(super) gpu_stroke: Option<GpuStroke>,
+    /// The GPU present's dab placer, so its dabs space exactly as the CPU
+    /// stroke's do.
+    pub(super) gpu_placer: Option<DabPlacer>,
+}
+
+/// A large-brush stroke shown at a view-pyramid level instead of rasterized at
+/// full resolution.
+///
+/// `snapshot` is the level's bytes as they were at stroke start — the pre-stroke
+/// pixels the blend always starts from — so `coverage` can be applied to the
+/// whole extent on every present without compounding. `samples` is the exact
+/// input the commit replays through a real [`Stroke`] on the full-resolution
+/// document, which is what keeps the committed pixels byte-identical to a
+/// stroke that never previewed.
+pub(super) struct PreviewStroke {
+    pub(super) level: u32,
+    pub(super) scale: u32,
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) snapshot: Vec<u8>,
+    pub(super) coverage: Vec<u8>,
+    pub(super) extent: Option<pictura_core::PsdRect>,
+    pub(super) samples: Vec<StrokeSample>,
+    /// The stroke's configuration, so the preview rasterizes the same tip,
+    /// flow and opacity the exact stroke will.
+    pub(super) cfg: pictura_paint::StrokeConfig,
 }
 
 impl Default for PictureViewRust {
@@ -155,6 +196,7 @@ impl Default for PictureViewRust {
             stroke: None,
             stroke_label: String::new(),
             pending_present: None,
+            stroke_tiles: TileSet::default(),
             present_flush_due: false,
             heal_stroke: None,
             move_base: None,
@@ -178,6 +220,9 @@ impl Default for PictureViewRust {
             link_sets: HashMap::new(),
             edge_map: None,
             ruler: None,
+            preview: None,
+            gpu_stroke: None,
+            gpu_placer: None,
         }
     }
 }

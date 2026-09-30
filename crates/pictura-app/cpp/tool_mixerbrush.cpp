@@ -8,7 +8,7 @@
 #include "tool_handler.h"
 
 #include "paint_tip.h"
-
+#include "pictura_debug_timing.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -40,6 +40,7 @@ public:
         }
         const MixerOptions o = ctx.mixerOptions();
         // ponytail: Sample All Layers is not wired; the active layer is sampled.
+        pictura::ScopedTimer beginTimer("cxx_begin_mixer_brush (call)");
         if (!begin_mixer_brush(*v, ctx.mixerReservoir().rgba(), paintTip(ctx), o.wet, o.load,
                                o.mix, o.flow)) {
             if (activePixelLocked(v)) {
@@ -53,7 +54,10 @@ public:
         }
         ctx.setDragging(true);
         ctx.setDragCommitted(false);
-        v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
+        {
+            pictura::ScopedTimer t("cxx_paint_dab (call)");
+            v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
+        }
         return true;
     }
 
@@ -63,6 +67,7 @@ public:
             return;
         }
         if (PictureView* v = ctx.view()) {
+            pictura::ScopedTimer t("cxx_paint_dab (call)");
             v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
         }
     }
@@ -78,7 +83,10 @@ public:
             return;
         }
         const QColor carried = QColor::fromRgba(mixer_reservoir(*v));
-        v->end_paint();
+        {
+            pictura::ScopedTimer t("cxx_end_paint (call)");
+            v->end_paint();
+        }
         // Clean wins over Load when both are on: a cleaned brush is not then
         // reloaded.
         const MixerOptions o = ctx.mixerOptions();

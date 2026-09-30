@@ -203,6 +203,87 @@ fn stroke_split_profile_4000() {
     }
 }
 
+/// Print-only split of the commit (`refresh_regions`) for a dense stroke whose
+/// tiles collapse to one bounding-box rectangle, so the dominant sub-step is
+/// chosen by measurement. 4000², 1/2/8 full-canvas layers, CPU and GPU region
+/// composite, over increasing union sides. The old union-crop image and the new
+/// region-buffer image are timed back to back on the same patched state. No
+/// pass/fail budget.
+#[test]
+#[ignore = "4000x4000 commit refresh profile; run explicitly with --ignored --nocapture"]
+fn commit_refresh_profile_4000() {
+    use super::helpers::{paint_timing, union_rect};
+    use super::helpers_composite::premultiplied_display_image;
+    use super::PictureViewRust;
+    use std::time::{Duration, Instant};
+
+    for layers in [1usize, 2, 8] {
+        for side in [1000i32, 2000, 4000] {
+            for gpu in [false, true] {
+                if gpu && !pictura_render::gpu_available() {
+                    continue;
+                }
+                let mut doc = Document::new(4000, 4000, ColorMode::Rgb, BitDepth::Eight);
+                doc.layers = (0..layers)
+                    .map(|i| pixel_layer(&format!("L{i}"), 4000, 4000, (30, 60, 90)))
+                    .collect();
+                doc.composite = pictura_render::composite_active(&doc, gpu).0;
+                let mut rust = PictureViewRust {
+                    doc: Some(doc),
+                    gpu_compute: gpu,
+                    ..Default::default()
+                };
+                rust.reset_pyramid();
+
+                let union = PsdRect {
+                    top: 0,
+                    left: 0,
+                    bottom: side,
+                    right: side,
+                };
+                rust.stroke_tiles.mark(union);
+                let regions = rust.take_stroke_regions(union);
+
+                paint_timing::start("commit refresh profile");
+                let t0 = Instant::now();
+                let mut covered: Option<PsdRect> = None;
+                let mut srgb_image = Duration::ZERO;
+                for &rect in &regions {
+                    let Some((x0, y0, clipped, buf)) = rust.refresh_region_buffer(rect) else {
+                        continue;
+                    };
+                    let t = Instant::now();
+                    let _new = premultiplied_display_image(&buf);
+                    if regions.len() == 1 {
+                        srgb_image = t.elapsed();
+                    }
+                    rust.apply_refreshed_region(x0, y0, clipped, buf);
+                    covered = Some(covered.map_or(clipped, |u| union_rect(u, clipped)));
+                }
+                let loop_time = t0.elapsed();
+                let covered = covered.expect("a dense stroke covers pixels");
+                let t = Instant::now();
+                let _old = rust.display_crop(0, covered);
+                let crop = t.elapsed();
+                paint_timing::record("commit_refresh_region_old", loop_time + crop);
+                paint_timing::record("commit_refresh_region_new", loop_time + srgb_image);
+                paint_timing::report();
+                println!(
+                    "commit_refresh layers={layers} side={side} gpu={} regions={} \
+                     crop={:.2}ms srgb_image={:.2}ms old={:.2}ms new={:.2}ms delta={:+.2}ms",
+                    gpu as u8,
+                    regions.len(),
+                    crop.as_secs_f64() * 1000.0,
+                    srgb_image.as_secs_f64() * 1000.0,
+                    (loop_time + crop).as_secs_f64() * 1000.0,
+                    (loop_time + srgb_image).as_secs_f64() * 1000.0,
+                    (srgb_image.as_secs_f64() - crop.as_secs_f64()) * 1000.0,
+                );
+            }
+        }
+    }
+}
+
 /// Print-only: how one dab's rasterization and present grow with brush diameter
 /// on a 4000² document, so the reduced-resolution stroke preview is sized from
 /// a measurement rather than a guess. The one-time plane fork is reported

@@ -680,6 +680,116 @@ pub(super) fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
         right: a.right.max(b.right),
     }
 }
+
+/// A stroke's dirty area as a document-space bitmap of [`pictura_render::TILE`]
+/// cells. The commit decomposes it into disjoint rectangles so a diagonal stroke
+/// composites its tiles, not its whole bounding box.
+#[derive(Default)]
+pub(super) struct TileSet {
+    cols: usize,
+    rows: usize,
+    set: Vec<bool>,
+}
+
+impl TileSet {
+    pub(super) fn reset(&mut self, width: u32, height: u32) {
+        let tile = pictura_render::TILE as usize;
+        self.cols = (width as usize).div_ceil(tile);
+        self.rows = (height as usize).div_ceil(tile);
+        self.set.clear();
+        self.set.resize(self.cols * self.rows, false);
+    }
+
+    pub(super) fn mark(&mut self, rect: PsdRect) {
+        if self.cols == 0 || self.rows == 0 || rect.right <= rect.left || rect.bottom <= rect.top {
+            return;
+        }
+        let tile = pictura_render::TILE as usize;
+        let x0 = rect.left.max(0) as usize / tile;
+        let y0 = rect.top.max(0) as usize / tile;
+        let x1 = (rect.right.max(0) as usize).div_ceil(tile).min(self.cols);
+        let y1 = (rect.bottom.max(0) as usize).div_ceil(tile).min(self.rows);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                self.set[y * self.cols + x] = true;
+            }
+        }
+    }
+
+    /// The dirty tiles as disjoint rectangles, or `[union]` when the area is not
+    /// worth decomposing: one rectangle, more than the cap, or the rectangles
+    /// filling most of their bounding box.
+    pub(super) fn regions(self, union: PsdRect) -> Vec<PsdRect> {
+        if self.cols == 0 || self.rows == 0 {
+            return vec![union];
+        }
+        let tile = pictura_render::TILE;
+        let mut rects: Vec<PsdRect> = Vec::new();
+        // Greedy vertical merge: bands of an identical tile run extend downward.
+        let mut active: Vec<(usize, usize, usize)> = Vec::new();
+        for y in 0..self.rows {
+            let mut next: Vec<(usize, usize, usize)> = Vec::new();
+            for (rx0, rx1) in row_runs(&self.set, y * self.cols, self.cols) {
+                match active
+                    .iter()
+                    .position(|&(ax0, ax1, _)| ax0 == rx0 && ax1 == rx1)
+                {
+                    Some(pos) => next.push(active.remove(pos)),
+                    None => next.push((rx0, rx1, y)),
+                }
+            }
+            for &(x0, x1, sy) in &active {
+                rects.push(tile_rect(x0, x1, sy, y, tile));
+            }
+            active = next;
+        }
+        for &(x0, x1, sy) in &active {
+            rects.push(tile_rect(x0, x1, sy, self.rows, tile));
+        }
+        collapse(rects, union)
+    }
+}
+
+const REGION_CAP: usize = 64;
+
+fn collapse(rects: Vec<PsdRect>, union: PsdRect) -> Vec<PsdRect> {
+    if rects.is_empty() {
+        return vec![union];
+    }
+    let area = |r: &PsdRect| (r.width().max(0) as i64) * (r.height().max(0) as i64);
+    let sum: i64 = rects.iter().map(area).sum();
+    let union_area = area(&union);
+    if rects.len() > REGION_CAP || union_area <= 0 || sum * 4 >= union_area * 3 {
+        return vec![union];
+    }
+    rects
+}
+
+fn row_runs(set: &[bool], base: usize, cols: usize) -> Vec<(usize, usize)> {
+    let mut runs = Vec::new();
+    let mut x = 0;
+    while x < cols {
+        if !set[base + x] {
+            x += 1;
+            continue;
+        }
+        let start = x;
+        while x < cols && set[base + x] {
+            x += 1;
+        }
+        runs.push((start, x));
+    }
+    runs
+}
+
+fn tile_rect(x0: usize, x1: usize, y0: usize, y1: usize, tile: i32) -> PsdRect {
+    PsdRect {
+        top: y0 as i32 * tile,
+        left: x0 as i32 * tile,
+        bottom: y1 as i32 * tile,
+        right: x1 as i32 * tile,
+    }
+}
 /// Apply `set_visible_paths` and return the changed count plus the union of the
 /// changed layers' bounded [`layer_visibility_region`]s.
 ///
@@ -804,5 +914,197 @@ pub(super) fn brush_shortcut_delta(
         (true, true, _) => -5,
         (true, _, true) => 5,
         _ => 0,
+    }
+}
+
+/// Opt-in timing for the paint path, using the same `PICTURA_PAINT_TIMING`
+/// switch the Qt side reads. A no-op unless the variable is set, so normal runs
+/// and tests pay only an `Instant::now()` per phase.
+pub(crate) mod paint_timing {
+    use std::cell::RefCell;
+    use std::sync::OnceLock;
+    use std::time::{Duration, Instant};
+
+    pub(crate) fn level() -> u8 {
+        static LEVEL: OnceLock<u8> = OnceLock::new();
+        *LEVEL.get_or_init(|| {
+            std::env::var("PICTURA_PAINT_TIMING")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0)
+        })
+    }
+
+    #[derive(Default)]
+    struct Phase {
+        count: u32,
+        total: Duration,
+        max: Duration,
+    }
+
+    #[derive(Default)]
+    struct Stats {
+        title: String,
+        phases: Vec<(&'static str, Phase)>,
+    }
+
+    thread_local! {
+        static STATS: RefCell<Option<Stats>> = const { RefCell::new(None) };
+    }
+
+    /// Open a stroke's timing session. No-op unless timing is enabled.
+    pub(crate) fn start(title: &str) {
+        if level() == 0 {
+            return;
+        }
+        STATS.with(|s| {
+            *s.borrow_mut() = Some(Stats {
+                title: title.to_string(),
+                phases: Vec::new(),
+            });
+        });
+    }
+
+    /// Accumulate `dt` under `label`. No-op unless timing is enabled.
+    pub(crate) fn record(label: &'static str, dt: Duration) {
+        if level() == 0 {
+            return;
+        }
+        STATS.with(|s| {
+            let mut slot = s.borrow_mut();
+            let Some(stats) = slot.as_mut() else {
+                return;
+            };
+            match stats.phases.iter_mut().find(|(l, _)| *l == label) {
+                Some((_, p)) => {
+                    p.count += 1;
+                    p.total += dt;
+                    p.max = p.max.max(dt);
+                }
+                None => stats.phases.push((
+                    label,
+                    Phase {
+                        count: 1,
+                        total: dt,
+                        max: dt,
+                    },
+                )),
+            }
+        });
+    }
+
+    /// Print and close the session, if one is open. No-op unless enabled.
+    pub(crate) fn report() {
+        if level() == 0 {
+            return;
+        }
+        STATS.with(|s| {
+            let Some(stats) = s.borrow_mut().take() else {
+                return;
+            };
+            let total: Duration = stats.phases.iter().map(|(_, p)| p.total).sum();
+            eprintln!(
+                "[paint-timing] ===== {} (sum of phases {:.2}ms) =====",
+                stats.title,
+                total.as_secs_f64() * 1000.0
+            );
+            for (label, p) in &stats.phases {
+                let avg = if p.count > 0 {
+                    p.total.as_secs_f64() * 1000.0 / f64::from(p.count)
+                } else {
+                    0.0
+                };
+                eprintln!(
+                    "[paint-timing]   {label:<26} n={:<4} total={:>8.2}ms avg={:>7.3}ms max={:>7.3}ms",
+                    p.count,
+                    p.total.as_secs_f64() * 1000.0,
+                    avg,
+                    p.max.as_secs_f64() * 1000.0,
+                );
+            }
+        });
+    }
+
+    /// A scope timer; records its elapsed time under `label` on drop.
+    pub(crate) struct Scope(&'static str, Instant);
+
+    impl Scope {
+        pub(crate) fn new(label: &'static str) -> Self {
+            Self(label, Instant::now())
+        }
+    }
+
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            record(self.0, self.1.elapsed());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TileSet;
+    use pictura_core::PsdRect;
+    use pictura_render::TILE;
+
+    fn r(top: i32, left: i32, w: i32, h: i32) -> PsdRect {
+        PsdRect {
+            top,
+            left,
+            bottom: top + h,
+            right: left + w,
+        }
+    }
+
+    #[test]
+    fn a_diagonal_decomposes_into_tiles_not_its_bounding_box() {
+        let mut tiles = TileSet::default();
+        tiles.reset(8 * TILE as u32, 8 * TILE as u32);
+        for i in 0..8 {
+            tiles.mark(r(i * TILE, i * TILE, TILE, TILE));
+        }
+        let regions = tiles.regions(r(0, 0, 8 * TILE, 8 * TILE));
+        assert!(regions.len() > 1, "a diagonal is more than one rect");
+        let sum: i64 = regions
+            .iter()
+            .map(|rect| rect.width() as i64 * rect.height() as i64)
+            .sum();
+        let bbox = (8 * TILE as i64) * (8 * TILE as i64);
+        assert!(sum < bbox / 2, "tiles cover less than half the bbox");
+    }
+
+    #[test]
+    fn a_filled_blob_collapses_to_its_union() {
+        let mut tiles = TileSet::default();
+        tiles.reset(8 * TILE as u32, 8 * TILE as u32);
+        for y in 0..4 {
+            for x in 0..4 {
+                tiles.mark(r(y * TILE, x * TILE, TILE, TILE));
+            }
+        }
+        let union = r(0, 0, 4 * TILE, 4 * TILE);
+        assert_eq!(tiles.regions(union), vec![union]);
+    }
+
+    #[test]
+    fn an_empty_tile_set_falls_back_to_the_union() {
+        let union = r(3, 4, 5, 6);
+        assert_eq!(TileSet::default().regions(union), vec![union]);
+        let mut tiles = TileSet::default();
+        tiles.reset(128, 128);
+        assert_eq!(tiles.regions(union), vec![union]);
+    }
+
+    #[test]
+    fn a_single_tile_collapses_to_a_small_union() {
+        let mut tiles = TileSet::default();
+        tiles.reset(256, 256);
+        let dab = r(70, 130, 8, 8);
+        tiles.mark(dab);
+        assert_eq!(
+            tiles.regions(dab),
+            vec![dab],
+            "a lone tile composite would cover 64x64 for an 8x8 dab"
+        );
     }
 }

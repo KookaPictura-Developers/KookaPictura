@@ -226,6 +226,7 @@ add_executable(pictura
     crates/pictura-app/cpp/color_picker_dialog.h
     crates/pictura-app/cpp/export_as_dialog.h
     crates/pictura-app/cpp/image_view.h
+    crates/pictura-app/cpp/pictura_debug_timing.h
     crates/pictura-app/cpp/canvas_range.h
     crates/pictura-app/cpp/canvas_scrollbars.h
     crates/pictura-app/cpp/icons.h

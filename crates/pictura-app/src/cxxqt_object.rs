@@ -979,9 +979,7 @@ pub mod qobject {
         #[qinvokable]
         fn apply_filter(self: Pin<&mut Self>, kind: &QString) -> bool;
 
-        /// Begin a paint stroke. Colours are 0xAARRGGBB. `mode` is
-        /// "normal" | "dissolve" | "behind" | "clear". Returns false without a
-        /// document or when there is no raster layer.
+        /// Begin a paint stroke. Colours are 0xAARRGGBB; `mode` is "normal" | "dissolve" | "behind" | "clear".
         #[qinvokable]
         fn begin_paint(
             self: Pin<&mut Self>,
@@ -1017,6 +1015,9 @@ pub mod qobject {
         /// Whether a paint stroke is currently active.
         #[qinvokable]
         fn is_painting(&self) -> bool;
+        /// The view-pyramid level the active stroke presents: -1 while a GPU stroke defers the pyramid (crop level 0), 0 when it presents the zoom's own.
+        #[qinvokable]
+        fn preview_present_level(&self) -> i32;
 
         /// Brush size/hardness step for a `[`/`]` key, or 0.
         #[qinvokable]
@@ -1153,8 +1154,7 @@ pub mod qobject {
         #[qinvokable]
         fn history_label(&self, i: i32) -> QString;
 
-        /// Restore history state `i`, recomposite, and emit [`changed`]. Returns
-        /// false when `i` is out of range.
+        /// Restore history state `i`, recomposite, and emit [`changed`]; false when `i` is out of range.
         #[qinvokable]
         fn history_jump(self: Pin<&mut Self>, i: i32) -> bool;
 

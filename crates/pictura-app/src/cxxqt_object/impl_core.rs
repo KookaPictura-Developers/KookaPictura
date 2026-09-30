@@ -9,6 +9,7 @@ use pictura_core::{
     BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LockFlags, PixelBuffer,
     PsdRect,
 };
+use std::time::Instant;
 
 /// Finish an imported raster document. When every decoded pixel is opaque the
 /// single `from_rgba` layer becomes the locked `Background` and its redundant
@@ -927,6 +928,13 @@ impl super::PictureViewRust {
     /// the move-preview commit, and a fresh open) routes through this.
     pub(super) fn reset_pyramid(&mut self) {
         self.damage = pictura_render::CanvasDamage::default();
+        // A full rebuild supersedes any reduced-level or GPU stroke present.
+        self.preview = None;
+        self.gpu_stroke = None;
+        self.gpu_placer = None;
+        self.pending_present = None;
+        self.present_flush_due = false;
+        self.stroke_tiles = Default::default();
         // While a stroke is live its working document's `composite` is stale
         // (paint writes the layer channels), so composite it rather than reading
         // the cached frame; otherwise the level-0 frame is the document's own
@@ -1021,6 +1029,42 @@ impl super::PictureViewRust {
         }
         Some(self.pyramid.level_size(level as usize))
     }
+
+    /// Fold each commit rectangle into level 0, the damage account and the
+    /// pyramid, and hand back the one blit image the shell needs (with its
+    /// origin), or `None` when nothing landed.
+    ///
+    /// A single rectangle is the dense-stroke collapse: its `srgb` buffer is
+    /// already the whole commit region, so the image comes straight from it
+    /// rather than a second crop of level 0. Several rectangles keep the union
+    /// crop, which is the one image that keeps the shell's region handler (and
+    /// the command registry it refreshes) to a single run per commit.
+    pub(super) fn refresh_regions(&mut self, rects: &[PsdRect]) -> Option<(QImage, i32, i32)> {
+        let single = rects.len() == 1;
+        let mut union: Option<PsdRect> = None;
+        let mut direct: Option<(QImage, i32, i32)> = None;
+        for &rect in rects {
+            let Some((x0, y0, clipped, srgb)) = self.refresh_region_buffer(rect) else {
+                continue;
+            };
+            if single {
+                let t = Instant::now();
+                direct = Some((premultiplied_display_image(&srgb), x0, y0));
+                paint_timing::record("rr_to_qimage", t.elapsed());
+            }
+            self.apply_refreshed_region(x0, y0, clipped, srgb);
+            union = Some(union.map_or(clipped, |u| union_rect(u, clipped)));
+        }
+        union.map(|union| match direct {
+            Some(image) => image,
+            None => {
+                let t = Instant::now();
+                let image = self.display_crop(0, union);
+                paint_timing::record("rr_to_qimage", t.elapsed());
+                (image, union.left, union.top)
+            }
+        })
+    }
 }
 
 impl qobject::PictureView {
@@ -1029,11 +1073,16 @@ impl qobject::PictureView {
     /// Callers must run their `recomposite`/`refresh_region` first, so the
     /// captured document's composite is the current rendered image.
     pub(super) fn record(mut self: Pin<&mut Self>, label: &str) {
-        if let Some(snapshot) = self.snapshot() {
+        let t = Instant::now();
+        let snapshot = self.snapshot();
+        paint_timing::record("record_snapshot_clone", t.elapsed());
+        if let Some(snapshot) = snapshot {
+            let t = Instant::now();
             let mut rust = self.as_mut().rust_mut();
             rust.history.capture(snapshot, label);
             rust.dirty = true;
             rust.content_revision = rust.content_revision.wrapping_add(1);
+            paint_timing::record("record_history_capture", t.elapsed());
         }
     }
 
@@ -1068,60 +1117,37 @@ impl qobject::PictureView {
     /// clamped rect is a no-op; the region path emits no `changed` and never
     /// rebuilds the full image.
     pub(super) fn refresh_region(mut self: Pin<&mut Self>, rect: PsdRect) {
-        let gpu_compute = self.rust().gpu_compute;
-        let (region, painting) = {
-            let rust = self.rust();
-            let painting = rust.stroke.is_some();
-            let dims = rust
-                .stroke
-                .as_ref()
-                .map(|stroke| (stroke.document().width, stroke.document().height))
-                .or_else(|| rust.doc.as_ref().map(|doc| (doc.width, doc.height)));
-            (
-                dims.and_then(|(width, height)| clamp_region(rect, width, height)),
-                painting,
-            )
-        };
-        let Some((x0, y0, w, h)) = region else {
-            return;
-        };
-        let clipped = PsdRect {
-            top: y0,
-            left: x0,
-            bottom: y0 + h as i32,
-            right: x0 + w as i32,
-        };
-        let region_image = {
-            let mut rust = self.as_mut().rust_mut();
-            let rust = &mut *rust;
-            let (buffer, srgb, image) = {
-                let source: &Document = if painting {
-                    rust.stroke.as_ref().unwrap().document()
-                } else if let Some(doc) = rust.doc.as_ref() {
-                    doc
-                } else {
-                    return;
-                };
-                let buffer = pictura_render::composite_region_active(source, rect, gpu_compute).0;
-                let srgb = pictura_codec::buffer_to_srgb(source, &buffer).into_owned();
-                let image = (buffer.width != 0 && buffer.height != 0)
-                    .then(|| premultiplied_display_image(&srgb));
-                (buffer, srgb, image)
-            };
-            let Some(image) = image else {
-                return;
-            };
-            if !painting {
-                if let Some(doc) = rust.doc.as_mut() {
-                    patch_composite_region(doc, &buffer, x0, y0);
-                }
+        let t_rr = Instant::now();
+        let prepared = self.as_mut().rust_mut().refresh_region_buffer(rect);
+        if let Some((x0, y0, clipped, srgb)) = prepared {
+            let t = Instant::now();
+            let image = premultiplied_display_image(&srgb);
+            paint_timing::record("rr_to_qimage", t.elapsed());
+            self.as_mut()
+                .rust_mut()
+                .apply_refreshed_region(x0, y0, clipped, srgb);
+            let t = Instant::now();
+            self.region_blitted(image, x0, y0);
+            paint_timing::record("rr_blit_emit(C++)", t.elapsed());
+        }
+        paint_timing::record("refresh_region_total", t_rr.elapsed());
+    }
+
+    /// Refresh several disjoint rects in one pass, emitting a single
+    /// [`region_blitted`] over their bounding box. A paint commit uses it so a
+    /// tiled stroke composites only its tiles yet the shell's region handler —
+    /// and the command registry it refreshes — runs once.
+    pub(super) fn refresh_regions(mut self: Pin<&mut Self>, rects: &[PsdRect]) {
+        let t0 = Instant::now();
+        let blit = self.as_mut().rust_mut().refresh_regions(rects);
+        if let Some((image, x, y)) = blit {
+            if image.width() > 0 && image.height() > 0 {
+                let t = Instant::now();
+                self.region_blitted(image, x, y);
+                paint_timing::record("rr_blit_emit(C++)", t.elapsed());
             }
-            rust.refresh_level0_region(srgb, x0, y0);
-            rust.damage.mark(clipped);
-            rust.update_pyramid(clipped);
-            image
-        };
-        self.region_blitted(region_image, x0, y0);
+        }
+        paint_timing::record("commit_refresh_region", t0.elapsed());
     }
 
     /// Refresh `image` from the current document and emit [`changed`].
@@ -1129,23 +1155,31 @@ impl qobject::PictureView {
     /// The full-document path for every mutation that does not report a dirty
     /// rectangle; [`refresh_region`] is the incremental extension point.
     pub(super) fn recomposite(mut self: Pin<&mut Self>) {
+        let t0 = Instant::now();
         let gpu_compute = self.rust().gpu_compute;
+        let t = Instant::now();
         let rendered = self
             .rust()
             .doc
             .as_ref()
             .map(|doc| current_buffer(doc, gpu_compute));
+        paint_timing::record("recomposite_full_composite", t.elapsed());
         let Some(rendered) = rendered else {
             self.changed();
             return;
         };
         {
+            let t = Instant::now();
             let mut rust = self.as_mut().rust_mut();
             if let Some(doc) = rust.doc.as_mut() {
                 store_composite(doc, &rendered);
             }
             rust.reset_pyramid();
+            paint_timing::record("recomposite_reset_pyramid", t.elapsed());
         }
+        let t = Instant::now();
         self.changed();
+        paint_timing::record("recomposite_changed(C++)", t.elapsed());
+        paint_timing::record("recomposite_total", t0.elapsed());
     }
 }

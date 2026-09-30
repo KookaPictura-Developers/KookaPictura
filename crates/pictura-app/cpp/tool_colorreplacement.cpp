@@ -7,7 +7,7 @@
 #include "tool_handler.h"
 
 #include "paint_tip.h"
-
+#include "pictura_debug_timing.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -39,6 +39,7 @@ public:
             return true;
         }
         const ColorReplaceOptions o = ctx.colorReplaceOptions();
+        pictura::ScopedTimer beginTimer("cxx_begin_color_replacement (call)");
         if (!begin_color_replacement(*v, ctx.foreground().rgba(), ctx.background().rgba(),
                                      paintTip(ctx), o.mode, o.sampling, o.limits, o.tolerance,
                                      o.antialias)) {
@@ -53,7 +54,10 @@ public:
         }
         ctx.setDragging(true);
         ctx.setDragCommitted(false);
-        v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
+        {
+            pictura::ScopedTimer t("cxx_paint_dab (call)");
+            v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
+        }
         return true;
     }
 
@@ -63,6 +67,7 @@ public:
             return;
         }
         if (PictureView* v = ctx.view()) {
+            pictura::ScopedTimer t("cxx_paint_dab (call)");
             v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
         }
     }
@@ -74,6 +79,7 @@ public:
         }
         ctx.setDragging(false);
         if (PictureView* v = ctx.view()) {
+            pictura::ScopedTimer t("cxx_end_paint (call)");
             v->end_paint();
         }
     }

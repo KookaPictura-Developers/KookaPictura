@@ -1,6 +1,7 @@
 #include "tool_handler.h"
 
 #include "paint_tip.h"
+#include "pictura_debug_timing.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -38,9 +39,14 @@ public:
             }
             return true;
         }
-        if (!begin_brush(*v, ctx.foreground().rgba(), ctx.background().rgba(), paintTip(ctx),
-                         ctx.brushOpacity(), ctx.brushFlow(), ctx.brushMode(), aliased_,
-                         ctx.autoErase())) {
+        bool begun = false;
+        {
+            pictura::ScopedTimer t("cxx_begin_brush (call)");
+            begun = begin_brush(*v, ctx.foreground().rgba(), ctx.background().rgba(), paintTip(ctx),
+                                ctx.brushOpacity(), ctx.brushFlow(), ctx.brushMode(), aliased_,
+                                ctx.autoErase());
+        }
+        if (!begun) {
             if (activePixelLocked(v)) {
                 ctx.refused(QObject::tr("Could not paint: the layer's pixels are locked."));
             } else if (!v->active_layer_visible()) {
@@ -52,7 +58,10 @@ public:
         }
         ctx.setDragging(true);
         ctx.setDragCommitted(false);
-        v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
+        {
+            pictura::ScopedTimer t("cxx_paint_dab (call)");
+            v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
+        }
         return true;
     }
 
@@ -62,6 +71,7 @@ public:
             return;
         }
         if (PictureView* v = ctx.view()) {
+            pictura::ScopedTimer t("cxx_paint_dab (call)");
             v->paint_dab(imagePos.x(), imagePos.y(), 1.0);
         }
     }
@@ -73,6 +83,7 @@ public:
         }
         ctx.setDragging(false);
         if (PictureView* v = ctx.view()) {
+            pictura::ScopedTimer t("cxx_end_paint (call)");
             v->end_paint();
         }
     }

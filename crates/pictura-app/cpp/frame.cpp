@@ -2,6 +2,7 @@
 
 #include "file_drop_router.h"
 #include "frame_canvas.h"
+#include "pictura_debug_timing.h"
 
 #include <QtCore/QTemporaryDir>
 #include <QtWidgets/QTabBar>
@@ -391,6 +392,7 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
     connect(view, &PictureView::changed, this, &PicturaMainWindow::refresh);
     connect(view, &PictureView::regionBlitted, this,
             [this, canvas = entry.canvas, view](const QImage& region, int x, int y) {
+                pictura::ScopedTimer blitSlotTimer("cxx_regionBlitted_slot");
                 if (canvas) {
                     canvas->blitRegion(region, x, y);
                 }
@@ -842,6 +844,7 @@ void PicturaMainWindow::cycleCanvasColor(bool forward)
 
 void PicturaMainWindow::refresh()
 {
+    pictura::ScopedTimer refreshTimer("cxx_frame_refresh (total)");
     const int index = activeDocumentIndex();
     PictureView* view = activeView();
     ImageView* canvas = canvasAt(index);
@@ -858,10 +861,19 @@ void PicturaMainWindow::refresh()
     }
 
     if (view && canvas) {
-        if (view->has_document()) {
-            canvas->replaceImage(view->image());
-        } else {
-            canvas->setImage(view->image());
+        QImage image;
+        {
+            pictura::ScopedTimer imageTimer("cxx_view_image()");
+            image = view->image();
+        }
+        {
+            pictura::ScopedTimer setTimer(
+                view->has_document() ? "cxx_replaceImage" : "cxx_setImage");
+            if (view->has_document()) {
+                canvas->replaceImage(image);
+            } else {
+                canvas->setImage(image);
+            }
         }
     }
     if (tools_) {
@@ -871,6 +883,7 @@ void PicturaMainWindow::refresh()
     panelRefreshTimer_->start();
     updateStatus();
     if (registry_) {
+        pictura::ScopedTimer registryTimer("cxx_registry_refresh");
         registry_->refresh();
     }
     updateTabTitle(index);

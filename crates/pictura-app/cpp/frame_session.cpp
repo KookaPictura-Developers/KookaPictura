@@ -1,5 +1,7 @@
 #include "frame_includes.h"
 
+#include "pictura_debug_timing.h"
+
 namespace pictura {
 
 void PicturaMainWindow::setPanelsHidden(bool hidden)
@@ -12,23 +14,28 @@ void PicturaMainWindow::setPanelsHidden(bool hidden)
 
 void PicturaMainWindow::retargetDock()
 {
+    pictura::ScopedTimer dockTimer("cxx_retargetDock (all panels)");
     PictureView* view = activeView();
     ImageView* canvas = canvasAt(activeDocumentIndex());
 
     if (layersPanel_) {
+        pictura::ScopedTimer t("cxx_layersPanel_refresh");
         layersPanel_->setView(view);
         layersPanel_->refresh();
     }
     if (historyPanel_) {
+        pictura::ScopedTimer t("cxx_historyPanel_refresh");
         historyPanel_->setView(view);
         historyPanel_->refresh();
     }
     if (navigatorPanel_) {
+        pictura::ScopedTimer t("cxx_navigatorPanel_refresh");
         navigatorPanel_->setCanvas(canvas);
         navigatorPanel_->setView(view);
         navigatorPanel_->refresh();
     }
     if (infoPanel_) {
+        pictura::ScopedTimer t("cxx_infoPanel_refresh");
         infoPanel_->setView(view);
         infoPanel_->refresh();
     }
@@ -36,6 +43,7 @@ void PicturaMainWindow::retargetDock()
         notesPanel_->setView(view);
     }
     if (histogramPanel_) {
+        pictura::ScopedTimer t("cxx_histogramPanel_refresh");
         histogramPanel_->setView(view);
         histogramPanel_->refresh();
     }
@@ -43,6 +51,7 @@ void PicturaMainWindow::retargetDock()
 
 void PicturaMainWindow::refreshPanels()
 {
+    pictura::ScopedTimer t("cxx_refreshPanels (debounced timer)");
     retargetDock();
 }
 
