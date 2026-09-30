@@ -797,13 +797,16 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(CommandSpec{command_ids::WindowPanelsAdjustments, {"Window", "Panels", "Adjustments"},
                              QStringLiteral("Adjustments"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Animation"}, QStringLiteral("Animation"));
-    leaf(registry, {"Window", "Panels", "Brush"}, QStringLiteral("Brush"));
+    registry.add(CommandSpec{command_ids::WindowPanelsBrush, {"Window", "Panels", "Brush"},
+                             QStringLiteral("Brush"), QKeySequence(Qt::Key_F5), true, true});
     leaf(registry, {"Window", "Panels", "Brush Presets"}, QStringLiteral("Brush Presets"));
     registry.add(CommandSpec{command_ids::WindowPanelsChannels, {"Window", "Panels", "Channels"},
                              QStringLiteral("Channels"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Character"}, QStringLiteral("Character"));
     leaf(registry, {"Window", "Panels", "Character Styles"}, QStringLiteral("Character Styles"));
-    leaf(registry, {"Window", "Panels", "Clone Source"}, QStringLiteral("Clone Source"));
+    registry.add(CommandSpec{command_ids::WindowPanelsCloneSource,
+                             {"Window", "Panels", "Clone Source"}, QStringLiteral("Clone Source"),
+                             QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsColor, {"Window", "Panels", "Color"},
                              QStringLiteral("Color"), QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsGradients, {"Window", "Panels", "Gradients"},

@@ -16,6 +16,7 @@
 #include "tool_registry.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <utility>
 
@@ -119,7 +120,7 @@ const ToolInfo& toolInfo(ToolId id);
 const QList<ToolId>& allToolIds();
 const QList<ToolId>& implementedToolIds();
 bool toolImplemented(ToolId id);
-// The B-group brushes (Brush, Pencil, Color Replacement, Mixer Brush): they
+// The painting brushes (the B group, the S stamps, and the History Brush): they
 // share the size ring, the `[` / `]` keys, and the paint cursor policy.
 bool isBrushTool(ToolId id);
 QString selectionModeString(SelectionMode mode);
@@ -227,6 +228,20 @@ public:
     void setBrushFlow(int f);
     QString brushMode() const override;
     void setBrushMode(const QString& mode);
+    int brushRoundness() const override { return brushRoundness_; }
+    void setBrushRoundness(int roundness);
+    // For elliptical tips a single flip mirrors the angle; both flips cancel.
+    int brushAngle() const override
+    {
+        return brushFlipX_ != brushFlipY_ ? -brushTipAngle_ : brushTipAngle_;
+    }
+    int brushTipAngle() const { return brushTipAngle_; }
+    void setBrushTipAngle(int angle);
+    int brushSpacing() const override { return brushSpacing_; }
+    void setBrushSpacing(int spacing);
+    bool brushFlipX() const { return brushFlipX_; }
+    bool brushFlipY() const { return brushFlipY_; }
+    void setBrushFlip(bool x, bool y);
     bool autoErase() const override;
     void setAutoErase(bool on);
     // Spot Healing Brush Type (0/1/2) and Healing Brush Aligned.
@@ -255,6 +270,13 @@ public:
     MixerOptions mixerOptions() const override { return mixer_; }
     void setMixerOptions(const MixerOptions& options) { mixer_ = options; }
     QColor mixerReservoir() const override { return mixerReservoir_; }
+    StampOptions stampOptions() const override { return stamp_; }
+    CloneSource cloneSource() const override { return cloneSources_[cloneSlot_]; }
+    void setCloneSource(const CloneSource& source) override;
+    // The Clone Source panel's five slots; each keeps its own source.
+    int cloneSourceSlot() const { return cloneSlot_; }
+    void setCloneSourceSlot(int slot);
+    void setStampOptions(const StampOptions& options) { stamp_ = options; }
     void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);
@@ -368,6 +390,10 @@ signals:
     void countChanged();
     // The Mixer Brush's paint changed (a stroke, Load, Clean, or Alt-click).
     void mixerReservoirChanged(const QColor& color);
+    // Hardness or a Brush Tip Shape field changed (size has brushSizeChanged).
+    void brushTipChanged();
+    // The active Clone Source slot or its contents changed.
+    void cloneSourceChanged();
 
 private:
     void applyToolPolicy();
@@ -429,6 +455,14 @@ private:
     ColorReplaceOptions colorReplace_;
     MixerOptions mixer_;
     QColor mixerReservoir_{Qt::black};
+    StampOptions stamp_;
+    std::array<CloneSource, 5> cloneSources_{};
+    int cloneSlot_ = 0;
+    int brushRoundness_ = 100;
+    int brushTipAngle_ = 0;
+    int brushSpacing_ = 25;
+    bool brushFlipX_ = false;
+    bool brushFlipY_ = false;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

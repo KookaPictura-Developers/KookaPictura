@@ -23,6 +23,12 @@ public:
 
     void showTool(ToolId id);
 
+signals:
+    // A panel toggle (Toggle the Brush panel, Toggle the Clone Source panel)
+    // asks the frame to show or hide the panel with this object name.
+    void panelToggleRequested(const QString& panel);
+
+public:
     // Self-test hook: the controller the size field is wired to.
     ToolController* controllerForTest() const { return controller_; }
 
@@ -43,6 +49,10 @@ private:
     QWidget* buildColorReplacementPage(ToolId id);
     QWidget* buildMixerBrushPage(ToolId id);
     void addBrushTipFields(QHBoxLayout* layout, QWidget* page);
+    // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, and History Brush.
+    QWidget* buildStampPage(ToolId id);
+    QWidget* buildHistoryBrushPage(ToolId id);
+    void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
     static NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals,
                                             const QString& suffix, bool popup,
                                             const QString& name);

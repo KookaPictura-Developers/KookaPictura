@@ -4,6 +4,7 @@ use crate::healing::RgbaImage;
 use crate::mixer::{MixerBrush, MixerOptions};
 use crate::replace::{ColorReplacer, ReplaceOptions};
 use crate::spacing::DabPlacer;
+use crate::stamp::StampSource;
 use crate::{tip_coverage, PaintMode, Rgba, StrokeConfig, StrokeSample};
 use pictura_core::{layer_pixel_locked, layer_transparency_locked, Document, Layer, PsdRect};
 
@@ -67,6 +68,7 @@ pub struct Stroke {
     started: bool,
     painted: bool,
     per_dab: Option<PerDab>,
+    source: Option<StampSource>,
 }
 
 impl Stroke {
@@ -134,7 +136,21 @@ impl Stroke {
             started: false,
             painted: false,
             per_dab,
+            source: None,
         })
+    }
+
+    /// Start a Paint stroke whose colour at each pixel comes from `source`
+    /// (Clone Stamp, Pattern Stamp, History Brush) instead of `cfg.color`.
+    pub fn begin_source(
+        doc: &Document,
+        path: &str,
+        cfg: StrokeConfig,
+        source: StampSource,
+    ) -> Result<Stroke, PaintError> {
+        let mut stroke = Stroke::begin_kind(doc, path, cfg, StrokeKind::Paint)?;
+        stroke.source = Some(source);
+        Ok(stroke)
     }
 
     /// Feed one sample. Returns `true` when any pixel's accumulated coverage changed.
@@ -321,7 +337,17 @@ impl Stroke {
         };
         let (dr, dg, db, da) = read_pixel(base_layer, i);
         let transparency_locked = layer_transparency_locked(base_layer);
-        let s = self.paint;
+        let s = match &self.source {
+            None => self.paint,
+            Some(source) => {
+                let w = self.rect.width() as usize;
+                let (x, y) = ((i % w) as i32, (i / w) as i32);
+                match source.at(self.rect.left + x, self.rect.top + y) {
+                    Some(color) => color,
+                    None => return,
+                }
+            }
+        };
         let mode = self.cfg.mode;
         let write = match mode {
             PaintMode::Normal => Some(normal_pixel(dr, dg, db, da, &s, a)),
@@ -436,16 +462,15 @@ fn union_rect(a: PsdRect, b: PsdRect) -> PsdRect {
 }
 
 /// The layer's pixels as straight RGBA; a layer without alpha is opaque.
-fn layer_rgba(layer: &Layer) -> RgbaImage {
+pub(crate) fn layer_rgba(layer: &Layer) -> RgbaImage {
     let (w, h) = (layer.rect.width().max(0), layer.rect.height().max(0));
-    let has_alpha = channel_data(layer, -1).is_some();
     RgbaImage {
         width: w,
         height: h,
         data: (0..(w * h) as usize)
             .map(|i| {
                 let (r, g, b, a) = read_pixel(layer, i);
-                [r, g, b, if has_alpha { a } else { 255 }]
+                [r, g, b, a]
             })
             .collect(),
     }
@@ -455,14 +480,11 @@ fn to_u8(v: f32) -> u8 {
     v.round().clamp(0.0, 255.0) as u8
 }
 
+/// A layer without an alpha channel (a Background) is opaque.
 fn read_pixel(layer: &Layer, i: usize) -> (u8, u8, u8, u8) {
-    let g = |id| {
-        channel_data(layer, id)
-            .and_then(|d| d.get(i))
-            .copied()
-            .unwrap_or(0)
-    };
-    (g(0), g(1), g(2), g(-1))
+    let g =
+        |id, missing| channel_data(layer, id).map_or(missing, |d| d.get(i).copied().unwrap_or(0));
+    (g(0, 0), g(1, 0), g(2, 0), g(-1, 255))
 }
 
 fn write_pixel(layer: &mut Layer, i: usize, mode: PaintMode, rgba: (u8, u8, u8, u8)) {
@@ -740,6 +762,27 @@ mod tests {
             (10, 20, 30, 0),
             "fully transparent pixel is untouched"
         );
+    }
+
+    #[test]
+    fn a_locked_background_without_alpha_takes_paint_as_opaque() {
+        let mut doc = layer_doc(32, 32, (255, 255, 255, 255));
+        doc.layers[0].channels.retain(|c| c.id != -1);
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::TRANSPARENCY, true);
+        let cfg = StrokeConfig {
+            color: red(),
+            diameter: 8,
+            hardness: 0,
+            ..StrokeConfig::default()
+        };
+        paint(&mut doc, &cfg, &[sample(16.0, 16.0)]).expect("painted");
+        assert!(
+            chan(&doc, 1, 16 * 32 + 16) < 64,
+            "the centre was not painted"
+        );
+        // A soft edge blends with the white beneath rather than replacing it.
+        let edge = 16 * 32 + 19;
+        assert!(chan(&doc, 1, edge) > 0 && chan(&doc, 1, edge) < 255);
     }
 
     #[test]

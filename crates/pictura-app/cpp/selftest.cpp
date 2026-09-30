@@ -2384,7 +2384,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::CloneStamp);
+        probe.setActiveTool(pictura::ToolId::ArtHistoryBrush);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
@@ -3002,18 +3002,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         bool keysShown = toolsPanelToolbox != nullptr;
         bool keysDisabled = false;
         if (toolsPanelToolbox) {
-            // The S group (Clone Stamp, Pattern Stamp) still has disabled members.
-            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(9);
+            // The Y group (Art History Brush) still has a disabled member.
+            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(10);
             for (QAction* action : actions) {
                 const bool keyShown =
-                    action->shortcut() == QKeySequence(QStringLiteral("S"))
+                    action->shortcut() == QKeySequence(QStringLiteral("Y"))
                     && action->isShortcutVisibleInContextMenu();
                 if (!keyShown) {
                     keysShown = false;
                 }
                 if (!action->isEnabled()) {
                     const bool disabledOk =
-                        action->shortcut() == QKeySequence(QStringLiteral("S"))
+                        action->shortcut() == QKeySequence(QStringLiteral("Y"))
                         && action->toolTip().contains(QStringLiteral("not implemented yet"));
                     keysDisabled = keysDisabled || disabledOk;
                     if (!disabledOk) {
@@ -3065,10 +3065,20 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool jShift = jMove && frame.activeTool() == pictura::ToolId::RedEye;
         sendKey(Qt::Key_J, Qt::ShiftModifier, QStringLiteral("J"));
         const bool jWrap = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
-        // The Y group (History Brush) is entirely unimplemented: a plain letter
-        // is a no-op, so the active tool is unchanged.
+        sendKey(Qt::Key_S, Qt::NoModifier, QStringLiteral("s"));
+        const bool sPlain = frame.activeTool() == pictura::ToolId::CloneStamp;
+        sendKey(Qt::Key_S, Qt::ShiftModifier, QStringLiteral("S"));
+        const bool sPattern = sPlain && frame.activeTool() == pictura::ToolId::PatternStamp;
+        sendKey(Qt::Key_S, Qt::ShiftModifier, QStringLiteral("S"));
+        const bool sWrap = sPattern && frame.activeTool() == pictura::ToolId::CloneStamp;
+        // The Y group has one implemented member, so Shift+Y stays on it.
         sendKey(Qt::Key_Y, Qt::NoModifier, QStringLiteral("y"));
-        const bool noImpl = frame.activeTool() == pictura::ToolId::SpotHealingBrush;
+        const bool yPlain = frame.activeTool() == pictura::ToolId::HistoryBrush;
+        sendKey(Qt::Key_Y, Qt::ShiftModifier, QStringLiteral("Y"));
+        const bool yShift = yPlain && frame.activeTool() == pictura::ToolId::HistoryBrush;
+        // The E group (Eraser) is entirely unimplemented: a plain letter is a no-op.
+        sendKey(Qt::Key_E, Qt::NoModifier, QStringLiteral("e"));
+        const bool noImpl = frame.activeTool() == pictura::ToolId::HistoryBrush;
         if (toolsPanelToolbox) {
             toolsPanelToolbox->setShiftKeyForToolSwitch(false);
         }
@@ -3078,15 +3088,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             toolsPanelToolbox->setShiftKeyForToolSwitch(true);
         }
         const bool shiftOk = toolsPanelPlain && toolsPanelShift && toolsPanelWrap && jPlain
-            && jShift && jWrap && noImpl && toolsPanelOff;
+            && jShift && jWrap && sWrap && yShift && noImpl && toolsPanelOff;
         ST_BEGIN("shift_plain");
-        ST_PASS("shift plain=%d shift=%d j=%d/%d/%d noimpl=%d off=%d", toolsPanelPlain ? 1 : 0,
-                     (toolsPanelShift && toolsPanelWrap) ? 1 : 0,
-                     jPlain ? 1 : 0,
-                     jShift ? 1 : 0,
-                     jWrap ? 1 : 0,
-                     noImpl ? 1 : 0,
-                     toolsPanelOff ? 1 : 0);
+        ST_PASS("shift plain=%d shift=%d j=%d/%d/%d s=%d y=%d noimpl=%d off=%d",
+                toolsPanelPlain ? 1 : 0, (toolsPanelShift && toolsPanelWrap) ? 1 : 0,
+                jPlain ? 1 : 0, jShift ? 1 : 0, jWrap ? 1 : 0, sWrap ? 1 : 0, yShift ? 1 : 0,
+                noImpl ? 1 : 0, toolsPanelOff ? 1 : 0);
         if (!shiftOk) {
             ST_FAIL(117, "shift cycling");
         }

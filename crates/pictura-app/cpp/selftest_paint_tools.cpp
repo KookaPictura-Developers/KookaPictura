@@ -3,16 +3,24 @@
 
 #include "frame.h"
 #include "image_view.h"
+#include "panels/brush_panel.h"
 #include "panels/numeric_field.h"
+#include "panels/panel_column.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/paint_tools.cxxqt.h"
 
 #include <QtCore/QDir>
+#include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtGui/QImage>
+#include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QListWidget>
 #include <QtWidgets/QToolButton>
 
 #include <functional>
@@ -229,6 +237,325 @@ int pictura::runMixerBrushChecks(pictura::PicturaMainWindow& frame)
             cleaned ? 1 : 0, loaded ? 1 : 0);
     if (!active || !bar || !committed || !smeared || !carried || !cleaned || !loaded) {
         return pictura::selfTest().fail(541, "mixer brush tool");
+    }
+    return 0;
+}
+
+namespace {
+
+// Brush settings a stamp check changes, restored on scope exit.
+struct BrushState {
+    pictura::ToolController* tools;
+    int size;
+    int opacity;
+    int flow;
+    pictura::StampOptions stamp;
+
+    explicit BrushState(pictura::ToolController* t)
+        : tools(t)
+        , size(t->brushSize())
+        , opacity(t->brushOpacity())
+        , flow(t->brushFlow())
+        , stamp(t->stampOptions())
+    {
+        tools->setBrushSize(6);
+        tools->setBrushOpacity(100);
+        tools->setBrushFlow(100);
+    }
+    ~BrushState()
+    {
+        tools->setBrushSize(size);
+        tools->setBrushOpacity(opacity);
+        tools->setBrushFlow(flow);
+        tools->setStampOptions(stamp);
+    }
+};
+
+} // namespace
+
+int pictura::runCloneStampChecks(pictura::PicturaMainWindow& frame)
+{
+    // Seed: red (x < 10), green (10..30), white beyond.
+    QImage seed(60, 20, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    QPainter painter(&seed);
+    painter.fillRect(0, 0, 10, 20, QColor(220, 30, 30));
+    painter.fillRect(10, 0, 20, 20, QColor(30, 200, 30));
+    painter.end();
+    Fixture f(frame, seed, QStringLiteral("pictura_clone_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(542, "clone stamp fixture");
+    }
+    frame.setActiveTool(pictura::ToolId::CloneStamp);
+    const bool active = f.tools->activeTool() == pictura::ToolId::CloneStamp;
+    const BrushState brush(f.tools);
+
+    auto* sample = frame.findChild<QComboBox*>(QStringLiteral("optionsCloneSample"));
+    auto* ignore = frame.findChild<QCheckBox*>(QStringLiteral("optionsCloneIgnoreAdjustments"));
+    bool bar = sample && ignore && sample->currentIndex() == 0 && ignore->isHidden();
+    if (bar) {
+        sample->setCurrentIndex(2);
+        bar = !ignore->isHidden() && f.tools->stampOptions().cloneSample == 2;
+        sample->setCurrentIndex(0);
+        bar = bar && ignore->isHidden() && f.tools->stampOptions().cloneSample == 0;
+    }
+
+    const int base = f.view->history_index();
+    f.drag({QPointF(35, 10), QPointF(38, 10)});
+    const bool refused = f.view->history_index() == base;
+    f.drag({QPointF(5, 10)}, Qt::AltModifier);
+    f.drag({QPointF(35, 10), QPointF(38, 10)});
+    const bool committed = f.committedOnce(base, "Clone Stamp");
+    const bool copied = f.view->sample_argb(36, 10) == QColor(220, 30, 30).rgba();
+    const bool farKept = f.view->sample_argb(55, 10) == QColor(Qt::white).rgba();
+    // Aligned keeps the -30 offset, so a stroke at x=45 copies the green.
+    f.drag({QPointF(45, 10)});
+    const bool aligned = f.view->sample_argb(45, 10) == QColor(30, 200, 30).rgba();
+
+    ST_BEGIN("clone_stamp_tool");
+    ST_PASS("clone stamp active=%d bar=%d refused=%d commit=%d copied=%d far=%d aligned=%d",
+            active ? 1 : 0, bar ? 1 : 0, refused ? 1 : 0, committed ? 1 : 0, copied ? 1 : 0,
+            farKept ? 1 : 0, aligned ? 1 : 0);
+    if (!active || !bar || !refused || !committed || !copied || !farKept || !aligned) {
+        return pictura::selfTest().fail(542, "clone stamp tool");
+    }
+    return 0;
+}
+
+int pictura::runPatternStampChecks(pictura::PicturaMainWindow& frame)
+{
+    QImage seed(64, 64, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_pattern_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(543, "pattern stamp fixture");
+    }
+    frame.setActiveTool(pictura::ToolId::PatternStamp);
+    const bool active = f.tools->activeTool() == pictura::ToolId::PatternStamp;
+    const BrushState brush(f.tools);
+
+    auto* pattern = frame.findChild<QComboBox*>(QStringLiteral("optionsPatternStampPattern"));
+    auto* impressionist =
+        frame.findChild<QCheckBox*>(QStringLiteral("optionsPatternImpressionist"));
+    const bool bar = pattern && impressionist && pattern->count() == 8
+        && pattern->currentText() == QStringLiteral("Checkerboard")
+        && !pattern->itemIcon(0).isNull() && !impressionist->isEnabled();
+
+    // The checkerboard's 32 px quadrants: light (215) where x < 32 matches
+    // y < 32, dark (90) elsewhere.
+    const int base = f.view->history_index();
+    f.drag({QPointF(18, 16), QPointF(28, 16), QPointF(40, 16)});
+    const bool committed = f.committedOnce(base, "Pattern Stamp");
+    const bool tiledOk =
+        qRed(f.view->sample_argb(20, 16)) == 215 && qRed(f.view->sample_argb(40, 16)) == 90;
+    // Unaligned pins the tile's corner to the stroke start: light there, where
+    // the document-aligned tile is dark.
+    pictura::StampOptions o = f.tools->stampOptions();
+    o.patternAligned = false;
+    f.tools->setStampOptions(o);
+    f.drag({QPointF(20, 50)});
+    const bool unaligned = qRed(f.view->sample_argb(20, 50)) == 215;
+
+    ST_BEGIN("pattern_stamp_tool");
+    ST_PASS("pattern stamp active=%d bar=%d commit=%d tiled=%d unaligned=%d", active ? 1 : 0,
+            bar ? 1 : 0, committed ? 1 : 0, tiledOk ? 1 : 0, unaligned ? 1 : 0);
+    if (!active || !bar || !committed || !tiledOk || !unaligned) {
+        return pictura::selfTest().fail(543, "pattern stamp tool");
+    }
+    return 0;
+}
+
+int pictura::runHistoryBrushChecks(pictura::PicturaMainWindow& frame)
+{
+    QImage seed(40, 40, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_history_brush_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(544, "history brush fixture");
+    }
+    const BrushState brush(f.tools);
+    const QColor foreground = f.tools->foreground();
+    f.tools->setForeground(Qt::black);
+    frame.setActiveTool(pictura::ToolId::Brush);
+    const int base = f.view->history_index();
+    f.drag({QPointF(5, 20), QPointF(20, 20), QPointF(35, 20)});
+    const bool painted = f.committedOnce(base, "Brush")
+        && f.view->sample_argb(10, 20) == QColor(Qt::black).rgba();
+    f.tools->setForeground(foreground);
+
+    frame.setActiveTool(pictura::ToolId::HistoryBrush);
+    const bool active = f.tools->activeTool() == pictura::ToolId::HistoryBrush;
+    f.drag({QPointF(5, 20), QPointF(10, 20), QPointF(15, 20)});
+    const bool committed = f.committedOnce(base + 1, "History Brush");
+    const bool restored = f.view->sample_argb(10, 20) == QColor(Qt::white).rgba()
+        && f.view->sample_argb(30, 20) == QColor(Qt::black).rgba();
+
+    // A press in the History panel's left column makes the Brush state the
+    // source; painting from it brings the stroke back.
+    bool chosen = false;
+    auto* panel = frame.findChild<QWidget*>(QStringLiteral("historyPanel"));
+    auto* list = panel ? panel->findChild<QListWidget*>() : nullptr;
+    pictura::PanelColumn* column = frame.panelColumn();
+    if (list && column) {
+        column->showPanel(QStringLiteral("historyPanel"), true);
+        QCoreApplication::processEvents();
+        const int rowIndex = f.view->history_snapshot_count() + base + 1;
+        if (QListWidgetItem* row = list->item(rowIndex)) {
+            const QRect rect = list->visualItemRect(row);
+            const QPointF at(rect.left() + 4, rect.center().y());
+            QMouseEvent press(QEvent::MouseButtonPress, at, list->viewport()->mapToGlobal(at),
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            // The press rebuilds the rows, so `row` is gone afterwards.
+            QApplication::sendEvent(list->viewport(), &press);
+            chosen = f.view->history_index() == base + 2
+                && pictura::history_brush_source_state(*f.view) == base + 1;
+        }
+        column->showPanel(QStringLiteral("historyPanel"), false);
+    }
+    f.drag({QPointF(5, 20), QPointF(10, 20), QPointF(15, 20)});
+    const bool repainted = chosen && f.view->sample_argb(10, 20) == QColor(Qt::black).rgba();
+
+    ST_BEGIN("history_brush_tool");
+    ST_PASS("history brush painted=%d active=%d commit=%d restored=%d chosen=%d repainted=%d",
+            painted ? 1 : 0, active ? 1 : 0, committed ? 1 : 0, restored ? 1 : 0,
+            chosen ? 1 : 0, repainted ? 1 : 0);
+    if (!painted || !active || !committed || !restored || !chosen || !repainted) {
+        return pictura::selfTest().fail(544, "history brush tool");
+    }
+    return 0;
+}
+
+namespace {
+
+bool panelVisible(pictura::PicturaMainWindow& frame, const QString& panel)
+{
+    pictura::PanelColumn* column = frame.columnForPanel(panel);
+    return column && column->isPanelVisible(panel);
+}
+
+// Click an options-bar button by object name; false when it is missing.
+bool clickBar(pictura::PicturaMainWindow& frame, const char* name)
+{
+    auto* button = frame.findChild<QToolButton*>(QString::fromLatin1(name));
+    if (!button) {
+        return false;
+    }
+    button->click();
+    QCoreApplication::processEvents();
+    return true;
+}
+
+} // namespace
+
+int pictura::runBrushPanelChecks(pictura::PicturaMainWindow& frame)
+{
+    QImage seed(60, 40, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_brush_panel_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(545, "brush panel fixture");
+    }
+    const BrushState brush(f.tools);
+    frame.setActiveTool(pictura::ToolId::CloneStamp);
+    // Earlier layout checks may leave the panel either way; each click flips it.
+    const QString name = QStringLiteral("brushPanel");
+    const bool before = panelVisible(frame, name);
+    const bool shown = clickBar(frame, "optionsToggleBrushPanel") && panelVisible(frame, name) != before;
+    const bool hidden = clickBar(frame, "optionsToggleBrushPanel") && panelVisible(frame, name) == before;
+
+    auto* panel = frame.findChild<pictura::BrushPanel*>(name);
+    auto* roundness =
+        frame.findChild<pictura::NumericField*>(QStringLiteral("brushPanelRoundness"));
+    bool wired = panel && roundness;
+    bool previewed = false;
+    if (wired) {
+        emit roundness->valueChanged(30);
+        wired = f.tools->brushRoundness() == 30 && roundness->value() == 30;
+        const QImage preview = panel->previewForTest();
+        for (int x = 0; x < preview.width() && !previewed; ++x) {
+            for (int y = 0; y < preview.height(); ++y) {
+                if (qAlpha(preview.pixel(x, y)) > 0) {
+                    previewed = true;
+                    break;
+                }
+            }
+        }
+    }
+    // A 30 % round, 0° tip is flat: one dab covers more across than down.
+    const QColor foreground = f.tools->foreground();
+    f.tools->setForeground(Qt::black);
+    f.tools->setBrushSize(20);
+    frame.setActiveTool(pictura::ToolId::Brush);
+    f.drag({QPointF(30, 20)});
+    auto painted = [&f](int x, int y) { return f.view->sample_argb(x, y) != QColor(Qt::white).rgba(); };
+    const bool flat = painted(37, 20) && !painted(30, 27);
+    f.tools->setForeground(foreground);
+    f.tools->setBrushRoundness(100);
+
+    ST_BEGIN("brush_panel");
+    ST_PASS("brush panel shown=%d hidden=%d wired=%d preview=%d flat=%d", shown ? 1 : 0,
+            hidden ? 1 : 0, wired ? 1 : 0, previewed ? 1 : 0, flat ? 1 : 0);
+    if (!shown || !hidden || !wired || !previewed || !flat) {
+        return pictura::selfTest().fail(545, "brush panel");
+    }
+    return 0;
+}
+
+int pictura::runCloneSourcePanelChecks(pictura::PicturaMainWindow& frame)
+{
+    // Seed: red (x < 5), green (5..10), white beyond.
+    QImage seed(60, 20, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    QPainter painter(&seed);
+    painter.fillRect(0, 0, 5, 20, QColor(220, 30, 30));
+    painter.fillRect(5, 0, 5, 20, QColor(30, 200, 30));
+    painter.end();
+    Fixture f(frame, seed, QStringLiteral("pictura_clone_source_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(546, "clone source panel fixture");
+    }
+    const BrushState brush(f.tools);
+    frame.setActiveTool(pictura::ToolId::CloneStamp);
+    const QString name = QStringLiteral("cloneSourcePanel");
+    const bool before = panelVisible(frame, name);
+    const bool shown =
+        clickBar(frame, "optionsToggleCloneSourcePanel") && panelVisible(frame, name) != before;
+
+    // Earlier checks may have left sources in the controller's slots.
+    for (int slot : {1, 0}) {
+        f.tools->setCloneSourceSlot(slot);
+        f.tools->setCloneSource(pictura::CloneSource{});
+    }
+    // Slot 2 gets a source; slot 1 stays empty, so a stroke there is refused.
+    const bool slotButtons = clickBar(frame, "cloneSourceSlot2") && f.tools->cloneSourceSlot() == 1;
+    f.drag({QPointF(5, 10)}, Qt::AltModifier);
+    clickBar(frame, "cloneSourceSlot1");
+    const int base = f.view->history_index();
+    f.drag({QPointF(40, 10)});
+    const bool perSlot = slotButtons && f.view->history_index() == base
+        && !f.tools->cloneSource().hasSource;
+    clickBar(frame, "cloneSourceSlot2");
+
+    // Flip Horizontal mirrors about the stroke start at x = 40.
+    const bool flipped = clickBar(frame, "cloneSourceFlipH") && f.tools->cloneSource().flipH;
+    f.drag({QPointF(40, 10), QPointF(42, 10), QPointF(44, 10)});
+    const bool mirrored = f.committedOnce(base, "Clone Stamp")
+        && f.view->sample_argb(43, 10) == QColor(220, 30, 30).rgba();
+    auto* offsetX = frame.findChild<pictura::NumericField*>(QStringLiteral("cloneSourceOffsetX"));
+    const bool offset = offsetX && offsetX->value() == 35;
+    clickBar(frame, "cloneSourceReset");
+    const bool reset = !f.tools->cloneSource().flipH;
+    f.tools->setCloneSource(pictura::CloneSource{});
+    clickBar(frame, "cloneSourceSlot1");
+    const bool hidden =
+        clickBar(frame, "optionsToggleCloneSourcePanel") && panelVisible(frame, name) == before;
+
+    ST_BEGIN("clone_source_panel");
+    ST_PASS("clone source shown=%d slots=%d flip=%d mirrored=%d offset=%d reset=%d hidden=%d",
+            shown ? 1 : 0, perSlot ? 1 : 0, flipped ? 1 : 0, mirrored ? 1 : 0, offset ? 1 : 0,
+            reset ? 1 : 0, hidden ? 1 : 0);
+    if (!shown || !perSlot || !flipped || !mirrored || !offset || !reset || !hidden) {
+        return pictura::selfTest().fail(546, "clone source panel");
     }
     return 0;
 }

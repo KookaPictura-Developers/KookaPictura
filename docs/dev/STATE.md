@@ -510,6 +510,56 @@ Snapshot for resuming after a context break. Update after each milestone.
   `keys_shown` (116) now probes the S group (self-test codes 540, 541).
   Ceilings (`ponytail:`): no Sample All Layers or Load Solid Colors Only; the
   mixing rates and preset values are photorust's (CS6's are unstated).
+- **Clone Stamp, Pattern Stamp, and History Brush** (changes `clone-stamp-tool`,
+  `pattern-stamp-tool`, and `history-brush-tool`, issues #17–#19; the stamps
+  ported from photorust, the History Brush original): the S group is complete.
+  `Stroke::begin_source` is a Brush stroke whose colour at each pixel is read
+  from a `pictura_paint::stamp::StampSource` (a document-space image at
+  `destination + offset`; an off-image source leaves the pixel alone). The
+  Clone Stamp snapshots `layer_surface` or, per Sample, the composite of
+  `sample_scope` (Current And Below drops the layers above; Ignore Adjustment
+  Layers strips adjustments under All Layers) when the stroke begins; Alt-click
+  sets the source, Aligned keeps the offset across strokes, and a sourceless or
+  zero-offset stroke is refused. The Pattern Stamp paints `pictura_paint::pattern`
+  (eight generated seamless greyscale 64 px tiles) through `stamp::tiled`,
+  Aligned pinning the tile to the document origin, unaligned to the stroke
+  start. The History Brush paints the active layer's panel path from the
+  `History` brush source: the oldest state by default, or a state / snapshot
+  chosen in the History panel's left column (a History Brush icon marks it);
+  the index follows its state as the depth limit prunes, and a source pruning
+  or a post-undo capture would discard is pinned as a copy. Bridges in
+  `cxxqt_object/paint_tools.rs` ("Clone Stamp", "Pattern Stamp", "History
+  Brush"), handlers in `tool_stamps.cpp`, bars in `options_bar_stamp.cpp` (Size,
+  Hardness, Mode, Opacity, Flow, plus Aligned / Sample / Ignore Adjustment
+  Layers or the pattern picker / Aligned / disabled Impressionist); the three
+  join the size ring and `[` / `]`. Fixed on the way: the Brush stroke read an
+  alpha-less layer (an opened image's transparency-locked Background) as
+  transparent, so it took no paint and soft edges did not blend; it now reads
+  as opaque. Self-test codes 542–544; `shift_plain` (117) asserts the S cycle
+  and the lone Y member, `keys_shown` (116) now probes the Y group, and guard
+  98 probes the Art History Brush. Ceilings (`ponytail:`): no Clone Source
+  panel, overlay, or source crosshair; built-in patterns only, no
+  Impressionist; the History Brush matches the layer by panel path and has no
+  merged snapshots, Erase to History, or Fill > History.
+- **Brush and Clone Source panels** (change `brush-and-clone-source-panels`,
+  issue #17 follow-up): the Clone Stamp bar's Toggle the Brush panel / Toggle
+  the Clone Source panel buttons show or hide the two new panels
+  (`PicturaMainWindow::togglePanel`); `Window > Panels > Brush` (F5) and `Clone
+  Source` are live. Both sit in the hidden overflow group. `BrushPanel` is the
+  Brush Tip Shape page (round tip presets, Size, Flip X / Y, Angle, Roundness
+  with an indicator, Hardness, Spacing, and a preview painted by
+  `brush_tip_preview`); the controller now holds Roundness / Angle / Spacing /
+  flips (`brushTipChanged`), and every paint-tool begin takes one `PaintTip`
+  (Brush and Pencil pass them through `begin_paint`; a single flip mirrors the
+  angle, exact for the elliptical tips). `CloneSourcePanel` edits five
+  controller slots (`CloneSource`: source, offset + anchor, W / H, angle,
+  flips); Offset shows destination minus source. `StampSource::transformed`
+  maps through the inverse scale-then-rotate about the anchor with
+  premultiplied bilinear sampling. The Brush panel menu lists the spec's
+  entries (disabled); Clone Source's carries only Close / Close Group. Self-test
+  codes 545, 546. Ceilings (`ponytail:`): no dynamics, Brush Presets, sampled /
+  bristle / erodible tips, or velocity spacing; no source overlay or frame
+  controls; clone slots are controller-wide, not per document.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on

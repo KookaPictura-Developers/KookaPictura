@@ -6,6 +6,8 @@
 
 #include "tool_handler.h"
 
+#include "paint_tip.h"
+
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -38,8 +40,8 @@ public:
         }
         const ColorReplaceOptions o = ctx.colorReplaceOptions();
         if (!begin_color_replacement(*v, ctx.foreground().rgba(), ctx.background().rgba(),
-                                     ctx.brushSize(), ctx.brushHardness(), o.mode, o.sampling,
-                                     o.limits, o.tolerance, o.antialias)) {
+                                     paintTip(ctx), o.mode, o.sampling, o.limits, o.tolerance,
+                                     o.antialias)) {
             if (activePixelLocked(v)) {
                 ctx.refused(QObject::tr("Could not paint: the layer's pixels are locked."));
             } else if (!v->active_layer_visible()) {

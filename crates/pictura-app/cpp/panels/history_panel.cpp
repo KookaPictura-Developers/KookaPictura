@@ -3,11 +3,14 @@
 #include "icons.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/paint_tools.cxxqt.h"
 
 #include <QtCore/QSize>
 #include <QtCore/QTimer>
 #include <QtCore/QVariant>
 #include <QtGui/QFont>
+#include <QtGui/QMouseEvent>
+#include <QtGui/QPixmap>
 #include <QtWidgets/QInputDialog>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QListWidget>
@@ -23,6 +26,22 @@ constexpr int kKindRole = Qt::UserRole;
 constexpr int kIndexRole = Qt::UserRole + 1;
 constexpr int kStateKind = 0;
 constexpr int kSnapshotKind = 1;
+constexpr int kSourceIconSize = 16;
+// The left column that chooses the History Brush source: the icon plus the
+// item's leading margin.
+constexpr int kSourceColumnWidth = kSourceIconSize + 6;
+
+// The History Brush marker on the source row, or a blank of the same size so
+// every label lines up.
+QIcon sourceIcon(bool source)
+{
+    if (source) {
+        return pictura::icon(QStringLiteral("tool.historybrush"));
+    }
+    QPixmap blank(kSourceIconSize, kSourceIconSize);
+    blank.fill(Qt::transparent);
+    return QIcon(blank);
+}
 
 } // namespace
 
@@ -32,6 +51,8 @@ HistoryPanel::HistoryPanel(QWidget* parent)
     QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
     list_ = new QListWidget(body);
+    list_->setIconSize(QSize(kSourceIconSize, kSourceIconSize));
+    list_->viewport()->installEventFilter(this);
     layout->addWidget(list_, 1);
     snapshotButton_ = new QPushButton(tr("Create Snapshot"), body);
     snapshotButton_->setObjectName(QStringLiteral("snapshotButton"));
@@ -65,9 +86,12 @@ void HistoryPanel::refresh()
         return;
     }
 
+    const int sourceSnapshot = history_brush_source_snapshot(*view_);
+    const int sourceState = history_brush_source_state(*view_);
     const int snapshots = view_->history_snapshot_count();
     for (int i = 0; i < snapshots; ++i) {
-        auto* item = new QListWidgetItem(view_->history_snapshot_label(i), list_);
+        auto* item = new QListWidgetItem(sourceIcon(i == sourceSnapshot),
+                                         view_->history_snapshot_label(i), list_);
         item->setData(kKindRole, kSnapshotKind);
         item->setData(kIndexRole, i);
         item->setToolTip(tr("Snapshot"));
@@ -78,7 +102,9 @@ void HistoryPanel::refresh()
     QListWidgetItem* currentItem = nullptr;
     for (int i = 0; i < count; ++i) {
         const bool isCurrent = i == current;
-        auto* item = new QListWidgetItem((isCurrent ? QStringLiteral("> ") : QString()) + view_->history_label(i), list_);
+        auto* item = new QListWidgetItem(
+            sourceIcon(i == sourceState),
+            (isCurrent ? QStringLiteral("> ") : QString()) + view_->history_label(i), list_);
         item->setData(kKindRole, kStateKind);
         item->setData(kIndexRole, i);
         if (isCurrent) {
@@ -104,6 +130,22 @@ void HistoryPanel::activate(QListWidgetItem* item)
     } else {
         view_->history_jump(index);
     }
+}
+
+bool HistoryPanel::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == list_->viewport() && event->type() == QEvent::MouseButtonPress && view_) {
+        const auto* press = static_cast<QMouseEvent*>(event);
+        const QPoint pos = press->position().toPoint();
+        QListWidgetItem* item = list_->itemAt(pos);
+        if (item && pos.x() - list_->visualItemRect(item).left() < kSourceColumnWidth) {
+            set_history_brush_source(*view_, item->data(kKindRole).toInt() == kSnapshotKind,
+                                     item->data(kIndexRole).toInt());
+            refresh();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 bool HistoryPanel::performPanelMenuAction(const QString& actionId)

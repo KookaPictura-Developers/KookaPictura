@@ -177,6 +177,16 @@ const QList<MenuRow>& rowsForPanel(const QString& panel)
              dis(QStringLiteral("Panel Options…")),
              chk(QStringLiteral("Color Samplers"), true),
          }},
+        // docs/02-ui-ux/panels/brushes-panel.md names these; the full CS6 list is
+        // an open question there.
+        {QStringLiteral("brushPanel"),
+         {
+             dis(QStringLiteral("New Brush Preset…")),
+             dis(QStringLiteral("Rename Brush…")),
+             dis(QStringLiteral("Delete Brush")),
+             dis(QStringLiteral("Clear Brush Controls"), true),
+             dis(QStringLiteral("Copy Texture to Other Tools")),
+         }},
         {QStringLiteral("historyPanel"),
          {
              imp(QStringLiteral("Step Forward"), QStringLiteral("stepForward")),
@@ -380,7 +390,9 @@ void PanelGroup::runPanelMenuAction(const QString& actionId)
 
 bool PanelGroup::panelHasMenu(const QString& panelName)
 {
-    return !rowsForPanel(panelName).isEmpty();
+    // The Clone Source spec lists no menu entries, so its live menu carries
+    // only Close / Close Group.
+    return !rowsForPanel(panelName).isEmpty() || panelName == QLatin1String("cloneSourcePanel");
 }
 
 QStringList PanelGroup::menuTextsForPanel(const QString& panelName)
