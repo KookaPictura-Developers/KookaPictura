@@ -1,8 +1,9 @@
-// The stamp tools: Clone Stamp, Pattern Stamp, and History Brush. Each begins
-// a Brush stroke whose colour comes from a source (`cxxqt_object/paint_tools.rs`) and
-// then shares the Brush's live stroke: `paint_dab` per move, `end_paint` on
-// release (one history state). Ported from photorust's clone / pattern stroke
-// handling; the History Brush has no photorust source.
+// The stamp tools: Clone Stamp, Pattern Stamp, History Brush, and Art History
+// Brush. Each begins a Brush stroke whose colour comes from a source
+// (`cxxqt_object/paint_tools.rs`) and then shares the Brush's live stroke:
+// `paint_dab` per move, `end_paint` on release (one history state). Ported
+// from photorust's clone / pattern stroke handling; the History Brush and Art
+// History Brush have no photorust source.
 
 #include "tool_handler.h"
 
@@ -169,6 +170,26 @@ protected:
     }
 };
 
+// Art History Brush: stylized strokes coloured from the History Brush's source
+// state, shaped by the bar's Style, Area, and Tolerance.
+// ponytail: strokes land only as the pointer moves; CS6 keeps painting while
+// the button is held still.
+class ArtHistoryBrushToolHandler : public StampToolHandler {
+protected:
+    bool begin(ToolContext& ctx, PictureView& v, const QPointF&) override
+    {
+        const ArtHistoryOptions o = ctx.artHistoryOptions();
+        return begin_art_history_brush(v, paintTip(ctx), ctx.brushOpacity(), o.style, o.area,
+                                       o.tolerance);
+    }
+
+    void refuseSource(ToolContext& ctx) override
+    {
+        ctx.refused(QObject::tr("Art History Brush: needs an 8-bit document whose source state "
+                                "has a matching pixel layer."));
+    }
+};
+
 } // namespace
 
 std::unique_ptr<ToolHandler> makeCloneStampToolHandler()
@@ -184,6 +205,11 @@ std::unique_ptr<ToolHandler> makePatternStampToolHandler()
 std::unique_ptr<ToolHandler> makeHistoryBrushToolHandler()
 {
     return std::make_unique<HistoryBrushToolHandler>();
+}
+
+std::unique_ptr<ToolHandler> makeArtHistoryBrushToolHandler()
+{
+    return std::make_unique<ArtHistoryBrushToolHandler>();
 }
 
 } // namespace pictura

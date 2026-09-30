@@ -64,11 +64,12 @@ void ToolController::refreshCursor(Qt::KeyboardModifiers mods)
     if (isBrushTool(active_)) {
         // The transient Alt eyedropper wins over the blank paint cursor and the
         // invisible/locked refusal (tool-framework cursor precedence).
-        // On the Clone Stamp, Alt sets the source point instead.
+        // On the Clone Stamp, Alt sets the source point instead; on the
+        // Eraser it erases to history, so the paint cursor stays.
         if (mods.testFlag(Qt::AltModifier) && active_ == ToolId::CloneStamp) {
             return canvas_->setCursor(Qt::CrossCursor);
         }
-        if (mods.testFlag(Qt::AltModifier)) {
+        if (mods.testFlag(Qt::AltModifier) && active_ != ToolId::Eraser) {
             const ToolInfo& info = toolInfo(ToolId::Eyedropper);
             const QCursor c =
                 cursor(toolCursorId(ToolId::Eyedropper, mods), info.hotspotX, info.hotspotY);

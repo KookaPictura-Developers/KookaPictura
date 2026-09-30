@@ -3,6 +3,7 @@
 
 #include "frame.h"
 #include "options_bar.h"
+#include "panels/brush_preset_picker.h"
 #include "panels/numeric_field.h"
 #include "panels/panel_column.h"
 #include "session.h"
@@ -17,6 +18,7 @@
 #include <QtCore/QJsonValue>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QWidget>
 
@@ -140,9 +142,14 @@ int runUiPersistenceChecks(pictura::PicturaMainWindow& frame)
         pump(6);
     }
 
-    // lpn_paint_percent (325): the paint options fields show a `%` suffix.
+    // lpn_paint_percent (325): the paint options fields, and the Brush Preset
+    // picker's Hardness, show a `%` suffix.
     {
-        const QString hardness = suffixTextFor(frame, QStringLiteral("optionsBrushHardness"));
+        auto* bar = frame.findChild<pictura::OptionsBar*>(QStringLiteral("optionsBar"));
+        auto* hardnessBox = bar ? bar->brushPicker()->findChild<QSpinBox*>(
+                                      QStringLiteral("brushPickerHardness"))
+                                : nullptr;
+        const QString hardness = hardnessBox ? hardnessBox->suffix() : QString();
         const QString opacity = suffixTextFor(frame, QStringLiteral("optionsBrushOpacity"));
         const QString flow = suffixTextFor(frame, QStringLiteral("optionsBrushFlow"));
         const bool percentOk = hardness == QStringLiteral("%")

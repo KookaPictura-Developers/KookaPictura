@@ -188,7 +188,15 @@ impl ColorReplacer {
             // The flood starts under the brush centre; off-image it has nowhere
             // to start.
             _ if !inside(centre) => return None,
-            limits => Some(self.reachable(img, cfg, region, centre, (cx, cy), reference, limits)),
+            limits => Some(reachable(
+                img,
+                cfg,
+                region,
+                centre,
+                (cx, cy),
+                |p| self.match_strength(p, reference),
+                limits,
+            )),
         };
         let paint = [paint.r, paint.g, paint.b].map(|c| c as f32 / 255.0);
         let rw = region.width() as usize;
@@ -232,74 +240,85 @@ impl ColorReplacer {
         dirty
     }
 
-    /// How strongly `pixel` matches `reference`, `0.0..=1.0`: in or out at the
-    /// tolerance, or with anti-aliasing solid to 70% of it and fading to zero.
     fn match_strength(&self, pixel: [u8; 4], reference: [u8; 4]) -> f32 {
-        let distance = (0..3)
-            .map(|c| pixel[c].abs_diff(reference[c]))
-            .max()
-            .unwrap_or(0) as f32;
-        let tolerance = self.options.tolerance.max(1) as f32;
-        if !self.options.antialias {
-            return if distance <= tolerance { 1.0 } else { 0.0 };
-        }
-        let solid = tolerance * 0.7;
-        if distance <= solid {
-            1.0
-        } else if distance >= tolerance {
-            0.0
-        } else {
-            1.0 - (distance - solid) / (tolerance - solid)
-        }
-    }
-
-    /// The pixels of `region` inside the dab reachable from `centre` through
-    /// matching pixels (and, for Find Edges, without a strong luminance step).
-    /// Resolved per dab, so its cost follows the brush, not the canvas.
-    #[allow(clippy::too_many_arguments)]
-    fn reachable(
-        &self,
-        img: &RgbaImage,
-        cfg: &StrokeConfig,
-        region: PsdRect,
-        centre: (i32, i32),
-        (cx, cy): (f32, f32),
-        reference: [u8; 4],
-        limits: Limits,
-    ) -> Vec<bool> {
-        let w = region.width() as usize;
-        let index = |x: i32, y: i32| (y - region.top) as usize * w + (x - region.left) as usize;
-        let luma = |p: [u8; 4]| lum([p[0], p[1], p[2]].map(|c| c as f32 / 255.0));
-        let mut reached = vec![false; w * region.height() as usize];
-        reached[index(centre.0, centre.1)] = true;
-        let mut queue = VecDeque::from([centre]);
-        while let Some((x, y)) = queue.pop_front() {
-            for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
-                if nx < region.left || nx >= region.right || ny < region.top || ny >= region.bottom
-                {
-                    continue;
-                }
-                let next = index(nx, ny);
-                if reached[next]
-                    || tip_coverage(cfg, nx as f32 + 0.5 - cx, ny as f32 + 0.5 - cy) <= 0.0
-                    || self.match_strength(img.get(nx, ny), reference) <= 0.0
-                {
-                    continue;
-                }
-                if limits == Limits::FindEdges
-                    && (luma(img.get(nx, ny)) - luma(img.get(x, y))).abs() > EDGE_LIMIT
-                {
-                    continue;
-                }
-                reached[next] = true;
-                queue.push_back((nx, ny));
-            }
-        }
-        reached
+        match_strength(
+            pixel,
+            reference,
+            self.options.tolerance,
+            self.options.antialias,
+        )
     }
 }
 
-/// The dab's pixel bounds clipped to the image, or `None` off-image.
+/// How strongly `pixel` matches `reference`, `0.0..=1.0`: in or out at the
+/// per-channel `tolerance`, or with `antialias` solid to 70% of it and fading
+/// to zero.
+pub(crate) fn match_strength(
+    pixel: [u8; 4],
+    reference: [u8; 4],
+    tolerance: u8,
+    antialias: bool,
+) -> f32 {
+    let distance = (0..3)
+        .map(|c| pixel[c].abs_diff(reference[c]))
+        .max()
+        .unwrap_or(0) as f32;
+    let tolerance = tolerance.max(1) as f32;
+    if !antialias {
+        return if distance <= tolerance { 1.0 } else { 0.0 };
+    }
+    let solid = tolerance * 0.7;
+    if distance <= solid {
+        1.0
+    } else if distance >= tolerance {
+        0.0
+    } else {
+        1.0 - (distance - solid) / (tolerance - solid)
+    }
+}
+
+/// The pixels of `region` inside the dab reachable from `centre` through
+/// pixels `matches` accepts (and, for Find Edges, without a strong luminance
+/// step). Resolved per dab, so its cost follows the brush, not the canvas.
+pub(crate) fn reachable(
+    img: &RgbaImage,
+    cfg: &StrokeConfig,
+    region: PsdRect,
+    centre: (i32, i32),
+    (cx, cy): (f32, f32),
+    matches: impl Fn([u8; 4]) -> f32,
+    limits: Limits,
+) -> Vec<bool> {
+    let w = region.width() as usize;
+    let index = |x: i32, y: i32| (y - region.top) as usize * w + (x - region.left) as usize;
+    let luma = |p: [u8; 4]| lum([p[0], p[1], p[2]].map(|c| c as f32 / 255.0));
+    let mut reached = vec![false; w * region.height() as usize];
+    reached[index(centre.0, centre.1)] = true;
+    let mut queue = VecDeque::from([centre]);
+    while let Some((x, y)) = queue.pop_front() {
+        for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+            if nx < region.left || nx >= region.right || ny < region.top || ny >= region.bottom {
+                continue;
+            }
+            let next = index(nx, ny);
+            if reached[next]
+                || tip_coverage(cfg, nx as f32 + 0.5 - cx, ny as f32 + 0.5 - cy) <= 0.0
+                || matches(img.get(nx, ny)) <= 0.0
+            {
+                continue;
+            }
+            if limits == Limits::FindEdges
+                && (luma(img.get(nx, ny)) - luma(img.get(x, y))).abs() > EDGE_LIMIT
+            {
+                continue;
+            }
+            reached[next] = true;
+            queue.push_back((nx, ny));
+        }
+    }
+    reached
+}
+
 pub(crate) fn dab_bounds(img: &RgbaImage, cfg: &StrokeConfig, cx: f32, cy: f32) -> Option<PsdRect> {
     let radius = cfg.diameter as f32 * 0.5;
     let region = PsdRect {

@@ -118,6 +118,14 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildStampPage(id);
     case ToolId::HistoryBrush:
         return buildHistoryBrushPage(id);
+    case ToolId::ArtHistoryBrush:
+        return buildArtHistoryBrushPage(id);
+    case ToolId::Eraser:
+        return buildEraserPage(id);
+    case ToolId::BackgroundEraser:
+        return buildBackgroundEraserPage(id);
+    case ToolId::MagicEraser:
+        return buildMagicEraserPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
@@ -516,6 +524,7 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(toolButton(id, page));
 
+    addBrushTipFields(layout, page);
     auto addField = [&](const QString& label, const QString& name, const QString& suffix, int lo,
                         int hi, int value, void (ToolController::*setter)(int)) {
         auto* field =
@@ -525,18 +534,9 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
         if (controller_) {
             connect(field, &NumericField::valueChanged, this,
                     [this, setter](double v) { (controller_->*setter)(qRound(v)); });
-            if (setter == &ToolController::setBrushSize) {
-                connect(controller_, &ToolController::brushSizeChanged, field,
-                        [field](int size) { field->setValue(size); });
-            }
         }
     };
 
-    addField(QStringLiteral("Size"), QStringLiteral("optionsBrushSize"), QString(), 1, 5000,
-             controller_ ? controller_->brushSize() : 12, &ToolController::setBrushSize);
-    addField(QStringLiteral("Hardness"), QStringLiteral("optionsBrushHardness"),
-             QStringLiteral("%"), 0, 100, controller_ ? controller_->brushHardness() : 100,
-             &ToolController::setBrushHardness);
     addField(QStringLiteral("Opacity"), QStringLiteral("optionsBrushOpacity"),
              QStringLiteral("%"), 0, 100, controller_ ? controller_->brushOpacity() : 100,
              &ToolController::setBrushOpacity);
@@ -572,8 +572,8 @@ QWidget* OptionsBar::buildPaintPage(ToolId id)
 }
 
 // The healing tools' bars. Spot Healing picks its Type; Healing Brush toggles
-// Aligned. The brush Size/Hardness are shared with the paint tools through the
-// same controller fields.
+// Aligned. The brush tip is shared with the paint tools through the same
+// controller fields.
 // ponytail: no Mode, Source (Pattern), or Sample (All Layers) controls yet.
 QWidget* OptionsBar::buildHealingPage(ToolId id)
 {
@@ -582,27 +582,7 @@ QWidget* OptionsBar::buildHealingPage(ToolId id)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(toolButton(id, page));
 
-    auto addField = [&](const QString& label, const QString& name, const QString& suffix, int lo,
-                        int hi, int value, void (ToolController::*setter)(int)) {
-        auto* field =
-            new NumericField(label, numericConfig(lo, hi, 1, 0, suffix, true, name), page);
-        field->setValue(value);
-        layout->addWidget(field);
-        if (controller_) {
-            connect(field, &NumericField::valueChanged, this,
-                    [this, setter](double v) { (controller_->*setter)(qRound(v)); });
-            if (setter == &ToolController::setBrushSize) {
-                connect(controller_, &ToolController::brushSizeChanged, field,
-                        [field](int size) { field->setValue(size); });
-            }
-        }
-    };
-
-    addField(QStringLiteral("Size"), QStringLiteral("optionsBrushSize"), QString(), 1, 5000,
-             controller_ ? controller_->brushSize() : 12, &ToolController::setBrushSize);
-    addField(QStringLiteral("Hardness"), QStringLiteral("optionsBrushHardness"),
-             QStringLiteral("%"), 0, 100, controller_ ? controller_->brushHardness() : 100,
-             &ToolController::setBrushHardness);
+    addBrushTipFields(layout, page);
 
     if (id == ToolId::SpotHealingBrush) {
         layout->addWidget(new QLabel(QStringLiteral("Type"), page));

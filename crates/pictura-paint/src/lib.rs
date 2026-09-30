@@ -1,5 +1,7 @@
 //! Brush engine primitives: stroke configuration, dab spacing, and tip coverage.
 
+pub mod art_history;
+pub mod eraser;
 pub mod healing;
 pub mod mixer;
 pub mod pattern;
@@ -45,13 +47,26 @@ pub struct StrokeConfig {
     pub flow: u8,
     pub mode: PaintMode,
     pub aliased: bool,
+    /// A hard square tip `diameter` wide (the Eraser's Block mode); roundness,
+    /// angle, hardness, and aliasing do not apply.
+    pub square: bool,
+    /// Scattering and Shape Dynamics, per step: `count` dabs (1–16), each
+    /// offset up to `scatter` % of the diameter in both axes, shrunk by up to
+    /// `size_jitter` %, turned by up to ±`angle_jitter`°, and flattened by up
+    /// to `roundness_jitter` %. The Paint stroke only; per-dab tools ignore it.
+    pub scatter: u16,
+    pub count: u8,
+    pub size_jitter: u8,
+    pub angle_jitter: u16,
+    pub roundness_jitter: u8,
     pub flip_x: bool,
     pub flip_y: bool,
     pub auto_erase: bool,
 }
 
 impl StrokeConfig {
-    /// Clamp every field: diameter 1..=5000, hardness/opacity/flow/roundness 0..=100, angle -180..=180.
+    /// Clamp every field: diameter 1..=5000, hardness/opacity/flow/roundness 0..=100, angle
+    /// -180..=180, and the dynamics to their ranges.
     pub fn sanitized(&self) -> StrokeConfig {
         StrokeConfig {
             diameter: self.diameter.clamp(1, 5000),
@@ -60,6 +75,11 @@ impl StrokeConfig {
             angle_deg: self.angle_deg.clamp(-180, 180),
             opacity: self.opacity.min(100),
             flow: self.flow.min(100),
+            scatter: self.scatter.min(1000),
+            count: self.count.clamp(1, 16),
+            size_jitter: self.size_jitter.min(100),
+            angle_jitter: self.angle_jitter.min(180),
+            roundness_jitter: self.roundness_jitter.min(100),
             ..*self
         }
     }
@@ -89,6 +109,12 @@ impl Default for StrokeConfig {
             flow: 100,
             mode: PaintMode::Normal,
             aliased: false,
+            square: false,
+            scatter: 0,
+            count: 1,
+            size_jitter: 0,
+            angle_jitter: 0,
+            roundness_jitter: 0,
             flip_x: false,
             flip_y: false,
             auto_erase: false,

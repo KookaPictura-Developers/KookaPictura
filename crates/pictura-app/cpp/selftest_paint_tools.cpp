@@ -1,9 +1,13 @@
 #include "selftest_paint_tools.h"
 #include "selftest_report.h"
 
+#include "selftest_paint_fixture.h"
+
 #include "frame.h"
 #include "image_view.h"
+#include "options_bar.h"
 #include "panels/brush_panel.h"
+#include "panels/brush_preset_picker.h"
 #include "panels/numeric_field.h"
 #include "panels/panel_column.h"
 #include "tools.h"
@@ -21,63 +25,15 @@
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QListWidget>
+#include <QtWidgets/QSlider>
+#include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QToolButton>
 
 #include <functional>
 
 namespace {
-
-// A document opened from `seed`, closed (and its PNG removed) on scope exit.
-struct Fixture {
-    pictura::PicturaMainWindow& frame;
-    QString path;
-    pictura::PictureView* view = nullptr;
-    pictura::ImageView* canvas = nullptr;
-    pictura::ToolController* tools = nullptr;
-    int doc = -1;
-
-    Fixture(pictura::PicturaMainWindow& f, const QImage& seed, const QString& name)
-        : frame(f)
-        , path(QDir::temp().filePath(name + QStringLiteral(".png")))
-    {
-        if (!frame.newDocument(name, seed.width(), seed.height(), QStringLiteral("rgb"), 8,
-                               QStringLiteral("white"))) {
-            return;
-        }
-        doc = frame.activeDocumentIndex();
-        pictura::PictureView* v = frame.activeView();
-        if (v && seed.save(path, "PNG") && v->open_image(path)) {
-            view = v;
-            canvas = frame.imageView();
-            tools = frame.findChild<pictura::ToolController*>();
-        }
-    }
-    ~Fixture()
-    {
-        frame.setActiveTool(pictura::ToolId::Move);
-        if (doc >= 0) {
-            frame.closeDocument(doc, false);
-        }
-        QFile::remove(path);
-    }
-    bool ok() const { return view && canvas && tools; }
-
-    void drag(const QList<QPointF>& points, Qt::KeyboardModifiers mods = Qt::NoModifier) const
-    {
-        canvas->mousePressed(points.first(), Qt::LeftButton, int(mods));
-        for (const QPointF& p : points.mid(1)) {
-            canvas->mouseMoved(p);
-        }
-        canvas->mouseReleased(points.last());
-    }
-
-    bool committedOnce(int base, const char* label) const
-    {
-        return view->history_index() == base + 1
-            && view->history_label(base + 1) == QString::fromLatin1(label);
-    }
-};
-
+using paint_fixture::BrushState;
+using paint_fixture::Fixture;
 } // namespace
 
 int pictura::runRedEyeChecks(pictura::PicturaMainWindow& frame)
@@ -241,37 +197,6 @@ int pictura::runMixerBrushChecks(pictura::PicturaMainWindow& frame)
     return 0;
 }
 
-namespace {
-
-// Brush settings a stamp check changes, restored on scope exit.
-struct BrushState {
-    pictura::ToolController* tools;
-    int size;
-    int opacity;
-    int flow;
-    pictura::StampOptions stamp;
-
-    explicit BrushState(pictura::ToolController* t)
-        : tools(t)
-        , size(t->brushSize())
-        , opacity(t->brushOpacity())
-        , flow(t->brushFlow())
-        , stamp(t->stampOptions())
-    {
-        tools->setBrushSize(6);
-        tools->setBrushOpacity(100);
-        tools->setBrushFlow(100);
-    }
-    ~BrushState()
-    {
-        tools->setBrushSize(size);
-        tools->setBrushOpacity(opacity);
-        tools->setBrushFlow(flow);
-        tools->setStampOptions(stamp);
-    }
-};
-
-} // namespace
 
 int pictura::runCloneStampChecks(pictura::PicturaMainWindow& frame)
 {
@@ -556,6 +481,159 @@ int pictura::runCloneSourcePanelChecks(pictura::PicturaMainWindow& frame)
             reset ? 1 : 0, hidden ? 1 : 0);
     if (!shown || !perSlot || !flipped || !mirrored || !offset || !reset || !hidden) {
         return pictura::selfTest().fail(546, "clone source panel");
+    }
+    return 0;
+}
+
+int pictura::runArtHistoryBrushChecks(pictura::PicturaMainWindow& frame)
+{
+    QImage seed(60, 40, QImage::Format_RGB32);
+    seed.fill(Qt::red);
+    Fixture f(frame, seed, QStringLiteral("pictura_art_history_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(548, "art history brush fixture");
+    }
+    const BrushState brush(f.tools);
+    const QColor foreground = f.tools->foreground();
+    const pictura::ArtHistoryOptions options = f.tools->artHistoryOptions();
+
+    // Paint the left edge (x < 25) white so it no longer matches the red source.
+    f.tools->setForeground(Qt::white);
+    f.tools->setBrushSize(20);
+    frame.setActiveTool(pictura::ToolId::Brush);
+    f.drag({QPointF(10, 20), QPointF(14, 20)});
+    f.tools->setBrushSize(4);
+
+    frame.setActiveTool(pictura::ToolId::ArtHistoryBrush);
+    auto* style = frame.findChild<QComboBox*>(QStringLiteral("optionsArtHistoryStyle"));
+    auto* area = frame.findChild<pictura::NumericField*>(QStringLiteral("optionsArtHistoryArea"));
+    auto* tolerance =
+        frame.findChild<pictura::NumericField*>(QStringLiteral("optionsArtHistoryTolerance"));
+    const bool bar = style && area && tolerance && style->count() == 10
+        && style->currentText() == QStringLiteral("Tight Short") && area->value() == 50
+        && tolerance->value() == 0;
+
+    const auto redCount = [&f] {
+        int n = 0;
+        for (int y = 0; y < 40; ++y) {
+            for (int x = 0; x < 25; ++x) {
+                const QRgb px = f.view->sample_argb(x, y);
+                n += qRed(px) > 200 && qGreen(px) < 100 ? 1 : 0;
+            }
+        }
+        return n;
+    };
+    const int redBefore = redCount();
+    const int base = f.view->history_index();
+    f.drag({QPointF(8, 20), QPointF(14, 20), QPointF(20, 20)});
+    const bool committed = f.committedOnce(base, "Art History Brush");
+    // The stroke over white laid source red back, well beyond the 4 px tip.
+    const int reddened = redCount() - redBefore;
+    const bool painted = committed && reddened > 100;
+
+    // At full Tolerance, red that already matches the source is left alone
+    // (a 10 px Area keeps the scatter clear of the white).
+    pictura::ArtHistoryOptions strict = options;
+    strict.tolerance = 100;
+    strict.area = 10;
+    f.tools->setArtHistoryOptions(strict);
+    f.drag({QPointF(45, 20), QPointF(50, 20), QPointF(55, 20)});
+    const bool gated = f.view->history_index() == base + 1;
+
+    f.tools->setArtHistoryOptions(options);
+    f.tools->setForeground(foreground);
+
+    ST_BEGIN("art_history_brush_tool");
+    ST_PASS("art history bar=%d commit=%d reddened=%d gated=%d", bar ? 1 : 0, committed ? 1 : 0,
+            reddened, gated ? 1 : 0);
+    if (!bar || !painted || !gated) {
+        return pictura::selfTest().fail(548, "art history brush tool");
+    }
+    return 0;
+}
+
+int pictura::runBrushPresetPickerChecks(pictura::PicturaMainWindow& frame)
+{
+    namespace scale = pictura::brush_size_scale;
+    // The first half of the Size slider runs 1-100 px; the second climbs to 5000.
+    bool mapping = scale::sizeAt(0) == 1 && scale::sizeAt(scale::kSteps / 2) == 100
+        && scale::sizeAt(scale::kSteps) == 5000 && scale::sizeAt(scale::kSteps / 4) == 51
+        && scale::sizeAt(scale::kSteps * 3 / 4) == 707;
+    // Every size up to 100 has a position; above it the travel only climbs.
+    for (int size = 1; size <= 100; ++size) {
+        mapping = mapping && scale::sizeAt(scale::positionOf(size)) == size;
+    }
+    for (int p = 1; p <= scale::kSteps; ++p) {
+        mapping = mapping && scale::sizeAt(p) >= scale::sizeAt(p - 1);
+    }
+
+    QImage seed(60, 60, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_brush_picker_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(549, "brush preset picker fixture");
+    }
+    const BrushState brush(f.tools);
+    const int hardness = f.tools->brushHardness();
+    const int roundness = f.tools->brushRoundness();
+    const int angle = f.tools->brushTipAngle();
+    const int spacing = f.tools->brushSpacing();
+    const QColor foreground = f.tools->foreground();
+
+    // Clicking the Eraser's tip button opens the picker with the default set.
+    frame.setActiveTool(pictura::ToolId::Eraser);
+    auto* bar = frame.findChild<pictura::OptionsBar*>(QStringLiteral("optionsBar"));
+    auto* stack = bar ? bar->findChild<QStackedWidget*>() : nullptr;
+    QWidget* page = stack ? stack->currentWidget() : nullptr;
+    auto* tip = page ? page->findChild<QToolButton*>(QStringLiteral("optionsBrushTip")) : nullptr;
+    bool opened = false;
+    bool slider = false;
+    bool preset = false;
+    if (tip) {
+        tip->click();
+        pictura::BrushPresetPicker* picker = bar->brushPicker();
+        auto* grid = picker->findChild<QListWidget*>(QStringLiteral("brushPickerGrid"));
+        opened = picker->isVisible() && grid && grid->count() == picker->presetCount()
+            && picker->presetCount() >= 40;
+        auto* sizeSlider = picker->findChild<QSlider*>(QStringLiteral("brushPickerSizeSlider"));
+        if (sizeSlider) {
+            sizeSlider->setValue(scale::kSteps / 2);
+            slider = f.tools->brushSize() == 100 && tip->text() == QStringLiteral("100");
+        }
+        // "Spatter 24": a cluster of seven dabs scattered 150 % of the size.
+        picker->choosePresetForTest(25);
+        const pictura::BrushDynamics d = f.tools->brushDynamics();
+        preset = f.tools->brushSize() == 24 && d.count == 7 && d.scatter == 150;
+        picker->hide();
+    }
+
+    // One Brush click with the spatter tip lands paint well off the 24 px tip.
+    f.tools->setForeground(Qt::black);
+    frame.setActiveTool(pictura::ToolId::Brush);
+    f.drag({QPointF(30, 30)});
+    bool scattered = false;
+    for (int y = 0; y < 60 && !scattered; ++y) {
+        for (int x = 0; x < 60; ++x) {
+            const bool far = (x - 30) * (x - 30) + (y - 30) * (y - 30) > 14 * 14;
+            if (far && f.view->sample_argb(x, y) != QColor(Qt::white).rgba()) {
+                scattered = true;
+                break;
+            }
+        }
+    }
+
+    f.tools->setForeground(foreground);
+    f.tools->setBrushHardness(hardness);
+    f.tools->setBrushRoundness(roundness);
+    f.tools->setBrushTipAngle(angle);
+    f.tools->setBrushSpacing(spacing);
+    f.tools->setBrushDynamics(pictura::BrushDynamics{});
+
+    ST_BEGIN("brush_preset_picker");
+    ST_PASS("brush preset picker mapping=%d opened=%d slider=%d preset=%d scattered=%d",
+            mapping ? 1 : 0, opened ? 1 : 0, slider ? 1 : 0, preset ? 1 : 0, scattered ? 1 : 0);
+    if (!mapping || !opened || !slider || !preset || !scattered) {
+        return pictura::selfTest().fail(549, "brush preset picker");
     }
     return 0;
 }

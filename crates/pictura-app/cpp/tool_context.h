@@ -47,6 +47,55 @@ struct StampOptions {
     bool patternAligned = true;
 };
 
+// The brush tip's dynamics (Scattering and Shape Dynamics), set by the brush
+// preset picker: `count` dabs per step (1-16), each offset up to `scatter` % of
+// the diameter, shrunk by up to `sizeJitter` %, turned by up to ±`angleJitter`°,
+// and flattened by up to `roundnessJitter` %.
+struct BrushDynamics {
+    int scatter = 0;
+    int count = 1;
+    int sizeJitter = 0;
+    int angleJitter = 0;
+    int roundnessJitter = 0;
+};
+
+// The Eraser options bar: Mode 0 Brush / 1 Pencil / 2 Block, and Erase To
+// History (Alt held while pressing does the same for one stroke).
+struct EraserOptions {
+    int mode = 0;
+    bool toHistory = false;
+};
+
+// The Background Eraser options bar: Sampling 0 Continuous / 1 Once /
+// 2 Background Swatch, Limits 0 Discontiguous / 1 Contiguous / 2 Find Edges,
+// Tolerance 0-100 %, Protect Foreground Color.
+struct BackgroundEraseOptions {
+    int sampling = 0;
+    int limits = 1;
+    int tolerance = 50;
+    bool protectForeground = false;
+};
+
+// The Magic Eraser options bar: Tolerance 0-255 per channel (the Magic Wand's
+// scale), Anti-alias, Contiguous, Sample All Layers, Opacity 0-100 %.
+struct MagicEraseOptions {
+    int tolerance = 32;
+    bool antialias = true;
+    bool contiguous = true;
+    bool sampleAllLayers = false;
+    int opacity = 100;
+};
+
+// The Art History Brush options bar: Style 0 Tight Short … 9 Loose Curl Long
+// (art_history_style_name), Area in pixels, Tolerance 0-100 %. Tolerance
+// starts at 0 (paint anywhere); the spec's unverified 100 would paint almost
+// nowhere.
+struct ArtHistoryOptions {
+    int style = 0;
+    int area = 50;
+    int tolerance = 0;
+};
+
 // One Clone Source panel slot: the Alt-clicked source point; the offset the
 // first stroke measured (source minus destination) and the destination point
 // it was measured at; and the source transform (W / H %, rotation in degrees
@@ -84,6 +133,7 @@ struct ToolContext {
     virtual int brushRoundness() const = 0;
     virtual int brushAngle() const = 0;
     virtual int brushSpacing() const = 0;
+    virtual BrushDynamics brushDynamics() const = 0;
     virtual bool autoErase() const = 0;
     virtual int tolerance() const = 0;
     virtual bool contiguous() const = 0;
@@ -112,6 +162,10 @@ struct ToolContext {
     virtual QColor mixerReservoir() const = 0;
     virtual void setMixerReservoir(const QColor& color) = 0;
     virtual StampOptions stampOptions() const = 0;
+    virtual EraserOptions eraserOptions() const = 0;
+    virtual BackgroundEraseOptions backgroundEraseOptions() const = 0;
+    virtual MagicEraseOptions magicEraseOptions() const = 0;
+    virtual ArtHistoryOptions artHistoryOptions() const = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;
     virtual void setCloneSource(const CloneSource& source) = 0;

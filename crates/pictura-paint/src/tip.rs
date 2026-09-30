@@ -9,6 +9,14 @@ fn smoothstep(t: f32) -> f32 {
 
 /// Tip alpha in 0..=1 at layer-local offset (dx, dy) from a dab center.
 pub fn tip_coverage(cfg: &StrokeConfig, dx: f32, dy: f32) -> f32 {
+    if cfg.square {
+        let half = cfg.diameter as f32 * 0.5;
+        return if dx.abs() <= half && dy.abs() <= half {
+            1.0
+        } else {
+            0.0
+        };
+    }
     let theta = -(cfg.angle_deg as f32).to_radians();
     let (s, c) = theta.sin_cos();
     let rx = dx * c - dy * s;
@@ -88,6 +96,17 @@ mod tests {
             cov > 0.0 && cov < 1.0,
             "expected partial coverage, got {cov}"
         );
+    }
+
+    #[test]
+    fn square_tip_fills_its_corners() {
+        let cfg = StrokeConfig {
+            square: true,
+            diameter: 10,
+            ..StrokeConfig::default()
+        };
+        assert_eq!(tip_coverage(&cfg, 4.5, 4.5), 1.0);
+        assert_eq!(tip_coverage(&cfg, 5.5, 0.0), 0.0);
     }
 
     #[test]
