@@ -2384,7 +2384,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::BackgroundEraser);
+        probe.setActiveTool(pictura::ToolId::Gradient);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
@@ -3002,18 +3002,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         bool keysShown = toolsPanelToolbox != nullptr;
         bool keysDisabled = false;
         if (toolsPanelToolbox) {
-            // The E group (Background / Magic Eraser) still has disabled members.
-            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(11);
+            // The G group (Gradient / Paint Bucket) still has disabled members.
+            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(12);
             for (QAction* action : actions) {
                 const bool keyShown =
-                    action->shortcut() == QKeySequence(QStringLiteral("E"))
+                    action->shortcut() == QKeySequence(QStringLiteral("G"))
                     && action->isShortcutVisibleInContextMenu();
                 if (!keyShown) {
                     keysShown = false;
                 }
                 if (!action->isEnabled()) {
                     const bool disabledOk =
-                        action->shortcut() == QKeySequence(QStringLiteral("E"))
+                        action->shortcut() == QKeySequence(QStringLiteral("G"))
                         && action->toolTip().contains(QStringLiteral("not implemented yet"));
                     keysDisabled = keysDisabled || disabledOk;
                     if (!disabledOk) {

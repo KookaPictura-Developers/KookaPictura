@@ -47,12 +47,6 @@ int runBrushPanelChecks(PicturaMainWindow& frame);
 // stroke; Flip Horizontal mirrors the cloned pixels about the stroke start.
 int runCloneSourcePanelChecks(PicturaMainWindow& frame);
 
-// eraser_tool (547): the Eraser bar's Mode defaults to Brush with Erase to
-// History off; on the Background a stroke paints the background colour in one
-// "Eraser" state; Alt-drag paints the oldest state back; on an ordinary layer
-// it erases to transparency; Block greys Opacity.
-int runEraserChecks(PicturaMainWindow& frame);
-
 // art_history_brush_tool (548): the bar lists ten Styles (Tight Short), Area
 // 50, Tolerance 0; a stroke over white repaints scattered source red in one
 // "Art History Brush" state; at Tolerance 100 over matching red nothing is

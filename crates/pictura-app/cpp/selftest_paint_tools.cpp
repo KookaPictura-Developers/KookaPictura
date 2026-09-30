@@ -1,6 +1,8 @@
 #include "selftest_paint_tools.h"
 #include "selftest_report.h"
 
+#include "selftest_paint_fixture.h"
+
 #include "frame.h"
 #include "image_view.h"
 #include "options_bar.h"
@@ -30,58 +32,8 @@
 #include <functional>
 
 namespace {
-
-// A document opened from `seed`, closed (and its PNG removed) on scope exit.
-struct Fixture {
-    pictura::PicturaMainWindow& frame;
-    QString path;
-    pictura::PictureView* view = nullptr;
-    pictura::ImageView* canvas = nullptr;
-    pictura::ToolController* tools = nullptr;
-    int doc = -1;
-
-    Fixture(pictura::PicturaMainWindow& f, const QImage& seed, const QString& name)
-        : frame(f)
-        , path(QDir::temp().filePath(name + QStringLiteral(".png")))
-    {
-        if (!frame.newDocument(name, seed.width(), seed.height(), QStringLiteral("rgb"), 8,
-                               QStringLiteral("white"))) {
-            return;
-        }
-        doc = frame.activeDocumentIndex();
-        pictura::PictureView* v = frame.activeView();
-        if (v && seed.save(path, "PNG") && v->open_image(path)) {
-            view = v;
-            canvas = frame.imageView();
-            tools = frame.findChild<pictura::ToolController*>();
-        }
-    }
-    ~Fixture()
-    {
-        frame.setActiveTool(pictura::ToolId::Move);
-        if (doc >= 0) {
-            frame.closeDocument(doc, false);
-        }
-        QFile::remove(path);
-    }
-    bool ok() const { return view && canvas && tools; }
-
-    void drag(const QList<QPointF>& points, Qt::KeyboardModifiers mods = Qt::NoModifier) const
-    {
-        canvas->mousePressed(points.first(), Qt::LeftButton, int(mods));
-        for (const QPointF& p : points.mid(1)) {
-            canvas->mouseMoved(p);
-        }
-        canvas->mouseReleased(points.last());
-    }
-
-    bool committedOnce(int base, const char* label) const
-    {
-        return view->history_index() == base + 1
-            && view->history_label(base + 1) == QString::fromLatin1(label);
-    }
-};
-
+using paint_fixture::BrushState;
+using paint_fixture::Fixture;
 } // namespace
 
 int pictura::runRedEyeChecks(pictura::PicturaMainWindow& frame)
@@ -245,37 +197,6 @@ int pictura::runMixerBrushChecks(pictura::PicturaMainWindow& frame)
     return 0;
 }
 
-namespace {
-
-// Brush settings a stamp check changes, restored on scope exit.
-struct BrushState {
-    pictura::ToolController* tools;
-    int size;
-    int opacity;
-    int flow;
-    pictura::StampOptions stamp;
-
-    explicit BrushState(pictura::ToolController* t)
-        : tools(t)
-        , size(t->brushSize())
-        , opacity(t->brushOpacity())
-        , flow(t->brushFlow())
-        , stamp(t->stampOptions())
-    {
-        tools->setBrushSize(6);
-        tools->setBrushOpacity(100);
-        tools->setBrushFlow(100);
-    }
-    ~BrushState()
-    {
-        tools->setBrushSize(size);
-        tools->setBrushOpacity(opacity);
-        tools->setBrushFlow(flow);
-        tools->setStampOptions(stamp);
-    }
-};
-
-} // namespace
 
 int pictura::runCloneStampChecks(pictura::PicturaMainWindow& frame)
 {
@@ -560,70 +481,6 @@ int pictura::runCloneSourcePanelChecks(pictura::PicturaMainWindow& frame)
             reset ? 1 : 0, hidden ? 1 : 0);
     if (!shown || !perSlot || !flipped || !mirrored || !offset || !reset || !hidden) {
         return pictura::selfTest().fail(546, "clone source panel");
-    }
-    return 0;
-}
-
-int pictura::runEraserChecks(pictura::PicturaMainWindow& frame)
-{
-    QImage seed(40, 40, QImage::Format_RGB32);
-    seed.fill(Qt::white);
-    Fixture f(frame, seed, QStringLiteral("pictura_eraser_seed"));
-    if (!f.ok()) {
-        return pictura::selfTest().fail(547, "eraser fixture");
-    }
-    const BrushState brush(f.tools);
-    const QColor foreground = f.tools->foreground();
-    const QColor background = f.tools->background();
-    const pictura::EraserOptions options = f.tools->eraserOptions();
-    const QRgb red = QColor(Qt::red).rgba();
-    const QRgb white = QColor(Qt::white).rgba();
-
-    frame.setActiveTool(pictura::ToolId::Eraser);
-    auto* mode = frame.findChild<QComboBox*>(QStringLiteral("optionsEraserMode"));
-    auto* opacity = frame.findChild<pictura::NumericField*>(QStringLiteral("optionsEraserOpacity"));
-    auto* toHistory = frame.findChild<QCheckBox*>(QStringLiteral("optionsEraseToHistory"));
-    const bool bar = mode && opacity && toHistory && mode->count() == 3
-        && mode->currentIndex() == 0 && opacity->isEnabled() && !toHistory->isChecked();
-
-    // The opened PNG is the Background: erasing paints the background colour.
-    f.tools->setBackground(Qt::red);
-    const int base = f.view->history_index();
-    f.drag({QPointF(5, 20), QPointF(20, 20), QPointF(35, 20)});
-    const bool toBackground = f.committedOnce(base, "Eraser") && f.view->sample_argb(10, 20) == red;
-
-    // Alt paints the oldest (white) state back.
-    f.drag({QPointF(5, 20), QPointF(10, 20), QPointF(15, 20)}, Qt::AltModifier);
-    const bool toHistoryOk = f.committedOnce(base + 1, "Eraser")
-        && f.view->sample_argb(10, 20) == white && f.view->sample_argb(30, 20) == red;
-
-    // On an ordinary layer it erases to transparency, showing the Background.
-    const int layer = f.view->add_layer(0);
-    f.view->set_active_layer(QString::number(layer));
-    f.tools->setForeground(Qt::black);
-    frame.setActiveTool(pictura::ToolId::Brush);
-    f.drag({QPointF(5, 8), QPointF(35, 8)});
-    frame.setActiveTool(pictura::ToolId::Eraser);
-    const bool black = f.view->sample_argb(10, 8) == QColor(Qt::black).rgba();
-    f.drag({QPointF(5, 8), QPointF(20, 8)});
-    const bool transparent = black && f.view->sample_argb(10, 8) == white
-        && f.view->sample_argb(30, 8) == QColor(Qt::black).rgba();
-
-    bool block = false;
-    if (mode) {
-        mode->setCurrentIndex(2);
-        block = f.tools->eraserOptions().mode == 2 && !opacity->isEnabled();
-        mode->setCurrentIndex(0);
-    }
-    f.tools->setEraserOptions(options);
-    f.tools->setForeground(foreground);
-    f.tools->setBackground(background);
-
-    ST_BEGIN("eraser_tool");
-    ST_PASS("eraser bar=%d background=%d history=%d transparent=%d block=%d", bar ? 1 : 0,
-            toBackground ? 1 : 0, toHistoryOk ? 1 : 0, transparent ? 1 : 0, block ? 1 : 0);
-    if (!bar || !toBackground || !toHistoryOk || !transparent || !block) {
-        return pictura::selfTest().fail(547, "eraser tool");
     }
     return 0;
 }

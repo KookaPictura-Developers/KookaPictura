@@ -91,9 +91,11 @@ const ToolInfo kToolTable[] = {
     {ToolId::Eraser, "eraser", "Eraser", QLatin1Char('E'), Qt::CrossCursor,
      "Eraser: drag to erase, Alt-drag to erase to history", 11, true, 2, 22},
     {ToolId::BackgroundEraser, "backgrounderaser", "Background Eraser", QLatin1Char('E'),
-     Qt::CrossCursor, "Background Eraser: not implemented yet", 11, false, 2, 22},
+     Qt::CrossCursor,
+     "Background Eraser: drag with the crosshair on the colour to erase to transparency", 11,
+     true, 2, 22},
     {ToolId::MagicEraser, "magiceraser", "Magic Eraser", QLatin1Char('E'), Qt::CrossCursor,
-     "Magic Eraser: not implemented yet", 11, false, 2, 22},
+     "Magic Eraser: click to erase similar colours to transparency", 11, true, 2, 22},
     {ToolId::Gradient, "gradient", "Gradient", QLatin1Char('G'), Qt::CrossCursor,
      "Gradient: not implemented yet", 12, false, 2, 22},
     {ToolId::PaintBucket, "paintbucket", "Paint Bucket", QLatin1Char('G'), Qt::CrossCursor,
@@ -190,7 +192,8 @@ bool isBrushTool(ToolId id)
 {
     return id == ToolId::Brush || id == ToolId::Pencil || id == ToolId::ColorReplacement
         || id == ToolId::MixerBrush || id == ToolId::CloneStamp || id == ToolId::PatternStamp
-        || id == ToolId::HistoryBrush || id == ToolId::ArtHistoryBrush || id == ToolId::Eraser;
+        || id == ToolId::HistoryBrush || id == ToolId::ArtHistoryBrush || id == ToolId::Eraser
+        || id == ToolId::BackgroundEraser;
 }
 
 QString toolIdName(ToolId id)
@@ -263,6 +266,7 @@ QList<ToolHint> toolHintEntries(ToolId id)
     case ToolId::HistoryBrush:
     case ToolId::ArtHistoryBrush:
     case ToolId::Eraser:
+    case ToolId::BackgroundEraser:
         return {{QStringLiteral("["), QStringLiteral("Decrease brush size")},
                 {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
     case ToolId::Move:
@@ -316,7 +320,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::ContentAwareMove, ToolId::RedEye,
         ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil, ToolId::ColorReplacement,
         ToolId::MixerBrush, ToolId::CloneStamp, ToolId::PatternStamp, ToolId::HistoryBrush,
-        ToolId::ArtHistoryBrush, ToolId::Eraser,
+        ToolId::ArtHistoryBrush, ToolId::Eraser, ToolId::BackgroundEraser, ToolId::MagicEraser,
     };
     return ids;
 }

@@ -122,6 +122,10 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildArtHistoryBrushPage(id);
     case ToolId::Eraser:
         return buildEraserPage(id);
+    case ToolId::BackgroundEraser:
+        return buildBackgroundEraserPage(id);
+    case ToolId::MagicEraser:
+        return buildMagicEraserPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);

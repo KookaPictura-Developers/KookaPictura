@@ -66,6 +66,26 @@ struct EraserOptions {
     bool toHistory = false;
 };
 
+// The Background Eraser options bar: Sampling 0 Continuous / 1 Once /
+// 2 Background Swatch, Limits 0 Discontiguous / 1 Contiguous / 2 Find Edges,
+// Tolerance 0-100 %, Protect Foreground Color.
+struct BackgroundEraseOptions {
+    int sampling = 0;
+    int limits = 1;
+    int tolerance = 50;
+    bool protectForeground = false;
+};
+
+// The Magic Eraser options bar: Tolerance 0-255 per channel (the Magic Wand's
+// scale), Anti-alias, Contiguous, Sample All Layers, Opacity 0-100 %.
+struct MagicEraseOptions {
+    int tolerance = 32;
+    bool antialias = true;
+    bool contiguous = true;
+    bool sampleAllLayers = false;
+    int opacity = 100;
+};
+
 // The Art History Brush options bar: Style 0 Tight Short … 9 Loose Curl Long
 // (art_history_style_name), Area in pixels, Tolerance 0-100 %. Tolerance
 // starts at 0 (paint anywhere); the spec's unverified 100 would paint almost
@@ -143,6 +163,8 @@ struct ToolContext {
     virtual void setMixerReservoir(const QColor& color) = 0;
     virtual StampOptions stampOptions() const = 0;
     virtual EraserOptions eraserOptions() const = 0;
+    virtual BackgroundEraseOptions backgroundEraseOptions() const = 0;
+    virtual MagicEraseOptions magicEraseOptions() const = 0;
     virtual ArtHistoryOptions artHistoryOptions() const = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;

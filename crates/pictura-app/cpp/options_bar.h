@@ -60,6 +60,9 @@ private:
     QWidget* buildHistoryBrushPage(ToolId id);
     QWidget* buildArtHistoryBrushPage(ToolId id);
     QWidget* buildEraserPage(ToolId id);
+    // options_bar_erase.cpp: Background Eraser and Magic Eraser.
+    QWidget* buildBackgroundEraserPage(ToolId id);
+    QWidget* buildMagicEraserPage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
     NumericField* addPercentField(QHBoxLayout* layout, QWidget* page, const QString& label,
                                   const QString& name, int value,

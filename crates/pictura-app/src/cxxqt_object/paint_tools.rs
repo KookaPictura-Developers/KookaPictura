@@ -1,12 +1,13 @@
 //! The paint tool bridges beyond the Brush: Color Replacement, Mixer Brush,
 //! the stamps (Clone Stamp, Pattern Stamp, History Brush), the Art History
-//! Brush, and the Eraser. Free functions over a [`PictureView`] (their own
+//! Brush, and the erasers. Free functions over a [`PictureView`] (their own
 //! bridge, so the `PictureView` declaration list does not grow). Each only *begins* a stroke — of its [`StrokeKind`], or
 //! one whose colour comes from a [`StampSource`]; the live stroke then runs
 //! through the Brush's `paint_dab` / `end_paint` / `cancel_paint`, so the
 //! preview and the one history state per stroke (`"Color Replacement Tool"`,
 //! `"Mixer Brush Tool"`, `"Clone Stamp"`, `"Pattern Stamp"`, `"History
-//! Brush"`, `"Art History Brush"`, `"Eraser"`) are shared.
+//! Brush"`, `"Art History Brush"`, `"Eraser"`, `"Background Eraser"`) are
+//! shared. The Magic Eraser is one click and records `"Magic Eraser"` itself.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
@@ -20,7 +21,9 @@ use cxx_qt_lib::QString;
 use ffi::PaintTip;
 use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, PsdRect};
 use pictura_paint::art_history::{ArtHistoryOptions, ArtStyle, STYLE_NAMES};
-use pictura_paint::eraser::{begin_erase, EraserMode};
+use pictura_paint::eraser::{
+    antialias_mask, begin_erase, ensure_alpha, magic_erase, BackgroundEraseOptions, EraserMode,
+};
 use pictura_paint::mixer::MixerOptions;
 use pictura_paint::pattern::{self, PATTERN_NAMES};
 use pictura_paint::replace::{Limits, ReplaceMode, ReplaceOptions, Sampling};
@@ -200,6 +203,42 @@ pub mod ffi {
             mode: &QString,
             aliased: bool,
             auto_erase: bool,
+        ) -> bool;
+
+        /// Begin a Background Eraser stroke. `sampling` 0 Continuous / 1 Once
+        /// / 2 Background Swatch (`background`, `0xAARRGGBB`), `limits` 0
+        /// Discontiguous / 1 Contiguous / 2 Find Edges, `tolerance` 0–100 %;
+        /// with `protect_foreground` pixels matching `foreground` are kept. The
+        /// Background is turned into a layer by the stroke; Lock Transparency is
+        /// overridden. False as for `begin_clone_stamp`.
+        fn begin_background_eraser(
+            view: Pin<&mut PictureView>,
+            foreground: u32,
+            background: u32,
+            tip: &PaintTip,
+            sampling: i32,
+            limits: i32,
+            tolerance: i32,
+            protect_foreground: bool,
+        ) -> bool;
+
+        /// Magic Eraser: erase the region the Magic Wand floods from document
+        /// point `(x, y)` — `tolerance` 0–255 per channel, `contiguous`, the
+        /// active layer or with `sample_all` the composite — at `opacity`
+        /// 0–100 %, with a softened edge when `antialias`. A Background is
+        /// turned into a layer first; a transparency-locked layer is filled
+        /// with `background` instead. One "Magic Eraser" state; false when
+        /// nothing changed or the active layer cannot be edited.
+        fn magic_erase_at(
+            view: Pin<&mut PictureView>,
+            x: i32,
+            y: i32,
+            tolerance: i32,
+            antialias: bool,
+            contiguous: bool,
+            sample_all: bool,
+            opacity: i32,
+            background: u32,
         ) -> bool;
 
         /// A white stroke with `tip` along an S-curve on transparency, packed
@@ -489,6 +528,130 @@ fn begin_eraser(
         };
         begin_erase(doc, path, cfg, mode, history).ok()
     })
+}
+
+fn begin_background_eraser(
+    view: Pin<&mut PictureView>,
+    foreground: u32,
+    background: u32,
+    tip: &PaintTip,
+    sampling: i32,
+    limits: i32,
+    tolerance: i32,
+    protect_foreground: bool,
+) -> bool {
+    let cfg = StrokeConfig {
+        color: rgba_from_argb(foreground),
+        background: rgba_from_argb(background),
+        ..tip_config(tip)
+    };
+    let options = BackgroundEraseOptions {
+        sampling: Sampling::from_i32(sampling).unwrap_or_default(),
+        limits: Limits::from_i32(limits).unwrap_or_default(),
+        tolerance: (tolerance.clamp(0, 100) as f32 * 2.55).round() as u8,
+        protect_foreground,
+    };
+    begin(view, "Background Eraser", |doc, path, _| {
+        let kind = StrokeKind::BackgroundErase(options);
+        match unlocked_background(doc, path) {
+            Some(layered) => Stroke::begin_kind(&layered, path, cfg, kind).ok(),
+            None => Stroke::begin_kind(doc, path, cfg, kind).ok(),
+        }
+    })
+}
+
+/// A copy of `doc` with the Background at `path` turned into an ordinary
+/// layer with an opaque alpha channel, so it can be erased to transparency;
+/// `None` when `path` is not the Background.
+fn unlocked_background(doc: &Document, path: &str) -> Option<Document> {
+    if !pictura_render::resolve_path(doc, path)?.background {
+        return None;
+    }
+    let mut layered = doc.clone();
+    pictura_render::layer_from_background(&mut layered, path);
+    ensure_alpha(pictura_render::resolve_path_mut(&mut layered, path)?);
+    Some(layered)
+}
+
+fn magic_erase_at(
+    mut view: Pin<&mut PictureView>,
+    x: i32,
+    y: i32,
+    tolerance: i32,
+    antialias: bool,
+    contiguous: bool,
+    sample_all: bool,
+    opacity: i32,
+    background: u32,
+) -> bool {
+    let erased = {
+        let rust = view.rust();
+        let (Some(doc), Some(path)) = (rust.doc.as_ref(), rust.active_layer.as_deref()) else {
+            return false;
+        };
+        if rust.stroke.is_some()
+            || x < 0
+            || y < 0
+            || active_pixel_layer(doc, Some(path)).is_none()
+            || !active_layer_visible(doc, Some(path))
+            || pictura_render::resolve_path(doc, path).is_none_or(pictura_core::layer_pixel_locked)
+        {
+            return false;
+        }
+        let sampled = if sample_all {
+            super::helpers_composite::current_buffer(doc, rust.gpu_compute)
+        } else {
+            let Some(surface) = layer_surface(doc, path) else {
+                return false;
+            };
+            planar(&surface)
+        };
+        let tolerance = tolerance.clamp(0, 255) as u8;
+        let Ok(flood) =
+            pictura_select::magic_wand(&sampled, x as u32, y as u32, tolerance, contiguous)
+        else {
+            return false;
+        };
+        let mask = if antialias {
+            antialias_mask(&flood.data, flood.width as usize)
+        } else {
+            flood.data
+        };
+        let mut edited = unlocked_background(doc, path).unwrap_or_else(|| doc.clone());
+        let opacity = opacity.clamp(0, 100) as f32 / 100.0;
+        magic_erase(
+            &mut edited,
+            path,
+            &mask,
+            opacity,
+            rgba_from_argb(background),
+        )
+        .map(|_| edited)
+    };
+    let Some(doc) = erased else {
+        return false;
+    };
+    view.as_mut().rust_mut().doc = Some(doc);
+    view.as_mut().recomposite();
+    view.as_mut().record("Magic Eraser");
+    true
+}
+
+/// A document-space surface as the planar RGBA buffer the Magic Wand reads.
+fn planar(surface: &pictura_paint::healing::RgbaImage) -> pictura_core::PixelBuffer {
+    let n = surface.data.len();
+    let mut data = vec![0u8; n * 4];
+    for (i, px) in surface.data.iter().enumerate() {
+        for (c, v) in px.iter().enumerate() {
+            data[c * n + i] = *v;
+        }
+    }
+    pictura_core::PixelBuffer {
+        width: surface.width as u32,
+        height: surface.height as u32,
+        channels: 4,
+        data,
+    }
 }
 
 fn stamp_pattern_count() -> i32 {
