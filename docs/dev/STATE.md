@@ -90,7 +90,9 @@ Snapshot for resuming after a context break. Update after each milestone.
     `slice-select-tool`, and
     `open-recent-menu`, and
     `crop-tool-box`, and
-    `annotation-tools`
+    `annotation-tools`, and
+    `cs6-shared-widgets`, `panel-line-art-glyphs`, `info-panel-expansion`,
+    `swatches-panel-expansion`, `properties-panel`, and `channels-panel`
     changes;
     canonical specs are in `openspec/specs/` as a `{domain}/{capability}` tree
    (119 specs, `validate --all --strict` green), change history under
@@ -103,6 +105,24 @@ Snapshot for resuming after a context break. Update after each milestone.
    effect kinds (drop shadow, outer glow, inner shadow, inner glow, stroke,
    color/gradient/pattern overlay, satin, and bevel & emboss) plus the legacy
    `lrFX` block.
+- **Shared panel widgets and the CS6 panel slices** (issues #70, #71, #78, #79,
+  #80, #81, ported from photorust): six capabilities landed on the panel
+  foundation — `ui/shared-widgets` (the `AngleDial`, `RampSlider`, `SpectrumBar`,
+  and `CurveWidget` controls, with `tst_shared_widgets`), the `ui/icon-assets`
+  additions (eleven `layers.*`/`path.*` glyphs rebased onto the 24×24 grid, with
+  `tst_icon_assets`), `ui/properties-panel` (read-only: the active adjustment
+  layer is identified and named), `ui/channels-panel` (presentational composite
+  plus RGB rows with thumbnails and local-only eye toggles), the
+  `ui/info-histogram-panel` expansion (the CMYK readout and the Ruler A/L + W/H
+  mode), and the `ui/color-swatches-panel` expansion (reflowing named
+  `SwatchGrid`, click modifiers, footer New/Delete, and a context menu with
+  Reset). The six changes are archived.
+  Deferred engine work: adjustment-parameter get/set plus an edit session for the
+  Properties panel (#70); a per-channel visibility model, a compositor
+  channel-mask path, and channel enumeration for the Channels panel (#71);
+  `.aco` swatch-library load/save (needs a `pictura-presets` crate, which does
+  not exist yet); and the `Doc: n/n` memory-footprint line (no document-size
+  bridge to read it from).
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
