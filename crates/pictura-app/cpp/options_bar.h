@@ -67,9 +67,9 @@ private:
     // options_bar_fill.cpp: Gradient and Paint Bucket.
     QWidget* buildGradientPage(ToolId id);
     QWidget* buildPaintBucketPage(ToolId id);
-    // options_bar_retouch.cpp: Blur, Sharpen, Smudge, and Dodge.
+    // options_bar_retouch.cpp: Blur, Sharpen, Smudge, Dodge, Burn, and Sponge.
     QWidget* buildRetouchPage(ToolId id);
-    QWidget* buildDodgePage(ToolId id);
+    QWidget* buildTonePage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
     NumericField* addPercentField(QHBoxLayout* layout, QWidget* page, const QString& label,
                                   const QString& name, int value,

@@ -2351,7 +2351,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::Burn);
+        probe.setActiveTool(pictura::ToolId::Pen);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
@@ -2937,18 +2937,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         bool keysShown = toolsPanelToolbox != nullptr;
         bool keysDisabled = false;
         if (toolsPanelToolbox) {
-            // The O group (Dodge / Burn / Sponge) still has disabled members.
-            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(14);
+            // The K group (the 3D object tools, out of scope) stays disabled.
+            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(19);
             for (QAction* action : actions) {
                 const bool keyShown =
-                    action->shortcut() == QKeySequence(QStringLiteral("O"))
+                    action->shortcut() == QKeySequence(QStringLiteral("K"))
                     && action->isShortcutVisibleInContextMenu();
                 if (!keyShown) {
                     keysShown = false;
                 }
                 if (!action->isEnabled()) {
                     const bool disabledOk =
-                        action->shortcut() == QKeySequence(QStringLiteral("O"))
+                        action->shortcut() == QKeySequence(QStringLiteral("K"))
                         && action->toolTip().contains(QStringLiteral("not implemented yet"));
                     keysDisabled = keysDisabled || disabledOk;
                     if (!disabledOk) {

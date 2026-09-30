@@ -1,13 +1,14 @@
 //! The paint tool bridges beyond the Brush: Color Replacement, Mixer Brush,
 //! the stamps (Clone Stamp, Pattern Stamp, History Brush), the Art History
-//! Brush, the erasers, and the retouch tools (Blur, Sharpen, Smudge, Dodge). Free functions over a [`PictureView`] (their own
+//! Brush, the erasers, and the retouch tools (Blur, Sharpen, Smudge) and
+//! toning tools (Dodge, Burn, Sponge). Free functions over a [`PictureView`] (their own
 //! bridge, so the `PictureView` declaration list does not grow). Each only *begins* a stroke — of its [`StrokeKind`], or
 //! one whose colour comes from a [`StampSource`]; the live stroke then runs
 //! through the Brush's `paint_dab` / `end_paint` / `cancel_paint`, so the
 //! preview and the one history state per stroke (`"Color Replacement Tool"`,
 //! `"Mixer Brush Tool"`, `"Clone Stamp"`, `"Pattern Stamp"`, `"History
 //! Brush"`, `"Art History Brush"`, `"Eraser"`, `"Background Eraser"`,
-//! `"Blur"`, `"Sharpen"`, `"Smudge"`, `"Dodge"`) are shared. The Magic Eraser is one click and records `"Magic Eraser"` itself,
+//! `"Blur"`, `"Sharpen"`, `"Smudge"`, `"Dodge"`, `"Burn"`, `"Sponge"`) are shared. The Magic Eraser is one click and records `"Magic Eraser"` itself,
 //! as do the fill tools in [`fills`].
 //!
 //! [`PictureView`]: super::qobject::PictureView
@@ -37,7 +38,7 @@ use pictura_paint::stamp::{
     layer_surface, sample_scope, surface_from_composite, tiled, CloneSampling, SourceTransform,
     StampSource,
 };
-use pictura_paint::tone::{ToneOptions, ToneRange};
+use pictura_paint::tone::{SpongeMode, Tone, ToneOptions, ToneRange};
 use pictura_paint::{paint_stroke, Rgba, Stroke, StrokeConfig, StrokeKind, StrokeSample};
 
 #[cxx_qt::bridge]
@@ -279,16 +280,21 @@ pub mod ffi {
             finger_painting: bool,
         ) -> bool;
 
-        /// Begin a Dodge stroke lightening the active pixel layer. `range`
-        /// 0 Shadows / 1 Midtones / 2 Highlights, `exposure` 0–100 %;
-        /// `protect_tones` keeps each pixel's colour. False as for
-        /// `begin_focus`.
-        fn begin_dodge(
+        /// Begin a toning stroke: `tool` 0 Dodge / 1 Burn / 2 Sponge.
+        /// `amount` 0–100 % is Dodge and Burn's Exposure and the Sponge's
+        /// Flow. Dodge and Burn: `range` 0 Shadows / 1 Midtones /
+        /// 2 Highlights, `protect_tones` keeps each pixel's colour. Sponge:
+        /// `sponge` 0 Desaturate / 1 Saturate, `vibrance` eases off where
+        /// there is little to do. False as for `begin_focus`.
+        fn begin_tone(
             view: Pin<&mut PictureView>,
             tip: &PaintTip,
+            tool: i32,
+            amount: i32,
             range: i32,
-            exposure: i32,
             protect_tones: bool,
+            sponge: i32,
+            vibrance: bool,
         ) -> bool;
 
         /// A white stroke with `tip` along an S-curve on transparency, packed
@@ -657,20 +663,31 @@ fn begin_smudge(
     })
 }
 
-fn begin_dodge(
+fn begin_tone(
     view: Pin<&mut PictureView>,
     tip: &PaintTip,
+    tool: i32,
+    amount: i32,
     range: i32,
-    exposure: i32,
     protect_tones: bool,
+    sponge: i32,
+    vibrance: bool,
 ) -> bool {
+    let (tone, label) = match tool {
+        1 => (Tone::Burn, "Burn"),
+        2 => (Tone::Sponge, "Sponge"),
+        _ => (Tone::Dodge, "Dodge"),
+    };
     let options = ToneOptions {
+        tone,
         range: ToneRange::from_i32(range).unwrap_or_default(),
-        exposure: exposure.clamp(0, 100) as f32 / 100.0,
+        amount: amount.clamp(0, 100) as f32 / 100.0,
         protect_tones,
+        sponge: SpongeMode::from_i32(sponge).unwrap_or_default(),
+        vibrance,
     };
     let cfg = tip_config(tip);
-    begin(view, "Dodge", |doc, path, _| {
+    begin(view, label, |doc, path, _| {
         Stroke::begin_tone(doc, path, cfg, options).ok()
     })
 }

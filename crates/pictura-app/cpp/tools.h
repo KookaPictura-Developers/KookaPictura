@@ -293,8 +293,8 @@ public:
     void setArtHistoryOptions(const ArtHistoryOptions& options) { artHistory_ = options; }
     RetouchOptions retouchOptions(ToolId id) const override;
     void setRetouchOptions(ToolId id, const RetouchOptions& options);
-    ToneOptions toneOptions() const override { return tone_; }
-    void setToneOptions(const ToneOptions& options) { tone_ = options; }
+    ToneOptions toneOptions(ToolId id) const override;
+    void setToneOptions(ToolId id, const ToneOptions& options);
     GradientOptions gradientOptions() const override { return gradient_; }
     void setGradientOptions(const GradientOptions& options) { gradient_ = options; }
     BucketOptions bucketOptions() const override { return bucket_; }
@@ -487,7 +487,8 @@ private:
     GradientOptions gradient_;
     // Blur, Sharpen, Smudge.
     std::array<RetouchOptions, 3> retouch_{};
-    ToneOptions tone_;
+    // Dodge, Burn, Sponge.
+    std::array<ToneOptions, 3> tone_{};
     BucketOptions bucket_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;

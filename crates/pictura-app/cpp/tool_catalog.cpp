@@ -110,9 +110,9 @@ const ToolInfo kToolTable[] = {
     {ToolId::Dodge, "dodge", "Dodge", QLatin1Char('O'), Qt::CrossCursor,
      "Dodge: drag to lighten; going over a spot again lightens it more", 14, true, 2, 22},
     {ToolId::Burn, "burn", "Burn", QLatin1Char('O'), Qt::CrossCursor,
-     "Burn: not implemented yet", 14, false, 2, 22},
+     "Burn: drag to darken; going over a spot again darkens it more", 14, true, 2, 22},
     {ToolId::Sponge, "sponge", "Sponge", QLatin1Char('O'), Qt::CrossCursor,
-     "Sponge: not implemented yet", 14, false, 2, 22},
+     "Sponge: drag to drain or lift colour", 14, true, 2, 22},
     {ToolId::Pen, "pen", "Pen", QLatin1Char('P'), Qt::CrossCursor,
      "Pen: not implemented yet", 15, false, 2, 2},
     {ToolId::FreeformPen, "freeformpen", "Freeform Pen", QLatin1Char('P'), Qt::CrossCursor,
@@ -195,7 +195,8 @@ bool isBrushTool(ToolId id)
         || id == ToolId::MixerBrush || id == ToolId::CloneStamp || id == ToolId::PatternStamp
         || id == ToolId::HistoryBrush || id == ToolId::ArtHistoryBrush || id == ToolId::Eraser
         || id == ToolId::BackgroundEraser || id == ToolId::Blur || id == ToolId::Sharpen
-        || id == ToolId::Smudge || id == ToolId::Dodge;
+        || id == ToolId::Smudge || id == ToolId::Dodge || id == ToolId::Burn
+        || id == ToolId::Sponge;
 }
 
 QString toolIdName(ToolId id)
@@ -273,6 +274,8 @@ QList<ToolHint> toolHintEntries(ToolId id)
     case ToolId::Sharpen:
     case ToolId::Smudge:
     case ToolId::Dodge:
+    case ToolId::Burn:
+    case ToolId::Sponge:
         return {{QStringLiteral("["), QStringLiteral("Decrease brush size")},
                 {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
     case ToolId::Gradient:
@@ -330,7 +333,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::MixerBrush, ToolId::CloneStamp, ToolId::PatternStamp, ToolId::HistoryBrush,
         ToolId::ArtHistoryBrush, ToolId::Eraser, ToolId::BackgroundEraser, ToolId::MagicEraser,
         ToolId::Gradient, ToolId::PaintBucket, ToolId::Blur, ToolId::Sharpen, ToolId::Smudge,
-        ToolId::Dodge,
+        ToolId::Dodge, ToolId::Burn, ToolId::Sponge,
     };
     return ids;
 }

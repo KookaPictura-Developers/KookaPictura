@@ -100,7 +100,8 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::MagicEraser, makeMagicEraserToolHandler());
     registry_.registerTool(ToolId::Gradient, makeGradientToolHandler());
     registry_.registerTool(ToolId::PaintBucket, makePaintBucketToolHandler());
-    for (ToolId id : {ToolId::Blur, ToolId::Sharpen, ToolId::Smudge, ToolId::Dodge}) {
+    for (ToolId id : {ToolId::Blur, ToolId::Sharpen, ToolId::Smudge, ToolId::Dodge, ToolId::Burn,
+                      ToolId::Sponge}) {
         registry_.registerTool(id, makeRetouchToolHandler(id));
     }
     // A size change from the options bar or `[`/`]` moves the hover ring at
@@ -334,6 +335,12 @@ size_t retouchSlot(ToolId id)
     return id == ToolId::Sharpen ? 1 : id == ToolId::Smudge ? 2 : 0;
 }
 
+// The tone_ slot of the Dodge, Burn, or Sponge tool.
+size_t toneSlot(ToolId id)
+{
+    return id == ToolId::Burn ? 1 : id == ToolId::Sponge ? 2 : 0;
+}
+
 } // namespace
 
 RetouchOptions ToolController::retouchOptions(ToolId id) const
@@ -344,6 +351,13 @@ RetouchOptions ToolController::retouchOptions(ToolId id) const
 void ToolController::setRetouchOptions(ToolId id, const RetouchOptions& options)
 {
     retouch_[retouchSlot(id)] = options;
+}
+
+ToneOptions ToolController::toneOptions(ToolId id) const { return tone_[toneSlot(id)]; }
+
+void ToolController::setToneOptions(ToolId id, const ToneOptions& options)
+{
+    tone_[toneSlot(id)] = options;
 }
 
 void ToolController::setSpotHealingType(int type) { spotHealingType_ = std::clamp(type, 0, 2); }

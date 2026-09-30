@@ -1,5 +1,5 @@
 // The retouch tools: Blur and Sharpen (`pictura_paint::focus`), Smudge
-// (`pictura_paint::smudge`), and Dodge (`pictura_paint::tone`). Each works on
+// (`pictura_paint::smudge`), and Dodge, Burn, and Sponge (`pictura_paint::tone`). Each works on
 // the pixels already there, more with every pass. It begins a per-dab stroke
 // (`cxxqt_object/paint_tools.rs`) and then shares the Brush's live stroke:
 // `paint_dab` per move, `end_paint` on release (one history state). Ported
@@ -75,9 +75,11 @@ public:
 private:
     bool begin(ToolContext& ctx, PictureView& v) const
     {
-        if (id_ == ToolId::Dodge) {
-            const ToneOptions o = ctx.toneOptions();
-            return begin_dodge(v, paintTip(ctx), o.range, o.exposure, o.protectTones);
+        if (id_ == ToolId::Dodge || id_ == ToolId::Burn || id_ == ToolId::Sponge) {
+            const ToneOptions o = ctx.toneOptions(id_);
+            const int tool = id_ == ToolId::Burn ? 1 : id_ == ToolId::Sponge ? 2 : 0;
+            return begin_tone(v, paintTip(ctx), tool, o.amount, o.range, o.protectTones,
+                              o.spongeMode, o.vibrance);
         }
         const RetouchOptions o = ctx.retouchOptions(id_);
         if (id_ == ToolId::Smudge) {

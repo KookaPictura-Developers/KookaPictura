@@ -109,12 +109,16 @@ struct RetouchOptions {
     bool fingerPainting = false;
 };
 
-// The Dodge options bar: Range 0 Shadows / 1 Midtones / 2 Highlights,
-// Exposure 1-100 %, Protect Tones.
+// The Dodge, Burn, and Sponge options bars (each tool keeps its own):
+// `amount` 1-100 % is Dodge and Burn's Exposure and the Sponge's Flow. Dodge
+// and Burn: Range 0 Shadows / 1 Midtones / 2 Highlights, Protect Tones.
+// Sponge: Mode 0 Desaturate / 1 Saturate, Vibrance.
 struct ToneOptions {
+    int amount = 50;
     int range = 1;
-    int exposure = 50;
     bool protectTones = true;
+    int spongeMode = 0;
+    bool vibrance = true;
 };
 
 // The Gradient options bar: `preset` indexes the built-in gradients
@@ -217,7 +221,8 @@ struct ToolContext {
     virtual GradientOptions gradientOptions() const = 0;
     // The Blur, Sharpen, or Smudge tool's options.
     virtual RetouchOptions retouchOptions(ToolId id) const = 0;
-    virtual ToneOptions toneOptions() const = 0;
+    // The Dodge, Burn, or Sponge tool's options.
+    virtual ToneOptions toneOptions(ToolId id) const = 0;
     virtual BucketOptions bucketOptions() const = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;

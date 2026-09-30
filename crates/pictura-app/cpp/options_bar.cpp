@@ -131,7 +131,9 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::Smudge:
         return buildRetouchPage(id);
     case ToolId::Dodge:
-        return buildDodgePage(id);
+    case ToolId::Burn:
+    case ToolId::Sponge:
+        return buildTonePage(id);
     case ToolId::Gradient:
         return buildGradientPage(id);
     case ToolId::PaintBucket:
