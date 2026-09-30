@@ -3320,6 +3320,59 @@ New self-test checks **542** (`ldoc_selection_no_recomposite`) and **543**
 (`ldoc_paint_presents_from_crop`) live in `cpp/selftest_large_doc.cpp`. The
 history copy-on-write / tile-diff rework (M36) remains deferred.
 
+### Brush stroke latency and copy-on-write planes (`brush-stroke-latency`, `cow-pixel-storage`)
+
+`brush-stroke-latency` hoisted the stroke-constant tip profile (`TipParams`)
+and the layer's plane positions (`PlaneIndex` / `Stencil`) out of the per-pixel
+loop, and made the in-stroke present frame-bounded (`queue_present` /
+`flush_present`, self-test **544** `pp_present_flush`). `cow-pixel-storage` made
+`Channel::data`, `PixelBuffer::data` and `LayerMask::data` a refcounted
+`pictura_core::Plane`, so `Document::clone` — and therefore stroke start and
+every history snapshot — is a refcount bump (0.004–0.008 ms at 4000² against the
+81/360 ms it cost); a write forks only the plane it touches. Measured brush-dab
+split is in `docs/dev/canvas-view-spec.md` § 3.4. A round tip's rasterization now
+walks the row chord rather than the bounding box's corners (`TipParams::x_span`).
+
+### Large-brush LOD preview (`stroke-lod-preview`)
+
+Above the 262 144 px raster budget (⌀≈512), the in-progress stroke presents from
+a stored view-pyramid level instead of full resolution: `preview_dab` rasterizes
+the accumulated dabs' coverage at level 3 (1/8) over a snapshot of that level
+taken at stroke start, `preview_present` patches the level, emits `regionBlitted`
+(so the canvas repaints and the frame-flush chain runs), and `ImageView` forces
+the crop to that level. `end_paint` replays the logged samples through a real
+full-resolution `Stroke` before `record`, so the committed pixels are exact;
+`cancel_paint` and `reset_pyramid` drop the preview. Self-test **545**
+(`pp_large_preview`) pins it; details in the "Described-change coverage" section
+of `docs/dev/canvas-compositing-plan.md`.
+
+### Staged next steps (not implemented)
+
+- **`gpu-stroke-rendering`** (landed): `begin_paint` seeds a resident RGBA8 GPU
+  buffer (`pictura_render::gpu::GpuStroke`, one word per pixel) from the *target
+  layer* at its document rect, with an immutable `base` copy and a per-pixel
+  coverage plane. Each dab is a compute dispatch over its bounding box that
+  accumulates the CPU's 8-bit coverage and recomposites each changed pixel from
+  the base (so overlapping dabs match the CPU instead of compounding),
+  returning only the dab's changed rectangle. The app writes that rectangle into
+  the exact `Stroke`'s working document (`Stroke::patch_working_layer`) and
+  presents frame-bounded through `refresh_region`, which composites from that
+  document; `end_paint` commits it directly, so there is no release-time replay.
+  The committed pixels equal the GPU stroke and lie within ±1 LSB of the CPU
+  oracle. Selected when "Use Graphics Processor" is on, the mode is Normal or
+  Clear, `auto_erase` is off, the target layer is not transparency-locked, the
+  dab is over the 262 144 px raster budget, and an adapter exists; below the
+  budget the exact CPU path runs (a small dab costs ~0.5 ms, less than the ~65 ms
+  full-frame GPU seed measured at 4000²), and above it with no adapter the LOD
+  preview runs. Evidence: `gpu_stroke_matches_the_cpu_oracle` (ignored GPU test,
+  ±1 LSB over a placed overlapping stroke) and self-test 546 `pp_gpu_commit`
+  (commit within ±1 LSB), which skip without an adapter. Task list:
+  `openspec/changes/gpu-stroke-rendering/tasks.md`.
+- **Tiled storage / region-delta history (M36/M38)**: 64–128² tiles with
+  region-scoped history, so a heavily-edited layer's history states share
+  unchanged tiles. Still needs content versioning.
+
+
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
