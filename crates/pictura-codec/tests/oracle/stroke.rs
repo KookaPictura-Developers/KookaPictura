@@ -72,7 +72,7 @@ print(int(round(float(effect.color[b"Rd  "]))), int(round(float(effect.color[b"G
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let got: Vec<&str> = stdout.lines().map(str::trim).collect();
+    let got = oracle_tokens(&stdout);
     assert_eq!(
         got,
         ["Stroke", "1", "1", "100.0", "Nrml", "OutF", "SClr", "3", "0 0 0",],

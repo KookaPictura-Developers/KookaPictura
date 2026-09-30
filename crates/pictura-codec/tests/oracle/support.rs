@@ -67,3 +67,26 @@ pub fn scratch_dir(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
+
+/// Split a psd-tools oracle's stdout into the tokens the effect-block tests
+/// compare, normalizing the two representations psd-tools has used for effect
+/// metadata. The fixtures are authored with the raw 4-byte layer-effect keys in
+/// `lfx2`; psd-tools ≤1.21 printed those bytes (`Mltp`, `b'Lnr '`), while
+/// ≥1.22 returns `BlendMode`/`GradientType` enums and prints the layer blend
+/// value (`mul`, `scrn`, `norm`) or the enum name (`GradientType.LINEAR`).
+/// Both are mapped back to the authored key so the oracle is stable across
+/// psd-tools releases without loosening the expectation.
+pub fn oracle_tokens(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .map(str::trim)
+        .map(|token| match token {
+            "mul" => "Mltp",
+            "scrn" => "Scrn",
+            "norm" => "Nrml",
+            "GradientType.LINEAR" => "b'Lnr '",
+            other => other,
+        })
+        .map(str::to_owned)
+        .collect()
+}

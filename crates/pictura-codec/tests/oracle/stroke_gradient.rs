@@ -70,7 +70,7 @@ print(1 if effect.reversed else 0)
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let got: Vec<&str> = stdout.lines().map(str::trim).collect();
+    let got = oracle_tokens(&stdout);
     assert_eq!(
         got,
         ["Stroke", "1", "1", "GrFl", "1", "b'Lnr '", "45", "1",],
