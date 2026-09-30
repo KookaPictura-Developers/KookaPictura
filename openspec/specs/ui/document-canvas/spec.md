@@ -572,3 +572,58 @@ working document over the presented region.
 
 - **WHEN** a region refresh runs outside a stroke
 - **THEN** it presents immediately, exactly as it does without coalescing
+
+### Requirement: Canvas presents the reduced level during a preview stroke
+
+While a preview stroke is in progress the canvas SHALL crop the view-pyramid
+level the preview wrote rather than the level the zoom would select, so the
+whole in-progress image — not only the painted pixels — is shown at the preview
+resolution. The preview SHALL repair that stored level directly and MUST NOT
+rebuild it from level 0, because level 0 is deliberately left untouched until
+the stroke ends. Releasing or cancelling the stroke SHALL restore the
+zoom-selected level: the commit patches level 0 and rebuilds the stored levels
+from it, which overwrites the preview.
+
+#### Scenario: The canvas crops the preview level while previewing [cv_preview_present]
+
+- **WHEN** a preview stroke presents a region
+- **THEN** the canvas crops the view-pyramid level the preview wrote, that
+  level is repaired in place rather than rebuilt from level 0, and level 0 is
+  unchanged
+
+#### Scenario: The commit restores the zoom-selected level [cv_preview_commit_restores_level]
+
+- **WHEN** a previewed stroke is released
+- **THEN** the exact region patches level 0, the stored levels are rebuilt from
+  it, and the canvas returns to the level the zoom selects
+
+#### Scenario: A cancelled preview restores the zoom-selected level [cv_preview_cancel_restores_level]
+
+- **WHEN** a previewed stroke is cancelled
+- **THEN** the pre-stroke document is presented and the canvas returns to the
+  level the zoom selects
+
+### Requirement: Canvas crops level 0 while a GPU stroke presents
+
+While a GPU stroke is live, the canvas SHALL crop level 0 — whose region blits
+keep it current — instead of the zoom-selected stored level. The present-level
+signal SHALL distinguish this state (`-1`) from the preview level (a positive
+stored level) and the idle zoom-selected level (`0`). Releasing or cancelling
+the stroke SHALL restore the zoom-selected level once the commit or restore
+rebuilds the pyramid.
+
+#### Scenario: A live GPU stroke presents level 0 [cv_deferred_level0]
+
+- **WHEN** the canvas paints while a GPU stroke is live
+- **THEN** it crops level 0 rather than the zoom-selected stored level
+
+#### Scenario: The commit restores the zoom-selected level [cv_deferred_commit]
+
+- **WHEN** the GPU stroke is released
+- **THEN** the pyramid is rebuilt from the committed level 0 and the canvas
+  returns to the zoom-selected level
+
+#### Scenario: An idle refresh is unaffected [cv_deferred_idle]
+
+- **WHEN** no stroke is live
+- **THEN** the present level is the zoom-selected level, exactly as before
