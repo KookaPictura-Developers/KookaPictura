@@ -156,8 +156,16 @@ impl GpuStroke {
             return Ok(None);
         }
         let (bw, bh) = (x1 - x0, y1 - y0);
+        let (gx, gy) = grid_2d(
+            bw * bh,
+            self.device.limits().max_compute_workgroups_per_dimension,
+        )
+        .ok_or(GpuError::TooLarge)?;
+        // A bbox past the per-dimension workgroup limit spans several dispatch
+        // rows; the shader needs the x stride (written by `write_params`) to
+        // walk them.
         self.write_params(cx, cy, x0, y0, bw, bh);
-        self.dispatch(bw, bh)?;
+        self.dispatch(gx, gy)?;
         let (plane_stride, planes) = self.read_rect_planar(x0, y0, bw, bh)?;
         Ok(Some((
             PsdRect {
@@ -211,13 +219,18 @@ impl GpuStroke {
         );
         let flip = if c.flip_x { 1.0 } else { 0.0 } + if c.flip_y { 2.0 } else { 0.0 };
         put(&mut buf, 84, flip);
+        // The dispatched x extent, so the shader can walk `gid.y` when the
+        // bbox spans more than one dispatch row.
+        let stride = grid_2d(
+            bw * bh,
+            self.device.limits().max_compute_workgroups_per_dimension,
+        )
+        .map_or(0, |(gx, _)| gx * 64);
+        put(&mut buf, 88, stride as f32);
         self.queue.write_buffer(&self.params, 0, &buf);
     }
 
-    fn dispatch(&self, bw: u32, bh: u32) -> Result<(), GpuError> {
-        let n = bw * bh;
-        let (gx, gy) = grid_2d(n, self.device.limits().max_compute_workgroups_per_dimension)
-            .ok_or(GpuError::TooLarge)?;
+    fn dispatch(&self, gx: u32, gy: u32) -> Result<(), GpuError> {
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("pictura-stroke"),
             layout: &self.res.layout,
@@ -512,6 +525,26 @@ mod tests {
             flip_y: cfg.flip_y,
             mode: GpuPaintMode::Normal,
         }
+    }
+
+    #[test]
+    fn the_dab_shader_walks_every_dispatch_row() {
+        // A bbox larger than `max_compute_workgroups_per_dimension * 64` (the
+        // standard 65535 limit, ~4.19M px — a ~2500 px brush on a 4000² canvas)
+        // spans several dispatched y rows. The shader must fold `gid.y` in with
+        // the x stride; a bare `gid.x` repeats the first row and leaves the
+        // bbox tail uncomposited.
+        assert!(
+            crate::gpu::shader::STROKE_SHADER.contains("gid.x + gid.y * stride"),
+            "the dab shader must walk gid.y, not only gid.x"
+        );
+        let n = 4000u32 * 4000;
+        let (gx, gy) = crate::gpu::backend::grid_2d(n, 65_535).expect("4000² fits the 2-D grid");
+        assert!(gy > 1, "this bbox must exercise more than one dispatch row");
+        assert!(
+            u64::from(gx * 64) * u64::from(gy) >= u64::from(n),
+            "the stride walk must cover every bbox pixel"
+        );
     }
 
     #[test]

@@ -4,8 +4,8 @@ use super::impl_core::{finalize_import, format_for_path, raster_writer_for_suffi
 use super::impl_transform::{build_move_preview_base, duplicate_move_target};
 use crate::history::{History, Snapshot};
 use pictura_core::{
-    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerMask, LockFlags,
-    PixelBuffer, PsdRect,
+    BitDepth, BlendMode, Channel, ColorLabel, ColorMode, Document, Layer, LayerBlock, LayerMask,
+    LockFlags, PixelBuffer, PsdRect,
 };
 use pictura_select::Selection;
 
@@ -373,6 +373,21 @@ fn layer_visibility_region_bounds_raster_and_bounded_adjustments() {
     let mut group = pixel_layer("group", 4, 4, (0, 0, 0));
     group.is_group = true;
     assert_eq!(layer_visibility_region(&group), None);
+
+    // A layer effect (lfx2/lrFX) spills past the layer rect, so a bounded
+    // region refresh cannot repair it: full recomposite.
+    let mut effected = pixel_layer("effected", 8, 4, (10, 20, 30));
+    effected.extra_blocks.push(LayerBlock {
+        key: *b"lfx2",
+        data: Vec::new(),
+    });
+    assert_eq!(layer_visibility_region(&effected), None);
+    let mut legacy = pixel_layer("legacy", 8, 4, (10, 20, 30));
+    legacy.extra_blocks.push(LayerBlock {
+        key: *b"lrFX",
+        data: Vec::new(),
+    });
+    assert_eq!(layer_visibility_region(&legacy), None);
 }
 
 #[test]

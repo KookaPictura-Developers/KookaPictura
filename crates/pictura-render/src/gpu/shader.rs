@@ -450,8 +450,12 @@ fn cs_dab(@builtin(global_invocation_id) gid: vec3<u32>) {
     let color = vec4<f32>(params[16], params[17], params[18], params[19]);
     let mode = u32(params[20]);
     let flip = u32(params[21]);
+    // `stride` is the dispatched x extent (64 * x-workgroups); a bbox past the
+    // per-dimension workgroup limit spans several y rows, so `idx` must walk
+    // both, exactly like `cs_planar`.
+    let stride = u32(params[22]);
 
-    let idx = gid.x;
+    let idx = gid.x + gid.y * stride;
     if (idx >= bw * bh) { return; }
     let lx = bx + idx % bw;
     let ly = by + idx / bw;
