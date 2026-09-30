@@ -63,6 +63,10 @@ public:
         std::function<QSize(int level)> levelSize;
         std::function<quint64()> canvasRevision;
         std::function<bool()> isPainting;
+        // The view-pyramid level an in-progress large-brush preview patched;
+        // 0 when no preview is running (the zoom picks the level as usual), -1
+        // while a GPU stroke presents level-0 regions (crop level 0).
+        std::function<int()> previewLevel;
     };
     void setLevelProvider(LevelProvider provider);
 

@@ -1,11 +1,16 @@
 use super::helpers::*;
+use super::helpers_composite::{patch_composite_region, planes_of, rgba_image};
 use super::qobject;
-use super::state::PictureViewRust;
+use super::state::{PictureViewRust, PreviewStroke};
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
-use pictura_core::PsdRect;
-use pictura_paint::{spacing::SpacingMode, Stroke, StrokeConfig, StrokeSample};
+use pictura_core::{Document, PixelBuffer, PsdRect};
+use pictura_paint::spacing::DabPlacer;
+use pictura_paint::{spacing::SpacingMode, PaintMode, Stroke, StrokeConfig, StrokeSample};
+use pictura_render::gpu::{GpuPaintMode, GpuStroke, GpuStrokeParams};
+use pictura_render::ViewPyramid;
+use std::time::Instant;
 
 impl PictureViewRust {
     /// Fold a dab's `rect` into the frame-bounded present. `Some(rect)` is the
@@ -37,6 +42,269 @@ impl PictureViewRust {
         self.pending_present = None;
         self.present_flush_due = false;
     }
+
+    /// The stroke's dirty tiles as disjoint document rectangles, falling back to
+    /// `union` when the tiles were never marked (a path that bypasses
+    /// `take_dirty`) or are not worth decomposing.
+    pub(super) fn take_stroke_regions(&mut self, union: PsdRect) -> Vec<PsdRect> {
+        let tiles = std::mem::take(&mut self.stroke_tiles);
+        tiles.regions(union)
+    }
+
+    /// Composite `rect` of the current source (the active stroke's working
+    /// document, else the app document), patch the authoritative `doc.composite`
+    /// when idle, and hand back the clamped origin, clipped rect and straight
+    /// sRGB region. `None` for an empty clamp, an absent source, or an empty
+    /// region. Level 0, damage and the pyramid are the caller's to fold in.
+    pub(super) fn refresh_region_buffer(
+        &mut self,
+        rect: PsdRect,
+    ) -> Option<(i32, i32, PsdRect, PixelBuffer)> {
+        let painting = self.stroke.is_some();
+        let dims = self
+            .stroke
+            .as_ref()
+            .map(|stroke| (stroke.document().width, stroke.document().height))
+            .or_else(|| self.doc.as_ref().map(|doc| (doc.width, doc.height)));
+        let (x0, y0, w, h) = dims.and_then(|(width, height)| clamp_region(rect, width, height))?;
+        let source: &Document = if painting {
+            self.stroke.as_ref().unwrap().document()
+        } else {
+            self.doc.as_ref()?
+        };
+        let gpu_compute = self.gpu_compute;
+        let t = Instant::now();
+        let buffer = pictura_render::composite_region_active(source, rect, gpu_compute).0;
+        paint_timing::record("rr_composite_region", t.elapsed());
+        let t = Instant::now();
+        let srgb = pictura_codec::buffer_to_srgb(source, &buffer).into_owned();
+        paint_timing::record("rr_buffer_to_srgb", t.elapsed());
+        if srgb.width == 0 || srgb.height == 0 {
+            return None;
+        }
+        if !painting {
+            if let Some(doc) = self.doc.as_mut() {
+                let t = Instant::now();
+                patch_composite_region(doc, &buffer, x0, y0);
+                paint_timing::record("rr_patch_composite", t.elapsed());
+            }
+        }
+        let clipped = PsdRect {
+            top: y0,
+            left: x0,
+            bottom: y0 + h as i32,
+            right: x0 + w as i32,
+        };
+        Some((x0, y0, clipped, srgb))
+    }
+
+    /// Fold a refreshed region into level 0, the damage account and the pyramid.
+    pub(super) fn apply_refreshed_region(
+        &mut self,
+        x0: i32,
+        y0: i32,
+        clipped: PsdRect,
+        srgb: PixelBuffer,
+    ) {
+        let t = Instant::now();
+        self.refresh_level0_region(srgb, x0, y0);
+        paint_timing::record("rr_level0_patch", t.elapsed());
+        self.damage.mark(clipped);
+        let t = Instant::now();
+        self.update_pyramid(clipped);
+        paint_timing::record("rr_update_pyramid", t.elapsed());
+    }
+}
+
+/// The bounding-box area at which a dab's exact rasterization stops fitting the
+/// 16 ms input-to-first-pixel Target: 262 144 px at the 58 ns/px that
+/// `large_brush_profile_4000` measures on the reference machine.
+const RASTER_BUDGET_PX: u64 = 262_144;
+
+/// The level a preview starts at. 1/8 scale keeps the reduced document's
+/// construction at a sixty-fourth of the full planes — about 8 ms for an
+/// eight-layer 4000² document — which is what makes the preview cheaper than
+/// the dab it replaces even for a single click.
+const PREVIEW_START_LEVEL: u32 = 3;
+
+/// The level the policy stops at; it also bounds every shift below.
+const PREVIEW_MAX_LEVEL: u32 = 16;
+
+/// The view-pyramid level a stroke of `diameter` on a `w × h` document previews
+/// at, or `None` when the exact raster already fits the budget.
+///
+/// The area is the worst case over the stroke: a dab is clipped to the
+/// document, so a brush wider than the document costs a document, not a disc.
+pub(super) fn preview_level(diameter: i32, w: u32, h: u32) -> Option<u32> {
+    let d = diameter.max(0) as u64 + 2;
+    let area = d.min(w as u64) * d.min(h as u64);
+    if area <= RASTER_BUDGET_PX {
+        return None;
+    }
+    let mut level = PREVIEW_START_LEVEL;
+    while level < PREVIEW_MAX_LEVEL && (area >> (2 * level)) > RASTER_BUDGET_PX {
+        level += 1;
+    }
+    Some(level)
+}
+
+/// Bytes a stroke-start snapshot of `level` occupies for a `w × h` document.
+///
+/// The snapshot is the whole stored level, so it is what a brush the size of
+/// the document costs to preview against — a few megabytes, not a document.
+pub(super) fn preview_snapshot_bytes(w: u32, h: u32, level: u32) -> usize {
+    if level >= PREVIEW_MAX_LEVEL {
+        return 0;
+    }
+    let scale = 1u32 << level;
+    ((w.div_ceil(scale) * h.div_ceil(scale)) * 4) as usize
+}
+
+impl PreviewStroke {
+    /// Snapshot `level` of `pyramid` as it stands before the stroke, so every
+    /// present can blend the whole extent against the pre-stroke pixels instead
+    /// of compounding on its own earlier output. `None` when the level does not
+    /// exist yet or is not the size `level0` implies.
+    pub(super) fn new(
+        level: u32,
+        pyramid: &ViewPyramid,
+        level0: &PixelBuffer,
+        cfg: StrokeConfig,
+    ) -> Option<Self> {
+        if level >= PREVIEW_MAX_LEVEL {
+            return None;
+        }
+        let scale = 1u32 << level;
+        let (width, height) = (level0.width.div_ceil(scale), level0.height.div_ceil(scale));
+        if width == 0 || height == 0 || pyramid.level_size(level as usize) != (width, height) {
+            return None;
+        }
+        let whole = PsdRect {
+            top: 0,
+            left: 0,
+            bottom: height as i32,
+            right: width as i32,
+        };
+        let planes = planes_of(level0)?;
+        let crop = pyramid.crop(planes, level as usize, whole);
+        (crop.width() == width && crop.height() == height).then(|| Self {
+            level,
+            scale,
+            width,
+            height,
+            snapshot: crop.data().to_vec(),
+            coverage: vec![0u8; preview_snapshot_bytes(level0.width, level0.height, level) / 4],
+            extent: None,
+            samples: Vec::new(),
+            cfg,
+        })
+    }
+}
+
+/// Grow `extent` to cover the level-space pixel `(lx, ly)`.
+fn grow_extent(extent: &mut Option<PsdRect>, lx: i32, ly: i32) {
+    let next = PsdRect {
+        top: ly,
+        left: lx,
+        bottom: ly + 1,
+        right: lx + 1,
+    };
+    *extent = Some(match extent.take() {
+        None => next,
+        Some(d) => PsdRect {
+            top: d.top.min(next.top),
+            left: d.left.min(next.left),
+            bottom: d.bottom.max(next.bottom),
+            right: d.right.max(next.right),
+        },
+    });
+}
+
+/// Rasterize one sample into the preview's coverage at `1 << level`, using the
+/// same tip profile and flow accumulation the exact stroke uses, sampled at the
+/// level pixel's centre. Returns whether any pixel changed.
+fn rasterize_preview(preview: &mut PreviewStroke, sample: StrokeSample) -> bool {
+    let cfg = preview.cfg;
+    let scale = preview.scale as f32;
+    let radius = cfg.diameter as f32 * 0.5;
+    let flow = cfg.flow as f32 / 100.0;
+    let (cx, cy) = (sample.x / scale, sample.y / scale);
+    let r = radius / scale;
+    let (w, h) = (preview.width as i32, preview.height as i32);
+    if w <= 0 || h <= 0 {
+        return false;
+    }
+    let x0 = ((cx - r).floor() as i32).max(0);
+    let x1 = ((cx + r).ceil() as i32).min(w - 1);
+    let y0 = ((cy - r).floor() as i32).max(0);
+    let y1 = ((cy + r).ceil() as i32).min(h - 1);
+    let mut changed = false;
+    for ly in y0..=y1 {
+        for lx in x0..=x1 {
+            let dx = (lx as f32 + 0.5 - cx) * scale;
+            let dy = (ly as f32 + 0.5 - cy) * scale;
+            let tip = pictura_paint::tip_coverage(&cfg, dx, dy);
+            if tip <= 0.0 {
+                continue;
+            }
+            let i = ly as usize * preview.width as usize + lx as usize;
+            let acc = 1.0 - (1.0 - preview.coverage[i] as f32 / 255.0) * (1.0 - flow * tip);
+            preview.coverage[i] = (acc.clamp(0.0, 1.0) * 255.0).round() as u8;
+            grow_extent(&mut preview.extent, lx, ly);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// The premultiplied level-space region for `rect` of `preview`: the stroke-start
+/// snapshot blended with the accumulated coverage under the stroke's paint mode.
+/// Normal is source-over; Clear removes the snapshot's coverage (`dst * (1 - k)`);
+/// Dissolve and Behind present as Normal, since only the committed pixels must be
+/// exact and the preview is thrown away.
+fn preview_blend(preview: &PreviewStroke, rect: PsdRect) -> Vec<u8> {
+    let (rw, rh) = (rect.width().max(0) as u32, rect.height().max(0) as u32);
+    if rw == 0 || rh == 0 {
+        return Vec::new();
+    }
+    let colour = preview.cfg.color;
+    let opacity = preview.cfg.opacity as f32 / 100.0;
+    let tint = colour.a as f32 / 255.0;
+    let clear = preview.cfg.mode == PaintMode::Clear;
+    let mut rgba = vec![0u8; (rw * rh * 4) as usize];
+    for y in 0..rh as usize {
+        for x in 0..rw as usize {
+            let li = (rect.top as usize + y) * preview.width as usize + (rect.left as usize + x);
+            let k = opacity * tint * preview.coverage[li] as f32 / 255.0;
+            let inv = 1.0 - k;
+            let o = (y * rw as usize + x) * 4;
+            let si = li * 4;
+            let (kr, kg, kb, ka) = if clear {
+                (0.0, 0.0, 0.0, 0.0)
+            } else {
+                (
+                    colour.r as f32 * k,
+                    colour.g as f32 * k,
+                    colour.b as f32 * k,
+                    255.0 * k,
+                )
+            };
+            rgba[o] = (kr + preview.snapshot[si] as f32 * inv) as u8;
+            rgba[o + 1] = (kg + preview.snapshot[si + 1] as f32 * inv) as u8;
+            rgba[o + 2] = (kb + preview.snapshot[si + 2] as f32 * inv) as u8;
+            rgba[o + 3] = (ka + preview.snapshot[si + 3] as f32 * inv) as u8;
+        }
+    }
+    rgba
+}
+
+/// The GPU dab mode for `mode`, or `None` when only the CPU raster models it.
+fn gpu_paint_mode(mode: PaintMode) -> Option<GpuPaintMode> {
+    match mode {
+        PaintMode::Normal => Some(GpuPaintMode::Normal),
+        PaintMode::Clear => Some(GpuPaintMode::Clear),
+        _ => None,
+    }
 }
 
 impl qobject::PictureView {
@@ -55,6 +323,8 @@ impl qobject::PictureView {
         aliased: bool,
         auto_erase: bool,
     ) -> bool {
+        paint_timing::start("stroke (begin -> commit)");
+        let _begin = paint_timing::Scope::new("begin_total");
         {
             let rust = self.rust();
             if rust.doc.is_none() || rust.stroke.is_some() {
@@ -89,7 +359,10 @@ impl qobject::PictureView {
             {
                 return false;
             }
-            Stroke::begin_at(doc, path, cfg)
+            let t = Instant::now();
+            let outcome = Stroke::begin_at(doc, path, cfg);
+            paint_timing::record("stroke_begin_at (doc clone)", t.elapsed());
+            outcome
         };
         match begun {
             Ok(stroke) => {
@@ -98,6 +371,75 @@ impl qobject::PictureView {
                 rust.stroke_label = if aliased { "Pencil" } else { "Brush" }.to_string();
                 // A new stroke opens its own present frame.
                 rust.clear_pending_present();
+                let dims = rust.doc.as_ref().map(|doc| (doc.width, doc.height));
+                if let Some((width, height)) = dims {
+                    rust.stroke_tiles.reset(width, height);
+                }
+                rust.gpu_stroke = None;
+                rust.gpu_placer = None;
+                rust.preview = None;
+                // GPU first, but only where the CPU has a ceiling to beat: a dab
+                // over the raster budget. Below it the exact CPU raster is a few
+                // hundred microseconds, while seeding the GPU costs a full-frame
+                // upload (~65 ms at 4000²), so a small brush stays on the CPU path.
+                let level = rust
+                    .doc
+                    .as_ref()
+                    .and_then(|doc| preview_level(diameter.max(0), doc.width, doc.height));
+                let gpu_mode = gpu_paint_mode(cfg.mode).filter(|_| !cfg.auto_erase);
+                if level.is_some() && rust.gpu_compute {
+                    let seeded = match (gpu_mode, rust.stroke.as_ref()) {
+                        (Some(mode), Some(stroke)) if !stroke.transparency_locked() => {
+                            let t = Instant::now();
+                            let seed = stroke.base_layer_rgba_doc();
+                            let (w, h) = (stroke.document().width, stroke.document().height);
+                            paint_timing::record("gpu_seed_interleave", t.elapsed());
+                            let tip = stroke.tip_params();
+                            let params = GpuStrokeParams {
+                                radius: tip.radius,
+                                round_radius: tip.round_radius,
+                                sin_t: tip.sin,
+                                cos_t: tip.cos,
+                                core: tip.core,
+                                denom: tip.denom,
+                                flow: cfg.flow as f32 / 100.0,
+                                opacity: cfg.opacity as f32 / 100.0,
+                                color: [
+                                    cfg.color.r as f32 / 255.0,
+                                    cfg.color.g as f32 / 255.0,
+                                    cfg.color.b as f32 / 255.0,
+                                    cfg.color.a as f32 / 255.0,
+                                ],
+                                aliased: tip.aliased,
+                                flip_x: tip.flip_x,
+                                flip_y: tip.flip_y,
+                                mode,
+                            };
+                            let t = Instant::now();
+                            let gpu = GpuStroke::new(w, h, &seed, params);
+                            paint_timing::record("gpu_new (alloc+upload)", t.elapsed());
+                            gpu.ok()
+                        }
+                        _ => None,
+                    };
+                    if let Some(gpu) = seeded {
+                        rust.gpu_stroke = Some(gpu);
+                        rust.gpu_placer = Some(DabPlacer::new(cfg.spacing, cfg.diameter as f32));
+                    }
+                }
+                // The reduced-level preview is the fallback when the GPU path is
+                // not taken; the exact stroke below still runs, replayed from the
+                // log when the stroke commits.
+                if rust.gpu_stroke.is_none() {
+                    let t = Instant::now();
+                    rust.preview = match (level, rust.level0.as_ref()) {
+                        (Some(level), Some(level0)) => {
+                            PreviewStroke::new(level, &rust.pyramid, level0, cfg)
+                        }
+                        _ => None,
+                    };
+                    paint_timing::record("preview_new (snapshot)", t.elapsed());
+                }
                 true
             }
             Err(_) => false,
@@ -105,19 +447,33 @@ impl qobject::PictureView {
     }
 
     pub fn paint_dab(mut self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool {
+        let _dab = paint_timing::Scope::new("dab_total");
+        if self.rust().gpu_stroke.is_some() {
+            return self.as_mut().gpu_dab(x, y, pressure);
+        }
+        if self.rust().preview.is_some() {
+            return self.as_mut().preview_dab(x, y, pressure);
+        }
         let dirty = {
             let mut rust = self.as_mut().rust_mut();
-            let Some(stroke) = rust.stroke.as_mut() else {
-                return false;
+            let t = Instant::now();
+            let painted = match rust.stroke.as_mut() {
+                Some(stroke) => stroke.sample(StrokeSample {
+                    x: x as f32,
+                    y: y as f32,
+                    pressure: pressure as f32,
+                }),
+                None => return false,
             };
-            if !stroke.sample(StrokeSample {
-                x: x as f32,
-                y: y as f32,
-                pressure: pressure as f32,
-            }) {
+            paint_timing::record("cpu_stroke_sample", t.elapsed());
+            if !painted {
                 return false;
             }
-            stroke.take_dirty()
+            let dirty = rust.stroke.as_mut().and_then(Stroke::take_dirty);
+            if let Some(rect) = dirty {
+                rust.stroke_tiles.mark(rect);
+            }
+            dirty
         };
         let Some(rect) = dirty else {
             return false;
@@ -130,7 +486,9 @@ impl qobject::PictureView {
             rust.queue_present(rect)
         };
         if let Some(present) = opens_frame {
+            let t = Instant::now();
             self.as_mut().refresh_region(present);
+            paint_timing::record("cpu_present_region", t.elapsed());
         }
         true
     }
@@ -140,46 +498,245 @@ impl qobject::PictureView {
     /// turn after a present; a consumer that needs a mid-stroke present sooner
     /// calls it directly.
     pub fn flush_present(mut self: Pin<&mut Self>) -> bool {
+        let _flush = paint_timing::Scope::new("flush_present_total");
+        let previewing = self.rust().preview.is_some();
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             rust.take_pending_present()
         };
+        if previewing {
+            return pending.is_some() && self.as_mut().present_preview();
+        }
         match pending {
             Some(rect) => {
+                let t = Instant::now();
                 self.as_mut().refresh_region(rect);
+                paint_timing::record("cpu_present_region", t.elapsed());
                 true
             }
             None => false,
         }
     }
 
+    /// One sample of a previewed stroke: log it for the exact replay, rasterize
+    /// its coverage at the preview level, and present on the frame-opening dab
+    /// like every other stroke.
+    fn preview_dab(mut self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool {
+        let sample = StrokeSample {
+            x: x as f32,
+            y: y as f32,
+            pressure: pressure as f32,
+        };
+        let opens_frame = {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(preview) = rust.preview.as_mut() else {
+                return false;
+            };
+            preview.samples.push(sample);
+            let t = Instant::now();
+            let rasterized = rasterize_preview(preview, sample);
+            paint_timing::record("preview_rasterize", t.elapsed());
+            if !rasterized {
+                return false;
+            }
+            let extent = preview.extent.expect("a rasterized pixel grew the extent");
+            rust.queue_present(extent)
+        };
+        match opens_frame {
+            Some(_) => self.as_mut().present_preview(),
+            None => true,
+        }
+    }
+
+    /// Patch the preview's level and emit [`region_blitted`] so the shell repaints
+    /// and schedules the next frame flush. Returns whether anything was presented.
+    ///
+    /// The emitted region is level-sized and its origin is document-space
+    /// (`rect << level`); the blit into the full-resolution `image_` is the
+    /// documented approximation, superseded by the commit's region refresh (the
+    /// canvas draws the forced preview level meanwhile, never `image_`).
+    fn present_preview(mut self: Pin<&mut Self>) -> bool {
+        let t = Instant::now();
+        let Some((image, x, y)) = self.as_mut().preview_present() else {
+            return false;
+        };
+        paint_timing::record("preview_present_blend", t.elapsed());
+        let t = Instant::now();
+        self.region_blitted(image, x, y);
+        paint_timing::record("preview_present_blit(C++)", t.elapsed());
+        true
+    }
+
+    /// Blend the accumulated coverage over the stroke-start snapshot and patch
+    /// it into the stored pyramid level. Level 0 is deliberately untouched: the
+    /// commit and the cancel both repair the level from it. Returns the patched
+    /// region image and its document-space origin.
+    fn preview_present(mut self: Pin<&mut Self>) -> Option<(cxx_qt_lib::QImage, i32, i32)> {
+        let mut rust = self.as_mut().rust_mut();
+        let (rgba, rect, level, scale) = {
+            let preview = rust.preview.as_ref()?;
+            let rect = preview.extent?;
+            let rgba = preview_blend(preview, rect);
+            (rgba, rect, preview.level, preview.scale as i32)
+        };
+        // Level 0 is deliberately untouched: only the stored level changes, so
+        // the commit's region refresh repairs it when the stroke ends.
+        rust.pyramid.patch_level(level as usize, &rgba, rect);
+        rust.canvas_revision = rust.canvas_revision.wrapping_add(1);
+        Some((
+            rgba_image(rgba, rect.width(), rect.height()),
+            rect.left * scale,
+            rect.top * scale,
+        ))
+    }
+
+    /// One sample of a GPU stroke: place its dabs exactly as the exact stroke
+    /// would, patch each dab's changed layer pixels into the working document,
+    /// and present on the frame-opening dab like every other stroke. The commit
+    /// therefore needs no replay: `stroke.finish()` already holds the
+    /// GPU-authored layer.
+    fn gpu_dab(mut self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool {
+        let sample = StrokeSample {
+            x: x as f32,
+            y: y as f32,
+            pressure: pressure as f32,
+        };
+        let mut dabs = Vec::new();
+        let mut changed: Option<PsdRect> = None;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let Some(placer) = rust.gpu_placer.as_mut() else {
+                return false;
+            };
+            placer.feed(sample.x, sample.y, &mut dabs);
+            for (cx, cy) in dabs {
+                let dab = {
+                    let Some(gpu) = rust.gpu_stroke.as_mut() else {
+                        break;
+                    };
+                    let t = Instant::now();
+                    let dab = gpu.dab(cx, cy).ok().flatten();
+                    paint_timing::record("gpu_dab_dispatch_readback", t.elapsed());
+                    dab
+                };
+                let Some((rect, plane_stride, planes)) = dab else {
+                    continue;
+                };
+                let t = Instant::now();
+                let patched = rust
+                    .stroke
+                    .as_mut()
+                    .is_some_and(|stroke| stroke.patch_working_layer(rect, plane_stride, &planes));
+                paint_timing::record("gpu_patch_working_layer", t.elapsed());
+                if !patched {
+                    continue;
+                }
+                rust.stroke_tiles.mark(rect);
+                changed = Some(changed.map_or(rect, |u| union_rect(u, rect)));
+            }
+        }
+        let Some(rect) = changed else {
+            return false;
+        };
+        // Frame-bounded present, exactly as the exact path: the dab that opens
+        // a frame presents itself; the rest accumulate until `flush_present`.
+        // `refresh_region` composites from the working document, so the live
+        // view is exact rather than a source-over approximation.
+        let opens_frame = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.queue_present(rect)
+        };
+        match opens_frame {
+            Some(present) => {
+                self.as_mut().refresh_region(present);
+                true
+            }
+            None => true,
+        }
+    }
+
+    /// The view-pyramid level the active stroke is presenting: `-1` while a GPU
+    /// stroke presents level-0 regions (so the canvas crops level 0), the
+    /// preview level while a reduced preview runs, and 0 when no preview is
+    /// active — level 0 is never a preview, so the canvas can clamp its crop to
+    /// this unambiguously.
+    pub fn preview_present_level(&self) -> i32 {
+        let rust = self.rust();
+        if rust.gpu_stroke.is_some() {
+            return -1;
+        }
+        rust.preview
+            .as_ref()
+            .map_or(0, |preview| preview.level as i32)
+    }
+
     pub fn end_paint(mut self: Pin<&mut Self>) -> bool {
-        let (stroke, label) = {
+        let t0 = Instant::now();
+        let (stroke, label, preview) = {
             let mut rust = self.as_mut().rust_mut();
             // The commit refresh covers the stroke's whole extent, so it
             // supersedes any region still pending; it runs before `record`.
             rust.clear_pending_present();
-            (rust.stroke.take(), rust.stroke_label.clone())
+            rust.gpu_stroke = None;
+            rust.gpu_placer = None;
+            (
+                rust.stroke.take(),
+                rust.stroke_label.clone(),
+                rust.preview.take(),
+            )
         };
-        match stroke {
+        let ok = match stroke {
             None => false,
-            Some(stroke) => match stroke.finish() {
-                None => {
-                    self.as_mut().recomposite();
-                    false
+            Some(mut stroke) => {
+                // A GPU stroke already patched the exact working document, so it
+                // commits with no replay. A previewed stroke never fed the exact
+                // stroke: replay its log now, so every committed pixel matches a
+                // stroke that rasterized at full resolution from the first dab.
+                if let Some(preview) = preview {
+                    let t = Instant::now();
+                    for sample in preview.samples {
+                        stroke.sample(sample);
+                        if let Some(rect) = stroke.take_dirty() {
+                            self.as_mut().rust_mut().stroke_tiles.mark(rect);
+                        }
+                    }
+                    paint_timing::record("commit_replay_cpu_stroke", t.elapsed());
                 }
-                Some(outcome) => {
-                    let rect = outcome.dirty;
-                    self.as_mut().rust_mut().doc = Some(outcome.document);
-                    // The commit is a described change: refresh only the stroke's
-                    // extent, which patches the composite, the level-0 frame, the
-                    // pyramid, and the canvas region in one pass.
-                    self.as_mut().refresh_region(rect);
-                    self.as_mut().record(&label);
-                    true
+                let t = Instant::now();
+                let finished = stroke.finish();
+                paint_timing::record("commit_finish", t.elapsed());
+                match finished {
+                    None => {
+                        self.as_mut().recomposite();
+                        false
+                    }
+                    Some(outcome) => {
+                        let rect = outcome.dirty;
+                        // The commit is a described change: refresh only the
+                        // stroke's dirty tiles. Decomposing them into disjoint
+                        // rectangles keeps a diagonal stroke from recompositing
+                        // its whole bounding box; the collapse in
+                        // `take_stroke_regions` falls back to the union when the
+                        // tiles are not worth splitting. Patching level 0 and
+                        // rebuilding from it is also what overwrites the preview
+                        // level, so the canvas returns to the zoom-selected one.
+                        let regions = {
+                            let mut rust = self.as_mut().rust_mut();
+                            rust.doc = Some(outcome.document);
+                            rust.take_stroke_regions(rect)
+                        };
+                        self.as_mut().refresh_regions(&regions);
+                        let t = Instant::now();
+                        self.as_mut().record(&label);
+                        paint_timing::record("commit_record_history", t.elapsed());
+                        true
+                    }
                 }
-            },
-        }
+            }
+        };
+        paint_timing::record("end_paint_total", t0.elapsed());
+        paint_timing::report();
+        ok
     }
 
     pub fn cancel_paint(mut self: Pin<&mut Self>) {
@@ -190,17 +747,208 @@ impl qobject::PictureView {
         let dirty = {
             let mut rust = self.as_mut().rust_mut();
             rust.clear_pending_present();
+            // The restore below refreshes the stroke's extent from level 0,
+            // which rebuilds the stored levels and so drops the preview too.
+            rust.preview = None;
+            rust.gpu_stroke = None;
+            rust.gpu_placer = None;
+            rust.stroke_tiles = Default::default();
             rust.stroke.take()
         }
         .and_then(|stroke| stroke.finish())
         .map(|outcome| outcome.dirty);
         match dirty {
-            Some(rect) => self.as_mut().refresh_region(rect),
-            None => self.as_mut().recomposite(),
+            Some(rect) => {
+                let t = Instant::now();
+                self.as_mut().refresh_region(rect);
+                paint_timing::record("cancel_refresh_region", t.elapsed());
+            }
+            None => {
+                let t = Instant::now();
+                self.as_mut().recomposite();
+                paint_timing::record("cancel_recomposite", t.elapsed());
+            }
         }
+        paint_timing::report();
     }
 
     pub fn is_painting(&self) -> bool {
         self.rust().stroke.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{gpu_paint_mode, preview_blend, preview_level, rasterize_preview};
+    use pictura_core::PsdRect;
+    use pictura_paint::{tip_coverage, PaintMode, Rgba, StrokeConfig, StrokeSample};
+    use pictura_render::gpu::GpuPaintMode;
+
+    use super::PreviewStroke;
+
+    fn rect(w: u32, h: u32) -> PsdRect {
+        PsdRect {
+            top: 0,
+            left: 0,
+            bottom: h as i32,
+            right: w as i32,
+        }
+    }
+
+    fn preview(
+        w: u32,
+        h: u32,
+        level: u32,
+        snapshot: Vec<u8>,
+        coverage: Vec<u8>,
+        cfg: StrokeConfig,
+    ) -> PreviewStroke {
+        PreviewStroke {
+            level,
+            scale: 1 << level,
+            width: w,
+            height: h,
+            snapshot,
+            coverage,
+            extent: Some(rect(w, h)),
+            samples: Vec::new(),
+            cfg,
+        }
+    }
+
+    #[test]
+    fn gpu_mode_covers_normal_and_clear_only() {
+        assert_eq!(
+            gpu_paint_mode(PaintMode::Normal),
+            Some(GpuPaintMode::Normal)
+        );
+        assert_eq!(gpu_paint_mode(PaintMode::Clear), Some(GpuPaintMode::Clear));
+        assert_eq!(gpu_paint_mode(PaintMode::Dissolve), None);
+        assert_eq!(gpu_paint_mode(PaintMode::Behind), None);
+    }
+
+    #[test]
+    fn a_dab_that_fits_the_budget_is_not_previewed() {
+        assert_eq!(preview_level(500, 4000, 4000), None, "500 px fits");
+        assert_eq!(preview_level(1, 4000, 4000), None);
+        assert_eq!(preview_level(0, 4000, 4000), None);
+    }
+
+    #[test]
+    fn a_dab_over_the_budget_previews_at_a_level_that_fits() {
+        for (diameter, w, h) in [
+            (600, 4000, 4000),
+            (1024, 4000, 4000),
+            (2000, 4000, 4000),
+            (5000, 4000, 4000),
+            (5000, 16000, 16000),
+        ] {
+            let level = preview_level(diameter, w, h)
+                .unwrap_or_else(|| panic!("{diameter} on {w}x{h} must preview"));
+            let d = (diameter as u64 + 2).min(w as u64).min(h as u64);
+            let area = d * d;
+            assert!(
+                (area >> (2 * level)) <= 262_144,
+                "{diameter} on {w}x{h} previews at {level} with {} px",
+                area >> (2 * level)
+            );
+        }
+    }
+
+    #[test]
+    fn a_bounded_brush_previews_at_the_smallest_level_that_fits() {
+        // A 16000² document with a 5000 px brush is the one case the starting
+        // level does not cover on its own.
+        assert_eq!(preview_level(5000, 4000, 4000), Some(3));
+        assert_eq!(preview_level(5000, 16000, 16000), Some(4));
+        assert_eq!(preview_level(600, 4000, 4000), Some(3));
+    }
+
+    #[test]
+    fn preview_blend_is_source_over_and_clear_removes_the_snapshot() {
+        let snapshot = vec![10u8, 20, 30, 255];
+        let blue = Rgba {
+            r: 0,
+            g: 0,
+            b: 255,
+            a: 255,
+        };
+        let normal = |coverage| {
+            let cfg = StrokeConfig {
+                color: blue,
+                mode: PaintMode::Normal,
+                ..Default::default()
+            };
+            preview(1, 1, 3, snapshot.clone(), vec![coverage], cfg)
+        };
+        assert_eq!(
+            preview_blend(&normal(0), rect(1, 1)),
+            snapshot,
+            "zero coverage leaves the snapshot untouched"
+        );
+        assert_eq!(
+            preview_blend(&normal(255), rect(1, 1)),
+            vec![0, 0, 255, 255],
+            "full opaque coverage is exactly the paint colour"
+        );
+
+        let clear = preview(
+            1,
+            1,
+            3,
+            snapshot.clone(),
+            vec![255],
+            StrokeConfig {
+                color: blue,
+                mode: PaintMode::Clear,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            preview_blend(&clear, rect(1, 1)),
+            vec![0, 0, 0, 0],
+            "Clear removes the snapshot's coverage"
+        );
+    }
+
+    #[test]
+    fn rasterize_preview_samples_the_tip_at_scaled_offsets() {
+        let cfg = StrokeConfig {
+            diameter: 512,
+            hardness: 100,
+            ..Default::default()
+        };
+        let (w, h) = (64u32, 64u32);
+        let mut p = preview(
+            w,
+            h,
+            3,
+            vec![0; (w * h * 4) as usize],
+            vec![0; (w * h) as usize],
+            cfg,
+        );
+        // The sample is document-space; level 3 means an 8x reduction.
+        let centre = 32.0 * p.scale as f32;
+        assert!(rasterize_preview(
+            &mut p,
+            StrokeSample {
+                x: centre,
+                y: centre,
+                pressure: 1.0,
+            }
+        ));
+        let flow = cfg.flow as f32 / 100.0;
+        assert_eq!(p.coverage[32 * w as usize + 32], 255, "centre is full");
+        for (lx, ly) in [(32usize, 20usize), (40, 32), (20, 20), (32, 44)] {
+            let dx = (lx as f32 + 0.5 - 32.0) * p.scale as f32;
+            let dy = (ly as f32 + 0.5 - 32.0) * p.scale as f32;
+            let tip = tip_coverage(&cfg, dx, dy);
+            let expected = ((flow * tip).clamp(0.0, 1.0) * 255.0).round() as u8;
+            assert_eq!(
+                p.coverage[ly * w as usize + lx],
+                expected,
+                "reduced coverage at level pixel ({lx},{ly}) is the full tip at its scaled offset"
+            );
+        }
     }
 }

@@ -366,6 +366,94 @@ fn paint_commit_region_patch_equals_a_full_recomposite() {
     );
 }
 
+/// A single-rectangle commit builds its blit image from the region buffer, so
+/// that image must equal the level-0 crop the multi-rect path (and the old code)
+/// produced — otherwise the canvas would show different pixels after a commit.
+#[test]
+fn a_single_region_commit_blit_equals_the_level0_crop() {
+    let rgba = vec![30u8; 200 * 160 * 4];
+    let mut doc = Document::from_rgba("paint", 200, 160, &rgba);
+    doc.composite = varied_rgba(200, 160, 9);
+    let mut rust = PictureViewRust {
+        doc: Some(doc),
+        ..Default::default()
+    };
+    rust.reset_pyramid();
+    let rect = PsdRect {
+        top: 20,
+        left: 30,
+        bottom: 120,
+        right: 150,
+    };
+
+    let (image, x, y) = rust
+        .refresh_regions(&[rect])
+        .expect("the region composites pixels");
+    assert_eq!((x, y), (rect.left, rect.top));
+
+    let crop = rust.display_crop(0, rect);
+    assert_eq!(
+        (image.width(), image.height()),
+        (crop.width(), crop.height())
+    );
+    for yy in 0..image.height() {
+        for xx in 0..image.width() {
+            let (a, b) = (image.pixel_color(xx, yy), crop.pixel_color(xx, yy));
+            assert_eq!(
+                (a.red(), a.green(), a.blue(), a.alpha()),
+                (b.red(), b.green(), b.blue(), b.alpha()),
+                "the region blit differs from the level-0 crop at {xx},{yy}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_multi_rect_stroke_commit_equals_a_full_recomposite() {
+    use super::helpers::TileSet;
+    use pictura_paint::{Stroke, StrokeConfig, StrokeSample};
+
+    let rgba = vec![30u8; 512 * 512 * 4];
+    let doc = Document::from_rgba("paint", 512, 512, &rgba);
+    let cfg = StrokeConfig {
+        diameter: 6,
+        ..StrokeConfig::default()
+    };
+    let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin stroke");
+    let mut tiles = TileSet::default();
+    tiles.reset(512, 512);
+    for i in 0..32 {
+        assert!(stroke.sample(StrokeSample {
+            x: 20.0 + i as f32 * 15.0,
+            y: 20.0 + i as f32 * 15.0,
+            pressure: 1.0,
+        }));
+        if let Some(rect) = stroke.take_dirty() {
+            tiles.mark(rect);
+        }
+    }
+    let outcome = stroke.finish().expect("the stroke painted pixels");
+    let regions = tiles.regions(outcome.dirty);
+    assert!(regions.len() > 1, "a diagonal decomposes into tiles");
+
+    // Replay `end_paint`'s per-rect commit against the committed bytes.
+    let mut committed = outcome.document.clone();
+    for region in &regions {
+        let buffer = pictura_render::composite_region_active(&committed, *region, false).0;
+        patch_composite_region(
+            &mut committed,
+            &buffer,
+            region.left.max(0),
+            region.top.max(0),
+        );
+    }
+    let full = current_buffer(&outcome.document, false);
+    assert_eq!(
+        committed.composite.data, full.data,
+        "the per-rect commit equals a full recomposite"
+    );
+}
+
 #[test]
 fn layer_opacity_region_refresh_equals_a_full_recomposite() {
     let base = vec![80u8; 64 * 64 * 4];
@@ -573,4 +661,87 @@ fn present_accumulates_until_flush_and_the_stroke_lifecycle_supersedes_it() {
         None,
         "the stroke lifecycle superseded the pending region"
     );
+}
+
+/// The preview snapshots the stored view-pyramid level rather than the
+/// document: the bytes are that level's, taken before the stroke, and for the
+/// document sizes the threshold targets they stay small enough to be free.
+#[test]
+fn the_preview_snapshots_the_stored_level_and_stays_small() {
+    use super::impl_paint::preview_snapshot_bytes;
+    use super::state::PreviewStroke;
+
+    // The two document sizes the threshold was tuned against, and the levels
+    // `preview_level` picks for them.
+    assert_eq!(preview_snapshot_bytes(4000, 4000, 3), 500 * 500 * 4);
+    assert_eq!(preview_snapshot_bytes(16_000, 16_000, 4), 1000 * 1000 * 4);
+    assert!(
+        preview_snapshot_bytes(4000, 4000, 3) <= 4 * 1024 * 1024,
+        "a 4000 square preview must stay under 4 MB"
+    );
+    assert!(
+        preview_snapshot_bytes(16_000, 16_000, 4) <= 8 * 1024 * 1024,
+        "a 16000 square preview must stay under 8 MB"
+    );
+
+    let level0 = varied_rgba(900, 600, 3);
+    let planes = planes_of(&level0).expect("RGBA level 0");
+    let pyramid = ViewPyramid::rebuild(planes);
+    let whole = whole_level(&pyramid, 1);
+
+    let preview = PreviewStroke::new(1, &pyramid, &level0, pictura_paint::StrokeConfig::default())
+        .expect("the level exists");
+    assert_eq!(
+        preview.snapshot,
+        pyramid.crop(planes, 1, whole).data(),
+        "the snapshot is the level's bytes, taken before anything is painted"
+    );
+    assert_eq!(preview.level, 1);
+    assert_eq!(preview.scale, 2);
+    assert_eq!(
+        preview_snapshot_bytes(level0.width, level0.height, 1),
+        preview.snapshot.len()
+    );
+    assert_eq!(
+        preview.coverage.len(),
+        (preview.width * preview.height) as usize,
+        "the coverage buffer covers the level exactly once"
+    );
+    assert!(preview.extent.is_none(), "nothing presented yet");
+    assert!(preview.samples.is_empty(), "nothing recorded yet");
+
+    // A level the pyramid does not store is refused rather than snapshotted
+    // as zeros.
+    assert!(PreviewStroke::new(
+        99,
+        &pyramid,
+        &level0,
+        pictura_paint::StrokeConfig::default()
+    )
+    .is_none());
+}
+
+/// A full rebuild is the one path that writes every level from `level0`; it must
+/// also drop a live preview so a stale snapshot cannot resurrect over it.
+#[test]
+fn reset_pyramid_drops_a_live_preview() {
+    use super::state::PreviewStroke;
+
+    let mut doc = Document::new(600, 600, ColorMode::Rgb, BitDepth::Eight);
+    doc.composite = varied_rgba(600, 600, 1);
+    let mut rust = PictureViewRust {
+        doc: Some(doc),
+        ..Default::default()
+    };
+    rust.reset_pyramid();
+    let level0 = rust.level0.as_ref().expect("level-0 frame");
+    rust.preview = PreviewStroke::new(
+        1,
+        &rust.pyramid,
+        level0,
+        pictura_paint::StrokeConfig::default(),
+    );
+    assert!(rust.preview.is_some(), "level 1 exists on a 600 square");
+    rust.reset_pyramid();
+    assert!(rust.preview.is_none(), "a full rebuild drops the preview");
 }
