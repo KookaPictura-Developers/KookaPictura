@@ -3285,6 +3285,41 @@ raises `QImageReader`'s 256 MB allocation limit to **4 GB**
 (16507×16196×4 ≈ 1020 MiB) opens. Both caps were below the target, so the file was
 refused before the decoder ran. The 30 000 px dimension cap is unchanged.
 
+### Large-document interactive performance (change `large-document-interactive-performance`)
+
+Implements `openspec/changes/large-document-interactive-performance` (issue #130),
+the follow-up to the canvas-view work. Interactive present, operation refresh,
+panels, ICC, and decode no longer pay whole-document costs:
+
+- **Mid-stroke present.** `ImageView::presentCrop` no longer bails while
+  `is_painting()`; a live stroke presents the zoom level crop like the idle
+  canvas. The pyramid already carried the stroke's dabs (`refresh_region` patches
+  level 0 and repairs levels), so nothing else was needed. `reset_pyramid` now
+  composites a live stroke's working document when a stray full rebuild happens,
+  and undo/redo/history jump/restore cancel an in-progress stroke.
+- **Described-change coverage.** `end_paint`/`cancel_paint` refresh the stroke's
+  extent; `mutate_layer` (opacity/blend/fill) refreshes the layer's bounded
+  influence rect; `apply_filter`/`apply_pictura_raw` the target layer rect;
+  `add_adjustment` the mask rect when bounded; clipboard clear/paste the
+  affected/new layer rect; `translate_layer`/`move_preview`/`commit_transform`
+  the union of source and destination. Bounded ops emit `region_blitted` (not
+  `changed`), so no panel read forces a full image rebuild. Selection-only edits
+  no longer run the compositor. See the "Described-change coverage" section of
+  `docs/dev/canvas-compositing-plan.md`.
+- **One full-resolution display frame.** The cached `PictureViewRust::image`
+  `QImage` is gone; `PictureView::image()` builds on demand from the level-0
+  frame. The sRGB `level0` frame stays because the pyramid needs it for regional
+  updates.
+- **Panels and codec.** The Histogram bins a view-pyramid level (≤512), so it no
+  longer builds the full image. `buffer_to_srgb` reuses a cached working-profile
+  transform and borrows the buffer (no copy) for an unprofiled document. The Qt
+  decode edge copies the decoded frame with one bulk `copy_bytes` bridge call
+  instead of a per-byte `push_back` loop.
+
+New self-test checks **542** (`ldoc_selection_no_recomposite`) and **543**
+(`ldoc_paint_presents_from_crop`) live in `cpp/selftest_large_doc.cpp`. The
+history copy-on-write / tile-diff rework (M36) remains deferred.
+
 ## Spec workflow (OpenSpec)
 
 OpenSpec is the per-change requirements layer over `docs/`. See `AGENTS.md`
