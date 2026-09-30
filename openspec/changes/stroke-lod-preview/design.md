@@ -24,22 +24,24 @@ constant again would take 933 ms to ~450 ms, not to 16 ms.
   bar allows, by rasterizing fewer pixels while the button is down.
 - Every pixel the document keeps after `end_paint` is byte-identical to what the
   exact stroke would have produced — no tolerance, no re-derivation at undo.
-- The preview reuses `Stroke`, `composite_region_active` and `ViewPyramid`
-  rather than introducing a second rasterizer.
+- The preview reuses the `ViewPyramid` levels, the `tip_coverage` profile and
+  the cover~flow accumulation rather than introducing a second stroke engine;
+  it rasterizes coverage into one stored level over a snapshot of that level.
 
 **Non-Goals:**
 
 - A background thread. The exact stroke still runs on the GUI thread; see the
   trade-off below.
 - Previewing below the threshold, where the exact raster already fits.
-- Previewing the tip's shape at a different curve: the preview runs the same
-  `Stroke` on a smaller document, so flow, opacity, spacing, blend mode and the
-  paint mode all behave the same at 1/8 scale.
+- Exact reduced-scale resampling of the layer stack: the preview blends the
+  paint colour over a snapshot of the composited level, so a masked, grouped or
+  non-Normal target is approximate (Clear is handled; Dissolve and Behind
+  present as Normal). Only the committed full-resolution pixels must be exact.
 
 ## Decisions
 
 **D1 — One constant for the threshold and the level.** Preview begins when
-`dab bounding box area > 262 144` px (⌀≈578), the area 16 ms buys at the
+`dab bounding box area > 262 144` px (⌀≈512), the area 16 ms buys at the
 measured 58 ns/px. The level starts at 3 (1/8) and rises while
 `area >> 2*level > 262 144`, so the preview's own rasterization and its present
 fit the same budget. A fixed starting level keeps the reduced document's
@@ -50,19 +52,30 @@ a level derived only from the diameter — it forgets that a dab clipped to the
 document is cheaper than its nominal box; a time-based adaptive threshold — it
 needs a clock in the hot path and produces a non-deterministic stroke.
 
-**D2 — The preview runs the real `Stroke` on a reduced document.** `begin_paint`
-above the threshold builds a reduced copy of the document (same layer tree,
-every plane box-filtered by `1 << level`) and starts a second `Stroke` on it with
-the diameter, spacing and coordinates scaled down. Nothing in `pictura-paint`
-changes. The exact `Stroke` is *not* started until the samples have been
-recorded and the drain runs. *Alternatives considered:* rasterizing coverage
-into a scratch buffer and blending it over `level0` — it invents a second
-rasterizer and gets the layer stack wrong; subsampling the exact stroke — it
-would leave full-resolution pixels in `level0` and could not be undone.
+**D2 — The preview renders the tip over a snapshot of the reduced composite,
+not a second stroke on a reduced document.** While previewing, the app keeps a
+snapshot of view-pyramid level `level` taken at stroke start — at most a few
+megabytes, `(w >> level) × (h >> level) × 4` — and per frame rasterizes the
+accumulated dabs' coverage into a reduced buffer using the same
+`tip_coverage` profile at `1 << level` scaled offsets, then blends
+`mix(snapshot, paint colour, opacity × coverage)` and patches it into the stored
+level. Nothing in `pictura-paint` changes, and no second `Stroke` exists. The
+exact `Stroke` is not started until the drain runs.
+
+*Alternatives considered:* building a reduced copy of the document and running a
+second `Stroke` on it — it composites the layer stack faithfully, but reading
+every plane to box-filter it costs O(document) per stroke start, about 50 ms at
+4000² over eight layers and roughly half a second at 16000², which is exactly
+the cost this change exists to remove; subsampling the exact stroke — it would
+leave full-resolution pixels in `level0` and could not be undone. The snapshot
+blend is an approximation of the layer stack rather than a resampling of it:
+for the ordinary case of an opaque target layer in Normal mode it is identical,
+and for a masked, grouped or non-Normal layer it is a plausible picture of a
+stroke whose exact pixels land at commit.
 
 **D3 — The preview writes one stored pyramid level, not `level0`.** The preview
-present composites the reduced document over its dirty rectangle and patches
-`ViewPyramid`'s level `level` in place, then bumps `canvas_revision`. It
+present blends against the snapshot over the accumulated dirty rectangle and
+patches `ViewPyramid`'s level `level` in place, then bumps `canvas_revision`. It
 deliberately does **not** call `update`, which would recompute that level from
 `level0` and wipe the preview; `level0` is left exactly as it was, so a cancel
 or a commit repairs everything with the ordinary region path. Cost is
@@ -106,9 +119,14 @@ this codebase does not have yet. Recorded here rather than guessed at.
   (the canvas never draws `image_` then) and repaired by the commit's blit over
   the same bounding box; the self-test that compares the canvas mid-stroke
   against the commit covers it.
-- [The reduced document's box filter differs from `ViewPyramid`'s shrink] →
+- [The snapshot blend approximates the layer stack instead of resampling it] →
   The preview is presentational and is thrown away, so only the exact stroke
-  needs to match the oracle; the preview's job is to be plausible, not exact.
+  needs to match the oracle; the preview's job is to be plausible, not exact,
+  and the ordinary opaque-Normal case is identical.
+- [The snapshot goes stale if the document changes mid-stroke] → Only a stroke
+  writes pixels mid-stroke, and it writes the preview level, never `level0`, so
+  the snapshot's source is unchanged until the commit; a cancel or a commit
+  rebuilds the level from `level0` and drops the snapshot.
 - [The `is_previewing` invokable pushes `cxxqt_object.rs` past 1227 lines] →
   Free the lines by folding a multi-line doc comment in the same block, exactly
   as `flush_present` did; the file-size gate fails the build if it is missed.
