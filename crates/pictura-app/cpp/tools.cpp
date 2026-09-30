@@ -260,6 +260,20 @@ void ToolController::setBrushSpacing(int spacing)
     }
 }
 
+void ToolController::setBrushDynamics(const BrushDynamics& dynamics)
+{
+    const BrushDynamics d{std::clamp(dynamics.scatter, 0, 1000), std::clamp(dynamics.count, 1, 16),
+                          std::clamp(dynamics.sizeJitter, 0, 100),
+                          std::clamp(dynamics.angleJitter, 0, 180),
+                          std::clamp(dynamics.roundnessJitter, 0, 100)};
+    const BrushDynamics& o = brushDynamics_;
+    if (d.scatter != o.scatter || d.count != o.count || d.sizeJitter != o.sizeJitter
+        || d.angleJitter != o.angleJitter || d.roundnessJitter != o.roundnessJitter) {
+        brushDynamics_ = d;
+        emit brushTipChanged();
+    }
+}
+
 void ToolController::setBrushFlip(bool x, bool y)
 {
     if (x != brushFlipX_ || y != brushFlipY_) {

@@ -58,4 +58,10 @@ int runEraserChecks(PicturaMainWindow& frame);
 // "Art History Brush" state; at Tolerance 100 over matching red nothing is
 // recorded.
 int runArtHistoryBrushChecks(PicturaMainWindow& frame);
+
+// brush_preset_picker (549): the Size slider's first half runs 1-100 px and
+// its second climbs to 5000 px; the Eraser's tip button opens the picker with
+// the default set; the slider's midpoint is 100 px; a spatter preset carries
+// its scatter and count, and a Brush click with it lands paint off the tip.
+int runBrushPresetPickerChecks(PicturaMainWindow& frame);
 } // namespace pictura

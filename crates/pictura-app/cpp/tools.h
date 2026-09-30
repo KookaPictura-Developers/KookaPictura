@@ -242,6 +242,8 @@ public:
     void setBrushSpacing(int spacing);
     bool brushFlipX() const { return brushFlipX_; }
     bool brushFlipY() const { return brushFlipY_; }
+    BrushDynamics brushDynamics() const override { return brushDynamics_; }
+    void setBrushDynamics(const BrushDynamics& dynamics);
     void setBrushFlip(bool x, bool y);
     bool autoErase() const override;
     void setAutoErase(bool on);
@@ -470,6 +472,7 @@ private:
     int brushSpacing_ = 25;
     bool brushFlipX_ = false;
     bool brushFlipY_ = false;
+    BrushDynamics brushDynamics_;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

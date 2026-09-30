@@ -152,6 +152,7 @@ add_executable(pictura
     crates/pictura-app/cpp/panels/numeric_field.cpp
     crates/pictura-app/cpp/panels/history_panel.cpp
     crates/pictura-app/cpp/panels/brush_panel.cpp
+    crates/pictura-app/cpp/panels/brush_preset_picker.cpp
     crates/pictura-app/cpp/panels/clone_source_panel.cpp
     crates/pictura-app/cpp/panels/navigator_panel.cpp
     crates/pictura-app/cpp/panels/color_panel.cpp

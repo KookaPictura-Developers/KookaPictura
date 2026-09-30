@@ -11,6 +11,7 @@ class QToolButton;
 namespace pictura {
 
 class ToolController;
+class BrushPresetPicker;
 class NumericField;
 struct NumericFieldConfig;
 
@@ -32,6 +33,8 @@ signals:
 public:
     // Self-test hook: the controller the size field is wired to.
     ToolController* controllerForTest() const { return controller_; }
+    // The Brush Preset picker behind every brush tip button, made on first use.
+    BrushPresetPicker* brushPicker();
 
 private:
     QWidget* buildPage(ToolId id);
@@ -45,7 +48,8 @@ private:
     QWidget* buildPatchPage(ToolId id);
     QWidget* buildContentAwareMovePage(ToolId id);
     QWidget* buildCountPage(ToolId id);
-    // options_bar_paint.cpp: Red Eye, Color Replacement, and Mixer Brush.
+    // options_bar_paint.cpp: Red Eye, Color Replacement, and Mixer Brush, and
+    // the brush tip button every brush bar shares.
     QWidget* buildRedEyePage(ToolId id);
     QWidget* buildColorReplacementPage(ToolId id);
     QWidget* buildMixerBrushPage(ToolId id);
@@ -69,6 +73,7 @@ private:
 
     ToolController* controller_ = nullptr;
     QStackedWidget* stack_ = nullptr;
+    BrushPresetPicker* brushPicker_ = nullptr;
 };
 
 } // namespace pictura

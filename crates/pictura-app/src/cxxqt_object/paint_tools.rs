@@ -35,7 +35,9 @@ use pictura_paint::{paint_stroke, Rgba, Stroke, StrokeConfig, StrokeKind, Stroke
 pub mod ffi {
     /// The brush tip every paint tool here shares: the Brush panel's Brush Tip
     /// Shape. `diameter` 1–5000 px, `hardness` and `roundness` 0–100 %,
-    /// `angle` −180–180°, `spacing` a percentage of the diameter.
+    /// `angle` −180–180°, `spacing` a percentage of the diameter. The
+    /// dynamics: `count` dabs per step (1–16), `scatter` % of the diameter,
+    /// `size_jitter` / `roundness_jitter` %, `angle_jitter` degrees.
     #[namespace = "pictura"]
     struct PaintTip {
         diameter: i32,
@@ -43,6 +45,11 @@ pub mod ffi {
         roundness: i32,
         angle: i32,
         spacing: i32,
+        scatter: i32,
+        count: i32,
+        size_jitter: i32,
+        angle_jitter: i32,
+        roundness_jitter: i32,
     }
 
     unsafe extern "C++" {
@@ -179,9 +186,30 @@ pub mod ffi {
             to_history: bool,
         ) -> bool;
 
+        /// Begin a Brush (or, `aliased`, Pencil) stroke painting `foreground`
+        /// (`0xAARRGGBB`) with `tip` and its dynamics. `mode` is a Brush mode
+        /// (`"normal"`, …); `auto_erase` paints `background` over the
+        /// foreground (Pencil). False as for `begin_clone_stamp`.
+        fn begin_brush(
+            view: Pin<&mut PictureView>,
+            foreground: u32,
+            background: u32,
+            tip: &PaintTip,
+            opacity: i32,
+            flow: i32,
+            mode: &QString,
+            aliased: bool,
+            auto_erase: bool,
+        ) -> bool;
+
         /// A white stroke with `tip` along an S-curve on transparency, packed
         /// RGBA8888 `width` × `height`: the Brush panel's stroke preview.
         fn brush_tip_preview(tip: &PaintTip, width: i32, height: i32) -> Vec<u8>;
+
+        /// One white step of `tip` (its dynamics included) centred on an
+        /// `edge`² transparent square, scaled down to fit, packed RGBA8888:
+        /// the brush preset picker's thumbnails.
+        fn brush_dab_preview(tip: &PaintTip, edge: i32) -> Vec<u8>;
 
         /// The number of built-in patterns.
         fn stamp_pattern_count() -> i32;
@@ -285,9 +313,38 @@ fn tip_config(tip: &PaintTip) -> StrokeConfig {
         roundness: tip.roundness.clamp(0, 100) as u8,
         angle_deg: tip.angle,
         spacing: SpacingMode::Fixed(tip.spacing.clamp(1, 1000) as u16),
+        scatter: tip.scatter.clamp(0, 1000) as u16,
+        count: tip.count.clamp(1, 16) as u8,
+        size_jitter: tip.size_jitter.clamp(0, 100) as u8,
+        angle_jitter: tip.angle_jitter.clamp(0, 180) as u16,
+        roundness_jitter: tip.roundness_jitter.clamp(0, 100) as u8,
         ..StrokeConfig::default()
     }
     .sanitized()
+}
+
+fn begin_brush(
+    view: Pin<&mut PictureView>,
+    foreground: u32,
+    background: u32,
+    tip: &PaintTip,
+    opacity: i32,
+    flow: i32,
+    mode: &QString,
+    aliased: bool,
+    auto_erase: bool,
+) -> bool {
+    let cfg = StrokeConfig {
+        color: rgba_from_argb(foreground),
+        background: rgba_from_argb(background),
+        aliased,
+        auto_erase,
+        ..stamp_config(tip, opacity, flow, mode)
+    };
+    let label = if aliased { "Pencil" } else { "Brush" };
+    begin(view, label, |doc, path, _| {
+        Stroke::begin_at(doc, path, cfg).ok()
+    })
 }
 
 fn begin_clone_stamp(
@@ -494,6 +551,42 @@ fn stamp_config(tip: &PaintTip, opacity: i32, flow: i32, mode: &QString) -> Stro
 
 fn brush_tip_preview(tip: &PaintTip, width: i32, height: i32) -> Vec<u8> {
     let (w, h) = (width.clamp(1, 2048), height.clamp(1, 2048));
+    let cfg = tip_config(tip);
+    // One period of a sine across the middle, inset by the tip's radius.
+    let inset = (cfg.diameter as f32 / 2.0).min(w as f32 / 4.0);
+    let samples: Vec<StrokeSample> = (0..=64)
+        .map(|i| {
+            let t = i as f32 / 64.0;
+            StrokeSample {
+                x: inset + t * (w as f32 - 2.0 * inset),
+                y: h as f32 / 2.0 - (t * std::f32::consts::TAU).sin() * h as f32 / 5.0,
+                pressure: 1.0,
+            }
+        })
+        .collect();
+    white_preview(cfg, w, h, &samples)
+}
+
+fn brush_dab_preview(tip: &PaintTip, edge: i32) -> Vec<u8> {
+    let edge = edge.clamp(1, 512);
+    let mut cfg = tip_config(tip);
+    // The whole cluster (the tip plus its scatter either side) fits the square.
+    let span = cfg.diameter as f32 * (1.0 + 2.0 * cfg.scatter as f32 / 100.0);
+    let fit = (edge as f32 - 2.0) / span;
+    if fit < 1.0 {
+        cfg.diameter = ((cfg.diameter as f32 * fit).round() as u32).max(1);
+    }
+    let centre = StrokeSample {
+        x: edge as f32 / 2.0,
+        y: edge as f32 / 2.0,
+        pressure: 1.0,
+    };
+    white_preview(cfg, edge, edge, &[centre])
+}
+
+/// `samples` painted white with `cfg` on a `w` × `h` transparent layer,
+/// packed RGBA8888.
+fn white_preview(cfg: StrokeConfig, w: i32, h: i32, samples: &[StrokeSample]) -> Vec<u8> {
     let mut doc = Document::new(w as u32, h as u32, ColorMode::Rgb, BitDepth::Eight);
     let n = (w * h) as usize;
     doc.layers.push(Layer {
@@ -518,21 +611,9 @@ fn brush_tip_preview(tip: &PaintTip, width: i32, height: i32) -> Vec<u8> {
             b: 255,
             a: 255,
         },
-        ..tip_config(tip)
+        ..cfg
     };
-    // One period of a sine across the middle, inset by the tip's radius.
-    let inset = (cfg.diameter as f32 / 2.0).min(w as f32 / 4.0);
-    let samples: Vec<StrokeSample> = (0..=64)
-        .map(|i| {
-            let t = i as f32 / 64.0;
-            StrokeSample {
-                x: inset + t * (w as f32 - 2.0 * inset),
-                y: h as f32 / 2.0 - (t * std::f32::consts::TAU).sin() * h as f32 / 5.0,
-                pressure: 1.0,
-            }
-        })
-        .collect();
-    paint_stroke(&mut doc, "0", &cfg, &samples);
+    paint_stroke(&mut doc, "0", &cfg, samples);
     let plane = |id: i16| {
         doc.layers[0]
             .channels

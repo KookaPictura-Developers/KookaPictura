@@ -3,7 +3,9 @@
 
 #include "frame.h"
 #include "image_view.h"
+#include "options_bar.h"
 #include "panels/brush_panel.h"
+#include "panels/brush_preset_picker.h"
 #include "panels/numeric_field.h"
 #include "panels/panel_column.h"
 #include "tools.h"
@@ -21,6 +23,8 @@
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QListWidget>
+#include <QtWidgets/QSlider>
+#include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QToolButton>
 
 #include <functional>
@@ -687,6 +691,92 @@ int pictura::runArtHistoryBrushChecks(pictura::PicturaMainWindow& frame)
             reddened, gated ? 1 : 0);
     if (!bar || !painted || !gated) {
         return pictura::selfTest().fail(548, "art history brush tool");
+    }
+    return 0;
+}
+
+int pictura::runBrushPresetPickerChecks(pictura::PicturaMainWindow& frame)
+{
+    namespace scale = pictura::brush_size_scale;
+    // The first half of the Size slider runs 1-100 px; the second climbs to 5000.
+    bool mapping = scale::sizeAt(0) == 1 && scale::sizeAt(scale::kSteps / 2) == 100
+        && scale::sizeAt(scale::kSteps) == 5000 && scale::sizeAt(scale::kSteps / 4) == 51
+        && scale::sizeAt(scale::kSteps * 3 / 4) == 707;
+    // Every size up to 100 has a position; above it the travel only climbs.
+    for (int size = 1; size <= 100; ++size) {
+        mapping = mapping && scale::sizeAt(scale::positionOf(size)) == size;
+    }
+    for (int p = 1; p <= scale::kSteps; ++p) {
+        mapping = mapping && scale::sizeAt(p) >= scale::sizeAt(p - 1);
+    }
+
+    QImage seed(60, 60, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_brush_picker_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(549, "brush preset picker fixture");
+    }
+    const BrushState brush(f.tools);
+    const int hardness = f.tools->brushHardness();
+    const int roundness = f.tools->brushRoundness();
+    const int angle = f.tools->brushTipAngle();
+    const int spacing = f.tools->brushSpacing();
+    const QColor foreground = f.tools->foreground();
+
+    // Clicking the Eraser's tip button opens the picker with the default set.
+    frame.setActiveTool(pictura::ToolId::Eraser);
+    auto* bar = frame.findChild<pictura::OptionsBar*>(QStringLiteral("optionsBar"));
+    auto* stack = bar ? bar->findChild<QStackedWidget*>() : nullptr;
+    QWidget* page = stack ? stack->currentWidget() : nullptr;
+    auto* tip = page ? page->findChild<QToolButton*>(QStringLiteral("optionsBrushTip")) : nullptr;
+    bool opened = false;
+    bool slider = false;
+    bool preset = false;
+    if (tip) {
+        tip->click();
+        pictura::BrushPresetPicker* picker = bar->brushPicker();
+        auto* grid = picker->findChild<QListWidget*>(QStringLiteral("brushPickerGrid"));
+        opened = picker->isVisible() && grid && grid->count() == picker->presetCount()
+            && picker->presetCount() >= 40;
+        auto* sizeSlider = picker->findChild<QSlider*>(QStringLiteral("brushPickerSizeSlider"));
+        if (sizeSlider) {
+            sizeSlider->setValue(scale::kSteps / 2);
+            slider = f.tools->brushSize() == 100 && tip->text() == QStringLiteral("100");
+        }
+        // "Spatter 24": a cluster of seven dabs scattered 150 % of the size.
+        picker->choosePresetForTest(25);
+        const pictura::BrushDynamics d = f.tools->brushDynamics();
+        preset = f.tools->brushSize() == 24 && d.count == 7 && d.scatter == 150;
+        picker->hide();
+    }
+
+    // One Brush click with the spatter tip lands paint well off the 24 px tip.
+    f.tools->setForeground(Qt::black);
+    frame.setActiveTool(pictura::ToolId::Brush);
+    f.drag({QPointF(30, 30)});
+    bool scattered = false;
+    for (int y = 0; y < 60 && !scattered; ++y) {
+        for (int x = 0; x < 60; ++x) {
+            const bool far = (x - 30) * (x - 30) + (y - 30) * (y - 30) > 14 * 14;
+            if (far && f.view->sample_argb(x, y) != QColor(Qt::white).rgba()) {
+                scattered = true;
+                break;
+            }
+        }
+    }
+
+    f.tools->setForeground(foreground);
+    f.tools->setBrushHardness(hardness);
+    f.tools->setBrushRoundness(roundness);
+    f.tools->setBrushTipAngle(angle);
+    f.tools->setBrushSpacing(spacing);
+    f.tools->setBrushDynamics(pictura::BrushDynamics{});
+
+    ST_BEGIN("brush_preset_picker");
+    ST_PASS("brush preset picker mapping=%d opened=%d slider=%d preset=%d scattered=%d",
+            mapping ? 1 : 0, opened ? 1 : 0, slider ? 1 : 0, preset ? 1 : 0, scattered ? 1 : 0);
+    if (!mapping || !opened || !slider || !preset || !scattered) {
+        return pictura::selfTest().fail(549, "brush preset picker");
     }
     return 0;
 }

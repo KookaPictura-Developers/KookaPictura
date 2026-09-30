@@ -21,7 +21,7 @@ int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
                            runColorReplacementChecks, runMixerBrushChecks, runCloneStampChecks,
                            runPatternStampChecks, runHistoryBrushChecks, runBrushPanelChecks,
                            runCloneSourcePanelChecks, runEraserChecks,
-                           runArtHistoryBrushChecks}) {
+                           runArtHistoryBrushChecks, runBrushPresetPickerChecks}) {
         if (const int code = run(frame); code != 0) {
             return code;
         }

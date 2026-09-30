@@ -47,6 +47,18 @@ struct StampOptions {
     bool patternAligned = true;
 };
 
+// The brush tip's dynamics (Scattering and Shape Dynamics), set by the brush
+// preset picker: `count` dabs per step (1-16), each offset up to `scatter` % of
+// the diameter, shrunk by up to `sizeJitter` %, turned by up to ±`angleJitter`°,
+// and flattened by up to `roundnessJitter` %.
+struct BrushDynamics {
+    int scatter = 0;
+    int count = 1;
+    int sizeJitter = 0;
+    int angleJitter = 0;
+    int roundnessJitter = 0;
+};
+
 // The Eraser options bar: Mode 0 Brush / 1 Pencil / 2 Block, and Erase To
 // History (Alt held while pressing does the same for one stroke).
 struct EraserOptions {
@@ -101,6 +113,7 @@ struct ToolContext {
     virtual int brushRoundness() const = 0;
     virtual int brushAngle() const = 0;
     virtual int brushSpacing() const = 0;
+    virtual BrushDynamics brushDynamics() const = 0;
     virtual bool autoErase() const = 0;
     virtual int tolerance() const = 0;
     virtual bool contiguous() const = 0;
