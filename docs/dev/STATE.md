@@ -15,15 +15,15 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1821 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
+- Test suite: **1826 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
   the `scroll_zoom_pan_profile_*` pair, `region_move_timing_4000`,
   `region_refresh_profile_4000`, `undo_profile_4000`, the `composite_profile_*`
   pair, and `filter_profile_1024`; counted from `cargo nextest run --workspace`,
   which excludes the pre-existing ignored `pictura-render` doctest that
   `cargo test --workspace` reports separately).
-  The C++ self-test reports **478 passed, 0 failed, 0 skipped** standalone; the
+  The C++ self-test reports **480 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2337 passed, 13 skipped, 0 failed**.
+  probes) reports **2344 passed, 13 skipped, 0 failed**.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,
@@ -604,6 +604,28 @@ Snapshot for resuming after a context break. Update after each milestone.
   Ceilings (`ponytail:`): no cog menu, Use Sample Size, or libraries; sampled
   tips are approximated with scatter and jitter; per-dab tools (Color
   Replacement, Mixer, Art History) ignore the dynamics.
+- **Background Eraser and Magic Eraser** (changes `background-eraser-tool` and
+  `magic-eraser-tool`, issues #22 and #23, ported from photorust's
+  `core/src/erase.rs`): the E group is complete. `replace.rs`'s match and
+  per-dab flood are shared free functions (`match_strength`, `reachable`).
+  `StrokeKind::BackgroundErase` runs `eraser::BackgroundEraser`: each dab
+  samples under the crosshair (Continuous skips cleared pixels, Once, or
+  Background Swatch), limits the match (Discontiguous / Contiguous / Find
+  Edges), keeps a protected foreground, and multiplies alpha down with an
+  always-soft match; it overrides Lock Transparency. `eraser::magic_erase`
+  erases through a document-sized mask at Opacity (or blends toward the
+  background colour on an alpha-less / transparency-locked layer);
+  `antialias_mask` softens the wand's edge. Bridges `begin_background_eraser`
+  ("Background Eraser") and `magic_erase_at` ("Magic Eraser",
+  `pictura_select::magic_wand` over the layer or, with Sample All Layers, the
+  composite); both turn the Background into a layer first (`ensure_alpha`).
+  Handlers in `tool_eraser.cpp`, bars in `options_bar_erase.cpp` (Background:
+  tip, Sampling, Limits, Tolerance 50 %, Protect Foreground Color; Magic:
+  Tolerance 32, Anti-alias, Contiguous, Sample All Layers, Opacity). The eraser
+  self-checks live in `selftest_erasers.cpp` with the shared
+  `selftest_paint_fixture.h`; codes 550, 551; guard 98 and `keys_shown` (116)
+  now probe the G group. Ceilings (`ponytail:`): no edge colour extraction or
+  pen-pressure controls; the selection does not limit the Magic Eraser.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
