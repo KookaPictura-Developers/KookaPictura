@@ -460,7 +460,7 @@ fn begin_history_brush(
         // ponytail: the source layer is matched by panel path (layers carry no
         // stable id), so a reordered stack paints from whatever now sits there.
         let past = view.history.brush_source_doc()?;
-        let source = StampSource::new(layer_surface(past, path)?, (0, 0));
+        let source = StampSource::new(layer_surface(&past.doc, path)?, (0, 0));
         Stroke::begin_source(doc, path, cfg, source).ok()
     })
 }
@@ -486,7 +486,7 @@ fn begin_art_history_brush(
             seed: view.history.index() as u64 ^ 0xA27_4157,
         };
         let past = view.history.brush_source_doc()?;
-        Stroke::begin_art_history(doc, path, cfg, layer_surface(past, path)?, options).ok()
+        Stroke::begin_art_history(doc, path, cfg, layer_surface(&past.doc, path)?, options).ok()
     })
 }
 
@@ -522,7 +522,7 @@ fn begin_eraser(
         // History Brush.
         let history = if to_history {
             let past = view.history.brush_source_doc()?;
-            Some(StampSource::new(layer_surface(past, path)?, (0, 0)))
+            Some(StampSource::new(layer_surface(&past.doc, path)?, (0, 0)))
         } else {
             None
         };
