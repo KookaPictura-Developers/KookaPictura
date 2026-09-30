@@ -14,7 +14,7 @@ SHALL be refused.
 
 #### Scenario: Softening an edge
 
-- **WHEN** the `blur_tool` self-test drags along a black/white edge at Strength 100 %
+- **WHEN** the `tst_retouch_tools` Blur test drags along a black/white edge at Strength 100 %
 - **THEN** one "Blur" state is recorded, the pixels either side of the edge move toward each other, and pixels outside the tip are unchanged
 
 #### Scenario: Sample All Layers on an empty layer

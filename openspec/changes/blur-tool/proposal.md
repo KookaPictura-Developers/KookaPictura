@@ -18,10 +18,10 @@ follows `docs/03-tools/smudge-blur-sharpen.md`.
   documents; Lock Transparency keeps coverage.
 - `cxxqt_object/paint_tools.rs`: `begin_blur`; the live stroke records one
   `"Blur"` state through `end_paint`.
-- `tool_blur.cpp` drag handler; the bar (`options_bar_paint.cpp`) has the brush
+- `tool_blur.cpp` (since folded into `tool_retouch.cpp`) drag handler; the bar (`options_bar_paint.cpp`, since `options_bar_retouch.cpp`) has the brush
   tip, Mode, Strength 50 %, and Sample All Layers. Catalog row enabled; Blur
   joins the brush size ring and `[` / `]`.
-- C++ self-test `blur_tool` (554) in `selftest_retouch.cpp`; the guard (98)
+- Qt Test `tst_retouch_tools::blurTool` (first the self-test `blur_tool`, code 554, now retired); the guard (98)
   now probes Sharpen.
 
 ## Capabilities

@@ -10,8 +10,8 @@
 
 ## 3. Tool
 
-- [x] 3.1 `tool_blur.cpp` handler; bar in `options_bar_paint.cpp`; catalog row enabled; `CMakeLists.txt` entries.
+- [x] 3.1 `tool_blur.cpp` handler (since `tool_retouch.cpp`); bar in `options_bar_paint.cpp` (since `options_bar_retouch.cpp`); catalog row enabled; `CMakeLists.txt` entries.
 
 ## 4. Verification
 
-- [x] 4.1 `blur_tool` self-test (554) in `selftest_retouch.cpp`; the guard (98) retargeted; `bash scripts/verify-fast.sh`.
+- [x] 4.1 `blurTool` in the Qt Test suite `tst_retouch_tools` (first a self-test, code 554, now retired); the guard (98) retargeted; `bash scripts/verify-fast.sh`.

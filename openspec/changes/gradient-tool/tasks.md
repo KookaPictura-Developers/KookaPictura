@@ -14,4 +14,4 @@
 
 ## 4. Verification
 
-- [x] 4.1 `gradient_tool` self-test (552) in `selftest_fills.cpp`; `shift_plain` (117), `keys_shown` (116), and the guard (98) retargeted; `bash scripts/verify-fast.sh`.
+- [x] 4.1 `gradientTool` in the Qt Test suite `tst_fill_tools` (first a self-test, code 552, now retired); `shift_plain` (117), `keys_shown` (116), and the guard (98) retargeted; `bash scripts/verify-fast.sh`.

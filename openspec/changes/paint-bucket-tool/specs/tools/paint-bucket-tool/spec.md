@@ -14,7 +14,7 @@ refused.
 
 #### Scenario: Filling the connected region
 
-- **WHEN** the `paint_bucket_tool` self-test clicks the white around two red squares with a blue foreground
+- **WHEN** the `tst_fill_tools` Paint Bucket test clicks the white around two red squares with a blue foreground
 - **THEN** one "Paint Bucket" state is recorded, the white is blue, and the squares stay red
 
 #### Scenario: All Layers fills the active layer from the composite

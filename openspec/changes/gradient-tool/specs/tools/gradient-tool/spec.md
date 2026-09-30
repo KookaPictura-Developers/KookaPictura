@@ -14,7 +14,7 @@ be refused.
 
 #### Scenario: Drawing a linear gradient
 
-- **WHEN** the `gradient_tool` self-test drags across an opened image with black foreground and white background
+- **WHEN** the `tst_fill_tools` gradient test drags across an opened image with black foreground and white background
 - **THEN** the axis is shown during the drag, one "Gradient" state is recorded, the start is black and the end white, and undo restores the image
 
 #### Scenario: A click draws nothing

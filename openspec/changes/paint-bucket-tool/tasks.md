@@ -14,4 +14,4 @@
 
 ## 4. Verification
 
-- [x] 4.1 `paint_bucket_tool` self-test (553) in `selftest_fills.cpp`; `bash scripts/verify-fast.sh`.
+- [x] 4.1 `paintBucketTool` in the Qt Test suite `tst_fill_tools` (first a self-test, code 553, now retired); `bash scripts/verify-fast.sh`.

@@ -25,7 +25,7 @@ The Gradient tool (issue #24) was catalogued but disabled. photorust's
   five style buttons, Mode (Normal / Dissolve / Behind), Opacity, Reverse,
   Dither, Transparency. `ToolController::colorsChanged` redraws the sample.
   Catalog row enabled.
-- C++ self-test `gradient_tool` (552). `shift_plain` (117), `keys_shown` (116),
+- Qt Test `tst_fill_tools::gradientTool` (first the self-test `gradient_tool`, code 552, now retired). `shift_plain` (117), `keys_shown` (116),
   and the guard (98) move off the G group.
 
 ## Capabilities
