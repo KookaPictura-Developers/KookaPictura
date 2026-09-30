@@ -1,13 +1,13 @@
 //! The paint tool bridges beyond the Brush: Color Replacement, Mixer Brush,
 //! the stamps (Clone Stamp, Pattern Stamp, History Brush), the Art History
-//! Brush, the erasers, and Blur. Free functions over a [`PictureView`] (their own
+//! Brush, the erasers, and the retouch tools (Blur, Sharpen, Smudge, Dodge). Free functions over a [`PictureView`] (their own
 //! bridge, so the `PictureView` declaration list does not grow). Each only *begins* a stroke — of its [`StrokeKind`], or
 //! one whose colour comes from a [`StampSource`]; the live stroke then runs
 //! through the Brush's `paint_dab` / `end_paint` / `cancel_paint`, so the
 //! preview and the one history state per stroke (`"Color Replacement Tool"`,
 //! `"Mixer Brush Tool"`, `"Clone Stamp"`, `"Pattern Stamp"`, `"History
 //! Brush"`, `"Art History Brush"`, `"Eraser"`, `"Background Eraser"`,
-//! `"Blur"`) are shared. The Magic Eraser is one click and records `"Magic Eraser"` itself,
+//! `"Blur"`, `"Sharpen"`, `"Smudge"`, `"Dodge"`) are shared. The Magic Eraser is one click and records `"Magic Eraser"` itself,
 //! as do the fill tools in [`fills`].
 //!
 //! [`PictureView`]: super::qobject::PictureView
@@ -27,15 +27,17 @@ use pictura_paint::art_history::{ArtHistoryOptions, ArtStyle, STYLE_NAMES};
 use pictura_paint::eraser::{
     antialias_mask, begin_erase, ensure_alpha, magic_erase, BackgroundEraseOptions, EraserMode,
 };
-use pictura_paint::focus::{BlurMode, BlurOptions};
+use pictura_paint::focus::{Focus, FocusOptions, RetouchMode};
 use pictura_paint::mixer::MixerOptions;
 use pictura_paint::pattern::{self, PATTERN_NAMES};
 use pictura_paint::replace::{Limits, ReplaceMode, ReplaceOptions, Sampling};
+use pictura_paint::smudge::SmudgeOptions;
 use pictura_paint::spacing::SpacingMode;
 use pictura_paint::stamp::{
     layer_surface, sample_scope, surface_from_composite, tiled, CloneSampling, SourceTransform,
     StampSource,
 };
+use pictura_paint::tone::{ToneOptions, ToneRange};
 use pictura_paint::{paint_stroke, Rgba, Stroke, StrokeConfig, StrokeKind, StrokeSample};
 
 #[cxx_qt::bridge]
@@ -245,17 +247,48 @@ pub mod ffi {
             background: u32,
         ) -> bool;
 
-        /// Begin a Blur stroke softening the active pixel layer by `strength`
-        /// 0–100 % per dab. `mode` 0 Normal / 1 Darken / 2 Lighten / 3 Hue /
-        /// 4 Saturation / 5 Color / 6 Luminosity; with `sample_all` the
-        /// neighbourhood is read from the composite. False as for
-        /// `begin_clone_stamp`, or on a 16/32-bit document.
-        fn begin_blur(
+        /// Begin a Blur (or, `sharpen`, Sharpen) stroke working the active
+        /// pixel layer by `strength` 0–100 % per dab. `mode` 0 Normal /
+        /// 1 Darken / 2 Lighten / 3 Hue / 4 Saturation / 5 Color /
+        /// 6 Luminosity; with `sample_all` the neighbourhood is read from the
+        /// composite; `protect_detail` holds a sharpened pixel inside its
+        /// neighbourhood's range. False as for `begin_clone_stamp`, or on a
+        /// 16/32-bit document.
+        fn begin_focus(
             view: Pin<&mut PictureView>,
+            tip: &PaintTip,
+            sharpen: bool,
+            strength: i32,
+            mode: i32,
+            sample_all: bool,
+            protect_detail: bool,
+        ) -> bool;
+
+        /// Begin a Smudge stroke laying down `strength` 0–100 % of the patch
+        /// it carries per dab, in `mode` as for `begin_focus`; with
+        /// `sample_all` it picks up from the composite, and with
+        /// `finger_painting` it starts loaded with `foreground`
+        /// (`0xAARRGGBB`). False as for `begin_focus`.
+        fn begin_smudge(
+            view: Pin<&mut PictureView>,
+            foreground: u32,
             tip: &PaintTip,
             strength: i32,
             mode: i32,
             sample_all: bool,
+            finger_painting: bool,
+        ) -> bool;
+
+        /// Begin a Dodge stroke lightening the active pixel layer. `range`
+        /// 0 Shadows / 1 Midtones / 2 Highlights, `exposure` 0–100 %;
+        /// `protect_tones` keeps each pixel's colour. False as for
+        /// `begin_focus`.
+        fn begin_dodge(
+            view: Pin<&mut PictureView>,
+            tip: &PaintTip,
+            range: i32,
+            exposure: i32,
+            protect_tones: bool,
         ) -> bool;
 
         /// A white stroke with `tip` along an S-curve on transparency, packed
@@ -577,27 +610,78 @@ fn begin_background_eraser(
     })
 }
 
-fn begin_blur(
+fn begin_focus(
     view: Pin<&mut PictureView>,
+    tip: &PaintTip,
+    sharpen: bool,
+    strength: i32,
+    mode: i32,
+    sample_all: bool,
+    protect_detail: bool,
+) -> bool {
+    let options = FocusOptions {
+        focus: if sharpen { Focus::Sharpen } else { Focus::Blur },
+        strength: strength.clamp(0, 100) as f32 / 100.0,
+        mode: RetouchMode::from_i32(mode).unwrap_or_default(),
+        protect_detail,
+    };
+    let cfg = tip_config(tip);
+    let label = if sharpen { "Sharpen" } else { "Blur" };
+    begin(view, label, |doc, path, view| {
+        let sampled = sample_all.then(|| composite_surface(doc, view));
+        Stroke::begin_focus(doc, path, cfg, options, sampled).ok()
+    })
+}
+
+fn begin_smudge(
+    view: Pin<&mut PictureView>,
+    foreground: u32,
     tip: &PaintTip,
     strength: i32,
     mode: i32,
     sample_all: bool,
+    finger_painting: bool,
 ) -> bool {
-    let options = BlurOptions {
+    let options = SmudgeOptions {
         strength: strength.clamp(0, 100) as f32 / 100.0,
-        mode: BlurMode::from_i32(mode).unwrap_or_default(),
+        mode: RetouchMode::from_i32(mode).unwrap_or_default(),
+        finger_painting,
+    };
+    let cfg = StrokeConfig {
+        color: rgba_from_argb(foreground),
+        ..tip_config(tip)
+    };
+    begin(view, "Smudge", |doc, path, view| {
+        let sampled = sample_all.then(|| composite_surface(doc, view));
+        Stroke::begin_smudge(doc, path, cfg, options, sampled).ok()
+    })
+}
+
+fn begin_dodge(
+    view: Pin<&mut PictureView>,
+    tip: &PaintTip,
+    range: i32,
+    exposure: i32,
+    protect_tones: bool,
+) -> bool {
+    let options = ToneOptions {
+        range: ToneRange::from_i32(range).unwrap_or_default(),
+        exposure: exposure.clamp(0, 100) as f32 / 100.0,
+        protect_tones,
     };
     let cfg = tip_config(tip);
-    begin(view, "Blur", |doc, path, view| {
-        let sampled = sample_all.then(|| {
-            surface_from_composite(&super::helpers_composite::current_buffer(
-                doc,
-                view.gpu_compute,
-            ))
-        });
-        Stroke::begin_blur(doc, path, cfg, options, sampled).ok()
+    begin(view, "Dodge", |doc, path, _| {
+        Stroke::begin_tone(doc, path, cfg, options).ok()
     })
+}
+
+/// The document's composite as a document-space surface: what Sample All
+/// Layers reads.
+fn composite_surface(doc: &Document, view: &PictureViewRust) -> pictura_paint::healing::RgbaImage {
+    surface_from_composite(&super::helpers_composite::current_buffer(
+        doc,
+        view.gpu_compute,
+    ))
 }
 
 /// A copy of `doc` with the Background at `path` turned into an ordinary

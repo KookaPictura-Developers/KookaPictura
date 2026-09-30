@@ -121,7 +121,7 @@ const QList<ToolId>& allToolIds();
 const QList<ToolId>& implementedToolIds();
 bool toolImplemented(ToolId id);
 // The painting brushes (the B group, the S stamps, the Y history brushes, the
-// Eraser and Background Eraser, and Blur): they share the size ring, the `[` / `]` keys, and the paint
+// Eraser and Background Eraser, and the retouch tools): they share the size ring, the `[` / `]` keys, and the paint
 // cursor policy.
 bool isBrushTool(ToolId id);
 QString selectionModeString(SelectionMode mode);
@@ -291,8 +291,10 @@ public:
     void setMagicEraseOptions(const MagicEraseOptions& options) { magicErase_ = options; }
     ArtHistoryOptions artHistoryOptions() const override { return artHistory_; }
     void setArtHistoryOptions(const ArtHistoryOptions& options) { artHistory_ = options; }
-    BlurOptions blurOptions() const override { return blur_; }
-    void setBlurOptions(const BlurOptions& options) { blur_ = options; }
+    RetouchOptions retouchOptions(ToolId id) const override;
+    void setRetouchOptions(ToolId id, const RetouchOptions& options);
+    ToneOptions toneOptions() const override { return tone_; }
+    void setToneOptions(const ToneOptions& options) { tone_ = options; }
     GradientOptions gradientOptions() const override { return gradient_; }
     void setGradientOptions(const GradientOptions& options) { gradient_ = options; }
     BucketOptions bucketOptions() const override { return bucket_; }
@@ -483,7 +485,9 @@ private:
     MagicEraseOptions magicErase_;
     ArtHistoryOptions artHistory_;
     GradientOptions gradient_;
-    BlurOptions blur_;
+    // Blur, Sharpen, Smudge.
+    std::array<RetouchOptions, 3> retouch_{};
+    ToneOptions tone_;
     BucketOptions bucket_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;

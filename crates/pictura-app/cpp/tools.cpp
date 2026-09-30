@@ -58,7 +58,7 @@ std::unique_ptr<ToolHandler> makeBackgroundEraserToolHandler();
 std::unique_ptr<ToolHandler> makeMagicEraserToolHandler();
 std::unique_ptr<ToolHandler> makeGradientToolHandler();
 std::unique_ptr<ToolHandler> makePaintBucketToolHandler();
-std::unique_ptr<ToolHandler> makeBlurToolHandler();
+std::unique_ptr<ToolHandler> makeRetouchToolHandler(ToolId id);
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -100,7 +100,9 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::MagicEraser, makeMagicEraserToolHandler());
     registry_.registerTool(ToolId::Gradient, makeGradientToolHandler());
     registry_.registerTool(ToolId::PaintBucket, makePaintBucketToolHandler());
-    registry_.registerTool(ToolId::Blur, makeBlurToolHandler());
+    for (ToolId id : {ToolId::Blur, ToolId::Sharpen, ToolId::Smudge, ToolId::Dodge}) {
+        registry_.registerTool(id, makeRetouchToolHandler(id));
+    }
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
@@ -323,6 +325,26 @@ void ToolController::setBrushMode(const QString& mode) { brushMode_ = mode; }
 bool ToolController::autoErase() const { return autoErase_; }
 
 void ToolController::setAutoErase(bool on) { autoErase_ = on; }
+
+namespace {
+
+// The retouch_ slot of the Blur, Sharpen, or Smudge tool.
+size_t retouchSlot(ToolId id)
+{
+    return id == ToolId::Sharpen ? 1 : id == ToolId::Smudge ? 2 : 0;
+}
+
+} // namespace
+
+RetouchOptions ToolController::retouchOptions(ToolId id) const
+{
+    return retouch_[retouchSlot(id)];
+}
+
+void ToolController::setRetouchOptions(ToolId id, const RetouchOptions& options)
+{
+    retouch_[retouchSlot(id)] = options;
+}
 
 void ToolController::setSpotHealingType(int type) { spotHealingType_ = std::clamp(type, 0, 2); }
 

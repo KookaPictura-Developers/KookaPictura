@@ -104,11 +104,11 @@ const ToolInfo kToolTable[] = {
     {ToolId::Blur, "blur", "Blur", QChar(), Qt::CrossCursor,
      "Blur: drag to soften; going over a spot again softens it more", 13, true, 2, 22},
     {ToolId::Sharpen, "sharpen", "Sharpen", QChar(), Qt::CrossCursor,
-     "Sharpen: not implemented yet", 13, false, 2, 22},
+     "Sharpen: drag to crisp detail; going over a spot again sharpens it more", 13, true, 2, 22},
     {ToolId::Smudge, "smudge", "Smudge", QChar(), Qt::CrossCursor,
-     "Smudge: not implemented yet", 13, false, 2, 22},
+     "Smudge: drag to push colour along the stroke", 13, true, 2, 22},
     {ToolId::Dodge, "dodge", "Dodge", QLatin1Char('O'), Qt::CrossCursor,
-     "Dodge: not implemented yet", 14, false, 2, 22},
+     "Dodge: drag to lighten; going over a spot again lightens it more", 14, true, 2, 22},
     {ToolId::Burn, "burn", "Burn", QLatin1Char('O'), Qt::CrossCursor,
      "Burn: not implemented yet", 14, false, 2, 22},
     {ToolId::Sponge, "sponge", "Sponge", QLatin1Char('O'), Qt::CrossCursor,
@@ -194,7 +194,8 @@ bool isBrushTool(ToolId id)
     return id == ToolId::Brush || id == ToolId::Pencil || id == ToolId::ColorReplacement
         || id == ToolId::MixerBrush || id == ToolId::CloneStamp || id == ToolId::PatternStamp
         || id == ToolId::HistoryBrush || id == ToolId::ArtHistoryBrush || id == ToolId::Eraser
-        || id == ToolId::BackgroundEraser || id == ToolId::Blur;
+        || id == ToolId::BackgroundEraser || id == ToolId::Blur || id == ToolId::Sharpen
+        || id == ToolId::Smudge || id == ToolId::Dodge;
 }
 
 QString toolIdName(ToolId id)
@@ -269,6 +270,9 @@ QList<ToolHint> toolHintEntries(ToolId id)
     case ToolId::Eraser:
     case ToolId::BackgroundEraser:
     case ToolId::Blur:
+    case ToolId::Sharpen:
+    case ToolId::Smudge:
+    case ToolId::Dodge:
         return {{QStringLiteral("["), QStringLiteral("Decrease brush size")},
                 {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
     case ToolId::Gradient:
@@ -325,7 +329,8 @@ const QList<ToolId>& implementedToolIds()
         ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil, ToolId::ColorReplacement,
         ToolId::MixerBrush, ToolId::CloneStamp, ToolId::PatternStamp, ToolId::HistoryBrush,
         ToolId::ArtHistoryBrush, ToolId::Eraser, ToolId::BackgroundEraser, ToolId::MagicEraser,
-        ToolId::Gradient, ToolId::PaintBucket, ToolId::Blur,
+        ToolId::Gradient, ToolId::PaintBucket, ToolId::Blur, ToolId::Sharpen, ToolId::Smudge,
+        ToolId::Dodge,
     };
     return ids;
 }

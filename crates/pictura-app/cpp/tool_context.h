@@ -12,6 +12,7 @@ namespace pictura {
 class ImageView;
 class PictureView;
 enum class SelectionMode;
+enum class ToolId;
 enum class MarqueeStyle;
 
 // The Color Replacement options bar: Mode 0 Hue … 3 Luminosity (2 Color),
@@ -96,12 +97,24 @@ struct ArtHistoryOptions {
     int tolerance = 0;
 };
 
-// The Blur options bar: Strength 1-100 %, Mode 0 Normal / 1 Darken /
-// 2 Lighten / 3 Hue / 4 Saturation / 5 Color / 6 Luminosity, Sample All Layers.
-struct BlurOptions {
+// The Blur, Sharpen, and Smudge options bars (each tool keeps its own):
+// Strength 1-100 %, Mode 0 Normal / 1 Darken / 2 Lighten / 3 Hue /
+// 4 Saturation / 5 Color / 6 Luminosity, Sample All Layers, Sharpen's Protect
+// Detail, and Smudge's Finger Painting.
+struct RetouchOptions {
     int strength = 50;
     int mode = 0;
     bool sampleAllLayers = false;
+    bool protectDetail = true;
+    bool fingerPainting = false;
+};
+
+// The Dodge options bar: Range 0 Shadows / 1 Midtones / 2 Highlights,
+// Exposure 1-100 %, Protect Tones.
+struct ToneOptions {
+    int range = 1;
+    int exposure = 50;
+    bool protectTones = true;
 };
 
 // The Gradient options bar: `preset` indexes the built-in gradients
@@ -202,7 +215,9 @@ struct ToolContext {
     virtual MagicEraseOptions magicEraseOptions() const = 0;
     virtual ArtHistoryOptions artHistoryOptions() const = 0;
     virtual GradientOptions gradientOptions() const = 0;
-    virtual BlurOptions blurOptions() const = 0;
+    // The Blur, Sharpen, or Smudge tool's options.
+    virtual RetouchOptions retouchOptions(ToolId id) const = 0;
+    virtual ToneOptions toneOptions() const = 0;
     virtual BucketOptions bucketOptions() const = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;
