@@ -33,6 +33,7 @@
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QRect>
@@ -173,7 +174,16 @@ int pictura::runLayersControlsChecks(pictura::PicturaMainWindow& frame)
         // wpx_blend_row (452): the blend combo and the opacity field share the
         // control row's slack — the opacity field is stretched past its own size
         // hint (a no-stretch field would sit exactly at the hint) while the blend
-        // combo still takes the larger share.
+        // combo still takes the larger share. The slack depends on the column
+        // width, which the earlier layout checks leave wherever their group
+        // shuffles put the floor, so measure the Layers tab at the widest normal
+        // width.
+        if (pictura::PanelColumn* lpcColumn = frame.columnForPanel(QStringLiteral("layersPanel"))) {
+            lpcColumn->setPreferredWidth(pictura::PanelColumn::kMaxNormalWidth);
+            // A background tab keeps stale geometry; bring Layers forward.
+            lpcColumn->showPanel(QStringLiteral("layersPanel"), true);
+            QCoreApplication::processEvents();
+        }
         const QRect blendRow = lpcPanel->blendControlRectForTest();
         const QRect opacityCol = lpcPanel->opacityControlRectForTest();
         const int opacityHint = lpcPanel->opacitySizeHintWidthForTest();
