@@ -47,6 +47,23 @@ struct StampOptions {
     bool patternAligned = true;
 };
 
+// The Eraser options bar: Mode 0 Brush / 1 Pencil / 2 Block, and Erase To
+// History (Alt held while pressing does the same for one stroke).
+struct EraserOptions {
+    int mode = 0;
+    bool toHistory = false;
+};
+
+// The Art History Brush options bar: Style 0 Tight Short … 9 Loose Curl Long
+// (art_history_style_name), Area in pixels, Tolerance 0-100 %. Tolerance
+// starts at 0 (paint anywhere); the spec's unverified 100 would paint almost
+// nowhere.
+struct ArtHistoryOptions {
+    int style = 0;
+    int area = 50;
+    int tolerance = 0;
+};
+
 // One Clone Source panel slot: the Alt-clicked source point; the offset the
 // first stroke measured (source minus destination) and the destination point
 // it was measured at; and the source transform (W / H %, rotation in degrees
@@ -112,6 +129,8 @@ struct ToolContext {
     virtual QColor mixerReservoir() const = 0;
     virtual void setMixerReservoir(const QColor& color) = 0;
     virtual StampOptions stampOptions() const = 0;
+    virtual EraserOptions eraserOptions() const = 0;
+    virtual ArtHistoryOptions artHistoryOptions() const = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;
     virtual void setCloneSource(const CloneSource& source) = 0;

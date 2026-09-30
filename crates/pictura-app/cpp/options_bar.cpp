@@ -118,6 +118,10 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildStampPage(id);
     case ToolId::HistoryBrush:
         return buildHistoryBrushPage(id);
+    case ToolId::ArtHistoryBrush:
+        return buildArtHistoryBrushPage(id);
+    case ToolId::Eraser:
+        return buildEraserPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);

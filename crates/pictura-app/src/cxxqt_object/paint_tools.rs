@@ -1,12 +1,12 @@
 //! The paint tool bridges beyond the Brush: Color Replacement, Mixer Brush,
-//! and the stamps (Clone Stamp, Pattern Stamp, History Brush). Free functions
-//! over a [`PictureView`] (their own bridge, so the `PictureView` declaration
-//! list does not grow). Each only *begins* a stroke — of its [`StrokeKind`], or
+//! the stamps (Clone Stamp, Pattern Stamp, History Brush), the Art History
+//! Brush, and the Eraser. Free functions over a [`PictureView`] (their own
+//! bridge, so the `PictureView` declaration list does not grow). Each only *begins* a stroke — of its [`StrokeKind`], or
 //! one whose colour comes from a [`StampSource`]; the live stroke then runs
 //! through the Brush's `paint_dab` / `end_paint` / `cancel_paint`, so the
 //! preview and the one history state per stroke (`"Color Replacement Tool"`,
 //! `"Mixer Brush Tool"`, `"Clone Stamp"`, `"Pattern Stamp"`, `"History
-//! Brush"`) are shared.
+//! Brush"`, `"Art History Brush"`, `"Eraser"`) are shared.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
@@ -19,6 +19,8 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
 use ffi::PaintTip;
 use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, PsdRect};
+use pictura_paint::art_history::{ArtHistoryOptions, ArtStyle, STYLE_NAMES};
+use pictura_paint::eraser::{begin_erase, EraserMode};
 use pictura_paint::mixer::MixerOptions;
 use pictura_paint::pattern::{self, PATTERN_NAMES};
 use pictura_paint::replace::{Limits, ReplaceMode, ReplaceOptions, Sampling};
@@ -139,6 +141,42 @@ pub mod ffi {
             opacity: i32,
             flow: i32,
             mode: &QString,
+        ) -> bool;
+
+        /// Begin an Art History Brush stroke: stylized strokes coloured from
+        /// the active layer as it was in the brush source state. `style` 0
+        /// Tight Short … 9 Loose Curl Long, `area` in pixels, `tolerance`
+        /// 0–100 %. False as for `begin_history_brush`, or on a 16/32-bit
+        /// document.
+        fn begin_art_history_brush(
+            view: Pin<&mut PictureView>,
+            tip: &PaintTip,
+            opacity: i32,
+            style: i32,
+            area: i32,
+            tolerance: i32,
+        ) -> bool;
+
+        /// The number of Art History Brush styles.
+        fn art_history_style_count() -> i32;
+
+        /// Art History Brush style `index`'s name, or empty out of range.
+        fn art_history_style_name(index: i32) -> QString;
+
+        /// Begin an Eraser stroke. `mode` 0 Brush / 1 Pencil / 2 Block;
+        /// `background` (`0xAARRGGBB`) is what the Background or a
+        /// transparency-locked layer is erased to. With `to_history` it paints
+        /// the brush source state back (Erase To History). False as for
+        /// `begin_clone_stamp`, or with `to_history` when the source state has
+        /// no pixel layer at the active path.
+        fn begin_eraser(
+            view: Pin<&mut PictureView>,
+            background: u32,
+            tip: &PaintTip,
+            mode: i32,
+            opacity: i32,
+            flow: i32,
+            to_history: bool,
         ) -> bool;
 
         /// A white stroke with `tip` along an S-curve on transparency, packed
@@ -328,6 +366,71 @@ fn begin_history_brush(
         let past = view.history.brush_source_doc()?;
         let source = StampSource::new(layer_surface(past, path)?, (0, 0));
         Stroke::begin_source(doc, path, cfg, source).ok()
+    })
+}
+
+fn begin_art_history_brush(
+    view: Pin<&mut PictureView>,
+    tip: &PaintTip,
+    opacity: i32,
+    style: i32,
+    area: i32,
+    tolerance: i32,
+) -> bool {
+    let cfg = StrokeConfig {
+        opacity: opacity.clamp(0, 100) as u8,
+        ..tip_config(tip)
+    };
+    begin(view, "Art History Brush", |doc, path, view| {
+        let options = ArtHistoryOptions {
+            style: ArtStyle::from_i32(style).unwrap_or_default(),
+            area: area.clamp(0, 500) as u32,
+            tolerance: tolerance.clamp(0, 100) as u8,
+            // A new seed per history state: strokes differ, a stroke replays.
+            seed: view.history.index() as u64 ^ 0xA27_4157,
+        };
+        let past = view.history.brush_source_doc()?;
+        Stroke::begin_art_history(doc, path, cfg, layer_surface(past, path)?, options).ok()
+    })
+}
+
+fn art_history_style_count() -> i32 {
+    STYLE_NAMES.len() as i32
+}
+
+fn art_history_style_name(index: i32) -> QString {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| STYLE_NAMES.get(i))
+        .map_or_else(QString::default, |name| QString::from(*name))
+}
+
+fn begin_eraser(
+    view: Pin<&mut PictureView>,
+    background: u32,
+    tip: &PaintTip,
+    mode: i32,
+    opacity: i32,
+    flow: i32,
+    to_history: bool,
+) -> bool {
+    let cfg = StrokeConfig {
+        background: rgba_from_argb(background),
+        opacity: opacity.clamp(0, 100) as u8,
+        flow: flow.clamp(0, 100) as u8,
+        ..tip_config(tip)
+    };
+    let mode = EraserMode::from_i32(mode).unwrap_or_default();
+    begin(view, "Eraser", |doc, path, view| {
+        // ponytail: the source layer is matched by panel path, as for the
+        // History Brush.
+        let history = if to_history {
+            let past = view.history.brush_source_doc()?;
+            Some(StampSource::new(layer_surface(past, path)?, (0, 0)))
+        } else {
+            None
+        };
+        begin_erase(doc, path, cfg, mode, history).ok()
     })
 }
 

@@ -559,3 +559,134 @@ int pictura::runCloneSourcePanelChecks(pictura::PicturaMainWindow& frame)
     }
     return 0;
 }
+
+int pictura::runEraserChecks(pictura::PicturaMainWindow& frame)
+{
+    QImage seed(40, 40, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_eraser_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(547, "eraser fixture");
+    }
+    const BrushState brush(f.tools);
+    const QColor foreground = f.tools->foreground();
+    const QColor background = f.tools->background();
+    const pictura::EraserOptions options = f.tools->eraserOptions();
+    const QRgb red = QColor(Qt::red).rgba();
+    const QRgb white = QColor(Qt::white).rgba();
+
+    frame.setActiveTool(pictura::ToolId::Eraser);
+    auto* mode = frame.findChild<QComboBox*>(QStringLiteral("optionsEraserMode"));
+    auto* opacity = frame.findChild<pictura::NumericField*>(QStringLiteral("optionsEraserOpacity"));
+    auto* toHistory = frame.findChild<QCheckBox*>(QStringLiteral("optionsEraseToHistory"));
+    const bool bar = mode && opacity && toHistory && mode->count() == 3
+        && mode->currentIndex() == 0 && opacity->isEnabled() && !toHistory->isChecked();
+
+    // The opened PNG is the Background: erasing paints the background colour.
+    f.tools->setBackground(Qt::red);
+    const int base = f.view->history_index();
+    f.drag({QPointF(5, 20), QPointF(20, 20), QPointF(35, 20)});
+    const bool toBackground = f.committedOnce(base, "Eraser") && f.view->sample_argb(10, 20) == red;
+
+    // Alt paints the oldest (white) state back.
+    f.drag({QPointF(5, 20), QPointF(10, 20), QPointF(15, 20)}, Qt::AltModifier);
+    const bool toHistoryOk = f.committedOnce(base + 1, "Eraser")
+        && f.view->sample_argb(10, 20) == white && f.view->sample_argb(30, 20) == red;
+
+    // On an ordinary layer it erases to transparency, showing the Background.
+    const int layer = f.view->add_layer(0);
+    f.view->set_active_layer(QString::number(layer));
+    f.tools->setForeground(Qt::black);
+    frame.setActiveTool(pictura::ToolId::Brush);
+    f.drag({QPointF(5, 8), QPointF(35, 8)});
+    frame.setActiveTool(pictura::ToolId::Eraser);
+    const bool black = f.view->sample_argb(10, 8) == QColor(Qt::black).rgba();
+    f.drag({QPointF(5, 8), QPointF(20, 8)});
+    const bool transparent = black && f.view->sample_argb(10, 8) == white
+        && f.view->sample_argb(30, 8) == QColor(Qt::black).rgba();
+
+    bool block = false;
+    if (mode) {
+        mode->setCurrentIndex(2);
+        block = f.tools->eraserOptions().mode == 2 && !opacity->isEnabled();
+        mode->setCurrentIndex(0);
+    }
+    f.tools->setEraserOptions(options);
+    f.tools->setForeground(foreground);
+    f.tools->setBackground(background);
+
+    ST_BEGIN("eraser_tool");
+    ST_PASS("eraser bar=%d background=%d history=%d transparent=%d block=%d", bar ? 1 : 0,
+            toBackground ? 1 : 0, toHistoryOk ? 1 : 0, transparent ? 1 : 0, block ? 1 : 0);
+    if (!bar || !toBackground || !toHistoryOk || !transparent || !block) {
+        return pictura::selfTest().fail(547, "eraser tool");
+    }
+    return 0;
+}
+
+int pictura::runArtHistoryBrushChecks(pictura::PicturaMainWindow& frame)
+{
+    QImage seed(60, 40, QImage::Format_RGB32);
+    seed.fill(Qt::red);
+    Fixture f(frame, seed, QStringLiteral("pictura_art_history_seed"));
+    if (!f.ok()) {
+        return pictura::selfTest().fail(548, "art history brush fixture");
+    }
+    const BrushState brush(f.tools);
+    const QColor foreground = f.tools->foreground();
+    const pictura::ArtHistoryOptions options = f.tools->artHistoryOptions();
+
+    // Paint the left edge (x < 25) white so it no longer matches the red source.
+    f.tools->setForeground(Qt::white);
+    f.tools->setBrushSize(20);
+    frame.setActiveTool(pictura::ToolId::Brush);
+    f.drag({QPointF(10, 20), QPointF(14, 20)});
+    f.tools->setBrushSize(4);
+
+    frame.setActiveTool(pictura::ToolId::ArtHistoryBrush);
+    auto* style = frame.findChild<QComboBox*>(QStringLiteral("optionsArtHistoryStyle"));
+    auto* area = frame.findChild<pictura::NumericField*>(QStringLiteral("optionsArtHistoryArea"));
+    auto* tolerance =
+        frame.findChild<pictura::NumericField*>(QStringLiteral("optionsArtHistoryTolerance"));
+    const bool bar = style && area && tolerance && style->count() == 10
+        && style->currentText() == QStringLiteral("Tight Short") && area->value() == 50
+        && tolerance->value() == 0;
+
+    const auto redCount = [&f] {
+        int n = 0;
+        for (int y = 0; y < 40; ++y) {
+            for (int x = 0; x < 25; ++x) {
+                const QRgb px = f.view->sample_argb(x, y);
+                n += qRed(px) > 200 && qGreen(px) < 100 ? 1 : 0;
+            }
+        }
+        return n;
+    };
+    const int redBefore = redCount();
+    const int base = f.view->history_index();
+    f.drag({QPointF(8, 20), QPointF(14, 20), QPointF(20, 20)});
+    const bool committed = f.committedOnce(base, "Art History Brush");
+    // The stroke over white laid source red back, well beyond the 4 px tip.
+    const int reddened = redCount() - redBefore;
+    const bool painted = committed && reddened > 100;
+
+    // At full Tolerance, red that already matches the source is left alone
+    // (a 10 px Area keeps the scatter clear of the white).
+    pictura::ArtHistoryOptions strict = options;
+    strict.tolerance = 100;
+    strict.area = 10;
+    f.tools->setArtHistoryOptions(strict);
+    f.drag({QPointF(45, 20), QPointF(50, 20), QPointF(55, 20)});
+    const bool gated = f.view->history_index() == base + 1;
+
+    f.tools->setArtHistoryOptions(options);
+    f.tools->setForeground(foreground);
+
+    ST_BEGIN("art_history_brush_tool");
+    ST_PASS("art history bar=%d commit=%d reddened=%d gated=%d", bar ? 1 : 0, committed ? 1 : 0,
+            reddened, gated ? 1 : 0);
+    if (!bar || !painted || !gated) {
+        return pictura::selfTest().fail(548, "art history brush tool");
+    }
+    return 0;
+}

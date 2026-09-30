@@ -2384,7 +2384,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
 
         pictura::ToolController probe;
         const pictura::ToolId guardBefore = probe.activeTool();
-        probe.setActiveTool(pictura::ToolId::ArtHistoryBrush);
+        probe.setActiveTool(pictura::ToolId::BackgroundEraser);
         const bool guardOk = probe.activeTool() == guardBefore;
 
         ST_BEGIN("tools_icons");
@@ -3002,18 +3002,18 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         bool keysShown = toolsPanelToolbox != nullptr;
         bool keysDisabled = false;
         if (toolsPanelToolbox) {
-            // The Y group (Art History Brush) still has a disabled member.
-            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(10);
+            // The E group (Background / Magic Eraser) still has disabled members.
+            const QList<QAction*> actions = toolsPanelToolbox->slotMenuActionsForTest(11);
             for (QAction* action : actions) {
                 const bool keyShown =
-                    action->shortcut() == QKeySequence(QStringLiteral("Y"))
+                    action->shortcut() == QKeySequence(QStringLiteral("E"))
                     && action->isShortcutVisibleInContextMenu();
                 if (!keyShown) {
                     keysShown = false;
                 }
                 if (!action->isEnabled()) {
                     const bool disabledOk =
-                        action->shortcut() == QKeySequence(QStringLiteral("Y"))
+                        action->shortcut() == QKeySequence(QStringLiteral("E"))
                         && action->toolTip().contains(QStringLiteral("not implemented yet"));
                     keysDisabled = keysDisabled || disabledOk;
                     if (!disabledOk) {
@@ -3071,14 +3071,15 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool sPattern = sPlain && frame.activeTool() == pictura::ToolId::PatternStamp;
         sendKey(Qt::Key_S, Qt::ShiftModifier, QStringLiteral("S"));
         const bool sWrap = sPattern && frame.activeTool() == pictura::ToolId::CloneStamp;
-        // The Y group has one implemented member, so Shift+Y stays on it.
+        // Shift+Y reaches the Art History Brush, E the Eraser; G (unimplemented) is a no-op.
         sendKey(Qt::Key_Y, Qt::NoModifier, QStringLiteral("y"));
         const bool yPlain = frame.activeTool() == pictura::ToolId::HistoryBrush;
         sendKey(Qt::Key_Y, Qt::ShiftModifier, QStringLiteral("Y"));
-        const bool yShift = yPlain && frame.activeTool() == pictura::ToolId::HistoryBrush;
-        // The E group (Eraser) is entirely unimplemented: a plain letter is a no-op.
+        const bool yArt = yPlain && frame.activeTool() == pictura::ToolId::ArtHistoryBrush;
         sendKey(Qt::Key_E, Qt::NoModifier, QStringLiteral("e"));
-        const bool noImpl = frame.activeTool() == pictura::ToolId::HistoryBrush;
+        const bool yShift = yArt && frame.activeTool() == pictura::ToolId::Eraser;
+        sendKey(Qt::Key_G, Qt::NoModifier, QStringLiteral("g"));
+        const bool noImpl = frame.activeTool() == pictura::ToolId::Eraser;
         if (toolsPanelToolbox) {
             toolsPanelToolbox->setShiftKeyForToolSwitch(false);
         }

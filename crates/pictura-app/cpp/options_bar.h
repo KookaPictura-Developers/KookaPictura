@@ -11,6 +11,7 @@ class QToolButton;
 namespace pictura {
 
 class ToolController;
+class NumericField;
 struct NumericFieldConfig;
 
 // Context-sensitive options bar: one stacked page per tool, switched by the
@@ -49,10 +50,16 @@ private:
     QWidget* buildColorReplacementPage(ToolId id);
     QWidget* buildMixerBrushPage(ToolId id);
     void addBrushTipFields(QHBoxLayout* layout, QWidget* page);
-    // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, and History Brush.
+    // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, History Brush, Art
+    // History Brush, and Eraser.
     QWidget* buildStampPage(ToolId id);
     QWidget* buildHistoryBrushPage(ToolId id);
+    QWidget* buildArtHistoryBrushPage(ToolId id);
+    QWidget* buildEraserPage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
+    NumericField* addPercentField(QHBoxLayout* layout, QWidget* page, const QString& label,
+                                  const QString& name, int value,
+                                  void (ToolController::*setter)(int));
     static NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals,
                                             const QString& suffix, bool popup,
                                             const QString& name);

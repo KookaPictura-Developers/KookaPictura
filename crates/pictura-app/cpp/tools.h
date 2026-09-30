@@ -120,8 +120,9 @@ const ToolInfo& toolInfo(ToolId id);
 const QList<ToolId>& allToolIds();
 const QList<ToolId>& implementedToolIds();
 bool toolImplemented(ToolId id);
-// The painting brushes (the B group, the S stamps, and the History Brush): they
-// share the size ring, the `[` / `]` keys, and the paint cursor policy.
+// The painting brushes (the B group, the S stamps, the Y history brushes, and
+// the Eraser): they share the size ring, the `[` / `]` keys, and the paint
+// cursor policy.
 bool isBrushTool(ToolId id);
 QString selectionModeString(SelectionMode mode);
 
@@ -277,6 +278,10 @@ public:
     int cloneSourceSlot() const { return cloneSlot_; }
     void setCloneSourceSlot(int slot);
     void setStampOptions(const StampOptions& options) { stamp_ = options; }
+    EraserOptions eraserOptions() const override { return eraser_; }
+    void setEraserOptions(const EraserOptions& options) { eraser_ = options; }
+    ArtHistoryOptions artHistoryOptions() const override { return artHistory_; }
+    void setArtHistoryOptions(const ArtHistoryOptions& options) { artHistory_ = options; }
     void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);
@@ -456,6 +461,8 @@ private:
     MixerOptions mixer_;
     QColor mixerReservoir_{Qt::black};
     StampOptions stamp_;
+    EraserOptions eraser_;
+    ArtHistoryOptions artHistory_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;
     int brushRoundness_ = 100;

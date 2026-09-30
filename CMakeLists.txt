@@ -179,6 +179,7 @@ add_executable(pictura
     crates/pictura-app/cpp/tool_colorreplacement.cpp
     crates/pictura-app/cpp/tool_mixerbrush.cpp
     crates/pictura-app/cpp/tool_stamps.cpp
+    crates/pictura-app/cpp/tool_eraser.cpp
     crates/pictura-app/cpp/tool_wand.cpp
     crates/pictura-app/cpp/tool_move.cpp
     crates/pictura-app/cpp/tool_crop.cpp

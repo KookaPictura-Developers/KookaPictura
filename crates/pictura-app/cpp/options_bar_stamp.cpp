@@ -1,5 +1,6 @@
-// The options bars of the stamp tools: Clone Stamp, Pattern Stamp, and History
-// Brush. Part of OptionsBar; split from options_bar.cpp along the page seam.
+// The options bars of the source-painting tools: Clone Stamp, Pattern Stamp,
+// History Brush, Art History Brush, and the Eraser. Part of OptionsBar; split
+// from options_bar.cpp along the page seam.
 
 #include "options_bar.h"
 
@@ -39,6 +40,22 @@ QIcon patternIcon(int index)
 
 } // namespace
 
+// A 0-100 % field wired to a controller setter; returns it.
+NumericField* OptionsBar::addPercentField(QHBoxLayout* layout, QWidget* page,
+                                          const QString& label, const QString& name, int value,
+                                          void (ToolController::*setter)(int))
+{
+    auto* field = new NumericField(
+        label, numericConfig(0, 100, 1, 0, QStringLiteral("%"), true, name), page);
+    field->setValue(value);
+    layout->addWidget(field);
+    if (controller_) {
+        connect(field, &NumericField::valueChanged, this,
+                [this, setter](double v) { (controller_->*setter)(qRound(v)); });
+    }
+    return field;
+}
+
 // The Brush's tip, Mode, Opacity, and Flow, shared through the same controller
 // fields. The stamps' Mode lists the Brush modes that make sense for copied
 // pixels (no Clear).
@@ -54,21 +71,11 @@ void OptionsBar::addStampPaintFields(QHBoxLayout* layout, QWidget* page)
     mode->addItem(QStringLiteral("Behind"), QStringLiteral("behind"));
     layout->addWidget(mode);
 
-    auto addField = [&](const QString& label, const QString& name, int value,
-                        void (ToolController::*setter)(int)) {
-        auto* field = new NumericField(
-            label, numericConfig(0, 100, 1, 0, QStringLiteral("%"), true, name), page);
-        field->setValue(value);
-        layout->addWidget(field);
-        if (controller_) {
-            connect(field, &NumericField::valueChanged, this,
-                    [this, setter](double v) { (controller_->*setter)(qRound(v)); });
-        }
-    };
-    addField(QStringLiteral("Opacity:"), QStringLiteral("optionsStampOpacity"),
-             controller_ ? controller_->brushOpacity() : 100, &ToolController::setBrushOpacity);
-    addField(QStringLiteral("Flow:"), QStringLiteral("optionsStampFlow"),
-             controller_ ? controller_->brushFlow() : 100, &ToolController::setBrushFlow);
+    addPercentField(layout, page, QStringLiteral("Opacity:"), QStringLiteral("optionsStampOpacity"),
+                    controller_ ? controller_->brushOpacity() : 100,
+                    &ToolController::setBrushOpacity);
+    addPercentField(layout, page, QStringLiteral("Flow:"), QStringLiteral("optionsStampFlow"),
+                    controller_ ? controller_->brushFlow() : 100, &ToolController::setBrushFlow);
 
     if (controller_) {
         mode->setCurrentIndex(std::max(0, mode->findData(controller_->brushMode())));
@@ -181,6 +188,125 @@ QWidget* OptionsBar::buildHistoryBrushPage(ToolId id)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(toolButton(id, page));
     addStampPaintFields(layout, page);
+    layout->addStretch(1);
+    return page;
+}
+
+// CS6's Art History Brush bar: the tip, Mode, Opacity, Style, Area, and
+// Tolerance. The source is the History Brush's, chosen in the History panel.
+QWidget* OptionsBar::buildArtHistoryBrushPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+    addBrushTipFields(layout, page);
+
+    layout->addWidget(new QLabel(QStringLiteral("Mode:"), page));
+    auto* mode = new QComboBox(page);
+    mode->setObjectName(QStringLiteral("optionsArtHistoryMode"));
+    mode->addItem(QStringLiteral("Normal"));
+    mode->setToolTip(QStringLiteral("Blending modes: not implemented yet"));
+    mode->setEnabled(false);
+    layout->addWidget(mode);
+    addPercentField(layout, page, QStringLiteral("Opacity:"),
+                    QStringLiteral("optionsArtHistoryOpacity"),
+                    controller_ ? controller_->brushOpacity() : 100,
+                    &ToolController::setBrushOpacity);
+
+    const ArtHistoryOptions initial =
+        controller_ ? controller_->artHistoryOptions() : ArtHistoryOptions{};
+    const auto update = [this](auto edit) {
+        if (controller_) {
+            ArtHistoryOptions o = controller_->artHistoryOptions();
+            edit(o);
+            controller_->setArtHistoryOptions(o);
+        }
+    };
+    layout->addWidget(new QLabel(QStringLiteral("Style:"), page));
+    auto* style = new QComboBox(page);
+    style->setObjectName(QStringLiteral("optionsArtHistoryStyle"));
+    for (int i = 0; i < art_history_style_count(); ++i) {
+        style->addItem(art_history_style_name(i));
+    }
+    style->setCurrentIndex(initial.style);
+    layout->addWidget(style);
+    connect(style, &QComboBox::currentIndexChanged, this,
+            [update](int i) { update([i](ArtHistoryOptions& o) { o.style = i; }); });
+
+    auto* area = new NumericField(
+        QStringLiteral("Area:"),
+        numericConfig(0, 500, 1, 0, QStringLiteral("px"), true,
+                      QStringLiteral("optionsArtHistoryArea")),
+        page);
+    area->setValue(initial.area);
+    layout->addWidget(area);
+    connect(area, &NumericField::valueChanged, this, [update](double v) {
+        update([v](ArtHistoryOptions& o) { o.area = qRound(v); });
+    });
+    auto* tolerance = new NumericField(
+        QStringLiteral("Tolerance:"),
+        numericConfig(0, 100, 1, 0, QStringLiteral("%"), true,
+                      QStringLiteral("optionsArtHistoryTolerance")),
+        page);
+    tolerance->setValue(initial.tolerance);
+    layout->addWidget(tolerance);
+    connect(tolerance, &NumericField::valueChanged, this, [update](double v) {
+        update([v](ArtHistoryOptions& o) { o.tolerance = qRound(v); });
+    });
+
+    layout->addStretch(1);
+    return page;
+}
+
+// CS6's Eraser bar: the tip, Mode (Brush / Pencil / Block), Opacity, Flow, and
+// Erase To History. Block is a fixed square with no Opacity or Flow.
+QWidget* OptionsBar::buildEraserPage(ToolId id)
+{
+    auto* page = new QWidget(stack_);
+    auto* layout = new QHBoxLayout(page);
+    layout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(toolButton(id, page));
+    addBrushTipFields(layout, page);
+
+    const EraserOptions initial = controller_ ? controller_->eraserOptions() : EraserOptions{};
+    const auto update = [this](auto edit) {
+        if (controller_) {
+            EraserOptions o = controller_->eraserOptions();
+            edit(o);
+            controller_->setEraserOptions(o);
+        }
+    };
+    layout->addWidget(new QLabel(QStringLiteral("Mode:"), page));
+    auto* mode = new QComboBox(page);
+    mode->setObjectName(QStringLiteral("optionsEraserMode"));
+    mode->addItems({QStringLiteral("Brush"), QStringLiteral("Pencil"), QStringLiteral("Block")});
+    mode->setCurrentIndex(initial.mode);
+    layout->addWidget(mode);
+
+    NumericField* opacity = addPercentField(
+        layout, page, QStringLiteral("Opacity:"), QStringLiteral("optionsEraserOpacity"),
+        controller_ ? controller_->brushOpacity() : 100, &ToolController::setBrushOpacity);
+    NumericField* flow = addPercentField(
+        layout, page, QStringLiteral("Flow:"), QStringLiteral("optionsEraserFlow"),
+        controller_ ? controller_->brushFlow() : 100, &ToolController::setBrushFlow);
+    const auto strengthFor = [opacity, flow](int m) {
+        opacity->setEnabled(m != 2);
+        flow->setEnabled(m != 2);
+    };
+    strengthFor(initial.mode);
+    connect(mode, &QComboBox::currentIndexChanged, this, [update, strengthFor](int i) {
+        strengthFor(i);
+        update([i](EraserOptions& o) { o.mode = i; });
+    });
+
+    auto* toHistory = new QCheckBox(QStringLiteral("Erase to History"), page);
+    toHistory->setObjectName(QStringLiteral("optionsEraseToHistory"));
+    toHistory->setChecked(initial.toHistory);
+    layout->addWidget(toHistory);
+    connect(toHistory, &QCheckBox::toggled, this,
+            [update](bool on) { update([on](EraserOptions& o) { o.toHistory = on; }); });
+
     layout->addStretch(1);
     return page;
 }

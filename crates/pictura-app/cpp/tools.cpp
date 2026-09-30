@@ -52,6 +52,8 @@ std::unique_ptr<ToolHandler> makeMixerBrushToolHandler();
 std::unique_ptr<ToolHandler> makeCloneStampToolHandler();
 std::unique_ptr<ToolHandler> makePatternStampToolHandler();
 std::unique_ptr<ToolHandler> makeHistoryBrushToolHandler();
+std::unique_ptr<ToolHandler> makeArtHistoryBrushToolHandler();
+std::unique_ptr<ToolHandler> makeEraserToolHandler();
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -87,6 +89,8 @@ ToolController::ToolController(QObject* parent)
     registry_.registerTool(ToolId::CloneStamp, makeCloneStampToolHandler());
     registry_.registerTool(ToolId::PatternStamp, makePatternStampToolHandler());
     registry_.registerTool(ToolId::HistoryBrush, makeHistoryBrushToolHandler());
+    registry_.registerTool(ToolId::ArtHistoryBrush, makeArtHistoryBrushToolHandler());
+    registry_.registerTool(ToolId::Eraser, makeEraserToolHandler());
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
     connect(this, &ToolController::brushSizeChanged, this, [this](int size) {
