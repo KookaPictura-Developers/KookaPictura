@@ -297,13 +297,12 @@ region refresh by the app's Rust view through the damage account, so the next
 paint crops the updated levels; the C++ blit MUST NOT be responsible for updating
 the pyramid. There SHALL be no per-pixel FFI blit of a region into the canvas.
 The displayed canvas SHALL be pixel-identical to a full recomposite of the
-document. `PictureView::image()` SHALL return a cached full image when the display
-is clean and SHALL rebuild it from the document's planar composite when the
-display is dirty; `sample_argb` SHALL read the document's planar composite directly
-without building a full image; and `move_preview_base` SHALL be derived from the
-current composite, never from a stale cached image. A full-resolution image MAY be
-built on demand for the panels and self-tests that consume `image()`; the repaint
-path MUST NOT depend on it.
+document. `PictureView::image()` SHALL build a full-resolution image on demand
+from the cached level-0 frame (or the document's planar composite when there is
+no level-0 frame) and MUST NOT hold a persistent full-resolution `QImage`; the
+repaint path MUST NOT depend on it. `sample_argb` SHALL read the document's
+planar composite directly without building a full image; and `move_preview_base`
+SHALL be derived from the current composite, never from a stale cached image.
 
 #### Scenario: The C++ blit path is exercised
 
@@ -322,8 +321,9 @@ path MUST NOT depend on it.
 
 - **WHEN** `image()` is called after a region refresh and again after a full
   recomposite
-- **THEN** the first call returns an image rebuilt from the document composite and
-  byte-identical to a full recomposite, and the second returns the cached image
+- **THEN** both calls return an image built from the cached level-0 frame and
+  byte-identical to a full recomposite, and no persistent full-resolution `QImage`
+  is held between calls
 
 #### Scenario: `sample_argb` reads the current composite
 
@@ -337,6 +337,24 @@ path MUST NOT depend on it.
   after a region refresh
 - **THEN** the canvas they compare is byte-identical to a full recomposite, as
   before
+
+#### Scenario: image() builds the full image on demand
+
+- **WHEN** `image()` is called for an open document
+- **THEN** it returns an image built from the current level-0 frame and
+  byte-identical to a full recomposite
+
+#### Scenario: No persistent full-resolution QImage is held
+
+- **WHEN** a document is open and no caller has consumed `image()`
+- **THEN** the view holds no persistent full-resolution `QImage`
+
+#### Scenario: The repaint path does not depend on `image()`
+
+- **WHEN** the canvas repaints after a region refresh at any zoom, before any
+  caller has consumed `image()`
+- **THEN** it presents a view-pyramid level crop and does not build or read a
+  full-resolution image
 
 ### Requirement: Initial new-document canvas render
 
@@ -481,3 +499,76 @@ falls outside the level.
 - **WHEN** a rectangle that only partially overlaps the level is requested
 - **THEN** the bridge returns a rectangle-sized image whose overlapping pixels are
   the level's, premultiplied, and whose outside pixels are transparent
+
+### Requirement: Mid-stroke canvas present from the view pyramid
+
+While a paint stroke is in progress the canvas SHALL present the same
+zoom-selected view-pyramid level crop it presents when idle, rather than
+rescaling the full-resolution document. The pyramid levels SHALL reflect the
+stroke's in-progress pixels after every dab. The presented canvas after any dab
+MUST be pixel-identical to the canvas a full recomposite of the stroke's working
+document would produce at the same zoom and sampling filter. A document of any
+size SHALL present through a level crop mid-stroke, and the repaint MUST NOT
+resample the full-resolution document.
+
+#### Scenario: A dab repaints through a level crop
+
+- **WHEN** the canvas repaints after a dab while a stroke is in progress
+- **THEN** it presents the level crop chosen for the zoom and does not rescale the
+  full-resolution document
+
+#### Scenario: The mid-stroke present equals a full recomposite
+
+- **WHEN** a dab has been applied and the canvas is presented mid-stroke
+- **THEN** the presented pixels are identical to a full recomposite of the
+  stroke's working document at the same zoom and sampling filter
+
+#### Scenario: A large document presents through a crop mid-stroke
+
+- **WHEN** a stroke is painted on a 16000²-class document
+- **THEN** each repaint crops a level rather than drawing the full-resolution
+  source
+
+### Requirement: Frame-bounded in-stroke present
+
+While a paint stroke is in progress the app SHALL bound the present rate
+instead of presenting once per input event. The view SHALL accumulate the dirty
+rectangles of the dabs it receives after the most recent present into one
+pending region, and SHALL present that pending region only when
+`PictureView::flush_present()` runs. While a stroke has a pending region the app
+SHALL invoke `flush_present()` at least once per frame interval. Committing a
+stroke SHALL flush the pending region before the history state is recorded, and
+cancelling a stroke SHALL drop it without presenting. A region refresh outside a
+stroke SHALL still present immediately. The coalescing MUST NOT change the
+pixels: after the flush the canvas SHALL equal a full recomposite of the stroke's
+working document over the presented region.
+
+#### Scenario: Dabs between two presents are presented together
+[cv_dabs_between_presents_present_once]
+
+- **WHEN** several dabs arrive after a present and before the frame's
+  `flush_present()` during a stroke
+- **THEN** none of them presents on arrival, and `flush_present()` presents one
+  region covering all of them
+
+#### Scenario: A consumer can force a present [cv_flush_present]
+
+- **WHEN** `flush_present()` is called while a stroke has a pending region
+- **THEN** the pending region is presented before the call returns and the
+  pending region is cleared
+
+#### Scenario: The commit flushes before recording [cv_commit_flushes_pending]
+
+- **WHEN** a stroke with a pending region is released
+- **THEN** the pending region is presented before the history state is recorded
+
+#### Scenario: A cancelled stroke presents nothing pending [cv_cancel_drops_pending]
+
+- **WHEN** a stroke with a pending region is cancelled
+- **THEN** the pending region is not presented and the canvas is restored to the
+  pre-stroke image
+
+#### Scenario: An idle region refresh is unaffected [cv_idle_region_immediate]
+
+- **WHEN** a region refresh runs outside a stroke
+- **THEN** it presents immediately, exactly as it does without coalescing

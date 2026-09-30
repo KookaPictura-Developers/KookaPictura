@@ -2,7 +2,9 @@
 
 ## Purpose
 A Qt-free header probe and engine document/layer construction from packed RGBA8888 for importing raster images.
+
 ## Requirements
+
 ### Requirement: Qt-free image header probe and allocation budget
 
 The codec SHALL expose `pictura_codec::probe_image(bytes: &[u8], budget:
@@ -124,9 +126,11 @@ recognize SHALL still be attempted through Qt. The decode edge SHALL refuse —
 returning failure without constructing engine structures — when the file is
 missing or unreadable, when Qt cannot decode it, when a *recognized* header
 probe refuses it, or when the actual decoded allocation
-(`decoded width * height * 4`) exceeds the budget. Only frame 0 of a multi-frame
-file SHALL be imported. For v1 an undecodable file SHALL be refused, not replaced
-by a placeholder.
+(`decoded width * height * 4`) exceeds the budget. The decode edge SHALL copy the
+decoded RGBA rows to the engine buffer in bulk — a row or the whole frame at a
+time — and MUST NOT copy one byte at a time across the bridge. Only frame 0 of a
+multi-frame file SHALL be imported. For v1 an undecodable file SHALL be refused,
+not replaced by a placeholder.
 
 #### Scenario: A supported file decodes to packed RGBA8888
 
@@ -147,6 +151,11 @@ by a placeholder.
 
 - **WHEN** a file's declared header is within budget but its decoded allocation exceeds the budget
 - **THEN** the decode edge refuses before any engine structure is constructed
+
+#### Scenario: The decoded rows are copied in bulk
+
+- **WHEN** a decoded image is handed to the engine
+- **THEN** its rows are copied with bulk copies and the import's cost does not grow with a per-byte copy loop
 
 #### Scenario: Only the first frame is imported
 
@@ -244,4 +253,3 @@ through `place_smart_object` and MUST NOT be routed through Qt.
 
 - **WHEN** `File > Place…` is given a `*.psd`/`*.psb` file
 - **THEN** it routes through `place_smart_object` and not through the image decode edge
-

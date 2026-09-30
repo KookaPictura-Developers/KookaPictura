@@ -2,7 +2,9 @@
 
 ## Purpose
 The brush tip engine: coverage, spacing, flow and opacity accumulation, pencil aliasing, paint modes, and per-stroke undo.
+
 ## Requirements
+
 ### Requirement: Standard brush tip coverage
 
 The system SHALL render a procedural round/elliptical tip whose coverage is a
@@ -140,21 +142,30 @@ the stroke without committing it.
 
 ### Requirement: Incremental dirty region and dab latency
 
-The paint engine SHALL report a per-dab incremental dirty rectangle rather than
-the cumulative dirty rectangle of the whole stroke, so compositing after a dab
-touches only the pixels that dab changed. The CPU region compositor SHALL
-composite only the requested region rather than fully compositing the document
-and slicing the result, and a region blit SHALL update only that region of the
-presented image instead of invalidating the whole scaled present cache. The
-sustained cost of a brush dab on a 4000×4000 document SHALL meet the canvas-view
-budget (`docs/dev/canvas-view-spec.md`): input-to-first-pixel at most 16 ms per
-dab and a sustained redraw at or above 60 FPS.
+The paint engine SHALL report an incremental dirty rectangle rather than the
+cumulative dirty rectangle of the whole stroke, so compositing after a dab
+touches only the pixels that dab changed. The rectangle a present carries SHALL
+cover the footprints of the dabs placed since the previous present and MUST NOT
+grow with the dabs of earlier presents in the same stroke. The CPU region
+compositor SHALL composite only the requested region rather than fully
+compositing the document and slicing the result, and a region blit SHALL update
+only that region of the presented image instead of invalidating the whole scaled
+present cache. The sustained cost of a brush dab on a 4000×4000 document SHALL
+meet the canvas-view budget (`docs/dev/canvas-view-spec.md`): input-to-first-pixel
+at most 16 ms per dab and a sustained redraw at or above 60 FPS.
 
 #### Scenario: A dab dirties only its own region [lpe_dirty_per_dab]
 
 - **WHEN** a stroke places a dab after other dabs
-- **THEN** the reported dirty rectangle covers the new dab's footprint only, not
-  the union of all prior dabs of the stroke
+- **THEN** the reported dirty rectangle covers the dabs since the previous
+  present, not the union of all prior dabs of the stroke
+
+#### Scenario: A present covers only the dabs since the previous present
+[lpe_dirty_since_last_present]
+
+- **WHEN** several dabs are placed between two presents of the same stroke
+- **THEN** the reported dirty rectangle is no larger than the union of those
+  dabs' footprints
 
 #### Scenario: Region compositing matches the full composite [lpe_region_equal]
 
@@ -179,7 +190,10 @@ NOT be detached or fully rebuilt per dab. The in-stroke region composite SHALL
 use whichever backend is faster for the document (measured on the reference
 machine: the GPU region composite is faster than the CPU oracle for a 512 px
 brush dab). Releasing the mouse SHALL still commit exactly one history state and
-run the full refresh.
+SHALL refresh only the stroke's changed rectangle (its composite matches a full
+recomposite) while the panels, registry, and titles refresh once. Cancelling a
+stroke SHALL likewise restore the changed rectangle from the unchanged document
+without a full-document recomposite.
 
 #### Scenario: Per-dab GUI work is coalesced [pe_dab_no_registry_refresh]
 
@@ -190,6 +204,6 @@ run the full refresh.
 #### Scenario: The commit runs the full refresh [pe_commit_refresh]
 
 - **WHEN** the stroke is released
-- **THEN** the document is fully recomposited, the panels/registry/titles refresh,
-  and exactly one history state exists
-
+- **THEN** the stroke's changed rectangle is refreshed so the composite matches a
+  full recomposite, no full-document composite runs, the panels/registry/titles
+  refresh once, and exactly one history state exists
