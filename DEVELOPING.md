@@ -6,6 +6,9 @@ are not optional.
 
 ## Prerequisites
 
+Package names below are Debian's; for Fedora see
+[`fedora_build.md`](fedora_build.md).
+
 - Rust 1.98, pinned by `rust-toolchain.toml`.
 - Qt 6 with the Core, Gui, Widgets, Svg, and Network modules, plus the matching
   `qmake6` (`qt6-base-dev` on Debian/Ubuntu).
