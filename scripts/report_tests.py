@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Unified Kooka Pictura test report (python3 standard library only).
 
-Aggregates three layers into one pytest/vitest-like report:
+Aggregates four layers into one pytest/vitest-like report:
 
   * nextest JUnit XML      (--junit)
   * cargo test --doc text  (--doctests)
   * C++ self-test tokens   (--selftest)
+  * Qt Test JUnit XML      (--qt-junit)
 
 Exits non-zero when any layer failed or a provided input could not be parsed.
 Run ``python3 scripts/report_tests.py --self-check`` for the parser fixture
@@ -107,6 +108,35 @@ def parse_junit(xml_text):
             counts.failed += failed
             counts.skipped += skipped
     return suites, entries, failures
+
+
+QT_SYNTHETIC_CASES = ("initTestCase", "cleanupTestCase")
+
+
+def parse_qt_junit(xml_text):
+    """Parse a Qt Test JUnit report, dropping the lifecycle pseudo-tests.
+
+    Qt Test wraps every suite with ``initTestCase``/``cleanupTestCase``, which
+    are harness setup rather than user tests, so they are removed from both the
+    counts and the listing. Returns the same shape as :func:`parse_junit`.
+    """
+    _, entries, failures = parse_junit(xml_text)
+    kept = [entry for entry in entries if entry[1] not in QT_SYNTHETIC_CASES]
+    suites = {}
+    for package, _name, status, _detail in kept:
+        counts = suites.setdefault(package, Counts())
+        if status == "pass":
+            counts.passed += 1
+        elif status == "skip":
+            counts.skipped += 1
+        else:
+            counts.failed += 1
+    kept_failures = [
+        (tid, message)
+        for tid, message in failures
+        if tid.rsplit("::", 1)[-1] not in QT_SYNTHETIC_CASES
+    ]
+    return suites, kept, kept_failures
 
 
 def parse_doctests(text):
@@ -408,6 +438,27 @@ def build_layers(args, errors):
                 )
             failures.extend(selftest_failures)
 
+    if args.qt_junit:
+        qt_suites = {}
+        qt_entries = []
+        for path in args.qt_junit:
+            text = _read(path, errors)
+            if text is None:
+                continue
+            try:
+                suites, entries, qt_failures = parse_qt_junit(text)
+            except ET.ParseError as exc:
+                errors.append(f"{path}: invalid JUnit XML: {exc}")
+                continue
+            for suite, counts in suites.items():
+                qt_suites.setdefault(suite, Counts()).add(counts)
+            qt_entries.extend(entries)
+            failures.extend(qt_failures)
+        if qt_suites:
+            layers.append(
+                Layer("Qt shell tests (offscreen)", qt_suites, entries=qt_entries)
+            )
+
     if args.doctests:
         text = _read(args.doctests, errors)
         if text is not None:
@@ -445,6 +496,12 @@ def _parse_args(argv):
         help="captured self-test output path (repeatable; streams are merged)",
     )
     parser.add_argument(
+        "--qt-junit",
+        action="extend",
+        nargs="+",
+        help="Qt Test JUnit XML path(s) (accepts several, repeatable)",
+    )
+    parser.add_argument(
         "--color", choices=("auto", "always", "never"), default="auto"
     )
     parser.add_argument("--no-color", action="store_true")
@@ -478,6 +535,14 @@ FAIL_JUNIT = """<testsuites>
     </testcase>
   </testsuite>
 </testsuites>"""
+
+QT_JUNIT = """<testsuite name="SmokeTest" tests="3" failures="1">
+  <testcase name="initTestCase" classname="SmokeTest" time="0.414"/>
+  <testcase name="frameOpensOffscreen" classname="SmokeTest" time="0.000">
+    <failure type="fail" message="boom">assertion failed</failure>
+  </testcase>
+  <testcase name="cleanupTestCase" classname="SmokeTest" time="0.000"/>
+</testsuite>"""
 
 DOCTEST_OK = (
     "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; "
@@ -528,6 +593,15 @@ def run_self_check():
     assert "assertion" in failures[0][1], failures
     assert entries[0][1:] == ("oracle::skipped", "skip", "(ignored)"), entries
     assert entries[1][1:] == ("oracle::bad", "fail", ""), entries
+
+    suites, entries, failures = parse_qt_junit(QT_JUNIT)
+    assert suites["SmokeTest"].total() == 1, suites
+    assert suites["SmokeTest"].failed == 1, suites
+    assert suites["SmokeTest"].passed == 0, suites
+    assert [e[1] for e in entries] == ["frameOpensOffscreen"], entries
+    assert len(failures) == 1, failures
+    assert failures[0][0] == "SmokeTest::frameOpensOffscreen", failures
+    assert "assertion" in failures[0][1], failures
 
     counts, failures, seen = parse_doctests(DOCTEST_OK)
     assert seen and counts.passed == 3 and counts.failed == 0, (counts, failures)

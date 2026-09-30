@@ -120,6 +120,20 @@ jobs:
       - name: Self-test with document
         run: ./build/pictura --headless --self-test crates/pictura-codec/tests/fixtures/two_layers.psd
 
+      - name: CTest
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Qt test report
+        if: always()
+        run: |
+          shopt -s nullglob
+          files=(build/qt-test-results/*.xml)
+          if [ ${#files[@]} -gt 0 ]; then
+            python3 scripts/report_tests.py --qt-junit "${files[@]}" --color never
+          else
+            echo "no Qt test results to report"
+          fi
+
       - name: Control e2e
         run: bash scripts/verify-control.sh
 
