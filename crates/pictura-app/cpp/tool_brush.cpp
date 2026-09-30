@@ -1,5 +1,6 @@
 #include "tool_handler.h"
 
+#include "paint_tip.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -37,10 +38,9 @@ public:
             }
             return true;
         }
-        if (!v->begin_paint(ctx.foreground().rgba(), ctx.background().rgba(), ctx.brushSize(),
-                            ctx.brushHardness(), ctx.brushRoundness(), ctx.brushAngle(),
-                            ctx.brushOpacity(), ctx.brushFlow(), ctx.brushSpacing(),
-                            ctx.brushMode(), aliased_, ctx.autoErase())) {
+        if (!begin_brush(*v, ctx.foreground().rgba(), ctx.background().rgba(), paintTip(ctx),
+                         ctx.brushOpacity(), ctx.brushFlow(), ctx.brushMode(), aliased_,
+                         ctx.autoErase())) {
             if (activePixelLocked(v)) {
                 ctx.refused(QObject::tr("Could not paint: the layer's pixels are locked."));
             } else if (!v->active_layer_visible()) {

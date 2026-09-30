@@ -3,6 +3,7 @@
 
 #include "frame.h"
 #include "options_bar.h"
+#include "panels/brush_preset_picker.h"
 #include "panels/jump_slider.h"
 #include "panels/numeric_field.h"
 #include "tools.h"
@@ -16,6 +17,7 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QToolButton>
 
 namespace pictura {
@@ -179,23 +181,25 @@ int runNumericFieldChecks(pictura::PicturaMainWindow& frame)
             return pictura::selfTest().fail(306, "scratch document gating");
         }
 
-        // lpn_brush_resync (307): the brush-size signal updates the options-bar
-        // size field, and the field's own edit drives the controller back.
+        // lpn_brush_resync (307): the brush-size signal updates the tip button
+        // and the Brush Preset picker it opens, and the picker's Size box
+        // drives the controller back.
         auto* bar = frame.findChild<pictura::OptionsBar*>(QStringLiteral("optionsBar"));
-        auto* sizeField =
-            frame.findChild<pictura::NumericField*>(QStringLiteral("optionsBrushSize"));
+        auto* tipButton = frame.findChild<QToolButton*>(QStringLiteral("optionsBrushTip"));
         ToolController* tools = bar ? bar->controllerForTest() : nullptr;
+        QSpinBox* sizeField = nullptr;
         bool resyncOk = false;
-        if (tools && sizeField) {
+        if (tools && tipButton) {
+            tipButton->click();
+            sizeField = bar->brushPicker()->findChild<QSpinBox*>(QStringLiteral("brushPickerSize"));
             tools->setBrushSize(77);
-            const bool fromController = qRound(sizeField->value()) == 77;
-            bool fromField = false;
-            if (auto* edit = sizeField->findChild<QLineEdit*>()) {
-                edit->setText(QStringLiteral("55"));
-                QMetaObject::invokeMethod(edit, "editingFinished");
-                fromField = tools->brushSize() == 55;
+            const bool fromController = sizeField && sizeField->value() == 77
+                && tipButton->text() == QStringLiteral("77");
+            if (sizeField) {
+                sizeField->setValue(55);
             }
-            resyncOk = fromController && fromField;
+            resyncOk = fromController && tools->brushSize() == 55;
+            bar->brushPicker()->hide();
         }
         ST_BEGIN("lpn_brush_resync");
         ST_PASS("lpn_brush_resync bar=%d field=%d ok=%d", bar ? 1 : 0, sizeField ? 1 : 0,

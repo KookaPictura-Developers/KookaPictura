@@ -120,8 +120,9 @@ const ToolInfo& toolInfo(ToolId id);
 const QList<ToolId>& allToolIds();
 const QList<ToolId>& implementedToolIds();
 bool toolImplemented(ToolId id);
-// The painting brushes (the B group, the S stamps, and the History Brush): they
-// share the size ring, the `[` / `]` keys, and the paint cursor policy.
+// The painting brushes (the B group, the S stamps, the Y history brushes, and
+// the Eraser and Background Eraser): they share the size ring, the `[` / `]` keys, and the paint
+// cursor policy.
 bool isBrushTool(ToolId id);
 QString selectionModeString(SelectionMode mode);
 
@@ -241,6 +242,8 @@ public:
     void setBrushSpacing(int spacing);
     bool brushFlipX() const { return brushFlipX_; }
     bool brushFlipY() const { return brushFlipY_; }
+    BrushDynamics brushDynamics() const override { return brushDynamics_; }
+    void setBrushDynamics(const BrushDynamics& dynamics);
     void setBrushFlip(bool x, bool y);
     bool autoErase() const override;
     void setAutoErase(bool on);
@@ -277,6 +280,17 @@ public:
     int cloneSourceSlot() const { return cloneSlot_; }
     void setCloneSourceSlot(int slot);
     void setStampOptions(const StampOptions& options) { stamp_ = options; }
+    EraserOptions eraserOptions() const override { return eraser_; }
+    void setEraserOptions(const EraserOptions& options) { eraser_ = options; }
+    BackgroundEraseOptions backgroundEraseOptions() const override { return backgroundErase_; }
+    void setBackgroundEraseOptions(const BackgroundEraseOptions& options)
+    {
+        backgroundErase_ = options;
+    }
+    MagicEraseOptions magicEraseOptions() const override { return magicErase_; }
+    void setMagicEraseOptions(const MagicEraseOptions& options) { magicErase_ = options; }
+    ArtHistoryOptions artHistoryOptions() const override { return artHistory_; }
+    void setArtHistoryOptions(const ArtHistoryOptions& options) { artHistory_ = options; }
     void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);
@@ -456,6 +470,10 @@ private:
     MixerOptions mixer_;
     QColor mixerReservoir_{Qt::black};
     StampOptions stamp_;
+    EraserOptions eraser_;
+    BackgroundEraseOptions backgroundErase_;
+    MagicEraseOptions magicErase_;
+    ArtHistoryOptions artHistory_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;
     int brushRoundness_ = 100;
@@ -463,6 +481,7 @@ private:
     int brushSpacing_ = 25;
     bool brushFlipX_ = false;
     bool brushFlipY_ = false;
+    BrushDynamics brushDynamics_;
     QColor foreground_{Qt::black};
     QColor background_{Qt::white};
 

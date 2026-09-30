@@ -5,6 +5,7 @@
 #include "selftest_clipboard.h"
 #include "selftest_crop_group.h"
 #include "selftest_crop_tool.h"
+#include "selftest_erasers.h"
 #include "selftest_healing.h"
 #include "selftest_magnetic_lasso.h"
 #include "selftest_paint_tools.h"
@@ -20,7 +21,9 @@ int pictura::runPortChecks(pictura::PicturaMainWindow& frame)
                            runContentAwareMoveChecks, runRedEyeChecks,
                            runColorReplacementChecks, runMixerBrushChecks, runCloneStampChecks,
                            runPatternStampChecks, runHistoryBrushChecks, runBrushPanelChecks,
-                           runCloneSourcePanelChecks}) {
+                           runCloneSourcePanelChecks, runEraserChecks,
+                           runArtHistoryBrushChecks, runBrushPresetPickerChecks,
+                           runBackgroundEraserChecks, runMagicEraserChecks}) {
         if (const int code = run(frame); code != 0) {
             return code;
         }

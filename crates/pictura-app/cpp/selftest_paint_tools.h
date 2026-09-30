@@ -46,4 +46,16 @@ int runBrushPanelChecks(PicturaMainWindow& frame);
 // slot keeps its own source; the Offset reads destination minus source after a
 // stroke; Flip Horizontal mirrors the cloned pixels about the stroke start.
 int runCloneSourcePanelChecks(PicturaMainWindow& frame);
+
+// art_history_brush_tool (548): the bar lists ten Styles (Tight Short), Area
+// 50, Tolerance 0; a stroke over white repaints scattered source red in one
+// "Art History Brush" state; at Tolerance 100 over matching red nothing is
+// recorded.
+int runArtHistoryBrushChecks(PicturaMainWindow& frame);
+
+// brush_preset_picker (549): the Size slider's first half runs 1-100 px and
+// its second climbs to 5000 px; the Eraser's tip button opens the picker with
+// the default set; the slider's midpoint is 100 px; a spatter preset carries
+// its scatter and count, and a Brush click with it lands paint off the tip.
+int runBrushPresetPickerChecks(PicturaMainWindow& frame);
 } // namespace pictura

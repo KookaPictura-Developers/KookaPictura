@@ -4,6 +4,8 @@
 
 #include "options_bar.h"
 
+#include "paint_tip.h"
+#include "panels/brush_preset_picker.h"
 #include "panels/numeric_field.h"
 
 #include <QtCore/QSignalBlocker>
@@ -80,30 +82,37 @@ QComboBox* addCombo(QHBoxLayout* layout, QWidget* page, const QString& label,
 
 // The brush Size and Hardness, shared with the paint tools through the same
 // controller fields.
+// CS6's brush tip button: the tip with its size under it; a click opens the
+// Brush Preset picker (Size, Hardness, and the preset grid).
 void OptionsBar::addBrushTipFields(QHBoxLayout* layout, QWidget* page)
 {
-    auto* size = new NumericField(
-        QStringLiteral("Size"),
-        numericConfig(1, 5000, 1, 0, QString(), true, QStringLiteral("optionsBrushSize")), page);
-    auto* hardness = new NumericField(QStringLiteral("Hardness"),
-                                      numericConfig(0, 100, 1, 0, QStringLiteral("%"), true,
-                                                    QStringLiteral("optionsBrushHardness")),
-                                      page);
-    layout->addWidget(size);
-    layout->addWidget(hardness);
+    auto* button = new QToolButton(page);
+    button->setObjectName(QStringLiteral("optionsBrushTip"));
+    button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    button->setIconSize(QSize(20, 20));
+    button->setAutoRaise(true);
+    button->setToolTip(QStringLiteral("Click to open the Brush Preset picker"));
+    layout->addWidget(button);
     if (!controller_) {
         return;
     }
-    size->setValue(controller_->brushSize());
-    hardness->setValue(controller_->brushHardness());
-    connect(size, &NumericField::valueChanged, this,
-            [this](double v) { controller_->setBrushSize(qRound(v)); });
-    connect(controller_, &ToolController::brushSizeChanged, size,
-            [size](int value) { size->setValue(value); });
-    connect(hardness, &NumericField::valueChanged, this,
-            [this](double v) { controller_->setBrushHardness(qRound(v)); });
-    connect(controller_, &ToolController::brushTipChanged, hardness,
-            [this, hardness] { hardness->setValue(controller_->brushHardness()); });
+    const auto refresh = [this, button] {
+        button->setText(QString::number(controller_->brushSize()));
+        button->setIcon(QIcon(BrushPresetPicker::tipIcon(paintTip(*controller_), 20)));
+    };
+    refresh();
+    connect(controller_, &ToolController::brushSizeChanged, button, refresh);
+    connect(controller_, &ToolController::brushTipChanged, button, refresh);
+    connect(button, &QToolButton::clicked, this,
+            [this, button] { brushPicker()->popUpUnder(button); });
+}
+
+BrushPresetPicker* OptionsBar::brushPicker()
+{
+    if (!brushPicker_) {
+        brushPicker_ = new BrushPresetPicker(controller_, this);
+    }
+    return brushPicker_;
 }
 
 // CS6's Red Eye bar: Pupil Size and Darken Amount (both 1-100 %, default 50).

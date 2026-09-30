@@ -11,6 +11,8 @@ class QToolButton;
 namespace pictura {
 
 class ToolController;
+class BrushPresetPicker;
+class NumericField;
 struct NumericFieldConfig;
 
 // Context-sensitive options bar: one stacked page per tool, switched by the
@@ -31,6 +33,8 @@ signals:
 public:
     // Self-test hook: the controller the size field is wired to.
     ToolController* controllerForTest() const { return controller_; }
+    // The Brush Preset picker behind every brush tip button, made on first use.
+    BrushPresetPicker* brushPicker();
 
 private:
     QWidget* buildPage(ToolId id);
@@ -44,15 +48,25 @@ private:
     QWidget* buildPatchPage(ToolId id);
     QWidget* buildContentAwareMovePage(ToolId id);
     QWidget* buildCountPage(ToolId id);
-    // options_bar_paint.cpp: Red Eye, Color Replacement, and Mixer Brush.
+    // options_bar_paint.cpp: Red Eye, Color Replacement, and Mixer Brush, and
+    // the brush tip button every brush bar shares.
     QWidget* buildRedEyePage(ToolId id);
     QWidget* buildColorReplacementPage(ToolId id);
     QWidget* buildMixerBrushPage(ToolId id);
     void addBrushTipFields(QHBoxLayout* layout, QWidget* page);
-    // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, and History Brush.
+    // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, History Brush, Art
+    // History Brush, and Eraser.
     QWidget* buildStampPage(ToolId id);
     QWidget* buildHistoryBrushPage(ToolId id);
+    QWidget* buildArtHistoryBrushPage(ToolId id);
+    QWidget* buildEraserPage(ToolId id);
+    // options_bar_erase.cpp: Background Eraser and Magic Eraser.
+    QWidget* buildBackgroundEraserPage(ToolId id);
+    QWidget* buildMagicEraserPage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
+    NumericField* addPercentField(QHBoxLayout* layout, QWidget* page, const QString& label,
+                                  const QString& name, int value,
+                                  void (ToolController::*setter)(int));
     static NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals,
                                             const QString& suffix, bool popup,
                                             const QString& name);
@@ -62,6 +76,7 @@ private:
 
     ToolController* controller_ = nullptr;
     QStackedWidget* stack_ = nullptr;
+    BrushPresetPicker* brushPicker_ = nullptr;
 };
 
 } // namespace pictura
