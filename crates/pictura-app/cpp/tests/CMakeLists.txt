@@ -6,6 +6,7 @@ set(PICTURA_QT_TESTS
     tst_command_tree
     tst_fill_tools
     tst_retouch_tools
+    tst_pen_tools
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)

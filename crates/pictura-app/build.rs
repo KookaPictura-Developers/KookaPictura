@@ -52,6 +52,7 @@ fn main() {
                 "src/cxxqt_object/magnetic.rs",
                 "src/cxxqt_object/paint_tools.rs",
                 "src/cxxqt_object/paint_tools/fills.rs",
+                "src/cxxqt_object/paths.rs",
             ])
             .cc_builder(|cc| {
                 cc.include("cpp");

@@ -696,6 +696,33 @@ Snapshot for resuming after a context break. Update after each milestone.
   `shift_plain` (117) presses P as the unimplemented key. Ceilings
   (`ponytail:`): no Airbrush or pressure controls; a Sample All Layers smudge
   reads the composite as it was at the press.
+- **Pen, Freeform Pen, Add Anchor Point, Delete Anchor Point, and Convert
+  Point** (changes `pen-tool`, `freeform-pen-tool`, `add-anchor-point-tool`,
+  `delete-anchor-point-tool`, `convert-point-tool`, issues #32–#36, ported from
+  photorust's `core/src/path.rs`): the P group is complete. New module
+  `pictura_core::path`: `VectorPath` / `Subpath` / `PathPoint` (absolute
+  in/out handles, smooth flag) in `f64` document pixels, with append / drag
+  handles (Alt: out only) / close / finish / resume-from-endpoint, de Casteljau
+  `insert_anchor`, `delete_anchor`, `set_corner`, `drag_new_handles`,
+  `move_handle`, hit tests, `flatten`, and Douglas-Peucker
+  `simplify_freehand` / `add_freeform`. `Document::work_path` holds the Work
+  Path and rides the history snapshot, so path edits undo. Bridge
+  `cxxqt_object/paths.rs` (states "New Work Path", "Add Anchor Point", "Close
+  Path", "Delete Anchor Point", "Convert Point", "Freeform Pen"; live drag steps
+  record nothing until release). One handler, `tool_pen.cpp`, for all five;
+  the overlay (`image_view_paths.cpp`) shows the path, anchors (the last placed
+  solid), handles, and the Rubber Band / Freeform trail while a P-group tool is
+  active. Bars in `options_bar_pen.cpp`: Pen Auto Add/Delete (on), Rubber Band
+  (off); Freeform Curve Fit (2 px). The Paths panel (`panels/paths_panel.cpp`,
+  replacing its placeholder) lists the Work Path as one italic row with a
+  thumbnail once it has an anchor, refreshed with the other panels. Enter / Esc / Ctrl-click / a tool switch
+  end the Pen's subpath open. P / Shift+P now cycle only the lettered members
+  (`Toolbox::cycleGroup(group, key)`; Alt-click still cycles all). Qt Test
+  suite `tst_pen_tools`. Guard 98 now probes Horizontal Type and `shift_plain`
+  (117) presses T as the unimplemented key. Ceilings (`ponytail:`): the Work
+  Path is not read from or written to the PSD path resources; no saved paths or
+  Paths panel commands (fill, stroke, selection, menu), Shape / Pixels mode, path operations, Magnetic Pen, or path-to-endpoint
+  connect; Freeform keeps corners only (no curve fit).
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on

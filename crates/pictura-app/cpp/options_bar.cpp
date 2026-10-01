@@ -138,6 +138,9 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildGradientPage(id);
     case ToolId::PaintBucket:
         return buildPaintBucketPage(id);
+    case ToolId::Pen:
+    case ToolId::FreeformPen:
+        return buildPenPage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);

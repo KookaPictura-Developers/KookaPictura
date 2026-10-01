@@ -10,6 +10,7 @@
 #include <QtCore/QString>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
+#include <QtGui/QPainterPath>
 #include <QtGui/QPolygonF>
 #include <QtGui/QTransform>
 #include <QtWidgets/QWidget>
@@ -248,6 +249,22 @@ public:
     int countOverlayCountForTest() const { return int(countOverlay_.size()); }
     bool hasRulerLineForTest() const { return rulerShown_; }
 
+    // The Work Path overlay (image space) while a Pen-group tool is active: the
+    // curve, its anchors (`activeAnchor`, the one the Pen just placed, solid),
+    // handle lines, and a dashed preview (the Rubber Band or the Freeform
+    // trail).
+    struct PathOverlay {
+        QPainterPath curve;
+        QList<QPointF> anchors;
+        int activeAnchor = -1;
+        QList<QLineF> handles;
+        QPainterPath preview;
+    };
+    void setPathOverlay(const PathOverlay& overlay);
+    void clearPathOverlay();
+    int pathOverlayAnchorCountForTest() const { return int(pathOverlay_.anchors.size()); }
+    bool pathOverlayHasPreviewForTest() const { return !pathOverlay_.preview.isEmpty(); }
+
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
     // mapped cursor. Empty text or clearDragSizeHint() hides it.
     void setDragSizeHint(const QString& text, const QPointF& imagePos);
@@ -292,6 +309,8 @@ protected:
 private:
     void paintCropGroupOverlays(QPainter& painter);
     void paintAnnotations(QPainter& painter);
+    void paintPathOverlay(QPainter& painter);
+    PathOverlay pathOverlay_;
     QList<QPointF> samplerOverlay_;
     QList<QPointF> noteOverlay_;
     QList<CountOverlayMark> countOverlay_;

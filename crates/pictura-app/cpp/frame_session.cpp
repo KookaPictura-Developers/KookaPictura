@@ -42,6 +42,10 @@ void PicturaMainWindow::retargetDock()
     if (notesPanel_) {
         notesPanel_->setView(view);
     }
+    if (pathsPanel_) {
+        pathsPanel_->setView(view);
+        pathsPanel_->refresh();
+    }
     if (histogramPanel_) {
         pictura::ScopedTimer t("cxx_histogramPanel_refresh");
         histogramPanel_->setView(view);

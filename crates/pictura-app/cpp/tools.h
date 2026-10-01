@@ -299,6 +299,8 @@ public:
     void setGradientOptions(const GradientOptions& options) { gradient_ = options; }
     BucketOptions bucketOptions() const override { return bucket_; }
     void setBucketOptions(const BucketOptions& options) { bucket_ = options; }
+    PenOptions penOptions() const override { return pen_; }
+    void setPenOptions(const PenOptions& options);
     void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);
@@ -490,6 +492,7 @@ private:
     // Dodge, Burn, Sponge.
     std::array<ToneOptions, 3> tone_{};
     BucketOptions bucket_;
+    PenOptions pen_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;
     int brushRoundness_ = 100;

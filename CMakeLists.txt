@@ -92,6 +92,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
     crates/pictura-app/cpp/image_view_annotations.cpp
+    crates/pictura-app/cpp/image_view_paths.cpp
     crates/pictura-app/cpp/canvas_scrollbars.cpp
     crates/pictura-app/cpp/icons.cpp
     crates/pictura-app/cpp/file_drop_router.cpp
@@ -107,6 +108,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_canvas.cpp
     crates/pictura-app/cpp/frame_canvas.h
     crates/pictura-app/cpp/panels/layers_panel.cpp
+    crates/pictura-app/cpp/panels/paths_panel.cpp
     crates/pictura-app/cpp/panels/layers_filter_proxy.cpp
     crates/pictura-app/cpp/panels/layers_filter_bar.cpp
     crates/pictura-app/cpp/panels/layers_panel_actions.cpp
@@ -147,6 +149,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/tool_eraser.cpp
     crates/pictura-app/cpp/tool_fills.cpp
     crates/pictura-app/cpp/tool_retouch.cpp
+    crates/pictura-app/cpp/tool_pen.cpp
     crates/pictura-app/cpp/tool_wand.cpp
     crates/pictura-app/cpp/tool_move.cpp
     crates/pictura-app/cpp/tool_crop.cpp
@@ -174,6 +177,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/options_bar_erase.cpp
     crates/pictura-app/cpp/options_bar_fill.cpp
     crates/pictura-app/cpp/options_bar_retouch.cpp
+    crates/pictura-app/cpp/options_bar_pen.cpp
     crates/pictura-app/cpp/tool_hint_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp
     crates/pictura-app/cpp/layer_new_dialog.cpp

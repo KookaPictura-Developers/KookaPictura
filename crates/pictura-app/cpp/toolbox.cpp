@@ -585,10 +585,18 @@ bool Toolbox::handleToolKey(const QChar& key, bool shift)
         return false;
     }
     if (shift || !shiftKeyForToolSwitch_) {
-        cycleGroup(group);
+        cycleGroup(group, key.toUpper());
         return true;
     }
-    const ToolId current = groupCurrentTool(group);
+    ToolId current = groupCurrentTool(group);
+    if (toolInfo(current).shortcut != key.toUpper()) {
+        for (ToolId id : allToolIds()) {
+            if (toolInfo(id).shortcut == key.toUpper() && toolImplemented(id)) {
+                current = id;
+                break;
+            }
+        }
+    }
     if (!toolImplemented(current)) {
         return false;
     }
@@ -640,17 +648,19 @@ void Toolbox::selectMember(int group, ToolId id)
     }
 }
 
-void Toolbox::cycleGroup(int group)
+void Toolbox::cycleGroup(int group, QChar key)
 {
     QList<ToolId> enabled;
     for (ToolId id : allToolIds()) {
-        if (toolInfo(id).group == group && toolImplemented(id)) {
+        if (toolInfo(id).group == group && toolImplemented(id)
+            && (key.isNull() || toolInfo(id).shortcut == key)) {
             enabled << id;
         }
     }
-    if (enabled.size() < 2) {
+    if (enabled.isEmpty() || (enabled.size() < 2 && key.isNull())) {
         return;
     }
+    // From a member outside the cycle, the indexOf -1 lands on the first.
     const int index = enabled.indexOf(groupCurrentTool(group));
     selectMember(group, enabled.at((index + 1) % enabled.size()));
 }

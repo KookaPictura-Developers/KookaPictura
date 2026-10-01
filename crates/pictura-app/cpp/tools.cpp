@@ -59,6 +59,7 @@ std::unique_ptr<ToolHandler> makeMagicEraserToolHandler();
 std::unique_ptr<ToolHandler> makeGradientToolHandler();
 std::unique_ptr<ToolHandler> makePaintBucketToolHandler();
 std::unique_ptr<ToolHandler> makeRetouchToolHandler(ToolId id);
+std::unique_ptr<ToolHandler> makePenToolHandler(ToolId id);
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -103,6 +104,10 @@ ToolController::ToolController(QObject* parent)
     for (ToolId id : {ToolId::Blur, ToolId::Sharpen, ToolId::Smudge, ToolId::Dodge, ToolId::Burn,
                       ToolId::Sponge}) {
         registry_.registerTool(id, makeRetouchToolHandler(id));
+    }
+    for (ToolId id : {ToolId::Pen, ToolId::FreeformPen, ToolId::AddAnchorPoint,
+                      ToolId::DeleteAnchorPoint, ToolId::ConvertPoint}) {
+        registry_.registerTool(id, makePenToolHandler(id));
     }
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
@@ -162,6 +167,15 @@ void ToolController::setActiveTool(ToolId id)
 }
 
 void ToolController::setCombineMode(SelectionMode mode) { mode_ = mode; }
+
+void ToolController::setPenOptions(const PenOptions& options)
+{
+    pen_ = options;
+    pen_.curveFit = std::clamp(options.curveFit, 0.5, 10.0);
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onOptionsChanged(*this);
+    }
+}
 
 void ToolController::setMarqueeStyle(MarqueeStyle style) { marqueeStyle_ = style; }
 

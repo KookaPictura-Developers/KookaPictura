@@ -70,6 +70,8 @@ private:
     // options_bar_retouch.cpp: Blur, Sharpen, Smudge, Dodge, Burn, and Sponge.
     QWidget* buildRetouchPage(ToolId id);
     QWidget* buildTonePage(ToolId id);
+    // options_bar_pen.cpp: Pen and Freeform Pen.
+    QWidget* buildPenPage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
     NumericField* addPercentField(QHBoxLayout* layout, QWidget* page, const QString& label,
                                   const QString& name, int value,
