@@ -713,13 +713,15 @@ Snapshot for resuming after a context break. Update after each milestone.
   the overlay (`image_view_paths.cpp`) shows the path, anchors (the last placed
   solid), handles, and the Rubber Band / Freeform trail while a P-group tool is
   active. Bars in `options_bar_pen.cpp`: Pen Auto Add/Delete (on), Rubber Band
-  (off); Freeform Curve Fit (2 px). Enter / Esc / Ctrl-click / a tool switch
+  (off); Freeform Curve Fit (2 px). The Paths panel (`panels/paths_panel.cpp`,
+  replacing its placeholder) lists the Work Path as one italic row with a
+  thumbnail once it has an anchor, refreshed with the other panels. Enter / Esc / Ctrl-click / a tool switch
   end the Pen's subpath open. P / Shift+P now cycle only the lettered members
   (`Toolbox::cycleGroup(group, key)`; Alt-click still cycles all). Qt Test
   suite `tst_pen_tools`. Guard 98 now probes Horizontal Type and `shift_plain`
   (117) presses T as the unimplemented key. Ceilings (`ponytail:`): the Work
-  Path is not read from or written to the PSD path resources; no Paths panel,
-  Shape / Pixels mode, path operations, Magnetic Pen, or path-to-endpoint
+  Path is not read from or written to the PSD path resources; no saved paths or
+  Paths panel commands (fill, stroke, selection, menu), Shape / Pixels mode, path operations, Magnetic Pen, or path-to-endpoint
   connect; Freeform keeps corners only (no curve fit).
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
