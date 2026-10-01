@@ -10,10 +10,12 @@ pub mod healing;
 pub mod mixer;
 pub mod pattern;
 pub mod replace;
+pub mod smudge;
 pub mod spacing;
 pub mod stamp;
 pub mod stroke;
 pub mod tip;
+pub mod tone;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rgba {

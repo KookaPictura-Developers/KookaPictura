@@ -21,7 +21,7 @@ the port follows `docs/03-tools/gradient-and-paint-bucket.md` (TOOL-024).
   (Foreground / Pattern) with the built-in pattern picker, Mode (Normal /
   Dissolve / Behind / Clear), Opacity, Tolerance 32, Anti-alias, Contiguous,
   and All Layers. Catalog row enabled; the G group is complete.
-- C++ self-test `paint_bucket_tool` (553).
+- Qt Test `tst_fill_tools::paintBucketTool` (first the self-test `paint_bucket_tool`, code 553, now retired).
 
 ## Capabilities
 
