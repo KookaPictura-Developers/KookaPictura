@@ -22,6 +22,7 @@ mod impl_selection;
 mod impl_transform;
 mod magnetic;
 mod paint_tools;
+mod paths;
 mod state;
 pub use state::PictureViewRust;
 #[cfg(test)]
@@ -907,8 +908,7 @@ pub mod qobject {
         #[qinvokable]
         fn move_preview_base(&self) -> QImage;
 
-        /// The moved layer's own image; null when not previewing or for a
-        /// non-raster layer.
+        /// The moved layer's own image; null when not previewing or for a non-raster layer.
         #[qinvokable]
         fn move_preview_layer(&self) -> QImage;
 

@@ -1016,7 +1016,8 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
         && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
         && tools_
         && (tools_->activeTool() == ToolId::PolygonalLasso
-            || tools_->activeTool() == ToolId::MagneticLasso)) {
+            || tools_->activeTool() == ToolId::MagneticLasso
+            || tools_->activeTool() == ToolId::Pen)) {
         tools_->commitPolygonLasso();
         return;
     }

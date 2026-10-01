@@ -113,7 +113,9 @@ private:
     ToolId groupCurrentTool(int group) const;
     void refreshSlot(int group);
     void selectMember(int group, ToolId id);
-    void cycleGroup(int group);
+    // `key` limits the cycle to the members that carry it (the P slot's Pen and
+    // Freeform Pen, not its anchor tools); null cycles every member.
+    void cycleGroup(int group, QChar key = QChar());
     void showSlotMenu(int group);
     void reflow();
     void updateContentMetrics();
