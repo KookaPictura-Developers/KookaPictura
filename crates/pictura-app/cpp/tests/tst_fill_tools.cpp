@@ -1,22 +1,24 @@
-#include "selftest_fills.h"
-#include "selftest_report.h"
+// The fill tools: Gradient (#24) and Paint Bucket (#25).
 
-#include "selftest_paint_fixture.h"
+#include <QtTest/QtTest>
 
 #include "panels/numeric_field.h"
+#include "selftest_paint_fixture.h"
 
-#include "pictura_app/src/cxxqt_object/paint_tools/fills.cxxqt.h"
-
-#include <QtCore/QCoreApplication>
-#include <QtGui/QKeyEvent>
 #include <QtGui/QPainter>
-#include <QtWidgets/QApplication>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
+#include <QtGui/QKeyEvent>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QToolButton>
 
+#include "pictura_app/src/cxxqt_object/paint_tools/fills.cxxqt.h"
+
+#include "qt_test_support.h"
+
 namespace {
+using paint_fixture::BrushState;
 using paint_fixture::Fixture;
 
 // The foreground and background colours a check changes, restored on scope exit.
@@ -41,19 +43,43 @@ struct Colors {
 };
 } // namespace
 
-int pictura::runGradientToolChecks(pictura::PicturaMainWindow& frame)
+class FillToolsTest : public QObject {
+    Q_OBJECT
+
+private slots:
+    void initTestCase();
+    void gradientTool();
+    void paintBucketTool();
+
+private:
+    pictura::test::ScopedStateHome stateHome_;
+    std::unique_ptr<pictura::PicturaMainWindow> window_;
+};
+
+void FillToolsTest::initTestCase()
 {
+    QVERIFY(stateHome_.isValid());
+    window_ = pictura::test::makeMainWindow();
+    QVERIFY(window_ != nullptr);
+}
+
+void FillToolsTest::gradientTool()
+{
+    pictura::PicturaMainWindow& frame = *window_;
     QImage seed(40, 40, QImage::Format_RGB32);
     seed.fill(QColor(0, 128, 0));
     Fixture f(frame, seed, QStringLiteral("pictura_gradient_seed"));
     if (!f.ok()) {
-        return pictura::selfTest().fail(552, "gradient fixture");
+        QFAIL("gradient fixture");
     }
     const Colors colors(f.tools, Qt::black, Qt::white);
     const QRgb black = QColor(Qt::black).rgba();
     const QRgb white = QColor(Qt::white).rgba();
 
-    // The G group's keys, through the window's shortcut path.
+    // The G group's keys, through the window's shortcut path, which needs the
+    // window shown.
+    frame.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&frame));
     frame.activateWindow();
     QCoreApplication::processEvents();
     const auto sendKey = [&frame](Qt::KeyboardModifiers mods, const QString& text) {
@@ -83,7 +109,7 @@ int pictura::runGradientToolChecks(pictura::PicturaMainWindow& frame)
         frame.findChild<QCheckBox*>(QStringLiteral("optionsGradientTransparency"));
     if (!sample || !sample->menu() || styles.contains(nullptr) || !mode || !opacity || !reverse
         || !dither || !transparency) {
-        return pictura::selfTest().fail(552, "gradient bar");
+        QFAIL("gradient bar");
     }
     const QList<QAction*> presets = sample->menu()->actions();
     const bool bar = presets.size() == pictura::gradient_preset_count() && presets.size() > 1
@@ -132,20 +158,20 @@ int pictura::runGradientToolChecks(pictura::PicturaMainWindow& frame)
         && sample->toolTip() == pictura::gradient_preset_name(1);
     presets.at(0)->trigger();
 
-    ST_BEGIN("gradient_tool");
-    ST_PASS("gradient keys=%d bar=%d axis=%d linear=%d undo=%d click=%d reverse=%d selection=%d "
-            "preset=%d",
-            keys ? 1 : 0, bar ? 1 : 0, axis ? 1 : 0, linear ? 1 : 0, undone ? 1 : 0, click ? 1 : 0,
-            reversed ? 1 : 0, selected ? 1 : 0, preset ? 1 : 0);
-    if (!keys || !bar || !axis || !linear || !undone || !click || !reversed || !selected
-        || !preset) {
-        return pictura::selfTest().fail(552, "gradient tool");
-    }
-    return 0;
+    QVERIFY2(keys, "keys");
+    QVERIFY2(bar, "bar");
+    QVERIFY2(axis, "axis");
+    QVERIFY2(linear, "linear");
+    QVERIFY2(undone, "undone");
+    QVERIFY2(click, "click");
+    QVERIFY2(reversed, "reversed");
+    QVERIFY2(selected, "selected");
+    QVERIFY2(preset, "preset");
 }
 
-int pictura::runPaintBucketChecks(pictura::PicturaMainWindow& frame)
+void FillToolsTest::paintBucketTool()
 {
+    pictura::PicturaMainWindow& frame = *window_;
     // Two separate red squares on white.
     const QColor red(220, 20, 20);
     QImage seed(40, 40, QImage::Format_RGB32);
@@ -157,7 +183,7 @@ int pictura::runPaintBucketChecks(pictura::PicturaMainWindow& frame)
     }
     Fixture f(frame, seed, QStringLiteral("pictura_paint_bucket_seed"));
     if (!f.ok()) {
-        return pictura::selfTest().fail(553, "paint bucket fixture");
+        QFAIL("paint bucket fixture");
     }
     const QColor blue(0, 0, 255);
     const QColor green(0, 200, 0);
@@ -175,7 +201,7 @@ int pictura::runPaintBucketChecks(pictura::PicturaMainWindow& frame)
     auto* allLayers = frame.findChild<QCheckBox*>(QStringLiteral("optionsBucketAllLayers"));
     if (!fill || !pattern || !mode || !opacity || !tolerance || !antialias || !contiguous
         || !allLayers) {
-        return pictura::selfTest().fail(553, "paint bucket bar");
+        QFAIL("paint bucket bar");
     }
     const bool bar = fill->currentIndex() == 0 && !pattern->isEnabled() && pattern->count() > 0
         && mode->count() == 4 && opacity->value() == 100 && tolerance->value() == 32
@@ -224,11 +250,13 @@ int pictura::runPaintBucketChecks(pictura::PicturaMainWindow& frame)
     fill->setCurrentIndex(0);
     contiguous->setChecked(true);
 
-    ST_BEGIN("paint_bucket_tool");
-    ST_PASS("paint bucket bar=%d fill=%d composite=%d refused=%d global=%d pattern=%d", bar ? 1 : 0,
-            filled ? 1 : 0, composite ? 1 : 0, refused ? 1 : 0, global ? 1 : 0, patterned ? 1 : 0);
-    if (!bar || !filled || !composite || !refused || !global || !patterned) {
-        return pictura::selfTest().fail(553, "paint bucket tool");
-    }
-    return 0;
+    QVERIFY2(bar, "bar");
+    QVERIFY2(filled, "filled");
+    QVERIFY2(composite, "composite");
+    QVERIFY2(refused, "refused");
+    QVERIFY2(global, "global");
+    QVERIFY2(patterned, "patterned");
 }
+
+QTEST_MAIN(FillToolsTest)
+#include "tst_fill_tools.moc"

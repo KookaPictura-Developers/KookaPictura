@@ -127,7 +127,13 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::MagicEraser:
         return buildMagicEraserPage(id);
     case ToolId::Blur:
-        return buildBlurPage(id);
+    case ToolId::Sharpen:
+    case ToolId::Smudge:
+        return buildRetouchPage(id);
+    case ToolId::Dodge:
+    case ToolId::Burn:
+    case ToolId::Sponge:
+        return buildTonePage(id);
     case ToolId::Gradient:
         return buildGradientPage(id);
     case ToolId::PaintBucket:

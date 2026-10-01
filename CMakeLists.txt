@@ -146,7 +146,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/tool_stamps.cpp
     crates/pictura-app/cpp/tool_eraser.cpp
     crates/pictura-app/cpp/tool_fills.cpp
-    crates/pictura-app/cpp/tool_blur.cpp
+    crates/pictura-app/cpp/tool_retouch.cpp
     crates/pictura-app/cpp/tool_wand.cpp
     crates/pictura-app/cpp/tool_move.cpp
     crates/pictura-app/cpp/tool_crop.cpp
@@ -173,6 +173,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/options_bar_stamp.cpp
     crates/pictura-app/cpp/options_bar_erase.cpp
     crates/pictura-app/cpp/options_bar_fill.cpp
+    crates/pictura-app/cpp/options_bar_retouch.cpp
     crates/pictura-app/cpp/tool_hint_bar.cpp
     crates/pictura-app/cpp/new_document_dialog.cpp
     crates/pictura-app/cpp/layer_new_dialog.cpp
@@ -255,8 +256,6 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_crop_group.cpp
     crates/pictura-app/cpp/selftest_crop_tool.cpp
     crates/pictura-app/cpp/selftest_erasers.cpp
-    crates/pictura-app/cpp/selftest_fills.cpp
-    crates/pictura-app/cpp/selftest_retouch.cpp
     crates/pictura-app/cpp/selftest_healing.cpp
     crates/pictura-app/cpp/selftest_large_doc.cpp
     crates/pictura-app/cpp/selftest_layer_locks.cpp
@@ -295,8 +294,6 @@ add_executable(pictura
     crates/pictura-app/cpp/selftest_crop_group.h
     crates/pictura-app/cpp/selftest_crop_tool.h
     crates/pictura-app/cpp/selftest_erasers.h
-    crates/pictura-app/cpp/selftest_fills.h
-    crates/pictura-app/cpp/selftest_retouch.h
     crates/pictura-app/cpp/selftest.h
     crates/pictura-app/cpp/selftest_healing.h
     crates/pictura-app/cpp/selftest_large_doc.h

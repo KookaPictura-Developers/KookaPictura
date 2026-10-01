@@ -49,12 +49,11 @@ private:
     QWidget* buildPatchPage(ToolId id);
     QWidget* buildContentAwareMovePage(ToolId id);
     QWidget* buildCountPage(ToolId id);
-    // options_bar_paint.cpp: Red Eye, Color Replacement, Mixer Brush, and Blur, and
+    // options_bar_paint.cpp: Red Eye, Color Replacement, and Mixer Brush, and
     // the brush tip button every brush bar shares.
     QWidget* buildRedEyePage(ToolId id);
     QWidget* buildColorReplacementPage(ToolId id);
     QWidget* buildMixerBrushPage(ToolId id);
-    QWidget* buildBlurPage(ToolId id);
     void addBrushTipFields(QHBoxLayout* layout, QWidget* page);
     // options_bar_stamp.cpp: Clone Stamp, Pattern Stamp, History Brush, Art
     // History Brush, and Eraser.
@@ -68,6 +67,9 @@ private:
     // options_bar_fill.cpp: Gradient and Paint Bucket.
     QWidget* buildGradientPage(ToolId id);
     QWidget* buildPaintBucketPage(ToolId id);
+    // options_bar_retouch.cpp: Blur, Sharpen, Smudge, Dodge, Burn, and Sponge.
+    QWidget* buildRetouchPage(ToolId id);
+    QWidget* buildTonePage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);
     NumericField* addPercentField(QHBoxLayout* layout, QWidget* page, const QString& label,
                                   const QString& name, int value,

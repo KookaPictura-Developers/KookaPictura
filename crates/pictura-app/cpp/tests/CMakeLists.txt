@@ -4,6 +4,8 @@ set(PICTURA_QT_TESTS
     tst_edit_clipboard
     tst_layers_panel
     tst_command_tree
+    tst_fill_tools
+    tst_retouch_tools
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)
