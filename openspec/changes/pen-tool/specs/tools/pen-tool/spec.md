@@ -20,3 +20,15 @@ record exactly one history state, and undo SHALL restore the previous path.
 
 - **WHEN** the `tst_pen_tools` test clicks a closed path's segment and then the new anchor with the Pen
 - **THEN** one "Add Anchor Point" and one "Delete Anchor Point" state are recorded; with Auto Add/Delete off the same click starts a new subpath
+
+### Requirement: Paths panel lists the Work Path
+
+Once the Work Path has an anchor, the Paths panel SHALL list it as one row
+named "Work Path" in italics, selected, with a thumbnail of the path on the
+canvas; with no Work Path it SHALL show "No Paths". The panel SHALL follow
+edits, undo, and redo of the path.
+
+#### Scenario: The first anchor creates the row
+
+- **WHEN** the `tst_pen_tools` panel test places a Pen anchor, then undoes every anchor
+- **THEN** the panel lists one selected, italic "Work Path" row with a thumbnail, and after the undo it lists none

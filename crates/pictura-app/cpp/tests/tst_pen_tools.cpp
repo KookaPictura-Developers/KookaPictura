@@ -4,12 +4,14 @@
 #include <QtTest/QtTest>
 
 #include "panels/numeric_field.h"
+#include "panels/paths_panel.h"
 #include "selftest_paint_fixture.h"
 
 #include "pictura_app/src/cxxqt_object/paths.cxxqt.h"
 
 #include <QtGui/QKeyEvent>
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QListWidget>
 
 #include "qt_test_support.h"
 
@@ -54,6 +56,7 @@ private slots:
     void freeformPenTool();
     void anchorPointTools();
     void convertPointTool();
+    void pathsPanelListsTheWorkPath();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -297,6 +300,36 @@ void PenToolsTest::convertPointTool()
     QVERIFY(p.at(2) == 0.0 && p.at(5) == 0.0);
     click(f, QPointF(50, 10));
     QCOMPARE(f.view->history_index(), base + 3);
+}
+
+void PenToolsTest::pathsPanelListsTheWorkPath()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(100, 100, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_paths_panel_seed"));
+    QVERIFY2(f.ok(), "paths fixture");
+    auto* panel = frame.findChild<pictura::PathsPanel*>(QStringLiteral("pathsPanel"));
+    QVERIFY2(panel, "paths panel");
+    QListWidget* list = panel->listForTest();
+    // The panels follow an edit through the frame's debounced refresh.
+    QTRY_COMPARE(list->count(), 0);
+
+    // The first anchor creates the Work Path row, selected, in italics.
+    frame.setActiveTool(pictura::ToolId::Pen);
+    click(f, QPointF(10, 10));
+    QTRY_COMPARE(list->count(), 1);
+    QCOMPARE(list->item(0)->text(), QStringLiteral("Work Path"));
+    QVERIFY(list->item(0)->font().italic());
+    QVERIFY(list->item(0)->isSelected());
+    QVERIFY(!list->item(0)->icon().isNull());
+    click(f, QPointF(60, 60));
+    QTest::qWait(300);
+    QCOMPARE(list->count(), 1);
+
+    // Undoing every anchor takes the row away again.
+    QVERIFY(f.view->undo() && f.view->undo());
+    QTRY_COMPARE(list->count(), 0);
 }
 
 QTEST_MAIN(PenToolsTest)
