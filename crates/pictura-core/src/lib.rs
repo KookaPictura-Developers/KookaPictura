@@ -8,6 +8,7 @@ mod advanced_blending;
 mod annotations;
 mod crs;
 pub mod nonseparable;
+pub mod path;
 mod plane;
 mod samples;
 mod text_render;
@@ -214,6 +215,10 @@ pub struct Document {
     pub slices: Vec<PsdRect>,
     /// Color samplers and notes; they ride the history snapshot like slices.
     pub annotations: Annotations,
+    /// The Work Path the Pen tool group draws; it rides the history snapshot.
+    /// ponytail: not yet written to or read from the PSD path resources
+    /// (1025 / 2000-2997), which stay preserved verbatim.
+    pub work_path: path::VectorPath,
 }
 
 impl Document {
@@ -243,6 +248,7 @@ impl Document {
             layer_section_extra: Vec::new(),
             slices: Vec::new(),
             annotations: Annotations::default(),
+            work_path: path::VectorPath::default(),
         }
     }
 

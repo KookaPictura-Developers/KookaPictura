@@ -37,6 +37,7 @@ class InfoPanel;
 class LayersPanel;
 class NavigatorPanel;
 class NotesPanel;
+class PathsPanel;
 class OptionsBar;
 class PanelColumn;
 class PictureView;
@@ -308,7 +309,7 @@ private:
     PlaceholderPanel* propertiesPanel_ = nullptr;
     PlaceholderPanel* adjustmentsPanel_ = nullptr;
     PlaceholderPanel* channelsPanel_ = nullptr;
-    PlaceholderPanel* pathsPanel_ = nullptr;
+    PathsPanel* pathsPanel_ = nullptr;
     PlaceholderPanel* actionsPanel_ = nullptr;
     PlaceholderPanel* stylesPanel_ = nullptr;
     PanelColumn* panelColumn_ = nullptr;

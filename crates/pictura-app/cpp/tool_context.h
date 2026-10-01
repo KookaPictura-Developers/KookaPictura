@@ -148,6 +148,14 @@ struct BucketOptions {
     bool allLayers = false;
 };
 
+// The Pen tool group's options: the Pen's Auto Add/Delete and Rubber Band, and
+// the Freeform Pen's Curve Fit (0.5-10 px; Douglas-Peucker tolerance).
+struct PenOptions {
+    bool autoAddDelete = true;
+    bool rubberBand = false;
+    double curveFit = 2.0;
+};
+
 // One Clone Source panel slot: the Alt-clicked source point; the offset the
 // first stroke measured (source minus destination) and the destination point
 // it was measured at; and the source transform (W / H %, rotation in degrees
@@ -224,6 +232,7 @@ struct ToolContext {
     // The Dodge, Burn, or Sponge tool's options.
     virtual ToneOptions toneOptions(ToolId id) const = 0;
     virtual BucketOptions bucketOptions() const = 0;
+    virtual PenOptions penOptions() const = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;
     virtual void setCloneSource(const CloneSource& source) = 0;

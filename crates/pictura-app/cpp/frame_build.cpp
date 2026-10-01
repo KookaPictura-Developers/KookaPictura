@@ -50,7 +50,7 @@ void PicturaMainWindow::buildPanels()
     channelsPanel_ = new PlaceholderPanel(QStringLiteral("Channels"), QString(), this);
     channelsPanel_->setObjectName(QStringLiteral("channelsPanel"));
 
-    pathsPanel_ = new PlaceholderPanel(QStringLiteral("Paths"), QString(), this);
+    pathsPanel_ = new PathsPanel(this);
     pathsPanel_->setObjectName(QStringLiteral("pathsPanel"));
 
     actionsPanel_ = new PlaceholderPanel(QStringLiteral("Actions"), QString(), this);

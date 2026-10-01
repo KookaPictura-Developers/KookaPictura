@@ -114,15 +114,18 @@ const ToolInfo kToolTable[] = {
     {ToolId::Sponge, "sponge", "Sponge", QLatin1Char('O'), Qt::CrossCursor,
      "Sponge: drag to drain or lift colour", 14, true, 2, 22},
     {ToolId::Pen, "pen", "Pen", QLatin1Char('P'), Qt::CrossCursor,
-     "Pen: not implemented yet", 15, false, 2, 2},
+     "Pen: click for a corner, drag for a curve, click the first point to close, Enter to end",
+     15, true, 2, 2},
     {ToolId::FreeformPen, "freeformpen", "Freeform Pen", QLatin1Char('P'), Qt::CrossCursor,
-     "Freeform Pen: not implemented yet", 15, false, 2, 2},
+     "Freeform Pen: drag to draw a path; end near the start to close it", 15, true, 2, 2},
     {ToolId::AddAnchorPoint, "addanchorpoint", "Add Anchor Point", QChar(), Qt::CrossCursor,
-     "Add Anchor Point: not implemented yet", 15, false, 2, 2},
+     "Add Anchor Point: click a path segment to add an anchor", 15, true, 2, 2},
     {ToolId::DeleteAnchorPoint, "deleteanchorpoint", "Delete Anchor Point", QChar(),
-     Qt::CrossCursor, "Delete Anchor Point: not implemented yet", 15, false, 2, 2},
+     Qt::CrossCursor, "Delete Anchor Point: click an anchor to remove it", 15, true, 2, 2},
     {ToolId::ConvertPoint, "convertpoint", "Convert Point", QChar(), Qt::CrossCursor,
-     "Convert Point: not implemented yet", 15, false, 2, 2},
+     "Convert Point: drag an anchor to make it smooth, click it for a corner, drag a handle to "
+     "break it",
+     15, true, 2, 2},
     {ToolId::HorizontalType, "horizontaltype", "Horizontal Type", QLatin1Char('T'),
      Qt::IBeamCursor, "Horizontal Type: not implemented yet", 16, false, 12, 12},
     {ToolId::VerticalType, "verticaltype", "Vertical Type", QLatin1Char('T'),
@@ -280,6 +283,10 @@ QList<ToolHint> toolHintEntries(ToolId id)
                 {QStringLiteral("]"), QStringLiteral("Increase brush size")}};
     case ToolId::Gradient:
         return {{QStringLiteral("Shift"), QStringLiteral("Constrain to 45°")}};
+    case ToolId::Pen:
+        return {{QStringLiteral("Shift"), QStringLiteral("Constrain to 45°")},
+                {QStringLiteral("Alt"), QStringLiteral("Break the handle")},
+                {QStringLiteral("Enter"), QStringLiteral("End the path")}};
     case ToolId::Move:
         return {{QStringLiteral("Arrows"), QStringLiteral("Nudge 1 px")},
                 {QStringLiteral("Shift"), QStringLiteral("Nudge 10 px")},
@@ -333,7 +340,8 @@ const QList<ToolId>& implementedToolIds()
         ToolId::MixerBrush, ToolId::CloneStamp, ToolId::PatternStamp, ToolId::HistoryBrush,
         ToolId::ArtHistoryBrush, ToolId::Eraser, ToolId::BackgroundEraser, ToolId::MagicEraser,
         ToolId::Gradient, ToolId::PaintBucket, ToolId::Blur, ToolId::Sharpen, ToolId::Smudge,
-        ToolId::Dodge, ToolId::Burn, ToolId::Sponge,
+        ToolId::Dodge, ToolId::Burn, ToolId::Sponge, ToolId::Pen, ToolId::FreeformPen,
+        ToolId::AddAnchorPoint, ToolId::DeleteAnchorPoint, ToolId::ConvertPoint,
     };
     return ids;
 }
