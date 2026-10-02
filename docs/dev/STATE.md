@@ -834,6 +834,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   8-bit RGB documents only; the mask tint covers the canvas; Distort /
   Perspective and a masked type layer still resample pixels; the live
   transform preview is the resampled raster until commit.
+- **Line and Custom Shape** (changes `line-tool`, `custom-shape-tool`, issues
+  #47–#48, ported from photorust's `core/src/shape.rs`): the U group is
+  complete. `pictura_core::shape` became a directory: `shape/line.rs` (the
+  filled line of Weight, Shift snapping to 45°, optional Start / End
+  arrowheads with Width / Length % of the weight and Concavity — CS6 options
+  photorust lacks, approximated geometry, defaults 500 % / 1000 % against the
+  doc's unsourced 100 %) and `shape/custom.rs` (photorust's six generated
+  shapes, stretched to the box, Shift keeping the designed proportions,
+  `custom_shape_preview` silhouettes). `ShapeSpec` gains the weight,
+  arrowheads, and custom index; `shape_custom_{count,name,preview}` feed the
+  options-bar picker. Options bar: Line Weight + Arrowheads pop-up, Custom
+  Shape picker. A Line click draws nothing; a Custom Shape click opens
+  "Create Custom Shape". Custom shape layers are named "Shape N"; neither
+  kind is live. Guard 98 now probes Object Rotate. Ceilings (`ponytail:`): no
+  `.csh` libraries / shape sets / Define Custom Shape / Defined Size; the
+  heart is a 48-corner polygon; overlapping arrowheads on a short line are
+  not clamped.
 - **Live shapes** (change `live-shapes`, owner follow-up on #43–#45, from
   Photoshop **CC 2015** screenshots — a deliberate CC extension;
   `docs/03-tools/shape-tools.md` still scopes live shapes out of CS6 parity):

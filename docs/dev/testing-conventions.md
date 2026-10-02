@@ -20,7 +20,7 @@ toolkit's own Qt Test for the C++ GUI suites.
 | C++ Qt shell tests | Qt Test + CTest (`add_test`) | `crates/pictura-app/cpp/tests/` | per-executable JUnit, folded into the unified report by `scripts/test-report.sh` |
 | Python oracle tooling | `argparse` CLIs, no test framework | `scripts/*.py` | stdout (machine-readable or raw bytes) + exit code |
 
-Current inventory: **1938 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
+Current inventory: **1944 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
 see §3), **511** `ST_BEGIN` self-test sites (**475** executed in a bare
 `--headless --self-test` run), and ten Qt Test suites (`tst_smoke`,
 `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`, `tst_fill_tools`,
@@ -186,8 +186,8 @@ self-test and links `pictura_shell`.
   `tst_fill_tools` (Gradient, Paint Bucket), `tst_retouch_tools` (Blur,
   Sharpen, Smudge, Dodge, Burn, Sponge), `tst_pen_tools` (Pen, Freeform
   Pen, Add / Delete Anchor Point, Convert Point), `tst_path_selection_tools`
-  (Path Selection, Direct Selection), `tst_shape_tools` (Rectangle, Rounded
-  Rectangle, Ellipse, Polygon), and `tst_type_tools` (Horizontal /
+  (Path Selection, Direct Selection), `tst_shape_tools` (the six shape
+  tools), and `tst_type_tools` (Horizontal /
   Vertical Type and their Type Mask tools).
 - **Migration rule.** New GUI checks are written as Qt Test cases; the self-test
   only shrinks. Three suites were migrated off `runSelfTest()` and their `ST_*`
