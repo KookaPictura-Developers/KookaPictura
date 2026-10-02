@@ -784,6 +784,30 @@ Snapshot for resuming after a context break. Update after each milestone.
   8-bit RGB documents only; the mask tint covers the canvas; Distort /
   Perspective and a masked type layer still resample pixels; the live
   transform preview is the resampled raster until commit.
+- **Path Selection and Direct Selection** (changes `path-selection-tool`,
+  `direct-selection-tool`, issues #41–#42, ported from photorust's
+  `core/src/path.rs` and its shell's `CanvasView::pathSelectPress`): the A
+  group is complete. `pictura_core::path` gains `move_anchor` (handles carried
+  by the same delta), `move_subpath`, `duplicate_subpath`, `remove_subpath`,
+  `hit_subpath` (segment or lone anchor within the radius, else inside a
+  closed subpath, even-odd, topmost first), and `subpath_bounds` (flattened
+  curve bounds). Bridge `cxxqt_object/paths.rs` adds the matching calls plus
+  `path_commit_drag` (states "Drag Path", "Duplicate Path Component", "Drag
+  Anchor Point", "Drag Direction Point") and `path_remove_subpath` ("Delete
+  Path"). One handler, `tool_path_selection.cpp`, for both: Path Selection
+  selects a component whole (anchors solid), drags it, Alt-drags a copy;
+  Direct Selection drags an anchor (solid, the component's others hollow) or a
+  handle of the selected component (smooth points stay collinear, Alt breaks),
+  a segment click selects the component, Alt-click selects it whole; Delete /
+  Backspace removes a whole-selected component (`removeLassoPoint`). The
+  overlay builder moved to `workPathOverlay` (`path_overlay.h`, defined in
+  `tool_pen.cpp`); `PathOverlay` gains `anchorsSolid` and `bounds`. Path
+  Selection's bar: Show Bounding Box (off, `PenOptions::showBoundingBox`).
+  Qt Test suite `tst_path_selection_tools`. Guard 98 now probes Rectangle and
+  `shift_plain` (117) presses U as the unimplemented key. Ceilings
+  (`ponytail:`): no segment drags, marquee, Shift-click multi-selection, arrow
+  nudges, path operations / alignment / arrangement, Constrain Path Dragging,
+  or drag to another document; the selection is dropped on a tool switch.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on
