@@ -158,14 +158,23 @@ struct PenOptions {
     bool showBoundingBox = false;
 };
 
-// The shape tools' options bar, shared by Rectangle, Rounded Rectangle,
-// Ellipse, and Polygon: Mode 0 Shape / 1 Path / 2 Pixels, the Rounded
-// Rectangle's corner Radius in pixels (0-1000), and the Polygon's Sides
-// (3-100). The fill colour is the foreground colour.
+// The shape tools' options bar, shared by the six tools: Mode 0 Shape /
+// 1 Path / 2 Pixels, the Rounded Rectangle's corner Radius in pixels (0-1000),
+// the Polygon's Sides (3-100), the Line's Weight (1-1000 px) and arrowheads
+// (Start / End, Width 10-1000 % and Length 10-5000 % of the weight, Concavity
+// -50-50 %), and the Custom Shape's index. The fill colour is the foreground
+// colour.
 struct ShapeOptions {
     int mode = 0;
     double radius = 10.0;
     int sides = 5;
+    double weight = 1.0;
+    bool arrowStart = false;
+    bool arrowEnd = false;
+    double arrowWidth = 500.0;
+    double arrowLength = 1000.0;
+    double arrowConcavity = 0.0;
+    int custom = 0;
 };
 
 // The Type tools' options bar, shared by all four (the tool is the

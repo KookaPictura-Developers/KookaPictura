@@ -115,8 +115,8 @@ ToolController::ToolController(QObject* parent)
     for (ToolId id : {ToolId::PathSelection, ToolId::DirectSelection}) {
         registry_.registerTool(id, makePathSelectionToolHandler(id));
     }
-    for (ToolId id :
-         {ToolId::Rectangle, ToolId::RoundedRectangle, ToolId::Ellipse, ToolId::Polygon}) {
+    for (ToolId id : {ToolId::Rectangle, ToolId::RoundedRectangle, ToolId::Ellipse,
+                      ToolId::Polygon, ToolId::Line, ToolId::CustomShape}) {
         registry_.registerTool(id, makeShapeToolHandler(id));
     }
     for (ToolId id : {ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
@@ -222,9 +222,15 @@ void ToolController::setPenOptions(const PenOptions& options)
 
 void ToolController::setShapeOptions(const ShapeOptions& options)
 {
+    shape_ = options;
     shape_.mode = std::clamp(options.mode, 0, 2);
     shape_.radius = std::clamp(options.radius, 0.0, 1000.0);
     shape_.sides = std::clamp(options.sides, 3, 100);
+    shape_.weight = std::clamp(options.weight, 1.0, 1000.0);
+    shape_.arrowWidth = std::clamp(options.arrowWidth, 10.0, 1000.0);
+    shape_.arrowLength = std::clamp(options.arrowLength, 10.0, 5000.0);
+    shape_.arrowConcavity = std::clamp(options.arrowConcavity, -50.0, 50.0);
+    shape_.custom = std::max(options.custom, 0);
     if (ToolHandler* h = registry_.forTool(active_)) {
         h->onOptionsChanged(*this);
     }

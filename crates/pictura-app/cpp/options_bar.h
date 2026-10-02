@@ -2,6 +2,8 @@
 
 #include <QtWidgets/QToolBar>
 
+#include <functional>
+
 #include "tools.h"
 
 class QStackedWidget;
@@ -73,6 +75,9 @@ private:
     // options_bar_pen.cpp: Pen and Freeform Pen.
     QWidget* buildPenPage(ToolId id);
     QWidget* buildShapePage(ToolId id);
+    QToolButton* buildArrowheadsButton(
+        QWidget* page, const ShapeOptions& initial,
+        const std::function<void(const std::function<void(ShapeOptions&)>&)>& update);
     // options_bar_type.cpp: the four Type tools.
     QWidget* buildTypePage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);

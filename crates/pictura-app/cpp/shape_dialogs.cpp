@@ -69,6 +69,8 @@ QString title(ToolId id)
         return QObject::tr("Create Ellipse");
     case ToolId::Polygon:
         return QObject::tr("Create Polygon");
+    case ToolId::CustomShape:
+        return QObject::tr("Create Custom Shape");
     default:
         return QObject::tr("Create Rectangle");
     }

@@ -31,7 +31,7 @@ struct CreateShapeValues {
 };
 
 // The "Create Rectangle" / "Create Rounded Rectangle" / "Create Ellipse" /
-// "Create Polygon" dialog a click opens; edits `values` and returns true on OK.
+// "Create Polygon" / "Create Custom Shape" dialog a click opens; edits `values` and returns true on OK.
 bool execCreateShapeDialog(ToolId id, CreateShapeValues& values, QWidget* parent);
 
 } // namespace pictura

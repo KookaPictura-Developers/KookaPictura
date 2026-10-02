@@ -1,5 +1,5 @@
 // The shape tools: Rectangle (#43), Rounded Rectangle (#44), Ellipse (#45),
-// and Polygon (#46), in each of the Shape / Path / Pixels modes; live shapes
+// Polygon (#46), Line (#47), and Custom Shape (#48), in each of the Shape / Path / Pixels modes; live shapes
 // and their conversion prompt; the Create dialogs; the Layers shape badge.
 
 #include <QtTest/QtTest>
@@ -142,6 +142,7 @@ private slots:
     void shapeTools();
     void liveShapes();
     void createDialogs();
+    void lineAndCustomShape();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -164,7 +165,7 @@ void ShapeToolsTest::shapeTools()
     QVERIFY2(f.ok(), "shape fixture");
     const State state(f.tools);
 
-    // U and Shift+U cycle the four implemented tools of the group.
+    // U and Shift+U cycle the six tools of the group.
     frame.show();
     QVERIFY(QTest::qWaitForWindowExposed(&frame));
     frame.activateWindow();
@@ -174,6 +175,7 @@ void ShapeToolsTest::shapeTools()
     QCOMPARE(frame.activeTool(), pictura::ToolId::Rectangle);
     const QList<pictura::ToolId> cycle = {pictura::ToolId::RoundedRectangle,
                                           pictura::ToolId::Ellipse, pictura::ToolId::Polygon,
+                                          pictura::ToolId::Line, pictura::ToolId::CustomShape,
                                           pictura::ToolId::Rectangle};
     for (pictura::ToolId next : cycle) {
         sendKey(frame, Qt::Key_U, Qt::ShiftModifier, QStringLiteral("U"));
@@ -460,6 +462,96 @@ void ShapeToolsTest::createDialogs()
     QVERIFY2(qAbs(star.left() - 60) < 0.01 && qAbs(star.top() - 10) < 0.01
                  && qAbs(star.width() - 30) < 0.01 && qAbs(star.height() - 30) < 0.01,
              "the star fills its box");
+}
+
+void ShapeToolsTest::lineAndCustomShape()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(100, 100, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_line_custom_seed"));
+    QVERIFY2(f.ok(), "line and custom shape fixture");
+    const State state(f.tools);
+    int seen = 0;
+
+    // Pixels: a 4 px line paints a band 4 px tall.
+    frame.setActiveTool(pictura::ToolId::Line);
+    auto* weight = visibleChild<pictura::NumericField>(frame, QStringLiteral("optionsShapeWeight"));
+    QVERIFY(weight != nullptr);
+    QCOMPARE(weight->value(), 1.0);
+    emit weight->valueChanged(4);
+    pictura::ShapeOptions o = f.tools->shapeOptions();
+    QCOMPARE(o.weight, 4.0);
+    o.mode = 2;
+    f.tools->setShapeOptions(o);
+    int base = f.view->history_index();
+    f.drag({QPointF(10, 50), QPointF(50, 50), QPointF(90, 50)});
+    QVERIFY2(f.committedOnce(base, "Line Tool"), "line pixels");
+    QCOMPARE(f.view->sample_argb(50, 49), kRed);
+    QCOMPARE(f.view->sample_argb(50, 51), kRed);
+    QCOMPARE(f.view->sample_argb(50, 46), kWhite);
+
+    // The Line has no Create dialog: a click draws nothing.
+    base = f.view->history_index();
+    {
+        const auto unexpected = answerNextModal(
+            [](QWidget* modal) { qobject_cast<QDialog*>(modal)->reject(); }, &seen);
+        f.drag({QPointF(30, 80)});
+    }
+    QCOMPARE(seen, 0);
+    QCOMPARE(f.view->history_index(), base);
+
+    // An end arrowhead, switched on in the pop-up, adds a tip: seven anchors.
+    auto* end = frame.findChild<QCheckBox*>(QStringLiteral("optionsShapeArrowEnd"));
+    QVERIFY(end != nullptr);
+    end->setChecked(true);
+    QVERIFY(f.tools->shapeOptions().arrowEnd);
+    o = f.tools->shapeOptions();
+    o.mode = 1;
+    f.tools->setShapeOptions(o);
+    f.drag({QPointF(10, 20), QPointF(50, 20), QPointF(90, 20)});
+    QCOMPARE(pictura::path_subpath_count(*f.view), 1);
+    QCOMPARE(pictura::path_point_count(*f.view, 0), 7);
+    const QRectF line = subpathBounds(f, 0);
+    QVERIFY2(qAbs(line.right() - 90) < 1e-6 && qAbs(line.height() - 20) < 1e-6,
+             "the tip reaches the release point; the head is 500 % of 4 px wide");
+
+    // The Custom Shape picker lists the built-in shapes with silhouettes.
+    frame.setActiveTool(pictura::ToolId::CustomShape);
+    auto* picker = visibleChild<QComboBox>(frame, QStringLiteral("optionsShapeCustom"));
+    QVERIFY(picker != nullptr);
+    QCOMPARE(picker->count(), 6);
+    QCOMPARE(picker->itemText(1), QStringLiteral("Heart"));
+    QVERIFY(!picker->itemIcon(1).isNull());
+    picker->setCurrentIndex(1);
+    QCOMPARE(f.tools->shapeOptions().custom, 1);
+
+    // Shape mode: the heart lands on a "Shape 1" layer, not a live shape.
+    o = f.tools->shapeOptions();
+    o.mode = 0;
+    f.tools->setShapeOptions(o);
+    base = f.view->history_index();
+    f.drag({QPointF(20, 60), QPointF(50, 80), QPointF(80, 95)});
+    QVERIFY2(f.committedOnce(base, "Shape Tool"), "custom shape layer");
+    QCOMPARE(f.view->layer_name(f.view->layer_count() - 1), QStringLiteral("Shape 1"));
+    QCOMPARE(f.view->sample_argb(50, 80), kRed);
+    QCOMPARE(f.view->sample_argb(22, 62), kWhite);
+    QVERIFY(!pictura::path_target_is_live_shape(*f.view));
+
+    // A click opens Create Custom Shape.
+    {
+        const auto ok = answerNextModal(
+            [](QWidget* m) {
+                QCOMPARE(m->windowTitle(), QStringLiteral("Create Custom Shape"));
+                fillCreateDialog(m, {{QStringLiteral("createShapeWidth"), 20},
+                                     {QStringLiteral("createShapeHeight"), 20}});
+            },
+            &seen);
+        f.drag({QPointF(5, 5)});
+    }
+    QCOMPARE(seen, 1);
+    QCOMPARE(f.view->layer_name(f.view->layer_count() - 1), QStringLiteral("Shape 2"));
+    QCOMPARE(f.view->sample_argb(15, 16), kRed);
 }
 
 QTEST_MAIN(ShapeToolsTest)

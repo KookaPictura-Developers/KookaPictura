@@ -158,9 +158,10 @@ const ToolInfo kToolTable[] = {
     {ToolId::Polygon, "polygon", "Polygon", QLatin1Char('U'), Qt::CrossCursor,
      "Polygon: drag out from the centre to draw a regular polygon", 18, true, 12, 12},
     {ToolId::Line, "line", "Line", QLatin1Char('U'), Qt::CrossCursor,
-     "Line: not implemented yet", 18, false, 12, 12},
+     "Line: drag to draw a line of the chosen weight, with optional arrowheads", 18, true, 12,
+     12},
     {ToolId::CustomShape, "customshape", "Custom Shape", QLatin1Char('U'), Qt::CrossCursor,
-     "Custom Shape: not implemented yet", 18, false, 12, 12},
+     "Custom Shape: drag to draw the shape chosen in the picker", 18, true, 12, 12},
     {ToolId::ObjectRotate, "objectrotate", "Object Rotate (Extended)", QLatin1Char('K'),
      Qt::CrossCursor, "Object Rotate (Extended): not implemented yet", 19, false, 12, 12},
     {ToolId::ObjectRoll, "objectroll", "Object Roll (Extended)", QLatin1Char('K'),
@@ -311,6 +312,11 @@ QList<ToolHint> toolHintEntries(ToolId id)
                 {QStringLiteral("Alt"), QStringLiteral("Draw from the centre")}};
     case ToolId::Polygon:
         return {{QStringLiteral("Shift"), QStringLiteral("Snap the angle to 15°")}};
+    case ToolId::Line:
+        return {{QStringLiteral("Shift"), QStringLiteral("Snap the angle to 45°")}};
+    case ToolId::CustomShape:
+        return {{QStringLiteral("Shift"), QStringLiteral("Defined proportions")},
+                {QStringLiteral("Alt"), QStringLiteral("Draw from the centre")}};
     case ToolId::HorizontalType:
     case ToolId::VerticalType:
     case ToolId::HorizontalTypeMask:
@@ -375,6 +381,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
         ToolId::VerticalTypeMask, ToolId::PathSelection, ToolId::DirectSelection,
         ToolId::Rectangle, ToolId::RoundedRectangle, ToolId::Ellipse, ToolId::Polygon,
+        ToolId::Line, ToolId::CustomShape,
     };
     return ids;
 }

@@ -1,11 +1,14 @@
 // The shape tools (`pictura_core::shape`, bridged by `cxxqt_object/shapes.rs`):
-// Rectangle, Rounded Rectangle, Ellipse, and Polygon. A drag previews the
-// outline on the canvas and lands on release in the options bar's Mode: a new
+// Rectangle, Rounded Rectangle, Ellipse, Polygon, Line, and Custom Shape. A
+// drag previews the outline on the canvas and lands on release in the options
+// bar's Mode: a new
 // shape layer (Shape), a Work Path component (Path), or foreground pixels on
 // the active layer (Pixels). Shift squares the box off (the Polygon snaps its
-// turn to 15°); Alt grows it from the press point. The modifiers are read live,
+// turn to 15° and the Line its angle to 45°; a Custom Shape keeps its designed
+// proportions); Alt grows it from the press point. The modifiers are read live,
 // so pressing one mid-drag changes the preview. A click instead opens the
-// tool's Create dialog and places the shape at the click (or centred on it).
+// tool's Create dialog and places the shape at the click (or centred on it);
+// the Line has no dialog, so a click draws nothing.
 // Outside Path mode the active shape layer's outline is drawn with its anchors,
 // ready for Direct Selection. Ported from photorust's CanvasView shape drag
 // (shapeOutlineFor / paintShapeOverlay / drawShape).
@@ -43,6 +46,10 @@ int shapeKind(ToolId id)
         return 2;
     case ToolId::Polygon:
         return 3;
+    case ToolId::Line:
+        return 4;
+    case ToolId::CustomShape:
+        return 5;
     default:
         return 0;
     }
@@ -112,7 +119,9 @@ public:
         // A press that wobbles under two screen pixels is a click.
         const double zoom = ctx.canvas() ? qMax(ctx.canvas()->zoom(), 1e-6) : 1.0;
         if (QLineF(press_, imagePos).length() * zoom < 2.0) {
-            createAtClick(ctx, *v);
+            if (id_ != ToolId::Line) {
+                createAtClick(ctx, *v);
+            }
         } else {
             const ShapeSpec spec = dragSpec(ctx, imagePos, mods);
             const QRectF drawn = outlinePath(spec).boundingRect();
@@ -134,6 +143,13 @@ private:
         spec.r_tl = spec.r_tr = spec.r_br = spec.r_bl = o.radius;
         spec.sides = o.sides;
         spec.indent = 50.0;
+        spec.weight = o.weight;
+        spec.arrow_start = o.arrowStart;
+        spec.arrow_end = o.arrowEnd;
+        spec.arrow_width = o.arrowWidth;
+        spec.arrow_length = o.arrowLength;
+        spec.arrow_concavity = o.arrowConcavity;
+        spec.custom = o.custom;
         return spec;
     }
 

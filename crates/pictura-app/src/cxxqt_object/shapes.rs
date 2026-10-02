@@ -23,7 +23,7 @@ use cxx_qt_lib::{QImage, QString};
 use ffi::ShapeSpec;
 use pictura_codec::LiveShape;
 use pictura_core::path::{Subpath, VectorPath};
-use pictura_core::shape::{self, ShapeKind, ShapeOptions};
+use pictura_core::shape::{self, Arrowheads, ShapeKind, ShapeOptions, CUSTOM_SHAPE_NAMES};
 use pictura_core::{Document, Layer};
 use pictura_paint::bucket::{self, BucketPaint};
 use pictura_paint::PaintMode;
@@ -36,7 +36,9 @@ pub mod ffi {
     /// press) or, when `boxed`, the box with those corners. The Rounded
     /// Rectangle's corner radii `r_tl`, `r_tr`, `r_br`, `r_bl` (px); the
     /// Polygon's `sides`, `star` with `indent` (% of the radius), and smooth
-    /// corners / indents.
+    /// corners / indents; the Line's `weight` (px) and arrowheads (at the start
+    /// / end, width and length in % of the weight, concavity %); the Custom
+    /// Shape's index (kind 4 Line, 5 Custom Shape).
     #[namespace = "pictura"]
     struct ShapeSpec {
         kind: i32,
@@ -56,6 +58,13 @@ pub mod ffi {
         indent: f64,
         smooth_corners: bool,
         smooth_indents: bool,
+        weight: f64,
+        arrow_start: bool,
+        arrow_end: bool,
+        arrow_width: f64,
+        arrow_length: f64,
+        arrow_concavity: f64,
+        custom: i32,
     }
 
     unsafe extern "C++" {
@@ -92,6 +101,15 @@ pub mod ffi {
             foreground: u32,
         ) -> bool;
 
+        /// The number of built-in custom shapes.
+        fn shape_custom_count() -> i32;
+
+        /// Built-in custom shape `index`'s name, or empty out of range.
+        fn shape_custom_name(index: i32) -> QString;
+
+        /// Custom shape `index` as a black silhouette on transparency in a `size` square, for the picker; null out of range.
+        fn shape_custom_preview(index: i32, size: i32) -> QImage;
+
         /// Whether Layers row `i` is a shape layer (a fill cut by a vector mask).
         fn shape_row_is_shape(view: &PictureView, i: i32) -> bool;
 
@@ -113,6 +131,15 @@ fn outline(spec: &ShapeSpec) -> Option<(ShapeKind, Subpath)> {
         star: spec.star.then_some(spec.indent),
         smooth_corners: spec.smooth_corners,
         smooth_indents: spec.smooth_indents,
+        weight: spec.weight,
+        arrows: Arrowheads {
+            start: spec.arrow_start,
+            end: spec.arrow_end,
+            width: spec.arrow_width,
+            length: spec.arrow_length,
+            concavity: spec.arrow_concavity,
+        },
+        custom: spec.custom.max(0) as usize,
     };
     let subpath = if spec.boxed {
         let (x, y) = (spec.x0.min(spec.x1), spec.y0.min(spec.y1));
@@ -131,13 +158,14 @@ fn outline(spec: &ShapeSpec) -> Option<(ShapeKind, Subpath)> {
 }
 
 /// The live origin of a Shape-mode `kind` drawn as `outline`: its box and
-/// clamped radii. Polygons were not live shapes in CC 2015, so they have none.
+/// clamped radii. Polygons, Lines, and Custom Shapes were not live shapes in
+/// CC 2015, so they have none.
 fn live_shape(spec: &ShapeSpec, kind: ShapeKind, outline: &Subpath) -> Option<LiveShape> {
     let origin_type = match kind {
         ShapeKind::Rectangle => pictura_codec::ORIGIN_RECTANGLE,
         ShapeKind::RoundedRectangle => pictura_codec::ORIGIN_ROUNDED_RECTANGLE,
         ShapeKind::Ellipse => pictura_codec::ORIGIN_ELLIPSE,
-        ShapeKind::Polygon => return None,
+        ShapeKind::Polygon | ShapeKind::Line | ShapeKind::CustomShape => return None,
     };
     let mut path = VectorPath::default();
     path.add_subpath(outline.clone());
@@ -238,6 +266,29 @@ fn shape_fill_pixels(view: Pin<&mut PictureView>, spec: &ShapeSpec, foreground: 
             selection(rust),
         )
     })
+}
+
+fn shape_custom_count() -> i32 {
+    CUSTOM_SHAPE_NAMES.len() as i32
+}
+
+fn shape_custom_name(index: i32) -> QString {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| CUSTOM_SHAPE_NAMES.get(i))
+        .map_or_else(QString::default, |name| QString::from(*name))
+}
+
+fn shape_custom_preview(index: i32, size: i32) -> QImage {
+    let (Ok(index), Ok(side)) = (usize::try_from(index), u32::try_from(size)) else {
+        return QImage::default();
+    };
+    let coverage = shape::custom_shape_preview(index, side);
+    if coverage.is_empty() {
+        return QImage::default();
+    }
+    let rgba = coverage.iter().flat_map(|&a| [0, 0, 0, a]).collect();
+    rgba_image(rgba, size, size)
 }
 
 /// Layers row `i`'s document and layer, when it is a shape layer.
