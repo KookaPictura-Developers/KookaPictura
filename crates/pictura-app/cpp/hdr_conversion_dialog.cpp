@@ -1,4 +1,5 @@
 #include "hdr_conversion_dialog.h"
+#include "dialogs.h"
 
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QDoubleSpinBox>
@@ -46,7 +47,7 @@ HdrConversionSpec HdrConversionDialog::spec() const
 bool HdrConversionDialog::get(QWidget* parent, HdrConversionSpec* out)
 {
     HdrConversionDialog dialog(parent);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return false;
     }
     *out = dialog.spec();

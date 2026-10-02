@@ -171,7 +171,7 @@ bool exportAsFromView(QWidget* parent, PictureView* view)
         return false;
     }
     ExportAsDialog dialog(canonicalOutputFormat(output_format(*view)), parent);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return false;
     }
     const QString chosen = dialog.format();

@@ -1,4 +1,5 @@
 #include "new_document_dialog.h"
+#include "dialogs.h"
 
 #include "panels/numeric_field.h"
 
@@ -107,7 +108,7 @@ NewDocumentSpec NewDocumentDialog::spec() const
 bool NewDocumentDialog::get(QWidget* parent, NewDocumentSpec* out)
 {
     NewDocumentDialog dialog(parent);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return false;
     }
     *out = dialog.spec();

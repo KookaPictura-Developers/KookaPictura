@@ -1,6 +1,6 @@
 use crate::history::History;
 use cxx_qt_lib::QImage;
-use pictura_core::{Document, PixelBuffer, PsdRect};
+use pictura_core::{Document, Layer, PixelBuffer, PsdRect};
 use pictura_paint::spacing::DabPlacer;
 use pictura_paint::{HealStroke, Stroke, StrokeSample};
 use pictura_render::gpu::GpuStroke;
@@ -153,6 +153,24 @@ pub struct PictureViewRust {
     /// The GPU present's dab placer, so its dabs space exactly as the CPU
     /// stroke's do.
     pub(super) gpu_placer: Option<DabPlacer>,
+    /// Pre-filter pixels for an open filter-dialog preview, so each parameter
+    /// change re-filters the original rather than compounding on the last
+    /// preview. `None` when no dialog is open.
+    pub(super) filter_preview: Option<FilterPreview>,
+    /// The last committed filter's kind and slot values, for Last Filter and
+    /// Last Filter Settings.
+    pub(super) last_filter: Option<(String, Vec<f64>)>,
+    /// Why the most recent filter apply/preview was refused, for surfacing the
+    /// failure to the user. Cleared at the start of every attempt.
+    pub(super) filter_error: Option<String>,
+}
+
+/// The pre-filter layer clone backing a live filter preview.
+pub(super) struct FilterPreview {
+    /// Index into `Document::layers` of the layer being previewed.
+    pub(super) layer_index: usize,
+    /// The layer's pixels before the first preview parameter change.
+    pub(super) original: Layer,
 }
 
 /// A large-brush stroke shown at a view-pyramid level instead of rasterized at
@@ -223,6 +241,9 @@ impl Default for PictureViewRust {
             preview: None,
             gpu_stroke: None,
             gpu_placer: None,
+            filter_preview: None,
+            last_filter: None,
+            filter_error: None,
         }
     }
 }

@@ -491,7 +491,17 @@ private:
 
 int runFileDialog(QFileDialog& dialog, QWidget* parent)
 {
-    if (usesPortalFileDialog() || !parent) {
+    if (usesPortalFileDialog()) {
+        return dialog.exec();
+    }
+    return runDialog(dialog, parent);
+}
+
+} // namespace
+
+int runDialog(QDialog& dialog, QWidget* parent)
+{
+    if (!parent) {
         return dialog.exec();
     }
     QPointer<QWidget> blocked = parent->window();
@@ -505,8 +515,6 @@ int runFileDialog(QFileDialog& dialog, QWidget* parent)
     qApp->removeEventFilter(&blocker);
     return dialog.result();
 }
-
-} // namespace
 
 QString dialogDirectoryFromStored(const QString& stored)
 {

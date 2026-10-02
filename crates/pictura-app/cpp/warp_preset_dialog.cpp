@@ -1,4 +1,5 @@
 #include "warp_preset_dialog.h"
+#include "dialogs.h"
 
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
@@ -111,7 +112,7 @@ WarpPresetSpec WarpPresetDialog::spec() const
 bool WarpPresetDialog::get(QWidget* parent, WarpPresetSpec* out)
 {
     WarpPresetDialog dialog(parent);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return false;
     }
     *out = dialog.spec();

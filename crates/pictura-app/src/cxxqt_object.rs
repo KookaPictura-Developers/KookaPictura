@@ -4,6 +4,8 @@ mod annotations;
 mod clipboard;
 mod crop_group;
 mod export;
+mod filter_map;
+mod filter_tools;
 mod healing;
 mod helpers;
 mod helpers_composite;
@@ -40,7 +42,6 @@ pub mod qobject {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
         include!("cxx-qt-lib/qimage.h");
         type QImage = cxx_qt_lib::QImage;
 
@@ -92,7 +93,6 @@ pub mod qobject {
             depth: i32,
             background: &QString,
         ) -> bool;
-
         /// Serialize the document to `path` in the format named by the path's extension: PSD/PSB through the codec, a raster format through the Qt encode edge. Clears the dirty flag; false on any encode/IO error.
         #[qinvokable]
         fn save(self: Pin<&mut Self>, path: &QString) -> bool;

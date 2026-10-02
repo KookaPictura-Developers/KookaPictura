@@ -48,6 +48,7 @@ class PropertiesPanel;
 class SwatchesPanel;
 class Toolbox;
 class ToolHintBar;
+struct FilterCommandSpec;
 struct SessionState;
 
 // True when a launch should seed the scratch white document. Only the self-test
@@ -267,6 +268,13 @@ private:
     void registerHandlers();
     void registerSelectHandlers();
     void registerEditHandlers();
+    // Wire the CS6 Filter menu: one handler per implemented filter, plus Last
+    // Filter / Last Filter Settings.
+    void wireFilterMenu();
+    void applyFilterCommand(const FilterCommandSpec& spec);
+    // Surface why a filter was refused (status bar + stderr) instead of a
+    // silent no-op.
+    void reportFilterRefusal(PictureView* view);
     void exportClipboard();
     void importSystemClipboard();
     void applyPanelSession(const SessionState& state);

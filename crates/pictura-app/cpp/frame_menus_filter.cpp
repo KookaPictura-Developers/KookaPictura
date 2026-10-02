@@ -1,0 +1,140 @@
+#include "frame_includes.h"
+
+#include <QtCore/QDebug>
+#include <QtWidgets/QStatusBar>
+
+#include "filter_commands.h"
+#include "filter_preview_dialog.h"
+
+#include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
+
+namespace pictura {
+
+namespace {
+
+// Preview against the section and scale the user is currently looking at.
+FilterPreviewView previewViewFor(ImageView* canvas)
+{
+    FilterPreviewView view;
+    if (canvas) {
+        view.visible = canvas->visibleDocumentRect();
+        view.canvasZoom = canvas->zoom();
+    }
+    return view;
+}
+
+} // namespace
+
+void PicturaMainWindow::reportFilterRefusal(PictureView* view)
+{
+    const QString reason = view ? filter_last_error(*view) : QString();
+    const QString message =
+        reason.isEmpty() ? tr("The filter could not be applied.") : reason;
+    qWarning().noquote() << "filter refused:" << message;
+    statusBar()->showMessage(message, 6000);
+}
+
+void PicturaMainWindow::applyFilterCommand(const FilterCommandSpec& spec)
+{
+    PictureView* view = activeView();
+    if (!view || !filter_target_ready(*view)) {
+        return;
+    }
+    if (spec.params.isEmpty()) {
+        // Nothing to edit: apply the engine defaults directly.
+        if (apply_filter_params(*view, spec.kind, QList<double>())) {
+            refresh();
+        } else {
+            reportFilterRefusal(view);
+        }
+        return;
+    }
+    QList<double> values;
+    // The dialog previews on the canvas as controls change; OK commits one
+    // state, Cancel discards the preview bit-identically.
+    if (FilterPreviewDialog::get(view, spec, previewViewFor(imageView()), QList<double>(), &values,
+                                 this)) {
+        if (apply_filter_params(*view, spec.kind, values)) {
+            refresh();
+        } else {
+            reportFilterRefusal(view);
+        }
+    }
+}
+
+void PicturaMainWindow::wireFilterMenu()
+{
+    for (const FilterCommandSpec& spec : filterCommands()) {
+        if (!filter_kind_supported(spec.kind)) {
+            continue; // a row with no Rust mapping stays a disabled stub
+        }
+        const QString id = commandIdForPath(spec.path);
+        registry_->setImplemented(id, true);
+        const FilterCommandSpec captured = spec;
+        registry_->setHandler(id, [this, captured]() { applyFilterCommand(captured); });
+        // CS6 marks every dialog-opening entry with an ellipsis; a parameterless
+        // entry applies straight away and stays bare.
+        registry_->setLabelProvider(id, [captured]() {
+            return captured.params.isEmpty() ? captured.label
+                                             : captured.label + QStringLiteral("…");
+        });
+        registry_->setEnabledProvider(id, [this]() {
+            PictureView* view = activeView();
+            return view && filter_target_ready(*view);
+        });
+    }
+
+    // Filter > Last Filter: re-apply the last committed filter with no dialog.
+    registry_->setHandler(command_ids::FilterLastFilter, [this]() {
+        PictureView* view = activeView();
+        if (!view || !filter_has_last(*view)) {
+            return;
+        }
+        if (apply_filter_params(*view, filter_last_kind(*view), filter_last_params(*view))) {
+            refresh();
+        } else {
+            reportFilterRefusal(view);
+        }
+    });
+    registry_->setEnabledProvider(command_ids::FilterLastFilter, [this]() {
+        PictureView* view = activeView();
+        return view && view->has_document() && filter_has_last(*view) && filter_target_ready(*view);
+    });
+    registry_->setLabelProvider(command_ids::FilterLastFilter, [this]() {
+        PictureView* view = activeView();
+        const FilterCommandSpec* spec =
+            view ? filterCommandForKind(filter_last_kind(*view)) : nullptr;
+        return spec ? spec->label : QStringLiteral("Last Filter");
+    });
+
+    // Filter > Last Filter Settings: reopen the last filter's dialog prefilled.
+    registry_->setHandler(command_ids::FilterLastFilterSettings, [this]() {
+        PictureView* view = activeView();
+        if (!view || !filter_has_last(*view)) {
+            return;
+        }
+        const FilterCommandSpec* spec = filterCommandForKind(filter_last_kind(*view));
+        if (!spec || spec->params.isEmpty()) {
+            return;
+        }
+        QList<double> values;
+        if (FilterPreviewDialog::get(view, *spec, previewViewFor(imageView()),
+                                     filter_last_params(*view), &values, this)) {
+            if (apply_filter_params(*view, spec->kind, values)) {
+                refresh();
+            } else {
+                reportFilterRefusal(view);
+            }
+        }
+    });
+    registry_->setEnabledProvider(command_ids::FilterLastFilterSettings, [this]() {
+        PictureView* view = activeView();
+        if (!view || !view->has_document() || !filter_has_last(*view) || !filter_target_ready(*view)) {
+            return false;
+        }
+        const FilterCommandSpec* spec = filterCommandForKind(filter_last_kind(*view));
+        return spec && !spec->params.isEmpty();
+    });
+}
+
+} // namespace pictura

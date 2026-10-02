@@ -6,25 +6,9 @@ namespace {
 
 // ponytail: unimplemented leaves get path-derived ids; swap in frozen
 // command_ids once each gains a handler.
-QString idFor(const QStringList& path) {
-    QString id;
-    for (const QString& segment : path) {
-        for (const QChar c : segment) {
-            if (c.isLetterOrNumber()) {
-                id += c.toLower();
-            } else if (c == QLatin1Char(' ') || c == QLatin1Char('-')) {
-                id += QLatin1Char('.');
-            }
-        }
-        id += QLatin1Char('.');
-    }
-    id.chop(1);
-    return id;
-}
-
 void leaf(CommandRegistry& registry, const QStringList& path, const QString& label,
           const QString& shortcut = QString()) {
-    registry.add(idFor(path), path, label,
+    registry.add(commandIdForPath(path), path, label,
                  shortcut.isEmpty() ? QKeySequence() : QKeySequence(shortcut));
 }
 
@@ -580,7 +564,11 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QStringLiteral("Load Selection…"), QKeySequence(), true);
 
     // Filter
-    leaf(registry, {"Filter", "Last Filter"}, QStringLiteral("Last Filter"), QStringLiteral("Ctrl+F"));
+    registry.add(command_ids::FilterLastFilter, {"Filter", "Last Filter"},
+                 QStringLiteral("Last Filter"), QKeySequence(QStringLiteral("Ctrl+F")), true);
+    registry.add(command_ids::FilterLastFilterSettings, {"Filter", "Last Filter Settings…"},
+                 QStringLiteral("Last Filter Settings…"),
+                 QKeySequence(QStringLiteral("Ctrl+Alt+F")), true);
     leaf(registry, {"Filter", "Convert for Smart Filters"},
          QStringLiteral("Convert for Smart Filters"));
     registry.addSeparator({"Filter"});
@@ -605,6 +593,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Filter", "Blur", "Lens Blur"}, QStringLiteral("Lens Blur"));
     leaf(registry, {"Filter", "Blur", "Smart Blur"}, QStringLiteral("Smart Blur"));
     leaf(registry, {"Filter", "Blur", "Average"}, QStringLiteral("Average"));
+    leaf(registry, {"Filter", "Blur", "Blur"}, QStringLiteral("Blur"));
+    leaf(registry, {"Filter", "Blur", "Blur More"}, QStringLiteral("Blur More"));
     leaf(registry, {"Filter", "Brush Strokes", "Accented Edges"}, QStringLiteral("Accented Edges"));
     leaf(registry, {"Filter", "Brush Strokes", "Angled Strokes"}, QStringLiteral("Angled Strokes"));
     leaf(registry, {"Filter", "Brush Strokes", "Crosshatch"}, QStringLiteral("Crosshatch"));

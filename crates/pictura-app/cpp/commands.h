@@ -55,6 +55,8 @@ inline constexpr char EditAssignProfile[] = "edit.assignProfile";
 inline constexpr char EditConvertProfile[] = "edit.convertProfile";
 inline constexpr char EditColorSettings[] = "edit.colorSettings";
 inline constexpr char FilterPicturaRaw[] = "filter.picturaRaw";
+inline constexpr char FilterLastFilter[] = "filter.last";
+inline constexpr char FilterLastFilterSettings[] = "filter.lastSettings";
 inline constexpr char ImageRotate90Cw[] = "image.rotate90cw";
 inline constexpr char ImageRotate90Ccw[] = "image.rotate90ccw";
 inline constexpr char ImageRotate180[] = "image.rotate180";
@@ -178,6 +180,10 @@ public:
 
     void setHandler(const QString& id, std::function<void()> handler);
 
+    // Mark an already-added command as implemented (used to light up leaves
+    // registered as stubs once their handler is wired).
+    void setImplemented(const QString& id, bool implemented);
+
     // Extra enablement predicate for `id`; combined with `implemented` and the
     // presence of a handler.
     void setEnabledProvider(const QString& id, std::function<bool()> enabled);
@@ -228,5 +234,9 @@ private:
 // (docs/02-ui-ux/menus.md). Commands without a handler are added with
 // `implemented = false`; the ids in `command_ids` are added as implemented.
 void addDefaultCommands(CommandRegistry& registry);
+
+// The stable id derived from a command path's segments (path-derived stubs and
+// their handlers must agree on this, so both call it).
+QString commandIdForPath(const QStringList& path);
 
 } // namespace pictura

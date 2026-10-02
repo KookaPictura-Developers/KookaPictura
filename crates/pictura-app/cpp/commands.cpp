@@ -39,6 +39,16 @@ void CommandRegistry::setHandler(const QString& id, std::function<void()> handle
     handlers_.insert(id, std::move(handler));
 }
 
+void CommandRegistry::setImplemented(const QString& id, bool implemented)
+{
+    for (Entry& entry : entries_) {
+        if (!entry.spec.id.isEmpty() && entry.spec.id == id) {
+            entry.spec.implemented = implemented;
+            return;
+        }
+    }
+}
+
 bool CommandRegistry::hasHandler(const QString& id) const
 {
     return handlers_.contains(id);
@@ -204,6 +214,23 @@ QList<CommandInfo> CommandRegistry::describe() const
         infos.append(info);
     }
     return infos;
+}
+
+QString commandIdForPath(const QStringList& path)
+{
+    QString id;
+    for (const QString& segment : path) {
+        for (const QChar c : segment) {
+            if (c.isLetterOrNumber()) {
+                id += c.toLower();
+            } else if (c == QLatin1Char(' ') || c == QLatin1Char('-')) {
+                id += QLatin1Char('.');
+            }
+        }
+        id += QLatin1Char('.');
+    }
+    id.chop(1);
+    return id;
 }
 
 } // namespace pictura

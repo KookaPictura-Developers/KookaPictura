@@ -585,6 +585,12 @@ int pictura::runControlChecks(pictura::PicturaMainWindow& frame)
     }
     ST_PASS("code=%s", qPrintable(errorCode(response)));
 
+    // The filters above may now alter transparency (an unlocked layer's alpha is
+    // filtered), so restore the pre-filter layer before the translate check
+    // below, which assumes an opaque layer covers the one beneath it.
+    request(visionSocket, 80, QStringLiteral("edit"),
+            QJsonObject{{QStringLiteral("op"), QStringLiteral("undo")}}, &parsed);
+
     response = request(visionSocket, 53, QStringLiteral("layer_op"),
                        QJsonObject{{QStringLiteral("op"), QStringLiteral("set_opacity")},
                                    {QStringLiteral("index"), 0},
