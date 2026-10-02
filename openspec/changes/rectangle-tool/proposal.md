@@ -53,8 +53,8 @@ Ported from photorust's `core/src/shape.rs` and its shell's
 outlines to points; here they stay cubic Beziers. Behavioural parity only: no
 CS6 oracle exists for the drawn geometry or history labels (`"Rectangle Tool"`
 is approximated); the authored `vmsk` is checked against psd-tools.
-Ceiling (`ponytail:`): a click does not open the "Create Rectangle" dialog; no
-Stroke, gradient or pattern Fill, geometry pop-up (Fixed Size, Proportional,
-From Center as a setting, Snap To Pixels), path operations (Shift / Alt at the
+The click-to-create dialogs and live shapes are the `live-shapes` change.
+Ceiling (`ponytail:`): no Stroke, gradient or pattern Fill, geometry pop-up (Fixed Size, Proportional,
+Snap To Pixels), path operations (Shift / Alt at the
 press do not combine), Align Edges, or Fill Pixels blend mode / opacity /
 anti-alias toggle (Pixels always paints Normal, 100 %, anti-aliased).

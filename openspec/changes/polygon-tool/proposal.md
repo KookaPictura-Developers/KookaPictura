@@ -30,4 +30,4 @@ and modes of the `rectangle-tool` change.
 
 Ported from photorust's `core/src/shape.rs`
 (<https://github.com/perfecto25/photorust/blob/bab90b3305ec3675e7fce4b2d617905a10739241/core/src/shape.rs>). Behavioural parity only: no CS6 oracle exists for
-the drawn geometry. Ceiling (`ponytail:`): as `rectangle-tool`, plus no star (Indent Sides By), Smooth Corners / Indents, or fixed Radius. The polygon turns to follow the pointer, as photorust's does (CS6 behaviour unsourced); `docs/03-tools/shape-tools.md`'s "upright" start angle holds for a drag straight up.
+the drawn geometry. Ceiling (`ponytail:`): as `rectangle-tool`, plus no star or smoothing on a drag (the Create Polygon dialog of the `live-shapes` change has them) and no fixed Radius. The polygon turns to follow the pointer, as photorust's does (CS6 behaviour unsourced); `docs/03-tools/shape-tools.md`'s "upright" start angle holds for a drag straight up.
