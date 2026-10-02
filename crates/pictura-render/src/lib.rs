@@ -86,7 +86,7 @@ pub use gpu::{
 };
 
 mod filter;
-pub use filter::apply_filter;
+pub use filter::{apply_filter, apply_filter_region, preview_apron};
 
 pub mod locks;
 

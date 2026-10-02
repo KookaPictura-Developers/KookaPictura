@@ -1,4 +1,5 @@
 #include "pictura_raw_dialog.h"
+#include "dialogs.h"
 
 #include <QtCore/QString>
 #include <QtWidgets/QDialogButtonBox>
@@ -70,7 +71,7 @@ QList<double> PicturaRawDialog::values() const
 bool PicturaRawDialog::get(QWidget* parent, const QList<double>& initial, QList<double>* out)
 {
     PicturaRawDialog dialog(initial, parent);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return false;
     }
     *out = dialog.values();

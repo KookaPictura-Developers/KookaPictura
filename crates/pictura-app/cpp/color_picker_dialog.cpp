@@ -1,4 +1,5 @@
 #include "color_picker_dialog.h"
+#include "dialogs.h"
 
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
@@ -977,7 +978,7 @@ QColor ColorPickerDialog::selectedColor() const
 QColor ColorPickerDialog::getColor(const QColor& initial, QWidget* parent, const QString& title)
 {
     ColorPickerDialog dialog(initial, parent, title);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return {};
     }
     return dialog.selectedColor();

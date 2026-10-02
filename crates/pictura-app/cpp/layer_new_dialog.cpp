@@ -1,4 +1,5 @@
 #include "layer_new_dialog.h"
+#include "dialogs.h"
 
 #include "panels/layers_panel_internal.h"
 #include "panels/numeric_field.h"
@@ -140,7 +141,7 @@ LayerNewSpec LayerNewDialog::spec() const
 bool LayerNewDialog::getNameColor(QWidget* parent, const QString& defaultName, LayerNewSpec* out)
 {
     LayerNewDialog dialog(defaultName, parent);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return false;
     }
     *out = dialog.spec();
@@ -150,7 +151,7 @@ bool LayerNewDialog::getNameColor(QWidget* parent, const QString& defaultName, L
 bool LayerNewDialog::get(bool group, QWidget* parent, LayerNewSpec* out)
 {
     LayerNewDialog dialog(group, parent);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, parent) != QDialog::Accepted) {
         return false;
     }
     *out = dialog.spec();

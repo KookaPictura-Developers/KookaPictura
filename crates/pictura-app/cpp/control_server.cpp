@@ -22,6 +22,7 @@
 
 #include "commands.h"
 #include "dialogs.h"
+#include "filter_commands.h"
 #include "frame.h"
 #include "image_view.h"
 #include "panels/panel_column.h"
@@ -77,7 +78,22 @@ bool isModalCommand(const QString& id)
         QString::fromLatin1(command_ids::SelectLoad),
         QString::fromLatin1(command_ids::HelpAbout),
     };
-    return kModal.contains(id);
+    if (kModal.contains(id)) {
+        return true;
+    }
+    // Every parameterised Filter entry opens its dialog and blocks the GUI
+    // thread the same way; derive them from the command table so a new filter
+    // cannot be forgotten here.
+    static const QSet<QString> kFilterDialogs = [] {
+        QSet<QString> ids;
+        for (const FilterCommandSpec& spec : filterCommands()) {
+            if (!spec.params.isEmpty()) {
+                ids.insert(commandIdForPath(spec.path));
+            }
+        }
+        return ids;
+    }();
+    return kFilterDialogs.contains(id);
 }
 
 QString screenModeName(PicturaMainWindow::ScreenMode mode)

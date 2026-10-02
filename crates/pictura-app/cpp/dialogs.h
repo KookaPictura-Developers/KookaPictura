@@ -6,6 +6,7 @@
 #include <QtCore/QList>
 
 class QComboBox;
+class QDialog;
 class QWidget;
 
 namespace pictura {
@@ -13,6 +14,12 @@ namespace pictura {
 class PictureView;
 
 enum class UnsavedChoice { Save, Discard, Cancel };
+
+// Show `dialog` and block input to `parent`'s top-level window without using a
+// modal window hint, so the window compositor's modal-parent dim never fires.
+// Returns the dialog's result code. With no parent (tests) this is a plain
+// exec(). Every app dialog that used to call `dialog.exec()` should use this.
+int runDialog(QDialog& dialog, QWidget* parent);
 
 // Ask what to do with a modified document before closing/reverting/replacing it.
 // A frame-to-front save prompt is expected when the choice is Save.

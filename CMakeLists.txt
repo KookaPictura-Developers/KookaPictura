@@ -86,6 +86,10 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/hdr_conversion_dialog.cpp
     crates/pictura-app/cpp/pictura_raw_dialog.cpp
     crates/pictura-app/cpp/warp_preset_dialog.cpp
+    crates/pictura-app/cpp/filter_commands.cpp
+    crates/pictura-app/cpp/filter_commands.h
+    crates/pictura-app/cpp/filter_preview_dialog.cpp
+    crates/pictura-app/cpp/filter_preview_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/export_as_dialog.cpp
@@ -103,6 +107,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus.cpp
     crates/pictura-app/cpp/frame_menus_select.cpp
     crates/pictura-app/cpp/frame_menus_edit.cpp
+    crates/pictura-app/cpp/frame_menus_filter.cpp
     crates/pictura-app/cpp/frame_recent.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
