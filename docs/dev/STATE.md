@@ -153,6 +153,38 @@ Snapshot for resuming after a context break. Update after each milestone.
   workspace), and Flame/Picture Frame (CC 2014.2, non-goals) stay unported, and
   the Filter menu entries and per-filter dialogs remain disabled stubs — their
   wiring is a separate follow-up.
+- **Filter menu wiring and dialogs** (change `filter-menu-ui`, issue #82, ported
+  from photorust): the CS6 `Filter` menu is live. `cxxqt_object/filter_map.rs`
+  exposes `pub(super) filter_from_kind_params(kind, &[f64])` (empty slice = the
+  documented defaults; a wrong-length slice is refused), with `filter_from_kind`
+  delegating to it; its `FILTER_ARITIES` table recognises the parameterless
+  kernels too, including `Blur`, `Blur More`, and `Oil Paint`. `PictureView`
+  gains `apply_filter_params`, `filter_preview`, `filter_preview_cancel`,
+  `filter_last_kind`/`filter_last_params`, and `filter_target_ready`. Preview
+  filters a snapshot of the active layer and never records history; cancel
+  restores bit-identically; commit records one `"Filter"` state and stores the
+  last filter. `cpp/filter_commands.{h,cpp}` holds one row per implemented leaf,
+  `cpp/filter_preview_dialog.{h,cpp}` is the shared CS6-style dialog (thumbnail
+  with magnifier zoom icons and a percentage readout + Preview checkbox; Radial
+  Blur drops the thumbnail), and `cpp/frame_menus_filter.cpp` wires the menu,
+  `Last Filter` (`Ctrl+F`), and `Last Filter Settings` (`Ctrl+Alt+F`), marking
+  every dialog entry with a trailing `…`. Filters now run on single-channel
+  (Grayscale) layers too: `pictura-render::apply_filter` replicates channel `0`
+  across the three working planes and writes the filtered plane back to channel
+  `0`. An unlocked layer's transparency is filtered with the same kernel (a
+  transparency lock keeps alpha and skips clear pixels); `apply_filter_region`
+  plus `preview_apron` bound a preview to the visible section, and the dialog
+  thumbnail shows that section at the canvas zoom. Every app dialog is presented
+  through `runDialog` (`dialogs.{h,cpp}`) —
+  non-modal with a parent input blocker and its own event loop, so KWin's
+  "Dialog Parent" dim never fires (capability `ui/dialog-presentation`). Checked
+  by the Qt Test suite
+  `tst_filter_menu`; `commandIdForPath` centralizes the path-derived filter ids.
+  Ceilings (`ponytail:`): entries with no engine kernel (Filter Gallery, Liquify,
+  Vanishing Point, Lens Correction, Blur Gallery, Lens/Smart Blur, Reduce Noise,
+  Glass, Diffuse Glow, Diffuse, Glowing Edges, De-Interlace, NTSC Colors,
+  Digimarc) and `Custom`, which needs a caller-supplied 5×5 kernel and has no
+  fixed default, stay disabled stubs; the alpha pass reruns the kernel on the CPU.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved

@@ -38,14 +38,29 @@ pub fn apply_filter(
 
 Semantics:
 - `lw = rect.width()`, `lh = rect.height()`; if either is `<= 0` → `Ok(())`.
-- Extract channels `0,1,2` into a planar `PixelBuffer` of size `lw × lh × 3`.
-  A missing channel or a data length `!= lw*lh` → `FilterError::InvalidParams`.
+- Extract the color channels into a planar `PixelBuffer` of size `lw × lh × 3`.
+  A color layer contributes `0,1,2`; a Grayscale layer (only channel `0`
+  present) has channel `0` replicated across the three planes and the filtered
+  plane written back to channel `0`. A data length `!= lw*lh`, a missing
+  channel `0`, or a mix of present/missing `1`/`2` → `FilterError::InvalidParams`.
 - Apply the filter to that buffer (filter validation still applies).
 - Gate back per local pixel `(lx,ly)` at document coords
   `(rect.left+lx, rect.top+ly)`: `coverage` = the mask value there (outside the
   mask rect use `mask.default_color`) or `255` when `mask` is `None`; write
-  `round(orig + (filtered − orig) * coverage/255)` into channels `0,1,2`.
-- Do not touch channel `-1`; do not change `rect`, `mask`, opacity, or blend.
+  `round(orig + (filtered − orig) * coverage/255)` into channels `0,1,2`, or
+  into channel `0` alone for a Grayscale layer.
+- Filter channel `-1` (transparency) with the same kernel when the layer is not
+  transparency-locked, writing the masked result back too; a transparency lock
+  keeps `-1` bit-identical and leaves pixels whose alpha is 0 untouched. Do not
+  change `rect`, `mask`, opacity, or blend.
+
+`apply_filter_region(layer, filter, mask, gpu_enabled, region)` applies the same
+filter over a document rect clamped to the layer rect, leaving every pixel
+outside it unchanged; a neighborhood filter reads up to its support outside the
+rect, where the source is clamped. `preview_apron(filter)` returns a conservative
+support margin. A filter-dialog preview passes the visible viewport rect expanded
+by that apron, so dragging a control costs at most a viewport while the visible
+area stays exact; OK still filters the whole layer.
 
 ```rust
 // crates/pictura-app (PictureView qobject)

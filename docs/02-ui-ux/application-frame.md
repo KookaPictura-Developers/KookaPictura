@@ -163,6 +163,17 @@ CS6 has three screen modes, cycled with `F` (forward) and `Shift+F` (backward)
   Windows taskbar behavior for floated documents is not documented and is left
   to `## Open questions`.
 
+### Modal dialogs
+
+- An application dialog (a filter's parameter dialog, New Document, File Info,
+  Preferences, Layer…) opens **without a modal window hint**, so the window
+  compositor does not dim or fade the parent window (KWin's "Dialog Parent"
+  effect). The shell blocks input to the parent top-level window with an event
+  filter and runs the dialog's own event loop; the caller receives the same
+  result a modal `exec()` would return. A dialog with no parent runs with a
+  plain `exec()`, and a file dialog that hands off to a platform/portal chooser
+  keeps the platform's own modality.
+
 ## UI surface
 
 | Location | Type | Shortcut | Notes |
