@@ -211,6 +211,17 @@ QWidget#toolsPanel { border: ${borderWidth}px solid ${border}; }
 QWidget#panelIconFlyout { background: ${window}; border: ${borderWidth}px solid ${border}; }
 QWidget#panelFloat { background: ${window}; border: ${borderWidth}px solid ${border}; }
 
+/* Info panel readout grid: only the inner cross of the 2x2 table is drawn, in
+   the frame shade; the outer edge is the panel pane itself. The blocks flag
+   their inner sides with the `gridRight`/`gridBottom` dynamic properties. */
+QWidget#infoBlock[gridRight="true"] { border-right: 1px solid ${border}; }
+QWidget#infoBlock[gridBottom="true"] { border-bottom: 1px solid ${border}; }
+QWidget#infoRule { background: ${border}; }
+/* The readout icons are menu affordances, not buttons: bare icon at rest. */
+QWidget#infoBlock QToolButton { background: transparent; border: 0; padding: 2px; }
+QWidget#infoBlock QToolButton:hover { background: ${hover}; }
+QWidget#infoBlock QToolButton:pressed { background: ${pressed}; }
+
 QTabWidget::tab-bar { alignment: left; }
 
 QStatusBar { background: ${window}; color: ${windowText}; border-top: 1px solid ${border}; }
@@ -240,6 +251,9 @@ QWidget#percentField QToolButton:hover { background: ${hover}; }
 QWidget#percentField QToolButton:disabled { color: ${disabledText}; }
 QWidget#percentField QSlider::groove:horizontal { height: 4px; background: ${border}; border-radius: 2px; }
 QWidget#percentField QSlider::handle:horizontal { width: 10px; margin: -4px 0; background: ${buttonText}; border-radius: 3px; }
+/* The shared RampSlider keeps its gradient in the widget stylesheet; the frame
+   line lives here so it follows the brightness level. */
+QSlider#rampSlider::groove:horizontal { border: 1px solid ${border}; }
 
 QWidget#layersFilterBar { background: ${window}; border-bottom: 1px solid ${border}; }
 QWidget#layersFilterBar QComboBox, QWidget#layersFilterBar QLineEdit { background: ${base}; color: ${text}; border: 1px solid ${border}; border-radius: 2px; padding: 1px 2px; }

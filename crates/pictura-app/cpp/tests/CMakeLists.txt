@@ -9,6 +9,12 @@ set(PICTURA_QT_TESTS
     tst_pen_tools
     tst_path_selection_tools
     tst_type_tools
+    tst_shared_widgets
+    tst_info_panel
+    tst_swatches_panel
+    tst_properties_panel
+    tst_channels_panel
+    tst_icon_assets
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)

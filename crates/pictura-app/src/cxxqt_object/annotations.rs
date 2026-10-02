@@ -12,7 +12,7 @@ use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
 use pictura_core::{
-    Annotations, MarkerKind, Ruler, COUNT_LABEL_SIZE_MAX, COUNT_LABEL_SIZE_MIN,
+    Annotations, Layer, MarkerKind, Ruler, COUNT_LABEL_SIZE_MAX, COUNT_LABEL_SIZE_MIN,
     COUNT_MARKER_SIZE_MAX, COUNT_MARKER_SIZE_MIN,
 };
 
@@ -81,6 +81,9 @@ pub mod ffi {
 
         /// The Ruler readout `[X, Y, W, H, A (degrees), D1]`; empty when there is no line.
         fn ruler_measurement(view: &PictureView) -> Vec<f64>;
+
+        /// The document's `[memory, disk]` byte footprint; empty without a document.
+        fn document_size_bytes(view: &PictureView) -> Vec<f64>;
 
         /// The number of Count groups (always at least one).
         fn count_group_count(view: &PictureView) -> i32;
@@ -306,6 +309,44 @@ fn ruler_measurement(view: &PictureView) -> Vec<f64> {
         let m = r.measure();
         vec![m.x, m.y, m.width, m.height, m.angle, m.distance]
     })
+}
+
+/// Owned bytes of a layer's channel planes, mask, and every descendant's.
+fn layer_plane_bytes(layer: &Layer) -> usize {
+    let mut total: usize = layer
+        .channels
+        .iter()
+        .map(|channel| channel.data.len())
+        .sum();
+    if let Some(data) = layer.mask.as_ref().and_then(|mask| mask.data.as_ref()) {
+        total += data.len();
+    }
+    for child in &layer.children {
+        total += layer_plane_bytes(child);
+    }
+    total
+}
+
+/// The document's pixel-plane memory footprint and on-disk file size in bytes as
+/// `[memory, disk]`; empty without a document.
+fn document_size_bytes(view: &PictureView) -> Vec<f64> {
+    let rust = view.rust();
+    let Some(doc) = rust.doc.as_ref() else {
+        return Vec::new();
+    };
+    let mut memory = doc.composite.data.len();
+    for layer in &doc.layers {
+        memory += layer_plane_bytes(layer);
+    }
+    for channel in &doc.channels {
+        memory += channel.data.len();
+    }
+    let disk = rust
+        .path
+        .as_deref()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map_or(0.0, |metadata| metadata.len() as f64);
+    vec![memory as f64, disk]
 }
 
 // --- Count groups (Photoshop Extended) --------------------------------------

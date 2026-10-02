@@ -20,7 +20,10 @@
 //! and classified no-equivalent; see the table. The M11 Distort filters
 //! (`PolarCoordinates`, `Shear`, `ZigZag`, `OceanRipple`) were measured against
 //! `-distort Polar`/`DePolar`, `-shear`, `-swirl` and `-wave` and are likewise
-//! no-equivalent; see the table.
+//! no-equivalent; see the table. The missing-filter-kernels batch
+//! (`DustAndScratches`, `Extrude`, `Tiles`, `TraceContour`, `Wind`,
+//! `SmartSharpen`) is no-equivalent as well and is covered by property and
+//! known-value tests in the module unit tests; see the table.
 //!
 //! Regenerate/inspect a result manually with `scripts/filter_oracle.py`; see
 //! `tests/README.md`.

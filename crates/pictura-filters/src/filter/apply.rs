@@ -493,5 +493,53 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             *angular_direction,
             *shine,
         ),
+        Filter::DustAndScratches { radius, threshold } => {
+            noise::dust_and_scratches(buf, *radius, *threshold)
+        }
+        Filter::Extrude {
+            kind,
+            size,
+            depth,
+            level_based,
+            solid_front,
+            mask_incomplete,
+        } => stylize::extrude(
+            buf,
+            *kind,
+            *size,
+            *depth,
+            *level_based,
+            *solid_front,
+            *mask_incomplete,
+        ),
+        Filter::Tiles {
+            count,
+            offset,
+            fill,
+            foreground,
+            background,
+        } => stylize::tiles(buf, *count, *offset, *fill, *foreground, *background),
+        Filter::TraceContour { level, edge } => stylize::trace_contour(buf, *level, *edge),
+        Filter::Wind { method, from_right } => stylize::wind(buf, *method, *from_right),
+        Filter::SmartSharpen {
+            amount,
+            radius,
+            reduce_noise,
+            remove,
+            angle,
+            more_accurate,
+            shadow,
+            highlight,
+        } => sharpen::smart_sharpen(
+            buf,
+            *amount,
+            *radius,
+            *reduce_noise,
+            *remove,
+            *angle,
+            *more_accurate,
+            *shadow,
+            *highlight,
+        ),
     }
 }
