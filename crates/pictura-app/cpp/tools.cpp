@@ -60,6 +60,7 @@ std::unique_ptr<ToolHandler> makeGradientToolHandler();
 std::unique_ptr<ToolHandler> makePaintBucketToolHandler();
 std::unique_ptr<ToolHandler> makeRetouchToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makePenToolHandler(ToolId id);
+std::unique_ptr<ToolHandler> makeTypeToolHandler(ToolId id);
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
@@ -108,6 +109,10 @@ ToolController::ToolController(QObject* parent)
     for (ToolId id : {ToolId::Pen, ToolId::FreeformPen, ToolId::AddAnchorPoint,
                       ToolId::DeleteAnchorPoint, ToolId::ConvertPoint}) {
         registry_.registerTool(id, makePenToolHandler(id));
+    }
+    for (ToolId id : {ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
+                      ToolId::VerticalTypeMask}) {
+        registry_.registerTool(id, makeTypeToolHandler(id));
     }
     // A size change from the options bar or `[`/`]` moves the hover ring at
     // once. Query the pointer so a stale position is never reused after leave.
@@ -167,6 +172,35 @@ void ToolController::setActiveTool(ToolId id)
 }
 
 void ToolController::setCombineMode(SelectionMode mode) { mode_ = mode; }
+
+void ToolController::setTypeOptions(const TypeOptions& options)
+{
+    type_ = options;
+    type_.size = std::clamp(options.size, 1.0, 1296.0);
+    type_.justification = std::clamp(options.justification, 0, 2);
+    emit typeOptionsChanged();
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onOptionsChanged(*this);
+    }
+}
+
+bool ToolController::commitText()
+{
+    ToolHandler* h = registry_.forTool(active_);
+    return h && h->commitText();
+}
+
+bool ToolController::cancelText()
+{
+    ToolHandler* h = registry_.forTool(active_);
+    return h && h->cancelText();
+}
+
+bool ToolController::textActive() const
+{
+    ToolHandler* h = registry_.forTool(active_);
+    return h && h->textActive();
+}
 
 void ToolController::setPenOptions(const PenOptions& options)
 {

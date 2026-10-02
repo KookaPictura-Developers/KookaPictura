@@ -862,6 +862,19 @@ public:
                 if (!glyph.isNull()) {
                     painter->drawPixmap(box, glyph);
                 }
+            } else if (index.data(KindRole).toString() == QLatin1String("type")) {
+                // CS6 shows a type layer as a T on white, not its pixels; the
+                // stroke is `layers.kindType`'s glyph, dark for the white card.
+                painter->fillRect(shaped, Qt::white);
+                const QRectF t = QRectF(box).adjusted(thumb / 4.0, thumb / 4.0, -thumb / 4.0,
+                                                      -thumb / 4.0);
+                painter->save();
+                painter->setRenderHint(QPainter::Antialiasing, true);
+                painter->setPen(QPen(QColor(0x20, 0x20, 0x20), qMax(1.5, thumb / 12.0)));
+                painter->drawLine(t.topLeft(), t.topRight());
+                painter->drawLine(QPointF(t.center().x(), t.top()),
+                                  QPointF(t.center().x(), t.bottom()));
+                painter->restore();
             } else {
                 painter->drawTiledPixmap(shaped, checkerTile());
                 const QImage image = index.data(ThumbnailRole).value<QImage>();
