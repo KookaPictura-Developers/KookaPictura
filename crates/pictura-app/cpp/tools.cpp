@@ -231,9 +231,16 @@ void ToolController::setShapeOptions(const ShapeOptions& options)
     shape_.arrowLength = std::clamp(options.arrowLength, 10.0, 5000.0);
     shape_.arrowConcavity = std::clamp(options.arrowConcavity, -50.0, 50.0);
     shape_.custom = std::max(options.custom, 0);
+    shape_.strokeWidth = std::clamp(options.strokeWidth, 1.0, 250.0);
+    shape_.strokeAlign = std::clamp(options.strokeAlign, 0, 2);
+    shape_.geometry = std::clamp(options.geometry, 0, 2);
+    shape_.fixedWidth = std::max(options.fixedWidth, 0.01);
+    shape_.fixedHeight = std::max(options.fixedHeight, 0.01);
+    shape_.indent = std::clamp(options.indent, 1.0, 99.0);
     if (ToolHandler* h = registry_.forTool(active_)) {
         h->onOptionsChanged(*this);
     }
+    emit shapeOptionsChanged();
 }
 
 void ToolController::setMarqueeStyle(MarqueeStyle style) { marqueeStyle_ = style; }

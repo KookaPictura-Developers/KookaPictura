@@ -162,8 +162,13 @@ struct PenOptions {
 // 1 Path / 2 Pixels, the Rounded Rectangle's corner Radius in pixels (0-1000),
 // the Polygon's Sides (3-100), the Line's Weight (1-1000 px) and arrowheads
 // (Start / End, Width 10-1000 % and Length 10-5000 % of the weight, Concavity
-// -50-50 %), and the Custom Shape's index. The fill colour is the foreground
-// colour.
+// -50-50 %), and the Custom Shape's index. The appearance: Fill (an invalid
+// `fillColor` follows the foreground colour) and Stroke (colour, width px,
+// Align 0 Inside / 1 Center / 2 Outside). The geometry gear: 0 Unconstrained /
+// 1 Square, Circle, or Defined Proportions / 2 Fixed Size, and From Center;
+// the Polygon's star and smoothing. Align Edges. `activeWidth` /
+// `activeHeight` mirror the active shape layer's size (0 without one); the
+// W / H fields edit it, `linkSize` keeping its proportions.
 struct ShapeOptions {
     int mode = 0;
     double radius = 10.0;
@@ -175,6 +180,24 @@ struct ShapeOptions {
     double arrowLength = 1000.0;
     double arrowConcavity = 0.0;
     int custom = 0;
+    bool fillEnabled = true;
+    QColor fillColor;
+    bool strokeEnabled = false;
+    QColor strokeColor = Qt::black;
+    double strokeWidth = 3.0;
+    int strokeAlign = 1;
+    int geometry = 0;
+    double fixedWidth = 100.0;
+    double fixedHeight = 100.0;
+    bool fromCenter = false;
+    bool star = false;
+    double indent = 50.0;
+    bool smoothCorners = false;
+    bool smoothIndents = false;
+    bool alignEdges = true;
+    double activeWidth = 0.0;
+    double activeHeight = 0.0;
+    bool linkSize = false;
 };
 
 // The Type tools' options bar, shared by all four (the tool is the
@@ -268,6 +291,8 @@ struct ToolContext {
     virtual BucketOptions bucketOptions() const = 0;
     virtual PenOptions penOptions() const = 0;
     virtual ShapeOptions shapeOptions() const = 0;
+    // Mirror the active shape layer into the options (the bar re-reads them).
+    virtual void setShapeOptions(const ShapeOptions& options) = 0;
     virtual TypeOptions typeOptions() const = 0;
     virtual void setTypeOptions(const TypeOptions& options) = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.

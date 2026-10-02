@@ -302,7 +302,7 @@ public:
     PenOptions penOptions() const override { return pen_; }
     void setPenOptions(const PenOptions& options);
     ShapeOptions shapeOptions() const override { return shape_; }
-    void setShapeOptions(const ShapeOptions& options);
+    void setShapeOptions(const ShapeOptions& options) override;
     TypeOptions typeOptions() const override { return type_; }
     void setTypeOptions(const TypeOptions& options) override;
     // The active Type tool's Commit / Cancel; false when no text is being typed.
@@ -437,6 +437,8 @@ signals:
     void textEditingChanged(bool active);
     // The Type options changed (the bar, or a reopened type layer's settings).
     void typeOptionsChanged();
+    // The shape options changed (the bar, or the active shape layer mirrored).
+    void shapeOptionsChanged();
 
 private:
     void applyToolPolicy();

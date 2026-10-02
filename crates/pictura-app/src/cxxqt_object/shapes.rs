@@ -38,7 +38,10 @@ pub mod ffi {
     /// Polygon's `sides`, `star` with `indent` (% of the radius), and smooth
     /// corners / indents; the Line's `weight` (px) and arrowheads (at the start
     /// / end, width and length in % of the weight, concavity %); the Custom
-    /// Shape's index (kind 4 Line, 5 Custom Shape).
+    /// Shape's index (kind 4 Line, 5 Custom Shape); `align_edges` snaps
+    /// straight edges to the pixel grid. A Shape-mode layer is filled unless
+    /// `no_fill`, and stroked when `stroke` (`stroke_color` `0xAARRGGBB`,
+    /// `stroke_width` px, `stroke_align` 0 inside / 1 centre / 2 outside).
     #[namespace = "pictura"]
     struct ShapeSpec {
         kind: i32,
@@ -65,6 +68,12 @@ pub mod ffi {
         arrow_length: f64,
         arrow_concavity: f64,
         custom: i32,
+        align_edges: bool,
+        no_fill: bool,
+        stroke: bool,
+        stroke_color: u32,
+        stroke_width: f64,
+        stroke_align: i32,
     }
 
     unsafe extern "C++" {
@@ -110,6 +119,24 @@ pub mod ffi {
         /// Custom shape `index` as a black silhouette on transparency in a `size` square, for the picker; null out of range.
         fn shape_custom_preview(index: i32, size: i32) -> QImage;
 
+        /// The active shape layer as `[width, height, fill_on, fill_argb, stroke_on, stroke_argb, stroke_width, stroke_align]` (flags 0/1, colours `0xAARRGGBB`); empty when the active layer is not a shape layer.
+        fn shape_active(view: &PictureView) -> Vec<f64>;
+
+        /// Fill the active shape layer with `argb`, or leave it unfilled (`on` false); one "Change Shape Fill" state. False (no state) when there is no active shape layer or nothing changed.
+        fn shape_set_active_fill(view: Pin<&mut PictureView>, on: bool, argb: u32) -> bool;
+
+        /// Stroke the active shape layer (`width` px, `align` 0 inside / 1 centre / 2 outside), or remove its stroke; one "Change Shape Stroke" state. False (no state) as for `shape_set_active_fill`.
+        fn shape_set_active_stroke(
+            view: Pin<&mut PictureView>,
+            on: bool,
+            argb: u32,
+            width: f64,
+            align: i32,
+        ) -> bool;
+
+        /// Scale the active shape layer's outline about its top-left corner to `width` x `height` px; one "Resize Shape" state. False (no state) as for `shape_set_active_fill`.
+        fn shape_resize_active(view: Pin<&mut PictureView>, width: f64, height: f64) -> bool;
+
         /// Whether Layers row `i` is a shape layer (a fill cut by a vector mask).
         fn shape_row_is_shape(view: &PictureView, i: i32) -> bool;
 
@@ -154,7 +181,25 @@ fn outline(spec: &ShapeSpec) -> Option<(ShapeKind, Subpath)> {
             spec.alt,
         )?
     };
+    let subpath = if spec.align_edges {
+        shape::align_edges(&subpath)
+    } else {
+        subpath
+    };
     Some((kind, subpath))
+}
+
+fn stroke_of(color: u32, width: f64, align: i32) -> pictura_render::ShapeStroke {
+    let c = rgba_from_argb(color);
+    pictura_render::ShapeStroke {
+        color: [c.r, c.g, c.b],
+        width: width.round().clamp(1.0, 250.0) as u32,
+        position: match align {
+            0 => pictura_render::StrokePosition::Inside,
+            2 => pictura_render::StrokePosition::Outside,
+            _ => pictura_render::StrokePosition::Center,
+        },
+    }
 }
 
 /// The live origin of a Shape-mode `kind` drawn as `outline`: its box and
@@ -223,6 +268,21 @@ fn shape_add_layer(mut view: Pin<&mut PictureView>, spec: &ShapeSpec, foreground
             None => String::new(),
         }
     };
+    if let Some(layer) = view
+        .as_mut()
+        .rust_mut()
+        .doc
+        .as_mut()
+        .and_then(|doc| pictura_render::resolve_path_mut(doc, &created))
+    {
+        if spec.no_fill {
+            pictura_render::set_shape_fill(layer, None);
+        }
+        if spec.stroke {
+            let stroke = stroke_of(spec.stroke_color, spec.stroke_width, spec.stroke_align);
+            pictura_render::set_shape_stroke(layer, Some(&stroke));
+        }
+    }
     if !created.is_empty() {
         view.as_mut().clear_link_sets();
         view.as_mut().recomposite();
@@ -289,6 +349,101 @@ fn shape_custom_preview(index: i32, size: i32) -> QImage {
     }
     let rgba = coverage.iter().flat_map(|&a| [0, 0, 0, a]).collect();
     rgba_image(rgba, size, size)
+}
+
+/// Apply `edit` to the active shape layer; when it changed something,
+/// recomposite and record `label`.
+fn edit_active(
+    mut view: Pin<&mut PictureView>,
+    label: &str,
+    edit: impl FnOnce(&mut Layer, u32, u32) -> bool,
+) -> bool {
+    let changed = {
+        let mut rust = view.as_mut().rust_mut();
+        let rust = &mut *rust;
+        let (Some(doc), Some(path)) = (rust.doc.as_mut(), rust.active_layer.as_deref()) else {
+            return false;
+        };
+        let (width, height) = (doc.width, doc.height);
+        pictura_render::resolve_path_mut(doc, path)
+            .filter(|layer| pictura_render::is_shape_layer(layer))
+            .is_some_and(|layer| edit(layer, width, height))
+    };
+    if changed {
+        view.as_mut().recomposite();
+        view.as_mut().record(label);
+    }
+    changed
+}
+
+fn argb(rgb: [u8; 3]) -> f64 {
+    f64::from(0xff00_0000 | u32::from(rgb[0]) << 16 | u32::from(rgb[1]) << 8 | u32::from(rgb[2]))
+}
+
+fn shape_active(view: &PictureView) -> Vec<f64> {
+    let rust = view.rust();
+    let Some((doc, layer)) = rust
+        .doc
+        .as_ref()
+        .zip(rust.active_layer.as_deref())
+        .and_then(|(doc, path)| {
+            pictura_render::resolve_path(doc, path)
+                .filter(|l| pictura_render::is_shape_layer(l))
+                .map(|l| (doc, l))
+        })
+    else {
+        return Vec::new();
+    };
+    let Some((l, t, r, b)) = pictura_render::shape_bounds(layer, doc.width, doc.height) else {
+        return Vec::new();
+    };
+    let fill = pictura_render::shape_fill(layer);
+    let stroke = pictura_render::shape_stroke(layer);
+    let flag = |on: bool| if on { 1.0 } else { 0.0 };
+    // `vmsk` stores 8.24 fractions of the canvas, so a drawn size comes back a
+    // few millionths off; the bar shows hundredths.
+    let size = |v: f64| (v * 1000.0).round() / 1000.0;
+    vec![
+        size(r - l),
+        size(b - t),
+        flag(fill.is_some()),
+        fill.map_or(0.0, argb),
+        flag(stroke.is_some()),
+        stroke.map_or(0.0, |s| argb(s.color)),
+        stroke.map_or(0.0, |s| f64::from(s.width)),
+        stroke.map_or(1.0, |s| match s.position {
+            pictura_render::StrokePosition::Inside => 0.0,
+            pictura_render::StrokePosition::Center => 1.0,
+            pictura_render::StrokePosition::Outside => 2.0,
+        }),
+    ]
+}
+
+fn shape_set_active_fill(view: Pin<&mut PictureView>, on: bool, argb: u32) -> bool {
+    let c = rgba_from_argb(argb);
+    let fill = on.then_some([c.r, c.g, c.b]);
+    edit_active(view, "Change Shape Fill", |layer, _, _| {
+        pictura_render::set_shape_fill(layer, fill)
+    })
+}
+
+fn shape_set_active_stroke(
+    view: Pin<&mut PictureView>,
+    on: bool,
+    argb: u32,
+    width: f64,
+    align: i32,
+) -> bool {
+    let stroke = on.then(|| stroke_of(argb, width, align));
+    edit_active(view, "Change Shape Stroke", |layer, _, _| {
+        pictura_render::set_shape_stroke(layer, stroke.as_ref())
+    })
+}
+
+fn shape_resize_active(view: Pin<&mut PictureView>, width: f64, height: f64) -> bool {
+    edit_active(view, "Resize Shape", |layer, w, h| {
+        pictura_render::resize_shape(layer, w, h, width, height)
+    })
 }
 
 /// Layers row `i`'s document and layer, when it is a shape layer.

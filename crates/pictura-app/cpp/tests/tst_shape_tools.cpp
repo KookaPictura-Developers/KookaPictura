@@ -17,6 +17,10 @@
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDoubleSpinBox>
+#include <QtWidgets/QListWidget>
+#include <QtWidgets/QMenu>
+#include <QtWidgets/QRadioButton>
+#include <QtWidgets/QToolButton>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QSpinBox>
@@ -50,7 +54,7 @@ T* visibleChild(pictura::PicturaMainWindow& frame, const QString& name)
 }
 
 // The foreground colour a check changes, restored on scope exit; the shape
-// options likewise.
+// options start at their defaults and are restored likewise.
 struct State {
     pictura::ToolController* tools;
     QColor foreground;
@@ -62,6 +66,8 @@ struct State {
         , shape(t->shapeOptions())
     {
         tools->setForeground(Qt::red);
+        // Defaults: the fill follows the foreground until a shape is mirrored.
+        tools->setShapeOptions({});
     }
     ~State()
     {
@@ -143,6 +149,7 @@ private slots:
     void liveShapes();
     void createDialogs();
     void lineAndCustomShape();
+    void optionsBar();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -516,14 +523,16 @@ void ShapeToolsTest::lineAndCustomShape()
     QVERIFY2(qAbs(line.right() - 90) < 1e-6 && qAbs(line.height() - 20) < 1e-6,
              "the tip reaches the release point; the head is 500 % of 4 px wide");
 
-    // The Custom Shape picker lists the built-in shapes with silhouettes.
+    // The Custom Shape picker's grid lists the built-in shapes as icons.
     frame.setActiveTool(pictura::ToolId::CustomShape);
-    auto* picker = visibleChild<QComboBox>(frame, QStringLiteral("optionsShapeCustom"));
-    QVERIFY(picker != nullptr);
-    QCOMPARE(picker->count(), 6);
-    QCOMPARE(picker->itemText(1), QStringLiteral("Heart"));
-    QVERIFY(!picker->itemIcon(1).isNull());
-    picker->setCurrentIndex(1);
+    auto* picker = visibleChild<QToolButton>(frame, QStringLiteral("optionsShapeCustom"));
+    QVERIFY(picker != nullptr && !picker->icon().isNull());
+    auto* grid = picker->menu()->findChild<QListWidget*>(QStringLiteral("optionsShapeCustomGrid"));
+    QVERIFY(grid != nullptr);
+    QCOMPARE(grid->count(), 6);
+    QCOMPARE(grid->item(1)->toolTip(), QStringLiteral("Heart"));
+    QVERIFY(!grid->item(1)->icon().isNull());
+    grid->setCurrentRow(1);
     QCOMPARE(f.tools->shapeOptions().custom, 1);
 
     // Shape mode: the heart lands on a "Shape 1" layer, not a live shape.
@@ -552,6 +561,110 @@ void ShapeToolsTest::lineAndCustomShape()
     QCOMPARE(seen, 1);
     QCOMPARE(f.view->layer_name(f.view->layer_count() - 1), QStringLiteral("Shape 2"));
     QCOMPARE(f.view->sample_argb(15, 16), kRed);
+}
+
+void ShapeToolsTest::optionsBar()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(100, 100, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_shape_bar_seed"));
+    QVERIFY2(f.ok(), "options bar fixture");
+    const State state(f.tools);
+    const QRgb kGreen = QColor(Qt::green).rgba();
+
+    // The bar carries CS6's controls; the unimplemented ones are disabled.
+    frame.setActiveTool(pictura::ToolId::Rectangle);
+    for (const char* name : {"optionsShapeFill", "optionsShapeStroke", "optionsShapeStrokeWidth",
+                             "optionsShapeStrokeType", "optionsShapeWidth", "optionsShapeHeight",
+                             "optionsShapeLinkSize", "optionsShapeGeometry",
+                             "optionsShapeAlignEdges"}) {
+        QVERIFY2(visibleChild<QWidget>(frame, QString::fromLatin1(name)), name);
+    }
+    for (const char* name : {"optionsShapePathOperations", "optionsShapePathAlignment",
+                             "optionsShapePathArrangement"}) {
+        auto* stub = visibleChild<QToolButton>(frame, QString::fromLatin1(name));
+        QVERIFY2(stub && !stub->isEnabled(), name);
+    }
+    auto* width = visibleChild<pictura::NumericField>(frame, QStringLiteral("optionsShapeWidth"));
+    QVERIFY(!width->isEnabled());
+
+    // A new shape takes the bar's appearance: no fill, a 2 px green inside
+    // stroke, and Align Edges snapping its edges to whole pixels.
+    pictura::ShapeOptions o = f.tools->shapeOptions();
+    o.fillEnabled = false;
+    o.strokeEnabled = true;
+    o.strokeColor = Qt::green;
+    o.strokeWidth = 2;
+    o.strokeAlign = 0;
+    f.tools->setShapeOptions(o);
+    f.drag({QPointF(10.4, 10.4), QPointF(30, 30), QPointF(40.4, 30.6)});
+    QCOMPARE(f.view->sample_argb(25, 20), kWhite);
+    QCOMPARE(f.view->sample_argb(10, 20), kGreen);
+    QCOMPARE(f.view->sample_argb(39, 20), kGreen);
+    QCOMPARE(f.view->sample_argb(8, 20), kWhite);
+
+    // The bar mirrors the selected shape: its size, and its fill and stroke.
+    QVERIFY(width->isEnabled());
+    QCOMPARE(width->value(), 30.0);
+    auto* height = visibleChild<pictura::NumericField>(frame, QStringLiteral("optionsShapeHeight"));
+    QCOMPARE(height->value(), 21.0);
+    QVERIFY(!f.tools->shapeOptions().fillEnabled);
+
+    // Restyling it: a red fill, then No Color for the stroke, one state each.
+    int base = f.view->history_index();
+    o = f.tools->shapeOptions();
+    o.fillEnabled = true;
+    o.fillColor = Qt::red;
+    f.tools->setShapeOptions(o);
+    QVERIFY2(f.committedOnce(base, "Change Shape Fill"), "restyle the fill");
+    QCOMPARE(f.view->sample_argb(25, 20), kRed);
+    auto* stroke = visibleChild<QToolButton>(frame, QStringLiteral("optionsShapeStroke"));
+    QAction* none = stroke->menu()->findChild<QAction*>(QStringLiteral("optionsShapeStrokeNone"));
+    QVERIFY(none != nullptr);
+    base = f.view->history_index();
+    none->trigger();
+    QVERIFY2(f.committedOnce(base, "Change Shape Stroke"), "remove the stroke");
+    QCOMPARE(f.view->sample_argb(10, 20), kRed);
+
+    // W / H resize it about its top-left; the link keeps its proportions.
+    auto* link = visibleChild<QToolButton>(frame, QStringLiteral("optionsShapeLinkSize"));
+    link->setChecked(true);
+    base = f.view->history_index();
+    emit width->valueCommitted(60.0);
+    QVERIFY2(f.committedOnce(base, "Resize Shape"), "resize the shape");
+    QCOMPARE(width->value(), 60.0);
+    QCOMPARE(height->value(), 42.0);
+    QCOMPARE(f.view->sample_argb(65, 48), kRed);
+    QCOMPARE(f.view->sample_argb(75, 48), kWhite);
+
+    // The geometry gear: Fixed Size from the centre places a 20 x 10 box on
+    // the pointer; Square constrains a drag.
+    auto* gear = visibleChild<QToolButton>(frame, QStringLiteral("optionsShapeGeometry"));
+    auto* fixed = gear->menu()->findChild<QRadioButton*>(QStringLiteral("optionsShapeGeometry2"));
+    QVERIFY(fixed != nullptr && fixed->text() == QStringLiteral("Fixed Size"));
+    fixed->click();
+    QCOMPARE(f.tools->shapeOptions().geometry, 2);
+    o = f.tools->shapeOptions();
+    o.fixedWidth = 20;
+    o.fixedHeight = 10;
+    o.fromCenter = true;
+    o.mode = 1;
+    f.tools->setShapeOptions(o);
+    f.drag({QPointF(50, 80), QPointF(70, 85)});
+    QCOMPARE(pictura::path_subpath_count(*f.view), 1);
+    QCOMPARE(subpathBounds(f, 0), QRectF(60, 80, 20, 10));
+    gear->menu()->findChild<QRadioButton*>(QStringLiteral("optionsShapeGeometry1"))->click();
+    gear->menu()->findChild<QCheckBox*>(QStringLiteral("optionsShapeFromCenter"))->setChecked(false);
+    QVERIFY(!f.tools->shapeOptions().fromCenter);
+    f.drag({QPointF(5, 60), QPointF(15, 62), QPointF(25, 64)});
+    QCOMPARE(subpathBounds(f, 1), QRectF(5, 60, 20, 20));
+
+    // Dashed and Dotted are listed but disabled.
+    auto* type = visibleChild<QToolButton>(frame, QStringLiteral("optionsShapeStrokeType"));
+    auto* line = type->menu()->findChild<QComboBox*>(QStringLiteral("optionsShapeStrokeLine"));
+    QVERIFY(line != nullptr);
+    QCOMPARE(line->itemData(1, Qt::UserRole - 1).toInt(), 0);
 }
 
 QTEST_MAIN(ShapeToolsTest)

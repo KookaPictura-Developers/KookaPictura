@@ -10,11 +10,13 @@
 // tool's Create dialog and places the shape at the click (or centred on it);
 // the Line has no dialog, so a click draws nothing.
 // Outside Path mode the active shape layer's outline is drawn with its anchors,
-// ready for Direct Selection. Ported from photorust's CanvasView shape drag
+// ready for Direct Selection, and its fill, stroke, and size are mirrored into
+// the options bar, whose edits restyle or resize it. The geometry gear can
+// constrain the proportions, fix the size, or draw from the centre. Ported from photorust's CanvasView shape drag
 // (shapeOutlineFor / paintShapeOverlay / drawShape).
 //
-// ponytail: no Stroke, gradient / pattern Fill, geometry pop-up (Fixed Size,
-// Proportional), path operations, or Align Edges.
+// ponytail: no gradient / pattern Fill or Stroke, dashed strokes, Proportional
+// geometry, or path operations / alignment / arrangement.
 
 #include "tool_handler.h"
 
@@ -63,7 +65,11 @@ public:
     {
     }
 
-    void onActivate(ToolContext& ctx) override { refreshOverlay(ctx, {}); }
+    void onActivate(ToolContext& ctx) override
+    {
+        syncFromLayer(ctx);
+        refreshOverlay(ctx, {});
+    }
 
     void onDeactivate(ToolContext& ctx) override
     {
@@ -76,6 +82,7 @@ public:
     void onDocumentRefreshed(ToolContext& ctx) override
     {
         if (!ctx.dragging()) {
+            syncFromLayer(ctx);
             refreshOverlay(ctx, {});
         }
     }
@@ -83,6 +90,9 @@ public:
     void onOptionsChanged(ToolContext& ctx) override
     {
         if (!ctx.dragging()) {
+            if (!syncing_) {
+                applyToLayer(ctx);
+            }
             refreshOverlay(ctx, {});
         }
     }
@@ -118,7 +128,9 @@ public:
         }
         // A press that wobbles under two screen pixels is a click.
         const double zoom = ctx.canvas() ? qMax(ctx.canvas()->zoom(), 1e-6) : 1.0;
-        if (QLineF(press_, imagePos).length() * zoom < 2.0) {
+        if (fixedSize(ctx)) {
+            land(ctx, *v, dragSpec(ctx, imagePos, mods));
+        } else if (QLineF(press_, imagePos).length() * zoom < 2.0) {
             if (id_ != ToolId::Line) {
                 createAtClick(ctx, *v);
             }
@@ -130,6 +142,8 @@ public:
                 values_.height = drawn.height();
             }
         }
+        // The new layer became active after the document refreshed.
+        syncFromLayer(ctx);
         refreshOverlay(ctx, {});
     }
 
@@ -150,18 +164,52 @@ private:
         spec.arrow_length = o.arrowLength;
         spec.arrow_concavity = o.arrowConcavity;
         spec.custom = o.custom;
+        spec.star = o.star;
+        spec.indent = o.indent;
+        spec.smooth_corners = o.smoothCorners;
+        spec.smooth_indents = o.smoothIndents;
+        spec.align_edges = o.alignEdges;
+        spec.no_fill = !o.fillEnabled;
+        spec.stroke = o.strokeEnabled;
+        spec.stroke_color = o.strokeColor.rgba();
+        spec.stroke_width = o.strokeWidth;
+        spec.stroke_align = o.strokeAlign;
         return spec;
+    }
+
+    // The tools whose geometry gear sizes a box (not the Polygon or Line).
+    bool boxed() const { return id_ != ToolId::Polygon && id_ != ToolId::Line; }
+
+    bool fixedSize(ToolContext& ctx) const
+    {
+        return boxed() && ctx.shapeOptions().geometry == 2;
+    }
+
+    static QColor fillColor(ToolContext& ctx)
+    {
+        const QColor fill = ctx.shapeOptions().fillColor;
+        return fill.isValid() ? fill : ctx.foreground();
     }
 
     ShapeSpec dragSpec(ToolContext& ctx, const QPointF& end, Qt::KeyboardModifiers mods) const
     {
+        const ShapeOptions o = ctx.shapeOptions();
         ShapeSpec spec = baseSpec(ctx);
+        if (fixedSize(ctx)) {
+            // Fixed Size: the box keeps its size and follows the pointer.
+            spec.boxed = true;
+            spec.x0 = end.x() - (o.fromCenter ? o.fixedWidth / 2.0 : 0.0);
+            spec.y0 = end.y() - (o.fromCenter ? o.fixedHeight / 2.0 : 0.0);
+            spec.x1 = spec.x0 + o.fixedWidth;
+            spec.y1 = spec.y0 + o.fixedHeight;
+            return spec;
+        }
         spec.x0 = press_.x();
         spec.y0 = press_.y();
         spec.x1 = end.x();
         spec.y1 = end.y();
-        spec.shift = mods.testFlag(Qt::ShiftModifier);
-        spec.alt = mods.testFlag(Qt::AltModifier);
+        spec.shift = mods.testFlag(Qt::ShiftModifier) || (boxed() && o.geometry == 1);
+        spec.alt = mods.testFlag(Qt::AltModifier) || (boxed() && o.fromCenter);
         return spec;
     }
 
@@ -218,7 +266,7 @@ private:
 
     bool land(ToolContext& ctx, PictureView& v, const ShapeSpec& spec)
     {
-        const std::uint32_t color = ctx.foreground().rgba();
+        const std::uint32_t color = fillColor(ctx).rgba();
         switch (ctx.shapeOptions().mode) {
         case 1:
             return shape_add_path(v, spec);
@@ -247,6 +295,74 @@ private:
             ctx.refused(QObject::tr("Could not fill: the active layer is invisible."));
         } else if (v.active_layer_path().isEmpty()) {
             ctx.refused(QObject::tr("Could not fill: select a single layer first."));
+        }
+    }
+
+    // The active shape layer's size, fill, and stroke into the options, so the
+    // bar shows them; marked so the change is not applied straight back.
+    void syncFromLayer(ToolContext& ctx)
+    {
+        PictureView* v = ctx.view();
+        if (!v || !v->has_document()) {
+            return;
+        }
+        path_set_layer_target(*v, ctx.shapeOptions().mode != 1);
+        const ::rust::Vec<double> info = shape_active(*v);
+        ShapeOptions o = ctx.shapeOptions();
+        const ShapeOptions before = o;
+        if (info.size() == 8) {
+            o.activeWidth = info[0];
+            o.activeHeight = info[1];
+            o.fillEnabled = info[2] != 0.0;
+            if (o.fillEnabled) {
+                o.fillColor = QColor::fromRgba(QRgb(info[3]));
+            }
+            o.strokeEnabled = info[4] != 0.0;
+            if (o.strokeEnabled) {
+                o.strokeColor = QColor::fromRgba(QRgb(info[5]));
+                o.strokeWidth = info[6];
+                o.strokeAlign = int(info[7]);
+            }
+        } else {
+            o.activeWidth = o.activeHeight = 0.0;
+        }
+        if (o.activeWidth != before.activeWidth || o.activeHeight != before.activeHeight
+            || o.fillEnabled != before.fillEnabled || o.fillColor != before.fillColor
+            || o.strokeEnabled != before.strokeEnabled || o.strokeColor != before.strokeColor
+            || o.strokeWidth != before.strokeWidth || o.strokeAlign != before.strokeAlign) {
+            syncing_ = true;
+            ctx.setShapeOptions(o);
+            syncing_ = false;
+        }
+    }
+
+    // An options-bar edit of the fill, stroke, or W / H restyles or resizes
+    // the active shape layer; each differing aspect is one history state.
+    void applyToLayer(ToolContext& ctx)
+    {
+        PictureView* v = ctx.view();
+        if (!v || !v->has_document()) {
+            return;
+        }
+        const ::rust::Vec<double> info = shape_active(*v);
+        if (info.size() != 8) {
+            return;
+        }
+        const ShapeOptions o = ctx.shapeOptions();
+        const QRgb fill = fillColor(ctx).rgba();
+        if (o.fillEnabled != (info[2] != 0.0) || (o.fillEnabled && fill != QRgb(info[3]))) {
+            shape_set_active_fill(*v, o.fillEnabled, fill);
+        }
+        const QRgb stroke = o.strokeColor.rgba();
+        if (o.strokeEnabled != (info[4] != 0.0)
+            || (o.strokeEnabled
+                && (stroke != QRgb(info[5]) || qRound(o.strokeWidth) != qRound(info[6])
+                    || o.strokeAlign != int(info[7])))) {
+            shape_set_active_stroke(*v, o.strokeEnabled, stroke, o.strokeWidth, o.strokeAlign);
+        }
+        if (o.activeWidth > 0.0 && o.activeHeight > 0.0
+            && (qAbs(o.activeWidth - info[0]) > 1e-3 || qAbs(o.activeHeight - info[1]) > 1e-3)) {
+            shape_resize_active(*v, o.activeWidth, o.activeHeight);
         }
     }
 
@@ -279,6 +395,7 @@ private:
     QPointF press_;
     CreateShapeValues values_;
     bool dialogSeeded_ = false;
+    bool syncing_ = false;
 };
 
 } // namespace
