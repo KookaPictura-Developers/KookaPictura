@@ -249,21 +249,28 @@ public:
     int countOverlayCountForTest() const { return int(countOverlay_.size()); }
     bool hasRulerLineForTest() const { return rulerShown_; }
 
-    // The Work Path overlay (image space) while a Pen-group tool is active: the
-    // curve, its anchors (`activeAnchor`, the one the Pen just placed, solid),
-    // handle lines, and a dashed preview (the Rubber Band or the Freeform
-    // trail).
+    // The Work Path overlay (image space) while a Pen-group or path selection
+    // tool is active: the curve, its anchors (`activeAnchor`, the one the Pen
+    // just placed or Direct Selection picked, solid; every one solid with
+    // `anchorsSolid`, Path Selection's selected component), handle lines, a
+    // dashed preview (the Rubber Band or the Freeform trail), and the selected
+    // component's bounding box when not null.
     struct PathOverlay {
         QPainterPath curve;
         QList<QPointF> anchors;
         int activeAnchor = -1;
+        bool anchorsSolid = false;
         QList<QLineF> handles;
         QPainterPath preview;
+        QRectF bounds;
     };
     void setPathOverlay(const PathOverlay& overlay);
     void clearPathOverlay();
     int pathOverlayAnchorCountForTest() const { return int(pathOverlay_.anchors.size()); }
     bool pathOverlayHasPreviewForTest() const { return !pathOverlay_.preview.isEmpty(); }
+    bool pathOverlayAnchorsSolidForTest() const { return pathOverlay_.anchorsSolid; }
+    int pathOverlayActiveAnchorForTest() const { return pathOverlay_.activeAnchor; }
+    QRectF pathOverlayBoundsForTest() const { return pathOverlay_.bounds; }
 
     // The Type tools' live text (image space) while typing: `image` (the
     // engine's own render, so the preview is the commit) at `topLeft`, and the

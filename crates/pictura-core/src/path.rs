@@ -78,6 +78,17 @@ impl Subpath {
             b.anchor,
         ])
     }
+
+    /// The subpath as a polyline within `tolerance` of the true curve.
+    fn flatten(&self, tolerance: f64) -> Vec<(f64, f64)> {
+        let mut out: Vec<(f64, f64)> = self.points.first().map(|p| p.anchor).into_iter().collect();
+        for seg in 0..self.segment_count() {
+            if let Some(quad) = self.segment(seg) {
+                flatten_cubic(quad, tolerance, FLATTEN_MAX_DEPTH, &mut out);
+            }
+        }
+        out
+    }
 }
 
 /// A path of one or more subpaths. `editing` is the subpath the Pen extends
@@ -93,6 +104,9 @@ const FLATTEN_MAX_DEPTH: u32 = 10;
 
 /// Below this drag distance (document pixels) a Pen press stays a corner.
 const HANDLE_THRESHOLD: f64 = 1.0;
+
+/// Flattening tolerance for picking and bounds, in document pixels.
+const BOUNDS_TOLERANCE: f64 = 0.25;
 
 impl VectorPath {
     pub fn is_empty(&self) -> bool {
@@ -273,6 +287,66 @@ impl VectorPath {
         true
     }
 
+    // -- Path Selection / Direct Selection --------------------------------------
+
+    /// Move an anchor to `(x, y)`, carrying its handles by the same delta so
+    /// the curve either side keeps its shape.
+    pub fn move_anchor(&mut self, sp: usize, pt: usize, x: f64, y: f64) -> bool {
+        let Some(point) = self.point_mut(sp, pt) else {
+            return false;
+        };
+        let (dx, dy) = (x - point.anchor.0, y - point.anchor.1);
+        translate_point(point, dx, dy);
+        true
+    }
+
+    /// Move a whole subpath (a path component) by `(dx, dy)`.
+    pub fn move_subpath(&mut self, sp: usize, dx: f64, dy: f64) -> bool {
+        let Some(subpath) = self.subpaths.get_mut(sp) else {
+            return false;
+        };
+        for point in &mut subpath.points {
+            translate_point(point, dx, dy);
+        }
+        true
+    }
+
+    /// Append a copy of subpath `sp`, returning the copy's index.
+    pub fn duplicate_subpath(&mut self, sp: usize) -> Option<usize> {
+        let copy = self.subpaths.get(sp)?.clone();
+        self.subpaths.push(copy);
+        Some(self.subpaths.len() - 1)
+    }
+
+    /// Remove a whole subpath, renumbering `editing` if a later subpath
+    /// shifts down.
+    pub fn remove_subpath(&mut self, sp: usize) -> bool {
+        if sp >= self.subpaths.len() {
+            return false;
+        }
+        self.subpaths.remove(sp);
+        self.editing = match self.editing {
+            Some(e) if e == sp => None,
+            Some(e) if e > sp => Some(e - 1),
+            other => other,
+        };
+        true
+    }
+
+    /// The bounds of subpath `sp`'s curve as `(left, top, right, bottom)`;
+    /// `None` when it has no points.
+    pub fn subpath_bounds(&self, sp: usize) -> Option<(f64, f64, f64, f64)> {
+        let points = self.subpaths.get(sp)?.flatten(BOUNDS_TOLERANCE);
+        let &(x0, y0) = points.first()?;
+        Some(
+            points
+                .iter()
+                .fold((x0, y0, x0, y0), |(l, t, r, b), &(x, y)| {
+                    (l.min(x), t.min(y), r.max(x), b.max(y))
+                }),
+        )
+    }
+
     // -- Add / Delete Anchor Point ---------------------------------------------
 
     /// Split segment `seg` of subpath `sp` at `t` with de Casteljau, so the
@@ -330,12 +404,7 @@ impl VectorPath {
             subpath.closed = false;
         }
         if subpath.points.is_empty() {
-            self.subpaths.remove(sp);
-            self.editing = match self.editing {
-                Some(e) if e == sp => None,
-                Some(e) if e > sp => Some(e - 1),
-                other => other,
-            };
+            self.remove_subpath(sp);
         }
         true
     }
@@ -398,6 +467,20 @@ impl VectorPath {
         best.map(|(s, seg, t, _)| (s, seg, t))
     }
 
+    /// The subpath under `(x, y)`, Path Selection's pick: within `radius` of a
+    /// segment or a lone anchor, else inside a closed one (even-odd, the
+    /// topmost first), so a line drawn inside a closed shape stays reachable.
+    pub fn hit_subpath(&self, x: f64, y: f64, radius: f64) -> Option<usize> {
+        self.hit_segment(x, y, radius)
+            .map(|(s, _, _)| s)
+            .or_else(|| self.hit_anchor(x, y, radius).map(|(s, _)| s))
+            .or_else(|| {
+                self.subpaths.iter().rposition(|sp| {
+                    sp.closed && point_in_polygon(&sp.flatten(BOUNDS_TOLERANCE), (x, y))
+                })
+            })
+    }
+
     // -- flattening ------------------------------------------------------------
 
     /// Every subpath as a polyline within `tolerance` of the true curve, with
@@ -405,18 +488,40 @@ impl VectorPath {
     pub fn flatten(&self, tolerance: f64) -> Vec<(Vec<(f64, f64)>, bool)> {
         self.subpaths
             .iter()
-            .map(|sp| {
-                let mut out: Vec<(f64, f64)> =
-                    sp.points.first().map(|p| p.anchor).into_iter().collect();
-                for seg in 0..sp.segment_count() {
-                    if let Some([p0, p1, p2, p3]) = sp.segment(seg) {
-                        flatten_cubic([p0, p1, p2, p3], tolerance, FLATTEN_MAX_DEPTH, &mut out);
-                    }
-                }
-                (out, sp.closed)
-            })
+            .map(|sp| (sp.flatten(tolerance), sp.closed))
             .collect()
     }
+}
+
+fn translate_point(point: &mut PathPoint, dx: f64, dy: f64) {
+    for p in [
+        Some(&mut point.anchor),
+        point.in_handle.as_mut(),
+        point.out_handle.as_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        p.0 += dx;
+        p.1 += dy;
+    }
+}
+
+/// Even-odd point-in-polygon over a flattened, implicitly closed contour.
+fn point_in_polygon(points: &[(f64, f64)], (px, py): (f64, f64)) -> bool {
+    if points.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = points.len() - 1;
+    for (i, &(xi, yi)) in points.iter().enumerate() {
+        let (xj, yj) = points[j];
+        if (yi > py) != (yj > py) && px < xi + (py - yi) / (yj - yi) * (xj - xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
 }
 
 fn lerp(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {

@@ -4,6 +4,7 @@
 
 #include <QtCore/QPointF>
 #include <QtCore/QRect>
+#include <QtCore/QString>
 #include <QtCore/Qt>
 
 namespace pictura {
@@ -51,6 +52,11 @@ public:
     virtual bool textActive() const { return false; }
     // The options bar's Clear: drop the tool's color samplers, notes, or ruler.
     virtual bool clearAnnotations() { return false; }
+
+    // A suffix for the tool's cursor id while the pointer hovers something the
+    // next press acts on specially (the Pen's ".close" over the first anchor);
+    // the controller re-applies the cursor when it changes.
+    virtual QString cursorVariant() const { return QString(); }
 
     // The modifiers captured at press for a selection drag; only the marquee
     // handlers keep them (the self-test reads them through the controller).
