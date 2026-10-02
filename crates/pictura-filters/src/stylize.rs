@@ -7,6 +7,16 @@ use crate::kernel::clamp_index;
 use crate::luma::luma;
 use crate::{validate, FilterError};
 
+mod extrude;
+mod tiles;
+mod trace_contour;
+mod wind;
+
+pub use extrude::extrude;
+pub use tiles::tiles;
+pub use trace_contour::trace_contour;
+pub use wind::wind;
+
 pub fn emboss(
     buf: &mut PixelBuffer,
     angle: f64,

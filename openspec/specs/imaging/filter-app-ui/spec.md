@@ -2,7 +2,9 @@
 
 ## Purpose
 The PictureView filter command, filter-kind mapping and defaults, and the filter dock controls.
+
 ## Requirements
+
 ### Requirement: PictureView filter command
 
 `PictureView` MUST expose `apply_filter(kind: &QString) -> bool`. It SHALL apply the mapped filter to the topmost pixel layer — the last layer in the bottom-first `doc.layers` for which `adjustment.is_none() && !is_group` — using the active selection as the mask, then recomposite and emit `changed`. With no active selection it MUST apply over the full frame. It MUST return false when there is no document or when there is no pixel layer.
@@ -29,7 +31,7 @@ The PictureView filter command, filter-kind mapping and defaults, and the filter
 
 ### Requirement: Filter-kind mapping and defaults
 
-The command SHALL map each recognized `kind` to a concrete `pictura_filters::Filter` with fixed defaults: `gaussian-blur` → `GaussianBlur { radius: 5.0 }`, `box-blur` → `BoxBlur { radius: 3 }`, `motion-blur` → `MotionBlur { angle: 0.0, distance: 15 }`, `median` → `Median { radius: 2 }`, `despeckle` → `Despeckle`, `sharpen` → `Sharpen`, `sharpen-more` → `SharpenMore`, `unsharp-mask` → `UnsharpMask { amount: 150.0, radius: 1.0, threshold: 0 }`, and `add-noise` → `AddNoise { amount: 25.0, distribution: Uniform, monochromatic: false, seed: 1 }`. An unrecognized `kind` SHALL map to no filter and the command MUST return false without changing the document.
+The command SHALL map each recognized `kind` to a concrete `pictura_filters::Filter` with fixed defaults: `gaussian-blur` → `GaussianBlur { radius: 5.0 }`, `box-blur` → `BoxBlur { radius: 3 }`, `motion-blur` → `MotionBlur { angle: 0.0, distance: 15 }`, `median` → `Median { radius: 2 }`, `despeckle` → `Despeckle`, `sharpen` → `Sharpen`, `sharpen-more` → `SharpenMore`, `unsharp-mask` → `UnsharpMask { amount: 150.0, radius: 1.0, threshold: 0 }`, `add-noise` → `AddNoise { amount: 25.0, distribution: Uniform, monochromatic: false, seed: 1 }`, `dust-and-scratches` → `DustAndScratches { radius: 1, threshold: 0 }`, `extrude` → `Extrude { kind: Blocks, size: 30, depth: 30.0, level_based: true, solid_front: false, mask_incomplete: false }`, `tiles` → `Tiles { count: 10, offset: 10, fill: BackgroundColor, foreground: [0, 0, 0], background: [255, 255, 255] }`, `trace-contour` → `TraceContour { level: 128, edge: Lower }`, `wind` → `Wind { method: Wind, from_right: true }`, and `smart-sharpen` → `SmartSharpen { amount: 100.0, radius: 1.0, reduce_noise: 0.0, remove: GaussianBlur, angle: 0.0 }`. An unrecognized `kind` SHALL map to no filter and the command MUST return false without changing the document.
 
 #### Scenario: Each known kind maps to its default filter
 
@@ -63,4 +65,3 @@ The headless `--self-test` MUST load a layered PSD, select a proper subset of th
 
 - **WHEN** the filtered result differs outside the selection or does not change inside it
 - **THEN** the self-test exits non-zero
-

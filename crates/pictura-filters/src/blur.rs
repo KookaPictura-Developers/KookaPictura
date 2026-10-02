@@ -33,6 +33,25 @@ pub fn r#box(buf: &mut PixelBuffer, radius: u32) -> Result<(), FilterError> {
 }
 
 pub fn motion(buf: &mut PixelBuffer, angle_deg: f64, distance: u32) -> Result<(), FilterError> {
+    motion_impl(buf, angle_deg, distance, false)
+}
+
+/// Sub-pixel (bilinear) tap variant of [`motion`], reached only by Smart
+/// Sharpen's "More Accurate" path. The default path is byte-unchanged.
+pub(crate) fn motion_accurate(
+    buf: &mut PixelBuffer,
+    angle_deg: f64,
+    distance: u32,
+) -> Result<(), FilterError> {
+    motion_impl(buf, angle_deg, distance, true)
+}
+
+fn motion_impl(
+    buf: &mut PixelBuffer,
+    angle_deg: f64,
+    distance: u32,
+    accurate: bool,
+) -> Result<(), FilterError> {
     validate(buf)?;
     if !angle_deg.is_finite() || !(-360.0..=360.0).contains(&angle_deg) {
         return Err(FilterError::InvalidParams(format!(
@@ -52,7 +71,9 @@ pub fn motion(buf: &mut PixelBuffer, angle_deg: f64, distance: u32) -> Result<()
     let n = w * h;
     let planes = (buf.channels as usize).min(3);
     let angle = angle_deg.to_radians();
-    let (dx, dy) = (angle.cos(), angle.sin());
+    // Photoshop angles run counter-clockwise on screen (0 = east, +90 = up);
+    // this buffer's y grows downward, so the vertical component is negated.
+    let (dx, dy) = (angle.cos(), -angle.sin());
     let taps = distance as isize;
     let half = (distance as f64 - 1.0) / 2.0;
     let divisor = distance as f64;
@@ -64,9 +85,13 @@ pub fn motion(buf: &mut PixelBuffer, angle_deg: f64, distance: u32) -> Result<()
                 let mut acc = 0f64;
                 for k in 0..taps {
                     let f = k as f64 - half;
-                    let sx = clamp_index(x as isize + (f * dx).round() as isize, w);
-                    let sy = clamp_index(y as isize + (f * dy).round() as isize, h);
-                    acc += src[sy * w + sx] as f64;
+                    if accurate {
+                        acc += bilinear(&src, w, h, x as f64 + f * dx, y as f64 + f * dy);
+                    } else {
+                        let sx = clamp_index(x as isize + (f * dx).round() as isize, w);
+                        let sy = clamp_index(y as isize + (f * dy).round() as isize, h);
+                        acc += src[sy * w + sx] as f64;
+                    }
                 }
                 buf.data[base + y * w + x] = (acc / divisor).round().clamp(0.0, 255.0) as u8;
             }
@@ -432,6 +457,19 @@ mod tests {
         assert_eq!(px3(&b, 4, 6)[0], 51);
         assert_eq!(px3(&b, 3, 4)[0], 0);
         assert_eq!(px3(&b, 5, 4)[0], 0);
+    }
+
+    #[test]
+    fn motion_at_forty_five_smears_along_the_photoshop_diagonal() {
+        let mut b = PixelBuffer::new(9, 9, 3);
+        b.data[4 * 9 + 4] = 255;
+        motion(&mut b, 45.0, 5).unwrap();
+        // Photoshop's +45° runs lower-left to upper-right: the bright pixel
+        // smears up-right and down-left, not down-right.
+        assert_eq!(px3(&b, 5, 3)[0], 102);
+        assert_eq!(px3(&b, 3, 5)[0], 102);
+        assert_eq!(px3(&b, 5, 5)[0], 0);
+        assert_eq!(px3(&b, 3, 3)[0], 0);
     }
 
     #[test]

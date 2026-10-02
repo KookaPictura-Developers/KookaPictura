@@ -307,10 +307,57 @@ const MAPPING: &[Mapping] = &[
                +repage` vs size 9 / magnitude 20 / seed 42 max 227 / mean 53.7. Guarded by seed \
                determinism and the zero-magnitude no-op",
     },
+    Mapping {
+        filter: "DustAndScratches",
+        im: None,
+        tolerance: 0,
+        note: "IM `-statistic median NxN` is an ungated rank filter; Pictura replaces a pixel only \
+               when it differs from the local median by more than `threshold`, and no IM operator \
+               exposes that gate. Guarded by the speck-removal and determinism unit tests",
+    },
+    Mapping {
+        filter: "Extrude",
+        im: None,
+        tolerance: 0,
+        note: "No ImageMagick extrusion renderer; the block/face geometry plus the solid-front, \
+               level-based and mask-incomplete options have no operator. Guarded by the \
+               changed-image and determinism unit test",
+    },
+    Mapping {
+        filter: "Tiles",
+        im: None,
+        tolerance: 0,
+        note: "No IM tiled-offset-with-fill operator; `-roll` and `-spread` neither offset a fixed \
+               grid nor fill the gaps with the foreground/background choice. Guarded by the \
+               determinism unit test",
+    },
+    Mapping {
+        filter: "TraceContour",
+        im: None,
+        tolerance: 0,
+        note: "No IM per-channel level-crossing contour operator; `-edge`, `-morphology` and \
+               `-threshold` are different detectors. Guarded by the contour unit tests",
+    },
+    Mapping {
+        filter: "Wind",
+        im: None,
+        tolerance: 0,
+        note: "No IM horizontal-streak operator; `-motion-blur`, `-spread` and `-wave` displace \
+               pixels differently. Guarded by the determinism unit test",
+    },
+    Mapping {
+        filter: "SmartSharpen",
+        im: None,
+        tolerance: 0,
+        note: "Its `GaussianBlur` remove path is byte-identical to Unsharp Mask (IM `-unsharp`, \
+               tolerance 6), but `LensBlur` and `MotionBlur` have no faithful IM operator, so the \
+               variant is classified no-equivalent as a whole. Guarded by the remove-path and \
+               determinism unit tests",
+    },
 ];
 
 /// Filters the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 29] = [
+const NO_EQUIVALENT: [&str; 35] = [
     "MotionBlur",
     "RadialBlur",
     "Average",
@@ -340,13 +387,19 @@ const NO_EQUIVALENT: [&str; 29] = [
     "Shear",
     "ZigZag",
     "OceanRipple",
+    "DustAndScratches",
+    "Extrude",
+    "Tiles",
+    "TraceContour",
+    "Wind",
+    "SmartSharpen",
 ];
 
 #[test]
 fn mapping_marks_no_equivalent_operators() {
-    assert_eq!(MAPPING.len(), 39, "one mapping row per Filter variant");
+    assert_eq!(MAPPING.len(), 45, "one mapping row per Filter variant");
     // Exactly one row per `Filter` variant, no duplicates, full enum coverage.
-    let all: [&str; 39] = [
+    let all: [&str; 45] = [
         "GaussianBlur",
         "BoxBlur",
         "MotionBlur",
@@ -386,6 +439,12 @@ fn mapping_marks_no_equivalent_operators() {
         "Shear",
         "ZigZag",
         "OceanRipple",
+        "DustAndScratches",
+        "Extrude",
+        "Tiles",
+        "TraceContour",
+        "Wind",
+        "SmartSharpen",
     ];
     let mut mapped: Vec<&str> = MAPPING.iter().map(|m| m.filter).collect();
     mapped.sort_unstable();
