@@ -20,7 +20,7 @@ toolkit's own Qt Test for the C++ GUI suites.
 | C++ Qt shell tests | Qt Test + CTest (`add_test`) | `crates/pictura-app/cpp/tests/` | per-executable JUnit, folded into the unified report by `scripts/test-report.sh` |
 | Python oracle tooling | `argparse` CLIs, no test framework | `scripts/*.py` | stdout (machine-readable or raw bytes) + exit code |
 
-Current inventory: **1930 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
+Current inventory: **1938 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
 see §3), **511** `ST_BEGIN` self-test sites (**475** executed in a bare
 `--headless --self-test` run), and ten Qt Test suites (`tst_smoke`,
 `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`, `tst_fill_tools`,
