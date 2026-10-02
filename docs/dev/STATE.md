@@ -124,6 +124,35 @@ Snapshot for resuming after a context break. Update after each milestone.
   channel-mask path, and channel enumeration for the Channels panel (#71);
   `.aco` swatch-library load/save (needs a `pictura-presets` crate, which does
   not exist yet).
+- **Missing CS6 filter kernels** (change `port-missing-filter-kernels`, issue
+  #82, ported from photorust): `pictura-filters` gained six CS6-Core kernels —
+  Noise ▸ Dust & Scratches (`noise::dust_and_scratches`), Stylize ▸ Extrude /
+  Tiles / Trace Contour / Wind (`stylize/{extrude,tiles,trace_contour,wind}.rs`),
+  and Sharpen ▸ Smart Sharpen (`sharpen::smart_sharpen`), now including CS6's
+  **More Accurate** higher-fidelity blur path and the Advanced
+  **Shadow/Highlight** `TonalFade` fields (`amount`/`width` 0–100, `radius`
+  1–100; `amount` 0 is a no-op), both `(inferred)` approximations. They extend the
+  `Filter` enum (`filter/types.rs`) and `apply` dispatch, validate before
+  mutating, leave alpha bit-identical, and are deterministic (Extrude/Tiles/Wind
+  read a coordinate hash, not an RNG). Verification is property tests, since
+  Adobe's kernels are closed: the new kernels are registered as no-equivalent in
+  the oracle mapping table (`tests/oracle/mapping.rs`, tolerance 0) and covered
+  by property tests, while Smart Sharpen's Gaussian path is byte-identical to
+  Unsharp Mask and so rides the existing ImageMagick differential (tolerance 6).
+  `filter_from_kind` maps six new kinds (`dust-and-scratches`, `extrude`,
+  `tiles`, `trace-contour`, `wind`, `smart-sharpen`), reachable through the
+  control server and the Rust engine tests; the headless self-test only ever
+  exercises `add-noise`, so these have no self-test coverage. New crate-root
+  enums `ExtrudeType`, `TileFill`, `ContourEdge`, `WindMethod`, `SharpenRemove`,
+  and `TonalFade`.
+  The unsupported `docs/06-filters/stylize-filters.md` claim that Extrude Depth
+  does not apply with Solid Front Faces was corrected (CS6 Help describes the
+  two controls independently and gives no exception).
+  Ceilings (`ponytail:`):
+  Diffuse/Glowing Edges (Filter-Gallery-only), Render ▸ Lighting Effects (GPU
+  workspace), and Flame/Picture Frame (CC 2014.2, non-goals) stay unported, and
+  the Filter menu entries and per-filter dialogs remain disabled stubs — their
+  wiring is a separate follow-up.
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
