@@ -149,13 +149,14 @@ const ToolInfo kToolTable[] = {
      "Direct Selection: drag an anchor or direction handle, Alt-click to select a component",
      17, true, 12, 12},
     {ToolId::Rectangle, "rectangle", "Rectangle", QLatin1Char('U'), Qt::CrossCursor,
-     "Rectangle: not implemented yet", 18, false, 12, 12},
+     "Rectangle: drag to draw a rectangle as a shape layer, path, or pixels", 18, true, 12, 12},
     {ToolId::RoundedRectangle, "roundedrectangle", "Rounded Rectangle", QLatin1Char('U'),
-     Qt::CrossCursor, "Rounded Rectangle: not implemented yet", 18, false, 12, 12},
+     Qt::CrossCursor,
+     "Rounded Rectangle: drag to draw a rectangle with rounded corners", 18, true, 12, 12},
     {ToolId::Ellipse, "ellipse", "Ellipse", QLatin1Char('U'), Qt::CrossCursor,
-     "Ellipse: not implemented yet", 18, false, 12, 12},
+     "Ellipse: drag to draw an ellipse", 18, true, 12, 12},
     {ToolId::Polygon, "polygon", "Polygon", QLatin1Char('U'), Qt::CrossCursor,
-     "Polygon: not implemented yet", 18, false, 12, 12},
+     "Polygon: drag out from the centre to draw a regular polygon", 18, true, 12, 12},
     {ToolId::Line, "line", "Line", QLatin1Char('U'), Qt::CrossCursor,
      "Line: not implemented yet", 18, false, 12, 12},
     {ToolId::CustomShape, "customshape", "Custom Shape", QLatin1Char('U'), Qt::CrossCursor,
@@ -303,6 +304,13 @@ QList<ToolHint> toolHintEntries(ToolId id)
     case ToolId::DirectSelection:
         return {{QStringLiteral("Alt"), QStringLiteral("Break the handle")},
                 {QStringLiteral("Alt-click"), QStringLiteral("Select the component")}};
+    case ToolId::Rectangle:
+    case ToolId::RoundedRectangle:
+    case ToolId::Ellipse:
+        return {{QStringLiteral("Shift"), QStringLiteral("Constrain proportions")},
+                {QStringLiteral("Alt"), QStringLiteral("Draw from the centre")}};
+    case ToolId::Polygon:
+        return {{QStringLiteral("Shift"), QStringLiteral("Snap the angle to 15°")}};
     case ToolId::HorizontalType:
     case ToolId::VerticalType:
     case ToolId::HorizontalTypeMask:
@@ -366,6 +374,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::AddAnchorPoint, ToolId::DeleteAnchorPoint, ToolId::ConvertPoint,
         ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
         ToolId::VerticalTypeMask, ToolId::PathSelection, ToolId::DirectSelection,
+        ToolId::Rectangle, ToolId::RoundedRectangle, ToolId::Ellipse, ToolId::Polygon,
     };
     return ids;
 }

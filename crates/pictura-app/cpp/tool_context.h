@@ -158,6 +158,16 @@ struct PenOptions {
     bool showBoundingBox = false;
 };
 
+// The shape tools' options bar, shared by Rectangle, Rounded Rectangle,
+// Ellipse, and Polygon: Mode 0 Shape / 1 Path / 2 Pixels, the Rounded
+// Rectangle's corner Radius in pixels (0-1000), and the Polygon's Sides
+// (3-100). The fill colour is the foreground colour.
+struct ShapeOptions {
+    int mode = 0;
+    double radius = 10.0;
+    int sides = 5;
+};
+
 // The Type tools' options bar, shared by all four (the tool is the
 // orientation): the font family, its size in pixels, Anti-alias (Sharp or
 // None), and the alignment 0 left / top, 1 right / bottom, 2 centre. The text
@@ -248,6 +258,7 @@ struct ToolContext {
     virtual ToneOptions toneOptions(ToolId id) const = 0;
     virtual BucketOptions bucketOptions() const = 0;
     virtual PenOptions penOptions() const = 0;
+    virtual ShapeOptions shapeOptions() const = 0;
     virtual TypeOptions typeOptions() const = 0;
     virtual void setTypeOptions(const TypeOptions& options) = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.

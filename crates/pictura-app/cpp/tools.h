@@ -301,6 +301,8 @@ public:
     void setBucketOptions(const BucketOptions& options) { bucket_ = options; }
     PenOptions penOptions() const override { return pen_; }
     void setPenOptions(const PenOptions& options);
+    ShapeOptions shapeOptions() const override { return shape_; }
+    void setShapeOptions(const ShapeOptions& options);
     TypeOptions typeOptions() const override { return type_; }
     void setTypeOptions(const TypeOptions& options) override;
     // The active Type tool's Commit / Cancel; false when no text is being typed.
@@ -508,6 +510,7 @@ private:
     std::array<ToneOptions, 3> tone_{};
     BucketOptions bucket_;
     PenOptions pen_;
+    ShapeOptions shape_;
     TypeOptions type_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;

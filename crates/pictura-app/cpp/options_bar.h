@@ -72,6 +72,7 @@ private:
     QWidget* buildTonePage(ToolId id);
     // options_bar_pen.cpp: Pen and Freeform Pen.
     QWidget* buildPenPage(ToolId id);
+    QWidget* buildShapePage(ToolId id);
     // options_bar_type.cpp: the four Type tools.
     QWidget* buildTypePage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);

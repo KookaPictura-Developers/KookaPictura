@@ -61,6 +61,7 @@ std::unique_ptr<ToolHandler> makePaintBucketToolHandler();
 std::unique_ptr<ToolHandler> makeRetouchToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makePenToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makePathSelectionToolHandler(ToolId id);
+std::unique_ptr<ToolHandler> makeShapeToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makeTypeToolHandler(ToolId id);
 
 ToolController::ToolController(QObject* parent)
@@ -113,6 +114,10 @@ ToolController::ToolController(QObject* parent)
     }
     for (ToolId id : {ToolId::PathSelection, ToolId::DirectSelection}) {
         registry_.registerTool(id, makePathSelectionToolHandler(id));
+    }
+    for (ToolId id :
+         {ToolId::Rectangle, ToolId::RoundedRectangle, ToolId::Ellipse, ToolId::Polygon}) {
+        registry_.registerTool(id, makeShapeToolHandler(id));
     }
     for (ToolId id : {ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
                       ToolId::VerticalTypeMask}) {
@@ -210,6 +215,16 @@ void ToolController::setPenOptions(const PenOptions& options)
 {
     pen_ = options;
     pen_.curveFit = std::clamp(options.curveFit, 0.5, 10.0);
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onOptionsChanged(*this);
+    }
+}
+
+void ToolController::setShapeOptions(const ShapeOptions& options)
+{
+    shape_.mode = std::clamp(options.mode, 0, 2);
+    shape_.radius = std::clamp(options.radius, 0.0, 1000.0);
+    shape_.sides = std::clamp(options.sides, 3, 100);
     if (ToolHandler* h = registry_.forTool(active_)) {
         h->onOptionsChanged(*this);
     }

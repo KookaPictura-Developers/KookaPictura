@@ -23,6 +23,7 @@ mod impl_transform;
 mod magnetic;
 mod paint_tools;
 mod paths;
+mod shapes;
 mod state;
 mod type_tools;
 pub use state::PictureViewRust;
@@ -455,8 +456,7 @@ pub mod qobject {
         #[qinvokable]
         fn add_layer_in(self: Pin<&mut Self>, selection_path: &QString) -> QString;
 
-        /// Insert a new empty group by the [`add_layer_in`] rule, returning the
-        /// new path or empty.
+        /// Insert a new empty group by the [`add_layer_in`] rule, returning the new path or empty.
         #[qinvokable]
         fn add_group_in(self: Pin<&mut Self>, selection_path: &QString) -> QString;
 

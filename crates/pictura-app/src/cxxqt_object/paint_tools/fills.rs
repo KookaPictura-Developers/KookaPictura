@@ -1,7 +1,8 @@
 //! The fill tool bridges: the Gradient and the Paint Bucket. Free functions
 //! over a [`PictureView`], as in the parent module. One gesture is one edit,
 //! so each applies it through the selection, recomposites, and records its own
-//! history state (`"Gradient"`, `"Paint Bucket"`).
+//! history state (`"Gradient"`, `"Paint Bucket"`). The shape tools' Fill
+//! Pixels mode shares [`apply`].
 //!
 //! [`PictureView`]: super::super::qobject::PictureView
 
@@ -210,14 +211,14 @@ fn bucket_fill_at(
     })
 }
 
-fn selection(rust: &PictureViewRust) -> Option<&[u8]> {
+pub(crate) fn selection(rust: &PictureViewRust) -> Option<&[u8]> {
     rust.selection.as_ref().map(|s| s.data.as_slice())
 }
 
 /// Run `edit` on a copy of the document and its visible lone active pixel
 /// layer; when it changed something, adopt the copy and record it as `label`.
 /// False (no state) mid-stroke, without such a layer, or when nothing changed.
-fn apply(
+pub(crate) fn apply(
     mut view: Pin<&mut PictureView>,
     label: &str,
     edit: impl FnOnce(&mut Document, &str, &PictureViewRust) -> Option<PsdRect>,
