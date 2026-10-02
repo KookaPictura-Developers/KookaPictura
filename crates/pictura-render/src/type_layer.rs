@@ -599,6 +599,18 @@ mod tests {
     }
 
     #[test]
+    fn every_text_colour_byte_reopens_unchanged() {
+        let mut doc = Document::new(300, 200, ColorMode::Rgb, BitDepth::Eight);
+        for v in 0..=255u8 {
+            let mut set = spec("I", false, 0);
+            set.color = [v, 255 - v, v / 2, 255];
+            add_type_layer(&mut doc, "", &set);
+            let reopened = type_layer_spec(doc.layers.last().unwrap()).unwrap();
+            assert_eq!(reopened.color, set.color, "channel value {v}");
+        }
+    }
+
+    #[test]
     fn a_type_layer_reopens_where_it_is_and_edits_in_place() {
         let mut doc = Document::new(300, 200, ColorMode::Rgb, BitDepth::Eight);
         let original = spec("Hello", false, 2);

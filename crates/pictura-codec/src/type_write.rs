@@ -422,7 +422,9 @@ fn join(values: &[usize]) -> String {
 /// A real with its decimal point: an integer without one is another type to
 /// the engine.
 fn number(value: f64) -> String {
-    let text = format!("{value:.2}");
+    // Four decimals: a colour channel is a multiple of 1/255, which two
+    // decimals cannot carry back to the same byte.
+    let text = format!("{value:.4}");
     let trimmed = text.trim_end_matches('0');
     if trimmed.ends_with('.') {
         format!("{trimmed}0")
