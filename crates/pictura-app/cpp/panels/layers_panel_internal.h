@@ -66,6 +66,7 @@ struct LayerRow {
     int childCount = 0;
     bool linked = false;
     bool placed = false;
+    bool shape = false;
     QImage thumbnail;
     QImage maskThumbnail;
     int documentWidth = 0;
@@ -144,6 +145,7 @@ enum LayerRole {
     LayerRowPlacedRole,
     DocumentWidthRole,
     DocumentHeightRole,
+    LayerRowShapeRole,
 };
 
 struct Node {
@@ -291,6 +293,8 @@ public:
             return row.linked;
         case LayerRowPlacedRole:
             return row.placed;
+        case LayerRowShapeRole:
+            return row.shape;
         case DocumentWidthRole:
             return row.documentWidth;
         case DocumentHeightRole:
@@ -747,7 +751,7 @@ public:
             && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
-        if (index.data(HasAdjustmentRole).toBool()
+        if (index.data(HasAdjustmentRole).toBool() && !index.data(LayerRowShapeRole).toBool()
             && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
@@ -886,6 +890,19 @@ public:
             painter->setPen(QPen(Qt::black, 1));
             painter->setBrush(Qt::NoBrush);
             painter->drawRect(shaped.adjusted(0, 0, -1, -1));
+            // A shape layer's vector badge sits on the thumbnail's bottom-right
+            // corner, as CS6 marks a shape layer.
+            if (index.data(LayerRowShapeRole).toBool()) {
+                const int side = qMax(8, thumb / 2);
+                const QPixmap shapeBadge =
+                    pictura::icon(QStringLiteral("layers.kindShape")).pixmap(side, side);
+                if (!shapeBadge.isNull()) {
+                    const QRect corner(box.right() - side + 3, box.bottom() - side + 3, side,
+                                       side);
+                    painter->fillRect(corner, palette.color(QPalette::Base));
+                    painter->drawPixmap(corner, shapeBadge);
+                }
+            }
         }
         x += thumb + 4;
 
@@ -904,7 +921,8 @@ public:
                 right -= badge + 3;
             }
         }
-        if (index.data(HasAdjustmentRole).toBool() && !fxIcon.isNull()) {
+        if (index.data(HasAdjustmentRole).toBool() && !index.data(LayerRowShapeRole).toBool()
+            && !fxIcon.isNull()) {
             const QPixmap badgePix = fxIcon.pixmap(badge, badge);
             if (!badgePix.isNull()) {
                 painter->drawPixmap(

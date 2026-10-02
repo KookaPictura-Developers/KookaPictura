@@ -20,6 +20,7 @@ struct SessionState {
     bool layersExpandNewEffects = true;
     int toolsColumns = 1;            // 1 or 2; out-of-range loads the default
     bool useShiftKeyForToolSwitch = true;
+    bool confirmLiveShapeToPath = true;  // off after "Don't show again"
     // v5-v8 panel-column state. `panelGroups` is the legacy flat JSON array of
     // {name, order, visible, minimized, collapsed} for the primary column;
     // `panelColumns` is the ordered array of

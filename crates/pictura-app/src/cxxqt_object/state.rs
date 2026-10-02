@@ -86,6 +86,9 @@ pub struct PictureViewRust {
     /// Panel path of the single active layer, or `None` when the selection is
     /// empty or multiple. The shared resolver turns this into the edit target.
     pub(super) active_layer: Option<String>,
+    /// The path calls edit the active shape layer's outline, not the Work
+    /// Path (`paths.rs`).
+    pub(super) path_on_layer: bool,
     pub(super) dirty: bool,
     /// Output format remembered from the import source, used to preselect the
     /// Save As filter: a lowercased extension (`"png"`) or `"psd"` when native.
@@ -188,6 +191,7 @@ impl Default for PictureViewRust {
             history: History::default(),
             path: None,
             active_layer: None,
+            path_on_layer: false,
             dirty: false,
             source_format: "psd".to_string(),
             interop: None,

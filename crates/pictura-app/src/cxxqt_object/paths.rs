@@ -3,6 +3,11 @@
 //! Selection, Direct Selection). Free functions over a [`PictureView`]
 //! (their own bridge, so the `PictureView` declaration list does not grow).
 //!
+//! The calls edit the Work Path, or the active shape layer's outline while
+//! [`path_set_layer_target`] is on: a change there rewrites the layer's `vmsk`
+//! and recomposites, and every edit but a whole-component move turns a live
+//! shape into a regular path.
+//!
 //! Atomic edits (insert, delete, close, convert-click, freeform) record one
 //! history state and emit `changed`. A drag's live steps (placing an anchor and
 //! pulling its handles, dragging a handle, anchor, or component) record nothing
@@ -13,6 +18,7 @@
 //! [`PictureView`]: super::qobject::PictureView
 
 use super::qobject::PictureView;
+use super::PictureViewRust;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use pictura_core::path::{HandleSide, VectorPath};
@@ -28,7 +34,25 @@ pub mod ffi {
 
     #[namespace = "pictura"]
     extern "Rust" {
-        /// Subpaths in the Work Path; 0 without a document.
+        /// Point the path calls at the active shape layer's outline (`on`, while the active layer is a shape layer) or always at the Work Path. Off by default; the Pen tools leave it off.
+        fn path_set_layer_target(view: Pin<&mut PictureView>, on: bool);
+
+        /// Whether the layer target is on (see `path_set_layer_target`).
+        fn path_layer_target(view: &PictureView) -> bool;
+
+        /// Whether the path calls currently edit a shape layer's outline.
+        fn path_target_is_layer(view: &PictureView) -> bool;
+
+        /// The targeted shape layer's name; empty while the calls edit the Work Path.
+        fn path_target_name(view: &PictureView) -> String;
+
+        /// Whether the targeted shape layer is still a live shape (it carries its parametric origin).
+        fn path_target_is_live_shape(view: &PictureView) -> bool;
+
+        /// Turn the targeted live shape into a regular path. No history: the edit that follows records it, and undoing that edit restores the live shape. False when there is no live shape.
+        fn path_convert_live_shape(view: Pin<&mut PictureView>) -> bool;
+
+        /// Subpaths in the targeted path; 0 without a document.
         fn path_subpath_count(view: &PictureView) -> i32;
 
         /// Anchor points on subpath `sp`; 0 when out of range.
@@ -140,14 +164,104 @@ pub mod ffi {
     }
 }
 
-fn path(view: &PictureView) -> Option<&VectorPath> {
-    view.rust().doc.as_ref().map(|doc| &doc.work_path)
+/// The path the tools edit: the active shape layer's outline while the
+/// layer target is on (Path Selection, Direct Selection, the shape tools) and
+/// the active layer is a shape layer; the Work Path otherwise.
+fn layer_target(rust: &PictureViewRust) -> Option<String> {
+    let path = rust.active_layer.as_ref().filter(|_| rust.path_on_layer)?;
+    let layer = pictura_render::resolve_path(rust.doc.as_ref()?, path)?;
+    pictura_render::is_shape_layer(layer).then(|| path.clone())
+}
+
+fn path(view: &PictureView) -> Option<VectorPath> {
+    let rust = view.rust();
+    let doc = rust.doc.as_ref()?;
+    let Some(target) = layer_target(rust) else {
+        return Some(doc.work_path.clone());
+    };
+    let layer = pictura_render::resolve_path(doc, &target)?;
+    let mut path = VectorPath::default();
+    for subpath in pictura_render::layer_shape_paths(layer, doc.width, doc.height)? {
+        path.add_subpath(subpath);
+    }
+    Some(path)
 }
 
 /// Apply `edit` to the Work Path; `None` without a document.
 fn edit<T>(view: Pin<&mut PictureView>, edit: impl FnOnce(&mut VectorPath) -> T) -> Option<T> {
-    let mut rust = view.rust_mut();
-    rust.doc.as_mut().map(|doc| edit(&mut doc.work_path))
+    edit_target(view, None, edit)
+}
+
+/// Apply `edit` to the target path. On a shape layer a change rewrites its
+/// outline and recomposites; it keeps the shape live only when `moved_by`
+/// says the edit moved it whole (the live box moves with it), and otherwise
+/// turns it into a regular path.
+fn edit_target<T>(
+    mut view: Pin<&mut PictureView>,
+    moved_by: Option<(f64, f64)>,
+    edit: impl FnOnce(&mut VectorPath) -> T,
+) -> Option<T> {
+    let Some(target) = layer_target(view.rust()) else {
+        let mut rust = view.rust_mut();
+        return rust.doc.as_mut().map(|doc| edit(&mut doc.work_path));
+    };
+    let before = path(&view)?;
+    let mut after = before.clone();
+    let out = edit(&mut after);
+    if after != before {
+        {
+            let mut rust = view.as_mut().rust_mut();
+            let doc = rust.doc.as_mut()?;
+            let (width, height) = (doc.width, doc.height);
+            let layer = pictura_render::resolve_path_mut(doc, &target)?;
+            pictura_render::set_layer_shape_paths(layer, &after.subpaths, width, height);
+            let live = pictura_render::layer_live_shape(layer)
+                .zip(moved_by)
+                .map(|(live, (dx, dy))| live.translated(dx, dy));
+            pictura_render::set_layer_live_shape(layer, live.as_ref());
+        }
+        view.as_mut().recomposite();
+    }
+    Some(out)
+}
+
+fn path_set_layer_target(mut view: Pin<&mut PictureView>, on: bool) {
+    view.as_mut().rust_mut().path_on_layer = on;
+}
+
+fn path_target_is_live_shape(view: &PictureView) -> bool {
+    let rust = view.rust();
+    layer_target(rust)
+        .and_then(|target| pictura_render::resolve_path(rust.doc.as_ref()?, &target))
+        .and_then(pictura_render::layer_live_shape)
+        .is_some()
+}
+
+fn path_layer_target(view: &PictureView) -> bool {
+    view.rust().path_on_layer
+}
+
+fn path_target_name(view: &PictureView) -> String {
+    let rust = view.rust();
+    layer_target(rust)
+        .and_then(|target| pictura_render::resolve_path(rust.doc.as_ref()?, &target))
+        .map_or_else(String::new, |layer| layer.name.clone())
+}
+
+fn path_target_is_layer(view: &PictureView) -> bool {
+    layer_target(view.rust()).is_some()
+}
+
+fn path_convert_live_shape(mut view: Pin<&mut PictureView>) -> bool {
+    if !path_target_is_live_shape(&view) {
+        return false;
+    }
+    let mut rust = view.as_mut().rust_mut();
+    let target = layer_target(&rust);
+    target
+        .and_then(|target| pictura_render::resolve_path_mut(rust.doc.as_mut()?, &target))
+        .map(|layer| pictura_render::set_layer_live_shape(layer, None))
+        .is_some()
 }
 
 fn commit(mut view: Pin<&mut PictureView>, label: &str) {
@@ -173,14 +287,14 @@ fn path_subpath_count(view: &PictureView) -> i32 {
 
 fn path_point_count(view: &PictureView, sp: i32) -> i32 {
     index(sp)
-        .and_then(|sp| path(view)?.subpaths.get(sp))
-        .map_or(0, |s| s.points.len() as i32)
+        .and_then(|sp| Some(path(view)?.subpaths.get(sp)?.points.len() as i32))
+        .unwrap_or(0)
 }
 
 fn path_subpath_closed(view: &PictureView, sp: i32) -> bool {
     index(sp)
-        .and_then(|sp| path(view)?.subpaths.get(sp))
-        .is_some_and(|s| s.closed)
+        .and_then(|sp| Some(path(view)?.subpaths.get(sp)?.closed))
+        .unwrap_or(false)
 }
 
 fn path_point(view: &PictureView, sp: i32, pt: i32) -> Vec<f64> {
@@ -208,7 +322,7 @@ fn path_point(view: &PictureView, sp: i32, pt: i32) -> Vec<f64> {
 
 fn path_editing_subpath(view: &PictureView) -> i32 {
     path(view)
-        .and_then(VectorPath::editing_subpath)
+        .and_then(|p| p.editing_subpath())
         .map_or(-1, |s| s as i32)
 }
 
@@ -399,7 +513,7 @@ fn path_move_subpath(view: Pin<&mut PictureView>, sp: i32, dx: f64, dy: f64) -> 
     let Some(sp) = index(sp) else {
         return false;
     };
-    edit(view, |p| p.move_subpath(sp, dx, dy)) == Some(true)
+    edit_target(view, Some((dx, dy)), |p| p.move_subpath(sp, dx, dy)) == Some(true)
 }
 
 fn path_duplicate_subpath(view: Pin<&mut PictureView>, sp: i32) -> i32 {

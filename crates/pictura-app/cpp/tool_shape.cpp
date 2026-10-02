@@ -4,27 +4,30 @@
 // shape layer (Shape), a Work Path component (Path), or foreground pixels on
 // the active layer (Pixels). Shift squares the box off (the Polygon snaps its
 // turn to 15°); Alt grows it from the press point. The modifiers are read live,
-// so pressing one mid-drag changes the preview. Ported from photorust's
-// CanvasView shape drag (shapeOutlineFor / paintShapeOverlay / drawShape).
+// so pressing one mid-drag changes the preview. A click instead opens the
+// tool's Create dialog and places the shape at the click (or centred on it).
+// Outside Path mode the active shape layer's outline is drawn with its anchors,
+// ready for Direct Selection. Ported from photorust's CanvasView shape drag
+// (shapeOutlineFor / paintShapeOverlay / drawShape).
 //
-// ponytail: a click does not open CS6's "Create Rectangle" size dialog; no
-// Stroke, gradient / pattern Fill, geometry pop-up (Fixed Size, Proportional,
-// Star), path operations, or Align Edges.
+// ponytail: no Stroke, gradient / pattern Fill, geometry pop-up (Fixed Size,
+// Proportional), path operations, or Align Edges.
 
 #include "tool_handler.h"
 
 #include "image_view.h"
 #include "path_overlay.h"
+#include "shape_dialogs.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/paths.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include <QtCore/QLineF>
 #include <QtCore/QObject>
 #include <QtGui/QPainterPath>
 
-#include <array>
 #include <memory>
 
 namespace pictura {
@@ -48,7 +51,8 @@ int shapeKind(ToolId id)
 class ShapeToolHandler : public ToolHandler {
 public:
     explicit ShapeToolHandler(ToolId id)
-        : kind_(shapeKind(id))
+        : id_(id)
+        , kind_(shapeKind(id))
     {
     }
 
@@ -90,7 +94,7 @@ public:
     void onMove(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers mods) override
     {
         if (ctx.dragging()) {
-            refreshOverlay(ctx, preview(ctx, imagePos, mods));
+            refreshOverlay(ctx, outlinePath(dragSpec(ctx, imagePos, mods)));
         }
     }
 
@@ -100,36 +104,54 @@ public:
             return;
         }
         ctx.setDragging(false);
+        refreshOverlay(ctx, {});
         PictureView* v = ctx.view();
-        if (v && v->has_document()) {
-            land(ctx, *v, imagePos, mods);
+        if (!v || !v->has_document()) {
+            return;
+        }
+        // A press that wobbles under two screen pixels is a click.
+        const double zoom = ctx.canvas() ? qMax(ctx.canvas()->zoom(), 1e-6) : 1.0;
+        if (QLineF(press_, imagePos).length() * zoom < 2.0) {
+            createAtClick(ctx, *v);
+        } else {
+            const ShapeSpec spec = dragSpec(ctx, imagePos, mods);
+            const QRectF drawn = outlinePath(spec).boundingRect();
+            if (land(ctx, *v, spec) && !drawn.isEmpty()) {
+                values_.width = drawn.width();
+                values_.height = drawn.height();
+            }
         }
         refreshOverlay(ctx, {});
     }
 
 private:
-    // The bridge's shared arguments: the drag and the modifiers.
-    struct Drag {
-        std::array<double, 4> points;
-        bool shift;
-        bool alt;
-
-        ::rust::Slice<const double> slice() const { return {points.data(), points.size()}; }
-    };
-
-    Drag drag(const QPointF& end, Qt::KeyboardModifiers mods) const
-    {
-        return {{press_.x(), press_.y(), end.x(), end.y()},
-                mods.testFlag(Qt::ShiftModifier),
-                mods.testFlag(Qt::AltModifier)};
-    }
-
-    QPainterPath preview(ToolContext& ctx, const QPointF& end, Qt::KeyboardModifiers mods) const
+    // The spec's options from the options bar; the geometry is the caller's.
+    ShapeSpec baseSpec(ToolContext& ctx) const
     {
         const ShapeOptions o = ctx.shapeOptions();
-        const Drag d = drag(end, mods);
-        const ::rust::Vec<double> k =
-            shape_outline(kind_, d.slice(), d.shift, d.alt, o.radius, o.sides);
+        ShapeSpec spec{};
+        spec.kind = kind_;
+        spec.r_tl = spec.r_tr = spec.r_br = spec.r_bl = o.radius;
+        spec.sides = o.sides;
+        spec.indent = 50.0;
+        return spec;
+    }
+
+    ShapeSpec dragSpec(ToolContext& ctx, const QPointF& end, Qt::KeyboardModifiers mods) const
+    {
+        ShapeSpec spec = baseSpec(ctx);
+        spec.x0 = press_.x();
+        spec.y0 = press_.y();
+        spec.x1 = end.x();
+        spec.y1 = end.y();
+        spec.shift = mods.testFlag(Qt::ShiftModifier);
+        spec.alt = mods.testFlag(Qt::AltModifier);
+        return spec;
+    }
+
+    static QPainterPath outlinePath(const ShapeSpec& spec)
+    {
+        const ::rust::Vec<double> k = shape_outline(spec);
         QPainterPath path;
         const int n = int(k.size() / 6);
         if (n < 2) {
@@ -146,33 +168,57 @@ private:
         return path;
     }
 
-    void land(ToolContext& ctx, PictureView& v, const QPointF& end, Qt::KeyboardModifiers mods)
+    // The Create dialog, seeded with the last shape's size and the options
+    // bar's radius and sides the first time; the shape's top-left corner (or
+    // centre) goes at the click.
+    void createAtClick(ToolContext& ctx, PictureView& v)
     {
-        // A click, or a drag under two screen pixels, draws nothing.
-        const double zoom = ctx.canvas() ? qMax(ctx.canvas()->zoom(), 1e-6) : 1.0;
-        if (QLineF(press_, end).length() * zoom < 2.0) {
+        const ShapeOptions o = ctx.shapeOptions();
+        if (!dialogSeeded_) {
+            values_.radii.fill(o.radius);
+            values_.sides = o.sides;
+            dialogSeeded_ = true;
+        }
+        if (!execCreateShapeDialog(id_, values_, ctx.canvas())) {
             return;
         }
-        const ShapeOptions o = ctx.shapeOptions();
-        const Drag d = drag(end, mods);
+        ShapeSpec spec = baseSpec(ctx);
+        spec.boxed = true;
+        spec.x0 = press_.x() - (values_.fromCenter ? values_.width / 2.0 : 0.0);
+        spec.y0 = press_.y() - (values_.fromCenter ? values_.height / 2.0 : 0.0);
+        spec.x1 = spec.x0 + values_.width;
+        spec.y1 = spec.y0 + values_.height;
+        spec.r_tl = values_.radii[0];
+        spec.r_tr = values_.radii[1];
+        spec.r_br = values_.radii[2];
+        spec.r_bl = values_.radii[3];
+        spec.sides = values_.sides;
+        spec.star = values_.star;
+        spec.indent = values_.indent;
+        spec.smooth_corners = values_.smoothCorners;
+        spec.smooth_indents = values_.smoothIndents;
+        land(ctx, v, spec);
+    }
+
+    bool land(ToolContext& ctx, PictureView& v, const ShapeSpec& spec)
+    {
         const std::uint32_t color = ctx.foreground().rgba();
-        switch (o.mode) {
+        switch (ctx.shapeOptions().mode) {
         case 1:
-            shape_add_path(v, kind_, d.slice(), d.shift, d.alt, o.radius, o.sides);
-            break;
+            return shape_add_path(v, spec);
         case 2:
-            if (!shape_fill_pixels(v, kind_, d.slice(), d.shift, d.alt, o.radius, o.sides,
-                                   color)) {
+            if (!shape_fill_pixels(v, spec, color)) {
                 reportRefusal(ctx, v);
+                return false;
             }
-            break;
+            return true;
         default: {
-            const QString created =
-                shape_add_layer(v, kind_, d.slice(), d.shift, d.alt, o.radius, o.sides, color);
-            if (!created.isEmpty()) {
-                ctx.notifyLayerCreated(created);
+            const QString created = shape_add_layer(v, spec, color);
+            if (created.isEmpty()) {
+                return false;
             }
-            break;
+            ctx.notifyLayerCreated(created);
+            return true;
         }
         }
     }
@@ -188,7 +234,8 @@ private:
         }
     }
 
-    // The live outline; in Path mode the Work Path it joins is drawn too.
+    // The live outline over either the Work Path it joins (Path mode) or the
+    // active shape layer's outline with its anchors.
     static void refreshOverlay(ToolContext& ctx, const QPainterPath& outline)
     {
         ImageView* canvas = ctx.canvas();
@@ -197,15 +244,25 @@ private:
         }
         PictureView* v = ctx.view();
         ImageView::PathOverlay overlay;
-        if (v && v->has_document() && ctx.shapeOptions().mode == 1) {
-            overlay = workPathOverlay(*v, -2);
+        if (v && v->has_document()) {
+            const bool pathMode = ctx.shapeOptions().mode == 1;
+            path_set_layer_target(*v, !pathMode);
+            if (pathMode) {
+                overlay = workPathOverlay(*v, -2);
+            } else if (path_target_is_layer(*v)) {
+                overlay = workPathOverlay(*v, -1);
+                overlay.handles.clear();
+            }
         }
         overlay.preview = outline;
         canvas->setPathOverlay(overlay);
     }
 
+    const ToolId id_;
     const int kind_;
     QPointF press_;
+    CreateShapeValues values_;
+    bool dialogSeeded_ = false;
 };
 
 } // namespace

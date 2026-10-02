@@ -75,6 +75,8 @@ SessionState loadSession()
         obj.value(QStringLiteral("toolsColumns")).toInt(1) == 2 ? 2 : 1;
     state.useShiftKeyForToolSwitch =
         obj.value(QStringLiteral("useShiftKeyForToolSwitch")).toBool(true);
+    state.confirmLiveShapeToPath =
+        obj.value(QStringLiteral("confirmLiveShapeToPath")).toBool(true);
     state.panelRailMode = obj.value(QStringLiteral("panelRailMode")).toString(
         QStringLiteral("normal"));
     if (state.panelRailMode != QStringLiteral("iconic")) {
@@ -125,6 +127,7 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("layersExpandNewEffects"), state.layersExpandNewEffects);
     obj.insert(QStringLiteral("toolsColumns"), state.toolsColumns);
     obj.insert(QStringLiteral("useShiftKeyForToolSwitch"), state.useShiftKeyForToolSwitch);
+    obj.insert(QStringLiteral("confirmLiveShapeToPath"), state.confirmLiveShapeToPath);
     obj.insert(QStringLiteral("panelRailMode"), state.panelRailMode);
     obj.insert(QStringLiteral("railWidth"), state.railWidth);
     obj.insert(QStringLiteral("autoCollapseIconic"), state.autoCollapseIconic);

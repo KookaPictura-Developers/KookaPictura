@@ -1,15 +1,28 @@
 // The shape tools: Rectangle (#43), Rounded Rectangle (#44), Ellipse (#45),
-// and Polygon (#46), in each of the Shape / Path / Pixels modes.
+// and Polygon (#46), in each of the Shape / Path / Pixels modes; live shapes
+// and their conversion prompt; the Create dialogs; the Layers shape badge.
 
 #include <QtTest/QtTest>
 
+#include "panels/layers_panel.h"
 #include "panels/numeric_field.h"
 #include "selftest_paint_fixture.h"
+#include "session.h"
 
 #include "pictura_app/src/cxxqt_object/paths.cxxqt.h"
 
+#include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
+#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QDialog>
+#include <QtWidgets/QDoubleSpinBox>
+#include <QtWidgets/QMessageBox>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QSpinBox>
+
+#include <functional>
+#include <memory>
 
 #include "qt_test_support.h"
 
@@ -57,6 +70,65 @@ struct State {
     }
 };
 
+// Answers the next modal dialog (polled from the dialog's own event loop)
+// with `answer` and counts it in `*seen`. Destroy the timer once the action
+// that may open the dialog has returned.
+std::unique_ptr<QTimer> answerNextModal(std::function<void(QWidget*)> answer, int* seen)
+{
+    auto timer = std::make_unique<QTimer>();
+    timer->setInterval(5);
+    QTimer* raw = timer.get();
+    QObject::connect(raw, &QTimer::timeout, [raw, answer, seen]() {
+        if (QWidget* modal = QApplication::activeModalWidget()) {
+            raw->stop();
+            ++*seen;
+            answer(modal);
+        }
+    });
+    timer->start();
+    return timer;
+}
+
+void pressButton(QWidget* modal, QMessageBox::StandardButton which, bool dontShowAgain = false)
+{
+    auto* box = qobject_cast<QMessageBox*>(modal);
+    QVERIFY(box && box->objectName() == QStringLiteral("liveShapeToPathPrompt"));
+    QVERIFY(box->text().contains(QStringLiteral("live shape into a regular path")));
+    if (dontShowAgain) {
+        box->checkBox()->setChecked(true);
+    }
+    box->button(which)->click();
+}
+
+// Fill in a Create dialog's numeric fields by object name, then OK it.
+void fillCreateDialog(QWidget* modal, const QList<QPair<QString, double>>& fields,
+                      const QStringList& checks = {})
+{
+    auto* dialog = qobject_cast<QDialog*>(modal);
+    QVERIFY(dialog && dialog->objectName() == QStringLiteral("createShapeDialog"));
+    for (const auto& [name, value] : fields) {
+        if (auto* d = dialog->findChild<QDoubleSpinBox*>(name)) {
+            d->setValue(value);
+        } else if (auto* i = dialog->findChild<QSpinBox*>(name)) {
+            i->setValue(int(value));
+        } else {
+            QFAIL(qPrintable(QStringLiteral("no field ") + name));
+        }
+    }
+    for (const QString& name : checks) {
+        auto* box = dialog->findChild<QCheckBox*>(name);
+        QVERIFY(box);
+        box->setChecked(true);
+    }
+    dialog->accept();
+}
+
+QRectF subpathBounds(const Fixture& f, int sp)
+{
+    const ::rust::Vec<double> b = pictura::path_subpath_bounds(*f.view, sp);
+    return b.size() == 4 ? QRectF(QPointF(b[0], b[1]), QPointF(b[2], b[3])) : QRectF();
+}
+
 const QRgb kRed = QColor(Qt::red).rgba();
 const QRgb kWhite = QColor(Qt::white).rgba();
 
@@ -68,6 +140,8 @@ class ShapeToolsTest : public QObject {
 private slots:
     void initTestCase();
     void shapeTools();
+    void liveShapes();
+    void createDialogs();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -175,15 +249,217 @@ void ShapeToolsTest::shapeTools()
     QCOMPARE(f.view->sample_argb(25, 20), kRed);
     QCOMPARE(f.view->sample_argb(45, 20), kWhite);
     QCOMPARE(f.view->sample_argb(25, 32), kWhite);
-    QCOMPARE(pictura::path_subpath_count(*f.view), 2);
 
-    // A click draws nothing; undo removes the shape layer.
+    // The new layer's outline is drawn with its four corners, and the path
+    // calls now read it; the Work Path keeps its two components. The Layers
+    // panel marks the row as a shape layer.
+    QCOMPARE(f.canvas->pathOverlayAnchorCountForTest(), 4);
+    QCOMPARE(pictura::path_subpath_count(*f.view), 1);
+    QVERIFY(pictura::path_target_is_live_shape(*f.view));
+    pictura::path_set_layer_target(*f.view, false);
+    QCOMPARE(pictura::path_subpath_count(*f.view), 2);
+    pictura::path_set_layer_target(*f.view, true);
+    auto* panel = frame.findChild<pictura::LayersPanel*>();
+    QVERIFY(panel != nullptr);
+    QVERIFY(panel->rowShapeForTest(f.view->active_layer_path()));
+    QVERIFY(!panel->rowThumbnailForTest(f.view->active_layer_path()).isNull());
+
+    // A click opens the Create dialog; cancelling it draws nothing. Undo
+    // removes the shape layer.
     base = f.view->history_index();
-    f.drag({QPointF(70, 10)});
+    int seen = 0;
+    {
+        const auto cancel = answerNextModal(
+            [](QWidget* modal) { qobject_cast<QDialog*>(modal)->reject(); }, &seen);
+        f.drag({QPointF(70, 10)});
+    }
+    QCOMPARE(seen, 1);
     QCOMPARE(f.view->history_index(), base);
     QVERIFY(f.view->undo());
     QCOMPARE(f.view->layer_count(), layers);
     QCOMPARE(f.view->sample_argb(25, 20), kWhite);
+}
+
+void ShapeToolsTest::liveShapes()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(100, 100, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_live_shape_seed"));
+    QVERIFY2(f.ok(), "live shape fixture");
+    const State state(f.tools);
+    f.tools->setShapeOptions({0, 10.0, 5});
+
+    // A Shape-mode rectangle is a live shape.
+    frame.setActiveTool(pictura::ToolId::Rectangle);
+    f.drag({QPointF(20, 20), QPointF(40, 40), QPointF(60, 50)});
+    QVERIFY(pictura::path_target_is_live_shape(*f.view));
+
+    // Path Selection moves it whole and it stays live.
+    frame.setActiveTool(pictura::ToolId::PathSelection);
+    int base = f.view->history_index();
+    f.drag({QPointF(40, 35), QPointF(45, 35), QPointF(50, 40)});
+    QVERIFY2(f.committedOnce(base, "Drag Path"), "move the live shape");
+    QVERIFY(pictura::path_target_is_live_shape(*f.view));
+    QCOMPARE(f.view->sample_argb(65, 52), kRed);
+    QCOMPARE(f.view->sample_argb(80, 70), kWhite);
+
+    // Direct Selection on a corner asks first; No leaves the shape alone.
+    frame.setActiveTool(pictura::ToolId::DirectSelection);
+    base = f.view->history_index();
+    int seen = 0;
+    {
+        const auto no = answerNextModal(
+            [](QWidget* m) { pressButton(m, QMessageBox::No); }, &seen);
+        f.drag({QPointF(70, 55), QPointF(75, 60), QPointF(90, 80)});
+    }
+    QCOMPARE(seen, 1);
+    QCOMPARE(f.view->history_index(), base);
+    QVERIFY(pictura::path_target_is_live_shape(*f.view));
+    QCOMPARE(f.view->sample_argb(80, 70), kWhite);
+
+    // Yes turns it into a regular path. The prompt took the button release,
+    // so that drag ends there; the next one reshapes it without asking.
+    {
+        const auto yes = answerNextModal(
+            [](QWidget* m) { pressButton(m, QMessageBox::Yes); }, &seen);
+        f.drag({QPointF(70, 55), QPointF(75, 60), QPointF(90, 80)});
+    }
+    QCOMPARE(seen, 2);
+    QVERIFY(!pictura::path_target_is_live_shape(*f.view));
+    {
+        const auto unexpected = answerNextModal(
+            [](QWidget* m) { pressButton(m, QMessageBox::No); }, &seen);
+        f.drag({QPointF(70, 55), QPointF(75, 60), QPointF(90, 80)});
+    }
+    QCOMPARE(seen, 2);
+    QVERIFY2(f.committedOnce(base, "Drag Anchor Point"), "reshape the converted shape");
+    QCOMPARE(f.view->sample_argb(80, 70), kRed);
+
+    // Undoing the reshape brings back the live shape.
+    QVERIFY(f.view->undo());
+    QVERIFY(pictura::path_target_is_live_shape(*f.view));
+    QCOMPARE(f.view->sample_argb(80, 70), kWhite);
+
+    // "Don't show again" is remembered: the next live shape converts and
+    // reshapes in one drag, without asking.
+    {
+        const auto yes = answerNextModal(
+            [](QWidget* m) { pressButton(m, QMessageBox::Yes, true); }, &seen);
+        f.drag({QPointF(70, 55), QPointF(75, 60), QPointF(90, 80)});
+    }
+    QCOMPARE(seen, 3);
+    QVERIFY(!pictura::loadSession().confirmLiveShapeToPath);
+    frame.setActiveTool(pictura::ToolId::Ellipse);
+    f.drag({QPointF(10, 60), QPointF(30, 80), QPointF(50, 90)});
+    QVERIFY(pictura::path_target_is_live_shape(*f.view));
+    frame.setActiveTool(pictura::ToolId::DirectSelection);
+    base = f.view->history_index();
+    {
+        const auto unexpected = answerNextModal(
+            [](QWidget* m) { pressButton(m, QMessageBox::No); }, &seen);
+        f.drag({QPointF(50, 75), QPointF(55, 75), QPointF(60, 75)});
+    }
+    QCOMPARE(seen, 3);
+    QVERIFY2(f.committedOnce(base, "Drag Anchor Point"), "reshape without asking");
+    QVERIFY(!pictura::path_target_is_live_shape(*f.view));
+    QCOMPARE(f.view->sample_argb(55, 75), kRed);
+
+    pictura::SessionState session = pictura::loadSession();
+    session.confirmLiveShapeToPath = true;
+    QVERIFY(pictura::saveSession(session));
+}
+
+void ShapeToolsTest::createDialogs()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(100, 100, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_create_shape_seed"));
+    QVERIFY2(f.ok(), "create dialog fixture");
+    const State state(f.tools);
+    int seen = 0;
+
+    // Shape mode: a 30 x 20 rectangle with its top-left corner at the click.
+    f.tools->setShapeOptions({0, 10.0, 5});
+    frame.setActiveTool(pictura::ToolId::Rectangle);
+    int base = f.view->history_index();
+    {
+        const auto ok = answerNextModal(
+            [](QWidget* m) {
+                QCOMPARE(m->windowTitle(), QStringLiteral("Create Rectangle"));
+                fillCreateDialog(m, {{QStringLiteral("createShapeWidth"), 30},
+                                     {QStringLiteral("createShapeHeight"), 20}});
+            },
+            &seen);
+        f.drag({QPointF(10, 10)});
+    }
+    QCOMPARE(seen, 1);
+    QVERIFY2(f.committedOnce(base, "Rectangle Tool"), "create rectangle");
+    QCOMPARE(f.view->sample_argb(35, 25), kRed);
+    QCOMPARE(f.view->sample_argb(45, 25), kWhite);
+    QCOMPARE(f.view->sample_argb(35, 35), kWhite);
+
+    // Path mode from here on, so the Work Path shows what each dialog drew.
+    f.tools->setShapeOptions({1, 10.0, 5});
+
+    // From Center puts the ellipse's centre at the click.
+    frame.setActiveTool(pictura::ToolId::Ellipse);
+    {
+        const auto ok = answerNextModal(
+            [](QWidget* m) {
+                QCOMPARE(m->windowTitle(), QStringLiteral("Create Ellipse"));
+                fillCreateDialog(m,
+                                 {{QStringLiteral("createShapeWidth"), 40},
+                                  {QStringLiteral("createShapeHeight"), 20}},
+                                 {QStringLiteral("createShapeFromCenter")});
+            },
+            &seen);
+        f.drag({QPointF(50, 50)});
+    }
+    QCOMPARE(pictura::path_subpath_count(*f.view), 1);
+    QCOMPARE(subpathBounds(f, 0), QRectF(30, 40, 40, 20));
+
+    // Each corner takes its own radius: a square top-left corner is one anchor.
+    frame.setActiveTool(pictura::ToolId::RoundedRectangle);
+    {
+        const auto ok = answerNextModal(
+            [](QWidget* m) {
+                QCOMPARE(m->windowTitle(), QStringLiteral("Create Rounded Rectangle"));
+                fillCreateDialog(m, {{QStringLiteral("createShapeWidth"), 40},
+                                     {QStringLiteral("createShapeHeight"), 40},
+                                     {QStringLiteral("createShapeRadiusTopLeft"), 0},
+                                     {QStringLiteral("createShapeRadiusBottomRight"), 15}});
+            },
+            &seen);
+        f.drag({QPointF(5, 55)});
+    }
+    QCOMPARE(pictura::path_point_count(*f.view, 1), 7);
+    QCOMPARE(subpathBounds(f, 1), QRectF(5, 55, 40, 40));
+
+    // A five-pointed star fills its box with ten anchors.
+    frame.setActiveTool(pictura::ToolId::Polygon);
+    {
+        const auto ok = answerNextModal(
+            [](QWidget* m) {
+                QCOMPARE(m->windowTitle(), QStringLiteral("Create Polygon"));
+                auto* indent = m->findChild<QDoubleSpinBox*>(QStringLiteral("createShapeIndent"));
+                QVERIFY(indent && !indent->isEnabled());
+                fillCreateDialog(m,
+                                 {{QStringLiteral("createShapeWidth"), 30},
+                                  {QStringLiteral("createShapeHeight"), 30},
+                                  {QStringLiteral("createShapeSides"), 5}},
+                                 {QStringLiteral("createShapeStar")});
+            },
+            &seen);
+        f.drag({QPointF(60, 10)});
+    }
+    QCOMPARE(seen, 4);
+    QCOMPARE(pictura::path_point_count(*f.view, 2), 10);
+    const QRectF star = subpathBounds(f, 2);
+    QVERIFY2(qAbs(star.left() - 60) < 0.01 && qAbs(star.top() - 10) < 0.01
+                 && qAbs(star.width() - 30) < 0.01 && qAbs(star.height() - 30) < 0.01,
+             "the star fills its box");
 }
 
 QTEST_MAIN(ShapeToolsTest)
