@@ -661,7 +661,7 @@ fn type_style() -> TextStyle {
     TextStyle {
         font: Some("Arial".into()),
         font_size: 48.0,
-        fill_color: [0.0, 0.0, 0.0, 1.0],
+        fill_color: [1.0, 0.0, 0.0, 0.0],
         tracking: 0.0,
         justification: 0,
     }
@@ -679,6 +679,7 @@ fn type_layer(style: Option<TextStyle>) -> Layer {
             warp_desc: Vec::new(),
             fonts: vec!["Arial".into()],
             style,
+            vertical: false,
         }),
         ..Default::default()
     }

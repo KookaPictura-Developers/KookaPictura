@@ -653,7 +653,8 @@ where
 /// # Ceiling
 ///
 /// Bilinear resampling only: no bicubic/nearest choice; skew and perspective go
-/// through [`transform_layer_quad`].
+/// through [`transform_layer_quad`]. A type layer is re-set as type instead
+/// (`type_layer::transform_type_layer`), staying sharp and editable.
 // ponytail: bilinear-only; add an interpolation parameter and bicubic kernel if
 // a numeric options bar ever needs it.
 pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform) -> bool {
@@ -661,6 +662,28 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
         return false;
     }
     let (sin, cos) = transform.angle_radians.sin_cos();
+    if let Some(rect) = resolve_path(doc, path)
+        .filter(|l| l.is_type())
+        .map(|l| l.rect)
+    {
+        let (cx, cy) = (
+            f64::from(rect.left + rect.right) / 2.0,
+            f64::from(rect.top + rect.bottom) / 2.0,
+        );
+        let (xx, xy) = (cos * transform.scale_x, sin * transform.scale_x);
+        let (yx, yy) = (-sin * transform.scale_y, cos * transform.scale_y);
+        let affine = [
+            xx,
+            xy,
+            yx,
+            yy,
+            cx + transform.dx - (xx * cx + yx * cy),
+            cy + transform.dy - (xy * cx + yy * cy),
+        ];
+        if let Some(done) = crate::type_layer::transform_type_layer(doc, path, affine) {
+            return done;
+        }
+    }
     let pure_translate = transform.scale_x == 1.0
         && transform.scale_y == 1.0
         && transform.angle_radians == 0.0
@@ -685,12 +708,48 @@ pub fn transform_layer(doc: &mut Document, path: &str, transform: LayerTransform
 /// near-singular map, or a zero-area destination. A projective map is never a
 /// pure integer translation, so an unmodeled raw channel stream is dropped.
 pub fn transform_layer_quad(doc: &mut Document, path: &str, quad: [(f64, f64); 4]) -> bool {
+    if let Some(rect) = resolve_path(doc, path)
+        .filter(|l| l.is_type())
+        .map(|l| l.rect)
+    {
+        if let Some(affine) = affine_quad(rect, quad) {
+            if let Some(done) = crate::type_layer::transform_type_layer(doc, path, affine) {
+                return done;
+            }
+        }
+    }
     apply_layer_map(
         doc,
         path,
         |rect| solve_homography(source_corners(rect), quad),
         false,
     )
+}
+
+/// The affine map (`xx, xy, yx, yy, tx, ty`) sending `rect`'s TL, TR, BL
+/// corners to `quad`'s, when BR lands where that map puts it (Skew); `None` for
+/// a projective quad (Distort, Perspective).
+fn affine_quad(rect: PsdRect, quad: [(f64, f64); 4]) -> Option<[f64; 6]> {
+    let (w, h) = (f64::from(rect.width()), f64::from(rect.height()));
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let [tl, tr, br, bl] = quad;
+    let (xx, xy) = ((tr.0 - tl.0) / w, (tr.1 - tl.1) / w);
+    let (yx, yy) = ((bl.0 - tl.0) / h, (bl.1 - tl.1) / h);
+    let expected = (tr.0 + bl.0 - tl.0, tr.1 + bl.1 - tl.1);
+    if (expected.0 - br.0).abs() > 1e-3 || (expected.1 - br.1).abs() > 1e-3 {
+        return None;
+    }
+    let (l, t) = (f64::from(rect.left), f64::from(rect.top));
+    Some([
+        xx,
+        xy,
+        yx,
+        yy,
+        tl.0 - xx * l - yx * t,
+        tl.1 - xy * l - yy * t,
+    ])
 }
 
 /// Test hook: the forward-mapped source-rect corners of `quad`.

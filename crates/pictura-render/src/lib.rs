@@ -120,6 +120,15 @@ pub use document_ops::{
 
 mod text_render;
 pub use text_render::{materialize_text_rgba, render_text_layer, BundledRasterizer, BundledText};
+mod fonts;
+pub use fonts::{font_family, font_postscript_name, register_font};
+mod type_caret;
+pub use type_caret::type_caret_stops;
+mod type_layer;
+pub use type_layer::{
+    add_type_layer, render_type, replace_type_layer, type_layer_at, type_layer_spec, type_mask,
+    type_placement, TypePlacement,
+};
 
 pub use pictura_ops::{Anchor, Resample};
 

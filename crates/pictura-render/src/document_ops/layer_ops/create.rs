@@ -252,7 +252,7 @@ pub fn ungroup_layer(doc: &mut Document, index: i32) -> bool {
 /// Insert `node` inside `selection_path` when it is a group (as its top child),
 /// otherwise directly above the selected node in its container, otherwise on
 /// top of the document. Returns the new path, or empty on failure.
-pub(super) fn insert_node(doc: &mut Document, selection_path: &str, node: Layer) -> String {
+pub(crate) fn insert_node(doc: &mut Document, selection_path: &str, node: Layer) -> String {
     if let Some(segments) = parse_path(selection_path) {
         if resolve_path(doc, selection_path).is_some_and(|layer| layer.is_group) {
             let Some(container) = container_of_mut(doc, &segments) else {

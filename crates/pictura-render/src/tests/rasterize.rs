@@ -349,10 +349,11 @@ fn rasterize_all_layers_rasterizes_a_type_layer() {
             style: Some(pictura_core::TextStyle {
                 font: Some("Arial".into()),
                 font_size: 48.0,
-                fill_color: [0.0, 0.0, 0.0, 1.0],
+                fill_color: [1.0, 0.0, 0.0, 0.0],
                 tracking: 0.0,
                 justification: 0,
             }),
+            vertical: false,
         }),
         ..Default::default()
     });
