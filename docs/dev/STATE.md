@@ -834,6 +834,38 @@ Snapshot for resuming after a context break. Update after each milestone.
   8-bit RGB documents only; the mask tint covers the canvas; Distort /
   Perspective and a masked type layer still resample pixels; the live
   transform preview is the resampled raster until commit.
+- **Shape tools** (changes `rectangle-tool`, `rounded-rectangle-tool`,
+  `ellipse-tool`, `polygon-tool`, issues #43–#46, ported from photorust's
+  `core/src/shape.rs` and its shell's `CanvasView` shape drag): Rectangle,
+  Rounded Rectangle, Ellipse, and Polygon are enabled (Line and Custom Shape
+  stay off). `pictura_core::shape::outline` turns a drag into one closed
+  `path::Subpath` (curves stay cubic: rounded corners and the ellipse are
+  quarter-arc Beziers, where photorust flattened to points); Shift squares the
+  box by its longer side (the Polygon snaps its turn to 15°), Alt grows it from
+  the press; the Polygon is centred on the press, first corner under the
+  pointer, Sides 3–100 (default 5); Rounded Rectangle Radius 0–1000 px
+  (default 10, as CS6 ships it; `shape-tools.md` says 0, unsourced), clamped to
+  half the shorter side with coincident arc anchors merged.
+  `shape::coverage` rasterises an outline (even-odd, 4 sub-scanlines with
+  fractional span ends). New `pictura_codec::encode_vector_mask` /
+  `decode_vector_mask` author and read a version-3 `vmsk`;
+  `pictura_render::add_shape_layer` inserts a `SoCo` fill layer named
+  `"<Tool> N"` above the active layer, cut by an authored `vmsk` — checked by a
+  composite + PSD round-trip test and a psd-tools oracle
+  (`vector_mask_oracle`). Bridge `cxxqt_object/shapes.rs`: `shape_outline`
+  (preview), `shape_add_layer` (Shape), `shape_add_path` (Path, via
+  `VectorPath::add_subpath`), `shape_fill_pixels` (Pixels, through the fills
+  bridge's `apply` and `bucket::fill`, inside the selection); each records one
+  `"<Tool> Tool"` state (label approximated). One handler, `tool_shape.cpp`:
+  dashed live preview (`PathOverlay::preview`; in Path mode over the Work
+  Path), Shift / Alt read live, a click draws nothing. `options_bar_shape.cpp`:
+  Mode (Shape / Path / Pixels, `ShapeOptions`, kept in sync across the four
+  pages), Radius, Sides. Qt Test suite `tst_shape_tools`. Guard 98 now probes
+  Line and `shift_plain` (117) presses R as the unimplemented key. Ceilings
+  (`ponytail:`): no click-to-size dialog, Stroke, gradient / pattern Fill,
+  geometry pop-up (Fixed Size, Proportional, Star, Smooth Corners), path
+  operations (Shift / Alt at press do not combine), Align Edges, or Pixels
+  blend mode / opacity / anti-alias toggle.
 - **Path Selection and Direct Selection** (changes `path-selection-tool`,
   `direct-selection-tool`, issues #41–#42, ported from photorust's
   `core/src/path.rs` and its shell's `CanvasView::pathSelectPress`): the A
