@@ -410,6 +410,32 @@ fn fit(subpath: &Subpath, (x, y, w, h): (f64, f64, f64, f64)) -> Option<Subpath>
     }))
 }
 
+/// CS6's Align Edges: every straight horizontal or vertical segment has its
+/// shared coordinate rounded to the pixel grid, so the edge lands on pixel
+/// boundaries and renders crisp; curves and slanted edges keep their points.
+pub fn align_edges(subpath: &Subpath) -> Subpath {
+    let mut out = subpath.clone();
+    let n = out.points.len();
+    for i in 0..subpath.segment_count() {
+        let j = (i + 1) % n;
+        let (a, b) = (&subpath.points[i], &subpath.points[j]);
+        if a.out_handle.is_some() || b.in_handle.is_some() {
+            continue;
+        }
+        if (a.anchor.0 - b.anchor.0).abs() < 1e-9 {
+            let x = a.anchor.0.round();
+            out.points[i].anchor.0 = x;
+            out.points[j].anchor.0 = x;
+        }
+        if (a.anchor.1 - b.anchor.1).abs() < 1e-9 {
+            let y = a.anchor.1.round();
+            out.points[i].anchor.1 = y;
+            out.points[j].anchor.1 = y;
+        }
+    }
+    out
+}
+
 /// A `width` × `height` document-sized, row-major, anti-aliased coverage mask
 /// (0–255) of `subpath`'s interior, even-odd. Each pixel row is sampled on
 /// [`SUBROWS`] scanlines and each span's ends are weighted by the fraction of
@@ -692,6 +718,17 @@ mod tests {
         o.smooth_indents = true;
         let both = outline(o, (0.0, 0.0), (0.0, -40.0), false, false).unwrap();
         assert!(both.points.iter().all(|p| p.smooth));
+    }
+
+    #[test]
+    fn align_edges_snaps_straight_edges_only() {
+        let rect = outline_in_box(opts(ShapeKind::Rectangle), (2.4, 3.6, 8.3, 5.6)).unwrap();
+        assert_eq!(
+            anchors(&align_edges(&rect)),
+            vec![(2.0, 4.0), (11.0, 4.0), (11.0, 9.0), (2.0, 9.0)]
+        );
+        let ellipse = outline_in_box(opts(ShapeKind::Ellipse), (2.4, 3.6, 8.3, 5.6)).unwrap();
+        assert_eq!(align_edges(&ellipse), ellipse);
     }
 
     #[test]

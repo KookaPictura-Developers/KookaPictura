@@ -215,3 +215,71 @@ fn psd_tools_reads_an_authored_live_shape() {
         "the live rounded rectangle's origin data"
     );
 }
+
+const STROKE_SCRIPT: &str = r#"
+import sys
+from psd_tools import PSDImage
+from psd_tools.constants import Tag
+
+psd = PSDImage.open(sys.argv[1])
+for layer in psd:
+    blocks = layer.tagged_blocks
+    block = blocks.get(Tag.OBJECT_BASED_EFFECTS_LAYER_INFO) if blocks else None
+    if block is None:
+        continue
+    fx = block.data[b"FrFX"]
+    color = fx[b"Clr "]
+    print("|".join([layer.name, str(bool(fx[b"enab"])), str(fx[b"Styl"].enum),
+                    f"{float(fx[b'Sz  ']):g}",
+                    " ".join(f"{float(color[k]):g}" for k in (b"Rd  ", b"Grn ", b"Bl  ")),
+                    str(layer.fill_opacity if hasattr(layer, "fill_opacity") else "")]))
+"#;
+
+#[test]
+fn psd_tools_reads_a_shape_stroke_and_no_fill() {
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+
+    let mut doc = pictura_core::Document::from_rgba("Background", 8, 8, &[255; 8 * 8 * 4]);
+    let options =
+        pictura_core::shape::ShapeOptions::new(pictura_core::shape::ShapeKind::Rectangle, 0.0, 3);
+    let outline = pictura_core::shape::outline_in_box(options, (1.0, 1.0, 6.0, 6.0)).unwrap();
+    let path = pictura_render::add_shape_layer(
+        &mut doc,
+        "",
+        [0, 0, 255, 255],
+        "Rectangle",
+        &outline,
+        None,
+    );
+    let layer = pictura_render::resolve_path_mut(&mut doc, &path).unwrap();
+    assert!(pictura_render::set_shape_fill(layer, None));
+    let stroke = pictura_render::ShapeStroke {
+        color: [10, 200, 30],
+        width: 3,
+        position: pictura_render::StrokePosition::Inside,
+    };
+    assert!(pictura_render::set_shape_stroke(layer, Some(&stroke)));
+    let file = std::env::temp_dir().join(format!("pictura-stroke-{}.psd", std::process::id()));
+    std::fs::write(&file, pictura_codec::write_psd(&doc).expect("writes")).expect("write");
+    let out = Command::new("python3")
+        .args(["-c", STROKE_SCRIPT, file.to_str().expect("utf-8 path")])
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_file(&file);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "psd-tools failed:\n{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let fields: Vec<&str> = stdout.trim().split('|').collect();
+    assert_eq!(
+        &fields[..5],
+        &["Rectangle 1", "True", "b'InsF'", "3", "10 200 30"],
+        "the stroke effect: {stdout}"
+    );
+    assert_eq!(fields[5], "0", "Fill None is fill opacity 0: {stdout}");
+}

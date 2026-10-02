@@ -31,12 +31,14 @@ pub use layer_ops::{
     move_path_to, move_selection_content, neutral_color, next_layer_name, open_as_smart_object,
     parent_path, paste_clip, perspective_crop, perspective_crop_refusal, perspective_crop_size,
     place_smart_object, rasterize_all_layers, rasterize_fill_content, rasterize_smart_object,
-    rename_path, replace_smart_object_contents, resolve_path, resolve_path_mut, select_similar,
-    set_blend_paths, set_color_paths, set_fill_paths, set_layer_live_shape, set_layer_shape_paths,
-    set_lock_paths, set_opacity_paths, set_visible_paths, shape_coverage, shape_fill_color,
+    rename_path, replace_smart_object_contents, resize_shape, resolve_path, resolve_path_mut,
+    select_similar, set_blend_paths, set_color_paths, set_fill_paths, set_layer_live_shape,
+    set_layer_shape_paths, set_lock_paths, set_opacity_paths, set_shape_fill, set_shape_stroke,
+    set_visible_paths, shape_bounds, shape_coverage, shape_fill, shape_fill_color, shape_stroke,
     smart_object_source_bytes, style_mesh, transform_layer, transform_layer_quad,
     transform_layer_warp, ungroup_layer, ungroup_paths, Clip, LayerTransform, MergeError,
-    MergeOutcome, MergeScope, NewLayerSpec, PasteMode, WarpMesh, WarpParams, WarpStyle,
+    MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeStroke, WarpMesh, WarpParams,
+    WarpStyle,
 };
 pub use orient::{flip_document, rotate_document};
 pub use pictura_raw::apply_pictura_raw;

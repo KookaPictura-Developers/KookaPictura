@@ -110,13 +110,15 @@ pub use document_ops::{
     perspective_crop, perspective_crop_refusal, perspective_crop_size, place_smart_object,
     rasterize_all_layers, rasterize_fill_content, rasterize_smart_object, remove_slice,
     rename_path, replace_smart_object_contents, resize_canvas_document, resize_document,
-    resolve_path, resolve_path_mut, resolve_slices, rotate_document, select_similar,
+    resize_shape, resolve_path, resolve_path_mut, resolve_slices, rotate_document, select_similar,
     set_blend_paths, set_color_paths, set_fill_paths, set_layer_live_shape, set_layer_shape_paths,
-    set_lock_paths, set_opacity_paths, set_slice, set_visible_paths, shape_coverage,
-    shape_fill_color, smart_object_source_bytes, style_mesh, transform_layer, transform_layer_quad,
+    set_lock_paths, set_opacity_paths, set_shape_fill, set_shape_stroke, set_slice,
+    set_visible_paths, shape_bounds, shape_coverage, shape_fill, shape_fill_color, shape_stroke,
+    smart_object_source_bytes, style_mesh, transform_layer, transform_layer_quad,
     transform_layer_warp, translate_layer, translate_layer_active, translate_layer_index,
     translate_layer_rect, ungroup_layer, ungroup_paths, Clip, LayerTransform, MergeError,
-    MergeOutcome, MergeScope, NewLayerSpec, PasteMode, Slice, WarpMesh, WarpParams, WarpStyle,
+    MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeStroke, Slice, WarpMesh, WarpParams,
+    WarpStyle,
 };
 
 mod text_render;
