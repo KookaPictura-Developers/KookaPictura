@@ -20,11 +20,11 @@ toolkit's own Qt Test for the C++ GUI suites.
 | C++ Qt shell tests | Qt Test + CTest (`add_test`) | `crates/pictura-app/cpp/tests/` | per-executable JUnit, folded into the unified report by `scripts/test-report.sh` |
 | Python oracle tooling | `argparse` CLIs, no test framework | `scripts/*.py` | stdout (machine-readable or raw bytes) + exit code |
 
-Current inventory: **1902 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
+Current inventory: **1913 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
 see §3), **511** `ST_BEGIN` self-test sites (**475** executed in a bare
-`--headless --self-test` run), and seven Qt Test suites (`tst_smoke`,
+`--headless --self-test` run), and eight Qt Test suites (`tst_smoke`,
 `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`, `tst_fill_tools`,
-`tst_retouch_tools`, `tst_pen_tools`) run under CTest.
+`tst_retouch_tools`, `tst_pen_tools`, `tst_type_tools`) run under CTest.
 `pictura-testkit` is the only dev-dependency; there are no
 test-runner crates outside Qt Test.
 
@@ -183,8 +183,9 @@ self-test and links `pictura_shell`.
   `tst_layers_panel` (row controls/chrome, group nesting, and drag/drop),
   `tst_edit_clipboard` (raster copy/cut/paste/purge). The tool ports add
   `tst_fill_tools` (Gradient, Paint Bucket), `tst_retouch_tools` (Blur,
-  Sharpen, Smudge, Dodge, Burn, Sponge), and `tst_pen_tools` (Pen, Freeform
-  Pen, Add / Delete Anchor Point, Convert Point).
+  Sharpen, Smudge, Dodge, Burn, Sponge), `tst_pen_tools` (Pen, Freeform
+  Pen, Add / Delete Anchor Point, Convert Point), and `tst_type_tools`
+  (Horizontal / Vertical Type and their Type Mask tools).
 - **Migration rule.** New GUI checks are written as Qt Test cases; the self-test
   only shrinks. Three suites were migrated off `runSelfTest()` and their `ST_*`
   blocks deleted, retiring codes 25, 26, 110, 123, 135, 138, 139, 200, 210, 211,
@@ -250,7 +251,7 @@ is a proposal. What actually shipped:
 | `proptest` property tests | none; plain `#[test]` |
 | `cargo-fuzz` targets | none; no `fuzz/` crate |
 | Criterion + `QBENCHMARK` perf gates | manual `#[ignore]`d profiling tests |
-| Qt Test + CTest (`add_test`) | **shipped**: `pictura_shell` static lib + CTest registering `tst_smoke`, `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`, `tst_fill_tools`, `tst_retouch_tools`, `tst_pen_tools`; `runSelfTest()` remains for the rest |
+| Qt Test + CTest (`add_test`) | **shipped**: `pictura_shell` static lib + CTest registering `tst_smoke`, `tst_command_tree`, `tst_layers_panel`, `tst_edit_clipboard`, `tst_fill_tools`, `tst_retouch_tools`, `tst_pen_tools`, `tst_type_tools`; `runSelfTest()` remains for the rest |
 | Structured unified test reporting | **shipped**: nextest JUnit + the C++ token protocol + `scripts/report_tests.py` |
 | Captured-CS6 golden references | ImageMagick 7 + `psd-tools` differential oracles |
 | Golden manifests, PSNR/DSSIM/ΔE2000, `xtask` | `pictura-testkit::compare` (max-abs tolerance) + `pictura-diff` only |

@@ -27,7 +27,7 @@ pub use text_render::{
     layout_lines, FontPolicy, GlyphMask, LayoutLine, LayoutParams, PlacedGlyph, RasterRequest,
     Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance,
 };
-pub use type_tool::{TextStyle, TypeTool};
+pub use type_tool::{TextStyle, TypeSpec, TypeTool};
 pub use vector::{VectorFillRule, VectorMask, VectorSubpath};
 
 /// PSD color modes (`header.color_mode`).

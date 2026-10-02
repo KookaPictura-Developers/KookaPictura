@@ -13,7 +13,7 @@ use pictura_core::{
 };
 use rustybuzz::ttf_parser;
 use swash::scale::{Render, ScaleContext, Source};
-use swash::zeno::Vector;
+use swash::zeno::{Transform, Vector};
 use swash::FontRef;
 const FONT_BYTES: &[u8] = include_bytes!("../assets/LiberationSans-Regular.ttf");
 const RESOLVED_FAMILY: &str = "Liberation Sans";
@@ -32,10 +32,24 @@ pub struct BundledText {
 impl BundledText {
     /// Parse the bundled font; `None` if the embedded bytes fail to parse.
     pub fn new() -> Option<Self> {
-        let ttf = ttf_parser::Face::parse(FONT_BYTES, 0).ok()?;
-        let face = rustybuzz::Face::from_slice(FONT_BYTES, 0)?;
-        let swash = FontRef::from_index(FONT_BYTES, 0)?;
+        Self::from_bytes(FONT_BYTES)
+    }
+
+    /// Parse any font's bytes (face 0) the same way as the bundled face.
+    pub(crate) fn from_bytes(bytes: &'static [u8]) -> Option<Self> {
+        let ttf = ttf_parser::Face::parse(bytes, 0).ok()?;
+        let face = rustybuzz::Face::from_slice(bytes, 0)?;
+        let swash = FontRef::from_index(bytes, 0)?;
         Some(Self { ttf, face, swash })
+    }
+
+    /// The face's PostScript name (`name` ID 6), when it has one.
+    pub(crate) fn postscript_name(&self) -> Option<String> {
+        self.ttf
+            .names()
+            .into_iter()
+            .filter(|n| n.name_id == ttf_parser::name_id::POST_SCRIPT_NAME)
+            .find_map(|n| n.to_string())
     }
 
     /// A rasterizer borrowing this face.
@@ -86,12 +100,21 @@ impl BundledText {
 
     /// The ascent at `font_size`, used to place the first baseline inside the
     /// layer rect instead of on its top edge.
-    fn ascent(&self, font_size: f32) -> f32 {
+    pub(crate) fn ascent(&self, font_size: f32) -> f32 {
         let upem = self.ttf.units_per_em();
         if upem == 0 {
             return font_size;
         }
         self.ttf.ascender() as f32 * font_size / upem as f32
+    }
+
+    /// The descent below the baseline at `font_size`, as a positive distance.
+    pub(crate) fn descent(&self, font_size: f32) -> f32 {
+        let upem = self.ttf.units_per_em();
+        if upem == 0 {
+            return 0.0;
+        }
+        -(self.ttf.descender() as f32) * font_size / upem as f32
     }
 
     /// Record the substitution of `requested` by the bundled face.
@@ -112,8 +135,23 @@ pub struct BundledRasterizer<'a> {
     swash: FontRef<'static>,
 }
 
-impl Rasterizer for BundledRasterizer<'_> {
-    fn rasterize(&self, request: &RasterRequest) -> Option<GlyphMask> {
+impl BundledRasterizer<'_> {
+    /// As [`Rasterizer::rasterize`], the outline first mapped by the y-down
+    /// linear part `m` (`xx, xy, yx, yy`, the `TySh` transform's order).
+    pub(crate) fn rasterize_mapped(
+        &self,
+        request: &RasterRequest,
+        m: [f32; 4],
+    ) -> Option<GlyphMask> {
+        // swash's outline is y-up: conjugating by the y flip negates the
+        // off-diagonal terms.
+        self.render(
+            request,
+            Some(Transform::new(m[0], -m[1], -m[2], m[3], 0.0, 0.0)),
+        )
+    }
+
+    fn render(&self, request: &RasterRequest, transform: Option<Transform>) -> Option<GlyphMask> {
         // Guard the glyph count so a bogus id cannot reach a panicking lookup.
         if request.glyph >= self.ttf.number_of_glyphs() {
             return None;
@@ -127,6 +165,7 @@ impl Rasterizer for BundledRasterizer<'_> {
             .hint(false)
             .build();
         let mut render = Render::new(&[Source::Outline]);
+        render.transform(transform);
         render.offset(Vector::new(request.subpixel_x, request.subpixel_y));
         let image = render.render(&mut scaler, request.glyph)?;
         if image.placement.width == 0 || image.placement.height == 0 {
@@ -145,6 +184,12 @@ impl Rasterizer for BundledRasterizer<'_> {
             top: image.placement.top - image.placement.height as i32,
             coverage: image.data,
         })
+    }
+}
+
+impl Rasterizer for BundledRasterizer<'_> {
+    fn rasterize(&self, request: &RasterRequest) -> Option<GlyphMask> {
+        self.render(request, None)
     }
 }
 
@@ -168,7 +213,7 @@ fn font_hash() -> [u8; 32] {
 
 /// The bundled face parsed once per process: compositing a proxy-less type
 /// layer must not reparse the ~400 KB font every frame.
-fn bundled() -> Option<&'static BundledText> {
+pub(crate) fn bundled() -> Option<&'static BundledText> {
     use std::sync::OnceLock;
     static CACHE: OnceLock<Option<BundledText>> = OnceLock::new();
     CACHE.get_or_init(BundledText::new).as_ref()
@@ -268,37 +313,60 @@ pub(crate) fn render_text_buffer(
         return None;
     }
     let font_size = style.font_size as f32;
-    let tracking = style.tracking as f32;
-    let color = style.fill_color;
-    let align = TextAlign::from_justification(style.justification);
+    let color = style.rgba().map(|c| f64::from(c) / 255.0);
+    let bundled = crate::fonts::face_for(style.font.as_deref().unwrap_or_default())?;
+    let layout = layout_type(bundled, type_tool, width, height)?;
+    paint_layout(bundled, &layout, width, height, font_size, color)
+}
 
-    let bundled = bundled()?;
-    let lines: Vec<Vec<ShapedGlyph>> = type_tool
-        .text
-        .lines()
-        .map(|line| bundled.shape_line(line, font_size, tracking))
-        .collect();
-    let layout = layout_lines(
-        &lines,
-        &LayoutParams {
+/// Lay a type tool's text out in a `width × height` box (horizontal lines
+/// aligned across it, or vertical columns); glyph `y` is the baseline less the
+/// ascent, as [`paint_layout`] expects. `None` without a style or any glyph.
+pub(crate) fn layout_type(
+    bundled: &BundledText,
+    type_tool: &TypeTool,
+    width: i32,
+    height: i32,
+) -> Option<TextLayout> {
+    let style = type_tool.style.as_ref()?;
+    let font_size = style.font_size as f32;
+    let lines = crate::type_layer::type_lines(&type_tool.text);
+    let layout = if type_tool.vertical {
+        crate::type_layer::vertical_layout(
+            bundled,
+            &lines,
             font_size,
-            units_per_em: font_size,
-            tracking,
-            leading: font_size * 1.2,
-            align,
-            wrap_width: Some(width as f32),
-        },
-    );
+            style.justification,
+            width as f32,
+            height as f32,
+        )
+    } else {
+        let tracking = style.tracking as f32;
+        let shaped: Vec<Vec<ShapedGlyph>> = lines
+            .iter()
+            .map(|line| bundled.shape_line(line, font_size, tracking))
+            .collect();
+        layout_lines(
+            &shaped,
+            &LayoutParams {
+                font_size,
+                units_per_em: font_size,
+                tracking,
+                leading: font_size * 1.2,
+                align: TextAlign::from_justification(style.justification),
+                wrap_width: Some(width as f32),
+            },
+        )
+    };
     if layout.lines.iter().all(|line| line.glyphs.is_empty()) {
         return None;
     }
-
-    paint_layout(bundled, &layout, width, height, font_size, color)
+    Some(layout)
 }
 
 /// Paint a laid-out run into a `width × height` buffer: each glyph's baseline
 /// is its own (offset-adjusted) `y`, so GPOS marks land on the right row.
-fn paint_layout(
+pub(crate) fn paint_layout(
     bundled: &BundledText,
     layout: &TextLayout,
     width: i32,
@@ -306,9 +374,7 @@ fn paint_layout(
     font_size: f32,
     color: [f64; 4],
 ) -> Option<PixelBuffer> {
-    let n = width as usize * height as usize;
     let mut out = PixelBuffer::new(width as u32, height as u32, 4);
-
     let rasterizer = bundled.rasterizer();
     let baseline_shift = bundled.ascent(font_size);
     let mut painted = false;
@@ -328,36 +394,52 @@ fn paint_layout(
             }) else {
                 continue;
             };
-            let pen_x = px as i32 + mask.left;
-            let top = py as i32 - (mask.height as i32 + mask.top);
-            for row in 0..mask.height {
-                let y = top + row as i32;
-                if y < 0 || y >= height {
-                    continue;
-                }
-                for col in 0..mask.width {
-                    let x = pen_x + col as i32;
-                    if x < 0 || x >= width {
-                        continue;
-                    }
-                    let coverage = mask.coverage[(row * mask.width + col) as usize];
-                    if coverage == 0 {
-                        continue;
-                    }
-                    let index = y as usize * width as usize + x as usize;
-                    out.data[index] = tint(coverage, color[0]);
-                    out.data[n + index] = tint(coverage, color[1]);
-                    out.data[2 * n + index] = tint(coverage, color[2]);
-                    out.data[3 * n + index] = out.data[3 * n + index].max(coverage);
-                    painted = true;
-                }
-            }
+            painted |= blit_glyph(&mut out, &mask, px as i32, py as i32, color);
         }
     }
     if !painted {
         return None;
     }
     Some(out)
+}
+
+/// Lay one glyph `mask` into planar RGBA `out` with its pen at `(px, py)`:
+/// colour where it covers, alpha the max coverage. Whether any pixel painted.
+pub(crate) fn blit_glyph(
+    out: &mut PixelBuffer,
+    mask: &GlyphMask,
+    px: i32,
+    py: i32,
+    color: [f64; 4],
+) -> bool {
+    let (width, height) = (out.width as i32, out.height as i32);
+    let n = out.pixel_count();
+    let pen_x = px + mask.left;
+    let top = py - (mask.height as i32 + mask.top);
+    let mut painted = false;
+    for row in 0..mask.height {
+        let y = top + row as i32;
+        if y < 0 || y >= height {
+            continue;
+        }
+        for col in 0..mask.width {
+            let x = pen_x + col as i32;
+            if x < 0 || x >= width {
+                continue;
+            }
+            let coverage = mask.coverage[(row * mask.width + col) as usize];
+            if coverage == 0 {
+                continue;
+            }
+            let index = y as usize * width as usize + x as usize;
+            out.data[index] = tint(coverage, color[0]);
+            out.data[n + index] = tint(coverage, color[1]);
+            out.data[2 * n + index] = tint(coverage, color[2]);
+            out.data[3 * n + index] = out.data[3 * n + index].max(coverage);
+            painted = true;
+        }
+    }
+    painted
 }
 
 /// Composite a proxy-less type layer live: render its text buffer and blend it
@@ -455,6 +537,7 @@ mod tests {
                 warp_desc: Vec::new(),
                 fonts: vec!["Arial".into()],
                 style,
+                vertical: false,
             }),
             ..Default::default()
         }
@@ -464,7 +547,7 @@ mod tests {
         TextStyle {
             font: Some("Arial".into()),
             font_size: 48.0,
-            fill_color: [0.0, 0.0, 0.0, 1.0],
+            fill_color: [1.0, 0.0, 0.0, 0.0],
             tracking: 0.0,
             justification: 0,
         }

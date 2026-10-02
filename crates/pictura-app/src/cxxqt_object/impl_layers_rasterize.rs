@@ -127,9 +127,7 @@ impl qobject::PictureView {
                     let tool = layer.type_tool.as_ref()?;
                     let style = tool.style.as_ref()?;
                     let family = style.font.as_deref().unwrap_or("sans-serif");
-                    let fill = style
-                        .fill_color
-                        .map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
+                    let fill = style.rgba();
                     Some(super::qobject::render_text_rgba(
                         family,
                         style.font_size,

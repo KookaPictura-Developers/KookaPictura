@@ -156,6 +156,17 @@ struct PenOptions {
     double curveFit = 2.0;
 };
 
+// The Type tools' options bar, shared by all four (the tool is the
+// orientation): the font family, its size in pixels, Anti-alias (Sharp or
+// None), and the alignment 0 left / top, 1 right / bottom, 2 centre. The text
+// colour is the foreground colour.
+struct TypeOptions {
+    QString family = QStringLiteral("Liberation Sans");
+    double size = 24.0;
+    bool antialias = true;
+    int justification = 0;
+};
+
 // One Clone Source panel slot: the Alt-clicked source point; the offset the
 // first stroke measured (source minus destination) and the destination point
 // it was measured at; and the source transform (W / H %, rotation in degrees
@@ -233,6 +244,8 @@ struct ToolContext {
     virtual ToneOptions toneOptions(ToolId id) const = 0;
     virtual BucketOptions bucketOptions() const = 0;
     virtual PenOptions penOptions() const = 0;
+    virtual TypeOptions typeOptions() const = 0;
+    virtual void setTypeOptions(const TypeOptions& options) = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.
     virtual CloneSource cloneSource() const = 0;
     virtual void setCloneSource(const CloneSource& source) = 0;
@@ -275,6 +288,10 @@ struct ToolContext {
     virtual void notifyCountChanged() = 0;
 
     virtual void refused(const QString& message) = 0;
+    // A tool created the layer at `path`; the Layers panel selects it.
+    virtual void notifyLayerCreated(const QString& path) = 0;
+    // A Type tool started or stopped taking keystrokes.
+    virtual void notifyTextEditing(bool active) = 0;
     virtual void emitSelectionCommitted() = 0;
 };
 

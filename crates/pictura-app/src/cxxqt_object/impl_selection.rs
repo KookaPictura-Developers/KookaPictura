@@ -430,7 +430,17 @@ impl qobject::PictureView {
     ///
     /// A New-mode commit that replaces a non-empty selection stores the old one
     /// as the `reselect` memory; every other commit clears it.
-    fn apply_selection(mut self: Pin<&mut Self>, shape: Selection, mode: CombineMode) -> bool {
+    fn apply_selection(self: Pin<&mut Self>, shape: Selection, mode: CombineMode) -> bool {
+        self.apply_selection_labeled(shape, mode, "Selection")
+    }
+
+    /// [`apply_selection`](Self::apply_selection) under a history `label`.
+    pub(super) fn apply_selection_labeled(
+        mut self: Pin<&mut Self>,
+        shape: Selection,
+        mode: CombineMode,
+        label: &str,
+    ) -> bool {
         {
             let mut rust = self.as_mut().rust_mut();
             if rust.doc.is_none() {
@@ -452,7 +462,7 @@ impl qobject::PictureView {
                 rust.selection = Some(base);
             }
         }
-        self.as_mut().record("Selection");
+        self.as_mut().record(label);
         self.changed();
         true
     }

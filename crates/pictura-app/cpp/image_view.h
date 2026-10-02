@@ -265,6 +265,27 @@ public:
     int pathOverlayAnchorCountForTest() const { return int(pathOverlay_.anchors.size()); }
     bool pathOverlayHasPreviewForTest() const { return !pathOverlay_.preview.isEmpty(); }
 
+    // The Type tools' live text (image space) while typing: `image` (the
+    // engine's own render, so the preview is the commit) at `topLeft`, and the
+    // caret. The Type Mask tools pass `mask`: the `canvas` is tinted red and
+    // `image` is the tint over the type's rect, the letters cut out of it.
+    // `selection` holds one quad per selected character.
+    struct TypeOverlay {
+        bool active = false;
+        bool mask = false;
+        QSize canvas;
+        QImage image;
+        QPoint topLeft;
+        QLineF caret;
+        QList<QPolygonF> selection;
+    };
+    void setTypeOverlay(const TypeOverlay& overlay);
+    void clearTypeOverlay();
+    bool typeOverlayActiveForTest() const { return typeOverlay_.active; }
+    bool typeOverlayHasTextForTest() const { return !typeOverlay_.image.isNull(); }
+    int typeOverlaySelectionForTest() const { return int(typeOverlay_.selection.size()); }
+    QLineF typeOverlayCaretForTest() const { return typeOverlay_.caret; }
+
     // Live marquee size readout ("W x H"), painted as a tooltip offset from the
     // mapped cursor. Empty text or clearDragSizeHint() hides it.
     void setDragSizeHint(const QString& text, const QPointF& imagePos);
@@ -310,7 +331,9 @@ private:
     void paintCropGroupOverlays(QPainter& painter);
     void paintAnnotations(QPainter& painter);
     void paintPathOverlay(QPainter& painter);
+    void paintTypeOverlay(QPainter& painter);
     PathOverlay pathOverlay_;
+    TypeOverlay typeOverlay_;
     QList<QPointF> samplerOverlay_;
     QList<QPointF> noteOverlay_;
     QList<CountOverlayMark> countOverlay_;

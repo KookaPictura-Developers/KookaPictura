@@ -127,13 +127,19 @@ const ToolInfo kToolTable[] = {
      "break it",
      15, true, 2, 2},
     {ToolId::HorizontalType, "horizontaltype", "Horizontal Type", QLatin1Char('T'),
-     Qt::IBeamCursor, "Horizontal Type: not implemented yet", 16, false, 12, 12},
+     Qt::IBeamCursor,
+     "Horizontal Type: click and type; Enter for a new line, Ctrl+Enter to commit, Esc to cancel",
+     16, true, 12, 12},
     {ToolId::VerticalType, "verticaltype", "Vertical Type", QLatin1Char('T'),
-     Qt::IBeamCursor, "Vertical Type: not implemented yet", 16, false, 12, 12},
+     Qt::IBeamCursor,
+     "Vertical Type: click and type a column; Enter for a new column, Ctrl+Enter to commit",
+     16, true, 12, 12},
     {ToolId::HorizontalTypeMask, "horizontaltypemask", "Horizontal Type Mask", QLatin1Char('T'),
-     Qt::IBeamCursor, "Horizontal Type Mask: not implemented yet", 16, false, 12, 12},
+     Qt::IBeamCursor, "Horizontal Type Mask: click and type; Ctrl+Enter makes it a selection",
+     16, true, 12, 12},
     {ToolId::VerticalTypeMask, "verticaltypemask", "Vertical Type Mask", QLatin1Char('T'),
-     Qt::IBeamCursor, "Vertical Type Mask: not implemented yet", 16, false, 12, 12},
+     Qt::IBeamCursor, "Vertical Type Mask: click and type a column; Ctrl+Enter makes it a selection",
+     16, true, 12, 12},
     {ToolId::PathSelection, "pathselection", "Path Selection", QLatin1Char('A'),
      Qt::CrossCursor, "Path Selection: not implemented yet", 17, false, 12, 12},
     {ToolId::DirectSelection, "directselection", "Direct Selection", QLatin1Char('A'),
@@ -287,6 +293,12 @@ QList<ToolHint> toolHintEntries(ToolId id)
         return {{QStringLiteral("Shift"), QStringLiteral("Constrain to 45°")},
                 {QStringLiteral("Alt"), QStringLiteral("Break the handle")},
                 {QStringLiteral("Enter"), QStringLiteral("End the path")}};
+    case ToolId::HorizontalType:
+    case ToolId::VerticalType:
+    case ToolId::HorizontalTypeMask:
+    case ToolId::VerticalTypeMask:
+        return {{QStringLiteral("Ctrl+Enter"), QStringLiteral("Commit")},
+                {QStringLiteral("Esc"), QStringLiteral("Cancel")}};
     case ToolId::Move:
         return {{QStringLiteral("Arrows"), QStringLiteral("Nudge 1 px")},
                 {QStringLiteral("Shift"), QStringLiteral("Nudge 10 px")},
@@ -342,6 +354,8 @@ const QList<ToolId>& implementedToolIds()
         ToolId::Gradient, ToolId::PaintBucket, ToolId::Blur, ToolId::Sharpen, ToolId::Smudge,
         ToolId::Dodge, ToolId::Burn, ToolId::Sponge, ToolId::Pen, ToolId::FreeformPen,
         ToolId::AddAnchorPoint, ToolId::DeleteAnchorPoint, ToolId::ConvertPoint,
+        ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
+        ToolId::VerticalTypeMask,
     };
     return ids;
 }

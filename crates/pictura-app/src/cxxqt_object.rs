@@ -24,6 +24,7 @@ mod magnetic;
 mod paint_tools;
 mod paths;
 mod state;
+mod type_tools;
 pub use state::PictureViewRust;
 #[cfg(test)]
 mod canvas_view_test;
@@ -937,8 +938,7 @@ pub mod qobject {
 
         /// No-argument commit kept for the existing C++ tool and self-test, which
         /// mutate the document through [`move_preview`] before recording. Records
-        /// the already-previewed state and recomposites. Returns false without a
-        /// document.
+        /// the already-previewed state and recomposites. False without a document.
         #[qinvokable]
         #[cxx_name = "commit_move"]
         fn commit_move_legacy(self: Pin<&mut Self>) -> bool;

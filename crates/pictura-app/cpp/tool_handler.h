@@ -44,6 +44,11 @@ public:
     // selection extend it instead of starting a selection move.
     virtual bool lassoInProgress() const { return false; }
     virtual bool commitCrop() { return false; }
+    // The Type tools' Commit (Ctrl+Enter) and Cancel (Esc), and whether text is
+    // being typed.
+    virtual bool commitText() { return false; }
+    virtual bool cancelText() { return false; }
+    virtual bool textActive() const { return false; }
     // The options bar's Clear: drop the tool's color samplers, notes, or ruler.
     virtual bool clearAnnotations() { return false; }
 
