@@ -40,14 +40,13 @@ void PicturaMainWindow::buildPanels()
     notesPanel_ = new NotesPanel(this);
     notesPanel_->setObjectName(QStringLiteral("notesPanel"));
 
-    propertiesPanel_ =
-        new PlaceholderPanel(QStringLiteral("Properties"), QStringLiteral("No Properties"), this);
+    propertiesPanel_ = new PropertiesPanel(this);
     propertiesPanel_->setObjectName(QStringLiteral("propertiesPanel"));
 
     adjustmentsPanel_ = new PlaceholderPanel(QStringLiteral("Adjustments"), QString(), this);
     adjustmentsPanel_->setObjectName(QStringLiteral("adjustmentsPanel"));
 
-    channelsPanel_ = new PlaceholderPanel(QStringLiteral("Channels"), QString(), this);
+    channelsPanel_ = new ChannelsPanel(this);
     channelsPanel_->setObjectName(QStringLiteral("channelsPanel"));
 
     pathsPanel_ = new PathsPanel(this);
@@ -164,6 +163,12 @@ void PicturaMainWindow::buildPanels()
     panelColumn_->showPanel(QStringLiteral("notesPanel"), false);
     panelColumn_->showPanel(QStringLiteral("brushPanel"), false);
     panelColumn_->showPanel(QStringLiteral("cloneSourcePanel"), false);
+
+    connect(layersPanel_, &LayersPanel::selectionChanged, this, [this] {
+        if (propertiesPanel_) {
+            propertiesPanel_->refresh();
+        }
+    });
 }
 
 void PicturaMainWindow::togglePanel(const QString& objectName)
@@ -318,9 +323,20 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     brushPanel_->setController(tools_);
     cloneSourcePanel_->setController(tools_);
 
+    // The Info panel follows the Ruler tool: its A/L block and W/H readout come
+    // from the ruler, and a new measuring line re-reads them.
+    connect(tools_, &ToolController::rulerChanged, this, [this]() {
+        if (infoPanel_) {
+            infoPanel_->refresh();
+        }
+    });
+
     connect(tools_, &ToolController::activeToolChanged, this, [this](ToolId id) {
         if (optionsBar_) {
             optionsBar_->showTool(id);
+        }
+        if (infoPanel_) {
+            infoPanel_->setRulerMode(id == ToolId::Ruler);
         }
         updateToolHint();
     });
@@ -349,6 +365,9 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
 
     if (optionsBar_) {
         optionsBar_->showTool(tools_->activeTool());
+    }
+    if (infoPanel_) {
+        infoPanel_->setRulerMode(tools_->activeTool() == ToolId::Ruler);
     }
 }
 

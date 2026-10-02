@@ -39,6 +39,12 @@ void PicturaMainWindow::retargetDock()
         infoPanel_->setView(view);
         infoPanel_->refresh();
     }
+    if (propertiesPanel_) {
+        propertiesPanel_->setView(view);
+    }
+    if (channelsPanel_) {
+        channelsPanel_->setView(view);
+    }
     if (notesPanel_) {
         notesPanel_->setView(view);
     }

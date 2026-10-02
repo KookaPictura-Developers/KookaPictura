@@ -2,7 +2,9 @@
 
 ## Purpose
 The original SVG icon set covering the app, tools, and menus, bundled through Qt resources and resolved by id.
+
 ## Requirements
+
 ### Requirement: Icon set coverage
 The system SHALL provide an original SVG icon for the application, for each
 implemented tool, and for each command that has a registered handler. Icon files
@@ -59,3 +61,28 @@ application's device pixel ratio and at the sizes the widgets request.
 - **WHEN** an icon is requested at 2x device pixel ratio
 - **THEN** the returned icon provides a suitably sized pixmap rather than a blurry upscale
 
+### Requirement: Panel and path glyph set
+
+The system SHALL provide standalone SVG assets for the Layers-panel glyphs
+`layers.search`, `layers.kindShape`, `layers.kindSmartObject`, and
+`layers.reset`, and for the Paths-panel glyphs `path.thumbnail`, `path.fill`,
+`path.stroke`, `path.loadSelection`, `path.makeWorkPath`, `path.newPath`, and
+`path.delete`. Each asset SHALL use the 24×24 grid, SHALL be pre-tinted so it
+needs no render-time colour substitution, SHALL be registered in the Qt
+resource `assets/pictura.qrc`, and SHALL resolve through `icon(id)` like every
+other bundled icon.
+
+#### Scenario: The new Layers glyphs resolve [plg_layers_resolve]
+- **WHEN** `icon(id)` is called for each of `layers.search`,
+  `layers.kindShape`, `layers.kindSmartObject`, and `layers.reset`
+- **THEN** each call returns a non-null icon whose pixmap is non-null at 16 px
+
+#### Scenario: The Paths glyphs resolve [plg_path_resolve]
+- **WHEN** `icon(id)` is called for each of `path.thumbnail`, `path.fill`,
+  `path.stroke`, `path.loadSelection`, `path.makeWorkPath`, `path.newPath`, and
+  `path.delete`
+- **THEN** each call returns a non-null icon whose pixmap is non-null at 16 px
+
+#### Scenario: An unknown id stays null [plg_unknown_null]
+- **WHEN** `icon(id)` is called for an id with no bundled asset
+- **THEN** it returns a null icon without crashing
