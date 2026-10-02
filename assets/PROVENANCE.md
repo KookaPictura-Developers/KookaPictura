@@ -6,11 +6,13 @@ here.
 
 ## Vector artwork (`assets/icons`, `assets/cursors`)
 
-- 237 SVG icons and cursors.
+- 238 SVG icons and cursors.
 - Generated with an AI model (DeepSeek v4.1 Flash) and released by the project
   under **CC0-1.0 / MIT** (reuse under either).
 - Carry no Adobe/Illustrator/XMP metadata; none are traced from Photoshop or a
   third-party icon pack.
+- `cursors/tool.pen.close.svg` is `tool.pen.svg` with a small circle added by
+  hand (the Pen's close-path cursor), under the same licenses.
 
 ## Raster artwork (`assets/icons`)
 

@@ -3,6 +3,7 @@
 
 #include <QtTest/QtTest>
 
+#include "icons.h"
 #include "panels/numeric_field.h"
 #include "panels/paths_panel.h"
 #include "selftest_paint_fixture.h"
@@ -126,11 +127,27 @@ void PenToolsTest::penTool()
     rubber->setChecked(false);
     QVERIFY2(!f.canvas->pathOverlayHasPreviewForTest(), "rubber band left on screen");
 
-    // Clicking the first anchor closes the subpath.
+    // Over the first anchor the Pen shows its close-path cursor.
+    const auto cursorIs = [&f](const char* id) {
+        return f.canvas->cursor().pixmap().toImage()
+            == pictura::cursor(QString::fromLatin1(id), 2, 2).pixmap().toImage();
+    };
+    QVERIFY2(!pictura::cursor(QStringLiteral("tool.pen.close"), 2, 2).pixmap().isNull(),
+             "close cursor asset");
+    f.canvas->mouseMoved(QPointF(30, 30));
+    QVERIFY2(cursorIs("tool.pen"), "plain pen cursor");
+    f.canvas->mouseMoved(QPointF(11, 11));
+    QVERIFY2(cursorIs("tool.pen.close"), "no close cursor over the first anchor");
+    f.canvas->mouseMoved(QPointF(50, 11));
+    QVERIFY2(cursorIs("tool.pen"), "close cursor away from the first anchor");
+    f.canvas->mouseMoved(QPointF(11, 11));
+
+    // Clicking the first anchor closes the subpath, and the cursor goes back.
     click(f, QPointF(11, 11));
     QVERIFY2(f.committedOnce(base + 3, "Close Path"), "close");
     QVERIFY(pictura::path_subpath_closed(*f.view, 0));
     QCOMPARE(pictura::path_editing_subpath(*f.view), -1);
+    QVERIFY2(cursorIs("tool.pen"), "close cursor after closing");
 
     // Shift snaps the next anchor to 45° from the previous one; Enter ends it.
     click(f, QPointF(70, 80));

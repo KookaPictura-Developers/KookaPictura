@@ -116,6 +116,7 @@ public:
             path_finish(*v);
         }
         reset();
+        overClose_ = false;
         if (ImageView* canvas = ctx.canvas()) {
             canvas->clearPathOverlay();
         }
@@ -185,6 +186,7 @@ public:
         hover_ = imagePos;
         hovering_ = true;
         PictureView* v = ctx.view();
+        overClose_ = v && v != pressView_ && overFirstAnchor(ctx, *v, imagePos);
         if (!v || v != pressView_) {
             if (id_ == ToolId::Pen && ctx.penOptions().rubberBand) {
                 refreshOverlay(ctx);
@@ -270,7 +272,15 @@ public:
         case Gesture::None:
             break;
         }
+        overClose_ = v && overFirstAnchor(ctx, *v, imagePos);
         refreshOverlay(ctx);
+    }
+
+    // Over the first anchor of the subpath being drawn, the Pen shows its
+    // close-path cursor (a small circle beside the nib), as CS6 does.
+    QString cursorVariant() const override
+    {
+        return overClose_ ? QStringLiteral(".close") : QString();
     }
 
     // Enter and Esc end the subpath being drawn, leaving it open.
@@ -315,6 +325,20 @@ private:
         if (path_append_corner(v, pos.x(), pos.y(), mods.testFlag(Qt::ShiftModifier))) {
             gesture_ = Gesture::PlacingHandle;
         }
+    }
+
+    bool overFirstAnchor(ToolContext& ctx, const PictureView& v, const QPointF& pos) const
+    {
+        if (id_ != ToolId::Pen || !v.has_document()) {
+            return false;
+        }
+        const int editing = path_editing_subpath(v);
+        if (editing < 0 || path_point_count(v, editing) < 2) {
+            return false;
+        }
+        const ::rust::Vec<std::int32_t> anchor =
+            path_hit_anchor(v, pos.x(), pos.y(), hitRadius(ctx));
+        return anchor.size() == 2 && anchor[0] == editing && anchor[1] == 0;
     }
 
     bool finishDrawing()
@@ -387,6 +411,7 @@ private:
     QPointF press_;
     QPointF hover_;
     bool hovering_ = false;
+    bool overClose_ = false;
     bool moved_ = false;
     std::array<int, 3> target_{};
     QList<QPointF> trail_;

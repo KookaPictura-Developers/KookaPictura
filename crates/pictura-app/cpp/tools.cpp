@@ -732,6 +732,9 @@ void ToolController::handleMoved(const QPointF& imagePos)
     }
     if (ToolHandler* h = registry_.forTool(active_)) {
         h->onMove(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
+        if (h->cursorVariant() != cursorVariant_) {
+            refreshCursor();
+        }
     }
 }
 
@@ -754,6 +757,9 @@ void ToolController::handleReleased(const QPointF& imagePos)
     }
     if (ToolHandler* h = registry_.forTool(active_)) {
         h->onRelease(*this, imagePos, QGuiApplication::queryKeyboardModifiers());
+        if (h->cursorVariant() != cursorVariant_) {
+            refreshCursor();
+        }
     }
 }
 
