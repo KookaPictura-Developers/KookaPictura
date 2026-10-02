@@ -834,6 +834,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   8-bit RGB documents only; the mask tint covers the canvas; Distort /
   Perspective and a masked type layer still resample pixels; the live
   transform preview is the resampled raster until commit.
+- **Shape options bar** (change `shape-options-bar`, owner follow-up on #48
+  from a CS6 screenshot): all six shape tools share CS6's bar — Mode, Fill,
+  Stroke (width, type pop-up with Align), W / link / H, disabled path
+  operation / alignment / arrangement stubs, the geometry gear (Unconstrained
+  / Square|Circle|Defined Proportions / Fixed Size, From Center; Polygon star
+  and smoothing; Line arrowheads), the tool's field (Radius / Sides / Weight /
+  grid Shape picker with a gear menu), and Align Edges
+  (`shape::align_edges`). `pictura_render` `shape_style.rs`: Fill None is
+  Fill opacity 0, the stroke an authored solid `lfx2` `FrFX` Stroke effect
+  (CS6 uses `vstk`; approximation), `resize_shape` about the top-left.
+  `tool_shape.cpp` mirrors the active shape layer into `ShapeOptions`
+  (`ToolController::shapeOptionsChanged` re-reads every page) and applies bar
+  edits back ("Change Shape Fill" / "Change Shape Stroke" / "Resize Shape").
+  Tests: `tst_shape_tools::optionsBar`,
+  `psd_tools_reads_a_shape_stroke_and_no_fill`. Ceilings (`ponytail:`):
+  Gradient / Pattern, Dashed / Dotted, path operations, shape-set load / save
+  are disabled; widths are px, not pt; no Proportional geometry.
 - **Line and Custom Shape** (changes `line-tool`, `custom-shape-tool`, issues
   #47–#48, ported from photorust's `core/src/shape.rs`): the U group is
   complete. `pictura_core::shape` became a directory: `shape/line.rs` (the
