@@ -727,7 +727,7 @@ void PicturaMainWindow::showFileInfo()
                                  tr("Could not apply the template."));
         }
     };
-    if (dialog.exec() == QDialog::Accepted) {
+    if (runDialog(dialog, this) == QDialog::Accepted) {
         view->apply_metadata_edits(dialog.edits());
     }
 }
@@ -739,7 +739,7 @@ void PicturaMainWindow::showProfileCommand(bool convert)
         return;
     }
     ProfileDialog dialog(convert, this);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, this) != QDialog::Accepted) {
         return;
     }
     const int index = dialog.profileIndex();
@@ -752,7 +752,7 @@ void PicturaMainWindow::showProfileCommand(bool convert)
 void PicturaMainWindow::showColorSettings()
 {
     ColorSettingsDialog dialog(colorPolicy_, this);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, this) != QDialog::Accepted) {
         return;
     }
     colorPolicy_ = dialog.policyCode();

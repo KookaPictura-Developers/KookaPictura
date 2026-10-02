@@ -1,0 +1,1183 @@
+//! Map a filter `kind` (and an optional ordered list of parameter values) to a
+//! concrete [`pictura_filters::Filter`].
+//!
+//! An absent parameter list yields the documented defaults; a non-empty list
+//! whose length differs from the kind's slot count is refused. Slot order for
+//! each kind is the order its controls appear in the app's filter dialog and
+//! must stay in lock-step with `cpp/filter_commands.cpp`.
+//!
+//! Ported from perfecto25/photorust's filter menu parameter mapping.
+//! Source: https://github.com/perfecto25/photorust
+
+use pictura_filters::{
+    BrushType, ContourEdge, ExtrudeType, Filter, GrainType, HalftoneType, LensType, LightDirection,
+    MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod, RippleSize, SharpenRemove,
+    ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TextureSurface, TileFill, TonalFade,
+    WaveType, WindMethod, ZigZagStyle,
+};
+
+/// Refuse a non-empty parameter list that does not match the kind's arity.
+macro_rules! arity {
+    ($params:ident, $n:expr) => {
+        if !$params.is_empty() && $params.len() != $n {
+            return None;
+        }
+    };
+}
+
+fn f(params: &[f64], i: usize, d: f64) -> f64 {
+    params.get(i).copied().unwrap_or(d)
+}
+
+fn u8v(params: &[f64], i: usize, d: u8) -> u8 {
+    f(params, i, d as f64).clamp(0.0, 255.0).round() as u8
+}
+
+fn u32v(params: &[f64], i: usize, d: u32) -> u32 {
+    f(params, i, d as f64).max(0.0).round() as u32
+}
+
+fn i32v(params: &[f64], i: usize, d: i32) -> i32 {
+    f(params, i, d as f64).round() as i32
+}
+
+fn u64v(params: &[f64], i: usize, d: u64) -> u64 {
+    f(params, i, d as f64).max(0.0).round() as u64
+}
+
+fn flag(params: &[f64], i: usize, d: bool) -> bool {
+    params.get(i).map(|v| *v >= 0.5).unwrap_or(d)
+}
+
+fn pick<T: Copy>(all: &[T], params: &[f64], i: usize, d: usize) -> T {
+    let j = params
+        .get(i)
+        .map(|v| v.round().max(0.0) as usize)
+        .unwrap_or(d);
+    *all.get(j).unwrap_or(&all[d])
+}
+
+fn rgb(params: &[f64], base: usize, d: [u8; 3]) -> [u8; 3] {
+    [
+        u8v(params, base, d[0]),
+        u8v(params, base + 1, d[1]),
+        u8v(params, base + 2, d[2]),
+    ]
+}
+
+const TEXTURE_SURFACES: [TextureSurface; 4] = [
+    TextureSurface::Brick,
+    TextureSurface::Burlap,
+    TextureSurface::Canvas,
+    TextureSurface::Sandstone,
+];
+
+/// Texture block: surface, scaling, relief, light direction, invert.
+fn texture(params: &[f64], base: usize) -> TextureOptions {
+    TextureOptions {
+        surface: pick(&TEXTURE_SURFACES, params, base, 2),
+        scaling: u8v(params, base + 1, 100),
+        relief: u8v(params, base + 2, 4),
+        light_direction: u8v(params, base + 3, 0),
+        invert: flag(params, base + 4, false),
+    }
+}
+
+const NOISE_DISTRIBUTIONS: [NoiseDistribution; 2] =
+    [NoiseDistribution::Uniform, NoiseDistribution::Gaussian];
+const MEZZOTINT_TYPES: [MezzotintType; 10] = [
+    MezzotintType::FineDots,
+    MezzotintType::MediumDots,
+    MezzotintType::GrainyDots,
+    MezzotintType::CoarseDots,
+    MezzotintType::ShortLines,
+    MezzotintType::MediumLines,
+    MezzotintType::LongLines,
+    MezzotintType::ShortStrokes,
+    MezzotintType::MediumStrokes,
+    MezzotintType::LongStrokes,
+];
+const SPHERIZE_MODES: [SpherizeMode; 3] = [
+    SpherizeMode::Normal,
+    SpherizeMode::HorizontalOnly,
+    SpherizeMode::VerticalOnly,
+];
+const RIPPLE_SIZES: [RippleSize; 3] = [RippleSize::Small, RippleSize::Medium, RippleSize::Large];
+const WAVE_TYPES: [WaveType; 3] = [WaveType::Sine, WaveType::Triangle, WaveType::Square];
+const POLAR_KINDS: [PolarKind; 2] = [PolarKind::RectangularToPolar, PolarKind::PolarToRectangular];
+const SHEAR_FILLS: [ShearFill; 2] = [ShearFill::WrapAround, ShearFill::RepeatEdgePixels];
+const ZIGZAG_STYLES: [ZigZagStyle; 3] = [
+    ZigZagStyle::AroundCenter,
+    ZigZagStyle::OutFromCenter,
+    ZigZagStyle::PondRipples,
+];
+const BRUSH_TYPES: [BrushType; 6] = [
+    BrushType::Simple,
+    BrushType::LightRough,
+    BrushType::DarkRough,
+    BrushType::WideSharp,
+    BrushType::WideBlurry,
+    BrushType::Sparkle,
+];
+const STROKE_DIRECTIONS: [StrokeDirection; 4] = [
+    StrokeDirection::RightDiagonal,
+    StrokeDirection::Horizontal,
+    StrokeDirection::LeftDiagonal,
+    StrokeDirection::Vertical,
+];
+const LIGHT_DIRECTIONS: [LightDirection; 8] = [
+    LightDirection::Bottom,
+    LightDirection::BottomLeft,
+    LightDirection::Left,
+    LightDirection::TopLeft,
+    LightDirection::Top,
+    LightDirection::TopRight,
+    LightDirection::Right,
+    LightDirection::BottomRight,
+];
+const HALFTONE_TYPES: [HalftoneType; 3] =
+    [HalftoneType::Dot, HalftoneType::Line, HalftoneType::Circle];
+const GRAIN_TYPES: [GrainType; 10] = [
+    GrainType::Regular,
+    GrainType::Soft,
+    GrainType::Sprinkles,
+    GrainType::Clumped,
+    GrainType::Contrasty,
+    GrainType::Enlarged,
+    GrainType::Stippled,
+    GrainType::Horizontal,
+    GrainType::Vertical,
+    GrainType::Speckle,
+];
+const EXTRUDE_TYPES: [ExtrudeType; 2] = [ExtrudeType::Blocks, ExtrudeType::Pyramids];
+const TILE_FILLS: [TileFill; 4] = [
+    TileFill::BackgroundColor,
+    TileFill::ForegroundColor,
+    TileFill::InverseImage,
+    TileFill::UnalteredImage,
+];
+const CONTOUR_EDGES: [ContourEdge; 2] = [ContourEdge::Lower, ContourEdge::Upper];
+const WIND_METHODS: [WindMethod; 3] = [WindMethod::Wind, WindMethod::Blast, WindMethod::Stagger];
+const WIND_FROM_RIGHT: [bool; 2] = [true, false];
+const SHARPEN_REMOVES: [SharpenRemove; 3] = [
+    SharpenRemove::GaussianBlur,
+    SharpenRemove::LensBlur,
+    SharpenRemove::MotionBlur,
+];
+const LENS_TYPES: [LensType; 4] = [
+    LensType::Zoom,
+    LensType::Prime35,
+    LensType::Prime105,
+    LensType::MoviePrime,
+];
+const RADIAL_METHODS: [RadialMethod; 2] = [RadialMethod::Spin, RadialMethod::Zoom];
+const QUALITIES: [Quality; 3] = [Quality::Draft, Quality::Good, Quality::Best];
+
+/// Every supported kind and its exact slot count. This is the guard that
+/// keeps the Rust mapping and `cpp/filter_commands.cpp` in lock-step.
+pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
+    ("gaussian-blur", 1),
+    ("box-blur", 1),
+    ("surface-blur", 2),
+    ("motion-blur", 2),
+    ("radial-blur", 3),
+    ("average", 0),
+    ("blur", 0),
+    ("blur-more", 0),
+    ("median", 1),
+    ("despeckle", 0),
+    ("sharpen", 0),
+    ("sharpen-more", 0),
+    ("sharpen-edges", 0),
+    ("unsharp-mask", 3),
+    ("add-noise", 4),
+    ("maximum", 1),
+    ("minimum", 1),
+    ("offset", 6),
+    ("high-pass", 1),
+    ("emboss", 3),
+    ("find-edges", 0),
+    ("solarize", 0),
+    ("mosaic", 1),
+    ("crystallize", 2),
+    ("facet", 0),
+    ("fragment", 0),
+    ("mezzotint", 2),
+    ("pointillize", 5),
+    ("color-halftone", 5),
+    ("twirl", 1),
+    ("pinch", 1),
+    ("spherize", 2),
+    ("ripple", 2),
+    ("wave", 9),
+    ("polar-coordinates", 1),
+    ("shear", 7),
+    ("zigzag", 3),
+    ("ocean-ripple", 3),
+    ("clouds", 8),
+    ("difference-clouds", 8),
+    ("fibers", 9),
+    ("lens-flare", 4),
+    ("colored-pencil", 10),
+    ("cutout", 3),
+    ("dry-brush", 4),
+    ("film-grain", 4),
+    ("fresco", 4),
+    ("neon-glow", 5),
+    ("paint-daubs", 4),
+    ("palette-knife", 4),
+    ("plastic-wrap", 3),
+    ("poster-edges", 3),
+    ("rough-pastels", 14),
+    ("smudge-stick", 4),
+    ("sponge", 4),
+    ("underpainting", 8),
+    ("watercolor", 10),
+    ("accented-edges", 3),
+    ("angled-strokes", 3),
+    ("crosshatch", 3),
+    ("dark-strokes", 3),
+    ("ink-outlines", 3),
+    ("spatter", 3),
+    ("sprayed-strokes", 4),
+    ("sumi-e", 3),
+    ("bas-relief", 9),
+    ("chalk-charcoal", 10),
+    ("charcoal", 10),
+    ("chrome", 2),
+    ("conte-crayon", 14),
+    ("graphic-pen", 9),
+    ("halftone-pattern", 3),
+    ("note-paper", 4),
+    ("photocopy", 2),
+    ("plaster", 9),
+    ("reticulation", 10),
+    ("stamp", 8),
+    ("torn-edges", 9),
+    ("water-paper", 4),
+    ("craquelure", 3),
+    ("grain", 7),
+    ("mosaic-tiles", 4),
+    ("patchwork", 3),
+    ("stained-glass", 7),
+    ("texturizer", 5),
+    ("oil-paint", 6),
+    ("dust-and-scratches", 2),
+    ("extrude", 6),
+    ("tiles", 9),
+    ("trace-contour", 2),
+    ("wind", 2),
+    ("smart-sharpen", 12),
+];
+
+pub(super) fn filter_param_arity(kind: &str) -> Option<usize> {
+    FILTER_ARITIES
+        .iter()
+        .find(|(k, _)| *k == kind)
+        .map(|(_, n)| *n)
+}
+
+/// Build the filter for `kind` from an ordered parameter list.
+///
+/// `params` empty means "use the documented defaults". A non-empty `params`
+/// whose length is not the kind's slot count returns `None`. An unknown kind
+/// returns `None`.
+pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filter> {
+    Some(match kind {
+        "gaussian-blur" => {
+            arity!(params, 1);
+            Filter::GaussianBlur {
+                radius: f(params, 0, 5.0),
+            }
+        }
+        "box-blur" => {
+            arity!(params, 1);
+            Filter::BoxBlur {
+                radius: u32v(params, 0, 3),
+            }
+        }
+        "surface-blur" => {
+            arity!(params, 2);
+            Filter::SurfaceBlur {
+                radius: u32v(params, 0, 10),
+                threshold: u8v(params, 1, 20),
+            }
+        }
+        "motion-blur" => {
+            arity!(params, 2);
+            Filter::MotionBlur {
+                angle: f(params, 0, 0.0),
+                distance: u32v(params, 1, 15),
+            }
+        }
+        "radial-blur" => {
+            arity!(params, 3);
+            Filter::RadialBlur {
+                method: pick(&RADIAL_METHODS, params, 0, 0),
+                amount: f(params, 1, 10.0),
+                quality: pick(&QUALITIES, params, 2, 1),
+            }
+        }
+        "average" => {
+            arity!(params, 0);
+            Filter::Average
+        }
+        "blur" => {
+            arity!(params, 0);
+            Filter::Blur
+        }
+        "blur-more" => {
+            arity!(params, 0);
+            Filter::BlurMore
+        }
+        "median" => {
+            arity!(params, 1);
+            Filter::Median {
+                radius: u32v(params, 0, 2),
+            }
+        }
+        "despeckle" => {
+            arity!(params, 0);
+            Filter::Despeckle
+        }
+        "sharpen" => {
+            arity!(params, 0);
+            Filter::Sharpen
+        }
+        "sharpen-more" => {
+            arity!(params, 0);
+            Filter::SharpenMore
+        }
+        "sharpen-edges" => {
+            arity!(params, 0);
+            Filter::SharpenEdges
+        }
+        "unsharp-mask" => {
+            arity!(params, 3);
+            Filter::UnsharpMask {
+                amount: f(params, 0, 150.0),
+                radius: f(params, 1, 1.0),
+                threshold: u8v(params, 2, 0),
+            }
+        }
+        "add-noise" => {
+            arity!(params, 4);
+            Filter::AddNoise {
+                amount: f(params, 0, 25.0),
+                distribution: pick(&NOISE_DISTRIBUTIONS, params, 1, 0),
+                monochromatic: flag(params, 2, false),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "maximum" => {
+            arity!(params, 1);
+            Filter::Maximum {
+                radius: u32v(params, 0, 2),
+            }
+        }
+        "minimum" => {
+            arity!(params, 1);
+            Filter::Minimum {
+                radius: u32v(params, 0, 2),
+            }
+        }
+        "offset" => {
+            arity!(params, 6);
+            Filter::Offset {
+                horizontal: i32v(params, 0, 4),
+                vertical: i32v(params, 1, 4),
+                wrap: flag(params, 2, true),
+                background: rgb(params, 3, [0, 0, 0]),
+            }
+        }
+        "high-pass" => {
+            arity!(params, 1);
+            Filter::HighPass {
+                radius: f(params, 0, 4.0),
+            }
+        }
+        "emboss" => {
+            arity!(params, 3);
+            Filter::Emboss {
+                angle: f(params, 0, 135.0),
+                height: f(params, 1, 2.0),
+                amount: f(params, 2, 100.0),
+            }
+        }
+        "find-edges" => {
+            arity!(params, 0);
+            Filter::FindEdges
+        }
+        "solarize" => {
+            arity!(params, 0);
+            Filter::Solarize
+        }
+        "mosaic" => {
+            arity!(params, 1);
+            Filter::Mosaic {
+                cell_size: u32v(params, 0, 10),
+            }
+        }
+        "crystallize" => {
+            arity!(params, 2);
+            Filter::Crystallize {
+                cell_size: u32v(params, 0, 10),
+                seed: u64v(params, 1, 1),
+            }
+        }
+        "facet" => {
+            arity!(params, 0);
+            Filter::Facet
+        }
+        "fragment" => {
+            arity!(params, 0);
+            Filter::Fragment
+        }
+        "mezzotint" => {
+            arity!(params, 2);
+            Filter::Mezzotint {
+                kind: pick(&MEZZOTINT_TYPES, params, 0, 0),
+                seed: u64v(params, 1, 1),
+            }
+        }
+        "pointillize" => {
+            arity!(params, 5);
+            Filter::Pointillize {
+                cell_size: u32v(params, 0, 5),
+                background: rgb(params, 1, [0, 0, 0]),
+                seed: u64v(params, 4, 1),
+            }
+        }
+        "color-halftone" => {
+            arity!(params, 5);
+            Filter::ColorHalftone {
+                max_radius: u32v(params, 0, 5),
+                angles: [
+                    f(params, 1, 108.0),
+                    f(params, 2, 162.0),
+                    f(params, 3, 90.0),
+                    f(params, 4, 45.0),
+                ],
+            }
+        }
+        "twirl" => {
+            arity!(params, 1);
+            Filter::Twirl {
+                angle: f(params, 0, 90.0),
+            }
+        }
+        "pinch" => {
+            arity!(params, 1);
+            Filter::Pinch {
+                amount: f(params, 0, 50.0),
+            }
+        }
+        "spherize" => {
+            arity!(params, 2);
+            Filter::Spherize {
+                amount: f(params, 0, 100.0),
+                mode: pick(&SPHERIZE_MODES, params, 1, 0),
+            }
+        }
+        "ripple" => {
+            arity!(params, 2);
+            Filter::Ripple {
+                amount: f(params, 0, 100.0),
+                size: pick(&RIPPLE_SIZES, params, 1, 1),
+            }
+        }
+        "wave" => {
+            arity!(params, 9);
+            Filter::Wave {
+                generators: u32v(params, 0, 5),
+                wavelength: (f(params, 1, 10.0), f(params, 2, 120.0)),
+                amplitude: (f(params, 3, 5.0), f(params, 4, 35.0)),
+                kind: pick(&WAVE_TYPES, params, 5, 0),
+                scale: (f(params, 6, 100.0), f(params, 7, 100.0)),
+                seed: u64v(params, 8, 1),
+                repeat_edge: true,
+            }
+        }
+        "polar-coordinates" => {
+            arity!(params, 1);
+            Filter::PolarCoordinates {
+                kind: pick(&POLAR_KINDS, params, 0, 0),
+            }
+        }
+        "shear" => {
+            arity!(params, 7);
+            Filter::Shear {
+                curve: vec![
+                    (f(params, 0, -1.0), f(params, 1, -0.5)),
+                    (f(params, 2, 0.0), f(params, 3, 0.0)),
+                    (f(params, 4, 1.0), f(params, 5, 0.5)),
+                ],
+                fill: pick(&SHEAR_FILLS, params, 6, 1),
+            }
+        }
+        "zigzag" => {
+            arity!(params, 3);
+            Filter::ZigZag {
+                amount: f(params, 0, 50.0),
+                ridges: u32v(params, 1, 5),
+                style: pick(&ZIGZAG_STYLES, params, 2, 0),
+            }
+        }
+        "ocean-ripple" => {
+            arity!(params, 3);
+            Filter::OceanRipple {
+                size: u32v(params, 0, 9),
+                magnitude: u32v(params, 1, 5),
+                seed: u64v(params, 2, 1),
+            }
+        }
+        "clouds" => {
+            arity!(params, 8);
+            Filter::Clouds {
+                color_a: rgb(params, 0, [0, 0, 0]),
+                color_b: rgb(params, 3, [255, 255, 255]),
+                starker: flag(params, 6, false),
+                seed: u64v(params, 7, 1),
+            }
+        }
+        "difference-clouds" => {
+            arity!(params, 8);
+            Filter::DifferenceClouds {
+                color_a: rgb(params, 0, [0, 0, 0]),
+                color_b: rgb(params, 3, [255, 255, 255]),
+                starker: flag(params, 6, false),
+                seed: u64v(params, 7, 1),
+            }
+        }
+        "fibers" => {
+            arity!(params, 9);
+            Filter::Fibers {
+                variance: f(params, 0, 16.0),
+                strength: f(params, 1, 4.0),
+                color_a: rgb(params, 2, [0, 0, 0]),
+                color_b: rgb(params, 5, [255, 255, 255]),
+                seed: u64v(params, 8, 1),
+            }
+        }
+        "lens-flare" => {
+            arity!(params, 4);
+            Filter::LensFlare {
+                brightness: f(params, 0, 100.0),
+                center: (f(params, 1, 0.5), f(params, 2, 0.5)),
+                lens: pick(&LENS_TYPES, params, 3, 0),
+            }
+        }
+        "colored-pencil" => {
+            arity!(params, 10);
+            Filter::ColoredPencil {
+                pencil_width: u8v(params, 0, 6),
+                stroke_pressure: u8v(params, 1, 8),
+                paper_brightness: u8v(params, 2, 20),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+                seed: u64v(params, 9, 1),
+            }
+        }
+        "cutout" => {
+            arity!(params, 3);
+            Filter::Cutout {
+                levels: u8v(params, 0, 4),
+                edge_simplicity: u8v(params, 1, 0),
+                edge_fidelity: u8v(params, 2, 1),
+            }
+        }
+        "dry-brush" => {
+            arity!(params, 4);
+            Filter::DryBrush {
+                brush_size: u8v(params, 0, 8),
+                brush_detail: u8v(params, 1, 6),
+                texture: u8v(params, 2, 2),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "film-grain" => {
+            arity!(params, 4);
+            Filter::FilmGrain {
+                grain: u8v(params, 0, 10),
+                highlight_area: u8v(params, 1, 5),
+                intensity: u8v(params, 2, 5),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "fresco" => {
+            arity!(params, 4);
+            Filter::Fresco {
+                brush_size: u8v(params, 0, 8),
+                brush_detail: u8v(params, 1, 6),
+                texture: u8v(params, 2, 2),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "neon-glow" => {
+            arity!(params, 5);
+            Filter::NeonGlow {
+                glow_size: i32v(params, 0, 8),
+                glow_brightness: u8v(params, 1, 40),
+                glow_color: rgb(params, 2, [0, 255, 255]),
+            }
+        }
+        "paint-daubs" => {
+            arity!(params, 4);
+            Filter::PaintDaubs {
+                brush_size: u8v(params, 0, 8),
+                sharpness: u8v(params, 1, 20),
+                brush_type: pick(&BRUSH_TYPES, params, 2, 0),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "palette-knife" => {
+            arity!(params, 4);
+            Filter::PaletteKnife {
+                stroke_size: u8v(params, 0, 12),
+                stroke_detail: u8v(params, 1, 2),
+                softness: u8v(params, 2, 8),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "plastic-wrap" => {
+            arity!(params, 3);
+            Filter::PlasticWrap {
+                highlight_strength: u8v(params, 0, 0),
+                detail: u8v(params, 1, 6),
+                smoothness: u8v(params, 2, 3),
+            }
+        }
+        "poster-edges" => {
+            arity!(params, 3);
+            Filter::PosterEdges {
+                edge_thickness: u8v(params, 0, 3),
+                edge_intensity: u8v(params, 1, 10),
+                posterization: u8v(params, 2, 4),
+            }
+        }
+        "rough-pastels" => {
+            arity!(params, 14);
+            Filter::RoughPastels {
+                stroke_length: u8v(params, 0, 8),
+                stroke_detail: u8v(params, 1, 6),
+                texture: texture(params, 2),
+                foreground: rgb(params, 7, [0, 0, 0]),
+                background: rgb(params, 10, [255, 255, 255]),
+                seed: u64v(params, 13, 1),
+            }
+        }
+        "smudge-stick" => {
+            arity!(params, 4);
+            Filter::SmudgeStick {
+                stroke_length: u8v(params, 0, 4),
+                highlight_area: u8v(params, 1, 8),
+                intensity: u8v(params, 2, 6),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "sponge" => {
+            arity!(params, 4);
+            Filter::Sponge {
+                brush_size: u8v(params, 0, 6),
+                definition: u8v(params, 1, 18),
+                smoothness: u8v(params, 2, 4),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "underpainting" => {
+            arity!(params, 8);
+            Filter::Underpainting {
+                brush_size: u8v(params, 0, 10),
+                texture_coverage: u8v(params, 1, 24),
+                texture: texture(params, 2),
+                seed: u64v(params, 7, 1),
+            }
+        }
+        "watercolor" => {
+            arity!(params, 10);
+            Filter::Watercolor {
+                brush_detail: u8v(params, 0, 8),
+                shadow_intensity: u8v(params, 1, 6),
+                texture: u8v(params, 2, 2),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+                seed: u64v(params, 9, 1),
+            }
+        }
+        "accented-edges" => {
+            arity!(params, 3);
+            Filter::AccentedEdges {
+                edge_width: u8v(params, 0, 2),
+                edge_brightness: u8v(params, 1, 38),
+                smoothness: u8v(params, 2, 5),
+            }
+        }
+        "angled-strokes" => {
+            arity!(params, 3);
+            Filter::AngledStrokes {
+                direction_balance: u8v(params, 0, 50),
+                stroke_length: u8v(params, 1, 15),
+                sharpness: u8v(params, 2, 3),
+            }
+        }
+        "crosshatch" => {
+            arity!(params, 3);
+            Filter::Crosshatch {
+                stroke_length: u8v(params, 0, 9),
+                sharpness: u8v(params, 1, 6),
+                strength: u8v(params, 2, 1),
+            }
+        }
+        "dark-strokes" => {
+            arity!(params, 3);
+            Filter::DarkStrokes {
+                balance: u8v(params, 0, 5),
+                black_intensity: u8v(params, 1, 6),
+                white_intensity: u8v(params, 2, 5),
+            }
+        }
+        "ink-outlines" => {
+            arity!(params, 3);
+            Filter::InkOutlines {
+                stroke_length: u8v(params, 0, 10),
+                dark_intensity: u8v(params, 1, 25),
+                light_intensity: u8v(params, 2, 25),
+            }
+        }
+        "spatter" => {
+            arity!(params, 3);
+            Filter::Spatter {
+                spray_radius: u8v(params, 0, 10),
+                smoothness: u8v(params, 1, 5),
+                seed: u64v(params, 2, 1),
+            }
+        }
+        "sprayed-strokes" => {
+            arity!(params, 4);
+            Filter::SprayedStrokes {
+                stroke_length: u8v(params, 0, 12),
+                spray_radius: u8v(params, 1, 7),
+                direction: pick(&STROKE_DIRECTIONS, params, 2, 0),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "sumi-e" => {
+            arity!(params, 3);
+            Filter::SumiE {
+                stroke_width: u8v(params, 0, 8),
+                stroke_pressure: u8v(params, 1, 5),
+                contrast: u8v(params, 2, 20),
+            }
+        }
+        "bas-relief" => {
+            arity!(params, 9);
+            Filter::BasRelief {
+                detail: u8v(params, 0, 6),
+                smoothness: u8v(params, 1, 3),
+                light_direction: pick(&LIGHT_DIRECTIONS, params, 2, 0),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+            }
+        }
+        "chalk-charcoal" => {
+            arity!(params, 10);
+            Filter::ChalkCharcoal {
+                charcoal_area: u8v(params, 0, 6),
+                chalk_area: u8v(params, 1, 6),
+                stroke_pressure: u8v(params, 2, 1),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+                seed: u64v(params, 9, 1),
+            }
+        }
+        "charcoal" => {
+            arity!(params, 10);
+            Filter::Charcoal {
+                thickness: u8v(params, 0, 1),
+                detail: u8v(params, 1, 3),
+                light_dark_balance: u8v(params, 2, 50),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+                seed: u64v(params, 9, 1),
+            }
+        }
+        "chrome" => {
+            arity!(params, 2);
+            Filter::Chrome {
+                detail: u8v(params, 0, 4),
+                smoothness: u8v(params, 1, 7),
+            }
+        }
+        "conte-crayon" => {
+            arity!(params, 14);
+            Filter::ConteCrayon {
+                foreground_level: u8v(params, 0, 8),
+                background_level: u8v(params, 1, 7),
+                texture: texture(params, 2),
+                foreground: rgb(params, 7, [0, 0, 0]),
+                background: rgb(params, 10, [255, 255, 255]),
+                seed: u64v(params, 13, 1),
+            }
+        }
+        "graphic-pen" => {
+            arity!(params, 9);
+            Filter::GraphicPen {
+                stroke_length: u8v(params, 0, 6),
+                light_dark_balance: u8v(params, 1, 50),
+                direction: pick(&STROKE_DIRECTIONS, params, 2, 0),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+            }
+        }
+        "halftone-pattern" => {
+            arity!(params, 3);
+            Filter::HalftonePattern {
+                size: u8v(params, 0, 5),
+                contrast: u8v(params, 1, 5),
+                pattern: pick(&HALFTONE_TYPES, params, 2, 0),
+            }
+        }
+        "note-paper" => {
+            arity!(params, 4);
+            Filter::NotePaper {
+                image_balance: u8v(params, 0, 25),
+                graininess: u8v(params, 1, 10),
+                relief: u8v(params, 2, 11),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "photocopy" => {
+            arity!(params, 2);
+            Filter::Photocopy {
+                detail: u8v(params, 0, 5),
+                darkness: u8v(params, 1, 20),
+            }
+        }
+        "plaster" => {
+            arity!(params, 9);
+            Filter::Plaster {
+                image_balance: u8v(params, 0, 25),
+                smoothness: u8v(params, 1, 2),
+                light_direction: pick(&LIGHT_DIRECTIONS, params, 2, 0),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+            }
+        }
+        "reticulation" => {
+            arity!(params, 10);
+            Filter::Reticulation {
+                density: u8v(params, 0, 13),
+                black_level: u8v(params, 1, 10),
+                white_level: u8v(params, 2, 40),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+                seed: u64v(params, 9, 1),
+            }
+        }
+        "stamp" => {
+            arity!(params, 8);
+            Filter::Stamp {
+                light_dark_balance: u8v(params, 0, 25),
+                smoothness: u8v(params, 1, 5),
+                foreground: rgb(params, 2, [0, 0, 0]),
+                background: rgb(params, 5, [255, 255, 255]),
+            }
+        }
+        "torn-edges" => {
+            arity!(params, 9);
+            Filter::TornEdges {
+                image_balance: u8v(params, 0, 25),
+                smoothness: u8v(params, 1, 1),
+                contrast: u8v(params, 2, 8),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+            }
+        }
+        "water-paper" => {
+            arity!(params, 4);
+            Filter::WaterPaper {
+                fiber_length: u8v(params, 0, 15),
+                brightness: u8v(params, 1, 45),
+                contrast: u8v(params, 2, 60),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "craquelure" => {
+            arity!(params, 3);
+            Filter::Craquelure {
+                crack_spacing: u8v(params, 0, 10),
+                crack_depth: u8v(params, 1, 6),
+                crack_brightness: u8v(params, 2, 9),
+            }
+        }
+        "grain" => {
+            arity!(params, 7);
+            Filter::Grain {
+                intensity: u8v(params, 0, 40),
+                contrast: u8v(params, 1, 50),
+                grain_type: pick(&GRAIN_TYPES, params, 2, 0),
+                background: rgb(params, 3, [255, 255, 255]),
+                seed: u64v(params, 6, 1),
+            }
+        }
+        "mosaic-tiles" => {
+            arity!(params, 4);
+            Filter::MosaicTiles {
+                tile_size: u8v(params, 0, 12),
+                grout_width: u8v(params, 1, 3),
+                lighten_grout: u8v(params, 2, 1),
+                seed: u64v(params, 3, 1),
+            }
+        }
+        "patchwork" => {
+            arity!(params, 3);
+            Filter::Patchwork {
+                square_size: u8v(params, 0, 5),
+                relief: u8v(params, 1, 8),
+                seed: u64v(params, 2, 1),
+            }
+        }
+        "stained-glass" => {
+            arity!(params, 7);
+            Filter::StainedGlass {
+                cell_size: u8v(params, 0, 10),
+                border_thickness: u8v(params, 1, 4),
+                light_intensity: u8v(params, 2, 5),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                seed: u64v(params, 6, 1),
+            }
+        }
+        "texturizer" => {
+            arity!(params, 5);
+            Filter::Texturizer {
+                texture: texture(params, 0),
+            }
+        }
+        "oil-paint" => {
+            arity!(params, 6);
+            Filter::OilPaint {
+                stylization: f(params, 0, 3.5),
+                cleanliness: f(params, 1, 4.5),
+                scale: f(params, 2, 0.75),
+                bristle_detail: f(params, 3, 3.0),
+                angular_direction: f(params, 4, 85.0),
+                shine: f(params, 5, 0.55),
+            }
+        }
+        "dust-and-scratches" => {
+            arity!(params, 2);
+            Filter::DustAndScratches {
+                radius: u32v(params, 0, 1),
+                threshold: u32v(params, 1, 0),
+            }
+        }
+        "extrude" => {
+            arity!(params, 6);
+            Filter::Extrude {
+                kind: pick(&EXTRUDE_TYPES, params, 0, 0),
+                size: u32v(params, 1, 30),
+                depth: f(params, 2, 30.0) as f32,
+                level_based: flag(params, 3, true),
+                solid_front: flag(params, 4, false),
+                mask_incomplete: flag(params, 5, false),
+            }
+        }
+        "tiles" => {
+            arity!(params, 9);
+            Filter::Tiles {
+                count: u32v(params, 0, 10),
+                offset: u32v(params, 1, 10),
+                fill: pick(&TILE_FILLS, params, 2, 0),
+                foreground: rgb(params, 3, [0, 0, 0]),
+                background: rgb(params, 6, [255, 255, 255]),
+            }
+        }
+        "trace-contour" => {
+            arity!(params, 2);
+            Filter::TraceContour {
+                level: u8v(params, 0, 128),
+                edge: pick(&CONTOUR_EDGES, params, 1, 0),
+            }
+        }
+        "wind" => {
+            arity!(params, 2);
+            Filter::Wind {
+                method: pick(&WIND_METHODS, params, 0, 0),
+                from_right: pick(&WIND_FROM_RIGHT, params, 1, 0),
+            }
+        }
+        "smart-sharpen" => {
+            arity!(params, 12);
+            Filter::SmartSharpen {
+                amount: f(params, 0, 100.0),
+                radius: f(params, 1, 1.0),
+                reduce_noise: f(params, 2, 0.0),
+                remove: pick(&SHARPEN_REMOVES, params, 3, 0),
+                angle: f(params, 4, 0.0),
+                more_accurate: flag(params, 5, false),
+                shadow: tonal_fade(params, 6, TonalFade::default()),
+                highlight: tonal_fade(params, 9, TonalFade::default()),
+            }
+        }
+        // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
+        // default exists; it stays out of the dock and is left unmapped.
+        _ => return None,
+    })
+}
+
+fn tonal_fade(params: &[f64], base: usize, d: TonalFade) -> TonalFade {
+    TonalFade {
+        amount: u8v(params, base, d.amount),
+        width: u8v(params, base + 1, d.width),
+        radius: u32v(params, base + 2, d.radius),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_kind_defaults_from_empty_and_rejects_wrong_arity() {
+        for (kind, n) in FILTER_ARITIES {
+            assert!(
+                filter_from_kind_params(kind, &[]).is_some(),
+                "{kind} must default from an empty slot list"
+            );
+            let slots = vec![0.0f64; *n];
+            assert!(
+                filter_from_kind_params(kind, &slots).is_some(),
+                "{kind} must accept exactly {n} slots"
+            );
+            let mut too_many = slots.clone();
+            too_many.push(0.0);
+            assert!(
+                filter_from_kind_params(kind, &too_many).is_none(),
+                "{kind} must refuse {} slots",
+                n + 1
+            );
+            if *n > 1 {
+                let mut too_few = slots.clone();
+                too_few.pop();
+                assert!(
+                    filter_from_kind_params(kind, &too_few).is_none(),
+                    "{kind} must refuse {} slots",
+                    n - 1
+                );
+            }
+        }
+        assert!(filter_from_kind_params("bogus", &[]).is_none());
+    }
+
+    #[test]
+    fn parameter_values_override_defaults() {
+        assert_eq!(
+            filter_from_kind_params("gaussian-blur", &[12.5]),
+            Some(Filter::GaussianBlur { radius: 12.5 })
+        );
+        assert_eq!(
+            filter_from_kind_params("add-noise", &[50.0, 1.0, 1.0, 7.0]),
+            Some(Filter::AddNoise {
+                amount: 50.0,
+                distribution: NoiseDistribution::Gaussian,
+                monochromatic: true,
+                seed: 7,
+            })
+        );
+        assert_eq!(
+            filter_from_kind_params("radial-blur", &[1.0, 20.0, 2.0]),
+            Some(Filter::RadialBlur {
+                method: RadialMethod::Zoom,
+                amount: 20.0,
+                quality: Quality::Best,
+            })
+        );
+        // Wind direction is a Choice index: 0 = "From the Right", 1 = "From the Left".
+        assert_eq!(
+            filter_from_kind_params("wind", &[2.0, 0.0]),
+            Some(Filter::Wind {
+                method: WindMethod::Stagger,
+                from_right: true,
+            })
+        );
+        assert_eq!(
+            filter_from_kind_params("wind", &[2.0, 1.0]),
+            Some(Filter::Wind {
+                method: WindMethod::Stagger,
+                from_right: false,
+            })
+        );
+    }
+
+    #[test]
+    fn multi_slot_offsets_decode_correctly() {
+        // rgb group at base 1.
+        assert_eq!(
+            filter_from_kind_params("pointillize", &[3.0, 10.0, 20.0, 30.0, 9.0]),
+            Some(Filter::Pointillize {
+                cell_size: 3,
+                background: [10, 20, 30],
+                seed: 9,
+            })
+        );
+        // A 5-slot TextureOptions block.
+        assert_eq!(
+            filter_from_kind_params("texturizer", &[1.0, 55.0, 7.0, 3.0, 1.0]),
+            Some(Filter::Texturizer {
+                texture: TextureOptions {
+                    surface: TextureSurface::Burlap,
+                    scaling: 55,
+                    relief: 7,
+                    light_direction: 3,
+                    invert: true,
+                },
+            })
+        );
+        // The 7-slot shear curve and fill.
+        assert_eq!(
+            filter_from_kind_params("shear", &[0.25, 0.5, 0.75, 0.85, 1.5, 2.5, 0.0]),
+            Some(Filter::Shear {
+                curve: vec![(0.25, 0.5), (0.75, 0.85), (1.5, 2.5)],
+                fill: ShearFill::WrapAround,
+            })
+        );
+        // Wave wavelength/amplitude/scale pairs.
+        assert_eq!(
+            filter_from_kind_params("wave", &[4.0, 6.0, 8.0, 2.0, 3.0, 1.0, 50.0, 75.0, 11.0]),
+            Some(Filter::Wave {
+                generators: 4,
+                wavelength: (6.0, 8.0),
+                amplitude: (2.0, 3.0),
+                kind: WaveType::Triangle,
+                scale: (50.0, 75.0),
+                seed: 11,
+                repeat_edge: true,
+            })
+        );
+        // Smart Sharpen shadow (6..9) and highlight (9..12) TonalFade blocks.
+        assert_eq!(
+            filter_from_kind_params(
+                "smart-sharpen",
+                &[50.0, 2.0, 30.0, 1.0, 45.0, 1.0, 10.0, 20.0, 3.0, 40.0, 50.0, 4.0],
+            ),
+            Some(Filter::SmartSharpen {
+                amount: 50.0,
+                radius: 2.0,
+                reduce_noise: 30.0,
+                remove: SharpenRemove::LensBlur,
+                angle: 45.0,
+                more_accurate: true,
+                shadow: TonalFade {
+                    amount: 10,
+                    width: 20,
+                    radius: 3,
+                },
+                highlight: TonalFade {
+                    amount: 40,
+                    width: 50,
+                    radius: 4,
+                },
+            })
+        );
+    }
+}

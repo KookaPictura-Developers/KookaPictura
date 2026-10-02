@@ -1,4 +1,5 @@
 #include "layers_panel.h"
+#include "dialogs.h"
 
 #include "layer_new_dialog.h"
 #include "layers_filter_bar.h"
@@ -805,7 +806,7 @@ void LayersPanel::openPanelOptions()
     form->addRow(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (runDialog(dialog, this) != QDialog::Accepted) {
         return;
     }
     thumbSizeIndex_ = sizeBox->currentIndex();

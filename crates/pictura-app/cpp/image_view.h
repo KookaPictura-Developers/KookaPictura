@@ -97,6 +97,10 @@ public:
     double zoom() const { return zoom_; }
     QPointF offset() const { return offset_; }
 
+    // The document-space rectangle currently visible in the viewport (empty
+    // when no image). Used by dialogs that preview the current canvas section.
+    QRectF visibleDocumentRect() const;
+
     // Brush-size ring drawn in image space under the pan/zoom transform. The
     // diameter is in image pixels, so a zoomed canvas scales the ring for free.
     void setBrushOutline(double diameter, const QPointF& imagePos);
@@ -366,7 +370,6 @@ private:
         QImage crop;
     };
     const QImage* presentCrop(QRect& docRect);
-    QRectF visibleDocumentRect() const;
 
     QImage image_;
     QColor canvasColor_{Qt::darkGray};
