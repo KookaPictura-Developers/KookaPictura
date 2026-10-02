@@ -92,10 +92,12 @@ Snapshot for resuming after a context break. Update after each milestone.
     `crop-tool-box`, and
     `annotation-tools`, and
     `cs6-shared-widgets`, `panel-line-art-glyphs`, `info-panel-expansion`,
-    `swatches-panel-expansion`, `properties-panel`, and `channels-panel`
+    `swatches-panel-expansion`, `properties-panel`, `channels-panel`,
+    `info-panel-readout-grid`, `info-panel-menu-refinements`,
+    `info-panel-grid-style`, and `channels-thumbnail-source`
     changes;
     canonical specs are in `openspec/specs/` as a `{domain}/{capability}` tree
-   (119 specs, `validate --all --strict` green), change history under
+   (128 specs, `validate --all --strict` green), change history under
    `openspec/changes/archive/`.
    The panel-program stage **layer styles / effects** is complete:
    `layer-effects-drop-shadow`, `layer-effects-outer-glow`,
@@ -121,8 +123,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   Properties panel (#70); a per-channel visibility model, a compositor
   channel-mask path, and channel enumeration for the Channels panel (#71);
   `.aco` swatch-library load/save (needs a `pictura-presets` crate, which does
-  not exist yet); and the `Doc: n/n` memory-footprint line (no document-size
-  bridge to read it from).
+  not exist yet).
 - PSD interop roadmap (`docs/dev/psd-support-roadmap.md`): P1 (ZIP/ZIP-prediction
   read) and P2 (opaque lossless open→save) and P2.5 are shipped. P2.5 adds a
   smart-object model and the Camera Raw Filter view on top of the preserved
