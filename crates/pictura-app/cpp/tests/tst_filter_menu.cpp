@@ -9,6 +9,7 @@
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QSlider>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QWidget>
 
@@ -64,6 +65,8 @@ private slots:
     void grayscaleDocumentAppliesThroughDialog();
     void previewToggleShowsAndRevertsPixels();
     void zoomChangesOnlyThumbnailAndLabel();
+    void sliderDragDefersPreviewUntilRelease();
+    void numericFieldIsCompactAndSliderAlignsLeft();
     void dialogEntriesEndWithEllipsis();
 
 private:
@@ -407,6 +410,68 @@ void FilterMenuTest::zoomChangesOnlyThumbnailAndLabel()
     QCOMPARE(afterIn, QStringLiteral("200%"));
     QCOMPARE(afterOut, QStringLiteral("50%"));
     QCOMPARE(view->image(), before);
+}
+
+void FilterMenuTest::sliderDragDefersPreviewUntilRelease()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Drag"), 64, 64, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    const QImage before = view->image();
+    bool held = false;
+    bool released = false;
+    QTimer::singleShot(0, [&] {
+        auto* dialog = activeFilterDialog();
+        if (!dialog) {
+            return;
+        }
+        auto* slider = dialog->findChild<QSlider*>();
+        if (!slider) {
+            dialog->reject();
+            return;
+        }
+        slider->setSliderDown(true);
+        slider->setValue(qMin(slider->maximum(), slider->value() + 300));
+        held = view->image() == before;
+        slider->setSliderDown(false);
+        released = view->image() != before;
+        dialog->reject();
+    });
+    QVERIFY(window_->registry()->dispatch(
+        filterId(QStringLiteral("Noise"), QStringLiteral("Add Noise"))));
+    QVERIFY(held);
+    QVERIFY(released);
+}
+
+void FilterMenuTest::numericFieldIsCompactAndSliderAlignsLeft()
+{
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    const pictura::FilterCommandSpec* spec = pictura::filterCommandForPath(
+        {QStringLiteral("Filter"), QStringLiteral("Blur"), QStringLiteral("Gaussian Blur")});
+    QVERIFY(spec != nullptr);
+    pictura::FilterPreviewDialog dialog(view, *spec);
+    auto* spin = dialog.findChild<QDoubleSpinBox*>();
+    auto* slider = dialog.findChild<QSlider*>();
+    auto* unit = dialog.findChild<QLabel*>(QStringLiteral("filterUnit"));
+    QVERIFY(spin != nullptr);
+    QVERIFY(slider != nullptr);
+    QVERIFY(unit != nullptr);
+    // The unit is a label beside the box, not text baked into it.
+    QVERIFY(spin->suffix().isEmpty());
+    QCOMPARE(unit->text(), QStringLiteral("pixels"));
+    QVERIFY(spin->minimumWidth() == spin->maximumWidth());
+    QVERIFY(spin->maximumWidth() < 160);
+    dialog.show();
+    QApplication::processEvents();
+    // The slider starts at the row's left edge (label column), left of the
+    // right-aligned value box.
+    const int sliderX = slider->mapTo(&dialog, QPoint(0, 0)).x();
+    const int spinX = spin->mapTo(&dialog, QPoint(0, 0)).x();
+    QVERIFY2(sliderX < spinX,
+             qPrintable(QStringLiteral("slider x=%1 spin x=%2").arg(sliderX).arg(spinX)));
+    dialog.reject();
 }
 
 void FilterMenuTest::dialogEntriesEndWithEllipsis()

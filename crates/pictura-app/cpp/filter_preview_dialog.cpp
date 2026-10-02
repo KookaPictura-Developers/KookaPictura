@@ -4,23 +4,24 @@
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QVariant>
 #include <QtGui/QColor>
+#include <QtGui/QFontMetrics>
 #include <QtGui/QIcon>
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QPen>
 #include <QtGui/QPixmap>
+#include <QtGui/QResizeEvent>
 #include <QtMath>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
-#include <QtWidgets/QFormLayout>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QPushButton>
-#include <QtWidgets/QScrollArea>
+#include <QtWidgets/QSizePolicy>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
@@ -48,6 +49,17 @@ int slotCount(FilterControl control)
     default:
         return 1;
     }
+}
+
+// More parameter rows than this spill into a second input column, matching CS6's
+// 3-column dialogs for the input-heavy filters (Smart Sharpen, Wave, ...).
+const int kManyParams = 7;
+
+// A value box only needs room for five digits and a decimal (with a sign); a
+// wider box would just waste the row.
+int compactSpinWidth(const QWidget* widget)
+{
+    return widget->fontMetrics().horizontalAdvance(QStringLiteral("-00000.0")) + 34;
 }
 
 // Display-only draggable centre pad for Radial Blur: concentric rings for a
@@ -240,17 +252,24 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
 
     auto* outer = new QVBoxLayout(this);
 
-    // Top: the preview pane (when the filter has one) on the left, the
-    // OK / Cancel / Preview column on the right, matching CS6.
-    auto* top = new QHBoxLayout;
+    // CS6's columns: preview and the first inputs on the left, any overflow
+    // inputs in the middle, OK / Cancel / Preview on the right.
+    auto* body = new QHBoxLayout;
+    body->setSpacing(12);
+
+    auto* leftColumn = new QVBoxLayout;
+    leftColumn->setSpacing(8);
     if (spec.previewPane) {
-        auto* previewColumn = new QVBoxLayout;
         thumbnail_ = new QLabel(this);
         thumbnail_->setObjectName(QStringLiteral("filterThumbnail"));
-        thumbnail_->setFixedSize(200, 200);
+        thumbnail_->setMinimumSize(200, 200);
         thumbnail_->setAlignment(Qt::AlignCenter);
         thumbnail_->setFrameShape(QFrame::StyledPanel);
-        previewColumn->addWidget(thumbnail_, 0, Qt::AlignTop);
+        // Ignored: the pixmap must not drive the layout back through sizeHint;
+        // the label just fills its column and the image is re-rendered to fit.
+        thumbnail_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        // Stretch 1: extra dialog height grows the preview, not a blank gap.
+        leftColumn->addWidget(thumbnail_, 1);
 
         auto* zoomRow = new QHBoxLayout;
         auto* zoomOut = makeZoomButton(false, this);
@@ -273,11 +292,35 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
         zoomRow->addWidget(zoomLabel_);
         zoomRow->addWidget(zoomIn);
         zoomRow->addStretch(1);
-        previewColumn->addLayout(zoomRow);
-        previewColumn->addStretch(1);
-        top->addLayout(previewColumn, 1);
-    } else {
-        top->addStretch(1);
+        leftColumn->addLayout(zoomRow);
+    }
+    body->addLayout(leftColumn, 1);
+
+    // One self-contained row per parameter, built by addControl; a filter with
+    // many inputs spills the overflow into the middle column.
+    for (int i = 0; i < spec_.params.size(); ++i) {
+        addControl(spec_.params.at(i).initial, i);
+    }
+    QVBoxLayout* middleColumn = nullptr;
+    const int split =
+        controls_.size() > kManyParams ? (controls_.size() + 1) / 2 : controls_.size();
+    for (int i = 0; i < controls_.size(); ++i) {
+        QVBoxLayout* column = leftColumn;
+        if (i >= split) {
+            if (!middleColumn) {
+                middleColumn = new QVBoxLayout;
+                middleColumn->setSpacing(8);
+                body->addLayout(middleColumn, 1);
+            }
+            column = middleColumn;
+        }
+        column->addWidget(controls_.at(i).row);
+    }
+    if (!spec.previewPane) {
+        leftColumn->addStretch(1);
+    }
+    if (middleColumn) {
+        middleColumn->addStretch(1);
     }
 
     auto* buttonColumn = new QVBoxLayout;
@@ -301,55 +344,8 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
     buttonColumn->addSpacing(6);
     buttonColumn->addWidget(preview_);
     buttonColumn->addStretch(1);
-    top->addLayout(buttonColumn);
-    outer->addLayout(top);
-
-    auto* formWidget = new QWidget(this);
-    auto* form = new QFormLayout(formWidget);
-    for (int i = 0; i < spec_.params.size(); ++i) {
-        addControl(spec_.params.at(i).initial, i);
-    }
-    // addControl appended into controls_; render each row into the form.
-    for (const Control& control : controls_) {
-        switch (control.spec.control) {
-        case FilterControl::CheckBox:
-            form->addRow(QString(), control.box);
-            break;
-        case FilterControl::Choice:
-            form->addRow(control.spec.label, control.combo);
-            break;
-        case FilterControl::Color:
-            form->addRow(control.spec.label, control.colorButton);
-            break;
-        case FilterControl::Placement: {
-            auto* row = new QWidget(this);
-            auto* layout = new QHBoxLayout(row);
-            layout->setContentsMargins(0, 0, 0, 0);
-            layout->addWidget(control.pad, 1);
-            layout->addWidget(new QLabel(QStringLiteral("X"), row));
-            layout->addWidget(control.x);
-            layout->addWidget(new QLabel(QStringLiteral("Y"), row));
-            layout->addWidget(control.y);
-            form->addRow(control.spec.label, row);
-            break;
-        }
-        case FilterControl::BlurCenter:
-            form->addRow(control.spec.label, control.center);
-            break;
-        default: {
-            // CS6 puts the value box on the label line and the slider beneath.
-            form->addRow(control.spec.label, control.spin);
-            form->addRow(QString(), control.slider);
-            break;
-        }
-        }
-    }
-    auto* scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setWidget(formWidget);
-    scroll->setMaximumHeight(600);
-    outer->addWidget(scroll, 1);
+    body->addLayout(buttonColumn);
+    outer->addLayout(body);
 
     // Radial Blur: the Blur Method choice flips the display-only centre pad.
     BlurCenterWidget* blurCenter = nullptr;
@@ -422,6 +418,8 @@ void FilterPreviewDialog::addControl(const QList<double>& initial, int index)
             spin->setRange(spec.minimum, spec.maximum);
             spin->setDecimals(3);
             spin->setSingleStep(0.01);
+            spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            spin->setFixedWidth(compactSpinWidth(spin));
         }
         control.x->setValue(fallback(0, spec.initial.value(0, 0.5)));
         control.y->setValue(fallback(1, spec.initial.value(1, 0.5)));
@@ -458,18 +456,30 @@ void FilterPreviewDialog::addControl(const QList<double>& initial, int index)
         control.spin = new QDoubleSpinBox(this);
         control.spin->setRange(spec.minimum, spec.maximum);
         control.spin->setDecimals(spec.decimals);
-        control.spin->setSuffix(spec.suffix);
+        control.spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        control.spin->setFixedWidth(compactSpinWidth(control.spin));
         control.spin->setValue(fallback(0, spec.value));
         control.slider = new QSlider(Qt::Horizontal, this);
         control.slider->setRange(0, 1000);
         const double span = spec.maximum - spec.minimum;
         const double frac = span > 0.0 ? (control.spin->value() - spec.minimum) / span : 0.0;
         control.slider->setValue(static_cast<int>(frac * 1000.0));
-        connect(control.slider, &QSlider::valueChanged, this, [this, spin = control.spin, spec](
-                                                                 int value) {
-            const double f = static_cast<double>(value) / 1000.0;
-            spin->setValue(spec.minimum + f * (spec.maximum - spec.minimum));
+        connect(control.slider, &QSlider::sliderPressed, this,
+                [this] { sliderDragging_ = true; });
+        connect(control.slider, &QSlider::sliderReleased, this, [this] {
+            sliderDragging_ = false;
+            valuesChanged();
         });
+        // Dragging moves the number but holds the canvas preview until release.
+        connect(control.slider, &QSlider::valueChanged, this,
+                [this, spin = control.spin, spec](int value) {
+                    const double f = static_cast<double>(value) / 1000.0;
+                    QSignalBlocker block(spin);
+                    spin->setValue(spec.minimum + f * (spec.maximum - spec.minimum));
+                    if (!sliderDragging_) {
+                        valuesChanged();
+                    }
+                });
         connect(control.spin, &QDoubleSpinBox::valueChanged, this, [this, slider = control.slider,
                                                                     spec](double value) {
             const double span = spec.maximum - spec.minimum;
@@ -478,6 +488,64 @@ void FilterPreviewDialog::addControl(const QList<double>& initial, int index)
             slider->setValue(static_cast<int>(f * 1000.0));
             valuesChanged();
         });
+        break;
+    }
+    }
+
+    // Each parameter is a vertical row: its label and value on one line, and
+    // (for a slider) the track beneath, starting flush with the label.
+    control.row = new QWidget;
+    auto* rowLayout = new QVBoxLayout(control.row);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    rowLayout->setSpacing(2);
+    switch (spec.control) {
+    case FilterControl::CheckBox:
+        rowLayout->addWidget(control.box);
+        break;
+    case FilterControl::Choice: {
+        auto* line = new QHBoxLayout;
+        line->addWidget(new QLabel(spec.label, control.row));
+        line->addStretch(1);
+        line->addWidget(control.combo);
+        rowLayout->addLayout(line);
+        break;
+    }
+    case FilterControl::Color: {
+        auto* line = new QHBoxLayout;
+        line->addWidget(new QLabel(spec.label, control.row));
+        line->addStretch(1);
+        line->addWidget(control.colorButton);
+        rowLayout->addLayout(line);
+        break;
+    }
+    case FilterControl::Placement: {
+        rowLayout->addWidget(new QLabel(spec.label, control.row));
+        auto* line = new QHBoxLayout;
+        line->addWidget(control.pad, 1);
+        line->addWidget(new QLabel(QStringLiteral("X"), control.row));
+        line->addWidget(control.x);
+        line->addWidget(new QLabel(QStringLiteral("Y"), control.row));
+        line->addWidget(control.y);
+        rowLayout->addLayout(line);
+        break;
+    }
+    case FilterControl::BlurCenter:
+        rowLayout->addWidget(new QLabel(spec.label, control.row));
+        rowLayout->addWidget(control.center);
+        break;
+    default: {
+        auto* line = new QHBoxLayout;
+        line->addWidget(new QLabel(spec.label, control.row));
+        line->addStretch(1);
+        line->addWidget(control.spin);
+        const QString unit = spec.suffix.trimmed();
+        if (!unit.isEmpty()) {
+            auto* unitLabel = new QLabel(unit, control.row);
+            unitLabel->setObjectName(QStringLiteral("filterUnit"));
+            line->addWidget(unitLabel);
+        }
+        rowLayout->addLayout(line);
+        rowLayout->addWidget(control.slider);
         break;
     }
     }
@@ -623,8 +691,16 @@ void FilterPreviewDialog::updateThumbnail()
         crop = QRectF(0, 0, image.width(), image.height());
     }
     const QImage section = image.copy(crop.toRect());
-    thumbnail_->setPixmap(QPixmap::fromImage(section)
-                              .scaled(200, 200, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    const QSize target = thumbnail_->size().expandedTo(thumbnail_->minimumSize());
+    thumbnail_->setPixmap(
+        QPixmap::fromImage(section).scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+void FilterPreviewDialog::resizeEvent(QResizeEvent* event)
+{
+    QDialog::resizeEvent(event);
+    // The preview pane grows with the dialog; re-render it at the new size.
+    updateThumbnail();
 }
 
 bool FilterPreviewDialog::get(PictureView* view, const FilterCommandSpec& spec,

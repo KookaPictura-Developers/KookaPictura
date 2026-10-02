@@ -16,6 +16,7 @@ class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
+class QResizeEvent;
 class QSlider;
 
 namespace pictura {
@@ -53,6 +54,7 @@ public:
 private:
     struct Control {
         FilterParamSpec spec;
+        QWidget* row = nullptr;
         QDoubleSpinBox* spin = nullptr;
         QSlider* slider = nullptr;
         QComboBox* combo = nullptr;
@@ -71,6 +73,10 @@ private:
     void updateThumbnail();
     double controlValue(const Control& control, int slot) const;
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
+private:
     PictureView* view_ = nullptr;
     const FilterCommandSpec spec_;
     QList<Control> controls_;
@@ -80,6 +86,7 @@ private:
     QLabel* zoomLabel_ = nullptr;
     int zoom_ = 2;
     bool previewShown_ = false;
+    bool sliderDragging_ = false;
     QRectF previewVisible_;
     double canvasZoom_ = 1.0;
 };
