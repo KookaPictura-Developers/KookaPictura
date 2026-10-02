@@ -21,6 +21,9 @@
     <file>icons/image.rotate180.svg</file>
     <file>icons/image.rotate90ccw.svg</file>
     <file>icons/image.rotate90cw.svg</file>
+    <file>icons/info.bounds.svg</file>
+    <file>icons/info.crosshair.svg</file>
+    <file>icons/info.protractor.svg</file>
     <file>icons/count.newGroup.svg</file>
     <file>icons/layers.clipMask.svg</file>
     <file>icons/layers.delete.svg</file>

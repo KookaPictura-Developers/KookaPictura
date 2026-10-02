@@ -11,6 +11,8 @@ here.
   under **CC0-1.0 / MIT** (reuse under either).
 - Carry no Adobe/Illustrator/XMP metadata; none are traced from Photoshop or a
   third-party icon pack.
+- The `info.crosshair`, `info.bounds`, and `info.protractor` glyphs are original
+  project artwork in the same house style, released under **CC0-1.0 / MIT**.
 
 ## Ported vector glyphs (`assets/icons`)
 
