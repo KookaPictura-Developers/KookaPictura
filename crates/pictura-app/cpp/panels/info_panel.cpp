@@ -10,7 +10,6 @@
 #include <QtCore/QtGlobal>
 #include <QtGui/QAction>
 #include <QtGui/QColor>
-#include <QtWidgets/QFrame>
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMenu>
@@ -81,8 +80,8 @@ InfoPanel::InfoPanel(QWidget* parent)
 
     grid_ = new QGridLayout;
     grid_->setContentsMargins(0, 0, 0, 0);
-    grid_->setHorizontalSpacing(10);
-    grid_->setVerticalSpacing(6);
+    grid_->setHorizontalSpacing(0);
+    grid_->setVerticalSpacing(0);
     grid_->setColumnStretch(0, 1);
     grid_->setColumnStretch(1, 1);
     outer->addLayout(grid_);
@@ -91,7 +90,7 @@ InfoPanel::InfoPanel(QWidget* parent)
                           {QStringLiteral("R"), QStringLiteral("G"), QStringLiteral("B")},
                           QStringLiteral("tool.eyedropper"), QStringLiteral("8-bit"),
                           MenuKind::Color);
-    topLeft_->colorMode = ColorReadout::Rgb;
+    topLeft_->colorMode = ColorReadout::ActualColor;
     topRight_ = addReadout(grid_, 0, 1,
                            {QStringLiteral("C"), QStringLiteral("M"), QStringLiteral("Y"),
                             QStringLiteral("K")},
@@ -101,11 +100,13 @@ InfoPanel::InfoPanel(QWidget* parent)
     position_ = addReadout(grid_, 1, 0, {QStringLiteral("X"), QStringLiteral("Y")},
                            QStringLiteral("info.crosshair"), QString(), MenuKind::Unit);
     size_ = addReadout(grid_, 1, 1, {QStringLiteral("W"), QStringLiteral("H")},
-                       QStringLiteral("info.bounds"), QString(), MenuKind::Unit);
+                       QStringLiteral("info.bounds"), QString(), MenuKind::None);
 
-    auto* rule = new QFrame(this);
-    rule->setFrameShape(QFrame::HLine);
+    auto* rule = new QWidget(this);
     rule->setObjectName(QStringLiteral("infoRule"));
+    rule->setAttribute(Qt::WA_StyledBackground, true);
+    rule->setFixedHeight(1);
+    rule->setStyleSheet(QStringLiteral("background-color:#3a3a3a;"));
     outer->addWidget(rule);
 
     docLabel_ = new QLabel(this);
@@ -125,6 +126,18 @@ InfoPanel::Readout* InfoPanel::addReadout(QGridLayout* grid, int row, int column
                                           const QString& footer, MenuKind menu)
 {
     auto* block = new QWidget(this);
+    block->setObjectName(QStringLiteral("infoBlock"));
+    block->setAttribute(Qt::WA_StyledBackground, true);
+    QString border = QStringLiteral("QWidget#infoBlock{border-right:1px solid #3a3a3a;"
+                                    "border-bottom:1px solid #3a3a3a;");
+    if (row == 0) {
+        border += QStringLiteral("border-top:1px solid #3a3a3a;");
+    }
+    if (column == 0) {
+        border += QStringLiteral("border-left:1px solid #3a3a3a;");
+    }
+    border += QStringLiteral("}");
+    block->setStyleSheet(border);
     auto* layout = new QGridLayout(block);
     layout->setContentsMargins(4, 3, 4, 3);
     layout->setHorizontalSpacing(4);
@@ -153,12 +166,10 @@ InfoPanel::Readout* InfoPanel::addReadout(QGridLayout* grid, int row, int column
     layout->setColumnStretch(2, 1);
 
     if (!footer.isEmpty()) {
-        // ponytail: static footer; a bit-depth menu can replace it when the
-        // document exposes a depth switch.
         readout->footer = new QLabel(footer, block);
         readout->footer->setObjectName(QStringLiteral("infoFooter"));
-        readout->footer->setAlignment(Qt::AlignHCenter);
-        layout->addWidget(readout->footer, 1, 0, 1, 3);
+        readout->footer->setAlignment(Qt::AlignLeft | Qt::AlignBottom);
+        layout->addWidget(readout->footer, keys.size(), 1, 1, 2);
     }
 
     rebuildRows(readout, keys);
@@ -167,22 +178,46 @@ InfoPanel::Readout* InfoPanel::addReadout(QGridLayout* grid, int row, int column
         auto* m = new QMenu(readout->button);
         if (menu == MenuKind::Color) {
             const QList<QPair<QString, ColorReadout>> options = {
+                {QStringLiteral("Actual Color"), ColorReadout::ActualColor},
+                {QStringLiteral("Proof Color"), ColorReadout::ProofColor},
                 {QStringLiteral("Grayscale"), ColorReadout::Grayscale},
                 {QStringLiteral("RGB"), ColorReadout::Rgb},
                 {QStringLiteral("HSB"), ColorReadout::Hsb},
                 {QStringLiteral("CMYK"), ColorReadout::Cmyk},
                 {QStringLiteral("Lab"), ColorReadout::Lab},
+                {QStringLiteral("Total Ink"), ColorReadout::TotalInk},
+                {QStringLiteral("Opacity"), ColorReadout::Opacity},
             };
-            for (const auto& option : options) {
+            const int separatorAt[] = {2, 7};
+            int nextSeparator = 0;
+            for (int i = 0; i < options.size(); ++i) {
+                if (nextSeparator < 2 && i == separatorAt[nextSeparator]) {
+                    m->addSeparator();
+                    ++nextSeparator;
+                }
+                const auto& option = options.at(i);
                 QAction* action = m->addAction(option.first);
                 action->setCheckable(true);
                 action->setData(int(option.second));
                 connect(action, &QAction::triggered, this,
                         [this, readout, mode = option.second] { applyColorMode(readout, mode); });
             }
+            m->addSeparator();
+            for (const int bits : {8, 16, 32}) {
+                QAction* action = m->addAction(QStringLiteral("%1-bit").arg(bits));
+                action->setCheckable(true);
+                action->setData(-bits);
+                connect(action, &QAction::triggered, this,
+                        [this, readout, bits] { setBitDepth(readout, bits); });
+            }
             connect(m, &QMenu::aboutToShow, this, [readout, m] {
                 for (QAction* action : m->actions()) {
-                    action->setChecked(action->data().toInt() == int(readout->colorMode));
+                    if (action->isSeparator()) {
+                        continue;
+                    }
+                    const int data = action->data().toInt();
+                    action->setChecked(data < 0 ? -data == readout->bits
+                                                : data == int(readout->colorMode));
                 }
             });
         } else {
@@ -257,11 +292,13 @@ void InfoPanel::applyColorMode(Readout* readout, ColorReadout mode)
     readout->colorMode = mode;
     QStringList keys;
     switch (mode) {
-    case ColorReadout::Grayscale:
-        keys << QStringLiteral("K");
-        break;
+    case ColorReadout::ActualColor:
+    case ColorReadout::ProofColor:
     case ColorReadout::Rgb:
         keys << QStringLiteral("R") << QStringLiteral("G") << QStringLiteral("B");
+        break;
+    case ColorReadout::Grayscale:
+        keys << QStringLiteral("K");
         break;
     case ColorReadout::Hsb:
         keys << QStringLiteral("H") << QStringLiteral("S") << QStringLiteral("B");
@@ -273,6 +310,12 @@ void InfoPanel::applyColorMode(Readout* readout, ColorReadout mode)
     case ColorReadout::Lab:
         keys << QStringLiteral("L") << QStringLiteral("a") << QStringLiteral("b");
         break;
+    case ColorReadout::TotalInk:
+        keys << QStringLiteral("Ink");
+        break;
+    case ColorReadout::Opacity:
+        keys << QStringLiteral("Op");
+        break;
     }
     rebuildRows(readout, keys);
     refresh();
@@ -281,18 +324,35 @@ void InfoPanel::applyColorMode(Readout* readout, ColorReadout mode)
 void InfoPanel::applyUnit(Readout* readout, MeasureUnit unit)
 {
     readout->unit = unit;
+    (readout == position_ ? size_ : position_)->unit = unit;
+    refresh();
+}
+
+void InfoPanel::setBitDepth(Readout* readout, int bits)
+{
+    readout->bits = bits;
+    if (readout->footer) {
+        readout->footer->setText(QStringLiteral("%1-bit").arg(bits));
+    }
     refresh();
 }
 
 void InfoPanel::refreshColorBlock(Readout* readout, const QColor& color)
 {
+    const int bits = readout->bits;
     switch (readout->colorMode) {
+    // ponytail: no proofing engine; Proof Color reads the same sRGB values as Actual Color.
+    case ColorReadout::ActualColor:
+    case ColorReadout::ProofColor:
+        setValues(readout, {formatChannel(color.red(), bits), formatChannel(color.green(), bits),
+                            formatChannel(color.blue(), bits)});
+        break;
     case ColorReadout::Grayscale:
-        setValues(readout, {QString::number(qGray(color.rgb()))});
+        setValues(readout, {formatChannel(qGray(color.rgb()), bits)});
         break;
     case ColorReadout::Rgb:
-        setValues(readout, {QString::number(color.red()), QString::number(color.green()),
-                            QString::number(color.blue())});
+        setValues(readout, {formatChannel(color.red(), bits), formatChannel(color.green(), bits),
+                            formatChannel(color.blue(), bits)});
         break;
     case ColorReadout::Hsb: {
         const int hue = color.hue() < 0 ? 0 : color.hue();
@@ -315,6 +375,30 @@ void InfoPanel::refreshColorBlock(Readout* readout, const QColor& color)
                             QString::number(qRound(lab.b))});
         break;
     }
+    case ColorReadout::TotalInk: {
+        const QColor cmyk = color.toCmyk();
+        const int total = cmykPercent(cmyk.cyan()) + cmykPercent(cmyk.magenta())
+                          + cmykPercent(cmyk.yellow()) + cmykPercent(cmyk.black());
+        setValues(readout, {QString::number(total)});
+        break;
+    }
+    case ColorReadout::Opacity:
+        setValues(readout, {QString::number(qRound(color.alpha() / 255.0 * 100.0))});
+        break;
+    }
+}
+
+// ponytail: the engine samples 8-bit; 16/32-bit readouts scale the 8-bit sample
+// rather than reading a true deep-color document.
+QString InfoPanel::formatChannel(int value, int bits) const
+{
+    switch (bits) {
+    case 16:
+        return QString::number(value * 257);
+    case 32:
+        return QString::number(value / 255.0, 'f', 3);
+    default:
+        return QString::number(value);
     }
 }
 
@@ -348,6 +432,31 @@ QString InfoPanel::blockText(const Readout* readout) const
         parts << QStringLiteral("%1 : %2").arg(key, readout->values.at(i)->text());
     }
     return parts.join(QStringLiteral("  "));
+}
+
+QString InfoPanel::colorModeName(ColorReadout mode) const
+{
+    switch (mode) {
+    case ColorReadout::ActualColor:
+        return QStringLiteral("Actual Color");
+    case ColorReadout::ProofColor:
+        return QStringLiteral("Proof Color");
+    case ColorReadout::Grayscale:
+        return QStringLiteral("Grayscale");
+    case ColorReadout::Rgb:
+        return QStringLiteral("RGB");
+    case ColorReadout::Hsb:
+        return QStringLiteral("HSB");
+    case ColorReadout::Cmyk:
+        return QStringLiteral("CMYK");
+    case ColorReadout::Lab:
+        return QStringLiteral("Lab");
+    case ColorReadout::TotalInk:
+        return QStringLiteral("Total Ink");
+    case ColorReadout::Opacity:
+        return QStringLiteral("Opacity");
+    }
+    return QString();
 }
 
 void InfoPanel::rebuildTopRight()
@@ -485,6 +594,19 @@ QString InfoPanel::colorBlockTextForTest(int index) const
     return blockText(index == 1 ? topRight_ : topLeft_);
 }
 
+QString InfoPanel::colorFooterForTest(int index) const
+{
+    const Readout* readout = index == 1 ? topRight_ : topLeft_;
+    return readout->footer ? readout->footer->text() : QString();
+}
+
+QString InfoPanel::colorModeForTest(int index) const
+{
+    return colorModeName((index == 1 ? topRight_ : topLeft_)->colorMode);
+}
+
+bool InfoPanel::sizeBlockHasMenuForTest() const { return size_->button->menu() != nullptr; }
+
 QString InfoPanel::positionTextForTest() const
 {
     QStringList values;
@@ -517,7 +639,11 @@ QString InfoPanel::docTextForTest() const { return docLabel_->text(); }
 void InfoPanel::setColorModeForTest(int index, const QString& mode)
 {
     Readout* readout = index == 1 ? topRight_ : topLeft_;
-    if (mode.compare(QStringLiteral("Grayscale"), Qt::CaseInsensitive) == 0) {
+    if (mode.compare(QStringLiteral("Actual Color"), Qt::CaseInsensitive) == 0) {
+        applyColorMode(readout, ColorReadout::ActualColor);
+    } else if (mode.compare(QStringLiteral("Proof Color"), Qt::CaseInsensitive) == 0) {
+        applyColorMode(readout, ColorReadout::ProofColor);
+    } else if (mode.compare(QStringLiteral("Grayscale"), Qt::CaseInsensitive) == 0) {
         applyColorMode(readout, ColorReadout::Grayscale);
     } else if (mode.compare(QStringLiteral("RGB"), Qt::CaseInsensitive) == 0) {
         applyColorMode(readout, ColorReadout::Rgb);
@@ -527,7 +653,28 @@ void InfoPanel::setColorModeForTest(int index, const QString& mode)
         applyColorMode(readout, ColorReadout::Cmyk);
     } else if (mode.compare(QStringLiteral("Lab"), Qt::CaseInsensitive) == 0) {
         applyColorMode(readout, ColorReadout::Lab);
+    } else if (mode.compare(QStringLiteral("Total Ink"), Qt::CaseInsensitive) == 0) {
+        applyColorMode(readout, ColorReadout::TotalInk);
+    } else if (mode.compare(QStringLiteral("Opacity"), Qt::CaseInsensitive) == 0) {
+        applyColorMode(readout, ColorReadout::Opacity);
     }
+}
+
+void InfoPanel::setBitDepthForTest(int index, int bits)
+{
+    setBitDepth(index == 1 ? topRight_ : topLeft_, bits);
+}
+
+QStringList InfoPanel::colorMenuTextsForTest(int index) const
+{
+    const Readout* readout = index == 1 ? topRight_ : topLeft_;
+    QStringList texts;
+    if (readout && readout->button && readout->button->menu()) {
+        for (QAction* action : readout->button->menu()->actions()) {
+            texts << (action->isSeparator() ? QStringLiteral("---") : action->text());
+        }
+    }
+    return texts;
 }
 
 void InfoPanel::setMeasurementUnitForTest(int index, const QString& unit)

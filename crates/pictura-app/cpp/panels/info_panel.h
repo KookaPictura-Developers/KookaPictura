@@ -29,15 +29,30 @@ public:
 
     QString samplerTextForTest() const;
     QString colorBlockTextForTest(int index = 0) const;
+    QString colorFooterForTest(int index = 0) const;
+    QString colorModeForTest(int index = 0) const;
+    QStringList colorMenuTextsForTest(int index = 0) const;
     QString positionTextForTest() const;
     QString sizeTextForTest() const;
     QString rulerTextForTest() const;
     QString docTextForTest() const;
+    bool sizeBlockHasMenuForTest() const;
     void setColorModeForTest(int index, const QString& mode);
     void setMeasurementUnitForTest(int index, const QString& unit);
+    void setBitDepthForTest(int index, int bits);
 
 private:
-    enum class ColorReadout { Grayscale, Rgb, Hsb, Cmyk, Lab };
+    enum class ColorReadout {
+        ActualColor,
+        ProofColor,
+        Grayscale,
+        Rgb,
+        Hsb,
+        Cmyk,
+        Lab,
+        TotalInk,
+        Opacity
+    };
     enum class MeasureUnit { Pixels, Inches, Centimeters, Millimeters, Points, Picas, Percent };
     enum class MenuKind { None, Color, Unit };
 
@@ -49,8 +64,9 @@ private:
         QStringList keyNames;
         QList<QLabel*> values;
         QLabel* footer = nullptr;
-        ColorReadout colorMode = ColorReadout::Rgb;
+        ColorReadout colorMode = ColorReadout::ActualColor;
         MeasureUnit unit = MeasureUnit::Pixels;
+        int bits = 8;
     };
 
     Readout* addReadout(QGridLayout* grid, int row, int column, const QStringList& keys,
@@ -59,9 +75,12 @@ private:
     void setValues(Readout* readout, const QStringList& values);
     void applyColorMode(Readout* readout, ColorReadout mode);
     void applyUnit(Readout* readout, MeasureUnit unit);
+    void setBitDepth(Readout* readout, int bits);
     void refreshColorBlock(Readout* readout, const QColor& color);
     void rebuildTopRight();
     QString blockText(const Readout* readout) const;
+    QString colorModeName(ColorReadout mode) const;
+    QString formatChannel(int value, int bits) const;
     QString formatMeasure(double value, MeasureUnit unit, double percentBase) const;
 
     PictureView* view_ = nullptr;

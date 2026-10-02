@@ -15,8 +15,13 @@ class InfoPanelTest : public QObject {
 private slots:
     void initTestCase();
     void cleanup();
+    void defaultColorModeIsActualColor();
     void colorBlockReadsRgbAndSwitchesModes();
+    void colorMenuModes();
+    void colorMenuHasCs6Entries();
+    void bitDepthScalesRgb();
     void measurementUnitReformatsPosition();
+    void unitInheritanceAndNoSizeMenu();
     void selectionDrivesSizeAndBlanksWithoutOne();
     void rulerModeSwapsTopRightBlock();
     void offCanvasBlanksColorReadouts();
@@ -58,10 +63,20 @@ void InfoPanelTest::openDocument(const QString& name)
     QVERIFY2(created && view_ && panel_, "info fixture");
     panel_->setView(view_);
     // The panel outlives a document, so reset its readout state for isolation.
-    panel_->setColorModeForTest(0, QStringLiteral("RGB"));
+    panel_->setColorModeForTest(0, QStringLiteral("Actual Color"));
     panel_->setColorModeForTest(1, QStringLiteral("CMYK"));
     panel_->setMeasurementUnitForTest(0, QStringLiteral("Pixels"));
     panel_->setMeasurementUnitForTest(1, QStringLiteral("Pixels"));
+    panel_->setBitDepthForTest(0, 8);
+    panel_->setBitDepthForTest(1, 8);
+}
+
+void InfoPanelTest::defaultColorModeIsActualColor()
+{
+    panel_ = window_->findChild<pictura::InfoPanel*>(QStringLiteral("infoPanel"));
+    QVERIFY2(panel_ != nullptr, "panel exists before any document");
+    QCOMPARE(panel_->colorModeForTest(0), QStringLiteral("Actual Color"));
+    QCOMPARE(panel_->colorModeForTest(1), QStringLiteral("CMYK"));
 }
 
 void InfoPanelTest::colorBlockReadsRgbAndSwitchesModes()
@@ -84,6 +99,60 @@ void InfoPanelTest::colorBlockReadsRgbAndSwitchesModes()
              "grayscale uses qGray");
 }
 
+void InfoPanelTest::colorMenuModes()
+{
+    openDocument(QStringLiteral("ColorMenu"));
+    panel_->setCursorPosition(QPointF(2, 2));
+
+    panel_->setColorModeForTest(0, QStringLiteral("Proof Color"));
+    QVERIFY2(panel_->colorBlockTextForTest(0).contains(QStringLiteral("R : 255")),
+             "proof color reads rgb");
+
+    panel_->setColorModeForTest(0, QStringLiteral("Total Ink"));
+    QVERIFY2(panel_->colorBlockTextForTest(0).contains(QStringLiteral("Ink : 0")),
+             "total ink sums cmyk");
+
+    panel_->setColorModeForTest(0, QStringLiteral("Opacity"));
+    QVERIFY2(panel_->colorBlockTextForTest(0).contains(QStringLiteral("Op : 100")),
+             "opacity is a percentage");
+
+    panel_->setColorModeForTest(0, QStringLiteral("Lab"));
+    QVERIFY2(panel_->colorBlockTextForTest(0).contains(QStringLiteral("L : 100")), "lab rows");
+}
+
+void InfoPanelTest::colorMenuHasCs6Entries()
+{
+    openDocument(QStringLiteral("MenuTexts"));
+    const QStringList expected = {QStringLiteral("Actual Color"), QStringLiteral("Proof Color"),
+                                  QStringLiteral("---"),          QStringLiteral("Grayscale"),
+                                  QStringLiteral("RGB"),          QStringLiteral("HSB"),
+                                  QStringLiteral("CMYK"),         QStringLiteral("Lab"),
+                                  QStringLiteral("---"),          QStringLiteral("Total Ink"),
+                                  QStringLiteral("Opacity"),      QStringLiteral("---"),
+                                  QStringLiteral("8-bit"),        QStringLiteral("16-bit"),
+                                  QStringLiteral("32-bit")};
+    QCOMPARE(panel_->colorMenuTextsForTest(0), expected);
+    QCOMPARE(panel_->colorMenuTextsForTest(1), expected);
+}
+
+void InfoPanelTest::bitDepthScalesRgb()
+{
+    openDocument(QStringLiteral("Depth"));
+    panel_->setCursorPosition(QPointF(2, 2));
+    QVERIFY2(panel_->colorBlockTextForTest(0).contains(QStringLiteral("R : 255")), "8-bit raw");
+    QCOMPARE(panel_->colorFooterForTest(0), QStringLiteral("8-bit"));
+
+    panel_->setBitDepthForTest(0, 16);
+    QVERIFY2(panel_->colorBlockTextForTest(0).contains(QStringLiteral("R : 65535")),
+             "16-bit scales 255");
+    QCOMPARE(panel_->colorFooterForTest(0), QStringLiteral("16-bit"));
+
+    panel_->setBitDepthForTest(0, 32);
+    QVERIFY2(panel_->colorBlockTextForTest(0).contains(QStringLiteral("R : 1.000")),
+             "32-bit is a unit value");
+    QCOMPARE(panel_->colorFooterForTest(0), QStringLiteral("32-bit"));
+}
+
 void InfoPanelTest::measurementUnitReformatsPosition()
 {
     openDocument(QStringLiteral("Units"));
@@ -96,6 +165,20 @@ void InfoPanelTest::measurementUnitReformatsPosition()
 
     panel_->setMeasurementUnitForTest(0, QStringLiteral("Pixels"));
     QCOMPARE(panel_->positionTextForTest(), QStringLiteral("2, 2"));
+}
+
+void InfoPanelTest::unitInheritanceAndNoSizeMenu()
+{
+    openDocument(QStringLiteral("SharedUnit"));
+    QVERIFY2(!panel_->sizeBlockHasMenuForTest(), "W/H inherits its unit, no menu");
+
+    QVERIFY2(view_->select_rect(2, 2, 4, 4, QStringLiteral("new"), 0.0), "select rect");
+    panel_->refresh();
+    QCOMPARE(panel_->sizeTextForTest(), QStringLiteral("4 × 4"));
+
+    // 72 PPI: 4 px = 1.41 mm; the X/Y unit drives the W/H block too.
+    panel_->setMeasurementUnitForTest(0, QStringLiteral("Millimeters"));
+    QCOMPARE(panel_->sizeTextForTest(), QStringLiteral("1.41 × 1.41"));
 }
 
 void InfoPanelTest::selectionDrivesSizeAndBlanksWithoutOne()
