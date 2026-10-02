@@ -5,11 +5,13 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/annotations.cxxqt.h"
 
+#include <QtCore/QEvent>
 #include <QtCore/QPair>
 #include <QtCore/QStringList>
 #include <QtCore/QtGlobal>
 #include <QtGui/QAction>
 #include <QtGui/QColor>
+#include <QtGui/QScreen>
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMenu>
@@ -106,7 +108,6 @@ InfoPanel::InfoPanel(QWidget* parent)
     rule->setObjectName(QStringLiteral("infoRule"));
     rule->setAttribute(Qt::WA_StyledBackground, true);
     rule->setFixedHeight(1);
-    rule->setStyleSheet(QStringLiteral("background-color:#3a3a3a;"));
     outer->addWidget(rule);
 
     docLabel_ = new QLabel(this);
@@ -128,16 +129,10 @@ InfoPanel::Readout* InfoPanel::addReadout(QGridLayout* grid, int row, int column
     auto* block = new QWidget(this);
     block->setObjectName(QStringLiteral("infoBlock"));
     block->setAttribute(Qt::WA_StyledBackground, true);
-    QString border = QStringLiteral("QWidget#infoBlock{border-right:1px solid #3a3a3a;"
-                                    "border-bottom:1px solid #3a3a3a;");
-    if (row == 0) {
-        border += QStringLiteral("border-top:1px solid #3a3a3a;");
-    }
-    if (column == 0) {
-        border += QStringLiteral("border-left:1px solid #3a3a3a;");
-    }
-    border += QStringLiteral("}");
-    block->setStyleSheet(border);
+    // The readout grid draws only its inner cross (styled in theme.cpp), so the
+    // last column/row keeps no outer line. ponytail: fixed 2x2 grid.
+    block->setProperty("gridRight", column == 0);
+    block->setProperty("gridBottom", row == 0);
     auto* layout = new QGridLayout(block);
     layout->setContentsMargins(4, 3, 4, 3);
     layout->setHorizontalSpacing(4);
@@ -155,10 +150,11 @@ InfoPanel::Readout* InfoPanel::addReadout(QGridLayout* grid, int row, int column
 
     auto* keysHost = new QWidget(block);
     auto* valuesHost = new QWidget(block);
-    readout->keysHost = new QVBoxLayout(keysHost);
+    readout->keysHost = new QGridLayout(keysHost);
     readout->valuesHost = new QVBoxLayout(valuesHost);
     readout->keysHost->setContentsMargins(0, 0, 0, 0);
-    readout->keysHost->setSpacing(1);
+    readout->keysHost->setHorizontalSpacing(4);
+    readout->keysHost->setVerticalSpacing(1);
     readout->valuesHost->setContentsMargins(0, 0, 0, 0);
     readout->valuesHost->setSpacing(1);
     layout->addWidget(keysHost, 0, 1);
@@ -169,13 +165,17 @@ InfoPanel::Readout* InfoPanel::addReadout(QGridLayout* grid, int row, int column
         readout->footer = new QLabel(footer, block);
         readout->footer->setObjectName(QStringLiteral("infoFooter"));
         readout->footer->setAlignment(Qt::AlignLeft | Qt::AlignBottom);
-        layout->addWidget(readout->footer, keys.size(), 1, 1, 2);
+        // Keys live in keysHost's own rows, so the footer goes in block row 1;
+        // the stretch pins it to the block's bottom whatever the key count is.
+        layout->addWidget(readout->footer, 1, 1, 1, 2);
+        layout->setRowStretch(1, 1);
     }
 
     rebuildRows(readout, keys);
 
     if (menu != MenuKind::None) {
         auto* m = new QMenu(readout->button);
+        m->installEventFilter(this);
         if (menu == MenuKind::Color) {
             const QList<QPair<QString, ColorReadout>> options = {
                 {QStringLiteral("Actual Color"), ColorReadout::ActualColor},
@@ -251,6 +251,35 @@ InfoPanel::Readout* InfoPanel::addReadout(QGridLayout* grid, int row, int column
     return readout;
 }
 
+// QToolButton drops its menu below the icon (or above when out of room), in
+// front of the readout; open ours beside the button so the icon stays visible.
+// ponytail: LTR and one screen only; flip the sides for RTL or fall through to
+// a neighbouring screen's geometry if placement ever matters beyond that.
+bool InfoPanel::eventFilter(QObject* watched, QEvent* event)
+{
+    if (event->type() == QEvent::Show) {
+        if (auto* menu = qobject_cast<QMenu*>(watched)) {
+            if (auto* button = qobject_cast<QToolButton*>(menu->parentWidget())) {
+                if (QScreen* screen = button->screen()) {
+                    const QSize menuSize = menu->size();
+                    const QRect area = screen->availableGeometry();
+                    const QPoint buttonTopLeft = button->mapToGlobal(QPoint(0, 0));
+                    QPoint pos = buttonTopLeft + QPoint(button->width() + 1, 0);
+                    if (pos.x() + menuSize.width() > area.right() + 1) {
+                        pos.setX(buttonTopLeft.x() - 1 - menuSize.width());
+                    }
+                    // Neither side fits: keep QToolButton's own placement.
+                    if (pos.x() >= area.left() && pos.x() + menuSize.width() <= area.right() + 1) {
+                        const int maxY = qMax(area.top(), area.bottom() - menuSize.height() + 1);
+                        menu->move(QPoint(pos.x(), qBound(area.top(), pos.y(), maxY)));
+                    }
+                }
+            }
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
 void InfoPanel::rebuildRows(Readout* readout, const QStringList& keys)
 {
     while (QLayoutItem* item = readout->keysHost->takeAt(0)) {
@@ -263,15 +292,22 @@ void InfoPanel::rebuildRows(Readout* readout, const QStringList& keys)
     }
     readout->values.clear();
     readout->keyNames = keys;
-    for (const QString& key : keys) {
-        auto* keyLabel = new QLabel(key + QStringLiteral(" :"), readout->widget);
+    for (int i = 0; i < keys.size(); ++i) {
+        const QString& key = keys.at(i);
+        // Left-aligned keys in their own column, the ":" right-aligned in a
+        // second one: proportional fonts otherwise stagger both.
+        auto* keyLabel = new QLabel(key, readout->widget);
         keyLabel->setObjectName(QStringLiteral("infoKey"));
-        keyLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        keyLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        auto* colonLabel = new QLabel(QStringLiteral(":"), readout->widget);
+        colonLabel->setObjectName(QStringLiteral("infoKey"));
+        colonLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         auto* valueLabel = new QLabel(readout->widget);
         valueLabel->setObjectName(QStringLiteral("infoValue"));
         valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         valueLabel->setMinimumWidth(26);
-        readout->keysHost->addWidget(keyLabel);
+        readout->keysHost->addWidget(keyLabel, i, 0);
+        readout->keysHost->addWidget(colonLabel, i, 1);
         readout->valuesHost->addWidget(valueLabel);
         readout->values.append(valueLabel);
     }

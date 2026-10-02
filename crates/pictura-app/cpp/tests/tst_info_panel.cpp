@@ -1,6 +1,8 @@
 #include <QtTest/QtTest>
 
 #include <QtCore/QPointF>
+#include <QtWidgets/QMenu>
+#include <QtWidgets/QToolButton>
 
 #include "frame.h"
 #include "panels/info_panel.h"
@@ -26,6 +28,7 @@ private slots:
     void rulerModeSwapsTopRightBlock();
     void offCanvasBlanksColorReadouts();
     void docLineIsPresent();
+    void menuOpensBesideItsButton();
 
 private:
     void openDocument(const QString& name);
@@ -230,6 +233,39 @@ void InfoPanelTest::docLineIsPresent()
     QVERIFY2(panel_->docTextForTest().startsWith(QStringLiteral("Doc: ")), "doc line present");
     // A 16x16 RGB document holds an 8-plane footprint = 2048 bytes = 2.0K.
     QVERIFY2(panel_->docTextForTest().contains(QStringLiteral("2.0K")), "memory footprint");
+}
+
+void InfoPanelTest::menuOpensBesideItsButton()
+{
+    openDocument(QStringLiteral("MenuPos"));
+    // The reposition needs the button's screen, so the window must be up.
+    window_->show();
+    QTest::qWait(50);
+
+    QToolButton* button = nullptr;
+    for (QToolButton* candidate : panel_->findChildren<QToolButton*>()) {
+        if (candidate->menu()) {
+            button = candidate;
+            break;
+        }
+    }
+    QVERIFY2(button, "a readout button owns a menu");
+    QMenu* menu = button->menu();
+    QVERIFY2(menu != nullptr, "the menu is attached");
+    // QToolButton::showMenu() blocks until the menu closes, and a real click
+    // goes through the same popup(); open it where QToolButton would (below)
+    // and let the panel's Show filter move it aside.
+    menu->popup(button->mapToGlobal(QPoint(0, button->height())));
+    const bool visible = menu->isVisible();
+    const QRect buttonRect(button->mapToGlobal(QPoint(0, 0)), button->size());
+    const QRect menuRect(menu->geometry());
+    // Hide before asserting so a failure never leaves a popup behind.
+    menu->hide();
+
+    QVERIFY2(visible, "menu opened");
+    QVERIFY2(!menuRect.intersects(buttonRect), "menu does not cover its button");
+    QVERIFY2(menuRect.left() >= buttonRect.right() || menuRect.right() <= buttonRect.left(),
+             "menu sits beside the button");
 }
 
 QTEST_MAIN(InfoPanelTest)

@@ -5,6 +5,7 @@
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QPaintEvent>
+#include <QtGui/QPalette>
 #include <QtMath>
 
 #include <cmath>
@@ -34,18 +35,22 @@ void AngleDial::paintEvent(QPaintEvent*)
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     const QRectF face = QRectF(rect()).adjusted(2, 2, -2, -2);
-    painter.setPen(QPen(QColor(0x88, 0x88, 0x88), 1.0));
-    painter.setBrush(QColor(0x3a, 0x3a, 0x3a));
+    // Chrome follows the palette so all four brightness levels repaint it;
+    // the ratios hold the original contrast (face above the pane, rim and
+    // hand on the text tone).
+    const QColor windowText = palette().color(QPalette::WindowText);
+    painter.setPen(QPen(windowText.darker(165), 1.0));
+    painter.setBrush(palette().color(QPalette::Button));
     painter.drawEllipse(face);
 
     const QPointF centre = face.center();
     const double radians = qDegreesToRadians(angle_);
     const QPointF tip(centre.x() + std::cos(radians) * face.width() / 2.2,
                       centre.y() - std::sin(radians) * face.height() / 2.2);
-    painter.setPen(QPen(QColor(0xe8, 0xe8, 0xe8), 1.4));
+    painter.setPen(QPen(windowText, 1.4));
     painter.drawLine(centre, tip);
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(0xe8, 0xe8, 0xe8));
+    painter.setBrush(windowText);
     painter.drawEllipse(centre, 1.6, 1.6);
 }
 

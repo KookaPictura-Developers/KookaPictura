@@ -12,6 +12,7 @@ class IconAssetsTest : public QObject {
 private slots:
     void panelGlyphsResolve();
     void pathGlyphsResolve();
+    void infoGlyphsResolve();
     void unknownIdIsNull();
 };
 
@@ -41,6 +42,21 @@ void IconAssetsTest::pathGlyphsResolve()
         QStringLiteral("path.makeWorkPath"),
         QStringLiteral("path.newPath"),
         QStringLiteral("path.delete"),
+    };
+    for (const QString& id : ids) {
+        const QIcon icon = pictura::icon(id);
+        QVERIFY2(!icon.isNull(), qPrintable(id + QStringLiteral(" resolves")));
+        QVERIFY2(!icon.pixmap(16, 16).isNull(),
+                 qPrintable(id + QStringLiteral(" renders at 16px")));
+    }
+}
+
+void IconAssetsTest::infoGlyphsResolve()
+{
+    const QStringList ids = {
+        QStringLiteral("info.crosshair"),
+        QStringLiteral("info.bounds"),
+        QStringLiteral("info.protractor"),
     };
     for (const QString& id : ids) {
         const QIcon icon = pictura::icon(id);

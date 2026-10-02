@@ -5,6 +5,7 @@
 #include <QtWidgets/QWidget>
 
 class QColor;
+class QEvent;
 class QGridLayout;
 class QLabel;
 class QToolButton;
@@ -59,7 +60,7 @@ private:
     struct Readout {
         QWidget* widget = nullptr;
         QToolButton* button = nullptr;
-        QVBoxLayout* keysHost = nullptr;
+        QGridLayout* keysHost = nullptr;
         QVBoxLayout* valuesHost = nullptr;
         QStringList keyNames;
         QList<QLabel*> values;
@@ -71,6 +72,7 @@ private:
 
     Readout* addReadout(QGridLayout* grid, int row, int column, const QStringList& keys,
                         const QString& iconId, const QString& footer, MenuKind menu);
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void rebuildRows(Readout* readout, const QStringList& keys);
     void setValues(Readout* readout, const QStringList& values);
     void applyColorMode(Readout* readout, ColorReadout mode);
