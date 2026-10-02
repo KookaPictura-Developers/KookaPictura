@@ -38,9 +38,9 @@ pub use clipboard::{
 pub(crate) use create::insert_node;
 pub use create::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
-    add_layer_in, add_raster_layer_from_rgba, add_solid_fill, background_from_layer,
-    duplicate_layer, group_layer, layer_from_background, neutral_color, next_layer_name,
-    ungroup_layer, NewLayerSpec,
+    add_layer_in, add_raster_layer_from_rgba, add_shape_layer, add_solid_fill,
+    background_from_layer, duplicate_layer, group_layer, layer_from_background, neutral_color,
+    next_layer_name, ungroup_layer, NewLayerSpec,
 };
 pub use merge::{
     can_merge_scope, can_merge_target, flatten, is_visible_in_panel, merge_scope, MergeError,

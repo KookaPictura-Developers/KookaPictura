@@ -1,9 +1,10 @@
-//! Independent `psd-tools` oracle for the `vmsk` vector-mask fixture.
+//! Independent `psd-tools` oracle for the `vmsk` vector-mask fixture and for
+//! the shape layers the shape tools author.
 //!
 //! `oracle.rs` is at its 1400-line cap, so this check lives in its own binary.
-//! It reads `vector_mask.psd` with `psd-tools` (not with `pictura-codec`) and
-//! reports each vector mask's version, flags, closed subpath, and the
-//! even-odd pixel coverage of the authored rectangle.
+//! It reads a PSD with `psd-tools` (not with `pictura-codec`) and reports each
+//! vector mask's version, flags, closed subpath, and the even-odd pixel
+//! coverage of its anchors' polygon.
 //!
 //! Needs `python3` with `psd-tools`; self-skips with a message otherwise.
 
@@ -63,6 +64,26 @@ fn psd_tools_available() -> bool {
     })
 }
 
+/// One `|`-separated row per vector-mask layer, as `SCRIPT` prints them.
+fn read_with_psd_tools(path: &std::path::Path) -> (String, Vec<Vec<String>>) {
+    let out = Command::new("python3")
+        .args(["-c", SCRIPT, path.to_str().expect("utf-8 path")])
+        .output()
+        .expect("run python3");
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "psd-tools failed:\n{stdout}\n{stderr}"
+    );
+    let lines = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.split('|').map(str::to_owned).collect())
+        .collect();
+    (stdout, lines)
+}
+
 #[test]
 fn psd_tools_reads_vector_mask_fixture() {
     if !psd_tools_available() {
@@ -71,22 +92,7 @@ fn psd_tools_reads_vector_mask_fixture() {
     }
 
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vector_mask.psd");
-    let out = Command::new("python3")
-        .args(["-c", SCRIPT, fixture.to_str().expect("utf-8 fixture path")])
-        .output()
-        .expect("run python3");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        out.status.success(),
-        "psd-tools failed:\n{stdout}\n{stderr}"
-    );
-
-    let lines: Vec<Vec<&str>> = stdout
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.split('|').collect())
-        .collect();
+    let (stdout, lines) = read_with_psd_tools(&fixture);
     assert_eq!(lines.len(), 2, "two vector-mask layers:\n{stdout}");
 
     assert_eq!(
@@ -106,5 +112,42 @@ fn psd_tools_reads_vector_mask_fixture() {
         lines[1],
         vec!["Shape", "3", "0", "1", "1", "4", "1,1 3,1 3,3 1,3"],
         "normal (1,1)-(3,3) rectangle: {stdout}"
+    );
+}
+
+#[test]
+fn psd_tools_reads_an_authored_shape_layer() {
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+
+    let mut doc = pictura_core::Document::from_rgba("Background", 8, 8, &[255; 8 * 8 * 4]);
+    let options = pictura_core::shape::ShapeOptions {
+        kind: pictura_core::shape::ShapeKind::Rectangle,
+        radius: 0.0,
+        sides: 3,
+    };
+    let outline = pictura_core::shape::outline(options, (1.0, 2.0), (5.0, 7.0), false, false)
+        .expect("a rectangle");
+    pictura_render::add_shape_layer(&mut doc, "", [255, 0, 0, 255], "Rectangle", &outline);
+    let bytes = pictura_codec::write_psd(&doc).expect("writes");
+    let path = std::env::temp_dir().join(format!("pictura-shape-{}.psd", std::process::id()));
+    std::fs::write(&path, bytes).expect("write temp PSD");
+    let (stdout, lines) = read_with_psd_tools(&path);
+    let _ = std::fs::remove_file(&path);
+
+    assert_eq!(
+        lines,
+        vec![vec![
+            "Rectangle 1",
+            "3",
+            "0",
+            "1",
+            "1",
+            "20",
+            "1,2 5,2 5,7 1,7"
+        ]],
+        "one 4x5 rectangle at (1,2): {stdout}"
     );
 }

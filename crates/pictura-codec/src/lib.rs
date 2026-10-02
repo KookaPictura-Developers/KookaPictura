@@ -87,6 +87,7 @@ pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;
 pub use type_tool::encode_type_tool;
 pub use type_write::author_type_tool;
+pub use vector_mask::{decode_vector_mask, encode_vector_mask};
 pub use write::{write_psb, write_psd};
 pub use xmp::{parse_xmp, patch_xmp, patch_xmp_values, to_xmp_packet, XmpField, XmpProperties};
 

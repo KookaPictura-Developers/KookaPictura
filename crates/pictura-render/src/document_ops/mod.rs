@@ -20,7 +20,7 @@ pub use depth::convert_depth_exposure_gamma;
 pub(crate) use layer_ops::insert_node;
 pub use layer_ops::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
-    add_layer_in, add_raster_layer_from_rgba, add_solid_fill, apply_visibility,
+    add_layer_in, add_raster_layer_from_rgba, add_shape_layer, add_solid_fill, apply_visibility,
     background_from_layer, can_convert_to_smart_object, can_edit_smart_object_contents,
     can_merge_scope, can_merge_target, can_move_path_to, can_rasterize_smart_object,
     can_replace_smart_object_contents, clear_layer, convert_to_smart_object, copy_layer,

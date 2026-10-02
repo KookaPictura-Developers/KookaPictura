@@ -1,10 +1,11 @@
 //! Decode a layer's preserved `vmsk` block into the derived
-//! [`pictura_core::VectorMask`] view.
+//! [`pictura_core::VectorMask`] view, and author one from a Work Path outline.
 //!
 //! The raw block stays in `Layer.extra_blocks` and is the source of truth for
 //! re-emission; this module only parses and flattens it. A malformed block
 //! leaves the view unset rather than failing the document.
 
+use pictura_core::path::Subpath;
 use pictura_core::{Layer, VectorFillRule, VectorMask, VectorSubpath};
 
 use crate::common::Reader;
@@ -25,6 +26,45 @@ pub(crate) fn resolve_vector_masks(layers: &mut [Layer], width: u32, height: u32
             .and_then(|block| decode(&block.data, width, height));
         resolve_vector_masks(&mut layer.children, width, height);
     }
+}
+
+/// Decode a `vmsk` block against the document size; `None` when malformed.
+pub fn decode_vector_mask(data: &[u8], width: u32, height: u32) -> Option<VectorMask> {
+    decode(data, width, height)
+}
+
+/// Author a version-3 `vmsk` block (no flags) holding `subpaths`: a leading
+/// path-fill-rule record, then per subpath a length record (operation 1,
+/// union) and its knots, linked where the point is smooth. Coordinates are
+/// 8.24 fractions of the document extent, `(y, x)` as the format orders them.
+pub fn encode_vector_mask(subpaths: &[Subpath], width: u32, height: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(8 + RECORD * (1 + subpaths.len() * 5));
+    out.extend_from_slice(&3u32.to_be_bytes());
+    out.extend_from_slice(&0u32.to_be_bytes());
+    out.extend_from_slice(&6u16.to_be_bytes());
+    out.extend_from_slice(&[0u8; 24]);
+    let fixed = |v: f64, extent: u32| ((v / extent.max(1) as f64) * FIXED_ONE).round() as i32;
+    for subpath in subpaths {
+        let selector: u16 = if subpath.closed { 0 } else { 3 };
+        out.extend_from_slice(&selector.to_be_bytes());
+        out.extend_from_slice(&(subpath.points.len() as u16).to_be_bytes());
+        out.extend_from_slice(&1i16.to_be_bytes());
+        out.extend_from_slice(&[0u8; 20]);
+        let (linked, unlinked): (u16, u16) = if subpath.closed { (1, 2) } else { (4, 5) };
+        for p in &subpath.points {
+            let kind = if p.smooth { linked } else { unlinked };
+            out.extend_from_slice(&kind.to_be_bytes());
+            for (x, y) in [
+                p.in_handle.unwrap_or(p.anchor),
+                p.anchor,
+                p.out_handle.unwrap_or(p.anchor),
+            ] {
+                out.extend_from_slice(&fixed(y, height).to_be_bytes());
+                out.extend_from_slice(&fixed(x, width).to_be_bytes());
+            }
+        }
+    }
+    out
 }
 
 /// One knot in 1/256-pixel document coordinates.
@@ -204,6 +244,33 @@ mod tests {
         assert_eq!(sub.fill_rule, VectorFillRule::EvenOdd);
         assert!(sub.points.contains(&[0, 0]));
         assert!(sub.points.contains(&[6 * 256, 6 * 256]));
+    }
+
+    #[test]
+    fn an_authored_mask_decodes_to_the_same_outline() {
+        let square = pictura_core::shape::outline(
+            pictura_core::shape::ShapeOptions {
+                kind: pictura_core::shape::ShapeKind::Rectangle,
+                radius: 0.0,
+                sides: 3,
+            },
+            (2.0, 1.0),
+            (6.0, 7.0),
+            false,
+            false,
+        )
+        .unwrap();
+        let data = encode_vector_mask(&[square], 8, 8);
+        let mask = decode_vector_mask(&data, 8, 8).expect("decodes");
+        assert!(!mask.invert && !mask.disabled);
+        assert_eq!(mask.subpaths.len(), 1);
+        let sub = &mask.subpaths[0];
+        assert!(sub.closed);
+        assert_eq!(sub.operation, 1);
+        assert_eq!(sub.fill_rule, VectorFillRule::EvenOdd);
+        for corner in [[2, 1], [6, 1], [6, 7], [2, 7]] {
+            assert!(sub.points.contains(&[corner[0] * 256, corner[1] * 256]));
+        }
     }
 
     #[test]
