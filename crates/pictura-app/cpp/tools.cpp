@@ -60,6 +60,7 @@ std::unique_ptr<ToolHandler> makeGradientToolHandler();
 std::unique_ptr<ToolHandler> makePaintBucketToolHandler();
 std::unique_ptr<ToolHandler> makeRetouchToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makePenToolHandler(ToolId id);
+std::unique_ptr<ToolHandler> makePathSelectionToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makeTypeToolHandler(ToolId id);
 
 ToolController::ToolController(QObject* parent)
@@ -109,6 +110,9 @@ ToolController::ToolController(QObject* parent)
     for (ToolId id : {ToolId::Pen, ToolId::FreeformPen, ToolId::AddAnchorPoint,
                       ToolId::DeleteAnchorPoint, ToolId::ConvertPoint}) {
         registry_.registerTool(id, makePenToolHandler(id));
+    }
+    for (ToolId id : {ToolId::PathSelection, ToolId::DirectSelection}) {
+        registry_.registerTool(id, makePathSelectionToolHandler(id));
     }
     for (ToolId id : {ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
                       ToolId::VerticalTypeMask}) {

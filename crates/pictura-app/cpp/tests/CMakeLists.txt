@@ -7,6 +7,7 @@ set(PICTURA_QT_TESTS
     tst_fill_tools
     tst_retouch_tools
     tst_pen_tools
+    tst_path_selection_tools
     tst_type_tools
 )
 

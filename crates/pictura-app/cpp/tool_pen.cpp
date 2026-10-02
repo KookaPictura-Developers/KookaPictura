@@ -7,6 +7,7 @@
 #include "tool_handler.h"
 
 #include "image_view.h"
+#include "path_overlay.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -40,6 +41,50 @@ bool readPoint(const PictureView& v, int sp, int pt, PathPointView& out)
            QPointF(p[6], p[7])};
     return true;
 }
+
+} // namespace
+
+ImageView::PathOverlay workPathOverlay(const PictureView& v, int pointsOf)
+{
+    ImageView::PathOverlay overlay;
+    const int subpaths = path_subpath_count(v);
+    for (int sp = 0; sp < subpaths; ++sp) {
+        const int count = path_point_count(v, sp);
+        QList<PathPointView> points;
+        for (int pt = 0; pt < count; ++pt) {
+            PathPointView p;
+            if (readPoint(v, sp, pt, p)) {
+                points.append(p);
+            }
+        }
+        if (points.isEmpty()) {
+            continue;
+        }
+        if (pointsOf == -1 || pointsOf == sp) {
+            for (const PathPointView& p : points) {
+                overlay.anchors.append(p.anchor);
+                if (p.hasIn) {
+                    overlay.handles.append(QLineF(p.anchor, p.in));
+                }
+                if (p.hasOut) {
+                    overlay.handles.append(QLineF(p.anchor, p.out));
+                }
+            }
+        }
+        overlay.curve.moveTo(points.first().anchor);
+        const int segments = path_subpath_closed(v, sp) ? int(points.size())
+                                                        : int(points.size()) - 1;
+        for (int i = 0; i < segments; ++i) {
+            const PathPointView& a = points.at(i);
+            const PathPointView& b = points.at((i + 1) % points.size());
+            overlay.curve.cubicTo(a.hasOut ? a.out : a.anchor, b.hasIn ? b.in : b.anchor,
+                                  b.anchor);
+        }
+    }
+    return overlay;
+}
+
+namespace {
 
 class PenToolHandler : public ToolHandler {
 public:
@@ -306,45 +351,21 @@ private:
             return;
         }
         PictureView* v = ctx.view();
-        ImageView::PathOverlay overlay;
-        const int editing = v && v->has_document() ? path_editing_subpath(*v) : -1;
-        const int subpaths = v && v->has_document() ? path_subpath_count(*v) : 0;
+        if (!v || !v->has_document()) {
+            canvas->setPathOverlay({});
+            return;
+        }
+        ImageView::PathOverlay overlay = workPathOverlay(*v, -1);
+        const int editing = path_editing_subpath(*v);
         PathPointView last;
-        bool hasLast = false;
-        for (int sp = 0; sp < subpaths; ++sp) {
-            const int count = path_point_count(*v, sp);
-            QList<PathPointView> points;
-            for (int pt = 0; pt < count; ++pt) {
-                PathPointView p;
-                if (!readPoint(*v, sp, pt, p)) {
-                    continue;
-                }
-                points.append(p);
-                overlay.anchors.append(p.anchor);
-                if (p.hasIn) {
-                    overlay.handles.append(QLineF(p.anchor, p.in));
-                }
-                if (p.hasOut) {
-                    overlay.handles.append(QLineF(p.anchor, p.out));
-                }
+        const bool hasLast = editing >= 0
+            && readPoint(*v, editing, path_point_count(*v, editing) - 1, last);
+        if (hasLast) {
+            int before = 0;
+            for (int sp = 0; sp <= editing; ++sp) {
+                before += path_point_count(*v, sp);
             }
-            if (points.isEmpty()) {
-                continue;
-            }
-            if (sp == editing) {
-                overlay.activeAnchor = int(overlay.anchors.size()) - 1;
-                last = points.last();
-                hasLast = true;
-            }
-            overlay.curve.moveTo(points.first().anchor);
-            const bool closed = path_subpath_closed(*v, sp);
-            const int segments = closed ? int(points.size()) : int(points.size()) - 1;
-            for (int i = 0; i < segments; ++i) {
-                const PathPointView& a = points.at(i);
-                const PathPointView& b = points.at((i + 1) % points.size());
-                overlay.curve.cubicTo(a.hasOut ? a.out : a.anchor, b.hasIn ? b.in : b.anchor,
-                                      b.anchor);
-            }
+            overlay.activeAnchor = before - 1;
         }
         if (gesture_ == Gesture::Freeform && trail_.size() > 1) {
             overlay.preview.moveTo(trail_.first());

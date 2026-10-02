@@ -140,6 +140,7 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildPaintBucketPage(id);
     case ToolId::Pen:
     case ToolId::FreeformPen:
+    case ToolId::PathSelection:
         return buildPenPage(id);
     case ToolId::HorizontalType:
     case ToolId::VerticalType:

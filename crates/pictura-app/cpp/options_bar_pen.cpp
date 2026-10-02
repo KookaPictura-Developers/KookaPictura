@@ -1,4 +1,4 @@
-// The options bars of the Pen and Freeform Pen tools.
+// The options bars of the Pen, Freeform Pen, and Path Selection tools.
 // Part of OptionsBar; split from options_bar.cpp along the page seam.
 
 #include "options_bar.h"
@@ -13,7 +13,8 @@
 namespace pictura {
 
 // The Pen bar: Auto Add/Delete (on) and Rubber Band (off; CS6 keeps it in a
-// pop-up). The Freeform Pen bar: Curve Fit (2 px).
+// pop-up). The Freeform Pen bar: Curve Fit (2 px). The Path Selection bar:
+// Show Bounding Box (off).
 // ponytail: no Shape / Path / Pixels mode, path operations, or the Freeform
 // Pen's Magnetic option; the tools always draw the Work Path.
 QWidget* OptionsBar::buildPenPage(ToolId id)
@@ -31,7 +32,14 @@ QWidget* OptionsBar::buildPenPage(ToolId id)
             controller_->setPenOptions(o);
         }
     };
-    if (id == ToolId::Pen) {
+    if (id == ToolId::PathSelection) {
+        auto* box = new QCheckBox(QStringLiteral("Show Bounding Box"), page);
+        box->setObjectName(QStringLiteral("optionsPathShowBoundingBox"));
+        box->setChecked(initial.showBoundingBox);
+        layout->addWidget(box);
+        connect(box, &QCheckBox::toggled, this,
+                [update](bool on) { update([on](PenOptions& o) { o.showBoundingBox = on; }); });
+    } else if (id == ToolId::Pen) {
         auto* autoAdd = new QCheckBox(QStringLiteral("Auto Add/Delete"), page);
         autoAdd->setObjectName(QStringLiteral("optionsPenAutoAddDelete"));
         autoAdd->setChecked(initial.autoAddDelete);
