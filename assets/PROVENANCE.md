@@ -14,6 +14,9 @@ here.
   third-party icon pack.
 - `cursors/tool.pen.close.svg` is `tool.pen.svg` with a small circle added by
   hand (the Pen's close-path cursor), under the same licenses.
+- `cursors/tool.pathselection.svg` (a black arrow) and
+  `cursors/tool.directselection.svg` (a white arrow) are original project
+  artwork drawn by hand as plain pointer arrows, under the same licenses.
 - The `info.crosshair`, `info.bounds`, and `info.protractor` glyphs are original
   project artwork in the same house style, released under **CC0-1.0 / MIT**.
 
