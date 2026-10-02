@@ -13,6 +13,7 @@
 
 #include <QtGui/QClipboard>
 #include <QtGui/QFontDatabase>
+#include <QtGui/QFontInfo>
 #include <QtGui/QKeyEvent>
 #include <QtWidgets/QToolButton>
 
@@ -453,7 +454,7 @@ void TypeToolsTest::barRestylesTheSelectedLayer()
 
     // Family: the layer is re-set in that face — monospace i's are wider —
     // and records it, keeping the size.
-    const QString mono = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    const QString mono = QFontInfo(QFontDatabase::systemFont(QFontDatabase::FixedFont)).family();
     QVERIFY2(!pictura::typeFontBytes(mono).isEmpty(), "Qt hands over the face");
     o.family = mono;
     f.tools->setTypeOptions(o);
@@ -471,6 +472,11 @@ void TypeToolsTest::barRestylesTheSelectedLayer()
     QCOMPARE(f.tools->typeOptions().family, mono);
     QCOMPARE(f.tools->typeOptions().size, 48.0);
     QCOMPARE(f.view->history_index(), base + 2);
+
+    // A registered generic alias reads back as itself, not as whichever
+    // family its spaceless name happens to match.
+    pictura::registerTypeFont(QStringLiteral("monospace"));
+    QCOMPARE(pictura::familyForFontName(QStringLiteral("monospace")), QStringLiteral("monospace"));
     f.tools->setTypeOptions(saved);
 }
 

@@ -54,6 +54,13 @@ quint32 checksum(const QByteArray& data)
     return sum;
 }
 
+// Families already handed to the engine (or tried).
+QSet<QString>& tried()
+{
+    static QSet<QString> families;
+    return families;
+}
+
 } // namespace
 
 QByteArray typeFontBytes(const QString& family)
@@ -106,11 +113,10 @@ QByteArray typeFontBytes(const QString& family)
 
 void registerTypeFont(const QString& family)
 {
-    static QSet<QString> tried;
-    if (family.isEmpty() || tried.contains(family)) {
+    if (family.isEmpty() || tried().contains(family)) {
         return;
     }
-    tried.insert(family);
+    tried().insert(family);
     const QByteArray bytes = typeFontBytes(family);
     if (!bytes.isEmpty()) {
         type_register_font(family, ::rust::Slice<const std::uint8_t>(
@@ -121,7 +127,9 @@ void registerTypeFont(const QString& family)
 
 QString familyForFontName(const QString& name)
 {
-    if (name.isEmpty() || QFontDatabase::hasFamily(name)) {
+    // A family this session registered is its own answer, even a generic
+    // alias such as "monospace" that the database does not list.
+    if (name.isEmpty() || tried().contains(name) || QFontDatabase::hasFamily(name)) {
         return name;
     }
     const QString stem = name.section(QLatin1Char('-'), 0, 0).toLower();
