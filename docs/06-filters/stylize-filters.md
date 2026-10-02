@@ -59,7 +59,7 @@ Ranges marked **[Help]** are stated in the CS6 Help text. Ranges marked *(inferr
 | Emboss | Amount | int % | 100 *(inferred)* | 1–500% | [Help] |
 | Extrude | Type | enum | Blocks *(inferred)* | Blocks / Pyramids | [Help] |
 | Extrude | Size | int px | 30 *(inferred)* | 2–255 (length of a base side) | [Help] |
-| Extrude | Depth | int | 30 *(inferred)* | 1–255 (does not apply to the Solid Front Faces option of Blocks) | [Help] |
+| Extrude | Depth | int | 30 *(inferred)* | 1–255 (how far the tallest object protrudes; Solid Front Faces only changes the front-face fill) | [Help] |
 | Extrude | Depth option | enum | Level-based *(inferred)* | Random / Level-based (brightness→protrusion) | [Help] |
 | Extrude | Solid Front Faces | bool | off | Blocks only; fill the front face with the block's average color | [Help] |
 | Extrude | Mask Incomplete Blocks | bool | off | Hide objects extending beyond the selection | [Help] |

@@ -65,6 +65,12 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `Shear` | — | **no** | — | IM `-shear 0x{angle}` is a whole-canvas y-shear that **background-fills** the expanded canvas; Pictura shifts columns by a piecewise-linear curve with clamp/wrap and expands nothing. Curve `[(-1,-0.5),(1,0.5)]` = 26.565°; best measured `-shear 0x26.565 -crop 16x16+0+4 +repage` max 255 / mean 18.4 (WrapAround 23.4). Guarded by the zero-curve no-op and fill-mode tests. |
 | `ZigZag` | — | **no** | — | IM `-swirl` uses a smooth falloff about `min(w,h)/2`; Pictura's cosine radial profile is pinned to zero at the edge with `ridges` reversals. Best measured `-swirl 50` (amount 80 / ridges 5 / AroundCenter) max 170 / mean 14.3. Guarded by the zero no-op and style tests. |
 | `OceanRipple` | — | **no** | — | IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura sums 8 seeded direction sinusoids with clamp-to-edge. Best measured `-wave 2x8 -crop 16x16+0+2 +repage` (size 9 / magnitude 20 / seed 42) max 227 / mean 53.7. Guarded by seed determinism and the zero-magnitude no-op. |
+| `DustAndScratches` | — | **no** | — | IM `-statistic median NxN` is an **ungated** rank filter; Pictura replaces a pixel only when it differs from the local median by more than `threshold`, and no IM operator exposes that gate. Guarded by the speck-removal and determinism unit tests. |
+| `Extrude` | — | **no** | — | No ImageMagick extrusion renderer; the block/face geometry plus the solid-front, level-based and mask-incomplete options have no operator. Guarded by the changed-image and determinism unit test. |
+| `Tiles` | — | **no** | — | No IM tiled-offset-with-fill operator; `-roll` and `-spread` neither offset a fixed grid nor fill the gaps with the foreground/background choice. Guarded by the determinism unit test. |
+| `TraceContour` | — | **no** | — | No IM per-channel level-crossing contour operator; `-edge`, `-morphology` and `-threshold` are different detectors. Guarded by the contour unit tests. |
+| `Wind` | — | **no** | — | No IM horizontal-streak operator; `-motion-blur`, `-spread` and `-wave` displace pixels differently. Guarded by the determinism unit test. |
+| `SmartSharpen` | — | **no** | — | Its `GaussianBlur` remove path is byte-identical to Unsharp Mask (IM `-unsharp`, tolerance 6), but `LensBlur` and `MotionBlur` have no faithful IM operator, so the variant is classified no-equivalent as a whole. Guarded by the remove-path and determinism unit tests. |
 
 ### Why `MotionBlur` is not diffed
 
@@ -418,6 +424,9 @@ with `=` so argparse does not read the leading `-` as another option.
   equivalent (M11; the closest `-distort Polar`/`DePolar`, `-shear`, `-swirl`
   and `-wave` operators were measured — see the M11 section); covered by
   `m11_no_equivalent_filters_properties` and the module unit tests instead.
+- Dust and Scratches, Extrude, Tiles, Trace Contour, Wind and Smart Sharpen: no
+  faithful ImageMagick equivalent (see the table); covered by property and
+  known-value tests in the module unit tests instead.
 - Alpha-channel behaviour: the tests use 3-channel buffers, and `apply` is
   specified never to modify channel 4 (guarded by the module unit tests).
 - 16/32-bit filter math (M6–M9 are 8-bit only).

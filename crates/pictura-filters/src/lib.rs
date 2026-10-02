@@ -192,6 +192,60 @@ pub enum GrainType {
     Speckle,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtrudeType {
+    Blocks,
+    Pyramids,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TileFill {
+    BackgroundColor,
+    ForegroundColor,
+    InverseImage,
+    UnalteredImage,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContourEdge {
+    Lower,
+    Upper,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindMethod {
+    Wind,
+    Blast,
+    Stagger,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharpenRemove {
+    GaussianBlur,
+    LensBlur,
+    MotionBlur,
+}
+
+/// Smart Sharpen Shadow/Highlight tab controls: how strongly sharpening is
+/// damped in dark or light tones, over what tonal `width`, using which blur
+/// `radius`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TonalFade {
+    pub amount: u8,
+    pub width: u8,
+    pub radius: u32,
+}
+
+impl Default for TonalFade {
+    fn default() -> Self {
+        Self {
+            amount: 0,
+            width: 50,
+            radius: 1,
+        }
+    }
+}
+
 mod filter;
 pub use filter::{apply, Filter};
 pub(crate) fn validate(buf: &PixelBuffer) -> Result<usize, FilterError> {

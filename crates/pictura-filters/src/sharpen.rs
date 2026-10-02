@@ -103,11 +103,14 @@ pub fn unsharp_mask(
 
 /*** internals ***/
 
+mod smart;
+pub use smart::smart_sharpen;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn planar(width: u32, height: u32, channels: u8, planes: &[Vec<u8>]) -> PixelBuffer {
+    pub(super) fn planar(width: u32, height: u32, channels: u8, planes: &[Vec<u8>]) -> PixelBuffer {
         let mut data = Vec::new();
         for p in planes {
             data.extend_from_slice(p);
@@ -120,7 +123,7 @@ mod tests {
         }
     }
 
-    fn gray_row(values: &[u8]) -> PixelBuffer {
+    pub(super) fn gray_row(values: &[u8]) -> PixelBuffer {
         planar(
             values.len() as u32,
             1,
@@ -129,7 +132,7 @@ mod tests {
         )
     }
 
-    fn total_deviation(a: &PixelBuffer, b: &PixelBuffer) -> i64 {
+    pub(super) fn total_deviation(a: &PixelBuffer, b: &PixelBuffer) -> i64 {
         a.data
             .iter()
             .zip(&b.data)
@@ -137,7 +140,7 @@ mod tests {
             .sum()
     }
 
-    fn plane_range(buf: &PixelBuffer) -> u8 {
+    pub(super) fn plane_range(buf: &PixelBuffer) -> u8 {
         let plane = &buf.data[..buf.pixel_count()];
         *plane.iter().max().unwrap() - *plane.iter().min().unwrap()
     }

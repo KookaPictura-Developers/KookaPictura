@@ -179,8 +179,9 @@ fn visibility_region_profile_4000() {
 #[test]
 fn filter_from_kind_maps_known_and_rejects_unknown() {
     use pictura_filters::{
-        BrushType, Filter, LensType, MezzotintType, NoiseDistribution, PolarKind, RippleSize,
-        ShearFill, SpherizeMode, TextureOptions, WaveType, ZigZagStyle,
+        BrushType, ContourEdge, ExtrudeType, Filter, LensType, MezzotintType, NoiseDistribution,
+        PolarKind, RippleSize, SharpenRemove, ShearFill, SpherizeMode, TextureOptions, TileFill,
+        TonalFade, WaveType, WindMethod, ZigZagStyle,
     };
 
     assert_eq!(
@@ -529,6 +530,61 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
             foreground: [0, 0, 0],
             background: [255, 255, 255],
             seed: 1,
+        })
+    );
+    assert_eq!(
+        filter_from_kind("dust-and-scratches"),
+        Some(Filter::DustAndScratches {
+            radius: 1,
+            threshold: 0,
+        })
+    );
+    assert_eq!(
+        filter_from_kind("extrude"),
+        Some(Filter::Extrude {
+            kind: ExtrudeType::Blocks,
+            size: 30,
+            depth: 30.0,
+            level_based: true,
+            solid_front: false,
+            mask_incomplete: false,
+        })
+    );
+    assert_eq!(
+        filter_from_kind("tiles"),
+        Some(Filter::Tiles {
+            count: 10,
+            offset: 10,
+            fill: TileFill::BackgroundColor,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        })
+    );
+    assert_eq!(
+        filter_from_kind("trace-contour"),
+        Some(Filter::TraceContour {
+            level: 128,
+            edge: ContourEdge::Lower,
+        })
+    );
+    assert_eq!(
+        filter_from_kind("wind"),
+        Some(Filter::Wind {
+            method: WindMethod::Wind,
+            from_right: true,
+        })
+    );
+    assert_eq!(
+        filter_from_kind("smart-sharpen"),
+        Some(Filter::SmartSharpen {
+            amount: 100.0,
+            radius: 1.0,
+            reduce_noise: 0.0,
+            remove: SharpenRemove::GaussianBlur,
+            angle: 0.0,
+            more_accurate: false,
+            shadow: TonalFade::default(),
+            highlight: TonalFade::default(),
         })
     );
     assert_eq!(filter_from_kind("bogus"), None);
