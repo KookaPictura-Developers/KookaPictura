@@ -8,7 +8,13 @@
 //! path, and the vector mask all draw the same curve.
 //!
 //! Ported from photorust's `core/src/shape.rs`, which flattened every outline
-//! to points; here arcs are quarter-circle cubics.
+//! to points; here arcs are quarter-circle cubics. The Line and the built-in
+//! custom shapes live in [`line`] and [`custom`].
+
+mod custom;
+mod line;
+
+pub use custom::{custom_shape_preview, CUSTOM_SHAPE_NAMES};
 
 use crate::path::{PathPoint, Subpath};
 
@@ -30,28 +36,35 @@ pub enum ShapeKind {
     RoundedRectangle,
     Ellipse,
     Polygon,
+    Line,
+    CustomShape,
 }
 
 impl ShapeKind {
     /// The bridge's integer code: 0 Rectangle, 1 Rounded Rectangle, 2 Ellipse,
-    /// 3 Polygon.
+    /// 3 Polygon, 4 Line, 5 Custom Shape.
     pub fn from_i32(v: i32) -> Option<ShapeKind> {
         match v {
             0 => Some(ShapeKind::Rectangle),
             1 => Some(ShapeKind::RoundedRectangle),
             2 => Some(ShapeKind::Ellipse),
             3 => Some(ShapeKind::Polygon),
+            4 => Some(ShapeKind::Line),
+            5 => Some(ShapeKind::CustomShape),
             _ => None,
         }
     }
 
-    /// A shape layer is named after the tool that drew it.
+    /// A shape layer is named after the tool that drew it (CS6 calls a custom
+    /// shape's layer "Shape").
     pub fn layer_name(self) -> &'static str {
         match self {
             ShapeKind::Rectangle => "Rectangle",
             ShapeKind::RoundedRectangle => "Rounded Rectangle",
             ShapeKind::Ellipse => "Ellipse",
             ShapeKind::Polygon => "Polygon",
+            ShapeKind::Line => "Line",
+            ShapeKind::CustomShape => "Shape",
         }
     }
 }
@@ -60,7 +73,8 @@ impl ShapeKind {
 /// in pixels (top-left, top-right, bottom-right, bottom-left), and the
 /// Polygon's `sides` (clamped to 3–100), `star` indent (the percentage of the
 /// radius the indents take, 1–99; `None` for a plain polygon), and whether its
-/// corners and indents are smooth.
+/// corners and indents are smooth; the Line's `weight` (px) and `arrows`; the
+/// Custom Shape's index into [`CUSTOM_SHAPE_NAMES`].
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ShapeOptions {
     pub kind: ShapeKind,
@@ -69,6 +83,35 @@ pub struct ShapeOptions {
     pub star: Option<f64>,
     pub smooth_corners: bool,
     pub smooth_indents: bool,
+    pub weight: f64,
+    pub arrows: Arrowheads,
+    pub custom: usize,
+}
+
+/// The Line's arrowheads: at the `start` and / or `end`, `width` and `length`
+/// as percentages of the line's weight (10–1000 and 10–5000), and `concavity`
+/// (−50–50 %) pulling the base in toward the tip (out when negative).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Arrowheads {
+    pub start: bool,
+    pub end: bool,
+    pub width: f64,
+    pub length: f64,
+    pub concavity: f64,
+}
+
+impl Default for Arrowheads {
+    /// No arrowheads, sized 500 % wide and 1000 % long when switched on, as
+    /// CS6's geometry pop-up starts.
+    fn default() -> Self {
+        Self {
+            start: false,
+            end: false,
+            width: 500.0,
+            length: 1000.0,
+            concavity: 0.0,
+        }
+    }
 }
 
 impl ShapeOptions {
@@ -81,6 +124,9 @@ impl ShapeOptions {
             star: None,
             smooth_corners: false,
             smooth_indents: false,
+            weight: 1.0,
+            arrows: Arrowheads::default(),
+            custom: 0,
         }
     }
 }
@@ -91,7 +137,9 @@ impl ShapeOptions {
 /// The rectangle-based tools square off under `shift` (Circle for the
 /// Ellipse) and grow from `from` under `alt`. The Polygon is always centred on
 /// `from`, the drag is its radius, its first vertex sits under the pointer, and
-/// `shift` snaps that rotation to 15°.
+/// `shift` snaps that rotation to 15°. The Line runs from `from` to `to`, Shift
+/// snapping it to 45°. A Custom Shape keeps its designed proportions under
+/// `shift`.
 pub fn outline(
     options: ShapeOptions,
     from: (f64, f64),
@@ -99,15 +147,19 @@ pub fn outline(
     shift: bool,
     alt: bool,
 ) -> Option<Subpath> {
-    if options.kind == ShapeKind::Polygon {
-        return polygon(options, from, to, shift);
-    }
-    outline_in_box(options, drag_rect(from, to, shift, alt))
+    let aspect = match options.kind {
+        ShapeKind::Polygon => return polygon(options, from, to, shift),
+        ShapeKind::Line => return line::line(from, to, options.weight, options.arrows, shift),
+        ShapeKind::CustomShape => custom::aspect(options.custom),
+        _ => 1.0,
+    };
+    outline_in_box(options, drag_rect(from, to, shift.then_some(aspect), alt))
 }
 
 /// The closed outline of `options.kind` filling the box `(x, y, w, h)`, as the
 /// Create dialogs place it; `None` for an empty box. The Polygon stands upright
-/// (first corner at the top) and is stretched to touch all four sides.
+/// (first corner at the top) and a Custom Shape is stretched to touch all four
+/// sides. A Line has no box form.
 pub fn outline_in_box(options: ShapeOptions, rect: (f64, f64, f64, f64)) -> Option<Subpath> {
     if !(rect.2 > 0.0 && rect.3 > 0.0) {
         return None;
@@ -124,18 +176,26 @@ pub fn outline_in_box(options: ShapeOptions, rect: (f64, f64, f64, f64)) -> Opti
             });
             fit(&unit, rect)?
         }
+        ShapeKind::CustomShape => fit(&custom::unit_shape(options.custom), rect)?,
+        ShapeKind::Line => return None,
     })
 }
 
-/// The `(x, y, w, h)` a drag marks out. Shift squares it off by the longer
-/// side, so squaring never pulls the shape back from the pointer; Alt makes the
-/// drag a half-diagonal from the centre.
-fn drag_rect(from: (f64, f64), to: (f64, f64), shift: bool, alt: bool) -> (f64, f64, f64, f64) {
+/// The `(x, y, w, h)` a drag marks out. A `constrain` aspect (width over
+/// height; 1 squares it) grows the box by the drag's longer reach, so it never
+/// pulls back from the pointer; Alt makes the drag a half-diagonal from the
+/// centre.
+fn drag_rect(
+    from: (f64, f64),
+    to: (f64, f64),
+    constrain: Option<f64>,
+    alt: bool,
+) -> (f64, f64, f64, f64) {
     let (mut dx, mut dy) = (to.0 - from.0, to.1 - from.1);
-    if shift {
-        let side = dx.abs().max(dy.abs());
-        dx = side.copysign(dx);
-        dy = side.copysign(dy);
+    if let Some(aspect) = constrain.filter(|a| *a > 0.0) {
+        let height = (dx.abs() / aspect).max(dy.abs());
+        dx = (height * aspect).copysign(dx);
+        dy = height.copysign(dy);
     }
     if alt {
         (
