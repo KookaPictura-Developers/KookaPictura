@@ -1,8 +1,5 @@
 use pictura_adjust::{GradientKind, GradientStop};
-use pictura_core::path::Subpath;
-use pictura_core::{
-    BlendMode, Channel, ColorLabel, Document, Layer, LayerBlock, LockFlags, PsdRect,
-};
+use pictura_core::{BlendMode, Channel, ColorLabel, Document, Layer, LockFlags, PsdRect};
 
 use super::paths::{
     container_mut, container_of_mut, format_segments, parse_path, resolve_path, resolve_path_mut,
@@ -341,32 +338,6 @@ pub fn add_solid_fill(doc: &mut Document, selection_path: &str, rgba: [u8; 4]) -
         ..Default::default()
     };
     insert_node(doc, selection_path, layer)
-}
-
-/// Insert a shape layer: a solid-color fill layer (as [`add_solid_fill`])
-/// named `"<name> N"`, cut to `outline` by an authored `vmsk` vector mask, the
-/// legacy shape-layer form CS6 reads. Returns the new path, or empty for a
-/// zero-dimension document.
-pub fn add_shape_layer(
-    doc: &mut Document,
-    selection_path: &str,
-    rgba: [u8; 4],
-    name: &str,
-    outline: &Subpath,
-) -> String {
-    let name = next_layer_name(doc, name);
-    let (width, height) = (doc.width, doc.height);
-    let created = add_solid_fill(doc, selection_path, rgba);
-    if let Some(layer) = resolve_path_mut(doc, &created) {
-        let data = pictura_codec::encode_vector_mask(std::slice::from_ref(outline), width, height);
-        layer.name = name;
-        layer.vector_mask = pictura_codec::decode_vector_mask(&data, width, height);
-        layer.extra_blocks.push(LayerBlock {
-            key: *b"vmsk",
-            data,
-        });
-    }
-    created
 }
 
 /// Append a native-size raster pixel layer at the top of `doc.layers` from

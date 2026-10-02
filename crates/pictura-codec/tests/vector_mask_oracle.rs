@@ -123,14 +123,11 @@ fn psd_tools_reads_an_authored_shape_layer() {
     }
 
     let mut doc = pictura_core::Document::from_rgba("Background", 8, 8, &[255; 8 * 8 * 4]);
-    let options = pictura_core::shape::ShapeOptions {
-        kind: pictura_core::shape::ShapeKind::Rectangle,
-        radius: 0.0,
-        sides: 3,
-    };
+    let options =
+        pictura_core::shape::ShapeOptions::new(pictura_core::shape::ShapeKind::Rectangle, 0.0, 3);
     let outline = pictura_core::shape::outline(options, (1.0, 2.0), (5.0, 7.0), false, false)
         .expect("a rectangle");
-    pictura_render::add_shape_layer(&mut doc, "", [255, 0, 0, 255], "Rectangle", &outline);
+    pictura_render::add_shape_layer(&mut doc, "", [255, 0, 0, 255], "Rectangle", &outline, None);
     let bytes = pictura_codec::write_psd(&doc).expect("writes");
     let path = std::env::temp_dir().join(format!("pictura-shape-{}.psd", std::process::id()));
     std::fs::write(&path, bytes).expect("write temp PSD");
@@ -149,5 +146,72 @@ fn psd_tools_reads_an_authored_shape_layer() {
             "1,2 5,2 5,7 1,7"
         ]],
         "one 4x5 rectangle at (1,2): {stdout}"
+    );
+}
+
+const VOGK_SCRIPT: &str = r#"
+import sys
+from psd_tools import PSDImage
+from psd_tools.constants import Tag
+
+psd = PSDImage.open(sys.argv[1])
+for layer in psd:
+    blocks = layer.tagged_blocks
+    block = blocks.get(Tag.VECTOR_ORIGINATION_DATA) if blocks else None
+    if block is None:
+        continue
+    shape = block.data[b"keyDescriptorList"][0]
+    box = shape[b"keyOriginShapeBBox"]
+    radii = shape[b"keyOriginRRectRadii"]
+    print("|".join([layer.name, str(int(shape[b"keyOriginType"])),
+                    " ".join(f"{float(box[k]):g}" for k in (b"Left", b"Top ", b"Rght", b"Btom")),
+                    " ".join(f"{float(radii[k]):g}" for k in
+                             (b"topLeft", b"topRight", b"bottomRight", b"bottomLeft"))]))
+"#;
+
+#[test]
+fn psd_tools_reads_an_authored_live_shape() {
+    if !psd_tools_available() {
+        eprintln!("skipping: python3 + psd-tools not available");
+        return;
+    }
+
+    let mut doc = pictura_core::Document::from_rgba("Background", 8, 8, &[255; 8 * 8 * 4]);
+    let options = pictura_core::shape::ShapeOptions::new(
+        pictura_core::shape::ShapeKind::RoundedRectangle,
+        2.0,
+        3,
+    );
+    let outline = pictura_core::shape::outline_in_box(options, (1.0, 2.0, 5.0, 4.0)).unwrap();
+    let live = pictura_codec::LiveShape {
+        origin_type: pictura_codec::ORIGIN_ROUNDED_RECTANGLE,
+        bounds: (1.0, 2.0, 6.0, 6.0),
+        radii: [2.0, 2.0, 2.0, 1.0],
+    };
+    pictura_render::add_shape_layer(
+        &mut doc,
+        "",
+        [255, 0, 0, 255],
+        "Rounded Rectangle",
+        &outline,
+        Some(&live),
+    );
+    let path = std::env::temp_dir().join(format!("pictura-live-{}.psd", std::process::id()));
+    std::fs::write(&path, pictura_codec::write_psd(&doc).expect("writes")).expect("write");
+    let out = Command::new("python3")
+        .args(["-c", VOGK_SCRIPT, path.to_str().expect("utf-8 path")])
+        .output()
+        .expect("run python3");
+    let _ = std::fs::remove_file(&path);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "psd-tools failed:\n{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        stdout.trim(),
+        "Rounded Rectangle 1|2|1 2 6 6|2 2 2 1",
+        "the live rounded rectangle's origin data"
     );
 }

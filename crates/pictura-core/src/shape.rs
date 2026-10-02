@@ -56,13 +56,33 @@ impl ShapeKind {
     }
 }
 
-/// The geometry options a tool reads: Rounded Rectangle's corner `radius` in
-/// pixels, Polygon's `sides` (clamped to 3–100).
+/// The geometry options a tool reads: the Rounded Rectangle's corner `radii`
+/// in pixels (top-left, top-right, bottom-right, bottom-left), and the
+/// Polygon's `sides` (clamped to 3–100), `star` indent (the percentage of the
+/// radius the indents take, 1–99; `None` for a plain polygon), and whether its
+/// corners and indents are smooth.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ShapeOptions {
     pub kind: ShapeKind,
-    pub radius: f64,
+    pub radii: [f64; 4],
     pub sides: u32,
+    pub star: Option<f64>,
+    pub smooth_corners: bool,
+    pub smooth_indents: bool,
+}
+
+impl ShapeOptions {
+    /// `kind` with every corner `radius`, `sides`, and no star or smoothing.
+    pub fn new(kind: ShapeKind, radius: f64, sides: u32) -> Self {
+        Self {
+            kind,
+            radii: [radius; 4],
+            sides,
+            star: None,
+            smooth_corners: false,
+            smooth_indents: false,
+        }
+    }
 }
 
 /// The closed outline a drag from `from` to `to` draws, or `None` when the
@@ -79,21 +99,32 @@ pub fn outline(
     shift: bool,
     alt: bool,
 ) -> Option<Subpath> {
-    let subpath = match options.kind {
-        ShapeKind::Polygon => polygon(from, to, options.sides, shift)?,
-        kind => {
-            let rect = drag_rect(from, to, shift, alt);
-            if rect.2 <= 0.0 || rect.3 <= 0.0 {
-                return None;
-            }
-            match kind {
-                ShapeKind::RoundedRectangle => rounded_rectangle(rect, options.radius),
-                ShapeKind::Ellipse => ellipse(rect),
-                _ => rectangle(rect),
-            }
+    if options.kind == ShapeKind::Polygon {
+        return polygon(options, from, to, shift);
+    }
+    outline_in_box(options, drag_rect(from, to, shift, alt))
+}
+
+/// The closed outline of `options.kind` filling the box `(x, y, w, h)`, as the
+/// Create dialogs place it; `None` for an empty box. The Polygon stands upright
+/// (first corner at the top) and is stretched to touch all four sides.
+pub fn outline_in_box(options: ShapeOptions, rect: (f64, f64, f64, f64)) -> Option<Subpath> {
+    if !(rect.2 > 0.0 && rect.3 > 0.0) {
+        return None;
+    }
+    Some(match options.kind {
+        ShapeKind::Rectangle => rectangle(rect),
+        ShapeKind::RoundedRectangle => rounded_rectangle(rect, options.radii),
+        ShapeKind::Ellipse => ellipse(rect),
+        ShapeKind::Polygon => {
+            let upright = -std::f64::consts::FRAC_PI_2;
+            let unit = map(&unit_polygon(options), |(x, y)| {
+                let (sin, cos) = upright.sin_cos();
+                (x * cos - y * sin, x * sin + y * cos)
+            });
+            fit(&unit, rect)?
         }
-    };
-    Some(subpath)
+    })
 }
 
 /// The `(x, y, w, h)` a drag marks out. Shift squares it off by the longer
@@ -153,29 +184,41 @@ fn rectangle((x, y, w, h): (f64, f64, f64, f64)) -> Subpath {
     )
 }
 
-/// A rectangle whose corners are quarter circles of `radius`, clamped to half
-/// the shorter side (a larger radius would cross opposite corners). Each
-/// corner is two anchors joined by one cubic; where the clamp leaves no
-/// straight edge between two arcs, their anchors merge.
-fn rounded_rectangle(rect: (f64, f64, f64, f64), radius: f64) -> Subpath {
+/// A rectangle whose corners are quarter circles of `radii` (top-left,
+/// top-right, bottom-right, bottom-left), each clamped to half the shorter
+/// side (a larger radius would cross the opposite corner). A rounded corner is
+/// two anchors joined by one cubic, a zero one a plain corner; where the clamp
+/// leaves no straight edge between two arcs, their anchors merge.
+fn rounded_rectangle(rect: (f64, f64, f64, f64), radii: [f64; 4]) -> Subpath {
     let (x, y, w, h) = rect;
-    let r = radius.max(0.0).min(w.min(h) / 2.0);
-    if r <= 0.0 {
-        return rectangle(rect);
-    }
-    let k = r * KAPPA;
-    let (r0, r1, b0, b1) = (x + r, x + w - r, y + r, y + h - r);
+    let [tl, tr, br, bl] = radii.map(|r| r.max(0.0).min(w.min(h) / 2.0));
     let (right, bottom) = (x + w, y + h);
-    let raw = [
-        point((r0, y), Some((r0 - k, y)), None),
-        point((r1, y), None, Some((r1 + k, y))),
-        point((right, b0), Some((right, b0 - k)), None),
-        point((right, b1), None, Some((right, b1 + k))),
-        point((r1, bottom), Some((r1 + k, bottom)), None),
-        point((r0, bottom), None, Some((r0 - k, bottom))),
-        point((x, b1), Some((x, b1 + k)), None),
-        point((x, b0), None, Some((x, b0 - k))),
+    // Each corner: the corner point, its radius, and the unit directions to the
+    // anchor before it and the anchor after it (clockwise).
+    let corners = [
+        ((x, y), tl, (0.0, 1.0), (1.0, 0.0)),
+        ((right, y), tr, (-1.0, 0.0), (0.0, 1.0)),
+        ((right, bottom), br, (0.0, -1.0), (-1.0, 0.0)),
+        ((x, bottom), bl, (1.0, 0.0), (0.0, -1.0)),
     ];
+    let mut raw = Vec::with_capacity(8);
+    for ((cx, cy), r, before, after) in corners {
+        if r <= 0.0 {
+            raw.push(point((cx, cy), None, None));
+            continue;
+        }
+        let k = r * (1.0 - KAPPA);
+        let start = (cx + before.0 * r, cy + before.1 * r);
+        let end = (cx + after.0 * r, cy + after.1 * r);
+        raw.push(point(
+            start,
+            None,
+            Some((cx + before.0 * k, cy + before.1 * k)),
+        ));
+        raw.push(point(end, Some((cx + after.0 * k, cy + after.1 * k)), None));
+    }
+    // The top-left arc ends the outline, so the top edge starts it.
+    raw.rotate_left(usize::from(tl > 0.0));
     let mut points: Vec<PathPoint> = Vec::with_capacity(raw.len());
     for p in raw {
         match points.last_mut() {
@@ -208,10 +251,14 @@ fn ellipse((x, y, w, h): (f64, f64, f64, f64)) -> Subpath {
     ])
 }
 
-/// A regular polygon of `sides` corners on the circle through `to` centred on
-/// `centre`, the first corner under `to`.
-fn polygon(centre: (f64, f64), to: (f64, f64), sides: u32, shift: bool) -> Option<Subpath> {
-    let sides = sides.clamp(3, 100);
+/// The polygon on the circle through `to` centred on `centre`, the first
+/// corner under `to`.
+fn polygon(
+    options: ShapeOptions,
+    centre: (f64, f64),
+    to: (f64, f64),
+    shift: bool,
+) -> Option<Subpath> {
     let (dx, dy) = (to.0 - centre.0, to.1 - centre.1);
     let radius = dx.hypot(dy);
     if radius <= 0.0 {
@@ -222,18 +269,85 @@ fn polygon(centre: (f64, f64), to: (f64, f64), sides: u32, shift: bool) -> Optio
         let step = std::f64::consts::PI / 12.0;
         rotation = (rotation / step).round() * step;
     }
-    Some(closed(
-        (0..sides)
+    let (sin, cos) = rotation.sin_cos();
+    Some(map(&unit_polygon(options), |(x, y)| {
+        (
+            centre.0 + radius * (x * cos - y * sin),
+            centre.1 + radius * (x * sin + y * cos),
+        )
+    }))
+}
+
+/// The polygon (or star) on the unit circle, the first corner at angle 0.
+/// A star alternates corners with indents at `1 - star / 100` of the radius.
+/// A smooth corner or indent passes a curve through it whose tangent runs
+/// parallel to the chord between its neighbours (a Catmull-Rom tangent): an
+/// approximation, CS6's smoothing is unpublished.
+fn unit_polygon(options: ShapeOptions) -> Subpath {
+    let sides = options.sides.clamp(3, 100) as usize;
+    let indent = options.star.map(|p| 1.0 - p.clamp(1.0, 99.0) / 100.0);
+    let count = if indent.is_some() { sides * 2 } else { sides };
+    let anchors: Vec<(f64, f64, bool)> = (0..count)
+        .map(|i| {
+            let inner = indent.is_some() && i % 2 == 1;
+            let r = if inner { indent.unwrap_or(1.0) } else { 1.0 };
+            let angle = i as f64 / count as f64 * std::f64::consts::TAU;
+            (r * angle.cos(), r * angle.sin(), inner)
+        })
+        .collect();
+    closed(
+        (0..count)
             .map(|i| {
-                let angle = rotation + f64::from(i) / f64::from(sides) * std::f64::consts::TAU;
-                let anchor = (
-                    centre.0 + radius * angle.cos(),
-                    centre.1 + radius * angle.sin(),
-                );
-                point(anchor, None, None)
+                let (x, y, inner) = anchors[i];
+                let smooth = if inner {
+                    options.smooth_indents
+                } else {
+                    options.smooth_corners
+                };
+                if !smooth {
+                    return point((x, y), None, None);
+                }
+                let prev = anchors[(i + count - 1) % count];
+                let next = anchors[(i + 1) % count];
+                let (tx, ty) = ((next.0 - prev.0) / 6.0, (next.1 - prev.1) / 6.0);
+                point((x, y), Some((x - tx, y - ty)), Some((x + tx, y + ty)))
             })
             .collect(),
-    ))
+    )
+}
+
+/// `subpath` with `f` applied to every anchor and handle; affine maps keep the
+/// curve exact.
+fn map(subpath: &Subpath, f: impl Fn((f64, f64)) -> (f64, f64)) -> Subpath {
+    Subpath {
+        points: subpath
+            .points
+            .iter()
+            .map(|p| PathPoint {
+                anchor: f(p.anchor),
+                in_handle: p.in_handle.map(&f),
+                out_handle: p.out_handle.map(&f),
+                smooth: p.smooth,
+            })
+            .collect(),
+        closed: subpath.closed,
+    }
+}
+
+/// `subpath` stretched so its curve exactly fills `(x, y, w, h)`.
+fn fit(subpath: &Subpath, (x, y, w, h): (f64, f64, f64, f64)) -> Option<Subpath> {
+    let flat = subpath.flatten(1e-4);
+    let (l, t, r, b) = flat.iter().fold(
+        (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
+        |(l, t, r, b), &(px, py)| (l.min(px), t.min(py), r.max(px), b.max(py)),
+    );
+    if !(r > l && b > t) {
+        return None;
+    }
+    let (sx, sy) = (w / (r - l), h / (b - t));
+    Some(map(subpath, |(px, py)| {
+        (x + (px - l) * sx, y + (py - t) * sy)
+    }))
 }
 
 /// A `width` × `height` document-sized, row-major, anti-aliased coverage mask
@@ -304,11 +418,7 @@ mod tests {
     use crate::path::VectorPath;
 
     fn opts(kind: ShapeKind) -> ShapeOptions {
-        ShapeOptions {
-            kind,
-            radius: 10.0,
-            sides: 5,
-        }
+        ShapeOptions::new(kind, 10.0, 5)
     }
 
     fn anchors(s: &Subpath) -> Vec<(f64, f64)> {
@@ -414,7 +524,7 @@ mod tests {
     #[test]
     fn a_huge_radius_clamps_to_a_stadium_without_duplicate_anchors() {
         let mut o = opts(ShapeKind::RoundedRectangle);
-        o.radius = 500.0;
+        o.radii = [500.0; 4];
         let s = outline(o, (0.0, 0.0), (100.0, 40.0), false, false).unwrap();
         assert_eq!(
             s.points.len(),
@@ -480,6 +590,48 @@ mod tests {
                 .len(),
             3
         );
+    }
+
+    #[test]
+    fn each_corner_takes_its_own_radius() {
+        let mut o = opts(ShapeKind::RoundedRectangle);
+        o.radii = [0.0, 10.0, 20.0, 0.0];
+        let s = outline_in_box(o, (0.0, 0.0, 100.0, 60.0)).unwrap();
+        // Square top-left and bottom-left corners, two anchors per round one.
+        assert_eq!(s.points.len(), 6);
+        assert_eq!(s.points[0].anchor, (0.0, 0.0));
+        assert!(s.points.iter().any(|p| p.anchor == (90.0, 0.0)));
+        assert!(s.points.iter().any(|p| p.anchor == (100.0, 40.0)));
+        assert!(s.points.iter().any(|p| p.anchor == (0.0, 60.0)));
+        let (l, t, r, b) = bounds(&s);
+        assert!(near(l, 0.0) && near(t, 0.0) && near(r, 100.0) && near(b, 60.0));
+    }
+
+    #[test]
+    fn a_boxed_polygon_stands_upright_and_fills_its_box() {
+        let s = outline_in_box(opts(ShapeKind::Polygon), (10.0, 20.0, 80.0, 82.0)).unwrap();
+        assert_eq!(s.points.len(), 5);
+        assert!(near(s.points[0].anchor.0, 50.0) && near(s.points[0].anchor.1, 20.0));
+        let (l, t, r, b) = bounds(&s);
+        assert!(near(l, 10.0) && near(t, 20.0) && near(r, 90.0) && near(b, 102.0));
+    }
+
+    #[test]
+    fn a_star_alternates_corners_and_indents() {
+        let mut o = opts(ShapeKind::Polygon);
+        o.star = Some(50.0);
+        let s = outline(o, (0.0, 0.0), (0.0, -40.0), false, false).unwrap();
+        assert_eq!(s.points.len(), 10);
+        for (i, (x, y)) in anchors(&s).into_iter().enumerate() {
+            let expected = if i % 2 == 0 { 40.0 } else { 20.0 };
+            assert!(near(x.hypot(y), expected), "anchor {i}");
+        }
+        o.smooth_corners = true;
+        let smooth = outline(o, (0.0, 0.0), (0.0, -40.0), false, false).unwrap();
+        assert!(smooth.points[0].smooth && !smooth.points[1].smooth);
+        o.smooth_indents = true;
+        let both = outline(o, (0.0, 0.0), (0.0, -40.0), false, false).unwrap();
+        assert!(both.points.iter().all(|p| p.smooth));
     }
 
     #[test]

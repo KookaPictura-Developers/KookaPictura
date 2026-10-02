@@ -5,7 +5,7 @@
 //! re-emission; this module only parses and flattens it. A malformed block
 //! leaves the view unset rather than failing the document.
 
-use pictura_core::path::Subpath;
+use pictura_core::path::{PathPoint, Subpath};
 use pictura_core::{Layer, VectorFillRule, VectorMask, VectorSubpath};
 
 use crate::common::Reader;
@@ -31,6 +31,59 @@ pub(crate) fn resolve_vector_masks(layers: &mut [Layer], width: u32, height: u32
 /// Decode a `vmsk` block against the document size; `None` when malformed.
 pub fn decode_vector_mask(data: &[u8], width: u32, height: u32) -> Option<VectorMask> {
     decode(data, width, height)
+}
+
+/// Decode a `vmsk` block's subpaths as editable Bezier anchors in document
+/// pixels: a handle that sits on its anchor reads as absent, and a linked knot
+/// is smooth. `None` when malformed.
+pub fn decode_vector_mask_paths(data: &[u8], width: u32, height: u32) -> Option<Vec<Subpath>> {
+    let mut r = Reader::new(data);
+    if r.u32().ok()? != 3 {
+        return None;
+    }
+    r.u32().ok()?;
+    let px = |raw: i32, extent: u32| raw as f64 / FIXED_ONE * extent as f64;
+    let mut subpaths = Vec::new();
+    while r.remaining() >= RECORD {
+        match r.u16().ok()? {
+            selector @ (0 | 3) => {
+                let count = r.u16().ok()? as usize;
+                r.skip(22).ok()?;
+                let mut points = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let kind = r.u16().ok()?;
+                    if !matches!(kind, 1 | 2 | 4 | 5) {
+                        return None;
+                    }
+                    let mut xy = [(0.0, 0.0); 3];
+                    for slot in &mut xy {
+                        let y = r.i32().ok()?;
+                        let x = r.i32().ok()?;
+                        *slot = (px(x, width), px(y, height));
+                    }
+                    let [preceding, anchor, leaving] = xy;
+                    let handle = |h: (f64, f64)| {
+                        ((h.0 - anchor.0).abs() > 1e-6 || (h.1 - anchor.1).abs() > 1e-6)
+                            .then_some(h)
+                    };
+                    points.push(PathPoint {
+                        anchor,
+                        in_handle: handle(preceding),
+                        out_handle: handle(leaving),
+                        smooth: matches!(kind, 1 | 4),
+                    });
+                }
+                subpaths.push(Subpath {
+                    points,
+                    closed: selector == 0,
+                });
+            }
+            1 | 2 | 4 | 5 => return None,
+            6..=8 => r.skip(24).ok()?,
+            _ => return None,
+        }
+    }
+    Some(subpaths)
 }
 
 /// Author a version-3 `vmsk` block (no flags) holding `subpaths`: a leading
@@ -249,11 +302,11 @@ mod tests {
     #[test]
     fn an_authored_mask_decodes_to_the_same_outline() {
         let square = pictura_core::shape::outline(
-            pictura_core::shape::ShapeOptions {
-                kind: pictura_core::shape::ShapeKind::Rectangle,
-                radius: 0.0,
-                sides: 3,
-            },
+            pictura_core::shape::ShapeOptions::new(
+                pictura_core::shape::ShapeKind::Rectangle,
+                0.0,
+                3,
+            ),
             (2.0, 1.0),
             (6.0, 7.0),
             false,
@@ -271,6 +324,27 @@ mod tests {
         for corner in [[2, 1], [6, 1], [6, 7], [2, 7]] {
             assert!(sub.points.contains(&[corner[0] * 256, corner[1] * 256]));
         }
+    }
+
+    #[test]
+    fn authored_curves_decode_back_to_the_same_anchors() {
+        let options =
+            pictura_core::shape::ShapeOptions::new(pictura_core::shape::ShapeKind::Ellipse, 0.0, 3);
+        let ellipse =
+            pictura_core::shape::outline_in_box(options, (16.0, 32.0, 64.0, 32.0)).unwrap();
+        let data = encode_vector_mask(std::slice::from_ref(&ellipse), 128, 128);
+        let back = decode_vector_mask_paths(&data, 128, 128).expect("decodes");
+        assert_eq!(back.len(), 1);
+        assert!(back[0].closed);
+        for (a, b) in back[0].points.iter().zip(&ellipse.points) {
+            assert!(a.smooth && b.smooth);
+            let close =
+                |p: (f64, f64), q: (f64, f64)| (p.0 - q.0).abs() < 1e-4 && (p.1 - q.1).abs() < 1e-4;
+            assert!(close(a.anchor, b.anchor));
+            assert!(close(a.in_handle.unwrap(), b.in_handle.unwrap()));
+            assert!(close(a.out_handle.unwrap(), b.out_handle.unwrap()));
+        }
+        assert_eq!(decode_vector_mask_paths(&[0, 0, 0, 2], 8, 8), None);
     }
 
     #[test]

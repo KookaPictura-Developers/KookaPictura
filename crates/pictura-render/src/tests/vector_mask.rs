@@ -144,14 +144,11 @@ fn a_shape_layer_is_a_fill_cut_to_its_outline_and_survives_a_save() {
         255,
     );
     let mut d = doc(8, 8, vec![white]);
-    let options = pictura_core::shape::ShapeOptions {
-        kind: pictura_core::shape::ShapeKind::Rectangle,
-        radius: 0.0,
-        sides: 3,
-    };
+    let options =
+        pictura_core::shape::ShapeOptions::new(pictura_core::shape::ShapeKind::Rectangle, 0.0, 3);
     let outline = pictura_core::shape::outline(options, (2.0, 2.0), (6.0, 6.0), false, false)
         .expect("a rectangle");
-    let path = add_shape_layer(&mut d, "", [255, 0, 0, 255], "Rectangle", &outline);
+    let path = add_shape_layer(&mut d, "", [255, 0, 0, 255], "Rectangle", &outline, None);
     assert_eq!(
         resolve_path(&d, &path).expect("created").name,
         "Rectangle 1"
