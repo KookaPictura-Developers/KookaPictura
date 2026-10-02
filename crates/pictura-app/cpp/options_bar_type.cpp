@@ -226,7 +226,9 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
     // per keystroke: typing "12" must not restyle the text as 1 px first.
     const auto applySize = [this, size, update]() {
         bool ok = false;
-        const double v = QLocale().toDouble(size->currentText(), &ok);
+        // C locale: sizeText() formats with QString::number, so the field's own
+        // output must re-parse under every system locale (comma decimals).
+        const double v = QLocale::c().toDouble(size->currentText(), &ok);
         if (!ok || v < 1.0 || v > 1296.0) {
             size->setEditText(sizeText(controller_->typeOptions().size));
             return;
