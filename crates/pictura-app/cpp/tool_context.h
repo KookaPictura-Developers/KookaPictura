@@ -149,11 +149,13 @@ struct BucketOptions {
 };
 
 // The Pen tool group's options: the Pen's Auto Add/Delete and Rubber Band, and
-// the Freeform Pen's Curve Fit (0.5-10 px; Douglas-Peucker tolerance).
+// the Freeform Pen's Curve Fit (0.5-10 px; Douglas-Peucker tolerance). Path
+// Selection's Show Bounding Box rides along.
 struct PenOptions {
     bool autoAddDelete = true;
     bool rubberBand = false;
     double curveFit = 2.0;
+    bool showBoundingBox = false;
 };
 
 // The Type tools' options bar, shared by all four (the tool is the

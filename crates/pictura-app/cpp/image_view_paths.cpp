@@ -1,5 +1,5 @@
-// ImageView overlay for the Pen tool group: the Work Path's curve, anchors,
-// and direction handles. Ported from photorust's
+// ImageView overlay for the Pen tool group and the path selection tools: the
+// Work Path's curve, anchors, direction handles, and bounding box. Ported from photorust's
 // CanvasView::paintPathOverlay.
 
 #include "image_view.h"
@@ -16,7 +16,8 @@ void ImageView::setPathOverlay(const PathOverlay& overlay)
 
 void ImageView::clearPathOverlay()
 {
-    if (pathOverlay_.anchors.isEmpty() && pathOverlay_.preview.isEmpty()) {
+    if (pathOverlay_.curve.isEmpty() && pathOverlay_.anchors.isEmpty()
+        && pathOverlay_.preview.isEmpty()) {
         return;
     }
     pathOverlay_ = PathOverlay();
@@ -27,7 +28,7 @@ void ImageView::clearPathOverlay()
 void ImageView::paintPathOverlay(QPainter& painter)
 {
     const PathOverlay& o = pathOverlay_;
-    if (o.anchors.isEmpty() && o.preview.isEmpty()) {
+    if (o.curve.isEmpty() && o.anchors.isEmpty() && o.preview.isEmpty()) {
         return;
     }
     const QTransform toWidget = QTransform::fromScale(zoom_, zoom_)
@@ -47,6 +48,10 @@ void ImageView::paintPathOverlay(QPainter& painter)
     painter.drawPath(curve);
     painter.setPen(QPen(blue, 1.0, Qt::DashLine));
     painter.drawPath(toWidget.map(o.preview));
+    if (!o.bounds.isNull()) {
+        painter.setPen(QPen(blue, 1.0));
+        painter.drawRect(toWidget.mapRect(o.bounds));
+    }
 
     painter.setPen(QPen(blue, 1.0));
     for (const QLineF& line : o.handles) {
@@ -57,11 +62,13 @@ void ImageView::paintPathOverlay(QPainter& painter)
         painter.drawEllipse(toWidget.map(line.p2()), 2.6, 2.6);
     }
 
-    // Hollow squares, the last-placed anchor solid, as CS6 draws them.
+    // Hollow squares, the active anchor (or a selected component's every
+    // anchor) solid, as CS6 draws them.
     painter.setPen(QPen(blue, 1.2));
     for (int i = 0; i < o.anchors.size(); ++i) {
         const QPointF p = toWidget.map(o.anchors.at(i));
-        painter.setBrush(i == o.activeAnchor ? QBrush(blue) : QBrush(Qt::white));
+        painter.setBrush(o.anchorsSolid || i == o.activeAnchor ? QBrush(blue)
+                                                                 : QBrush(Qt::white));
         painter.drawRect(QRectF(p.x() - 2.5, p.y() - 2.5, 5.0, 5.0));
     }
     painter.restore();

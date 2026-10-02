@@ -529,6 +529,8 @@ private:
     // preview on the canvas; cleared on release/cancel/tool switch.
     bool contentPreviewActive_ = false;
     bool cursorOverSelection_ = false;
+    // The active handler's cursor suffix last applied by refreshCursor.
+    QString cursorVariant_;
     // The press point for a selection/content move, owned by the controller
     // because the routing is cross-cutting; a tool handler's own drag anchor is
     // private to that handler.

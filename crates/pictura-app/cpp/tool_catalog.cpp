@@ -141,9 +141,13 @@ const ToolInfo kToolTable[] = {
      Qt::IBeamCursor, "Vertical Type Mask: click and type a column; Ctrl+Enter makes it a selection",
      16, true, 12, 12},
     {ToolId::PathSelection, "pathselection", "Path Selection", QLatin1Char('A'),
-     Qt::CrossCursor, "Path Selection: not implemented yet", 17, false, 12, 12},
+     Qt::ArrowCursor,
+     "Path Selection: click a path component to select it, drag to move, Alt-drag to copy",
+     17, true, 12, 12},
     {ToolId::DirectSelection, "directselection", "Direct Selection", QLatin1Char('A'),
-     Qt::CrossCursor, "Direct Selection: not implemented yet", 17, false, 12, 12},
+     Qt::ArrowCursor,
+     "Direct Selection: drag an anchor or direction handle, Alt-click to select a component",
+     17, true, 12, 12},
     {ToolId::Rectangle, "rectangle", "Rectangle", QLatin1Char('U'), Qt::CrossCursor,
      "Rectangle: not implemented yet", 18, false, 12, 12},
     {ToolId::RoundedRectangle, "roundedrectangle", "Rounded Rectangle", QLatin1Char('U'),
@@ -293,6 +297,12 @@ QList<ToolHint> toolHintEntries(ToolId id)
         return {{QStringLiteral("Shift"), QStringLiteral("Constrain to 45°")},
                 {QStringLiteral("Alt"), QStringLiteral("Break the handle")},
                 {QStringLiteral("Enter"), QStringLiteral("End the path")}};
+    case ToolId::PathSelection:
+        return {{QStringLiteral("Alt"), QStringLiteral("Drag a copy")},
+                {QStringLiteral("Delete"), QStringLiteral("Delete the component")}};
+    case ToolId::DirectSelection:
+        return {{QStringLiteral("Alt"), QStringLiteral("Break the handle")},
+                {QStringLiteral("Alt-click"), QStringLiteral("Select the component")}};
     case ToolId::HorizontalType:
     case ToolId::VerticalType:
     case ToolId::HorizontalTypeMask:
@@ -355,7 +365,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::Dodge, ToolId::Burn, ToolId::Sponge, ToolId::Pen, ToolId::FreeformPen,
         ToolId::AddAnchorPoint, ToolId::DeleteAnchorPoint, ToolId::ConvertPoint,
         ToolId::HorizontalType, ToolId::VerticalType, ToolId::HorizontalTypeMask,
-        ToolId::VerticalTypeMask,
+        ToolId::VerticalTypeMask, ToolId::PathSelection, ToolId::DirectSelection,
     };
     return ids;
 }

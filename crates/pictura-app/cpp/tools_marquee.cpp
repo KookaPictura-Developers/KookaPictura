@@ -84,7 +84,10 @@ void ToolController::refreshCursor(Qt::KeyboardModifiers mods)
         return canvas_->setCursor(Qt::BlankCursor);
     }
     const ToolInfo& info = toolInfo(active_);
-    const QCursor toolCursor = cursor(toolCursorId(active_, mods), info.hotspotX, info.hotspotY);
+    ToolHandler* h = registry_.forTool(active_);
+    cursorVariant_ = h ? h->cursorVariant() : QString();
+    const QCursor toolCursor =
+        cursor(toolCursorId(active_, mods) + cursorVariant_, info.hotspotX, info.hotspotY);
     canvas_->setCursor(toolCursor.pixmap().isNull() ? QCursor(info.cursor) : toolCursor);
 }
 

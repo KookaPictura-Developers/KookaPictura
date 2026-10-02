@@ -281,3 +281,92 @@ fn freeform_adds_a_new_subpath_and_closes_when_asked() {
     assert!(p.add_freeform(&[(0.0, 50.0), (40.0, 50.0)], 1.0, true));
     assert!(!p.subpaths[2].closed, "a two-point freeform closed");
 }
+
+fn closed_square(x: f64, y: f64, size: f64) -> VectorPath {
+    let mut p = polyline(&[(x, y), (x + size, y), (x + size, y + size), (x, y + size)]);
+    p.close_active_subpath();
+    p
+}
+
+#[test]
+fn moving_an_anchor_carries_its_handles() {
+    let mut p = polyline(&[(0.0, 0.0)]);
+    p.update_last_handle(10.0, 0.0, false);
+    assert!(p.move_anchor(0, 0, 5.0, 5.0));
+    let pt = p.subpaths[0].points[0];
+    assert_eq!(pt.anchor, (5.0, 5.0));
+    assert_eq!(pt.out_handle, Some((15.0, 5.0)));
+    assert_eq!(pt.in_handle, Some((-5.0, 5.0)));
+    assert!(!p.move_anchor(0, 1, 0.0, 0.0));
+}
+
+#[test]
+fn moving_a_subpath_shifts_only_that_component() {
+    let mut p = polyline(&[(0.0, 0.0)]);
+    p.update_last_handle(4.0, 0.0, false);
+    p.append_corner(10.0, 0.0);
+    p.finish_editing();
+    p.append_corner(50.0, 50.0);
+    assert!(p.move_subpath(0, 100.0, 0.0));
+    assert_eq!(p.subpaths[0].points[0].anchor, (100.0, 0.0));
+    assert_eq!(p.subpaths[0].points[0].out_handle, Some((104.0, 0.0)));
+    assert_eq!(p.subpaths[0].points[1].anchor, (110.0, 0.0));
+    assert_eq!(p.subpaths[1].points[0].anchor, (50.0, 50.0));
+    assert!(!p.move_subpath(2, 1.0, 1.0));
+}
+
+#[test]
+fn duplicating_and_removing_a_subpath() {
+    let mut p = closed_square(0.0, 0.0, 10.0);
+    assert_eq!(p.duplicate_subpath(0), Some(1));
+    assert_eq!(p.subpaths[1], p.subpaths[0]);
+    assert_eq!(p.duplicate_subpath(5), None);
+    p.subpaths[1].closed = false;
+    assert!(p.resume_at(1, 0));
+    assert!(p.remove_subpath(0));
+    assert_eq!(p.subpaths.len(), 1);
+    assert_eq!(
+        p.editing_subpath(),
+        Some(0),
+        "editing follows its subpath down"
+    );
+    assert!(!p.remove_subpath(1));
+}
+
+#[test]
+fn hit_subpath_picks_the_inside_of_a_closed_one_and_the_line_of_an_open_one() {
+    let mut p = closed_square(0.0, 0.0, 20.0);
+    p.append_corner(5.0, 10.0);
+    p.append_corner(15.0, 10.0);
+    p.finish_editing();
+    assert_eq!(p.hit_subpath(10.0, 4.0, 2.0), Some(0), "the interior hits");
+    assert_eq!(
+        p.hit_subpath(10.0, 10.5, 2.0),
+        Some(1),
+        "a line inside stays reachable"
+    );
+    assert_eq!(p.hit_subpath(-50.0, -50.0, 2.0), None);
+    let mut lone = VectorPath::default();
+    lone.append_corner(3.0, 3.0);
+    assert_eq!(
+        lone.hit_subpath(4.0, 3.0, 2.0),
+        Some(0),
+        "a lone anchor hits"
+    );
+}
+
+#[test]
+fn subpath_bounds_follow_the_curve_not_the_handles() {
+    let p = closed_square(10.0, 20.0, 30.0);
+    assert_eq!(p.subpath_bounds(0), Some((10.0, 20.0, 40.0, 50.0)));
+    let mut curve = polyline(&[(0.0, 0.0)]);
+    curve.update_last_handle(0.0, -40.0, false);
+    curve.append_corner(20.0, 0.0);
+    let (_, top, right, bottom) = curve.subpath_bounds(0).unwrap();
+    assert!(
+        top > -40.0 && top < -10.0,
+        "the curve, not its handle: {top}"
+    );
+    assert_eq!((right, bottom), (20.0, 0.0));
+    assert_eq!(VectorPath::default().subpath_bounds(0), None);
+}

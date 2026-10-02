@@ -1,11 +1,13 @@
-//! The Pen tool group's Work Path commands: Pen, Freeform Pen, Add / Delete
-//! Anchor Point, and Convert Point. Free functions over a [`PictureView`]
+//! The Work Path commands of the Pen tool group (Pen, Freeform Pen, Add /
+//! Delete Anchor Point, Convert Point) and the path selection tools (Path
+//! Selection, Direct Selection). Free functions over a [`PictureView`]
 //! (their own bridge, so the `PictureView` declaration list does not grow).
 //!
 //! Atomic edits (insert, delete, close, convert-click, freeform) record one
 //! history state and emit `changed`. A drag's live steps (placing an anchor and
-//! pulling its handles, dragging a handle) record nothing until the handler
-//! calls `path_commit_anchor` / `path_commit_convert` on release. Ending or
+//! pulling its handles, dragging a handle, anchor, or component) record nothing
+//! until the handler calls `path_commit_anchor` / `path_commit_convert` /
+//! `path_commit_drag` on release. Ending or
 //! resuming a drawing session records nothing.
 //!
 //! [`PictureView`]: super::qobject::PictureView
@@ -106,6 +108,27 @@ pub mod ffi {
 
         /// Record a Convert Point drag as one "Convert Point" state.
         fn path_commit_convert(view: Pin<&mut PictureView>);
+
+        /// The subpath (path component) under `(x, y)`: within `radius` of its outline or a lone anchor, else inside a closed one; -1 when none.
+        fn path_hit_subpath(view: &PictureView, x: f64, y: f64, radius: f64) -> i32;
+
+        /// Subpath `sp`'s curve bounds as `[left, top, right, bottom]`; empty when out of range or empty.
+        fn path_subpath_bounds(view: &PictureView, sp: i32) -> Vec<f64>;
+
+        /// Live: move anchor `pt` of subpath `sp` to `(x, y)`, carrying its handles.
+        fn path_move_anchor(view: Pin<&mut PictureView>, sp: i32, pt: i32, x: f64, y: f64) -> bool;
+
+        /// Live: move subpath `sp` by `(dx, dy)`.
+        fn path_move_subpath(view: Pin<&mut PictureView>, sp: i32, dx: f64, dy: f64) -> bool;
+
+        /// Live: append a copy of subpath `sp` (Alt-drag with Path Selection); the copy's index, or -1.
+        fn path_duplicate_subpath(view: Pin<&mut PictureView>, sp: i32) -> i32;
+
+        /// Record a Path Selection or Direct Selection drag as one state named `label`.
+        fn path_commit_drag(view: Pin<&mut PictureView>, label: &str);
+
+        /// Remove subpath `sp` and record one "Delete Path" state.
+        fn path_remove_subpath(view: Pin<&mut PictureView>, sp: i32) -> bool;
 
         /// Add a Freeform Pen drag (`[x0, y0, x1, y1, …]`) as a new subpath of corner anchors within `tolerance` px, closed when `close`; records one "Freeform Pen" state. False (no state) when fewer than two anchors survive.
         fn path_add_freeform(
@@ -351,4 +374,51 @@ fn path_add_freeform(
         commit(view, "Freeform Pen");
     }
     added
+}
+
+fn path_hit_subpath(view: &PictureView, x: f64, y: f64, radius: f64) -> i32 {
+    path(view)
+        .and_then(|p| p.hit_subpath(x, y, radius.max(0.0)))
+        .map_or(-1, |s| s as i32)
+}
+
+fn path_subpath_bounds(view: &PictureView, sp: i32) -> Vec<f64> {
+    index(sp)
+        .and_then(|sp| path(view)?.subpath_bounds(sp))
+        .map_or_else(Vec::new, |(l, t, r, b)| vec![l, t, r, b])
+}
+
+fn path_move_anchor(view: Pin<&mut PictureView>, sp: i32, pt: i32, x: f64, y: f64) -> bool {
+    let Some((sp, pt)) = index(sp).zip(index(pt)) else {
+        return false;
+    };
+    edit(view, |p| p.move_anchor(sp, pt, x, y)) == Some(true)
+}
+
+fn path_move_subpath(view: Pin<&mut PictureView>, sp: i32, dx: f64, dy: f64) -> bool {
+    let Some(sp) = index(sp) else {
+        return false;
+    };
+    edit(view, |p| p.move_subpath(sp, dx, dy)) == Some(true)
+}
+
+fn path_duplicate_subpath(view: Pin<&mut PictureView>, sp: i32) -> i32 {
+    index(sp)
+        .and_then(|sp| edit(view, |p| p.duplicate_subpath(sp))?)
+        .map_or(-1, |s| s as i32)
+}
+
+fn path_commit_drag(view: Pin<&mut PictureView>, label: &str) {
+    commit(view, label);
+}
+
+fn path_remove_subpath(mut view: Pin<&mut PictureView>, sp: i32) -> bool {
+    let Some(sp) = index(sp) else {
+        return false;
+    };
+    let removed = edit(view.as_mut(), |p| p.remove_subpath(sp)) == Some(true);
+    if removed {
+        commit(view, "Delete Path");
+    }
+    removed
 }
