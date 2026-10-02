@@ -149,9 +149,10 @@ pub(super) fn as_str_slice(owned: &[String]) -> Vec<&str> {
 /// filter dialogs are out of scope for M6-C.
 pub(super) fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
     use pictura_filters::{
-        BrushType, Filter, GrainType, HalftoneType, LensType, LightDirection, MezzotintType,
-        NoiseDistribution, PolarKind, RippleSize, ShearFill, SpherizeMode, StrokeDirection,
-        TextureOptions, WaveType, ZigZagStyle,
+        BrushType, ContourEdge, ExtrudeType, Filter, GrainType, HalftoneType, LensType,
+        LightDirection, MezzotintType, NoiseDistribution, PolarKind, RippleSize, SharpenRemove,
+        ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TileFill, TonalFade, WaveType,
+        WindMethod, ZigZagStyle,
     };
 
     Some(match kind {
@@ -540,6 +541,43 @@ pub(super) fn filter_from_kind(kind: &str) -> Option<pictura_filters::Filter> {
             bristle_detail: 3.0,
             angular_direction: 85.0,
             shine: 0.55,
+        },
+        "dust-and-scratches" => Filter::DustAndScratches {
+            radius: 1,
+            threshold: 0,
+        },
+        "extrude" => Filter::Extrude {
+            kind: ExtrudeType::Blocks,
+            size: 30,
+            depth: 30.0,
+            level_based: true,
+            solid_front: false,
+            mask_incomplete: false,
+        },
+        "tiles" => Filter::Tiles {
+            count: 10,
+            offset: 10,
+            fill: TileFill::BackgroundColor,
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        },
+        "trace-contour" => Filter::TraceContour {
+            level: 128,
+            edge: ContourEdge::Lower,
+        },
+        "wind" => Filter::Wind {
+            method: WindMethod::Wind,
+            from_right: true,
+        },
+        "smart-sharpen" => Filter::SmartSharpen {
+            amount: 100.0,
+            radius: 1.0,
+            reduce_noise: 0.0,
+            remove: SharpenRemove::GaussianBlur,
+            angle: 0.0,
+            more_accurate: false,
+            shadow: TonalFade::default(),
+            highlight: TonalFade::default(),
         },
         // `Custom` requires a caller-supplied 5x5 kernel, so no meaningful
         // default exists; it stays out of the dock and is left unmapped.

@@ -85,30 +85,83 @@ pub fn median(buf: &mut PixelBuffer, radius: u32) -> Result<(), FilterError> {
     // Cap the radius so an oversized request cannot allocate a giant window;
     // beyond max(w, h) every clamped sample is interior anyway.
     let r = (radius as usize).min(w.max(h));
-    let k = 2 * r + 1;
     let planes = (buf.channels as usize).min(3);
-    // ponytail: sort-as-we-go is O(pixels · k² log k); swap in the sliding
-    // histogram from Huang et al. 1979 (cited by FILT-030) if Median gets hot.
-    let mut window: Vec<u8> = Vec::with_capacity(k * k);
     for plane in 0..planes {
         let base = plane * n;
         let src = buf.data[base..base + n].to_vec();
-        for y in 0..h {
-            for x in 0..w {
-                window.clear();
-                for dy in 0..k {
-                    let sy = clamp_index(y as isize + dy as isize - r as isize, h);
-                    for dx in 0..k {
-                        let sx = clamp_index(x as isize + dx as isize - r as isize, w);
-                        window.push(src[sy * w + sx]);
-                    }
-                }
-                window.sort_unstable();
-                buf.data[base + y * w + x] = window[window.len() / 2];
+        let med = window_median(&src, w, h, r);
+        buf.data[base..base + n].copy_from_slice(&med);
+    }
+    Ok(())
+}
+
+/// Replace each pixel with its neighbourhood median, but only when it differs
+/// from that median by more than `threshold`.
+///
+/// `threshold == 0` is exactly Median (every pixel replaced); 255 replaces
+/// nothing. Radius is the window reach, 1..=16. Clamp-to-edge at borders.
+///
+/// Ported from photorust's `core/src/filters/convolve.rs` (GPL-3.0-or-later;
+/// see the change proposal).
+pub fn dust_and_scratches(
+    buf: &mut PixelBuffer,
+    radius: u32,
+    threshold: u32,
+) -> Result<(), FilterError> {
+    let n = validate(buf)?;
+    if radius == 0 || radius > 16 {
+        return Err(FilterError::InvalidParams(format!(
+            "dust and scratches radius {radius} is outside 1..=16"
+        )));
+    }
+    if threshold > 255 {
+        return Err(FilterError::InvalidParams(format!(
+            "dust and scratches threshold {threshold} is outside 0..=255"
+        )));
+    }
+    let w = buf.width as usize;
+    let h = buf.height as usize;
+    let r = (radius as usize).min(w.max(h));
+    let planes = (buf.channels as usize).min(3);
+    let limit = threshold as i32;
+    // ponytail: the reference thresholds the interleaved RGBA planes including
+    // alpha; here alpha is never modified, so only the three color planes run.
+    for plane in 0..planes {
+        let base = plane * n;
+        let src = buf.data[base..base + n].to_vec();
+        let med = window_median(&src, w, h, r);
+        for (i, &median) in med.iter().enumerate() {
+            let v = buf.data[base + i] as i32;
+            if (v - median as i32).abs() > limit {
+                buf.data[base + i] = median;
             }
         }
     }
     Ok(())
+}
+
+/// Per-plane windowed median, clamp-to-edge. `r` is the window reach.
+fn window_median(src: &[u8], w: usize, h: usize, r: usize) -> Vec<u8> {
+    let k = 2 * r + 1;
+    let mut out = vec![0u8; w * h];
+    // ponytail: sort-as-we-go is O(pixels · k² log k); swap in the sliding
+    // histogram from Huang et al. 1979 (cited by FILT-030) if Median gets hot.
+    let mut window: Vec<u8> = Vec::with_capacity(k * k);
+    for y in 0..h {
+        for x in 0..w {
+            window.clear();
+            for dy in 0..k {
+                let sy = clamp_index(y as isize + dy as isize - r as isize, h);
+                for dx in 0..k {
+                    let sx = clamp_index(x as isize + dx as isize - r as isize, w);
+                    window.push(src[sy * w + sx]);
+                }
+            }
+            window.sort_unstable();
+            out[y * w + x] = window[window.len() / 2];
+        }
+    }
+    out
 }
 
 /// Edge-gated smoothing: replace isolated outliers, leave edges alone.
@@ -330,6 +383,83 @@ mod tests {
     }
 
     #[test]
+    fn dust_and_scratches_smooths_speck_at_zero_threshold_and_keeps_it_high() {
+        let mut smoothed = plane(8, 8, 3, [100, 100, 100]);
+        smoothed.data[3 * 8 + 4] = 255;
+        dust_and_scratches(&mut smoothed, 1, 0).unwrap();
+        assert_eq!(
+            smoothed.data[3 * 8 + 4],
+            100,
+            "threshold 0 must replace the speck with the median"
+        );
+
+        let mut kept = plane(8, 8, 3, [100, 100, 100]);
+        kept.data[3 * 8 + 4] = 255;
+        dust_and_scratches(&mut kept, 1, 255).unwrap();
+        assert_eq!(
+            kept.data[3 * 8 + 4],
+            255,
+            "threshold 255 must leave the speck alone"
+        );
+    }
+
+    #[test]
+    fn dust_and_scratches_rejects_bad_parameters() {
+        let base = plane(4, 4, 3, [128, 128, 128]);
+        let mut out = base.clone();
+        assert!(dust_and_scratches(&mut out, 0, 10).is_err());
+        assert!(dust_and_scratches(&mut out, 17, 10).is_err());
+        assert!(dust_and_scratches(&mut out, 2, 256).is_err());
+        assert_eq!(out, base, "rejected parameters must not modify the buffer");
+        assert!(dust_and_scratches(&mut out, 2, 255).is_ok());
+    }
+
+    #[test]
+    fn dust_and_scratches_is_deterministic_and_preserves_alpha() {
+        let base = plane(9, 7, 4, [90, 140, 60]);
+        let n = base.pixel_count();
+        let alpha = base.data[3 * n..].to_vec();
+        let mut a = base.clone();
+        dust_and_scratches(&mut a, 2, 30).unwrap();
+        let mut b = base.clone();
+        dust_and_scratches(&mut b, 2, 30).unwrap();
+        assert_eq!(a.data, b.data, "no seed, so re-apply is byte-identical");
+        assert_eq!(&a.data[3 * n..], &alpha[..]);
+    }
+
+    #[test]
+    fn dust_and_scratches_uniform_is_bit_unchanged() {
+        let base = plane(8, 8, 3, [120, 120, 120]);
+        let mut out = base.clone();
+        dust_and_scratches(&mut out, 2, 10).unwrap();
+        assert_eq!(
+            out.data, base.data,
+            "a flat neighbourhood is never replaced"
+        );
+    }
+
+    #[test]
+    fn median_radius_changes_a_structured_image() {
+        let mut base = plane(9, 9, 3, [0, 0, 0]);
+        let w = 9usize;
+        let n = base.pixel_count();
+        for y in 0..9 {
+            for x in 0..9 {
+                if x % 3 == 0 || y % 3 == 0 {
+                    base.data[y * w + x] = 200;
+                    base.data[n + y * w + x] = 200;
+                    base.data[2 * n + y * w + x] = 200;
+                }
+            }
+        }
+        let mut r1 = base.clone();
+        median(&mut r1, 1).unwrap();
+        let mut r3 = base.clone();
+        median(&mut r3, 3).unwrap();
+        assert_ne!(r1.data, r3.data, "radius 1 and radius 3 smooth differently");
+    }
+
+    #[test]
     fn alpha_is_untouched_and_tiny_images_do_not_panic() {
         for &(w, h) in &[(1u32, 1u32), (2, 2), (3, 3), (8, 8)] {
             let base = plane(w, h, 4, [100, 100, 100]);
@@ -347,6 +477,10 @@ mod tests {
             let mut d = base.clone();
             despeckle(&mut d).unwrap();
             assert_eq!(&d.data[3 * n..], &alpha[..]);
+
+            let mut s = base.clone();
+            dust_and_scratches(&mut s, 1, 10).unwrap();
+            assert_eq!(&s.data[3 * n..], &alpha[..]);
         }
     }
 }

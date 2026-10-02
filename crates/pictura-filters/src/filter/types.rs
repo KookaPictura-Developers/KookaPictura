@@ -1,7 +1,8 @@
 use crate::{
-    BrushType, GrainType, HalftoneType, LensType, LightDirection, MezzotintType, NoiseDistribution,
-    PolarKind, Quality, RadialMethod, RippleSize, ShearFill, SpherizeMode, StrokeDirection,
-    TextureOptions, WaveType, ZigZagStyle,
+    BrushType, ContourEdge, ExtrudeType, GrainType, HalftoneType, LensType, LightDirection,
+    MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod, RippleSize, SharpenRemove,
+    ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TileFill, TonalFade, WaveType,
+    WindMethod, ZigZagStyle,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -423,5 +424,42 @@ pub enum Filter {
         bristle_detail: f64,
         angular_direction: f64,
         shine: f64,
+    },
+    DustAndScratches {
+        radius: u32,
+        threshold: u32,
+    },
+    Extrude {
+        kind: ExtrudeType,
+        size: u32,
+        depth: f32,
+        level_based: bool,
+        solid_front: bool,
+        mask_incomplete: bool,
+    },
+    Tiles {
+        count: u32,
+        offset: u32,
+        fill: TileFill,
+        foreground: [u8; 3],
+        background: [u8; 3],
+    },
+    TraceContour {
+        level: u8,
+        edge: ContourEdge,
+    },
+    Wind {
+        method: WindMethod,
+        from_right: bool,
+    },
+    SmartSharpen {
+        amount: f64,
+        radius: f64,
+        reduce_noise: f64,
+        remove: SharpenRemove,
+        angle: f64,
+        more_accurate: bool,
+        shadow: TonalFade,
+        highlight: TonalFade,
     },
 }
