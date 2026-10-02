@@ -98,6 +98,16 @@ bool LayersPanel::beginRenameForTest(const QString& path)
     return true;
 }
 
+bool LayersPanel::selectRowForTest(const QString& path)
+{
+    if (!model_ || !model_->indexForPath(path).isValid()) {
+        return false;
+    }
+    selectPath(path);
+    syncControls();
+    return true;
+}
+
 QObject* LayersPanel::itemDelegateForTest() const
 {
     return delegate_;

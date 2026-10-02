@@ -777,6 +777,7 @@ void LayersPanel::syncControls()
         fill_->setEnabled(fillAny);
     }
     syncing_ = false;
+    emit selectionChanged();
 }
 
 void LayersPanel::openPanelOptions()
