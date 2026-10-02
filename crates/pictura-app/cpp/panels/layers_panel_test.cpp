@@ -420,6 +420,16 @@ int LayersPanel::lockBadgeLeftForTest(const QString& path) const
     return delegate_->lockRect(tree_->visualRect(index)).left();
 }
 
+QImage LayersPanel::rowThumbnailForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return QImage();
+    }
+    const QRect thumb = delegate_->thumbRect(tree_->visualRect(index), index);
+    return thumb.isEmpty() ? QImage() : tree_->viewport()->grab(thumb).toImage();
+}
+
 bool LayersPanel::rowCheckStateForTest(const QString& path) const
 {
     return model_ && model_->indexForPath(path).data(Qt::CheckStateRole).isValid();

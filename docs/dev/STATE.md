@@ -723,6 +723,67 @@ Snapshot for resuming after a context break. Update after each milestone.
   Path is not read from or written to the PSD path resources; no saved paths or
   Paths panel commands (fill, stroke, selection, menu), Shape / Pixels mode, path operations, Magnetic Pen, or path-to-endpoint
   connect; Freeform keeps corners only (no curve fit).
+- **Horizontal Type, Vertical Type, Horizontal Type Mask, and Vertical Type
+  Mask** (changes `horizontal-type-tool`, `vertical-type-tool`,
+  `horizontal-type-mask-tool`, `vertical-type-mask-tool`, issues #37–#40,
+  ported from photorust's `core/src/psd/text_write.rs` and its shell's type
+  entry): the T group is complete and Kooka can now *create* type layers.
+  `pictura_core::TypeSpec` describes point type (`\r` between lines, family,
+  pixel size, RGBA, justification, orientation, anti-aliasing, the click);
+  `TypeTool` gains `vertical` (`Ornt`). New module `pictura_codec::type_write`
+  (`author_type_tool`): the `TySh` view with a `TxLr` text descriptor and a
+  complete EngineData dump (run lengths covering the string), plus a "no warp"
+  descriptor, checked by reading it back. New module `pictura_render::type_layer`:
+  `type_placement` (lines `1.2 × size` apart, click on the first baseline;
+  vertical: columns right to left, click on the first column's top centre),
+  `vertical_layout`, `render_type`, `type_mask` (document-sized coverage), and
+  `add_type_layer` (rendered pixels + authored `TySh` + the CS6 type locks,
+  named after the first line, 8-bit RGB only). Read-side fixes: EngineData
+  `FillColor` is alpha-first and now renders so (`TextStyle::rgba()`; black text
+  had rendered red), multi-line `TySh` text splits at `\r`, and `Txt ` drops
+  Photoshop's trailing NUL. Bridge `cxxqt_object/type_tools.rs`
+  (`type_preview_rect` / `type_preview_rgba`, `type_commit_layer` — one
+  "Horizontal Type" / "Vertical Type" state, the layer made active and selected
+  via `ToolController::layerCreated` — and `type_commit_mask` — one "Horizontal
+  Type Mask" / "Vertical Type Mask" state through `apply_selection_labeled`).
+  One handler, `tool_type.cpp`, for all four: a click opens a session that
+  edits like a text field (`type_text_edit.{h,cpp}`, photorust's caret /
+  anchor model; caret stops from `pictura_render::type_caret_stops`): click /
+  drag / Shift-click / double-click, arrows, Home / End, Ctrl word steps,
+  Backspace / Delete, Ctrl+A / C / X / V. An application key filter takes the
+  keys (letter shortcuts go quiet; other Ctrl chords still fire); Enter adds a
+  line / column, Ctrl+Enter / keypad Enter / Commit / a click away / a tool
+  switch commit, Esc / Cancel discard. `image_view_type.cpp` draws the engine-rendered preview and
+  caret, or the red mask tint with the letters cut out. `options_bar_type.cpp`:
+  Toggle Text Orientation, font family, size (px), anti-aliasing (None /
+  Sharp), alignment, Cancel / Commit (enabled while typing). Host fonts:
+  `type_fonts.cpp` rebuilds the face Qt resolves for the family from
+  `QRawFont` tables and registers it (`pictura_render::register_font`, module
+  `fonts.rs`), so layout, caret, and render use it (Liberation Sans otherwise)
+  and `TySh` records its PostScript name; with a type layer selected and no
+  session, a bar change re-sets the layer (changed field only, one "Edit Type
+  Layer" state, `type_update_layer`), and selecting a type layer loads its
+  settings into the bar. The Layers panel
+  draws every type row's thumbnail as a dark T on a white card (CS6), not its
+  pixels. Clicking a visible type layer with Horizontal / Vertical Type reopens
+  it (`type_layer_at`, `type_layer_spec` — origin follows a moved layer — and
+  `replace_type_layer`; bridge `type_edit_begin` / `type_edit_cancel` /
+  `type_commit_edit`): hidden while retyped in its own orientation and
+  settings, re-set in place as one "Edit Type Layer" state; Esc or blank text
+  restores it. Free Transform and Skew of a type layer re-set it as type:
+  `TypeSpec::matrix` (the `TySh` transform's linear part) takes the map via
+  `transform_type_layer` (hooked into `transform_layer` /
+  `transform_layer_quad` for affine quads), and `render_mapped` rasterizes each
+  glyph outline through it (`BundledRasterizer::rasterize_mapped`), so the text
+  stays sharp and editable. Qt Test suite `tst_type_tools`. Guard 98 now probes Path Selection and `shift_plain` (117)
+  presses A as the unimplemented key. Ceilings (`ponytail:`): a variable font's
+  named instance renders as its default instance; point type only (no paragraph / on-path / Warp Text); no input-method composition; a reopened layer is
+  retyped in one style, its own `TySh` replaced by the authored one, and its
+  Layers row shows it hidden while retyped; vertical type is upright
+  on a fixed cell; no font style, colour swatch, or Crisp / Strong / Smooth;
+  8-bit RGB documents only; the mask tint covers the canvas; Distort /
+  Perspective and a masked type layer still resample pixels; the live
+  transform preview is the resampled raster until commit.
 - **Count (Extended)** (change `count-tool`, issue #9, ported from photorust):
   `pictura_core::annotations` gains `CountGroup` (name, eye visibility, colour,
   marker size 1–10, label size 8–72, its own numbered marks) on

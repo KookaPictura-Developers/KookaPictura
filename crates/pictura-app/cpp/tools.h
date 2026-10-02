@@ -301,6 +301,12 @@ public:
     void setBucketOptions(const BucketOptions& options) { bucket_ = options; }
     PenOptions penOptions() const override { return pen_; }
     void setPenOptions(const PenOptions& options);
+    TypeOptions typeOptions() const override { return type_; }
+    void setTypeOptions(const TypeOptions& options) override;
+    // The active Type tool's Commit / Cancel; false when no text is being typed.
+    bool commitText();
+    bool cancelText();
+    bool textActive() const;
     void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);
@@ -329,6 +335,8 @@ public:
     SelectionMode resolveSelectionMode(Qt::KeyboardModifiers mods,
                                        bool hasExistingSelection) const override;
     void refused(const QString& message) override;
+    void notifyLayerCreated(const QString& path) override { emit layerCreated(path); }
+    void notifyTextEditing(bool active) override { emit textEditingChanged(active); }
     void emitSelectionCommitted() override;
     void refreshAnnotations() override;
     int currentNote() const override { return currentNote_; }
@@ -420,6 +428,13 @@ signals:
     void cloneSourceChanged();
     // The foreground or background colour changed.
     void colorsChanged();
+    // A tool created the layer at `path` (a committed type layer).
+    void layerCreated(const QString& path);
+    // Text started or stopped being typed; the Type options bar shows Commit
+    // and Cancel only while it is.
+    void textEditingChanged(bool active);
+    // The Type options changed (the bar, or a reopened type layer's settings).
+    void typeOptionsChanged();
 
 private:
     void applyToolPolicy();
@@ -493,6 +508,7 @@ private:
     std::array<ToneOptions, 3> tone_{};
     BucketOptions bucket_;
     PenOptions pen_;
+    TypeOptions type_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;
     int brushRoundness_ = 100;

@@ -6,6 +6,7 @@
 #include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <QtGui/QImage>
 #include <QtWidgets/QWidget>
 
 class QComboBox;
@@ -96,6 +97,8 @@ public:
     bool opacityValueFitsForTest() const;
     int dragOpacitySliderForTest(int fromX1000, int toX1000);
     int lockBadgeLeftForTest(const QString& path) const;
+    // The row's thumbnail as painted (a T card for a type layer); null if hidden.
+    QImage rowThumbnailForTest(const QString& path) const;
     bool rowCheckStateForTest(const QString& path) const;
     bool lockIconsPresentForTest() const;
     bool treeDragEnabledForTest() const;

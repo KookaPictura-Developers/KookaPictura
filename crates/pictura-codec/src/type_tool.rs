@@ -58,7 +58,16 @@ pub(crate) fn decode_type_tool(data: &[u8]) -> Option<TypeTool> {
         warp_desc,
         fonts,
         style,
+        vertical: is_vertical(&text_value),
     })
+}
+
+/// The text descriptor's `Ornt` enum is `Vrtc` for vertical type.
+fn is_vertical(value: &DescValue) -> bool {
+    let DescValue::Object { items, .. } = value else {
+        return false;
+    };
+    matches!(get_object_item(items, b"Ornt"), Some(DescValue::Enum { value, .. }) if value == b"Vrtc")
 }
 
 /// Best-effort view of the `Txt ` descriptor's opaque `EngineData` blob; a
@@ -113,7 +122,8 @@ fn extract_text(value: &DescValue) -> String {
         return String::new();
     };
     match get_object_item(items, b"Txt ") {
-        Some(DescValue::Text(text)) => text.clone(),
+        // Photoshop null-terminates `Txt `.
+        Some(DescValue::Text(text)) => text.trim_end_matches('\0').to_string(),
         _ => String::new(),
     }
 }

@@ -35,6 +35,7 @@ mod warp_styles_tests;
 pub use clipboard::{
     clear_layer, copy_layer, copy_merged, coverage_bounds, paste_clip, Clip, PasteMode,
 };
+pub(crate) use create::insert_node;
 pub use create::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
     add_layer_in, add_raster_layer_from_rgba, add_solid_fill, background_from_layer,

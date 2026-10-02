@@ -141,6 +141,11 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::Pen:
     case ToolId::FreeformPen:
         return buildPenPage(id);
+    case ToolId::HorizontalType:
+    case ToolId::VerticalType:
+    case ToolId::HorizontalTypeMask:
+    case ToolId::VerticalTypeMask:
+        return buildTypePage(id);
     default: {
         auto* page = new QWidget(stack_);
         auto* layout = new QHBoxLayout(page);
