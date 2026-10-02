@@ -15,6 +15,8 @@
 #include <QtGui/QFontDatabase>
 #include <QtGui/QFontInfo>
 #include <QtGui/QKeyEvent>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QToolButton>
 
 #include "qt_test_support.h"
@@ -68,6 +70,7 @@ private slots:
     void verticalTypeTool();
     void typeMaskTools();
     void typeOptionsBar();
+    void typeBarSizeAlignAndColor();
 
 private:
     void showFrame();
@@ -570,6 +573,92 @@ void TypeToolsTest::typeOptionsBar()
     visible(QStringLiteral("optionsTypeOrientation"))->click();
     QCOMPARE(frame.activeTool(), pictura::ToolId::VerticalType);
     f.tools->setTypeOptions(saved);
+}
+
+void TypeToolsTest::typeBarSizeAlignAndColor()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    Fixture f(frame, seed(), QStringLiteral("pictura_type_bar_color"));
+    QVERIFY2(f.ok(), "type fixture");
+    showFrame();
+    const pictura::TypeOptions saved = f.tools->typeOptions();
+    const QColor foreground = f.tools->foreground();
+    frame.setActiveTool(pictura::ToolId::HorizontalType);
+    auto visible = [&frame](auto* kind, const QString& name) {
+        using Widget = std::remove_pointer_t<decltype(kind)>;
+        for (auto* widget : frame.findChildren<Widget*>(name)) {
+            if (widget->isVisible()) {
+                return widget;
+            }
+        }
+        return static_cast<Widget*>(nullptr);
+    };
+
+    // Size: a scrolling list of presets that also takes a typed value, applied
+    // on Enter rather than per keystroke; an out-of-range entry reverts.
+    auto* size = visible(static_cast<QComboBox*>(nullptr), QStringLiteral("optionsTypeSize"));
+    QVERIFY2(size && size->isEditable(), "editable size");
+    QVERIFY(size->count() > size->maxVisibleItems());
+    QVERIFY(size->findText(QStringLiteral("72")) >= 0);
+    size->lineEdit()->setText(QStringLiteral("37.5"));
+    QCOMPARE(f.tools->typeOptions().size, saved.size);
+    emit size->lineEdit()->editingFinished();
+    QCOMPARE(f.tools->typeOptions().size, 37.5);
+    size->setCurrentIndex(size->findText(QStringLiteral("72")));
+    emit size->activated(size->currentIndex());
+    QCOMPARE(f.tools->typeOptions().size, 72.0);
+    size->lineEdit()->setText(QStringLiteral("0"));
+    emit size->lineEdit()->editingFinished();
+    QCOMPARE(f.tools->typeOptions().size, 72.0);
+    QCOMPARE(size->currentText(), QStringLiteral("72"));
+
+    // Alignment shows drawn line icons, not glyph text.
+    for (const char* name : {"optionsTypeAlignLeft", "optionsTypeAlignCenter",
+                             "optionsTypeAlignRight"}) {
+        QToolButton* button = visible(static_cast<QToolButton*>(nullptr), QLatin1String(name));
+        QVERIFY2(button && !button->icon().isNull() && button->text().isEmpty(), name);
+    }
+
+    // Colour: the swatch shows the text colour, which follows the foreground,
+    // and new type is set in it.
+    QToolButton* swatch = visible(static_cast<QToolButton*>(nullptr), QStringLiteral("optionsTypeColor"));
+    QVERIFY2(swatch, "colour swatch");
+    f.tools->setForeground(QColor(200, 0, 0));
+    QCOMPARE(f.tools->typeOptions().color, QColor(200, 0, 0));
+    const QImage icon = swatch->icon().pixmap(16, 16).toImage();
+    QCOMPARE(QColor(icon.pixel(8, 8)), QColor(200, 0, 0));
+    pictura::TypeOptions o = f.tools->typeOptions();
+    o.size = 40.0;
+    f.tools->setTypeOptions(o);
+    f.drag({QPointF(10, 60)});
+    QTest::keyClicks(f.canvas, QStringLiteral("HH"));
+    QTest::keyClick(f.canvas, Qt::Key_Return, Qt::ControlModifier);
+    const QString path = typeLayer(f);
+    auto inked = [&f](const QRect& rect, const QColor& want) {
+        for (int y = rect.top(); y <= rect.bottom(); ++y) {
+            for (int x = rect.left(); x <= rect.right(); ++x) {
+                if (QColor::fromRgba(f.view->sample_argb(x, y)) == want) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    QVERIFY2(inked(layerRect(f, path), QColor(200, 0, 0)), "set in the text colour");
+
+    // With the type layer selected, a new colour re-sets it as one state, and
+    // selecting it again shows its colour in the swatch.
+    const int base = f.view->history_index();
+    f.tools->setForeground(QColor(0, 0, 200));
+    QVERIFY2(f.committedOnce(base, "Edit Type Layer"), "colour restyles the layer");
+    QVERIFY2(inked(layerRect(f, path), QColor(0, 0, 200)), "re-set in the new colour");
+    frame.setActiveTool(pictura::ToolId::Move);
+    f.tools->setForeground(foreground);
+    frame.setActiveTool(pictura::ToolId::HorizontalType);
+    QCOMPARE(f.tools->typeOptions().color, QColor(0, 0, 200));
+
+    f.tools->setTypeOptions(saved);
+    f.tools->setForeground(foreground);
 }
 
 QTEST_MAIN(TypeToolsTest)

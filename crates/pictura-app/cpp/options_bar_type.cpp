@@ -3,15 +3,24 @@
 
 #include "options_bar.h"
 
-#include "panels/numeric_field.h"
+#include "color_picker_dialog.h"
 
+#include <QtCore/QLocale>
 #include <QtCore/QSignalBlocker>
+#include <QtGui/QDoubleValidator>
+#include <QtGui/QPainter>
+#include <QtGui/QPixmap>
+#include <QtSvg/QSvgRenderer>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QFontComboBox>
 #include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QToolButton>
+
+#include <algorithm>
 
 namespace pictura {
 
@@ -32,14 +41,68 @@ ToolId otherOrientation(ToolId id)
     }
 }
 
+// The size menu (px): CS6's point list, extended up to 288 as photorust's is.
+// Any value 1-1296 can be typed.
+constexpr int kTypeSizes[] = {6,  7,  8,  9,  10, 11, 12, 14,  18,  24,
+                              30, 36, 48, 60, 72, 96, 144, 192, 288};
+
+// photorust's paragraph-alignment glyphs: ruled lines flush left, centred, or
+// flush right, turned a quarter turn for vertical type (top / centre /
+// bottom). `justification` is 0 left, 1 right, 2 centre.
+QIcon alignIcon(int justification, bool vertical, const QColor& color)
+{
+    // Three ruled lines per icon, each {from, across, to} on a 20 px grid.
+    struct Line {
+        double from, across, to;
+    };
+    static const Line lines[3][3] = {
+        {{3, 5, 17}, {3, 10, 12}, {3, 15, 15}},
+        {{3, 5, 17}, {8, 10, 17}, {5, 15, 17}},
+        {{3, 5, 17}, {5.5, 10, 14.5}, {4.2, 15, 15.8}},
+    };
+    QString path;
+    for (const Line& line : lines[std::clamp(justification, 0, 2)]) {
+        path += vertical ? QStringLiteral("M%1 %2V%3").arg(line.across).arg(line.from).arg(line.to)
+                         : QStringLiteral("M%1 %2H%3").arg(line.from).arg(line.across).arg(line.to);
+    }
+    const QString svg = QStringLiteral(
+                            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'>"
+                            "<path d='%1' fill='none' stroke='%2' stroke-width='1.6' "
+                            "stroke-linecap='round'/></svg>")
+                            .arg(path, color.name());
+    QSvgRenderer renderer(svg.toUtf8());
+    QPixmap pixmap(40, 40);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    renderer.render(&painter);
+    painter.end();
+    return QIcon(pixmap);
+}
+
+QIcon swatchIcon(const QColor& color)
+{
+    QPixmap pixmap(16, 16);
+    pixmap.fill(color);
+    QPainter painter(&pixmap);
+    painter.setPen(QColor(0, 0, 0, 160));
+    painter.drawRect(pixmap.rect().adjusted(0, 0, -1, -1));
+    return QIcon(pixmap);
+}
+
+QString sizeText(double size)
+{
+    return QString::number(size, 'g', 6);
+}
+
 } // namespace
 
-// Toggle Text Orientation, font family, size (px), anti-aliasing (None /
-// Sharp), and alignment (left / centre / right; top / centre / bottom for
-// vertical type), then Cancel and Commit while text is being typed. The four
-// tools share one TypeOptions, so each page re-reads it when shown.
-// ponytail: no font style, Crisp / Strong / Smooth, colour swatch (the text is
-// the foreground colour), Warp Text, or Character / Paragraph panels button.
+// Toggle Text Orientation, font family, size (px; a scrolling list or any typed
+// value), anti-aliasing (None / Sharp), alignment (left / centre / right; top /
+// centre / bottom for vertical type), the text colour swatch, then Cancel and
+// Commit while text is being typed. The four tools share one TypeOptions, so
+// each page re-reads it when shown.
+// ponytail: no font style, Crisp / Strong / Smooth, Warp Text, or Character /
+// Paragraph panels button.
 QWidget* OptionsBar::buildTypePage(ToolId id)
 {
     auto* page = new QWidget(stack_);
@@ -59,12 +122,21 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
     family->setToolTip(QStringLiteral("Font family"));
     layout->addWidget(family);
 
-    auto* size = new NumericField(
-        QStringLiteral("Size:"),
-        numericConfig(1, 1296, 1, 1, QStringLiteral(" px"), false,
-                      QStringLiteral("optionsTypeSize")),
-        page);
+    auto* size = new QComboBox(page);
+    size->setObjectName(QStringLiteral("optionsTypeSize"));
+    size->setToolTip(QStringLiteral("Set the font size (px)"));
+    size->setEditable(true);
+    size->setInsertPolicy(QComboBox::NoInsert);
+    size->setMaxVisibleItems(10);
+    size->setMinimumContentsLength(5);
+    auto* sizeValidator = new QDoubleValidator(1.0, 1296.0, 1, size);
+    sizeValidator->setNotation(QDoubleValidator::StandardNotation);
+    size->setValidator(sizeValidator);
+    for (const int px : kTypeSizes) {
+        size->addItem(QString::number(px));
+    }
     layout->addWidget(size);
+    layout->addWidget(new QLabel(QStringLiteral("px"), page));
 
     auto* antialias = new QComboBox(page);
     antialias->setObjectName(QStringLiteral("optionsTypeAntialias"));
@@ -80,19 +152,28 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
                       QStringLiteral("Center text")}
         : QStringList{QStringLiteral("Left align text"), QStringLiteral("Right align text"),
                       QStringLiteral("Center text")};
-    const QStringList glyphs = vertical
-        ? QStringList{QStringLiteral("⤒"), QStringLiteral("⤓"), QStringLiteral("↕")}
-        : QStringList{QStringLiteral("⇤"), QStringLiteral("⇥"), QStringLiteral("↔")};
+    // photorust's options-bar glyph tint: light enough to read on the dark bar
+    // (the palette's text colour is not themed yet while the page is built).
+    const QColor glyph(0xd4, 0xd4, 0xd4);
     // Laid out left, centre, right as CS6 does; the ids are the justification.
     for (int justification : {0, 2, 1}) {
         auto* button = new QToolButton(page);
         button->setObjectName(QLatin1String(names[justification]));
         button->setCheckable(true);
-        button->setText(glyphs.at(justification));
+        button->setAutoRaise(true);
+        button->setIcon(alignIcon(justification, vertical, glyph));
+        button->setIconSize(QSize(20, 20));
         button->setToolTip(tips.at(justification));
         align->addButton(button, justification);
         layout->addWidget(button);
     }
+
+    auto* color = new QToolButton(page);
+    color->setObjectName(QStringLiteral("optionsTypeColor"));
+    color->setToolTip(QStringLiteral("Set the text color"));
+    color->setAutoRaise(true);
+    color->setIconSize(QSize(16, 16));
+    layout->addWidget(color);
 
     auto* cancel = new QToolButton(page);
     cancel->setObjectName(QStringLiteral("optionsTypeCancel"));
@@ -114,7 +195,8 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
         const QSignalBlocker blockFamily(family);
         const QSignalBlocker blockAntialias(antialias);
         family->setCurrentFont(QFont(o.family));
-        size->setValue(o.size);
+        size->setEditText(sizeText(o.size));
+        color->setIcon(swatchIcon(o.color));
         antialias->setCurrentIndex(o.antialias ? 1 : 0);
         if (QAbstractButton* button = align->button(o.justification)) {
             button->setChecked(true);
@@ -140,8 +222,30 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
     connect(family, &QFontComboBox::currentFontChanged, this, [update](const QFont& font) {
         update([&font](TypeOptions& o) { o.family = font.family(); });
     });
-    connect(size, &NumericField::valueChanged, this,
-            [update](double v) { update([v](TypeOptions& o) { o.size = v; }); });
+    // A size applies on a pick or Enter (and when the field loses focus), not
+    // per keystroke: typing "12" must not restyle the text as 1 px first.
+    const auto applySize = [this, size, update]() {
+        bool ok = false;
+        const double v = QLocale().toDouble(size->currentText(), &ok);
+        if (!ok || v < 1.0 || v > 1296.0) {
+            size->setEditText(sizeText(controller_->typeOptions().size));
+            return;
+        }
+        if (v != controller_->typeOptions().size) {
+            update([v](TypeOptions& o) { o.size = v; });
+        }
+    };
+    connect(size, &QComboBox::activated, this, applySize);
+    connect(size->lineEdit(), &QLineEdit::editingFinished, this, applySize);
+    // The swatch sets the foreground, which the text colour follows (CS6 links
+    // the two); a type layer being edited or selected takes the colour.
+    connect(color, &QToolButton::clicked, this, [this]() {
+        const QColor picked = ColorPickerDialog::getColor(controller_->typeOptions().color, this,
+                                                          QStringLiteral("Text Color"));
+        if (picked.isValid()) {
+            controller_->setForeground(picked);
+        }
+    });
     connect(antialias, &QComboBox::currentIndexChanged, this,
             [update](int i) { update([i](TypeOptions& o) { o.antialias = i == 1; }); });
     connect(align, &QButtonGroup::idClicked, this,

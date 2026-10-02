@@ -165,6 +165,8 @@ struct TypeOptions {
     double size = 24.0;
     bool antialias = true;
     int justification = 0;
+    // The text colour: the foreground colour, or a reopened layer's colour.
+    QColor color = Qt::black;
 };
 
 // One Clone Source panel slot: the Alt-clicked source point; the offset the

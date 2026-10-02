@@ -432,6 +432,13 @@ void ToolController::setForeground(const QColor& color)
     // Choosing a foreground colour loads the Mixer Brush (docs/03-tools/mixer-brush.md).
     setMixerReservoir(color);
     emit colorsChanged();
+    // ...and is the text colour, so it restyles text being typed or a selected
+    // type layer, as CS6's does with the Type tool active.
+    if (color != type_.color) {
+        TypeOptions o = type_;
+        o.color = color;
+        setTypeOptions(o);
+    }
 }
 
 QColor ToolController::background() const { return background_; }

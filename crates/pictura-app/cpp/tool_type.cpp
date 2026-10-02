@@ -220,6 +220,9 @@ public:
         if (now.antialias != was.antialias) {
             s.antialias = now.antialias;
         }
+        if (now.color != was.color) {
+            s.color = now.color.rgba();
+        }
         registerTypeFont(family);
         type_update_layer(*v, layerPath_, type_layer_text(*v, layerPath_), family, s);
     }
@@ -274,6 +277,7 @@ public:
             }
             o.size = s.size;
             o.justification = s.justification;
+            o.color = QColor::fromRgba(s.color);
             ctx.setTypeOptions(o);
         }
         filter_ = std::make_unique<TypeKeyFilter>(
@@ -517,6 +521,7 @@ private:
         }
         o.size = s.size;
         o.justification = s.justification;
+        o.color = QColor::fromRgba(s.color);
         syncing_ = true;
         ctx_->setTypeOptions(o);
         syncing_ = false;
@@ -549,7 +554,7 @@ private:
         const TypeOptions o = ctx_->typeOptions();
         TypeSetting s;
         s.size = o.size;
-        s.color = ctx_->foreground().rgba();
+        s.color = o.color.rgba();
         s.justification = o.justification;
         s.vertical = vertical_;
         s.antialias = o.antialias;
