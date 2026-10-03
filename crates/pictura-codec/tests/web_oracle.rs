@@ -5,8 +5,7 @@
 //!
 //! Needs `magick` (ImageMagick 7); self-skips with a message otherwise.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use pictura_codec::{encode_gif, encode_wbmp, quantize, ColorReduction, Dither, PaletteOptions};
 
@@ -17,17 +16,22 @@ fn magick_available() -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// Decode `bytes` (in `format`) with ImageMagick to raw RGBA.
+/// Decode `bytes` (in `format`) with ImageMagick to raw RGBA. The bytes go
+/// through a file, not stdin: newer ImageMagick's WBMP reader checks the
+/// pixel count against the input's size, which a pipe reports as zero.
 fn decode(format: &str, bytes: &[u8]) -> Vec<u8> {
-    let mut child = Command::new("magick")
-        .args([&format!("{format}:-"), "-depth", "8", "rgba:-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+    let path = std::env::temp_dir().join(format!(
+        "pictura-web-oracle-{}-{}.{format}",
+        std::process::id(),
+        bytes.len()
+    ));
+    std::fs::write(&path, bytes).expect("write temp file");
+    let out = Command::new("magick")
+        .arg(format!("{format}:{}", path.display()))
+        .args(["-depth", "8", "rgba:-"])
+        .output()
         .expect("run magick");
-    child.stdin.take().unwrap().write_all(bytes).unwrap();
-    let out = child.wait_with_output().expect("magick output");
+    let _ = std::fs::remove_file(&path);
     assert!(
         out.status.success(),
         "{}",
