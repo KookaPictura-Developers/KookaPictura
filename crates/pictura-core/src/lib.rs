@@ -11,6 +11,7 @@ pub mod nonseparable;
 pub mod path;
 mod plane;
 mod samples;
+pub mod shape;
 mod text_render;
 mod type_tool;
 mod vector;

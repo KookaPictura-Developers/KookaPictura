@@ -328,6 +328,69 @@ pub(crate) fn decode_layer_effects(layer: &Layer) -> LayerEffects {
     }
 }
 
+/// The document-space box `(left, top, right, bottom)` a non-group layer's
+/// effects can paint, or `None` when it cannot be bounded (content with no
+/// box of its own: a fill without a vector mask, an inverted mask). The
+/// outward reach is the drop shadow's distance plus size and the outer glow's,
+/// stroke's, and bevel's size (plus soften), with two pixels to spare; the
+/// inner effects and the overlays stay inside the content.
+pub(crate) fn effects_reach(layer: &Layer) -> Option<(i32, i32, i32, i32)> {
+    let rect = (
+        layer.rect.left,
+        layer.rect.top,
+        layer.rect.right,
+        layer.rect.bottom,
+    );
+    let pixels = !layer.channels.is_empty();
+    let (l, t, r, b) = match layer.vector_mask.as_ref().filter(|m| m.has_fill()) {
+        Some(mask) if !mask.invert => {
+            let points = mask
+                .subpaths
+                .iter()
+                .filter(|s| s.closed)
+                .flat_map(|s| s.points.iter());
+            let (l, t, r, b) = points.fold(
+                (i32::MAX, i32::MAX, i32::MIN, i32::MIN),
+                |(l, t, r, b), p| (l.min(p[0]), t.min(p[1]), r.max(p[0]), b.max(p[1])),
+            );
+            let mask_box = (
+                l.div_euclid(256),
+                t.div_euclid(256),
+                r / 256 + 1,
+                b / 256 + 1,
+            );
+            if pixels {
+                (
+                    mask_box.0.max(rect.0),
+                    mask_box.1.max(rect.1),
+                    mask_box.2.min(rect.2),
+                    mask_box.3.min(rect.3),
+                )
+            } else {
+                mask_box
+            }
+        }
+        _ if pixels => rect,
+        _ => return None,
+    };
+    let effects = decode_layer_effects(layer);
+    let mut reach = 0.0f32;
+    if let Some(shadow) = effects.drop_shadow {
+        reach = reach.max(shadow.distance.abs() + shadow.size);
+    }
+    if let Some(glow) = effects.outer_glow {
+        reach = reach.max(glow.size);
+    }
+    if let Some(stroke) = effects.stroke {
+        reach = reach.max(stroke.size as f32);
+    }
+    if let Some(bevel) = effects.bevel {
+        reach = reach.max(bevel.size + bevel.soften);
+    }
+    let pad = reach.min(1.0e6).ceil() as i32 + 2;
+    Some((l - pad, t - pad, r + pad, b + pad))
+}
+
 /// Composite a layer's enabled, present drop shadow into the running canvas
 /// before the layer's own content. Groups and destructive adjustment layers are
 /// skipped.
@@ -335,7 +398,7 @@ pub(crate) fn decode_layer_effects(layer: &Layer) -> LayerEffects {
 /// ponytail: an effect on a group or on a destructive adjustment layer is
 /// deferred; fill content still contributes.
 pub(crate) fn composite_layer_effects(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
-    if layer.is_group || is_destructive_adjustment(layer) {
+    if canvas.skip_effects || layer.is_group || is_destructive_adjustment(layer) {
         return;
     }
     let effects = decode_layer_effects(layer);
@@ -357,7 +420,7 @@ pub(crate) fn composite_layer_effects(canvas: &mut Canvas, layer: &Layer, doc: &
 /// is composited before Inner Glow when both are present, and a Stroke is drawn
 /// after both.
 pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
-    if layer.is_group || is_destructive_adjustment(layer) {
+    if canvas.skip_effects || layer.is_group || is_destructive_adjustment(layer) {
         return;
     }
     let effects = decode_layer_effects(layer);

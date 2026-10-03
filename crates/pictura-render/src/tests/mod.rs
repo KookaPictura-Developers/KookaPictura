@@ -15,6 +15,7 @@ mod native_depth;
 mod pattern_fill;
 mod raster_import;
 mod rasterize;
+mod region;
 mod smart_object;
 mod vector_fill;
 mod vector_mask;

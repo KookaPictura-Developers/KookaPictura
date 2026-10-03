@@ -743,6 +743,11 @@ bool LayersPanel::rowPlacedForTest(const QString& path) const
     return model_ && model_->indexForPath(path).data(LayerRowPlacedRole).toBool();
 }
 
+bool LayersPanel::rowShapeForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(LayerRowShapeRole).toBool();
+}
+
 bool LayersPanel::rowNameItalicForTest(const QString& path) const
 {
     const QModelIndex index = proxyIndexForPath(path);

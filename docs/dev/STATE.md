@@ -866,6 +866,99 @@ Snapshot for resuming after a context break. Update after each milestone.
   8-bit RGB documents only; the mask tint covers the canvas; Distort /
   Perspective and a masked type layer still resample pixels; the live
   transform preview is the resampled raster until commit.
+- **Shape options bar** (change `shape-options-bar`, owner follow-up on #48
+  from a CS6 screenshot): all six shape tools share CS6's bar — Mode, Fill,
+  Stroke (width, type pop-up with Align), W / link / H, disabled path
+  operation / alignment / arrangement stubs, the geometry gear (Unconstrained
+  / Square|Circle|Defined Proportions / Fixed Size, From Center; Polygon star
+  and smoothing; Line arrowheads), the tool's field (Radius / Sides / Weight /
+  grid Shape picker with a gear menu), and Align Edges
+  (`shape::align_edges`). `pictura_render` `shape_style.rs`: Fill None is
+  Fill opacity 0, the stroke an authored solid `lfx2` `FrFX` Stroke effect
+  (CS6 uses `vstk`; approximation), `resize_shape` about the top-left.
+  `tool_shape.cpp` mirrors the active shape layer into `ShapeOptions`
+  (`ToolController::shapeOptionsChanged` re-reads every page) and applies bar
+  edits back ("Change Shape Fill" / "Change Shape Stroke" / "Resize Shape").
+  Tests: `tst_shape_tools::optionsBar`,
+  `psd_tools_reads_a_shape_stroke_and_no_fill`. Ceilings (`ponytail:`):
+  Gradient / Pattern, Dashed / Dotted, path operations, shape-set load / save
+  are disabled; widths are px, not pt; no Proportional geometry.
+- **Line and Custom Shape** (changes `line-tool`, `custom-shape-tool`, issues
+  #47–#48, ported from photorust's `core/src/shape.rs`): the U group is
+  complete. `pictura_core::shape` became a directory: `shape/line.rs` (the
+  filled line of Weight, Shift snapping to 45°, optional Start / End
+  arrowheads with Width / Length % of the weight and Concavity — CS6 options
+  photorust lacks, approximated geometry, defaults 500 % / 1000 % against the
+  doc's unsourced 100 %) and `shape/custom.rs` (photorust's six generated
+  shapes, stretched to the box, Shift keeping the designed proportions,
+  `custom_shape_preview` silhouettes). `ShapeSpec` gains the weight,
+  arrowheads, and custom index; `shape_custom_{count,name,preview}` feed the
+  options-bar picker. Options bar: Line Weight + Arrowheads pop-up, Custom
+  Shape picker. A Line click draws nothing; a Custom Shape click opens
+  "Create Custom Shape". Custom shape layers are named "Shape N"; neither
+  kind is live. Guard 98 now probes Object Rotate. Ceilings (`ponytail:`): no
+  `.csh` libraries / shape sets / Define Custom Shape / Defined Size; the
+  heart is a 48-corner polygon; overlapping arrowheads on a short line are
+  not clamped.
+- **Live shapes** (change `live-shapes`, owner follow-up on #43–#45, from
+  Photoshop **CC 2015** screenshots — a deliberate CC extension;
+  `docs/03-tools/shape-tools.md` still scopes live shapes out of CS6 parity):
+  Shape-mode Rectangle / Rounded Rectangle / Ellipse layers carry a `vogk`
+  block (`pictura_codec::{encode,decode}_live_shape`, layout inferred from
+  psd-tools / ag-psd, both of which decode it; Polygons are not live, as in
+  CC 2015). `paths.rs`'s `path_set_layer_target` points the path calls at the
+  active shape layer's outline (decoded from `vmsk` by
+  `decode_vector_mask_paths`, written back with `set_layer_shape_paths` and a
+  recomposite) for Path / Direct Selection and the shape tools, and at the Work
+  Path for the Pen group. A whole-component move keeps a shape live (its box
+  moves); any other edit makes it a regular path. Direct Selection prompts
+  first ("turn a live shape into a regular path", Yes / No / Don't show again,
+  saved as `confirmLiveShapeToPath` in `state.json`); the conversion records
+  no state, so undoing the next edit restores the live shape. A click with a
+  shape tool opens Create Rectangle / Rounded Rectangle (four radii) / Ellipse /
+  Polygon (sides, Smooth Corners, Star, Indent Sides By, Smooth Indents) with
+  From Center (`shape_dialogs.{h,cpp}`); `shape::outline_in_box` places it.
+  Shape tools draw the active shape layer's anchors; Layers rows of shape
+  layers show a rendered thumbnail and the `layers.kindShape` corner badge;
+  the Paths panel lists "<Layer> Shape Path". Tests: `tst_shape_tools::
+  liveShapes` / `::createDialogs`, `psd_tools_reads_an_authored_live_shape`.
+  Ceilings (`ponytail:`): no Properties-panel live editing, a prompted drag
+  ends at the (modal) prompt, Alt-drag copy / Delete convert silently, live
+  reshapes recomposite the whole document per move. Note: psd-tools and ag-psd
+  are not installed on the dev machine by default, so their oracles self-skip
+  there; CI's `oracles` job runs them.
+- **Shape tools** (changes `rectangle-tool`, `rounded-rectangle-tool`,
+  `ellipse-tool`, `polygon-tool`, issues #43–#46, ported from photorust's
+  `core/src/shape.rs` and its shell's `CanvasView` shape drag): Rectangle,
+  Rounded Rectangle, Ellipse, and Polygon are enabled (Line and Custom Shape
+  stay off). `pictura_core::shape::outline` turns a drag into one closed
+  `path::Subpath` (curves stay cubic: rounded corners and the ellipse are
+  quarter-arc Beziers, where photorust flattened to points); Shift squares the
+  box by its longer side (the Polygon snaps its turn to 15°), Alt grows it from
+  the press; the Polygon is centred on the press, first corner under the
+  pointer, Sides 3–100 (default 5); Rounded Rectangle Radius 0–1000 px
+  (default 10, as CS6 ships it; `shape-tools.md` says 0, unsourced), clamped to
+  half the shorter side with coincident arc anchors merged.
+  `shape::coverage` rasterises an outline (even-odd, 4 sub-scanlines with
+  fractional span ends). New `pictura_codec::encode_vector_mask` /
+  `decode_vector_mask` author and read a version-3 `vmsk`;
+  `pictura_render::add_shape_layer` inserts a `SoCo` fill layer named
+  `"<Tool> N"` above the active layer, cut by an authored `vmsk` — checked by a
+  composite + PSD round-trip test and a psd-tools oracle
+  (`vector_mask_oracle`, run with psd-tools installed). Bridge `cxxqt_object/shapes.rs`: `shape_outline`
+  (preview), `shape_add_layer` (Shape), `shape_add_path` (Path, via
+  `VectorPath::add_subpath`), `shape_fill_pixels` (Pixels, through the fills
+  bridge's `apply` and `bucket::fill`, inside the selection); each records one
+  `"<Tool> Tool"` state (label approximated). One handler, `tool_shape.cpp`:
+  dashed live preview (`PathOverlay::preview`; in Path mode over the Work
+  Path), Shift / Alt read live, a click draws nothing. `options_bar_shape.cpp`:
+  Mode (Shape / Path / Pixels, `ShapeOptions`, kept in sync across the four
+  pages), Radius, Sides. Qt Test suite `tst_shape_tools`. Guard 98 now probes
+  Line and `shift_plain` (117) presses R as the unimplemented key. Ceilings
+  (`ponytail:`): no click-to-size dialog, Stroke, gradient / pattern Fill,
+  geometry pop-up (Fixed Size, Proportional, Star, Smooth Corners), path
+  operations (Shift / Alt at press do not combine), Align Edges, or Pixels
+  blend mode / opacity / anti-alias toggle.
 - **Path Selection and Direct Selection** (changes `path-selection-tool`,
   `direct-selection-tool`, issues #41–#42, ported from photorust's
   `core/src/path.rs` and its shell's `CanvasView::pathSelectPress`): the A

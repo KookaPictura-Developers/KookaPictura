@@ -38,6 +38,7 @@ fn knockout_base(region: &Canvas, doc: &Document) -> Option<Canvas> {
     let present = doc.layers.iter().skip(1).any(has_knockout);
     present.then(|| {
         let mut base = Canvas::new_region(region.ox, region.oy, region.w, region.h);
+        base.skip_effects = region.skip_effects;
         if let Some(background) = doc.layers.first() {
             composite_layer_inner(&mut base, background, doc, None, None);
         }

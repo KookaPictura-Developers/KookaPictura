@@ -142,6 +142,13 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::FreeformPen:
     case ToolId::PathSelection:
         return buildPenPage(id);
+    case ToolId::Rectangle:
+    case ToolId::RoundedRectangle:
+    case ToolId::Ellipse:
+    case ToolId::Polygon:
+    case ToolId::Line:
+    case ToolId::CustomShape:
+        return buildShapePage(id);
     case ToolId::HorizontalType:
     case ToolId::VerticalType:
     case ToolId::HorizontalTypeMask:

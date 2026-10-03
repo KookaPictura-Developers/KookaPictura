@@ -134,6 +134,7 @@ public:
         if (!v || !v->has_document()) {
             return true;
         }
+        path_set_layer_target(*v, false);
         const double radius = hitRadius(ctx);
         const double x = imagePos.x();
         const double y = imagePos.y();
@@ -379,6 +380,8 @@ private:
             canvas->setPathOverlay({});
             return;
         }
+        // The Pen group draws the Work Path, never a shape layer's outline.
+        path_set_layer_target(*v, false);
         ImageView::PathOverlay overlay = workPathOverlay(*v, -1);
         const int editing = path_editing_subpath(*v);
         PathPointView last;

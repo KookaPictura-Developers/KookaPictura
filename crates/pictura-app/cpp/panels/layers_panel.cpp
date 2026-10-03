@@ -11,6 +11,7 @@
 #include "session.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include <QtCore/QAbstractItemModel>
 #include <QtCore/QEvent>
@@ -443,7 +444,10 @@ void LayersPanel::refresh()
             row.placed = view_->layer_row_placed(i);
             row.documentWidth = documentWidth;
             row.documentHeight = documentHeight;
-            row.thumbnail = view_->layer_row_thumbnail(i, thumbSize, thumbEntireDocument_);
+            row.shape = shape_row_is_shape(*view_, i);
+            row.thumbnail = row.shape
+                ? shape_row_thumbnail(*view_, i, thumbSize)
+                : view_->layer_row_thumbnail(i, thumbSize, thumbEntireDocument_);
             row.maskThumbnail = view_->layer_row_mask_thumbnail(i, thumbSize);
             rows.push_back(std::move(row));
         }
