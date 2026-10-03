@@ -31,6 +31,7 @@ mod blend;
 mod canvas_damage;
 pub use canvas_damage::CanvasDamage;
 mod composite;
+mod composite_clipping;
 mod composite_knockout;
 mod composite_rows;
 mod view_pyramid;
@@ -98,19 +99,20 @@ pub use document_ops::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
     add_layer_in, add_raster_layer_from_rgba, add_shape_layer, add_slice, add_solid_fill,
     apply_pictura_raw, apply_visibility, background_from_layer, can_convert_to_smart_object,
-    can_edit_smart_object_contents, can_merge_scope, can_merge_target, can_move_path_to,
-    can_rasterize_smart_object, can_replace_smart_object_contents, clear_layer,
-    convert_depth_exposure_gamma, convert_to_smart_object, copy_layer, copy_merged,
-    coverage_bounds, crop_document, delete_cropped_pixels, delete_hidden_layers, delete_paths,
-    duplicate_layer, duplicate_paths, flatten, flatten_rows, flip_document, group_layer,
-    group_paths, identity_mesh, is_background, is_fill_content_layer, is_shape_layer,
-    is_visible_in_panel, layer_from_background, layer_live_shape, layer_shape_paths,
-    layer_via_copy, layer_via_cut, merge_scope, move_path, move_path_to, move_selection_content,
-    neutral_color, next_layer_name, open_as_smart_object, parent_path, paste_clip,
-    perspective_crop, perspective_crop_refusal, perspective_crop_size, place_smart_object,
-    rasterize_all_layers, rasterize_fill_content, rasterize_smart_object, remove_slice,
-    rename_path, replace_smart_object_contents, resize_canvas_document, resize_document,
-    resize_shape, resolve_path, resolve_path_mut, resolve_slices, rotate_document, select_similar,
+    can_create_clipping_mask, can_edit_smart_object_contents, can_merge_scope, can_merge_target,
+    can_move_path_to, can_rasterize_smart_object, can_release_clipping_mask,
+    can_replace_smart_object_contents, clear_layer, convert_depth_exposure_gamma,
+    convert_to_smart_object, copy_layer, copy_merged, coverage_bounds, create_clipping_mask,
+    crop_document, delete_cropped_pixels, delete_hidden_layers, delete_paths, duplicate_layer,
+    duplicate_paths, flatten, flatten_rows, flip_document, group_layer, group_paths, identity_mesh,
+    is_background, is_fill_content_layer, is_shape_layer, is_visible_in_panel,
+    layer_from_background, layer_live_shape, layer_shape_paths, layer_via_copy, layer_via_cut,
+    merge_scope, move_path, move_path_to, move_selection_content, neutral_color, next_layer_name,
+    open_as_smart_object, parent_path, paste_clip, perspective_crop, perspective_crop_refusal,
+    perspective_crop_size, place_smart_object, rasterize_all_layers, rasterize_fill_content,
+    rasterize_smart_object, release_clipping_mask, remove_slice, rename_path,
+    replace_smart_object_contents, resize_canvas_document, resize_document, resize_shape,
+    resolve_path, resolve_path_mut, resolve_slices, rotate_document, select_similar,
     set_blend_paths, set_color_paths, set_fill_paths, set_layer_live_shape, set_layer_shape_paths,
     set_lock_paths, set_opacity_paths, set_shape_fill, set_shape_stroke, set_slice,
     set_visible_paths, shape_bounds, shape_coverage, shape_fill, shape_fill_color, shape_stroke,

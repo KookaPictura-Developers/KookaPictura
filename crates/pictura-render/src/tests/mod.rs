@@ -8,6 +8,7 @@ use pictura_core::{
 
 mod adjustment;
 mod blend;
+mod clipping;
 mod composite;
 mod gradient_fill;
 mod layer_effects;
