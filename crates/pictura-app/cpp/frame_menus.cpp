@@ -123,6 +123,9 @@ void PicturaMainWindow::registerHandlers()
     registry_->setHandler(command_ids::FileSaveAs, [this]() { saveAsWithDialog(); });
     registry_->setHandler(command_ids::FileExportAs,
                           [this]() { exportAsFromView(this, activeView()); });
+    registry_->setHandler(command_ids::FileSaveForWeb, [this]() {
+        saveForWebFromView(this, activeView(), documentName(activeDocumentIndex()));
+    });
     registry_->setHandler(command_ids::FileQuickExportPng,
                           [this]() { quickExportPngFromView(this, activeView()); });
     registry_->setHandler(command_ids::FileRevert, [this]() {
@@ -167,7 +170,8 @@ void PicturaMainWindow::registerHandlers()
 
     auto hasDocument = [this]() { return documentCount() > 0; };
     for (const char* id : {command_ids::FileSave, command_ids::FileSaveAs, command_ids::FileExportAs,
-                           command_ids::FileQuickExportPng, command_ids::FileClose,
+                           command_ids::FileQuickExportPng, command_ids::FileSaveForWeb,
+                           command_ids::FileClose,
                            command_ids::FileCloseAll, command_ids::FilePlace,
                            command_ids::FileInfo}) {
         registry_->setEnabledProvider(id, hasDocument);

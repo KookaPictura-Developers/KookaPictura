@@ -7,6 +7,7 @@
 #include "canvas_scrollbars.h"
 #include "color_settings_dialog.h"
 #include "export_as_dialog.h"
+#include "save_for_web_dialog.h"
 #include "file_info_dialog.h"
 #include "hdr_conversion_dialog.h"
 #include "icons.h"

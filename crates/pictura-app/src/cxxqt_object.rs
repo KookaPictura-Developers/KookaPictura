@@ -29,6 +29,7 @@ mod paths;
 mod shapes;
 mod state;
 mod type_tools;
+mod web_export;
 pub use state::PictureViewRust;
 #[cfg(test)]
 mod canvas_view_test;
@@ -953,8 +954,7 @@ pub mod qobject {
         #[qinvokable]
         fn composite_argb(&self, x: i32, y: i32) -> u32;
 
-        /// The selected pixels' `"x y w h"` bounding box, or an empty string
-        /// when nothing is selected.
+        /// The selected pixels' `"x y w h"` bounding box, or an empty string when nothing is selected.
         #[qinvokable]
         fn selection_bounds(&self) -> QString;
 

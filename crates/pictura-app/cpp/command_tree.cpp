@@ -42,8 +42,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::FileQuickExportPng, {"File", "Quick Export as PNG"},
                  QStringLiteral("Quick Export as PNG"), QKeySequence(), true);
     leaf(registry, {"File", "Check In…"}, QStringLiteral("Check In…"));
-    leaf(registry, {"File", "Save for Web & Devices…"}, QStringLiteral("Save for Web & Devices…"),
-         QStringLiteral("Ctrl+Alt+Shift+S"));
+    registry.add(command_ids::FileSaveForWeb, {"File", "Save for Web & Devices…"},
+                 QStringLiteral("Save for Web & Devices…"),
+                 QKeySequence(QStringLiteral("Ctrl+Alt+Shift+S")), true);
     registry.add(command_ids::FileRevert, {"File", "Revert…"}, QStringLiteral("Revert…"),
                  QKeySequence(QStringLiteral("F12")), true);
     registry.addSeparator({"File"});
