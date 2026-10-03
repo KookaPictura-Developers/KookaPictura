@@ -24,7 +24,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   The C++ self-test reports **480 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
   probes) reports **2344 passed, 13 skipped, 0 failed**.
-- **Lucide icon set** (change `lucide-icon-set`, spec `ui/icon-assets`): all 165
+- **Lucide icon set** (archived `lucide-icon-set`, spec `ui/icon-assets`): all 165
   `assets/icons/` SVGs are now Lucide-derived (91, vendored verbatim from
   `lucide-static` 1.50.0) or Lucide-style custom (61), with 3 flagged notes and
   10 out-of-scope 3D tool glyphs left as-is. Eleven orphaned glyphs (the reserved
