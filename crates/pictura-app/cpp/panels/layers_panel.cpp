@@ -11,6 +11,7 @@
 #include "session.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/clipping.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include <QtCore/QAbstractItemModel>
@@ -640,6 +641,22 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     if (view_) {
                         view_->select_layer_alpha(pathForProxyIndex(index));
                     }
+                    return true;
+                }
+            }
+            // Alt-click on the line between two rows (outside the eye column)
+            // clips the upper layer to the lower, or releases it, as CS6 does.
+            if (index.isValid() && (mouse->modifiers() & Qt::AltModifier)
+                && !delegate_->eyeRect(tree_->visualRect(index)).contains(pos)) {
+                const QRect row = tree_->visualRect(index);
+                QModelIndex upper;
+                if (pos.y() >= row.bottom() - kClipLineGrab) {
+                    upper = index;
+                } else if (pos.y() <= row.top() + kClipLineGrab) {
+                    upper = tree_->indexAbove(index);
+                }
+                if (upper.isValid() && view_
+                    && clipping_toggle(*view_, pathForProxyIndex(upper))) {
                     return true;
                 }
             }

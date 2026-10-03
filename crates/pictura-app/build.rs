@@ -45,6 +45,7 @@ fn main() {
                 "src/cxxqt_object.rs",
                 "src/decode_bridge.rs",
                 "src/cxxqt_object/annotations.rs",
+                "src/cxxqt_object/clipping.rs",
                 "src/cxxqt_object/clipboard.rs",
                 "src/cxxqt_object/crop_group.rs",
                 "src/cxxqt_object/export.rs",
@@ -56,6 +57,7 @@ fn main() {
                 "src/cxxqt_object/paths.rs",
                 "src/cxxqt_object/shapes.rs",
                 "src/cxxqt_object/type_tools.rs",
+                "src/cxxqt_object/web_export.rs",
             ])
             .cc_builder(|cc| {
                 cc.include("cpp");

@@ -743,6 +743,16 @@ bool LayersPanel::rowPlacedForTest(const QString& path) const
     return model_ && model_->indexForPath(path).data(LayerRowPlacedRole).toBool();
 }
 
+void LayersPanel::altClickBelowRowForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    const QRect row = tree_->visualRect(index);
+    const QPointF at(row.center().x(), row.bottom() - 1);
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::AltModifier);
+    QApplication::sendEvent(tree_->viewport(), &press);
+}
+
 bool LayersPanel::rowShapeForTest(const QString& path) const
 {
     return model_ && model_->indexForPath(path).data(LayerRowShapeRole).toBool();

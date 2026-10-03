@@ -233,9 +233,12 @@ pub(crate) fn composite_layer_inner(
         {
             let snapshot = has_knockout(layer).then(|| canvas.clone());
             let child_shallow = snapshot.as_ref().or(shallow);
-            for child in &layer.children {
-                composite_layer(canvas, child, doc, deep, child_shallow);
-            }
+            crate::composite_clipping::composite_siblings(
+                canvas,
+                &layer.children,
+                doc,
+                |canvas, _, child| composite_layer(canvas, child, doc, deep, child_shallow),
+            );
             return;
         }
         // An isolated group is a boundary: `deep` resets (a `Deep` child falls
@@ -245,9 +248,12 @@ pub(crate) fn composite_layer_inner(
         inner.skip_effects = canvas.skip_effects;
         let ko_base = has_knockout(layer)
             .then(|| Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h));
-        for child in &layer.children {
-            composite_layer(&mut inner, child, doc, None, ko_base.as_ref());
-        }
+        crate::composite_clipping::composite_siblings(
+            &mut inner,
+            &layer.children,
+            doc,
+            |canvas, _, child| composite_layer(canvas, child, doc, None, ko_base.as_ref()),
+        );
         composite_canvas(canvas, layer, doc, &inner);
     } else if let Some(adjustment) = crate::fill::decode_layer_fill(layer) {
         composite_adjustment(canvas, layer, doc, &adjustment);

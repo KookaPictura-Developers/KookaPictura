@@ -35,7 +35,7 @@ void ImageView::paintPathOverlay(QPainter& painter)
         * QTransform::fromTranslate(offset_.x(), offset_.y());
     const QColor blue(0x2c, 0x6f, 0xd6);
     painter.save();
-    painter.resetTransform();
+    painter.setTransform(viewRotation());
     painter.setClipping(false);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setBrush(Qt::NoBrush);

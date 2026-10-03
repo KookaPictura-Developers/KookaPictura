@@ -80,6 +80,10 @@ QColor layerLabelColor(int label);
 
 QPixmap labelSwatch(int label);
 
+// How close (px) to the line between two rows an Alt-click must land to clip
+// or release the upper layer.
+constexpr int kClipLineGrab = 4;
+
 // Panel Options thumbnail sizes by enum order (None/Small/Medium/Large).
 constexpr std::array<int, 4> kThumbSizePx{0, 16, 24, 32};
 

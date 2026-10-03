@@ -62,12 +62,14 @@ std::unique_ptr<ToolHandler> makeRetouchToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makePenToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makePathSelectionToolHandler(ToolId id);
 std::unique_ptr<ToolHandler> makeShapeToolHandler(ToolId id);
+std::unique_ptr<ToolHandler> makeRotateViewToolHandler();
 std::unique_ptr<ToolHandler> makeTypeToolHandler(ToolId id);
 
 ToolController::ToolController(QObject* parent)
     : QObject(parent)
 {
     registry_.registerTool(ToolId::Hand, makeHandToolHandler());
+    registry_.registerTool(ToolId::RotateView, makeRotateViewToolHandler());
     registry_.registerTool(ToolId::Zoom, makeZoomToolHandler());
     registry_.registerTool(ToolId::Eyedropper, makeEyedropperToolHandler());
     registry_.registerTool(ToolId::Brush, makeBrushToolHandler(false));
@@ -218,6 +220,20 @@ void ToolController::setPenOptions(const PenOptions& options)
     if (ToolHandler* h = registry_.forTool(active_)) {
         h->onOptionsChanged(*this);
     }
+}
+
+double ToolController::viewRotation() const
+{
+    return canvas_ ? canvas_->rotation() : 0.0;
+}
+
+void ToolController::setViewRotation(double degrees)
+{
+    if (!canvas_) {
+        return;
+    }
+    canvas_->setRotation(degrees);
+    emit viewRotationChanged(canvas_->rotation());
 }
 
 void ToolController::setShapeOptions(const ShapeOptions& options)

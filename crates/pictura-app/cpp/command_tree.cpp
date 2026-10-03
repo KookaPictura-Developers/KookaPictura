@@ -42,8 +42,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::FileQuickExportPng, {"File", "Quick Export as PNG"},
                  QStringLiteral("Quick Export as PNG"), QKeySequence(), true);
     leaf(registry, {"File", "Check In…"}, QStringLiteral("Check In…"));
-    leaf(registry, {"File", "Save for Web & Devices…"}, QStringLiteral("Save for Web & Devices…"),
-         QStringLiteral("Ctrl+Alt+Shift+S"));
+    registry.add(command_ids::FileSaveForWeb, {"File", "Save for Web & Devices…"},
+                 QStringLiteral("Save for Web & Devices…"),
+                 QKeySequence(QStringLiteral("Ctrl+Alt+Shift+S")), true);
     registry.add(command_ids::FileRevert, {"File", "Revert…"}, QStringLiteral("Revert…"),
                  QKeySequence(QStringLiteral("F12")), true);
     registry.addSeparator({"File"});
@@ -378,9 +379,11 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Vector Mask", "Disable"}, QStringLiteral("Disable"));
     leaf(registry, {"Layer", "Vector Mask", "Link"}, QStringLiteral("Link"));
     leaf(registry, {"Layer", "Vector Mask", "Unlink"}, QStringLiteral("Unlink"));
-    leaf(registry, {"Layer", "Create Clipping Mask"}, QStringLiteral("Create Clipping Mask"),
-         QStringLiteral("Ctrl+Alt+G"));
-    leaf(registry, {"Layer", "Release Clipping Mask"}, QStringLiteral("Release Clipping Mask"));
+    registry.add(command_ids::LayerCreateClippingMask, {"Layer", "Create Clipping Mask"},
+                 QStringLiteral("Create Clipping Mask"), QKeySequence(QStringLiteral("Ctrl+Alt+G")),
+                 true);
+    registry.add(command_ids::LayerReleaseClippingMask, {"Layer", "Release Clipping Mask"},
+                 QStringLiteral("Release Clipping Mask"), QKeySequence(), true);
     registry.add(command_ids::LayerSmartObjectConvertTo,
                  {"Layer", "Smart Objects", "Convert to Smart Object"},
                  QStringLiteral("Convert to Smart Object"), QKeySequence(), true);

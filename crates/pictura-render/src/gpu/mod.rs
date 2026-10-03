@@ -343,8 +343,10 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         if matches!(layer.blend, BlendMode::Dissolve) {
             return Err(GpuError::UnsupportedMode(layer.blend));
         }
+        // Clipping groups composite on the CPU (`composite_clipping`).
         if layer.blend_if.as_ref().is_some_and(|v| !v.is_default())
             || layer.knockout != Knockout::None
+            || layer.clipping
         {
             return Err(GpuError::UnsupportedAdvancedBlending);
         }

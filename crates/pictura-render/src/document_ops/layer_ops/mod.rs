@@ -4,6 +4,7 @@
 //! `Document::layers` (index 0 is the bottom of the stack).
 
 mod clipboard;
+mod clipping;
 mod create;
 mod merge;
 #[cfg(test)]
@@ -36,6 +37,10 @@ mod warp_styles_tests;
 
 pub use clipboard::{
     clear_layer, copy_layer, copy_merged, coverage_bounds, paste_clip, Clip, PasteMode,
+};
+pub use clipping::{
+    can_create_clipping_mask, can_release_clipping_mask, create_clipping_mask,
+    release_clipping_mask,
 };
 pub(crate) use create::insert_node;
 pub use create::{

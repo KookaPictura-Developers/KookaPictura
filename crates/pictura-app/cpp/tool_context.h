@@ -293,6 +293,8 @@ struct ToolContext {
     virtual ShapeOptions shapeOptions() const = 0;
     // Mirror the active shape layer into the options (the bar re-reads them).
     virtual void setShapeOptions(const ShapeOptions& options) = 0;
+    // Rotate View: the canvas's view rotation in degrees clockwise.
+    virtual void setViewRotation(double degrees) = 0;
     virtual TypeOptions typeOptions() const = 0;
     virtual void setTypeOptions(const TypeOptions& options) = 0;
     // The Clone Source panel's active slot, read and written by the Clone Stamp.

@@ -43,6 +43,7 @@ mod smart_writer;
 mod type_tool;
 mod type_write;
 mod vector_mask;
+mod web;
 mod write;
 mod write_bitmap;
 mod write_duotone;
@@ -93,6 +94,10 @@ pub use smart_object::remove_linked_source;
 pub use type_tool::encode_type_tool;
 pub use type_write::author_type_tool;
 pub use vector_mask::{decode_vector_mask, decode_vector_mask_paths, encode_vector_mask};
+pub use web::{
+    encode_gif, encode_wbmp, quantize, web_safe_palette, ColorReduction, Dither, Indexed,
+    PaletteOptions,
+};
 pub use write::{write_psb, write_psd};
 pub use xmp::{parse_xmp, patch_xmp, patch_xmp_values, to_xmp_packet, XmpField, XmpProperties};
 

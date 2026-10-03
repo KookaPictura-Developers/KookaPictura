@@ -313,6 +313,21 @@ public:
 
     // Map a widget-space point to document/image coordinates.
     QPointF widgetToImage(const QPointF& widgetPos) const;
+    QPointF imageToWidget(const QPointF& imagePos) const;
+
+    // Rotate View: the canvas turns about the widget centre, the document
+    // untouched. Zoom and offset are kept in the unrotated "view" frame, so
+    // the whole paint is rotated once and only input mapping needs undoing.
+    double rotation() const { return rotation_; }
+    // Degrees clockwise, normalised to (-180, 180].
+    void setRotation(double degrees);
+    // The widget-from-view transform (identity at 0°).
+    QTransform viewRotation() const;
+    // The widget rect in the view frame (its bounding box when rotated).
+    QRectF viewRect() const;
+    // The compass the Rotate View tool shows while dragging.
+    void setCompassVisible(bool visible);
+    bool compassVisibleForTest() const { return compassVisible_; }
 
 signals:
     void zoomChanged(double zoom);
@@ -375,6 +390,9 @@ private:
     QColor canvasColor_{Qt::darkGray};
     double zoom_ = 1.0;
     QPointF offset_;
+    double rotation_ = 0.0;
+    bool compassVisible_ = false;
+    void paintCompass(QPainter& painter);
     QPointF last_;
     bool panEnabled_ = true;
     bool panning_ = false;

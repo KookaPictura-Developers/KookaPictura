@@ -9,6 +9,8 @@ set(PICTURA_QT_TESTS
     tst_pen_tools
     tst_path_selection_tools
     tst_shape_tools
+    tst_rotate_view
+    tst_save_for_web
     tst_type_tools
     tst_shared_widgets
     tst_info_panel
