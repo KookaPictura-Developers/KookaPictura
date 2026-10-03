@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
 mod annotations;
 mod clipboard;
+mod clipping;
 mod crop_group;
 mod export;
 mod filter_map;
@@ -28,6 +29,7 @@ mod paths;
 mod shapes;
 mod state;
 mod type_tools;
+mod web_export;
 pub use state::PictureViewRust;
 #[cfg(test)]
 mod canvas_view_test;
@@ -899,8 +901,7 @@ pub mod qobject {
         #[qinvokable]
         fn prepare_move_preview(self: Pin<&mut Self>) -> bool;
 
-        /// Whether the last `begin_move_preview` reused the cached base instead
-        /// of recomputing it.
+        /// Whether the last `begin_move_preview` reused the cached base instead of recomputing it.
         #[qinvokable]
         fn move_preview_cache_hit(&self) -> bool;
 
@@ -953,8 +954,7 @@ pub mod qobject {
         #[qinvokable]
         fn composite_argb(&self, x: i32, y: i32) -> u32;
 
-        /// The selected pixels' `"x y w h"` bounding box, or an empty string
-        /// when nothing is selected.
+        /// The selected pixels' `"x y w h"` bounding box, or an empty string when nothing is selected.
         #[qinvokable]
         fn selection_bounds(&self) -> QString;
 

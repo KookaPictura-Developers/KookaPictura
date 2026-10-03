@@ -32,9 +32,9 @@ void ImageView::paintTypeOverlay(QPainter& painter)
     const QTransform toWidget = QTransform::fromScale(zoom_, zoom_)
         * QTransform::fromTranslate(offset_.x(), offset_.y());
     painter.save();
-    painter.resetTransform();
+    painter.setTransform(viewRotation());
     painter.setClipping(false);
-    painter.setTransform(toWidget);
+    painter.setTransform(toWidget * viewRotation());
     const QRect textRect(o.topLeft, o.image.size());
     if (o.mask) {
         QRegion tinted(QRect(QPoint(0, 0), o.canvas));

@@ -51,7 +51,7 @@ void ImageView::paintAnnotations(QPainter& painter)
     }
     const auto toWidget = [this](const QPointF& p) { return p * zoom_ + offset_; };
     painter.save();
-    painter.resetTransform();
+    painter.setTransform(viewRotation());
     painter.setClipping(false);
     painter.setRenderHint(QPainter::Antialiasing, true);
 

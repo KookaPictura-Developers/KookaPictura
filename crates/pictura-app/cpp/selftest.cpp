@@ -3006,14 +3006,14 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool sPattern = sPlain && frame.activeTool() == pictura::ToolId::PatternStamp;
         sendKey(Qt::Key_S, Qt::ShiftModifier, QStringLiteral("S"));
         const bool sWrap = sPattern && frame.activeTool() == pictura::ToolId::CloneStamp;
-        // Shift+Y reaches the Art History Brush, E the Eraser; R (unimplemented) is a no-op.
+        // Shift+Y reaches the Art History Brush, E the Eraser; K (unimplemented) is a no-op.
         sendKey(Qt::Key_Y, Qt::NoModifier, QStringLiteral("y"));
         const bool yPlain = frame.activeTool() == pictura::ToolId::HistoryBrush;
         sendKey(Qt::Key_Y, Qt::ShiftModifier, QStringLiteral("Y"));
         const bool yArt = yPlain && frame.activeTool() == pictura::ToolId::ArtHistoryBrush;
         sendKey(Qt::Key_E, Qt::NoModifier, QStringLiteral("e"));
         const bool yShift = yArt && frame.activeTool() == pictura::ToolId::Eraser;
-        sendKey(Qt::Key_R, Qt::NoModifier, QStringLiteral("r"));
+        sendKey(Qt::Key_K, Qt::NoModifier, QStringLiteral("k"));
         const bool noImpl = frame.activeTool() == pictura::ToolId::Eraser;
         if (toolsPanelToolbox) {
             toolsPanelToolbox->setShiftKeyForToolSwitch(false);

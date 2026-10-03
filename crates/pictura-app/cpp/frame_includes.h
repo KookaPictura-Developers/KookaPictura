@@ -7,6 +7,7 @@
 #include "canvas_scrollbars.h"
 #include "color_settings_dialog.h"
 #include "export_as_dialog.h"
+#include "save_for_web_dialog.h"
 #include "file_info_dialog.h"
 #include "hdr_conversion_dialog.h"
 #include "icons.h"
@@ -40,6 +41,7 @@
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/clipping.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/export.cxxqt.h"
 
 #include <QtCore/QFileInfo>

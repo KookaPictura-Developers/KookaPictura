@@ -303,6 +303,8 @@ public:
     void setPenOptions(const PenOptions& options);
     ShapeOptions shapeOptions() const override { return shape_; }
     void setShapeOptions(const ShapeOptions& options) override;
+    double viewRotation() const;
+    void setViewRotation(double degrees) override;
     TypeOptions typeOptions() const override { return type_; }
     void setTypeOptions(const TypeOptions& options) override;
     // The active Type tool's Commit / Cancel; false when no text is being typed.
@@ -439,6 +441,8 @@ signals:
     void typeOptionsChanged();
     // The shape options changed (the bar, or the active shape layer mirrored).
     void shapeOptionsChanged();
+    // Rotate View turned the canvas (a drag, the options bar, or Reset View).
+    void viewRotationChanged(double degrees);
 
 private:
     void applyToolPolicy();

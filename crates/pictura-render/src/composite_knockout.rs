@@ -18,7 +18,7 @@ use crate::composite::{composite_layer_inner, Canvas};
 /// layer's knockout against its stopping-point base.
 pub(crate) fn composite_layers(canvas: &mut Canvas, doc: &Document) {
     let background = knockout_base(canvas, doc);
-    for (i, layer) in doc.layers.iter().enumerate() {
+    crate::composite_clipping::composite_siblings(canvas, &doc.layers, doc, |canvas, i, layer| {
         // At the document root both bases are the same document background, so
         // `Shallow` and `Deep` are byte-identical there.
         let (deep, shallow) = if i == 0 {
@@ -27,7 +27,7 @@ pub(crate) fn composite_layers(canvas: &mut Canvas, doc: &Document) {
             (background.as_ref(), background.as_ref())
         };
         composite_layer(canvas, layer, doc, deep, shallow);
-    }
+    });
 }
 
 /// The document background (the bottom layer composited alone), built only when
