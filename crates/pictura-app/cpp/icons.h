@@ -15,6 +15,8 @@ QIcon icon(const QString& id);
 QIcon icon(const QString& id, const QColor& color);
 // Renders the cursor SVG at the given hotspot in the 24x24 cursor space.
 QCursor cursor(const QString& id, int hotX, int hotY);
+// As above, turned `degrees` clockwise about the hotspot.
+QCursor cursor(const QString& id, int hotX, int hotY, double degrees);
 // Compatibility overload: centres the hotspot at (12, 12).
 QCursor cursor(const QString& id);
 

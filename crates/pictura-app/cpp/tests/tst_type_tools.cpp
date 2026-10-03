@@ -64,6 +64,7 @@ private slots:
     void typeKeysAndCancel();
     void reopenTypeLayer();
     void freeTransformKeepsType();
+    void freeTransformRotateCursor();
     void textEditModel();
     void editLikeATextField();
     void barRestylesTheSelectedLayer();
@@ -326,6 +327,73 @@ void TypeToolsTest::freeTransformKeepsType()
     QVERIFY2(f.committedOnce(base + 1, "Edit Type Layer"), "edited after the transform");
     QVERIFY(layerRect(f, path).width() > stretched.width() + 10);
     QCOMPARE(layerRect(f, path).height(), stretched.height());
+    f.tools->setTypeOptions(saved);
+}
+
+// Just outside a Free Transform corner the cursor is the curved rotate arrow,
+// turned to face that corner; it stays while the rotation drags.
+void TypeToolsTest::freeTransformRotateCursor()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    Fixture f(frame, seed(), QStringLiteral("pictura_type_rotate_cursor"));
+    QVERIFY2(f.ok(), "type fixture");
+    showFrame();
+    frame.setActiveTool(pictura::ToolId::HorizontalType);
+    const pictura::TypeOptions saved = f.tools->typeOptions();
+    pictura::TypeOptions o = saved;
+    o.size = 30.0;
+    f.tools->setTypeOptions(o);
+    f.drag({QPointF(40, 60)});
+    QTest::keyClicks(f.canvas, QStringLiteral("Spin"));
+    QTest::keyClick(f.canvas, Qt::Key_Return, Qt::ControlModifier);
+    const QString path = typeLayer(f);
+    const QRect box = layerRect(f, path);
+    frame.setActiveTool(pictura::ToolId::Move);
+    QVERIFY(f.tools->beginFreeTransform(path));
+
+    const auto cursorImage = [&f]() { return f.canvas->cursor().pixmap().toImage(); };
+    const double zoom = f.canvas->zoom();
+    const QPointF topLeft = QPointF(box.topLeft()) - QPointF(8, 8) / zoom;
+    const QPointF bottomRight = QPointF(box.right() + 1, box.bottom() + 1) + QPointF(8, 8) / zoom;
+    f.canvas->mouseMoved(topLeft);
+    QCOMPARE(f.canvas->cursor().shape(), Qt::BitmapCursor);
+    const QImage atTopLeft = cursorImage();
+    QVERIFY(!atTopLeft.isNull());
+    f.canvas->mouseMoved(bottomRight);
+    QCOMPARE(f.canvas->cursor().shape(), Qt::BitmapCursor);
+    // The arc bulges toward the corner, so its ink sits on the box's side of
+    // the centred hotspot: down-right at the top-left, up-left at the bottom-right.
+    const auto inkOffset = [](const QImage& image) {
+        QPointF sum;
+        int n = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                if (qAlpha(image.pixel(x, y)) > 128) {
+                    sum += QPointF(x + 0.5, y + 0.5);
+                    ++n;
+                }
+            }
+        }
+        return n ? sum / n - QPointF(image.width(), image.height()) / 2.0 : QPointF();
+    };
+    const QPointF tl = inkOffset(atTopLeft);
+    const QPointF br = inkOffset(cursorImage());
+    QVERIFY2(tl.x() > 0.3 && tl.y() > 0.3, "top-left arrow faces out of the corner");
+    QVERIFY2(br.x() < -0.3 && br.y() < -0.3, "bottom-right arrow faces out of the corner");
+
+    // Inside the box it is the move hand again.
+    f.canvas->mouseMoved(QPointF(box.center()));
+    QCOMPARE(f.canvas->cursor().shape(), Qt::OpenHandCursor);
+
+    // A rotation drag keeps the arrow, even inside the box, and rotates.
+    f.canvas->mousePressed(bottomRight, Qt::LeftButton, 0);
+    f.canvas->mouseMoved(QPointF(box.center()) + QPointF(2, box.height()));
+    QCOMPARE(f.canvas->cursor().shape(), Qt::BitmapCursor);
+    f.canvas->mouseMoved(QPointF(box.center()) + QPointF(1, 1));
+    QCOMPARE(f.canvas->cursor().shape(), Qt::BitmapCursor);
+    f.canvas->mouseReleased(QPointF(box.center()) + QPointF(1, 1));
+    QVERIFY2(qAbs(f.view->transform_angle()) > 0.1, "rotated (radians)");
+    f.tools->cancelFreeTransform();
     f.tools->setTypeOptions(saved);
 }
 
