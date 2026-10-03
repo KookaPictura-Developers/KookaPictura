@@ -132,6 +132,9 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/brush_panel.cpp
     crates/pictura-app/cpp/panels/brush_preset_picker.cpp
     crates/pictura-app/cpp/panels/clone_source_panel.cpp
+    crates/pictura-app/cpp/panels/character_panel.cpp
+    crates/pictura-app/cpp/panels/paragraph_panel.cpp
+    crates/pictura-app/cpp/panels/glyphs_panel.cpp
     crates/pictura-app/cpp/panels/navigator_panel.cpp
     crates/pictura-app/cpp/panels/color_panel.cpp
     crates/pictura-app/cpp/panels/swatches_panel.cpp

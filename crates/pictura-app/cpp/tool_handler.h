@@ -50,6 +50,9 @@ public:
     virtual bool commitText() { return false; }
     virtual bool cancelText() { return false; }
     virtual bool textActive() const { return false; }
+    // Insert `text` at the open type edit's caret (the Glyphs panel); false
+    // when no edit is open.
+    virtual bool insertText(const QString& text) { return false; }
     // The options bar's Clear: drop the tool's color samplers, notes, or ruler.
     virtual bool clearAnnotations() { return false; }
 

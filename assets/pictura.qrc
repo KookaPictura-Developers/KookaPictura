@@ -164,8 +164,10 @@
     <file>icons/window.panels.adjustments.svg</file>
     <file>icons/window.panels.brushes.svg</file>
     <file>icons/window.panels.channels.svg</file>
+    <file>icons/window.panels.character.svg</file>
     <file>icons/window.panels.cloneSource.svg</file>
     <file>icons/window.panels.color.svg</file>
+    <file>icons/window.panels.glyphs.svg</file>
     <file>icons/window.panels.gradients.svg</file>
     <file>icons/window.panels.histogram.svg</file>
     <file>icons/window.panels.history.svg</file>
@@ -173,6 +175,7 @@
     <file>icons/window.panels.layers.svg</file>
     <file>icons/window.panels.navigator.svg</file>
     <file>icons/window.panels.notes.svg</file>
+    <file>icons/window.panels.paragraph.svg</file>
     <file>icons/window.panels.paths.svg</file>
     <file>icons/window.panels.patterns.svg</file>
     <file>icons/window.panels.properties.svg</file>

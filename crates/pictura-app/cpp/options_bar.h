@@ -119,4 +119,12 @@ private:
 // Built-in pattern `index` as an icon, for the pattern pickers.
 QIcon patternIcon(int index);
 
+// options_bar_type.cpp, shared with the Character and Paragraph panels: the
+// Type tools' size menu (px; any value 1-1296 can be typed), the paragraph
+// alignment glyph (`justification` 0 left, 1 right, 2 centre; top / bottom /
+// centre for vertical type), and the text colour swatch.
+QList<int> typeSizes();
+QIcon typeAlignIcon(int justification, bool vertical, const QColor& color);
+QIcon typeSwatchIcon(const QColor& color);
+
 } // namespace pictura

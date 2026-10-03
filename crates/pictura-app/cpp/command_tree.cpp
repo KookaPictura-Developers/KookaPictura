@@ -795,13 +795,16 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Window", "Panels", "Brush Presets"}, QStringLiteral("Brush Presets"));
     registry.add(CommandSpec{command_ids::WindowPanelsChannels, {"Window", "Panels", "Channels"},
                              QStringLiteral("Channels"), QKeySequence(), true, true});
-    leaf(registry, {"Window", "Panels", "Character"}, QStringLiteral("Character"));
+    registry.add(CommandSpec{command_ids::WindowPanelsCharacter, {"Window", "Panels", "Character"},
+                             QStringLiteral("Character"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Character Styles"}, QStringLiteral("Character Styles"));
     registry.add(CommandSpec{command_ids::WindowPanelsCloneSource,
                              {"Window", "Panels", "Clone Source"}, QStringLiteral("Clone Source"),
                              QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsColor, {"Window", "Panels", "Color"},
                              QStringLiteral("Color"), QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::WindowPanelsGlyphs, {"Window", "Panels", "Glyphs"},
+                             QStringLiteral("Glyphs"), QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsGradients, {"Window", "Panels", "Gradients"},
                              QStringLiteral("Gradients"), QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsHistogram, {"Window", "Panels", "Histogram"},
@@ -818,7 +821,8 @@ void addDefaultCommands(CommandRegistry& registry) {
                              QStringLiteral("Navigator"), QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsNotes, {"Window", "Panels", "Notes"},
                              QStringLiteral("Notes"), QKeySequence(), true, true});
-    leaf(registry, {"Window", "Panels", "Paragraph"}, QStringLiteral("Paragraph"));
+    registry.add(CommandSpec{command_ids::WindowPanelsParagraph, {"Window", "Panels", "Paragraph"},
+                             QStringLiteral("Paragraph"), QKeySequence(), true, true});
     leaf(registry, {"Window", "Panels", "Paragraph Styles"}, QStringLiteral("Paragraph Styles"));
     registry.add(CommandSpec{command_ids::WindowPanelsPaths, {"Window", "Panels", "Paths"},
                              QStringLiteral("Paths"), QKeySequence(), true, true});

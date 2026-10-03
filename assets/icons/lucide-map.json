@@ -842,6 +842,11 @@
       "match": "custom",
       "note": "three evenly overlapping circles with varying fill"
     },
+    "window.panels.character": {
+      "kind": "lucide",
+      "slug": "a-large-small",
+      "match": "approximate"
+    },
     "window.panels.cloneSource": {
       "kind": "custom",
       "match": "custom",
@@ -852,6 +857,11 @@
       "kind": "lucide",
       "slug": "palette",
       "match": "good"
+    },
+    "window.panels.glyphs": {
+      "kind": "lucide",
+      "slug": "omega",
+      "match": "approximate"
     },
     "window.panels.gradients": {
       "kind": "custom",
@@ -887,6 +897,11 @@
       "kind": "custom",
       "match": "custom",
       "note": "same custom sticky-note as tool.note"
+    },
+    "window.panels.paragraph": {
+      "kind": "lucide",
+      "slug": "pilcrow",
+      "match": "exact"
     },
     "window.panels.paths": {
       "kind": "lucide",
