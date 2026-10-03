@@ -9,18 +9,30 @@
 #include <QtSvg/QSvgRenderer>
 #include <QtWidgets/QApplication>
 
+#include "svg_icon_engine.h"
+
 namespace pictura {
 
 QIcon icon(const QString& id)
 {
-    const QString base = QStringLiteral(":/icons/") + id;
-    for (const QString& ext : {QStringLiteral(".svg"), QStringLiteral(".png")}) {
-        const QString path = base + ext;
-        if (QFile::exists(path)) {
-            return QIcon(path);
-        }
+    const QString svg = QStringLiteral(":/icons/") + id + QStringLiteral(".svg");
+    if (QFile::exists(svg)) {
+        return QIcon(new SvgIconEngine(svg));
+    }
+    const QString png = QStringLiteral(":/icons/") + id + QStringLiteral(".png");
+    if (QFile::exists(png)) {
+        return QIcon(png);
     }
     return QIcon();
+}
+
+QIcon icon(const QString& id, const QColor& color)
+{
+    const QString svg = QStringLiteral(":/icons/") + id + QStringLiteral(".svg");
+    if (QFile::exists(svg)) {
+        return QIcon(new SvgIconEngine(svg, color));
+    }
+    return icon(id);
 }
 
 QCursor cursor(const QString& id)

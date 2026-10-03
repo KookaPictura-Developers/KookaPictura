@@ -100,6 +100,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/image_view_type.cpp
     crates/pictura-app/cpp/canvas_scrollbars.cpp
     crates/pictura-app/cpp/icons.cpp
+    crates/pictura-app/cpp/svg_icon_engine.cpp
     crates/pictura-app/cpp/file_drop_router.cpp
     crates/pictura-app/cpp/frame.cpp
     crates/pictura-app/cpp/frame_columns.cpp
@@ -217,6 +218,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/canvas_range.h
     crates/pictura-app/cpp/canvas_scrollbars.h
     crates/pictura-app/cpp/icons.h
+    crates/pictura-app/cpp/svg_icon_engine.h
     crates/pictura-app/cpp/file_drop_router.h
     crates/pictura-app/cpp/frame.h
     crates/pictura-app/cpp/panels/layers_panel.h

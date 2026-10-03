@@ -28,3 +28,15 @@ framework under **LGPL-3.0-or-later** and a set of permissively licensed
 Rust crates. The resolved dependency licenses are listed in
 [`THIRD-PARTY-LICENSES`](THIRD-PARTY-LICENSES); the required texts are under
 [`LICENSES/`](LICENSES/).
+
+## Icon assets
+
+The application icons under `assets/icons/` are derived from the **Lucide**
+icon set (<https://lucide.dev>), vendored from `lucide-static` 1.50.0, or are
+independently authored in the same 24×24 line style. Lucide is licensed under
+the **ISC License**, with a subset derived from the **Feather** project under
+the **MIT License**; the full text is in
+[`LICENSES/Lucide.txt`](LICENSES/Lucide.txt). Per-icon provenance (Lucide slug
+or custom) is recorded in
+[`docs/dev/icon-provenance.md`](docs/dev/icon-provenance.md) and
+`assets/icons/lucide-map.json`.

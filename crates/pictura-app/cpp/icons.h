@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QString>
+#include <QtGui/QColor>
 #include <QtGui/QCursor>
 #include <QtGui/QIcon>
 
@@ -8,7 +9,10 @@ namespace pictura {
 
 // Asset id -> resource lookup. Ids are file names without the extension:
 // command ids verbatim ("file.saveAs") and tools/cursors as "tool.<tool>".
+// SVG icons are tinted at render time from the active palette; `color`
+// overrides the tint (an invalid color follows the palette).
 QIcon icon(const QString& id);
+QIcon icon(const QString& id, const QColor& color);
 // Renders the cursor SVG at the given hotspot in the 24x24 cursor space.
 QCursor cursor(const QString& id, int hotX, int hotY);
 // Compatibility overload: centres the hotspot at (12, 12).

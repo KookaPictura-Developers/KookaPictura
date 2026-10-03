@@ -79,6 +79,16 @@ def main() -> None:
     )
     lines += [
         "",
+        "Icon assets",
+        "-----------",
+        "",
+        "The icons in assets/icons/ are derived from the Lucide icon set (vendored",
+        "from lucide-static 1.50.0, https://lucide.dev) or are independently",
+        "authored in the same style. Lucide is licensed under the ISC License,",
+        "with a subset derived from the Feather project under the MIT License.",
+        "Full text in LICENSES/Lucide.txt; per-icon provenance in",
+        "docs/dev/icon-provenance.md.",
+        "",
         "Full license texts for components that require reproduction are kept in",
         "LICENSES/. Regenerate this file with scripts/third-party-licenses.py; do",
         "not edit it by hand.",

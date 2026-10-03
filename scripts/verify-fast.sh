@@ -71,6 +71,9 @@ bash scripts/check-file-size.sh
 echo "== selftest budget =="
 bash scripts/check-selftest-budget.sh
 
+echo "== icon provenance =="
+python3 scripts/check-icon-provenance.py
+
 echo "== guard =="
 bash scripts/guard.sh
 
