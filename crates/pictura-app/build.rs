@@ -45,6 +45,7 @@ fn main() {
                 "src/cxxqt_object.rs",
                 "src/decode_bridge.rs",
                 "src/cxxqt_object/annotations.rs",
+                "src/cxxqt_object/clipping.rs",
                 "src/cxxqt_object/clipboard.rs",
                 "src/cxxqt_object/crop_group.rs",
                 "src/cxxqt_object/export.rs",

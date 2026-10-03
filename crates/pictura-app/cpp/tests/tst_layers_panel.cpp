@@ -4,7 +4,11 @@
 
 #include "frame.h"
 #include "panels/layers_panel.h"
+#include "commands.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
+
+#include <QtGui/QAction>
 
 #include "qt_test_support.h"
 
@@ -19,6 +23,7 @@ private slots:
     void rowWidgets();
     void dragReorder();
     void dropOnDelete();
+    void clippingMasks();
 
 private:
     bool setupNest();
@@ -174,6 +179,71 @@ void LayersPanelTest::dropOnDelete()
                  && view->history_count() == base + 1,
              "drop on delete is one undo step");
     window_->closeDocument(doc, false);
+}
+
+// Create Clipping Mask clips a full-canvas green fill to a red square below
+// it; Release from the base frees it; Alt-clicking the line between the rows
+// toggles it back and forth (#63).
+void LayersPanelTest::clippingMasks()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Clip"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY(view_ && panel_);
+    pictura::ShapeSpec square{};
+    square.kind = 0;
+    square.boxed = true;
+    square.x0 = 2;
+    square.y0 = 2;
+    square.x1 = 8;
+    square.y1 = 8;
+    const QString base = pictura::shape_add_layer(*view_, square, 0xffff0000u);
+    const QString fill = view_->add_solid_fill(0xff00ff00u);
+    QVERIFY(!base.isEmpty() && !fill.isEmpty());
+    const QRgb green = 0xff00ff00u;
+    const QRgb white = 0xffffffffu;
+    QCOMPARE(view_->sample_argb(12, 12), green);
+    // The panel picks the new rows up on its queued refresh.
+    QCoreApplication::processEvents();
+
+    pictura::CommandRegistry* registry = window_->registry();
+    QAction* create = registry->action(QString::fromLatin1(pictura::command_ids::LayerCreateClippingMask));
+    QAction* release =
+        registry->action(QString::fromLatin1(pictura::command_ids::LayerReleaseClippingMask));
+    QVERIFY(create && release);
+    QCOMPARE(create->shortcut(), QKeySequence(QStringLiteral("Ctrl+Alt+G")));
+
+    panel_->selectPaths({fill}, fill);
+    registry->refresh();
+    QVERIFY(create->isEnabled());
+    QVERIFY(!release->isEnabled());
+    int before = view_->history_count();
+    create->trigger();
+    QCOMPARE(view_->history_count(), before + 1);
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Create Clipping Mask"));
+    QVERIFY(view_->layer_row_clipping(rowOf(fill)));
+    QCOMPARE(view_->sample_argb(4, 4), green);
+    QCOMPARE(view_->sample_argb(12, 12), white);
+
+    // Release from the base frees the layer clipped to it.
+    QCoreApplication::processEvents();
+    panel_->selectPaths({base}, base);
+    registry->refresh();
+    QVERIFY(release->isEnabled());
+    release->trigger();
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Release Clipping Mask"));
+    QVERIFY(!view_->layer_row_clipping(rowOf(fill)));
+    QCOMPARE(view_->sample_argb(12, 12), green);
+
+    // Alt-click on the line between the rows clips, and again releases.
+    QCoreApplication::processEvents();
+    panel_->altClickBelowRowForTest(fill);
+    QVERIFY(view_->layer_row_clipping(rowOf(fill)));
+    QCOMPARE(view_->sample_argb(12, 12), white);
+    QCoreApplication::processEvents();
+    panel_->altClickBelowRowForTest(fill);
+    QVERIFY(!view_->layer_row_clipping(rowOf(fill)));
 }
 
 QTEST_MAIN(LayersPanelTest)

@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
 mod annotations;
 mod clipboard;
+mod clipping;
 mod crop_group;
 mod export;
 mod filter_map;
@@ -899,8 +900,7 @@ pub mod qobject {
         #[qinvokable]
         fn prepare_move_preview(self: Pin<&mut Self>) -> bool;
 
-        /// Whether the last `begin_move_preview` reused the cached base instead
-        /// of recomputing it.
+        /// Whether the last `begin_move_preview` reused the cached base instead of recomputing it.
         #[qinvokable]
         fn move_preview_cache_hit(&self) -> bool;
 

@@ -510,6 +510,31 @@ void PicturaMainWindow::registerHandlers()
         return false;
     });
 
+    // Create / Release Clipping Mask act on every selected layer.
+    const auto clippingPaths = [this]() {
+        return layersPanel_ ? layersPanel_->selectedPaths() : QStringList();
+    };
+    registry_->setHandler(command_ids::LayerCreateClippingMask, [this, clippingPaths]() {
+        PictureView* view = activeView();
+        if (view && clipping_create(*view, clippingPaths()) > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerCreateClippingMask, [this, clippingPaths]() {
+        PictureView* view = activeView();
+        return view && view->has_document() && clipping_can_create(*view, clippingPaths());
+    });
+    registry_->setHandler(command_ids::LayerReleaseClippingMask, [this, clippingPaths]() {
+        PictureView* view = activeView();
+        if (view && clipping_release(*view, clippingPaths()) > 0) {
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerReleaseClippingMask, [this, clippingPaths]() {
+        PictureView* view = activeView();
+        return view && view->has_document() && clipping_can_release(*view, clippingPaths());
+    });
+
     registry_->setHandler(command_ids::LayerMergeClippingMask, [this]() {
         PictureView* view = activeView();
         const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();

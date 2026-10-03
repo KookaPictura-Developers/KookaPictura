@@ -378,9 +378,11 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Vector Mask", "Disable"}, QStringLiteral("Disable"));
     leaf(registry, {"Layer", "Vector Mask", "Link"}, QStringLiteral("Link"));
     leaf(registry, {"Layer", "Vector Mask", "Unlink"}, QStringLiteral("Unlink"));
-    leaf(registry, {"Layer", "Create Clipping Mask"}, QStringLiteral("Create Clipping Mask"),
-         QStringLiteral("Ctrl+Alt+G"));
-    leaf(registry, {"Layer", "Release Clipping Mask"}, QStringLiteral("Release Clipping Mask"));
+    registry.add(command_ids::LayerCreateClippingMask, {"Layer", "Create Clipping Mask"},
+                 QStringLiteral("Create Clipping Mask"), QKeySequence(QStringLiteral("Ctrl+Alt+G")),
+                 true);
+    registry.add(command_ids::LayerReleaseClippingMask, {"Layer", "Release Clipping Mask"},
+                 QStringLiteral("Release Clipping Mask"), QKeySequence(), true);
     registry.add(command_ids::LayerSmartObjectConvertTo,
                  {"Layer", "Smart Objects", "Convert to Smart Object"},
                  QStringLiteral("Convert to Smart Object"), QKeySequence(), true);

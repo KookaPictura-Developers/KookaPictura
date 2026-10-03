@@ -40,6 +40,7 @@
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/clipping.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/export.cxxqt.h"
 
 #include <QtCore/QFileInfo>

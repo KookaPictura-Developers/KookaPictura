@@ -139,6 +139,8 @@ public:
     bool rowLinkedForTest(const QString& path) const;
     bool rowPlacedForTest(const QString& path) const;
     bool rowShapeForTest(const QString& path) const;
+    // Alt-click the line under `path`'s row, as a user would.
+    void altClickBelowRowForTest(const QString& path);
     bool rowNameItalicForTest(const QString& path) const;
     bool rowNameUnderlineForTest(const QString& path) const;
     int rowHeightForTest() const;
