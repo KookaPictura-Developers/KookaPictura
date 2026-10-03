@@ -29,11 +29,14 @@ pub fn composite_rgba(doc: &Document) -> PixelBuffer {
 /// only neighborhood operations are layer effects; such a stack falls back to
 /// the full composite plus a slice.
 ///
-/// ponytail: object-based layer effects (blur/offset/shape neighborhoods) still
-/// full-composite and slice. Per-pixel layers (pixels, fills, adjustments,
-/// smart sources, masks, groups) composite the region alone, which is the brush
-/// path; add a region-expanded effect kernel only if an effect-bearing paint
-/// layer shows up in a profile.
+/// Effects are neighbourhood operations drawn on a canvas whose origin is the
+/// document's, so they cannot be drawn into a region: when no layer's effects
+/// can reach the region (`effects_reach`), the region composites alone with
+/// effects skipped, which is exact because they paint nothing there.
+///
+/// ponytail: a region an effect does reach still full-composites and slices
+/// (a brush dab beside a stroked shape); add a region-expanded effect kernel
+/// if that shows up in a profile.
 pub(crate) fn composite_rgba_region(
     doc: &Document,
     x0: u32,
@@ -44,10 +47,14 @@ pub(crate) fn composite_rgba_region(
     if rw == 0 || rh == 0 {
         return PixelBuffer::new(0, 0, 4);
     }
-    if doc.layers.iter().any(has_effect_block) {
-        return slice_region(&composite_rgba(doc), doc.width, x0, y0, rw, rh);
-    }
+    let region = (x0 as i32, y0 as i32, (x0 + rw) as i32, (y0 + rh) as i32);
     let mut canvas = Canvas::new_region(x0 as i32, y0 as i32, rw as usize, rh as usize);
+    if doc.layers.iter().any(has_effect_block) {
+        if effects_may_reach(&doc.layers, region) {
+            return slice_region(&composite_rgba(doc), doc.width, x0, y0, rw, rh);
+        }
+        canvas.skip_effects = true;
+    }
     composite_layers(&mut canvas, doc);
     canvas.into_pixel_buffer()
 }
@@ -59,6 +66,19 @@ fn has_effect_block(layer: &Layer) -> bool {
     layer.extra_block(b"lfx2").is_some()
         || layer.extra_block(b"lrFX").is_some()
         || layer.children.iter().any(has_effect_block)
+}
+
+/// Whether any non-group layer's effects (groups' effects are not drawn) may
+/// paint inside `region` (left, top, right, bottom).
+fn effects_may_reach(layers: &[Layer], region: (i32, i32, i32, i32)) -> bool {
+    layers.iter().any(|layer| {
+        let own = !layer.is_group
+            && (layer.extra_block(b"lfx2").is_some() || layer.extra_block(b"lrFX").is_some())
+            && crate::layer_effects::effects_reach(layer).is_none_or(|(l, t, r, b)| {
+                l < region.2 && region.0 < r && t < region.3 && region.1 < b
+            });
+        own || effects_may_reach(&layer.children, region)
+    })
 }
 
 /// Copy the region `[x0, x0+rw) × [y0, y0+rh)` out of a full-document buffer.
@@ -115,6 +135,8 @@ pub(crate) struct Canvas {
     /// canvas a knockout layer composites into. `None` on the output canvas so
     /// the normal path stays allocation-free.
     pub(crate) cover: Option<Vec<bool>>,
+    /// Draw no layer effects: set only on a region no effect can reach.
+    pub(crate) skip_effects: bool,
 }
 
 impl Canvas {
@@ -131,6 +153,7 @@ impl Canvas {
             oy,
             px: vec![Px::default(); w * h],
             cover: None,
+            skip_effects: false,
         }
     }
 
@@ -144,6 +167,7 @@ impl Canvas {
             oy: base.oy,
             px: base.px.clone(),
             cover: Some(vec![false; base.px.len()]),
+            skip_effects: base.skip_effects,
         }
     }
 
@@ -218,6 +242,7 @@ pub(crate) fn composite_layer_inner(
         // back to the group's own backdrop) and that backdrop is also the
         // `Shallow` stopping point; the incoming bases are ignored.
         let mut inner = Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h);
+        inner.skip_effects = canvas.skip_effects;
         let ko_base = has_knockout(layer)
             .then(|| Canvas::new_region(canvas.ox, canvas.oy, canvas.w, canvas.h));
         for child in &layer.children {

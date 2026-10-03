@@ -137,6 +137,7 @@ fn decode(data: &[u8], width: u32, height: u32) -> Option<VectorMask> {
         subpaths: Vec::new(),
         invert: flags & 0x01 != 0,
         disabled: flags & 0x04 != 0,
+        rows: Default::default(),
     };
     while r.remaining() >= RECORD {
         let selector = r.u16().ok()?;
@@ -210,6 +211,11 @@ fn flatten(closed: bool, operation: i16, fill: u16, knots: &[Knot]) -> VectorSub
         for i in 0..segments {
             let from = &knots[i];
             let to = &knots[(i + 1) % n];
+            // A straight segment (handles on their anchors) is one edge.
+            if from.leaving == from.anchor && to.preceding == to.anchor {
+                points.push(to.anchor);
+                continue;
+            }
             for step in 1..=SUBDIVISIONS {
                 let t = step as f64 / SUBDIVISIONS as f64;
                 points.push(cubic(from.anchor, from.leaving, to.preceding, to.anchor, t));

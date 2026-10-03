@@ -1,11 +1,11 @@
 //! Vector-mask coverage for the compositor.
 //!
-//! The mask path is document-relative, so sampling happens in document pixels.
-//! `ponytail:` hard 0/255 coverage and a per-pixel O(edges) scan over every
-//! closed subpath, no active-edge table and no antialiasing; add both when
-//! curved masks need smoother edges.
+//! The mask path is document-relative, so sampling happens in document pixels,
+//! through the mask's per-row crossing index ([`VectorMask::inside`]).
+//! `ponytail:` hard 0/255 coverage, no antialiasing; add it when curved masks
+//! need smoother edges.
 
-use pictura_core::{VectorFillRule, VectorMask, VectorSubpath};
+use pictura_core::VectorMask;
 
 /// Coverage at a canvas pixel: `255` where the layer shows, `0` where the mask
 /// hides it. An absent or disabled mask, or one with no closed subpath, is
@@ -19,18 +19,7 @@ pub(crate) fn coverage(mask: Option<&VectorMask>, x: i32, y: i32) -> u8 {
     }
     // D4: union only. Every closed subpath contributes edges to one fill; if
     // any declares non-zero, the whole path is sampled non-zero.
-    let non_zero = mask
-        .subpaths
-        .iter()
-        .any(|s| s.closed && s.points.len() >= 3 && s.fill_rule == VectorFillRule::NonZero);
-
-    let cx = x as f64 * 256.0 + 128.0;
-    let cy = y as f64 * 256.0 + 128.0;
-    let inside = if non_zero {
-        winding(&mask.subpaths, cx, cy) != 0
-    } else {
-        crossings(&mask.subpaths, cx, cy) % 2 == 1
-    };
+    let inside = mask.inside(x, y);
     let c = if inside { 255 } else { 0 };
     if mask.invert {
         255 - c
@@ -39,56 +28,10 @@ pub(crate) fn coverage(mask: Option<&VectorMask>, x: i32, y: i32) -> u8 {
     }
 }
 
-fn crossings(subpaths: &[VectorSubpath], cx: f64, cy: f64) -> u32 {
-    let mut count = 0;
-    for subpath in subpaths {
-        if !subpath.closed || subpath.points.len() < 3 {
-            continue;
-        }
-        let points = &subpath.points;
-        for i in 0..points.len() {
-            let (ax, ay) = (points[i][0] as f64, points[i][1] as f64);
-            let next = points[(i + 1) % points.len()];
-            let (bx, by) = (next[0] as f64, next[1] as f64);
-            if (ay > cy) != (by > cy) {
-                let xint = ax + (cy - ay) * (bx - ax) / (by - ay);
-                if cx < xint {
-                    count += 1;
-                }
-            }
-        }
-    }
-    count
-}
-
-fn winding(subpaths: &[VectorSubpath], cx: f64, cy: f64) -> i32 {
-    let mut winding = 0;
-    for subpath in subpaths {
-        if !subpath.closed || subpath.points.len() < 3 {
-            continue;
-        }
-        let points = &subpath.points;
-        for i in 0..points.len() {
-            let (ax, ay) = (points[i][0] as f64, points[i][1] as f64);
-            let next = points[(i + 1) % points.len()];
-            let (bx, by) = (next[0] as f64, next[1] as f64);
-            let left = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
-            if ay <= cy {
-                if by > cy && left > 0.0 {
-                    winding += 1;
-                }
-            } else if by <= cy && left < 0.0 {
-                winding -= 1;
-            }
-        }
-    }
-    winding
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pictura_core::VectorSubpath;
+    use pictura_core::{VectorFillRule, VectorSubpath};
 
     fn rect(x0: i32, y0: i32, x1: i32, y1: i32) -> VectorSubpath {
         let p = |x: i32, y: i32| [x * 256, y * 256];
@@ -105,6 +48,7 @@ mod tests {
             subpaths,
             invert: false,
             disabled: false,
+            rows: Default::default(),
         }
     }
 
