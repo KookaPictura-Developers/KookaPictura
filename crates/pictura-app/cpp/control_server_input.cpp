@@ -242,8 +242,7 @@ QJsonObject ControlServer::methodPointer(const QJsonObject& params)
         }
         target = view;
         mapPoint = [view](double ix, double iy) {
-            // Inverse of ImageView::widgetToImage: widget = image * zoom + offset.
-            const QPointF local = QPointF(ix, iy) * view->zoom() + view->offset();
+            const QPointF local = view->imageToWidget(QPointF(ix, iy));
             return Mapped{local, QPointF(view->mapToGlobal(local.toPoint()))};
         };
     } else {

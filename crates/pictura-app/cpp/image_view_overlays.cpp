@@ -58,7 +58,7 @@ void ImageView::paintCropGroupOverlays(QPainter& painter)
     }
     const auto toWidget = [this](const QPointF& p) { return p * zoom_ + offset_; };
     painter.save();
-    painter.resetTransform();
+    painter.setTransform(viewRotation());
     painter.setClipping(false);
 
     if (!sliceOverlay_.isEmpty() || !sliceDrag_.isNull()) {
@@ -116,7 +116,7 @@ void ImageView::paintCropGroupOverlays(QPainter& painter)
         painter.setRenderHint(QPainter::Antialiasing, false);
         // The crop shield: what is about to be thrown away, dimmed.
         QPainterPath shield;
-        shield.addRect(rect());
+        shield.addRect(viewRect());
         shield.addRect(box);
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(0, 0, 0, 150));
@@ -151,7 +151,7 @@ void ImageView::paintCropGroupOverlays(QPainter& painter)
         painter.setRenderHint(QPainter::Antialiasing, true);
         // Shade everything outside the quad, as the rectangular crop does.
         QPainterPath shield;
-        shield.addRect(rect());
+        shield.addRect(viewRect());
         QPainterPath inside;
         inside.addPolygon(quad);
         inside.closeSubpath();

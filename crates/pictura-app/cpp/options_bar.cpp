@@ -142,6 +142,8 @@ QWidget* OptionsBar::buildPage(ToolId id)
     case ToolId::FreeformPen:
     case ToolId::PathSelection:
         return buildPenPage(id);
+    case ToolId::RotateView:
+        return buildRotateViewPage(id);
     case ToolId::Rectangle:
     case ToolId::RoundedRectangle:
     case ToolId::Ellipse:

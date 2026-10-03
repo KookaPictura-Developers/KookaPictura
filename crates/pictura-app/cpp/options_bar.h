@@ -80,6 +80,7 @@ private:
     using ShapeUpdate = std::function<void(const std::function<void(ShapeOptions&)>&)>;
     using ShapeSyncs = std::vector<std::function<void(const ShapeOptions&)>>;
     QWidget* buildShapePage(ToolId id);
+    QWidget* buildRotateViewPage(ToolId id);
     void buildShapeAppearance(QWidget* page, QHBoxLayout* layout, const ShapeUpdate& update,
                               ShapeSyncs& syncs);
     QToolButton* buildShapeGeometryButton(ToolId id, QWidget* page, const ShapeUpdate& update,

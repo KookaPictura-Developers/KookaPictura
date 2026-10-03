@@ -185,7 +185,7 @@ const ToolInfo kToolTable[] = {
     {ToolId::Hand, "hand", "Hand", QLatin1Char('H'), Qt::OpenHandCursor,
      "Hand: drag to pan the canvas", 21, true, 9, 2},
     {ToolId::RotateView, "rotateview", "Rotate View", QLatin1Char('R'), Qt::CrossCursor,
-     "Rotate View: not implemented yet", 22, false, 12, 12},
+     "Rotate View: drag to turn the canvas; Esc resets the view", 22, true, 12, 12},
     {ToolId::Zoom, "zoom", "Zoom", QLatin1Char('Z'), Qt::CrossCursor,
      "Zoom: click to zoom in, Ctrl/Alt-click to zoom out", 23, true, 9, 2},
 };
@@ -314,6 +314,9 @@ QList<ToolHint> toolHintEntries(ToolId id)
         return {{QStringLiteral("Shift"), QStringLiteral("Snap the angle to 15°")}};
     case ToolId::Line:
         return {{QStringLiteral("Shift"), QStringLiteral("Snap the angle to 45°")}};
+    case ToolId::RotateView:
+        return {{QStringLiteral("Shift"), QStringLiteral("Snap to 15°")},
+                {QStringLiteral("Esc"), QStringLiteral("Reset View")}};
     case ToolId::CustomShape:
         return {{QStringLiteral("Shift"), QStringLiteral("Defined proportions")},
                 {QStringLiteral("Alt"), QStringLiteral("Draw from the centre")}};
@@ -372,7 +375,7 @@ const QList<ToolId>& implementedToolIds()
         ToolId::Eyedropper, ToolId::ColorSampler, ToolId::Ruler, ToolId::Note,
         ToolId::Count, ToolId::SpotHealingBrush, ToolId::HealingBrush, ToolId::Patch,
         ToolId::ContentAwareMove, ToolId::RedEye,
-        ToolId::Hand, ToolId::Zoom, ToolId::Brush, ToolId::Pencil, ToolId::ColorReplacement,
+        ToolId::Hand, ToolId::RotateView, ToolId::Zoom, ToolId::Brush, ToolId::Pencil, ToolId::ColorReplacement,
         ToolId::MixerBrush, ToolId::CloneStamp, ToolId::PatternStamp, ToolId::HistoryBrush,
         ToolId::ArtHistoryBrush, ToolId::Eraser, ToolId::BackgroundEraser, ToolId::MagicEraser,
         ToolId::Gradient, ToolId::PaintBucket, ToolId::Blur, ToolId::Sharpen, ToolId::Smudge,

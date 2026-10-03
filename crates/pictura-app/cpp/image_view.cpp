@@ -509,7 +509,76 @@ void ImageView::clearDragSizeHint()
 
 QPointF ImageView::widgetToImage(const QPointF& widgetPos) const
 {
-    return (widgetPos - offset_) / zoom_;
+    return (viewRotation().inverted().map(widgetPos) - offset_) / zoom_;
+}
+
+QPointF ImageView::imageToWidget(const QPointF& imagePos) const
+{
+    return viewRotation().map(imagePos * zoom_ + offset_);
+}
+
+QTransform ImageView::viewRotation() const
+{
+    if (rotation_ == 0.0) {
+        return QTransform();
+    }
+    const QPointF centre(width() / 2.0, height() / 2.0);
+    return QTransform::fromTranslate(-centre.x(), -centre.y()) * QTransform().rotate(rotation_)
+        * QTransform::fromTranslate(centre.x(), centre.y());
+}
+
+QRectF ImageView::viewRect() const
+{
+    return viewRotation().inverted().mapRect(QRectF(rect()));
+}
+
+void ImageView::setRotation(double degrees)
+{
+    double normalised = std::fmod(degrees, 360.0);
+    if (normalised <= -180.0) {
+        normalised += 360.0;
+    } else if (normalised > 180.0) {
+        normalised -= 360.0;
+    }
+    if (normalised == rotation_) {
+        return;
+    }
+    rotation_ = normalised;
+    presentCache_.valid = false;
+    update();
+    emit viewChanged();
+}
+
+void ImageView::setCompassVisible(bool visible)
+{
+    if (compassVisible_ != visible) {
+        compassVisible_ = visible;
+        update();
+    }
+}
+
+// The compass in widget space: a ring at the canvas centre whose red needle
+// points to the document's top edge however the canvas is turned.
+void ImageView::paintCompass(QPainter& painter)
+{
+    painter.save();
+    painter.resetTransform();
+    painter.setClipping(false);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QPointF centre(width() / 2.0, height() / 2.0);
+    const double radius = std::min(60.0, std::min(width(), height()) / 4.0);
+    painter.setPen(QPen(QColor(255, 255, 255, 200), 2));
+    painter.setBrush(QColor(0, 0, 0, 90));
+    painter.drawEllipse(centre, radius, radius);
+    const QTransform turn = QTransform().rotate(rotation_);
+    const QPointF north = turn.map(QPointF(0.0, -radius * 0.85));
+    const QPointF side = turn.map(QPointF(radius * 0.12, 0.0));
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0xe0, 0x20, 0x20));
+    painter.drawPolygon(QPolygonF({centre + north, centre + side, centre - side}));
+    painter.setBrush(QColor(255, 255, 255, 220));
+    painter.drawPolygon(QPolygonF({centre - north, centre + side, centre - side}));
+    painter.restore();
 }
 
 void ImageView::setPresentCacheEnabledForTest(bool enabled)
@@ -551,8 +620,9 @@ QRectF ImageView::visibleDocumentRect() const
     if (image_.isNull() || zoom_ <= 0.0) {
         return QRectF();
     }
-    const QPointF tl = widgetToImage(QPointF(0.0, 0.0));
-    const QPointF br = widgetToImage(QPointF(width(), height()));
+    const QRectF view = viewRect();
+    const QPointF tl = (view.topLeft() - offset_) / zoom_;
+    const QPointF br = (view.bottomRight() - offset_) / zoom_;
     const QRectF visible(QPointF(std::min(tl.x(), br.x()), std::min(tl.y(), br.y())),
                          QPointF(std::max(tl.x(), br.x()), std::max(tl.y(), br.y())));
     return visible.intersected(QRectF(0.0, 0.0, image_.width(), image_.height()));
@@ -641,6 +711,9 @@ void ImageView::paintEvent(QPaintEvent*)
     if (image_.isNull()) {
         return;
     }
+    // Everything below draws in the view frame; Rotate View turns it here.
+    const QTransform rotation = viewRotation();
+    painter.setTransform(rotation);
 
     // Checkerboard in screen space, anchored to the document origin and
     // clipped to the document rect so it never spills onto the canvas.
@@ -652,7 +725,7 @@ void ImageView::paintEvent(QPaintEvent*)
     const QRect docDevice(qRound(docRect.left()), qRound(docRect.top()),
                           qRound(docRect.right()) - qRound(docRect.left()),
                           qRound(docRect.bottom()) - qRound(docRect.top()));
-    const QRect checkerRect = docDevice.intersected(rect());
+    const QRect checkerRect = docDevice.intersected(viewRect().toAlignedRect());
     if (!checkerRect.isEmpty()) {
         painter.setBrushOrigin(docDevice.topLeft());
         painter.fillRect(checkerRect, QBrush(transparencyTile()));
@@ -696,8 +769,9 @@ void ImageView::paintEvent(QPaintEvent*)
         QRect cropDoc;
         const QImage* crop = presentCrop(cropDoc);
         painter.save();
-        painter.resetTransform();
-        painter.setRenderHint(QPainter::SmoothPixmapTransform, smoothSamplingForZoom(zoom_));
+        painter.setTransform(rotation);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform,
+                              rotation_ != 0.0 || smoothSamplingForZoom(zoom_));
         painter.setClipRect(docDevice);
         if (crop) {
             const QRectF target(offset_.x() + cropDoc.x() * zoom_,
@@ -844,12 +918,15 @@ void ImageView::paintEvent(QPaintEvent*)
     paintAnnotations(painter);
     paintPathOverlay(painter);
     paintTypeOverlay(painter);
+    if (compassVisible_) {
+        paintCompass(painter);
+    }
 
     if (dragSizeActive_ && !dragSizeText_.isEmpty()) {
         painter.save();
         painter.resetTransform();
         painter.setClipping(false);
-        const QPointF widgetPos = dragSizeImagePos_ * zoom_ + offset_;
+        const QPointF widgetPos = imageToWidget(dragSizeImagePos_);
         QFont font = painter.font();
         font.setPointSize(10);
         painter.setFont(font);
@@ -909,7 +986,7 @@ void ImageView::wheelEvent(QWheelEvent* event)
     } else {
         const int step = (delta.y() != 0 && mods.testFlag(Qt::ShiftModifier)) ? delta.y() * 2
                                                                               : delta.y();
-        zoomAt(event->position(), step);
+        zoomAt(viewRotation().inverted().map(event->position()), step);
     }
     event->accept();
 }
@@ -946,7 +1023,9 @@ void ImageView::mouseMoveEvent(QMouseEvent* event)
 {
     const Qt::MouseButtons buttons = event->buttons();
     if (panning_ && (buttons & (Qt::MiddleButton | Qt::LeftButton))) {
-        panBy(event->position() - last_);
+        // A screen-space drag moves the turned canvas along with the pointer.
+        const QTransform unturn = QTransform().rotate(-rotation_);
+        panBy(unturn.map(event->position() - last_));
         last_ = event->position();
     } else {
         if (pressTrace_.armed && pressTrace_.firstMoveNs < 0) {
