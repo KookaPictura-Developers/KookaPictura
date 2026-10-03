@@ -906,8 +906,7 @@ pub mod qobject {
         #[qinvokable]
         fn move_preview_cache_hit(&self) -> bool;
 
-        /// The cached base image (layers with the moved layer hidden); null when
-        /// not previewing.
+        /// The cached base image (layers with the moved layer hidden); null when not previewing.
         #[qinvokable]
         fn move_preview_base(&self) -> QImage;
 
