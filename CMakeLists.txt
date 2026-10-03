@@ -149,6 +149,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/placeholder_panel.cpp
     crates/pictura-app/cpp/panels/properties_panel.cpp
     crates/pictura-app/cpp/panels/channels_panel.cpp
+    crates/pictura-app/cpp/panels/character_panel.cpp
+    crates/pictura-app/cpp/panels/paragraph_panel.cpp
     crates/pictura-app/cpp/panels/panel_group.cpp
     crates/pictura-app/cpp/panels/panel_group_menu.cpp
     crates/pictura-app/cpp/panels/panel_group_test.cpp
@@ -257,6 +259,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/placeholder_panel.h
     crates/pictura-app/cpp/panels/properties_panel.h
     crates/pictura-app/cpp/panels/channels_panel.h
+    crates/pictura-app/cpp/panels/character_panel.h
+    crates/pictura-app/cpp/panels/paragraph_panel.h
     crates/pictura-app/cpp/panels/panel_group.h
     crates/pictura-app/cpp/panels/panel_column.h
     crates/pictura-app/cpp/tools.h

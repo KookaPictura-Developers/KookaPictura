@@ -198,6 +198,18 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
     commit->setText(QStringLiteral("✓"));
     commit->setToolTip(QStringLiteral("Commit all current edits (Ctrl+Enter)"));
     layout->addWidget(commit);
+
+    // The Panel button opens the Character and Paragraph panels, as CS6's does.
+    auto* panel = new QToolButton(page);
+    panel->setObjectName(QStringLiteral("optionsTypePanel"));
+    panel->setText(QStringLiteral("⧉"));
+    panel->setToolTip(QStringLiteral("Toggle the Character and Paragraph panels"));
+    layout->addWidget(panel);
+    connect(panel, &QToolButton::clicked, this, [this]() {
+        emit panelToggleRequested(QStringLiteral("characterPanel"));
+        emit panelToggleRequested(QStringLiteral("paragraphPanel"));
+    });
+
     layout->addStretch(1);
     if (!controller_) {
         return page;

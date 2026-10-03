@@ -1094,6 +1094,8 @@ void PicturaMainWindow::registerHandlers()
         {command_ids::WindowPanelsCharacter, "characterPanel"},
         {command_ids::WindowPanelsParagraph, "paragraphPanel"},
         {command_ids::WindowPanelsGlyphs, "glyphsPanel"},
+        {command_ids::TypePanelsCharacter, "characterPanel"},
+        {command_ids::TypePanelsParagraph, "paragraphPanel"},
     };
     for (const PanelToggle& toggle : kPanelToggles) {
         const QString command = QString::fromLatin1(toggle.command);

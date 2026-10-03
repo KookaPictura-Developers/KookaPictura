@@ -69,6 +69,7 @@ void PicturaMainWindow::buildPanels()
     characterPanel_->setObjectName(QStringLiteral("characterPanel"));
     paragraphPanel_ = new ParagraphPanel(this);
     paragraphPanel_->setObjectName(QStringLiteral("paragraphPanel"));
+
     glyphsPanel_ = new GlyphsPanel(this);
     glyphsPanel_->setObjectName(QStringLiteral("glyphsPanel"));
 
@@ -194,6 +195,14 @@ void PicturaMainWindow::buildPanels()
             propertiesPanel_->refresh();
         }
         updateAlignControls();
+        // The type panels follow the active layer; selection does not bump the
+        // view's `changed`, so refresh them here rather than from the timer.
+        if (characterPanel_) {
+            characterPanel_->refresh();
+        }
+        if (paragraphPanel_) {
+            paragraphPanel_->refresh();
+        }
     });
 }
 
@@ -352,8 +361,6 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
             &PicturaMainWindow::distributeSelectedLayers);
     brushPanel_->setController(tools_);
     cloneSourcePanel_->setController(tools_);
-    characterPanel_->setController(tools_);
-    paragraphPanel_->setController(tools_);
     glyphsPanel_->setController(tools_);
 
     // The Info panel follows the Ruler tool: its A/L block and W/H readout come

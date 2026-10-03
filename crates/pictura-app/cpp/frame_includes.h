@@ -30,6 +30,7 @@
 #include "panels/layers_panel.h"
 #include "panels/navigator_panel.h"
 #include "panels/notes_panel.h"
+#include "panels/paragraph_panel.h"
 #include "panels/paths_panel.h"
 #include "panels/panel_column.h"
 #include "panels/panel_group.h"

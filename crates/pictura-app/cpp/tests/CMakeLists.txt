@@ -14,6 +14,7 @@ set(PICTURA_QT_TESTS
     tst_save_for_web
     tst_type_tools
     tst_type_panels
+    tst_character_paragraph_panels
     tst_shared_widgets
     tst_info_panel
     tst_swatches_panel
