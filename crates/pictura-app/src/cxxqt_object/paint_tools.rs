@@ -13,7 +13,7 @@
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
-mod fills;
+pub(super) mod fills;
 
 use super::helpers::{active_layer_visible, active_pixel_layer, paint_mode_from, rgba_from_argb};
 use super::qobject::PictureView;

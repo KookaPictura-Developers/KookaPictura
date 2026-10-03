@@ -80,7 +80,7 @@ impl Subpath {
     }
 
     /// The subpath as a polyline within `tolerance` of the true curve.
-    fn flatten(&self, tolerance: f64) -> Vec<(f64, f64)> {
+    pub fn flatten(&self, tolerance: f64) -> Vec<(f64, f64)> {
         let mut out: Vec<(f64, f64)> = self.points.first().map(|p| p.anchor).into_iter().collect();
         for seg in 0..self.segment_count() {
             if let Some(quad) = self.segment(seg) {
@@ -170,6 +170,14 @@ impl VectorPath {
         self.subpaths[sp].closed = true;
         self.editing = None;
         true
+    }
+
+    /// Append a finished subpath (a shape tool's outline), ending any drawing
+    /// session. Returns its index.
+    pub fn add_subpath(&mut self, subpath: Subpath) -> usize {
+        self.editing = None;
+        self.subpaths.push(subpath);
+        self.subpaths.len() - 1
     }
 
     /// Stop extending the current subpath, leaving it open.

@@ -11,14 +11,16 @@
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QVBoxLayout>
 
+#include <string>
+
 namespace pictura {
 
 namespace {
 
 constexpr int kThumbHeight = 32;
 
-// The Work Path as one QPainterPath in document pixels.
-QPainterPath workPath(const PictureView& v)
+// The targeted path as one QPainterPath in document pixels.
+QPainterPath targetPath(const PictureView& v)
 {
     QPainterPath out;
     const int subpaths = path_subpath_count(v);
@@ -80,19 +82,37 @@ PathsPanel::PathsPanel(QWidget* parent)
 
 void PathsPanel::setView(PictureView* view) { view_ = view; }
 
+// The active shape layer's "<Layer> Shape Path" (as CS6 lists a vector mask),
+// then the Work Path. The path calls are pointed at each in turn and restored.
 void PathsPanel::refresh()
 {
     list_->clear();
-    const bool has = view_ && view_->has_document() && path_subpath_count(*view_) > 0;
-    if (has) {
-        // CS6 sets the temporary Work Path's name in italics.
-        auto* item = new QListWidgetItem(QIcon(thumbnail(*view_, workPath(*view_))),
-                                         tr("Work Path"), list_);
-        QFont font = item->font();
-        font.setItalic(true);
-        item->setFont(font);
-        list_->setCurrentItem(item);
+    if (view_ && view_->has_document()) {
+        PictureView& v = *view_;
+        const bool layerTarget = path_layer_target(v);
+        path_set_layer_target(v, true);
+        if (path_target_is_layer(v)) {
+            const QString name = QString::fromStdString(std::string(path_target_name(v)));
+            auto* item = new QListWidgetItem(QIcon(thumbnail(v, targetPath(v))),
+                                             tr("%1 Shape Path").arg(name), list_);
+            item->setData(Qt::UserRole, QStringLiteral("shape"));
+            list_->setCurrentItem(item);
+        }
+        path_set_layer_target(v, false);
+        if (path_subpath_count(v) > 0) {
+            // CS6 sets the temporary Work Path's name in italics.
+            auto* item = new QListWidgetItem(QIcon(thumbnail(v, targetPath(v))),
+                                             tr("Work Path"), list_);
+            QFont font = item->font();
+            font.setItalic(true);
+            item->setFont(font);
+            if (!list_->currentItem()) {
+                list_->setCurrentItem(item);
+            }
+        }
+        path_set_layer_target(v, layerTarget);
     }
+    const bool has = list_->count() > 0;
     list_->setVisible(has);
     empty_->setVisible(!has);
 }

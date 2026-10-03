@@ -112,6 +112,7 @@ fn mask_alpha_multiplies_raster_and_vector() {
         }],
         invert: false,
         disabled: false,
+        rows: Default::default(),
     });
 
     assert_eq!(
@@ -131,4 +132,35 @@ fn mask_alpha_multiplies_raster_and_vector() {
         200,
         "a disabled vector mask changes nothing"
     );
+}
+
+#[test]
+fn a_shape_layer_is_a_fill_cut_to_its_outline_and_survives_a_save() {
+    let white = solid(
+        "Background",
+        full(8, 8),
+        (255, 255, 255),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut d = doc(8, 8, vec![white]);
+    let options =
+        pictura_core::shape::ShapeOptions::new(pictura_core::shape::ShapeKind::Rectangle, 0.0, 3);
+    let outline = pictura_core::shape::outline(options, (2.0, 2.0), (6.0, 6.0), false, false)
+        .expect("a rectangle");
+    let path = add_shape_layer(&mut d, "", [255, 0, 0, 255], "Rectangle", &outline, None);
+    assert_eq!(
+        resolve_path(&d, &path).expect("created").name,
+        "Rectangle 1"
+    );
+
+    let out = composite_rgba(&d);
+    assert_eq!(rgb(&out, 3, 3), [255, 0, 0], "inside the outline");
+    assert_eq!(rgb(&out, 1, 1), [255, 255, 255], "outside it");
+    assert_eq!(rgb(&out, 6, 6), [255, 255, 255]);
+
+    let bytes = pictura_codec::write_psd(&d).expect("writes");
+    let reread = pictura_codec::read_psd(&bytes).expect("re-reads");
+    assert_eq!(composite_rgba(&reread), out, "the shape layer round-trips");
 }

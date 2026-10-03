@@ -13,6 +13,8 @@ mod paths;
 mod perspective_crop;
 mod properties;
 mod rasterize;
+mod shape_layer;
+mod shape_style;
 mod smart_object;
 #[cfg(test)]
 mod tests;
@@ -56,6 +58,14 @@ pub use properties::{
     ungroup_paths,
 };
 pub use rasterize::{is_fill_content_layer, rasterize_all_layers, rasterize_fill_content};
+pub use shape_layer::{
+    add_shape_layer, is_shape_layer, layer_live_shape, layer_shape_paths, set_layer_live_shape,
+    set_layer_shape_paths, shape_coverage, shape_fill_color,
+};
+pub use shape_style::{
+    resize_shape, set_shape_fill, set_shape_stroke, shape_bounds, shape_fill, shape_stroke,
+    ShapeStroke,
+};
 pub use smart_object::{
     can_convert_to_smart_object, can_edit_smart_object_contents, can_rasterize_smart_object,
     can_replace_smart_object_contents, convert_to_smart_object, open_as_smart_object,

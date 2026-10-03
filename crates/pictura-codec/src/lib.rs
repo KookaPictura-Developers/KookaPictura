@@ -31,6 +31,7 @@ mod exif;
 mod icc;
 mod image_resources;
 mod iptc;
+mod live_shape;
 mod metadata;
 mod patterns;
 mod pictura_raw;
@@ -80,6 +81,10 @@ pub use pictura_raw::{
 };
 // Re-exported so the app's profile commands can name a `Profile` without adding
 // a direct dependency on `pictura-color`.
+pub use live_shape::{
+    decode_live_shape, encode_live_shape, LiveShape, ORIGIN_ELLIPSE, ORIGIN_RECTANGLE,
+    ORIGIN_ROUNDED_RECTANGLE,
+};
 pub use pictura_color::{Policy, Profile};
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
 pub use read::{read_psd, read_psd_with};
@@ -87,6 +92,7 @@ pub use smart_filter::set_camera_raw_option;
 pub use smart_object::remove_linked_source;
 pub use type_tool::encode_type_tool;
 pub use type_write::author_type_tool;
+pub use vector_mask::{decode_vector_mask, decode_vector_mask_paths, encode_vector_mask};
 pub use write::{write_psb, write_psd};
 pub use xmp::{parse_xmp, patch_xmp, patch_xmp_values, to_xmp_packet, XmpField, XmpProperties};
 

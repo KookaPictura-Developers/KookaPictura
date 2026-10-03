@@ -2,6 +2,9 @@
 
 #include <QtWidgets/QToolBar>
 
+#include <functional>
+#include <vector>
+
 #include "tools.h"
 
 class QStackedWidget;
@@ -72,6 +75,18 @@ private:
     QWidget* buildTonePage(ToolId id);
     // options_bar_pen.cpp: Pen and Freeform Pen.
     QWidget* buildPenPage(ToolId id);
+    // The shape tools' page and its parts (options_bar_shape.cpp). An update
+    // edits the shared ShapeOptions; the syncs re-read them into the page.
+    using ShapeUpdate = std::function<void(const std::function<void(ShapeOptions&)>&)>;
+    using ShapeSyncs = std::vector<std::function<void(const ShapeOptions&)>>;
+    QWidget* buildShapePage(ToolId id);
+    void buildShapeAppearance(QWidget* page, QHBoxLayout* layout, const ShapeUpdate& update,
+                              ShapeSyncs& syncs);
+    QToolButton* buildShapeGeometryButton(ToolId id, QWidget* page, const ShapeUpdate& update,
+                                          ShapeSyncs& syncs);
+    QToolButton* buildShapePicker(QWidget* page, const ShapeUpdate& update, ShapeSyncs& syncs);
+    QToolButton* buildArrowheadsButton(QWidget* page, const ShapeOptions& initial,
+                                       const ShapeUpdate& update);
     // options_bar_type.cpp: the four Type tools.
     QWidget* buildTypePage(ToolId id);
     void addStampPaintFields(QHBoxLayout* layout, QWidget* page);

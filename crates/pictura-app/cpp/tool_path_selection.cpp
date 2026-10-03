@@ -1,10 +1,13 @@
-// The path selection tools, editing the document's Work Path
-// (`pictura_core::path`, bridged by `cxxqt_object/paths.rs`): Path Selection
+// The path selection tools, editing the active shape layer's outline or else
+// the document's Work Path (`pictura_core::path`, bridged by
+// `cxxqt_object/paths.rs`): Path Selection
 // picks a whole subpath (a path component) and drags it, Alt-drag dragging a
 // copy; Direct Selection drags one anchor or direction handle, and Alt-click
 // picks the whole component. Delete removes a whole-selected component. The
 // path is drawn on the canvas while one of these tools is active. Ported from
 // photorust's CanvasView::pathSelectPress / pathSelectMove / pathSelectRelease.
+// Dragging an anchor or handle of a live shape first asks to turn it into a
+// regular path (Photoshop CC's prompt); moving the whole shape keeps it live.
 //
 // ponytail: no segment drags, marquee, Shift-click multi-selection, arrow
 // nudges, path operations, alignment, or Constrain Path Dragging; the
@@ -14,12 +17,14 @@
 
 #include "image_view.h"
 #include "path_overlay.h"
+#include "shape_dialogs.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/paths.cxxqt.h"
 
 #include <QtCore/QLineF>
+#include <QtGui/QGuiApplication>
 
 #include <memory>
 
@@ -58,6 +63,9 @@ public:
     void onDocumentRefreshed(ToolContext& ctx) override
     {
         PictureView* v = ctx.view();
+        if (v && v->has_document()) {
+            path_set_layer_target(*v, true);
+        }
         if (!v || !v->has_document() || selected_ >= path_subpath_count(*v)) {
             clearSelection();
         } else if (selected_ >= 0 && selectedPoint_ >= path_point_count(*v, selected_)) {
@@ -76,6 +84,7 @@ public:
         if (!v || !v->has_document()) {
             return true;
         }
+        path_set_layer_target(*v, true);
         pressView_ = v;
         press_ = last_ = imagePos;
         const bool alt = mods.testFlag(Qt::AltModifier);
@@ -103,6 +112,23 @@ public:
         // A press that wobbles under two screen pixels stays a click.
         if (!moved_ && QLineF(press_, imagePos).length() * zoom(ctx) < 2.0) {
             return;
+        }
+        if (!moved_ && (gesture_ == Gesture::Anchor || gesture_ == Gesture::Handle)
+            && path_target_is_live_shape(*v)) {
+            // The prompt is modal: when it closes, the button may be up and
+            // the release long gone, so the drag only goes on while held.
+            bool asked = false;
+            if (!confirmLiveShapeToPath(ctx.canvas(), &asked)) {
+                reset();
+                refreshOverlay(ctx);
+                return;
+            }
+            path_convert_live_shape(*v);
+            if (asked && !QGuiApplication::mouseButtons().testFlag(Qt::LeftButton)) {
+                reset();
+                refreshOverlay(ctx);
+                return;
+            }
         }
         switch (gesture_) {
         case Gesture::Component:
@@ -242,7 +268,10 @@ private:
             canvas->setPathOverlay({});
             return;
         }
-        ImageView::PathOverlay overlay = workPathOverlay(*v, selected_ >= 0 ? selected_ : -2);
+        path_set_layer_target(*v, true);
+        // A shape layer's outline always shows its anchors, as CC draws it.
+        const int pointsOf = selected_ >= 0 ? selected_ : (path_target_is_layer(*v) ? -1 : -2);
+        ImageView::PathOverlay overlay = workPathOverlay(*v, pointsOf);
         overlay.anchorsSolid = whole_;
         overlay.activeAnchor = selectedPoint_;
         if (id_ == ToolId::PathSelection) {

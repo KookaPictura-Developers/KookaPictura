@@ -138,6 +138,7 @@ public:
     bool lockNestingHiddenForTest() const;
     bool rowLinkedForTest(const QString& path) const;
     bool rowPlacedForTest(const QString& path) const;
+    bool rowShapeForTest(const QString& path) const;
     bool rowNameItalicForTest(const QString& path) const;
     bool rowNameUnderlineForTest(const QString& path) const;
     int rowHeightForTest() const;
