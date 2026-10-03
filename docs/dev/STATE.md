@@ -866,6 +866,43 @@ Snapshot for resuming after a context break. Update after each milestone.
   8-bit RGB documents only; the mask tint covers the canvas; Distort /
   Perspective and a masked type layer still resample pixels; the live
   transform preview is the resampled raster until commit.
+- **Clipping masks** (change `clipping-masks`, issue #63, from photorust's
+  `core/src/compositor.rs`): the compositor now honours `Layer::clipping`
+  (`composite_clipping.rs`): a base and the clipped layers above it composite
+  as one isolated group — base at full opacity, clipped layers confined to the
+  base's coverage (its content alone: Fill 0 and effects do not narrow it),
+  the group composited with the base's opacity and mode. Every sibling loop
+  (document root, pass-through and isolated groups) routes through it; the GPU
+  path declines clipped layers. `layer_ops/clipping.rs`: Create / Release
+  Clipping Mask (CS6 rules), wired to the Layer menu (Ctrl+Alt+G) and the
+  Layers panel's Alt-click on the line between rows. Checked against
+  psd-tools' compositor (`clipping_oracle`, within 2 levels) and
+  `tst_layers_panel::clippingMasks`. Ceiling (`ponytail:`): inside the group a
+  clipped layer's mode sees only the base and the clipped layers below it.
+- **Rotate View** (change `rotate-view-tool`, issue #59, implemented fresh —
+  photorust has none): `ImageView` turns the canvas about its centre; zoom and
+  offset stay in the unrotated view frame, the paint applies one rotation
+  (`viewRotation()`), overlays draw in the same frame, and only input mapping
+  (`widgetToImage`, new `imageToWidget`, wheel anchor, drag panning) undoes it.
+  `tool_rotate_view.cpp`: drag (compass with a red needle to the document's
+  top), Shift 15° steps, Esc resets; `options_bar_rotate.cpp`: Rotation Angle,
+  dial, Reset View, synced by `ToolController::setViewRotation` /
+  `viewRotationChanged`. `shift_plain` (117) now presses K as the
+  unimplemented key. Qt Test `tst_rotate_view`. Ceilings (`ponytail:`): no
+  Rotate All Windows or gestures; the angle is the single canvas widget's, so
+  shared by tabs; Navigator rectangle and offset clamping stay axis-aligned.
+- **Save for Web & Devices** (change `save-for-web`, issue #61, from photorust's
+  `SaveForWebDialog.cpp` / `GifWriter.cpp`): `pictura_codec::web` quantizes
+  (Perceptual / Selective / Adaptive median-cut approximations, Restrictive,
+  Black and White, Grayscale; Diffusion / Pattern / Noise dithering; matte and
+  transparency) and encodes GIF89a (hashed LZW, interlace, transparency) and
+  WBMP; JPEG / PNG-8 / PNG-24 go through Qt. `save_for_web_dialog` offers
+  Original / Optimized / 2-Up, CS6 presets, per-format settings, Image Size,
+  and size / 56.6 Kbps time; File > Save for Web & Devices… (Ctrl+Alt+Shift+S)
+  is wired. ImageMagick oracle `web_oracle` decodes our GIF / WBMP exactly;
+  Qt Test `tst_save_for_web`. Ceilings (`ponytail:`): no 4-Up, slices / HTML,
+  colour-table editing, Lossy, Web Snap, JPEG Blur, metadata choice, PNG
+  interlacing; settings last for the session.
 - **Shape options bar** (change `shape-options-bar`, owner follow-up on #48
   from a CS6 screenshot): all six shape tools share CS6's bar — Mode, Fill,
   Stroke (width, type pop-up with Align), W / link / H, disabled path
